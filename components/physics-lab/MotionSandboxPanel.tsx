@@ -70,8 +70,7 @@ export const MotionSandboxPanel: React.FC = () => {
             const { data, error } = await supabase
                 .from('meta_players')
                 .select('id, name, position, base_attributes, tendencies')
-                .eq('in_multi_pool', true)
-                .or('base_team_id.not.is.null,draft_year.eq.2026');
+                .eq('in_multi_pool', true);
             if (!cancelled) {
                 if (!error && data) setPool(data.map((r: any) => mapRawPlayerToRuntimePlayer(r, false)));
                 setPoolLoading(false);

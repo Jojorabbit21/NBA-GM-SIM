@@ -149,7 +149,7 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
         weight:          Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
 
         // 계약 (시뮬에서는 불필요하지만 타입 호환을 위해)
-        contract: { years: [5_000_000], currentYear: 0, type: 'veteran' },
+        contract: { years: [5_000_000], currentYear: 0, type: 'free_agent' },
 
         // [2026-09-08] 클라(services/dataMapper.ts)엔 있던 매핑이 서버 미러엔 누락돼 있었음 —
         // 서버 사이드 계산(올스타 투표 등 인기도가 필요한 로직)에서 항상 undefined로 빠지는

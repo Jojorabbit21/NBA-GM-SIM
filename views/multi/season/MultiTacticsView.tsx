@@ -29,6 +29,7 @@ import { generateAutoTactics } from '../../../services/gameEngine';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal, resolveRealAt } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import type { Team, Game, Player } from '../../../types';
 
 type MultiTacticsTab = 'depth' | 'team' | 'insights' | 'player';
@@ -143,7 +144,7 @@ function computeStatRankRows(allTeamStats: any[], myTeamId: string | null, stats
 
 const MultiTacticsView: React.FC = () => {
     const { league, leagueTeams, members, room, isLoading: leagueLoading } = useLeagueContext();
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const { session } = useGame();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();

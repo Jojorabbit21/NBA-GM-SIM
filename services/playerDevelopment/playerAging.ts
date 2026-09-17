@@ -909,7 +909,7 @@ export function processOffseason(
                         lastSalary: player.salary,
                     });
                     // 1라운드 루키(4년) 만료 → RFA 후보 등록
-                    if (player.contract.type === 'rookie' && player.contract.years.length === 4) {
+                    if (player.contract.type === 'rookie_scale' && player.contract.years.length === 4) {
                         const lastSal = player.contract.years[player.contract.years.length - 1];
                         const cap = LEAGUE_FINANCIALS.SALARY_CAP;
                         const vetMin = Math.round(cap * 0.017); // ~1.7% of cap

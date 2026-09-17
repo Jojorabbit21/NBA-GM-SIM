@@ -110,7 +110,7 @@ const FAMarketPage: React.FC = () => {
                 const prevTeamId = gameData.leagueFAMarket?.entries.find(e => e.playerId === playerId)?.prevTeamId;
                 const bTeamTotalContract = contract.years.reduce((s: number, v: number) => s + v, 0);
                 // BAE 사용 기록: usedBAEyear를 현재 시즌 시작 연도로 업데이트
-                const baeUsed = signingType === 'bae';
+                const baeUsed = signingType === 'biannual_exception';
                 const currentSeasonYear = parseInt((gameData.seasonConfig?.seasonShort ?? '2025-26').split('-')[0]);
                 const newTeams = gameData.teams.map((t: Team) => {
                     if (t.id === gameData.myTeamId) return { ...t, roster: [...t.roster, signedPlayer], ...(baeUsed ? { usedBAEyear: currentSeasonYear } : {}) };

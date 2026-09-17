@@ -12,7 +12,7 @@ interface OvrBadgeProps {
 }
 
 export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', className = '', textClassName }) => {
-    const baseStyles = "flex items-center justify-center font-black shadow-lg text-shadow-ovr transition-all leading-none";
+    const baseStyles = "flex items-center justify-center font-black shadow-lg text-shadow-ovr leading-none";
 
     const boxStyles = {
         sm: "w-6 h-6 rounded",

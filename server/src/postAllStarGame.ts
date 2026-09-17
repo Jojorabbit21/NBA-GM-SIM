@@ -36,6 +36,7 @@
 import { supabase } from './supabaseAdmin';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculateOvr } from './shared/utils/ovrUtils.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
@@ -243,11 +244,10 @@ export async function computeAndRunAllStarGame(
         return;
     }
 
-    // custom_overrides(올타임 풀) 적용 여부 — simRunner.ts와 동일 판정.
+    // custom_overrides 적용 여부 — simRunner.ts와 동일 판정.
     const { data: leagueData } = await supabase
-        .from('leagues').select('draft_pool').eq('id', leagueId).maybeSingle();
-    const draftPools = (leagueData?.draft_pool ?? 'standard').split(',').map((s: string) => s.trim());
-    const useCustomOverrides = draftPools.includes('alltime');
+        .from('leagues').select('use_custom_overrides').eq('id', leagueId).maybeSingle();
+    const useCustomOverrides = shouldUseCustomOverrides(leagueData);
 
     const { data: rawPlayers } = await supabase
         .from('meta_players')

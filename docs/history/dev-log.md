@@ -35,6 +35,3645 @@
 
 ---
 
+## 2026-09-17 — bbref 스크래핑으로 528명 드래프트 정보 + 계약 이력(contract_history) + 현재 계약(contract) 일괄 기록
+
+**배경**: `meta_players`의 계약 데이터가 사람이 부분 입력한 상태(현재 계약 688명, `contract_history`
+19명, `yearSeasons` 23명, `draft_round/pick` 349명)여서 재정 탭 UFA/RFA 칩(데빈 카터 3년 루키 계약 등)
+정합성 문제가 계속 나왔다. 같은 날 재설계한 새 계약 어휘(ContractType 4종/SigningType 10종/
+contractDetail)를 실제 데이터로 채우기 위해 Basketball-Reference 선수 페이지(Salaries·Current
+Contract·Transactions·`Draft:` 헤더)를 슬러그 기반으로 스크래핑해 전 선수를 새 어휘로 덮어썼다.
+
+**변경 파일**:
+- `scripts/scrape_bbref_contracts.py` (신규) — playwright 수집 + 묶음 판정 + DB UPDATE + `--rebundle`
+- `scripts/output/bbref_contracts/<slug>.json` (527개 체크포인트, raw 포함) / `_backup_before.json`(실행 전 원본) /
+  `_run_all.log`
+- `scripts/output/contract_history_manual_followup.md` (수작업 확인 목록, 자동 재생성)
+- DB: `meta_players` 527행 — top-level `draft_year`/`salary`/`contract_years`, `base_attributes`의
+  `draft_round`/`draft_pick`/`contract`/`contract_history` (다른 키는 미변경)
+
+**대상/제외**: `scripts/data/bbref_id_worksheet_verified.csv`(현역) + `bbref_id_worksheet_rookies_mod.csv`(2026
+신인) 슬러그 528명(중복 제거 후 527명 체크포인트). 이름 매칭은 하지 않음. 슬러그 없는 레전드 314명
+(`bbref_id_worksheet_legends.csv`)은 **미대상** — 계약 `type` null 50명·레거시 `option`(단수) 15명·
+2라운드 픽 라운드-내 순번(알렉스 잉글리시) 등이 그대로 남아 있음(읽기 시 dataMapper/buildLeagueTeams가
+`option`→`options[]` 승격하므로 동작엔 문제 없음).
+
+**Before**: 수동 입력 값. `draft_pick`은 라운드 내 순번(2라운더 1~30). `contract`에 `yearSeasons` 거의 없음,
+`contract_history` 19명.
+
+**After** (판정 규칙):
+- `draft_round`/`draft_pick`(**전체 순번 1~60**, 사용자 확정)/`draft_year` ← `Draft:` 헤더. 언드래프티는 round/pick null(`draft_year` 유지).
+- 시즌 금액: Salaries 표 `csk` 합산(시즌 중 트레이드 2행 합산), `< $Minimum`/`(TW)`/빈 값 시즌은 **제외 + 문서 기록**.
+  현재 계약 표(2026-27~)가 겹치면 권위, `salary-pl`/`salary-tm` 스팬 → `options[{player|team, year}]`.
+- 묶음 경계 = 정규 서명 이벤트(투웨이/10-day/Exhibit 10 제외, 투웨이→정규 전환은 서명으로 취급).
+  드래프트 후 첫 서명: R1 → `rookie_scale` 4시즌 + 팀옵션 2·3년차 + `rookie_scale_exception`, R2 → `free_agent` +
+  `second_round_exception` + `general`. 일반 서명 → `free_agent`(`general`/`qualifying_offer`), 예외 조항 비움.
+  연장 → `extension`, 시작 시즌 = 직전 묶음부터 전년 대비 비율이 [0.90,1.10] 밖으로 꺾이는 첫 시즌(없으면 서명 시즌+1, 문서 기록),
+  `contractDetail` = 1년차 연봉/그 시즌 캡(스크립트 내장 1984~2026 캡 표): 직전이 루키면 ≥0.27 rose_rule / ≥0.22 rookie_max / 그 외 rookie,
+  아니면 ≥0.32 supermax / ≥0.27 veteran_max / 그 외 veteran.
+- 2026-27을 포함하는 묶음 → `contract`(**이미 지난 시즌 포함**, `currentYear`=2026-27 인덱스, 사용자 확정),
+  나머지 → `contract_history[]`(`currentYear: 0`). 2026 오프시즌에 서명된 미래 시작 연장은 단일 contract 모델 한계로
+  현재 계약 뒤에 이어붙이고 문서 기록(13건 — 웸반야마 2027~2031 루키맥스 연장 등).
+- bbref 표기 누락 보정(`--rebundle`로 전원 재적용, 48명 변경, 전부 "연장으로 추정"으로 문서 기록):
+  ① ~2012 이전 드래프티 루키 서명 이벤트 누락 → 드래프트 이벤트를 루키 서명으로 간주(반즈·비욤보·웨스트브룩·홀리데이·러브 등)
+  ② "Signed a multi-year contract"로 적힌 연장 → 보유팀(트레이드 이벤트로 추적, SEA→OKC 등 연고 이전 정규화)과 웨이브 없이 재서명
+     + (R1 4년차 진입 전 | 연봉 연속 ±10% & (시즌 중 서명 | 이후 ±15% 밖 점프)) → `extension`. "as a free agent" 문구는 제외
+  ③ 루키 4시즌 뒤 이벤트 없이 연봉 지속 → `extension` 추정(RFA 매칭 재계약 — 고든/B.로페즈/라우리 — 과 구분 불가, 문서 확인)
+  ④ 루키 시작 시즌 = 드래프트 후 첫 연봉 시즌(사리치 등 스태시 픽)
+
+**검증**: 수집 527명 fetch 실패 0. SQL 집계 — `contract.type` free_agent 413/rookie_scale 116/extension 100/two_way 11
+(+null 50 = 미대상 레전드), `contract_history` 보유 330명(원소 type: free_agent 491/rookie_scale 198/extension 107),
+`signingType`은 rookie_scale_exception/second_round_exception/없음만, `draft_round` 1: 325 / 2: 138, `draft_pick>30` 137.
+`yearSeasons` 보유 430명. 수작업 문서 255건(샐러리 표기 없음 102 / 2026-27 계약 없음 61 / 연장 추정 33 / 표 없음 22 /
+미래 연장 이어붙임 13 / 연장 시작 미확정 11 / 기타 13). 파일럿·ATL·dry-run 육안 대조: 할리버튼(루키+rose_rule 연장),
+브런슨(R2→FA→PO 포함 연장), 웨스트브룩(루키→루키맥스→2016 재협상→슈퍼맥스), 드로잔, 카루소(투웨이 2시즌 제외) 일치.
+알려진 확인 대상: 데빈 카터(bbref상 2026-06 ATL 트레이드 후 웨이브 → 2027-28 팀옵션 소멸, 3시즌으로 기록됨 — 시뮬 로스터와
+다름), CJ 맥컬럼(2022·2024 연장 2건이 합쳐진 것으로 의심).
+
+**롤백 방법**: `scripts/output/bbref_contracts/_backup_before.json`(id → draft_year/salary/contract_years/draft_round/
+draft_pick/contract/contract_history 원본, 최초 실행 시 1회 저장)을 읽어 각 id에 대해 top-level 3컬럼 UPDATE +
+`base_attributes`의 4키를 원본으로 되돌리면 됨(키가 원본에 없었으면 삭제). 스크립트 자체 롤백 명령은 없음 —
+`apply_to_db()`와 동일한 형태로 service-role 클라이언트에서 UPDATE 하면 된다.
+
+---
+
+## 2026-09-17 — 계약 유형(ContractType)/예외 조항(SigningType) 어휘 전면 재설계 + DB 백필
+
+**배경**: admin/player-editor의 "계약 타입"(11종: rookie/veteran/max/min/extension/two-way/
+10-day/rookie_extension/veteran_extension/veteran_max_extension/qualifying_offer)과 "체결
+방식"(9종: cap_space/non_tax_mle/tax_mle/bae/bird_full/bird_early/bird_non/vet_min/
+second_round)을 사용자가 재설계된 CBA 어휘로 재정리 요청. 최종 확정:
+- **계약 유형**(4종): `extension` / `free_agent` / `rookie_scale` / `two_way`
+- **예외 조항**("체결 방식"에서 개명, 10종): `full_bird`/`early_bird`/`non_bird`/
+  `non_taxpayer_mle`/`taxpayer_mle`/`room_mle`(신규)/`biannual_exception`/
+  `minimum_exception`/`second_round_exception`/`rookie_scale_exception`. 계약 유형별로
+  필터링됨(extension·two_way는 없음, rookie_scale은 rookie_scale_exception 하나뿐,
+  free_agent만 9종 전부).
+- **세부사항**(`contractDetail`, 신규 필드, 계약 유형에 종속): extension →
+  rookie_extension/rookie_max_extension/rose_rule_extension/veteran_extension/
+  veteran_max_extension/supermax_extension, free_agent → general/qualifying_offer,
+  rookie_scale·two_way는 필드 자체 없음.
+- `cap_space`는 폐기(빈 값 = 캡스페이스로 체결), `10-day`는 서비스 미구현이라 삭제,
+  `qualifying_offer`는 free_agent의 세부사항으로 흡수. 계약 묶음에 체결일자/체결팀
+  필드는 추가하지 않기로 함(yearSeasons[]/career_history[].team이 이미 더 정밀하게
+  같은 정보를 제공, RFA/QO/버드권한 로직 어디도 이 필드를 안 읽음).
+
+3개 Explore 에이전트로 전수조사한 결과 영향 범위가 처음 추정(19곳)보다 커서 총 30개+
+파일(싱글 FA 엔진 전체 + 멀티 화면 + SQL 마이그레이션 2건)에 걸쳤다. 계획은
+`~/.claude/plans/mellow-booping-sunbeam.md`(승인됨) 참고.
+
+**DB 백필** (하위호환 매핑 대신 사용자가 일괄 UPDATE를 선택):
+`migrations/backfill_contract_type_values.sql` — `meta_players.base_attributes.contract`
+(단일)/`.contract_history`(배열, jsonb_agg로 재조립)/`room_player_state.contract`(단일)
+3곳의 `type`/`signingType` 필드를 전부 새 값으로 변환 + `sign_free_agent`/
+`sign_free_agent_negotiated` RPC 2개를 `'two-way'`→`'two_way'` 비교로 재정의. Supabase
+MCP로 적용 완료, 백필 후 재조회로 구버전 값 0건 확인(단, meta_players.contract.type에
+기존 유니온에 없던 `'standard'` 값 2건이 실측돼 `free_agent`로 함께 매핑함 — 기존 union
+정의와 실제 DB 데이터가 이미 어긋나 있었다는 뜻이라 참고용으로 남김).
+
+**변경 파일 (대표 경로만, 패턴 반복분은 생략)**:
+- `types/player.ts`/`server/src/shared/types/player.ts`(미러) — `ContractType` 4종 축소,
+  `ContractDetail` 신규 유니온 + `PlayerContract.contractDetail?` 필드 추가(서버는
+  `signingType`처럼 미러 안 함 — FA 로직 자체가 클라 전용).
+- `types/fa.ts` — `SigningType` 10종 재설계, `PendingOfferSheet.signingType`을 선택적으로
+  변경(빈 값=캡스페이스).
+- `utils/contractLabels.ts` — `CONTRACT_TYPE_LABEL`/`SIGNING_TYPE_LABEL` 재작성,
+  `CONTRACT_DETAIL_LABEL` 신설, `getAllowedSigningTypes()`/`getAllowedContractDetails()`
+  신설(계약 유형별 필터링 — 어드민 폼과 `MultiNegotiationView.tsx` 둘 다 재사용).
+- `pages/PlayerEditorPage.tsx` `ContractForm` — 계약 유형 드롭다운을 4종으로, "체결 방식"을
+  "예외 조항"으로 개명+필터링, "세부사항" 드롭다운 신설(계약 유형 바뀌면 하위 값 자동
+  정리).
+- `services/fa/faMarketBuilder.ts` — `getAvailableSigningSlots()`에서 캡스페이스 제거(더
+  이상 슬롯 배열의 원소가 아님), 신규 `getCapSpaceCap()` 분리, `getSlotSalaryCap()`/
+  `processUserOffer()`/`processOfferSheet()`/`simulateCPUSigning()` 전부 `signingType?:
+  SigningType`(undefined=캡스페이스)로 재구성. 부수로 `../types/player`→`../../types/player`
+  기존 import 경로 버그 2건도 같이 수정.
+- `views/NegotiationScreen.tsx` — `selectedSlot`을 `SigningType | undefined`로,
+  `SLOT_LABELS`/`SLOT_MAX_YEARS`/`SLOT_ESCALATOR` 재작성, extension 체결 시
+  `contractDetail`을 `isRoseRuleEligible`/`isSuperMaxEligible`(둘 다 기존 재사용)로 실제
+  판정해서 채우도록 함(예전엔 rookie/veteran 2択이었음 — 로즈룰/슈퍼맥스 자격 판정 로직이
+  이번에 처음 붙음).
+- `views/multi/season/MultiNegotiationView.tsx` — 가장 큰 재설계. `signingType` 하나가
+  "계약 유형 대용 센티넬"과 "진짜 예외 조항"을 겸하던 구조를 분리: 신규
+  `contractType`(free_agent/rookie_scale/two_way) state 도입, "계약 유형" 드롭다운이 이걸
+  직접 조작(루키 픽이면 자동 고정), "예외 조항" 드롭다운은 `getAllowedSigningTypes()`로
+  필터링된 순수 예외값만 다룸(기본값 undefined=캡스페이스).
+- `views/FAView.tsx`, `pages/FAMarketPage.tsx`, `services/multi/faService.ts`,
+  `types/message.ts` — `SigningType | undefined` 전파, 남은 `'bae'` 등 리터럴 정리.
+- 단순 치환(문자열만 교체, 로직 무변경): `TeamPayrollTable.tsx`, `RosterOverviewGrid.tsx`,
+  `RosterGrid.tsx`, `RosterStatsStack.tsx`, `MultiFreeAgentView.tsx`,
+  `MultiFrontOfficeView.tsx`, `services/multi/negotiation/rfaEligibility.ts`,
+  `services/playerDevelopment/playerAging.ts`, `services/draft/rookieGenerator.ts`,
+  `services/dataMapper.ts`(`inferContractType()` age 기반 2択으로 단순화),
+  `server/src/shared/dataMapper.ts`, `services/simulation/offseasonEventHandler.ts`.
+
+**검증**: `npx tsc --noEmit` — 이번 변경으로 인한 신규 에러 0건(기존 무관 에러만 남음,
+`faMarketBuilder.ts` import 경로 버그 2건은 오히려 해결됨). Supabase MCP로 백필 전/후
+카운트 대조 완료.
+
+**롤백 방법**: 코드는 이 항목의 diff를 되돌리면 됨. DB 백필은 `migrations/
+backfill_contract_type_values.sql`의 매핑을 역방향으로 실행해야 하는데(예:
+`free_agent`→`veteran`은 원래 `veteran`/`max`/`min`/`10-day`/`qualifying_offer`/`standard`
+중 어느 것이었는지 정보가 소실돼 완전 복구 불가) — 되돌릴 계획이면 백필 직전 스냅샷이
+필요. 코드만 롤백하고 DB는 새 값 그대로 두는 것은 안전(dataMapper.ts가 신규 값만 인식하게
+되돌아가므로 오히려 DB와 코드가 다시 일치).
+
+---
+
+## 2026-09-17 — 테이블 호버 트랜지션 전면 제거 (재정 탭 스크롤 시작 렉의 실측 원인 수정 1단계)
+
+**배경**: 2026-09-06~07에 걸쳐 재정 탭 스크롤 렉을 추적했으나(이중 스크롤 컨테이너/sticky 푸터/MultiSeasonLayout 리렌더/MultiHeader 풀스캔/페이롤 바 제거) 원인 미특정으로 종결됐던 건. 이번엔 사용자가 직접 녹화한 DevTools 트레이스 2건(재정 탭 / 능력치 탭, 각 스크롤 3회 왕복)을 분석해 확정: 메인스레드는 놀고 있고(롱태스크 0), **GPU 프로세스의 래스터 버스트**가 원인. 사용자 머신은 Intel UHD 630 내장 GPU + 레티나(DPR 2)라 래스터 비용이 크고, 스크롤 중 커서 아래 행이 바뀔 때마다 `transition-colors`(행/sticky 셀 5개/이름)·`transition-all`(OvrBadge)이 150ms 동안 매 프레임 리페인트를 일으켜 GPU 타일이 계속 재래스터됨. 재정 탭 첫 제스처 구간 GPU 래스터 태스크 128개·189ms(능력치 69개·72ms) → 스크롤 업데이트 지연 84~194ms, "스크롤 시작 시 화면이 늦게 움직임"으로 체감. 재정 탭에서만 두드러진 이유는 tfoot(합계·대비 4행·범례 160px)+헤더 2행으로 세로 스크롤 범위가 601px(능력치 235px)이라 첫 스크롤에 새로 래스터할 타일이 많기 때문. 같은 GPU·DPR 2·같은 리그로 Playwright 재현: 테이블 트랜지션 제거 시 스크롤 업데이트 p50 39→3ms, max 130→45ms, GPU 점유 1.7s→0.23s. 투웨이 행 `opacity-60`, sticky 해제, 레이어 강제 승격, `table-layout: fixed`는 효과 없음(전부 측정으로 기각).
+
+**변경 파일** (총 42곳, 전부 Tailwind 클래스에서 `transition-colors`/`transition-all` 토큰 제거만 — 로직/마크업 변경 없음):
+- `components/common/Table.tsx` — `TableRow` className `transition-colors hover:bg-white/5 ...` → `hover:bg-white/5 ...` (32개 파일의 모든 테이블 행에 적용되는 공용 지점)
+- `components/common/OvrBadge.tsx` — `baseStyles`에서 `transition-all` 제거 (47개 파일에서 사용, 배지 값은 렌더 중 바뀌지 않아 트랜지션이 효과 없이 비용만 냈음)
+- 셀 단위 `bg-slate-900 group-hover:bg-slate-800 transition-colors` → `bg-slate-900 group-hover:bg-slate-800`: `components/roster/TeamPayrollTable.tsx`(5), `RosterGrid.tsx`(4), `RosterOverviewGrid.tsx`(4), `RosterStatsStack.tsx`(4), `components/leaderboard/LeaderboardTable.tsx`(1, `stickyCellClass`), `components/dashboard/CoachStaffTable.tsx`(2), `views/DraftView.tsx`(7), `views/FAView.tsx`(6)
+- 테이블 안 이름 텍스트의 `transition-colors` 제거(7): `TeamPayrollTable.tsx`/`RosterGrid.tsx`/`RosterOverviewGrid.tsx`/`RosterStatsStack.tsx`(`hover:text-indigo-400 hover:underline cursor-pointer transition-colors`), `views/FAView.tsx`(이름 span), `CoachStaffTable.tsx`(코치 이름 버튼), `components/roster/TeamGameLog.tsx`(상대팀명 span)
+- 의도적으로 남긴 것: 버튼/입력창/프로그레스바의 트랜지션(`FAView.tsx` 250·320·474, `DraftView.tsx` 324·340, `RosterOverviewGrid.tsx` 226 방출 버튼, `RosterStatsStack.tsx` 298 헤더 토글) — 테이블 호버와 무관.
+
+**Before**: `<tr className="transition-colors hover:bg-white/5 ...">`, `<td className="bg-slate-900 group-hover:bg-slate-800 transition-colors ...">`, OvrBadge `"... text-shadow-ovr transition-all leading-none"`
+
+**After**: `<tr className="hover:bg-white/5 ...">`, `<td className="bg-slate-900 group-hover:bg-slate-800 ...">`, OvrBadge `"... text-shadow-ovr leading-none"`
+
+**동작 방식**: 호버 배경색/텍스트색 변화 자체는 그대로 유지되고 150ms 페이드만 사라져 즉시 바뀐다. 트랜지션이 없으면 행이 바뀔 때 스타일 재계산·리페인트가 1프레임에 끝나므로, 스크롤 중 GPU 타일 재래스터가 급감한다.
+
+**검증**: `npx tsc --noEmit -p .` 신규 에러 없음. 수정 후 DPR 2·동일 리그(tjzpw9v9 마이애미) Playwright 재계측 결과는 이 항목 아래 "검증 수치" 참조.
+
+**주의사항**: 사용자 트레이스는 DevTools 스크린샷 캡처가 켜져 있어 디스플레이→스왑 단계가 ~35ms 부풀려져 있었음(상대 비교는 유효). 2단계 후보(재정 탭 tfoot을 스크롤 영역 밖으로 빼서 첫 스크롤 래스터 버스트 축소)는 단독 효과가 없어 미적용, 1단계 체감 확인 후 결정.
+
+**롤백 방법**: 위 42곳에 토큰을 되돌리면 됨 — `TableRow`에 `transition-colors ` 앞에 재추가, OvrBadge `text-shadow-ovr` 뒤에 ` transition-all` 재추가, 8개 파일에서 `group-hover:bg-slate-800` → `group-hover:bg-slate-800 transition-colors` 일괄 치환, 이름 텍스트 7곳에 `transition-colors` 재추가.
+
+---
+
+## 2026-09-17 — 재정 탭 UFA/RFA 칩: career_history 실제 조회로 교체 (draftYear 역산은 폴백으로 격하)
+
+**배경**: 바로 아래 항목에서 "career_history가 아예 없어서 전부 YOS=0" 이라고 진단하고
+draftYear 역산 폴백으로 고쳤는데, 사용자가 재확인을 요구해 다시 조사한 결과 **진단이
+틀렸다** — `career_history`는 `base_attributes` 안이 아니라 `meta_players`의 별도 최상위
+컬럼이고, 859명 중 752명(87.5%)이 실제로 채워져 있었다(하든 40시즌, 론도 32시즌 등).
+진짜 원인은 멀티플레이어 로스터 조회(`hooks/useLeagueRawStats.ts`의 `RAW_PLAYER_COLS`)가
+2026-09-07에 성능 이유로 이 컬럼을 select에서 뺀 것 — 리그 로스터 250명+ 전체에 무거운
+JSONB를 매번 얹는 게 병목이었기 때문(문서화된 의도적 트레이드오프, 버그 아님). 그래서
+DB엔 있어도 재정 탭까지는 도달하지 않았다. 사용자가 "가져와야 할 것 같다"고 확인해줘서,
+250명+ 규모가 아니라 **팀 로스터(15~20명) 규모로 범위를 좁혀** 실제로 조회하도록 변경 —
+2026-09-07 결정(리그 전체 조회에선 안 가져온다)은 그대로 유지하면서 이 화면만 targeted로
+가져오는 방식.
+
+**변경 파일**:
+- `hooks/usePlayerCareerHistoryBatch.ts` (신규) — `usePlayerCareerHistory.ts`(선수 1명
+  targeted 조회)의 배치 버전. `playerIds[]` → `Record<playerId, CareerSeasonStat[]>`,
+  `staleTime: Infinity`(meta_players는 사실상 불변).
+- `components/roster/TeamPayrollTable.tsx` — `usePlayerCareerHistoryBatch(rosterIds)` 호출
+  추가, `faStatusPreview` 계산 시 `careerHistoryMap[p.id] ?? p.career_history`를
+  `estimatePlayerYOS()`에 넘겨 실제 커리어 기록을 우선 사용(비어있으면 여전히 draftYear
+  역산 폴백).
+
+**동작 방식**: `TeamPayrollTable`은 항상 멀티플레이어 컨텍스트에서만 마운트되므로(싱글은
+`capSettings` 미전달로 재정 탭 자체가 숨겨짐 — `RosterView.tsx`) 조건 분기 없이 바로 훅을
+호출해도 안전. 쿼리 범위가 팀 하나(15~20명)라 2026-09-07에 문제였던 "리그 전체 250명+"
+규모와는 비교가 안 되게 가벼움.
+
+**검증**: `npx tsc --noEmit` 통과.
+
+**롤백 방법**: `TeamPayrollTable.tsx`의 `usePlayerCareerHistoryBatch` 호출과 `careerHistory`
+병합 라인만 제거하면 이전(draftYear 역산 전용) 상태로 돌아감 — `estimatePlayerYOS` 자체는
+그대로 둬도 안전(career_history가 안 들어오면 자동으로 폴백).
+
+---
+
+## 2026-09-17 — UFA/RFA 미리보기 칩: career_history 없는 선수(레전드 풀 등) 전부 RFA로 잘못 표시되던 버그 수정
+
+**배경**: 바로 위 항목(재정 탭 UFA/RFA 칩) 적용 직후 사용자가 스크린샷으로 제보 —
+36세 제임스 하든, 29세 카멜로 앤서니 등 명백한 베테랑들이 죄다 RFA로 표시되고
+UFA는 잔여계약 4년 이상인 선수 2명뿐이었음. DB 확인 결과 이 리그(올타임 레전드 풀
+성격)의 `meta_players.base_attributes.career_history`가 **선택된 5명 전부 NULL/빈
+배열**이었다 — 피크 시즌 기준 age/draft_year만 세팅하고 실제 NBA 커리어 기록(JSONB)은
+안 채워두는 게 이 데이터셋의 일반적 패턴. `previewFAStatusAfterContract()`에 넘기는
+`careerYOS`를 `countYosFromCareerHistory()` 단독으로 계산했더니 전원 YOS=0으로 나와서,
+잔여계약이 3년 이하이기만 하면 나이/경력과 무관하게 전부 "표준 경로 RFA(YOS≤3)"로
+판정돼버렸다.
+
+**변경 파일**:
+- `utils/constants.ts` — `countYosFromCareerHistory()` 바로 아래에 `estimatePlayerYOS(player,
+  currentSeasonYear)` 신설. career_history로 센 값이 0보다 크면 그대로 쓰고(기존
+  MultiNegotiationView.tsx가 이 방식을 정확도 이유로 채택한 원칙 유지), 0이면(=기록이
+  아예 없음) `currentSeasonYear - draftYear`로 폴백, 그것도 없으면 0.
+- `components/roster/TeamPayrollTable.tsx` — `faStatusPreview` 계산에서
+  `countYosFromCareerHistory(p.career_history)` → `estimatePlayerYOS(p, baseSeasonYear)`로
+  교체(useMemo 의존성에 `baseSeasonYear` 추가). `MultiNegotiationView.tsx`는 건드리지
+  않음 — 그 화면의 FA 후보군은 이 폴백이 굳이 필요 없다고 판단(원래 career_history 단독
+  방식을 의도적으로 선택한 화면이라 동작 변경 안 함).
+
+**Before** (`components/roster/TeamPayrollTable.tsx`):
+```ts
+const careerYOS = countYosFromCareerHistory(p.career_history);
+```
+
+**After**:
+```ts
+const careerYOS = estimatePlayerYOS(p, baseSeasonYear);
+```
+
+**검증**: `npx tsc --noEmit` 통과. DB 조회로 하든/앤서니/론도/바그너/키릴렌코 전원
+`career_history` NULL 확인, draft_year는 전원 존재(하든 2009 등 — 2026 기준 YOS 17로
+환산돼 UFA가 맞게 나옴) 확인.
+
+**롤백 방법**: `TeamPayrollTable.tsx`의 해당 줄만 `countYosFromCareerHistory(p.career_history)`로
+되돌리면 됨(단, 되돌리면 이 버그가 재발함). `estimatePlayerYOS`는 다른 곳에서 안 써서
+지워도 안전.
+
+---
+
+## 2026-09-17 — 재정 탭에 UFA/RFA 미리보기 칩 표시 (첫 실사용 호출부)
+
+**배경**: 바로 앞서 만든 트리거 없는 순수 판정 로직(`rfaEligibility.ts`)의 첫 실사용처.
+멀티플레이어 재정 탭에서 계약 마지막 연도 바로 다음 시즌 컬럼에 이 선수가 UFA가 될지 RFA
+자격을 얻을지 칩으로 보여달라는 요청. 실제 계약 만료를 기다릴 트리거가 없으므로 "지금
+career_history 기준 YOS + 남은 계약 연차 = 만료 시점 YOS"로 가정해 미리 계산한다.
+
+**변경 파일**:
+- `services/multi/negotiation/rfaEligibility.ts` — 기존 `determineFAEligibility()`의 만료 후
+  판정 코어를 `decideTerminalFAStatus()`로 분리, 신규 `previewFAStatusAfterContract(contract,
+  careerYOS)` 추가 — 아직 진행 중인 계약도 "이대로 끝까지 간다면"을 가정해 UFA/RFA를
+  미리 계산(two-way는 null 반환, 옵션 거절 조기종료 시나리오는 미리보기 않음 — 옵션 전부
+  행사 가정만).
+- `utils/constants.ts` — `MultiNegotiationView.tsx` 로컬 함수였던 `countYosFromCareerHistory()`
+  를 `export function`으로 승격(`MIN_SALARY_YOS_TABLE` 바로 아래) — 재정 탭도 동일 YOS
+  계산이 필요해져 공용화, 로직 변경 없음.
+- `views/multi/season/MultiNegotiationView.tsx` — 로컬 `countYosFromCareerHistory()` 삭제,
+  `utils/constants.ts`에서 import로 교체. 미사용된 `CareerSeasonStat` 타입 import 제거.
+- `components/roster/TeamPayrollTable.tsx` — `faStatusPreview` Map 신설(선수 id →
+  `previewFAStatusAfterContract()` 결과, `useMemo`). 시즌 컬럼 렌더링에서 `contractIdx ===
+  contract.years.length`(계약 마지막 연도 바로 다음 컬럼)일 때만 금액 대신 UFA/RFA 칩 표시
+  (RFA=보라, UFA=회색, 옵션 색상 하늘색/초록색과 겹치지 않는 색 선택).
+
+**동작 방식**: 계약이 6개 시즌 컬럼 범위 밖에서 끝나면(예: 장기계약) 칩도 그 범위 밖이라
+안 보임 — 기존 테이블이 6개 컬럼만 보여주는 한계를 그대로 따름(별도 처리 안 함).
+
+**검증**: `npx tsc --noEmit` 통과, 3개 파일 전부 에러 없음.
+
+**롤백 방법**: `TeamPayrollTable.tsx`의 칩 렌더링 diff만 되돌리면 화면 기능은 원복됨.
+`countYosFromCareerHistory` 이동은 `MultiNegotiationView.tsx`에 로컬 함수로 되돌리고
+`utils/constants.ts`의 export를 지우면 됨(동작 동일, 위치만 다름).
+
+---
+
+## 2026-09-17 — 멀티플레이어 UFA/RFA/QO 판정 로직 신규 (설계 전용, 미호출)
+
+**배경**: 멀티플레이어에 UFA/RFA 개념 도입 요청. 두 Explore 에이전트로 싱글플레이어 기존
+RFA/QO 구현(`playerAging.ts`/`faMarketBuilder.ts`/`faValuation.ts`/`types/fa.ts`)과
+멀티플레이어 현황(`faService.ts`/`room_player_state`/`rooms.offseason_phase`/
+`server/src/scheduler.ts`)을 전수조사한 결과, 싱글의 RFA/QO는 부분 구현·죽은 코드가 많고
+(유저 QO 텐더 결정이 반영 안 됨, 유저 오퍼시트 매칭 결정 타입에 필드조차 없음, QO 금액이
+write-only), 멀티는 계약이 시즌마다 진행되지 않아(`currentYear` 영구 고정) RFA/QO의
+전제조건 자체가 없음을 확인. 사용자와 상세 계획(`~/.claude/plans/mellow-booping-sunbeam.md`)
+을 세워 이번 라운드는 **트리거 없는 순수 판정 로직/QO 공식만 설계·구현**하기로 확정(Bird
+Rights·Two-way RFA 경로 제외, 계약 연차 자동 진행/오프시즌 자동화/RPC/UI 배선은 다음
+라운드로 명시적으로 미룸). 루키스케일 QO는 싱글의 간이식(마지막 연봉×1.25) 대신 웹 검색으로
+확인한 2023 CBA 실측 픽 순위별 공식(1번픽 140%~30번픽 160%, Starter Criteria 반영)으로
+구현.
+
+**변경 파일** (전부 신규 — 아직 아무 곳에서도 import 안 됨, 미호출 순수 함수):
+- `services/multi/negotiation/rfaEligibility.ts` — `determineFAEligibility()`(계약 객체
+  단위 UFA/RFA 판정, 루키스케일 경로/표준 YOS≤3 경로), `calcStandardQO()`(135% 룰),
+  `rookieScaleQOPercent()`/`meetsStarterCriteria()`/`calcRookieScaleQO()`(픽 순위별 QO +
+  Starter Criteria 캡)
+- `services/multi/negotiation/rfaDecision.ts` — `qoAcceptProbability()`/`evaluateQOOffer()`
+  (선수측 QO 수락/보류 판단 — `faValuation.ts`의 투웨이 전용 별도 축 모델과 동일한 구조로
+  설계, walkAway 이분법 대신 targetSalary 대비 비율 기반), `shouldAutoTenderQO()`/
+  `shouldAutoMatchOfferSheet()`(미배정 팀 간이 규칙 — 싱글의 OVR≥70/OVR≥80&&payroll<apron1
+  임계값 재사용, apron1Amount는 리그별 파라미터화)
+- `services/fa/faValuation.ts` — `calcYOSBounds()`를 `function`→`export function`으로 변경
+  (QO 계산이 참조하는 vetMin 사다리 재사용을 위함, 동작 변화 없음)
+
+**동작 방식**: 계약이 끝난 시점(`currentYear >= years.length`)에서만 판정 — 3·4년차
+팀옵션 거절로 조기종료된 계약은 이 지점에 도달하지 못해(옵션 거절 처리 로직이 그 시점에
+즉시 만료시켜야 함, 향후 트리거 작업의 불변식) 자동으로 UFA 강제 규칙이 성립. 재계약은
+완전히 새 계약 객체(currentYear 0부터 재시작)라 과거 계약 흔적을 안 봐서 "옵션 거절 후
+재계약해도 이중 RFA 안 됨" 시나리오도 안전.
+
+**검증**: `npx tsc --noEmit` 통과. 실행 경로가 없어(트리거 미존재) 런타임 검증은 불가 —
+다음 라운드(계약 연차 진행 트리거 + RPC + UI)에서 실제로 연결.
+
+**롤백 방법**: 신규 파일 3개(`rfaEligibility.ts`, `rfaDecision.ts` 삭제 — 아무도 안
+불러서 안전) + `faValuation.ts`의 `export` 키워드만 되돌리면 됨.
+
+---
+
+## 2026-09-17 — 재정 탭 팀/플레이어 옵션 색상 표시 + 멀티플레이어 계약 options[] 미승격 버그 수정
+
+**배경**: 사용자 요청으로 재정(샐러리) 탭의 연도별 금액에 팀 옵션/플레이어 옵션 여부를
+이탤릭+색상(하늘색/초록색)으로 구분 표시하도록 추가(싱글 `FrontOfficeView.tsx`, 멀티
+`TeamPayrollTable.tsx` 둘 다). 적용 후 사용자가 "멀티플레이어 세션에서 새로 맺은 계약만
+색이 보이고 기존 meta_players 계약은 전혀 안 보인다"고 재현 — 조사 결과 데이터 파이프라인
+버그였다: `migrations/add_room_player_state_contract.sql`(2026-09-15 적용)의 백필이
+`meta_players.base_attributes.contract`의 원본 JSONB(예전 단일 `option{type,year}` 형태 —
+DB 실측 265~317건)를 그대로 `room_player_state.contract`에 복사했는데,
+`services/multi/buildLeagueTeams.ts`가 이 `roomContract`를 `services/dataMapper.ts`의
+`buildPlayerContract()`가 하는 "`option` 단수 → `options[]` 배열 승격" 없이 그대로
+써버려서 `options` 필드가 항상 비어 있었다. 반대로 드래프트 루키 계약(`rookieGenerator.ts`
+`calcRookieContract`)이나 협상 엔진으로 새로 맺은 계약은 애초에 `options[]` 배열 형태로
+생성돼 문제가 없었던 것 — 그래서 "새로 맺은 계약만 보인다"는 증상으로 나타남.
+DB 확인: `meta_players` 265건이 legacy `option` 단수, `options[]` 0건 / `room_player_state`
+317건이 legacy `option`, `options[]`는 9건(드래프트/협상으로 새로 생성된 것)뿐이었음.
+
+**변경 파일**:
+- `views/FrontOfficeView.tsx` (client, 싱글) — `PayrollRow`의 `cells` 계산을 `(string|null)[]`
+  에서 `{label, optionType}[]`로 변경, 셀 렌더링 시 `optionType`에 따라
+  `italic text-sky-400`(team) / `italic text-emerald-400`(player) 클래스 적용.
+- `components/roster/TeamPayrollTable.tsx` (client, 멀티) — 시즌 컬럼 렌더링에서
+  `p.contract.options?.find(o => o.year === contractIdx)`로 옵션 조회 후 동일한 색상 분기
+  적용. 테이블 최하단에 로스터 탭(`RosterOverviewGrid.tsx`) 푸터와 동일한 `h-40` 높이의
+  범례(Glossary) 행 추가 — 하늘색/초록색 정사각형 스와치(`w-3 h-3 rounded-sm`) + "팀 옵션"/
+  "플레이어 옵션" 라벨로 안내(최초엔 `$00,000,000` 샘플 텍스트였으나 사용자 요청으로 스와치로 교체).
+- `services/multi/buildLeagueTeams.ts` (client, 멀티 — 데이터 버그 수정) — roster 매핑 중
+  `contract` 파생 로직에 legacy `option` → `options[]` 승격 로직 추가.
+
+**Before** (`services/multi/buildLeagueTeams.ts`):
+```ts
+const roomContract = contractByPlayer.get(id);
+const contract = (roomContract ?? base.contract) as Player['contract'];
+```
+
+**After**:
+```ts
+const roomContract = contractByPlayer.get(id);
+const rawContract = (roomContract ?? base.contract) as Record<string, any> | undefined;
+const contract = rawContract ? {
+    ...rawContract,
+    options: Array.isArray(rawContract.options) && rawContract.options.length
+        ? rawContract.options
+        : (rawContract.option ? [rawContract.option] : undefined),
+} as Player['contract'] : base.contract;
+```
+
+**검증**: `npx tsc --noEmit` 통과(3개 파일 전부 에러 없음). Supabase MCP로 `meta_players`/
+`room_player_state`의 `option`/`options` 분포 직접 조회해 원인 확인.
+
+**롤백 방법**: `buildLeagueTeams.ts`는 Before 블록으로 되돌리면 됨(단, 되돌리면 기존 계약
+옵션 색상 표시가 다시 깨짐). `FrontOfficeView.tsx`/`TeamPayrollTable.tsx`의 색상 스타일과
+Glossary 행은 해당 diff만 되돌리면 됨(서로 독립적).
+
+---
+
+## 2026-09-17 — 협상 화면 캡%/변동률 입력 UI 정리(설명 텍스트 제거 + 캡% 스텝퍼 버튼 추가)
+
+**배경**: FA 협상 화면(`MultiNegotiationView.tsx`) "계약 유형"/"예외 조항" 드롭다운 하단의
+안내 텍스트(투웨이 자격 미달 사유, 캡 스페이스 설명 등)가 화면을 복잡하게 만든다는 사용자
+지적으로 전부 제거. 동시에 캡% 입력 라벨을 "1년차 연봉 (캡%, 최대 N%)"에서 "캡%"로 단순화하고,
+입력칸 하단에 있던 "1년차 연봉 = $X" 안내를 "최대 가능 캡% : N%"로 대체, 캡% 입력 좌우에
+[최소][-1%][-0.5%] / [+0.5%][+1%][최대] 증감 버튼을 추가. 변동률(raise%) 입력은 캡%와
+한 줄에 나란히 있던 것을 별도 줄로 분리. 엔진 로직/공식 변경 없음 — 순수 UI 레이아웃 정리.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`
+  - "계약 유형" `<select>` 하단의 3개 조건부 안내문(`!isTwoWayEligible && playerYos >= 4`,
+    `!isTwoWayEligible && playerYos < 4`, `isTwoWaySlotsFull`) 전체 삭제.
+  - "예외 조항" `<select>` 하단의 고정 안내문("없음"은 예외 없이... 에이프런/MLE/버드권한...)
+    삭제.
+  - 캡% 입력 라벨 `1년차 연봉 (캡%, 최대 {maxCapPct}%)` → `캡%`.
+  - `capPercent` 계산 직후(구 379번째 줄 부근)에 `adjustCapPercent(delta: number | 'min' | 'max')`
+    헬퍼 신설 — `'min'`은 `capPercentInput`을 `'0'`으로, `'max'`는 `String(maxCapPct)`로 즉시
+    설정, 숫자 delta는 현재 파싱값에 더해 `[0, maxCapPct]`로 클램프 후 반영(소수 2자리
+    반올림). `handlePercentInput`보다 뒤, `maxCapPct` 선언 이후에 둬야 TDZ 에러가 안 남
+    (CLAUDE.md 규칙 2 — `const` 선언 순서 주의).
+  - 캡% 입력을 감싸던 `flex-1` 2열 레이아웃(캡%/변동률 나란히)을 캡%용 단독 줄로 교체,
+    입력 좌측에 최소/-1%/-0.5% 버튼 3개, 우측에 +0.5%/+1%/최대 버튼 3개 추가(전부
+    `isOnCooldown || isMinSalary || isRookieScale`일 때 비활성화 — 기존 입력 disabled
+    조건과 동일).
+  - 캡% 입력 하단에 `최대 가능 캡% : {maxCapPct}%` 텍스트 신설(`!isMinSalary && !isRookieScale`
+    조건, 로즈룰 안내문과 같은 블록에 위치) — 구 "1년차 연봉 = {formatMoney(firstYearSalary)}"
+    텍스트(계약 연수 섹션 맨 아래 3항 삼항연산자의 else 분기)를 대체하며 그 분기는 `null`로
+    변경(중복 표시 방지, `formatMoney`/`firstYearSalary`는 하단 "계약 예상액" 섹션에서 계속
+    사용 중이라 삭제 아님).
+  - 변동률 입력을 캡% 줄에서 분리해 별도 `<div className="pt-1.5 space-y-1">` 줄로 이동.
+
+**검증**: `npx tsc --noEmit` 실행 — 이 파일 관련 신규 에러 없음(기존 58개 베이스라인 에러와
+동일 목록, 전부 무관한 타 파일).
+
+**롤백 방법**: 위 5개 변경 지점을 각각 역순 적용(안내문 3종 복원, 라벨 원복, `adjustCapPercent`
+삭제, 버튼 6개 제거하고 원래 2열 flex 레이아웃 복원, 삼항연산자 else 분기 원문 복원). 또는
+이 커밋 해시로 `git revert`.
+
+**후속(같은 날)**: 캡% 입력칸이 `flex-1`이라 버튼 6개와 너비가 들쭉날쭉해 보인다는 지적으로,
+버튼 6개를 전부 `w-14 h-8 flex-shrink-0`(고정 56px)로 통일하고 입력칸도 `flex-1` →
+`w-20 flex-shrink-0`(고정 80px)로 축소. "최대 가능 캡% : N%" 텍스트는 `text-slate-600` →
+`text-green-500`로 강조.
+
+**후속2(같은 날)**: 변동률 입력에도 캡%와 동일한 [최소][-1%][-0.5%] / [+0.5%][+1%][최대]
+버튼 6개(`w-14 h-8`)를 추가하고 입력칸도 캡%와 동일한 `w-20`으로 통일. `adjustRaisePercent(delta)`
+헬퍼 신설(`adjustCapPercent`와 동일 패턴이나 범위가 `[-maxRaisePercent, +maxRaisePercent]`로
+음수 허용 — `min`은 `-maxRaisePercent`, `max`는 `+maxRaisePercent`로 설정) — `maxRaisePercent`
+선언 직후에 둬 TDZ 문제 없음.
+
+**후속3(같은 날)**: 캡% "최소" 버튼의 동작을 0%에서 "이 선수 YOS 기준 미니멈 샐러리에 해당하는
+캡%"로 변경. `adjustCapPercent('min')`이 `minSalarySeasons`(line 440 부근)와 동일한
+`MIN_SALARY_YOS_TABLE[clamp(playerYos, 0, table.length-1)].capPct`를 그대로 읽어
+`capPercentInput`에 반영 — 새 상수/계산식 추가 없이 기존 미니멈 샐러리 표를 재사용
+(공식 드리프트 방지). `-1%`/`-0.5%`/`+0.5%`/`+1%`/`최대` 버튼 동작은 변경 없음.
+
+**후속4 — 3분할 레이아웃 비율 변경 + 오퍼 폼 2단 분리**: 중앙(채팅) `flex-[5]`→`flex-[3]`,
+우측(오퍼 폼) `flex-[3]`→`flex-[5]`로 맞바꿔 우측 영역을 넓힘(좌측 선수정보 `flex-[2]`는
+그대로 — 전체 비율 2:3:5). 우측 패널 내부를 기존 단일 스크롤 컬럼(계약 유형~제출 버튼)에서
+`flex divide-x` 행으로 감싸 좌/우 두 단(각 `flex-1`, 동일 비율)으로 분리 — 좌측 단엔 기존
+오퍼 폼 내용 그대로, 우측 단은 향후 "팀 샐러리 현황/도움말" 배치 예정이라 지금은 빈
+스크롤 컨테이너만 마련(`flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6`, 내용 없음).
+**JSX 중첩 주의**: 처음 편집 시 우측 단 `<div>`를 좌측 단 컨텐츠의 마지막 자식(제출 버튼
+바로 다음)으로 잘못 넣어 좌측 단 안에 중첩되는 실수가 있었음 — `tsc`는 이 실수를 못 잡음
+(둘 다 문법적으로 유효한 JSX라 타입 에러가 안 남). 직접 파일을 다시 읽어 여는/닫는 태그
+계층을 한 줄씩 대조해 좌측 단을 제출 버튼 직후에 닫고 우측 단을 행 래퍼의 형제로 옮겨 수정.
+CLAUDE.md 규칙("중첩 블록 닫기 검증 필수")이 정확히 이 케이스 — JSX 구조 변경 후엔 tsc
+통과만으로 안심하지 말고 실제 들여쓰기/계층을 다시 읽어 확인할 것.
+
+**후속5**: (1) 캡%/변동률 스텝퍼에서 `-0.5%`/`+0.5%` 버튼 4개(양쪽 각 2개) 삭제 — `최소/-1%/
+[입력]/+1%/최대` 5칸 구성으로 축소. (2) "팀 샐러리캡 현황"(`capInfo` 블록) ~ "오퍼 제출"
+버튼까지 4개 블록(팀 샐러리캡 현황/로스터 정원 경고/actionError 경고/제출 버튼)을 좌측 단
+(오퍼 폼)에서 통째로 우측 단으로 이동 — 로직/조건 변경 없이 위치만 이동, 우측 단
+컨테이너에 `flex flex-col gap-5` 추가(기존 좌측 단과 동일한 세로 스택 레이아웃).
+좌측 단은 이제 계약 조건 입력(유형/예외/연수/캡%/변동률/추가사항/계약 예상액)까지만
+남고, 결과 확인·제출은 우측 단 담당으로 역할이 완전히 분리됨. (3) 좌측 단 내부의 고정폭
+버튼들을 전부 `flex-1`로 변경해 컨테이너 너비를 꽉 채우도록 함 — "계약 연수" 스테퍼
+5칸(최소/-/{years}년/+/최대, 기존 `h-8 px-2.5`/`w-8 h-8`/`w-10` 고정폭 → 전부 `flex-1`),
+캡%·변동률 스테퍼의 남은 5칸(최소/-1%/입력/+1%/최대, 기존 `w-14`/`w-20` 고정폭 →
+전부 `flex-1`, `flex-shrink-0` 제거). 드롭다운 2개(계약 유형/예외 조항)는 이미 `w-full`이라
+변경 없음, 체크박스(`w-4 h-4`)는 아이콘 크기 고정이 의도된 것이라 제외.
+
+**검증(후속5)**: `npx tsc --noEmit` 신규 에러 없음. 블록 이동 후 JSX 열기/닫기 태그 계층을
+직접 재확인(바로 위 후속4의 실수 재발 방지) — 좌측 단은 "계약 예상액" 총액/AAV 박스
+직후에 닫히고, 우측 단이 그 형제로 이어지는 구조 확인 완료.
+
+**롤백 방법(후속5)**: 버튼 4개 복원, 4개 블록을 좌측 단 맨 아래로 되돌리기(우측 단은 다시
+빈 컨테이너로), `flex-1`→원래 고정폭 클래스(`h-8 px-2.5`/`w-8 h-8`/`w-10`/`w-14`/`w-20`
++`flex-shrink-0`)로 되돌리면 됨.
+
+**후속6**: (1) "계약 연수" 스테퍼 가운데 `{years}년` 텍스트를 캡%/변동률처럼 직접 타이핑
+가능한 인풋으로 교체. `years`(정수 state, `minSalarySeasons`/`salaries` 등 배열 length로
+그대로 쓰여 다른 곳 건드리면 위험) 자체는 그대로 두고, 표시/편집 전용 문자열 버퍼
+`yearsInputText` 신설(rookieMultiplierInput과 동일한 "타이핑 중 자유, blur 시 검증" 패턴).
+`handleYearsInputChange`(숫자만 허용), `handleYearsBlur`(파싱 후 `[MIN_CONTRACT_YEARS,
+effectiveMaxYears]`로 클램프해 `years`에 커밋)를 `effectiveMaxYears` 선언 직후에 추가(TDZ
+방지). `years`가 버튼 클릭 등 외부에서 바뀔 때도 버퍼를 재동기화하는 `useEffect` 추가.
+(2) 계약 연수/캡%/변동률% 3개 행 전부 버튼(4개, 최소/-/+/최대류)은 `flex-1` 유지, 입력
+칸만 `flex-1`→`flex-[2]`로 넓혀 상대적으로 버튼이 좁아지고 입력이 넓어지도록 비율 조정
+(6등분 중 입력 2, 버튼 각 1). (3) 우측 단 "팀 샐러리캡 현황"에서 계약 전 비교 3행 순서를
+`현재 페이롤→샐러리캡→캡 대비`에서 `캡 대비(→캡 스페이스 여유로 개명)→현재 페이롤→
+샐러리캡`으로 재배치. "계약 후 예상 페이롤" 아래의 두 번째 "캡 대비"(afterPayroll 비교,
+계약 후 시점)는 요청 범위 밖이라 이름/위치 변경 없음.
+
+**검증(후속6)**: `npx tsc --noEmit` 신규 에러 없음.
+
+**롤백 방법(후속6)**: `yearsInputText`/관련 핸들러·useEffect 삭제하고 인풋을 `{years}년`
+`<span>`으로 복원, 3개 행의 입력칸 `flex-[2]`→`flex-1` 되돌리기, 팀 샐러리캡 현황 3행
+순서를 원래대로("현재 페이롤"→"샐러리캡"→"캡 대비") 되돌리고 라벨 "캡 스페이스 여유"→
+"캡 대비"로 되돌리면 됨.
+
+**후속7**: (1) 캡%/변동률% 입력칸에 `text-center` 추가(계약 연수 인풋과 동일하게 중앙
+정렬 — 원래 좌측 정렬(`pl-3`만 있고 정렬 클래스 없음)이었음). (2) 캡%/변동률% 라벨
+(`<span>`)을 `text-sm text-slate-500` → "계약 연수" 섹션 타이틀과 동일한 `text-sm
+font-bold uppercase tracking-wider text-slate-400`로 통일. (3) 캡% 하단에 있던 "최대
+가능 캡% : N%"(초록색) 텍스트를 캡% 라벨과 같은 줄로 옮겨 `flex items-center
+justify-between`로 좌우 배치(라벨 좌측/최대 가능 캡% 우측) — 로즈룰 안내문은 그대로
+버튼 행 아래에 유지.
+
+**검증(후속7)**: `npx tsc --noEmit` 신규 에러 없음.
+
+**롤백 방법(후속7)**: 입력칸 `text-center` 제거, 라벨 클래스 `text-sm text-slate-500`로
+되돌리기, "최대 가능 캡%" 텍스트를 버튼 행 아래 원래 위치로 이동.
+
+---
+
+## 2026-09-17 — 협상 화면: "애초에 협상할 생각 없는" 선수는 화면 진입 시점에 바로 거절 처리
+
+**배경**: 유저 신고 — FA 협상에서 요구 연봉/연수를 정확히 맞춰 최고 오퍼를 넣어도 "우승
+가능성이 낮다"는 이유로 계속 거절당함. 원인은 `services/fa/faValuation.ts`의
+`evaluateFAOffer()`/`estimateAcceptProbability()`에 있는 `calcTeamFitPenalty(winDesire,
+contenderScore)` — 선수의 승부욕(winDesire)이 0.5 초과인데 우리 팀 전력(contenderScore,
+플레이오프 오즈)이 낮으면, **오퍼가 요구액 이상이어도** 팀 전력 페널티로 거절될 확률이
+최대 85%까지 붙는다(`teamFitRejectProb = min(0.85, penalty*0.85)`, 최고 오퍼 기준 수락
+확률 최저 15%). 더 심각한 건 `MultiNegotiationView.tsx`의 `handleSubmit()` 거절 분기에서
+이 사유(`TEAM_TOO_WEAK` 트리거)는 "선수 잘못이 아니므로" frustration을 +0만 쌓는다 —
+즉 `walkedAway`/쿨다운으로 절대 이어지지 않아, 유저가 최고 오퍼를 몇 번을 넣어도 영원히
+거절만 반복되는 출구 없는 루프가 이미 존재했다(이번에 처음 발견). 요청: 이런 선수는
+애초에 협상 시도를 못 하게, 화면 진입 시점에 바로 "협상 거부" 상태로 만들 것 — 우측
+오퍼폼 비활성화 + 대화창에 거절 멘트 + 나가기 버튼.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` (client 전용 — 이 화면은 서버 미러 없음,
+  RPC 호출(`signFreeAgentNegotiated`) 자체를 막는 프론트엔드 게이트라 서버 쪽 변경 불필요)
+
+**Before**: `acceptProbability`(현재 폼 값 기준 실시간 수락확률)만 있었고, 이를 근거로
+협상 자체를 막는 로직은 없었음 — `isLocked`/`isSigned`는 계약 체결/결렬/쿨다운/로스터
+정원 초과만 고려.
+```ts
+const acceptProbability = useMemo(() => {
+    if (!demand || !player) return null;
+    if (isTwoWay) return estimateTwoWayAcceptProbability(playerYos, demand.marketValueScore);
+    return estimateAcceptProbability({ salary: avgSalary, years }, demand, tendencies?.winDesire, contenderScore);
+}, [demand, player, isTwoWay, playerYos, avgSalary, years, tendencies, contenderScore]);
+// ... (greeting effect는 isOnCooldown만 체크)
+// ... (isLocked/isSigned도 isOnCooldown/walkedAway/isRosterFull/isTwoWaySlotsFull까지만)
+{isOnCooldown && ( <button onClick={() => navigate(...)}>나가기</button> )}
+```
+
+**After**: `acceptProbability` memo 직후에 `isRefusingNegotiation` 신설 — 최고 오퍼
+(`salary: demand.askingSalary, years: demand.askingYears`, years 불일치 감점 0)를 넣었을
+때의 수락확률을 `estimateAcceptProbability()`로 미리 계산해 `getAcceptLikelihoodLabel`
+기준 "매우 어려움"(<0.2)이면 `true`. 투웨이 계약이 가능한 선수(`isTwoWayEligible`)는
+제외(투웨이는 `estimateTwoWayAcceptProbability`로 판정돼 contenderScore를 아예 안 봐서
+이 문제 자체가 없음).
+```ts
+const isRefusingNegotiation = useMemo(() => {
+    if (!demand || !player || isTwoWayEligible) return false;
+    const bestCase = estimateAcceptProbability(
+        { salary: demand.askingSalary, years: demand.askingYears },
+        demand, tendencies?.winDesire, contenderScore,
+    );
+    return bestCase < 0.2;
+}, [demand, player, isTwoWayEligible, tendencies, contenderScore]);
+```
+연쇄 반영 지점(전부 같은 파일):
+- 인사말 `useEffect` 가드에 `|| isRefusingNegotiation` 추가(인사말 자체를 생략).
+- 쿨다운 재진입 메시지 `useEffect` 바로 다음에 동일 패턴의 새 `useEffect` 추가 —
+  `greetedRef`/전용 `refusalMsgShownRef`로 1회만 `addMsg('player', '죄송하지만 당신의
+  팀과는 협상할 생각이 없습니다.')` 전송(쿨다운 쪽이 먼저 선언돼 있어 둘 다 해당되면
+  쿨다운 메시지가 우선, `greetedRef` 공유로 인사말과도 안 겹침).
+- 채팅 헤더 "기분" 이모지 고정 `useEffect`에 `|| isRefusingNegotiation` 추가(항상 분노
+  고정).
+- `handleSubmit()` 얼리리턴 가드에 `|| isRefusingNegotiation` 추가(방어적 이중 잠금 —
+  UI가 이미 pointer-events-none이라 정상 경로로는 도달 불가하지만 `isRosterFull` 등
+  기존 관례와 동일하게 유지).
+- `isLocked`(제출 버튼 비활성화)에 `|| isRefusingNegotiation` 추가.
+- `isSigned`(계약 체결 여부, 원래 의미 그대로 유지)와 별개로 `isOfferPanelDisabled =
+  isSigned || isRefusingNegotiation` 신설 — 우측 패널 전체
+  `opacity-40 pointer-events-none select-none`를 이 새 플래그로 토글(className을
+  `isSigned` → `isOfferPanelDisabled`로 교체). 기존 `isOnCooldown`/`walkedAway`는 여전히
+  필드 단위로만 막고 패널 전체는 안 흐려지는 원래 동작 그대로 — 이번 변경은
+  `isRefusingNegotiation` 전용으로 패널 전체를 잠그는 것만 추가.
+- 기존 "나가기" 버튼의 렌더 조건을 `isOnCooldown` → `(isOnCooldown ||
+  isRefusingNegotiation)`로 확장(버튼 자체는 재사용, 조건만 넓힘).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음(기존 58개 베이스라인과 동일). 로직상 최고
+오퍼 수락확률 <0.2(0.15 하한 포함)인 조합에서만 발동 — `winDesire<=0.5`면
+`calcTeamFitPenalty`가 항상 0이라 애초에 해당 안 됨, 투웨이 자격 선수는 완전 제외.
+
+**주의사항 / 한계**: (1) 이 게이트는 "팀 전력 때문에" 거절하는 케이스만 막는다 —
+`OFFER_LOW`/`OFFER_INSULT`(금액 자체가 낮아서 거절)는 여전히 정상적으로 협상 가능,
+이번 변경과 무관. (2) `TEAM_TOO_WEAK` 자체가 frustration을 0만 쌓아 `walkedAway`로
+못 이어지는 근본 로직(`faValuation.ts`/`handleSubmit`)은 건드리지 않았다 — 대신 "애초에
+그 상태로 도달하지 못하게" 화면 진입 시점에 미리 차단하는 방식으로 우회. 향후 이
+frustration=0 설계 자체를 바꿀 필요가 있는지는 별도 논의 필요. (3) 임계값 0.2는
+`utils/contractLabels.ts`의 `getAcceptLikelihoodLabel` "매우 어려움" 경계값을 그대로
+재사용한 것(새 매직넘버 도입 안 함) — 이 라벨 기준이 나중에 바뀌면 이 게이트도 같이
+검토할 것.
+
+**롤백 방법**: `isRefusingNegotiation` memo와 그 4곳 연쇄 반영(인사말 가드/전용
+useEffect/mood useEffect/handleSubmit 가드/isLocked/isOfferPanelDisabled)을 전부
+삭제하고, 우측 패널 className을 `isOfferPanelDisabled` → `isSigned`로, 나가기 버튼
+조건을 `(isOnCooldown || isRefusingNegotiation)` → `isOnCooldown`으로 되돌리면 됨.
+
+**후속(같은 날) — 위 게이트로 못 잡는 20~85% 구간도 여전히 무한 거절 루프였음**: 유저가
+최고 오퍼(요구액 이상, 연수 정확히 일치)를 반복 제출했는데도 "우승과는 거리가 먼 팀"
+(TEAM_TOO_WEAK)으로 계속 거절당하는 게 실사용에서 재현됨 — 화면의 "계약 가능성"이
+"매우 어려움"이 아니라 "보통"이었던 것으로 볼 때, 위 `isRefusingNegotiation`(<20%만
+차단)에는 안 걸리는 구간. 원인 재확인: `calcTeamFitPenalty`발 거절확률은 최대 85%로
+캡돼 있어(faValuation.ts) 아무리 좋은 오퍼여도 확률적으로 계속 거절될 수 있는데,
+`handleSubmit()`의 TEAM_TOO_WEAK 분기가 frustration을 +0만 쌓아 몇 번을 거절당해도
+`walkedAway`/쿨다운으로 전혀 안 이어지는 게 근본 원인 — 즉 "확률은 낮지만 0은 아닌"
+구간에서 유저가 계속 재시도하면 체감상 "무한 거절"이 되는데, 다른 거절 사유(OFFER_LOW/
+OFFER_INSULT)와 달리 이 경로만 유일하게 "언젠가는 끝난다"는 보장이 없었다.
+
+**변경**: `views/multi/season/MultiNegotiationView.tsx`의 `handleSubmit()` 거절 분기 —
+`frustrationDelta` 계산에서 `TEAM_TOO_WEAK`을 `OFFER_LOW`와 동일하게 +1로 변경(기존
+`trigger === 'OFFER_INSULT' ? 2 : trigger === 'OFFER_LOW' ? 1 : 0` → `... : trigger ===
+'OFFER_LOW' || trigger === 'TEAM_TOO_WEAK' ? 1 : 0`). `TWO_WAY_DECLINE`은 이번 신고
+대상이 아니라 건드리지 않고 여전히 +0. 이제 TEAM_TOO_WEAK도 다른 거절 사유처럼
+maxRounds(성격 기반 2~7)에 도달하면 자동으로 `walkedAway`+쿨다운으로 수렴 —
+"나가기" 버튼이 뜨고 재협상은 쿨다운 기간(1~3 가상일) 이후에나 가능해져, 확률이 낮은
+채로 무한 재시도하는 경로 자체가 사라짐.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음. `WALKED_AWAY` 대사 4종(성격별)을 확인 —
+전부 "더 이상 협상을 이어갈 이유가 없다"는 취지의 범용 문구라 사유가 돈이든 팀 전력이든
+어색하지 않음(새 대사 추가 불필요).
+
+**주의사항**: 여전히 확률적이라 "정확히 몇 번째에 끝난다"는 보장은 없음(성격에 따라
+maxRounds 2~7 사이, 매 시도마다 최소 15%의 수락 확률이 있어 그 전에 성사될 수도 있음) —
+다만 이제 반드시 유한한 횟수 안에 accept 또는 walkedAway 중 하나로 수렴한다는 것이 핵심
+개선점. `isRefusingNegotiation`(화면 진입 시 즉시 차단, <20% 극단값 전용)과 이번 수정
+(20~85% 구간의 유한 수렴 보장)은 서로 다른 확률 구간을 담당하는 상호 보완 관계 —
+하나만 되돌리지 말고 세트로 취급할 것.
+
+**롤백 방법**: `frustrationDelta` 삼항연산자를 `trigger === 'OFFER_INSULT' ? 2 :
+trigger === 'OFFER_LOW' ? 1 : 0`으로 되돌리면 됨.
+
+---
+
+## 2026-09-17 — FA 목록 "계약" 버튼: 정규 로스터 가득 차도 투웨이 슬롯 여유 있으면 활성화
+
+**배경**: 유저 신고 — 정규 계약 슬롯은 가득 찼고 투웨이 슬롯은 비어있는데, FA 목록
+(`MultiFreeAgentView.tsx`)의 "계약" 버튼이 비활성화됨. 원인: 이 버튼의 `disabled` 조건이
+`isMyRosterFull`(정규 슬롯 기준)만 봤고, 투웨이 슬롯 여유·선수의 투웨이 자격 여부를 전혀
+고려하지 않았다. `league?.cba_rules_enabled`가 켜진 리그에서는 이 버튼 클릭 시 실제로는
+즉시계약이 아니라 `MultiNegotiationView.tsx`(협상 화면)로 이동하는데, 그 화면은 이미
+`isRosterFull = !isTwoWay && ...`로 투웨이일 땐 정규 로스터 정원 체크를 안 하도록 돼
+있어(정규 계약 슬롯이 꽉 차도 투웨이는 별도 정원) 목록 화면만 불필요하게 더 엄격했다.
+
+**변경 파일**:
+- `utils/constants.ts` — `TWO_WAY_YOS_MAX = 4`, `TWO_WAY_MAX_OVR = 75` 신설. 원래
+  `MultiNegotiationView.tsx`의 로컬 상수(`TWO_WAY_MAX_OVR`, YOS 기준은 `4` 하드코딩)였던
+  걸 공용 승격 — 목록 화면도 동일 기준이 필요해져서, 로컬로 각자 두면 두 화면이 서로
+  다른 기준으로 어긋날 위험이 있었음(예: 목록에선 계약 버튼이 활성화되는데 협상 화면
+  드롭다운엔 투웨이 옵션이 없는 모순).
+- `views/multi/season/MultiNegotiationView.tsx` — 로컬 `TWO_WAY_MAX_OVR` 상수 선언 삭제,
+  `utils/constants.ts`에서 import. `isTwoWayEligible` 계산의 하드코딩 `4`도
+  `TWO_WAY_YOS_MAX`로 교체(값 자체는 동일, 드리프트 방지 목적).
+- `views/multi/season/MultiFreeAgentView.tsx`:
+  - `myTwoWayContractCount`/`isMyTwoWaySlotsFull` 신설(`myTeam.roster.filter(p =>
+    p.contract?.type === 'two-way').length` — MultiNegotiationView.tsx와 동일 집계 방식).
+  - `isPlayerTwoWayEligible(p)` 신설 — `TWO_WAY_YOS_MAX`/`TWO_WAY_MAX_OVR` 기준으로 판정.
+    YOS는 이 화면이 50명 단위 페이지라 career_history 기반 정밀 계산은 비용이 커(이미
+    "가능성" 컬럼에서 같은 이유로 draftYear 기반 근사를 쓰기로 한 기존 결정과 동일),
+    `currentSeasonYear - (p.draftYear ?? currentSeasonYear)` 근사치를 그대로 사용 —
+    자격 유무만 가리면 되므로 오차 허용.
+  - "계약" 버튼의 `disabled` 조건을 `isMyRosterFull` 단독에서 `isMyRosterFull &&
+    !canEscapeToTwoWay`로 변경. `canEscapeToTwoWay = cba_rules_enabled && !isMyTwoWaySlotsFull
+    && isPlayerTwoWayEligible(p)` — CBA가 꺼진 리그는 즉시계약 RPC(`sign_free_agent`)
+    자체가 투웨이 개념이 없어(항상 정규 계약으로 취급) 이 예외를 적용하지 않고 기존
+    동작(정규 정원만 체크) 그대로 유지, CBA가 켜진 리그만 이 예외 적용.
+  - 버튼 `title` 툴팁도 세 경우(정규만 참/정규+투웨이 둘 다 참/차단 안 됨)로 분기해
+    상황에 맞는 안내 문구로 갱신.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음(기존 58개 베이스라인과 동일).
+
+**주의사항 / 한계**: (1) CBA가 꺼진 리그(`cba_rules_enabled=false`)에서는 여전히 정규
+로스터가 차면 무조건 버튼이 막힌다 — `sign_free_agent` RPC 자체에 투웨이 계약 파라미터가
+없어 서버가 애초에 투웨이로 서명할 방법이 없기 때문(의도된 동작, 버그 아님). (2) 목록의
+투웨이 자격 판정은 draftYear 기반 근사 YOS를 쓰므로, career_history 기반 정밀 YOS를 쓰는
+협상 화면과 아주 드물게(해외리그 체류 등으로 실제 YOS와 어긋나는 선수) 판정이 갈릴 수
+있음 — 그런 경우에도 실제 최종 판정은 협상 화면(`isTwoWayEligible`, 정밀 YOS)이 하므로
+"목록에선 활성화됐는데 협상 화면 드롭다운엔 투웨이가 없는" 정도의 사소한 불일치만 발생,
+잘못된 계약이 체결되는 일은 없음.
+
+**롤백 방법**: `MultiFreeAgentView.tsx`의 버튼 `disabled`를 `isMyRosterFull`로,
+`title`을 원래 2분기로 되돌리고 `myTwoWayContractCount`/`isMyTwoWaySlotsFull`/
+`isPlayerTwoWayEligible` 삭제. `MultiNegotiationView.tsx`의 `TWO_WAY_MAX_OVR` 로컬
+상수 선언을 복원(import 제거). `utils/constants.ts`의 두 상수는 다른 곳에서 참조
+안 하면 같이 삭제해도 무방.
+
+**후속(같은 날) — 접근 시점 게이팅을 제출 시점 게이팅으로 전면 교체**: 위 수정이 실제
+플레이 중 "FA 화면 들어가면 계약 버튼이 활성화됐다가 다시 비활성화로 바뀐다"는 깜빡임
+버그를 유발. 원인: `myTeam`(`teams` 배열에서 찾음)이 `myTeamRow`보다 늦게 로딩되는 구간
+동안 `myRegularContractCount`가 "teams 로딩 전 과도기 폴백"(`myTeamRow.roster.length`
+통짜, 투웨이 포함)을 타 부정확하게 계산되고, `teams`가 로딩된 후 재계산되며 값이
+바뀌어 버튼 활성화 여부가 뒤집힘 — 정확한 원인 규명·수정보다, 유저가 제안한 더 단순한
+설계로 교체: **목록 단계에서는 정원 판단을 아예 하지 않는다.**
+
+`MultiNegotiationView.tsx`를 다시 확인한 결과, 이미 정확히 "정규 계약 선택 시에만 정규
+정원 체크(`isRosterFull = !isTwoWay && ...`), 투웨이 선택 시에만 투웨이 정원 체크
+(`isTwoWaySlotsFull = isTwoWay && ...`)"가 `isLocked`(오퍼 제출 버튼 비활성화)에
+반영돼 있었고, 정원 초과가 화면 진입 자체를 막는 곳은 어디에도 없었다(`isRosterFull`/
+`isTwoWaySlotsFull`은 `handleSubmit` 가드·`isLocked`·경고 메시지에만 쓰임, 마운트 시
+리다이렉트 없음) — 즉 협상 화면은 이미 유저가 원하는 동작을 하고 있었고, 문제는 오직
+목록 화면의 "계약" 버튼이 진입 자체를 선제적으로(그리고 부정확하게) 막고 있던 것.
+
+**변경**: `views/multi/season/MultiFreeAgentView.tsx` — "계약" 버튼의 `disabled`/`title`
+조건에서 `cba_rules_enabled` 리그의 정원 판단(방금 추가했던 `isMyTwoWaySlotsFull`/
+`isPlayerTwoWayEligible` 기반 `canEscapeToTwoWay` 계산 전부)을 삭제 — 이제
+`disabled={!myTeamRow || signingId !== null || (!league?.cba_rules_enabled &&
+isMyRosterFull)}`. CBA가 켜진 리그는 정원과 무관하게 항상 협상 화면으로 진입 가능(실제
+차단은 협상 화면의 "오퍼 제출" 버튼에서). CBA가 꺼진 리그(즉시계약 RPC만 있고 협상
+화면의 사후 가드를 거치지 않음)는 예전처럼 정규 정원만 체크. 이제 정원 관련 계산이
+사라져 `myTeam`/`teams` 로딩 타이밍과 무관해져 깜빡임 자체가 발생할 수 없음. 함께 죽은
+코드가 된 `myTwoWayContractCount`/`isMyTwoWaySlotsFull`/`isPlayerTwoWayEligible`
+헬퍼와 `Player` 타입 import, `TWO_WAY_MAX_OVR`/`TWO_WAY_YOS_MAX` import 전부 삭제.
+`utils/constants.ts`의 두 상수 자체는 `MultiNegotiationView.tsx`가 여전히 쓰므로 유지.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음(58개 베이스라인 동일).
+
+**롤백 방법**: 버튼 `disabled`를 `!myTeamRow || signingId !== null || isMyRosterFull`로
+되돌리면 원래(투웨이 고려 전) 동작, 또는 바로 위 항목("FA 목록 계약 버튼: 정규 로스터
+가득 차도...")의 코드로 되돌리면 깜빡이는 버전으로 복귀(권장 안 함).
+
+---
+
+## 2026-09-17 — 협상 화면 변동률(raise%)이 실제 수락 여부에 아무 영향도 없던 갭 메우기 —
+## "하향식 계약" 거부감 신설(financialAmbition 주축, winDesire×contenderScore로 소폭 상쇄)
+
+**배경**: 유저 지적 — 협상 화면에서 시작 요구가(`askingSalary`)/희망 연수(`askingYears`)는
+`calcFADemand()`가 산출하는데, 변동률(연차별 연봉 증감률)에 대한 로직은 아예 없다는 것.
+확인해보니 정확함 — `FADemandResult`(`types/fa.ts`)에 변동률 필드가 없고, `evaluateFAOffer`/
+`estimateAcceptProbability`(`services/fa/faValuation.ts`)도 오퍼를 `{salary, years}`로만
+받아 변동률은 수락 여부 판정에 전혀 관여하지 않았다 — 즉 협상 화면에서 변동률을 얼마로
+넣든(하향식 -5%든 상향식 +5%든) 선수 수락 확률이 동일했다.
+
+이어진 논의에서 유저가 설계한 최종 규칙:
+1. 하향식(변동률 음수 — 1년차가 최고, 이후 연차로 갈수록 감소) 계약은 기본적으로 거부감을 유발.
+2. 우선순위 1축은 `financialAmbition`(재정적 야망, `types/player.ts` — 이미 존재하는 히든
+   성향) — 낮을수록 거부감 낮음.
+3. `financialAmbition`이 높아도 `winDesire`(우승욕)가 강하고 팀이 컨텐더(`contenderScore`
+   높음)면 그래도 받아들일 확률이 상대적으로 높아짐 — 단, "약간의 가중치"일 뿐 1순위인
+   `financialAmbition`을 뒤집을 만큼 크면 안 됨.
+
+**변경 파일**:
+- `services/fa/faValuation.ts`
+  - `calcDeclineAversionPenalty(financialAmbition, winDesire, contenderScore, raisePercent)`
+    신설(export, 기존 `calcTeamFitPenalty` 바로 아래) — `raisePercent >= 0`이면 무조건 0
+    (하향식일 때만 적용). `contenderOffset = winDesire × contenderScore × 0.3`(계수 0.3 =
+    "약간"을 구현한 값, financialAmbition을 못 뒤집게 작게 유지). `aversion = max(0,
+    financialAmbition - contenderOffset)`. 하락 폭이 클수록(변동률 상한 ±8% 기준 정규화)
+    거부감도 커지도록 `steepness = min(1, |raisePercent|/8)`를 곱함.
+  - `calcTeamFitPenalty`도 이번에 함께 `export`로 승격(뷰 레이어에서 거절 사유 대사 선택에
+    재사용 — 아래 참고, 공식 드리프트 방지 목적으로 뷰에 재구현 안 함).
+  - `estimateAcceptProbability`/`evaluateFAOffer` 둘 다: `offer` 타입에 `raisePercent?:
+    number` 추가, 새 파라미터 `financialAmbition?: number` 추가(둘 다 옵셔널 — 기존
+    호출부는 안 넘기면 declinePenalty=0으로 100% 기존 동작 유지). "요구가 이상" 분기에
+    `declineRejectProb = min(0.6, declinePenalty × 0.6)`를 teamFitRejectProb과 곱해서
+    반영(캡을 teamFit의 0.85보다 낮은 0.6으로 둠 — "팀 전력 미스매치"보다는 약한, 구조
+    선호 수준의 딜브레이커라는 설계 판단). `evaluateFAOffer`는 teamFit과 별개 시드
+    (`seed + 'decline'`)로 독립 롤 — 같은 롤을 공유하면 두 거절 사유가 항상 같이
+    붙거나 같이 안 붙는 부자연스러운 상관관계가 생김. "요구가 미만" 분기도 동일하게
+    `acceptProb *= (1 - declineRejectProb)` 곱연산 추가.
+- `services/fa/negotiationDialogue.ts` — `DialogueTrigger`에 `'DECLINING_CONTRACT'` 신설
+  (연봉/연수는 충분하지만 변동률 구조 때문에 거절). 대사 4종 추가(`POOLS['DECLINING_CONTRACT']`,
+  `TEAM_TOO_WEAK`처럼 성격 분기 없는 단일 풀 — winDesire<=0.5거나 raisePercent>=0이면
+  애초에 penalty=0이라 이 트리거 자체가 거의 안 뜸). 디스패처 `switch`에 케이스 추가.
+- `views/multi/season/MultiNegotiationView.tsx`
+  - `acceptProbability` memo/`handleSubmit`의 `evaluateFAOffer` 호출 둘 다 offer에
+    `raisePercent`(현재 폼 상태) 추가, `tendencies?.financialAmbition`을 새 파라미터로 전달.
+  - `isRefusingNegotiation`(화면 진입 시 즉시 차단 게이트, 지난 항목 참고)의 "최고 오퍼"
+    시뮬레이션은 `raisePercent`를 의도적으로 넘기지 않음(=0/정액 취급) — "협상이 애초에
+    가망 있는지" 판단은 유저가 고르지도 않은 하향식 구조를 미리 가정해 더 비관적으로
+    만들면 안 되므로(유저는 항상 정액/상향 구조를 골라 이 페널티를 피할 수 있음).
+  - `handleSubmit`의 거절 사유(`trigger`) 판정 — "요구가 이상인데 거절" 분기를
+    `calcTeamFitPenalty`/`calcDeclineAversionPenalty`(faValuation.ts에서 그대로 import,
+    재구현 안 함)를 둘 다 계산해 더 큰 쪽을 사유로 채택(`declinePenaltyForDialogue >
+    teamFitPenaltyForDialogue ? 'DECLINING_CONTRACT' : 'TEAM_TOO_WEAK'`) — 두 페널티가
+    동시에 걸릴 수 있어 실제 롤 결과만으로는 어느 쪽이 원인인지 알 수 없다는 한계를
+    "더 설득력 있는 사유" 휴리스틱으로 절충(연수 부족 케이스가 이미 이 분기에서 같은
+    수준의 근사였던 기존 관례와 동일선상).
+  - `frustrationDelta` 계산에 `DECLINING_CONTRACT`도 `TEAM_TOO_WEAK`와 동일하게 +1 추가 —
+    바로 위 dev-log 항목(TEAM_TOO_WEAK 무한 거절 루프 수정)과 같은 이유로, 새로 추가된
+    이 거절 사유도 frustration 없이 방치하면 똑같은 무한 루프가 재발함.
+- `views/multi/season/MultiFreeAgentView.tsx` — "가능성" 컬럼의 `estimateAcceptProbability`
+  호출에 `tendencies.financialAmbition` 추가(이 컬럼은 항상 정액 오퍼를 가정해 raisePercent를
+  안 넘기므로 실제로는 no-op, 일관성 목적으로만 추가).
+
+**검증**: `npx tsc --noEmit` — 이 작업 관련 신규 에러 없음(전체 에러 수가 58→56으로
+줄었는데, 이는 무관한 파일(`services/fa/faMarketBuilder.ts`의 모듈 경로 에러 2건)이 세션
+중 다른 경로로 이미 해소된 것으로 보이며 이번 변경과 무관).
+
+**주의사항 / 한계**: (1) 계수(`0.3`/`0.6`/steepness 정규화 기준 `8`)는 유저 스펙의
+"약간"/"소폭" 같은 정성적 표현을 구체적 수치로 옮긴 임의값 — 실플레이 체감으로 나중에
+튜닝 필요할 수 있음, 전부 주석에 근거를 남겨둠. (2) 유저 스펙이 명시적으로 다루지 않은
+조합(예: financialAmbition 낮음+winDesire 낮음+약팀)은 별도 상쇄 로직 없이 그냥
+"financialAmbition이 낮으니 애초에 거부감이 낮다"로 자연스럽게 처리됨(기본 공식만으로
+커버, 추가 분기 불필요). (3) 싱글플레이어 경로(`services/fa/faMarketBuilder.ts`의 3개
+`evaluateFAOffer` 호출)는 이 새 파라미터들을 전혀 안 넘겨 기존 동작 100% 유지 — 멀티
+전용 기능임.
+
+**롤백 방법**: `faValuation.ts`의 `calcDeclineAversionPenalty` 삭제, `estimateAcceptProbability`/
+`evaluateFAOffer` 시그니처에서 `raisePercent`/`financialAmbition` 관련 부분 전부 제거,
+`calcTeamFitPenalty`의 `export` 원복. `negotiationDialogue.ts`의 `DECLINING_CONTRACT`
+관련 3곳(타입/POOLS/switch) 삭제. `MultiNegotiationView.tsx`/`MultiFreeAgentView.tsx`의
+호출부를 원래 인자 목록으로 되돌리면 됨.
+
+**후속(같은 날) — 요구 조건에 희망 변동률 추가**: 유저 요청 — "계약 최초 요구 조건에
+변동률도 포함해줘". `calcFADemand()`가 산출하는 `FADemandResult`에 시작 요구가/희망
+연수는 있는데 변동률은 없었던 걸(바로 위 항목에서 확인) 채움.
+
+**변경 파일**:
+- `types/fa.ts` — `FADemandResult`에 `askingRaisePercent?: number` 신설. 옵셔널인 이유:
+  `calcFADemand()`는 항상 채우지만, `services/fa/faMarketBuilder.ts`(싱글플레이어)가
+  `evaluateFAOffer()` 호출용으로 `FADemandResult` 모양을 즉석에서 만드는 3곳은 이
+  값을 안 쓰므로(그 호출들은 `raisePercent`/`financialAmbition`을 `evaluateFAOffer`에
+  안 넘겨 declinePenalty가 애초에 발동 안 함) 필수로 만들면 그 3곳이 전부 타입 에러가 남.
+- `services/fa/faValuation.ts` — `calcFADemand()` 끝에 `askingRaisePercent =
+  round(financialAmbition × 8, 1자리)` 계산 추가(Step 12), 반환 객체에 포함. 0(변동
+  없어도 괜찮음)~8%(CBA Bird류 변동률 상한, `MultiNegotiationView.tsx`의
+  `maxRaisePercent`와 동일 값) 범위 — `calcDeclineAversionPenalty`(하향식 계약 거부감)와
+  같은 축(financialAmbition)이라 "재정적 야망 높은 선수는 상향식을 원하고 하향식은
+  싫어한다"가 두 값에서 일관되게 성립.
+- `views/multi/season/MultiNegotiationView.tsx` — 좌측 "요구 조건" 패널에 "희망 변동률"
+  행 추가(시작 요구가/희망 연수 바로 아래), `demand.askingRaisePercent ?? 0`으로 표시
+  (옵셔널 타입 대응, 실제로는 이 화면의 demand는 항상 `calcFADemand()` 경유라 undefined
+  될 일 없음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음(faMarketBuilder.ts의 수동 FADemandResult 리터럴
+3곳도 옵셔널 처리 덕에 에러 없이 통과).
+
+**주의사항**: 순수 표시용 값 — `evaluateFAOffer`/`estimateAcceptProbability`의 실제 수락
+판정은 여전히 유저가 협상 화면에서 고른 실제 변동률(`raisePercent`)과 `declinePenalty`만
+보고, `demand.askingRaisePercent`(선수가 "희망"하는 값) 자체를 직접 비교하지는 않는다 —
+즉 지금은 "얼마나 갖고 싶어하는지 보여주기"와 "실제로 얼마나 거부감을 느끼는지 판정하기"가
+같은 financialAmbition 축을 공유할 뿐, `askingRaisePercent`와의 거리(예: 요구보다 낮은
+변동률 제시 시 페널티)를 직접 비교하는 로직은 아직 없음 — 필요하면 후속 작업.
+
+**롤백 방법**: `types/fa.ts`의 `askingRaisePercent` 필드 삭제, `calcFADemand()`의 Step 12
+계산/반환 필드 삭제, `MultiNegotiationView.tsx`의 "요구 조건" 배열에서 희망 변동률 행 삭제.
+
+**후속2(같은 날) — 변동률 최저선(walkAwayRaisePercent) 추가**: 유저 요청 — "변동률도
+본인의 희망 변동률과 최저선을 설정하도록 해줘. 대신에 최저선은 UI에 표시할 필요 없고
+비교용으로만 쓰면 돼." 연봉이 이미 `askingSalary`(희망, 표시)/`walkAwaySalary`(최저선,
+비표시·판정용 히든 트레잇)로 나뉘어 있는 것과 동일한 구조를 변동률에도 적용.
+
+**변경 파일**:
+- `types/fa.ts` — `FADemandResult`에 `walkAwayRaisePercent?: number` 신설, "화면에
+  노출하지 않고 판정 로직 내부 비교용으로만 사용"이라고 명시(walkAwaySalary와 동일
+  성격). askingRaisePercent와 같은 이유로 옵셔널.
+- `services/fa/faValuation.ts`
+  - `calcFADemand()` Step 12에 `walkAwayRaisePercent = -8 + financialAmbition × 8`
+    계산 추가(범위 -8~0%) — `askingRaisePercent = financialAmbition × 8`(범위 0~8%)와
+    대칭: financialAmbition이 높을수록 상향식을 더 원하면서(ask가 8%에 가까움) 동시에
+    아주 조금만 하향해도 못 참고(walkAway가 0%에 가까움), 낮을수록 상향식에 무관심하면서
+    (ask가 0%에 가까움) 꽤 가파른 하향식까지 용인(walkAway가 -8%까지).
+  - `calcDeclineAversionPenalty()`에 `walkAwayRaisePercent` 파라미터 추가, 하락폭
+    정규화 기준을 고정 `/8`에서 이 값 기준(`steepness = |raisePercent| / |walkAway|`,
+    walkAway 지점에서 steepness=1로 최대 거부감)으로 교체 — 전과 다르게 선수 개인차가
+    반영됨. 여전히 확률적 캡(0.6)이라 "최저선 이하 = 무조건 거절"은 아님(그건 salary
+    walkAway의 역할, 이건 어디까지나 비교용 기준점).
+  - `estimateAcceptProbability`/`evaluateFAOffer` 두 곳 모두 `calcDeclineAversionPenalty`
+    호출에 `demand.walkAwayRaisePercent ?? -8`(옵셔널 폴백 — 미지정 시 예전 동작과
+    동일한 전체 범위 정규화) 전달.
+- `views/multi/season/MultiNegotiationView.tsx` — 거절 사유(dialogue trigger) 판정용
+  `calcDeclineAversionPenalty` 호출에도 동일하게 `demand.walkAwayRaisePercent ?? -8` 전달.
+  UI(요구 조건 패널)에는 추가 안 함 — 요청대로 최저선은 비표시.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**주의사항**: `walkAwayRaisePercent`는 이름은 "최저선"이지만 salary의 walkAway처럼 절대적
+하드 컷오프가 아니라("이 밑이면 무조건 거절" 아님), calcDeclineAversionPenalty가 거부감
+곡선을 정규화하는 기준점(그 지점에서 거부감이 최대치에 도달)일 뿐 — 여전히 0.6 캡의
+확률적 요소. 절대적 컷오프로 오해하지 말 것.
+
+**롤백 방법**: `types/fa.ts`의 `walkAwayRaisePercent` 필드 삭제, `calcFADemand()`의 계산/
+반환 필드 삭제, `calcDeclineAversionPenalty` 시그니처에서 마지막 파라미터 제거하고
+`steepness` 계산을 `Math.min(1, Math.abs(raisePercent) / 8)`로 되돌리면 됨.
+
+**후속3(같은 날) — 기준값 8→5로 정정**: 유저 지적 — "변동률은 -5%~5%인데 -8%가
+최저선이면 하향식 계약에 너무 관대해지는것 아닌가?" 맞는 지적. 협상 화면의 실제 변동률
+상한(`maxRaisePercent`, `MultiNegotiationView.tsx`)은 버드 예외(bird_full/bird_early)
+2종만 ±8%고 나머지 대다수(캡스페이스/MLE/미니멈/BAE/논버드/2라운드 예외 등)는 ±5%다.
+`askingRaisePercent`/`walkAwayRaisePercent`를 8 기준으로 계산해두면, financialAmbition이
+낮은 선수의 `walkAwayRaisePercent`가 -8%에 가까워지는데 실제 협상에서는 거의 항상 ±5%
+범위 안에서만 오퍼가 오가므로 그 최저선에 사실상 절대 도달 못 해 하향식 거부감이
+구조적으로 늘 과소평가되는 문제가 있었음.
+
+**변경**: `services/fa/faValuation.ts`의 `calcFADemand()` — `askingRaisePercent = 
+financialAmbition × 8` → `× 5`(범위 0~5%), `walkAwayRaisePercent = -8 + financialAmbition
+× 8` → `-5 + financialAmbition × 5`(범위 -5~0%). `calcDeclineAversionPenalty` 호출부
+3곳(`estimateAcceptProbability`/`evaluateFAOffer`/`MultiNegotiationView.tsx`의 거절 사유
+판정)의 옵셔널 폴백값도 `?? -8` → `?? -5`로 함께 수정(값 일관성).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음. 버드 예외로 실제 ±8%까지 쓰는 드문 경우엔
+-5% 지점에서 이미 steepness가 1(최대 거부감)로 꽉 차 있어, 그보다 더 내려가도
+`Math.min(1, ...)` 클램프 덕에 추가로 더 관대해지지 않음(의도된 동작).
+
+**롤백 방법**: 위 두 계산식과 세 폴백값을 전부 5→8, -5→-8로 되돌리면 됨.
+
+**후속4(같은 날) — 나이/직전 시즌 성적 팩터 추가**: 유저 요청 — 하향식 계약 수락에
+"27세 이상", "직전 시즌 성적이 좋지 않았던 경우" 두 팩터도 고려하고, 전체 우선순위는
+"나이 > 직전 시즌 성적 > 재정적 야망 > 우승 욕심"이 맞다는 확인.
+
+**변경 파일**:
+- `types/fa.ts` — `FADemandResult`에 히든 트레잇 2종 신설(둘 다 0~1, 옵셔널, UI 비노출):
+  `declineAgeTolerance`(27세 미만 0, 27~35세 선형 증가, 35세 이상 1), `declinePerfTolerance`
+  (직전 시즌 roleScore가 50 이상이면 0, 부진할수록 1에 가까워짐).
+- `services/fa/faValuation.ts`
+  - `calcFADemand()`에 두 값 계산 추가 — `declineAgeTolerance = clamp01((player.age-27)/8)`,
+    `declinePerfTolerance = clamp01((50-roleScore)/50)`(roleScore는 이미 함수 앞부분에서
+    계산돼 있던 값 재사용, 새 계산 없음).
+  - `calcDeclineAversionPenalty()`에 `ageTolerance`/`perfTolerance` 파라미터 추가(기본값
+    0 — 옵셔널 폴백 시 기존 동작과 동일). 4개 팩터를 우선순위 내림차순 가중치로 감산:
+    `aversion = max(0, financialAmbition - ageTolerance×1.0 - perfTolerance×0.7 -
+    contenderOffset(winDesire×contenderScore×0.3))`. 가중치 1.0>0.7>[financialAmbition
+    자체가 기준선]>0.3이 곧 "나이>직전시즌성적>재정적야망>우승욕심" 순서 — 나이 하나만
+    으로도 financialAmbition을 이론상 완전히 상쇄 가능하게(1순위), 성적은 나이보다
+    약하지만(2순위) 기준선인 financialAmbition 자체보다는 영향력 있게, 우승욕/팀전력은
+    기존 그대로 "약간"(4순위, 0.3, 변경 없음).
+  - `estimateAcceptProbability`/`evaluateFAOffer` 내부 호출부 2곳 + `MultiNegotiationView.tsx`
+    거절 사유 판정 호출부 1곳, 총 3곳 모두 `demand.declineAgeTolerance ?? 0`/
+    `demand.declinePerfTolerance ?? 0` 추가 전달.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**주의사항**: (1) 가중치(1.0/0.7/0.3)와 나이 구간(27~35)·성적 임계값(roleScore 50)은
+"1순위/2순위/4순위" 같은 정성적 우선순위를 구체적 수치로 옮긴 값 — 실플레이 체감으로
+조정 필요할 수 있음. (2) `declinePerfTolerance`는 `roleScore`(포지션 내 스탯 백분위,
+0~100)를 그대로 쓰므로, 스탯이 없는 신규 생성 FA 선수는 `ovrToRoleScore(player.ovr)`
+폴백값 기준으로 계산됨(기존 marketValueScore 계산과 동일한 폴백 체계, 새로 추가한
+문제 아님). (3) 싱글플레이어 경로(`faMarketBuilder.ts`)는 여전히 이 파라미터들을
+안 넘겨 영향 없음.
+
+**롤백 방법**: `calcDeclineAversionPenalty`에서 `ageTolerance`/`perfTolerance` 파라미터와
+`ageOffset`/`perfOffset` 줄 제거, `types/fa.ts`의 두 필드 삭제, `calcFADemand()`의 계산
+2줄 삭제, 3곳 호출부에서 추가 인자 2개 제거하면 됨.
+
+---
+
+## 2026-09-17 — sign_free_agent_negotiated RPC 404(PGRST202) — undefined 파라미터가
+## JSON 직렬화 시 통째로 드롭되던 버그
+
+**배경**: 유저 신고 — 협상 화면에서 오퍼 제출(수락) 시 콘솔에
+`POST .../rpc/sign_free_agent_negotiated 404 (Not Found)`. 처음엔 PostgREST 스키마
+캐시 미반영(DDL 직후 흔한 증상)으로 추정하고 `NOTIFY pgrst, 'reload schema'`를
+실행했으나 재현됨. 브라우저 Network 탭 Request Payload를 직접 받아보니 원인이 완전히
+달랐다: 실제 요청 바디에 `p_team_id`/`p_player_id`/`p_contract` 3개만 있고
+**`p_signing_type` 키 자체가 없었음**. 응답도 `PGRST202`: *"Searched for the function
+public.sign_free_agent_negotiated with parameters p_contract, p_player_id, p_team_id...
+but no matches were found"* — DB 함수(`p_team_id uuid, p_player_id text, p_contract
+jsonb, p_signing_type text`, 4-파라미터)와 실제로 온 요청(3-파라미터)이 안 맞아
+PostgREST가 매칭되는 오버로드를 못 찾은 것. 즉 순수 클라이언트 버그였고, 스키마 캐시는
+애초에 문제 없었음(재확인 결과 확인됨 — `pg_proc`/`information_schema.routine_privileges`
+쿼리로 함수/권한 정상 확인, curl로 4개 파라미터 다 채운 요청은 이미 정상 응답했었음).
+
+**근본 원인**: `views/multi/season/MultiNegotiationView.tsx`의 `signingType` state가
+최근(다른 세션/작업의 "어드민 계약 유형 재설계") `SigningType | undefined`로 바뀌면서
+기본값이 `undefined`("빈 값 = 캡 스페이스로 체결"이라는 새 관례)가 됐다.
+`services/multi/faService.ts`의 `signFreeAgentNegotiated()`가 이 `signingType`을
+그대로 `p_signing_type: signingType`으로 RPC 파라미터 객체에 넣었는데, JS `undefined`
+값을 가진 객체 속성은 `JSON.stringify`(supabase-js가 내부적으로 요청 바디를 만들 때
+사용)에서 **완전히 생략**된다(속성 자체가 사라짐, `null`로 직렬화되는 게 아님) — 그
+결과 캡 스페이스(예외 조항 미사용, 가장 흔한 케이스)로 체결할 때마다 100% 재현되는
+버그였다.
+
+**변경 파일**: `services/multi/faService.ts` — `signFreeAgentNegotiated()`의 RPC 호출
+파라미터를 `p_signing_type: signingType` → `p_signing_type: signingType ?? null`로 수정.
+`??  null`로 명시적 SQL NULL을 보내면 JSON 직렬화 시에도 키가 항상 실려가(`null`은
+드롭 안 됨) PostgREST가 4-파라미터 오버로드를 정상 매칭한다. DB 함수 쪽은 `p_signing_type`
+을 `league_transactions.details` 로그에만 쓰고(`jsonb_build_object(..., 'signingType',
+p_signing_type)`) NULL 여부로 분기하는 로직이 전혀 없어 수정 안전함(SQL 변경 불필요).
+
+**검증**: 실제 유저가 보낸 Request Payload(팀/선수 ID·계약 그대로)를 `p_signing_type:
+null`로만 바꿔 curl로 재현 — 수정 전엔 PGRST202/404, 수정 후 시뮬레이션(같은 페이로드
+직접 호출)은 `not_authenticated`(400, 인증 토큰 없이 테스트했으므로 정상)까지 정상
+도달 확인. `npx tsc --noEmit` 신규 에러 없음(58→56 베이스라인 유지, 이 파일 관련
+에러 없음).
+
+**주의사항 / 한계**: (1) 이번에 `MultiNegotiationView.tsx`를 다시 읽으며 발견한 별개
+이슈 — `contract.type = contractType`로 저장되는데, `contractType`은 UI 전용 enum
+(`'free_agent' | 'rookie_scale' | 'two_way'`)이라 `PlayerContract['type']`이 실제로
+기대하는 `ContractType`(`'veteran'`/`'rookie'`/`'two-way'` 등, `utils/contractLabels.ts`
+의 `CONTRACT_TYPE_LABEL` 키 목록 참고)과 값이 다르다 — 특히 일반 계약이 `'veteran'`이
+아니라 `'free_agent'`로 저장됨. `sign_free_agent_negotiated` SQL 함수 자체는
+`p_contract->>'type' = 'two_way'`인지만 보므로(다른 값이면 전부 "정규" 취급) 이번
+404와는 무관하고 로스터 정원 체크는 정상 동작하지만, `player.contract.type`을 읽어
+`CONTRACT_TYPE_LABEL[type]`처럼 라벨을 찾는 다른 화면이 있다면 `'free_agent'`/
+`'rookie_scale'`에 대해 라벨 룩업 실패(undefined 표시)가 날 수 있음 — 이번 신고
+범위 밖이라 손대지 않았고, 필요하면 별도 확인 요망. (2) 이 세션에서 `contractType`/
+`getAllowedSigningTypes`/`SigningType | undefined` 관련 변경은 전부 이 대화 밖(다른
+세션 또는 사용자 직접 수정)에서 이뤄진 것으로 보이며, 이번 항목에서 다룬 건
+`faService.ts`의 undefined-드롭 버그 수정 하나뿐.
+
+**롤백 방법**: `services/multi/faService.ts`에서 `signingType ?? null`을 `signingType`
+으로 되돌리면 됨(단, 그러면 캡 스페이스 체결이 다시 100% 404남 — 실질적 롤백 비권장).
+
+---
+
+## 2026-09-17 — 재정 탭 UFA 칩 색상/텍스트 크기 변경
+
+**배경**: 유저 요청 — 재정 탭(`components/roster/TeamPayrollTable.tsx`)의 UFA 칩 색상을
+초록색으로, 칩 내부 텍스트 크기를 `text-sm`으로 키워달라는 것. RFA 칩은 대상이 아니라
+그대로(`text-[10px]`, violet) 유지.
+
+**변경 파일**: `components/roster/TeamPayrollTable.tsx` — UFA 칩 className을
+`bg-slate-500/15 text-slate-400 border-slate-500/40`(회색, `text-[10px]` 공유)에서
+`text-sm bg-emerald-500/15 text-emerald-400 border-emerald-500/40`(초록, 독립 크기)로
+변경. RFA/UFA가 공유하던 `text-[10px]`를 템플릿 리터럴 밖으로 빼서 각 분기 안으로
+옮김(RFA는 `text-[10px]` 그대로, UFA만 `text-sm`).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**후속(같은 날) — 칩 배경/테두리 제거, 텍스트만**: 유저 요청 — "RFA, UFA 칩을 제거하고
+텍스트만 남겨줘봐". `inline-flex px-1.5 py-0.5 rounded ... border` 등 칩(배지) 컨테이너
+스타일을 전부 제거하고 `font-bold` + 색상 + 크기만 남김(RFA `text-[10px] text-violet-400`,
+UFA `text-sm text-emerald-400`). `title` 툴팁은 그대로 유지.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**후속2(같은 날) — 셀 배경색 추가, RFA도 text-sm으로**: 유저 요청 — "UFA, RFA의 셀
+컬러를 바꿔보자. RFA 폰트 사이즈도 text-sm으로 올려." 색상 방향은 질문으로 확인
+(글자색은 유지, TableCell 배경에만 연한 색 추가: UFA 에메랄드/RFA 바이올렛).
+`TableCell`의 `className`에 `faStatus?.status === 'RFA' ? 'bg-violet-500/10' :
+faStatus?.status === 'UFA' ? 'bg-emerald-500/10' : ''` 조건부 추가, 텍스트
+`<span>`은 RFA도 `text-[10px]` → `text-sm`으로 통일(UFA와 동일 크기가 됨).
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**후속3(같은 날) — 셀 배경색 원복**: 유저 요청 — "셀 배경색은 이전으로 되돌리고, 글자만
+남겨줘." 바로 위 후속2에서 추가한 `TableCell`의 조건부 `bg-violet-500/10`/
+`bg-emerald-500/10` 배경 삭제(`className`을 `"pr-4 border-r border-r-slate-800/30"`으로
+원복). RFA `text-sm` 크기 변경은 되돌리는 대상이 아니라 그대로 유지 — 글자색/크기는
+후속2 상태 그대로, 셀 배경만 제거.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**후속4(같은 날) — 현재 시즌(0번) 컬럼 배경 살짝 밝게**: 유저 요청 — "재정 탭의 현재
+시즌에 해당하는 열의 배경색을 약간만 밝게 조정해줘". `seasonColumns[0]`이 현재 시즌
+(주석 "시즌 컬럼 인덱스(0=현재 시즌)", salaryAtCol 참고)이라 이 인덱스에 해당하는
+셀 4곳(헤더 라벨 행/선수별 로스터 행/푸터 합계 행/푸터 diff 행) 전부에 조건부 밝은
+배경 추가. 대부분은 셀 자체에 별도 bg가 없어(부모 thead/tbody/tfoot 배경을 그대로
+비침) `bg-white/[0.04]`(반투명 흰색 오버레이, `TableRow`의 기존 `hover:bg-white/5`와
+동일 관례 재사용)를 추가만 하면 되지만, 푸터 diff 행의 셀은 이미 자체 `bg-slate-950`을
+갖고 있어(오버레이로 겹치면 두 bg-* 유틸리티 중 하나만 먹혀 예측 불가) 그 경우만
+`bg-slate-800`(slate-950보다 한 단계 밝은 불투명 색)으로 교체.
+
+**변경 파일**: `components/roster/TeamPayrollTable.tsx` — 헤더 season `TableHeaderCell`,
+로스터 행 season `TableCell`, 푸터 합계 행 season `TableCell`에 `i === 0 ?
+'bg-white/[0.04]' : ''` 추가. 푸터 diff 행 season `TableCell`은 `bg-slate-950` →
+`i === 0 ? 'bg-slate-800' : 'bg-slate-950'`로 변경.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+**후속5(같은 날) — 선수 행만 하이라이트로 축소**: 유저 요청 — "푸터의 diff 행은 그냥
+예전으로 돌려줘. 선수 샐러리 행만 하이라이트되면 돼." 바로 위 후속4에서 4곳(헤더/
+선수 로스터 행/푸터 합계 행/푸터 diff 행)에 넣었던 현재 시즌 하이라이트 중 선수 로스터
+행 하나만 남기고 나머지 3곳 전부 원복 — 헤더 season `TableHeaderCell`은 `pr-4 border-r
+border-r-slate-800/30`으로, 푸터 합계 행 season `TableCell`도 동일하게, 푸터 diff 행
+season `TableCell`은 `bg-slate-950`(무조건, i 무관)으로 되돌림. 선수 로스터 행의
+`i === 0 ? 'bg-white/[0.04]' : ''`만 그대로 유지.
+
+**검증**: `npx tsc --noEmit` 신규 에러 없음.
+
+---
+
+## 2026-09-16 — leagues.use_custom_overrides 신설: custom_overrides 활성화를 리그 생성 시 선택 가능하게
+
+**배경**: 바로 아래 항목("멀티 트레이드 '새 제안' 탭 OVR 불일치 버그 수정")에서 `custom_overrides`
+적용 여부 판단을 `league.draft_pool.includes('alltime')`로 통일했는데, 같은 날 있었던 또 다른
+리팩터(`components/multi/DraftPoolSettings.tsx`의 'standard'/'alltime' 풀 타입 체크박스
+폐지)로 `draft_pool`을 'alltime'으로 설정할 수 있는 UI 자체가 사라져 있었다. `leagues.draft_pool`
+컬럼의 DB 기본값이 `'standard'`이고 `CreateLeagueModal.tsx`가 `draftPool` 옵션을 아예 넘기지
+않으므로, 새로 만드는 모든 리그는 항상 `use_custom_overrides` 판정이 `false`로 고정되어 이
+기능을 켤 방법이 없는 상태였다. 리그 생성 시 이 기능을 쓸지 직접 고를 수 있는 옵션이 필요하다는
+요청.
+
+추가로 조사하면서 같은 계열의 하드코딩된 `true`(리그 설정과 무관하게 항상 오버라이드 적용)가
+`components/multi/DraftPoolModal.tsx:57`, `components/multi/DraftPoolSettings.tsx:103`,
+`views/multi/season/LeagueLobbyPanel.tsx:136`, 서버의 `server/src/startDraft.ts:267,300`
+(드래프트 풀 구성 + 실제 드래프트 픽 시 능력치 적용)에도 남아있는 걸 발견 — 전부 이번에 같이
+정리.
+
+**변경 파일**:
+- `migrations/add_leagues_use_custom_overrides.sql` (신규, 적용 완료) — `leagues.
+  use_custom_overrides BOOLEAN NOT NULL DEFAULT false`. `draft_pool`(풀 자격 판정 전용으로
+  이미 재편됨)과 완전히 별개 축으로 분리 — `cba_rules_enabled`/`trade_deadline_enabled`와
+  동일한 "마스터 스위치 분리" 패턴.
+- `utils/leagueOverrides.ts` — `shouldUseCustomOverrides()`가 `draft_pool` 문자열 파싱 대신
+  `league.use_custom_overrides` 불리언을 직접 읽도록 변경.
+- `server/src/shared/leagueOverrides.ts` (신규, client 미러) — 서버 쪽 동일 함수. 아래
+  server 파일들이 여기서 import.
+- `server/src/postAllStarGame.ts`, `server/src/simRunner.ts` — `leagues` select 컬럼을
+  `draft_pool` → `use_custom_overrides`로 교체하고 `shouldUseCustomOverrides()` 사용.
+- `server/src/startDraft.ts` — 드래프트 풀 구성(`mapRawPlayerToRuntimePlayer(p, true)` →
+  `..., useCustomOverrides)`)과 `draftConfig.applyCustomOverrides`(드래프트 중 실제 픽
+  적용 시 `DraftRoom.ts`가 참조) 둘 다 하드코딩된 `true` 대신 리그 설정을 따르도록 수정.
+  이전엔 드래프트 화면에서 본 OVR과 드래프트 후 로스터 화면의 OVR이 리그 설정에 따라
+  서로 달라질 수 있는 잠재 버그였음.
+- `components/multi/DraftPoolModal.tsx`, `components/multi/DraftPoolSettings.tsx` —
+  `useCustomOverrides` prop 추가, 하드코딩된 `true` 제거. `DraftPoolSettings`에 토글 UI
+  ("피크시즌 능력치 적용") 신설.
+- `components/multi/CreateLeagueModal.tsx` — `useCustomOverrides` state 추가(기본 false),
+  토너먼트/메인리그 두 `createLeague()` 호출 모두에 옵션 전달, `<DraftPoolSettings>`에 연결.
+- `views/multi/league/LeagueSettingsView.tsx` — 생성 후에도 리그 설정 화면(드래프트 탭)에서
+  동일 토글로 변경 가능하도록 state/sync/dirty-check/저장 로직 추가(다른 드래프트 풀 설정과
+  동일하게 `!isInProgress`일 때만 편집 가능).
+- `views/multi/season/LeagueLobbyPanel.tsx` — 로비의 풀 인원수 카운터도 하드코딩 `true` 대신
+  `shouldUseCustomOverrides(league)` 사용.
+- `services/multi/leagueService.ts` — `createLeague`/`updateLeagueSettings`의 옵션 타입에
+  `useCustomOverrides` 추가 + `payload.use_custom_overrides` 매핑.
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `use_custom_overrides: boolean` 필드 추가.
+
+**Before** (`server/src/startDraft.ts`):
+```ts
+const rawPlayers = (poolData ?? []).map((p: any) => mapRawPlayerToRuntimePlayer(p, true));
+...
+applyCustomOverrides: true,
+```
+
+**After**:
+```ts
+const useCustomOverrides = shouldUseCustomOverrides(league as any);
+const rawPlayers = (poolData ?? []).map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
+...
+applyCustomOverrides: useCustomOverrides,
+```
+
+**검증**: 클라이언트 `npx tsc --noEmit`, 서버 `npx tsc --noEmit -p tsconfig.json` 둘 다 이번
+변경으로 인한 신규 에러 없음 확인(각각 기존에 있던 무관한 에러만 남아있음). 실제 리그
+생성→드래프트→로스터 화면 왕복 테스트는 못 함(실제 플레이 필요).
+
+**롤백 방법**: `migrations/add_leagues_use_custom_overrides.sql`의 컬럼은 그대로 둬도 무해함
+(기본값 false, 아무도 안 읽으면 no-op). 코드만 되돌리려면 `utils/leagueOverrides.ts`와
+`server/src/shared/leagueOverrides.ts`를 이전 커밋(바로 위 항목의 After)으로 되돌리고, 이번
+항목에서 손댄 나머지 파일들의 `useCustomOverrides`/`use_custom_overrides` 관련 줄만 제거하면 됨.
+
+---
+
+## 2026-09-16 — 멀티 트레이드 "새 제안" 탭 OVR 불일치 버그 수정 (custom_overrides 적용 판단 통합)
+
+**배경**: 멀티 리그에서 제임스 하든의 OVR이 로스터/선수상세 등 대부분 화면에서는 90인데
+트레이드 "새 제안" 탭에서만 94로 보이는 버그 리포트. 추적 결과 원인은 계산 공식이 아니라
+`custom_overrides`(선수별 피크시즌 스탯 오버라이드, `meta_players.base_attributes.
+custom_overrides`에 JSONB로 저장 — 올타임 레전드 전용이 아니라 하든 같은 현역 선수도
+가지고 있음)를 적용할지 판단하는 로직이 화면마다 따로 구현돼 있었기 때문. 대부분 화면은
+`(league?.draft_pool ?? '').split(',').includes('alltime')`로 판단해서 `mapRawPlayer
+ToRuntimePlayer(raw, useCustomOverrides, ...)`에 넘기는데, `hooks/useMultiSearchData.ts`
+(트레이드 새 제안 탭이 선수 목록을 가져오는 훅)만 이 판단 없이 `true`로 하드코딩돼 있어서
+리그의 `draft_pool` 설정이 `alltime`을 포함하지 않아도(=이번 리그 케이스) 항상 오버라이드
+적용된 능력치로 OVR을 계산했다. `useMultiSearchData.ts`는 최근 draft_pool 종류별 개별
+쿼리(standard/alltime/rookies)를 `applyMetaPlayerPoolFilter` 단일 쿼리로 단순화하는
+리팩터 과정에서 기존에 있던 `draftPools.includes('alltime')` 판단이 통째로 빠지고
+`true`로 잘못 대체된 것으로 보임(같은 세션의 다른 미커밋 변경).
+
+**변경 파일**:
+- `utils/leagueOverrides.ts` (신규) — `shouldUseCustomOverrides(league)` 공용 함수 신설.
+  화면마다 복붙돼 있던 `(league?.draft_pool ?? '').split(',').map(s=>s.trim()).
+  includes('alltime')` 판단을 한 곳으로 통합.
+- `hooks/useMultiSearchData.ts` — 하드코딩된 `true` 제거, `shouldUseCustomOverrides(league)`
+  사용. `queryKey`에도 `useCustomOverrides` 추가(리그 설정이 바뀌면 캐시 재사용 안 하도록).
+- 아래 13개 호출부의 인라인 판단문을 전부 `shouldUseCustomOverrides(league)` 호출로 교체
+  (동작 변화 없음, 로직 통합만):
+  `views/multi/league/MultiDraftView.tsx`, `views/multi/league/AdminTeamEditorView.tsx`,
+  `views/multi/season/MultiLeaderboardView.tsx`, `views/multi/season/
+  MultiNegotiationView.tsx`, `views/multi/season/MultiFreeAgentView.tsx`,
+  `views/multi/season/MultiPlayerDetailView.tsx`, `views/multi/season/MultiRosterView.tsx`,
+  `views/multi/season/MultiTacticsView.tsx`, `views/multi/season/MultiGamePbpView.tsx`,
+  `pages/MultiSeasonPage.tsx`(3곳), `views/multi/season/MultiFrontOfficeView.tsx`
+  (`useCustomOverridesForStats` — 표현만 다르고 동일 로직이던 것도 통합).
+
+**Before** (`hooks/useMultiSearchData.ts`):
+```ts
+const player = mapRawPlayerToRuntimePlayer(raw, true, true);
+```
+
+**After**:
+```ts
+const useCustomOverrides = shouldUseCustomOverrides(league);
+...
+const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
+```
+
+**검증**: `npx tsc --noEmit`으로 수정한 11개 파일 관련 신규 타입 에러 없음 확인(리포지토리에
+이미 있던 무관한 기존 타입 에러들은 그대로 남아있음 — 이 변경으로 인한 것 아님).
+
+**롤백 방법**: `hooks/useMultiSearchData.ts`의 `mapRawPlayerToRuntimePlayer(raw,
+useCustomOverrides, true)`를 `mapRawPlayerToRuntimePlayer(raw, true, true)`로 되돌리고
+나머지 12개 파일의 `shouldUseCustomOverrides(league)` 호출을 원래 인라인 식으로 되돌리면
+됨(`utils/leagueOverrides.ts`는 삭제). 단, 되돌리면 이번에 고친 화면 간 OVR 불일치가
+재발함.
+
+---
+
+## 2026-09-17 — 협상 화면 "요구 조건"에서 "최저 수락선" 표시 제거 (히든 트레잇화)
+
+**배경**: 사용자 요청 — "최저 수락선은 삭제해줘. 이건 히든 트레잇으로 둬야해." 실제
+GM이 선수의 진짜 마지노선(walkAwaySalary)을 미리 알고 협상하는 건 비현실적이라는
+지적 — 값 자체를 없애는 게 아니라 화면에만 안 보이게 하고 판정 로직에서는 계속
+내부적으로 쓰여야 한다는 것.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — "요구 조건" 목록에서 `{ label: '최저
+  수락선', value: formatMoney(demand.walkAwaySalary) }` 행 삭제. `demand.walkAwaySalary`
+  자체는 그대로 남겨둬 `evaluateFAOffer`/`estimateAcceptProbability`/거절 대사 트리거
+  분기(`avgSalary < demand.walkAwaySalary * 0.85 ? 'OFFER_INSULT' : ...`)에서 계속
+  정상적으로 쓰인다 — 표시만 제거, 계산 로직은 무영향.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**롤백 방법**: 삭제한 배열 항목 한 줄을 다시 추가하면 복귀.
+
+---
+
+## 2026-09-17 — 협상 화면 YOS 측정을 "드래프트 연도 역산"→"커리어 기록 시즌 수 세기"로 교체
+
+**배경**: 사용자가 "YOS를 대체 어떻게 측정하고 있는데?" 질문에 "currentSeasonYear -
+draftYear" 역산 방식이라고 답했더니, "아니야. 그냥 커리어 기록에 몇 년이 있는지를
+세서 측정해줘야지"라고 정정 — 드래프트 연도만으로 역산하면 해외리그 체류, 부상으로
+빠진 시즌 등 실제 NBA에서 뛴 시즌 수와 어긋날 수 있으므로, `career_history`(실제 NBA
+시즌별 기록)에 몇 시즌이 들어있는지 세는 방식이 맞다는 지적.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `countYosFromCareerHistory(history)` 신규(모듈 최상단) — `career_history`에서
+    플레이오프 행(`playoff:true`)은 제외하고, 시즌 중 트레이드로 같은 시즌에 여러 팀
+    행이 생기는 경우를 대비해 `season` 문자열 기준 `Set`으로 중복 제거한 뒤 개수를 센다.
+  - `usePlayerCareerHistory(player?.id, !!player)` 훅 추가 — 이 화면은 선수 한 명만
+    보는 프로필형 화면이라 `MultiPlayerDetailView.tsx`가 이미 쓰는 것과 동일한 targeted
+    조회 패턴을 그대로 재사용(대량 조회 화면과 달리 career_history JSONB를 그 선수
+    한 명분만 받아 페이로드 부담 없음).
+  - `playerYos`를 `currentSeasonYear - (player.draftYear ?? currentSeasonYear)`에서
+    `countYosFromCareerHistory(playerCareerHistory)`로 교체. `minSalarySeasons`
+    useMemo 안에 있던 동일 공식의 중복 계산도 제거하고 바깥 `playerYos`를 그대로
+    재사용하도록 정리(의존성 배열도 `currentSeasonYear` → `playerYos`로 교체).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: 이 교체는 **이 화면(MultiNegotiationView.tsx) 안에서만** 적용했다.
+`calcFADemand()`/`calcYOSBounds()`(services/fa/faValuation.ts)와
+`services/fa/faMarketBuilder.ts`/`extensionEngine.ts`의 내부 YOS 계산은 여전히
+"draftYear 역산" 방식을 쓴다 — 이 함수들은 시장 전체(수백 명)를 한 번에 처리하는
+대량 계산 경로라, 선수마다 career_history를 targeted 조회하면 페이로드/쿼리 수가
+크게 늘어난다(기존 코드 주석에도 이미 이 트레이드오프가 명시돼 있음). 그 결과 이
+화면에 표시/적용되는 YOS(연차 행, 투웨이 자격, Max Cap% 상한, 미니멈 샐러리 티어)와
+`demand`(시작 요구가/최저 수락선 등, calcFADemand가 내부적으로 산출)가 참고하는 YOS가
+서로 다른 소스일 수 있다 — 대부분의 선수는 드래프트 이후 매 시즌 빠짐없이 뛰어서 두
+값이 같겠지만, 시즌을 거른 이력이 있는 선수는 두 값이 어긋날 수 있음. 두 경로를
+완전히 통일하려면 calcFADemand 계열 함수들도 career_history 기반으로 바꾸거나 YOS를
+외부에서 주입받도록 시그니처를 바꿔야 하는데, 이는 더 큰 범위의 후속 작업.
+
+**롤백 방법**: `playerYos` 정의를 `currentSeasonYear - (player.draftYear ??
+currentSeasonYear)`로, `minSalarySeasons` 안의 지역 변수도 원래대로 되돌리면 이전
+방식으로 복귀. `usePlayerCareerHistory` 훅 호출과 `countYosFromCareerHistory`는
+남겨둬도 무방.
+
+---
+
+## 2026-09-17 — 멀티플레이어 전 화면에서 Player.draftYear가 항상 undefined였던 버그 수정
+
+**배경**: 사용자 리포트 — "왜 모든 FA선수의 연차가 0년으로 표시되지?" 원인 추적: 협상
+화면의 `playerYos = currentSeasonYear - (player.draftYear ?? currentSeasonYear)`에서
+`player.draftYear`가 항상 `undefined`라 `?? currentSeasonYear` 폴백이 걸려 결과가 항상
+정확히 0이었다. `services/dataMapper.ts`의 `mapRawPlayerToRuntimePlayer()`는
+`raw.draft_year`(meta_players의 실제 top-level 컬럼, `base_attributes` JSONB 안에는
+중복 저장 안 됨 — DB로 직접 확인)를 읽는데, `hooks/useMultiSearchData.ts`의 FA 풀
+조회 select문에 `draft_year`가 아예 빠져 있었다. 조사 중 같은 원인의 컬럼 누락이
+`hooks/useLeagueRawStats.ts`(buildLeagueTeams 경유, 로스터 선수 전체가 쓰는 공용 경로 —
+리더보드/전술/프런트오피스/선수상세/로스터 탭 등 8곳+)에도 있는 걸 같이 발견해 함께
+고쳤다(아직 아무 화면도 로스터 선수의 draftYear를 실제로 쓰지 않아 겉으로 드러난 버그는
+없었지만, 로즈룰/슈퍼맥스/향후 연장 화면처럼 YOS 기반 CBA 기능이 계속 늘어나는
+시점이라 미리 막아둠).
+
+**변경 파일**:
+- `hooks/useMultiSearchData.ts` — FA 풀 조회 `.select(...)`에 `draft_year` 추가
+  (`'id, name, position, base_attributes, tendencies'` → `'id, name, position,
+  draft_year, base_attributes, tendencies'`). 이게 사용자가 리포트한 증상의 직접 원인.
+- `hooks/useLeagueRawStats.ts` — `RAW_PLAYER_COLS`(로스터 선수 공용 조회 컬럼 목록)에도
+  동일하게 `draft_year` 추가. 2026-09-07에 `tendencies`/`career_history`(무거운 JSONB)를
+  성능상 의도적으로 뺀 이력이 있는 상수라, `draft_year`가 그 스칼라 컬럼이라 성능과
+  무관하다는 점을 주석으로 명시해뒀다(다음에 또 헷갈려서 빼지 않도록).
+
+**검증**: DB에서 `meta_players.draft_year`가 실제 numeric 컬럼이고 `base_attributes`엔
+중복 저장 안 됨을 직접 쿼리로 확인(`base_attributes ? 'draft_year'` → 전부 false).
+`npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: `useLeagueRawStats.ts` 쪽 수정은 지금 당장 사용자가 체감하는 버그는
+없었다(아직 아무 화면도 그 경로의 draftYear를 안 읽음) — 예방적 수정.
+
+**롤백 방법**: 두 파일의 select문에서 `draft_year,`만 각각 제거하면 이전 상태(YOS 계산
+불가)로 복귀.
+
+---
+
+## 2026-09-17 — 협상 화면에 YOS별 Maximum Salary Cap% 상한 적용
+
+**배경**: 사용자가 "정규 계약을 더 딥하게" 깎는 첫 단계로 YOS별 캡% 맥스 제한 구현을
+요청 — `docs/research/NBA_2023_CBA_Max_CapPct_and_Exceptions_KR.docx`(어제 함께 검토한
+CBA 요약 문서) 기준 0~6 YOS 25%, 7~9 YOS 30%, 10+ YOS 35%(데릭 로즈 룰 자격이면
+YOS<7이어도 30%). 지금까지 협상 화면의 "1년차 연봉 (캡%)" 입력은 상한 없이 아무 값이나
+넣을 수 있었다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `getMaxCapPct(player, playerYos, currentSeasonYear, false)`
+    (`services/fa/contractEligibility.ts`) import 추가 — 새로 만들지 않고 싱글플레이어
+    `NegotiationScreen.tsx`가 이미 쓰는 것과 동일한 함수를 그대로 재사용(YOS 티어 +
+    데릭 로즈 룰 판정 로직 중복 없음). `isExtension` 인자는 `false` 고정 — 이 화면은
+    FA 신규 계약 전용이라 슈퍼맥스(Extension 전용 자격)는 해당하지 않음.
+  - `maxCapPct = maxCapResult.pct * 100`(%) 계산, `capPercent` 파생값을
+    `parseFloat(capPercentInput) || 0` 그대로 쓰던 것에서
+    `Math.min(maxCapPct, Math.max(0, ...))`로 클램프하도록 변경 — `raisePercent`가
+    이미 쓰던 것과 동일한 패턴(입력창의 타이핑 텍스트 자체는 안 건드리고, 계산에 쓰이는
+    파생값만 클램프).
+  - "1년차 연봉 (캡%)" 라벨을 "1년차 연봉 (캡%, 최대 {maxCapPct}%)"로 바꿔 상한을
+    항상 보여주고, 데릭 로즈 룰로 30%가 적용된 경우엔 그 사유를 알려주는 안내 문구 추가.
+  - (후속) 좌측 선수 정보 영역의 "몸무게" 행 바로 아래에 "연차" 행 추가
+    (`{playerYos}년`) — YOS 상한이 화면에 새로 생겼는데 정작 이 선수의 YOS 자체가
+    좌측 어디에도 안 보이던 걸 사용자가 지적, 바로 보이게 함.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개). `demand`
+기반 초기 추천 캡% 값(`calcFADemand()`가 내부적으로 이미 동일한 YOS 티어로 클램프한
+`askingSalary` 기반)은 이번 변경 이전부터 이미 상한 이내였음을 코드로 확인 — 별도
+수정 불필요.
+
+**주의사항**: 이번 단계는 "선수 개인 Maximum Salary" 상한만 적용한다. 예외 조항별
+자체 상한(MLE 고정 달러 금액, Bird Early/Non의 직전 연봉 대비 배율, 팀의 실제 캡 룸
+등)이나 에이프런 제약은 아직 검증하지 않는다(문서 4번 표 항목들 — 다음 단계 후보).
+슈퍼맥스(Designated Veteran, Extension 전용)는 이 화면이 FA 신규 계약만 다뤄서
+`isExtension=false`로 고정했으므로 적용되지 않는다 — 연장 계약 화면이 생기면 그때
+`isExtension=true`로 다시 판정해야 함.
+
+**롤백 방법**: `capPercent`를 `parseFloat(capPercentInput) || 0`로, 라벨을 "1년차 연봉
+(캡%)"로 되돌리고 `maxCapResult`/`maxCapPct`/로즈룰 안내 문구를 제거하면 이전 동작
+(상한 없음)으로 복귀.
+
+---
+
+## 2026-09-16 — 정규 계약에 "예외 조항" 하위 드롭다운 재노출 (CBA 서명 메커니즘 복원)
+
+**배경**: 투웨이 계약 시스템이 어느 정도 자리를 잡아 사용자가 "정규 계약을 더 딥하게
+깎아보겠다"며 첫 단계로 요청 — 정규 계약을 고르면 그 드롭다운 하단에 "예외 조항"을
+고를 수 있는 하위 드롭다운을 추가. 이전에 "계약 유형"을 정규/투웨이 두 가지로
+단순화하면서 캡스페이스/MLE/버드권/베테랑 미니멈/2라운드 예외/루키 스케일 같은
+세부 CBA 서명 메커니즘을 UI에서만 숨기고 계산 로직(isMinSalary/isRookieScale/
+maxRaisePercent 등)은 그대로 남겨뒀는데("필요해지면 다시 노출하면 됨" — 그때 남긴
+주석), 이번이 바로 그 재노출.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - "계약 유형" 드롭다운을 대분류 전용으로 변경 — `value`를 `signingType` 그대로가
+    아니라 `isTwoWay ? 'two_way' : 'regular'`(파생값)로 바꾸고, `onChange`도
+    `signingType`을 'two_way' 아니면 기본값 `'cap_space'`로만 설정(하위 예외 조항은
+    새 드롭다운이 전담).
+  - 하위 섹션 신규 — `!isTwoWay`일 때만 노출, `SIGNING_TYPE_OPTIONS.filter(t =>
+    t !== 'two_way' && (t !== 'rookie_scale' || rookiePick !== null))`로 9종(캡스페이스/
+    논택스 MLE/택스 MLE/BAE/풀·얼리·논 버드/베테랑 미니멈/2라운드 예외/루키 스케일)을
+    노출(루키 스케일은 기존과 동일하게 이번 시즌 드래프트된 1라운드 픽에만). 값은
+    `signingType` 그대로 — 두 드롭다운이 같은 상태를 서로 다른 두 단계로 나눠 보여주는
+    구조.
+  - 아래 "계약 연수"/캡%·변동률/루키 스케일 배율 섹션들은 이미 `isMinSalary`/
+    `isRookieScale`을 참조하도록 만들어져 있던 그대로라 수정 없이 곧바로 다시
+    작동한다(당시 "필요해지면 다시 노출하면 됨"이라 써둔 대로).
+  - (후속 1) "캡 스페이스는 예외조항이 아니지않나?" 지적 — 맞는 지적이다. 캡 스페이스
+    (cap_space)는 실제 CBA상 salary cap exception이 아니라 정반대 개념(캡 룸이 남아
+    예외 없이 정상 계약)이라, MLE/버드권/베테랑 미니멈처럼 진짜 예외와 한데 묶어
+    "예외 조항"이라 부르는 건 용어가 틀렸다고 판단해 섹션 제목을 "서명 방식"으로 정정.
+  - (후속 2) 그런데 "서명 방식"도 틀렸다는 재정정 — 사용자 설명: 섹션 이름 자체는
+    "예외 조항"이 맞고(캡 스페이스만 빼면 나머지 9개는 전부 실제 CBA 예외들이므로),
+    대신 캡 스페이스를 "고를 수 있는 예외 중 하나"가 아니라 "예외를 아무것도 선택
+    안 한 기본 상태"로 표현해야 한다는 것 — "1년차 캡%를 그냥 직접 정해서 제출하면
+    그게 캡 스페이스"이기 때문. 최종 반영: 섹션 제목을 다시 "예외 조항"으로 되돌리고,
+    드롭다운 옵션 목록에서 `cap_space` 항목만 표시 라벨을 "없음"으로 바꿈(값 자체는
+    여전히 `signingType==='cap_space'`, 계산 로직 변경 없음 — 순수 라벨링 수정). 안내
+    문구도 "'없음'은 예외 없이 1년차 캡%를 직접 정해 계약(캡 스페이스)합니다"로 보강.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개, 두 차례
+후속 수정 각각 재확인).
+
+**롤백 방법**: "계약 유형" `<select>`를 다시 `value={signingType}` +
+`onChange={e => setSigningType(e.target.value as SigningType)}` + `<option
+value="cap_space">정규 계약</option>{isTwoWayEligible && <option value="two_way">...}`
+로 되돌리고, "예외 조항" 섹션 블록을 통째로 제거하면 이전 단순화 상태로 복귀. 라벨만
+되돌리려면 옵션 렌더링을 `{SIGNING_TYPE_LABEL[t]}`(삼항 없이)로 바꾸면 됨.
+
+---
+
+## 2026-09-16 — "선수 기록" 탭에 0경기 선수도 표시(useLeaderboardData 옵션 추가)
+
+**배경**: 사용자 질문 — "로스터에는 있지만 선수 기록 탭에 표시가 안 되는 건 기록이
+없어서인가?" → 확인 후 답변: 맞다, `useLeaderboardData.ts`가 `mode==='Players'`일 때
+`stats.g > 0`인 선수만 남기는 필터가 있어서(리더보드 랭킹에 0경기 표본을 안 보여주려는
+의도된 필터) 이번 시즌 아직 출전 기록이 없는 선수는 로스터 탭엔 있어도 선수 기록 탭에선
+빠진다. 사용자가 이어서 "기록이 없어도 표시해줘" 요청.
+
+**변경 파일**:
+- `hooks/useLeaderboardData.ts` — 마지막에 `includeZeroGamePlayers: boolean = false`
+  선택 인자 추가(기존 호출부 6곳 전부 안 넘기므로 리더보드/홈 위젯/전술 인사이트는
+  기존과 100% 동일하게 0경기 선수 계속 제외). `sortedData` 조립부의
+  `statCategory === 'Attributes'` 조건에 `|| includeZeroGamePlayers`를 or로 추가해
+  Players 모드에서도 g>0 필터를 건너뛸 수 있게 함. useMemo 의존성 배열에
+  `includeZeroGamePlayers` 추가.
+- `components/roster/RosterStatsStack.tsx` — `useLeaderboardData(...)` 호출에
+  `includeZeroGamePlayers=true` 추가(로스터 "선수 기록" 탭만 해당). 0경기 선수가 이제
+  목록엔 뜨지만(스탯 값은 전부 0), 하단 "팀 평균" 행 집계는 `sortedData` 대신
+  `playedData = sortedData.filter(p => (p.stats?.g ?? 0) > 0)`로 구해 0경기 선수의
+  0값이 팀 평균을 실제보다 낮게 끌어내리지 않도록 분리했다(목록 표시 기준과 집계 기준을
+  다르게 둠 — 사용자가 직접 요청하진 않았지만 그대로 두면 명백히 왜곡된 평균이 나와서
+  같이 수정).
+  - (후속) 정작 표시된 0경기 선수 행의 스탯 칸이 전부 "-"로 나온다는 지적 — `cols.map`
+    안에 `p.stats.mp === 0 && c.key !== 'g'`이면 "-"를 강제로 그리던 특수 분기가 원래
+    있었다(0경기 필터가 있던 예전엔 이 분기가 사실상 죽은 코드였는데, 이번에
+    0경기 선수를 목록에 포함시키면서 매번 걸리게 됨). 이 분기를 삭제하고
+    `getStatCellValue`를 그대로 호출하도록 변경 — `g = s.g || 1`로 나눗셈이 이미
+    안전하게 처리돼 있어 0경기 선수는 컬럼 포맷에 맞는 "0"/"0.0"/"0.0%"가 그대로 나온다.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개). 히트맵 색상
+범위(statRanges)는 원래부터 `allPlayers`(필터 전 전체) 기준으로 계산돼 있어 이번
+변경으로 새로 영향받지 않음을 코드로 확인(기존에도 0경기 선수가 이미 포함돼 있었음).
+
+**롤백 방법**: `RosterStatsStack.tsx`의 `useLeaderboardData(...)` 호출에서 마지막
+`true` 인자만 제거하면 이전 동작(0경기 선수 숨김)으로 복귀. `useLeaderboardData.ts`의
+`includeZeroGamePlayers` 파라미터는 기본값 `false`라 다른 호출부에 영향이 없으므로
+안 지워도 무방.
+
+---
+
+## 2026-09-16 — 재정 탭 선수 이름 호버카드가 안 뜨던 버그 수정 (enableHoverCard 누락)
+
+**배경**: 사용자 리포트 — 재정 탭에서 선수 이름에 마우스를 올려도 호버카드(능력치+스탯
+팝업)가 안 뜬다. 원인 조사: 오늘 작업한 투웨이 관련 변경과는 무관한 기존 버그였다 —
+`views/RosterView.tsx`가 "로스터"/"능력치"/"선수 기록"/"일정" 4개 탭 컴포넌트에는 전부
+`enableHoverCard={enableHoverCard}`를 넘기는데, "재정" 탭의 `<TeamPayrollTable>` 호출부에만
+이 prop이 빠져 있었다 — `TeamPayrollTable`의 `enableHoverCard` 기본값이 `false`라 재정
+탭에서는 항상 호버카드가 꺼진 채로 렌더링되고 있었다(멀티플레이어에서도 마찬가지).
+
+**변경 파일**:
+- `views/RosterView.tsx` — `<TeamPayrollTable>` 호출부에 `enableHoverCard={enableHoverCard}`
+  추가.
+- (후속) `components/roster/TeamPayrollTable.tsx` — 이름 span에 다른 탭 테이블
+  (RosterOverviewGrid.tsx 등)과 동일한 `hover:text-indigo-400 hover:underline
+  cursor-pointer transition-colors` 클래스 추가 — 호버카드는 떴는데 "클릭 가능한
+  링크"처럼 보이는 시각적 신호(밑줄/색 변화)가 없었다는 사용자 지적 반영.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**롤백 방법**: 추가한 `enableHoverCard={enableHoverCard}` 한 줄과 이름 span의 호버 클래스
+4개를 제거하면 됨.
+
+---
+
+## 2026-09-16 — 투웨이 계약 연봉을 팀 재정/샐러리캡 합산에서 제외
+
+**배경**: 사용자 요청 — 재정 탭에서 투웨이 계약 연봉을 팀 재정에 합산하지 말 것. 실제
+CBA상 투웨이 계약은 샐러리캡에 전혀 잡히지 않는다. 조사 결과 "재정" 탭
+(`TeamPayrollTable.tsx`) 외에도 같은 페이롤 합산 함수(`calcTeamPayroll()`)를 협상 화면
+(MultiNegotiationView.tsx)의 "팀 샐러리캡 현황"(계약 전/후 페이롤)에서도 그대로 쓰고
+있어 동일한 문제가 있었다 — 이번에 둘 다 같이 고쳤다(싱글플레이어는 투웨이 계약 자체가
+없는 개념이라 `calcTeamPayroll()` 수정으로 인한 영향 없음).
+
+**변경 파일**:
+- `services/fa/faMarketBuilder.ts` — `calcTeamPayroll()`의 로스터 합산 전에
+  `p.contract?.type !== 'two-way'`로 필터 추가(데드머니는 그대로 합산).
+- `components/roster/TeamPayrollTable.tsx`:
+  - 시즌별 "합계" 행 집계(`colTotals`) 루프에서 `p.contract.type === 'two-way'`인
+    선수는 건너뛰도록 추가 — "합계"/캡·사치세·에이프런 대비 행(diffRows, currentPayroll
+    기반) 전부 자동으로 함께 정정된다.
+  - Cap%(컬럼) — 투웨이 선수 행은 샐러리캡에 안 잡히므로 퍼센트 대신 "-" 표시.
+  - 개별 선수 행의 연도별 연봉/"총액" 컬럼은 그대로 유지(정보성 — 그 선수가 실제로
+    받는 금액이므로 감추지 않음, 팀 합계에서만 제외).
+  - (후속) 투웨이 선수의 `<TableRow>` 전체에 `opacity-60` 추가 — "팀 재정에 합산 안 됨"을
+    합계 숫자뿐 아니라 시각적으로도 즉시 구분되게 요청받아 반영.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개, 두 줄 위치가
+바뀐 것 외 faMarketBuilder.ts의 기존 베이스라인 에러 2건은 그대로).
+
+**롤백 방법**: `calcTeamPayroll()`의 `.filter(...)`와 `TeamPayrollTable.tsx`의
+`|| p.contract.type === 'two-way'`/Cap% 삼항 분기를 제거하면 이전 동작(투웨이도
+합산)으로 복귀.
+
+---
+
+## 2026-09-16 — 투웨이 계약 자격에 OVR 상한 추가 (YOS만으로는 특급 유망주를 못 걸렀음)
+
+**배경**: 사용자 리포트 — "OVR 90짜리 선수와 투웨이 계약을 맺었다." 원인: 투웨이 자격
+(`isTwoWayEligible`)은 YOS(서비스타임) 4년 미만 여부만 봤고, 수락 확률
+(`twoWayAcceptProbability`)은 실제 스탯 percentile 기반 `marketValueScore`를 본다 —
+저연차인데 아직 누적 출전 샘플이 적은 특급 유망주는 진짜 OVR이 90이어도
+`marketValueScore`가 낮게 나올 수 있어(증명할 기회가 적었을 뿐), 확률상 투웨이를 잘
+받아들이는 것처럼 계산돼버렸다. YOS 자격만으로는 이런 "저연차+고OVR"(신인 특급
+유망주) 케이스를 걸러내지 못하는 구조적 허점이었다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `TWO_WAY_MAX_OVR = 75` 모듈 상수 신규 — 실제 NBA에서 이 정도 기량의 선수가 투웨이
+    계약을 받는 일은 없다는 전제로 잡은 하드 상한(75 이상이면 YOS와 무관하게 자격 없음).
+  - `playerOvrForTwoWay`(`calculatePlayerOvr(player)`) 추가, `isTwoWayEligible = playerYos
+    < 4 && playerOvrForTwoWay < TWO_WAY_MAX_OVR`로 조건 추가 — 드롭다운에서
+    "투웨이 계약" 옵션 자체가 안 보이게 되므로, 수락 확률 계산(marketValueScore 기반)에
+    도달하기 전에 원천 차단된다(twoWayAcceptProbability 자체는 건드리지 않음 —
+    바로 이전 항목의 "미니멈 계약과의 정합성" 수정을 훼손하지 않기 위해).
+  - 자격 없음 안내 문구를 YOS 사유/OVR 사유로 분리(`playerYos>=4`면 YOS 문구,
+    `playerYos<4`인데도 자격이 없으면(=OVR 초과) 새 OVR 문구를 표시).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: 이 수정은 앞으로의 신규 투웨이 협상만 막는다 — 사용자가 이미 체결한
+OVR 90 선수의 기존 투웨이 계약은 소급 적용되지 않고 그대로 남아있다(방출 후 정규
+계약으로 재체결하거나 그대로 둘지는 사용자 선택 사항). `TWO_WAY_MAX_OVR=75`는 실측
+밸런스 데이터가 아니라 `ovrToRoleScore`/`scoreToCapShare` 티어 감각에 맞춘 근사치라
+플레이테스트 후 조정 여지가 있음.
+
+**롤백 방법**: `isTwoWayEligible`에서 `&& playerOvrForTwoWay < TWO_WAY_MAX_OVR` 부분과
+`TWO_WAY_MAX_OVR` 상수, OVR 사유 안내 문구를 제거하면 YOS만 보던 이전 동작으로 복귀.
+
+---
+
+## 2026-09-16 — 투웨이 슬롯 소진 여부 검증 추가 (드롭다운 에러 문구 + 제출 버튼 비활성화 + RPC)
+
+**배경**: 바로 아래 항목("로스터 정원 체크가 투웨이를 정규 슬롯에 합산하던 버그")에서
+투웨이 슬롯 자체의 소진 여부 검증은 스코프 밖으로 명시해뒀는데, 사용자가 이어서 요청 —
+투웨이 슬롯도 꽉 찼으면 "계약 유형" 드롭다운에서 투웨이 계약을 선택했을 때 드롭다운
+아래에 에러 텍스트를 띄우고 오퍼 제출 버튼을 비활성화할 것.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `myTwoWayContractCount`(`myTeam.roster.filter(p => p.contract?.type ===
+    'two-way').length`) 추가.
+  - `isTwoWaySlotsFull = isTwoWay && !!myTeamRow && myTwoWayContractCount >=
+    (league.two_way_slots ?? 3)` 신규 — `isTwoWay`(계약 유형이 지금 투웨이로 선택된
+    상태)일 때만 의미 있는 체크라 `isRosterFull`과는 별개 변수로 둠.
+  - "계약 유형" 드롭다운 바로 아래(기존 YOS 자격 안내 문구 다음)에
+    `isTwoWaySlotsFull && <div className="text-red-400">투웨이 슬롯(N명)이 가득
+    찼습니다...</div>` 추가.
+  - `handleSubmit()` 조기 반환 조건, `isLocked`(제출 버튼 비활성화 조건) 둘 다
+    `isTwoWaySlotsFull` 포함. 제출 버튼 라벨도 `isRosterFull`과 동일한 우선순위로
+    "투웨이 정원 초과" 표시 추가.
+- `sign_free_agent_negotiated` RPC(Supabase,
+  migrations/add_two_way_slots_full_check.sql) — 클라이언트 가드와 별개로 서버측
+  권위 있는 체크도 추가. `p_contract->>'type' = 'two-way'`일 때만 로스터 중 이미
+  투웨이인 선수 수를 세어 `leagues.two_way_slots`(기본 3) 이상이면
+  `'two_way_slots_full'` 예외. 투웨이가 아닌 일반 계약은 기존 `roster_full` 체크
+  경로 그대로(if/else로 분기, 중복 카운트 없음).
+- `services/multi/faService.ts` — `mapFaError()`에 `two_way_slots_full` → "투웨이
+  슬롯이 가득 찼습니다. 투웨이 계약을 방출한 뒤 다시 시도하세요." 매핑 추가.
+
+**검증**: Supabase MCP `apply_migration` 성공, `pg_proc.prosrc`에 `two_way_slots_full`
+포함 확인. `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**롤백 방법**: 클라이언트는 `isTwoWaySlotsFull` 관련 4곳(변수/에러문구/handleSubmit
+가드/isLocked·버튼라벨)을 제거하면 됨. RPC는 `migrations/
+fix_roster_full_check_exclude_two_way.sql`의 `sign_free_agent_negotiated` 버전을 다시
+`CREATE OR REPLACE`하면 복귀(투웨이 슬롯 무제한 체결 상태로).
+
+---
+
+## 2026-09-16 — 로스터 정원 체크가 투웨이 계약을 정규 슬롯에 합산하던 버그 수정
+
+**배경**: 사용자 리포트 — 정규 계약 슬롯 13/15, 투웨이 2/3인데 "계약" 버튼이 비활성화된다.
+원인: 클라이언트(`isMyRosterFull`/`isRosterFull`)와 서버 RPC(`sign_free_agent`/
+`sign_free_agent_negotiated`)가 전부 `league_teams.roster` 배열의 "전체 길이"(정규+투웨이
+합산)를 `max_roster_size`와 비교하고 있었다 — 13+2=15로 이미 `max_roster_size`(15)에
+도달해 "정규 슬롯은 13/15로 안 찼는데도" 계약이 막혔다. 투웨이는 애초에 별개 슬롯
+(`leagues.two_way_slots`)이라 정규 계약 카운트에서 제외해야 한다는 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — `isMyRosterFull` 계산을 `teams`(buildLeagueTeams
+  결과, 선수별 실제 `contract` 포함) 로드 이후로 옮기고, `myTeam.roster.filter(p =>
+  p.contract?.type !== 'two-way').length`(RosterOverviewGrid.tsx의 "정규 계약 슬롯"
+  집계와 동일 기준)로 교체. `teams` 로딩 전 과도기엔 기존처럼 `myTeamRow.roster.length`로
+  폴백(약간 과대 카운트될 수 있으나 로딩 순간만).
+- `views/multi/season/MultiNegotiationView.tsx` — 동일한 방식으로 `myRegularContractCount`
+  계산 추가. `isRosterFull` 자체는 `isTwoWay`가 필요해 `signingType`/`isTwoWay` 선언 이후로
+  옮기고 `!isTwoWay && ...`를 추가 — 지금 체결하려는 계약이 투웨이면 정규 슬롯 정원 체크
+  자체를 건너뛴다(투웨이는 애초에 정규 슬롯을 쓰지 않으므로, 정규 슬롯이 꽉 찬 팀도 투웨이
+  슬롯에 여유가 있으면 체결 가능해야 함 — 서버 쪽과 대칭).
+- `leagues` DB RPC(Supabase, migrations/fix_roster_full_check_exclude_two_way.sql) —
+  `sign_free_agent`/`sign_free_agent_negotiated` 둘 다 `jsonb_array_length(v_team.roster)
+  >= v_max_roster`(전체 길이) 대신, `room_player_state.contract->>'type' = 'two-way'`가
+  아닌 선수만 세는 서브쿼리로 교체. `sign_free_agent_negotiated`는 추가로 지금 체결하는
+  `p_contract->>'type'`이 `'two-way'`면 이 체크 자체를 건너뛰도록(클라이언트와 동일 원칙).
+
+**검증**: Supabase MCP `apply_migration` 성공, `pg_proc.prosrc`에 두 함수 모두 수정된
+로직(`v_regular_count`) 반영 확인. `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규
+에러 0개).
+
+**주의사항**: 투웨이 슬롯(`leagues.two_way_slots`) 자체의 소진 여부 검증은 여전히 이번
+스코프에 없음(이전 항목에서도 명시) — 투웨이 슬롯이 이미 가득 찬 팀도 투웨이 계약을
+무제한 체결할 수 있는 상태가 그대로 남아 있다.
+
+**롤백 방법**: 클라이언트 두 파일의 `myRegularContractCount`/`isTwoWay` 관련 분기를
+제거하고 이전처럼 `roster.length` 직접 비교로 되돌리면 됨. RPC는 이전 버전
+(`migrations/add_roster_full_check_to_fa_rpcs.sql`)을 다시 `CREATE OR REPLACE`하면 복귀.
+
+---
+
+## 2026-09-16 — 협상 화면이 계약 체결 후 leagueTeams를 reload()하지 않던 버그 수정
+
+**배경**: 사용자 리포트 — 투웨이 계약을 체결해도 로스터 탭의 투웨이 슬롯에 선수가
+추가되지 않는다. 원인 추적 결과 계약 체결 자체(`sign_free_agent_negotiated` RPC → DB
+`league_teams.roster` 업데이트)는 정상이었지만, `MultiNegotiationView.tsx`의
+`handleSubmit()`이 체결 성공 후 `useLeagueContext()`의 `reload()`를 호출하지 않고 있었다.
+`LeagueLayout`은 `/multi/leagues/:leagueId/*` 하위 모든 라우트에 걸쳐 마운트된 채 유지되는
+지속 레이아웃이라, 협상 화면에서 방금 체결한 계약이 그 안의 `useCurrentLeague()` 상태
+(`leagueTeams`)에 반영되려면 명시적으로 `reload()`를 호출해야 하는데 이 화면만 빠져
+있었다 — 그 결과 협상 완료 후 같은 세션 안에서 로스터 탭으로 이동해도 방금 서명한
+선수가(투웨이든 정규 계약이든) DB엔 있지만 화면(로스터 목록, 정규/투웨이 슬롯 카운트
+모두)엔 반영되지 않았다. `MultiFreeAgentView.tsx`의 즉시계약(`handleSign`)과
+`MultiRosterView.tsx`의 방출(`handleReleasePlayer`)은 이미 `reload()`를 호출하고 있어
+이 문제가 없었음.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `useLeagueContext()` 구조분해에
+  `reload` 추가, `handleSubmit()`의 계약 체결 성공 분기(`signFreeAgentNegotiated` 성공
+  직후, `navigate()` 호출 전)에 `reload()` 추가.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: 이 버그는 투웨이 계약에 국한되지 않고 협상 화면(MultiNegotiationView.tsx)을
+거쳐 체결되는 모든 계약(정규/미니멈/루키 스케일/투웨이)에 해당했다 — 바로 위 항목에서
+고친 "로스터 탭이 계약을 안 읽던 버그"와 겹쳐서, 그동안 협상 화면발 계약은 이중으로
+로스터에 반영이 안 되고 있었을 가능성이 있다(읽는 쪽도 안 되고, 갱신 트리거도 안 됨).
+
+**롤백 방법**: `handleSubmit()`의 `reload()` 호출 한 줄만 제거하면 이전 동작(리로드 없음)으로 복귀.
+
+---
+
+## 2026-09-16 — 투웨이 계약 수락 판정을 금액 기준에서 YOS/OVR 기준으로 분리
+
+**배경**: 사용자 리포트 — 모든 선수가 투웨이 계약을 항상 거절한다. 원인: 투웨이 급여
+(0 YOS 미니멈의 50%, 일할계산)는 어떤 선수의 정상 FA 수요(`demand.walkAwaySalary` — 최소
+하한이 YOS별 베테랑 미니멈)보다도 훨씬 낮아서, 기존 `evaluateFAOffer()`의
+`offer.salary < demand.walkAwaySalary → 무조건 거절` 분기에 항상 걸렸다. 사용자 요청:
+"저연차+저OVR 선수들은 투웨이 계약을 긍정적으로 고려하도록" — 실제로 이런 선수는
+정규 계약을 받을 가능성 자체가 희박해 "일단 로스터에 남는" 기회 자체를 반긴다는 것.
+
+**변경 파일**:
+- `services/fa/faValuation.ts` — `twoWayAcceptProbability(yos, ovr)`(비공개) +
+  `estimateTwoWayAcceptProbability(yos, ovr)`/`evaluateTwoWayOffer(yos, ovr, seed)`(공개,
+  `estimateAcceptProbability`/`evaluateFAOffer`와 동일한 "표시용 확률 / 실제 판정" 쌍
+  패턴) 신규. 오퍼 금액은 아예 보지 않고 YOS(0→1.0, 4→0 선형)와 OVR(60 이하→1.0, 75
+  이상→0 선형, 55:45 가중 평균)만으로 수락 확률을 계산, 5~95%로 클램프. YOS 4년 이상은
+  UI 가드로 애초에 선택 불가하지만 방어적으로도 0 반환.
+- `services/fa/negotiationDialogue.ts` — `DialogueTrigger`에 `'TWO_WAY_DECLINE'` 추가
+  (연봉이 아니라 "이 정도면 정규 계약을 노려볼 만하다"는 사유의 전용 대사 4종),
+  `selectPool()`에 케이스 추가.
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `acceptProbability` useMemo — `isTwoWay`면 `estimateTwoWayAcceptProbability(playerYos,
+    calculatePlayerOvr(player))`, 아니면 기존 `estimateAcceptProbability(...)`.
+  - `handleSubmit()`의 `accepted` 판정도 동일하게 분기(`evaluateTwoWayOffer(...)`).
+  - 거절 시 대사 트리거 결정 로직도 `isTwoWay`면 무조건 `'TWO_WAY_DECLINE'`으로 고정 —
+    기존 로직(`avgSalary`를 `demand.askingSalary`/`walkAwaySalary`와 비교)을 그대로
+    쓰면 투웨이 급여가 항상 극단적으로 낮아 매번 "모욕적인 오퍼"(`OFFER_INSULT`,
+    인내심 +2)로 잘못 분류돼 실제로는 아무 잘못 없는 상황에서도 협상 결렬로
+    치닫는 문제가 있었다. `TWO_WAY_DECLINE`은 `TEAM_TOO_WEAK`와 동일하게 인내심 소모 0.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: OVR 60 이하/YOS 0에 가까운 전형적 투웨이 후보는 대부분(최대 95%) 수락하고,
+OVR 75 이상이거나 YOS 4에 근접한 선수는 대부분(최소 5%) 거절하도록 설계했다 — 정확한
+임계값(60/75, 가중치 55:45)은 실측 데이터가 아니라 기존 `ovrToRoleScore`/`scoreToCapShare`
+티어 감각에 맞춘 근사치라 플레이테스트 후 조정이 필요할 수 있음.
+
+**롤백 방법**: `MultiNegotiationView.tsx`의 `isTwoWay` 분기 3곳(acceptProbability/
+handleSubmit의 accepted/trigger)을 제거하면 이전 동작(항상 거절)으로 복귀.
+`evaluateTwoWayOffer`/`estimateTwoWayAcceptProbability`/`TWO_WAY_DECLINE`은 남겨둬도 무방.
+
+**후속 수정(같은 날)**: 사용자가 실사용 중 모순을 발견 — "희망 연봉이 미니멈인 선수가
+미니멈 제안엔 '어려움'인데, 같은 선수한테 투웨이를 제안하면 갑자기 '높음'으로 뜬다."
+원인: 위 최초 구현이 raw OVR(`calculatePlayerOvr`)을 썼는데, 이는 `calcFADemand()`가
+산출하는 `marketValueScore`(스탯 percentile+나이+부상 등을 반영한 실제 시장가치, 미니멈
+제안 수락 여부를 가르는 바로 그 지표)와 완전히 다른 축이라 두 판정이 서로 안 맞을 수
+있었다. `twoWayAcceptProbability(yos, ovr)` → `twoWayAcceptProbability(yos,
+marketValueScore)`로 교체 — `qualityFactor`를 `scoreToCapShare()`의 최하위 티어 경계(35)
+보다 낮은 30 부근에서만 1.0에 가깝게(그 이상이면 급격히 0으로) 설계해, "미니멈보다 더
+받을 자격이 있다고 스스로 느끼는"(=marketValueScore가 높아 미니멈 제안이 이미 어려운)
+선수는 투웨이도 똑같이 꺼리도록 정합성을 맞췄다. `MultiNegotiationView.tsx`의 두 호출부
+(`acceptProbability`/`handleSubmit`)도 `calculatePlayerOvr(player)` → `demand.marketValueScore`로
+교체. 가중치는 연차 50% : 시장가치 50%로 재조정. `npx tsc --noEmit` 재검증 — 58건 동일.
+
+---
+
+## 2026-09-16 — 로스터 탭이 협상 체결 계약을 반영 안 하던 버그 수정 + 투웨이 슬롯 푸터/TW 배지
+
+**배경**: 사용자가 "투웨이 계약이 실제로 성사되게 되어있는지" 확인을 요청 — 조사 결과
+`sign_free_agent_negotiated` RPC 자체는 `room_player_state.contract`에 정상 저장하고
+있었지만(문제 없음), **팀 > 로스터 탭(MultiRosterView.tsx)이 그 값을 전혀 읽지
+않는 버그**를 발견했다. 이 화면만 유일하게 `buildLeagueTeams()`(다른 8개 화면 — FA
+목록/트레이드/선수상세/리더보드/전술/뉴스피드/시즌페이지 등 — 가 전부 쓰는 공용
+계약 병합 헬퍼)를 안 쓰고 `mapRawPlayerToRuntimePlayer()`로 meta_players 원본만 가지고
+직접 로스터를 조립하고 있었다 — 그 결과 FA 서명/트레이드/방출로 이 리그 안에서 바뀐
+계약이 로스터 탭에는 전혀 반영되지 않고 항상 meta_players 원본(선수 생성 시점 기본값)만
+보였다. 투웨이뿐 아니라 이 화면에서 체결된 모든 협상 계약이 다 이 버그의 영향을 받고
+있었음. 추가로 (1) 로스터 탭 푸터에 "정규 계약 슬롯" 아래 "투웨이 슬롯 N/N" 추가, (2)
+투웨이 계약 선수는 이름 우측에 "TW" 배지(순서: 이름 → TW → 부상/출장정지 배지) 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` — `selectRosterIdentity`가 `meta_players` 원본을
+  직접 조립하던 로직을 `buildLeagueTeams(raw, leagueTeams, useCustomOverrides)` 호출로
+  교체(services/multi/buildLeagueTeams.ts, 다른 8개 화면과 동일 패턴) — 이제
+  `room_player_state.contract`가 있으면 그 값을, 없으면 meta_players 원본으로 자연스럽게
+  폴백한다. 이 화면 전용 "활성 부상 상태" 오버레이(`buildActiveInjurySeverityMap`)는 그
+  결과 위에 그대로 얹는 방식으로 유지 — 다른 화면 동작에는 영향 없음(mapRawPlayerToRuntimePlayer
+  import 제거, buildLeagueTeams import 추가).
+- `components/roster/RosterOverviewGrid.tsx`:
+  - `twoWaySlots?: number`(기본 3) prop 추가, `twoWayCount = roster.filter(p =>
+    p.contract?.type === 'two-way').length` 계산.
+  - 이름 셀에 `p.contract?.type === 'two-way'`일 때 "TW" 텍스트 배지 삽입 — 이름 span과
+    기존 부상/출장정지 배지(`InjuryStatusBadge`) 사이에 위치시켜 "이름 → (TW) →
+    (부상/출장정지)" 순서를 맞췄다.
+  - `<tfoot>` 푸터를 `flex-col`로 바꿔 "정규 계약 슬롯 NN/NN" 아래 "투웨이 슬롯 NN/NN"을
+    한 줄 추가(정원 도달/초과 시 동일하게 빨간색).
+- `views/RosterView.tsx` — `twoWaySlots?: number` prop 추가, `RosterOverviewGrid`로 전달.
+- `views/multi/season/MultiRosterView.tsx` — `<RosterView twoWaySlots={(league as
+  any)?.two_way_slots} />`로 리그 설정값 전달(싱글플레이어는 기본값 3 사용).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**주의사항**: 이번에 발견한 버그는 투웨이 계약에 국한되지 않고 이 화면(로스터 탭)에서
+체결된 모든 FA 서명/트레이드/방출 계약에 해당했다 — 이번 수정으로 전부 함께 고쳐졌다.
+
+**롤백 방법**: `MultiRosterView.tsx`의 `selectRosterIdentity`를 이전 버전(meta_players
+직접 조립)으로 되돌리면 버그가 재현되지만, 되돌릴 이유가 없는 순수 버그 수정이라
+권장하지 않음. TW 배지/투웨이 슬롯 푸터만 되돌리려면 각 컴포넌트의 해당 블록만
+제거하면 됨.
+
+**후속 조정(같은 날, 연속 요청)**:
+1. 푸터 레이아웃/색상/자릿수 정정 — "정규 계약 슬롯"/"투웨이 슬롯"을 `flex-col`(세로
+   배치) 대신 `flex items-start gap-4`(수평 배치)로 변경. 숫자 텍스트 색을 기본
+   `text-white`/`text-slate-400`(라벨과 다른 색)에서 라벨과 동일한 `text-slate-400`으로
+   통일(정원 초과 시의 `text-red-400` 경고색은 유지). 투웨이 슬롯 숫자 표기를
+   `padStart(2,'0')`(00/03) 대신 패딩 없는 그대로(0/3)로 변경 — 정규 계약 슬롯(최대
+   15~20명이라 두 자리가 자연스러움)은 그대로 두 자리 유지.
+2. TW 배지를 로스터 탭(RosterOverviewGrid.tsx, 완료)뿐 아니라 능력치
+   (`components/roster/RosterGrid.tsx`)/선수 기록(`components/roster/
+   RosterStatsStack.tsx`)/재정(`components/roster/TeamPayrollTable.tsx`) 탭까지 전부
+   확장 — 4개 컴포넌트 모두 동일한 마크업(`p.contract?.type === 'two-way'`일 때
+   `bg-amber-500/15 text-amber-400 border-amber-500/40`의 "TW" 텍스트 배지, 이름 span과
+   부상/출장정지 배지 사이에 위치)으로 통일. `TeamPayrollTable.tsx`는 기존에 이름
+   셀에 배지를 위한 flex 래퍼가 아예 없어서(부상 배지도 원래 없음) 이름 span을
+   `<span className="flex items-center gap-1.5 min-w-0">`로 새로 감쌌다.
+
+**검증(후속)**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+---
+
+## 2026-09-16 — 투웨이 계약 UI 정리(단년 고정) + 협상 화면 금액 표기/모노스페이스 정돈
+
+**배경**: 바로 아래 항목(투웨이 급여 산정 로직)에 이어 사용자가 세 가지 후속 요청 — (1)
+투웨이 계약은 단년만 가능하므로 "계약 연수"/캡%·변동률/"추가 사항" 섹션을 아예 숨길 것,
+(2) 협상 화면 전체에서 100만 달러 미만 금액은 K 축약 없이 전체 자릿수로 표시, (3) 협상
+화면 우측 섹션의 `font-mono`를 모두 해제.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `effectiveMaxYears`의 `isTwoWay` 분기를 2년→1년으로 변경, 연수 클램프 `useEffect`도
+    `setYears(y => Math.min(y, 2))`→`setYears(1)`로 고정.
+  - "계약 연수" 섹션(연수 스테퍼 + 캡%/변동률 입력 전체)을 `{!isTwoWay && (<>...</>)}`로
+    감싸 투웨이일 때 통째로 숨김. 이전에 추가했던 "투웨이 계약은 최대 2년까지만..." 안내
+    문구는 단년 고정으로 바뀌며 의미가 없어져 제거. (처음엔 섹션 최하단의 "0 YOS
+    미니멈의 50%(...일할계산)로 자동 계산됩니다" 안내 텍스트를 남겨뒀었는데, 곧바로
+    사용자가 "드랍다운 아래 일할계산 관련 텍스트는 삭제해달라"고 정정 — 그 텍스트도
+    `isTwoWay` 분기를 `null`로 바꿔 완전히 제거했다. 계약 유형 드롭다운 바로 아래엔
+    이제 "에이프런/MLE/버드권한 자격 검증은 아직 적용되지 않습니다" 문구와
+    자격 없음 안내만 남는다.)
+  - "추가 사항"(팀/플레이어 옵션) 섹션 전체를 `{!isTwoWay && (...)}`로 감싸 숨김 — 투웨이
+    계약은 옵션을 쓸 수 없다는 사용자 설명 반영.
+  - 이 화면 전용 지역 함수 `formatMoney(dollars)` 신규(모듈 최상단, `formatMoneyAbbrev`/
+    `formatMoneyFull`로 이름 바꿔 import한 `utils/formatMoney.ts`의 두 함수를 감쌈) —
+    100만 달러 미만이면 `formatMoneyFull`(전체 자릿수, 예: $234,097)을, 이상이면 기존
+    `formatMoney`(M 단위 축약)를 그대로 씀. 기존 16곳의 `formatMoney(...)` 호출부는 이
+    지역 함수가 같은 이름으로 가려서(shadowing) 코드 수정 없이 전부 새 규칙을 따르게
+    됨(공용 `utils/formatMoney.ts`는 건드리지 않음 — 다른 화면엔 영향 없음, 사용자가
+    "협상 화면 내에서"로 범위를 명시했기 때문).
+  - 우측 오퍼 폼 섹션 내 `font-mono` 클래스 12곳을 전부 제거(같은 파일 좌측 대화창
+    영역엔 원래 `font-mono`가 없어 파일 전체 대상 일괄 치환이 곧 "우측 섹션만"과
+    동일했음 — 별도 스코핑 불필요). `tabular-nums`는 이전 세션에서 이미 전부 제거된
+    상태라 이번엔 대상 없음(확인만 함).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개). `font-mono`
+제거 후 className 문자열에 이중 공백 등 깨짐이 없는지 직접 확인.
+
+**롤백 방법**: `formatMoney` 지역 함수를 삭제하고 import를 원래대로(`formatMoney` 그대로
+import) 되돌리면 금액 표기가 복귀. `effectiveMaxYears`/연수 클램프를 1→2로, "계약
+연수"/"추가 사항" 섹션의 `{!isTwoWay && (...)}` 래핑을 제거하면 UI가 복귀. `font-mono`는
+해당 12곳에 다시 붙이면 됨(git으로 이 커밋 전 상태 확인 가능).
+
+---
+
+## 2026-09-16 — 투웨이 계약 급여 산정 로직 + YOS 4년 이상 자격 제한
+
+**배경**: 바로 아래 항목("계약 유형" 드롭다운을 정규/투웨이 두 가지로 단순화)에 이어
+사용자가 실제 급여 산정 로직을 요청 — G리그 공식 규정대로 "투웨이 풀시즌 연봉 = 0 YOS
+미니멈 샐러리의 50%", 시즌 도중 체결 시 "잔여 정규시즌 일수 / 총 정규시즌 일수"로
+일할계산. 예시: 174일 시즌에 60일 남은 시점 체결 시 $678,882 × 60/174 ≈ $234,097.
+추가로 YOS(서비스타임) 4년 이상인 선수에게는 애초에 투웨이 계약을 제시할 수 없어야 함.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `playerYos`(드래프트 연도 기준 YOS, Minimum Salary Exception과 동일한 계산식)와
+    `isTwoWayEligible = playerYos < 4`를 최상단에 추가. `isTwoWayEligible`이 아니면
+    "계약 유형" 드롭다운에서 `two_way` `<option>` 자체가 렌더링되지 않고(조건부 렌더),
+    안내 문구로 "YOS N년으로 투웨이 계약 자격이 없습니다"를 표시. 협상 도중 선수가
+    바뀌어 자격을 잃는 경우를 대비해 `useEffect`로 `signingType`을 즉시 `'cap_space'`
+    (정규 계약)로 되돌리는 안전장치도 추가.
+  - `twoWaySeasons` useMemo 신규 — `MIN_SALARY_YOS_TABLE[0].capPct`(0 YOS 캡 비율)로
+    그 시즌 0 YOS 미니멈을 구하고 × 0.5가 풀시즌 투웨이 급여. 1년차(n=0)에만
+    `seasonProration`(바로 위 Minimum Salary Exception 일할계산 항목에서 만든 그 값,
+    그대로 재사용)을 곱해 일할계산 — 공식·헬퍼 전부 기존 미니멈 계약 일할계산 로직과
+    100% 동일 원리라 새 계산 함수를 따로 만들지 않고 곧바로 재사용했다.
+  - `effectiveMaxYears`/연수 클램프 `useEffect`에 `isTwoWay ? 2` 분기 추가(최대 2년).
+  - `salaries` useMemo에 `isTwoWay ? twoWaySeasons` 분기 추가(Minimum Salary
+    Exception/루키 스케일과 동일한 위치).
+  - 1년차 캡%/변동률 입력 `disabled` 조건에 `isTwoWay` 추가(자동 계산이라 수동 입력
+    불필요 — 기존 미니멈 계약과 동일 처리), "최대 2년" 안내 문구와 "0 YOS 미니멈의
+    50%(잔여 정규시즌 N%만큼 일할계산)로 자동 계산됩니다" 안내 추가.
+  - `handleSubmit()`의 계약 `type` 필드에 `isTwoWay ? 'two-way' : ...` 분기 추가(기존엔
+    rookie/veteran 둘뿐이었음 — `ContractType`에 이미 있던 `'two-way'` 값을 처음으로
+    실제 사용).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개). 사용자가 제시한
+예시(174일 중 60일 남음 → 60/174 비율)가 기존 `seasonProration`의
+`(daysInSeason-daysElapsed)/daysInSeason` 공식과 정확히 일치함을 수식으로 확인.
+
+**주의사항**: 우리 앱의 `MIN_SALARY_YOS_TABLE[0].capPct`(0.82%)는 실제 2026-27 시즌
+공식 수치와 완전히 일치하는 값이 아니라 기존 세션에서 이미 근사치로 확정해둔 상수라서,
+기본 캡($164,961,000) 기준 0 YOS 미니멈이 사용자가 인용한 실측값($1,357,763)과 정확히
+같지는 않다(계산 공식 자체는 동일). Two-Way 슬롯 수(leagues.two_way_slots) 소진 여부
+검증은 이번 스코프에 없음 — 아직 슬롯이 꽉 찬 팀도 투웨이 계약을 무제한 체결 가능.
+
+---
+
+## 2026-09-16 — 협상 화면 "서명 유형"→"계약 유형" 단순화 (정규/투웨이 두 가지만)
+
+**배경**: Two-Way 계약 시스템을 본격적으로 만들기 시작하며 사용자가 협상 화면
+(MultiNegotiationView.tsx)으로 돌아와 "우선은 서명 유형을 계약 유형으로 바꾸고, 정규
+계약과 투웨이 계약 두 개만 남겨줘" 요청 — 기존엔 캡스페이스/논택스 MLE/택스 MLE/BAE/
+풀·얼리·논 버드권/베테랑 미니멈/2라운드 픽 예외/루키 스케일까지 10종의 세부 CBA 서명
+메커니즘을 드롭다운에서 전부 고를 수 있었다. "우선은"이라는 표현대로 이번 단계는 UI
+단순화만이고, 제거된 8종의 계산 로직(YOS별 미니멈 샐러리, 루키 스케일 픽별 공식 등)은
+전부 그대로 남겨뒀다 — 드롭다운에서 선택할 방법이 없어져 당분간 도달 불가능(dead code)할
+뿐, 필요해지면 옵션만 다시 노출하면 재사용 가능하다.
+
+**변경 파일**:
+- `types/fa.ts` — `SigningType` 유니언에 `'two_way'` 신규 추가(기존 9종은 그대로 유지 —
+  타입을 줄이지 않고 확장만 해서, 이 타입을 참조하는 다른 화면들의 exhaustive
+  `Record<SigningType,X>`가 전부 깨지지 않게 함).
+- `utils/contractLabels.ts` — `SIGNING_TYPE_LABEL.two_way = '투웨이'` 추가(다른 화면이
+  공유하는 라벨 맵이라 값만 보강, 기존 9종 라벨은 그대로 — 과거 체결된 계약의 표시용
+  텍스트와 호환 유지).
+- `views/NegotiationScreen.tsx`, `views/FAView.tsx`, `services/fa/faMarketBuilder.ts`
+  (×2) — TS exhaustiveness를 위해 `Record<SigningType,X>` 5곳에 `two_way` placeholder
+  값 추가(전부 싱글플레이어 파일, `rookie_scale` 때와 동일하게 이 경로로는 실제 호출되지
+  않는 표시용 채움값).
+- `views/multi/season/MultiNegotiationView.tsx` — 우측 폼 상단 드롭다운 라벨 "서명 유형"
+  → "계약 유형"으로 변경, 옵션을 `SIGNING_TYPE_OPTIONS.map(...)`(10종 전체) 대신
+  `<option value="cap_space">정규 계약</option>`/`<option value="two_way">투웨이
+  계약</option>` 두 개만 하드코딩. "정규 계약"은 기존 `signingType` 기본값이자 이미
+  범용 cap%+변동률 흐름이던 `'cap_space'`를 그대로 재사용(별도 신규 값 안 만듦 — 최소
+  변경). "투웨이 계약"은 신규 `'two_way'` — 실제 급여 산정 로직은 아직 없어 선택해도
+  일단 정규 계약과 동일한 cap%+변동률 흐름으로 계산됨(다음 단계에서 별도 로직 예정).
+  `rookiePick` 관련 주석 1곳이 삭제된 `SIGNING_TYPE_OPTIONS` 필터링을 더는 참조하지
+  않도록 정정.
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개, `two_way` 관련
+exhaustiveness 에러 없음 확인).
+
+**롤백 방법**: `MultiNegotiationView.tsx`의 드롭다운을 `SIGNING_TYPE_OPTIONS.filter(t => t
+!== 'rookie_scale' || rookiePick !== null).map(...)`(이전 10종 전체 노출)로 되돌리고
+라벨을 "서명 유형"으로 복원하면 기존 동작으로 복귀. 타입/라벨 맵에 추가한 `two_way`
+항목들은 굳이 제거하지 않아도 무방(하위 호환에 영향 없음).
+
+---
+
+## 2026-09-16 — Two-Way 계약 시스템 1단계: 세션 설정에 데드라인 날짜 + 슬롯 수 옵션 추가
+
+**배경**: 사용자가 Two-Way 계약 시스템을 새로 만들기로 하고, 1단계로 세션 설정에 두 가지
+옵션만 우선 추가 요청 — (1) 샐러리캡 탭에 Two-Way 계약 데드라인 일자, (2) 로스터 탭에
+Two-Way 슬롯 수 인풋(1~5, 기본 3). 실제 계약 체결/전환 로직, 로스터 정원 검증에 반영하는
+것은 이번 스코프에 없음(순수 설정값 저장까지만). 이어서 사용자가 "Two-Way 계약 데드라인의
+기본값은 3월 4일로 해줘"라고 명시적으로 지정해, 트레이드 데드라인(`getTradeDeadlineBounds`,
+"2월 둘째 주 목요일" 계산식)과 동일한 패턴으로 기본값 계산 함수를 추가했다.
+
+**변경 파일**:
+- `leagues` 테이블(Supabase, migrations/add_leagues_two_way_contract_settings.sql) —
+  `two_way_deadline_date date NULL`, `two_way_slots integer NOT NULL DEFAULT 3` 컬럼 +
+  `CHECK (two_way_slots BETWEEN 1 AND 5)` 제약 추가. 데드라인 날짜는 트레이드 데드라인과
+  달리 실제 NBA 규정의 정확한 산출 공식이 검증된 바 없어 자동 기본값을 계산하지
+  않음(null 허용, 관리자가 직접 입력).
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `two_way_deadline_date: string | null`,
+  `two_way_slots: number` 필드 추가.
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`/
+  `UpdateLeagueSettingsParams`에 `twoWayDeadlineDate`/`twoWaySlots` 추가, 양쪽 payload
+  조립부에 `two_way_deadline_date`/`two_way_slots` 매핑 추가.
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `MIN_TWO_WAY_SLOTS=1`/`MAX_TWO_WAY_SLOTS=5`/`DEFAULT_TWO_WAY_SLOTS=3` 모듈 상수 추가.
+  - `twoWayDeadlineDate`(문자열, 빈 값=미설정) 상태를 캡 탭 상태 그룹에, `twoWaySlots`
+    상태를 로스터 탭 상태 그룹에 추가 — 저장은 각각 기존 `handleSaveCapSettings`/
+    `handleSaveRosterSettings`(공용 로스터/샐러리캡 저장 핸들러)에 값만 얹어서 처리,
+    새 저장 버튼/탭은 만들지 않음.
+  - `isCapTabDirty`/`isRosterTabDirty`에 각각 새 필드 비교 추가.
+  - UI: 샐러리캡 탭의 "연간 캡 증가율" 행 바로 아래 "Two-Way 계약 데드라인" 날짜 입력
+    행 추가(`min`/`max`를 리그의 `season_start_date`/`season_end_date`로 제한, 비워두면
+    데드라인 없음). 로스터 탭의 "최대 로스터 인원" 행 바로 아래 "Two-Way 슬롯 수" 숫자
+    입력 행 추가(1~5 클램프, 기존 최대 로스터 인원 입력과 동일한 스타일/패턴).
+  - `getDefaultTwoWayDeadline(virtualSeasonYear)` 신규 — `${virtualSeasonYear+1}-03-04`
+    고정값(사용자가 직접 지정한 날짜라 트레이드 데드라인처럼 요일 계산은 불필요). DB
+    값(`two_way_deadline_date`)이 null일 때 상태 초기값/dirty 비교/입력 필드 표시값 세
+    군데 모두 빈 문자열 대신 이 기본값으로 대체 — 관리자가 한 번도 저장하지 않았어도
+    화면엔 항상 3월 4일이 미리 채워진 채로 보이고, "저장"을 눌러야 실제 DB에 반영된다
+    (트레이드 데드라인의 "기본값 우선 표시, 실제 저장은 명시적으로" 관례와 동일). 조정
+    가능 범위(min/max)는 트레이드 데드라인과 달리 별도로 두지 않고 시즌 시작~종료일로만
+    제한.
+
+**검증**: Supabase MCP `apply_migration` 성공, `information_schema.columns`로 두 컬럼
+(date/default null, integer/default 3) 확인. `npx tsc --noEmit` — 전체 에러 수 58건으로
+동일(신규 에러 0개).
+
+**롤백 방법**: 클라이언트는 이 커밋의 변경분만 되돌리면 됨. 컬럼은
+`ALTER TABLE leagues DROP CONSTRAINT leagues_two_way_slots_range; ALTER TABLE leagues
+DROP COLUMN two_way_deadline_date, DROP COLUMN two_way_slots;`.
+
+---
+
+## 2026-09-16 — 팀 > 로스터 방출 시 전체 화면 깜빡임 버그 수정 (usePlayerSeasonStatsFull)
+
+**배경**: 사용자가 팀 > 로스터 탭에서 선수를 방출하면 화면이 깜빡이며 전체 로더가 돌았다가
+로스터 탭으로 "돌아오는" 것처럼 보인다고 리포트. 원인 추적 결과: 방출 → `reload()` →
+`leagueTeams` 갱신 → `allRosterIds`(선수 id 목록)가 한 명 줄어든 새 배열로 바뀌고, 이
+배열이 `usePlayerSeasonStatsFull`의 `queryKey`(`sortedIds.join(',')`)에 그대로 들어간다.
+이 훅만 유독 `placeholderData: keepPreviousData`가 빠져 있어서, id 목록이 바뀌어 쿼리
+키가 달라지는 순간 react-query가 "처음 보는 쿼리"로 취급해 `isPending`을 다시 `true`로
+돌렸고, `MultiRosterView.tsx`의 `isLoading = leagueLoading || identityLoading ||
+statsFullLoading || advancedStatsLoading` 게이트가 걸려 `<RosterView>` 전체를
+언마운트하고 `<Loader2>` 하나만 렌더링했다가 재마운트 — 이게 "깜빡임 + 로스터 탭으로
+복귀"로 보였다. 바로 옆 `useLeagueRawStats.ts`의 동일 패턴 쿼리 2개는 이미
+`placeholderData: keepPreviousData`가 있어서 이 문제가 없었다.
+
+**변경 파일**:
+- `hooks/usePlayerSeasonStatsFull.ts` — `keepPreviousData` import 추가,
+  `useQuery({...})`에 `placeholderData: keepPreviousData` 한 줄 추가. 이 훅을 쓰는 다른
+  두 화면(`views/multi/season/MultiNewsFeedView.tsx`, `views/multi/season/
+  MultiAllStarView.tsx`)은 `isPending`을 아예 참조하지 않아(단순히 `data`만 사용) 이
+  변경으로 인한 동작 변화/회귀 없음 — 오히려 두 화면도 id 목록이 바뀔 때 빈 상태 대신
+  이전 데이터를 잠깐 더 보여주는 쪽으로 개선됨.
+
+**Before**: `useQuery({ queryKey: [...], enabled: ..., queryFn: ... })` (placeholderData 없음)
+**After**: `useQuery({ queryKey: [...], enabled: ..., placeholderData: keepPreviousData, queryFn: ... })`
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**롤백 방법**: `placeholderData: keepPreviousData` 줄과 `keepPreviousData` import를
+제거하면 원래 동작(id 목록 변경마다 isPending 재발생)으로 복귀.
+
+---
+
+## 2026-09-16 — 멀티 트레이드 데드라인 UI 잠금 + 보류 제안 자동 만료
+
+**배경**: `create_trade_offer`/`respond_trade_offer(accept)` RPC는 이미 데드라인 경과 시
+거부하지만(마이그레이션 `add_leagues_trade_deadline_enabled.sql`), 클라이언트 "새 제안" 탭은
+이를 미리 알지 못해 유저가 선수를 담고 전송을 시도한 뒤에야 서버 에러로 알게 됐다. 또한
+데드라인이 지나도 이미 보류중이던(pending) 제안은 그대로 남아있어 상대가 계속 수락/거절할 수
+있었다(수락만 RPC가 막았을 뿐, 상태 자체는 pending에 머무름). 사용자 요청: (1) 데드라인
+경과 시 "새 제안" 탭의 전송 버튼을 "트레이드 기한 경과"로 바꾸고 비활성화, (2) 양 팀 로스터
+리스트의 (+) 버튼을 회색 비활성 버튼으로 바꿔 선수 추가 자체를 막음, (3) 데드라인 경과 시점에
+보류중인 제안을 전부 만료 처리.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `currentSimDate` 계산 바로
+  아래 `isTradeDeadlinePassed`(league.trade_deadline_enabled && trade_deadline_date &&
+  currentSimDate > trade_deadline_date, RPC와 동일 기준) 추가. `PlayerChip`에 신규 prop
+  `actionDisabled` 추가(기존 `blocked`은 버튼 자체를 숨기지만 `actionDisabled`는 버튼을
+  그대로 두고 회색+클릭불가로만 바꿈) — 내 팀/상대 팀 로스터 리스트의 `PlayerChip`
+  호출부에 `actionDisabled={isTradeDeadlinePassed}` 전달(카트/"제공" 리스트의 (-) 버튼은
+  그대로 둠 — 요청 범위가 로스터 리스트 (+) 버튼으로 한정됨). "제안 보내기" 버튼은
+  `disabled`에 `isTradeDeadlinePassed` 추가, 라벨을 `트레이드 기한 경과`로 교체.
+- `migrations/expire_trade_offers_past_deadline.sql` (신규, Supabase 프로젝트
+  `buummihpewiaeltywdff`에 직접 적용 완료) — RPC `expire_trade_offers_past_deadline()`:
+  `league_trade_offers`를 `leagues`와 조인해 `status='pending'` && 데드라인 활성 &&
+  `current_virtual_date(room_id) > trade_deadline_date`인 행을 전부 `status='expired'`로
+  일괄 업데이트(기존 `expire_trade_offers()`는 오퍼 개별 `expires_at` 만료만 처리하는
+  별개 함수라 그대로 둠).
+- `server/src/scheduler.ts` (server) — `sweepExpiredTradeOffers()`에 새 RPC 호출 추가,
+  기존 10분 간격(`TRADE_OFFER_EXPIRE_INTERVAL_MS`) 스위퍼에 함께 실행.
+
+**Before**: PlayerChip은 `blocked`(버튼 숨김)만 지원, 전송 버튼은 `sending`/빈 카트만
+체크, `sweepExpiredTradeOffers()`는 `expire_trade_offers` RPC만 호출.
+
+**After**: 위 변경 내용대로 — `isTradeDeadlinePassed` 계산 + `actionDisabled` prop +
+전송 버튼 라벨/disabled 분기 + `expire_trade_offers_past_deadline` RPC 및 스케줄러 호출 추가.
+
+**검증**: 변경 파일 `tsc --noEmit` 개별 통과(사전 존재하던 무관 에러만 남음).
+`apply_migration`으로 RPC 생성 확인(`success:true`).
+
+**롤백 방법**: client 3곳(PlayerChip 정의, 로스터 리스트 2곳 `actionDisabled` prop, 전송
+버튼)과 `isTradeDeadlinePassed`/`tradeDeadlineDate` 선언을 제거하면 원상복구. 서버는
+`server/src/scheduler.ts`의 추가된 RPC 호출 블록 제거 + Supabase에서
+`DROP FUNCTION public.expire_trade_offers_past_deadline();` 실행.
+
+---
+
+## 2026-09-16 — "정규 계약 슬롯" 푸터를 컨테이너 하단 고정 → 테이블 <tfoot>으로 전환, 높이 160px
+
+**배경**: 바로 아래 항목(로스터 탭 푸터 신설)에서 구현한 첫 버전은 테이블을 감싸는
+`flex-1` div 바깥에 `shrink-0` 형제 `<div>`로 푸터를 달았는데, 로스터 인원이 적을 때
+`flex-1` div가 남는 flex 공간을 전부 차지해버려 표 마지막 행과 푸터 사이에 빈 공간이 생기고
+푸터가 화면 맨 아래에 "고정"된 것처럼 보였다. 사용자가 "푸터가 하단에 fixed 되지 않고
+아래 테이블에 붙도록", 높이는 "약 160px 정도로 넉넉히" 요청.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx` — `TableFoot`(components/common/Table.tsx에
+  이미 있던 `<tfoot>` 래퍼, 이번에 처음 사용) import 추가. 형제 `<div>` 푸터를 제거하고
+  `<TableBody>` 바로 다음에 `<TableFoot><tr><td colSpan={...}>...</td></tr></TableFoot>`로
+  이동 — `<tbody>`와 같은 스크롤 영역(Table의 `overflow-auto` div) 안에 있는 실제
+  `<tfoot>`이라 마지막 행 바로 뒤에 자연스럽게 붙고, 로스터가 길어 표 내부가 스크롤될
+  때도 body 행들과 함께 스크롤된다(더 이상 항상 화면 하단에 떠 있지 않음). `colSpan`은
+  `onReleasePlayer` 유무에 따라 13/14(테이블 총 컬럼 수와 동일). 내부에 `h-40`(=160px)
+  높이의 flex 컨테이너로 "정규 계약 슬롯 NN/NN" 텍스트를 정렬(이어서 "텍스트는 우상단으로
+  정렬해" 요청에 따라 `items-center`→`items-start pt-3`로 수직 위치만 한 번 더 조정 — 셀 내
+  세로 중앙이 아니라 상단에 붙되, 우측 정렬은 그대로 유지).
+
+**Before**: `</Table>` 뒤에 형제로 `<div className="shrink-0 flex items-center justify-end px-4 py-2 ...">`
+**After**: `<TableBody>` 다음, `</Table>` 이전에 `<TableFoot><tr><td colSpan={...}><div className="h-40 flex items-start justify-end pt-3 ...">`
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 동일(신규 에러 0개).
+
+**롤백 방법**: `TableFoot` 블록을 삭제하고 이전 커밋의 형제 `<div>` 푸터로 되돌리면 됨
+(내용은 동일, 배치 방식만 다름).
+
+---
+
+## 2026-09-16 — "팀 > 로스터" 탭 테이블 하단에 "정규 계약 슬롯 NN/NN" 푸터 추가
+
+**배경**: 바로 아래 항목(세션 설정 "로스터" 탭 신설, max_roster_size)에 이어, 사용자가
+팀 화면 로스터 탭(RosterOverviewGrid, 싱글/멀티 공용) 테이블 하단에 현재 정규 계약 인원과
+정원을 "00/00" 형식으로 보여주는 푸터를 요청.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx` — `maxRosterSize?: number`(기본값
+  `DEFAULT_MAX_ROSTER_SIZE=15`) prop 추가. `regularContractCount` — 로스터 중
+  `p.contract?.type !== 'two-way'`인 선수 수(투웨이 계약은 실제 NBA도 15명 정원과 별개
+  슬롯이라 제외; 계약 데이터가 없는 선수는 기본적으로 정규 계약으로 취급). 테이블 아래
+  `shrink-0` 푸터 바 추가 — 우측 정렬로 "정규 계약 슬롯 NN/NN" 표시, 정원 도달/초과 시
+  숫자를 빨간색으로.
+- `views/RosterView.tsx` — `maxRosterSize?: number` prop 추가, `RosterOverviewGrid`
+  호출부에 그대로 전달.
+- `views/multi/season/MultiRosterView.tsx` — `<RosterView maxRosterSize={(league as
+  any)?.max_roster_size} />`로 리그 설정값 전달(멀티플레이어).
+- 싱글플레이어(`pages/RosterPage.tsx`)는 이 prop을 넘기지 않으므로 자동으로 기본값
+  15명이 적용됨(별도 수정 불필요).
+
+**검증**: `npx tsc --noEmit` — 전체 에러 수 58건으로 변경 전과 동일(신규 에러 0개).
+
+**롤백 방법**: `RosterOverviewGrid.tsx`의 `maxRosterSize` prop/`regularContractCount`
+계산/푸터 JSX 블록을 삭제하고, `RosterView.tsx`/`MultiRosterView.tsx`에서 추가한
+`maxRosterSize` prop 전달 라인을 제거하면 됨.
+
+---
+
+## 2026-09-16 — 세션 설정에 "로스터" 탭 신설(최대 인원 15~20명) + FA 계약 시 슬롯 초과 검증
+
+**배경**: 사용자 요청 — 세션 설정에 로스터 항목을 새로 만들고 최대 인원을 15~20명 사이에서
+정할 수 있게 하며, 선수와 계약할 때(FA 서명) 로스터 슬롯이 가득 찼는지 확인하는 절차를
+추가. 기존에는 `leagues` 테이블에 로스터 인원 상한 개념 자체가 없었고, `sign_free_agent()`/
+`sign_free_agent_negotiated()` RPC 둘 다 이미 팀에 있는지(already_on_roster)/다른 팀이
+먼저 데려갔는지(player_already_signed)만 검증했지 인원수 자체는 무제한으로 받아줬다
+(services/tradeEngine/tradeExecutor.ts의 `MAX_ROSTER_SIZE=15`는 싱글플레이어 트레이드
+오버플로우 정리 전용 상수라 멀티플레이어 FA 서명 경로와는 무관).
+
+**변경 파일**:
+- `leagues` 테이블(Supabase, migrations/add_leagues_max_roster_size.sql) — `max_roster_size
+  integer NOT NULL DEFAULT 15` 컬럼 + `CHECK (max_roster_size BETWEEN 15 AND 20)` 제약
+  추가.
+- `public.sign_free_agent()` / `public.sign_free_agent_negotiated()` RPC(Supabase,
+  migrations/add_roster_full_check_to_fa_rpcs.sql) — fa_enabled/admin 여부를 조회하는
+  기존 SELECT에 `coalesce(l.max_roster_size, 15)`를 얹어 `v_max_roster`로 함께 가져오고,
+  `already_on_roster`/`player_already_signed` 체크 바로 다음, 로스터 UPDATE 직전에
+  `jsonb_array_length(v_team.roster) >= v_max_roster` → `RAISE EXCEPTION 'roster_full'`
+  추가(서버가 최종 권위를 갖는 체크 — 클라이언트를 우회해도 막힘).
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `max_roster_size: number;` 필드 추가.
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`/
+  `UpdateLeagueSettingsParams`에 `maxRosterSize` 추가, 둘 다 payload 조립부에
+  `max_roster_size` 매핑 추가(새 리그 생성 시 값을 안 넘기면 DB 컬럼 기본값 15가 자동
+  적용되므로 CreateLeagueModal.tsx는 건드리지 않음 — 사용자가 명시적으로 요청한 범위는
+  세션 설정 화면뿐).
+- `services/multi/faService.ts` — `mapFaError()`에 `roster_full` → "로스터 정원이 가득
+  찼습니다. 다른 선수를 방출한 뒤 다시 시도하세요." 한국어 매핑 추가.
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `SettingsTabId`에 `'roster'` 추가, `SETTINGS_TABS`에 "로스터" 탭 신설(샐러리캡 탭
+    바로 뒤). `MIN_ROSTER_SIZE=15`/`MAX_ROSTER_SIZE_CAP=20`/`DEFAULT_MAX_ROSTER_SIZE=15`
+    모듈 상수 추가.
+  - `maxRosterSize` 상태 + `savingRoster`/`saveRosterOk`/`saveRosterErr`, 초기화 useEffect에
+    `setMaxRosterSize((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE)` 추가,
+    `isRosterTabDirty`, `handleSaveRosterSettings()`(기존 트레이드/샐러리캡 탭 저장
+    핸들러와 동일 패턴), `TAB_SAVE_MAP.roster` 등록.
+  - UI: 컨퍼런스별 플레이오프 진출 팀 수 입력(2~16 클램프)과 동일한 패턴의 숫자 입력
+    (15~20 클램프)으로 최대 로스터 인원을 설정하는 새 섹션.
+- `views/multi/season/MultiFreeAgentView.tsx` — `isMyRosterFull` 계산
+  (`myTeamRow.roster.length >= (league.max_roster_size ?? 15)`) 추가, "계약" 버튼에
+  `disabled`/`title` 조건으로 반영 — 로스터가 가득 찬 상태면 즉시계약(cba_rules_enabled=
+  false)이든 협상 화면 진입(cba_rules_enabled=true)이든 버튼 단계에서 미리 막는다(서버
+  RPC 체크는 물론 그대로 유지 — 이건 UX 선제 차단일 뿐).
+- `views/multi/season/MultiNegotiationView.tsx` — `isRosterFull` 계산 추가,
+  `handleSubmit()` 조기 반환 조건과 `isLocked`(오퍼 제출 버튼 비활성화 조건)에 포함,
+  로스터가 가득 찼을 때 우측 패널에 경고 배너("로스터 정원(N명)이 가득 찼습니다...")를
+  노출하고 제출 버튼 라벨을 "로스터 정원 초과"로 변경. 기존 쿨다운 UX 패턴과 동일하게
+  제출 버튼만 막고 연봉/연수 등 폼 입력은 계속 만져볼 수 있게 둠(사용자가 이전에 요청한
+  "결렬/쿨다운 상태에도 폼은 계속 조작 가능" 원칙과 일관).
+
+**Before**: (해당 없음 — 신규 컬럼/체크. `sign_free_agent`/`sign_free_agent_negotiated`의
+이전 전문은 migrations/add_sign_free_agent_release_player_rpc.sql,
+add_sign_free_agent_negotiated_rpc.sql 참고)
+
+**After**: 위 두 RPC 모두 로스터 UPDATE 직전에
+```sql
+IF jsonb_array_length(v_team.roster) >= v_max_roster THEN
+    RAISE EXCEPTION 'roster_full';
+END IF;
+```
+추가(`v_max_roster`는 `coalesce(l.max_roster_size, 15)`).
+
+**검증**: Supabase MCP `apply_migration` 2건 모두 성공. `information_schema.columns`로
+`max_roster_size`(integer, default 15) 확인, `pg_proc.prosrc`에 두 함수 모두
+`roster_full` 문자열 포함 확인. `npx tsc --noEmit` — 전체 에러 수 58건으로 이 작업 시작
+전과 동일(신규 에러 0개, roomQueries.ts의 `RoomRow` 관련 에러 1건은 이 변경과 무관한
+기존 베이스라인).
+
+**롤백 방법**: RPC 롤백은 `migrations/add_sign_free_agent_release_player_rpc.sql`/
+`add_sign_free_agent_negotiated_rpc.sql`의 원본 함수 정의를 그대로 다시
+`CREATE OR REPLACE`하면 됨. 컬럼은 `ALTER TABLE leagues DROP CONSTRAINT
+leagues_max_roster_size_range; ALTER TABLE leagues DROP COLUMN max_roster_size;`.
+클라이언트 쪽은 이 커밋의 변경분만 되돌리면 됨(다른 기능과 얽혀있지 않음).
+
+---
+
+## 2026-09-16 — 세션 설정 샐러리캡 탭에 "날짜별/연차별 미니멈 샐러리" 표 추가 (2026-27 한정)
+
+**배경**: 바로 아래 항목(MultiNegotiationView.tsx의 시즌 도중 일할계산 도입)에 이어, 사용자가
+세션 설정 > 샐러리캡 탭 최하단에도 같은 일할계산 공식을 날짜별로 미리 보여주는 조회용 표를
+요청. 단, 전망 시즌(2027-28 이후)은 `games` 테이블에 실제 일정이 아직 생성되지 않아 "시즌
+총 일수"를 알 수 없으므로, 실제 확정된 스케줄이 존재하는 2026-27 시즌을 선택했을 때만
+표시하도록 명시.
+
+**변경 파일**:
+- `views/multi/season/multiScheduleUtils.ts` — `daysBetweenKeys(aKey, bKey)` 신규 export.
+  원래 `MultiNegotiationView.tsx`에 모듈 레벨 로컬 함수로만 있던 걸 이 파일로 옮겨
+  `LeagueSettingsView.tsx`와 공유(중복 정의 방지). 기존 `dateKeyToLocalDate`/
+  `localDateToKey`(로컬 Y/M/D 기반, DST/타임존 흔들림 없음)를 그대로 재사용.
+- `views/multi/season/MultiNegotiationView.tsx` — 로컬 `daysBetweenKeys` 함수 정의 삭제,
+  `multiScheduleUtils.ts`에서 import로 교체(동작 변화 없음, 순수 리팩터).
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `loadSchedule`(`services/multi/gameQueries.ts`) import 추가, `minSalaryDateSchedule`
+    상태 신설 — `room?.id`가 갖춰지면 `useEffect`로 1회 fetch해 `games` 테이블 스케줄을
+    로드(MultiNegotiationView.tsx와 동일한 로더 재사용, 별도 쿼리 새로 안 만듦).
+  - `isMinSalaryScheduleSeason` — 기존 "YOS별 미니멈 샐러리" 표 상단 드롭다운에서 선택한
+    시즌의 `seasonLabel`이 정확히 `'2026-27'`인지 체크. `capProjection`은 항상
+    `league.season_number`(현재 진행 중인 실제 시즌)부터 10년치를 전망하므로, 리그가
+    시즌 1을 진행 중일 때만 index 0이 "2026-27"이 되고, 시즌이 넘어가면 드롭다운에
+    "2026-27" 자체가 더 이상 나타나지 않아 이 표도 자동으로 사라짐(별도 시즌 체크 로직
+    불필요).
+  - `minSalaryByDateRows` useMemo 신규 — `minSalaryDateSchedule`에서 플레이오프/올스타를
+    제외한 정규시즌 경기만 필터링해 첫 경기~마지막 경기로 시즌 총 일수를 구하고, 시즌의
+    매 날짜(1일차~마지막날)마다 `daysRemaining/daysInSeason` 비율과 그 비율을 곱한
+    YOS(0~10+) 11단계 미니멈 샐러리를 계산 — `MultiNegotiationView.tsx`의
+    `seasonProration` 공식과 완전히 동일(174일/0.575% 같은 특정 수치 하드코딩 없음, 매번
+    실제 스케줄에서 재계산).
+  - UI: 기존 "YOS별 미니멈 샐러리" 표 바로 아래, `isMinSalaryScheduleSeason &&
+    minSalaryByDateRows`일 때만 렌더링되는 새 섹션 — 체결일/경과일/잔여일/지급 비율 +
+    YOS 11개 컬럼의 가로/세로 스크롤 표(`max-h-[420px] overflow-y-auto`, 기존 드래프트
+    결과 매트릭스 표와 동일 패턴).
+
+**검증**: `npx tsc --noEmit` — 세 파일 모두 신규 에러 0개(전체 에러 수는 세션 시작 전부터
+있던 무관한 베이스라인 58건으로 동일하게 유지).
+
+**롤백 방법**: `LeagueSettingsView.tsx`의 `minSalaryDateSchedule` 상태·useEffect,
+`isMinSalaryScheduleSeason`/`minSalaryByDateRows`, 그리고 새 UI 섹션(`isMinSalaryScheduleSeason
+&& minSalaryByDateRows && (...)` 블록)을 삭제하면 됨. `daysBetweenKeys`를
+`multiScheduleUtils.ts`로 옮긴 부분은 순수 리팩터라 롤백 불필요(그대로 둬도 무방).
+
+---
+
+## 2026-09-16 — 멀티플레이어 리그 트레이드 데드라인 설정 추가
+
+**배경**: 사용자 요청 — 멀티플레이어 세션 설정에 트레이드 데드라인을 설정할 수 있게 하되,
+기본값은 그 시즌의 2월 둘째 주 목요일, 조정은 기본값 기준 최대 한 달 전까지만 앞당길 수
+있고 뒤로 늘리는 것은 불가능하도록. 기존에는 멀티플레이어 쪽에 트레이드 데드라인 개념
+자체가 없었음(싱글플레이어 `utils/seasonConfig.ts`의 `tradeDeadline`은 2월 **첫째** 주
+목요일 고정 계산이며 멀티와는 별개 로직).
+
+**변경 파일**:
+- `utils/tradeDeadline.ts` (신규): `getDefaultTradeDeadline(virtualSeasonYear)` —
+  `(virtualSeasonYear+1)년 2월 둘째 주 목요일`을 계산(`nthWeekdayOfMonthStr` 내부 헬퍼,
+  요일 앵커링 방식은 `utils/seasonConfig.ts`의 `nthDayOfMonth`와 동일 아이디어).
+  `getTradeDeadlineBounds(virtualSeasonYear)` — `{ default, min: default-1개월, max: default }`
+  반환. `clampTradeDeadline(dateStr, bounds)` — 범위 밖 값을 경계값으로 clamp(문자열
+  'YYYY-MM-DD'는 사전식 비교=날짜 비교라 별도 파싱 없이 비교 가능).
+  서버(SQL) 쪽은 이미 확정된 날짜 값만 비교하므로 서버 미러 불필요(CLAUDE.md 미러 쌍
+  규칙 예외 — 순수 클라이언트 계산이며 재계산하는 서버 로직이 없음).
+- `migrations/add_leagues_trade_deadline.sql` (신규, Supabase MCP로 적용 완료):
+  `leagues.trade_deadline_date date NULL` 컬럼 추가. `create_trade_offer`/
+  `respond_trade_offer` RPC를 `CREATE OR REPLACE`로 갱신 — `current_virtual_date(room_id)`가
+  `trade_deadline_date`를 지났으면 새 오퍼 생성(`create_trade_offer`)과 대기 중 오퍼
+  수락(`respond_trade_offer`의 `p_action='accept'`만, reject/cancel은 계속 허용)을
+  `trade_deadline_passed` 예외로 차단. `trade_deadline_date IS NULL`이면 기존과 동일하게
+  무제한.
+- `services/multi/roomQueries.ts`: `LeagueRow`에 `trade_deadline_date: string | null` 추가.
+- `services/multi/leagueService.ts`: `CreateLeagueParams.options`/
+  `UpdateLeagueSettingsParams`에 `tradeDeadlineDate` 추가, `createLeague`/
+  `updateLeagueSettings`에서 `payload.trade_deadline_date`로 매핑.
+- `services/multi/tradeService.ts`: `mapTradeOfferError`에 `trade_deadline_passed` →
+  "트레이드 데드라인이 지나 더 이상 트레이드를 진행할 수 없습니다." 매핑 추가.
+- `components/multi/CreateLeagueModal.tsx`: 메인리그 생성 2단(시즌 캘린더)에 트레이드
+  데드라인 `<input type="date">` 추가 — `min`/`max`를 `getTradeDeadlineBounds().min/max`로
+  고정, 사용자가 직접 값을 건드리기 전까지는 `virtualSeasonYear`가 바뀔 때마다 새 기본값에
+  계속 동기화(`tradeDeadlineTouchedRef`). 제출 시 `options.tradeDeadlineDate`로 전달.
+- `views/multi/league/LeagueSettingsView.tsx`: "트레이드" 탭에 동일한 date input 추가.
+  `league.trade_deadline_date`가 null이면(레거시 리그) 기본값을 화면에 채워서 보여주되
+  아직 저장된 값은 아님 — 저장 버튼을 눌러야 실제로 DB에 확정됨. `isTradeTabDirty`/
+  `handleSaveTradeSettings`에 편입.
+
+**Before**: 멀티플레이어에 트레이드 데드라인 개념 없음 — 시즌 어느 시점에도 트레이드 무제한.
+
+**After**: 리그 설정에서 트레이드 데드라인을 확인/조정 가능. 기본값(2월 둘째 주 목요일)에서
+최대 한 달까지만 앞당길 수 있고 뒤로는 늘릴 수 없음. 데드라인이 지나면 새 오퍼 생성/오퍼
+수락이 서버(RPC) 단에서 차단됨.
+
+**검증**: `npx tsc --noEmit` 전후 비교 — 이 세션에서 건드린 6개 파일 모두 신규 타입 에러
+없음(기존에 있던 무관한 74건짜리 베이스라인 에러는 그대로, 이번 변경으로 늘지 않음). 각
+수정 파일 중괄호 짝 검증(brace balance 0) 통과. SQL은 Supabase MCP `apply_migration`으로
+실제 프로젝트(`buummihpewiaeltywdff`)에 적용 완료.
+
+**롤백 방법**: `trade_deadline_date` 컬럼은 남겨둬도 무해(null이면 무제한과 동일 동작)하므로
+컬럼 자체를 굳이 DROP할 필요는 없음. RPC만 되돌리려면 `migrations/trade_virtual_sim_date_fix.sql`
+안의 `create_trade_offer`/`respond_trade_offer` 원본 정의를 다시 `apply_migration`으로
+실행(데드라인 체크 3줄만 없는 버전). 클라이언트 변경은 위 5개 파일을 이 커밋 이전 상태로
+되돌리면 됨.
+
+---
+
+## 2026-09-16 — 멀티플레이어 트레이드 데드라인 활성화 체크박스 추가
+
+**배경**: 사용자 요청 — 트레이드 데드라인 기능(같은 날 앞선 항목)에 이어 "활성화 여부"를
+날짜 값과 별개로 켜고 끌 수 있게 해달라는 요청. 기존엔 `trade_deadline_date`가 설정돼
+있으면 무조건 강제됐는데, 관리자가 날짜 값은 유지한 채(다시 켤 때 재입력 불필요) 강제
+여부만 토글하고 싶을 수 있음 — `cap_enabled`/`luxury_tax_enabled`처럼 이미 쓰이던
+"on/off 스위치 + 값" 축 분리 패턴을 그대로 재사용.
+
+**변경 파일**:
+- `migrations/add_leagues_trade_deadline_enabled.sql` (신규, Supabase MCP로 적용 완료):
+  `leagues.trade_deadline_enabled boolean NOT NULL DEFAULT true` 추가. `create_trade_offer`/
+  `respond_trade_offer` RPC를 다시 `CREATE OR REPLACE` — 데드라인 검사 조건에
+  `v_deadline_enabled IS DISTINCT FROM false` 추가(= enabled가 명시적으로 false일 때만
+  검사를 건너뜀, NULL/true는 검사).
+- `services/multi/roomQueries.ts`: `LeagueRow.trade_deadline_enabled: boolean` 추가.
+- `services/multi/leagueService.ts`: `CreateLeagueParams.options`/
+  `UpdateLeagueSettingsParams`에 `tradeDeadlineEnabled` 추가, `payload.trade_deadline_enabled`로 매핑.
+- `components/multi/CreateLeagueModal.tsx`: 트레이드 데드라인 입력을 체크박스로 감싼 하이라이트
+  행으로 변경(`salary_cap` 탭의 `luxuryTaxEnabled` 행과 동일 스타일) — 기본 체크됨(true),
+  끄면 날짜 입력이 `disabled`되지만 값 자체는 state에 유지.
+- `views/multi/league/LeagueSettingsView.tsx`: "트레이드" 탭에 동일한 체크박스+날짜 행 추가,
+  `league.trade_deadline_enabled ?? true`로 초기화, `isTradeTabDirty`/
+  `handleSaveTradeSettings`에 편입.
+
+**Before**: `trade_deadline_date`가 설정된 순간부터 무조건 강제(끌 방법이 날짜를 지우는 것뿐).
+
+**After**: 체크박스로 강제 여부만 독립적으로 토글 가능. 꺼도 날짜 값은 보존되어 다시 켜면
+그대로 복원됨.
+
+**검증**: `npx tsc --noEmit` — 이번에 건드린 파일들 신규 에러 없음(중괄호 짝 검증 balance=0
+전부 통과). SQL은 Supabase MCP `apply_migration`으로 프로젝트(`buummihpewiaeltywdff`)에
+적용 완료.
+
+**롤백 방법**: RPC만 되돌리려면 바로 위 "멀티플레이어 리그 트레이드 데드라인 설정 추가"
+항목의 `create_trade_offer`/`respond_trade_offer` 정의(enabled 체크 없는 버전)를 다시
+`apply_migration`으로 실행. `trade_deadline_enabled` 컬럼은 남겨둬도 무해(기본 true라
+기존 로직과 동일하게 동작).
+
+---
+
+## 2026-09-16 — Minimum Salary Exception 시즌 도중 일할계산(proration), 시즌 길이 무관 공식화
+
+**배경**: 사용자가 실제 CBA 규정을 언급 — 시즌 도중에 미니멈 계약을 맺으면 첫 시즌 연봉이
+"시즌이 이미 진행된 만큼" 일할계산(proration)되어 줄어든다. 레퍼런스로 든
+salaryswish.com 계산기는 2026-27 시즌 기준 "Days in season = 174일, Daily Reduction ≈
+0.575%(=100/174)"를 보여주는데, 이 174일은 2026-27 한 시즌에만 유효한 값이라 하드코딩할
+수 없다. 사용자 질문: "이것을 2026-27 시즌에 국한하지 않고 모든 시즌에 적용되는 공식으로
+만들 수 있을까?" — 매 시즌 실제 스케줄에서 "그 시즌의 일수"를 다시 구하는 범용 공식이 필요.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `daysBetweenKeys(aKey, bKey)` 모듈 레벨 헬퍼 신규 — "YYYY-MM-DD" 날짜 키 두 개의
+    UTC 기준 일수 차이를 계산.
+  - `currentVirtualDate` useMemo를 파일 뒤쪽(쿨다운 계산용으로 처음 선언됐던 위치)에서
+    앞쪽으로 이동 — `seasonProration`이 더 먼저 이 값을 참조하게 되면서 선언 순서를
+    맞출 필요가 있었음(TDZ/TS2448 "used before declaration" 방지, CLAUDE.md 규칙 2).
+  - `seasonProration` useMemo 신규: `schedule`에서 플레이오프/올스타를 제외한 정규시즌
+    경기만 필터링 → 첫 경기 날짜~마지막 경기 날짜로 `daysInSeason`을 구하고,
+    `currentVirtualDate`까지의 경과일(`daysElapsed`)을 계산해
+    `(daysInSeason - daysElapsed) / daysInSeason`을 반환(0 이상으로 클램프). 174일/
+    0.575%라는 특정 숫자는 코드 어디에도 없고, 매번 리그의 실제 스케줄에서 다시 계산됨 —
+    시즌이 몇 년이 지나든, 스케줄 길이가 바뀌든 항상 정확한 그 시즌 값을 씀.
+  - `minSalarySeasons` useMemo 수정 — 연차 배열의 `n===0`(협상 체결 시점이 속한 시즌)에만
+    `seasonProration`을 곱하고, `n>=1`(이후 풀시즌)에는 곱하지 않음 — 실제 CBA도 서명한
+    바로 그 시즌만 일할계산되고 이후 시즌은 정상 지급되는 방식과 동일.
+
+**Before**:
+```ts
+const minSalarySeasons = useMemo(() => {
+    ...
+    return Array.from({ length: years }, (_, n) => {
+        const seasonCap = league.salary_cap_amount * Math.pow(growth, n);
+        const seasonYos = ...;
+        const capPct = MIN_SALARY_YOS_TABLE[seasonYos].capPct;
+        return Math.round(seasonCap * (capPct / 100));
+    });
+}, [isMinSalary, league, player, currentSeasonYear, years]);
+```
+
+**After**:
+```ts
+const seasonProration = useMemo(() => {
+    const regularSeasonDates = schedule.filter(g => !g.isPlayoff && !g.isAllstar).map(g => g.date).sort();
+    if (regularSeasonDates.length === 0) return 1;
+    const firstDate = regularSeasonDates[0];
+    const lastDate = regularSeasonDates[regularSeasonDates.length - 1];
+    const daysInSeason = daysBetweenKeys(firstDate, lastDate) + 1;
+    if (daysInSeason <= 0) return 1;
+    const daysElapsed = Math.max(0, Math.min(daysInSeason, daysBetweenKeys(firstDate, currentVirtualDate)));
+    return Math.max(0, (daysInSeason - daysElapsed) / daysInSeason);
+}, [schedule, currentVirtualDate]);
+
+const minSalarySeasons = useMemo(() => {
+    ...
+    return Array.from({ length: years }, (_, n) => {
+        const seasonCap = league.salary_cap_amount * Math.pow(growth, n);
+        const seasonYos = ...;
+        const capPct = MIN_SALARY_YOS_TABLE[seasonYos].capPct;
+        const fullSeasonSalary = seasonCap * (capPct / 100);
+        return Math.round(n === 0 ? fullSeasonSalary * seasonProration : fullSeasonSalary);
+    });
+}, [isMinSalary, league, player, currentSeasonYear, years, seasonProration]);
+```
+
+**검증**: `npx tsc --noEmit` — MultiNegotiationView.tsx 신규 에러 0개(기존 세션 내내
+반복 확인된 무관한 베이스라인 에러 4건만 잔존: rookieGenerator.ts:844,
+faMarketBuilder.ts:151/512, NegotiationScreen.tsx:788).
+
+**롤백 방법**: `seasonProration` useMemo와 `daysBetweenKeys` 헬퍼를 삭제하고
+`minSalarySeasons`의 반환문을 `Math.round(seasonCap * (capPct / 100))`(Before 블록)으로
+되돌리면 됨. `currentVirtualDate` useMemo는 위치만 옮긴 것이라 롤백 시 그대로 둬도 무방.
+
+---
+
+## 2026-09-16 — 루키 스케일을 "이번 시즌 드래프트된 1라운더"에만 노출
+
+**배경**: 사용자가 일반 FA 재계약에선 "루키 스케일" 서명 유형이 아예 안 보여야 하고,
+그 시즌에 드래프트된 신인이 아니면 사용할 수 없어야 한다고 요청 — 지금까지는
+`draftRound===1`이기만 하면(몇 시즌 전 1라운더든) 드롭다운에 항상 노출되고 있었다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `rookiePick` 판정 조건에
+  `player.draftYear === currentSeasonYear`(이번 시즌에 드래프트됨) 추가. "서명 유형"
+  드롭다운 옵션 목록에서 `rookiePick === null`이면 `'rookie_scale'` 자체를
+  `.filter()`로 제외 — 자격 없는 선수와의 협상에서는 옵션 목록에 아예 나타나지 않는다
+  (선택 후 계산 실패가 아니라 애초에 고를 수 없음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `rookiePick` 조건에서 `player.draftYear === currentSeasonYear` 부분과
+드롭다운의 `.filter(...)`를 제거하면 이전 동작으로 복귀.
+
+---
+
+## 2026-09-16 — 루키 스케일 UI 다듬기: 배율 블러 클램프, 캡%/변동률 픽 연동, 문구 정리
+
+**배경**: 바로 아래 항목(루키 스케일 공식/UI 신설)에 이어 사용자가 (1) 배율 입력이
+80~120 범위를 벗어나면 자동으로 경계값에 스냅되게, (2) 루키 스케일 선택 시 (비활성화된)
+캡%/변동률 입력도 픽 순서에 맞는 값으로 같이 갱신되게, (3) "계약 연수"/"추가 사항" 하단의
+루키 스케일 전용 부가설명 2줄 삭제, (4) 배율 입력 아래의 "1라운드 지명 기록이 없어..."
+경고문 삭제(향후 루키 스케일은 실제 드래프트픽 선수와의 협상에서만 노출할 예정이라
+불필요해짐)를 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`:
+  - `handleRookieMultiplierBlur()` 신규 — 타이핑 중엔 자유롭게 두고, 포커스를 벗어나는
+    순간(`onBlur`)에만 80~120 범위로 스냅(빈 값/NaN이면 120으로). 배율 입력에
+    `onBlur={handleRookieMultiplierBlur}` 연결.
+  - 신규 `useEffect`: `isRookieScale && rookiePick!==null`이면 `capPercentInput`을
+    "픽의 1년차 캡 비율 × 배율"로, `raisePercentInput`을 `estimateFourthYearRaisePct(pick)`
+    (픽마다 26~80.5%로 가장 크게 요동치는 3→4년차 인상률)로 자동 갱신 — 두 입력 모두
+    비활성화 상태라 실제 계산엔 안 쓰이지만(rookieScaleSeasons가 전담), 픽에 따라 달라지는
+    수치를 그대로 보여줘서 참고 정보로 쓰이게 함.
+  - "계약 연수" 하단의 "루키 스케일은 항상 4년 계약입니다..." 문구, "추가 사항" 하단의
+    "루키 스케일은 3·4년차 팀옵션이 CBA로 고정돼...선택할 수 없습니다" 문구 삭제.
+  - 배율 입력 하단의 "이 선수는 1라운드 지명 기록이 없어..." 경고 분기 삭제(rookiePick이
+    null이면 그냥 아무 문구도 안 뜸 — null 케이스 자체가 향후 스코프에서 사라질 예정).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 루키 스케일 공식 전면 재정비 + 서명 유형 "루키 스케일" 신설
+
+**배경**: 사용자가 "나중에 드래프트 후 1라운더와 GM이 직접 루키 스케일 계약을 맺는 기능을
+추가할 예정"이라며, 우선 그 기반이 될 "샐러리캡 기준 루키 스케일 자동 계산 공식"이
+필요하다고 요청 — 샐러리 전문가 자문 형태로 정확한 공식/데이터를 전달받음:
+`RookieScale = SalaryCap × PickScalePct`(픽별 고정 비율, 1~30픽 실측치), `Y2=Y1×1.05`,
+`Y3=Y1×1.10`(둘 다 복리 아니고 1년차 기준), `Y4=Y3×(1+픽별 4년차 인상률)`, 실제 체결가는
+이 100% 스케일의 80~120% 사이에서 결정. 확인해보니 기존 `services/draft/rookieGenerator.ts`
+가 이미 "2025-26 기준으로 대충 추정한 픽별 달러 테이블 × 캡 비율 보정" 방식으로 비슷한
+일을 하고 있었지만 정확도가 낮고(4년차는 모든 픽에 flat +15%로 단순화돼 있었음), 이번에
+받은 정밀 데이터로 완전히 교체.
+
+두 번째 표(픽별 3→4년차 인상률, 26%~80.5%로 픽마다 요동)는 "하드코딩하지 말고 패턴을
+찾아 공식화해달라"는 요청 — 데이터를 분석해보니 1~10픽/11~20픽/21~30픽 "10픽 단위"
+구간마다 각각 완만한 구간과 가파른 구간이 섞여 있어 하나의 매끈한 함수로는 표현이 안
+됐다. 30개 원본값 대신 굴곡을 그대로 따라가는 10개 앵커 포인트를 뽑아 그 사이를
+선형보간하는 방식으로 근사(실측값과 0.1~0.2%p 이내로 일치 확인).
+
+**변경 파일**:
+- `services/draft/rookieGenerator.ts` — `ROOKIE_SALARIES`(추정 달러 테이블)를
+  `ROOKIE_SCALE_PICK_PCT`(1~30픽 정밀 캡% 배열, 새 자문 데이터)로 교체.
+  `ROOKIE_SCALE_Y2_MULT`(1.05)/`ROOKIE_SCALE_Y3_MULT`(1.10) 상수, 4년차 인상률
+  10-앵커 선형보간 `estimateFourthYearRaisePct(pick)` 신규. 이 셋을 조합하는
+  `calcRookieScaleYears(pick, salaryCap, multiplier=1.0)` 신규 export — 100% 기준
+  4년치를 먼저 계산한 뒤 마지막에 multiplier를 4개 연차 전부에 동일하게 곱함(사용자가
+  준 파이썬 의사코드와 동일 순서). 기존 `calcRookieContract()`(싱글플레이어 드래프트
+  완료 시 호출)와 드래프트 클래스 생성 시 임시 연봉 산정 부분 둘 다 이 새 함수를
+  쓰도록 교체 — 시그니처(`calcRookieContract(pickNumber)`)는 그대로라 기존 호출부
+  (`hooks/useGameData.ts` 2곳) 무영향. 2라운드 최저연봉 로직은 건드리지 않음.
+- `types/fa.ts` — `SigningType`에 `'rookie_scale'` 추가.
+- `utils/contractLabels.ts`, `views/FAView.tsx`, `views/NegotiationScreen.tsx`,
+  `services/fa/faMarketBuilder.ts` — 새 유니온 멤버로 인한 `Record<SigningType,X>`
+  exhaustiveness 에러 8곳에 `rookie_scale` 항목 추가(대부분 "이 경로로는 실제로 안
+  들어옴, 표만 채움" 주석 — 싱글플레이어 FA/연장 경로는 루키 스케일을 안 씀).
+- `views/multi/season/MultiNegotiationView.tsx` — `isRookieScale`/`rookiePick`
+  (`player.draftRound===1`이고 `draftPick` 1~30일 때만)/`rookieMultiplierInput`
+  (80~120%, 문자열 state로 0-clobber 버그 방지) 신규. 선택 시 계약 연수 4년 고정
+  (스테퍼 잠금), 캡%/변동률 입력 비활성화, `calcRookieScaleYears()`로 자동 계산.
+  "추가 사항" 체크박스는 비활성화(실제 CBA상 3·4년차 팀옵션이 고정이라 선택 불가) —
+  제출 시 `options`에 `{team,year:2}`+`{team,year:3}` 둘 다 정확히 반영(체크박스
+  UI가 마지막 해 1개만 표시 가능한 것과 별개로, 저장되는 데이터는 정확함).
+  `PlayerContract.type`도 `'veteran'` 대신 `'rookie'`로 저장.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개(rookieGenerator.ts의 나머지 1개 에러는 완전히
+무관한 기존 팀ID 타입 이슈, 이번 변경과 무관 — 세션 시작 시점 요약에도 이미 기록된
+베이스라인). 사용자가 준 예시(2026-27 캡 $164.961M pick1, 미래 캡 $210M pick1/10/30)로
+직접 계산해 전부 소수점까지 정확히 일치 확인.
+
+**주의사항 / 한계**: "추가 사항" UI는 마지막 해 1개 옵션만 시각적으로 표현 가능해서
+루키 스케일의 3년차 팀옵션은 "계약 예상액" 목록에서 "(TO)" 태그로 안 보임(4년차만
+표시됨) — 실제 저장 데이터는 정확하지만 UI 표시만 부분적. 다년치 옵션 태그 UI는
+후속 과제.
+
+---
+
+## 2026-09-16 — 서명 유형 "Minimum Salary Exception" 선택 시 YOS 기반 자동 계산
+
+**배경**: 사용자가 "베테랑 미니멈"의 정확한 명칭이 Minimum Salary Exception이고, 실제로는
+YOS(서비스타임)에 따라 시즌별 미니멈 샐러리가 고정된다고 지적 — 세션 설정
+(`views/multi/league/LeagueSettingsView.tsx`)에 이미 있는 YOS별 미니멈 샐러리 계산 로직을
+그대로 재사용해, 서명 유형을 Minimum Salary Exception으로 고르면 캡%/변동률 입력 없이
+선수의 YOS로 시즌별 금액이 자동 계산되게 하고, 계약 연수도 실제 CBA대로 최대 2년으로
+제한해달라고 요청. 추가 사항(팀/플레이어 옵션)은 그대로 자유롭게 선택 가능해야 함.
+
+**변경 파일**:
+- `utils/constants.ts` — `MIN_SALARY_YOS_TABLE`(YOS 0~10+ 별 캡 대비 비율, NBA CBA 고정값)을
+  `LeagueSettingsView.tsx`에서 이 파일로 승격(공용 상수, 드리프트 방지).
+- `views/multi/league/LeagueSettingsView.tsx` — 로컬에 있던 동일 테이블 정의 삭제, 위
+  공용 상수를 import해서 그대로 사용(동작 변화 없음).
+- `utils/contractLabels.ts` — `SIGNING_TYPE_LABEL.vet_min`: '베테랑 미니멈' →
+  'Minimum Salary Exception'(정확한 CBA 명칭).
+- `views/multi/season/MultiNegotiationView.tsx` — `isMinSalary`(signingType==='vet_min')
+  파생값, `effectiveMaxYears`(미니멈이면 2, 아니면 5) 및 signingType이 미니멈으로 바뀌면
+  years를 2로 클램프하는 useEffect 신규. `minSalarySeasons` useMemo: 선수 YOS(=
+  currentSeasonYear - draftYear) + 계약연차 오프셋만큼 YOS가 증가한다고 보고, 각 시즌의
+  전망 캡(LeagueSettingsView.tsx의 `capProjection`과 동일한 캡성장률 복리 공식) ×
+  해당 YOS의 캡 비율로 시즌별 금액을 계산. `salaries` useMemo가 `isMinSalary`면
+  `minSalarySeasons`를, 아니면 기존 캡%+변동률 계산을 쓰도록 분기. 캡%/변동률 입력 2개는
+  미니멈 선택 시 비활성화하고 안내 문구로 대체, "계약 연수" 스테퍼의 +/최대 버튼도
+  `effectiveMaxYears`를 상한으로 사용.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `MultiNegotiationView.tsx`의 `isMinSalary`/`effectiveMaxYears`/
+`minSalarySeasons` 관련 diff만 되돌리면 됨. `MIN_SALARY_YOS_TABLE` 이동은
+`LeagueSettingsView.tsx`에 로컬 상수로 다시 넣고 import를 지우면 원복.
+
+---
+
+## 2026-09-16 — 미니멈 샐러리 테이블 시즌 드롭다운 표시를 시즌명("2026-27")으로 변경
+
+**배경**: 직전 항목의 미니멈 샐러리 테이블 드롭다운이 "1시즌"/"2시즌" 식 `season_number` 기반
+숫자 라벨을 쓰고 있었는데, 사용자가 다른 멀티 화면들과 동일하게 "2026-27" 형식 시즌명으로
+보여달라고 요청 (참고: `room.season`이 이 포맷을 쓰는 곳이 이미 있음, 예: `MultiAllStarView.tsx`).
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `capProjection`의 각 행에 `seasonLabel: string` 필드 추가 — `league.virtual_season_year`를
+    기준 연도로 삼아 인덱스만큼 더한 뒤 `"${year}-${String(year+1).slice(-2)}"`로 포맷.
+    `virtual_season_year`가 없으면 `new Date().getFullYear()`로 폴백.
+  - 미니멈 샐러리 테이블 상단 `<select>`의 옵션 텍스트를 `{row.season}시즌` → `{row.seasonLabel}`로 변경.
+
+**주의**: 이 `seasonLabel`은 전망 표시 전용 계산값이며, 실제 `leagues.virtual_season_year`는
+현재까지 시즌 진행에 따라 자동 증가하는 로직이 없음(서버 코드 확인 결과 생성 시 1회 저장 후
+갱신 안 됨) — 따라서 이 라벨은 "지금 이 증가율로 간다면"이라는 가정 하의 참고용 표시이지,
+실제 DB의 미래 시즌 연도를 보장하지 않음.
+
+**검증**: `npx tsc --noEmit` 결과 신규 에러 0개.
+
+**롤백 방법**: `seasonLabel` 필드 추가 부분과 `<option>` 텍스트 변경만 되돌리면 됨(직전 항목 상태로 복귀).
+
+---
+
+## 2026-09-16 — 캡 증가율 기본값/범위 제한 + YOS별 미니멈 샐러리 테이블 추가
+
+**배경**: 직전 항목("멀티리그 캡 증가율 설정 + 10년 전망 테이블")의 후속 요청.
+① `capGrowthRate`를 미설정(`null`) 허용 대신 기본값 2.5%, 0~5% 범위로 제한.
+② 캡 증가율이 입력돼 있으면 10년 전망 테이블 하단에 YOS(서비스타임)별 미니멈 샐러리
+테이블도 추가 — 전체 10년을 다 보여주지 않고 테이블 상단 드롭다운에서 시즌을 선택하면
+그 시즌의 캡(증가율 복리 적용)을 기준으로 YOS 0~10+ 구간별 미니멈 샐러리를 계산.
+YOS별 캡 비율은 사용자가 지정한 고정 값(0 YOS=0.82% ~ 10+ YOS=2.35%).
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `CAP_DEFAULTS.capGrowthRate = 2.5` 추가, `CAP_GROWTH_RATE_MIN = 0` / `CAP_GROWTH_RATE_MAX = 5` 상수 신규.
+  - `MIN_SALARY_YOS_TABLE`(11행: `0 YOS`~`10+ YOS`, `capPct` 고정값) 모듈 레벨 상수 신규.
+  - `capGrowthRate` state 타입을 `number | null` → `number`로 변경(기본 `CAP_DEFAULTS.capGrowthRate`), 로드/리셋/dirty체크 전부 `?? CAP_DEFAULTS.capGrowthRate`로 통일.
+  - 증가율 입력 필드 `min/max`를 `0~50` → `CAP_GROWTH_RATE_MIN~CAP_GROWTH_RATE_MAX`(0~5)로 변경, `onChange`에서 범위 밖 값을 클램프.
+  - `minSalarySeasonIdx` state(드롭다운 선택 인덱스, 기본 0) 신규, `minSalaryRows` `useMemo` 신규 — `capProjection[minSalarySeasonIdx].cap × capPct/100`으로 각 YOS 미니멈 샐러리 계산.
+  - 10년 전망 테이블 바로 아래에 "YOS별 미니멈 샐러리" 섹션 추가(시즌 선택 `<select>` + YOS/캡%/미니멈샐러리 3열 테이블), `minSalaryRows`가 있을 때만(=`capProjection`이 있을 때, 즉 증가율>0일 때) 렌더링.
+- `migrations/add_leagues_cap_growth_rate.sql` — 주석만 갱신(기본값/범위 설명 추가, 컬럼 자체는 변경 없음).
+
+**Before**: `capGrowthRate`가 `null` 허용(미설정 시 전망 테이블 비노출), 입력 범위 제한 없음(0~50 임의값), 미니멈 샐러리 테이블 없음.
+
+**After**: 위 diff대로 — 기본 2.5%, 0~5% 클램프, 미니멈 샐러리 테이블 추가.
+
+**검증**: `npx tsc --noEmit` 결과 `LeagueSettingsView.tsx`/`leagueService.ts` 신규 에러 0개.
+
+**롤백 방법**: `LeagueSettingsView.tsx`의 이번 diff만 되돌리면 됨(DB 컬럼/서비스 레이어는 변경 없음, 직전 항목 상태로 복귀).
+
+---
+
+## 2026-09-16 — 멀티리그 캡 증가율 설정 + 10년 전망 테이블
+
+**배경**: 사용자가 멀티리그 설정 화면에서 연간 샐러리캡 증가율을 설정할 수 있고,
+설정되어 있으면 향후 10년간 캡/플로어/사치세/1차·2차 에이프런 전망을 테이블로
+보고 싶다고 요청. 기존 멀티리그 캡 시스템(`LeagueSettingsView.tsx` 샐러리캡 탭)은
+관리자가 5개 금액을 개별 입력하는 완전 정적 방식이라 증가율 개념 자체가 없었음
+(싱글플레이어의 `generateCapHistory`/5~10% 랜덤 성장 로직(`utils/constants.ts`)과는
+완전히 별개의 정적 시스템). 이번 변경은 순수 참고용 전망 표시만 추가한 것으로,
+시즌 진행 시 금액을 자동으로 갱신하는 로직은 구현하지 않음(기존 캡 값 자체가
+아직 트레이드/FA 로직에 강제 적용되지 않는 것과 동일한 수준).
+
+**변경 파일**:
+- `migrations/add_leagues_cap_growth_rate.sql` (신규) — `leagues.cap_growth_rate numeric NULL` 컬럼 추가, Supabase 프로젝트(`buummihpewiaeltywdff`)에 직접 적용 완료.
+- `services/multi/roomQueries.ts` — `LeagueRow` 인터페이스에 `cap_growth_rate: number | null` 필드 추가.
+- `services/multi/leagueService.ts` — `UpdateLeagueSettingsParams`에 `capGrowthRate?: number | null` 추가, `updateLeagueSettings()` payload 매핑에 `cap_growth_rate` 반영.
+- `views/multi/league/LeagueSettingsView.tsx`:
+  - `capGrowthRate` state 신규(`number | null`, 기본 `null` = 미설정). `league.cap_growth_rate`에서 로드, `handleSaveCapSettings()` payload에 포함, `isCapTabDirty` 비교에 포함.
+  - "샐러리캡 설정" 탭 내 5개 금액 입력 아래에 "연간 캡 증가율(%)" 숫자 입력 추가(미설정 시 placeholder "미설정").
+  - `capProjection` = `React.useMemo`로 계산 — `capGrowthRate`가 `null`이거나 0 이하면 `null` 반환(테이블 비노출). 값이 있으면 현재 입력 중인 5개 금액을 기준으로 `(1 + rate/100)^n` 복리로 10개 시즌(현재 `league.season_number` 기준) 전망 계산.
+  - `capEnabled && capProjection`일 때만 리셋 버튼 아래에 10년 전망 테이블(시즌/캡/플로어/사치세/1차에이프런/2차에이프런) 렌더링, 하단에 "자동 반영 안 됨, 매 시즌 직접 조정 필요" 안내 문구 포함.
+
+**Before**: `capGrowthRate` 개념 자체가 없었음 — 캡 관련 5개 금액은 매 시즌 관리자가 수동으로만 조정.
+
+**After**: 위 diff대로. `cap_growth_rate`가 `null`이면 기존과 동일하게 동작(테이블 비노출, 저장 시 컬럼도 `null` 유지).
+
+**검증**: `npx tsc --noEmit` 결과 `LeagueSettingsView.tsx`/`leagueService.ts`/`roomQueries.ts` 관련 신규 에러 0개(기존에 있던 무관한 `RoomRow`/`sim_settings` 타입 에러 58건은 이번 세션 시작 전부터 존재하던 별도 WIP 이슈, 이번 변경과 무관 — 라인 번호만 파일 내용 삽입으로 밀려서 달라짐).
+
+**롤백 방법**: 위 3개 파일 diff를 되돌리고, DB에서 `ALTER TABLE leagues DROP COLUMN IF EXISTS cap_growth_rate;` 실행(마이그레이션 파일도 함께 삭제 또는 no-op 처리).
+
+---
+
+## 2026-09-16 — 팀 옵션/플레이어 옵션 체크박스 추가 (계약 마지막 해, 2년 이상부터)
+
+**배경**: 사용자가 계약 예상액 하단에 "추가 사항" 섹션을 만들어 팀 옵션/플레이어 옵션을
+배타적 체크박스로 넣어달라고 요청 — 실제 NBA 계약처럼 옵션은 계약 마지막 해에만,
+2년 이상 계약부터 설정 가능. 체크 시 계약 예상액의 마지막 해 금액 왼쪽에 이탤릭+노란색
+"(TO)"/"(PO)" 표시.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `optionType: 'team'|'player'|null` state
+  신규(체크박스 2개지만 하나의 state로 배타 처리). `years<2`가 되면 자동으로 `null`로
+  리셋하는 useEffect 추가. "계약 예상액" 목록의 마지막 행에 `optionType`이 있으면
+  금액 왼쪽에 `italic font-bold text-yellow-400`으로 "(TO)"/"(PO)" 표시. "계약 예상액"
+  아래 "추가 사항" 섹션 신규(체크박스 2개, `years<2`면 비활성화+안내문구). 계약 체결 시
+  `PlayerContract.options`에 `[{type: optionType, year: years-1}]`(마지막 해 인덱스,
+  0-based) 반영.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨 — `ContractOption` 타입 자체는 이번 세션 초반에
+이미 배열 형태로 정비돼 있어 추가 스키마 변경 없이 바로 반영 가능했음.
+
+---
+
+## 2026-09-16 — 버그 수정: 숫자 입력칸 지우면 0으로 되돌아가던 문제 + "변동률"로 개명
+
+**배경**: 사용자가 "연간 인상률"을 "변동률"로 바꾸고 음수(연봉 하락) 입력이 되게 해달라고
+요청 — 확인해보니 실제로는 이미 음수 입력 코드가 있었지만 진짜 문제는 따로 있었다:
+`capPercent`/`raisePercent`가 `number` state라 onChange마다 `parseFloat(value) || 0`을
+즉시 계산해 그대로 state에 넣었는데, 입력칸을 전부 지우거나 "-"만 남은 중간 상태에서
+`parseFloat`가 NaN을 반환해 `|| 0`으로 즉시 "0"이 들어가 버렸다. controlled input이라
+이 "0"이 바로 되돌아가 표시되면서 "지우면 0이 남고, 이어 입력하면 09가 된다"는 정확히
+사용자가 겪은 증상이 났다(그래서 음수 입력도 "-"를 치는 순간 0으로 리셋돼 사실상
+불가능했음).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `capPercent`/`raisePercent` number
+  state를 `capPercentInput`/`raisePercentInput` 문자열 state로 교체. `PERCENT_INPUT_PATTERN`
+  (`/^-?\d*\.?\d*$/`)으로 걸러 유효한 중간 상태("", "-", "5.", "-5.5")만 그대로
+  반영하고, 계산에 쓰는 `capPercent`/`raisePercent` 숫자값은 렌더 시점에 파생값으로
+  파싱(입력 자체는 건드리지 않음). "연간 인상률" 라벨/주석을 "변동률"로 변경. 두 입력
+  모두 `type="number"` → `type="text" inputMode="decimal"`로 교체(네이티브 number input의
+  자체적인 값 정규화 간섭을 완전히 배제).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 이전(버그 있는) 버전으로 복귀 — 권장하지 않음.
+
+---
+
+## 2026-09-16 — 연차별 연봉 직접입력 → 실제 CBA 구조(1년차 캡% + 연간 인상률)로 전환
+
+**배경**: 사용자가 "샐러리 전문가"에게 자문받은 내용을 그대로 전달 — 실제 NBA CBA는
+연차별 금액을 각각 정하는 게 아니라 (1) 1년차 연봉을 샐러리캡 대비 %로 정하고
+(2) 연간 인상률을 정하면 이후 연차가 자동 계산되는 구조. 계산식은 복리가 아니라
+"1년차 금액의 인상률만큼 매년 균등 가산"(`salary_year_n = first_year × (1 + raise% × (n-1))`,
+0-index로는 `× n`). 서명 유형에 따라 인상률 상한도 다름 — Full/Early Bird는 ±8%,
+그 외(캡스페이스/MLE/미니멈/BAE/논버드 등)는 ±5%(CBA 실제 규정). 저장은 계산된 달러
+금액 배열 그대로(계산식 자체를 저장하지 않음).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연차별 직접입력 `salaries` state +
+  `updateSalaryAt`를 완전히 제거. `capPercent`(1년차 연봉, 캡 대비 %)/`raisePercent`
+  (연간 인상률 %) state 신규. `maxRaisePercent`(signingType이 bird_full/bird_early면
+  8, 그 외 5)와 signingType 변경 시 raisePercent를 새 상한으로 클램프하는 useEffect
+  신규. `firstYearSalary`(캡% × league.salary_cap_amount)와 `salaries`(위 공식으로
+  파생 계산, useMemo)로 대체 — 더 이상 직접 편집 불가, 읽기 전용 "계약 예상액" 목록
+  (시즌 라벨 "2026-27" 형태 포함)으로 표시. "계약 연수" 블록 바로 아래에 캡%/인상률
+  입력 2개를 나란히 배치.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 바로 위(연차별 직접입력) 버전으로 복귀 — `PlayerContract`
+타입/저장 로직은 이번에도 그대로(둘 다 `years: number[]`만 사용)라 계약 데이터 형식
+자체는 안 바뀜.
+
+---
+
+## 2026-09-16 — "총 계약액" 아래에 AAV(연평균 연봉) 행 추가
+
+**배경**: 사용자가 총 계약액 바로 아랫줄에 AAV(이미 계산해둔 `avgSalary`) 행을 추가해달라고
+요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — "총 계약액" 행 바로 아래 "AAV" 행 신규(값은
+  기존 `avgSalary` 재사용, 새 계산 없음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 우측 오퍼폼에 "팀 샐러리캡 현황" 섹션 신규 (계약 전/후 비교)
+
+**배경**: 사용자가 "총 계약액" 아래 "체결 가능성"(중앙 채팅 헤더와 중복)을 빼고, 그
+자리에 구분선 + 우리 팀의 전체 샐러리캡 현황(캡/럭셔리택스/에이프런 라인 등)을,
+그리고 이 계약이 체결된 후의 캡 상황까지 보여달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `calcTeamPayroll()`
+  (`services/fa/faMarketBuilder.ts`, 싱글플레이어 FA 엔진이 이미 쓰는 함수 재사용: 로스터
+  연봉 합 + 데드머니) import. `myTeam`(Team.id는 team_slug라 `myTeamRow.team_slug`로
+  `teams`에서 찾음), `capInfo`(현재 페이롤/샐러리캡/럭셔리택스·1차·2차 에이프런 라인
+  (해당 규정이 켜져 있을 때만)/계약 후 예상 페이롤 — 1년차 연봉만 이번 시즌 캡에
+  더해진다고 가정) useMemo 신규. "총 계약액" 아래 "체결 가능성" 행 삭제,
+  구분선(`border-t`) + "팀 샐러리캡 현황" 블록 추가(캡 초과 시 빨강, 여유 있으면 초록).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨 — 새 함수/상태 전부 이 화면에만 쓰여 다른 곳에
+영향 없음.
+
+---
+
+## 2026-09-16 — 오퍼폼 우측 영역 타이포그래피 일괄 정리
+
+**배경**: 사용자가 우측 오퍼폼을 계속 다듬으며 (1) 연봉 입력 포커스 시 배경색은 안 바뀌게,
+(2) "N년차" 라벨 `text-sm`+밝은 색, (3) 연봉 입력 아래 "연평균 ..." 텍스트 삭제, (4) "연봉
+(연차별)" 헤더의 font-mono류 효과(uppercase/tracking-wider) 제거, (5) 우측 영역 전체에서
+`text-sm`보다 작은 폰트를 전부 `text-sm`으로 통일해달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연봉 입력 `focus:bg-slate-800` 제거(포커스
+  시 테두리색만 바뀜, 배경 고정). "N년차" 라벨 `text-xs text-slate-500` →
+  `text-sm text-slate-300`. "연평균" 표시 줄 삭제. "연봉 (연차별)" 헤더에서
+  `uppercase tracking-wider` 제거(다른 헤더는 유지 — 이 라벨만 지목됨,
+  feedback_button_typography 메모와 같은 맥락). "서명 유형"/"계약 연수" 헤더,
+  최소/최대 버튼, 자격검증 안내문, select 값, 총액요약/체결가능성 행, actionError까지
+  전부 `text-xs`/`text-[11px]` → `text-sm`으로 통일.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 연봉 입력칸 대비 조정: 테두리 밝게, 채움색 어둡게, $ 기호 강조
+
+**배경**: 사용자가 연봉 입력칸 테두리를 더 밝게, 배경(채움색)은 더 어둡게, 입력칸 안의
+"$" 기호도 밝고 볼드하게 해달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연봉 입력 배경 `bg-slate-900`→
+  `bg-slate-950`(더 어둡게), 테두리 `border-slate-800`→`border-slate-600`(더 밝게).
+  "$" 기호 `text-xs text-slate-500`→`text-sm font-bold text-slate-300`.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 연봉 입력칸에 옅은 테두리 복원(완전히 안 보이면 구분이 안 됨)
+
+**배경**: 바로 아래 항목에서 `border-transparent`로 만들었더니 배경과 완전히 같아져서
+입력칸 경계 자체가 안 보인다는 지적 — 테두리를 없애라는 의도는 아니었음(다른 컨트롤과
+"디자인이 똑같아 헷갈린다"는 게 원래 요청이었지, 경계 자체를 지우라는 게 아니었음).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연봉 입력 `border-transparent` →
+  `border-slate-800`(배경 `bg-slate-900`보다 살짝 밝은 옅은 테두리로 경계만 표시, 다른
+  컨트롤의 `border-slate-700`보다는 여전히 옅음). 포커스 시 `focus:border-indigo-500`는
+  그대로 유지.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `border-slate-800`을 `border-transparent`로 되돌리면 됨(권장하지 않음).
+
+---
+
+## 2026-09-16 — 연봉 입력칸 디자인 분리 + 천 단위 콤마 표시
+
+**배경**: 사용자가 연봉 입력칸이 계약 연수 +/- 버튼·서명 유형 드롭다운과 디자인이
+똑같아서 헷갈린다고 지적 — 배경색을 컨테이너와 동일하게 만들고 포커스 시에만 밝아지게,
+그리고 폼 내부 font-mono/tabular-nums 제거 + 천 단위 콤마 표시를 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연봉 입력 `<input>`을 `type="number"`→
+  `type="text" inputMode="numeric"`로 교체, `value`를 `sal.toLocaleString('en-US')`로
+  표시(천 단위 콤마), onChange에서 숫자 아닌 문자를 제거하고 파싱. 배경/테두리를
+  `bg-slate-800 border-slate-700`(다른 컨트롤과 동일)에서 `bg-slate-900
+  border-transparent`(컨테이너와 동일, 안 튐)로 바꾸고 `focus:bg-slate-800
+  focus:border-indigo-500`만 추가해 포커스 시에만 밝아지게 함. 이 블록 안의 "N년차"
+  라벨/"연평균" 캡션에 있던 `font-mono`도 함께 제거(tabular-nums는 원래 안 쓰고 있었음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 연봉 입력을 단일 값→연차별 배열로 전환(계약 연수만큼 입력칸 증가)
+
+**배경**: 사용자가 "계약 연수에 따라 연봉 입력 칸이 늘어나게" 요청 — 기존엔 연봉 입력이
+하나뿐이고 제출 시 `Array(years).fill(salary)`로 모든 연차에 같은 금액을 반복해서 채웠다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `salary: number` state를
+  `salaries: number[]`로 교체. `years`가 바뀔 때마다 배열 길이를 맞추는 `useEffect` 신규
+  (늘어나면 마지막 연차 금액 복사, 줄어들면 뒤에서 자름). `updateSalaryAt(index, value)`
+  헬퍼 추가. `avgSalary`(연차별 평균 — evaluateFAOffer 등 단일 연봉 기준 판정용)와
+  `totalSalary`(합계 — 총 계약액 표시용) 파생값 신규. 연봉 입력 UI를 연차 수만큼
+  `{i+1}년차` 라벨이 붙은 입력칸 목록으로 교체. 계약 체결 시 `contract.years`에 이제
+  `salaries` 배열을 그대로 넣어(연차별 실제 값), 예전처럼 전 연차 동일 금액을 반복
+  채우던 방식보다 `PlayerContract.years`의 원래 의도(연차별 배열,
+  feedback_contract_years_format 메모 참고)에 더 맞게 됐다.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `salaries` 배열을 다시 단일 `salary` 스칼라로 되돌리고 관련 useEffect/헬퍼를
+제거하면 이전 동작으로 복귀.
+
+---
+
+## 2026-09-16 — 계약 연수에 "최소"/"최대" 원클릭 버튼 추가
+
+**배경**: 우측 오퍼폼 다듬기 작업 계속 — 계약 연수를 1년/5년으로 바로 맞출 수 있는 버튼
+요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `MIN_CONTRACT_YEARS=1`/
+  `MAX_CONTRACT_YEARS=5` 모듈 상수 신규(기존 -/+ 스테퍼의 매직넘버 1·5도 이 상수로 교체해
+  드리프트 방지). 스테퍼 양옆에 "최소"/"최대" 버튼 추가, 클릭 시 `years`를 바로 해당
+  값으로 설정.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 우측 오퍼폼 필드 순서 변경: 서명 유형 → 계약 연수 → 연봉
+
+**배경**: 사용자가 우측 오퍼폼 레이아웃을 다듬는 작업 시작 — 서명 유형(계약 유형)을
+최상단으로, 계약 연수를 그 아래로 옮겨달라고 요청(기존 순서: 연봉 → 계약 연수 → 서명 유형).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 세 블록의 JSX 순서만 재배치(로직/상태
+  변경 없음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 세 블록을 연봉→계약 연수→서명 유형 순서로 되돌리면 됨.
+
+---
+
+## 2026-09-16 — "나가기" 버튼을 별도 푸터 바 대신 마지막 메시지 아래 중앙 텍스트 링크로
+
+**배경**: 바로 아래 항목에서 만든 "나가기"가 채팅 패널 하단에 별도 바(테두리+버튼 배경)로
+붙어 있었는데, 사용자가 마지막 메시지 버블 바로 아래에 밑줄 텍스트 링크 스타일로,
+컨테이너 중앙 정렬로 바꿔달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 별도 `border-t` 푸터 div 제거, 메시지
+  `.map()` 바로 다음(스크롤 영역 안, `chatEndRef` 이전)에 `flex justify-center`로 감싼
+  밑줄 텍스트 버튼으로 교체.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 쿨다운 중 채팅창 하단에 "나가기" 버튼 추가
+
+**배경**: 안내 카드를 삭제한 뒤(바로 아래 항목) 쿨다운 중엔 대화창에 거절 메시지 하나뿐이라
+자유 계약 목록으로 돌아갈 명시적인 동선이 없었음 — 사용자가 채팅창 하단에 나가기 버튼을
+요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `isOnCooldown`일 때만 채팅 패널 하단에
+  "나가기" 버튼 노출, 클릭 시 헤더의 "← 뒤로"와 동일한 경로(`/multi/leagues/:leagueId/
+  season/free-agent`)로 이동.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 쿨다운 중 입력 요소 개별 비활성화 + 재시도 안내카드 전면 삭제
+
+**배경**: 바로 아래 항목(제출 버튼만 비활성화)에 이어, 사용자가 (1) 쿨다운 중엔 연봉
+입력/연수 스테퍼/서명 유형 드롭다운도 개별적으로 비활성화해달라, (2) "다시 시도해주세요"
+안내 카드(walkedAway/isOnCooldown 두 케이스 다)를 전부 삭제해달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 연봉 `<input>`, 연수 +/- `<button>` 2개,
+  서명 유형 `<select>`에 `disabled={isOnCooldown}` + `disabled:opacity-40
+  disabled:cursor-not-allowed` 스타일 추가(패널 전체는 여전히 안 흐려짐, 개별 요소만).
+  `walkedAway`/`isOnCooldown` 안내 카드 블록 전체 삭제. 그 블록에서만 쓰이던
+  `formatDateKeyKo()` 헬퍼도 이제 호출부가 없어 함께 제거.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 쿨다운 중에는 우측 폼 전체가 아니라 제출 버튼만 비활성화
+
+**배경**: 사용자가 쿨다운 상태에서도 우측 폼(연봉/연수/서명 유형 등)을 계속 만져볼 수
+있게 하고, "오퍼 제출" 버튼만 막아달라고 요청 — 기존엔 `isLocked`(계약체결/결렬/쿨다운
+전부 포함)가 패널 전체를 `opacity-40 pointer-events-none`으로 흐리게 만들었다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `isSigned`(=`!!result?.accepted`만) 신규
+  분리. 우측 패널 흐림/조작불가 처리는 `isLocked` 대신 `isSigned`를 쓰도록 교체(계약이
+  실제로 체결돼 화면 이동 직전인 경우로만 좁힘). 제출 버튼의 `disabled`는 기존 `isLocked`
+  그대로 유지(계약체결/결렬/쿨다운 전부 계속 막음).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 패널 className의 `isSigned`를 `isLocked`로 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 버그 수정: 쿨다운 중 재진입해도 인사말이 먼저 떠버리던 레이스
+
+**배경**: 사용자가 스크린샷으로 "쿨다운 상태인데 채팅창엔 평소 인사 대화가 그대로 뜨고
+우측 폼만 비활성화됐다"고 리포트 — 바로 아래 항목(쿨다운 전용 메시지)이 실제로는
+안 먹히고 있었다.
+
+**원인**: `cooldownUntilDate` 기본값 `null`이 "쿨다운 없음"과 "아직 localStorage 확인 전"을
+구분하지 못했다. 마운트 시 같은 커밋 안에서 (1) 쿨다운 로드 effect가 `setCooldownUntilDate`를
+호출(리렌더 예약, 즉시 반영 안 됨)한 직후 (2) 인사말 effect가 **그 커밋의 렌더 스냅샷**
+(`cooldownUntilDate`가 아직 null → `isOnCooldown=false`)을 보고 그대로 실행돼 인사말을
+띄우고 `greetedRef.current=true`를 세팅해버렸다. 다음 커밋에서 `isOnCooldown`이 true로
+바뀌어도 인사말 effect는 deps에 `isOnCooldown`이 없어(+`greetedRef.current`도 이미 true라)
+재실행되지 않고, 쿨다운 전용 메시지 effect도 `!greetedRef.current` 조건에 막혀 끝내
+못 떴다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `cooldownChecked`(boolean) 상태 신규 —
+  쿨다운 로드 effect의 `finally`에서 항상 true로 세팅해 "확인 완료" 시점을 명시적으로
+  분리. 인사말 effect의 가드에 `!cooldownChecked`와 `isOnCooldown`을 추가하고 의존성
+  배열에도 정식으로 포함시켜, 쿨다운 확인이 끝나기 전엔 인사말이 나가지 않게 함.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `cooldownChecked` 관련 diff만 되돌리면 이전(버그 있는) 상태로 복귀 — 권장하지
+않음.
+
+---
+
+## 2026-09-16 — 쿨다운 중 재진입 시 채팅에 거절 한 마디만 표시
+
+**배경**: 결렬 후 쿨다운 중에 협상 화면에 다시 들어오면 인사말이 생략돼(이전 항목)
+채팅창이 비어 보였다 — 사용자가 이 경우 다른 대화 없이 "현재로써는 협상에 임할 마음이
+없습니다. 나중에 다시 얘기하는게 좋겠습니다." 한 마디만 뜨게 해달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `cooldownMsgShownRef` useRef + 신규
+  `useEffect` 추가: `isOnCooldown`이 true이고 이번 세션에서 아직 인사말이 안 나갔으면
+  (`!greetedRef.current` — 이번 세션 중 방금 결렬된 경우는 이미 대화가 진행 중이라 제외)
+  이 한 마디만 `addMsg`로 보내고 `greetedRef.current`도 true로 세팅해 이후 쿨다운이
+  풀려도 뒤늦게 인사말이 끼어들지 않게 함.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff(새 useRef+useEffect)만 제거하면 됨.
+
+---
+
+## 2026-09-16 — 채팅 헤더 레이아웃: 이름 제거, 지표들을 좌측 한 줄로 재배치
+
+**배경**: 사용자가 채팅 헤더 좌측의 선수 이름을 삭제하고, "계약 가능성"/"현재 기분"을
+좌측으로 옮겨 구분선 없이 한 줄에 수평 배치해달라고 요청(좌측 패널에 이미 이름이
+있어 중복이었음).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — 채팅 헤더에서 `PlayerHoverCard`로 감싼
+  이름|나이|포지션 블록 제거. "계약 가능성"/"현재 기분" 두 블록을 각각 `flex-col`(라벨
+  위/값 아래) 대신 `flex items-center`(라벨-값 한 줄)로 바꾸고, 구분선(`border-l`)도 제거.
+  `PlayerHoverCard`/`handleViewProfile`는 좌측 패널 선수 정보 섹션에서 여전히 쓰여
+  import는 유지.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨.
+
+---
+
+## 2026-09-16 — 기분이 성격에 따라 다르게 떨어지도록(다혈질/자존심/충성심 반영)
+
+**배경**: 사용자가 "성격에 따라 기분이 떨어지는 정도를 다르게 할 수 있나" 질문 — 기존엔
+`mood`가 `acceptProbability`(체결 가능성)를 그대로 5단계로 매핑한 값이라 "가능성" 지표와
+사실상 동일했고 성격은 반영되지 않았다. 헤더의 "계약 가능성"/"현재 기분" 텍스트도 너무
+작고(text-[11px]/text-xs) 라벨 색(text-slate-500)이 어둡다는 지적.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `applyMoodSensitivity(probability,
+  tendencies)` 신규: 확률이 0.5(중립) 미만으로 나쁜 쪽에 있을 때만 성격별 민감도를 곱해
+  증폭/완화한다 — 다혈질(temperament>0)·자존심(ego>0.35) 강할수록 더 크게 떨어지고,
+  침착(temperament<-0.4)·충성심 높을수록 덜 떨어짐. 좋은 오퍼(0.5 이상)에 대한 반응은
+  성격과 무관하게 그대로 둠(사용자가 "떨어지는 정도"만 요청). `handleSubmit`에서
+  `moodFromProbability()` 호출 전에 이 보정을 거치도록 배선. 헤더 텍스트 `text-sm`으로
+  확대, 라벨 색 `text-slate-500`→`text-slate-400`.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `applyMoodSensitivity` 호출을 제거하고 `moodFromProbability(acceptProbability
+?? ...)`를 직접 넘기면 이전 동작으로 복귀.
+
+---
+
+## 2026-09-16 — 기분 표시 방식 조정: 라벨 추가, 오퍼 제출 시에만 갱신, 거절 안내카드 제거
+
+**배경**: 바로 아래 항목(기분 이모지)에 이어 사용자가 (1) 이모지 왼쪽에 한글 라벨도
+같이 보여달라, (2) 기분이 폼(연봉/연수) 조작만으로는 안 바뀌고 오퍼를 "제출"했을 때만
+바뀌게 해달라, (3) 오퍼 거절 시 우측 폼 하단에 뜨던 "거절됐습니다..." 안내 카드를
+없애달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `moodEmoji`(파생 useMemo, 폼 값에 실시간
+  연동)를 `mood`(useState, `handleSubmit` 안에서만 갱신)로 교체. `moodFromProbability()`/
+  `MOOD_ANGRY` 모듈 레벨 헬퍼 신규(이모지+라벨 함께 반환). 이전 세션 결렬/쿨다운 중이면
+  useEffect로 진입 즉시 분노 고정. 헤더에 라벨(`text-slate-400`)을 이모지 왼쪽에 배치.
+  단순 거절 시(`result && !result.accepted`) 뜨던 안내 카드 블록 삭제(walkedAway/
+  isOnCooldown 카드는 여전히 정보성이 있어 유지).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 바로 위 항목(실시간 연동 버전)으로 복귀.
+
+---
+
+## 2026-09-16 — FA 협상 채팅 헤더에 선수 기분 이모지(5단계) 추가
+
+**배경**: 사용자가 채팅 헤더 우측에 선수의 "현재 기분"을 이모지 5단계(활짝웃는미소/그냥미소/
+중립/약간안좋음/분노)로 보여달라고 요청. 이모지 후보를 먼저 제시해 컨펌받음(😄/🙂/😐/😕/😡).
+어떤 값에 연동할지는 이미 있는 "체결 가능성"(estimateAcceptProbability, 실시간)을 그대로
+재사용하기로 결정 — 별도의 "기분" 데이터 소스를 새로 만들 필요 없이 폼의 연봉/연수를
+바꿀 때마다 이모지도 같이 바뀌게 함. 협상이 완전히 결렬(walkedAway)되면 오퍼 값과 무관하게
+항상 분노로 고정.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `moodEmoji` useMemo 신규(80%↑ 😄 /
+  60%↑ 🙂 / 40%↑ 😐 / 20%↑ 😕 / 그 이하·결렬 😡 — `getAcceptLikelihoodLabel`과 동일한
+  임계값). 채팅 헤더를 `flex justify-between`으로 바꿔 좌측 선수 정보/우측 이모지 배치.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨 — 새 데이터 소스 없이 기존 acceptProbability를
+읽기만 하므로 다른 곳에 영향 없음.
+
+---
+
+## 2026-09-16 — FA 협상 쿨다운 기준을 실제 시계 시간→인게임 가상 날짜로 변경
+
+**배경**: 바로 아래 항목(localStorage 쿨다운)은 `Date.now() + N시간`(실제 시계 시간) 기준으로
+구현했는데, 사용자가 "시뮬레이션 시간상으로 24시간이 지나야" 하는 게 어떻겠냐고 제안 —
+멀티플레이어는 시뮬레이션이 실제 시간과 다른 속도로 진행되므로(게임 진행 배치에 따라
+가상 날짜가 실제 시간보다 빠르거나 느리게 흐름), 실제 시계 시간보다 인게임 캘린더 날짜
+기준이 게임 내적으로 더 합당하다. 싱글플레이어의 원래 `faCooldownDays`도 실제 시간이
+아니라 세이브의 인게임 날짜(`currentDate`) 기준이었으므로, 오히려 이쪽이 싱글의 원래
+설계와 더 일치한다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `cooldownHours`(24~72시간) →
+  `cooldownDays`(1~3일, 싱글의 faCooldownDays 공식 그대로)로 교체. `cooldownUntil`
+  (숫자 타임스탬프) → `cooldownUntilDate`(YYYY-MM-DD 문자열)로 교체. 현재 가상 날짜는
+  `views/multi/season/multiScheduleUtils.ts`의 `findCurrentVirtualDate()`로 계산
+  (`rooms.sim_date`는 실제 KST 날짜라 인게임 판정에 직접 쓰면 안 됨 —
+  project_sim_date_vs_virtual_date 메모 참고), 만료일은 같은 파일의 `addDaysToKey()`로
+  계산. localStorage에는 이제 날짜 문자열을 저장하고, 문자열 비교(`<`)로 만료 여부 판정.
+  안내 문구도 "N시 이후"에서 "N월 N일 이후(시뮬레이션 기준)"로 변경(`formatDateKeyKo` 신규
+  헬퍼).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개(처음에 `findCurrentVirtualDate`/`addDaysToKey`를
+잘못된 파일(`multiSeasonUtils.ts`)에서 import해 에러 났던 걸 올바른 파일
+`multiScheduleUtils.ts`로 수정 후 통과).
+
+**롤백 방법**: 이번 diff만 되돌리면 바로 위 항목(실제 시계 시간 버전)으로 복귀.
+
+---
+
+## 2026-09-16 — FA 협상 화면: 결렬 후 재입장 무한 재시도 방지 (localStorage 쿨다운)
+
+**배경**: 바로 아래 항목(인내심 소진→결렬)의 `walkedAway`가 컴포넌트 로컬 state라, 사용자가
+"결렬되면 나갔다 들어오면 무한으로 협상할 수 있는 거 아니냐"고 정확히 지적. AskUserQuestion
+으로 저장 위치를 물어 "쿨다운(일정 기간 후 재시도 가능)"을 선택받음 — DB 영구 기록은
+"다른 팀의 협상에도 영향 줄 수 있다"는 이유로 배제하고, 이 브라우저의 "리그+팀+선수"
+조합에만 국한된 localStorage 락으로 구현(서버 인증된 기록은 아니라는 한계 있음, 아래 참고).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `cooldownHours`(성격 기반 24~72시간,
+  싱글의 faCooldownDays를 실제 시간 기준으로 스케일), `cooldownStorageKey`
+  (`faNegotiationCooldown:{leagueId}:{teamId}:{playerId}`), `cooldownUntil`/`isOnCooldown`
+  신규. 결렬 시 localStorage에 만료 시각 기록, 마운트 시 로드해서 아직 안 지났으면
+  인사말조차 건너뛰고 폼을 잠근다(`isLocked`에 `isOnCooldown` 포함). 쿨다운 중 재진입 시
+  전용 안내 메시지("N월 N일 N시 이후 다시 시도해주세요") 표시.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: 이번 diff만 되돌리면 됨 — localStorage 키는 새로 안 쓰면 그냥 무해하게 남음.
+
+**한계**: 서버 기록이 아니라 브라우저 로컬 락이라 시크릿창/다른 기기/localStorage 삭제로
+우회 가능. "다른 팀의 협상엔 영향 주면 안 된다"는 요구사항 때문에 의도적으로 이렇게 설계함
+— 완전히 우회 불가능하게 하려면 room_player_state 등 DB 기록으로 승격해야 함(후속 과제).
+
+---
+
+## 2026-09-16 — FA 협상 화면: 세션 로컬 "인내심 소진" → 협상 완전 결렬 추가
+
+**배경**: 사용자가 "영구 저장되는 기분 말고, 협상 과정에서 너무 말도 안되는 오퍼를 던지면
+결국 협상을 거부하는 시스템이 현재 DB로 가능한지" 질문. 조사 결과 `player.morale`은
+`dataMapper.ts`가 전혀 채우지 않는 런타임 전용 필드라 FA 후보에게 항상 undefined였고
+(그래서 기존 "기분" 표시는 사실상 죽은 코드), 반면 싱글플레이어 `NegotiationScreen.tsx`는
+FA 협상에 정확히 이 요청과 같은 메커니즘(`maxFARounds`, 성격 기반 2~7회 거절 후
+`WALKED_AWAY`+`onNegotiationBlocked`)을 이미 갖고 있었다. 이 값은 DB 저장이 아니라
+컴포넌트 로컬 `useState`라 — 정확히 사용자가 원한 "세션 동안만 유지" 요구사항과 일치해서
+새 컬럼/마이그레이션 없이 그대로 구현 가능했다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `maxRounds`(싱글의 maxFARounds 공식
+  재사용, loyalty/temperament 기반 2~7) + `frustration`/`walkedAway` 로컬 state 신규.
+  거절 시 트리거별로 가중치를 다르게 누적(OFFER_INSULT +2, OFFER_LOW +1, TEAM_TOO_WEAK
+  +0 — 팀 전력 때문 거절은 선수 잘못이 아니라 화날 이유가 없음)해 `maxRounds` 도달 시
+  `WALKED_AWAY` 대사 + "협상 결렬" 상태 메시지 후 폼 영구 잠금(`isLocked`에 walkedAway
+  포함, 재시도 불가). 기존 "(라운드 제한 없음)" 안내 문구(더 이상 사실이 아님) 교체.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개.
+
+**롤백 방법**: `frustration`/`walkedAway`/`maxRounds` 관련 diff만 되돌리면 됨 — DB 스키마
+변경이 전혀 없어 롤백에 마이그레이션 되돌리기가 필요 없음.
+
+---
+
+## 2026-09-16 — 팀 전력 페널티 계수 버그 수정: "어려움/매우 어려움"이 절대 안 뜨던 문제
+
+**배경**: 사용자가 "PBL 세션에서 마이애미(26위, 플레이오프 탈락)를 맡고 있는데 계약
+가능성이 어려움/매우 어려움인 선수가 단 한 명도 없다"고 리포트. 원인 분석: "가능성"
+컬럼/화면은 항상 선수 본인의 `askingSalary`/`askingYears`를 그대로 제안했다고 가정해
+평가하는데, 이 경우 `evaluateFAOffer`/`estimateAcceptProbability`는 "연봉이 요구가 이상"
+분기를 타고, 그 분기의 팀 전력 거절확률이 `Math.min(0.6, teamFitPenalty * 0.6)`이라
+penalty가 이론상 최댓값 1이어도 거절확률이 정확히 0.6을 못 넘었다 — 즉 수락확률 하한이
+`1-0.6=0.4`("보통" 경계)로 수학적으로 고정돼, 팀이 아무리 약해도 "어려움"(<0.4)·
+"매우 어려움"(<0.2)에 절대 도달할 수 없는 구조였다(팀 순위/실제 플레이오프 확률과 무관한
+설계 결함 — 마이애미가 26위인 것과 상관없이 항상 재현됨).
+
+**Before**: `services/fa/faValuation.ts` 3곳 — `Math.min(0.6, teamFitPenalty * 0.6)`
+(estimateAcceptProbability, evaluateFAOffer의 "요구가 이상" 분기) / `acceptProb *=
+(1 - teamFitPenalty * 0.6)` (양쪽 함수의 일반 구간, 총 2곳).
+
+**After**: 위 5곳 전부 계수/캡을 `0.6`→`0.85`로 상향. 극단적 미스매치(winDesire=1.0,
+contenderScore=0)일 때 수락확률 하한이 `1-0.85=0.15`("매우 어려움")까지 내려가도록.
+
+**변경 파일**:
+- `services/fa/faValuation.ts` — `estimateAcceptProbability()`/`evaluateFAOffer()` 양쪽의
+  팀 전력 페널티 계수 3+2곳 전부 0.6→0.85.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0개. 수식 재계산: penalty=1.0→확률 0.15(매우 어려움),
+0.9→0.235(어려움), 0.7→0.405(보통 경계) — 5단계 전 구간에 걸쳐 분포하도록 확인.
+
+**롤백 방법**: 5곳의 `0.85`를 전부 `0.6`으로 되돌리면 됨.
+
+---
+
+## 2026-09-16 — "체결 가능성" 퍼센트→5단계 키워드 전환 + FA 목록 테이블 컬럼 추가
+
+**배경**: 바로 아래 항목(퍼센트 지표)에 이어 사용자가 (1) 퍼센트 대신 5단계 키워드
+(매우 어려움/어려움/보통/높음/매우 높음)로 보여달라, (2) 자유 계약 목록 테이블에도
+"계약" 버튼 왼쪽에 같은 지표를 컬럼으로 추가해달라고 요청.
+
+**변경 파일**:
+- `utils/contractLabels.ts` — `getAcceptLikelihoodLabel(probability): {text, color}` 신규
+  export(0.8↑ 매우높음/0.6↑ 높음/0.4↑ 보통/0.2↑ 어려움/그 이하 매우어려움). 협상 화면·FA
+  목록 둘 다 같은 기준을 써야 해서 공용 유틸로 둠.
+- `views/multi/season/MultiNegotiationView.tsx` — "체결 가능성" 표시를 "약 N%" 텍스트에서
+  `getAcceptLikelihoodLabel()` 결과로 교체.
+- `services/multi/negotiation/multiFaDemand.ts` — `buildMultiFADemandBatch()` 신규. 여러
+  선수를 한 번에 평가할 때 `buildMarketConditions()`(역할×팀 이중루프)를 선수마다 다시
+  계산하지 않도록 한 번만 계산해 재사용.
+- `views/multi/season/MultiFreeAgentView.tsx` — "연봉" 컬럼과 "계약" 버튼 컬럼 사이에
+  "가능성" 컬럼 신규. MultiNegotiationView.tsx와 동일한 파이프라인(useLeagueRawStats+
+  buildLeagueTeams로 teams 확보, usePlayerSeasonStatsLeague로 FA풀 실제 시즌 스탯 병합,
+  computePlayoffOddsMap으로 내 팀 PO% 계산)을 그대로 재사용해 각 선수가 "자기 요구가"로
+  제안받았다고 가정했을 때의 체결 가능성을 계산. 성능을 위해 전체 FA풀이 아니라 현재
+  페이지에 보이는 선수(`pagedPlayers`)만 계산.
+
+**검증**: `npx tsc --noEmit` 대상 4개 파일 신규 에러 0개.
+
+**롤백 방법**: 4개 파일에서 이번 diff만 되돌리면 됨 — `getAcceptLikelihoodLabel`/
+`buildMultiFADemandBatch` 둘 다 신규 함수라 롤백해도 다른 곳에 영향 없음.
+
+---
+
+## 2026-09-16 — FA 협상: 오퍼 제출 전 "체결 가능성" 미리보기 지표 추가
+
+**배경**: 사용자가 "오퍼를 날리기 전에 계약 가능성이 높은지 낮은지 알 수 있는 지표가 있나?"고
+질문 — `evaluateFAOffer()`가 이미 결정론적 확률 공식으로 판정하고 있어서, 그 공식만
+그대로 노출하면(시드 롤 없이) 실제 판정과 사실상 동일한 사전 지표를 만들 수 있었다.
+
+**변경 파일**:
+- `services/fa/faValuation.ts` — `estimateAcceptProbability(offer, demand, winDesire?,
+  contenderScore?): number` 신규 export. `evaluateFAOffer()`의 확률 공식을 그대로 복제하되
+  시드 랜덤 롤은 하지 않고 확률값(0~1)만 반환 — `evaluateFAOffer()` 자체는 건드리지 않음
+  (완전히 별도 추가 함수, 기존 판정 로직 무영향).
+- `views/multi/season/MultiNegotiationView.tsx` — `acceptProbability` useMemo 추가(연봉/연수
+  바뀔 때마다 재계산), 우측 오퍼폼 "총 계약액" 아래에 "체결 가능성 약 N%" 실시간 표시
+  (65%↑ 초록/35%↑ 주황/그 이하 빨강).
+
+**검증**: `npx tsc --noEmit` 대상 2개 파일 신규 에러 0개.
+
+**롤백 방법**: 두 파일에서 이번 diff만 되돌리면 됨 — `estimateAcceptProbability`는 신규
+함수라 롤백해도 다른 곳에 영향 없음.
+
+---
+
+## 2026-09-16 — FA 협상: 우승욕 강한 선수가 약팀(낮은 플레이오프 확률) 오퍼를 거절할 수 있게
+
+**배경**: 사용자가 "팀이 약팀이면 선수들이 가기 싫어할 수도 있지 않냐"고 질문 → 조사 결과
+`evaluateFAOffer()`(연봉/연수만 봄)와 싱글플레이어 NegotiationScreen.tsx의 `contenderScore`
+(팀 승률 기반, "우승 기대감" 자기평가 라벨 표시용)가 실제 수락/거절 판정에는 전혀
+연결돼 있지 않았다. 사용자가 "단순 승률 대신 이미 승률+남은 일정 난이도가 들어간
+플레이오프 진출 확률(PO%)을 쓰자"고 제안 — `views/multi/season/multiSeasonUtils.ts`의
+`computePlayoffOddsMap()`(1000회 몬테카를로, MultiStandingsView.tsx가 이미 씀)을 그대로
+재사용하기로 결정. 필요한 원본 데이터(schedule/leagueTeams)는 이미 MultiNegotiationView.tsx가
+쓰는 `useSeasonContext()`/`useLeagueContext()`로 전부 접근 가능해서 새 fetch/RPC는 불필요.
+
+**변경 파일**:
+- `services/fa/faValuation.ts` — `evaluateFAOffer()`에 `winDesire?`/`contenderScore?` 옵션
+  파라미터 2개 추가 + `calcTeamFitPenalty(winDesire, contenderScore)` 신규. 둘 다 지정 안
+  하면(기존 호출부 전부 해당 — `processUserOffer` 등) penalty=0으로 기존 동작 100% 보존.
+  penalty>0이면: (1) 연봉이 요구가 이상이어도 최대 60% 확률로 거절, (2) 그 외 구간
+  acceptProb에 `×(1-penalty×0.6)` 감쇄.
+- `services/fa/negotiationDialogue.ts` — `DialogueTrigger`에 `'TEAM_TOO_WEAK'` 추가,
+  `isLoyal()` 임계값 `loyalty>0.65`→`loyalty>0.5`로 조정(같은 세션 이전 요청), 전용 대사풀
+  4개 신설("조건은 나쁘지 않네요. 다만 이 팀으로 우승할 수 있을지는...").
+- `views/multi/season/MultiNegotiationView.tsx` — `contenderScore` useMemo 신규(myTeam의
+  PO%, `computeMultiStandingsStats`+`computePlayoffOddsMap` 재사용, 데이터 미로드 시 중립값
+  0.5 폴백). `evaluateFAOffer()` 호출에 `tendencies?.winDesire, contenderScore` 추가.
+  거절 사유 판정에 `salary >= demand.askingSalary` 분기 추가 — 연봉이 충분한데 거절됐다면
+  금액이 아니라 팀 전력 때문이므로 `TEAM_TOO_WEAK` 트리거로 분기(기존엔 무조건 OFFER_LOW로
+  잘못 표시됐을 상황).
+
+**검증**: `npx tsc --noEmit` 대상 3개 파일 전부 신규 에러 0개. `processUserOffer`(faMarketBuilder.ts)
+등 기존 `evaluateFAOffer()` 호출부는 새 파라미터를 안 넘겨 그대로 동작.
+
+**롤백 방법**: 위 3개 파일에서 이번 diff만 되돌리면 됨 — `evaluateFAOffer` 시그니처가
+optional param 추가뿐이라 롤백해도 다른 호출부에 영향 없음.
+
+---
+
+## 2026-09-16 — 'standard'/'alltime' 풀 타입 구분 완전 폐지 → draft_year_min~max 범위로 통합
+
+**배경**: 바로 아래 항목의 핫픽스(`include_alltime=false OR base_team_id NOT NULL`)를
+적용한 직후, 사용자가 PBL(현역+신인만 설정) FA 화면에 미치 리치먼드·에드 맥컬리 같은
+옛날 선수가 여전히 나타난다고 지적. DB로 확인하니 **에드 맥컬리(1950년대 선수,
+`draft_year=null`)와 미치 리치먼드(1988년 드래프트, 2002년 은퇴)가 둘 다
+`include_alltime=false`**로 표시돼 있었다 — `include_alltime` 자체가 신뢰할 수 없는
+필드임이 재차 확인됨(`draft_year<2010`인데 `include_alltime=false`인 선수가 25명 더
+있음). 사용자가 "차라리 all-time 풀을 따로 나누지 말고 모든 선수 풀을 draft_year로
+필터링하는 게 더 정확하지 않겠냐"고 제안, 채택.
+
+**결론**: `include_alltime`/`base_team_id` 둘 다 이번 세션에서 연달아 신뢰할 수 없는
+필드로 판명됐다. 상대적으로 깨끗한 `draft_year`만 남기고, `standard`/`alltime` 풀 타입
+구분(체크박스) 자체를 완전히 없애 `leagues.draft_year_min`~`draft_year_max` 범위 하나로
+통합. `draft_year IS NULL`인 21명(에드 맥컬리 포함)은 범위 비교를 만족할 수 없어 자연히
+제외되는데, 이는 필터 설계 문제가 아니라 해당 선수들의 `draft_year` 데이터 자체가
+없어서다(데이터 백필 전까지는 정직하게 안 보이는 게 레전드로 오분류되는 것보다 낫다는
+판단).
+
+**DB 마이그레이션**: `migrations/add_leagues_draft_year_min.sql` (Supabase MCP로 이미 적용 완료)
+```sql
+ALTER TABLE leagues ADD COLUMN IF NOT EXISTS draft_year_min INTEGER NOT NULL DEFAULT 2001;
+```
+기본값 2001 = 약 25년 경력 윈도우("현역만") 근사치. `in_multi_pool=true AND draft_year
+BETWEEN 2001 AND 2025`로 시뮬레이션해보니 592명 — 기존 "표준" 풀 규모와 합리적으로
+비슷해 이 값을 기본값으로 채택.
+
+**변경 파일** (client/server 쌍 포함, PoolType 개념 완전 삭제):
+- `services/multi/draftPoolQuery.ts` / `server/src/shared/draftPoolQuery.ts` —
+  `applyMetaPlayerPoolFilter(query, draftYearMin, draftYearMax)`로 시그니처 재변경.
+  `in_multi_pool=true AND draft_year BETWEEN min AND max` 하나로 끝 — `include_alltime`/
+  `base_team_id` 참조 전부 제거.
+- `server/src/startDraft.ts` — `draftPools` 배열/루프/`seenIds` dedup 전부 제거하고
+  쿼리 1번으로 단순화. `applyCustomOverrides`는 이제 무조건 `true`(오버라이드 없는
+  선수는 no-op이라 안전 — `services/dataMapper.ts:166` 가드 확인).
+- `server/src/finalize.ts` — `applyLeagueNormalization()` 동일 단순화, `league` select
+  컬럼에서 `draft_pool` 제거하고 `draft_year_min` 추가(2곳).
+- `hooks/useMultiSearchData.ts`, `components/multi/DraftPoolModal.tsx`,
+  `components/multi/DraftPoolSettings.tsx`, `views/multi/season/LeagueLobbyPanel.tsx` —
+  동일 패턴 단순화.
+- `components/multi/DraftPoolSettings.tsx` — "드래프트 풀"(현역/올타임) 체크박스 섹션
+  완전 삭제, "드래프트 연도 범위"(1946~2026, min~max 두 칸) 입력으로 대체. `PoolType`
+  export 삭제.
+- `components/multi/CreateLeagueModal.tsx`, `views/multi/league/LeagueSettingsView.tsx` —
+  `draftPools`/`PoolType`/`validTypes`/`sourceDraftPools` 관련 state·로직 전부 삭제,
+  `draftYearMin` state 추가 + 배선.
+- `services/multi/leagueService.ts` — `draftYearMin` 필드 추가(생성/수정 옵션 양쪽).
+- `services/multi/roomQueries.ts` — `LeagueRow.draft_year_min: number` 추가.
+- `leagues.draft_pool` 컬럼/필드 자체는 삭제하지 않고 그대로 둠(더 이상 아무 데서도
+  안 읽음) — 마이그레이션 범위를 최소화하기 위한 의도적 선택.
+
+**Before** (6곳 공통 패턴):
+```ts
+const draftPools = draftPoolRaw.split(',').map(s => s.trim());
+const applyCustomOverrides = draftPools.includes('alltime');
+const seenIds = new Set<string>();
+for (const pt of draftPools) {
+    let q = supabase.from('meta_players').select(...);
+    q = applyMetaPlayerPoolFilter(q, pt, draftYearMax); // 'standard'|'alltime' 분기
+    // ... dedup ...
+}
+```
+
+**After**:
+```ts
+let q = supabase.from('meta_players').select(...);
+q = applyMetaPlayerPoolFilter(q, draftYearMin, draftYearMax);
+const { data } = await q; // 단일 쿼리, dedup 불필요
+```
+
+**검증**: DB에서 새 필터 직접 실행 — `draft_year BETWEEN 2001 AND 2025` 기준으로 조던/
+버드/맥컬리/리치먼드 전부 제외, 케빈 맥컬러 주니어·**드와이트 파웰·론조 볼까지 전부
+정상 포함**(이번 세션 초반부터 사각지대였던 두 명이 이 설계에서는 드디어 해결됨 —
+`draft_year` 기반 설계가 `base_team_id`/`include_alltime` 조합보다 명확히 우월함을
+재확인). 클라이언트/서버 `tsc --noEmit` 신규 에러 없음(서버에서 `applyCustomOverrides`
+shorthand 참조 깨진 것 1건 발견해 `true` 리터럴로 즉시 수정).
+
+**롤백 방법**: 이 항목의 Before 블록대로 6개 파일을 되돌리고, `DraftPoolSettings.tsx`에
+`PoolType`/체크박스 UI를 복원하고, `draft_year_min` 컬럼은
+`ALTER TABLE leagues DROP COLUMN draft_year_min;`로 제거. 단, 그 경우 바로 아래
+두 항목(레전드 유입 핫픽스, base_team_id 오조건 제거)의 원래 버그도 함께 되돌아옴에 유의.
+
+---
+
+## 2026-09-16 — standard 풀에 레전드 590명 유입 핫픽스 (base_team_id 필터 완전 제거의 부작용)
+
+**배경**: 이 문서 맨 아래 항목("base_team_id NOT NULL 오조건 제거")에서 `standard` 분기의
+`.not('base_team_id', 'is', null)` 조건을 통째로 제거했는데, 사용자가 `draft_pool='standard'`
+단독 리그(PBL)의 FA 화면에 마이클 조던·래리 버드·카림 압둘자바 등 레전드 수백 명이 나타나는
+것을 발견해서 알려줌. **코드 로직 버그라 새로 만드는 모든 세션에서도 동일하게 재현됨.**
+
+원인: 제거했던 `base_team_id IS NOT NULL` 조건이 사실은 두 가지 역할을 동시에 하고
+있었다 — (1) 드와이트 파웰/론조 볼처럼 데이터가 누락된 진짜 현역을 걸러내는 **버그**였던
+동시에, (2) 마이클 조던처럼 은퇴해서 `base_team_id`가 아예 없는 **레전드를 걸러내는
+정상 기능**이기도 했다. DB로 직접 확인: 조던/버드/압둘자바 등은 `draft_year`가 정상적인
+역사적 연도(1985 등)라 이번 세션 초반의 `draft_year` 관련 수정과는 무관했고, 순전히
+`base_team_id=null`이라는 이유만으로 걸러지고 있었다. 이 조건을 없애자 `include_alltime=true`
+590명(전체 meta_players의 68.6%, 레전드에 한정되지 않고 최근 루키까지 포함하는 광범위한
+플래그) 전원이 `standard` 풀에 새어들어왔다.
+
+**왜 단순 복원이 안 되는가**: `base_team_id=null AND include_alltime=true` 조합을 레전드
+590명과 데이터 누락된 현역(드와이트 파웰, 론조 볼 등)이 **똑같이 공유**한다 — 둘을 구분할
+다른 필드가 없다. 다만 `base_team_id=null AND include_alltime=false`인 97명(케빈
+맥컬러 주니어, 트레이시 잭슨-데이비스 등 2022~2025년 드래프트된 확실한 현역)은 안전하게
+구분 가능함을 확인.
+
+**적용한 절충**: `standard` 분기에 `include_alltime=false OR base_team_id IS NOT NULL`
+조건을 추가 — 레전드 590명은 완전히 제외하고, 데이터가 깨끗한 현역 97명은 복구.
+**남은 사각지대**: `include_alltime=true`이면서 `base_team_id`만 누락된 진짜 현역
+(드와이트 파웰, 론조 볼 등 234명 중 일부)은 레전드와 구분이 안 돼 여전히 제외됨 —
+이 세션 초반에 고쳤던 원래 UUID 버그가 이 234명 한정으로 다시 발생할 수 있음. 근본
+해결책은 이들의 `base_team_id`를 실제 소속팀으로 백필하는 데이터 작업(코드 수정 아님).
+
+**변경 파일** (client/server 쌍):
+- `services/multi/draftPoolQuery.ts` / `server/src/shared/draftPoolQuery.ts` —
+  `applyMetaPlayerPoolFilter()`의 `standard` 분기(else 브랜치)에
+  `.or('include_alltime.eq.false,base_team_id.not.is.null')` 추가.
+
+**Before**:
+```ts
+let q = query.eq('in_multi_pool', true);
+if (poolType === 'alltime') {
+    q = q.eq('include_alltime', true);
+}
+return q.or(`draft_year.is.null,draft_year.lte.${cutoff}`);
+```
+
+**After**:
+```ts
+let q = query.eq('in_multi_pool', true);
+if (poolType === 'alltime') {
+    q = q.eq('include_alltime', true);
+} else {
+    q = q.or('include_alltime.eq.false,base_team_id.not.is.null');
+}
+return q.or(`draft_year.is.null,draft_year.lte.${cutoff}`);
+```
+
+**검증**: DB에서 새 필터 직접 실행 — `standard` 풀 카운트 428(당초 제거 전) →
+(임시로 0/전부 유입되던 버그 상태) → 530(핫픽스 후, 레전드 590명 전원 제외 확인 +
+케빈 맥컬러 주니어 등 97명 정상 복구 확인). 조던/버드/압둘자바/파웰/볼 5명 모두
+새 필터로 조회 시 0건(레전드 3명 정상 제외 + 파웰/볼 2명은 알려진 사각지대로 여전히
+제외) 확인. 클라이언트/서버 `tsc --noEmit` 신규 에러 없음.
+
+**롤백 방법**: 위 Before 블록으로 두 파일을 되돌리면 이 핫픽스만 제거됨(레전드 유입
+버그 재발). 완전 원복하려면 이 문서 아래쪽의 "base_team_id NOT NULL 오조건 제거" 항목의
+롤백 방법까지 순서대로 적용.
+
+---
+
+## 2026-09-16 — 'rookies' 별도 드래프트 풀 타입 폐지 + 신인 OVR 필터 예외 폐지 (draft_year_max로 통합)
+
+**배경**: 바로 아래 두 항목에서 `alltime` 분기의 `draft_year < 2026` 조건이 draft_year가
+`null`인 레전드 19명(그랜트 힐, 카멜로 앤서니, 크리스 멀린 등 — `base_attributes`는 완전히
+채워진 정상 선수)까지 같이 배제하는 버그를 발견. 이 조건 자체가 "`rookies`를 별도 풀
+타입(체크박스)으로 분리해서 standard/alltime과 다른 브랜치로 취급"하는 구조에서 나온
+부산물이었고, 이 구조가 `base_team_id` 버그 때와 똑같이 "브랜치가 여러 개라 하나만 고치면
+나머지가 어긋나는" 문제를 반복시킨다는 지적을 받음.
+
+추가로 "신인은 OVR 필터에서 예외" 로직(`pt === 'rookies'`면 `ovrMin`/`ovrMax` 무시하고
+무조건 포함)에 대해서도 "리그 운영자가 '우수한 신인만' 필터링을 의도했을 수 있는데 왜
+신인만 봐줘야 하냐"는 지적을 받아 이 예외도 함께 폐지하기로 결정. 2026 드래프트 클래스가
+63명으로 규모가 작아(`draft_total_rounds`×팀수 대비 소수) OVR 필터를 걸어도 픽 부족으로
+드래프트가 막힐 위험은 낮다고 판단.
+
+**설계 변경**: `draft_year`로 이미 "신인인지"를 판별할 수 있으므로 별도 `'rookies'` 풀
+타입 자체를 없애고, `leagues.draft_year_max`(신규 컬럼, 기본값 2025 = 종전 "rookies
+체크박스 해제" 기본 동작과 동일) 하나로 대체. standard/alltime 모두 "draft_year가
+null이거나 draft_year_max 이하"면 포함(NULL은 연도 미상 레전드일 뿐이므로 항상 통과).
+OVR 필터는 이제 draft_year와 무관하게 전원에게 동일 적용.
+
+**DB 마이그레이션**: `migrations/add_leagues_draft_year_max.sql` (Supabase MCP로 이미 적용 완료)
+```sql
+ALTER TABLE leagues ADD COLUMN IF NOT EXISTS draft_year_max INTEGER NOT NULL DEFAULT 2025;
+```
+
+**변경 파일** (client/server 쌍 포함):
+- `services/multi/draftPoolQuery.ts` / `server/src/shared/draftPoolQuery.ts` —
+  `applyMetaPlayerPoolFilter(query, poolType, draftYearMax)`로 시그니처 변경.
+  `MetaPlayerPoolType`에서 `'rookies'` 제거(`'standard' | 'alltime'`만 남음). 내부적으로
+  `in_multi_pool=true` + (alltime이면 `include_alltime=true`) +
+  `.or('draft_year.is.null,draft_year.lte.${cutoff}')`.
+- `server/src/startDraft.ts` — `rookieRaw`/`nonRookieRaw` 브랜치 분리 및 "루키는 OVR 필터
+  예외" 로직 제거. 단일 배열에 전원 동일 OVR 필터 적용. `draftPools` 파싱 시 `'standard'`/
+  `'alltime'`만 유효 토큰으로 취급(레거시 `'rookies'` 문자열이 DB에 남아있어도 무시됨).
+- `server/src/finalize.ts` — `applyLeagueNormalization()` 동일 패턴 적용, `league` select
+  컬럼에 `draft_year_max` 추가(2곳), cacheKey에도 draftYearMax 포함.
+- `hooks/useMultiSearchData.ts`, `components/multi/DraftPoolModal.tsx`,
+  `components/multi/DraftPoolSettings.tsx`, `views/multi/season/LeagueLobbyPanel.tsx` —
+  동일하게 rookie 브랜치 분리 제거, `draftYearMax` 파라미터 전달.
+- `components/multi/DraftPoolSettings.tsx` — UI에서 "2026 신인" 체크박스 제거, "포함할
+  드래프트 연도" 숫자 입력(1946~2026)으로 대체. OVR 범위 섹션은 이제 항상 표시(신인도
+  더 이상 예외가 아니므로 숨길 이유가 없어짐).
+- `components/multi/CreateLeagueModal.tsx`, `views/multi/league/LeagueSettingsView.tsx` —
+  `draftYearMax` state 추가 + `DraftPoolSettings`/`createLeague`/`updateLeagueSettings`
+  호출부에 배선.
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`/
+  `UpdateLeagueSettingsParams`에 `draftYearMax` 필드 추가, payload 매핑.
+- `services/multi/roomQueries.ts` — `LeagueRow` 타입에 `draft_year_max: number` 추가.
+
+**Before** (`startDraft.ts` 예 — 다른 5곳도 동일 패턴):
+```ts
+const nonRookieRaw: any[] = [];
+const rookieRaw: any[]    = [];
+for (const pt of draftPools) {
+    ...
+    if (pt === 'rookies') rookieRaw.push(mapped);
+    else nonRookieRaw.push(mapped);
+}
+const filteredNonRookies = nonRookieRaw.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
+const poolIds = [...filteredNonRookies, ...rookieRaw].map(p => String(p.id));
+```
+
+**After**:
+```ts
+const rawPlayers: any[] = [];
+for (const pt of draftPools) {
+    q = applyMetaPlayerPoolFilter(q as any, pt, draftYearMax);
+    ...
+    rawPlayers.push(mapRawPlayerToRuntimePlayer(p, applyCustomOverrides));
+}
+const poolIds = rawPlayers.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax).map(p => String(p.id));
+```
+
+**검증**: 클라이언트/서버 `tsc --noEmit` 둘 다 신규 에러 없음(기존 무관 에러 4개는
+`git stash` 비교로 사전 존재 확인). DB에서 새 필터 직접 실행해 alltime 풀이 568→587명으로
+복구됨을 확인(`include_alltime=true` 590명 중 draft_year=2026인 3명만 제외, draft_year
+null 19명은 정상 포함). 실제 리그(2개, 전부 `draft_pool='standard'`)는 `draft_year_max`
+기본값 2025라 기존 동작(신인 미포함) 그대로 유지됨 — 마이그레이션 무영향 확인.
+
+**롤백 방법**: 마이그레이션은 `ALTER TABLE leagues DROP COLUMN draft_year_max;`. 코드는
+위 Before 블록대로 각 파일을 되돌리고, `PoolType`에 `'rookies'`를 다시 추가하고,
+`DraftPoolSettings.tsx`의 "포함할 드래프트 연도" 입력을 "2026 신인" 체크박스로 되돌리면 됨.
+
+---
+
+## 2026-09-16 — meta_players 풀 필터 공용 헬퍼 `applyMetaPlayerPoolFilter` 추출 (후속 리팩터링)
+
+**배경**: 바로 아래 항목("`base_team_id NOT NULL` 오조건 제거")에서 동일한 `standard`/
+`alltime`/`rookies` 분기 필터 문자열이 9곳에 복붙되어 있었고, 그중 한 곳(`useMultiSearchData.ts`)
+만 결함이 있어도 나머지가 방치되는 구조였다는 걸 지적받음. "한 곳만 고치고 나머지는
+방치되는 드리프트"가 재발하지 않도록, `poolTypes.map(pt => ...)` 형태로 **분기 로직 자체를
+가진 6곳**을 공용 헬퍼로 통합. (QuickPlayPage/physics-lab 3곳은 분기 없이 단일 쿼리라
+헬퍼 대상 아님 — 이미 이전 항목에서 `.eq('in_multi_pool', true)` 한 줄로 정리 완료.)
+
+**신규 파일** (client/server 쌍 — 로직은 완전히 동일, 각자의 supabase 클라이언트 타입만 다름):
+- `services/multi/draftPoolQuery.ts` (client)
+- `server/src/shared/draftPoolQuery.ts` (server)
+
+`applyMetaPlayerPoolFilter(query, poolType)` — poolType이 `'standard'`면
+`in_multi_pool=true, draft_year<2026`, `'alltime'`이면 `in_multi_pool=true,
+include_alltime=true, draft_year<2026`, 그 외(`'rookies'`)는 `draft_year=2026`.
+
+**변경 파일** (분기 블록을 헬퍼 호출 한 줄로 교체):
+- `server/src/startDraft.ts` — import 추가 후 `q = applyMetaPlayerPoolFilter(q as any, pt);`
+- `server/src/finalize.ts` — 동일. 주석에 "startDraft.ts와 필터 로직이 어긋나면 안 된다"고
+  적혀 있던 걸 이제 공유 함수로 구조적으로 보장.
+- `hooks/useMultiSearchData.ts`
+- `components/multi/DraftPoolModal.tsx`
+- `components/multi/DraftPoolSettings.tsx`
+- `views/multi/season/LeagueLobbyPanel.tsx`
+
+**부수 효과(의도한 수정)**: `DraftPoolModal.tsx`의 `alltime` 분기는 원래
+`.lt('draft_year', 2026)`이 빠져 있어서(나머지 5곳과 달리) `include_alltime=true`이면서
+`draft_year`가 `null`이거나 `2026` 이상인 19+3명이 이 화면에서만 추가로 보이는 미세한
+불일치가 있었다. 헬퍼로 통합하면서 다른 5곳과 동일한 조건으로 맞춰졌다(디스플레이용
+미리보기 화면이라 실질적 영향은 작음).
+
+**Before** (6곳 공통, `useMultiSearchData.ts` 예):
+```ts
+if (pt === 'standard') {
+    q = q.eq('in_multi_pool', true).lt('draft_year', 2026);
+} else if (pt === 'alltime') {
+    q = q.eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
+} else {
+    q = q.eq('draft_year', 2026);
+}
+```
+
+**After**:
+```ts
+q = applyMetaPlayerPoolFilter(q as any, pt);
+```
+
+**검증**: 클라이언트 `tsc --noEmit`, 서버 `server/`에서 `tsc --noEmit -p .` 둘 다 신규
+에러 없음(서버 쪽 기존 4개 에러 `startDraft.ts`의 `{ok:false}.error` 관련은 `git stash`로
+비교해 이번 변경 이전부터 있던 무관한 에러임을 확인).
+
+**롤백 방법**: 6개 파일에서 `applyMetaPlayerPoolFilter(...)` 호출을 위 Before 블록으로
+되돌리고, `services/multi/draftPoolQuery.ts`/`server/src/shared/draftPoolQuery.ts` 두
+파일과 각 파일의 import 라인을 제거.
+
+---
+
+## 2026-09-16 — 드래프트/선수풀 쿼리의 `base_team_id NOT NULL` 오조건 제거 (9개 파일)
+
+**배경**: 멀티리그 홈 화면 "내 팀 부상자 현황"에서 부상당한 선수 이름 대신 UUID가 그대로
+표시되는 버그 제보. 추적 결과 `hooks/useMultiSearchData.ts`가 만드는 `playerNameById`
+맵이 `meta_players`의 `standard` 풀 쿼리 결과로 채워지는데, 이 쿼리가
+`in_multi_pool=true` 외에 `.not('base_team_id', 'is', null)`까지 추가로 요구하고
+있었다. 로스터에 있는 두 선수(드와이트 파웰, 론조 볼)를 DB에서 직접 조회하니
+`in_multi_pool=true`인데 `base_team_id=null`이라 이 조건에 걸려 이름 조회 자체가
+실패, `name: playerNameById.get(playerId) ?? playerId`의 `?? playerId` fallback으로
+UUID가 그대로 노출된 것이었다(루키/OVR 범위와는 무관 — 해당 리그는 `draft_ovr_min=0,
+draft_ovr_max=99`로 사실상 OVR 필터 없음).
+
+`base_team_id`는 어디에도 "드래프트 풀 자격 조건"으로 문서화된 적이 없다.
+`migrations/add_in_multi_pool.sql`의 컬럼 코멘트가 "`in_multi_pool` = 멀티 모드
+드래프트 풀 포함 여부"라고 명시하는 유일한 정식 플래그이고, `base_team_id IS NOT NULL`은
+`docs/evaluation/evaluation-index.md`에서 평가 작업용 "현역 여부" 집계 기준으로만
+쓰인 관용구다. 이 관용구가 실제 풀 구성 쿼리 9곳(`grep -rn "base_team_id"`로 전수조사)에
+복붙되어 있었고, 실측 결과 `in_multi_pool=true`(`draft_year<2026`) 759명 중 331명
+(43.6%)이 `base_team_id=null`이라 이 조건에 걸려 제외되고 있었다 — 즉 `startDraft.ts`가
+구성하는 실제 드래프트 풀 자체가 원래 의도의 56%만 후보로 포함하고 있었던 훨씬 큰 문제.
+
+**변경 파일** (전부 동일한 조건 제거, 로직 변화는 "필터 완화"뿐 — client/server 쌍 포함):
+- `server/src/startDraft.ts:271` (server) — 실제 드래프트 풀 구성. 가장 심각한 영향.
+- `server/src/finalize.ts:207` (server) — OVR 정규화 통계(`muLeague`) 계산.
+  주석에 "buildDraftSetup()의 풀 필터 로직과 동일하게 유지할 것"이라 명시되어 있어
+  startDraft.ts와 반드시 같이 수정.
+- `hooks/useMultiSearchData.ts:53` (client) — 오늘 리포트된 UUID 버그의 직접 원인.
+- `components/multi/DraftPoolModal.tsx:57` (client) — 드래프트 풀 미리보기 모달.
+- `components/multi/DraftPoolSettings.tsx:91` (client) — 리그 설정 화면 풀 규모 미리보기.
+- `views/multi/season/LeagueLobbyPanel.tsx:134` (client) — 로비 화면 풀 규모 표시.
+- `pages/QuickPlayPage.tsx:269` (client, 싱글플레이 퀵플레이) — 변형 패턴
+  `.or('base_team_id.not.is.null,draft_year.eq.2026')` 사용, 결과적으로 동일 결함.
+- `components/physics-lab/MotionSandboxPanel.tsx:74`,
+  `components/physics-lab/PbpGameModePanel.tsx:125` (client, 개발용 도구) — 상동 변형 패턴.
+
+**Before** (예: `hooks/useMultiSearchData.ts`, 6개 파일 공통 패턴):
+```ts
+if (pt === 'standard') {
+    q = q.eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
+}
+```
+QuickPlayPage/physics-lab 3개 파일은 변형:
+```ts
+base.eq('in_multi_pool', true).or('base_team_id.not.is.null,draft_year.eq.2026')
+```
+
+**After**:
+```ts
+if (pt === 'standard') {
+    q = q.eq('in_multi_pool', true).lt('draft_year', 2026);
+}
+```
+```ts
+base.eq('in_multi_pool', true)
+```
+
+**검증**: `tsc --noEmit` 통과(수정한 9개 파일 관련 신규 에러 없음). 실제 드래프트/화면
+동작(로스터 반영 후 부상 UUID 미노출 등)은 별도 수동 확인 필요.
+
+**롤백 방법**: 9개 파일 각각에서 `.not('base_team_id', 'is', null)` (또는
+`.or('base_team_id.not.is.null,draft_year.eq.2026')`)를 Before 블록대로 다시 추가.
+
+---
+
+## 2026-09-15 — 멀티플레이어 FA 협상 화면 신규 (MultiNegotiationView, 진짜 라우트)
+
+**배경**: 멀티플레이어 FA 화면(MultiFreeAgentView.tsx)의 "계약" 버튼은 협상 없이
+signFreeAgent() RPC로 즉시 로스터에 추가했다(캡 체크 없음). "계약 버튼을 누르면 협상
+페이지로 이동하게 해줘, 레이아웃은 싱글플레이어 협상 화면(views/NegotiationScreen.tsx)을
+참고" 요청 — 단, 오버레이가 아니라 진짜 라우트로. 싱글의 FA 수요 계산(calcFADemand)이
+전역 싱글턴 LEAGUE_FINANCIALS.SALARY_CAP을 참조해 리그별 salary_cap_amount가 다른
+멀티에는 그대로 못 쓴다는 문제를 salaryCapOverride 파라미터 추가로 해결.
+
+**v1 스코프 축소(의도적)**: 전체 슬롯/에이프런/MLE/버드권한 자격판정
+(getAvailableSigningSlots/processUserOffer/calcTeamPayroll)은 이번 범위 밖. "얼마를
+요구하는가"(calcFADemand)와 "오퍼를 받아들이는가"(evaluateFAOffer, 원래도 순수함수라
+싱글턴 의존 없음)만 재사용하고, signingType은 정보성 드롭다운으로만 둠(자격 검증 없음).
+쿨다운/라운드 제한도 없음 — 거절당해도 조건 바꿔 즉시 재시도 가능.
+
+**변경 파일**:
+- `services/fa/faValuation.ts` — `calcYOSBounds(yos, player?, salaryCapOverride?)`와
+  `calcFADemand(..., salaryCapOverride?)`에 옵션 파라미터 추가. 미지정 시
+  `LEAGUE_FINANCIALS.SALARY_CAP` 그대로 사용(기존 싱글플레이어 호출부 100% 보존 — grep으로
+  faMarketBuilder.ts/extensionEngine.ts 전체 호출부 확인, 전부 6개 인자만 넘겨 undefined로
+  들어감). server 미러 없음 — 서버(server/src/)는 FA 엔진을 아예 쓰지 않음(멀티 FA는
+  클라이언트에서 RPC 호출로만 처리).
+- `services/multi/negotiation/multiFaDemand.ts` (신규) — `buildMultiFADemand()`: 리그
+  salary_cap_amount를 calcFADemand에 주입하는 얇은 래퍼.
+- `migrations/add_sign_free_agent_negotiated_rpc.sql` (신규, Supabase MCP로 적용 완료) —
+  `sign_free_agent_negotiated(p_team_id, p_player_id, p_contract, p_signing_type)`.
+  기존 `sign_free_agent()`(add_sign_free_agent_release_player_rpc.sql)와 동일 패턴(SECURITY
+  DEFINER/FOR UPDATE/소유권 검증/fa_enabled 체크/로스터 경합 체크)에 더해
+  `room_player_state.contract`에 계약 upsert(PK: room_id, player_id) +
+  `league_transactions.details`에 `{contract, signingType}` 기록. 기존 `sign_free_agent()`는
+  그대로 유지(cba_rules_enabled=false 리그가 계속 사용).
+- `services/multi/faService.ts` — `signFreeAgentNegotiated(teamId, playerId, contract,
+  signingType)` 추가, 위 RPC 호출 + 기존 `mapFaError()` 재사용.
+- `views/multi/season/MultiNegotiationView.tsx` (신규) — 3패널(좌 선수정보/요구조건 | 중 GM
+  채팅 | 우 오퍼폼) 레이아웃. NegotiationScreen.tsx의 시각 언어(flex-[2]/[5]/[3], rounded-2xl
+  border border-slate-800 bg-slate-900/40, 채팅 버블 스타일)를 그대로 재현하되 오버레이가
+  아닌 독립 라우트(`flex flex-col h-full`)로 구성. `negotiationDialogue.ts`(순수 함수/정적
+  데이터, 싱글턴 의존 없음 확인 후 그대로 재사용)로 GM/선수 채팅 생성. teams: Team[]는
+  MultiPlayerDetailView.tsx와 동일한 useLeagueRawStats+buildLeagueTeams 패턴(단, 시장조건
+  계산엔 시즌 스탯이 불필요해 includePbp:false, statsByPlayer 기본값 사용으로 경량화).
+  currentSeasonYear는 room.virtual_season_year/findCurrentVirtualDate 대신
+  `useSeasonContext().currentSeason`("2025-26" 형태, 이미 모든 시즌 화면이 공유하는 값)의
+  시작 연도를 파싱 — 스펙 초안보다 단순하고 `rooms.sim_date` 오남용 리스크가 없음(memory
+  project_sim_date_vs_virtual_date 원칙 준수). 오퍼 수락 시 `PlayerContract.years`는 반드시
+  `number[]`로 구성(feedback_contract_years_format.md 원칙).
+- `App.tsx` — `MultiNegotiationView` import, `player/:playerId` 라우트 바로 아래
+  `negotiate/:playerId` 라우트 추가.
+- `views/multi/season/MultiFreeAgentView.tsx` — "계약" 버튼 onClick을
+  `league?.cba_rules_enabled` 분기로 변경: true면 `/multi/leagues/:leagueId/season/negotiate/:playerId`로
+  navigate, false/undefined면 기존 `handleSign()`(즉시계약) 유지.
+
+**검증**: `npx tsc --noEmit` — 기존에 있던 58개 무관 에러(useGameData.ts/PlayerEditorPage.tsx
+등, 이번 변경 파일과 무관) 외에 이번에 건드린 6개 파일에서 발생한 신규 에러 0개. RPC는
+Supabase MCP `apply_migration` 적용 후 `pg_proc` 조회로 `pronargs=4, prosecdef=true` 생성
+확인.
+
+**롤백 방법**:
+- `services/fa/faValuation.ts`: `salaryCapOverride` 파라미터 3곳 제거(옵션 파라미터라
+  제거해도 기존 호출부 영향 없음).
+- `migrations/add_sign_free_agent_negotiated_rpc.sql`: `DROP FUNCTION
+  public.sign_free_agent_negotiated(uuid, text, jsonb, text);`를 Supabase MCP로 실행.
+- 나머지 신규 파일(`multiFaDemand.ts`, `MultiNegotiationView.tsx`) 삭제 + `App.tsx`
+  라우트/import, `MultiFreeAgentView.tsx` 버튼 분기, `faService.ts` 함수 추가분을 그대로
+  되돌리면 이 세션 이전 상태(즉시계약만 존재)로 복구.
+
+---
+
 ## 2026-09-15 — PostUp 포지션 게이팅 제거 (postScorer 순수 실력 경쟁으로 전환)
 
 **배경**: "육각형 윙/가드를 PF 슬롯에 넣으면 PostUp/PnR_Roll/PnR_Pop 풀까지 동시 독점해 득점이
@@ -724,6 +4363,149 @@ playInSeeder.ts, scheduler.ts, simRunner.ts) 관련 오류 없음(출력된 오�
 플레이오프/플레이인부터 적용됨.
 
 **롤백 방법**: 위 Before 블록으로 4개 파일 되돌리기, 또는 이 커밋 이전으로 revert.
+
+---
+
+## 2026-09-15 — 멀티플레이어 세션 설정에 "CBA 규정 활성화" 토글 신설
+
+**배경**: 멀티플레이어 FA 화면은 선수 영입 시 즉시 로스터에 추가되고 협상이 없다. 앞으로 실제
+연봉 협상 화면을 만들 계획인데, 그건 이 리그가 "샐러리캡+CBA 규정을 실제로 쓰기로 한" 세션일
+때만 의미가 있다 — 룰 없이 즉시 사인하는 캐주얼 모드도 계속 지원해야 해서 리그 단위로 켜고 끌
+스위치가 먼저 필요했다. 이번 커밋은 **토글만** 만든다(값 저장만, 실제 FA 화면 분기는 다음 단계).
+
+기존 `leagues.cap_enabled`(마스터 스위치, "페이롤이 캡 금액 넘으면 막을지" 숫자 임계값 집행)와는
+별개 축으로 뒀다 — `cba_rules_enabled`는 버드권한 단계/RFA-QO/루키스케일 구조/협상 화면 자체를
+쓸지처럼 더 넓은 개념. 둘 다 독립적으로 켜고 끌 수 있어야 한다.
+
+**변경 파일**:
+- `migrations/add_leagues_cba_rules_enabled.sql` (신규, Supabase MCP로 적용 완료) —
+  `leagues.cba_rules_enabled boolean NOT NULL DEFAULT false`
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `cba_rules_enabled: boolean` 추가
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`/`createLeague()` payload,
+  `UpdateLeagueSettingsParams`/`updateLeagueSettings()` payload 양쪽에
+  `cbaRulesEnabled`/`cba_rules_enabled` 추가(기존 `capEnabled` 바로 옆)
+- `views/multi/league/LeagueSettingsView.tsx` — `cbaRulesEnabled` state 신설(기본 false),
+  로드/저장/dirty-check/요약(InfoRow) 전부 `capEnabled`와 동일 패턴으로 연결. "샐러리캡 설정"
+  섹션 안에 마스터 스위치 바로 아래 토글 UI 추가(레이블에 "구현 예정" 명시)
+
+**Before**: 리그별로 CBA 규정 사용 여부를 저장할 곳이 없었음(캡 금액 집행 여부만 `cap_enabled`로
+존재).
+
+**After**: `league.cba_rules_enabled`로 리그별 저장/조회 가능. 기본값 false(신규 기능은 꺼진
+채 시작 — injuriesEnabled 등 기존 관례와 동일).
+
+**검증**: `tsc --noEmit` 전체 에러 58건, 변경 전후 동일 — 새 오류 없음. `CreateLeagueModal.tsx`는
+`capEnabled`도 노출 안 해서(생성 시 DB 기본값에 의존, 설정 화면에서만 조정) `cbaRulesEnabled`도
+동일하게 생성 모달은 건드리지 않음.
+
+**주의사항 (다음 단계)**: 이 토글은 아직 **아무 로직도 게이팅하지 않는다** — 값만 저장됨.
+다음 단계는 (1) `views/multi/season/MultiFreeAgentView.tsx`(또는 해당 FA 화면)에서 이 값을 읽어
+켜져 있으면 즉시사인 대신 협상 화면으로 분기, (2) 그 협상 화면 자체 구현. `capEnabled`도 아직
+트레이드 로직에 강제 적용 안 된 상태라 동일한 성격의 "저장만 되고 집행은 안 되는" 설정임 —
+둘 다 다음 단계에서 같이 다뤄야 함.
+
+---
+
+## 2026-09-15 — SigningType에 second_round(2라운드 픽 예외) 추가
+
+**배경**: "계약 타입에 second-round exception 추가"라는 요청 — 바로 이전 항목에서 확립한
+규칙대로(캡 룰상 체결 방식은 `ContractType`이 아니라 `SigningType`) 동일하게 적용.
+
+**변경 파일**:
+- `types/fa.ts` — `SigningType`에 `'second_round'` 추가 (자팀 드래프트 2라운드 픽 재계약 시
+  캡 초과 허용, CBA상 최대 4년·연봉상한 리그 평균연봉 수준)
+- `utils/contractLabels.ts`, `views/FAView.tsx`(`SLOT_LABELS`/`SLOT_CAPS`),
+  `views/NegotiationScreen.tsx`(`SLOT_LABELS`/`SLOT_MAX_YEARS`/`SLOT_ESCALATOR`),
+  `services/fa/faMarketBuilder.ts`(`MAX_YEARS_BY_SLOT` 2곳) — 전부 `Record<SigningType, ...>`
+  타입이라 `tsc`가 누락을 바로 잡아줌(컴파일 에러로) — 최대연수 4년, 에스컬레이터 5%로 채움
+- `pages/PlayerEditorPage.tsx` — 어드민 "체결 방식" 드롭다운에 추가
+
+**검증**: `tsc --noEmit` 전체 에러 58건(변경 전과 동일, 추가 직후 일시적으로 8건 늘었던 게
+전부 `Record<SigningType,...>` 누락 오류였고 전부 수정 확인).
+
+**주의사항**: 값만 추가했고, FA 시장에서 "이 선수가 자팀의 2라운드 픽 출신이라 이 예외를 쓸 수
+있다"를 자동 판정해 슬롯에 제시하는 로직은 없음(bird_full/early/non처럼 `teamTenure` 기반
+자동 슬롯 생성 대상에 미포함) — draft_round/draft_pick 필드가 이제 있으니 나중에 붙일 수는
+있음. 지금은 어드민 수동 지정으로만 사용 가능.
+
+---
+
+## 2026-09-15 — 게임 내 드래프트 신인 계약에 3·4년차 팀옵션 자동 부여
+
+**배경**: `calcRookieContract()`(실제 드래프트 완료 시 `hooks/useGameData.ts`가 호출하는,
+현재 게임에서 신규로 뽑히는 신인의 루키 스케일 계약 생성 함수)가 4년 연봉 배열만 만들고
+`options`를 전혀 채우지 않았다 — 실제 NBA 루키 스케일은 3·4년차가 팀옵션인데, 이번 세션 초반에
+실제 bbref 데이터로 채운 2026 드래프트 클래스(60명)는 옵션이 정상인 반면, 앞으로 게임 내에서
+자체 진행되는 드래프트(2027시즌~)로 뽑히는 신인은 옵션 없이 생성되고 있었다.
+
+**변경 파일**:
+- `services/draft/rookieGenerator.ts`(`calcRookieContract`, 1라운드 분기) — 반환 계약에
+  `options: [{type:'team',year:2}, {type:'team',year:3}]` 추가. 2라운드(2년 계약) 분기는
+  실제로도 옵션이 없는 게 맞아서 그대로 둠.
+
+**Before**: `{ years: [...4개], currentYear: 0, type: 'rookie' }` — 옵션 없음.
+
+**After**: 위에 `options: [{type:'team',year:2}, {type:'team',year:3}]` 추가 — 3·4년차 둘 다
+팀옵션(이번 세션 초반 실제 bbref 데이터에서도 두 해 모두 `salary-tm` 클래스로 확인된 것과 동일
+— 단, DB에 이미 반영된 60명 신인은 과거 관례상 3년차 하나만 기록돼 있어 이번 수정과 약간
+다름. 필요하면 그 60명도 4년차 옵션을 추가로 채워야 함).
+
+**검증**: `tsc --noEmit` 전체 프로젝트 에러 58건, 변경 전후 동일 — 이번 변경으로 인한 새 오류
+없음. 시즌 롤오버 옵션 행사 판정(`playerDevelopment/playerAging.ts`)은 이미 지난 리팩터에서
+`options.find(o => o.year === currentYear)` 방식으로 바뀌어 있어서, 연차가 2→3으로 넘어갈
+때마다 각 옵션을 순서대로 올바르게 찾아 판정한다 — 추가 수정 불필요.
+
+**롤백 방법**: `calcRookieContract()`의 1라운드 반환 객체에서 `options` 줄만 지우면 원상복구.
+
+---
+
+## 2026-09-15 — ContractType 세분화(연장 종류·QO 등) + SigningType을 PlayerContract에 통합
+
+**배경**: 계약 타입이 `rookie|veteran|max|min|extension` 5종뿐이라 연장 계약의 세부 종류(루키
+연장/베테랑 연장/슈퍼맥스 연장)나 RFA 텐더(QO)를 구분할 수 없었다. 처음엔 "biannual
+exception/bird rights exception/non-taxpayer MLE/taxpayer MLE/cap space" 등도 같이
+`ContractType`에 추가해달라는 요청이었으나, 확인해보니 이 개념들은 이미 `types/fa.ts`의
+`SigningType`(버드권한 3단계+MLE+BAE+캡스페이스)으로 **따로 구현돼 있었음** — `ContractType`
+(계약의 구조: rookie/veteran/max 등)과 `SigningType`(캡 룰상 체결 방식)은 서로 다른 축이라,
+사용자 확인 후 중복 정의 대신 `PlayerContract.signingType`으로 통합하기로 함.
+
+**변경 파일**:
+- `types/player.ts` — `ContractType`에 `two-way`/`10-day`(기존에도 DB·어드민에서 실사용 중이었
+  으나 타입엔 없던 누락분), `rookie_extension`/`veteran_extension`/`veteran_max_extension`/
+  `qualifying_offer` 추가. `PlayerContract.signingType?: SigningType`(`types/fa.ts` 재사용,
+  `import type`으로 순환참조 방지) 신설
+- `server/src/shared/types/player.ts` (미러) — `ContractType` 문자열 유니온만 동일하게 미러.
+  `signingType`은 **의도적으로 미러 안 함**(서버엔 대응하는 `fa.ts`가 없음 — FA/연장 로직 자체가
+  현재 클라이언트 전용, `services/fa/*`)
+- `services/fa/faMarketBuilder.ts` — `buildContract()`에 `signingType` 파라미터 추가, 4개
+  호출부(RFA 오퍼시트 제출/일반 UFA 체결/유저오퍼 수락 2곳) 전부 이미 알고 있던 `bestSlot`/
+  `offer.signingType` 값을 그대로 전달하도록 연결(예전엔 계산만 해놓고 버려지고 있었음)
+- `views/NegotiationScreen.tsx` — 연장 체결(`onExtensionSigned`) 시 연장 전 계약이 `rookie`였는지
+  확인해 `rookie_extension`/`veteran_extension` 자동 구분해서 저장. **슈퍼맥스(지정 베테랑)
+  자격 판정 로직은 없어서 `veteran_max_extension`은 자동 부여 안 됨** — 필요하면 어드민에서
+  수동 지정
+- `pages/PlayerEditorPage.tsx` — 계약 타입 드롭다운에 신규 4종 추가, "체결 방식"(signingType)
+  드롭다운 신설(SigningType 8종 + 빈값)
+- `utils/contractLabels.ts` (신규) — `CONTRACT_TYPE_LABEL`/`SIGNING_TYPE_LABEL` 한글 라벨을
+  단일 소스로 통합. 이전엔 `PlayerDetailView.tsx`/`NegotiationScreen.tsx` 각 파일에 동일한
+  딕셔너리가 복사돼 있어서 `two-way`/`10-day`가 한쪽엔 폴백(`?? type`)이 있고 한쪽엔 없어서
+  누락 시 빈 칸으로 렌더링되는 버그가 있었음(`NegotiationScreen.tsx` 옛 라인 1201) — 이번에
+  두 파일 다 새 상수로 교체하며 폴백도 통일
+
+**Before**: `ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension'` (5종, two-way/
+10-day는 타입 밖에서 비공식 사용). `SigningType`은 FA 시장 로직 내부에서만 쓰이고 계약
+객체 자체엔 남지 않음(체결 후 소실).
+
+**After**: `ContractType` 11종. `PlayerContract.signingType`이 FA 서명 시점에 실제로 채워짐.
+
+**검증**: `tsc --noEmit` 전체 프로젝트 에러 58건, 변경 전후 동일(전부 무관한 기존 오류) — 이번
+변경으로 인한 새 오류 없음.
+
+**주의사항 (남은 갭)**: `qualifying_offer` 타입은 값만 추가했고, 실제로 "RFA가 오퍼를 하나도
+못 받고 QO 그대로 1년 계약을 뛰는" 자동 생성 로직은 아직 없음(현재 엔진엔 그 시나리오 자체가
+없어서 QO 금액이 협상 하한선으로만 쓰이고 실제 계약으로 굳어지는 경로가 없음) — 필요하면 별도
+기능으로 구현해야 함. `veteran_max_extension`(슈퍼맥스) 자격 판정(YOS 7~9년+수상 등)도 미구현—
+지금은 어드민 수동 지정으로만 가능.
 
 ---
 

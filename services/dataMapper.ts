@@ -7,7 +7,6 @@ import {
     calculateOvrWithArchetype,
     calculateRawOvr,
     calculateFutureOvr,
-    getOVRThreshold,
 } from '../utils/ovrUtils';
 
 /** CSV 약칭 → Player 런타임 키 매핑 (custom_overrides 적용 시 공용) */
@@ -31,12 +30,11 @@ const normalizeSalary = (val: number): number => {
     return Math.round(val);
 };
 
-/** 연봉/OVR/나이 기반 계약 타입 추론 (fallback용) */
-function inferContractType(salary: number, ovr: number, age: number): ContractType {
-    if (salary >= 35_000_000 && ovr >= getOVRThreshold('STAR')) return 'max';
-    if (salary <= 2_000_000) return 'min';
-    if (age <= 24) return 'rookie';
-    return 'veteran';
+/** 나이 기반 계약 타입 추론 (fallback용) — [2026-09-17] max/min/veteran이 전부 free_agent로
+ *  수렴해 salary/ovr 분기는 무의미해짐, age만으로 rookie_scale 여부만 추정한다. */
+function inferContractType(_salary: number, _ovr: number, age: number): ContractType {
+    if (age <= 24) return 'rookie_scale';
+    return 'free_agent';
 }
 
 /** JSONB contract 객체 또는 salary/contractYears에서 PlayerContract 생성 */
@@ -56,6 +54,10 @@ function buildPlayerContract(baseAttrs: any, salary: number, contractYears: numb
             ...(rawContract.noTrade && { noTrade: true }),
             ...(options?.length && { options }),
             ...(Array.isArray(rawContract.yearSeasons) && rawContract.yearSeasons.length && { yearSeasons: rawContract.yearSeasons }),
+            // [2026-09-17] bbref 스크래핑(scripts/scrape_bbref_contracts.py)이 예외 조항/세부사항을 채우기
+            // 시작해 그대로 통과시킨다 — 예전엔 두 필드를 버려서 어드민이 입력해도 화면에 안 보였음.
+            ...(rawContract.signingType && { signingType: rawContract.signingType }),
+            ...(rawContract.contractDetail && { contractDetail: rawContract.contractDetail }),
         };
     }
     // fallback: salary/contractYears → 균등 배열

@@ -133,7 +133,17 @@ export interface PlayerAwardEntry {
 }
 
 // ── 선수 계약 구조 ──
-export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension';
+// [2026-09-17] 클라이언트 types/player.ts와 동일하게 11종 → 4종 재설계(CLAUDE.md 미러 규칙).
+// DB는 백필 마이그레이션으로 전부 새 값으로 변환됨 — migrations/backfill_contract_type_values.sql.
+export type ContractType =
+    | 'extension'
+    | 'free_agent'
+    | 'rookie_scale'
+    | 'two_way';
+// contractDetail(연장 세부종류/QO 여부)과 signingType(SigningType 재사용, 버드권한/MLE/BAE
+// 등)은 서버에 대응하는 types/fa.ts가 없어 미러하지 않음 — FA 시장/연장 협상 로직 자체가
+// 현재 클라이언트 전용(services/fa/*)이라 서버 PlayerContract는 이 필드들을 쓰지 않는다.
+// 클라이언트 fa.ts가 서버로 이관되면 그때 추가.
 
 export interface ContractOption {
     type: 'player' | 'team';

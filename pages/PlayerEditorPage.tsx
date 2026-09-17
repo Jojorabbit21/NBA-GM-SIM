@@ -11,6 +11,8 @@ import { adaptPlayerToInput } from '../utils/ovrUtils';
 import { evaluatePlayerRawOVR, evalTagConditionOvr, ARCHETYPE_LABEL } from '../utils/ovrEngine';
 import type { ArchetypeModuleScores } from '../types/archetype';
 import { COMPACT_ATTR_GROUPS, getCompactAttrValue } from '../data/attributeConfig';
+import type { ContractType } from '../types/player';
+import { CONTRACT_TYPE_LABEL, SIGNING_TYPE_LABEL, CONTRACT_DETAIL_LABEL, getAllowedSigningTypes, getAllowedContractDetails } from '../utils/contractLabels';
 
 const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
@@ -1513,7 +1515,7 @@ function sortBy(th) {
             ...prev,
             contract_history: [
                 ...(prev.contract_history ?? []),
-                { years: [0], yearSeasons: [], currentYear: 0, type: 'veteran' },
+                { years: [0], yearSeasons: [], currentYear: 0, type: 'free_agent' },
             ],
         }));
     }, []);
@@ -3969,8 +3971,10 @@ const ContractForm: React.FC<ContractFormProps> = ({
     const years: number[] = contract.years ?? [];
     const yearSeasons: number[] = contract.yearSeasons ?? [];
     const currentYear: number = contract.currentYear ?? 0;
-    const contractType: string = contract.type ?? 'veteran';
+    const contractType: ContractType = (contract.type ?? 'free_agent') as ContractType;
     const noTrade: boolean = !!contract.noTrade;
+    const allowedSigningTypes = getAllowedSigningTypes(contractType);
+    const allowedContractDetails = getAllowedContractDetails(contractType);
     // 연차별 옵션 — options[]에서 연차(year)로 조회. 연차당 최대 1개(팀/플레이어 중 하나).
     const options: { type: 'player' | 'team'; year: number }[] = contract.options ?? [];
 
@@ -3983,13 +3987,50 @@ const ContractForm: React.FC<ContractFormProps> = ({
                 <table className="min-w-full divide-y divide-white/5">
                     <tbody className="divide-y divide-white/5">
                         <tr className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap w-24">계약 타입</td>
+                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap w-24">계약 유형</td>
                             <td className="px-3 py-2.5">
-                                <select className={inputCls} value={contractType} onChange={e => onSetContractField('type', e.target.value)}>
-                                    {['veteran','rookie','max','extension','min','two-way','10-day'].map(t => <option key={t} value={t}>{t}</option>)}
+                                <select
+                                    className={inputCls}
+                                    value={contractType}
+                                    onChange={e => {
+                                        const newType = e.target.value as ContractType;
+                                        // 계약 유형이 바뀌면 이전 유형 하위였던 예외 조항/세부사항 값은
+                                        // 더 이상 유효하지 않으므로 같이 지운다(핸들러가 순수 merge라
+                                        // 자동으로는 안 지워짐 — setContractField류 3개 핸들러 전부
+                                        // functional setState라 같은 틱에 순차 호출해도 안전하게 합쳐짐).
+                                        onSetContractField('type', newType);
+                                        onSetContractField('signingType', undefined);
+                                        onSetContractField('contractDetail', undefined);
+                                    }}
+                                >
+                                    {(['extension', 'free_agent', 'rookie_scale', 'two_way'] as ContractType[]).map(t => (
+                                        <option key={t} value={t}>{CONTRACT_TYPE_LABEL[t]}</option>
+                                    ))}
                                 </select>
                             </td>
                         </tr>
+                        {allowedSigningTypes.length > 0 && (
+                            <tr className="hover:bg-white/5 transition-colors">
+                                <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">예외 조항</td>
+                                <td className="px-3 py-2.5">
+                                    <select className={inputCls} value={contract.signingType ?? ''} onChange={e => onSetContractField('signingType', e.target.value || undefined)}>
+                                        <option value="">— (비어있음 = 캡 스페이스)</option>
+                                        {allowedSigningTypes.map(t => <option key={t} value={t}>{SIGNING_TYPE_LABEL[t]}</option>)}
+                                    </select>
+                                </td>
+                            </tr>
+                        )}
+                        {allowedContractDetails.length > 0 && (
+                            <tr className="hover:bg-white/5 transition-colors">
+                                <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">세부사항</td>
+                                <td className="px-3 py-2.5">
+                                    <select className={inputCls} value={contract.contractDetail ?? ''} onChange={e => onSetContractField('contractDetail', e.target.value || undefined)}>
+                                        <option value="">— (비어있음)</option>
+                                        {allowedContractDetails.map(t => <option key={t} value={t}>{CONTRACT_DETAIL_LABEL[t]}</option>)}
+                                    </select>
+                                </td>
+                            </tr>
+                        )}
                         {/* 과거 계약 묶음(계약 이력)엔 "현재" 개념이 없음 — onSetSalary 없는
                             호출부(계약 이력)에서는 이 행 자체를 숨긴다 */}
                         {onSetSalary && (

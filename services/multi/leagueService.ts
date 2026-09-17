@@ -73,6 +73,7 @@ export interface CreateLeagueParams {
     // 공통 옵션 (default_options 상속 후 override)
     options?: Partial<{
         capEnabled:           boolean;
+        cbaRulesEnabled:      boolean;
         financeEnabled:       boolean;
         tradeEnabled:         boolean;
         faEnabled:            boolean;
@@ -85,6 +86,10 @@ export interface CreateLeagueParams {
         draftPoolStrategy:    string;
         draftOvrMin:          number;
         draftOvrMax:          number;
+        draftYearMin:         number;
+        draftYearMax:         number;
+        /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. 미지정 시 DB 기본값(false). */
+        useCustomOverrides:   boolean;
         draftPickDurationSec: number;
         draftTotalRounds:     number;
         draftAutoPickAfterMisses: number;
@@ -110,6 +115,17 @@ export interface CreateLeagueParams {
         // 입력받아 1440/interval로 환산해서 넘긴다. 미지정 시 토너먼트는 기존처럼 48(30분
         // 간격)로 고정.
         gamesPerRealDay:      number;
+        // [2026-09-16] 트레이드 데드라인('YYYY-MM-DD', 가상 시즌 캘린더 날짜). 미지정 시
+        // 데드라인 없음(무제한). 기본값/조정 범위는 utils/tradeDeadline.ts 참고.
+        tradeDeadlineDate:    string | null;
+        /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 위 날짜가 있어도 무시. */
+        tradeDeadlineEnabled: boolean;
+        /** [2026-09-16] 팀당 최대 로스터 인원(15~20). 미지정 시 DB 기본값(15) 사용. */
+        maxRosterSize:        number;
+        /** [2026-09-16] Two-Way 계약 전환 데드라인('YYYY-MM-DD', 가상 시즌 캘린더 날짜). 미지정 시 데드라인 없음. */
+        twoWayDeadlineDate:   string | null;
+        /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5). 미지정 시 DB 기본값(3) 사용. */
+        twoWaySlots:          number;
     }>;
 }
 
@@ -143,6 +159,7 @@ export const createLeague = async (
 
     // 옵션 오버라이드
     if (opts.capEnabled           !== undefined) payload.cap_enabled             = opts.capEnabled;
+    if (opts.cbaRulesEnabled      !== undefined) payload.cba_rules_enabled       = opts.cbaRulesEnabled;
     if (opts.financeEnabled       !== undefined) payload.finance_enabled         = opts.financeEnabled;
     if (opts.tradeEnabled         !== undefined) payload.trade_enabled           = opts.tradeEnabled;
     if (opts.faEnabled            !== undefined) payload.fa_enabled              = opts.faEnabled;
@@ -155,6 +172,9 @@ export const createLeague = async (
     if (opts.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = opts.draftPoolStrategy;
     if (opts.draftOvrMin          !== undefined) payload.draft_ovr_min           = opts.draftOvrMin;
     if (opts.draftOvrMax          !== undefined) payload.draft_ovr_max           = opts.draftOvrMax;
+    if (opts.draftYearMin         !== undefined) payload.draft_year_min          = opts.draftYearMin;
+    if (opts.draftYearMax         !== undefined) payload.draft_year_max          = opts.draftYearMax;
+    if (opts.useCustomOverrides   !== undefined) payload.use_custom_overrides    = opts.useCustomOverrides;
     if (opts.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = opts.draftPickDurationSec;
     if (opts.draftTotalRounds     !== undefined) payload.draft_total_rounds      = opts.draftTotalRounds;
     if (opts.draftAutoPickAfterMisses !== undefined) payload.draft_auto_pick_after_misses = opts.draftAutoPickAfterMisses;
@@ -172,6 +192,11 @@ export const createLeague = async (
     if (opts.playInEnabled        !== undefined) payload.play_in_enabled         = opts.playInEnabled;
     if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
     if (opts.gamesPerRealDay      !== undefined) payload.games_per_real_day      = opts.gamesPerRealDay;
+    if (opts.tradeDeadlineDate    !== undefined) payload.trade_deadline_date     = opts.tradeDeadlineDate;
+    if (opts.tradeDeadlineEnabled !== undefined) payload.trade_deadline_enabled  = opts.tradeDeadlineEnabled;
+    if (opts.maxRosterSize        !== undefined) payload.max_roster_size         = opts.maxRosterSize;
+    if (opts.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = opts.twoWayDeadlineDate;
+    if (opts.twoWaySlots          !== undefined) payload.two_way_slots           = opts.twoWaySlots;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -350,6 +375,10 @@ export interface UpdateLeagueSettingsParams {
     draftPoolStrategy?:  string;
     draftOvrMin?:        number;
     draftOvrMax?:        number;
+    draftYearMin?:       number;
+    draftYearMax?:       number;
+    /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. */
+    useCustomOverrides?: boolean;
     seasonStartDate?:    string;
     seasonEndDate?:      string | null;
     tournamentStartAt?:  string | null;
@@ -364,6 +393,8 @@ export interface UpdateLeagueSettingsParams {
     simSettings?:        SimSettings;
     /** [2026-08-26] 샐러리캡 마스터 스위치 + 세부 항목(각각 개별 on/off + 금액). */
     capEnabled?:          boolean;
+    /** [2026-09-15] 샐러리캡+CBA 규정(버드권한/RFA-QO/협상 화면 등) 전체 사용 여부. capEnabled와 별개 축. */
+    cbaRulesEnabled?:     boolean;
     salaryCapAmount?:     number;
     luxuryTaxEnabled?:    boolean;
     luxuryTaxAmount?:     number;
@@ -373,6 +404,18 @@ export interface UpdateLeagueSettingsParams {
     apron2Amount?:        number;
     salaryFloorEnabled?:  boolean;
     salaryFloorAmount?:   number;
+    /** [2026-09-16] 연간 캡 증가율(%). null이면 미설정(전망 테이블 비노출). */
+    capGrowthRate?:       number | null;
+    /** [2026-09-16] 트레이드 데드라인('YYYY-MM-DD', 가상 시즌 캘린더 날짜). null이면 데드라인 없음. */
+    tradeDeadlineDate?:   string | null;
+    /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 위 날짜가 있어도 무시. */
+    tradeDeadlineEnabled?: boolean;
+    /** [2026-09-16] 팀당 최대 로스터 인원(15~20). */
+    maxRosterSize?:       number;
+    /** [2026-09-16] Two-Way 계약 전환 데드라인('YYYY-MM-DD', 가상 시즌 캘린더 날짜). null이면 데드라인 없음. */
+    twoWayDeadlineDate?:  string | null;
+    /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5). */
+    twoWaySlots?:         number;
 }
 
 export const updateLeagueSettings = async (
@@ -390,6 +433,9 @@ export const updateLeagueSettings = async (
     if (p.draftPoolStrategy    !== undefined) payload.draft_pool_strategy     = p.draftPoolStrategy;
     if (p.draftOvrMin          !== undefined) payload.draft_ovr_min           = p.draftOvrMin;
     if (p.draftOvrMax          !== undefined) payload.draft_ovr_max           = p.draftOvrMax;
+    if (p.draftYearMin         !== undefined) payload.draft_year_min          = p.draftYearMin;
+    if (p.draftYearMax         !== undefined) payload.draft_year_max          = p.draftYearMax;
+    if (p.useCustomOverrides   !== undefined) payload.use_custom_overrides    = p.useCustomOverrides;
     if (p.seasonStartDate      !== undefined) payload.season_start_date       = p.seasonStartDate;
     if (p.seasonEndDate        !== undefined) payload.season_end_date         = p.seasonEndDate;
     if (p.tournamentStartAt    !== undefined) payload.tournament_start_at     = p.tournamentStartAt;
@@ -399,6 +445,7 @@ export const updateLeagueSettings = async (
     if (p.playoffTeamCount     !== undefined) payload.playoff_team_count      = p.playoffTeamCount;
     if (p.playInEnabled        !== undefined) payload.play_in_enabled         = p.playInEnabled;
     if (p.capEnabled           !== undefined) payload.cap_enabled             = p.capEnabled;
+    if (p.cbaRulesEnabled      !== undefined) payload.cba_rules_enabled       = p.cbaRulesEnabled;
     if (p.salaryCapAmount      !== undefined) payload.salary_cap_amount       = p.salaryCapAmount;
     if (p.luxuryTaxEnabled     !== undefined) payload.luxury_tax_enabled      = p.luxuryTaxEnabled;
     if (p.luxuryTaxAmount      !== undefined) payload.luxury_tax_amount       = p.luxuryTaxAmount;
@@ -408,6 +455,12 @@ export const updateLeagueSettings = async (
     if (p.apron2Amount         !== undefined) payload.apron2_amount           = p.apron2Amount;
     if (p.salaryFloorEnabled   !== undefined) payload.salary_floor_enabled    = p.salaryFloorEnabled;
     if (p.salaryFloorAmount    !== undefined) payload.salary_floor_amount     = p.salaryFloorAmount;
+    if (p.capGrowthRate        !== undefined) payload.cap_growth_rate         = p.capGrowthRate;
+    if (p.tradeDeadlineDate    !== undefined) payload.trade_deadline_date     = p.tradeDeadlineDate;
+    if (p.tradeDeadlineEnabled !== undefined) payload.trade_deadline_enabled  = p.tradeDeadlineEnabled;
+    if (p.maxRosterSize        !== undefined) payload.max_roster_size         = p.maxRosterSize;
+    if (p.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = p.twoWayDeadlineDate;
+    if (p.twoWaySlots          !== undefined) payload.two_way_slots           = p.twoWaySlots;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
     if (error) return { error: error.message };

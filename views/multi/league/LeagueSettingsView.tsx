@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
     Save, Loader2, AlertCircle, CalendarDays,
     Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign,
-    ArrowLeftRight, Wallet, Info, Crown, ClipboardList,
+    ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp,
 } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
@@ -12,10 +12,15 @@ import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTo
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
-import { DraftPoolSettings, type PoolType, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
+import { DraftPoolSettings, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 import { getReadableTextColor } from '../../../utils/colorContrast';
+import { MIN_SALARY_YOS_TABLE } from '../../../utils/constants';
+import { getTradeDeadlineBounds, clampTradeDeadline } from '../../../utils/tradeDeadline';
+import { loadSchedule } from '../../../services/multi/gameQueries';
+import { daysBetweenKeys, addDaysToKey } from '../season/multiScheduleUtils';
+import type { Game } from '../../../types';
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
@@ -36,7 +41,17 @@ const CAP_DEFAULTS = {
     apron1Amount:      209_015_000,
     apron2Amount:      221_686_000,
     salaryFloorAmount: 148_465_000,
+    capGrowthRate:     2.5,
 };
+const CAP_GROWTH_RATE_MIN = 0;
+const CAP_GROWTH_RATE_MAX = 5;
+
+// Two-Way 계약 데드라인 기본값 — virtualSeasonYear(시즌 개막 연도) 기준 다음 해 3월 4일
+// (사용자 지정 고정 날짜). 트레이드 데드라인(utils/tradeDeadline.ts)과 달리 조정 가능
+// 범위(min/max)는 따로 두지 않음 — 관리자가 시즌 시작~종료일 안에서 자유롭게 바꿀 수 있다.
+function getDefaultTwoWayDeadline(virtualSeasonYear: number): string {
+    return `${virtualSeasonYear + 1}-03-04`;
+}
 
 // 참가일시 표시(항상 KST 벽시계 시각 기준 — 이 파일의 다른 날짜 표시와 동일 규칙).
 function fmtJoinedAt(iso: string | null | undefined): string {
@@ -73,16 +88,30 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'draft' | 'trade' | 'cap' | 'finance' | 'engine';
+type SettingsTabId = 'league' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'league',  label: '리그' },
     { id: 'draft',   label: '드래프트' },
     { id: 'trade',   label: '트레이드' },
     { id: 'cap',     label: '샐러리캡' },
+    { id: 'roster',  label: '로스터' },
     { id: 'finance', label: '재정' },
     { id: 'engine',  label: '엔진' },
 ];
+
+// 로스터 최대 인원 — 실제 CBA 기준(15명 정원)을 바탕으로 한 범위. 리그 어드민이 15~20명
+// 사이에서 자유롭게 조정할 수 있다(services/tradeEngine/tradeExecutor.ts의 트레이드
+// 오버플로우 정리 기준 MAX_ROSTER_SIZE=15와는 별개 — 그쪽은 싱글플레이어 고정값).
+const MIN_ROSTER_SIZE = 15;
+const MAX_ROSTER_SIZE_CAP = 20;
+const DEFAULT_MAX_ROSTER_SIZE = 15;
+
+// Two-Way 계약 슬롯 수 — 정규 계약(max_roster_size)과 별개 슬롯. 실제 NBA는 팀당 2명
+// 고정이지만, 이 리그는 어드민이 1~5명 사이에서 자유롭게 조정할 수 있게 한다.
+const MIN_TWO_WAY_SLOTS = 1;
+const MAX_TWO_WAY_SLOTS = 5;
+const DEFAULT_TWO_WAY_SLOTS = 3;
 
 // 리그 탭 좌측 "리그 정보" 요약 카드의 라벨-값 한 줄.
 const InfoRow: React.FC<{ label: string; value: string; muted?: boolean }> = ({ label, value, muted }) => (
@@ -113,9 +142,11 @@ const LeagueSettingsView: React.FC = () => {
     const [totalRounds,  setTotalRounds]  = useState(10);
     const [autoPickAfterMisses, setAutoPickAfterMisses] = useState(1);
     const [maxTeams,     setMaxTeams]     = useState(8);
-    const [draftPools,        setDraftPools]        = useState<PoolType[]>(['standard']);
     const [draftOvrMin,       setDraftOvrMin]       = useState(0);
     const [draftOvrMax,       setDraftOvrMax]       = useState(99);
+    const [draftYearMin,      setDraftYearMin]      = useState(2001);
+    const [draftYearMax,      setDraftYearMax]      = useState(2025);
+    const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     const [draftFormat,       setDraftFormat]       = useState<DraftFormat>('snake');
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
@@ -141,6 +172,7 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── 샐러리캡 설정(관리자 전용) — 마스터 스위치(capEnabled) + 세부 항목 5개(각각 개별 on/off + 금액) ──
     const [capEnabled,         setCapEnabled]         = useState(true);
+    const [cbaRulesEnabled,    setCbaRulesEnabled]    = useState(false);
     const [salaryCapAmount,    setSalaryCapAmount]    = useState(CAP_DEFAULTS.salaryCapAmount);
     const [luxuryTaxEnabled,   setLuxuryTaxEnabled]   = useState(true);
     const [luxuryTaxAmount,    setLuxuryTaxAmount]    = useState(CAP_DEFAULTS.luxuryTaxAmount);
@@ -150,6 +182,25 @@ const LeagueSettingsView: React.FC = () => {
     const [apron2Amount,       setApron2Amount]       = useState(CAP_DEFAULTS.apron2Amount);
     const [salaryFloorEnabled, setSalaryFloorEnabled] = useState(true);
     const [salaryFloorAmount, setSalaryFloorAmount]   = useState(CAP_DEFAULTS.salaryFloorAmount);
+    // 0~5% 범위, 기본값 2.5% — 0보다 크면(10년 전망 테이블 비노출 조건) 현재 금액 기준 복리 전망만 화면에 표시, 실제 시즌 갱신에는 미반영.
+    const [capGrowthRate, setCapGrowthRate] = useState<number>(CAP_DEFAULTS.capGrowthRate);
+    // [2026-09-16] Two-Way 계약 전환 데드라인(가상 시즌 캘린더 날짜) — leagues.two_way_deadline_date에
+    // 직접 저장. 빈 문자열이면 미설정(무제한) 상태로 취급 — 트레이드 데드라인과 달리 실제 NBA
+    // 규정의 구체적 산출 공식은 아직 검증된 바 없어 자동 기본값을 계산하지 않고, 관리자가
+    // 직접 날짜를 고르게 한다(시즌 시작~종료일 범위로만 제한).
+    const [twoWayDeadlineDate, setTwoWayDeadlineDate] = useState<string>(() => getDefaultTwoWayDeadline(2026));
+    // 미니멈 샐러리 테이블 상단 드롭다운에서 선택한 시즌 — capProjection 배열 인덱스(0~9).
+    const [minSalarySeasonIdx, setMinSalarySeasonIdx] = useState(0);
+    // 날짜별/연차별(일할계산) 미니멈 샐러리 표용 — 실제 games 테이블 스케줄. 2026-27(진행 중인
+    // 첫 시즌)만 games 테이블에 확정된 일정이 있고, 그 이후 전망 시즌은 아직 생성 전이라
+    // 날짜 기준 표는 2026-27을 선택했을 때만 의미가 있다(아래 렌더링부에서 체크).
+    const [minSalaryDateSchedule, setMinSalaryDateSchedule] = useState<Game[]>([]);
+    useEffect(() => {
+        if (!room?.id) return;
+        let cancelled = false;
+        loadSchedule(room.id).then(games => { if (!cancelled) setMinSalaryDateSchedule(games); });
+        return () => { cancelled = true; };
+    }, [room?.id]);
     const [savingCap,  setSavingCap]  = useState(false);
     const [saveCapOk,  setSaveCapOk]  = useState(false);
     const [saveCapErr, setSaveCapErr] = useState<string | null>(null);
@@ -162,10 +213,23 @@ const LeagueSettingsView: React.FC = () => {
     // ── 트레이드 설정(관리자 전용) — sim_settings에 함께 저장, 엔진 설정과 독립 저장 ──
     const [tradeMinValueRatio,      setTradeMinValueRatio]      = useState(DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
     const [cpuTradeBaseProbability, setCpuTradeBaseProbability] = useState(DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
+    // [2026-09-16] 트레이드 데드라인(가상 시즌 캘린더 날짜) — leagues.trade_deadline_date에
+    // 직접 저장(sim_settings JSON이 아님). null이면 저장 안 된 상태로 취급해 기본값을 보여준다.
+    const [tradeDeadlineDate, setTradeDeadlineDate] = useState<string>(() => getTradeDeadlineBounds(2026).default);
+    // [2026-09-16] 데드라인 강제 여부 마스터 스위치 — 꺼도 날짜 값은 그대로 유지.
+    const [tradeDeadlineEnabled, setTradeDeadlineEnabled] = useState(true);
     const [savingTrade,  setSavingTrade]  = useState(false);
     const [saveTradeOk,  setSaveTradeOk]  = useState(false);
     const [saveTradeErr, setSaveTradeErr] = useState<string | null>(null);
 
+    // ── 로스터 설정(관리자 전용) — leagues.max_roster_size에 직접 저장, 15~20명 범위 ──
+    const [maxRosterSize, setMaxRosterSize] = useState<number>(DEFAULT_MAX_ROSTER_SIZE);
+    // [2026-09-16] Two-Way 계약 슬롯 수 — leagues.two_way_slots에 직접 저장, 1~5명 범위(기본 3).
+    // 정규 계약 슬롯(maxRosterSize)과 별개라 같은 "로스터" 탭에 두되 저장은 함께 처리.
+    const [twoWaySlots, setTwoWaySlots] = useState<number>(DEFAULT_TWO_WAY_SLOTS);
+    const [savingRoster,  setSavingRoster]  = useState(false);
+    const [saveRosterOk,  setSaveRosterOk]  = useState(false);
+    const [saveRosterErr, setSaveRosterErr] = useState<string | null>(null);
 
     // ── lottery state ─────────────────────────────────────────────────────────
     const [lotteryRunning, setLotteryRunning] = useState(false);
@@ -215,12 +279,11 @@ const LeagueSettingsView: React.FC = () => {
         setTotalRounds(league.draft_total_rounds ?? 10);
         setAutoPickAfterMisses(league.draft_auto_pick_after_misses ?? 1);
         setMaxTeams(league.max_teams ?? 8);
-        const rawPool = league.draft_pool ?? 'standard';
-        const validTypes: PoolType[] = ['standard', 'alltime', 'rookies'];
-        const parsed = rawPool.split(',').map((s: string) => s.trim()).filter((s: string) => validTypes.includes(s as PoolType)) as PoolType[];
-        setDraftPools(parsed.length > 0 ? parsed : ['standard']);
         setDraftOvrMin(league.draft_ovr_min ?? 0);
         setDraftOvrMax(league.draft_ovr_max ?? 99);
+        setDraftYearMin(league.draft_year_min ?? 2001);
+        setDraftYearMax(league.draft_year_max ?? 2025);
+        setUseCustomOverrides((league as any).use_custom_overrides ?? false);
         setDraftFormat((league.draft_pool_strategy ?? 'snake') as DraftFormat);
         setMatchFormat(league.match_format ?? 'best_of_1');
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
@@ -228,6 +291,8 @@ const LeagueSettingsView: React.FC = () => {
         setTournamentIntervalMin(Math.round(1440 / gprd));
         setPlayoffTeamsPerConf(league.playoff_team_count ?? 8);
         setPlayInEnabled(league.play_in_enabled ?? true);
+        setMaxRosterSize((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE);
+        setTwoWaySlots((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS);
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
         setInjuryFrequency(room?.sim_settings?.injuryFrequency ?? DEFAULT_SIM_SETTINGS.injuryFrequency);
         setMajorInjuryFrequency(room?.sim_settings?.majorInjuryFrequency ?? DEFAULT_SIM_SETTINGS.majorInjuryFrequency);
@@ -237,7 +302,10 @@ const LeagueSettingsView: React.FC = () => {
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
         setTradeMinValueRatio(room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
         setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
+        setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
+        setTradeDeadlineEnabled((league as any).trade_deadline_enabled ?? true);
         setCapEnabled((league as any).cap_enabled ?? true);
+        setCbaRulesEnabled((league as any).cba_rules_enabled ?? false);
         setSalaryCapAmount((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount);
         setLuxuryTaxEnabled((league as any).luxury_tax_enabled ?? true);
         setLuxuryTaxAmount((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount);
@@ -247,6 +315,8 @@ const LeagueSettingsView: React.FC = () => {
         setApron2Amount((league as any).apron2_amount ?? CAP_DEFAULTS.apron2Amount);
         setSalaryFloorEnabled((league as any).salary_floor_enabled ?? true);
         setSalaryFloorAmount((league as any).salary_floor_amount ?? CAP_DEFAULTS.salaryFloorAmount);
+        setCapGrowthRate((league as any).cap_growth_rate ?? CAP_DEFAULTS.capGrowthRate);
+        setTwoWayDeadlineDate((league as any).two_way_deadline_date ?? getDefaultTwoWayDeadline((league as any).virtual_season_year ?? new Date().getFullYear()));
     }, [league]);
 
     // 비어드민 접근 차단
@@ -316,10 +386,12 @@ const LeagueSettingsView: React.FC = () => {
             draftPickDurationSec: pickSec,
             draftTotalRounds:    totalRounds,
             draftAutoPickAfterMisses: autoPickAfterMisses,
-            draftPool:         draftPools.join(','),
             draftPoolStrategy:    draftFormat,
             draftOvrMin,
             draftOvrMax,
+            draftYearMin,
+            draftYearMax,
+            useCustomOverrides,
             matchFormat,
             finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
             ...(league?.type === 'tournament'
@@ -378,11 +450,30 @@ const LeagueSettingsView: React.FC = () => {
                 tradeMinValueRatio,
                 cpuTradeBaseProbability,
             },
+            tradeDeadlineDate,
+            tradeDeadlineEnabled,
         });
         setSavingTrade(false);
         if (err) { setSaveTradeErr(err); return; }
         setSaveTradeOk(true);
         setTimeout(() => setSaveTradeOk(false), 2000);
+        reload();
+    };
+
+    const handleSaveRosterSettings = async () => {
+        if (!league?.id) return;
+        setSavingRoster(true);
+        setSaveRosterOk(false);
+        setSaveRosterErr(null);
+        const { error: err } = await updateLeagueSettings({
+            leagueId: league.id,
+            maxRosterSize,
+            twoWaySlots,
+        });
+        setSavingRoster(false);
+        if (err) { setSaveRosterErr(err); return; }
+        setSaveRosterOk(true);
+        setTimeout(() => setSaveRosterOk(false), 2000);
         reload();
     };
 
@@ -394,6 +485,7 @@ const LeagueSettingsView: React.FC = () => {
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
             capEnabled,
+            cbaRulesEnabled,
             salaryCapAmount,
             luxuryTaxEnabled,
             luxuryTaxAmount,
@@ -403,6 +495,8 @@ const LeagueSettingsView: React.FC = () => {
             apron2Amount,
             salaryFloorEnabled,
             salaryFloorAmount,
+            capGrowthRate,
+            twoWayDeadlineDate: twoWayDeadlineDate || null,
         });
         setSavingCap(false);
         if (err) { setSaveCapErr(err); return; }
@@ -419,6 +513,7 @@ const LeagueSettingsView: React.FC = () => {
         setApron1Amount(CAP_DEFAULTS.apron1Amount);
         setApron2Amount(CAP_DEFAULTS.apron2Amount);
         setSalaryFloorAmount(CAP_DEFAULTS.salaryFloorAmount);
+        setCapGrowthRate(CAP_DEFAULTS.capGrowthRate);
         setSaveCapOk(false);
         setSaveCapErr(null);
     };
@@ -548,21 +643,17 @@ const LeagueSettingsView: React.FC = () => {
     );
     const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isPlayoffDirty;
 
-    const sourceDraftPools = (() => {
-        const rawPool = league.draft_pool ?? 'standard';
-        const validTypes: PoolType[] = ['standard', 'alltime', 'rookies'];
-        const parsed = rawPool.split(',').map((s: string) => s.trim()).filter((s: string) => validTypes.includes(s as PoolType)) as PoolType[];
-        return parsed.length > 0 ? parsed : ['standard'];
-    })();
     const isDraftTabDirty = !isInProgress && (
         lotteryAt !== toInputValue(league.lottery_scheduled_at) ||
         draftAt !== toInputValue(league.draft_scheduled_at) ||
         totalRounds !== (league.draft_total_rounds ?? 10) ||
         pickSec !== (league.draft_pick_duration_sec ?? 30) ||
         autoPickAfterMisses !== (league.draft_auto_pick_after_misses ?? 1) ||
-        draftPools.join(',') !== sourceDraftPools.join(',') ||
         draftOvrMin !== (league.draft_ovr_min ?? 0) ||
         draftOvrMax !== (league.draft_ovr_max ?? 99) ||
+        draftYearMin !== (league.draft_year_min ?? 2001) ||
+        draftYearMax !== (league.draft_year_max ?? 2025) ||
+        useCustomOverrides !== ((league as any).use_custom_overrides ?? false) ||
         draftFormat !== (league.draft_pool_strategy ?? 'snake') ||
         (league.type === 'tournament' && (
             tournamentStartAt !== toInputValue((league as any).tournament_start_at) ||
@@ -574,10 +665,17 @@ const LeagueSettingsView: React.FC = () => {
 
     const isTradeTabDirty =
         tradeMinValueRatio !== (room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio) ||
-        cpuTradeBaseProbability !== (room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
+        cpuTradeBaseProbability !== (room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability) ||
+        tradeDeadlineDate !== ((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default) ||
+        tradeDeadlineEnabled !== ((league as any).trade_deadline_enabled ?? true);
+
+    const isRosterTabDirty =
+        maxRosterSize !== ((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE) ||
+        twoWaySlots !== ((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS);
 
     const isCapTabDirty =
         capEnabled !== ((league as any).cap_enabled ?? true) ||
+        cbaRulesEnabled !== ((league as any).cba_rules_enabled ?? false) ||
         salaryCapAmount !== ((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount) ||
         luxuryTaxEnabled !== ((league as any).luxury_tax_enabled ?? true) ||
         luxuryTaxAmount !== ((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount) ||
@@ -586,7 +684,81 @@ const LeagueSettingsView: React.FC = () => {
         apron2Enabled !== ((league as any).apron2_enabled ?? true) ||
         apron2Amount !== ((league as any).apron2_amount ?? CAP_DEFAULTS.apron2Amount) ||
         salaryFloorEnabled !== ((league as any).salary_floor_enabled ?? true) ||
-        salaryFloorAmount !== ((league as any).salary_floor_amount ?? CAP_DEFAULTS.salaryFloorAmount);
+        salaryFloorAmount !== ((league as any).salary_floor_amount ?? CAP_DEFAULTS.salaryFloorAmount) ||
+        capGrowthRate !== ((league as any).cap_growth_rate ?? CAP_DEFAULTS.capGrowthRate) ||
+        twoWayDeadlineDate !== ((league as any).two_way_deadline_date ?? getDefaultTwoWayDeadline((league as any).virtual_season_year ?? new Date().getFullYear()));
+
+    // 캡 증가율이 설정된 경우(0보다 큰 값)에만 향후 10년 전망 계산 — 현재 입력 중인 금액 기준 매년 복리 성장 가정.
+    // 실제 시즌 진행 시 자동 반영되는 로직은 없음(참고용 표시일 뿐).
+    const capProjection = React.useMemo(() => {
+        if (capGrowthRate <= 0) return null;
+        const rate = 1 + capGrowthRate / 100;
+        const baseSeason = league?.season_number ?? 1;
+        // "2026-27" 형식 시즌명 계산용 시작 연도 — league.virtual_season_year가 현재 season_number 기준
+        // 표시 연도이므로, 인덱스만큼 그대로 더하면 미래 시즌명이 됨(실제 DB에 반영되는 값은 아니고 전망 표시 전용).
+        const baseYear = (league as any)?.virtual_season_year ?? new Date().getFullYear();
+        const rows: { season: number; seasonLabel: string; cap: number; floor: number; tax: number; apron1: number; apron2: number }[] = [];
+        for (let i = 0; i < 10; i++) {
+            const mult = Math.pow(rate, i);
+            const year = baseYear + i;
+            rows.push({
+                season: baseSeason + i,
+                seasonLabel: `${year}-${String(year + 1).slice(-2)}`,
+                cap:    Math.round(salaryCapAmount * mult),
+                floor:  Math.round(salaryFloorAmount * mult),
+                tax:    Math.round(luxuryTaxAmount * mult),
+                apron1: Math.round(apron1Amount * mult),
+                apron2: Math.round(apron2Amount * mult),
+            });
+        }
+        return rows;
+    }, [capGrowthRate, salaryCapAmount, salaryFloorAmount, luxuryTaxAmount, apron1Amount, apron2Amount, league?.season_number, (league as any)?.virtual_season_year]);
+
+    // 드롭다운으로 선택한 시즌(capProjection 인덱스)의 캡을 기준으로 YOS별 미니멈 샐러리 계산.
+    const minSalaryRows = React.useMemo(() => {
+        if (!capProjection) return null;
+        const idx = Math.min(Math.max(minSalarySeasonIdx, 0), capProjection.length - 1);
+        const seasonCap = capProjection[idx].cap;
+        return MIN_SALARY_YOS_TABLE.map(({ label, capPct }) => ({
+            label,
+            capPct,
+            salary: Math.round(seasonCap * (capPct / 100)),
+        }));
+    }, [capProjection, minSalarySeasonIdx]);
+
+    // 날짜별/연차별(일할계산 적용) 미니멈 샐러리 — 실제 CBA는 시즌 도중 미니멈 계약을 맺으면
+    // "시즌이 진행된 만큼" 첫 시즌 연봉이 일할계산(proration)된다(공식은
+    // MultiNegotiationView.tsx의 seasonProration과 동일). 이 표는 그 값을 날짜별로 미리
+    // 보여주는 참고용 — 전망 시즌(2027-28 이후)은 아직 games 테이블에 실제 일정이 생성되지
+    // 않아 정확한 날짜를 알 수 없으므로, games 테이블에 확정된 일정이 존재하는 2026-27을
+    // 선택했을 때만 계산/노출한다.
+    const isMinSalaryScheduleSeason = capProjection?.[minSalarySeasonIdx]?.seasonLabel === '2026-27';
+    const minSalaryByDateRows = React.useMemo(() => {
+        if (!isMinSalaryScheduleSeason || !capProjection) return null;
+        const regularSeasonDates = minSalaryDateSchedule
+            .filter(g => !g.isPlayoff && !g.isAllstar)
+            .map(g => g.date)
+            .sort();
+        if (regularSeasonDates.length === 0) return null;
+        const firstDate = regularSeasonDates[0];
+        const lastDate = regularSeasonDates[regularSeasonDates.length - 1];
+        const daysInSeason = daysBetweenKeys(firstDate, lastDate) + 1;
+        if (daysInSeason <= 0) return null;
+        const seasonCap = capProjection[minSalarySeasonIdx].cap;
+        const rows: { date: string; dayNum: number; daysRemaining: number; pct: number; salaries: number[] }[] = [];
+        for (let dayNum = 1; dayNum <= daysInSeason; dayNum++) {
+            const daysRemaining = daysInSeason - (dayNum - 1);
+            const pct = daysRemaining / daysInSeason;
+            rows.push({
+                date: addDaysToKey(firstDate, dayNum - 1),
+                dayNum,
+                daysRemaining,
+                pct,
+                salaries: MIN_SALARY_YOS_TABLE.map(({ capPct }) => Math.round(seasonCap * (capPct / 100) * pct)),
+            });
+        }
+        return rows;
+    }, [isMinSalaryScheduleSeason, capProjection, minSalarySeasonIdx, minSalaryDateSchedule]);
 
     const isEngineTabDirty =
         injuriesEnabled !== (room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled) ||
@@ -603,6 +775,7 @@ const LeagueSettingsView: React.FC = () => {
         draft:  { dirty: isDraftTabDirty,  saving: saving,       ok: saveOk,       err: saveErr,       onSave: handleSave },
         trade:  { dirty: isTradeTabDirty,  saving: savingTrade,  ok: saveTradeOk,  err: saveTradeErr,  onSave: handleSaveTradeSettings },
         cap:    { dirty: isCapTabDirty,    saving: savingCap,    ok: saveCapOk,    err: saveCapErr,    onSave: handleSaveCapSettings },
+        roster: { dirty: isRosterTabDirty, saving: savingRoster, ok: saveRosterOk, err: saveRosterErr, onSave: handleSaveRosterSettings },
         engine: { dirty: isEngineTabDirty, saving: savingSim,    ok: saveSimOk,    err: saveSimErr,    onSave: handleSaveSimSettings },
     };
     const activeSaveInfo = TAB_SAVE_MAP[activeTab] ?? null;
@@ -819,6 +992,7 @@ const LeagueSettingsView: React.FC = () => {
                                 <InfoRow label="부상" value={injuriesEnabled ? '켜짐' : '꺼짐'} />
                                 <InfoRow label="출전정지" value={suspensionsEnabled ? '켜짐' : '꺼짐'} />
                                 <InfoRow label="샐러리캡" value={capEnabled ? '켜짐' : '꺼짐'} />
+                                <InfoRow label="CBA 규정(버드권한/RFA-QO/협상)" value={cbaRulesEnabled ? '켜짐' : '꺼짐'} />
                             </div>
                         </section>
 
@@ -1198,6 +1372,38 @@ const LeagueSettingsView: React.FC = () => {
                         CPU 팀 간 일일 트레이드 발생 기본 확률(0~0.5, 기본 0.15).
                     </p>
                 </div>
+
+                {(() => {
+                    const bounds = getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear());
+                    return (
+                        <div>
+                            <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                                tradeDeadlineEnabled ? 'bg-amber-600/20 border border-amber-600/50' : 'bg-slate-900/60 border border-transparent'
+                            }`}>
+                                <input
+                                    type="checkbox"
+                                    checked={tradeDeadlineEnabled}
+                                    onChange={e => setTradeDeadlineEnabled(e.target.checked)}
+                                    className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                                />
+                                <span className={`text-xs font-bold flex-1 ${tradeDeadlineEnabled ? 'text-white' : 'text-slate-400'}`}>트레이드 데드라인</span>
+                                <input
+                                    type="date"
+                                    value={tradeDeadlineDate}
+                                    min={bounds.min}
+                                    max={bounds.max}
+                                    disabled={!tradeDeadlineEnabled}
+                                    onChange={e => setTradeDeadlineDate(clampTradeDeadline(e.target.value, bounds))}
+                                    className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                                />
+                            </div>
+                            <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                                켜져 있으면 이 날짜(가상 시즌 캘린더 기준)가 지날 때 새 트레이드 제안을 보내거나 대기 중인 제안을 수락할 수 없습니다. 끄면 시즌 내내 트레이드가 무제한입니다.
+                                기본값은 {bounds.default}(2월 둘째 주 목요일)이며, 이보다 늦출 수는 없고 최대 한 달 전({bounds.min})까지만 앞당길 수 있습니다.
+                            </p>
+                        </div>
+                    );
+                })()}
             </section>
             )}
 
@@ -1240,6 +1446,25 @@ const LeagueSettingsView: React.FC = () => {
                     <div className="flex-1 min-w-0">
                         <span className={`text-xs font-bold ${capEnabled ? 'text-white' : 'text-slate-400'}`}>샐러리캡 활성화</span>
                         <span className="ml-2 text-xs text-slate-500 ko-normal">전체 마스터 스위치</span>
+                    </div>
+                </label>
+
+                <label
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                        cbaRulesEnabled ? 'bg-emerald-600/20 border border-emerald-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                    }`}
+                >
+                    <input
+                        type="checkbox"
+                        checked={cbaRulesEnabled}
+                        onChange={e => setCbaRulesEnabled(e.target.checked)}
+                        className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+                    />
+                    <div className="flex-1 min-w-0">
+                        <span className={`text-xs font-bold ${cbaRulesEnabled ? 'text-white' : 'text-slate-400'}`}>CBA 규정 활성화</span>
+                        <span className="ml-2 text-xs text-slate-500 ko-normal">
+                            버드권한 · RFA/QO · 루키스케일 구조 등 — 켜면 FA 영입 시 즉시 사인 대신 연봉 협상 화면을 거치게 됨(구현 예정)
+                        </span>
                     </div>
                 </label>
 
@@ -1350,6 +1575,46 @@ const LeagueSettingsView: React.FC = () => {
                             />
                         </div>
                     </div>
+
+                    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/60 border border-transparent">
+                        <TrendingUp size={14} className="text-emerald-400 shrink-0" />
+                        <span className="text-xs font-bold flex-1 text-slate-300">연간 캡 증가율</span>
+                        <span className="text-[11px] text-slate-500 ko-normal">{CAP_GROWTH_RATE_MIN}~{CAP_GROWTH_RATE_MAX}%</span>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min={CAP_GROWTH_RATE_MIN}
+                                max={CAP_GROWTH_RATE_MAX}
+                                step={0.1}
+                                value={capGrowthRate}
+                                onChange={e => {
+                                    const raw = Number(e.target.value) || 0;
+                                    setCapGrowthRate(Math.min(CAP_GROWTH_RATE_MAX, Math.max(CAP_GROWTH_RATE_MIN, raw)));
+                                }}
+                                className="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-emerald-500"
+                            />
+                            <span className="text-xs text-slate-500">%</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/60 border border-transparent">
+                            <CalendarDays size={14} className="text-emerald-400 shrink-0" />
+                            <span className="text-xs font-bold flex-1 text-slate-300">Two-Way 계약 데드라인</span>
+                            <input
+                                type="date"
+                                value={twoWayDeadlineDate}
+                                min={league.season_start_date ?? undefined}
+                                max={league.season_end_date ?? undefined}
+                                onChange={e => setTwoWayDeadlineDate(e.target.value)}
+                                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                            이 날짜(가상 시즌 캘린더 기준)까지 Two-Way 계약을 정규 계약으로 전환해야
+                            합니다. 기본값은 3월 4일이며, 비워두면 데드라인 없음으로 취급됩니다.
+                        </p>
+                    </div>
                 </div>
 
                 <div>
@@ -1362,7 +1627,184 @@ const LeagueSettingsView: React.FC = () => {
                         기본값으로 복원
                     </button>
                 </div>
+
+                {capEnabled && capProjection && (
+                    <div className="pt-4 border-t border-slate-700/40">
+                        <h3 className="text-xs font-bold text-slate-300 mb-1 flex items-center gap-2">
+                            <TrendingUp size={13} className="text-emerald-400" />
+                            향후 10년 캡 전망 (연 {capGrowthRate}% 복리 가정)
+                        </h3>
+                        <p className="text-[11px] text-slate-500 ko-normal mb-2">
+                            현재 입력된 금액을 기준으로 계산한 참고용 전망이며, 시즌이 실제로 진행되어도 자동으로 반영되지 않습니다. 매 시즌 위 금액을 직접 조정 후 저장해야 합니다.
+                        </p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-slate-500 border-b border-slate-700/40">
+                                        <th className="text-left py-1.5 pr-2 font-normal">시즌</th>
+                                        <th className="text-right py-1.5 px-2 font-normal">캡</th>
+                                        <th className="text-right py-1.5 px-2 font-normal">플로어</th>
+                                        <th className="text-right py-1.5 px-2 font-normal">사치세</th>
+                                        <th className="text-right py-1.5 px-2 font-normal">1차 에이프런</th>
+                                        <th className="text-right py-1.5 pl-2 font-normal">2차 에이프런</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {capProjection.map((row, i) => (
+                                        <tr key={row.season} className={i === 0 ? 'text-slate-300' : 'text-slate-400'}>
+                                            <td className="py-1 pr-2 font-mono">{row.season}</td>
+                                            <td className="py-1 px-2 text-right font-mono">${row.cap.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right font-mono">${row.floor.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right font-mono">${row.tax.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right font-mono">${row.apron1.toLocaleString()}</td>
+                                            <td className="py-1 pl-2 text-right font-mono">${row.apron2.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {minSalaryRows && (
+                            <div className="mt-5 pt-4 border-t border-slate-700/40">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                                        <DollarSign size={13} className="text-emerald-400" />
+                                        YOS(서비스타임)별 미니멈 샐러리
+                                    </h3>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[11px] text-slate-500 ko-normal">기준 시즌</span>
+                                        <select
+                                            value={minSalarySeasonIdx}
+                                            onChange={e => setMinSalarySeasonIdx(Number(e.target.value))}
+                                            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                                        >
+                                            {capProjection.map((row, i) => (
+                                                <option key={row.season} value={i}>{row.seasonLabel}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                        <thead>
+                                            <tr className="text-slate-500 border-b border-slate-700/40">
+                                                <th className="text-left py-1.5 pr-2 font-normal">YOS</th>
+                                                <th className="text-right py-1.5 px-2 font-normal">캡 대비 %</th>
+                                                <th className="text-right py-1.5 pl-2 font-normal">미니멈 샐러리</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {minSalaryRows.map(row => (
+                                                <tr key={row.label} className="text-slate-400">
+                                                    <td className="py-1 pr-2 font-mono text-slate-300">{row.label}</td>
+                                                    <td className="py-1 px-2 text-right font-mono">{row.capPct.toFixed(2)}%</td>
+                                                    <td className="py-1 pl-2 text-right font-mono">${row.salary.toLocaleString()}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {isMinSalaryScheduleSeason && minSalaryByDateRows && (
+                            <div className="mt-5 pt-4 border-t border-slate-700/40">
+                                <h3 className="text-xs font-bold text-slate-300 mb-1 flex items-center gap-2">
+                                    <CalendarDays size={13} className="text-emerald-400" />
+                                    날짜별/연차별 미니멈 샐러리 (일할계산, 2026-27)
+                                </h3>
+                                <p className="text-[11px] text-slate-500 ko-normal mb-2">
+                                    시즌 도중 Minimum Salary Exception 계약을 맺으면 실제 CBA 규정대로 체결일
+                                    기준 잔여 일수 비율만큼만 첫 시즌 연봉이 지급됩니다(일할계산/proration).
+                                    이 표는 games 테이블에 실제 일정이 확정된 2026-27 시즌을 선택했을 때만
+                                    표시되며, 전망 시즌(2027-28 이후)은 아직 일정이 생성되지 않아 계산할 수
+                                    없습니다.
+                                </p>
+                                <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                                    <table className="w-full text-xs">
+                                        <thead>
+                                            <tr className="text-slate-500 border-b border-slate-700/40">
+                                                <th className="text-left py-1.5 pr-2 font-normal whitespace-nowrap">체결일</th>
+                                                <th className="text-right py-1.5 px-2 font-normal whitespace-nowrap">경과일</th>
+                                                <th className="text-right py-1.5 px-2 font-normal whitespace-nowrap">잔여일</th>
+                                                <th className="text-right py-1.5 px-2 font-normal whitespace-nowrap">지급 비율</th>
+                                                {MIN_SALARY_YOS_TABLE.map(({ label }) => (
+                                                    <th key={label} className="text-right py-1.5 px-2 font-normal whitespace-nowrap">{label}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {minSalaryByDateRows.map(row => (
+                                                <tr key={row.date} className="text-slate-400">
+                                                    <td className="py-1 pr-2 font-mono text-slate-300 whitespace-nowrap">{row.date}</td>
+                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{row.dayNum}일차</td>
+                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{row.daysRemaining}일</td>
+                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{(row.pct * 100).toFixed(1)}%</td>
+                                                    {row.salaries.map((salary, i) => (
+                                                        <td key={i} className="py-1 px-2 text-right font-mono whitespace-nowrap">${salary.toLocaleString()}</td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </section>
+            )}
+
+            {/* ── 로스터 설정 ─────────────────────────────────────────────────── */}
+            {activeTab === 'roster' && (
+                <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Users size={14} className="text-indigo-400" />
+                        로스터
+                    </h2>
+                    <p className="text-xs text-slate-500 ko-normal">
+                        각 팀이 보유할 수 있는 최대 로스터 인원입니다. FA 계약 등 로스터에 선수를
+                        추가하는 모든 시점에 이 값을 기준으로 슬롯이 가득 찼는지 확인하며, 가득 찬
+                        팀은 방출 등으로 자리를 비우기 전까지 추가 계약을 맺을 수 없습니다.
+                    </p>
+
+                    <div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">최대 로스터 인원</span>
+                            <input
+                                type="number"
+                                min={MIN_ROSTER_SIZE}
+                                max={MAX_ROSTER_SIZE_CAP}
+                                step={1}
+                                value={maxRosterSize}
+                                onChange={e => setMaxRosterSize(Math.min(MAX_ROSTER_SIZE_CAP, Math.max(MIN_ROSTER_SIZE, Math.round(Number(e.target.value) || 0))))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                            {MIN_ROSTER_SIZE}명(NBA 기본 정원)~{MAX_ROSTER_SIZE_CAP}명 사이에서 정할 수 있습니다.
+                        </p>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">Two-Way 슬롯 수</span>
+                            <input
+                                type="number"
+                                min={MIN_TWO_WAY_SLOTS}
+                                max={MAX_TWO_WAY_SLOTS}
+                                step={1}
+                                value={twoWaySlots}
+                                onChange={e => setTwoWaySlots(Math.min(MAX_TWO_WAY_SLOTS, Math.max(MIN_TWO_WAY_SLOTS, Math.round(Number(e.target.value) || 0))))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                            {MIN_TWO_WAY_SLOTS}명~{MAX_TWO_WAY_SLOTS}명 사이에서 정할 수 있습니다(기본 {DEFAULT_TWO_WAY_SLOTS}명).
+                            정규 계약 슬롯(최대 로스터 인원)과 별개로 취급됩니다.
+                        </p>
+                    </div>
+                </section>
             )}
 
             {/* ── 스케줄 설정 ─────────────────────────────────────────────────── */}
@@ -1472,14 +1914,18 @@ const LeagueSettingsView: React.FC = () => {
                 </div>
 
                 <DraftPoolSettings
-                    poolTypes={draftPools}
-                    onPoolTypesChange={setDraftPools}
                     ovrMin={draftOvrMin}
                     onOvrMinChange={setDraftOvrMin}
                     ovrMax={draftOvrMax}
                     onOvrMaxChange={setDraftOvrMax}
+                    draftYearMin={draftYearMin}
+                    onDraftYearMinChange={setDraftYearMin}
+                    draftYearMax={draftYearMax}
+                    onDraftYearMaxChange={setDraftYearMax}
                     draftFormat={draftFormat}
                     onDraftFormatChange={setDraftFormat}
+                    useCustomOverrides={useCustomOverrides}
+                    onUseCustomOverridesChange={setUseCustomOverrides}
                 />
 
                 {/* 경기 포맷 — 토너먼트만 */}

@@ -8,6 +8,7 @@ import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculateOvr } from './shared/utils/ovrUtils.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import {
     advanceTournamentState,
     targetWinsFromFormat,
@@ -51,12 +52,10 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         // custom_overrides 적용 여부 + 시간 압축 파라미터
         const { data: leagueData } = await supabase
             .from('leagues')
-            .select('draft_pool, sim_real_start_at, games_per_real_day')
+            .select('use_custom_overrides, sim_real_start_at, games_per_real_day')
             .eq('id', room.league_id)
             .maybeSingle();
-        const draftPools = (leagueData?.draft_pool ?? 'standard')
-            .split(',').map((s: string) => s.trim());
-        const useCustomOverrides = draftPools.includes('alltime');
+        const useCustomOverrides = shouldUseCustomOverrides(leagueData);
 
         // [migration 2026-08-06] rooms.schedule 전체 스캔 대신 games 테이블에서 해당 경기 1행만 조회.
         const { data: game } = await supabase

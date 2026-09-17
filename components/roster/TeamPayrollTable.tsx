@@ -2,7 +2,9 @@
 import React, { useMemo, useState } from 'react';
 import type { Team, Player } from '../../types';
 import { formatMoneyFull } from '../../utils/formatMoney';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr, estimatePlayerYOS } from '../../utils/constants';
+import { previewFAStatusAfterContract } from '../../services/multi/negotiation/rfaEligibility';
+import { usePlayerCareerHistoryBatch } from '../../hooks/usePlayerCareerHistoryBatch';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
@@ -86,9 +88,12 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
             cols.push(`${y}-${String(y + 1).slice(-2)}`);
         }
 
+        // [2026-09-16] 투웨이 계약은 실제 CBA상 샐러리캡에 전혀 잡히지 않는다 — 개별 선수
+        // 행에는 그대로 본인 연봉을 보여주되(정보성), "합계"/캡·사치세·에이프런 대비 행에는
+        // 합산하지 않는다(services/fa/faMarketBuilder.ts의 calcTeamPayroll과 동일 원칙).
         const colTotals = new Array(cols.length).fill(0);
         for (const p of sorted) {
-            if (!p.contract) continue;
+            if (!p.contract || p.contract.type === 'two_way') continue;
             for (let i = 0; i < p.contract.years.length; i++) {
                 const colIdx = i - p.contract.currentYear;
                 if (colIdx >= 0 && colIdx < cols.length) colTotals[colIdx] += p.contract.years[i];
@@ -113,6 +118,27 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
         }
         return map;
     }, [players]);
+
+    // useLeagueRawStats.ts가 2026-09-07에 성능 이유로 career_history를 select에서 뺀 채라
+    // (250명+ 리그 전체에 무거운 JSONB를 매번 얹으면 병목), 이 팀 로스터(15~20명) 범위로만
+    // 좁혀 별도 조회 — YOS를 draftYear 역산이 아니라 실제 커리어 기록으로 정확히 계산하기
+    // 위함(estimatePlayerYOS는 그래도 이 조회가 비어있는 선수를 위해 draftYear 폴백을 유지).
+    const rosterIds = useMemo(() => team.roster.map(p => p.id), [team.roster]);
+    const { data: careerHistoryMap } = usePlayerCareerHistoryBatch(rosterIds);
+
+    // 계약 만료 "다음 해" 컬럼에 UFA/RFA 칩을 띄우기 위한 미리보기 — services/multi/negotiation/
+    // rfaEligibility.ts의 previewFAStatusAfterContract() 재사용(트리거 없는 순수 판정 로직,
+    // "이 계약이 이대로 끝까지 간다면" 가정). two-way는 null을 반환해 칩이 안 뜬다.
+    const faStatusPreview = useMemo(() => {
+        const map = new Map<string, ReturnType<typeof previewFAStatusAfterContract>>();
+        for (const p of players) {
+            if (!p.contract) { map.set(p.id, null); continue; }
+            const careerHistory = careerHistoryMap?.[p.id] ?? p.career_history;
+            const careerYOS = estimatePlayerYOS({ ...p, career_history: careerHistory }, baseSeasonYear);
+            map.set(p.id, previewFAStatusAfterContract(p.contract, careerYOS));
+        }
+        return map;
+    }, [players, baseSeasonYear, careerHistoryMap]);
 
     const currentPayroll = totals[0] ?? 0;
 
@@ -180,19 +206,34 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                 </thead>
                 <TableBody>
                     {players.map(p => (
-                        <TableRow key={p.id} className="group" onClick={onPlayerClick ? () => onPlayerClick(p) : undefined}>
-                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                    <span className="text-sm font-semibold text-slate-200 truncate">{p.name}</span>
-                                </PlayerHoverCard>
+                        <TableRow
+                            key={p.id}
+                            className={`group ${p.contract?.type === 'two_way' ? 'opacity-60' : ''}`}
+                            onClick={onPlayerClick ? () => onPlayerClick(p) : undefined}
+                        >
+                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                    <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
+                                        <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer">{p.name}</span>
+                                    </PlayerHoverCard>
+                                    {p.contract?.type === 'two_way' && (
+                                        <span
+                                            title="Two-Way 계약"
+                                            className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                                        >TW</span>
+                                    )}
+                                </span>
                             </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} className="bg-slate-900 group-hover:bg-slate-800 text-center">
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_CAPPCT, WIDTHS.CAPPCT, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
-                                {capSettings.salaryCapAmount > 0 ? (
+                            <TableCell style={getStickyStyle(LEFT_CAPPCT, WIDTHS.CAPPCT, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
+                                {/* 투웨이는 샐러리캡에 전혀 잡히지 않아 Cap%가 의미 없음 — "-" 표시. */}
+                                {p.contract?.type === 'two_way' ? (
+                                    <span className="text-sm font-medium text-slate-600">-</span>
+                                ) : capSettings.salaryCapAmount > 0 ? (
                                     <span className="text-sm font-bold" style={{ color: capPctColor((salaryAtCol(p, 0) / capSettings.salaryCapAmount) * 100) }}>
                                         {((salaryAtCol(p, 0) / capSettings.salaryCapAmount) * 100).toFixed(1)}%
                                     </span>
@@ -204,11 +245,35 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                                 const contractIdx = p.contract ? i + p.contract.currentYear : -1;
                                 const amount = p.contract && contractIdx >= 0 && contractIdx < p.contract.years.length
                                     ? p.contract.years[contractIdx] : null;
+                                const opt = p.contract?.options?.find(o => o.year === contractIdx);
+                                const amountColorClass = opt?.type === 'team'
+                                    ? 'italic text-sky-400'
+                                    : opt?.type === 'player'
+                                        ? 'italic text-emerald-400'
+                                        : 'text-slate-300';
+                                // 계약 마지막 연도 바로 다음 컬럼(contractIdx === years.length)에만
+                                // UFA/RFA 칩 표시 — 그 이전/이후 컬럼은 기존처럼 금액 또는 "-".
+                                const faStatus = p.contract && contractIdx === p.contract.years.length
+                                    ? faStatusPreview.get(p.id)
+                                    : null;
                                 return (
-                                    <TableCell key={col} align="right" className="pr-4 border-r border-r-slate-800/30">
-                                        <span className="font-medium text-sm text-slate-300">
-                                            {amount != null ? formatMoneyFull(amount) : <span className="text-slate-600">-</span>}
-                                        </span>
+                                    <TableCell key={col} align="right" className={`pr-4 border-r border-r-slate-800/30 ${i === 0 ? 'bg-white/[0.04]' : ''}`}>
+                                        {amount != null ? (
+                                            <span className={`font-medium text-sm ${amountColorClass}`}>
+                                                {formatMoneyFull(amount)}
+                                            </span>
+                                        ) : faStatus ? (
+                                            <span
+                                                title={faStatus.status === 'RFA' ? 'Restricted Free Agent' : 'Unrestricted Free Agent'}
+                                                className={`font-bold text-sm ${
+                                                    faStatus.status === 'RFA' ? 'text-violet-400' : 'text-emerald-400'
+                                                }`}
+                                            >
+                                                {faStatus.status}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-600">-</span>
+                                        )}
                                     </TableCell>
                                 );
                             })}
@@ -254,6 +319,24 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                             </tr>
                         );
                     })}
+                    {/* Glossary — 로스터 탭(RosterOverviewGrid.tsx) 하단 "정규 계약 슬롯" 푸터와
+                        동일한 h-40 높이. 연도별 금액에 적용되는 이탤릭+색상(하늘색/초록색)이
+                        각각 팀/플레이어 옵션을 뜻한다는 걸 테이블 안에서 바로 확인할 수 있게 안내. */}
+                    <tr className="h-40 border-t border-slate-800/50">
+                        <TableCell colSpan={5 + seasonColumns.length + 1} className="bg-slate-950 px-4">
+                            <div className="h-40 flex items-start justify-end gap-6 pt-3">
+                                <span className="text-sm font-semibold text-slate-500">범례</span>
+                                <span className="flex items-center gap-2 text-sm font-semibold">
+                                    <span className="w-3 h-3 rounded-sm bg-sky-400" />
+                                    <span className="text-slate-400">팀 옵션</span>
+                                </span>
+                                <span className="flex items-center gap-2 text-sm font-semibold">
+                                    <span className="w-3 h-3 rounded-sm bg-emerald-400" />
+                                    <span className="text-slate-400">플레이어 옵션</span>
+                                </span>
+                            </div>
+                        </TableCell>
+                    </tr>
                 </TableFoot>
             </Table>
             </div>

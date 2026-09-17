@@ -1,5 +1,6 @@
 
 import type { PlayerArchetypeState } from './archetype';
+import type { SigningType } from './fa';
 
 export interface PlayerStats {
     g: number;
@@ -153,7 +154,31 @@ export interface PlayerAwardEntry {
 }
 
 // ── 선수 계약 구조 ──
-export type ContractType = 'rookie' | 'veteran' | 'max' | 'min' | 'extension';
+// [2026-09-17] 11종 → 4종으로 재설계. 예전 rookie/veteran/max/min/10-day/qualifying_offer/
+// rookie_extension/veteran_extension/veteran_max_extension은 폐기(DB는 백필 마이그레이션으로
+// 전부 새 값으로 변환됨 — migrations/backfill_contract_type_values.sql 참고). 연장의 세부
+// 종류(루키/베테랑/슈퍼맥스/로즈룰 등)는 ContractType이 아니라 ContractDetail로 표현한다.
+export type ContractType =
+    | 'extension'
+    | 'free_agent'
+    | 'rookie_scale'
+    | 'two_way';
+
+// 계약 유형에 종속되는 세부사항 — extension/free_agent일 때만 의미 있음(rookie_scale/
+// two_way는 세부사항이 없어 필드 자체를 생략). 하나의 유니온으로 묶고 UI에서 계약 유형별로
+// 필터링(ContractOption을 별도 인터페이스로 뺀 것과 달리, 값 자체가 계약 유형 판별에도
+// 쓰이지 않아 굳이 분리하지 않음 — utils/contractLabels.ts의 CONTRACT_DETAIL_LABEL 참고).
+export type ContractDetail =
+    // extension 하위
+    | 'rookie_extension'
+    | 'rookie_max_extension'
+    | 'rose_rule_extension'
+    | 'veteran_extension'
+    | 'veteran_max_extension'
+    | 'supermax_extension'
+    // free_agent 하위
+    | 'general'
+    | 'qualifying_offer';
 
 export interface ContractOption {
     type: 'player' | 'team';
@@ -166,11 +191,18 @@ export interface PlayerContract {
                                  // 아니라 연차마다 직접 입력하는 사실 데이터(과거 계약 재구성용).
     currentYear: number;        // 0-based
     type: ContractType;
+    contractDetail?: ContractDetail; // 계약 유형 하위 세부사항(연장 종류/QO 여부 등) — 계약
+                                 // 유형이 extension/free_agent일 때만 채움.
     noTrade?: boolean;
     options?: ContractOption[]; // 연차별 팀/플레이어 옵션 — 같은 year를 가진 항목은 최대 1개
                                  // (연차당 옵션은 하나뿐). 특정 연차의 옵션 조회는
                                  // options?.find(o => o.year === targetYear).
     tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
+    signingType?: SigningType;  // 예외 조항(버드권한 단계/MLE/BAE 등) — types/fa.ts의
+                                 // SigningType 재사용. ContractType(계약의 구조: extension/
+                                 // free_agent/rookie_scale/two_way)과는 별개 축이라 중복
+                                 // 정의하지 않음. 캡스페이스로 체결됐거나(예외 미사용) 체결
+                                 // 경위를 모르는 과거 계약 이력은 비워둠(값 자체가 "예외 없음").
 }
 
 // [New] Interface for saving player state (Condition + Health + Growth)

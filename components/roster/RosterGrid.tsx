@@ -235,12 +235,18 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     {sortedRoster.map(p => (
                         <TableRow key={p.id} className="group">
                             {/* Use inline styles to force border removal and width locking */}
-                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                 <div className="flex flex-col">
                                     <span className="flex items-center gap-1.5 min-w-0">
                                         <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                            <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                            <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                         </PlayerHoverCard>
+                                        {p.contract?.type === 'two_way' && (
+                                            <span
+                                                title="Two-Way 계약"
+                                                className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                                            >TW</span>
+                                        )}
                                         {p.activeInjurySeverity && (
                                             <InjuryStatusBadge
                                                 severity={p.activeInjurySeverity}
@@ -261,11 +267,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     )}
                                 </div>
                             </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
+                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
                             <TableCell 
                                 style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
-                                className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
+                                className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center"
                             >
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>

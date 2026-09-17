@@ -50,7 +50,13 @@ export interface LeagueRawStatsData {
 // (MultiPlayerDetailView.tsx의 스카우팅 리포트)은 usePlayerCareerHistory/usePlayerTendencies로
 // 지금 보고 있는 선수 한 명만 targeted 조회하도록 이미 옮겨져 있음(career_history는
 // FA 케이스에서 이미 이 패턴이었고, 이번에 로스터 선수 케이스+tendencies까지 확장).
-const RAW_PLAYER_COLS = 'id, name, position, base_attributes';
+// [2026-09-17 Fix] draft_year 추가 — 이 훅(buildLeagueTeams 경유)으로 로스터 선수를
+// 조회하는 모든 화면(리더보드/전술/프런트오피스/선수상세/로스터 탭 등)에서
+// Player.draftYear가 지금까지 항상 undefined였다(YOS 계산이 필요한 신규 CBA 기능들이
+// 이제서야 이 문제를 드러냄 — hooks/useMultiSearchData.ts의 FA 풀 조회에서 같은 원인의
+// "FA 선수 연차 전부 0년" 버그를 고치며 같이 발견). draft_year는 numeric 스칼라 컬럼이라
+// (JSONB인 tendencies/career_history와 달리) 다시 넣어도 위 주석의 성능 이슈와 무관하다.
+const RAW_PLAYER_COLS = 'id, name, position, draft_year, base_attributes';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
 const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
 const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';

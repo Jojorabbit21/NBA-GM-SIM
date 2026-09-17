@@ -25,7 +25,11 @@ export const useLeaderboardData = (
     selectedPositions: string[] = [],
     searchQuery: string = '',
     statCategory: string = 'Traditional',
-    seasonType: SeasonType = 'regular'
+    seasonType: SeasonType = 'regular',
+    // [2026-09-16] 기본값 false — 기존 호출부(리더보드/홈 위젯/전술 인사이트) 전부 지금까지와
+    // 동일하게 0경기 선수를 계속 제외한다(랭킹에 의미 없는 표본이라 의도된 필터). 로스터
+    // "선수 기록" 탭(RosterStatsStack.tsx)만 true로 넘겨 로스터 전원이 보이게 한다.
+    includeZeroGamePlayers: boolean = false,
 ) => {
     // [2026-09-07] isFinal() 게이팅(경기 공개 10분 딜레이)에만 쓰여 초 단위 정밀도가
     // 필요 없다 — 이 훅을 쓰는 모든 화면(홈 위젯/리더보드/전술 인사이트)에서 teamStats
@@ -573,7 +577,7 @@ export const useLeaderboardData = (
     // 4. Sort and Filter Data
     const sortedData = useMemo(() => {
         let data: any[] = mode === 'Players'
-            ? (statCategory === 'Attributes'
+            ? (statCategory === 'Attributes' || includeZeroGamePlayers
                 ? [...allPlayers]
                 : [...allPlayers.filter(p => {
                     const g = seasonType === 'playoff' ? (p.playoffStats?.g || 0) : p.stats.g;
@@ -753,7 +757,7 @@ export const useLeaderboardData = (
             return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
         });
 
-    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, statCategory, seasonType]);
+    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, statCategory, seasonType, includeZeroGamePlayers]);
 
     return { sortedData, statRanges };
 };

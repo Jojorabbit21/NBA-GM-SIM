@@ -50,18 +50,66 @@ const POSITION_SKILL_PENALTY: Record<string, Partial<Record<typeof SKILL_KEYS[nu
     C: { '3c': -8, '3_45': -10, '3t': -10, handl: -10, spwb: -10, pacc: -5, piq: -5, pvis: -5, spd: -5, agi: -5, pdef: -5, stl: -3 },
 };
 
-/** 루키 스케일 기준 캡 (2025-26 시즌 고정) */
-const _ROOKIE_BASE_CAP = 154_647_000;
+// [2026-09-16] 루키 스케일 공식 재정비 — 예전엔 2025-26 기준으로 "대충 추정한" 픽별
+// 달러 테이블(ROOKIE_SALARIES)에 캡 비율(_ROOKIE_BASE_CAP 대비)만 곱하는 방식이었는데,
+// 실제 CBA와 훨씬 가까운 "캡 대비 % 고정 + 캡만 매 시즌 대입" 공식으로 교체했다
+// (RookieScale = SalaryCap × PickScalePct — 사용자가 전달한 샐러리 전문가 자문 그대로).
+// 이 방식이면 시즌별 테이블을 따로 안 만들어도 캡 금액만 넣으면 미래 어떤 시즌이든
+// 정확한 비율로 자동 계산된다.
 
-/** 신인 연봉 슬롯 (1~30픽, 단위: $) — 2025-26 기준값, calcRookieContract()에서 현재 캡 비율로 보정됨 */
-export const ROOKIE_SALARIES: number[] = [
-    12_000_000, 10_800_000, 9_700_000, 8_800_000, 8_000_000,  // 1-5
-    7_200_000,  6_500_000,  5_900_000, 5_400_000, 5_000_000,  // 6-10
-    4_600_000,  4_300_000,  4_000_000, 3_700_000, 3_500_000,  // 11-15
-    3_300_000,  3_100_000,  2_900_000, 2_700_000, 2_500_000,  // 16-20
-    2_400_000,  2_300_000,  2_200_000, 2_100_000, 2_000_000,  // 21-25
-    1_900_000,  1_800_000,  1_800_000, 1_700_000, 1_700_000,  // 26-30
+/** 1~30픽 1년차 루키 스케일 = 캡 × 이 비율(%). 2026-27 실제 CBA 수치 기준(픽별 고정,
+ *  시즌이 바뀌어도 비율 자체는 거의 불변 — 실제로 CBA는 "전년 대비 캡 상승률만큼 모든
+ *  루키 스케일 금액도 동일 비율로 상승"한다고 명시하므로 100% 고정은 아니지만 매우 안정적). */
+export const ROOKIE_SCALE_PICK_PCT: number[] = [
+    7.4502, 6.6659, 5.9861, 5.3971, 4.8874,  // 1-5
+    4.4395, 4.0521, 3.7120, 3.4123, 3.2418,  // 6-10
+    3.0796, 2.9258, 2.7794, 2.6407, 2.5083,  // 11-15
+    2.3830, 2.2638, 2.1507, 2.0540, 1.9715,  // 16-20
+    1.8927, 1.8171, 1.7445, 1.6748, 1.6076,  // 21-25
+    1.5544, 1.5095, 1.5001, 1.4893, 1.4785,  // 26-30
 ];
+
+/** 2년차/3년차는 1년차의 고정 배수(CBA 실제 스케일 그대로 — 복리 아님, 둘 다 1년차 기준). */
+export const ROOKIE_SCALE_Y2_MULT = 1.05;
+export const ROOKIE_SCALE_Y3_MULT = 1.10;
+
+// 4년차(3→4년차 옵션 연봉 인상률)는 픽마다 들쭉날쭉해서(1~10픽은 완만하게 26~27.5%,
+// 11픽/21픽에서 큰 폭으로 점프한 뒤 다시 완만해지는 구간별 패턴) 30개 값을 통째로
+// 하드코딩하는 대신, 그 굴곡을 그대로 따라가는 10개 앵커 포인트 사이를 선형보간한다.
+// (사용자가 준 실측 표와 비교 검증: 중간 픽 오차 0.1~0.2%p 이내로 근접.)
+const FOURTH_YEAR_RAISE_ANCHORS: [pick: number, raisePct: number][] = [
+    [1, 26.1], [10, 27.5], [11, 32.7], [15, 53.3], [16, 53.4],
+    [20, 54.2], [21, 59.3], [25, 80.1], [26, 80.3], [30, 80.5],
+];
+
+/** 픽 번호(1~30) → 3년차 대비 4년차 인상률(%), 앵커 포인트 사이 선형보간. */
+export function estimateFourthYearRaisePct(pick: number): number {
+    const p = Math.max(1, Math.min(30, pick));
+    for (let i = 0; i < FOURTH_YEAR_RAISE_ANCHORS.length - 1; i++) {
+        const [p0, r0] = FOURTH_YEAR_RAISE_ANCHORS[i];
+        const [p1, r1] = FOURTH_YEAR_RAISE_ANCHORS[i + 1];
+        if (p >= p0 && p <= p1) {
+            if (p1 === p0) return r0;
+            return r0 + (r1 - r0) * ((p - p0) / (p1 - p0));
+        }
+    }
+    return FOURTH_YEAR_RAISE_ANCHORS[FOURTH_YEAR_RAISE_ANCHORS.length - 1][1];
+}
+
+/**
+ * 1라운드 픽의 4년 루키 스케일 계약 연봉을 계산한다 — RookieScale = SalaryCap × PickPct,
+ * multiplier(0.80~1.20)로 실제 체결 연봉을 스케일 기준금액의 80~120% 사이에서 조정한다
+ * (실제 NBA CBA 규정 그대로). 100% 기준 금액을 먼저 계산한 뒤 4개 연차 전부에 동일한
+ * multiplier를 곱한다(사용자가 전달한 rookie_contract() 파이썬 의사코드와 동일한 순서).
+ */
+export function calcRookieScaleYears(pick: number, salaryCap: number, multiplier: number = 1.0): number[] {
+    const pct = ROOKIE_SCALE_PICK_PCT[Math.max(1, Math.min(30, pick)) - 1];
+    const y1 = salaryCap * (pct / 100);
+    const y2 = y1 * ROOKIE_SCALE_Y2_MULT;
+    const y3 = y1 * ROOKIE_SCALE_Y3_MULT;
+    const y4 = y3 * (1 + estimateFourthYearRaisePct(pick) / 100);
+    return [y1, y2, y3, y4].map(v => Math.round(v * multiplier));
+}
 
 /** 키 범위 (cm) — 포지션별 */
 const HEIGHT_RANGES: Record<string, [number, number]> = {
@@ -313,18 +361,11 @@ export function generateDraftClass(
         // 포텐셜: classGrade 반영 + 제너레이셔널 탤런트 롤 (스카우팅 투자 시 노이즈 감소)
         const pot = generatePotential(rng, rank, potOffset, scoutingAccuracy);
 
-        // 연봉 (현재 캡 기준 비율 보정)
-        const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
-        const salarySlot = Math.min(rank, 30) - 1;
-        const salary = Math.round((ROOKIE_SALARIES[salarySlot] ?? 1_700_000) * capScale);
-
-        // 계약 (4년 루키 스케일)
-        const yearSalaries = [
-            salary,
-            Math.round(salary * 1.05),
-            Math.round(salary * 1.10),
-            Math.round(salary * 1.15),
-        ];
+        // 연봉 (현재 캡 기준, 실제 드래프트 순번 확정 전이라 rank를 픽 대용으로 사용 —
+        // 드래프트 완료 시 calcRookieContract(실제픽)으로 교체됨)
+        const salarySlot = Math.min(rank, 30);
+        const yearSalaries = calcRookieScaleYears(salarySlot, LEAGUE_FINANCIALS.SALARY_CAP);
+        const salary = yearSalaries[0];
 
         const baseAttributes: Record<string, any> = {
             ...attrs,
@@ -334,7 +375,7 @@ export function generateDraftClass(
             contract: {
                 years: yearSalaries,
                 currentYear: 0,
-                type: 'rookie',
+                type: 'rookie_scale',
             },
         };
 
@@ -374,22 +415,26 @@ const SECOND_ROUND_SALARY = 1_500_000;
  *
  * 드래프트 완료 시 호출하여 생성 순서 기반 임시 계약을 실제 픽 순번 계약으로 교체한다.
  */
+/** 2라운드 최저연봉 산정용 기준 캡(2025-26 시즌 고정) — 1라운드 루키 스케일은 더 이상
+ *  기준캡 비율이 필요 없지만(ROOKIE_SCALE_PICK_PCT가 캡 대비 %라 캡만 넣으면 됨),
+ *  2라운드는 여전히 이 방식(SECOND_ROUND_SALARY를 캡 비율로 보정)을 그대로 쓴다. */
+const _ROOKIE_BASE_CAP = 154_647_000;
+
 export function calcRookieContract(pickNumber: number): PlayerContract {
-    const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
     if (pickNumber <= 30) {
-        const salary = Math.round((ROOKIE_SALARIES[pickNumber - 1] ?? ROOKIE_SALARIES[29]) * capScale);
         return {
-            years: [
-                salary,
-                Math.round(salary * 1.05),
-                Math.round(salary * 1.10),
-                Math.round(salary * 1.15),
-            ],
+            years: calcRookieScaleYears(pickNumber, LEAGUE_FINANCIALS.SALARY_CAP),
             currentYear: 0,
-            type: 'rookie',
+            type: 'rookie_scale',
+            // 실제 NBA 루키 스케일: 3·4년차(0-based 인덱스 2·3) 둘 다 팀옵션.
+            options: [
+                { type: 'team', year: 2 },
+                { type: 'team', year: 3 },
+            ],
         };
     }
-    // 2라운드: 2년 최저 연봉
+    // 2라운드: 2년 최저 연봉 — 루키 스케일 개념이 아니라 일반 자유계약으로 취급.
+    const capScale = LEAGUE_FINANCIALS.SALARY_CAP / _ROOKIE_BASE_CAP;
     const secondRound = Math.round(SECOND_ROUND_SALARY * capScale);
     return {
         years: [
@@ -397,7 +442,7 @@ export function calcRookieContract(pickNumber: number): PlayerContract {
             Math.round(secondRound * 1.05),
         ],
         currentYear: 0,
-        type: 'rookie',
+        type: 'free_agent',
     };
 }
 
@@ -629,13 +674,13 @@ function generatePrevContract(
                 { length: yos },
                 (_, i) => Math.round(year1 * Math.pow(1 + ROOKIE_SCALE_RAISE, i))
             );
-            return { years, type: 'rookie' };
+            return { years, type: 'rookie_scale' };
         }
         // 2라운드 / 언드래프트: 미니멈 수준 단기 계약
         const base = draftInfo.round === 2 ? 2_100_000 : 1_930_000;
         return {
             years: Array.from({ length: yos }, (_, i) => Math.round(base * Math.pow(1.05, i))),
-            type: 'min',
+            type: 'free_agent',
         };
     }
 
@@ -871,7 +916,9 @@ const FA_TIER_SALARY: [number, number][] = [
     [1_800_000,  3_000_000],    // Low: 미니멈 근처
 ];
 const FA_TIER_YEARS: [number, number][] = [[2, 3], [1, 3], [1, 2]];
-const FA_TIER_CONTRACT_TYPE = ['veteran', 'veteran', 'min'] as const;
+// [2026-09-17] veteran/min 구분이 ContractType에서 사라져(전부 free_agent로 수렴) 티어별로
+// 갈릴 값이 없어졌다 — 배열은 유지하되(호출부 구조 변경 최소화) 3개 다 같은 값.
+const FA_TIER_CONTRACT_TYPE = ['free_agent', 'free_agent', 'free_agent'] as const;
 const FA_TIER_WEIGHTS = [0.20, 0.45, 0.35]; // high / mid / low
 
 /**

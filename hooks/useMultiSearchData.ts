@@ -6,6 +6,8 @@ import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { calculatePlayerOvr } from '../utils/constants';
 import type { Player } from '../types';
 import type { LeagueRow, LeagueTeamRow } from '../services/multi/roomQueries';
+import { applyMetaPlayerPoolFilter } from '../services/multi/draftPoolQuery';
+import { shouldUseCustomOverrides } from '../utils/leagueOverrides';
 
 const EMPTY_POOL: Player[] = [];
 
@@ -26,60 +28,42 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
         return m;
     }, [leagueTeams]);
 
-    const draftPool = league?.draft_pool ?? 'standard';
     const ovrMin = league?.draft_ovr_min ?? 0;
     const ovrMax = league?.draft_ovr_max ?? 99;
+    const draftYearMin = league?.draft_year_min ?? 2001;
+    const draftYearMax = league?.draft_year_max ?? 2025;
+    const useCustomOverrides = shouldUseCustomOverrides(league);
 
     const { data: poolPlayers = EMPTY_POOL } = useQuery({
-        queryKey: ['multiSearchPool', league?.id, draftPool, ovrMin, ovrMax],
+        queryKey: ['multiSearchPool', league?.id, ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides],
         enabled: !!league?.id,
         staleTime: Infinity,
         gcTime: Infinity,
         queryFn: async (): Promise<Player[]> => {
             // [2026-09-04 임시 계측] FA 화면 렉 원인 실측용 — 조사 끝나면 제거할 것.
             console.time('[perf] multiSearchPool: fetch');
-            const draftPools = draftPool.split(',').map((s: string) => s.trim()).filter(Boolean);
-            const useCustomOverrides = draftPools.includes('alltime');
-
-            // draftPools가 2개 이상(예: 'standard,alltime')이면 각 풀은 서로 독립적인
-            // 쿼리라 순차 await로 왕복 레이턴시를 쌓을 이유가 없음 — 동시에 날리고
-            // draftPools 순서대로(먼저 온 풀 우선) dedup만 순차 처리.
-            const results = await Promise.all(draftPools.map(pt => {
-                let q = supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies');
-
-                if (pt === 'standard') {
-                    q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-                } else if (pt === 'alltime') {
-                    q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
-                } else {
-                    q = (q as any).eq('draft_year', 2026);
-                }
-
-                return q;
-            }));
+            // [2026-09-17 Fix] draft_year가 select에 없어 mapRawPlayerToRuntimePlayer가
+            // Player.draftYear를 항상 undefined로 채웠다 — 협상 화면의 YOS(연차) 계산
+            // (currentSeasonYear - draftYear)이 전부 0으로 뜨던 버그, 그리고 루키 스케일
+            // 자격 판정(player.draftYear === currentSeasonYear)도 같은 원인으로 전부
+            // 실패하고 있었다. meta_players.draft_year는 base_attributes JSONB 안에
+            // 중복 저장되지 않는 별도 컬럼이라(DB로 직접 확인) 명시적으로 select해야 한다.
+            let q = supabase
+                .from('meta_players')
+                .select('id, name, position, draft_year, base_attributes, tendencies');
+            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+            const { data } = await q;
             console.timeEnd('[perf] multiSearchPool: fetch');
 
             console.time('[perf] multiSearchPool: map+ovr');
-            const seenIds = new Set<string>();
             const all: Player[] = [];
-            let rowCount = 0;
-
-            for (const { data } of results) {
-                if (!data) continue;
-
-                for (const raw of data) {
-                    rowCount++;
-                    if (seenIds.has(raw.id)) continue;
-                    seenIds.add(raw.id);
-                    const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
-                    const ovr = calculatePlayerOvr(player);
-                    if (ovr >= ovrMin && ovr <= ovrMax) all.push(player);
-                }
+            for (const raw of data ?? []) {
+                const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
+                const ovr = calculatePlayerOvr(player);
+                if (ovr >= ovrMin && ovr <= ovrMax) all.push(player);
             }
             console.timeEnd('[perf] multiSearchPool: map+ovr');
-            console.log(`[perf] multiSearchPool: rowCount=${rowCount}, kept=${all.length}`);
+            console.log(`[perf] multiSearchPool: rowCount=${data?.length ?? 0}, kept=${all.length}`);
 
             return all;
         },

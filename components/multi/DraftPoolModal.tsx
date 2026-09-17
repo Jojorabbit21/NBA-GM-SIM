@@ -3,15 +3,17 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
+import { applyMetaPlayerPoolFilter } from '../../services/multi/draftPoolQuery';
 import { OvrBadge } from '../common/OvrBadge';
-import type { PoolType } from './DraftPoolSettings';
 import type { Player } from '../../types';
 
 interface Props {
-    poolTypes: PoolType[];
-    ovrMin:    number;
-    ovrMax:    number;
-    onClose:   () => void;
+    ovrMin:             number;
+    ovrMax:             number;
+    draftYearMin:       number;
+    draftYearMax:       number;
+    useCustomOverrides: boolean;
+    onClose:            () => void;
 }
 
 type SortKey = 'ovr' | 'age';
@@ -30,7 +32,7 @@ const getStatColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onClose }) => {
+export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides, onClose }) => {
     const [players,   setPlayers]   = useState<Player[]>([]);
     const [loading,   setLoading]   = useState(true);
     const [search,    setSearch]    = useState('');
@@ -46,44 +48,21 @@ export const DraftPoolModal: React.FC<Props> = ({ poolTypes, ovrMin, ovrMax, onC
 
         const fetch = async () => {
             setLoading(true);
-            const seenIds      = new Set<string>();
-            const nonRookies:  Player[] = [];
-            const rookies:     Player[] = [];
+            let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies');
+            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
 
-            for (const pt of poolTypes) {
-                let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies');
+            const { data, error } = await (q as any);
+            if (error) console.error('[DraftPoolModal] query error:', error.message);
+            if (cancelled) return;
 
-                if (pt === 'standard') {
-                    q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-                } else if (pt === 'alltime') {
-                    q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true);
-                } else {
-                    q = (q as any).eq('draft_year', 2026);
-                }
-
-                const { data, error } = await (q as any);
-                if (error) console.error('[DraftPoolModal] query error:', error.message);
-                if (!data || cancelled) continue;
-
-                for (const raw of data as any[]) {
-                    if (seenIds.has(raw.id)) continue;
-                    seenIds.add(raw.id);
-                    const p = mapRawPlayerToRuntimePlayer(raw, false, true);
-                    if (pt === 'rookies') rookies.push(p);
-                    else                  nonRookies.push(p);
-                }
-            }
-
-            if (!cancelled) {
-                const filtered = nonRookies.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
-                setPlayers([...filtered, ...rookies]);
-                setLoading(false);
-            }
+            const raw = (data as any[] ?? []).map(r => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
+            setPlayers(raw.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax));
+            setLoading(false);
         };
 
         fetch();
         return () => { cancelled = true; };
-    }, [poolTypes, ovrMin, ovrMax]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides]);
 
     const sorted = useMemo(() => {
         let list = players;

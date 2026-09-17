@@ -115,6 +115,14 @@ export function addMonthsToKey(dateKey: string, months: number): string {
     return localDateToKey(d);
 }
 
+// 두 날짜 키 사이의 일수 차이(bKey - aKey) — 미니멈 계약 일할계산(proration)처럼
+// "시즌 총 일수"/"경과일" 계산에 쓰인다. MultiNegotiationView.tsx/LeagueSettingsView.tsx가 공유.
+export function daysBetweenKeys(aKey: string, bKey: string): number {
+    const a = dateKeyToLocalDate(aKey);
+    const b = dateKeyToLocalDate(bKey);
+    return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
 // 날짜 컨트롤 바 중앙 라벨 — 가상 시즌 연도가 실제 연도와 다를 수 있어(예: 2027년) 연도까지 표기.
 export function fmtFullDate(dateKey: string): string {
     const d = dateKeyToLocalDate(dateKey);

@@ -23,6 +23,7 @@ import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
 import { calculatePlayerOvr, getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
 import { ARCHETYPE_LABEL, type OvrArchetype } from '../../../utils/ovrEngine';
@@ -151,9 +152,12 @@ const INBOX_STATUS_MATCH: Record<string, string[]> = {
 // 늘어나고 줄어듦. table-layout:fixed에서는 %도 px과 동일하게 <colgroup> 값이 그대로
 // 강제 적용되므로 정렬 안정성은 그대로 유지. 두 변수(연봉/잔여계약 유무)별로 비율을
 // 각각 100%에 맞춰 재분배 — 하나만 있는 값을 다른 쪽에서 억지로 재사용하지 않음.
+// [2026-09-16] ovr 6~7% → 9%로 확대 — "OVR"+정렬 화살표 아이콘이 한 줄에 안 들어가 헤더가
+// 두 줄로 줄바꿈되는 문제(POS/PTS 등 다른 정렬 컬럼과 동일한 9% 폭으로 맞춤). 늘어난 만큼은
+// name 컬럼(유일한 미지정 <col/>)이 흡수하므로 다른 컬럼 값은 그대로 둠.
 const PLAYER_TABLE_WIDTHS_PCT = {
-    withContract:    { toggle: 6, ovr: 6, pos: 9, stat: 9, salary: 11, years: 7, blocked: 2 },
-    withoutContract: { toggle: 7, ovr: 7, pos: 11, stat: 10, blocked: 3 },
+    withContract:    { toggle: 6, ovr: 9, pos: 9, stat: 9, salary: 11, years: 7, blocked: 2 },
+    withoutContract: { toggle: 7, ovr: 9, pos: 11, stat: 10, blocked: 3 },
 };
 
 const PlayerTableCols: React.FC<{ showContract?: boolean }> = ({ showContract }) => {
@@ -184,23 +188,30 @@ const PlayerChip: React.FC<{
     actionIcon?: 'add' | 'remove';
     /** 이름 hover 시 능력치+스탯 팝업의 헤더에 표시할 소속팀 약어 — 이 행이 속한 팀(내 팀/상대 팀) 고정값. */
     teamAbbr?: string;
+    /** [2026-09-16] 트레이드 데드라인 경과 시 — blocked(untradeable, 버튼 자체를 숨김)와 달리
+     *  버튼은 그대로 보이되 회색 비활성 상태로 바꿔 클릭만 막는다. */
+    actionDisabled?: boolean;
 }> = ({
-    player, playerId, blocked, onToggle, showContract, stats, actionIcon = 'add', teamAbbr,
+    player, playerId, blocked, onToggle, showContract, stats, actionIcon = 'add', teamAbbr, actionDisabled,
 }) => {
     const Icon = actionIcon === 'remove' ? Minus : Plus;
+    const interactive = !blocked && !actionDisabled;
     return (
         <tr
-            onClick={blocked ? undefined : onToggle}
+            onClick={interactive ? onToggle : undefined}
             className={`h-9 bg-slate-900 border-b border-slate-800/50 transition-colors ${
-                blocked ? 'opacity-40 cursor-not-allowed' : onToggle ? 'hover:bg-white/[0.03] cursor-pointer' : ''
+                blocked ? 'opacity-40 cursor-not-allowed' : actionDisabled ? 'cursor-not-allowed' : onToggle ? 'hover:bg-white/[0.03] cursor-pointer' : ''
             }`}
         >
             <td className="pl-2 pr-1 text-center">
                 {onToggle && !blocked && (
                     <button
-                        onClick={e => { e.stopPropagation(); onToggle(); }}
+                        onClick={e => { e.stopPropagation(); if (interactive) onToggle(); }}
+                        disabled={actionDisabled}
                         className={`w-5 h-5 rounded-full text-white inline-flex items-center justify-center transition-colors ${
-                            actionIcon === 'remove' ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
+                            actionDisabled
+                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                : actionIcon === 'remove' ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
                         }`}
                     >
                         <Icon size={12} />
@@ -297,7 +308,7 @@ const PlayerListHeader: React.FC<{
     const sortableCls = 'cursor-pointer hover:text-white select-none';
     return (
         <thead className="sticky top-0 z-10 bg-slate-950">
-            <tr className="h-7 border-b border-slate-800 text-sm font-black uppercase text-slate-500 ko-normal">
+            <tr className="h-7 border-b border-slate-800 text-sm font-black uppercase text-slate-500 ko-normal whitespace-nowrap">
                 <th />
                 <th className={`text-center ${sortableCls}`} onClick={() => onSort('ovr')}>OVR{arrow('ovr')}</th>
                 <th className={`pl-2 pr-1 text-left ${sortableCls}`} onClick={() => onSort('name')}>이름{arrow('name')}</th>
@@ -356,6 +367,14 @@ const MultiFrontOfficeView: React.FC = () => {
         if (!preferVirtual) return room?.sim_date ?? '';
         return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
     }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
+    // [2026-09-16] 트레이드 데드라인 경과 여부 — create_trade_offer/respond_trade_offer(accept)
+    // RPC가 검사하는 조건(v_deadline_enabled IS DISTINCT FROM false && v_sim_date > v_deadline)과
+    // 동일한 기준을 클라이언트에서도 미리 계산해 "새 제안" 탭 UI를 선제적으로 잠근다.
+    const tradeDeadlineDate = league?.trade_deadline_date ?? null;
+    const isTradeDeadlinePassed = !!league?.trade_deadline_enabled
+        && !!tradeDeadlineDate
+        && !!currentSimDate
+        && currentSimDate > tradeDeadlineDate;
     // 세션(리그) 설정에서 샐러리캡이 켜져 있을 때만 트레이드 제안 화면의 선수 리스트에
     // 연봉/잔여계약 연수를 노출.
     const capEnabled = !!league?.cap_enabled;
@@ -666,7 +685,7 @@ const MultiFrontOfficeView: React.FC = () => {
         () => [...(myTeamRow?.roster ?? []), ...(targetTeamRow?.roster ?? [])],
         [myTeamRow, targetTeamRow],
     );
-    const useCustomOverridesForStats = (league?.draft_pool ?? 'standard').split(',').includes('alltime');
+    const useCustomOverridesForStats = shouldUseCustomOverrides(league);
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈/리더보드 화면과 동일한 병목이 이 화면에도 있었음
     // (services/multi/buildLeagueTeams.ts 주석 참고).
@@ -834,6 +853,37 @@ const MultiFrontOfficeView: React.FC = () => {
         () => sortPlayerList(targetRoster.filter(p => !cartTheirs.has(p.id)), targetSortConfig, statsByPlayerId),
         [targetRoster, cartTheirs, targetSortConfig, statsByPlayerId],
     );
+
+    // [2026-09-16] 정규 계약 슬롯(로스터 정원) 검증 — RosterOverviewGrid.tsx의 "정규 계약"
+    // 정의(투웨이 계약 제외, 계약 데이터 없는 선수는 정규로 취급)와 동일 기준을 재사용해
+    // (1) 이미 정원을 초과한 팀이 있는지, (2) 이 카트 그대로 트레이드가 성사되면 어느 한쪽이
+    // 정원을 초과하게 되는지 계산 — 둘 중 하나라도 해당하면 전송 자체를 막는다.
+    const maxRosterSize = league?.max_roster_size ?? 15;
+    const isRegularContractPlayer = (p: Player) => p.contract?.type !== 'two_way';
+    const myRegularCount = useMemo(() => myRoster.filter(isRegularContractPlayer).length, [myRoster]);
+    const targetRegularCount = useMemo(() => targetRoster.filter(isRegularContractPlayer).length, [targetRoster]);
+    const myRegularCountAfterTrade = useMemo(() => {
+        const outCount = myRoster.filter(p => cartMine.has(p.id) && isRegularContractPlayer(p)).length;
+        const inCount = targetRoster.filter(p => cartTheirs.has(p.id) && isRegularContractPlayer(p)).length;
+        return myRegularCount - outCount + inCount;
+    }, [myRoster, targetRoster, cartMine, cartTheirs, myRegularCount]);
+    const targetRegularCountAfterTrade = useMemo(() => {
+        const outCount = targetRoster.filter(p => cartTheirs.has(p.id) && isRegularContractPlayer(p)).length;
+        const inCount = myRoster.filter(p => cartMine.has(p.id) && isRegularContractPlayer(p)).length;
+        return targetRegularCount - outCount + inCount;
+    }, [myRoster, targetRoster, cartMine, cartTheirs, targetRegularCount]);
+    // [2026-09-16] 전송 버튼을 막는 검증 에러 전체 — 로스터 슬롯 외에 샐러리 관련 에러 등
+    // 앞으로 추가될 검증도 이 배열에 이어 붙이면 되도록 이름을 일반화해뒀다(단일 문자열이
+    // 아니라 배열인 이유 — 여러 조건이 동시에 걸릴 수 있고, 화면엔 전부 나열해야 함).
+    const tradeSendErrors = useMemo(() => {
+        if (!myTeamRow || !targetTeamRow) return [];
+        const errors: string[] = [];
+        if (myRegularCount > maxRosterSize) errors.push(`${myTeamRow.team_name}의 로스터 슬롯 초과로 트레이드를 진행할 수 없습니다.`);
+        if (targetRegularCount > maxRosterSize) errors.push(`${targetTeamRow.team_name}의 로스터 슬롯 초과로 트레이드를 진행할 수 없습니다.`);
+        if (myRegularCountAfterTrade > maxRosterSize) errors.push(`트레이드 성사 시 ${myTeamRow.team_name}의 정규 계약 슬롯이 초과되어 트레이드를 진행할 수 없습니다.`);
+        if (targetRegularCountAfterTrade > maxRosterSize) errors.push(`트레이드 성사 시 ${targetTeamRow.team_name}의 정규 계약 슬롯이 초과되어 트레이드를 진행할 수 없습니다.`);
+        return errors;
+    }, [myTeamRow, targetTeamRow, myRegularCount, targetRegularCount, myRegularCountAfterTrade, targetRegularCountAfterTrade, maxRosterSize]);
 
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
@@ -1530,6 +1580,16 @@ const MultiFrontOfficeView: React.FC = () => {
 
     return (
         <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
+            {/* [2026-09-16] 다른 멀티 화면들(MultiStandingsView/MultiAllStarView/MultiFreeAgentView 등)과
+                동일한 헤더 섹션 — 탭 그룹(TabBar) 바로 위에 타이틀만 표시. */}
+            <div className="flex items-center justify-between px-4 py-3 shrink-0 bg-slate-900 border-b border-slate-800">
+                <h1 className="text-lg font-black text-white ko-tight truncate">트레이드</h1>
+                {league?.trade_deadline_enabled && tradeDeadlineDate && (
+                    <p className="text-sm text-slate-300 ko-normal shrink-0">
+                        데드라인 {tradeDeadlineDate.split('-').join('. ')}
+                    </p>
+                )}
+            </div>
             <TabBar
                 tabs={TABS.map(t => t.id === 'inbox' ? { ...t, badge: unreadInboxCount } : t)}
                 activeTab={activeTab}
@@ -1778,7 +1838,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <PlayerListHeader showContract={capEnabled} sortConfig={mySortConfig} onSort={handleMySort} />
                                                 <tbody>
                                                     {myRosterListed.map(p => (
-                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} />
+                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} actionDisabled={isTradeDeadlinePassed} />
                                                     ))}
                                                 </tbody>
                                             </table>
@@ -1850,7 +1910,8 @@ const MultiFrontOfficeView: React.FC = () => {
                                                             showContract={capEnabled}
                                                             stats={statsByPlayerId.get(p.id)}
                                                             onToggle={() => toggleTheirs(p.id)}
-                                                            teamAbbr={targetTeamRow?.team_abbr} />
+                                                            teamAbbr={targetTeamRow?.team_abbr}
+                                                            actionDisabled={isTradeDeadlinePassed} />
                                                     ))}
                                                 </tbody>
                                             </table>
@@ -1879,7 +1940,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex-[2] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
+                                    <div className="flex-[3] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
                                         {/* [2026-08-31] 제안 내역만 이 스크롤 영역 안에 가두고, 캡 변동/메시지/
                                             전송 버튼은 그 아래 shrink-0으로 항상 고정 노출 — 담긴 선수가
                                             많아져서 제안 내역이 길어져도 전송 버튼이 화면 밖으로 밀려나거나
@@ -1953,6 +2014,20 @@ const MultiFrontOfficeView: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {/* [2026-09-16] 전송 차단 에러 리스트 — 캡 변동 영역과 메시지/전송
+                                            버튼 영역 사이. 로스터 슬롯 외에도 앞으로 샐러리 관련 에러 등이
+                                            같은 배열(tradeSendErrors)에 추가로 쌓일 예정이라, 박스/아이콘 없이
+                                            단순 텍스트 줄만 나열(에러가 여러 개 동시에 뜰 수 있음을 전제).
+                                            capEnabled 여부와 무관하게(로스터 정원은 샐러리캡과 별개 설정)
+                                            평가되므로 이 블록도 capEnabled 밖에서 독립적으로 렌더. */}
+                                        {tradeSendErrors.length > 0 && (
+                                            <div className="shrink-0 mx-4 mt-4 space-y-1">
+                                                {tradeSendErrors.map((msg, i) => (
+                                                    <p key={i} className="text-sm text-fuchsia-400 ko-normal">{msg}</p>
+                                                ))}
+                                            </div>
+                                        )}
+
                                         {/* 제안 메시지/전송 버튼 — 스크롤 영역 밖(shrink-0)이라 제안 내역이
                                             길어져도 항상 화면에 보임. */}
                                         <div className="shrink-0 pt-4 px-4 pb-4 space-y-3 border-b border-slate-800">
@@ -1965,12 +2040,12 @@ const MultiFrontOfficeView: React.FC = () => {
 
                                             <button
                                                 onClick={handleSend}
-                                                disabled={sending || (cartMine.size === 0 && cartTheirs.size === 0)}
+                                                disabled={sending || isTradeDeadlinePassed || tradeSendErrors.length > 0 || (cartMine.size === 0 && cartTheirs.size === 0)}
                                                 className={`w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-black uppercase transition-all text-white disabled:cursor-not-allowed ${
                                                     sendSuccess ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40'
                                                 }`}
                                             >
-                                                {sendSuccess ? '트레이드 제안을 보냈습니다' : '제안 보내기'}
+                                                {sendSuccess ? '트레이드 제안을 보냈습니다' : isTradeDeadlinePassed ? '트레이드 기한 경과' : '제안 보내기'}
                                             </button>
                                         </div>
                                     </div>

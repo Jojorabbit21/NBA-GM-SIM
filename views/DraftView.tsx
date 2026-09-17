@@ -437,17 +437,17 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                                     const ovr = calculatePlayerOvr(p);
                                     return (
                                         <TableRow key={p.id} className="group">
-                                            <TableCell style={getStickyStyle(LEFT_NAME, WIDTHS.NAME)} align="left" className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                            <TableCell style={getStickyStyle(LEFT_NAME, WIDTHS.NAME)} align="left" className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                                 <span className="font-semibold text-slate-200 truncate">{p.name}</span>
                                             </TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800">{p.position}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">{p.age}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_HT, WIDTHS.HT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">{p.height}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_WT, WIDTHS.WT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">{p.weight}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} align="center" className="bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800">{p.position}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.age}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_HT, WIDTHS.HT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.height}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_WT, WIDTHS.WT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.weight}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} align="center" className="bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
                                                 <div className="flex justify-center items-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                             </TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_POT, WIDTHS.POT, true)} align="center" className="bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800">
+                                            <TableCell style={getStickyStyle(LEFT_POT, WIDTHS.POT, true)} align="center" className="bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800">
                                                 <span className="font-mono font-black tabular-nums text-amber-400/80">{p.potential}</span>
                                             </TableCell>
                                             {ATTR_COLS.map(k => (

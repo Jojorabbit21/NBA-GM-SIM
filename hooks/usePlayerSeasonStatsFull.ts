@@ -1,5 +1,5 @@
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import type { PlayerStats } from '../types/player';
 
@@ -46,6 +46,11 @@ export function usePlayerSeasonStatsFull(roomId: string | undefined | null, play
     return useQuery({
         queryKey: ['playerSeasonStatsFull', roomId, sortedIds.join(',')],
         enabled: !!roomId && sortedIds.length > 0,
+        // [2026-09-16] 방출/계약 등으로 allRosterIds가 바뀔 때마다(선수 한 명 빠짐/추가됨)
+        // queryKey가 바뀌어 새 쿼리로 취급되는데, 이게 없으면 isPending이 다시 true가 되어
+        // MultiRosterView.tsx의 전체 화면 로딩 게이트가 걸려 화면이 깜빡인다 — 옆의
+        // useLeagueRawStats.ts와 동일한 패턴으로 이전 데이터를 유지한 채 백그라운드로만 갱신.
+        placeholderData: keepPreviousData,
         queryFn: async (): Promise<PlayerSeasonStatsFull> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_full', {
                 p_room_id: roomId,

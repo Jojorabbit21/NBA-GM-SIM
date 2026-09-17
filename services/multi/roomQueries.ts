@@ -51,6 +51,9 @@ export interface LeagueRow {
     max_teams: number;
     season_number: number;
     cap_enabled: boolean;
+    /** [2026-09-15] 이 리그가 샐러리캡+CBA 규정(버드권한/RFA-QO/협상 화면 등)을 실제로 쓰는지 —
+     *  cap_enabled(숫자 임계값 집행)와는 별개 축, 둘 다 독립적으로 켜고 끌 수 있다. */
+    cba_rules_enabled: boolean;
     /** [2026-08-26] 어드민 세부 설정 — cap_enabled는 전체 마스터 스위치, 아래는 각각 개별 on/off + 금액(달러). */
     salary_cap_amount: number;
     luxury_tax_enabled: boolean;
@@ -61,6 +64,8 @@ export interface LeagueRow {
     apron2_amount: number;
     salary_floor_enabled: boolean;
     salary_floor_amount: number;
+    /** [2026-09-16] 연간 캡 증가율(%, 예: 5 = 5%). NULL이면 미설정 — 설정 화면의 10년 전망 테이블 비노출용, 실제 시즌 갱신에는 미반영. */
+    cap_growth_rate: number | null;
     finance_enabled: boolean;
     trade_enabled: boolean;
     fa_enabled: boolean;
@@ -73,6 +78,11 @@ export interface LeagueRow {
     draft_pool_strategy: string;
     draft_ovr_min: number;
     draft_ovr_max: number;
+    draft_year_min: number;
+    draft_year_max: number;
+    /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부 — 기본 false.
+     *  utils/leagueOverrides.ts의 shouldUseCustomOverrides() 참조. */
+    use_custom_overrides: boolean;
     draft_pick_duration_sec: number;
     draft_total_rounds: number;
     draft_auto_pick_after_misses: number;
@@ -96,6 +106,20 @@ export interface LeagueRow {
     /** 시즌 개막 연도(가상 캘린더 기준) — getAllStarKeyDates()의 인자. finalize.ts가 리그
      *  생성 시 채운다(CreateLeagueModal.tsx 참조). */
     virtual_season_year: number | null;
+    /** [2026-09-16] 트레이드 데드라인(가상 시즌 캘린더 날짜). 기본값은 virtual_season_year+1년
+     *  2월 둘째 주 목요일(utils/tradeDeadline.ts) — 어드민은 그 날짜로부터 최대 한 달 전까지만
+     *  앞당길 수 있고 뒤로는 늘릴 수 없다. null이면 데드라인 없음(무제한). */
+    trade_deadline_date: string | null;
+    /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 trade_deadline_date
+     *  값이 있어도 무시(무제한) — cap_enabled/luxury_tax_enabled와 동일한 on/off + 값 패턴. */
+    trade_deadline_enabled: boolean;
+    /** [2026-09-16] 팀당 최대 로스터 인원(15~20, 기본 15) — FA 계약 시 sign_free_agent()/
+     *  sign_free_agent_negotiated() RPC가 이 값을 기준으로 슬롯 초과 여부를 검증한다. */
+    max_roster_size: number;
+    /** [2026-09-16] Two-Way 계약 전환 데드라인(가상 시즌 캘린더 날짜). null이면 데드라인 없음. */
+    two_way_deadline_date: string | null;
+    /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5, 기본 3) — max_roster_size(정규 계약)와 별개. */
+    two_way_slots: number;
     created_at: string;
 }
 

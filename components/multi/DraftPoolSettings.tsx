@@ -3,10 +3,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Users } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
+import { applyMetaPlayerPoolFilter } from '../../services/multi/draftPoolQuery';
 import { DraftPoolModal } from './DraftPoolModal';
 
-export type PoolType    = 'standard' | 'alltime' | 'rookies';
 export type DraftFormat = 'snake' | 'linear';
+
+// [2026-09-16] 'standard'/'alltime' 풀 타입 체크박스를 완전히 폐지했다. include_alltime/
+// base_team_id 둘 다 신뢰할 수 없는 필드로 확인됨(Ed Macauley/Mitch Richmond 등 명백한
+// 은퇴 레전드가 include_alltime=false로 표시돼 있는 등) — 상대적으로 깨끗한 draft_year
+// 범위(draftYearMin~draftYearMax) 하나로 통일. 낮추면 레전드 포함, 좁히면 최근 선수만.
+const OLDEST_DRAFT_YEAR  = 1946;
+const CURRENT_DRAFT_YEAR = 2026;
 
 interface PoolStats {
     total: number;
@@ -14,21 +21,19 @@ interface PoolStats {
 }
 
 interface Props {
-    poolTypes:            PoolType[];
-    onPoolTypesChange:    (v: PoolType[]) => void;
     ovrMin:               number;
     onOvrMinChange:       (v: number) => void;
     ovrMax:               number;
     onOvrMaxChange:       (v: number) => void;
+    draftYearMin:         number;
+    onDraftYearMinChange: (v: number) => void;
+    draftYearMax:         number;
+    onDraftYearMaxChange: (v: number) => void;
     draftFormat:          DraftFormat;
     onDraftFormatChange:  (v: DraftFormat) => void;
+    useCustomOverrides:      boolean;
+    onUseCustomOverridesChange: (v: boolean) => void;
 }
-
-const POOL_TYPES: { value: PoolType; label: string; desc: string }[] = [
-    { value: 'standard', label: '현역',      desc: '현재 활동 중인 선수' },
-    { value: 'alltime',  label: '올타임',    desc: '역대 레전드 선수' },
-    { value: 'rookies',  label: '2026 신인', desc: '2026 드래프트 프로스펙트' },
-];
 
 const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
     { value: 'snake',  label: '스네이크', desc: '홀수 라운드↑ 짝수 라운드↓' },
@@ -38,10 +43,12 @@ const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
 const POS_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'];
 
 export const DraftPoolSettings: React.FC<Props> = ({
-    poolTypes, onPoolTypesChange,
     ovrMin, onOvrMinChange,
     ovrMax, onOvrMaxChange,
+    draftYearMin, onDraftYearMinChange,
+    draftYearMax, onDraftYearMaxChange,
     draftFormat, onDraftFormatChange,
+    useCustomOverrides, onUseCustomOverridesChange,
 }) => {
     const [stats, setStats]               = useState<PoolStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
@@ -54,6 +61,11 @@ export const DraftPoolSettings: React.FC<Props> = ({
     useEffect(() => { setLocalMin(String(ovrMin)); }, [ovrMin]);
     useEffect(() => { setLocalMax(String(ovrMax)); }, [ovrMax]);
 
+    const [localYearMin, setLocalYearMin] = useState(String(draftYearMin));
+    const [localYearMax, setLocalYearMax] = useState(String(draftYearMax));
+    useEffect(() => { setLocalYearMin(String(draftYearMin)); }, [draftYearMin]);
+    useEffect(() => { setLocalYearMax(String(draftYearMax)); }, [draftYearMax]);
+
     const commitMin = () => {
         const v = Math.min(ovrMax, Math.max(0, Number(localMin) || 0));
         setLocalMin(String(v));
@@ -64,51 +76,35 @@ export const DraftPoolSettings: React.FC<Props> = ({
         setLocalMax(String(v));
         onOvrMaxChange(v);
     };
-
-    const showOvr = poolTypes.some(p => p !== 'rookies');
+    const commitYearMin = () => {
+        const v = Math.min(draftYearMax, Math.max(OLDEST_DRAFT_YEAR, Number(localYearMin) || OLDEST_DRAFT_YEAR));
+        setLocalYearMin(String(v));
+        onDraftYearMinChange(v);
+    };
+    const commitYearMax = () => {
+        const v = Math.min(CURRENT_DRAFT_YEAR, Math.max(draftYearMin, Number(localYearMax) || CURRENT_DRAFT_YEAR - 1));
+        setLocalYearMax(String(v));
+        onDraftYearMaxChange(v);
+    };
 
     useEffect(() => {
         if (timerRef.current) clearTimeout(timerRef.current);
-        if (poolTypes.length === 0) { setStats(null); return; }
         timerRef.current = setTimeout(fetchStats, 400);
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [poolTypes.join(','), ovrMin, ovrMax]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides]);
 
     const fetchStats = async () => {
         setStatsLoading(true);
 
-        const seenIds      = new Set<string>();
-        const nonRookiePlayers: ReturnType<typeof mapRawPlayerToRuntimePlayer>[] = [];
-        const rookiePlayers:    ReturnType<typeof mapRawPlayerToRuntimePlayer>[] = [];
+        let query = supabase
+            .from('meta_players')
+            .select('id, position, base_attributes, tendencies');
+        query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax);
 
-        for (const pt of poolTypes) {
-            let query = supabase
-                .from('meta_players')
-                .select('id, position, base_attributes, tendencies');
-
-            if (pt === 'standard') {
-                query = (query as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-            } else if (pt === 'alltime') {
-                query = (query as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
-            } else {
-                query = (query as any).eq('draft_year', 2026);
-            }
-
-            const { data } = await query;
-            if (!data) continue;
-
-            for (const raw of data as any[]) {
-                if (seenIds.has(raw.id)) continue;
-                seenIds.add(raw.id);
-                const p = mapRawPlayerToRuntimePlayer(raw, false, true);
-                if (pt === 'rookies') rookiePlayers.push(p);
-                else                  nonRookiePlayers.push(p);
-            }
-        }
-
-        const filteredNonRookies = nonRookiePlayers.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
-        const all = [...filteredNonRookies, ...rookiePlayers];
+        const { data } = await query;
+        const raw = (data as any[] ?? []).map(r => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
+        const all = raw.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
 
         const byPos: Record<string, number> = {};
         for (const p of all) {
@@ -119,75 +115,85 @@ export const DraftPoolSettings: React.FC<Props> = ({
         setStatsLoading(false);
     };
 
-    const toggle = (v: PoolType) => {
-        if (poolTypes.includes(v)) {
-            const next = poolTypes.filter(p => p !== v);
-            if (next.length > 0) onPoolTypesChange(next);
-        } else {
-            onPoolTypesChange([...poolTypes, v]);
-        }
-    };
-
     return (
         <div className="space-y-4">
-            {/* 풀 유형 */}
+            {/* OVR 범위 */}
             <div>
-                <label className="text-xs text-slate-400 ko-normal block mb-2">드래프트 풀</label>
-                <div className="space-y-2">
-                    {POOL_TYPES.map(o => {
-                        const checked = poolTypes.includes(o.value);
-                        return (
-                            <label
-                                key={o.value}
-                                className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
-                                    checked ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-800 border border-transparent hover:border-slate-600'
-                                }`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggle(o.value)}
-                                    className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <span className={`text-xs font-bold ${checked ? 'text-white' : 'text-slate-400'}`}>
-                                        {o.label}
-                                    </span>
-                                    <span className="ml-2 text-xs text-slate-500 ko-normal">{o.desc}</span>
-                                </div>
-                            </label>
-                        );
-                    })}
+                <label className="text-xs text-slate-400 ko-normal block mb-2">OVR 범위</label>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={localMin}
+                        onChange={e => setLocalMin(e.target.value)}
+                        onBlur={commitMin}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                    />
+                    <span className="text-xs text-slate-500 shrink-0">~</span>
+                    <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={localMax}
+                        onChange={e => setLocalMax(e.target.value)}
+                        onBlur={commitMax}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                    />
                 </div>
             </div>
 
-            {/* OVR 범위 — 신인 풀만 선택 시 숨김 */}
-            {showOvr && (
-                <div>
-                    <label className="text-xs text-slate-400 ko-normal block mb-2">OVR 범위</label>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min={0}
-                            max={99}
-                            value={localMin}
-                            onChange={e => setLocalMin(e.target.value)}
-                            onBlur={commitMin}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
-                        />
-                        <span className="text-xs text-slate-500 shrink-0">~</span>
-                        <input
-                            type="number"
-                            min={0}
-                            max={99}
-                            value={localMax}
-                            onChange={e => setLocalMax(e.target.value)}
-                            onBlur={commitMax}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
-                        />
-                    </div>
+            {/* 드래프트 연도 범위 — 낮추면 레전드 포함, 2026까지 올리면 신인 포함 */}
+            <div>
+                <label className="text-xs text-slate-400 ko-normal block mb-2">
+                    드래프트 연도 범위 ({OLDEST_DRAFT_YEAR}~{CURRENT_DRAFT_YEAR})
+                </label>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="number"
+                        min={OLDEST_DRAFT_YEAR}
+                        max={CURRENT_DRAFT_YEAR}
+                        value={localYearMin}
+                        onChange={e => setLocalYearMin(e.target.value)}
+                        onBlur={commitYearMin}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                    />
+                    <span className="text-xs text-slate-500 shrink-0">~</span>
+                    <input
+                        type="number"
+                        min={OLDEST_DRAFT_YEAR}
+                        max={CURRENT_DRAFT_YEAR}
+                        value={localYearMax}
+                        onChange={e => setLocalYearMax(e.target.value)}
+                        onBlur={commitYearMax}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                    />
                 </div>
-            )}
+                <p className="mt-1.5 text-xs text-slate-500 ko-normal">
+                    {draftYearMin <= 1990
+                        ? '역대 레전드 포함'
+                        : '최근 선수 위주'}
+                    {draftYearMax >= CURRENT_DRAFT_YEAR ? ` · ${CURRENT_DRAFT_YEAR} 신인 클래스 포함` : ''}
+                </p>
+            </div>
+
+            {/* custom_overrides(피크시즌 스탯) 적용 여부 */}
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
+                useCustomOverrides ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent'
+            }`}>
+                <input
+                    type="checkbox"
+                    checked={useCustomOverrides}
+                    onChange={e => onUseCustomOverridesChange(e.target.checked)}
+                    className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                />
+                <div className="flex-1">
+                    <span className={`text-xs font-bold ${useCustomOverrides ? 'text-white' : 'text-slate-400'}`}>피크시즌 능력치 적용</span>
+                    <p className="text-[11px] text-slate-600 ko-normal mt-0.5">
+                        켜면 일부 선수는 전성기 시즌 스탯(피크 능력치)으로 계산됩니다. 끄면 항상 기본(현재) 능력치를 씁니다.
+                    </p>
+                </div>
+            </div>
 
             {/* 풀 통계 */}
             <div className="rounded-xl bg-slate-800/60 px-3 py-2.5 min-h-[52px] flex flex-col justify-center">
@@ -223,15 +229,17 @@ export const DraftPoolSettings: React.FC<Props> = ({
                         </div>
                     </div>
                 ) : (
-                    <p className="text-xs text-slate-500 ko-normal text-center">풀 유형을 선택하세요</p>
+                    <p className="text-xs text-slate-500 ko-normal text-center">불러오는 중…</p>
                 )}
             </div>
 
             {showModal && (
                 <DraftPoolModal
-                    poolTypes={poolTypes}
                     ovrMin={ovrMin}
                     ovrMax={ovrMax}
+                    draftYearMin={draftYearMin}
+                    draftYearMax={draftYearMax}
+                    useCustomOverrides={useCustomOverrides}
                     onClose={() => setShowModal(false)}
                 />
             )}

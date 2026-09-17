@@ -35,6 +35,7 @@ import type { Coach, StaffRole, CoachAbilities } from '../types/coaching';
 import { coachAbilityLabel, coachAbilityColor } from '../utils/coachAbility';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
+import { CONTRACT_TYPE_LABEL } from '../utils/contractLabels';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -73,7 +74,7 @@ interface NegotiationScreenProps {
     onFAOfferAccepted?: (
         playerId: string,
         contract: PlayerContract,
-        signingType: SigningType,
+        signingType: SigningType | undefined,
         updatedMarket: LeagueFAMarket,
     ) => void;
     onExtensionSigned?: (playerId: string, contract: PlayerContract) => void;
@@ -117,14 +118,16 @@ function moraleTextColor(score: number): string {
 }
 
 const SLOT_LABELS: Record<SigningType, string> = {
-    cap_space:   '캡 스페이스',
-    non_tax_mle: '논택스 MLE',
-    tax_mle:     '택스페이어 MLE',
-    bae:         '바이어뉴얼 익셉션',
-    bird_full:   '풀 버드권',
-    bird_early:  '얼리 버드권',
-    bird_non:    '논버드',
-    vet_min:     '베테랑 미니멈',
+    non_taxpayer_mle: '논택스 MLE',
+    taxpayer_mle:     '택스페이어 MLE',
+    room_mle:         '룸 예외',
+    biannual_exception: '바이어뉴얼 익셉션',
+    full_bird:   '풀 버드권',
+    early_bird:  '얼리 버드권',
+    non_bird:    '논버드',
+    minimum_exception: '베테랑 미니멈',
+    second_round_exception: '2라운드 픽 예외',
+    rookie_scale_exception: '루키 스케일 예외',
 };
 
 // 계약 수락 후 GM 계약 요약 문장 생성
@@ -172,20 +175,29 @@ const GM_OFFER_PHRASES = [
     '우리 팀의 미래를 같이 만들어나갔으면 합니다.',
 ];
 
+// 캡 스페이스(예외 조항 미사용, selectedSlot === undefined)는 이 두 맵 밖에서 4년/5% 고정값으로
+// 별도 처리한다(아래 slotMaxYears/slotEscalator 계산부 참고).
 const SLOT_MAX_YEARS: Record<SigningType, number> = {
-    bird_full:   5,
-    bird_early:  4,  // CBA: 4년 (5년 아님)
-    bird_non:    4,
-    cap_space:   4,
-    non_tax_mle: 4,
-    tax_mle:     2,  // CBA: 2년 (3년 아님)
-    bae:         2,  // CBA: 2년
-    vet_min:     2,
+    full_bird:   5,
+    early_bird:  4,  // CBA: 4년 (5년 아님)
+    non_bird:    4,
+    non_taxpayer_mle: 4,
+    taxpayer_mle: 2,  // CBA: 2년 (3년 아님)
+    room_mle:     2,
+    biannual_exception: 2,  // CBA: 2년
+    minimum_exception:  2,
+    second_round_exception: 4,
+    rookie_scale_exception: 4, // 실제로는 항상 4년 고정(3·4년차 팀옵션) — 이 화면 경로로는 안 들어옴.
 };
 
 const SLOT_ESCALATOR: Record<SigningType, number> = {
-    bird_full: 0.08, bird_early: 0.08, bird_non: 0.05,
-    cap_space: 0.05, non_tax_mle: 0.05, tax_mle: 0.05, bae: 0.05, vet_min: 0.00,
+    full_bird: 0.08, early_bird: 0.08, non_bird: 0.05,
+    non_taxpayer_mle: 0.05, taxpayer_mle: 0.05, room_mle: 0.05, biannual_exception: 0.05,
+    minimum_exception: 0.00,
+    second_round_exception: 0.05,
+    // 루키 스케일은 단일 에스컬레이터율이 없음(1.05/1.10/픽별 4년차 인상률의 3단계
+    // 구조) — services/draft/rookieGenerator.ts의 calcRookieScaleYears가 전담.
+    rookie_scale_exception: 0.05,
 };
 
 /** 연차별 연봉: i=0 → 기준연봉 그대로, i>0 → base × (1+rate)^i */
@@ -491,41 +503,38 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         return calcTeamPayroll(myTeam) >= LEAGUE_FINANCIALS.SECOND_APRON;
     }, [isFA, myTeam]);
 
-    const [selectedSlot, setSelectedSlot]   = useState<SigningType>(() => slots[0] ?? 'vet_min');
+    // [2026-09-17] 캡 스페이스는 더 이상 SigningType 값이 아니라 "예외 조항 미사용"(undefined)
+    // 상태 — 기본 선택값으로 쓴다(어드민 폼의 "— 비어있음 = 캡 스페이스"와 동일 관례).
+    const [selectedSlot, setSelectedSlot]   = useState<SigningType | undefined>(undefined);
     const [faOfferSalaries, setFaOfferSalaries] = useState<number[]>(() => {
-        const initSlot = slots[0] ?? 'vet_min';
-        const maxYears = SLOT_MAX_YEARS[initSlot] ?? 4;
+        const maxYears = 4; // 캡 스페이스 기본값(예전 cap_space: 4와 동일)
         const base     = faEntry?.askingSalary ?? 0;
         const years    = Math.min(faEntry?.askingYears ?? 2, maxYears);
-        const initRate = SLOT_ESCALATOR[initSlot] ?? 0.05;
-        return generateEscalatedSalaries(base, initRate, years);
+        return generateEscalatedSalaries(base, 0.05, years);
     });
-    const [faOfferYears, setFaOfferYears] = useState(() => {
-        const initSlot = slots[0] ?? 'vet_min';
-        const maxYears = SLOT_MAX_YEARS[initSlot] ?? 4;
-        return Math.min(faEntry?.askingYears ?? 2, maxYears);
-    });
+    const [faOfferYears, setFaOfferYears] = useState(() => Math.min(faEntry?.askingYears ?? 2, 4));
     const [faResult, setFaResult]           = useState<{ accepted: boolean; reason?: string } | null>(persistedFAResult ?? null);
     const [faRound, setFaRound]             = useState(persistedFARound ?? 0);
 
-    const slotMaxMap = useMemo((): Partial<Record<SigningType, number>> => {
+    const capSpaceMax = useMemo(() => {
         const payroll = calcTeamPayroll(myTeam);
-        return {
-            cap_space:   Math.min(Math.max(0, LEAGUE_FINANCIALS.SALARY_CAP - payroll), faMaxAllowed),
-            non_tax_mle: Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, faMaxAllowed),
-            tax_mle:     Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, faMaxAllowed),
-            bird_full:   faMaxAllowed,
-            bird_early:  Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.75),
-            bird_non:    Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.20),
-            vet_min:     vetMin,
-        };
-    }, [myTeam, faMaxAllowed, player?.salary, vetMin]);
+        return Math.min(Math.max(0, LEAGUE_FINANCIALS.SALARY_CAP - payroll), faMaxAllowed);
+    }, [myTeam, faMaxAllowed]);
 
-    const currentSlotMax = slotMaxMap[selectedSlot] ?? vetMin;
+    const slotMaxMap = useMemo((): Partial<Record<SigningType, number>> => ({
+        non_taxpayer_mle: Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, faMaxAllowed),
+        taxpayer_mle:     Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, faMaxAllowed),
+        full_bird:   faMaxAllowed,
+        early_bird:  Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.75),
+        non_bird:    Math.min(faMaxAllowed, (player?.salary ?? 0) * 1.20),
+        minimum_exception: vetMin,
+    }), [faMaxAllowed, player?.salary, vetMin]);
 
-    const faMaxYears = SLOT_MAX_YEARS[selectedSlot] ?? 4;
+    const currentSlotMax = selectedSlot === undefined ? capSpaceMax : (slotMaxMap[selectedSlot] ?? vetMin);
 
-    const faEscalateRate  = SLOT_ESCALATOR[selectedSlot] ?? 0.05;
+    const faMaxYears = selectedSlot === undefined ? 4 : (SLOT_MAX_YEARS[selectedSlot] ?? 4);
+
+    const faEscalateRate  = selectedSlot === undefined ? 0.05 : (SLOT_ESCALATOR[selectedSlot] ?? 0.05);
     const extEscalateRate = 0.08; // Extension은 항상 8%
 
     // 연봉 배열 파생값
@@ -764,8 +773,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     option:      faContractOption !== 'none' && faOfferYears >= 2
                         ? { type: faContractOption as 'player' | 'team', year: faOfferYears - 1 }
                         : undefined,
-                    noTrade:     faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron ? true : undefined,
-                    tradeKicker: faTradeKicker > 0 && selectedSlot !== 'vet_min' ? faTradeKicker : undefined,
+                    noTrade:     faNoTrade && selectedSlot !== 'minimum_exception' && !isAboveSecondApron ? true : undefined,
+                    tradeKicker: faTradeKicker > 0 && selectedSlot !== 'minimum_exception' ? faTradeKicker : undefined,
                 },
                 tendencySeed, currentSeasonYear, currentDate,
             );
@@ -790,8 +799,8 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                 option:      faContractOption !== 'none' && faOfferYears >= 2
                     ? { type: faContractOption as 'player' | 'team', year: faOfferYears - 1 }
                     : undefined,
-                noTrade:     faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron ? true : undefined,
-                tradeKicker: faTradeKicker > 0 && selectedSlot !== 'vet_min' ? faTradeKicker : undefined,
+                noTrade:     faNoTrade && selectedSlot !== 'minimum_exception' && !isAboveSecondApron ? true : undefined,
+                tradeKicker: faTradeKicker > 0 && selectedSlot !== 'minimum_exception' ? faTradeKicker : undefined,
             },
             tendencySeed, currentSeasonYear,
         );
@@ -803,7 +812,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
             const faSigningMsg = buildGMSigningMessage(
                 'fa', player.name, faOfferYears, faOfferAAV, totalContractValue,
                 faContractOption !== 'none' && faOfferYears >= 2 ? { type: faContractOption as 'player' | 'team' } : null,
-                faNoTrade && selectedSlot !== 'vet_min' && !isAboveSecondApron, faTradeKicker > 0 ? faTradeKicker : undefined,
+                faNoTrade && selectedSlot !== 'minimum_exception' && !isAboveSecondApron, faTradeKicker > 0 ? faTradeKicker : undefined,
             );
             addMsg('gm', faSigningMsg);
             // 선수 맺음말
@@ -817,7 +826,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     : e,
             );
             const updatedMLE = { ...faMarket.usedMLE };
-            if (selectedSlot === 'non_tax_mle' || selectedSlot === 'tax_mle' || selectedSlot === 'bae') {
+            if (selectedSlot === 'non_taxpayer_mle' || selectedSlot === 'taxpayer_mle' || selectedSlot === 'biannual_exception') {
                 updatedMLE[myTeam.id] = true;
             }
             const updatedMarket: LeagueFAMarket = { ...faMarket, entries: updatedEntries, usedMLE: updatedMLE };
@@ -894,7 +903,17 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                     player.id.charCodeAt(0) % PLAYER_FAREWELL_PHRASES.length
                 ]);
                 setChatMessages(prev => [...prev, { id: nextId(), role: 'status', text: '계약 연장 — 대화 종료', isSuccess: true }]);
-                onExtensionSigned?.(player.id, response.contract);
+                // [2026-09-17] type은 이제 항상 'extension' 고정값 — 세부 종류(루키/로즈룰/
+                // 베테랑/슈퍼맥스)는 contractDetail로 표현한다. 루키 스케일 계약 중이던
+                // 선수인지로 1차 분기하고, 각 축의 자격 판정은 contractEligibility.ts의
+                // isRoseRuleEligible/isSuperMaxEligible을 재사용(이 화면이 이미 import).
+                onExtensionSigned?.(player.id, {
+                    ...response.contract,
+                    type: 'extension',
+                    contractDetail: player.contract?.type === 'rookie_scale'
+                        ? (isRoseRuleEligible(player) ? 'rose_rule_extension' : 'rookie_extension')
+                        : (isSuperMaxEligible(player, currentSeasonYear) ? 'supermax_extension' : 'veteran_extension'),
+                });
                 break;
             case 'COUNTER':
                 addPlayerMsg('COUNTER', newRound, updatedState, `${response.counterYears}년 계약에 연 ${fmtM(response.counterAAV)} 정도면 사인할 수 있어요.`);
@@ -1145,7 +1164,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         <div className="flex justify-between items-center text-xs">
                                             <span className="text-slate-500">유형</span>
                                             <span className="text-slate-400">
-                                                {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
+                                                {CONTRACT_TYPE_LABEL[player.prevContract.type] ?? player.prevContract.type}
                                             </span>
                                         </div>
                                         {player.draftRound != null && (
@@ -1198,7 +1217,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">유형</span>
                                     <span className="text-slate-400 flex items-center gap-1">
-                                        {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type]}
+                                        {CONTRACT_TYPE_LABEL[player.contract.type] ?? player.contract.type}
                                         {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
                                     </span>
                                 </div>
@@ -1460,7 +1479,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                             <div className="flex-shrink-0 space-y-2">
                                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400">연차별 연봉</div>
                                 {/* 캡% 지정 — 1년차 기준으로 달러 자동 계산 */}
-                                {selectedSlot !== 'vet_min' && (
+                                {selectedSlot !== 'minimum_exception' && (
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-slate-500">캡% 지정</span>
@@ -1511,7 +1530,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 {[-5_000_000, -1_000_000].map(delta => (
                                                     <button
                                                         key={delta}
-                                                        disabled={selectedSlot === 'vet_min'}
+                                                        disabled={selectedSlot === 'minimum_exception'}
                                                         onClick={() => {
                                                             const newVal = sal + delta;
                                                             if (i === 0) {
@@ -1532,7 +1551,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     <input
                                                         type="number"
                                                         step={100_000}
-                                                        disabled={selectedSlot === 'vet_min'}
+                                                        disabled={selectedSlot === 'minimum_exception'}
                                                         value={sal}
                                                         onChange={e => {
                                                             const v = parseInt(e.target.value) || 0;
@@ -1554,7 +1573,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                 {[1_000_000, 5_000_000].map(delta => (
                                                     <button
                                                         key={delta}
-                                                        disabled={selectedSlot === 'vet_min'}
+                                                        disabled={selectedSlot === 'minimum_exception'}
                                                         onClick={() => {
                                                             const newVal = sal + delta;
                                                             if (i === 0) {
@@ -1614,7 +1633,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </div>
                                     )}
                                     {/* 트레이드 키커 (vet_min 제외) */}
-                                    {selectedSlot !== 'vet_min' && (
+                                    {selectedSlot !== 'minimum_exception' && (
                                         <div className="py-3 space-y-0.5">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">트레이드 키커</div>
                                             {[0, 0.05, 0.10, 0.15].map(pct => {
@@ -1633,7 +1652,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                         </div>
                                     )}
                                     {/* 트레이드 거부권 (vet_min 제외, Second Apron 초과 팀 불가) */}
-                                    {selectedSlot !== 'vet_min' && (
+                                    {selectedSlot !== 'minimum_exception' && (
                                         <div className="py-3 space-y-0.5">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">트레이드 거부권</div>

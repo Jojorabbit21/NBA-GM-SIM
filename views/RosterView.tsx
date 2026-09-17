@@ -65,11 +65,17 @@ interface RosterViewProps {
   /** "팀 설정" 탭 컨텐츠 렌더러 — RosterView는 팀 컬러/코트 컬러 등 멀티 전용 필드를 모르므로
    * 호출부(MultiRosterView)가 자체 컨텍스트로 그리는 패널을 그대로 주입받아 배치만 한다. */
   renderTeamSettingsPanel?: () => React.ReactNode;
+  /** "로스터" 탭 테이블 하단 "정규 계약 슬롯" 푸터의 분모 — 팀당 최대 로스터 인원(멀티플레이어
+   * leagues.max_roster_size, 15~20). 미지정 시(싱글플레이어) NBA 기본 정원 15명으로 표시. */
+  maxRosterSize?: number;
+  /** "로스터" 탭 테이블 하단 "투웨이 슬롯" 푸터의 분모(멀티플레이어 leagues.two_way_slots,
+   * 1~5). 미지정 시(싱글플레이어) 기본 3명으로 표시. */
+  twoWaySlots?: number;
 }
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks', 'settings'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots }) => {
   // 탭 상태를 URL 쿼리 파라미터(?tab=)로 관리 — 새로고침/북마크/공유 링크에서도 마지막으로
   // 보던 탭이 유지된다. 탭 전환은 히스토리를 계속 쌓지 않고 현재 항목만 갱신(replace) —
   // MultiLeaderboardView의 필터 상태 URL 동기화와 동일한 방침.
@@ -355,6 +361,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   enableHoverCard={enableHoverCard}
                   onReleasePlayer={isMyTeam && onReleasePlayer ? (p) => onReleasePlayer(p, selectedTeam.id) : undefined}
                   releasingId={releasingId}
+                  maxRosterSize={maxRosterSize}
+                  twoWaySlots={twoWaySlots}
               />
           )}
           {tab === 'attributes' && (
@@ -404,6 +412,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   capSettings={capSettings}
                   baseSeasonYear={baseSeasonYear ?? new Date().getFullYear()}
                   onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
               />
           )}
           {tab === 'coaching' && (

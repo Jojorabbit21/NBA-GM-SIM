@@ -73,6 +73,7 @@ const mapTradeOfferError = (msg: string): string => {
     if (msg.includes('message_too_long'))    return '메시지는 300자를 넘을 수 없습니다.';
     if (msg.includes('room_not_found'))      return '방을 찾을 수 없습니다.';
     if (msg.includes('trade_disabled'))      return '이 리그는 트레이드가 비활성화되어 있습니다.';
+    if (msg.includes('trade_deadline_passed')) return '트레이드 데드라인이 지나 더 이상 트레이드를 진행할 수 없습니다.';
     if (msg.includes('team_not_found'))      return '팀을 찾을 수 없습니다.';
     if (msg.includes('not_team_owner'))      return '본인 팀에서만 제안을 보낼 수 있습니다.';
     if (msg.includes('target_not_human'))    return 'AI가 운영하는 팀에는 제안을 보낼 수 없습니다.';

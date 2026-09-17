@@ -548,7 +548,7 @@ export interface FASigningContent {
     ovr: number;
     salary: number;
     years: number;
-    signingType: SigningType;
+    signingType?: SigningType;  // 비어있으면 캡 스페이스로 체결
 }
 
 export interface ExtensionSignedContent {

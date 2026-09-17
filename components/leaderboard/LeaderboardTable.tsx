@@ -274,7 +274,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                 {data.map((item, index) => {
                     const rank = (currentPage - 1) * itemsPerPage + index + 1;
                     const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
-                    const stickyCellClass = "bg-slate-900 group-hover:bg-slate-800 transition-colors z-30";
+                    const stickyCellClass = "bg-slate-900 group-hover:bg-slate-800 z-30";
 
                     return (
                         <TableRow key={mode === 'Players' ? item.id : item.id} className={`group ${mode === 'Players' ? 'h-10' : 'h-11'}`}>

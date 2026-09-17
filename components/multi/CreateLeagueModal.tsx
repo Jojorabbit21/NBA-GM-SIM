@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2, Shuffle } from 'lucide-react';
 import {
@@ -8,9 +8,10 @@ import {
     createRoom,
     initializeLeagueTeams,
 } from '../../services/multi/leagueService';
-import { DraftPoolSettings, type PoolType, type DraftFormat } from './DraftPoolSettings';
+import { DraftPoolSettings, type DraftFormat } from './DraftPoolSettings';
 import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 import { TEAM_DATA } from '../../data/teamData';
+import { getDefaultTradeDeadline, getTradeDeadlineBounds, clampTradeDeadline } from '../../utils/tradeDeadline';
 
 const ALL_REAL_TEAMS = Object.values(TEAM_DATA);
 const EAST_TEAMS = ALL_REAL_TEAMS.filter(t => t.conference === 'East');
@@ -158,14 +159,23 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     // 일일 시뮬 시간대(KST) — 이 시간대 안에서만 경기가 진행된다. 기본 저녁 19:00~23:00.
     const [dailyWindowStart, setDailyWindowStart] = useState('19:00');
     const [dailyWindowEnd,   setDailyWindowEnd]   = useState('23:00');
+    // 트레이드 데드라인(가상 시즌 캘린더 날짜) — 기본값(2월 둘째 주 목요일)에서 최대 한 달
+    // 전까지만 앞당길 수 있고 뒤로는 늘릴 수 없다(utils/tradeDeadline.ts). virtualSeasonYear가
+    // 바뀌면 사용자가 직접 건드리기 전까지는 기본값에 계속 동기화된다.
+    const [tradeDeadlineDate, setTradeDeadlineDate] = useState(() => getDefaultTradeDeadline(2026));
+    const tradeDeadlineTouchedRef = useRef(false);
+    // 데드라인 강제 여부 마스터 스위치 — 꺼도 날짜 값 자체는 유지(다시 켜면 그대로 복원).
+    const [tradeDeadlineEnabled, setTradeDeadlineEnabled] = useState(true);
 
     // ── 드래프트 (공통) ────────────────────────────────────────────────────────
     const [totalRounds,    setTotalRounds]    = useState(10);
     const [pickDurationSec, setPickDurationSec] = useState(30);
     const [autoPickAfterMisses, setAutoPickAfterMisses] = useState(1);
-    const [draftPools,     setDraftPools]     = useState<PoolType[]>(['standard']);
     const [draftOvrMin,    setDraftOvrMin]    = useState(0);
     const [draftOvrMax,    setDraftOvrMax]    = useState(99);
+    const [draftYearMin,   setDraftYearMin]   = useState(2001);
+    const [draftYearMax,   setDraftYearMax]   = useState(2025);
+    const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     const [draftFormat,    setDraftFormat]    = useState<DraftFormat>('snake');
 
     // ── 엔진 설정 ──────────────────────────────────────────────────────────────
@@ -184,6 +194,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
         if (type !== 'tournament') return;
         setSelectedTeamSlugs(teamPickLocked ? ALL_REAL_TEAMS.map(t => t.id) : pickRandomTeamSlugs(teamPickCount));
     }, [type, teamPickCount, teamPickLocked]);
+
+    // 트레이드 데드라인 기본값 동기화 — 사용자가 직접 손댄 적 없으면 가상 시즌 연도가
+    // 바뀔 때마다 새 기본값(2월 둘째 주 목요일)으로 계속 따라간다.
+    const tradeDeadlineBounds = getTradeDeadlineBounds(virtualSeasonYear);
+    useEffect(() => {
+        if (tradeDeadlineTouchedRef.current) return;
+        setTradeDeadlineDate(tradeDeadlineBounds.default);
+    }, [tradeDeadlineBounds.default]);
 
     const toggleTeam = (slug: string) => {
         if (teamPickLocked) return;
@@ -255,10 +273,12 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftTotalRounds:     totalRounds,
                         draftPickDurationSec: pickDurationSec,
                         draftAutoPickAfterMisses: autoPickAfterMisses,
-                        draftPool:            draftPools.join(','),
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
                         draftOvrMax,
+                        draftYearMin,
+                        draftYearMax,
+                        useCustomOverrides,
                         tournamentStartAt:  startIso,
                         draftScheduledAt:   draftIso,
                         lotteryScheduledAt: lotteryIso,
@@ -296,16 +316,20 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftTotalRounds:     totalRounds,
                         draftPickDurationSec: pickDurationSec,
                         draftAutoPickAfterMisses: autoPickAfterMisses,
-                        draftPool:            draftPools.join(','),
                         draftPoolStrategy:    draftFormat,
                         draftOvrMin,
                         draftOvrMax,
+                        draftYearMin,
+                        draftYearMax,
+                        useCustomOverrides,
                         seasonStartDate:      refToday,
                         seasonEndDate:        endDate,
                         durationWeeks,
                         dailyWindowStartMin: hhmmToMin(dailyWindowStart),
                         dailyWindowEndMin:   hhmmToMin(dailyWindowEnd),
                         virtualSeasonYear,
+                        tradeDeadlineDate,
+                        tradeDeadlineEnabled,
                     },
                 });
                 if (le || !league) throw new Error(le ?? '리그 생성 실패');
@@ -671,6 +695,35 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                 </div>
 
                                 <div>
+                                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                                        tradeDeadlineEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent'
+                                    }`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={tradeDeadlineEnabled}
+                                            onChange={e => setTradeDeadlineEnabled(e.target.checked)}
+                                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                                        />
+                                        <span className={`text-xs font-bold flex-1 ${tradeDeadlineEnabled ? 'text-white' : 'text-slate-400'}`}>트레이드 데드라인</span>
+                                        <input
+                                            type="date"
+                                            value={tradeDeadlineDate}
+                                            min={tradeDeadlineBounds.min}
+                                            max={tradeDeadlineBounds.max}
+                                            disabled={!tradeDeadlineEnabled}
+                                            onChange={e => {
+                                                tradeDeadlineTouchedRef.current = true;
+                                                setTradeDeadlineDate(clampTradeDeadline(e.target.value, tradeDeadlineBounds));
+                                            }}
+                                            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        끄면 시즌 내내 트레이드가 무제한입니다. 기본값은 {tradeDeadlineBounds.default}(2월 둘째 주 목요일)이며, 이 날짜보다 늦출 수는 없고 최대 한 달 전({tradeDeadlineBounds.min})까지만 앞당길 수 있습니다.
+                                    </p>
+                                </div>
+
+                                <div>
                                     <label className="text-xs text-slate-400 ko-normal block mb-1.5">일일 시뮬 시간대 (KST)</label>
                                     <div className="flex items-center gap-2">
                                         <input
@@ -759,14 +812,18 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         </div>
 
                         <DraftPoolSettings
-                            poolTypes={draftPools}
-                            onPoolTypesChange={setDraftPools}
                             ovrMin={draftOvrMin}
                             onOvrMinChange={setDraftOvrMin}
                             ovrMax={draftOvrMax}
                             onOvrMaxChange={setDraftOvrMax}
+                            draftYearMin={draftYearMin}
+                            onDraftYearMinChange={setDraftYearMin}
+                            draftYearMax={draftYearMax}
+                            onDraftYearMaxChange={setDraftYearMax}
                             draftFormat={draftFormat}
                             onDraftFormatChange={setDraftFormat}
+                            useCustomOverrides={useCustomOverrides}
+                            onUseCustomOverridesChange={setUseCustomOverrides}
                         />
 
                         <div className="border-t border-slate-800 pt-5" />

@@ -14,8 +14,12 @@ import { isRoseRuleEligible } from './contractEligibility';
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+// [2026-09-16] 투웨이 계약(contract.type === 'two_way')은 실제 CBA상 샐러리캡에 전혀
+// 잡히지 않는다 — 페이롤 합산에서 제외한다(방출/트레이드로 남는 데드머니는 그대로 포함).
 export function calcTeamPayroll(team: Team): number {
-    const rosterTotal = team.roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+    const rosterTotal = team.roster
+        .filter(p => p.contract?.type !== 'two_way')
+        .reduce((sum, p) => sum + (p.salary ?? 0), 0);
     const deadTotal = (team.deadMoney ?? []).reduce((sum, d) => sum + d.amount, 0);
     return rosterTotal + deadTotal;
 }
@@ -47,7 +51,11 @@ function getBirdRightsLevel(teamTenure: number): 'full' | 'early' | 'non' | 'non
     return 'none';
 }
 
-/** 팀이 해당 선수에게 사용 가능한 계약 슬롯 목록 반환 */
+/**
+ * 팀이 해당 선수에게 사용 가능한 "예외 조항" 목록 반환 — [2026-09-17] 캡스페이스는 더 이상
+ * SigningType의 한 값이 아니라 항상 가능한 기본값이라(빈 값 = 캡스페이스) 이 배열엔 안
+ * 들어온다. 캡스페이스로 쓸 수 있는 금액은 getCapSpaceCap()으로 따로 계산한다.
+ */
 export function getAvailableSigningSlots(
     team: Team,
     player: Player,
@@ -59,26 +67,22 @@ export function getAvailableSigningSlots(
 ): SigningType[] {
     const slots: SigningType[] = [];
     const payroll = calcTeamPayroll(team);
-    const { SALARY_CAP, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
+    const { FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
     // 바이아웃 선수 에이프런 영입 제한
     if (isBuyout) {
         if (payroll >= SECOND_APRON) return [];   // 2차 에이프런 초과: 완전 불가
-        if (payroll >= FIRST_APRON) {             // 1차 에이프런 초과: vet_min만 가능
-            if (payroll < SALARY_CAP) slots.push('cap_space');
-            slots.push('vet_min');
+        if (payroll >= FIRST_APRON) {             // 1차 에이프런 초과: minimum_exception만 가능
+            slots.push('minimum_exception');
             return slots;
         }
     }
 
-    // 캡 스페이스
-    if (payroll < SALARY_CAP) slots.push('cap_space');
-
     // MLE
     const mleUsed = usedMLE[team.id] ?? false;
     if (!mleUsed) {
-        if (payroll < FIRST_APRON)  slots.push('non_tax_mle');
-        else if (payroll < SECOND_APRON) slots.push('tax_mle');
+        if (payroll < FIRST_APRON)  slots.push('non_taxpayer_mle');
+        else if (payroll < SECOND_APRON) slots.push('taxpayer_mle');
     }
 
     // BAE: 비납세자 팀 + MLE 미사용 + 2시즌에 1번 제한
@@ -86,7 +90,7 @@ export function getAvailableSigningSlots(
     if (!mleUsed && payroll < FIRST_APRON) {
         const lastBAE = team.usedBAEyear ?? -99;
         if (!currentSeasonYear || (currentSeasonYear - lastBAE) >= 2) {
-            slots.push('bae');
+            slots.push('biannual_exception');
         }
     }
 
@@ -96,18 +100,26 @@ export function getAvailableSigningSlots(
     if (playerPrevTeamId === team.id) {
         const tenureForBird = prevTeamTenure ?? player.teamTenure ?? 0;
         const bird = getBirdRightsLevel(tenureForBird);
-        if (bird === 'full')  slots.push('bird_full');
-        if (bird === 'early') slots.push('bird_early');
-        if (bird === 'non')   slots.push('bird_non');
+        if (bird === 'full')  slots.push('full_bird');
+        if (bird === 'early') slots.push('early_bird');
+        if (bird === 'non')   slots.push('non_bird');
     }
 
-    // 베테랑 미니멈 (항상 가능)
-    slots.push('vet_min');
+    // 미니멈 (항상 가능)
+    slots.push('minimum_exception');
 
     return slots;
 }
 
-/** 슬롯별 연봉 상한 계산 */
+/** 캡스페이스(예외 조항 미사용)로 쓸 수 있는 연봉 상한 — signingType이 비어있는 오퍼는
+ *  이 값으로 검증한다. */
+function getCapSpaceCap(team: Team, maxAllowed: number): number {
+    const payroll = calcTeamPayroll(team);
+    const remainingCap = Math.max(0, LEAGUE_FINANCIALS.SALARY_CAP - payroll);
+    return Math.min(remainingCap, maxAllowed);
+}
+
+/** 예외 조항별 연봉 상한 계산 */
 function getSlotSalaryCap(
     slot: SigningType,
     team: Team,
@@ -115,25 +127,21 @@ function getSlotSalaryCap(
     maxAllowed: number,
     vetMin: number,
 ): number {
-    const payroll = calcTeamPayroll(team);
-    const remainingCap = Math.max(0, LEAGUE_FINANCIALS.SALARY_CAP - payroll);
-
     switch (slot) {
-        case 'cap_space':  return Math.min(remainingCap, maxAllowed);
-        case 'non_tax_mle': return Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, maxAllowed);
-        case 'tax_mle':    return Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, maxAllowed);
-        case 'bae':        return Math.min(SIGNING_EXCEPTIONS.BAE, maxAllowed);
-        case 'bird_full':  return maxAllowed;
-        case 'bird_early': {
+        case 'non_taxpayer_mle': return Math.min(SIGNING_EXCEPTIONS.NON_TAX_MLE, maxAllowed);
+        case 'taxpayer_mle':    return Math.min(SIGNING_EXCEPTIONS.TAXPAYER_MLE, maxAllowed);
+        case 'biannual_exception': return Math.min(SIGNING_EXCEPTIONS.BAE, maxAllowed);
+        case 'full_bird':  return maxAllowed;
+        case 'early_bird': {
             const base = player.prevSalary ?? player.salary ?? 0;
             return Math.min(maxAllowed, Math.max(base * 1.75, LEAGUE_FINANCIALS.SALARY_CAP * 1.05, vetMin));
         }
-        case 'bird_non': {
+        case 'non_bird': {
             const base = player.prevSalary ?? player.salary ?? 0;
             return Math.min(maxAllowed, Math.max(base * 1.20, vetMin));
         }
-        case 'vet_min':    return vetMin;
-        default:           return vetMin;
+        case 'minimum_exception': return vetMin;
+        default: return vetMin;
     }
 }
 
@@ -148,14 +156,16 @@ function calcYOSBounds(yos: number, player?: Player): { maxAllowed: number; vetM
 
 function buildContract(
     salary: number, years: number, type: PlayerContract['type'],
-    option?: import('../types/player').ContractOption,
+    option?: import('../../types/player').ContractOption,
     noTrade?: boolean,
     tradeKicker?: number,
+    signingType?: SigningType,
 ): PlayerContract {
     const contract: PlayerContract = { years: Array(years).fill(Math.round(salary)), currentYear: 0, type };
     if (option)                   contract.options     = [option];
     if (noTrade)                  contract.noTrade     = true;
     if (tradeKicker && tradeKicker > 0) contract.tradeKicker = tradeKicker;
+    if (signingType)              contract.signingType = signingType;
     return contract;
 }
 
@@ -362,28 +372,46 @@ export function simulateCPUSigning(
                 entry.prevTeamTenure,
                 currentSeasonYear,
             );
-            if (slots.length === 0) continue;
 
-            // 예산에 맞는 최선 슬롯 선택
+            // 예산에 맞는 최선 슬롯 선택 — 캡스페이스(예외 조항 아님, 항상 가능)를 먼저
+            // 시도하고(예전엔 slots 배열 맨 앞에 있어 사실상 최우선이었던 것과 동일한 순서
+            // 유지), 부족하면 예외 조항 슬롯을 순회. bestSlot이 undefined면 "캡스페이스로
+            // 체결"이라는 뜻 — bestSlotFound로 "아예 오퍼 불가"와 구분한다.
             const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
             const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
-            let bestSlot: SigningType | null = null;
+            let bestSlot: SigningType | undefined;
+            let bestSlotFound = false;
             let offerSalary = 0;
 
-            for (const slot of slots) {
-                const cap = getSlotSalaryCap(slot, teamObj, player, maxAllowed, vetMin);
-                // CPU는 walkAway의 105%~askingSalary 사이로 오퍼
-                const cpuOffer = Math.min(cap, Math.round(entry.walkAwaySalary * 1.05));
-                if (cpuOffer >= entry.walkAwaySalary) {
-                    bestSlot = slot;
-                    offerSalary = cpuOffer;
-                    break;
+            if (!entry.isBuyout || payroll < LEAGUE_FINANCIALS.FIRST_APRON) {
+                const capSpaceCap = getCapSpaceCap(teamObj, maxAllowed);
+                const capSpaceOffer = Math.min(capSpaceCap, Math.round(entry.walkAwaySalary * 1.05));
+                if (capSpaceOffer >= entry.walkAwaySalary) {
+                    bestSlotFound = true;
+                    offerSalary = capSpaceOffer;
                 }
             }
-            if (!bestSlot || offerSalary <= 0) continue;
+            if (!bestSlotFound) {
+                for (const slot of slots) {
+                    const cap = getSlotSalaryCap(slot, teamObj, player, maxAllowed, vetMin);
+                    // CPU는 walkAway의 105%~askingSalary 사이로 오퍼
+                    const cpuOffer = Math.min(cap, Math.round(entry.walkAwaySalary * 1.05));
+                    if (cpuOffer >= entry.walkAwaySalary) {
+                        bestSlot = slot;
+                        bestSlotFound = true;
+                        offerSalary = cpuOffer;
+                        break;
+                    }
+                }
+            }
+            if (!bestSlotFound || offerSalary <= 0) continue;
 
-            const slotMaxYears = bestSlot === 'bird_full' ? 5 : bestSlot === 'bird_early' || bestSlot === 'cap_space' || bestSlot === 'non_tax_mle' ? 4 : bestSlot === 'bird_non' ? 2 : 2;
+            const slotMaxYears = bestSlot === undefined ? 4
+                : bestSlot === 'full_bird' ? 5
+                : bestSlot === 'early_bird' || bestSlot === 'non_taxpayer_mle' ? 4
+                : bestSlot === 'non_bird' ? 2
+                : 2;
             const offerYears = Math.min(entry.askingYears, slotMaxYears);
             const seed = `${tendencySeed}:cpu:${team.id}:${player.id}`;
 
@@ -403,8 +431,7 @@ export function simulateCPUSigning(
             if (accepted) {
                 // RFA 타팀 → 오퍼시트 제출 (즉시 서명 불가)
                 if (entry.isRFA && entry.originalTeamId && entry.originalTeamId !== team.id) {
-                    const contractType = bestSlot === 'vet_min' ? 'min' : 'veteran';
-                    const contract = buildContract(offerSalary, offerYears, contractType);
+                    const contract = buildContract(offerSalary, offerYears, 'free_agent', undefined, undefined, undefined, bestSlot);
                     const offerSheet: PendingOfferSheet = {
                         id: `os_${team.id}_${player.id}_${Date.now()}`,
                         playerId:        player.id,
@@ -422,10 +449,10 @@ export function simulateCPUSigning(
                     if (entryIdxRFA !== -1) {
                         updatedMarket.entries[entryIdxRFA] = { ...updatedMarket.entries[entryIdxRFA], status: 'pending_match' };
                     }
-                    if (bestSlot === 'non_tax_mle' || bestSlot === 'tax_mle' || bestSlot === 'bae') {
+                    if (bestSlot === 'non_taxpayer_mle' || bestSlot === 'taxpayer_mle' || bestSlot === 'biannual_exception') {
                         updatedMarket.usedMLE[team.id] = true;
                     }
-                    if (bestSlot === 'bae') {
+                    if (bestSlot === 'biannual_exception') {
                         teamObj.usedBAEyear = currentSeasonYear;
                     }
                     signings.push({ teamId: team.id, playerId: player.id, salary: offerSalary, years: offerYears });
@@ -433,8 +460,7 @@ export function simulateCPUSigning(
                 }
 
                 // 일반 UFA or 자팀 RFA → 즉시 계약 체결
-                const contractType = bestSlot === 'vet_min' ? 'min' : 'veteran';
-                const contract = buildContract(offerSalary, offerYears, contractType);
+                const contract = buildContract(offerSalary, offerYears, 'free_agent', undefined, undefined, undefined, bestSlot);
                 const signedPlayer: Player = {
                     ...player,
                     contract,
@@ -445,10 +471,10 @@ export function simulateCPUSigning(
                 teamObj.roster.push(signedPlayer);
 
                 // MLE/BAE 사용 처리 (BAE와 MLE는 같은 시즌 동시 사용 불가)
-                if (bestSlot === 'non_tax_mle' || bestSlot === 'tax_mle' || bestSlot === 'bae') {
+                if (bestSlot === 'non_taxpayer_mle' || bestSlot === 'taxpayer_mle' || bestSlot === 'biannual_exception') {
                     updatedMarket.usedMLE[team.id] = true;
                 }
-                if (bestSlot === 'bae') {
+                if (bestSlot === 'biannual_exception') {
                     teamObj.usedBAEyear = currentSeasonYear;
                 }
 
@@ -495,8 +521,17 @@ export function simulateCPUSigning(
 // ─────────────────────────────────────────────────────────────
 
 export type UserOfferResult =
-    | { accepted: true;  contract: PlayerContract; signingType: SigningType }
+    | { accepted: true;  contract: PlayerContract; signingType?: SigningType }
     | { accepted: false; reason: string };
+
+// 예외 조항별 CBA 연수 상한 — UI SLOT_MAX_YEARS와 동일하게 유지. signingType이 없으면(캡
+// 스페이스) 4년으로 취급(예전 cap_space:4와 동일).
+const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
+    full_bird: 5, early_bird: 4, non_bird: 2,
+    non_taxpayer_mle: 4, taxpayer_mle: 2, room_mle: 2, biannual_exception: 2, minimum_exception: 2,
+    second_round_exception: 4, rookie_scale_exception: 4, // 이 경로(일반 FA 오퍼 처리)로는
+    // 실제로 거의 안 들어옴(rookie_scale_exception은 루키스케일 계약 전용) — 표만 채움.
+};
 
 export function processUserOffer(
     market: LeagueFAMarket,
@@ -506,8 +541,8 @@ export function processUserOffer(
     offer: {
         salary: number;
         years: number;
-        signingType: SigningType;
-        option?: import('../types/player').ContractOption;
+        signingType?: SigningType;  // 비어있으면 캡 스페이스로 체결
+        option?: import('../../types/player').ContractOption;
         noTrade?: boolean;
         tradeKicker?: number;
     },
@@ -522,14 +557,20 @@ export function processUserOffer(
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
     const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
-    // 슬롯 유효성 검증 — entry.prevTeamTenure로 Bird Rights 판정 (teamTenure 리셋 전 값)
-    const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE, entry.isBuyout, entry.prevTeamTenure, currentSeasonYear);
-    if (!availableSlots.includes(offer.signingType)) {
-        return { accepted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
+    // 슬롯 유효성 검증 — entry.prevTeamTenure로 Bird Rights 판정 (teamTenure 리셋 전 값).
+    // signingType이 없으면 캡 스페이스(항상 가능)라 이 검증 자체를 건너뛴다.
+    let slotCap: number;
+    if (offer.signingType === undefined) {
+        slotCap = getCapSpaceCap(team, maxAllowed);
+    } else {
+        const availableSlots = getAvailableSigningSlots(team, player, playerPrevTeamId, market.usedMLE, entry.isBuyout, entry.prevTeamTenure, currentSeasonYear);
+        if (!availableSlots.includes(offer.signingType)) {
+            return { accepted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
+        }
+        slotCap = getSlotSalaryCap(offer.signingType, team, player, maxAllowed, vetMin);
     }
 
     // 연봉 상한 검증
-    const slotCap = getSlotSalaryCap(offer.signingType, team, player, maxAllowed, vetMin);
     if (offer.salary > slotCap) {
         return { accepted: false, reason: `제시 연봉이 슬롯 상한($${(slotCap / 1_000_000).toFixed(1)}M)을 초과합니다.` };
     }
@@ -537,12 +578,8 @@ export function processUserOffer(
         return { accepted: false, reason: `제시 연봉이 베테랑 미니멈($${(vetMin / 1_000_000).toFixed(1)}M) 미만입니다.` };
     }
 
-    // 연수 검증 (슬롯별 CBA 상한 — UI SLOT_MAX_YEARS와 동일하게 유지)
-    const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
-        bird_full: 5, bird_early: 4, bird_non: 2,
-        cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
-    };
-    const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
+    // 연수 검증
+    const maxYears = offer.signingType === undefined ? 4 : (MAX_YEARS_BY_SLOT[offer.signingType] ?? 4);
     if (offer.years < 1 || offer.years > maxYears) {
         return { accepted: false, reason: `연수는 1~${maxYears}년 사이여야 합니다.` };
     }
@@ -586,8 +623,7 @@ export function processUserOffer(
         return { accepted: false, reason: '선수가 오퍼를 거절했습니다.' };
     }
 
-    const contractType = offer.signingType === 'vet_min' ? 'min' : 'veteran';
-    const contract = buildContract(offer.salary, offer.years, contractType, offer.option, offer.noTrade, offer.tradeKicker);
+    const contract = buildContract(offer.salary, offer.years, 'free_agent', offer.option, offer.noTrade, offer.tradeKicker, offer.signingType);
 
     return { accepted: true, contract, signingType: offer.signingType };
 }
@@ -607,7 +643,7 @@ export function processOfferSheet(
     offer: {
         salary: number;
         years: number;
-        signingType: SigningType;
+        signingType?: SigningType;  // 비어있으면 캡 스페이스로 체결
         option?: import('../../types/player').ContractOption;
         noTrade?: boolean;
         tradeKicker?: number;
@@ -630,12 +666,17 @@ export function processOfferSheet(
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
     const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
 
-    const availableSlots = getAvailableSigningSlots(offeringTeam, player, undefined, market.usedMLE, false, undefined, currentSeasonYear);
-    if (!availableSlots.includes(offer.signingType)) {
-        return { submitted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
+    let slotCap: number;
+    if (offer.signingType === undefined) {
+        slotCap = getCapSpaceCap(offeringTeam, maxAllowed);
+    } else {
+        const availableSlots = getAvailableSigningSlots(offeringTeam, player, undefined, market.usedMLE, false, undefined, currentSeasonYear);
+        if (!availableSlots.includes(offer.signingType)) {
+            return { submitted: false, reason: `${offer.signingType} 슬롯을 사용할 수 없습니다.` };
+        }
+        slotCap = getSlotSalaryCap(offer.signingType, offeringTeam, player, maxAllowed, vetMin);
     }
 
-    const slotCap = getSlotSalaryCap(offer.signingType, offeringTeam, player, maxAllowed, vetMin);
     if (offer.salary > slotCap) {
         return { submitted: false, reason: `제시 연봉이 슬롯 상한($${(slotCap / 1_000_000).toFixed(1)}M)을 초과합니다.` };
     }
@@ -643,11 +684,7 @@ export function processOfferSheet(
         return { submitted: false, reason: `제시 연봉이 베테랑 미니멈($${(vetMin / 1_000_000).toFixed(1)}M) 미만입니다.` };
     }
 
-    const MAX_YEARS_BY_SLOT: Record<SigningType, number> = {
-        bird_full: 5, bird_early: 4, bird_non: 2,
-        cap_space: 4, non_tax_mle: 4, tax_mle: 2, bae: 2, vet_min: 2,
-    };
-    const maxYears = MAX_YEARS_BY_SLOT[offer.signingType] ?? 4;
+    const maxYears = offer.signingType === undefined ? 4 : (MAX_YEARS_BY_SLOT[offer.signingType] ?? 4);
     if (offer.years < 1 || offer.years > maxYears) {
         return { submitted: false, reason: `연수는 1~${maxYears}년 사이여야 합니다.` };
     }
@@ -676,8 +713,7 @@ export function processOfferSheet(
         return { submitted: false, reason: '선수가 오퍼시트를 거절했습니다.' };
     }
 
-    const contractType = offer.signingType === 'vet_min' ? 'min' : 'veteran';
-    const contract = buildContract(offer.salary, offer.years, contractType, offer.option, offer.noTrade, offer.tradeKicker);
+    const contract = buildContract(offer.salary, offer.years, 'free_agent', offer.option, offer.noTrade, offer.tradeKicker, offer.signingType);
 
     const offerSheet: PendingOfferSheet = {
         id: `os_${offeringTeam.id}_${player.id}_${Date.now()}`,
@@ -698,7 +734,7 @@ export function processOfferSheet(
             e.playerId === player.id ? { ...e, status: 'pending_match' } : e
         ),
         pendingOfferSheets: [...(market.pendingOfferSheets ?? []), offerSheet],
-        usedMLE: offer.signingType === 'non_tax_mle' || offer.signingType === 'tax_mle' || offer.signingType === 'bae'
+        usedMLE: offer.signingType === 'non_taxpayer_mle' || offer.signingType === 'taxpayer_mle' || offer.signingType === 'biannual_exception'
             ? { ...market.usedMLE, [offeringTeam.id]: true }
             : { ...market.usedMLE },
     };

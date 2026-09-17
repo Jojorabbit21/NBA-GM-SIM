@@ -15,6 +15,7 @@ import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMappe
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
+import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
 import { SIM_CONFIG } from './shared/game/config/constants';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
 import type { TacticalSliders } from './shared/types/tactics';
@@ -185,40 +186,27 @@ async function initializeTeamTactics(
  */
 async function applyLeagueNormalization(
     roomId: string,
-    league: { draft_pool?: string | null; draft_ovr_min?: number | null; draft_ovr_max?: number | null },
+    league: { draft_ovr_min?: number | null; draft_ovr_max?: number | null; draft_year_min?: number | null; draft_year_max?: number | null },
     teamCount: number,
 ): Promise<void> {
-    const draftPoolRaw = league.draft_pool ?? 'standard';
     const ovrMin = league.draft_ovr_min ?? 0;
     const ovrMax = league.draft_ovr_max ?? 99;
-    const cacheKey = `${draftPoolRaw}|${ovrMin}|${ovrMax}|${teamCount}`;
+    const draftYearMin = league.draft_year_min ?? 2001;
+    const draftYearMax = league.draft_year_max ?? 2025;
+    const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${teamCount}`;
 
     const muLeague = await getOrComputeDraftPoolMuLeague(cacheKey, teamCount, async () => {
         // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
         // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
-        const draftPools = draftPoolRaw.split(',').map((s: string) => s.trim());
-        const applyCustomOverrides = draftPools.includes('alltime');
-        const seenIds = new Set<string>();
+        // (applyMetaPlayerPoolFilter를 startDraft.ts와 공유해서 어긋남을 구조적으로 방지한다.)
+        let q = supabase.from('meta_players').select('id, base_attributes');
+        q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+        const { data: poolData } = await q;
         const ovrs: number[] = [];
-
-        for (const pt of draftPools) {
-            let q = supabase.from('meta_players').select('id, base_attributes');
-            if (pt === 'standard') {
-                q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-            } else if (pt === 'alltime') {
-                q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
-            } else {
-                q = (q as any).eq('draft_year', 2026);
-            }
-            const { data: poolData } = await q;
-            for (const p of poolData ?? []) {
-                if (seenIds.has(String(p.id))) continue;
-                seenIds.add(String(p.id));
-                const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
-                // 루키는 buildDraftSetup()에서도 ovr 필터 없이 무조건 풀에 포함되므로 동일하게 처리.
-                if (pt === 'rookies' || (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax)) {
-                    ovrs.push(mapped.ovr);
-                }
+        for (const p of poolData ?? []) {
+            const mapped = mapRawPlayerToRuntimePlayer(p, true);
+            if (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax) {
+                ovrs.push(mapped.ovr);
             }
         }
         return ovrs;
@@ -257,7 +245,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
         .eq('id', room.league_id)
         .single();
 
@@ -419,7 +407,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_pool, draft_ovr_min, draft_ovr_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year')
         .eq('id', room.league_id)
         .single();
 

@@ -366,7 +366,7 @@ function handleMoratoriumStart(
                 if (player) {
                     player.salary = 1_500_000;
                     player.contractYears = 1;
-                    player.contract = { years: [1_500_000], currentYear: 0, type: 'min' };
+                    player.contract = { years: [1_500_000], currentYear: 0, type: 'free_agent' };
                 }
                 restored++;
                 console.log(`🔄 Auto re-signed ${ep.playerName} (${team.id}) on min deal for roster minimum`);

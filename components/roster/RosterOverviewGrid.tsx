@@ -4,7 +4,7 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { StarRating } from '../common/StarRating';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../services/playerDevelopment/archetypeEvaluator';
 import type { PlayerArchetypeState } from '../../types/archetype';
 import { formatMoney } from '../../utils/formatMoney';
@@ -21,7 +21,16 @@ interface RosterOverviewGridProps {
     onReleasePlayer?: (player: Player) => void;
     /** 방출 처리 중인 선수 id — 버튼 로딩/비활성 표시용. */
     releasingId?: string | null;
+    /** 팀당 최대 로스터 인원(정규 계약 슬롯 상한) — 미지정 시 NBA 기본 정원 15명.
+     * 멀티플레이어는 leagues.max_roster_size(15~20, 어드민 설정)를 그대로 전달한다. */
+    maxRosterSize?: number;
+    /** 팀당 Two-Way 계약 슬롯 상한 — 미지정 시 기본 3명. 멀티플레이어는
+     * leagues.two_way_slots(1~5, 어드민 설정)를 그대로 전달한다. */
+    twoWaySlots?: number;
 }
+
+const DEFAULT_MAX_ROSTER_SIZE = 15;
+const DEFAULT_TWO_WAY_SLOTS = 3;
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' };
 
@@ -49,8 +58,21 @@ const getStickyStyle = (left: number, width: number, isLast: boolean = false) =>
     borderRight: isLast ? undefined : 'none',
 });
 
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId }) => {
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
+
+    // "정규 계약" = 투웨이(two-way)가 아닌 모든 계약. 실제 NBA도 투웨이 2명은 15명 정원과
+    // 별개 슬롯이라 여기서 제외한다 — 계약 데이터가 아직 없는 선수(p.contract undefined,
+    // 올타임 레전드 등 일부 데이터 공백)는 실제로는 정규 로스터를 차지하고 있으므로 기본적으로
+    // 정규 계약으로 취급.
+    const regularContractCount = useMemo(
+        () => team.roster.filter(p => p.contract?.type !== 'two_way').length,
+        [team.roster],
+    );
+    const twoWayCount = useMemo(
+        () => team.roster.filter(p => p.contract?.type === 'two_way').length,
+        [team.roster],
+    );
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
@@ -146,11 +168,17 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
 
                             return (
                                 <TableRow key={p.id} className="group">
-                                    <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                    <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                         <span className="flex items-center gap-1.5 min-w-0">
                                             <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                                <span className="min-w-0 text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                                <span className="min-w-0 text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                             </PlayerHoverCard>
+                                            {p.contract?.type === 'two_way' && (
+                                                <span
+                                                    title="Two-Way 계약"
+                                                    className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                                                >TW</span>
+                                            )}
                                             {p.activeInjurySeverity && (
                                                 <InjuryStatusBadge
                                                     severity={p.activeInjurySeverity}
@@ -162,9 +190,9 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                                             )}
                                         </span>
                                     </TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
                                         <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
                                     <TableCell align="center" className="border-r border-slate-800/30">
@@ -205,6 +233,29 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                             );
                         })}
                     </TableBody>
+                    {/* 컨테이너 하단에 고정(fixed)되지 않고 로스터 행 바로 아래에 붙도록 <tfoot>으로
+                        렌더링 — 위 TableBody와 같은 스크롤 영역 안에 있어 마지막 행 다음에 자연스럽게
+                        이어지고, 로스터가 길어 표가 스크롤될 때도 body와 함께 움직인다. */}
+                    <TableFoot>
+                        <tr>
+                            <td colSpan={onReleasePlayer ? 14 : 13} className="px-4">
+                                <div className="h-40 flex items-start justify-end gap-4 pt-3">
+                                    <span className="text-sm font-semibold text-slate-400">
+                                        정규 계약 슬롯{' '}
+                                        <span className={regularContractCount >= maxRosterSize ? 'text-red-400' : 'text-slate-400'}>
+                                            {String(regularContractCount).padStart(2, '0')}/{String(maxRosterSize).padStart(2, '0')}
+                                        </span>
+                                    </span>
+                                    <span className="text-sm font-semibold text-slate-400">
+                                        투웨이 슬롯{' '}
+                                        <span className={twoWayCount >= twoWaySlots ? 'text-red-400' : 'text-slate-400'}>
+                                            {twoWayCount}/{twoWaySlots}
+                                        </span>
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    </TableFoot>
                 </Table>
             </div>
         </div>

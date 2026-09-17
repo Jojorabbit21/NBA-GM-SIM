@@ -15,6 +15,7 @@ import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { generateAutoTactics } from '../../../services/gameEngine';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { saveMemberTactics } from '../../../services/multi/roomPersistence';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import type { Team, Player, GameTactics, DepthChart } from '../../../types';
 
 type AdminTab = 'depth' | 'rotation' | 'team' | 'player' | 'trade';
@@ -24,7 +25,7 @@ const AdminTeamEditorView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, room, members, leagueTeams, isLoading: leagueLoading, reload } = useLeagueContext();
     const { session } = useGame();
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
 
     const isAdmin = !!(league && session?.user?.id && league.admin_user_id === session.user.id);
 

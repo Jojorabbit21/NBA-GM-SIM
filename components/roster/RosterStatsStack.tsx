@@ -138,8 +138,10 @@ const CategoryTable: React.FC<{
     enableHoverCard?: boolean;
 }> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard }) => {
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: defaultSort, direction: 'desc' });
+    // includeZeroGamePlayers: true — 리더보드와 달리 "선수 기록" 탭은 아직 한 경기도
+    // 못 뛴 로스터 선수도 그대로 보여줘야 한다(사용자 요청). 스탯 값은 전부 0으로 나온다.
     const { sortedData, statRanges } = useLeaderboardData(
-        [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular',
+        [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true,
     );
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
@@ -152,13 +154,16 @@ const CategoryTable: React.FC<{
     const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
     const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
 
-    // 팀 평균(단순 평균 — 정밀 가중평균 대신 각 선수 값의 산술 평균)
+    // 팀 평균(단순 평균 — 정밀 가중평균 대신 각 선수 값의 산술 평균). includeZeroGamePlayers로
+    // 0경기 선수도 목록엔 표시되지만, 그 선수들의 0값이 팀 평균을 실제보다 낮게 끌어내리면
+    // 안 되므로 평균 계산에서는 제외한다(목록 표시와 집계 기준을 분리).
+    const playedData = sortedData.filter((p: any) => (p.stats?.g ?? 0) > 0);
     const averages: Record<string, number> = {};
-    if (sortedData.length > 0) {
+    if (playedData.length > 0) {
         cols.forEach(col => {
             let sum = 0;
-            sortedData.forEach((p: any) => { sum += getStatCellValue(p.stats, col, statRanges).raw; });
-            averages[col.key] = sum / sortedData.length;
+            playedData.forEach((p: any) => { sum += getStatCellValue(p.stats, col, statRanges).raw; });
+            averages[col.key] = sum / playedData.length;
         });
     }
 
@@ -215,16 +220,22 @@ const CategoryTable: React.FC<{
                         const originalPlayer = team.roster.find(r => r.id === p.id) || p;
                         return (
                             <TableRow key={p.id} className="group">
-                                <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                     <span className="flex items-center gap-1.5 min-w-0">
                                         <PlayerHoverCard player={originalPlayer} teamAbbr={team.abbr} enabled={enableHoverCard}>
                                             <span
-                                                className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
+                                                className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
                                                 onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
                                             >
                                                 {p.name}
                                             </span>
                                         </PlayerHoverCard>
+                                        {originalPlayer.contract?.type === 'two_way' && (
+                                            <span
+                                                title="Two-Way 계약"
+                                                className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
+                                            >TW</span>
+                                        )}
                                         {originalPlayer.activeInjurySeverity && (
                                             <InjuryStatusBadge
                                                 severity={originalPlayer.activeInjurySeverity}
@@ -236,15 +247,14 @@ const CategoryTable: React.FC<{
                                         )}
                                     </span>
                                 </TableCell>
-                                <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                                <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
+                                <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
+                                <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
                                     <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(originalPlayer)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                 </TableCell>
                                 {cols.map(c => {
-                                    if (p.stats.mp === 0 && c.key !== 'g') {
-                                        return <TableCell key={c.key} align="center" className="border-r border-slate-800/30"><span className="font-medium text-sm text-slate-600">-</span></TableCell>;
-                                    }
+                                    // [2026-09-16] 0경기(또는 0분) 선수도 "-" 대신 0(0.0/0.0% 등 컬럼 포맷 그대로)로
+                                    // 표시 — getStatCellValue가 g=s.g||1로 나눗셈을 안전하게 처리해 그대로 호출해도 된다.
                                     const { text, bgStyle } = getStatCellValue(p.stats, c, statRanges);
                                     return (
                                         <TableCell key={c.key} align="center" style={bgStyle} className="border-r border-slate-800/30">

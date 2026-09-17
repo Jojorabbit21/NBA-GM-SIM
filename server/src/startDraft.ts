@@ -23,6 +23,8 @@ import {
 } from './shared/multiDraftEngine';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 import { postDraftLotteryResult } from './postDraftLotteryNews';
+import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides';
 
 const DEFAULT_TOTAL_ROUNDS         = 10;
 const DEFAULT_PICK_DURATION_SEC    = 30;
@@ -251,43 +253,26 @@ async function buildDraftSetup(
     const totalRounds        = (league as any).draft_total_rounds             ?? DEFAULT_TOTAL_ROUNDS;
     const pickDurationSec    = (league as any).draft_pick_duration_sec        ?? DEFAULT_PICK_DURATION_SEC;
     const autoPickAfterMisses = (league as any).draft_auto_pick_after_misses  ?? DEFAULT_AUTO_PICK_AFTER_MISSES;
-    const draftPoolRaw    = (league as any).draft_pool              ?? 'standard';
     const draftStrategy   = (league as any).draft_pool_strategy     ?? 'snake';
     const ovrMin          = (league as any).draft_ovr_min           ?? 0;
     const ovrMax          = (league as any).draft_ovr_max           ?? 99;
-    const draftPools      = (draftPoolRaw as string).split(',').map((s: string) => s.trim()).filter(Boolean);
-    // 올타임 풀이 포함되면 custom_overrides를 반영한 OVR로 필터링/전송해야 한다 —
-    // 안 그러면 오버라이드 적용 전 원본 능력치 기준으로 ovrMin/ovrMax를 걸러버리는 버그가 생긴다.
-    const applyCustomOverrides = draftPools.includes('alltime');
+    const draftYearMin    = (league as any).draft_year_min          ?? 2001;
+    const draftYearMax    = (league as any).draft_year_max          ?? 2025;
+    const useCustomOverrides = shouldUseCustomOverrides(league as any);
 
-    // 풀 구성
-    const seenIds: Set<string>  = new Set();
-    const nonRookieRaw: any[] = [];
-    const rookieRaw: any[]    = [];
+    // 풀 구성 — draft_year_min~draft_year_max 범위 하나로 통일(2026-09-16, 'standard'/
+    // 'alltime'/'rookies' 풀 타입 구분 완전 폐지). custom_overrides 적용 여부는 리그별
+    // use_custom_overrides 설정을 따른다(오버라이드 없는 선수는 no-op이라 켜도 무해하지만,
+    // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
+    // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
+    let q = supabase.from('meta_players').select('id, position, base_attributes');
+    q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+    const { data: poolData } = await q;
+    const rawPlayers = (poolData ?? []).map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
 
-    for (const pt of draftPools) {
-        let q = supabase.from('meta_players').select('id, position, base_attributes');
-        if (pt === 'standard') {
-            q = (q as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-        } else if (pt === 'alltime') {
-            q = (q as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
-        } else {
-            q = (q as any).eq('draft_year', 2026);
-        }
-
-        // 청크 단위 병렬 조회 (URL 길이 제한 우회)
-        const { data: poolData } = await q;
-        for (const p of poolData ?? []) {
-            if (seenIds.has(String(p.id))) continue;
-            seenIds.add(String(p.id));
-            const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
-            if (pt === 'rookies') rookieRaw.push(mapped);
-            else nonRookieRaw.push(mapped);
-        }
-    }
-
-    const filteredNonRookies = nonRookieRaw.filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax);
-    const poolIds = [...filteredNonRookies, ...rookieRaw].map((p: any) => String(p.id));
+    const poolIds = rawPlayers
+        .filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax)
+        .map((p: any) => String(p.id));
 
     // 픽 순서 생성 — 로비에서 진행한 로터리 추첨 결과(league_teams.draft_order)를 그대로 반영한다.
     // (예전엔 여기서 seededShuffle로 순서를 새로 뽑아써서, 로비에 표시된 추첨 결과와 실제 드래프트
@@ -315,7 +300,8 @@ async function buildDraftSetup(
 
     const draftConfig = {
         format: draftStrategy === 'linear' ? 'linear' as const : 'snake' as const,
-        totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder, applyCustomOverrides,
+        totalRounds, pickDurationSec, teamCount: allMembers.length, poolIds, pickOrder,
+        applyCustomOverrides: useCustomOverrides,
         autoPickAfterMisses,
     };
 

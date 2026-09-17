@@ -20,6 +20,7 @@ import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInju
 import { resolveRealAt, isFinal } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { runAwardVoting } from '../../../utils/awardVoting';
 import { stampSeasonAwards } from '../../../utils/awardStamper';
@@ -48,7 +49,7 @@ const HIDE_SECTIONS: Array<'contract' | 'awards' | 'injuryHistory'> = [];
 
 const MultiPlayerDetailView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const { isLoading: gameLoading, schedule, myTeamId, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
     // MultiRosterView.tsx/MultiTacticsView.tsx와 동일한 preferVirtual 패턴 — room.sim_date는
     // 실제 KST 날짜라 메인리그(가상 NBA 캘린더)의 "지금 활성 부상인지" 판정에 직접 쓰면

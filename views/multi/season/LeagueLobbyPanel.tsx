@@ -9,11 +9,13 @@ import { joinLeague, leaveLeague, claimTeam, updateTeamProfile } from '../../../
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
+import { applyMetaPlayerPoolFilter } from '../../../services/multi/draftPoolQuery';
 import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 
 function fmtDate(iso: string | null): string {
     if (!iso) return '미정';
@@ -116,42 +118,31 @@ const LeagueLobbyPanel: React.FC = () => {
     const [poolCount,      setPoolCount]      = useState<number | null>(null);
     const [lotteryCountdown, setLotteryCountdown] = useState<string | null>(null);
 
-    // 드래프트 풀 선수 수 — DraftPoolSettings.tsx의 fetchStats()와 동일한 조회 규칙(풀
-    // 타입별 조건 + OVR 범위 필터)을 총원 카운트만 필요하므로 축약해서 재사용.
+    // 드래프트 풀 선수 수 — DraftPoolSettings.tsx의 fetchStats()와 동일한 조회 규칙(draft_year
+    // 범위 + OVR 범위 필터)을 총원 카운트만 필요하므로 축약해서 재사용.
     useEffect(() => {
         if (!league) return;
         let cancelled = false;
-        const poolTypes = (league.draft_pool ?? 'standard').split(',').map(s => s.trim()).filter(Boolean);
         const ovrMin = league.draft_ovr_min ?? 0;
         const ovrMax = league.draft_ovr_max ?? 99;
+        const draftYearMin = league.draft_year_min ?? 2001;
+        const draftYearMax = league.draft_year_max ?? 2025;
+        const useCustomOverrides = shouldUseCustomOverrides(league);
 
         (async () => {
-            const seenIds = new Set<string>();
+            let query = supabase.from('meta_players').select('id, base_attributes');
+            query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax);
+            const { data } = await query;
             let count = 0;
-            for (const pt of poolTypes) {
-                let query = supabase.from('meta_players').select('id, base_attributes');
-                if (pt === 'standard') {
-                    query = (query as any).eq('in_multi_pool', true).lt('draft_year', 2026).not('base_team_id', 'is', null);
-                } else if (pt === 'alltime') {
-                    query = (query as any).eq('in_multi_pool', true).eq('include_alltime', true).lt('draft_year', 2026);
-                } else {
-                    query = (query as any).eq('draft_year', 2026);
-                }
-                const { data } = await query;
-                if (!data) continue;
-                for (const raw of data as any[]) {
-                    if (seenIds.has(raw.id)) continue;
-                    seenIds.add(raw.id);
-                    if (pt === 'rookies') { count++; continue; }
-                    const p = mapRawPlayerToRuntimePlayer(raw, false, true);
-                    if (p.ovr >= ovrMin && p.ovr <= ovrMax) count++;
-                }
+            for (const raw of (data as any[]) ?? []) {
+                const p = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true);
+                if (p.ovr >= ovrMin && p.ovr <= ovrMax) count++;
             }
             if (!cancelled) setPoolCount(count);
         })();
 
         return () => { cancelled = true; };
-    }, [league?.draft_pool, league?.draft_ovr_min, league?.draft_ovr_max]);
+    }, [league?.draft_ovr_min, league?.draft_ovr_max, league?.draft_year_min, league?.draft_year_max, league?.use_custom_overrides]);
 
     // 로터리 추첨까지 남은 시간(큰 글씨 카운트다운) — 추첨이 끝나면(lotteryDone) 더 이상
     // 표시할 필요가 없어 정지.

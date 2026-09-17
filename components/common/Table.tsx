@@ -102,7 +102,7 @@ export const TableFoot = ({ children, className = '', ...props }: TableFootProps
 export const TableRow = ({ children, className = '', onClick, ...props }: TableRowProps) => (
     <tr 
         onClick={onClick}
-        className={`transition-colors hover:bg-white/5 ${onClick ? 'cursor-pointer group' : ''} ${className}`}
+        className={`hover:bg-white/5 ${onClick ? 'cursor-pointer group' : ''} ${className}`}
         {...props}
     >
         {children}

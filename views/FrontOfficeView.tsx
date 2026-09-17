@@ -1099,17 +1099,19 @@ const PayrollRow: React.FC<{
     textColor?: string;
 }> = ({ player, seasonColumns, myTeamId, teamName, onViewPlayer, onExtension, onRelease, isExtensionBlocked, primaryColor = '#4f46e5', textColor = '#FFFFFF' }) => {
     const cells = useMemo(() => {
-        const result: (string | null)[] = new Array(seasonColumns.length).fill(null);
+        const result: ({ label: string; optionType: 'player' | 'team' | null } | null)[] = new Array(seasonColumns.length).fill(null);
         if (!player.contract) return result;
         for (let i = 0; i < player.contract.years.length; i++) {
             const colIdx = i - player.contract.currentYear;
             if (colIdx >= 0 && colIdx < seasonColumns.length) {
                 let label = fmtSalary(player.contract.years[i]);
                 const opt = player.contract.options?.find(o => o.year === i);
+                let optionType: 'player' | 'team' | null = null;
                 if (opt) {
+                    optionType = opt.type;
                     label += opt.type === 'player' ? ' (PO)' : ' (TO)';
                 }
-                result[colIdx] = label;
+                result[colIdx] = { label, optionType };
             }
         }
         return result;
@@ -1127,11 +1129,20 @@ const PayrollRow: React.FC<{
                     </button>
                 ) : player.name}
             </td>
-            {cells.map((cell, i) => (
-                <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700 ${cell ? 'text-slate-300' : 'text-slate-700'}`}>
-                    {cell ?? '-'}
-                </td>
-            ))}
+            {cells.map((cell, i) => {
+                const colorClass = !cell
+                    ? 'text-slate-700'
+                    : cell.optionType === 'team'
+                        ? 'italic text-sky-400'
+                        : cell.optionType === 'player'
+                            ? 'italic text-emerald-400'
+                            : 'text-slate-300';
+                return (
+                    <td key={i} className={`px-4 py-1.5 text-right text-xs font-mono tabular-nums whitespace-nowrap border-r border-slate-700 ${colorClass}`}>
+                        {cell?.label ?? '-'}
+                    </td>
+                );
+            })}
             {(onExtension || onRelease) && (
                 <td className="px-3 py-1.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">

@@ -1,5 +1,6 @@
 
 import { Game, Player, Team } from '../types';
+import type { CareerSeasonStat } from '../types/player';
 import { calculateOvr, getOVRThreshold } from './ovrUtils';
 export { getOVRThreshold } from './ovrUtils';
 export type { OvrTier } from './ovrUtils';
@@ -9,6 +10,63 @@ import { VIRTUAL_TEAMS } from '../data/virtualTeams';
 import { editorLogoUrls } from './editorState';
 
 import { DEFAULT_SEASON_CONFIG } from './seasonConfig';
+
+// YOS(서비스타임)별 미니멈 샐러리 = 해당 시즌 캡 × 아래 비율(%). 실제 NBA CBA 룰북 비율
+// 고정값. 원래 views/multi/league/LeagueSettingsView.tsx(설정 페이지의 미니멈 샐러리
+// 전망 테이블)에만 있었는데, views/multi/season/MultiNegotiationView.tsx(FA 협상 화면의
+// Minimum Salary Exception 자동 계산)도 똑같은 표가 필요해져서 공용 상수로 승격.
+export const MIN_SALARY_YOS_TABLE: { label: string; capPct: number }[] = [
+    { label: '0 YOS',   capPct: 0.82 },
+    { label: '1 YOS',   capPct: 1.32 },
+    { label: '2 YOS',   capPct: 1.48 },
+    { label: '3 YOS',   capPct: 1.54 },
+    { label: '4 YOS',   capPct: 1.59 },
+    { label: '5 YOS',   capPct: 1.73 },
+    { label: '6 YOS',   capPct: 1.86 },
+    { label: '7 YOS',   capPct: 1.99 },
+    { label: '8 YOS',   capPct: 2.13 },
+    { label: '9 YOS',   capPct: 2.14 },
+    { label: '10+ YOS', capPct: 2.35 },
+];
+
+// YOS(서비스타임)를 "실제 커리어 기록(career_history)에 몇 시즌이 있는지 세는" 방식으로
+// 계산 — 드래프트 연도만으로 역산(currentSeasonYear - draftYear)하면 해외리그 체류/부상
+// 시즌 등으로 실제 뛴 시즌 수와 어긋날 수 있다는 지적으로 이 방식으로 교체됨. 플레이오프
+// 기록은 별도 행(playoff:true)으로 들어와 있어 정규시즌만 거르고, 시즌 중 트레이드로 같은
+// 시즌에 여러 팀 행이 생기는 경우를 대비해 season 문자열 기준으로 중복 제거 후 개수를 센다.
+// 원래 views/multi/season/MultiNegotiationView.tsx 로컬 함수였다가, 재정 탭(RFA/UFA 칩
+// 미리보기)도 동일 계산이 필요해져 공용 함수로 승격.
+export function countYosFromCareerHistory(history: CareerSeasonStat[] | undefined): number {
+    if (!history || history.length === 0) return 0;
+    const seasons = new Set(history.filter(e => !e.playoff).map(e => e.season));
+    return seasons.size;
+}
+
+// [2026-09-17] 재정 탭 UFA/RFA 미리보기 칩에서 countYosFromCareerHistory()만 쓰면, 실제
+// NBA 커리어 기록이 아예 안 채워진 선수(올타임 레전드 풀 등 — 특정 피크 시즌 기준 age/
+// draft_year만 세팅하고 career_history JSONB는 비워둔 경우)의 YOS가 전부 0으로 나와,
+// 계약 잔여연차가 3년 이하이기만 하면 나이/경력과 무관하게 전부 RFA로 표시되는 문제가
+// 있었다(제임스 하든/카멜로 앤서니처럼 명백한 베테랑도 RFA로 표시됨). career_history가
+// 있으면 그걸 우선 신뢰하고(정확도 이유로 이미 MultiNegotiationView.tsx가 이 방식을
+// 채택했음), 비어있을 때만 draftYear 역산으로 폴백한다 — 둘 다 없으면 0.
+export function estimatePlayerYOS(
+    player: Pick<Player, 'career_history' | 'draftYear'>,
+    currentSeasonYear: number,
+): number {
+    const fromHistory = countYosFromCareerHistory(player.career_history);
+    if (fromHistory > 0) return fromHistory;
+    if (player.draftYear != null) return Math.max(0, currentSeasonYear - player.draftYear);
+    return 0;
+}
+
+// 투웨이 계약 자격 기준 — YOS(서비스타임) 4년 미만 & OVR이 이 값 미만이어야 함(NBA 실제
+// 투웨이 룰: YOS<4). OVR 상한은 marketValueScore만으로는 저연차 특급 유망주가 투웨이로
+// 잘못 분류되는 걸 막기 위한 보조 기준(원래 views/multi/season/MultiNegotiationView.tsx
+// 로컬 상수였다가, MultiFreeAgentView.tsx의 "계약" 버튼 활성화 조건에도 동일 기준이
+// 필요해져 공용 상수로 승격 — 두 화면이 서로 다른 기준으로 어긋나면 "협상 화면 진입은
+// 되는데 목록에서는 막힘" 같은 불일치가 생기므로 반드시 이 상수 하나만 참조할 것).
+export const TWO_WAY_YOS_MAX = 4;
+export const TWO_WAY_MAX_OVR = 75;
 
 export const APP_NAME = 'Basketball GM Simulator';
 export const APP_YEAR = String(DEFAULT_SEASON_CONFIG.endYear);
@@ -21,6 +79,12 @@ export const TRADE_DEADLINE = DEFAULT_SEASON_CONFIG.tradeDeadline;
 
 // League Financial Constants (달러) — 시즌 1(2025-26) 기준값
 // updateLeagueFinancials() 호출로 시즌별 캡에 맞게 갱신됨
+//
+// ⚠️ 싱글플레이어 전용 전역 싱글턴. 멀티플레이어는 리그마다 salary_cap_amount 등이
+// 달라서(leagues 테이블 컬럼, LeagueSettingsView.tsx에서 설정) 이 상수를 참조하지 않는다.
+// 멀티 FA/협상 코드(services/multi/negotiation/multiFaDemand.ts 등)는 calcFADemand()의
+// salaryCapOverride 파라미터로 리그별 캡 금액을 주입해서 이 싱글턴을 우회한다.
+// 새 멀티 코드에서 이 상수를 직접 import하면 안 됨 — 리그별 캡이 서로 덮어써지는 버그가 남.
 export const LEAGUE_FINANCIALS = {
     SALARY_FLOOR:   139_182_000,
     SALARY_CAP:     154_647_000,
@@ -30,6 +94,7 @@ export const LEAGUE_FINANCIALS = {
 };
 
 // Signing Exception Amounts (달러) — 2025-26
+// ⚠️ 이것도 싱글플레이어 전용 (위 LEAGUE_FINANCIALS와 동일한 이유)
 export const SIGNING_EXCEPTIONS = {
     NON_TAX_MLE:  14_104_000,  // Non-Taxpayer MLE (1차 에이프런 미만 팀, 최대 4년)
     TAXPAYER_MLE:  5_685_000,  // Taxpayer MLE (1~2차 에이프런 사이 팀, 최대 2년)
@@ -37,6 +102,9 @@ export const SIGNING_EXCEPTIONS = {
 };
 
 // ── 캡 히스토리 / 동적 갱신 ────────────────────────────────────────────────
+// 이 섹션(updateLeagueFinancials/generateCapHistory/getSeasonCap) 전부 싱글플레이어
+// 전용. 멀티플레이어 캡 성장률은 leagues.cap_growth_rate(리그별 설정값)를 그대로
+// 복리 계산에 쓴다 — 예: views/multi/season/MultiNegotiationView.tsx의 minSalarySeasons.
 
 /** 시즌 1(2025-26) 기준 캡 대비 각 임계값 비율 (고정) */
 const _BASE_CAP = 154_647_000;

@@ -102,7 +102,17 @@ export function buildLeagueTeams(
             const roomContract = contractByPlayer.get(id);
             // dataMapper.ts의 buildPlayerContract와 동일한 파생 공식 — contract가 오버라이드
             // 되면 salary/contractYears도 같이 재계산해야 로스터 페이롤 화면 등에서 어긋나지 않는다.
-            const contract = (roomContract ?? base.contract) as Player['contract'];
+            // roomContract는 room_player_state.contract 백필(migrations/add_room_player_state_contract.sql)
+            // 당시 meta_players 원본 JSONB를 그대로 복사해 예전 단일 option{type,year} 형태를 그대로
+            // 갖고 있을 수 있다(base.contract는 이미 dataMapper.ts의 buildPlayerContract가 승격시킴) —
+            // 여기서도 동일하게 options[] 배열로 승격해야 재정 탭에서 팀/플레이어 옵션이 인식된다.
+            const rawContract = (roomContract ?? base.contract) as Record<string, any> | undefined;
+            const contract = rawContract ? {
+                ...rawContract,
+                options: Array.isArray(rawContract.options) && rawContract.options.length
+                    ? rawContract.options
+                    : (rawContract.option ? [rawContract.option] : undefined),
+            } as Player['contract'] : base.contract;
             const salary = contract?.years?.[contract.currentYear] ?? base.salary;
             const contractYears = contract?.years
                 ? contract.years.length - contract.currentYear

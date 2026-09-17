@@ -36,7 +36,9 @@ function josa(word: string, withBatchim: string, withoutBatchim: string): string
 const i = (w: string) => josa(w, '이', '가');   // 주격
 const eun = (w: string) => josa(w, '은', '는'); // 주제격
 const eul = (w: string) => josa(w, '을', '를'); // 목적격
-const gwa = (w: string) => josa(w, '과', '와'); // 접속(~와)
+// MultiNegotiationView.tsx의 협상 화면 헤더("OO와 협상")도 재사용 — 뉴스 문구 전용이 아니라
+// 범용 조사 규칙이라 export.
+export const gwa = (w: string) => josa(w, '과', '와'); // 접속(~와)
 const euro = (w: string) => josa(w, '으로', '로'); // 도구/방향격(~으로)
 
 function teamName(slug: string, teamBySlug: Map<string, LeagueTeamRow>): string {

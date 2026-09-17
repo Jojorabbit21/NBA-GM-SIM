@@ -23,6 +23,7 @@ import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
 import { GameOnOffTab } from '../../../components/game/tabs/GameOnOffTab';
 import type { GameStatLeaders } from '../../../components/game/BoxScoreTable';
 import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -1278,7 +1279,7 @@ const MultiGamePbpView: React.FC = () => {
     const { session }           = useGame();
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
 
     // [2026-08-01] URL의 gameId는 짧은 코드(신규 리그) 또는 원래 game_id(T_R1_M0_G1 등, 구
     // 리그/매핑 없음)일 수 있음 — game_short_codes에서 역조회, 매핑이 없으면 그대로 폴백.

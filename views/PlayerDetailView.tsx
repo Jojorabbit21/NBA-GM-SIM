@@ -33,6 +33,7 @@ import { generateSaveTendencies } from '../utils/hiddenTendencies';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { getMoraleLabel } from '../services/moraleService';
 import { getAttrColor, getAttrBarColor } from '../utils/attrRatingColor';
+import { CONTRACT_TYPE_LABEL } from '../utils/contractLabels';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -1823,7 +1824,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400">
-                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.prevContract.type] ?? player.prevContract.type}
+                                                    {CONTRACT_TYPE_LABEL[player.prevContract.type] ?? player.prevContract.type}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center text-sm">
@@ -1889,7 +1890,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-500">유형</span>
                                                 <span className="text-slate-400 flex items-center gap-1">
-                                                    {{ rookie: '루키', veteran: '베테랑', max: '맥스', min: '미니멈', extension: '연장' }[player.contract.type] ?? player.contract.type}
+                                                    {CONTRACT_TYPE_LABEL[player.contract.type] ?? player.contract.type}
                                                     {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
                                                 </span>
                                             </div>

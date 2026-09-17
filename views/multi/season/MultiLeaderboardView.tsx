@@ -10,6 +10,7 @@ import { LeaderboardView, type LeaderboardFilterState } from '../../LeaderboardV
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { resolveRealAt } from './multiGameReveal';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import type { Team, Game, Player } from '../../../types';
 import type { ViewMode, StatCategory } from '../../../data/leaderboardConfig';
 import type { SeasonType } from '../../../hooks/useLeaderboardData';
@@ -22,7 +23,7 @@ function parseFilters(raw: string | null) {
 
 const MultiLeaderboardView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const { isLoading: gameLoading, schedule } = useSeasonContext();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();

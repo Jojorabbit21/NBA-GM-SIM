@@ -88,6 +88,12 @@ export function startScheduler(): void {
 async function sweepExpiredTradeOffers(): Promise<void> {
     const { error } = await supabase.rpc('expire_trade_offers');
     if (error) console.error('[scheduler] expire_trade_offers RPC error:', error.message);
+
+    // [2026-09-16] 오퍼 개별 만료 시각(expires_at)과는 별개로, 리그 트레이드 데드라인이
+    // 지나면 그 리그의 보류중 제안을 전부 만료 처리 — create_trade_offer/respond_trade_offer
+    // (accept)가 이미 검사하는 조건(migrations/expire_trade_offers_past_deadline.sql)과 동일.
+    const { error: deadlineErr } = await supabase.rpc('expire_trade_offers_past_deadline');
+    if (deadlineErr) console.error('[scheduler] expire_trade_offers_past_deadline RPC error:', deadlineErr.message);
 }
 
 // ── 메인 틱 ──────────────────────────────────────────────────────────────────

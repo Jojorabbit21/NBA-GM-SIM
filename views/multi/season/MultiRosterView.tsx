@@ -13,7 +13,8 @@ import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvanced
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
 import { RosterView } from '../../RosterView';
 import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
-import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -57,7 +58,7 @@ function buildGameLeadersMap(pbpRows: any[]): Map<string, GameLeaders> {
 
 const MultiRosterView: React.FC = () => {
     const { league, room, leagueTeams, members, isLoading: leagueLoading, reload } = useLeagueContext();
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const { session } = useGame();
     const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
     const { data: advancedStatsByTeam, isPending: advancedStatsLoading } = useTeamSeasonAdvancedStats(room?.id);
@@ -120,13 +121,15 @@ const MultiRosterView: React.FC = () => {
     // 즉시 뜬다. [2026-09-07] 이 select는 더 이상 game_pbp를 안 받음(includePbp:false) —
     // 선수 시즌 스탯은 아래 usePlayerSeasonStatsFull(서버 집계 RPC)에서 별도로 받아 병합한다
     // (팀 화면 최초 진입 시 game_pbp 통째 다운로드가 최대 병목이었던 문제 개선).
+    //
+    // [2026-09-16 Fix] 예전엔 이 화면이 mapRawPlayerToRuntimePlayer()로 meta_players 원본만
+    // 가지고 직접 Player[]를 조립했다 — room_player_state.contract(트레이드/FA서명/방출로
+    // 이 리그에서 바뀐 실제 계약)를 전혀 반영하지 않아, 협상 화면에서 체결한 계약(투웨이
+    // 포함)이 로스터 탭에는 반영되지 않는 버그가 있었다(다른 화면 8곳은 전부
+    // buildLeagueTeams()를 통해 이미 정상 반영). buildLeagueTeams()로 교체하고, 이 화면만
+    // 필요한 "활성 부상 상태(severity/타입/기간/복귀일)" 오버레이만 그 결과 위에 얹는다.
     const selectRosterIdentity = useCallback((raw: LeagueRawStatsData): Team[] => {
-        const playerBaseMap = new Map<string, Player>(
-            raw.playersRaw.map((r: any) => [
-                String(r.id),
-                mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true),
-            ]),
-        );
+        const teams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides);
 
         // room_player_state → "지금 활성 부상인지" 판정 + 배지 색상용 severity.
         // MultiTacticsView.tsx(뎁스차트)도 동일 로직을 쓰므로 공용 헬퍼로 뽑아뒀다.
@@ -139,34 +142,18 @@ const MultiRosterView: React.FC = () => {
             getTeamId: id => teamIdByPlayer.get(id),
         });
 
-        return leagueTeams.map(lt => ({
-            id:            lt.team_slug,
-            name:          lt.team_name,
-            city:          '',
-            logo:          lt.team_abbr,
-            conference:    (lt.conference as 'East' | 'West') ?? 'East',
-            division:      '',
-            wins:          0,
-            losses:        0,
-            budget:        0,
-            salaryCap:     0,
-            luxuryTaxLine: 0,
-            colorPrimary:   lt.color_primary,
-            colorSecondary: lt.color_secondary,
-            colorText:      lt.color_text,
-            abbr:           lt.team_abbr,
-            roster: (lt.roster ?? []).map(id => {
-                const base = playerBaseMap.get(id);
-                if (!base) return null;
-                const injuryStatus = activeInjuryByPlayer.get(id);
+        return teams.map(t => ({
+            ...t,
+            roster: t.roster.map(p => {
+                const injuryStatus = activeInjuryByPlayer.get(p.id);
                 return {
-                    ...base,
+                    ...p,
                     activeInjurySeverity: injuryStatus?.severity,
                     injuryType: injuryStatus?.injuryType,
                     activeInjuryDuration: injuryStatus?.duration,
                     returnDate: injuryStatus?.returnDate ?? undefined,
                 };
-            }).filter(Boolean) as Player[],
+            }),
         }));
     }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule]);
 
@@ -294,6 +281,8 @@ const MultiRosterView: React.FC = () => {
                     enableTeamSettingsTab
                     renderTeamSettingsPanel={() => <TeamSettingsPanel />}
                     advancedStatsByTeam={advancedStatsByTeam}
+                    maxRosterSize={(league as any)?.max_roster_size}
+                    twoWaySlots={(league as any)?.two_way_slots}
                 />
             </div>
         </div>

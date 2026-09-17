@@ -25,6 +25,7 @@ import { PlayerHoverCard, buildPlayerCardMap, mergeInjuryIntoPlayerCardMap } fro
 import { InjuryStatusBadge, SEVERITY_TEXT_COLOR } from '../components/common/InjuryStatusBadge';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
+import { shouldUseCustomOverrides } from '../utils/leagueOverrides';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
 import type { Game, Player, PlayerStats } from '../types';
 
@@ -240,7 +241,7 @@ const HomeLeagueLeadersSection: React.FC = () => {
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
 
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈 화면 최초 진입 병목 개선(buildLeagueTeams.ts 주석 참고).
@@ -963,7 +964,7 @@ const HomeMyTeamStatsSection: React.FC = () => {
     const { league, leagueTeams, room } = useLeagueContext();
     const { myTeamId, schedule } = useSeasonContext();
 
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈 화면 최초 진입 병목 개선(buildLeagueTeams.ts 주석 참고).
@@ -1055,7 +1056,7 @@ const HomeMyRosterSummarySection: React.FC = () => {
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
 
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
     const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈 화면 최초 진입 병목 개선(buildLeagueTeams.ts 주석 참고).

@@ -239,7 +239,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                         className={`flex items-center gap-2 ${onTeamClick ? 'cursor-pointer group/opp' : ''}`}
                         onClick={onTeamClick ? () => onTeamClick(row.oppId) : undefined}
                     >
-                        <span className={`text-sm font-semibold text-slate-300 uppercase truncate transition-colors ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
+                        <span className={`text-sm font-semibold text-slate-300 uppercase truncate ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
                             {oppTeam?.name || row.oppId}
                         </span>
                     </div>

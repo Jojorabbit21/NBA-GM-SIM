@@ -32,7 +32,7 @@ interface FAViewProps {
     onOfferAccepted: (
         playerId: string,
         contract: PlayerContract,
-        signingType: SigningType,
+        signingType: SigningType | undefined,
         updatedMarket: LeagueFAMarket,
     ) => void;
     onOfferSheetSubmitted?: (playerId: string, updatedMarket: LeagueFAMarket) => void;
@@ -63,25 +63,31 @@ const FA_ROLE_LABELS: Record<FARole, string> = {
 };
 
 const SLOT_LABELS: Record<SigningType, string> = {
-    cap_space:   '캡 스페이스',
-    non_tax_mle: '논택스 MLE',
-    tax_mle:     '택스페이어 MLE',
-    bae:         '바이어뉴얼 익셉션',
-    bird_full:   '풀 버드권',
-    bird_early:  '얼리 버드권',
-    bird_non:    '논버드',
-    vet_min:     '베테랑 미니멈',
+    non_taxpayer_mle: '논택스 MLE',
+    taxpayer_mle:     '택스페이어 MLE',
+    room_mle:         '룸 예외',
+    biannual_exception: '바이어뉴얼 익셉션',
+    full_bird:   '풀 버드권',
+    early_bird:  '얼리 버드권',
+    non_bird:    '논버드',
+    minimum_exception: '베테랑 미니멈',
+    second_round_exception: '2라운드 픽 예외',
+    rookie_scale_exception: '루키 스케일 예외',
 };
 
 const SLOT_CAPS: Record<SigningType, string> = {
-    cap_space:   '잔여 캡',
-    non_tax_mle: '$14.1M',
-    tax_mle:     '$5.7M',
-    bae:         '$4.5M',
-    bird_full:   '맥스',
-    bird_early:  '전 연봉 175%',
-    bird_non:    '전 연봉 120%',
-    vet_min:     '미니멈',
+    non_taxpayer_mle: '$14.1M',
+    taxpayer_mle:     '$5.7M',
+    room_mle:         '~$8M',
+    biannual_exception: '$4.5M',
+    full_bird:   '맥스',
+    early_bird:  '전 연봉 175%',
+    non_bird:    '전 연봉 120%',
+    minimum_exception: '미니멈',
+    second_round_exception: '평균연봉 수준',
+    // 루키 스케일 예외는 이 FA 화면(기존 계약자 재계약) 경로로 들어오지 않음(드래프트 직후
+    // 전용 플로우) — 표시용 기본값만 채워둠.
+    rookie_scale_exception: '스케일의 80~120%',
 };
 
 function attrColor(v: number): string {
@@ -208,31 +214,31 @@ const StaffFATab: React.FC<{
                         </TableRow>
                     ) : coaches.map(coach => (
                         <TableRow key={coach.id} className="group">
-                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/40">
+                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/40">
                                 <span
-                                    className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
+                                    className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer"
                                     onClick={() => navigate(`/coach/${coach.id}`, { state: { coach, teamId: '' } })}
                                 >
                                     {coach.name}
                                 </span>
                             </TableCell>
-                            <TableCell align="center" className="font-mono text-slate-400 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                            <TableCell align="center" className="font-mono text-slate-400 text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
                                 {coach.age}
                             </TableCell>
                             {ALL_ABILITY_COLS.map(([key]) => (
-                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800">
                                     <span className={coachValColor(coach.abilities[key] ?? 0)}>
                                         {coachAbilityLabel(coach.abilities[key] ?? 0)}
                                     </span>
                                 </TableCell>
                             ))}
-                            <TableCell align="center" className="font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                            <TableCell align="center" className="font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
                                 {formatFullSalary(coach.contractSalary)}
                             </TableCell>
-                            <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors border-r border-slate-800/30">
+                            <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
                                 {coach.contractYears}년
                             </TableCell>
-                            <TableCell align="center" className="px-1 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                            <TableCell align="center" className="px-1 bg-slate-900 group-hover:bg-slate-800">
                                 {onNegotiateCoach && (
                                     <button
                                         onClick={() => hasOpenSlot && onNegotiateCoach(coach, firstAvailableRole)}

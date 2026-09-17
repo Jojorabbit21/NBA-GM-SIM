@@ -120,10 +120,10 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                         return (
                             <TableRow key={r.role} className="group">
                                 {/* 이름 */}
-                                <TableCell style={sticky(0, W.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
+                                <TableCell style={sticky(0, W.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                     {coach ? (
                                         <button
-                                            className="text-xs font-semibold text-slate-200 hover:text-indigo-400 transition-colors text-left truncate w-full"
+                                            className="text-xs font-semibold text-slate-200 hover:text-indigo-400 text-left truncate w-full"
                                             onClick={() => onCoachClick?.(r.role)}
                                         >
                                             {coach.name}
@@ -133,7 +133,7 @@ export const CoachStaffTable: React.FC<CoachStaffTableProps> = ({ staff, onCoach
                                     )}
                                 </TableCell>
                                 {/* 직무 배지: border-r 없음 */}
-                                <TableCell style={sticky(LEFT_ROLE, W.ROLE)} className="bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">
+                                <TableCell style={sticky(LEFT_ROLE, W.ROLE)} className="bg-slate-900 group-hover:bg-slate-800 text-center">
                                     <span className="text-xs font-black text-slate-400 bg-slate-800 ring-1 ring-slate-700 rounded px-1.5 py-0.5">{r.fullName}</span>
                                 </TableCell>
                                 {/* 연봉 */}

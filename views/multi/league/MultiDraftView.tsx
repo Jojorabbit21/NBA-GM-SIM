@@ -10,6 +10,7 @@ import { useDraftPresence } from '../../../hooks/useDraftPresence';
 import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft';
 import type { Player } from '../../../types';
 import { ATTR_GROUPS, ATTR_AVG_KEYS } from '../../../data/attributeConfig';
+import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 
 import { DraftHeader } from '../../../components/draft/DraftHeader';
 import { DraftBoard } from '../../../components/draft/DraftBoard';
@@ -74,7 +75,7 @@ const MultiDraftView: React.FC = () => {
     const { room, members, league, leagueTeams } = useLeagueContext();
     const userId       = session?.user?.id ?? null;
     const isAdmin            = !!(userId && league?.admin_user_id === userId);
-    const useCustomOverrides = (league?.draft_pool ?? '').split(',').map(s => s.trim()).includes('alltime');
+    const useCustomOverrides = shouldUseCustomOverrides(league);
 
     const {
         draftState, poolPlayers, isLoading,
