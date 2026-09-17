@@ -13,6 +13,7 @@ import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
+import { checkDraftPoolCapacity } from '../../../services/multi/draftPoolCapacity';
 import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -356,6 +357,16 @@ const LeagueSettingsView: React.FC = () => {
         setSavingLeague(true);
         setSaveLeagueOk(false);
         setSaveLeagueErr(null);
+        // 참가팀 수가 늘면 필요 픽 수(팀 × 라운드)도 늘어난다 — 저장 전 풀 용량 확인.
+        // (isMaxTeamsDirty와 같은 식이지만 그 const가 이 함수보다 아래에서 선언되므로 인라인으로 계산)
+        if (maxTeams !== (league.max_teams ?? 8)) {
+            try {
+                const capacityErr = await validateDraftPoolCapacity();
+                if (capacityErr) { setSavingLeague(false); setSaveLeagueErr(capacityErr); return; }
+            } catch (e: any) {
+                setSavingLeague(false); setSaveLeagueErr(e?.message ?? '드래프트 풀 조회 실패'); return;
+            }
+        }
         const trimmedName = nameInput.trim();
         const playoffEditable = league.type === 'main_league' && !league.bracket_data;
         const { error: err } = await updateLeagueSettings({
@@ -373,11 +384,29 @@ const LeagueSettingsView: React.FC = () => {
     };
 
 
+    // 드래프트 풀 용량 가드(참가팀 × 라운드 ≤ 풀 크기) — 드래프트 탭(라운드/풀 범위)과 리그 탭
+    // (참가팀 수) 어느 쪽을 저장하든 현재 폼 값 기준으로 검사한다. 부족하면 서버 DraftRoom이
+    // 마지막 픽에서 선수 고갈로 영영 멈추므로(2026-09-17 "New League" 세션) 저장 자체를 막는다.
+    // 드래프트가 이미 진행 중이면 풀/라운드가 잠겨 있어 검사할 의미가 없다.
+    const validateDraftPoolCapacity = async (): Promise<string | null> => {
+        if (isInProgress) return null;
+        return checkDraftPoolCapacity({
+            teamCount: maxTeams, totalRounds,
+            draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+        });
+    };
+
     const handleSave = async () => {
         if (!league?.id) return;
         setSaving(true);
         setSaveOk(false);
         setSaveErr(null);
+        try {
+            const capacityErr = await validateDraftPoolCapacity();
+            if (capacityErr) { setSaving(false); setSaveErr(capacityErr); return; }
+        } catch (e: any) {
+            setSaving(false); setSaveErr(e?.message ?? '드래프트 풀 조회 실패'); return;
+        }
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
             lotteryScheduledAt:  toIso(lotteryAt),
@@ -1926,6 +1955,8 @@ const LeagueSettingsView: React.FC = () => {
                     onDraftFormatChange={setDraftFormat}
                     useCustomOverrides={useCustomOverrides}
                     onUseCustomOverridesChange={setUseCustomOverrides}
+                    teamCount={maxTeams}
+                    totalRounds={totalRounds}
                 />
 
                 {/* 경기 포맷 — 토너먼트만 */}

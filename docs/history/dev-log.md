@@ -35,6 +35,87 @@
 
 ---
 
+## 2026-09-17 — 드래프트 풀 용량 가드(참가팀 × 라운드 ≤ 풀 크기) — 세션 생성/설정 저장/서버 준비 3중 차단
+
+**배경**: "New League" 세션(room `77a012bd-…`)이 15라운드 #432픽(index 431)에서 정지. fly.io 로그
+`loaded room … (pool=431 players)` → `auto pick #431 scheduled` → `no available players for auto pick`
+이후 무응답. 30팀 × 15라운드 = 450픽인데 풀이 431명뿐이라 선수가 고갈됐고, `DraftRoom.onAiPick()`은
+`getBestAvailableId()`가 null이면 경고만 남기고 `return`해 타이머 재예약도 완료 처리도 없이 커서가
+`active/currentPickIndex=431`로 영원히 남는다. 풀이 431명이었던 직접 원인은 **fly.io 배포(v152,
+2026-09-15 12:38 UTC)가 9/16 풀 필터 재설계(`draftPoolQuery.ts`, base_team_id 조건 제거) 이전 코드**라서
+구버전 `standard` 쿼리(`in_multi_pool AND draft_year<2026 AND base_team_id IS NOT NULL` = 정확히 431명)가
+돌았기 때문. 최신 코드로는 608명. 어느 쪽이든 "풀 < 필요 픽 수" 검증이 어디에도 없어서 라운드/OVR 범위
+설정에 따라 언제든 재발 가능 → 사용자 요청: "세션 시작부터 가드를 만들어 아예 세션을 만들 수 없게".
+
+**변경 파일**:
+- `services/multi/draftPoolCapacity.ts` (client, 신규) — `getRequiredDraftPicks()`, `fetchDraftPoolPlayers()`,
+  `checkDraftPoolCapacity()`, `buildCapacityError()`
+- `components/multi/DraftPoolSettings.tsx` (client) — 풀 통계 조회를 위 헬퍼로 교체 + `teamCount`/`totalRounds`
+  optional prop → "필요 N명" 표시 + 부족 시 빨간 경고 박스
+- `components/multi/CreateLeagueModal.tsx` (client) — `handleSubmit` try 블록 첫 줄에서 용량 검사, 실패 시 throw
+- `views/multi/league/LeagueSettingsView.tsx` (client) — `validateDraftPoolCapacity()` 추가, `handleSave`(드래프트 탭)
+  항상 검사, `handleSaveLeagueTab`(리그 탭)은 참가팀 수가 바뀐 경우만 검사
+- `server/src/startDraft.ts` (server 미러) — `buildDraftSetup()` poolIds 계산 직후 `poolIds.length < allMembers.length × totalRounds`면 `{ok:false}` 반환
+
+**Before**:
+```ts
+// DraftPoolSettings.tsx — 통계 조회가 컴포넌트 안에 직접
+let query = supabase.from('meta_players').select('id, position, base_attributes, tendencies');
+query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax);
+const { data } = await query;
+const raw = (data as any[] ?? []).map(r => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
+const all = raw.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
+
+// CreateLeagueModal.handleSubmit — 이름/일시/팀선택 검증만 있고 풀 용량 검증 없음
+setSaving(true); setErr(null);
+try { let leagueId: string; ... createLeague(...) }
+
+// LeagueSettingsView.handleSave / handleSaveLeagueTab — 검증 없이 곧바로 updateLeagueSettings()
+
+// server/src/startDraft.ts buildDraftSetup()
+const poolIds = rawPlayers.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax).map(p => String(p.id));
+// (바로 pickOrder 생성으로 진행)
+```
+
+**After**:
+```ts
+// services/multi/draftPoolCapacity.ts (신규)
+export function getRequiredDraftPicks(teamCount, totalRounds) { return teamCount * totalRounds; }
+export async function fetchDraftPoolPlayers({draftYearMin, draftYearMax, ovrMin, ovrMax, useCustomOverrides}) {
+    // applyMetaPlayerPoolFilter → mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true) → OVR 범위 필터
+}
+export async function checkDraftPoolCapacity(params & {teamCount, totalRounds}): Promise<string | null>
+export function buildCapacityError(poolSize, teamCount, totalRounds): string | null
+//  → "드래프트 풀이 부족합니다 — 현재 431명, 필요 450명(30팀 × 15라운드). OVR/드래프트 연도 범위를 넓히거나 …"
+
+// CreateLeagueModal.handleSubmit — try 블록 첫 줄
+const capacityErr = await checkDraftPoolCapacity({ teamCount: maxTeams, totalRounds, draftYearMin, draftYearMax,
+    ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides });
+if (capacityErr) throw new Error(capacityErr);
+
+// LeagueSettingsView
+const validateDraftPoolCapacity = async () => isInProgress ? null : checkDraftPoolCapacity({...현재 폼 값});
+// handleSave: 항상 / handleSaveLeagueTab: maxTeams !== (league.max_teams ?? 8)일 때만
+
+// server/src/startDraft.ts buildDraftSetup()
+const requiredPicks = allMembers.length * totalRounds;
+if (poolIds.length < requiredPicks) return { ok: false, error: `draft pool too small: pool=… < required=…` };
+```
+
+**검증**: 클라 `npx tsc -p tscheck.json` 변경 파일 오류 0건. 서버 `tsc`는 `startDraft.ts` 72/123/134/376행
+`result.error` 내로잉 오류 4건이 있으나 `git stash` 후 동일하게 4건 → 기존 오류(strictNullChecks 미설정 시
+`!result.ok` 진리값 내로잉 미동작, Bun 런타임엔 영향 없음). 실제 세션 생성 화면 동작 테스트는 미실시.
+
+**주의**: 서버 가드는 클라와 달리 사용자에게 보이지 않고 `[startDraft]`/`[run-lottery] prepareDraftRoom failed`
+로그로만 남는다(방은 `preparing` 상태에 머묾). 기존에 멈춘 "New League" 방은 이 변경으로 복구되지 않음 —
+별도 조치(강제 완료 또는 리셋) 필요. **fly.io 미배포 상태 그대로**(배포해야 풀 필터·가드 모두 적용).
+
+**롤백 방법**: 5개 파일을 Before로 복원(신규 파일 `draftPoolCapacity.ts` 삭제, DraftPoolSettings의 import를
+`supabase`/`mapRawPlayerToRuntimePlayer`/`applyMetaPlayerPoolFilter`로 되돌림). 클라/서버 가드는 서로 독립이라
+한쪽만 롤백해도 동작은 깨지지 않음(공식만 동일하게 유지).
+
+---
+
 ## 2026-09-17 — bbref 스크래핑으로 528명 드래프트 정보 + 계약 이력(contract_history) + 현재 계약(contract) 일괄 기록
 
 **배경**: `meta_players`의 계약 데이터가 사람이 부분 입력한 상태(현재 계약 688명, `contract_history`

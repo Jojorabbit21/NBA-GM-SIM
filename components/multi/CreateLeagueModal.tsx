@@ -9,6 +9,7 @@ import {
     initializeLeagueTeams,
 } from '../../services/multi/leagueService';
 import { DraftPoolSettings, type DraftFormat } from './DraftPoolSettings';
+import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
 import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 import { TEAM_DATA } from '../../data/teamData';
 import { getDefaultTradeDeadline, getTradeDeadlineBounds, clampTradeDeadline } from '../../utils/tradeDeadline';
@@ -257,6 +258,15 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
         setErr(null);
 
         try {
+            // [2026-09-17] 드래프트 풀 용량 가드 — 참가팀 × 라운드만큼 선수가 없으면 서버 DraftRoom이
+            // 마지막 픽에서 "no available players"로 멈춘 채 영영 완료되지 않는다("New League" 세션:
+            // 풀 431명 < 30팀×15라운드=450픽). 세션 자체를 만들 수 없게 여기서 차단한다.
+            const capacityErr = await checkDraftPoolCapacity({
+                teamCount: maxTeams, totalRounds,
+                draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+            });
+            if (capacityErr) throw new Error(capacityErr);
+
             let leagueId: string;
             let shortCode: string | null = null;
 
@@ -824,6 +834,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             onDraftFormatChange={setDraftFormat}
                             useCustomOverrides={useCustomOverrides}
                             onUseCustomOverridesChange={setUseCustomOverrides}
+                            teamCount={maxTeams}
+                            totalRounds={totalRounds}
                         />
 
                         <div className="border-t border-slate-800 pt-5" />

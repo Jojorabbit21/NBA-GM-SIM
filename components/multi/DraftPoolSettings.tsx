@@ -1,9 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Users } from 'lucide-react';
-import { supabase } from '../../services/supabaseClient';
-import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
-import { applyMetaPlayerPoolFilter } from '../../services/multi/draftPoolQuery';
+import { Users, AlertTriangle } from 'lucide-react';
+import { fetchDraftPoolPlayers, buildCapacityError } from '../../services/multi/draftPoolCapacity';
 import { DraftPoolModal } from './DraftPoolModal';
 
 export type DraftFormat = 'snake' | 'linear';
@@ -33,6 +31,13 @@ interface Props {
     onDraftFormatChange:  (v: DraftFormat) => void;
     useCustomOverrides:      boolean;
     onUseCustomOverridesChange: (v: boolean) => void;
+    /**
+     * 드래프트에 필요한 총 픽 수(참가팀 × 라운드)를 계산할 재료. 넘기면 풀 통계 옆에 "필요 N명"과
+     * 부족 시 경고를 함께 표시한다 — 저장 시점의 checkDraftPoolCapacity()와 같은 공식이라 여기서
+     * 경고가 뜨면 저장도 반드시 막힌다(사용자가 저장 버튼을 누르기 전에 미리 알 수 있게).
+     */
+    teamCount?:   number;
+    totalRounds?: number;
 }
 
 const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
@@ -49,9 +54,11 @@ export const DraftPoolSettings: React.FC<Props> = ({
     draftYearMax, onDraftYearMaxChange,
     draftFormat, onDraftFormatChange,
     useCustomOverrides, onUseCustomOverridesChange,
+    teamCount, totalRounds,
 }) => {
     const [stats, setStats]               = useState<PoolStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
+    const [statsFailed,  setStatsFailed]  = useState(false);
     const [showModal,    setShowModal]    = useState(false);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -96,24 +103,32 @@ export const DraftPoolSettings: React.FC<Props> = ({
 
     const fetchStats = async () => {
         setStatsLoading(true);
+        try {
+            // 저장 시 용량 검증(checkDraftPoolCapacity)과 정확히 같은 조회 경로 — 여기 표시되는
+            // "총 선수"가 곧 검증에 쓰이는 풀 크기다.
+            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, ovrMin, ovrMax, useCustomOverrides });
 
-        let query = supabase
-            .from('meta_players')
-            .select('id, position, base_attributes, tendencies');
-        query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax);
-
-        const { data } = await query;
-        const raw = (data as any[] ?? []).map(r => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true));
-        const all = raw.filter(p => p.ovr >= ovrMin && p.ovr <= ovrMax);
-
-        const byPos: Record<string, number> = {};
-        for (const p of all) {
-            const pos = (p.position ?? '기타').split('/')[0];
-            byPos[pos] = (byPos[pos] ?? 0) + 1;
+            const byPos: Record<string, number> = {};
+            for (const p of all) {
+                const pos = (p.position ?? '기타').split('/')[0];
+                byPos[pos] = (byPos[pos] ?? 0) + 1;
+            }
+            setStats({ total: all.length, byPos });
+            setStatsFailed(false);
+        } catch {
+            setStats(null);
+            setStatsFailed(true);
+        } finally {
+            setStatsLoading(false);
         }
-        setStats({ total: all.length, byPos });
-        setStatsLoading(false);
     };
+
+    // 필요 픽 수 대비 부족 경고 — teamCount/totalRounds를 넘긴 호출부에서만 표시.
+    const hasCapacityInputs = teamCount != null && totalRounds != null;
+    const requiredPicks = hasCapacityInputs ? teamCount * totalRounds : null;
+    const capacityError = (stats && requiredPicks != null)
+        ? buildCapacityError(stats.total, teamCount!, totalRounds!)
+        : null;
 
     return (
         <div className="space-y-4">
@@ -196,15 +211,22 @@ export const DraftPoolSettings: React.FC<Props> = ({
             </div>
 
             {/* 풀 통계 */}
-            <div className="rounded-xl bg-slate-800/60 px-3 py-2.5 min-h-[52px] flex flex-col justify-center">
+            <div className={`rounded-xl px-3 py-2.5 min-h-[52px] flex flex-col justify-center ${
+                capacityError ? 'bg-red-950/40 border border-red-700/50' : 'bg-slate-800/60'
+            }`}>
                 {statsLoading ? (
                     <p className="text-xs text-slate-500 ko-normal text-center">불러오는 중…</p>
                 ) : stats ? (
                     <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-400 ko-normal">총 선수</span>
+                            <span className="text-xs text-slate-400 ko-normal">
+                                총 선수
+                                {requiredPicks != null && (
+                                    <span className="text-slate-500"> · 필요 {requiredPicks}명</span>
+                                )}
+                            </span>
                             <div className="flex items-center gap-2">
-                                <span className="text-sm font-black text-white">{stats.total}명</span>
+                                <span className={`text-sm font-black ${capacityError ? 'text-red-400' : 'text-white'}`}>{stats.total}명</span>
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(true)}
@@ -227,9 +249,17 @@ export const DraftPoolSettings: React.FC<Props> = ({
                                 </span>
                             ) : null}
                         </div>
+                        {capacityError && (
+                            <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal pt-1">
+                                <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                                <span>{capacityError}</span>
+                            </p>
+                        )}
                     </div>
                 ) : (
-                    <p className="text-xs text-slate-500 ko-normal text-center">불러오는 중…</p>
+                    <p className="text-xs text-slate-500 ko-normal text-center">
+                        {statsFailed ? '풀 정보를 불러오지 못했습니다' : '불러오는 중…'}
+                    </p>
                 )}
             </div>
 

@@ -274,6 +274,20 @@ async function buildDraftSetup(
         .filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax)
         .map((p: any) => String(p.id));
 
+    // [2026-09-17] 드래프트 풀 용량 최종 방어선 — 참가팀 × 라운드만큼 선수가 없으면 DraftRoom이
+    // 마지막 픽에서 "no available players for auto pick"으로 멈춘 채 영영 완료되지 않는다
+    // ("New League" 세션: 풀 431명 < 30팀×15라운드=450픽, #431에서 정지). 1차 가드는 클라이언트
+    // (services/multi/draftPoolCapacity.ts — 세션 생성/설정 저장 시 차단)이고, 여기는 구버전 클라나
+    // 직접 DB 수정으로 우회된 경우를 잡는 미러. 공식을 바꾸면 둘 다 고칠 것.
+    const requiredPicks = allMembers.length * totalRounds;
+    if (poolIds.length < requiredPicks) {
+        return {
+            ok: false,
+            error: `draft pool too small: pool=${poolIds.length} < required=${requiredPicks} `
+                 + `(${allMembers.length} teams × ${totalRounds} rounds) — widen OVR/draft_year range or reduce rounds`,
+        };
+    }
+
     // 픽 순서 생성 — 로비에서 진행한 로터리 추첨 결과(league_teams.draft_order)를 그대로 반영한다.
     // (예전엔 여기서 seededShuffle로 순서를 새로 뽑아써서, 로비에 표시된 추첨 결과와 실제 드래프트
     // 순서가 서로 다른 버그가 있었다 — 로터리 결과가 유일한 신뢰 원천이 되도록 고정한다.)
