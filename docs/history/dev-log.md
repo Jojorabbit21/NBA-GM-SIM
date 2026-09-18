@@ -93,7 +93,13 @@ const canChangePre = isRecruiting && !lotteryDone && !(isPersonalDraft && draftD
 
 **배포**: 2026-09-18 — fly.io **v158**(`flyctl deploy --remote-only`, 머신 started, `curl` 200, 로그 `[scheduler] started (30s interval)` 정상, 에러 없음). 강퇴 스윕(`personalDraftDeadline.ts`)이 이제 실제로 동작. 롤백은 `flyctl releases`에서 v157.
 
-**후속(같은 날)**: 사용자 보고 "퍼스널 드래프트를 완료해도 팀 메뉴가 표시되지 않아." 원인 파악 — 이 항목을 포함해 사이드바 메뉴 분기(`usePersonalDraftStatus`/`MultiSidebar.tsx` 등, 바로 위 "완료 후 메뉴 분기" 항목)까지 전부 로컬에만 있었고 fly.io 배포(v158) 이전엔 git 커밋조차 안 돼 있어 Vercel 프로덕션엔 옛 `MultiSidebar`(개인 드래프트에서 `isDraftComplete`가 토너먼트 시작 전까지 항상 false라 팀 메뉴가 영영 안 열리던 버전)가 그대로 떠 있었다. 커밋 `ff0a4a4`로 이 세션의 미반영 클라이언트 변경 전체(메뉴 분기, 참가/드래프트 마감, 팩 재등장 수정 클라 문구, 인스턴스 로스터 해석기)를 push → Vercel 프로덕션 자동 배포 완료(`basketball-gm-a08gej1oz-...vercel.app`, Ready, 42초 빌드). `npx vite build` 클린 확인 후 push.
+**후속(같은 날, 1차)**: 사용자 보고 "퍼스널 드래프트를 완료해도 팀 메뉴가 표시되지 않아." 원인 파악 — 이 항목을 포함해 사이드바 메뉴 분기(`usePersonalDraftStatus`/`MultiSidebar.tsx` 등, 바로 위 "완료 후 메뉴 분기" 항목)까지 전부 로컬에만 있었고 fly.io 배포(v158) 이전엔 git 커밋조차 안 돼 있어 Vercel 프로덕션엔 옛 `MultiSidebar`(개인 드래프트에서 `isDraftComplete`가 토너먼트 시작 전까지 항상 false라 팀 메뉴가 영영 안 열리던 버전)가 그대로 떠 있었다. 커밋 `ff0a4a4`로 이 세션의 미반영 클라이언트 변경 전체(메뉴 분기, 참가/드래프트 마감, 팩 재등장 수정 클라 문구, 인스턴스 로스터 해석기)를 push → Vercel 프로덕션 자동 배포 완료(`basketball-gm-a08gej1oz-...vercel.app`, Ready, 42초 빌드). `npx vite build` 클린 확인 후 push.
+
+**후속(같은 날, 2차 — 진짜 원인)**: 사용자 재보고 "하드 리프레시 후에도 뜨지 않고 있어." Supabase MCP로 직접 검증(RLS 통과 확인, `personal_draft_progress.status='completed'` 실데이터 확인, 배포된 JS 번들에 `usePersonalDraftStatus` 코드 포함 확인 — 전부 정상)한 끝에 진짜 원인 발견: `index.tsx`의 전역 `QueryClient` 기본값이 `staleTime: Infinity` + `PersistQueryClientProvider`(localStorage 영속화, "CTO 방침: 클라이언트가 Source of Truth"). `usePersonalDraftStatus`가 이 기본값을 상속해서, 드래프트 완료 시점에 이 훅을 쓰는 컴포넌트(Sidebar/Header/Lobby)가 하나도 마운트돼 있지 않았다면(마지막 픽은 보통 `PersonalDraftView`에서 일어나는데 그 화면엔 이 훅이 없음) Realtime 무효화 신호를 아무도 못 받고, `staleTime: Infinity`라 이후 그 화면들에 들어가도 "영원히 신선함" 취급된 옛 캐시(localStorage에 영속화돼 하드 리프레시에도 살아남음)를 그대로 보여준다.
+
+**변경**: `hooks/usePersonalDraftStatus.ts` — `useQuery`에 `staleTime: 0` 명시(전역 기본값 오버라이드). 마운트될 때마다 항상 재조회하도록 강제 — Realtime 구독은 "마운트된 상태에서의 근실시간 갱신" 보조 수단으로만 남고, 정확성의 최종 보장은 mount 시 강제 재조회가 담당.
+
+**검증**: `npx tsc --noEmit`/`npx vite build` 클린.
 
 **롤백 방법**: `claim_team`은 위 Before 정의로 재적용(마감 체크 블록만 제거), `ALTER TABLE leagues DROP COLUMN draft_deadline_at;`. 서버/클라 파일은 Before 요지대로 되돌리고 `personalDraftDeadline.ts` 삭제.
 

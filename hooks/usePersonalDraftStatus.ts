@@ -20,6 +20,13 @@ export function usePersonalDraftStatus(
     const { data = null } = useQuery({
         queryKey,
         enabled,
+        // [2026-09-18 Fix] 앱 전역 QueryClient 기본값이 staleTime: Infinity(+ localStorage 영속화,
+        // index.tsx) — 이 값을 상속하면 "드래프트 완료" 같은 상태 변화가 한 번 캐시된 뒤엔 Realtime
+        // 무효화 신호를 놓칠 경우(예: 마지막 픽이 PersonalDraftView에서 일어날 때 이 훅을 쓰는
+        // Sidebar/Header/Lobby 어느 것도 마운트돼 있지 않았던 경우) 하드 리프레시를 해도 절대
+        // 재조회되지 않는다(복원된 영속 캐시가 "영원히 신선함"으로 취급됨) — 실제 리포트된 버그.
+        // 이 쿼리는 전역 기본값을 오버라이드해 마운트될 때마다 항상 재조회한다.
+        staleTime: 0,
         queryFn: async (): Promise<PersonalDraftStatus> => {
             const { data: row, error } = await supabase
                 .from('personal_draft_progress')
