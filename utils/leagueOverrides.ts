@@ -15,3 +15,16 @@
 export function shouldUseCustomOverrides(league: { use_custom_overrides?: boolean | null } | null | undefined): boolean {
     return league?.use_custom_overrides ?? false;
 }
+
+/**
+ * [2026-09-18] 이 리그에서 Two-Way 계약 경로(슬롯 표시·설정, 협상 화면의 투웨이 유형)가 살아 있는지.
+ * CBA 규정(cba_rules_enabled)이 꺼지면 협상 화면 자체가 없어 투웨이가 성립하지 않고(2026-09-17), 그 위에
+ * 리그 설정의 Two-Way 사용 스위치(two_way_enabled, 기본 true)가 추가로 걸린다. 서버 RPC
+ * sign_free_agent_negotiated()도 two_way_enabled=false면 two_way 계약을 거부한다(two_way_disabled).
+ * 화면마다 두 플래그를 각자 조합하지 말고 이 함수를 쓸 것.
+ */
+export function isTwoWayContractEnabled(
+    league: { cba_rules_enabled?: boolean | null; two_way_enabled?: boolean | null } | null | undefined,
+): boolean {
+    return !!league?.cba_rules_enabled && (league?.two_way_enabled ?? true);
+}

@@ -37,6 +37,9 @@ export interface TournamentGame {
     /** 실제 방송 시각(ISO) — 생성 시점에 한 번만 계산해 저장(SSOT). 없으면(레거시 데이터)
      * 클라이언트/서버가 game_seq로부터 매번 재계산하는 폴백 경로를 탄다. */
     scheduledAt?: string;
+    /** [2026-09-18] 가상 시각(HH:MM) — 타임라인 리그의 포스트시즌 경기는 timelineStore가 시리즈 슬롯
+     *  (playoffTimeSlot)으로 채운다. 구 리그/토너먼트는 비어 있음. */
+    time?: string;
     played: boolean;
     isPlayoff: boolean;
     seriesId?: string;

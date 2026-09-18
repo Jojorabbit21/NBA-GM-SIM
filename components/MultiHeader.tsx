@@ -9,6 +9,7 @@ import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
+import { useServerClock } from '../utils/serverClock';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { useLeagueDraft } from '../hooks/useLeagueDraft';
@@ -42,7 +43,7 @@ function seasonShortFromDate(dateKey: string): string {
 }
 
 export const MultiHeader: React.FC = () => {
-    const { league, leagueTeams, members } = useLeagueContext();
+    const { league, leagueTeams, members , timeline } = useLeagueContext();
     const { session } = useGame();
     const { schedule, roomId } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
@@ -59,11 +60,10 @@ export const MultiHeader: React.FC = () => {
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
 
-    const [nowMs, setNowMs] = useState(() => Date.now());
-    useEffect(() => {
-        const id = setInterval(() => setNowMs(Date.now()), 1000);
-        return () => clearInterval(id);
-    }, []);
+    // [2026-09-18] 로컬 Date.now() → 서버 보정 시계. 다른 화면(스트립/일정/순위)은 전부 서버 보정
+    // 시각을 쓰는데 헤더만 로컬 시계라, 로컬 시계가 어긋난 사용자에게 헤더 날짜와 스트립 상태가
+    // 서로 다른 순간에 넘어가는 문제가 있었다.
+    const nowMs = useServerClock();
 
     // [2026-09-07] nowMs는 1초마다 바뀌지만, 아래 스케줄 전체를 순회하는 계산들(순위/라이브
     // 경기/시리즈 전적/우승팀 판정)은 그렇게 자주 다시 스캔할 필요가 없다 — 실제 경기
@@ -120,8 +120,8 @@ export const MultiHeader: React.FC = () => {
     // 우승팀 판정에도 공통으로 재사용(MultiGamePbpView.tsx의 revealBucket과 동일 패턴).
     const currentVirtualDate = useMemo(() => {
         if (league?.type !== 'main_league' || !simStart) return null;
-        return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000);
-    }, [league, schedule, simStart, gprd, dateBucket]);
+        return findCurrentVirtualDate(schedule, simStart, gprd, dateBucket * 15000, timeline);
+    }, [league, schedule, simStart, gprd, dateBucket, timeline]);
 
     // [2026-09-15 Fix] "올스타" 메뉴 노출 — 투표 시작일에 나타나고 브레이크 종료일에 사라진다.
     // currentVirtualDate를 이미 위에서 계산해두므로 추가 조회 없이 날짜 비교만 하면 된다.
@@ -279,7 +279,15 @@ export const MultiHeader: React.FC = () => {
     const isDrafting = league?.status === 'drafting';
     // [2026-09-11] 드래프트 진행 중엔 이 버튼을 우측 끝(NavMenu 옆)이 아니라 시즌정보 칸의
     // "남은 시간" 텍스트 바로 우측으로 옮겨 붙인다(요청) — 그래서 isDrafting일 땐 여기서 숨김.
-    const showDraftRoomButton = !isDraftComplete && lotteryDone && !isDrafting;
+    // [2026-09-18] 토너먼트 개인 팩 드래프트(leagues.personal_draft_format 존재)는 로터리/공유풀
+    // 드래프트 룸이 없다 — 내 팀이 확정된 순간부터 드래프트 완료 전까지 개인 드래프트 화면으로 진입.
+    const isPersonalDraft = !!league?.personal_draft_format;
+    const draftRoomPath = isPersonalDraft
+        ? `/multi/leagues/${leagueId}/personal-draft`
+        : `/multi/leagues/${leagueId}/draft`;
+    const showDraftRoomButton = isPersonalDraft
+        ? !isDraftComplete && !!myTeam
+        : !isDraftComplete && lotteryDone && !isDrafting;
 
     // [2026-09-11] "드래프트 진행 중일 때 헤더에도 현재 픽 정보 표시" 요청 — LeagueLobbyPanel.tsx/
     // MultiDraftView.tsx가 이미 쓰는 훅을 그대로 재사용(WS 연결이 하나 더 열리지만, 드래프트
@@ -469,10 +477,10 @@ export const MultiHeader: React.FC = () => {
                 />
                 {showDraftRoomButton && (
                     <button
-                        onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
+                        onClick={() => navigate(draftRoomPath)}
                         className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-black text-white transition-all active:scale-[0.98] shrink-0"
                     >
-                        드래프트 룸 입장
+                        {isPersonalDraft ? '팩 드래프트 입장' : '드래프트 룸 입장'}
                     </button>
                 )}
             </div>

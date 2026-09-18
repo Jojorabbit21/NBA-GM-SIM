@@ -437,7 +437,7 @@ const MultiScheduleView: React.FC = () => {
     const { leagueId }                                    = useParams<{ leagueId: string }>();
     const navigate                                         = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { league, room, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
+    const { league, room, leagueTeams, isLoading: leagueLoading , timeline } = useLeagueContext();
     const { getGameUrlId } = useGameShortCodes(room?.id);
     const { getPlayerUrlId } = usePlayerShortCodes();
     const simStart = league?.sim_real_start_at ?? null;
@@ -566,8 +566,10 @@ const MultiScheduleView: React.FC = () => {
             // 뜨는 버그가 있었다 — 플레이오프/토너먼트(isPlayoff)는 date/time이 없거나 scheduledAt에서
             // 파생되므로 그대로 scheduledAt을 기준으로 쓴다.
             .sort((a, b) => {
-                const keyA = preferVirtual && !a.isPlayoff ? `${a.date}T${a.time ?? '00:00'}` : (a.scheduledAt ?? a.date);
-                const keyB = preferVirtual && !b.isPlayoff ? `${b.date}T${b.time ?? '00:00'}` : (b.scheduledAt ?? b.date);
+                // [2026-09-18] 플레이오프 경기도 가상 날짜/시간 기준(kstDateKey와 동일 규칙 — 타임라인 구조에서는
+                // 실제 시각 순서가 곧 가상 시각 순서이므로 표시 정렬과 실제 진행 순서가 일치한다).
+                const keyA = preferVirtual ? `${a.date}T${a.time ?? '00:00'}` : (a.scheduledAt ?? a.date);
+                const keyB = preferVirtual ? `${b.date}T${b.time ?? '00:00'}` : (b.scheduledAt ?? b.date);
                 return keyA.localeCompare(keyB);
             }),
     [schedule, simStart, gprd, revealedSeriesById, preferVirtual]);
@@ -614,8 +616,8 @@ const MultiScheduleView: React.FC = () => {
     const dateBucket = Math.floor(serverNow / 15000);
     const todayKey = useMemo(() => {
         if (!preferVirtual) return currentSimDate;
-        return findCurrentVirtualDate(allGames, simStart, gprd, dateBucket * 15000);
-    }, [preferVirtual, currentSimDate, allGames, simStart, gprd, dateBucket]);
+        return findCurrentVirtualDate(allGames, simStart, gprd, dateBucket * 15000, timeline);
+    }, [preferVirtual, currentSimDate, allGames, simStart, gprd, dateBucket, timeline]);
 
     // [2026-08-01] 경기 URL도 짧은 코드로 대체 — 매핑 없으면(구 리그) 원래 game_id로 폴백.
     const handleView = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);

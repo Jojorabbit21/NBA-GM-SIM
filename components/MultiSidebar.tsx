@@ -81,7 +81,7 @@ export const MultiSidebar: React.FC = () => {
     const { pathname } = useLocation();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { handleLogout } = useAuth();
-    const { league, room, leagueTeams } = useLeagueContext();
+    const { league, room, leagueTeams , timeline } = useLeagueContext();
     const { session } = useGame();
     const isAdmin = !!(league && session?.user?.id && league.admin_user_id === session.user.id);
     const myTeam = leagueTeams.find(t => t.user_id === session?.user?.id);
@@ -98,7 +98,7 @@ export const MultiSidebar: React.FC = () => {
     // 기간은 가상 캘린더 날짜를 실제로 비교해야 한다(hasPlayoffs 근사는 정규시즌 종료~
     // 플레이오프 시작 사이 공백 기간에 여전히 노출되는 오차가 있었음).
     const { schedule } = useSeasonContext();
-    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day);
+    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
     const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
 
     const base = `/multi/leagues/${leagueId}/season`;

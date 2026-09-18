@@ -8,14 +8,36 @@
  * 동일한 상태가 나온다 (DB의 played/game_pbp row 존재 여부와 무관).
  *
  * - scheduled : now < scheduledAt            → 결과/PBP 비노출
- * - live      : scheduledAt <= now < +10분    → PBP 리플레이 진행, 최종 점수 비노출
- * - final     : now >= scheduledAt + 10분     → 모든 곳에 최종 결과 노출
+ * - live      : scheduledAt <= now < +리플레이 → PBP 리플레이 진행, 최종 점수 비노출
+ * - final     : now >= scheduledAt + 리플레이  → 모든 곳에 최종 결과 노출(리플레이 길이 = 리그 설정, 기본 10분)
  */
 import type { Game, PlayoffSeries } from '../../../types';
 
-// 중계 길이 = 결과 공개 지연 (불가분 단일 파라미터). 48분 경기를 10분으로 압축 재생하며,
-// 중계가 끝나는 시점(정시+10분)에 비로소 최종 결과가 공개된다.
-export const REPLAY_DURATION_MS = 10 * 60 * 1000;
+// 중계 길이 = 결과 공개 지연 (불가분 단일 파라미터). 48분 경기를 리플레이 길이만큼 압축 재생하며,
+// 중계가 끝나는 시점(정시+리플레이)에 비로소 최종 결과가 공개된다.
+//
+// [2026-09-18 2단계] 리그 설정(leagues.replay_minutes, 5/8/10/12분)으로 승격. 이 모듈의 판정 함수들은
+// 수십 곳에서 (game, now)만으로 호출되므로 리그 값을 인자로 실어 나르는 대신 모듈 상태로 둔다 —
+// useCurrentLeague()가 리그를 로드/갱신할 때 setActiveReplayMinutes()로 주입하고(리그 화면은 한 번에
+// 하나만 열리므로 안전), 모든 판정은 getReplayDurationMs()를 읽는다. 같은 규칙을 쓰는 미러:
+// 서버 liveGameView.ts(+replayConfig.ts), DB room_replay_interval() (game_pbp RLS·시즌 스탯 함수),
+// 타임라인 클램프(utils/leagueTimeline.ts assignRealTimes).
+export const DEFAULT_REPLAY_MINUTES = 10;
+export const DEFAULT_REPLAY_DURATION_MS = DEFAULT_REPLAY_MINUTES * 60 * 1000;
+/** @deprecated 기본값 상수 — 실제 판정은 getReplayDurationMs()를 쓸 것(리그별로 다름). */
+export const REPLAY_DURATION_MS = DEFAULT_REPLAY_DURATION_MS;
+
+let activeReplayMs = DEFAULT_REPLAY_DURATION_MS;
+
+/** 현재 열려 있는 리그의 리플레이 길이 주입(분). null/0이면 기본 10분. */
+export function setActiveReplayMinutes(minutes: number | null | undefined): void {
+    activeReplayMs = (minutes && minutes > 0 ? minutes : DEFAULT_REPLAY_MINUTES) * 60 * 1000;
+}
+
+/** 현재 리그의 리플레이 길이(ms) — 결과 공개 지연이자 PBP 재생 총 길이. */
+export function getReplayDurationMs(): number {
+    return activeReplayMs;
+}
 
 export type GameDisplayState = 'scheduled' | 'live' | 'final';
 
@@ -50,7 +72,7 @@ export function getGameDisplayState(game: ScheduledLike, serverNowMs: number): G
     }
     const start = new Date(game.scheduledAt).getTime();
     if (serverNowMs < start) return 'scheduled';
-    if (serverNowMs < start + REPLAY_DURATION_MS) return 'live';
+    if (serverNowMs < start + getReplayDurationMs()) return 'live';
     return 'final';
 }
 

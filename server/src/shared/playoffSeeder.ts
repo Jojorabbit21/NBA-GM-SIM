@@ -25,6 +25,8 @@ import { initializeTournamentBracket, type LeagueTeamRow } from './tournamentIni
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
 import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
+import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
+import { DEFAULT_PLAYOFF_INTERVAL_DAYS } from './leagueTimeline';
 
 /** "2026-27" 형태 — MultiHeader.tsx의 seasonShortFromDate와 동일 규칙(가상 시즌 시작 연도 기준). */
 export function seasonLabelFor(virtualSeasonYear: number | null | undefined): string {
@@ -118,6 +120,21 @@ export interface PostseasonLeagueRow {
      *  것과 동일한 값. 호출부(scheduler.ts checkSeasonCompletions, simRunner.ts
      *  handleTournamentAdvance)가 select에 포함시켜야 한다. */
     virtual_season_year: number | null;
+    /** [2026-09-18] 고정 길이 가상 하루 타임라인 — 시리즈 안 경기 간격(가상 일, 1=매일/2=격일)과
+     *  하루 길이. 타임라인이 있는 리그(신규 메인리그)는 scheduled_at을 slot이 아니라
+     *  league_virtual_days 표에서 계산한다(timelineStore.fillPostseasonRealTimes). 호출부 select에 포함할 것. */
+    playoff_game_interval_days?: number | null;
+    day_length_min?: number | null;
+    /** [2026-09-18 2단계] 리플레이 길이(분) — 포스트시즌 경기 시각 클램프용(timelineStore.fillPostseasonRealTimes). */
+    replay_minutes?: number | null;
+}
+
+/** [2026-09-18] 포스트시즌 가상 캘린더 오프셋(앵커 = 정규시즌 종료 다음 날, offset 0) —
+ *  leagueTimeline.playoffMaxDays()와 반드시 같은 규칙: 플레이인 7v8·9v10 = 0, 디사이더 = g,
+ *  본선 1라운드 = 플레이인 있으면 2g / 없으면 0. 타임라인이 없는 구 리그는 g=1로 예전 값
+ *  (디사이더 +1, 1라운드 +1)과 최대한 비슷하게 유지한다. */
+export function postseasonIntervalDays(league: { playoff_game_interval_days?: number | null }): number {
+    return Math.max(1, league.playoff_game_interval_days ?? DEFAULT_PLAYOFF_INTERVAL_DAYS);
 }
 
 /**
@@ -195,10 +212,9 @@ export async function buildAndStoreConferenceBracket(
     league: PostseasonLeagueRow, roomId: string,
     eastQualified: StandingRow[], westQualified: StandingRow[],
     priorSeries: unknown[] = [],
-    // 플레이인과 동시에(정규시즌 종료 직후) 본선 1라운드 프레임을 먼저 만드는 경우, 플레이인
-    // 경기(항상 "+1일" 앵커의 슬롯 0~1)와 시간이 겹치지 않도록 하루 더 늦게 시작시킨다.
-    // 플레이인 없이 곧장 본선을 만드는 startPlayoffs()는 기본값(1일 뒤)을 그대로 쓴다.
-    daysOffset: number = 1,
+    // [2026-09-18] 본선 1라운드의 가상 날짜 오프셋(앵커 = 정규시즌 종료 다음 날 기준, 일 단위).
+    // 플레이인이 있으면 2g(플레이인 0, 디사이더 g 다음), 없으면 0. postseasonIntervalDays() 참조.
+    round1DayOffset: number = 0,
     persist: boolean = true,
 ): Promise<{ tournamentStartAt: string; simRealStartAt: string; pendingEvents: PendingLeagueEvent[] } | null> {
     if (eastQualified.length < 1 && westQualified.length < 1) {
@@ -226,16 +242,19 @@ export async function buildAndStoreConferenceBracket(
         return null;
     }
 
-    // [2026-09-15 Fix] game_date(가상 캘린더)와 scheduledAt(실제 방송 시각)을 서로 다른
-    // 소스에서 계산한다 — playoffStartIso는 "실제로 언제 방송되는가"에만 쓰고, game_date는
-    // postseasonVirtualAnchor() 기반 가상 날짜를 쓴다. daysOffset(플레이인 유무에 따른
-    // 1일/2일 차이)은 두 축 모두에 동일하게 반영해 상대적 순서(플레이인 → 디사이더/본선)는
-    // 유지한다.
-    const playoffStart     = kstMidnightPlusDays(new Date().toISOString(), daysOffset);
+    // [2026-09-18] 타임라인이 있는 리그(신규 메인리그)는 game_date를 "앵커 + round1DayOffset +
+    // (경기번호−1)·g"로 정하고 scheduled_at은 league_virtual_days 표에서 계산한다 — 브라켓 엔진의
+    // 슬롯 계산(slotToDate = startDate + floor(slot·interval/1440))에 interval = 1440·g(분)을 넘기면
+    // 슬롯 하나가 정확히 g일이 되어 라운드 시작 슬롯(computeRoundBaseSlots)까지 그대로 재사용된다.
+    // 타임라인이 없는 구 리그는 예전처럼 real "now"+1일 앵커의 30분 슬롯 방식을 유지한다.
+    const timeline         = await loadLeagueTimeline(league.id);
+    const usesTimeline     = timeline.length > 0;
+    const g                = postseasonIntervalDays(league);
+    const playoffStart     = kstMidnightPlusDays(new Date().toISOString(), Math.max(1, round1DayOffset));
     const playoffStartIso  = playoffStart.toISOString();
-    const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), daysOffset - 1);
+    const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), round1DayOffset);
     const gamesPerRealDay  = league.games_per_real_day ?? 48;
-    const intervalMinutes  = 1440 / gamesPerRealDay;
+    const intervalMinutes  = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
 
     const result = initializeTournamentBracket(
         seededTeams,
@@ -245,16 +264,17 @@ export async function buildAndStoreConferenceBracket(
         `${league.id}-playoffs`,
         virtualStartDate,
         intervalMinutes,
-        playoffStartIso,
+        usesTimeline ? null : playoffStartIso,
         'ranked',
     );
+    const scheduleGames = usesTimeline ? fillPostseasonRealTimes(result.schedule as any[], timeline, league) : result.schedule;
 
-    const { error: gamesErr } = await insertGames(roomId, league.id, result.schedule as any);
+    const { error: gamesErr } = await insertGames(roomId, league.id, scheduleGames as any);
     if (gamesErr) {
         console.error(`[playoffSeeder] insertGames failed(${league.id}): ${gamesErr}`);
         return null;
     }
-    await insertGameShortCodes(roomId, result.schedule.map(g => ({ id: g.id }))).catch(err =>
+    await insertGameShortCodes(roomId, scheduleGames.map(g => ({ id: g.id }))).catch(err =>
         console.error(`[playoffSeeder] insertGameShortCodes 실패(${roomId}):`, err),
     );
 
@@ -270,11 +290,14 @@ export async function buildAndStoreConferenceBracket(
     // 재사용해도 안전하다(handleTournamentAdvance가 league.type을 가리지 않고 무조건 읽음).
     const tournamentStartAt = `${virtualStartDate}T00:00:00.000Z`;
     if (persist) {
+        // 타임라인 리그는 sim_real_start_at(시즌 첫 가상 하루의 실제 시각)을 건드리지 않는다 — 모든
+        // 경기가 scheduled_at을 갖고 있어 slot 기반 폴백 앵커가 필요 없고, 덮어쓰면 구 폴백 경로가
+        // 엉뚱한 기준을 읽게 된다.
         await supabase.from('leagues')
             .update({
                 bracket_data: { series: priorSeries },
                 tournament_start_at: tournamentStartAt,
-                sim_real_start_at: playoffStartIso,
+                ...(usesTimeline ? {} : { sim_real_start_at: playoffStartIso }),
             })
             .eq('id', league.id);
     }
@@ -290,7 +313,7 @@ export async function buildAndStoreConferenceBracket(
         await insertLeagueEvent({ roomId, leagueId: league.id, ...bracketEvent });
     }
 
-    console.log(`[playoffSeeder] league=${league.id} — playoffs started (E=${eastQualified.length} W=${westQualified.length}, ${seededTeams.length} teams, ${result.schedule.length} games)`);
+    console.log(`[playoffSeeder] league=${league.id} — playoffs started (E=${eastQualified.length} W=${westQualified.length}, ${seededTeams.length} teams, ${scheduleGames.length} games, timeline=${usesTimeline}, g=${g})`);
     return { tournamentStartAt, simRealStartAt: playoffStartIso, pendingEvents };
 }
 

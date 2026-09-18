@@ -48,7 +48,7 @@ import type { Team, Game } from '../../../types';
 const HIDE_SECTIONS: Array<'contract' | 'awards' | 'injuryHistory'> = [];
 
 const MultiPlayerDetailView: React.FC = () => {
-    const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
+    const { league, leagueTeams, room, isLoading: leagueLoading , timeline } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
     const { isLoading: gameLoading, schedule, myTeamId, tendencySeed, currentSimDate: roomSimDate } = useSeasonContext();
     // MultiRosterView.tsx/MultiTacticsView.tsx와 동일한 preferVirtual 패턴 — room.sim_date는
@@ -59,7 +59,7 @@ const MultiPlayerDetailView: React.FC = () => {
     const preferVirtualForInjury = league?.type === 'main_league';
     const currentSimDate = useMemo(() => {
         if (!preferVirtualForInjury) return roomSimDate;
-        return findCurrentVirtualDate(schedule, simStartForInjury, gprdForInjury, getServerNow()) ?? roomSimDate;
+        return findCurrentVirtualDate(schedule, simStartForInjury, gprdForInjury, getServerNow(), timeline) ?? roomSimDate;
     }, [preferVirtualForInjury, roomSimDate, schedule, simStartForInjury, gprdForInjury]);
     // URL에는 DB UUID 대신 meta_players 정렬 순서 기반 번호(1, 2, 3…)가 노출된다 —
     // 실제 매칭/필터링에 쓰는 playerId는 아래에서 resolvePlayerId로 UUID로 되돌린 값.

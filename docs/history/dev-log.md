@@ -35,6 +35,783 @@
 
 ---
 
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 7: 시작 트리거 + 아카이브 후 정리
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 7. 사용자 요청 "phase 7 진행해줘". Phase 6까지 끝났지만 토너먼트가 `in_progress`로 넘어가며 브라켓이 생기는 경로는 공유풀 드래프트 룸 완료(`finalize.ts:finalizeDraft`) 하나뿐이라 개인 드래프트 리그는 영영 시작되지 않았다. 또 룸 스코프 선수 인스턴스(`room_player_instances`)를 종료 후 지우는 정리 로직이 없었다.
+
+**변경 파일**:
+- `migrations/add_personal_draft_room_ops.sql` (DB, **적용 완료**) — `personal_draft_force_complete_room(uuid)`(service_role 전용), `personal_draft_cleanup_room(uuid)`(service_role 또는 리그 어드민 세션; authenticated에 EXECUTE 부여)
+- `server/src/personalDraftStart.ts` (신규, server) — `startPersonalDraftTournament(leagueId, roomId)`
+- `server/src/scheduler.ts` (server) — `runPersonalDraftTournamentStarts(now)` + `tick()` 등록, import 추가
+- `server/src/finalize.ts` (server) — `initializeTeamTactics()` 인스턴스 해석 분기
+- `server/src/simRunner.ts` (server) — 토너먼트 아카이브 성공 직후 `personal_draft_cleanup_room` 호출
+- `services/multi/leagueService.ts` (client) — `resetTournament()` 끝에 `personal_draft_cleanup_room` 호출
+
+**Before**:
+```ts
+// finalize.ts initializeTeamTactics — roster id를 meta_players.id로만 조회
+const { data: rawPlayers } = await supabase.from('meta_players')
+    .select('id, name, position, base_attributes, tendencies').in('id', allPlayerIds);
+for (const raw of rawPlayers ?? []) playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
+// scheduler.ts tick() — 개인 드래프트 리그 시작 작업 없음(recruiting에 영원히 머묾)
+// simRunner.ts — archiveTournament() → status 'finished' 로 끝. 인스턴스/진행 행 정리 없음
+// leagueService.ts resetTournament — leagues/games/rooms/league_teams(roster, draft_order)만 초기화
+```
+DB: 룸 단위로 진행 행을 만들거나 정리하는 함수 없음(start_personal_draft는 팀 소유자만 호출 가능).
+
+**After**:
+```ts
+// finalize.ts initializeTeamTactics
+const { data: instances } = await supabase.from('room_player_instances')
+    .select('instance_id, source_player_id').eq('room_id', roomId).in('instance_id', allPlayerIds);
+if (instances?.length) {            // 개인 팩 드래프트 룸: source로 하이드레이트, id는 instance_id로 덮어씀
+    ... playerMap.set(instance_id, { ...mapRawPlayerToRuntimePlayer(raw), id: instance_id });
+} else { /* 기존 경로 그대로 */ }
+
+// personalDraftStart.ts
+// 1) leagues: recruiting→in_progress 원자 클레임(personal_draft_format IS NOT NULL)
+// 2) fillAiMembers(): 미참가 league_teams → room_members upsert(가짜 UUID 00000000-0000-0000-0000-NNN, is_ai, balanced) + league_teams.is_ai=true
+// 3) rpc personal_draft_force_complete_room(roomId)
+// 4) forceInitSchedule(roomId)   // 전술 초기화 + 브라켓 + games
+// 어느 단계든 실패 → status를 recruiting으로 revert(다음 틱 재시도)
+
+// scheduler.ts
+async function runPersonalDraftTournamentStarts(now) {
+  leagues where status='recruiting' AND type='tournament' AND personal_draft_format IS NOT NULL AND tournament_start_at <= now
+  → rooms(status='active') → startPersonalDraftTournament()
+}
+await Promise.allSettled([ ..., runPersonalDraftSweeps(), runPersonalDraftTournamentStarts(now) ]);
+
+// simRunner.ts (아카이브 직후)
+if (!archiveErr) await supabase.rpc('personal_draft_cleanup_room', { p_room_id: roomId });
+// leagueService.ts resetTournament — 로스터 초기화 뒤 동일 RPC 호출(실패 시 error 반환)
+```
+DB(요지): `force_complete_room`은 팀마다 진행 행 `ON CONFLICT DO NOTHING`으로 보장(1라운드 팩 + `pack_started_at=now()`), `FOR UPDATE` 루프에서 `status='completed'`까지 팩 내 최고 `base_attributes->>'ovr'`를 `personal_draft_apply_pick`으로 적용(팀당 500회 가드). `cleanup_room`은 `room_player_state`(player_id = 해당 룸 instance_id) → `room_player_instances` → `personal_draft_progress` 순으로 삭제하고 카운트 반환; 호출자 검증은 `auth.jwt()->>'role'='service_role'` 또는 `auth.uid()=leagues.admin_user_id`(파괴적이라 `p_user_id` 우회 인자 없음).
+
+**검증**: 마이그레이션 Supabase MCP 적용 성공. DB 롤백 테스트(`DO $$`): 2팀×2라운드(풀8·픽2) 포맷, 팀 A는 사람이 1픽 후 이탈·팀 B 미참가 → `force_complete_room={teams:2,autoPicks:7}`, completed 2, 인스턴스 8, 로스터 4/4, 같은 실제 선수 양 팀 중복 3명(의도), 비어드민 `cleanup_room` → `not_league_admin`, 어드민 `cleanup_room={progress:2,instances:8,playerStates:3}`, 잔여 0. `tsc --noEmit` — 클라·서버 변경 파일 오류 0(서버 `scheduler.ts:495/538`의 `prep.error`·`simRunner.ts` SupabaseClient 제네릭 오류는 HEAD부터 존재, 무관). **미검증**: fly.io 배포 후 실제 스케줄러 틱 → 브라켓 생성 → 경기 시뮬 → 아카이브 → 정리 전 과정(브라우저 E2E).
+
+**롤백 방법**: 서버/클라 5파일은 Before 요지대로 되돌리고 `personalDraftStart.ts` 삭제. DB: `DROP FUNCTION public.personal_draft_force_complete_room(uuid); DROP FUNCTION public.personal_draft_cleanup_room(uuid);`. 스케줄러/simRunner/resetTournament의 RPC 호출은 함수가 없으면 에러 로그(리셋은 에러 반환)만 남기고 다른 작업엔 영향 없음.
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 6: 어드민 포맷 설정 UI(생성 모달 + 세션 설정 탭)
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 6. 사용자 요청 "페이즈 6 구현 시작해". 지금까지는 `personal_draft_format`을 만들 UI가 없어 개인 드래프트 화면(Phase 5)에 진입할 방법이 없었다 — 토너먼트 생성 시 드래프트 방식을 고르고 라운드별 포맷·픽 타이머를 설정할 수 있게 하고, 세션 설정에서도 같은 편집기로 수정할 수 있게 한다.
+
+**변경 파일**:
+- `services/multi/personalDraftFormat.ts` (client) — 동기 검증 분리 `validatePersonalDraftInput()`, 프리셋 `buildFixedDeclineCurve()`, 한계 상수 추가
+- `components/multi/PersonalDraftFormatEditor.tsx` (신규, 공용 편집기)
+- `components/multi/DraftPoolSettings.tsx` — `hideDraftOrder` prop
+- `components/multi/CreateLeagueModal.tsx` — 드래프트 방식 토글 + 개인 모드 분기(검증/생성 옵션/룸 sim_settings)
+- `views/multi/league/settings/PersonalDraftSettingsTab.tsx` (신규) — 세션 설정 드래프트 탭(개인 모드 전용, 자체 저장, 진행 시작 후 잠금)
+- `views/multi/league/LeagueSettingsView.tsx` — `isPersonalDraft` 분기(공유풀 섹션 숨김, 저장맵 제외, 부상 토글 잠금)
+
+**Before**:
+```ts
+// personalDraftFormat.ts — buildPersonalDraftFormat() 안에서 라운드 순서/범위/픽 수/타이머 검증을
+// 인라인으로 수행. 총 로스터(픽 합계) 크기 제한 없음. 프리셋 생성 함수 없음.
+// CreateLeagueModal.tsx — 토너먼트는 항상 공유풀 턴제 드래프트. 로터리/드래프트/시작 일시 3개 필수,
+// checkDraftPoolCapacity()로 참가팀×라운드 용량 검사, createLeague options에 personalDraftFormat 없음,
+// createRoom simSettings = { normalization } 만.
+// LeagueSettingsView.tsx — 드래프트 탭은 공유풀 섹션 3개(일정·라운드 / 추첨 / 결과) 고정.
+// DraftPoolSettings.tsx — 드래프트 순서(스네이크/선형) 블록 항상 표시.
+```
+
+**After**:
+```ts
+// personalDraftFormat.ts
+export const PERSONAL_DRAFT_ROSTER_MIN = 8, PERSONAL_DRAFT_ROSTER_MAX = 20, PERSONAL_DRAFT_ROSTER_WARN_BELOW = 13;
+export const PERSONAL_DRAFT_ROUNDS_MAX = 20, PERSONAL_DRAFT_POOL_SIZE_MAX = 30;
+export const PICK_TIMER_SEC_MIN = 10, PICK_TIMER_SEC_MAX = 600, PICK_TIMER_SEC_DEFAULT = 90;
+export function buildFixedDeclineCurve(gMin, gMax, { totalRounds, windowSize, poolSize, picks }) // 창 상단을 gMax→(gMin+width)까지 등간격 하강
+export function validatePersonalDraftInput(params): string | null  // 기존 인라인 검증 + 라운드≤20 + 노출≤30 + 총 로스터 8~20
+// buildPersonalDraftFormat()은 이제 validatePersonalDraftInput()을 먼저 호출한 뒤 풀 조회 → 총 로스터 8~20 규칙이 새로 강제됨(Phase 2엔 없던 규칙)
+
+// CreateLeagueModal.tsx
+const [draftMode, setDraftMode] = useState<'shared' | 'personal'>('shared');
+const isPersonalDraft = type === 'tournament' && draftMode === 'personal';
+// 검증: personal이면 lotteryIso = draftIso = null, 시작 일시만 now+15분 이후 검사
+// 생성: personal이면 checkDraftPoolCapacity 대신 buildPersonalDraftFormat() → options { personalDraftFormat, tradeEnabled:false,
+//       maxRosterSize: clamp(roster,15,20), draftTotalRounds: roster, lotteryScheduledAt:null, draftScheduledAt:null }
+//       createRoom simSettings에 injuriesEnabled:false 추가
+// JSX: "드래프트 방식" 토글(대진 방식 아래), personal이면 로터리/드래프트 일시·라운드/픽제한/오토픽 숨김,
+//      DraftPoolSettings hideDraftOrder + 용량 표시 제거, PersonalDraftFormatEditor 노출
+
+// LeagueSettingsView.tsx
+const isPersonalDraft = !!league?.personal_draft_format;
+// draft 탭: isPersonalDraft ? <PersonalDraftSettingsTab/> : 기존 섹션 3개 (각 조건에 && !isPersonalDraft)
+// TAB_SAVE_MAP: personal이면 draft 항목 제외(탭이 자체 저장 버튼 보유) / 엔진 탭 부상 체크박스 disabled={isPersonalDraft}
+
+// PersonalDraftSettingsTab.tsx — 저장: buildPersonalDraftFormat() 재실행 → updateLeagueSettings({ tournamentStartAt, gamesPerRealDay,
+//   matchFormat, finalsMatchFormat, draftOvrMin/Max, draftYearMin/Max, useCustomOverrides, personalDraftFormat, draftTotalRounds, maxRosterSize })
+//   잠금: personal_draft_progress(room_id) count > 0 || in_progress → 포맷/범위/타이머 읽기 전용, 일정·경기 포맷만 저장
+```
+
+**검증**: `npx tsc --noEmit` — 신규/수정 6개 파일 오류 0(초기 3건은 `strictNullChecks` 꺼진 환경에서 `!built.ok` 좁히기 실패 → `built.ok === false`로 수정). 브라우저 수동 검증 미실시 — Phase 7 E2E와 함께.
+
+**롤백 방법**: 신규 3파일(`PersonalDraftFormatEditor.tsx`, `PersonalDraftSettingsTab.tsx`) 삭제, `CreateLeagueModal.tsx`/`LeagueSettingsView.tsx`/`DraftPoolSettings.tsx`는 Before 요지대로(임포트·`draftMode` 상태·`isPersonalDraft` 분기·`hideDraftOrder` 제거). `personalDraftFormat.ts`는 `validatePersonalDraftInput`/`buildFixedDeclineCurve`/상수를 지우고 검증 루프를 `buildPersonalDraftFormat` 안으로 되돌리면 됨(총 로스터 8~20 규칙도 함께 사라짐). DB 변경 없음.
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 3.5(픽 타이머) + Phase 5(개인 드래프트 화면)
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 3.5/5. 사용자 요청 "이제 화면 구현하자. 타이머 설정도 함께 구현해줘." — 승인된 시안(아티팩트 v49)을 실제 화면으로 옮기고, 라운드당 픽 제한시간(`pickTimerSec`) + 만료 시 서버 자동 지명을 함께 붙임.
+
+**변경 파일**:
+- `migrations/add_personal_draft_timer.sql` (DB, **적용 완료**) — `personal_draft_progress.pack_started_at` 컬럼, 내부 함수 4종(`personal_draft_sample_pack`/`personal_draft_apply_pick`/`personal_draft_is_expired`(STABLE)/`personal_draft_autopick_expired`), `get_or_generate_round_pack`·`submit_personal_draft_pick` 재정의, `personal_draft_sweep_expired()`(service_role 전용)
+- `services/multi/personalDraftFormat.ts` (client) — `PersonalDraftFormat.pickTimerSec`, `BuildPersonalDraftFormatParams.pickTimerSec`, 검증
+- `services/multi/personalDraft.ts` (client) — 반환 타입에 `packStartedAt/pickTimerSec/serverNow/autoPicked/expired`
+- `server/src/scheduler.ts` (server) — `runPersonalDraftSweeps()` 신설 + `tick()` 목록에 추가
+- `hooks/usePersonalDraft.ts` (신규) — 진행 상태/팩·로스터 하이드레이트/카운트다운/픽 제출
+- `components/draft/PersonalDraftCard.tsx` (신규), `views/multi/league/PersonalDraftView.tsx` (신규)
+- `App.tsx` — 라우트 `/multi/leagues/:leagueId/personal-draft`
+- `views/multi/season/LeagueLobbyPanel.tsx`, `components/MultiHeader.tsx` — `personal_draft_format` 있는 리그 분기
+- `index.css` — `@keyframes roundPulse` / `.round-current`
+
+**Before**:
+```ts
+// personalDraftFormat.ts — 타이머 개념 없음
+export interface PersonalDraftFormat { totalRounds: number; rounds: PersonalDraftRound[]; }
+// personalDraft.ts — 응답에 시각 정보 없음
+export interface PersonalDraftPackState { status; currentRound; picksRemaining; offeredPool; }
+// scheduler.ts tick() — 개인 드래프트 관련 스윕 없음
+await Promise.allSettled([ runLotteries(now), ..., cleanupCompletedRooms() ]);
+// LeagueLobbyPanel.tsx — claim 성공 후 reload()만, 드래프트 버튼은 lotteryDone 조건
+// MultiHeader.tsx
+const showDraftRoomButton = !isDraftComplete && lotteryDone && !isDrafting;
+```
+DB: `get_or_generate_round_pack`/`submit_personal_draft_pick`은 만료 개념 없이 팩 조회/픽만 수행(Phase 3, `migrations/add_personal_draft_rpcs.sql`). `personal_draft_progress`에 `pack_started_at` 없음.
+
+**After**:
+```ts
+// personalDraftFormat.ts
+export interface PersonalDraftFormat { totalRounds: number; pickTimerSec: number | null; rounds: PersonalDraftRound[]; }
+// 검증: pickTimerSec != null && (!Number.isInteger || < 1) → '픽 제한시간은 1초 이상의 정수여야 합니다.'
+// personalDraft.ts
+export interface PersonalDraftPackState { ...; packStartedAt: string|null; pickTimerSec: number|null; serverNow: string; autoPicked: number; }
+export interface PersonalDraftPickResult extends PersonalDraftPackState { expired: boolean; draftedInstanceId?; draftedSourcePlayerId?; }
+// scheduler.ts
+async function runPersonalDraftSweeps() { await supabase.rpc('personal_draft_sweep_expired'); }
+await Promise.allSettled([ ..., cleanupCompletedRooms(), runPersonalDraftSweeps() ]);
+// LeagueLobbyPanel.tsx
+const isPersonalDraft = !!league?.personal_draft_format;
+// handleJoinAndClaim/handleClaim 성공 → reload(); if (isPersonalDraft) navigate(`/multi/leagues/${leagueId}/personal-draft`);
+// 마스트헤드 버튼: isPersonalDraft ? (myTeam && status==='recruiting' → "팩 드래프트 입장") : (lotteryDone → "드래프트 룸 입장")
+// MultiHeader.tsx
+const showDraftRoomButton = isPersonalDraft ? (!isDraftComplete && !!myTeam) : (!isDraftComplete && lotteryDone && !isDrafting);
+```
+DB(요지): 팩 생성 시 `pack_started_at = now()`. 두 RPC 진입 시 `personal_draft_is_expired(progress, format)`이면 `personal_draft_autopick_expired`(팩 내 `base_attributes->>'ovr'` 최고값 순으로 남은 픽 채움 → 다음 라운드 팩 즉시 생성) 선실행; submit은 이 경우 유저 픽을 적용하지 않고 `expired:true` 반환. `personal_draft_sweep_expired()`는 in_progress 전체를 `FOR UPDATE SKIP LOCKED`로 훑어 만료 행 자동 지명(반환: 처리 행 수). 타이머 없음(`pickTimerSec` null)이면 만료 판정 항상 false.
+
+**클라이언트 타이머 동작**: `deadline = packStartedAt + pickTimerSec*1000`, 표시값은 `deadline - (Date.now() + (serverNow - Date.now()))`. 0 도달 시 같은 팩(`packStartedAt` 키)당 1회만 `get_or_generate_round_pack` 재호출 → 서버가 돌려준 상태 반영. 클라이언트는 절대 스스로 지명하지 않음.
+
+**검증**: 마이그레이션 Supabase MCP 적용 성공. `npx tsc --noEmit` — 신규/수정 파일(PersonalDraft*, usePersonalDraft, personalDraft*, LeagueLobbyPanel, MultiHeader, App) 오류 0(저장소 기존 오류는 별개). 서버 `tsc`는 로컬에 Bun 타입 없음 + `scheduler.ts:461/504`의 `prep.error` narrowing 오류 — 둘 다 이 변경 이전(HEAD)부터 존재, 이번 hunk와 무관. 브라우저 수동 검증은 Phase 6(어드민 포맷 UI)로 실제 포맷 리그가 생긴 뒤 진행.
+
+**롤백 방법**: 클라/서버는 위 Before 블록으로 되돌리고 신규 4파일(`usePersonalDraft.ts`, `PersonalDraftCard.tsx`, `PersonalDraftView.tsx`, 라우트 1줄)·`index.css` keyframes 블록 삭제. DB는 `migrations/add_personal_draft_rpcs.sql`의 `get_or_generate_round_pack`/`submit_personal_draft_pick` 정의를 재적용하고 `DROP FUNCTION personal_draft_sweep_expired(), personal_draft_autopick_expired(uuid,uuid,jsonb), personal_draft_is_expired(personal_draft_progress,jsonb), personal_draft_apply_pick(uuid,uuid,uuid,jsonb), personal_draft_sample_pack(jsonb,integer); ALTER TABLE personal_draft_progress DROP COLUMN pack_started_at;`. 스케줄러 스윕은 함수가 없으면 에러 로그만 남기고 다른 틱 작업엔 영향 없음(`allSettled`).
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 4: 시뮬레이션 엔진 통합(로스터 하이드레이션)
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 4. Phase 1~3으로 룸 스코프 player instance(`room_player_instances`)와 이를 다루는 RPC까지 만들었으니, 실제 경기 시뮬레이션이 이 인스턴스 로스터를 읽을 수 있게 `simRunner.ts`를 연결.
+
+**변경 파일**:
+- `server/src/simRunner.ts` — (1) 기존에 `leagues`에서 `use_custom_overrides, sim_real_start_at, games_per_real_day`를 조회하던 쿼리(새 쿼리 추가 아님, select 목록에 컬럼 하나만 추가)에 `personal_draft_format`을 얹어 `isInstanceRoom = personal_draft_format != null` 판별. (2) 로스터 하이드레이션 블록(구 93-116행)을 `if (isInstanceRoom) { ... } else { 기존 로직 그대로 }`로 분기 — 인스턴스 룸이면 `room_player_instances`에서 `instance_id → source_player_id`를 먼저 resolve하고, `meta_players`는 그 source id 집합으로 조회, `playerMap`은 `instance_id`를 키로 유지(하이드레이트된 Player 객체의 `.id`를 `instance_id`로 override). 아니면(리그/공유풀 토너먼트) 기존 코드 완전히 무변경. `mapRawPlayerToRuntimePlayer` 등 다른 곳에서도 쓰는 공용 함수는 건드리지 않고 호출부에서 스프레드로 override만 함
+- **서버 미러 없음** — 클라이언트는 이 함수를 호출하지 않음(순수 서버 시뮬레이션 로직)
+
+**Before**:
+```ts
+const allPlayerIds = [...homeTeamRow.roster, ...awayTeamRow.roster];
+const { data: rawPlayers } = await supabase.from('meta_players').select(...).in('id', allPlayerIds);
+const playerMap = new Map<string, any>();
+for (const raw of rawPlayers ?? []) {
+    playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
+}
+```
+
+**After**: `isInstanceRoom` 분기 추가(전체 코드는 `server/src/simRunner.ts`의 "2. 리그 팀 + 선수 데이터 로드" 섹션 참고). `room_player_state` 오버레이(구 120-144행)는 이미 `allPlayerIds`(= roster 값 그대로) 기준으로 조회해서 **한 글자도 안 고침** — instance 룸이든 아니든 roster에 들어있는 값을 그대로 player_id로 쓰기 때문에 자동으로 팀별 분리가 됨.
+
+**부상 비활성화(`sim_settings.injuriesEnabled`)는 이번 Phase에서 보류**: `createRoom()`이 이미 `simSettings`를 범용 지원해서 엔진 쪽 코드는 필요 없고, personal-draft 토너먼트를 실제로 만드는 호출부(Phase 5/6 UI)에서 그 값을 넘기기만 하면 됨 — 지금 미리 만들면 아무도 안 부르는 죽은 코드가 됨.
+
+**검증**: `tsc --noEmit`(server) — 수정 전후 에러 45건으로 동일(전부 무관한 기존 SupabaseClient 제네릭 에러, `simRunner.ts` 수정 구간과 무관한 줄), 신규 에러 0건. 전체 파일 중괄호 균형 확인(0).
+
+**검증 한계 — PBP 엔진 실제 실행은 못 함**: `runSimulation()`은 `server/src/supabaseAdmin.ts`의 `Bun.env.SUPABASE_SERVICE_ROLE_KEY`가 필요한데(`Bun.` 사용처는 `supabaseAdmin.ts`/`index.ts`/`workers/simWorkerPool.ts` 3곳뿐, `simRunner.ts` 의존 체인엔 `supabaseAdmin.ts`만 걸림) 이 세션엔 Bun 런타임도 service_role 키도 없어 직접 실행 불가. 대신 새 로직과 동일한 DB 관계를 `DO $$ ... RAISE EXCEPTION` 롤백 패턴(Phase 3와 동일 기법)으로 재현 검증:
+- 실제 `meta_players` 2명(공유 선수 1 + A팀 전용 1)으로 A팀(2장: 공유+전용)·B팀(1장: 공유) 인스턴스 발급
+- resolve 결과: 인스턴스 3건, distinct source 2명 — 기대값과 일치. 공유 선수의 두 인스턴스가 같은 원본 이름으로 정확히 resolve됨(`same_source_names_match=true`)
+- **핵심**: 같은 실제 선수의 두 인스턴스에 `room_player_state`로 서로 다른 상태(A팀 `Injured`/체력40, B팀 `Healthy`/체력95) 기록 → 충돌 없이 독립 저장(`independent_states=true`) — 이 설계 전체의 존재 이유였던 지점
+- 종료 후 잔여 데이터 0건(롤백 정상)
+- **남은 일**: 실제 `runSimulation()` 호출(box score `playerId`가 instance_id로 기록되는지)은 Bun 환경(로컬 `bun run` 또는 fly.io)에서 재확인 필요 — Phase 5/6에서 UI로 실제 드래프트를 완료한 팀의 경기가 정상 시뮬레이션되는지로 자연 검증 예정
+
+**롤백 방법**: `server/src/simRunner.ts`에서 `isInstanceRoom` 관련 코드 제거하고 `leagues` select에서 `personal_draft_format` 제거, 하이드레이션 블록을 Before 코드로 되돌리면 됨(DB 스키마 변경 없음 — Phase 1~3 롤백과 무관).
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 3: 개인 드래프트 RPC 3종
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 3. Phase 1(DB 스키마)·Phase 2(어드민 포맷 저장 로직)에 이어, 실제로 팀이 라운드를 진행하며 카드를 뽑는 RPC 3종을 구현.
+
+**변경 파일**:
+- `migrations/add_personal_draft_rpcs.sql` (신규, **DB 적용 완료**) — `start_personal_draft(room_id, team_id, user_id?)`(팀 소유권 검증 → `personal_draft_progress` 행 멱등 생성 → `get_or_generate_round_pack` 위임 호출), `get_or_generate_round_pack(room_id, team_id, user_id?)`(`personal_draft_progress` 행 `FOR UPDATE` 락 → `offered_pool` 있으면 그대로 반환(멱등) → 없으면 `leagues.personal_draft_format.rounds[current_round].eligiblePlayerIds`에서 `poolSize`만큼 무작위 샘플), `submit_personal_draft_pick(room_id, team_id, source_player_id, user_id?)`(팩 소속 검증 → `room_player_instances`에 신규 `instance_id` 발급 → `league_teams.roster`에 그 `instance_id` append(meta_players.id 아님) → 방금 뽑은 카드를 팩에서 제거 → `picks_remaining` 차감, 0 되면 다음 라운드로(또는 `totalRounds` 초과 시 `completed`))
+- `services/multi/personalDraft.ts` (신규) — 3종 RPC의 얇은 클라이언트 래퍼(`startPersonalDraft`/`getOrGenerateRoundPack`/`submitPersonalDraftPick`) + `PersonalDraftPackState`/`PersonalDraftPickResult` 타입. 실제 참가 플로우(`claim_team` 직후 자동 호출) 연결은 UI가 붙는 Phase 5로 이관 — 이번엔 호출 가능한 함수만 준비
+
+**Before**: 해당 RPC/클라이언트 함수 없음(신규).
+
+**After**: 위 2개 파일 그대로. RPC 컨벤션은 `submit_draft_pick_v2`와 동일(`p_user_id uuid DEFAULT NULL` + `COALESCE(p_user_id, auth.uid())`, `SECURITY DEFINER`, `SET search_path TO 'public'`, `RAISE EXCEPTION '에러코드'`). 기존 `DraftRoom.ts`/`submit_draft_pick_v2`(방 전체 공유 풀·턴제, room 전체 락)와 달리 팀별로 완전히 독립적으로 진행되므로 room 전체 락이 필요 없고 `personal_draft_progress` 행 단위 `FOR UPDATE`로 충분하다고 판단.
+
+**검증**: 실제 DB(`buummihpewiaeltywdff`)에 `DO $$ ... RAISE EXCEPTION` 패턴("Fixed-Day 3단계" 항목의 `set_config('request.jwt.claims')` 흉내 테스트와 동일 선례 — 끝에 예외를 던져 전체 트랜잭션 롤백)으로 2라운드(R1: poolSize=5·picks=1, R2: poolSize=5·picks=2) 풀 사이클을 직접 실행:
+- `start_personal_draft` → 1라운드 팩(5장) 즉시 반환 확인
+- `get_or_generate_round_pack` 재호출 → 동일 팩 반환(멱등성 확인)
+- R1 1픽 → `picksRemaining`이 0 되며 R2로 자동 전환(`picksRemaining=2`)
+- R2 팩(5장) 생성 확인
+- R2 1픽째 → 같은 라운드 유지, 팩에서 방금 뽑은 카드만 제외되고 4장 남음
+- R2 2픽째 → `totalRounds(2)` 초과로 `status=completed`
+- 최종: `room_player_instances` 3건(R1×1 + R2×2), `league_teams.roster` 길이 3, R2에서 뽑은 두 카드가 서로 다른 선수인지 확인(`samePlayerTwice=false`)
+- 완료 후 재픽 시도 → `draft_already_completed` 예외 정상 발생
+- 전부 기대값과 일치. 테스트 종료 후 `leagues`/`room_player_instances`/`personal_draft_progress` 잔여 데이터 0건 확인(롤백 정상, 라이브 데이터 오염 없음)
+- `get_advisors(security)` — 신규 함수 3개 모두 `search_path` 경고 없음(기존 `submit_draft_pick_v2` 등과 동일하게 정상 설정됨), anon 실행 가능 경고는 기존 RPC 전체와 동일 카테고리(신규 이슈 아님)
+- `tsc --noEmit` — `personalDraft.ts` 관련 에러 0건
+
+**롤백 방법**:
+- `services/multi/personalDraft.ts` 파일 삭제
+- DB: `DROP FUNCTION IF EXISTS public.submit_personal_draft_pick(uuid, uuid, uuid, uuid); DROP FUNCTION IF EXISTS public.start_personal_draft(uuid, uuid, uuid); DROP FUNCTION IF EXISTS public.get_or_generate_round_pack(uuid, uuid, uuid);` (참조하는 다른 RPC 없음, 순서 무관)
+
+---
+
+## 2026-09-18 — 멀티리그 리더보드에 0경기 선수도 표시
+
+**배경**: `useLeaderboardData`는 랭킹 화면에서 "의미 없는 표본"을 걸러내려고 `g > 0`(경기를 뛴 선수)만 남기는 필터를 기본 적용한다(2026-09-16, `includeZeroGamePlayers` 기본값 false). 그런데 멀티리그는 시즌 시작 직후 아직 아무 경기도 진행되지 않은 상태가 정상적으로 존재하고, 이 시점엔 리더보드가 완전히 텅 비어 보이는 문제가 있었다. 로스터 "선수 기록" 탭(`RosterStatsStack.tsx`)은 이미 같은 훅에 `includeZeroGamePlayers=true`를 넘겨 0경기 선수를 보여주고 있었으므로, 멀티 리더보드에도 같은 패턴을 적용한다. 싱글플레이어 리더보드는 기존 동작(0경기 제외) 그대로 유지.
+
+**변경 파일**:
+- `views/LeaderboardView.tsx` — `LeaderboardViewProps`에 `includeZeroGamePlayers?: boolean`(기본 false) 추가, `useLeaderboardData(...)` 호출에 그대로 전달
+- `views/multi/season/MultiLeaderboardView.tsx` — `<LeaderboardView ... includeZeroGamePlayers />` 로 true 고정 전달 (server 미러 없음 — 순수 클라이언트 필터링)
+
+**Before**:
+```tsx
+// LeaderboardView.tsx
+interface LeaderboardViewProps {
+  ...
+  enableHoverCard?: boolean;
+}
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ ..., enableHoverCard = false }) => {
+  ...
+  const { sortedData, statRanges } = useLeaderboardData(
+      teams, schedule, activeFilters, sortConfig, mode,
+      selectedTeams, selectedPositions, searchQuery, statCategory, seasonType
+  );
+
+// MultiLeaderboardView.tsx
+<LeaderboardView
+    ...
+    enableHoverCard
+/>
+```
+
+**After**:
+```tsx
+// LeaderboardView.tsx
+interface LeaderboardViewProps {
+  ...
+  enableHoverCard?: boolean;
+  includeZeroGamePlayers?: boolean;
+}
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ ..., enableHoverCard = false, includeZeroGamePlayers = false }) => {
+  ...
+  const { sortedData, statRanges } = useLeaderboardData(
+      teams, schedule, activeFilters, sortConfig, mode,
+      selectedTeams, selectedPositions, searchQuery, statCategory, seasonType,
+      includeZeroGamePlayers
+  );
+
+// MultiLeaderboardView.tsx
+<LeaderboardView
+    ...
+    enableHoverCard
+    includeZeroGamePlayers
+/>
+```
+
+**검증**: `tsc --noEmit`으로 두 파일 관련 타입 오류 없음 확인. `useLeaderboardData.ts`의 per-game/percentage 계산은 이미 `g || 1` 폴백 + 분모>0 삼항 가드로 0경기 선수를 방어하고 있어(`RosterStatsStack.tsx`가 같은 패턴으로 먼저 검증됨) NaN/Infinity 렌더링 위험 없음.
+
+**롤백 방법**: 두 파일에서 `includeZeroGamePlayers` 관련 라인만 제거하면 Before 상태로 복귀 (또는 이 커밋 revert).
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 1: DB 스키마 신설
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` — 토너먼트 세션에 "참가 즉시 비동기 라운드제 카드팩 드래프트"를 추가하는 기능의 1단계. 이 모드는 같은 선수가 여러 팀 로스터에 중복 존재할 수 있는데, `room_player_state`(계약/부상/체력, PK `room_id+player_id`)와 실시간 리더보드 RPC(`get_player_season_stats_full`, `player_id` 단독 GROUP BY)가 팀 구분 없이 충돌하는 걸 막기 위해 "룸 스코프 player instance" 개념을 도입한다. `meta_players`는 절대 건드리지 않는다는 제약 하에, 카드가 뽑힐 때마다 신규 `instance_id`를 발급해 이후 로스터/스탯/부상 기록에 `meta_players.id` 대신 이 값을 흘려보내는 방식.
+
+**변경 파일**:
+- `migrations/add_personal_draft_format.sql` (신규, **DB 적용 완료**) — `leagues.personal_draft_format jsonb DEFAULT NULL`. 글로벌 범위(연도/오버롤)는 기존 `leagues.draft_year_min/max`·`draft_ovr_min/max` 재사용, 이 컬럼엔 라운드별 하위범위·픽수·확정된 `eligiblePlayerIds`만 저장
+- `migrations/add_room_player_instances.sql` (신규, **DB 적용 완료**) — `room_player_instances(instance_id uuid PK, room_id, team_id, source_player_id→meta_players.id, drafted_round, created_at)`, RLS(`rpi_member_select`/`rpi_service_write`, `room_player_state`와 동일 패턴)
+- `migrations/add_personal_draft_progress.sql` (신규, **DB 적용 완료**) — `personal_draft_progress(room_id+team_id PK, current_round, picks_remaining, status, offered_pool jsonb, updated_at)`, RLS + `updated_at` 트리거(`room_player_state_touch_updated_at`와 동일 패턴)
+
+**Before**: 해당 테이블/컬럼 없음(신규 스키마).
+
+**After**: 위 3개 SQL 그대로 (Supabase MCP `apply_migration`으로 프로젝트 `buummihpewiaeltywdff`에 순서대로 적용).
+
+**검증**: `information_schema.columns`/`information_schema.tables`로 컬럼·테이블 존재 확인. `get_advisors(security)` 실행 — 신규 두 테이블은 RLS 누락 경고 없음(정책 정상), `personal_draft_progress_touch_updated_at` 함수의 `search_path` 미설정 WARN 1건은 기존 `room_player_state_touch_updated_at`과 동일한 기존 컨벤션(신규 이슈 아님). 적용 시점 `leagues` row 0건이라 기존 리그 데이터 영향 여부는 실질 검증 대상이 없었음(컬럼 추가뿐이라 하위호환 확실).
+
+**롤백 방법**:
+```sql
+ALTER TABLE leagues DROP COLUMN IF EXISTS personal_draft_format;
+DROP TABLE IF EXISTS public.personal_draft_progress;
+DROP TABLE IF EXISTS public.room_player_instances;
+DROP FUNCTION IF EXISTS public.personal_draft_progress_touch_updated_at();
+```
+(참조하는 다른 테이블/RPC가 아직 없으므로 순서 무관, 위 순서 그대로 실행하면 됨)
+
+---
+
+## 2026-09-18 — 멀티 리그 설정: CBA 규정 기본 켜짐 + Two-Way 계약 사용 스위치(two_way_enabled)
+
+**배경**: 사용자 요청 — (1) 세션 설정의 CBA 규정을 기본 켜짐으로, (2) "Two-Way 계약 사용" 체크 옵션 신설. 끄면 투웨이 슬롯이
+사라지고 투웨이 계약이 불가능해야 함.
+
+**변경 파일**:
+- `migrations/add_two_way_enabled_and_cba_default_on.sql` (**DB 적용 완료**) — `leagues.cba_rules_enabled` 기본값 false→true(기존 행 값은 유지),
+  `leagues.two_way_enabled boolean not null default true` 추가, `sign_free_agent_negotiated()` 재생성: `p_contract->>'type'='two_way'`인데
+  `two_way_enabled=false`면 `two_way_disabled` 예외. 같은 함수의 트랜잭션 로그 `sim_date`를 `rooms.sim_date` 직접 읽기 → `current_virtual_date(room_id)`로 교체(메모리의 "rooms.sim_date ≠ 가상 날짜" 규칙).
+- `utils/leagueOverrides.ts` — `isTwoWayContractEnabled(league) = cba_rules_enabled && (two_way_enabled ?? true)` 헬퍼(투웨이 판정 단일 진입점).
+- `services/multi/roomQueries.ts`(LeagueRow.two_way_enabled), `services/multi/leagueService.ts`(createLeague/updateLeagueSettings `twoWayEnabled`), `services/multi/faService.ts`(`two_way_disabled` 메시지)
+- `views/multi/league/LeagueSettingsView.tsx` — CBA 초기값/폴백 `?? false` → `?? true`(state·init·dirty 3곳). 로스터 탭에 "Two-Way 계약 사용" 체크박스(CBA 켜짐일 때만 노출), 슬롯 수 입력은 `cbaRulesEnabled && twoWayEnabled`일 때만, 샐러리캡 탭의 Two-Way 데드라인 블록도 동일 조건. 로스터 탭 저장/dirty에 포함.
+- `views/multi/season/MultiRosterView.tsx` — 슬롯 푸터 표시 `isTwoWayContractEnabled(league)`.
+- `views/multi/season/MultiNegotiationView.tsx` — `isTwoWayEligible`에 `isTwoWayContractEnabled(league)` 결합 → 드롭다운에서 투웨이 유형 제거, 기존 자동 복귀 useEffect가 'free_agent'로 되돌림.
+
+**Before / After**:
+```ts
+// CBA: useState(false) / (league.cba_rules_enabled ?? false)  → useState(true) / (?? true); DB default false → true
+// 투웨이 표시·자격: !!league.cba_rules_enabled  → isTwoWayContractEnabled(league)  (= cba && two_way_enabled)
+// RPC: (없음) → IF type='two_way' AND NOT two_way_enabled THEN RAISE 'two_way_disabled'
+```
+
+**검증**: `tsc -p tscheck.json` 43건(기준선), `vite build` 성공. RPC 가드는 실기(리그 생성 → 협상 화면) 확인 필요.
+
+**주의사항 / 한계**:
+- 스위치를 꺼도 **이미 체결된 투웨이 계약은 그대로 유지**된다(자동 전환/방출 없음) — UI 안내 문구에 명시.
+- 리그 생성 모달에는 CBA/투웨이 토글이 없고 DB 기본값(둘 다 true)을 따른다.
+- 기존 리그의 `cba_rules_enabled=false` 값은 바뀌지 않는다(기본값만 변경). 현재 DB에 리그가 없어 영향 없음.
+- 서버(Bun)는 투웨이 로직이 없어 변경 없음.
+
+**롤백 방법**: `alter table leagues alter column cba_rules_enabled set default false; alter table leagues drop column two_way_enabled;`
++ `sign_free_agent_negotiated`를 `migrations/add_sign_free_agent_negotiated_rpc.sql`/`add_two_way_slots_full_check.sql` 최신 본문으로 재생성. 클라이언트는 git 복원.
+
+---
+
+## 2026-09-18 — 드래프트 완료 직후 FA 화면에 드래프트된 선수까지 전부 보이던 버그 (league_teams 갱신 누락)
+
+**배경**: 사용자 리포트 — 드래프트 완료 후 세션 홈으로 들어가면 FA 화면에 풀 선수 전원이 보이고, 새로고침하면
+정상(미지명 선수만)으로 돌아옴. FA 목록은 `poolPlayers − rosterMap`(`MultiFreeAgentView.tsx` → `useMultiSearchData`)이고
+rosterMap은 리그 컨텍스트 `leagueTeams`의 로스터로 만든다. `useCurrentLeague`는 `league_teams`를 진입 시 1회만 읽고
+`leagues`/`room_members` 변경만 구독했는데, 드래프트 화면과 시즌 화면이 같은 `LeagueLayout` 아래라(App.tsx 2026-09-11 통합)
+드래프트가 끝나도 레이아웃이 유지되며 드래프트 전 스냅샷(빈 로스터)이 그대로 남았다. 서버(DraftRoom/finalize)가 쓴 로스터가
+반영되지 않아 rosterMap이 비어 FA 필터가 아무도 제외하지 못했다. 같은 이유로 드래프트 직후 로스터/트레이드/헤더도
+드래프트 전 상태였다. (`league_teams`는 supabase_realtime publication에 이미 포함돼 있음을 확인.)
+
+**변경 파일**: `hooks/useCurrentLeague.ts`
+
+**Before**:
+```ts
+// leagues UPDATE 구독 핸들러: loadLeague + loadLeagueTimeline 만 재조회
+// league_teams 변경 구독 없음(로비 패널 LeagueLobbyPanel에만 있었고 드래프트 중엔 미마운트)
+```
+
+**After**:
+```ts
+// leagues UPDATE 구독 핸들러: loadLeague + loadLeagueTimeline + listLeagueTeams(room.id) 재조회
+//   (finalize가 status를 in_progress로 바꾸는 순간 = 로스터 확정 시점 → 구독이 끊겼어도 여기서 흡수)
+// 신규: league_teams 구독 (filter room_id=eq.<roomId>, event '*') → 300ms 디바운스 후 listLeagueTeams 재조회,
+//   SUBSCRIBED(재연결) 시 1회 재조회 — useMultiGameData의 games 구독과 동일 패턴
+```
+
+**검증**: `tsc -p tscheck.json` 43건(기준선 동일). 실기(드래프트 완료 → 세션 홈 → FA 화면에 미지명 선수만 표시)는 새 리그
+생성 후 확인 필요.
+
+**주의사항 / 한계**: 드래프트 중에는 픽마다 `league_teams` UPDATE가 오므로 디바운스(300ms)로 묶어도 픽 간격마다 30행 재조회가
+발생한다(부하 미미). 트레이드/FA 서명/방출도 같은 컬럼을 바꾸므로 해당 화면들이 `reload()`를 직접 부르지 않아도 이제 자동 반영된다.
+
+**롤백 방법**: `useCurrentLeague.ts`의 `league-teams-${roomId}` 구독 useEffect 블록 제거 + leagues 핸들러의
+`listLeagueTeams` 재조회 제거.
+
+---
+
+## 2026-09-18 — Fixed-Day 3단계: 어드민 강제 진행(시간 점프) — 세션 설정 일정 탭
+
+**배경**: `docs/plan/fixed-day-schedule-plan.md` §6. 어드민이 "현재 가상 날짜까지 / 특정 날짜까지"를 즉시 진행시키는 기능.
+결과 공개와 "오늘"이 전부 실제 시각(타임라인 표)으로 정해지므로 경기만 미리 계산하면 결과가 숨겨진 채 남는다 → 대상일의
+실제 종료 시각이 "지금"이 되도록 그 이하 행/경기를 Δ만큼 과거로 옮기고, 그 이후 행은 지금+2분부터 창 격자에 다시 깐다.
+서버 코드 변경 없음(DB RPC + 클라이언트). 사용자 지시로 UI는 세션 설정 "일정" 탭에 배치.
+
+**변경 파일**:
+- `migrations/add_admin_time_jump.sql` (신규, **DB 적용 완료**) — `leagues.time_jump_log jsonb`, `admin_time_jump(p_league_id, p_through_virtual_date, p_days, p_games, p_note)` RPC
+- `services/multi/leagueService.ts` — `adminTimeJump()` 래퍼
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` — `buildJumpPlan()`, "강제 진행(시간 점프)" 섹션, 경기 행 ▶ 즉시 시작(`simGameOverride`), 처리 진행 폴링
+- `docs/plan/fixed-day-schedule-plan.md` §6 체크리스트
+
+**RPC 처리 순서(원자적)**:
+```sql
+-- Δ := 대상 행.real_end_at − now()   (이미 지난 날짜면 거부)
+-- 스냅샷: real_end_at > now 인 행 전체 → time_jump_log
+-- 1) 대상일 이하 & real_end_at > now 행: start/midnight/end −Δ
+-- 2) 대상일 이후 행: 삭제 후 p_days(클라이언트가 지금+2분부터 창 격자에 다시 깐 행)로 교체
+-- 3) 대상일 이하 미실행 경기: scheduled_at −Δ  (스케줄러가 예정 시각 순으로 백로그 처리, 시작+리플레이 ≤ 행 종료 ≤ now → 즉시 공개)
+-- 4) 대상일 이하 played=true & scheduled_at > now−리플레이(라이브/선행 계산): games.scheduled_at·game_pbp.game_start_time −Δ → 즉시 종료 화면
+-- 5) 대상일 이후 미실행 경기: p_games의 scheduled_at/game_seq
+-- 6) allstar_schedule: 표의 4종 행에서 재계산(4종 다 있을 때만) / real_end_date: 표의 마지막 종료(KST)
+-- 7) time_jump_log에 {at, by, through, delta_seconds, 건수들, note, snapshot} 추가
+```
+
+**클라이언트 buildJumpPlan()** — 대상일 이후 행을 `buildLeagueTimeline(notBeforeMs = now+2분)`으로 다시 깔되, 모드 `shift`(앞당기기)는 현재
+격자의 하루당 가상 일수를 그대로, `keep_end`(종료일 유지)는 `computeTimelineFeasibility(오늘~real_end_date)`로 다시 계산(불가능하면 실행 거부).
+경기 시각은 `assignRealTimes(..., replay_minutes)`. 요약: 지나가는 일수·계산될 경기·예상 소요(경기당 1.7초)·라이브 수·진행 후 현재 날짜·
+다음 슬롯·남은 일정 종료. 경고: 올스타 투표 마감일 통과(스냅샷 생략 → 본경기 실행 안 될 수 있음), 올스타 4종 연속 실행, 정규시즌 종료 통과
+(플레이오프 자동 생성, 라운드마다 30초+). 실행 후 5초마다 재조회해 "예정 시각이 지난 미실행 경기 N건"을 0이 될 때까지(최대 15분) 표시.
+
+**Before / After**: 새 기능 — 이전에는 어드민이 `AdminSimView`에서 경기 단위 즉시 시뮬만 가능했고, 날짜/기간 단위 진행 수단이 없었다.
+
+**검증**:
+- 클라이언트 `tsc` 43건(기준선), `vite build` 성공.
+- DB 롤백 트랜잭션 테스트(DO 블록, `set_config('request.jwt.claims')`로 어드민 흉내, 끝에 RAISE로 롤백): 6일 타임라인(현재 행 진행 중)·경기 5건
+  (라이브 1·미실행 4)에서 `admin_time_jump(…, '2026-10-22', 이후 4행, 경기 2건)` → Δ=3000초, 10-21 행 −10..20 → −60..−30, 10-22 행 20..50 → −30..0,
+  10-23~26 행 2..32/32..62/62..92/92..122, g0(라이브) −5→−55(P)·pbp −55, g1 3→−47, g2 22→−28, g3/g4 재배치 2/62(seq 10/11),
+  `current_virtual_date` = 2026-10-23, 로그 1건, `real_end_date` 갱신, allstar(4종 미충족) 유지 — 전부 기대값 일치. **실기는 리그 생성 후 필요.**
+
+**주의사항 / 한계**:
+- 되돌릴 수 없다. `time_jump_log`의 snapshot(실행 전 미종료 행 전체)으로만 수동 복구 가능.
+- 하루 1회성 작업(올스타 투표 스냅샷, 월초 파워랭킹)은 건너뛴 날짜만큼 생략된다 — 투표 마감일을 건너뛰면 올스타 본경기가 로스터 없음으로 실행되지 않을 수 있음(UI 경고).
+- 대상일 이후 첫 가상 날짜는 지금+2분 이후 첫 창 슬롯부터 시작한다 — 실제 창 종료 후에 실행하면 다음 날 창 시작부터.
+- 스케줄러 tick당 최대 500경기 처리(`DUE_QUERY_LIMIT`), 워커 1개 기준 경기당 약 1.7초 — 시즌 전체 점프는 약 35분 + 라운드 생성 대기.
+- 점프 중 라이브 관전자는 즉시 종료 화면으로 전환된다.
+
+**롤백 방법**: 클라이언트 변경은 git 복원. DB는 `drop function public.admin_time_jump(uuid, date, jsonb, jsonb, jsonb);`(`time_jump_log` 컬럼은 남겨도 무해).
+
+---
+
+## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 2: 어드민 포맷 저장 로직
+
+**배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 2. Phase 1(DB 스키마)에 이어, 어드민이 라운드별 드래프트 포맷(노출 풀 크기/픽 수/오버롤·연도 하위범위)을 저장할 때 "라운드 풀 고갈이 런타임에 절대 발생할 수 없도록" 저장 시점에 `eligiblePlayerIds`를 확정해두는 로직. 계획 문서의 Phase 2는 원래 `server/src/shared/draftPoolQuery.ts`도 확장 대상이었으나, 구현 중 재검토 결과 **서버 쪽 재계산이 불필요하다고 결론**(아래 참고)내려 스킵했다.
+
+**변경 파일**:
+- `services/multi/personalDraftFormat.ts` (신규, client 전용 — server 미러 없음) — `buildPersonalDraftFormat()`: 라운드별 구조 검증(순서/poolSize/picks/ovr·연도가 글로벌 범위 안인지) → 기존 `fetchDraftPoolPlayers()`(`draftPoolCapacity.ts`, 재사용)로 글로벌 풀 1회 조회 → 라운드별 하위범위로 메모리 필터링 → `eligiblePlayerIds` 확정, 어느 라운드든 `poolSize` 미달이면 전체 저장 거부. `computeRosterSize()`(라운드별 picks 합)
+- `services/multi/leagueService.ts` — `CreateLeagueParams.options`/`UpdateLeagueSettingsParams`에 `personalDraftFormat` 추가, 기존 `opts.X !== undefined → payload.x = opts.X` 패턴 그대로 `personal_draft_format` 컬럼에 매핑
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `personal_draft_format: PersonalDraftFormat | null` 필드 추가(이미 `select('*')`라 쿼리 자체는 무변경)
+
+**Before**: 해당 로직/필드 없음(신규).
+
+**After**: 위 3개 파일 그대로.
+
+**왜 server/src/shared/draftPoolQuery.ts를 스킵했나**: 기존 공유풀 드래프트는 "드래프트 시작 시점(`buildDraftSetup`)"과 "세션 생성/설정 저장 시 용량 사전 검증(`draftPoolCapacity.ts`, client)" 두 곳에서 같은 필터를 각각 독립적으로 재실행해야 해서 client/server 미러가 필요했다. 반면 `personal_draft_format.eligiblePlayerIds`는 **저장 시점에 한 번만 확정해 JSON에 박아두는 값**이라, 이후 Phase 3의 RPC(`get_or_generate_round_pack` 등)는 이 배열을 그대로 읽기만 하면 되고 서버가 독립적으로 재계산할 지점 자체가 없다 — `draftPoolCapacity.ts`(client-only, 서버 미러 없음)와 동일한 성격.
+
+**검증**: 실제 프로젝트(`buummihpewiaeltywdff`)에 대고 `npx tsx`로 4케이스 직접 실행. (1) 정상 15라운드 하락 커브(오버롤 89→61 점감) — 라운드별 실제 eligible 103~410명, `rosterSize=15` 정상 계산, 성공. (2) 라운드 오버롤 범위(60~99)가 글로벌 범위(70~99)를 벗어남 — 저장 전 검증 단계에서 즉시 거부. (3) 98~99 OVR 999명 요구(실제 9명) — DB 조회 후 부족 거부. (4) `picks(6) > poolSize(5)` — 구조 검증 단계에서 거부. 4건 전부 예상대로. `tsc --noEmit` 전체 실행 결과 이번에 건드린 파일에서 새로 발생한 에러 0건(기존에 있던 무관한 에러 1건 `roomQueries.ts:352 RoomRow` 확인, 내 변경과 무관).
+
+**롤백 방법**:
+- `services/multi/personalDraftFormat.ts` 파일 삭제
+- `services/multi/leagueService.ts`: `personalDraftFormat`/`PersonalDraftFormat` import, `CreateLeagueParams.options.personalDraftFormat`, `UpdateLeagueSettingsParams.personalDraftFormat`, 두 곳의 `payload.personal_draft_format = ...` 라인 제거
+- `services/multi/roomQueries.ts`: `PersonalDraftFormat` import, `LeagueRow.personal_draft_format` 필드 제거
+- (DB 컬럼 자체는 Phase 1 롤백 방법 참고 — 이 Phase는 그 컬럼을 읽고 쓰는 애플리케이션 코드만 추가했을 뿐 스키마 변경 없음)
+
+---
+
+## 2026-09-18 — Fixed-Day 2단계: 리플레이 길이 리그 설정화 + games Realtime 증분 반영
+
+**배경**: `docs/plan/fixed-day-schedule-plan.md` §5. (1) 결과 공개 지연이자 PBP 재생 길이인 "리플레이 10분"이
+클라이언트 상수·서버 상수·DB 함수 7개·RLS 정책 2개에 하드코딩돼 있어 하루 길이 하한과 배율을 고정시켰다 → 리그
+설정(5/8/10/12분)으로 승격. (2) 경기 행이 하나 바뀔 때마다 접속자 전원이 일정 전체(~1,230행)를 재조회하던 것이
+Supabase 요청/전송량의 최대 병목이라 증분 반영으로 교체. 배포: fly v156.
+
+**변경 파일**:
+- `migrations/add_replay_minutes_and_incremental.sql` (신규, **DB 적용 완료**) — `leagues.replay_minutes`(기본 10, 1~30),
+  `room_replay_interval(p_room_id)` 헬퍼(SECURITY DEFINER), 함수 7개를 `pg_get_functiondef`로 읽어 조건식만 치환해 재생성
+  (DO 블록, 잔존 시 예외), `game_pbp`/`league_events` SELECT 정책 교체, `apply_league_reschedule` p_settings에 replay_minutes
+- `views/multi/season/multiGameReveal.ts` — `DEFAULT_REPLAY_MINUTES`, `setActiveReplayMinutes()`, `getReplayDurationMs()`; `getGameDisplayState`가 게터 사용. `REPLAY_DURATION_MS`는 기본값 상수로 유지(@deprecated)
+- `hooks/useCurrentLeague.ts` — 리그 로드/Realtime 갱신 시 `setActiveReplayMinutes(league.replay_minutes)` 주입
+- `views/multi/season/MultiGamePbpView.tsx` — 재생 배율 4곳 `getReplayDurationMs()`
+- `server/src/liveGameView.ts` — `computeGameState/buildWindowedView/buildWindowedViewSince/buildLiveSummary`에 `replayDurationMs` 인자(기본 10분)
+- `server/src/replayConfig.ts` (신규) — 방→리그 `replay_minutes` 조회, 60초 캐시; `server/src/index.ts` `/live-game`·`/live-games`가 사용
+- `server/src/shared/leagueTimeline.ts` ↔ `utils/leagueTimeline.ts` (미러) — `REPLAY_MINUTE_OPTIONS`, `DAY_LENGTH_REPLAY_MARGIN_MIN=2`, `computeTimelineFeasibility({replayMin})`, `lateGameClampsAt()`
+- `server/src/finalize.ts`(replay_minutes select·클램프·leagueFields), `playoffSeeder.ts`(PostseasonLeagueRow.replay_minutes), `scheduler.ts`/`simRunner.ts`(select)
+- `services/multi/roomQueries.ts`(LeagueRow.replay_minutes), `services/multi/leagueService.ts`(createLeague `replayMinutes`, updateLeagueSettings `replayMinutes`, RescheduleSettingsInput.replay_minutes), `services/multi/gameQueries.ts`(`rowToGame` export)
+- `components/multi/CreateLeagueModal.tsx` — 리플레이 선택지 + 클램프 경고 + 실현가능성에 replayMin
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` — 리플레이 선택지(즉시 저장 가능), 재배치 계획에 replayMin, 클램프 경고
+- `hooks/useMultiGameData.ts` — games Realtime 증분 반영
+
+**Before / After**:
+```ts
+// 판정: REPLAY_DURATION_MS = 10*60*1000 상수 (client/server), DB: gp.game_start_time + interval '10 minutes' <= now()
+//   → client getReplayDurationMs()(리그 로드 시 주입), server getRoomReplayMs(roomId)(60초 캐시),
+//     DB gp.game_start_time + room_replay_interval(p_room_id) <= now()  /  정책: game_start_time + room_replay_interval(room_id)
+// 타임라인 클램프: assignRealTimes(..., DEFAULT_REPLAY_MIN) → league.replay_minutes; 실현가능성에 D ≥ replay + 2 조건
+// Realtime: .on('postgres_changes', games, refetch /* 전체 loadSchedule */)
+//   → applyChange(payload): DELETE → filter(game_id), INSERT/UPDATE → rowToGame(payload.new)로 해당 경기만 교체/추가
+//     (SUBSCRIBED 재연결 시 전체 재조회 1회는 유지)
+```
+
+**검증**:
+- 클라이언트 `tsc` 43건(기준선 동일), 서버 `tsc` 수정 파일 에러 0, `vite build` 성공.
+- 스크래치 tsx: D≥리플레이+2 판정, `lateGameClampsAt` 6케이스(D=20·리플레이 12 → true, D=22 → false), 클램프 실제 동작(22:30 경기 8.75→8분),
+  서버 `computeGameState/buildLiveSummary/buildWindowedView` 리플레이 5/10/12분, 클라이언트 게터 주입(5/12/null) — 전부 PASS. 1단계 테스트 재실행 PASS.
+- DB: `'10 minutes'` 참조 함수 0개, 헬퍼 사용 함수 8개(치환 7 + 헬퍼), `'00:10:00'` 정책 0개, 헬퍼 사용 정책 2개, 존재하지 않는 방 → 10분 폴백 확인.
+- fly v156 배포·부팅 정상.
+
+**주의사항 / 한계**:
+- 리플레이 길이는 **리그 전체 공통**이며 변경 즉시 클라이언트 판정에 반영(서버 캐시 최대 60초). 이미 배정된 경기 시각의 클램프(시작+리플레이 ≤ 하루 종료)는
+  재계산되지 않으므로, 리플레이를 늘렸다면 일정 탭 "남은 날짜 재배치"를 실행해야 22:30 경기가 다음 가상 하루로 넘어가지 않는다.
+- `room_replay_interval()`은 정책 안에서 행마다 호출된다(rooms/leagues PK 조회 2회). game_pbp 수천 행 규모에서 문제없음.
+- 라이브 화면 재생 배율은 `getReplayDurationMs()` 기준 — 서버가 잘라 보내는 elapsed 구간과 같은 값을 써야 하므로 리그 로드 전엔 기본 10분.
+- 조사 중 확인: 02:45:06Z에 이 세션이 아닌 다른 경로(관리 API PAT, `POST /v1/projects/:ref/database/query`)로 MAIN 2·PBL 리그가
+  `league_user_history.league_id=NULL` 처리 후 삭제됐다(leagues/rooms/games 0건). 이 세션의 삭제는 NEW LEAGUE 1건뿐.
+
+**롤백 방법**: 코드는 git 복원. DB는 `alter table leagues drop column replay_minutes;`는 하지 말고(함수가 참조), 함수/정책을
+`interval '10 minutes'`로 되돌리려면 이 마이그레이션의 DO 블록을 역방향(`room_replay_interval(p_room_id)` → `interval '10 minutes'`)으로
+실행하고 정책 2개를 `'00:10:00'::interval`로 재정의. 서버는 fly v155.
+
+---
+
+## 2026-09-18 — 고정 길이 가상 하루(Fixed-Day) 타임라인 구조 전환 1단계 (원인 1·2 해결)
+
+**배경**: 멀티 리그에서 (1) 같은 가상 날짜 안 늦은 시간대 경기가 먼저 시작, (2) 1일차 진행 중에 헤더가 2일차로
+넘어가고 2일차가 곧바로 시작되는 체감. 근본 원인은 가상 하루의 실제 길이가 경기 수에 비례하는 압축 방식이라
+"지금이 며칠인가"를 시간으로 정할 수 없던 것. 사용자와 논의해 `docs/plan/fixed-day-schedule-plan.md`로 확정한
+설계의 1단계를 구현·배포함(fly v155). 2단계(리플레이 길이 설정화·Realtime 증분), 3단계(어드민 시간 점프)는 미착수.
+
+**변경 파일**:
+- `migrations/add_league_virtual_days_fixed_day_schedule.sql` (신규, **DB 적용 완료**) — `leagues.day_length_min / real_start_date / real_end_date / playoff_game_interval_days`,
+  `league_virtual_days` 테이블+RLS, `current_virtual_date()` 교체, `apply_league_reschedule()` RPC 신설, 어제 만든 `reschedule_league_games()` 제거
+- `server/src/shared/leagueTimeline.ts` (server, 신규) ↔ `utils/leagueTimeline.ts` (client 미러, import 경로만 다름)
+- `server/src/shared/timelineStore.ts` (server, 신규) — 표 로드/저장, 포스트시즌 경기 scheduled_at 채우기
+- `server/src/shared/leagueScheduleCompressor.ts`, `utils/leagueScheduleCompressor.ts` — **삭제**
+- `server/src/shared/scheduleGenerator.ts` ↔ `utils/scheduleGenerator.ts` (미러) — 생성기 정렬 추가
+- `server/src/finalize.ts` — 메인리그 경로를 `buildMainLeagueSchedule()`로 교체(select 컬럼 추가)
+- `server/src/shared/playoffSeeder.ts`, `playInSeeder.ts`, `simRunner.ts`, `scheduler.ts` — 타임라인 리그 분기(g일 슬롯 + 표 기반 scheduled_at), select 컬럼 추가
+- `server/src/shared/tournamentBracket.ts`, `tournamentInitializer.ts` — 경기 타입에 `time?` 추가
+- `services/multi/timelineQueries.ts` (신규), `hooks/useCurrentLeague.ts`(`timeline` 상태), `services/multi/roomQueries.ts`(LeagueRow 필드), `services/multi/leagueService.ts`(생성/설정 파라미터, `applyLeagueReschedule`)
+- `views/multi/season/multiScheduleUtils.ts` — `findCurrentVirtualDate/Game(…, timeline?)`, `kstDateKey/fmtTime` 플레이오프도 가상 값
+- 호출부: `components/MultiHeader.tsx`(+서버 시계), `MultiSidebar.tsx`, `hooks/useCurrentVirtualDate.ts`(+서버 시계), `GameDateStrip.tsx`(prop), `MultiSeasonLayout.tsx`, `MultiNewsFeedView/MultiScheduleView(정렬 키 포함)/MultiRosterView/MultiFrontOfficeView/MultiNegotiationView/MultiPlayerDetailView/MultiTacticsView/MultiAllStarView.tsx`
+- `components/multi/CreateLeagueModal.tsx` — 입력 교체 + 실현 가능성 판정
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` — 타임라인 구조로 재작성
+- `docs/plan/fixed-day-schedule-plan.md`(체크리스트·수치), `docs/simulation/schedule-generator.md`(절 추가)
+
+**Before** (핵심 규칙):
+```ts
+// compressLeagueSchedule: 같은 날짜 경기는 baseIntervalMin(=창길이/하루목표경기수) 간격, 날짜 전환 시 10분.
+//   → 가상 하루 실제 길이 = 10분 + (경기수−1)×base, 경기 없는 날 0초
+// 생성기: scheduled.sort(by date) → assignGameTimes(복사본 정렬) → games 원본 순서는 무작위
+// "오늘": findCurrentVirtualGame = |scheduledAt − now| 최소 경기의 date
+// SQL current_virtual_date: games 중 scheduled_at이 now에 가장 가까운 행의 game_date
+// 플레이오프: slot × (1440/games_per_real_day)분, 앵커 = real now+1일
+```
+
+**After**:
+```ts
+// leagueTimeline: 가상 하루 = D분 고정(20~40, 기본 30), 19:00→03:00을 D에 선형 매핑, 자정 = D×5/8
+//   k = ceil(가상 일수 / 실제 일수), 창 길이 = k×D(계산값), 시작 시각만 입력. 첫 슬롯 ≥ now+5분
+//   scheduled_at = 행.realStartAt + (time−19:00)×(D/480), clamp 시작+10 ≤ realEndAt, game_seq 재번호
+// 생성기: assignGameTimes() 후 games.sort(date, time)
+// "오늘": resolveVirtualDate — realStartAt ≤ now 마지막 행; now < realMidnightAt ? date : date+1; 시작 전이면 첫 행
+// SQL current_virtual_date: 위와 동일(표 없으면 예전 로직 → rooms.sim_date 폴백)
+// 플레이오프: 앵커 0 = 정규 종료+1, 플레이인 0·g, 1R = 2g(플레이인 있음)/0, G_n = start+(n−1)g, 다음 라운드 = start+maxGames·g
+//   브라켓 엔진엔 interval=1440·g분을 넘겨 슬롯 1개 = g일; scheduled_at은 fillPostseasonRealTimes()로 표에서.
+//   시리즈 슬롯: PI 7v8 E/W=19:00/19:30, 9v10=20:00/20:30, 8th=19:00/19:30, T_R*_M{m}=19:00+30·(m%8)
+// 매일 규칙 최대 30일, 격일 59일(컨퍼런스 8팀·Bo7·플레이인)
+```
+
+**검증**:
+- 서버 `tsc`: 수정 파일 에러 0(기존 bun 타입/SupabaseClient 제네릭 에러만 남음). 클라이언트 `tsc -p tscheck.json`: 43건 = 변경 전 기준선(전부 기존 파일).
+- `vite build` 성공(모듈 순환 없음 — vendor 청크 경고는 기존 manualChunks 경고).
+- 스크래치 tsx(미커밋): 매일 30일/격일 59일, 캘린더 205일, 7일×D별 창 길이·불가능 판정·대안(D=30: 종료일 9/28 이후 또는 D≤28 또는 시작≤09:00), 14일·D30 → k=15·10:00~17:30, 행 길이/자정/창 범위 불변식, 실제 생성기 1,230경기에 대해 같은 날짜 안 순서 = 가상 시간 순서·클램프·다른 날짜 겹침 0·game_seq 단조, "오늘" 규칙 6케이스, 올스타 4종 순서, 시리즈 슬롯 — 전부 PASS.
+- `NEW LEAGUE`(2a2b9830-…) 삭제 → leagues/rooms/games/league_teams/game_pbp/league_events 0건 확인.
+- fly.io v155 배포, 부팅 로그 정상. **실기(새 리그 생성 → 첫 실제 하루 관전)는 아직 안 함** — 다음 리그 생성 시 DB 질의(같은 날짜 안 순서 위반 0, 다른 날짜 겹침 0, current_virtual_date = 클라이언트 값)로 확인 필요.
+
+**주의사항 / 한계**:
+- 타임라인이 없는 리그(구 메인리그·토너먼트)는 전부 예전 경로(압축기 결과는 DB에 남아 있고, 판정은 "가장 가까운 경기" 폴백). 종료된 MAIN 2/PBL 영향 없음.
+- 생성 모달은 플레이오프 팀 수 8·플레이인 on·Bo7 기본값으로 가상 일수를 계산한다(모달에 그 입력이 없음). 세션 설정에서 플레이오프 팀 수를 바꿔도 타임라인의 플레이오프 최대 일수는 재계산되지 않는다(남는 날은 빈 채로 흐름).
+- 올스타 4개 서브 이벤트는 가상 하루 4개 = 실제 D×4분(기본 2시간) 안에 연달아 발동한다(고정 길이 설계의 결과).
+- 리플레이 10분은 아직 상수(`DEFAULT_REPLAY_MIN`, `REPLAY_DURATION_MS`, SQL `interval '10 minutes'`) — 2단계에서 설정화.
+- `rooms.sim_date`/`advanceSimDates`는 그대로(실제 KST 날짜).
+
+**롤백 방법**: git으로 이 커밋 이전 상태 복원(삭제한 압축기 2파일 포함) + DB는 `drop function apply_league_reschedule; drop table league_virtual_days;`
+와 `current_virtual_date()`를 `migrations/trade_virtual_sim_date_fix.sql`의 본문으로 재생성, `leagues`의 새 컬럼 4개는 남겨둬도 무해. 서버는 fly v154로 롤백(`flyctl releases`).
+
+---
+
+## 2026-09-18 — 세션 설정 "일정" 탭 신설 (진행기간/시뮬 시간대 수정 + 남은 경기 재배치 + 경기별 시각 수동 편집)
+
+**배경**: 멀티 리그 날짜 진행 모순 조사(같은 세션, 아래 "원인 요약" 참고) 결과를 바로 고치기 전에,
+관리자가 세션 설정에서 (1) 리그 총 진행기간과 일일 시뮬 시간대를 바꾸고, (2) 그에 따른 하루
+경기수/경기 간격/각 경기의 실제 시뮬 시각을 전체 일정표로 확인하고, (3) 경기별 시뮬 시각을 수동으로
+조절할 수 있게 해달라는 요청. 지금까지 duration_weeks/daily_window_*는 리그 생성 모달에서만 정할 수
+있었고, 경기별 scheduled_at 편집은 AdminSimView(어드민 시뮬 화면)에만 있었다.
+
+**조사에서 확인한 원인 요약(이번엔 미수정, 별도 작업 예정)**:
+- 같은 가상 날짜 안에서 "늦은 시간대 경기가 먼저 시작": `scheduleGenerator.ts`의 `assignGameTimes()`가
+  날짜별 **복사본 배열**만 시간순 정렬하고 `g.time`을 붙여서, 원본 `games` 순서(=압축기가 scheduledAt을
+  배정하는 순서)는 무작위 그대로. 현재 리그 168일 중 162일에서 순서 뒤집힘(위반 쌍 1,365건).
+- "1일차 진행 중에 2일차 동시 진행": scheduled_at 기준 실제 겹침은 0건(날짜 경계 154곳 전부 정확히 600초).
+  체감 원인은 (a) "오늘" 판정(`findCurrentVirtualGame`/SQL `current_virtual_date`)이 "가장 가까운 경기"라
+  10분 전환 간격의 중간(5분)에 미리 다음 날짜로 넘어감, (b) 날짜 간 여유가 리플레이 길이와 정확히 같아
+  0초, (c) 화면별 시계 불일치(15초 버킷/1초/헤더는 비보정 `Date.now()`).
+
+**변경 파일**:
+- `server/src/shared/leagueScheduleCompressor.ts` (server) — `LeagueCompressionConfig.firstDayStartMin?`
+  옵션 추가. 서버 호출부(finalize.ts)는 넘기지 않으므로 서버 동작 불변.
+- `utils/leagueScheduleCompressor.ts` (client, **신규 미러**) — 서버 파일과 import 경로만 다른 동일 내용.
+  서버 압축기를 고치면 이 파일도 같이 갱신할 것.
+- `utils/kstTime.ts` (client, 신규) — `server/src/shared/kst.ts` 미러(KST 고정 오프셋 헬퍼).
+- `migrations/add_reschedule_league_games_rpc.sql` (신규, **DB 적용 완료**) — `reschedule_league_games(p_room_id, p_items jsonb)`
+  RPC. 어드민 검증 + `played=false` 가드, 갱신 행 수 반환.
+- `services/multi/leagueService.ts` — `UpdateLeagueSettingsParams`에 `durationWeeks/dailyWindowStartMin/dailyWindowEndMin/allstarSchedule`
+  추가, `rescheduleLeagueGames()` 신설.
+- `services/multi/roomQueries.ts` — `LeagueRow`에 `duration_weeks/daily_window_start_min/daily_window_end_min/allstar_schedule` 타입 추가(DB에 이미 있던 컬럼).
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` (신규) — 탭 본체.
+- `views/multi/league/LeagueSettingsView.tsx` — `'schedule'` 탭('일정') 추가, 진행 중 안내 문구 수정.
+
+**Before** (`compressLeagueSchedule` 1일차 결정부):
+```ts
+const startDayOffset = kstMinuteOfDay(new Date(config.realStartAt)) >= config.dailyWindowStartMin ? 1 : 0;
+...
+let usedMinInDay = 0;
+...
+if (!isFirstGroupOfDay && usedMinInDay + gapBefore + neededForGroup > windowMin) { dayIndex++; usedMinInDay = 0; isFirstGroupOfDay = true; }
+```
+
+**After**:
+```ts
+const firstDayOffsetMin = config.firstDayStartMin != null
+    && config.firstDayStartMin >= config.dailyWindowStartMin
+    && config.firstDayStartMin < config.dailyWindowEndMin
+    ? config.firstDayStartMin - config.dailyWindowStartMin : null;
+const startDayOffset = firstDayOffsetMin != null ? 0
+    : (kstMinuteOfDay(new Date(config.realStartAt)) >= config.dailyWindowStartMin ? 1 : 0);
+...
+let usedMinInDay = firstDayOffsetMin ?? 0;
+...
+if (!isFirstGroupOfDay && usedMinInDay + gapBefore + neededForGroup > windowMin) { dayIndex++; usedMinInDay = 0; isFirstGroupOfDay = true; }
+// 첫 그룹조차 오늘 남은 윈도우에 안 들어가면(윈도우 종료 직전 재배치) 다음 날로
+if (isFirstGroupOfDay && dayIndex === 0 && firstDayOffsetMin != null && usedMinInDay + neededForGroup > windowMin) { dayIndex++; usedMinInDay = 0; }
+```
+
+**재배치 로직(ScheduleSettingsTab.buildReschedulePlan)**:
+- 대상: `played=false && !isPlayoff && !isAllstar` 경기, `game_seq` 순(원본 압축 순서 유지 — 가상 시간 정렬은 위 원인 수정 때 별도).
+- 1일차 앵커: 지금+5분이 오늘 윈도우 시작 전 → 오늘 윈도우 시작 / 윈도우 도중 → `firstDayStartMin=지금+5분` /
+  윈도우 후 → 내일 윈도우 시작. `realStartAt`은 항상 해당일 KST 자정으로 넘겨 startDayOffset 보정 차단.
+- 올스타 브레이크 도중(브레이크 전 경기 전부 종료 && `allstar_schedule.mainGameAt`이 미래 && 남은 첫 경기 날짜 > allStarEnd)이면 본경기 다음 날부터.
+- 기간 예산: `budgetDays = max(1, duration_weeks*7 − (앵커일 − 리그 첫 경기일))`, 압축기엔 `durationWeeks = budgetDays/7`(소수 주)로 전달.
+- 재배치가 브레이크 경계를 다시 지나면 `allStarRealSchedule`을 `leagues.allstar_schedule`에 함께 저장.
+- 실행 직전 "지금" 기준으로 계획을 다시 계산(미리보기 앵커가 낡아 과거 시각이 되는 것 방지) → `updateLeagueSettings` → `reschedule_league_games`.
+
+**검증**:
+- `npx tsc -p tscheck.json`: 신규/수정 파일 에러 0건(전체 43건은 전부 기존 파일의 기존 오류 — 예: `roomQueries.ts:338` listUserActiveRooms select에 sim_settings 누락, 이번 변경과 무관).
+- 서버 `tsc`: leagueScheduleCompressor.ts 에러 없음(나머지는 기존 bun 타입 등).
+- `diff`로 client/server 압축기 미러가 import 한 줄 외 동일함 확인.
+- tsx 시나리오 5종(스크래치패드, 미커밋): 윈도우 전/도중/종료 직전/후/넉넉한 예산 — 과거 시각 0, 날짜 간 최소 간격 정확히 10분, 시간대 밖 배정 0, 도중 실행 시 지금+5분부터, 종료 직전 실행 시 다음 날로 자동 이월.
+- 마이그레이션 `add_reschedule_league_games_rpc` 적용 성공(실제 재배치 실행은 관리자 UI에서 수행 전).
+
+**주의사항 / 한계**:
+- 서버 배포: fly.io v154(2026-09-18, `flyctl deploy --remote-only`) — 이 항목의 서버 변경분(압축기 옵션) 포함.
+- 재배치는 `game_seq` 순서를 그대로 쓰므로 같은 날짜 안의 가상 시간 뒤집힘(원인 1)은 재배치로 고쳐지지 않음.
+- `RESCHEDULE_LEAD_MIN=5`분보다 짧게 남은 창에서 실행하면 첫 그룹이 다음 날로 넘어감(의도).
+- 진행기간 상한은 UI에서 8주(생성 모달은 1~4주).
+
+**롤백 방법**: 신규 파일 4개(utils/kstTime.ts, utils/leagueScheduleCompressor.ts, views/multi/league/settings/ScheduleSettingsTab.tsx,
+migrations/add_reschedule_league_games_rpc.sql) 삭제 + LeagueSettingsView/leagueService/roomQueries의 `[2026-09-18]` 블록 제거 +
+서버 압축기를 위 Before 블록으로 복원. DB는 `drop function public.reschedule_league_games(uuid, jsonb);`.
+
+---
+
+## 2026-09-17 — CBA 규정 꺼진 리그에서 투웨이 슬롯 표시/설정 숨김
+
+**배경**: "NEW LEAGUE"(cba_rules_enabled=false, max_roster_size=15, 15라운드 드래프트로 정규 15/15)에서
+로스터 푸터가 "투웨이 슬롯 0/3"을 보여주는데 FA 화면 "계약" 버튼은 비활성화됐다는 보고. CBA가 꺼진 리그는
+FA "계약"이 즉시계약 RPC `sign_free_agent(p_team_id, p_player_id)`를 곧바로 호출하고 이 RPC엔 계약 유형
+개념이 없어 투웨이 계약을 만들 방법이 아예 없다(협상 화면 `MultiNegotiationView`는 CBA 켜진 리그만 진입).
+따라서 "슬롯이 남았는데 못 쓴다"는 표시 불일치가 원인 — 두 해결책(① CBA 꺼진 리그에도 투웨이 즉시계약
+허용, ② 표시 숨김) 중 사용자가 ②를 선택.
+
+**변경 파일**:
+- `components/roster/RosterOverviewGrid.tsx` (client) — `showTwoWaySlots?: boolean`(기본 true) prop, 푸터 항목 조건부 렌더
+- `views/RosterView.tsx` (client) — 동명 prop 추가·통과
+- `views/multi/season/MultiRosterView.tsx` (client) — `showTwoWaySlots={!!league?.cba_rules_enabled}` 전달
+- `views/multi/league/LeagueSettingsView.tsx` (client) — 로스터 섹션 "Two-Way 슬롯 수" 입력 블록을 `{cbaRulesEnabled && (...)}`로 감쌈
+
+**Before**:
+```tsx
+// RosterOverviewGrid 푸터 — 항상 표시
+<span className="text-sm font-semibold text-slate-400">투웨이 슬롯 {twoWayCount}/{twoWaySlots}</span>
+// MultiRosterView
+<RosterView ... maxRosterSize={league.max_roster_size} twoWaySlots={league.two_way_slots} />
+// LeagueSettingsView — "Two-Way 슬롯 수" 입력 항상 표시
+```
+
+**After**:
+```tsx
+// RosterOverviewGrid
+showTwoWaySlots = true   // 기본값(싱글플레이어 등 기존 호출부는 변화 없음)
+{showTwoWaySlots && (<span>투웨이 슬롯 {twoWayCount}/{twoWaySlots}</span>)}
+// MultiRosterView
+<RosterView ... showTwoWaySlots={!!league?.cba_rules_enabled} />
+// LeagueSettingsView
+{cbaRulesEnabled && (<div> ...Two-Way 슬롯 수 입력... </div>)}
+```
+
+**검증**: `npx tsc -p tscheck.json` 변경 4파일 오류 0건. 브라우저 확인 미실시.
+
+**주의**: `leagues.two_way_slots` 값/저장 로직은 그대로(숨겨져도 state에 남아 저장됨). 투웨이 데드라인
+설정(같은 화면의 two_way_deadline_date)은 이번 범위에 포함하지 않았다. FA "계약" 버튼의 CBA-off 정원
+차단 로직(MultiFreeAgentView.tsx:613)은 변경 없음.
+
+**롤백 방법**: 4파일에서 `showTwoWaySlots` prop과 `{cbaRulesEnabled && (...)}` 래핑 제거.
+
+---
+
+## 2026-09-17 — FA 협상 화면: 계약 체결 후 자동 이동 제거, "나가기" 누를 때까지 결과 화면 유지
+
+**배경**: `MultiNegotiationView.tsx`는 계약 체결 시 1.5초 뒤 `navigate(free-agent)`로 자동 복귀했다.
+사용자 요청: "계약 완료 후 사용자가 나가기를 누르기 전까진 화면 유지". 단순히 setTimeout만 지우면
+안 되는 이유가 있었다 — 체결 직후 `reload()`로 leagueTeams가 갱신되면 `rosterMap`에 그 선수가 들어가고,
+`player` useMemo가 "로스터 미소속" 조건(`!rosterMap.has(p.id)`)으로 조회하기 때문에 null이 되어
+"선수를 찾을 수 없습니다" 화면으로 튕긴다. 자동 이동은 사실상 이 현상을 가리는 역할이었다.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` (client)
+
+**Before**:
+```ts
+const player = useMemo(
+    () => (playerId ? poolPlayersWithStats.find(p => p.id === playerId && !rosterMap.has(p.id)) ?? null : null),
+    [poolPlayersWithStats, playerId, rosterMap],
+);
+// ... 수락 처리
+setResult({ accepted: true });
+addMsg('gm', ...); addMsg('status', '계약 체결 완료', undefined, true);
+reload();
+setTimeout(() => navigate(`/multi/leagues/${leagueId}/season/free-agent`), 1500);
+// ... 채팅 하단 "나가기" 버튼
+{(isOnCooldown || isRefusingNegotiation) && ( <button>나가기</button> )}
+```
+
+**After**:
+```ts
+const [signedPlayerId, setSignedPlayerId] = useState<string | null>(null);
+const player = useMemo(
+    () => (playerId
+        ? poolPlayersWithStats.find(p => p.id === playerId && (p.id === signedPlayerId || !rosterMap.has(p.id))) ?? null
+        : null),
+    [poolPlayersWithStats, playerId, rosterMap, signedPlayerId],
+);
+// ... 수락 처리
+setSignedPlayerId(player.id);   // reload()보다 먼저
+setResult({ accepted: true });
+addMsg(...); reload();
+// setTimeout navigate 제거
+// ... 채팅 하단 "나가기" 버튼 — 체결 후에도 표시
+{(isOnCooldown || isRefusingNegotiation || isSigned) && ( <button>나가기</button> )}
+```
+
+**검증**: `npx tsc -p tscheck.json` 해당 파일 오류 0건. 브라우저 동작 테스트 미실시.
+
+**롤백 방법**: Before 블록으로 복원(signedPlayerId state 삭제, memo 조건 원복, setTimeout navigate 복구,
+나가기 조건에서 `|| isSigned` 제거).
+
+---
+
 ## 2026-09-17 — 드래프트 풀 용량 가드(참가팀 × 라운드 ≤ 풀 크기) — 세션 생성/설정 저장/서버 준비 3중 차단
 
 **배경**: "New League" 세션(room `77a012bd-…`)이 15라운드 #432픽(index 431)에서 정지. fly.io 로그

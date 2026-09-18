@@ -22,7 +22,8 @@ import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
-import { buildWindowedViewSince, buildLiveSummary, REPLAY_DURATION_MS, type GamePbpSource } from './liveGameView';
+import { buildWindowedViewSince, buildLiveSummary, type GamePbpSource } from './liveGameView';
+import { getRoomReplayMs } from './replayConfig';
 import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
@@ -412,11 +413,13 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
         const raw = url.searchParams.get(key);
         return raw != null ? parseInt(raw, 10) : undefined;
     };
+    // [2026-09-18 2단계] 리플레이 길이는 리그 설정 — 방 기준으로 조회(60초 캐시).
+    const replayMs = await getRoomReplayMs(roomId);
     return json(buildWindowedViewSince(row as GamePbpSource, Date.now(), {
         events: parseSince('sinceEvents'),
         shots:  parseSince('sinceShots'),
         box:    parseSince('sinceBox'),
-    }));
+    }, replayMs));
 }
 
 async function handleLiveGames(req: Request, url: URL): Promise<Response> {
@@ -437,8 +440,9 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
 
     if (!(await verifyRoomMember(userId, roomId))) return json({ error: 'Forbidden' }, 403);
 
-    const nowIso   = new Date().toISOString();
-    const cutoffIso = new Date(Date.now() - REPLAY_DURATION_MS).toISOString();
+    const replayMs  = await getRoomReplayMs(roomId);
+    const nowIso    = new Date().toISOString();
+    const cutoffIso = new Date(Date.now() - replayMs).toISOString();
 
     const { data: rows } = await supabase
         .from('game_pbp')
@@ -447,7 +451,7 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
         .lte('game_start_time', nowIso)
         .gt('game_start_time', cutoffIso);
 
-    const summaries = (rows ?? []).map(r => buildLiveSummary(r as GamePbpSource, Date.now()));
+    const summaries = (rows ?? []).map(r => buildLiveSummary(r as GamePbpSource, Date.now(), replayMs));
     return json({ ok: true, games: summaries });
 }
 

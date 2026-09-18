@@ -22,6 +22,8 @@ import { getTradeDeadlineBounds, clampTradeDeadline } from '../../../utils/trade
 import { loadSchedule } from '../../../services/multi/gameQueries';
 import { daysBetweenKeys, addDaysToKey } from '../season/multiScheduleUtils';
 import type { Game } from '../../../types';
+import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
+import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
@@ -89,10 +91,13 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine';
+type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
-    { id: 'league',  label: '리그' },
+    { id: 'league',   label: '리그' },
+    // [2026-09-18] 일정 탭 — 총 진행기간/일일 시뮬 시간대 수정 + 남은 경기 재배치 + 경기별 시각 수동 편집
+    // (views/multi/league/settings/ScheduleSettingsTab.tsx). 자체 저장 버튼을 가지므로 TAB_SAVE_MAP에는 없음.
+    { id: 'schedule', label: '일정' },
     { id: 'draft',   label: '드래프트' },
     { id: 'trade',   label: '트레이드' },
     { id: 'cap',     label: '샐러리캡' },
@@ -133,6 +138,9 @@ const LeagueSettingsView: React.FC = () => {
     const userId      = session?.user?.id ?? null;
     const isAdmin     = !!(league && userId && league.admin_user_id === userId);
     const isInProgress = league?.status === 'in_progress';
+    // [2026-09-18] 토너먼트 개인 팩 드래프트 — 드래프트 탭은 PersonalDraftSettingsTab이 대신 렌더하고,
+    // 공유풀 드래프트 전용 섹션(일정/라운드/추첨/결과)과 부상 토글은 숨기거나 잠근다.
+    const isPersonalDraft = !!league?.personal_draft_format;
 
     // ── form state ────────────────────────────────────────────────────────────
     const [nameInput,    setNameInput]    = useState('');
@@ -173,7 +181,8 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── 샐러리캡 설정(관리자 전용) — 마스터 스위치(capEnabled) + 세부 항목 5개(각각 개별 on/off + 금액) ──
     const [capEnabled,         setCapEnabled]         = useState(true);
-    const [cbaRulesEnabled,    setCbaRulesEnabled]    = useState(false);
+    // [2026-09-18] CBA 규정 기본값 켜짐(DB 기본값도 true로 변경) — 값이 없는 구 리그도 켜진 것으로 취급.
+    const [cbaRulesEnabled,    setCbaRulesEnabled]    = useState(true);
     const [salaryCapAmount,    setSalaryCapAmount]    = useState(CAP_DEFAULTS.salaryCapAmount);
     const [luxuryTaxEnabled,   setLuxuryTaxEnabled]   = useState(true);
     const [luxuryTaxAmount,    setLuxuryTaxAmount]    = useState(CAP_DEFAULTS.luxuryTaxAmount);
@@ -228,6 +237,9 @@ const LeagueSettingsView: React.FC = () => {
     // [2026-09-16] Two-Way 계약 슬롯 수 — leagues.two_way_slots에 직접 저장, 1~5명 범위(기본 3).
     // 정규 계약 슬롯(maxRosterSize)과 별개라 같은 "로스터" 탭에 두되 저장은 함께 처리.
     const [twoWaySlots, setTwoWaySlots] = useState<number>(DEFAULT_TWO_WAY_SLOTS);
+    // [2026-09-18] Two-Way 계약 사용 여부(leagues.two_way_enabled, 기본 true) — 끄면 슬롯 설정/표시가 사라지고
+    // 협상 화면에서 투웨이 유형을 고를 수 없으며 서버 RPC도 two_way 계약을 거부한다.
+    const [twoWayEnabled, setTwoWayEnabled] = useState<boolean>(true);
     const [savingRoster,  setSavingRoster]  = useState(false);
     const [saveRosterOk,  setSaveRosterOk]  = useState(false);
     const [saveRosterErr, setSaveRosterErr] = useState<string | null>(null);
@@ -294,6 +306,7 @@ const LeagueSettingsView: React.FC = () => {
         setPlayInEnabled(league.play_in_enabled ?? true);
         setMaxRosterSize((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE);
         setTwoWaySlots((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS);
+        setTwoWayEnabled((league as any).two_way_enabled ?? true);
         setInjuriesEnabled(room?.sim_settings?.injuriesEnabled ?? DEFAULT_SIM_SETTINGS.injuriesEnabled);
         setInjuryFrequency(room?.sim_settings?.injuryFrequency ?? DEFAULT_SIM_SETTINGS.injuryFrequency);
         setMajorInjuryFrequency(room?.sim_settings?.majorInjuryFrequency ?? DEFAULT_SIM_SETTINGS.majorInjuryFrequency);
@@ -306,7 +319,7 @@ const LeagueSettingsView: React.FC = () => {
         setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
         setTradeDeadlineEnabled((league as any).trade_deadline_enabled ?? true);
         setCapEnabled((league as any).cap_enabled ?? true);
-        setCbaRulesEnabled((league as any).cba_rules_enabled ?? false);
+        setCbaRulesEnabled((league as any).cba_rules_enabled ?? true);
         setSalaryCapAmount((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount);
         setLuxuryTaxEnabled((league as any).luxury_tax_enabled ?? true);
         setLuxuryTaxAmount((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount);
@@ -498,6 +511,7 @@ const LeagueSettingsView: React.FC = () => {
             leagueId: league.id,
             maxRosterSize,
             twoWaySlots,
+            twoWayEnabled,
         });
         setSavingRoster(false);
         if (err) { setSaveRosterErr(err); return; }
@@ -700,11 +714,12 @@ const LeagueSettingsView: React.FC = () => {
 
     const isRosterTabDirty =
         maxRosterSize !== ((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE) ||
-        twoWaySlots !== ((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS);
+        twoWaySlots !== ((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS) ||
+        twoWayEnabled !== ((league as any).two_way_enabled ?? true);
 
     const isCapTabDirty =
         capEnabled !== ((league as any).cap_enabled ?? true) ||
-        cbaRulesEnabled !== ((league as any).cba_rules_enabled ?? false) ||
+        cbaRulesEnabled !== ((league as any).cba_rules_enabled ?? true) ||
         salaryCapAmount !== ((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount) ||
         luxuryTaxEnabled !== ((league as any).luxury_tax_enabled ?? true) ||
         luxuryTaxAmount !== ((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount) ||
@@ -801,7 +816,10 @@ const LeagueSettingsView: React.FC = () => {
     type TabSaveInfo = { dirty: boolean; saving: boolean; ok: boolean; err: string | null; onSave: () => void };
     const TAB_SAVE_MAP: Partial<Record<SettingsTabId, TabSaveInfo>> = {
         league: { dirty: isLeagueTabDirty, saving: savingLeague, ok: saveLeagueOk, err: saveLeagueErr, onSave: handleSaveLeagueTab },
-        draft:  { dirty: isDraftTabDirty,  saving: saving,       ok: saveOk,       err: saveErr,       onSave: handleSave },
+        // 개인 팩 드래프트는 PersonalDraftSettingsTab이 자체 저장 버튼을 가지므로 상단 공용 저장 버튼을 숨긴다.
+        ...(isPersonalDraft ? {} : {
+            draft: { dirty: isDraftTabDirty, saving: saving, ok: saveOk, err: saveErr, onSave: handleSave } as TabSaveInfo,
+        }),
         trade:  { dirty: isTradeTabDirty,  saving: savingTrade,  ok: saveTradeOk,  err: saveTradeErr,  onSave: handleSaveTradeSettings },
         cap:    { dirty: isCapTabDirty,    saving: savingCap,    ok: saveCapOk,    err: saveCapErr,    onSave: handleSaveCapSettings },
         roster: { dirty: isRosterTabDirty, saving: savingRoster, ok: saveRosterOk, err: saveRosterErr, onSave: handleSaveRosterSettings },
@@ -973,9 +991,14 @@ const LeagueSettingsView: React.FC = () => {
             {isInProgress && (
                 <section className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-5 py-4">
                     <p className="text-xs text-indigo-300 ko-normal leading-relaxed">
-                        세션이 진행 중입니다. 팀 강퇴만 가능하며, 드래프트 및 일정 설정은 변경할 수 없습니다.
+                        세션이 진행 중입니다. 팀 강퇴만 가능하며, 드래프트 설정은 변경할 수 없습니다. 경기 일정은 "일정" 탭에서 조정할 수 있습니다.
                     </p>
                 </section>
+            )}
+
+            {/* ── 일정 (총 진행기간/시간대 + 재배치 + 경기별 시각 편집) ──────────── */}
+            {activeTab === 'schedule' && (
+                <ScheduleSettingsTab league={league} room={room} leagueTeams={leagueTeams} onLeagueSaved={reload} />
             )}
 
             {/* ── 리그 (좌: 제너럴 설정 / 우: 멤버) ────────────────────────────── */}
@@ -1245,12 +1268,15 @@ const LeagueSettingsView: React.FC = () => {
                         <input
                             type="checkbox"
                             checked={injuriesEnabled}
+                            disabled={isPersonalDraft}
                             onChange={e => setInjuriesEnabled(e.target.checked)}
-                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <div className="flex-1 min-w-0">
                             <span className={`text-xs font-bold ${injuriesEnabled ? 'text-white' : 'text-slate-400'}`}>부상 시스템</span>
-                            <span className="ml-2 text-xs text-slate-500 ko-normal">경기 중 부상 발생 활성화</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">
+                                {isPersonalDraft ? '개인 팩 드래프트 토너먼트에서는 항상 꺼져 있습니다' : '경기 중 부상 발생 활성화'}
+                            </span>
                         </div>
                     </label>
 
@@ -1626,6 +1652,8 @@ const LeagueSettingsView: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* [2026-09-18] Two-Way 계약을 끈 리그(로스터 탭)는 데드라인도 의미가 없어 숨긴다. */}
+                    {twoWayEnabled && cbaRulesEnabled && (
                     <div>
                         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-900/60 border border-transparent">
                             <CalendarDays size={14} className="text-emerald-400 shrink-0" />
@@ -1644,6 +1672,7 @@ const LeagueSettingsView: React.FC = () => {
                             합니다. 기본값은 3월 4일이며, 비워두면 데드라인 없음으로 취급됩니다.
                         </p>
                     </div>
+                    )}
                 </div>
 
                 <div>
@@ -1815,6 +1844,34 @@ const LeagueSettingsView: React.FC = () => {
                         </p>
                     </div>
 
+                    {/* [2026-09-17] CBA 규정이 꺼진 리그는 투웨이 계약 경로 자체가 없으므로(즉시계약
+                        RPC만 사용) 슬롯 수 설정도 숨긴다 — 로스터 화면 푸터(MultiRosterView→
+                        RosterOverviewGrid showTwoWaySlots)와 같은 기준. 값 자체는 state에 유지돼
+                        CBA를 다시 켜면 그대로 복원된다. */}
+                    {/* [2026-09-18] Two-Way 계약 사용 스위치 — 끄면 아래 슬롯 설정과 로스터 화면의 슬롯 표시가 사라지고,
+                        협상 화면에서 투웨이 유형을 고를 수 없으며 서버(sign_free_agent_negotiated)도 two_way 계약을 거부한다.
+                        이미 체결된 투웨이 계약은 그대로 남는다(자동 전환/방출 없음). */}
+                    {cbaRulesEnabled && (
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            twoWayEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={twoWayEnabled}
+                            onChange={e => setTwoWayEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${twoWayEnabled ? 'text-white' : 'text-slate-400'}`}>Two-Way 계약 사용</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">
+                                끄면 투웨이 슬롯이 사라지고 새 투웨이 계약을 맺을 수 없습니다. 이미 체결된 투웨이 계약은 유지됩니다.
+                            </span>
+                        </div>
+                    </label>
+                    )}
+                    {cbaRulesEnabled && twoWayEnabled && (
                     <div>
                         <div className="flex items-center justify-between px-1">
                             <span className="text-xs font-bold text-slate-300">Two-Way 슬롯 수</span>
@@ -1833,11 +1890,17 @@ const LeagueSettingsView: React.FC = () => {
                             정규 계약 슬롯(최대 로스터 인원)과 별개로 취급됩니다.
                         </p>
                     </div>
+                    )}
                 </section>
             )}
 
             {/* ── 스케줄 설정 ─────────────────────────────────────────────────── */}
-            {activeTab === 'draft' && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-5">
+            {/* ── 개인 팩 드래프트(토너먼트) — 공유풀 드래프트 섹션 전부를 대체 ────────── */}
+            {activeTab === 'draft' && isPersonalDraft && (
+                <PersonalDraftSettingsTab league={league} room={room} isInProgress={isInProgress} onSaved={reload} />
+            )}
+
+            {activeTab === 'draft' && !isPersonalDraft && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-5">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <CalendarDays size={14} className="text-indigo-400" />
                     스케줄
@@ -2004,7 +2067,7 @@ const LeagueSettingsView: React.FC = () => {
             </section>}
 
             {/* ── 드래프트 추첨 (수동) ─────────────────────────────────────────── */}
-            {activeTab === 'draft' && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
+            {activeTab === 'draft' && !isPersonalDraft && !isInProgress && <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
                     <Shield size={14} className="text-amber-400" />
                     드래프트 순서 추첨
@@ -2079,7 +2142,7 @@ const LeagueSettingsView: React.FC = () => {
             </section>}
 
             {/* ── 드래프트 결과 (진행 중/완료 여부와 무관하게 항상 조회 가능) ─────── */}
-            {activeTab === 'draft' && (
+            {activeTab === 'draft' && !isPersonalDraft && (
                 <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
                     <h2 className="text-sm font-bold text-white flex items-center gap-2">
                         <ClipboardList size={14} className="text-emerald-400" />

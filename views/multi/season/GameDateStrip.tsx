@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { kstDateKey, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
+import type { VirtualDayRow } from '../../../utils/leagueTimeline';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
@@ -39,10 +40,12 @@ export interface GameDateStripProps {
     accessToken: string | undefined;
     getGameUrlId: (gameId: string) => string;
     preferVirtual: boolean;
+    /** [2026-09-18] 고정 길이 가상 하루 타임라인(useLeagueContext().timeline) — "오늘" 판정용. 구 리그는 빈 배열. */
+    timeline?: VirtualDayRow[];
 }
 
 export const GameDateStrip: React.FC<GameDateStripProps> = ({
-    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual,
+    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual, timeline,
 }) => {
     const navigate = useNavigate();
     // [2026-09-07] serverNow(1초 틱)를 MultiSeasonLayout에서 prop으로 받던 걸 여기서 직접
@@ -100,9 +103,9 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     // 이름에 맞게, 아직 아무 날짜도 직접 고르지 않았을 때는 "오늘"(서버 시각 기준 가장 가까운
     // 경기의 날짜 — MultiScheduleView/MultiHeader의 "오늘" 배지 판정과 동일 로직)로 폴백한다.
     const todayDateKey = useMemo(() => {
-        const g = findCurrentVirtualGame(allGames, simStart, gprd, serverNow);
+        const g = findCurrentVirtualGame(allGames, simStart, gprd, serverNow, timeline);
         return g ? kstDateKey(g, preferVirtual) : null;
-    }, [allGames, simStart, gprd, serverNow, preferVirtual]);
+    }, [allGames, simStart, gprd, serverNow, preferVirtual, timeline]);
     const activeDateKey = selectedDateKey ?? todayDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
     const activeIdx = activeDateKey ? dateKeys.indexOf(activeDateKey) : -1;
     const activeGroup = activeIdx >= 0 ? groupedByDay[activeIdx] : null;

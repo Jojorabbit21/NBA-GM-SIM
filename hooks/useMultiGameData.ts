@@ -16,7 +16,7 @@ import type { CoachFAPool, LeagueCoachingData } from '../types/coaching';
 import type { LotteryResult } from '../services/draft/lotteryEngine';
 import { loadRoom, saveRoom, saveMemberTactics } from '../services/multi/roomPersistence';
 import { loadRoomMember } from '../services/multi/roomQueries';
-import { loadSchedule } from '../services/multi/gameQueries';
+import { loadSchedule, rowToGame } from '../services/multi/gameQueries';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { buildSeasonConfig } from '../utils/seasonConfig';
 import type { SeasonConfig } from '../utils/seasonConfig';
@@ -304,12 +304,36 @@ export function useMultiGameData(
             }, 300);
         };
 
+        // [2026-09-18 2단계] 증분 반영 — 예전엔 games 행이 하나 바뀔 때마다(경기 종료 등) 전체 일정
+        // (~1,230행)을 다시 내려받았다. 경기 1,300건 × 접속자 수만큼 전체 조회가 반복돼 Supabase 요청/
+        // 전송량의 가장 큰 병목이었다(docs/plan/fixed-day-schedule-plan.md §5.2). 이제 payload의 행 하나만
+        // rowToGame()으로 바꿔 해당 경기만 교체/추가/제거한다. 재연결(SUBSCRIBED) 시의 전체 재조회는
+        // 끊긴 동안 놓친 변경을 흡수하기 위해 그대로 둔다.
+        const applyChange = (payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
+            if (payload.eventType === 'DELETE') {
+                const gone = payload.old?.game_id as string | undefined;
+                if (!gone) { refetch(); return; }
+                setSchedule(prev => prev.filter(g => g.id !== gone));
+                return;
+            }
+            const row = payload.new;
+            if (!row || !row.game_id) { refetch(); return; }
+            const game = rowToGame(row);
+            setSchedule(prev => {
+                const idx = prev.findIndex(g => g.id === game.id);
+                if (idx < 0) return [...prev, game];
+                const next = prev.slice();
+                next[idx] = game;
+                return next;
+            });
+        };
+
         const channel = supabase
             .channel(`room-games-${roomId}`)
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'games', filter: `room_id=eq.${roomId}` },
-                refetch,
+                applyChange as any,
             )
             .subscribe((status) => {
                 // [2026-09-04 버그 수정] "홈 화면 경기 일정에서 날짜가 지나도 결과가 자동

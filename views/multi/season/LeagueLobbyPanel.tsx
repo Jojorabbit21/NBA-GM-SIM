@@ -104,6 +104,10 @@ const LeagueLobbyPanel: React.FC = () => {
     const lotteryDone   = leagueTeams.length > 0 && leagueTeams.some(t => t.draft_order !== null);
     const canClaim      = isRecruiting;              // 모집 중이면 언제든 빈 팀 선점 가능
     const canChangePre  = isRecruiting && !lotteryDone; // 팀 변경은 로터리 전까지만
+    // [2026-09-18] 토너먼트 개인 팩 드래프트(leagues.personal_draft_format 존재) — 로터리/공유풀
+    // 드래프트 룸 대신 팀 확정 직후 바로 개인 드래프트 화면으로 보낸다.
+    const isPersonalDraft = !!league?.personal_draft_format;
+    const personalDraftPath = `/multi/leagues/${leagueId}/personal-draft`;
 
     const { draftState, timeRemaining, currentPickEntry, isMyTurn } = useLeagueDraft(
         isDrafting ? (room?.id ?? null) : null,
@@ -192,7 +196,8 @@ const LeagueLobbyPanel: React.FC = () => {
         setClaiming(null);
         if (claimErr) { setActionErr(claimErr); return; }
         reload();
-    }, [league, room, userId, reload]);
+        if (isPersonalDraft) navigate(personalDraftPath);
+    }, [league, room, userId, reload, isPersonalDraft, personalDraftPath, navigate]);
 
     const handleLeave = async () => {
         if (!room || !userId) return;
@@ -220,7 +225,8 @@ const LeagueLobbyPanel: React.FC = () => {
         setClaiming(null);
         if (err) { setActionErr(err); return; }
         reload();
-    }, [room, userId, isMember, reload]);
+        if (isPersonalDraft) navigate(personalDraftPath);
+    }, [room, userId, isMember, reload, isPersonalDraft, personalDraftPath, navigate]);
 
     if (isLoading) {
         return (
@@ -266,7 +272,16 @@ const LeagueLobbyPanel: React.FC = () => {
                         />
                         <span className="text-2xl font-black text-white ko-tight">{league.name}</span>
                     </div>
-                    {lotteryDone && (
+                    {isPersonalDraft ? (
+                        myTeam && league.status === 'recruiting' && (
+                            <button
+                                onClick={() => navigate(personalDraftPath)}
+                                className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"
+                            >
+                                팩 드래프트 입장
+                            </button>
+                        )
+                    ) : lotteryDone && (
                         <button
                             onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
                             className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"

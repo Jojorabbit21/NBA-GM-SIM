@@ -4,6 +4,8 @@
  * export async function runSimulation(roomId, gameId): Promise<SimResult>
  */
 import { supabase } from './supabaseAdmin.ts';
+import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineStore';
+import { postseasonIntervalDays } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
@@ -50,12 +52,16 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         if (!room) return { ok: false, error: 'Room not found' };
 
         // custom_overrides 적용 여부 + 시간 압축 파라미터
+        // personal_draft_format: 토너먼트 개인 팩 드래프트 룸인지(docs/plan/tournament-personal-pack-draft-plan.md
+        // Phase 4) — NULL이 아니면 league_teams.roster에 meta_players.id 대신 room_player_instances.instance_id가
+        // 들어있으므로 아래 선수 하이드레이션 단계에서 한 번 더 resolve해야 한다.
         const { data: leagueData } = await supabase
             .from('leagues')
-            .select('use_custom_overrides, sim_real_start_at, games_per_real_day')
+            .select('use_custom_overrides, sim_real_start_at, games_per_real_day, personal_draft_format')
             .eq('id', room.league_id)
             .maybeSingle();
         const useCustomOverrides = shouldUseCustomOverrides(leagueData);
+        const isInstanceRoom = (leagueData as any)?.personal_draft_format != null;
 
         // [migration 2026-08-06] rooms.schedule 전체 스캔 대신 games 테이블에서 해당 경기 1행만 조회.
         const { data: game } = await supabase
@@ -103,14 +109,44 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 ...(awayTeamRow.roster ?? []),
             ];
 
-            const { data: rawPlayers } = await supabase
-                .from('meta_players')
-                .select('id, name, position, base_attributes, tendencies')
-                .in('id', allPlayerIds);
-
             const playerMap = new Map<string, any>();
-            for (const raw of rawPlayers ?? []) {
-                playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
+
+            if (isInstanceRoom) {
+                // 개인 팩 드래프트 룸 — allPlayerIds는 meta_players.id가 아니라
+                // room_player_instances.instance_id다. instance_id → source_player_id로
+                // 먼저 resolve한 뒤 meta_players는 원본(source) id로 조회하고, 하이드레이트된
+                // Player 객체의 id는 다시 instance_id로 덮어써서 playerMap에 넣는다 — 이렇게
+                // 하면 이후 buildTeamForSim/PBP 엔진/room_player_state 오버레이/박스스코어
+                // 기록까지 전부 instance_id를 "선수 id"로 그대로 취급해 팀별로 자동 분리된다
+                // (같은 실제 선수를 두 팀이 가진 경우에도 서로 다른 instance_id라 충돌 없음).
+                const { data: instances } = await supabase
+                    .from('room_player_instances')
+                    .select('instance_id, source_player_id')
+                    .eq('room_id', roomId)
+                    .in('instance_id', allPlayerIds);
+
+                const sourceIds = [...new Set((instances ?? []).map((i: any) => i.source_player_id))];
+                const { data: rawPlayers } = await supabase
+                    .from('meta_players')
+                    .select('id, name, position, base_attributes, tendencies')
+                    .in('id', sourceIds);
+
+                const rawById = new Map((rawPlayers ?? []).map((r: any) => [r.id, r]));
+                for (const { instance_id, source_player_id } of (instances ?? []) as any[]) {
+                    const raw = rawById.get(source_player_id);
+                    if (!raw) continue;
+                    const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides);
+                    playerMap.set(instance_id, { ...player, id: instance_id });
+                }
+            } else {
+                const { data: rawPlayers } = await supabase
+                    .from('meta_players')
+                    .select('id, name, position, base_attributes, tendencies')
+                    .in('id', allPlayerIds);
+
+                for (const raw of rawPlayers ?? []) {
+                    playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
+                }
             }
 
             const rosterState: Record<string, any> = (room.roster_state as any) ?? {};
@@ -514,7 +550,7 @@ async function tryAdvanceTournamentOnce(
     // games UPDATE가 이미 기록했다 — 여기서는 시리즈 진행(series)과 다음 라운드 경기 생성만 담당.
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year')
+        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year, playoff_game_interval_days, day_length_min, replay_minutes')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -525,7 +561,13 @@ async function tryAdvanceTournamentOnce(
     const series: BPLSeries[] = bracketData.series ?? [];
     const tournStartAt = leagueRow.tournament_start_at as string | null;
     const startDate    = tournStartAt ? tournStartAt.slice(0, 10) : (leagueRow.season_start_date ?? '2025-10-21');
-    const intervalMinutes = 1440 / (leagueRow.games_per_real_day ?? 48);
+    // [2026-09-18] 타임라인 리그(신규 메인리그)는 다음 라운드 경기의 game_date를 "라운드 시작 슬롯 × g일"로,
+    // scheduled_at을 league_virtual_days 표에서 계산한다 — 슬롯 방식(30분 간격 + sim_real_start_at 앵커)은
+    // 토너먼트/구 리그 전용. playoffSeeder.buildAndStoreConferenceBracket()과 동일한 규칙.
+    const timeline     = await loadLeagueTimeline(leagueId);
+    const usesTimeline = timeline.length > 0;
+    const intervalDays = postseasonIntervalDays(leagueRow as any);
+    const intervalMinutes = usesTimeline ? 1440 * intervalDays : 1440 / (leagueRow.games_per_real_day ?? 48);
     const finalsTargetWins = targetWinsFromFormat(
         (leagueRow as any).finals_match_format ?? leagueRow.match_format,
     );
@@ -638,10 +680,12 @@ async function tryAdvanceTournamentOnce(
 
         advanceTournamentState(
             series, stub, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes,
-            leagueRow.sim_real_start_at as string | null,
+            usesTimeline ? null : (leagueRow.sim_real_start_at as string | null),
         );
 
-        const newGames = stub.slice(before);
+        const newGames = usesTimeline
+            ? fillPostseasonRealTimes(stub.slice(before), timeline, leagueRow as any)
+            : stub.slice(before);
 
         if (newGames.length > 0) {
             const { error: gamesErr } = await insertGames(roomId, leagueId, newGames as any);
@@ -664,7 +708,7 @@ async function tryAdvanceTournamentOnce(
     let extraFields: { tournament_start_at?: string; sim_real_start_at?: string } = {};
     if (seriesObj.round === 0 && seriesObj.finished) {
         const playInResult = await handlePlayInAdvance(
-            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year },
+            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year, playoff_game_interval_days: (leagueRow as any).playoff_game_interval_days, day_length_min: (leagueRow as any).day_length_min, replay_minutes: (leagueRow as any).replay_minutes },
             roomId, series, seriesId, homeTeamId, awayTeamId, homeScore, awayScore,
         ).catch((err): HandlePlayInAdvanceResult => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return { pendingEvents: [] }; });
         extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };
@@ -729,6 +773,16 @@ async function tryAdvanceTournamentOnce(
         const { error: archiveErr } = await archiveTournament(supabase, leagueId, roomId);
         if (archiveErr) console.error('[simRunner] archive error:', archiveErr);
         await supabase.from('leagues').update({ status: 'finished' }).eq('id', leagueId);
+
+        // [2026-09-18] 개인 팩 드래프트 룸 — 아카이빙이 끝난 뒤에만 룸 스코프 선수 인스턴스/상태/진행 행을
+        // 지운다(아카이브 테이블은 이름·포지션을 비정규화 저장하므로 삭제 후에도 과거 기록 조회는 영향 없음).
+        // 아카이브가 실패했으면 다음 재시도 때 박스스코어를 다시 읽어야 하므로 지우지 않는다.
+        // 공유풀 드래프트 룸에선 지울 행이 없어 no-op. migrations/add_personal_draft_room_ops.sql 참조.
+        if (!archiveErr) {
+            const { data: cleaned, error: cleanErr } = await supabase.rpc('personal_draft_cleanup_room', { p_room_id: roomId });
+            if (cleanErr) console.error('[simRunner] personal_draft_cleanup_room error:', cleanErr.message);
+            else if (cleaned && (cleaned as any).instances > 0) console.log(`[simRunner] personal draft cleanup room=${roomId}: ${JSON.stringify(cleaned)}`);
+        }
     }
 
     await flushPendingLeagueEvents(roomId, leagueId, pendingEvents);

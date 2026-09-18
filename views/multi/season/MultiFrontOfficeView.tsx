@@ -350,7 +350,7 @@ const TeamLogoIcon: React.FC<{ teamSlug: string; abbr?: string | null; className
 );
 
 const MultiFrontOfficeView: React.FC = () => {
-    const { league, room, members, leagueTeams, reload } = useLeagueContext();
+    const { league, room, members, leagueTeams, reload , timeline } = useLeagueContext();
     const { session } = useGame();
     const { schedule } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
@@ -365,7 +365,7 @@ const MultiFrontOfficeView: React.FC = () => {
     const preferVirtual = league?.type === 'main_league';
     const currentSimDate = useMemo(() => {
         if (!preferVirtual) return room?.sim_date ?? '';
-        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow(), timeline) ?? room?.sim_date ?? '';
     }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
     // [2026-09-16] 트레이드 데드라인 경과 여부 — create_trade_offer/respond_trade_offer(accept)
     // RPC가 검사하는 조건(v_deadline_enabled IS DISTINCT FROM false && v_sim_date > v_deadline)과

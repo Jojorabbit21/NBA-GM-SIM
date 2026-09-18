@@ -11,7 +11,7 @@ import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
 import type { Game, ShotEvent, Team, Player } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
-import { REPLAY_DURATION_MS, getGameDisplayState, resolveRealAt } from './multiGameReveal';
+import { getReplayDurationMs, getGameDisplayState, resolveRealAt } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
@@ -353,7 +353,7 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
     let dampenedQ2 = false, resetQ3 = false, dampenedQ4 = false;
 
     for (const tick of timeline) {
-        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
         if (replayMs > elapsed) break;
 
         if (!dampenedQ2 && tick.t >= 720) {
@@ -399,7 +399,7 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
 function getOnCourtIds(timeline: BoxTick[], elapsed: number): Set<string> {
     let ids: string[] = [];
     for (const tick of timeline) {
-        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
         if (replayMs > elapsed) break;
         ids = tick.on;
     }
@@ -1333,7 +1333,7 @@ const MultiGamePbpView: React.FC = () => {
     // [Fix 2026-08-05] "예정 경기 → 종료 경기 이동 시 라이브 화면이 잠깐 스쳐간다" 버그 —
     // scheduledAt/gamePlayed를 여기서 같이 리셋하지 않아서, 이전(예정) 경기의 미래 scheduledAt이
     // 그대로 남아있었다. 그 값이 우연히 "지금 막 지났거나 곧 지날 시점"이면 getGameDisplayState가
-    // 이를 live 구간(start~start+REPLAY_DURATION_MS)으로 오판해 라이브 화면이 잠깐 렌더되고,
+    // 이를 live 구간(start~start+리플레이)으로 오판해 라이브 화면이 잠깐 렌더되고,
     // 뒤이어 새 경기의 진짜 scheduledAt/gamePlayed가 비동기로 갱신되며 화면이 다시 바뀌었다.
     // undefined로 되돌리면 getGameDisplayState가 "미확정"으로 처리해 fetch effect도 스킵되므로
     // (scheduledAt===undefined 가드) 새 값이 확정되기 전까지 헛다리 짚는 fetch 자체가 안 일어난다.
@@ -1511,7 +1511,7 @@ const MultiGamePbpView: React.FC = () => {
         const startMs = new Date(gameData.game_start_time).getTime();
         const elapsed = serverNow - startMs;
         return all.filter(e => {
-            const replayMs = (toGameSeconds(e) / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+            const replayMs = (toGameSeconds(e) / TOTAL_GAME_SECONDS) * getReplayDurationMs();
             return replayMs <= elapsed;
         });
     }, [gameData, serverNow, displayState]);
@@ -1524,7 +1524,7 @@ const MultiGamePbpView: React.FC = () => {
         const elapsed = serverNow - startMs;
         return all.filter(s => {
             const secs    = (s.quarter - 1) * 720 + (720 - ((s as any).gameClock ?? 0));
-            const replayMs = (secs / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+            const replayMs = (secs / TOTAL_GAME_SECONDS) * getReplayDurationMs();
             return replayMs <= elapsed;
         });
     }, [gameData, serverNow, displayState]);

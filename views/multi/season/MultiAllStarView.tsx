@@ -280,13 +280,13 @@ const ALLSTAR_TABS: { id: 'main' | 'risingstars' | 'threept' | 'dunk'; label: st
 
 const MultiAllStarView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
-    const { league, room, leagueTeams } = useLeagueContext();
+    const { league, room, leagueTeams , timeline } = useLeagueContext();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
     // [2026-09-15 Fix] "투표 시작일에 보이고 브레이크 종료일에 숨긴다" — 메뉴 숨김
     // (MultiSidebar.tsx/MultiHeaderNavMenu.tsx)과 동일 계산을 URL 직접 접근 가드에도 적용.
     const { schedule } = useSeasonContext();
-    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day);
+    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
 
     // [2026-09-09] "올스타 화면에 탭 그룹을 추가해(올스타/라이징스타/3점 컨테스트/덩크
     // 컨테스트)" 요청으로 기존 2단(main/risingstars) 토글을 4단 탭으로 확장 — URL

@@ -87,7 +87,7 @@ function formatSimDateShort(simDate: string): string {
 
 const MultiNewsFeedView: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
-    const { league, room, leagueTeams } = useLeagueContext();
+    const { league, room, leagueTeams , timeline } = useLeagueContext();
     const { myTeamId, currentSimDate, schedule } = useSeasonContext();
     // [2026-09-07] todaySimDate(가상 오늘 날짜) 계산에만 쓰여 초 단위 정밀도가 필요
     // 없다 — useServerClock() 그대로 쓰면 뉴스피드 전체(스토리 카드 전부+그 안의
@@ -99,7 +99,7 @@ const MultiNewsFeedView: React.FC = () => {
     const isMainLeague = league?.type === 'main_league';
     const todaySimDate = useMemo(() => {
         if (!isMainLeague) return currentSimDate;
-        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
+        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow, timeline) ?? currentSimDate;
     }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
     // useSeasonContext().teams는 멀티플레이어 경로에서 항상 빈 배열([])로 남아있는
     // 미사용 필드다(useMultiGameData 내부에서 setTeams를 호출하는 코드가 없음 — 실제로

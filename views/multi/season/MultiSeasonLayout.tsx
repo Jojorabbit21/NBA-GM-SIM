@@ -50,7 +50,7 @@ export function MultiSeasonLayout() {
     const watchingGameUrlId = location.pathname.match(/\/season\/game\/([^/]+)$/)?.[1];
 
     const gameData = useSeasonContext();
-    const { room, league, leagueTeams } = useLeagueContext();
+    const { room, league, leagueTeams , timeline } = useLeagueContext();
     const { session } = useGame();
     const { getGameUrlId, resolveGameId } = useGameShortCodes(room?.id);
 
@@ -94,6 +94,7 @@ export function MultiSeasonLayout() {
                     accessToken={session?.access_token}
                     getGameUrlId={getGameUrlId}
                     preferVirtual={league?.type === 'main_league'}
+                    timeline={timeline}
                 />
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {showLobbyPanel ? <LeagueLobbyPanel /> : <Outlet />}

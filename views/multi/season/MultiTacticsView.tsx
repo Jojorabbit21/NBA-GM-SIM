@@ -143,7 +143,7 @@ function computeStatRankRows(allTeamStats: any[], myTeamId: string | null, stats
 }
 
 const MultiTacticsView: React.FC = () => {
-    const { league, leagueTeams, members, room, isLoading: leagueLoading } = useLeagueContext();
+    const { league, leagueTeams, members, room, isLoading: leagueLoading , timeline } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
     const { session } = useGame();
     const navigate = useNavigate();
@@ -247,7 +247,7 @@ const MultiTacticsView: React.FC = () => {
     const preferVirtual = league?.type === 'main_league';
     const currentSimDate = useMemo(() => {
         if (!preferVirtual) return room?.sim_date ?? '';
-        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? room?.sim_date ?? '';
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow(), timeline) ?? room?.sim_date ?? '';
     }, [preferVirtual, room?.sim_date, schedule, simStart, gprd]);
 
     // [2026-09-07] 슈팅 존 히트맵(zoneMap)은 예전엔 selectTacticsData 안에서 raw.pbpRows(room

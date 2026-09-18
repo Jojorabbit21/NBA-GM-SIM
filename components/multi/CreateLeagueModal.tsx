@@ -10,9 +10,20 @@ import {
 } from '../../services/multi/leagueService';
 import { DraftPoolSettings, type DraftFormat } from './DraftPoolSettings';
 import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
+import { PersonalDraftFormatEditor } from './PersonalDraftFormatEditor';
+import {
+    buildFixedDeclineCurve, buildPersonalDraftFormat, computeRosterSize,
+    PICK_TIMER_SEC_DEFAULT, type PersonalDraftRoundInput, type PersonalDraftFormat,
+} from '../../services/multi/personalDraftFormat';
 import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 import { TEAM_DATA } from '../../data/teamData';
 import { getDefaultTradeDeadline, getTradeDeadlineBounds, clampTradeDeadline } from '../../utils/tradeDeadline';
+import {
+    buildVirtualCalendar, computeTimelineFeasibility, playoffMaxDays, addDaysToDateStr, minToHHMM,
+    MIN_DAY_LENGTH_MIN, MAX_DAY_LENGTH_MIN, DEFAULT_DAY_LENGTH_MIN, DEFAULT_WINDOW_START_MIN, DEFAULT_REPLAY_MIN,
+    REPLAY_MINUTE_OPTIONS, lateGameClampsAt,
+} from '../../utils/leagueTimeline';
+import { getAllStarKeyDates } from '../../utils/allStarSelection';
 
 const ALL_REAL_TEAMS = Object.values(TEAM_DATA);
 const EAST_TEAMS = ALL_REAL_TEAMS.filter(t => t.conference === 'East');
@@ -60,15 +71,24 @@ function shiftLocal(local: string, minutesDelta: number): string {
     return new Date(ms).toISOString().slice(0, 16);
 }
 
-// "HH:MM" → 자정 기준 분. server/src/shared/leagueScheduleCompressor.ts가 그대로 받는 형식.
+// "HH:MM" → 자정 기준 분(leagues.daily_window_start_min 형식).
 function hhmmToMin(hhmm: string): number {
     const [h, m] = hhmm.split(':').map(Number);
     return h * 60 + m;
 }
 
-// 메인리그 총 경기 수(30팀×82경기÷2) — 미리보기용. 실제 값은 서버의 generateSeasonSchedule()이
-// 결정하지만(디비전 구성에 따라 미세하게 달라질 수 있음), 30팀 고정 표준 포맷에서는 항상 1,230.
-const MAIN_LEAGUE_TOTAL_GAMES = 1230;
+// "오늘(KST) + n일" → 'YYYY-MM-DD'. 메인리그 실제 시작/종료일 기본값용.
+function kstTodayPlusDays(n: number): string {
+    const k = new Date(Date.now() + KST_OFFSET_MS);
+    const base = `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, '0')}-${String(k.getUTCDate()).padStart(2, '0')}`;
+    return addDaysToDateStr(base, n);
+}
+// 메인리그 실제 기간 기본값 — 시작 내일, 종료 14일째(하루 30분·10:00 시작이면 약 7시간 30분 창).
+const DEFAULT_MAIN_LEAGUE_REAL_DAYS = 14;
+// 플레이오프 가상 캘린더 최대 일수 계산에 쓰는 기본 포맷(생성 모달은 플레이오프 팀 수/포맷을 따로
+// 받지 않으므로 DB 기본값과 동일: 컨퍼런스 8팀·플레이인·7전 4선승).
+const DEFAULT_PLAYOFF_TEAMS_PER_CONF = 8;
+const DEFAULT_PLAYOFF_TARGET_WINS = 4;
 
 // [2026-09-11] "토너먼트 시작/드래프트/로터리 일시를 전부 어드민이 직접 설정하게" 요청 —
 // 예전엔 로터리/드래프트가 토너먼트 시작 시각 기준 오프셋(-40분/-30분)으로만 자동 계산됐고
@@ -156,10 +176,15 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
 
     // ── 메인리그 전용 ──────────────────────────────────────────────────────────
     const [tier,          setTier]          = useState<Tier>('d1');
-    const [durationWeeks, setDurationWeeks] = useState(2);
-    // 일일 시뮬 시간대(KST) — 이 시간대 안에서만 경기가 진행된다. 기본 저녁 19:00~23:00.
-    const [dailyWindowStart, setDailyWindowStart] = useState('19:00');
-    const [dailyWindowEnd,   setDailyWindowEnd]   = useState('23:00');
+    // [2026-09-18] 고정 길이 가상 하루 타임라인 설정 — 실제 시작/종료일 + 가상 하루 길이 + 창 시작 시각 +
+    // 플레이오프 경기 간격. 일일 시뮬 시간대 "길이"는 입력하지 않고 계산한다(docs/plan/fixed-day-schedule-plan.md).
+    const [realStartDate, setRealStartDate] = useState(() => kstTodayPlusDays(1));
+    const [realEndDate,   setRealEndDate]   = useState(() => kstTodayPlusDays(DEFAULT_MAIN_LEAGUE_REAL_DAYS));
+    const [dayLengthMin,  setDayLengthMin]  = useState(DEFAULT_DAY_LENGTH_MIN);
+    const [windowStart,   setWindowStart]   = useState(minToHHMM(DEFAULT_WINDOW_START_MIN));
+    const [playoffIntervalDays, setPlayoffIntervalDays] = useState<1 | 2>(1);
+    // [2026-09-18 2단계] 리플레이(결과 공개 지연) 길이 — 경기 하나가 실제로 재생되는 시간이자 결과가 숨겨지는 시간.
+    const [replayMinutes, setReplayMinutes] = useState<number>(DEFAULT_REPLAY_MIN);
     // 트레이드 데드라인(가상 시즌 캘린더 날짜) — 기본값(2월 둘째 주 목요일)에서 최대 한 달
     // 전까지만 앞당길 수 있고 뒤로는 늘릴 수 없다(utils/tradeDeadline.ts). virtualSeasonYear가
     // 바뀌면 사용자가 직접 건드리기 전까지는 기본값에 계속 동기화된다.
@@ -178,6 +203,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const [draftYearMax,   setDraftYearMax]   = useState(2025);
     const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     const [draftFormat,    setDraftFormat]    = useState<DraftFormat>('snake');
+    // [2026-09-18] 토너먼트 드래프트 방식 — 'shared'(기존 공유풀 턴제) / 'personal'(개인 팩 드래프트,
+    // docs/plan/tournament-personal-pack-draft-plan.md). personal이면 로터리/드래프트 룸 일정이 없고
+    // 팀 확정 즉시 각자 라운드제 팩 드래프트를 진행한다.
+    const [draftMode,       setDraftMode]       = useState<'shared' | 'personal'>('shared');
+    const [personalRounds,  setPersonalRounds]  = useState<PersonalDraftRoundInput[]>(() =>
+        buildFixedDeclineCurve(0, 99, { totalRounds: 15, windowSize: 10, poolSize: 8, picks: 1 }));
+    const [personalTimer,   setPersonalTimer]   = useState<number | null>(PICK_TIMER_SEC_DEFAULT);
+    const isPersonalDraft = type === 'tournament' && draftMode === 'personal';
 
     // ── 엔진 설정 ──────────────────────────────────────────────────────────────
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
@@ -237,20 +270,36 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             draftIso   = draftStartAt      ? kstLocalToIso(draftStartAt)      : null;
             lotteryIso = lotteryStartAt    ? kstLocalToIso(lotteryStartAt)    : null;
 
-            if (!lotteryIso || new Date(lotteryIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
-                setErr(`로터리 추첨 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
-            }
-            if (!draftIso || new Date(draftIso).getTime() <= new Date(lotteryIso).getTime()) {
-                setErr('드래프트 시작 일시는 로터리 추첨 일시보다 늦어야 합니다'); return;
-            }
-            if (!startIso || new Date(startIso).getTime() <= new Date(draftIso).getTime()) {
-                setErr('토너먼트 시작 일시는 드래프트 시작 일시보다 늦어야 합니다'); return;
+            if (isPersonalDraft) {
+                // 개인 팩 드래프트: 로터리/드래프트 룸 일정이 없다 — 스케줄러(runLotteries/
+                // runScheduledDraftStarts)가 null 일정을 건너뛰도록 둘 다 null로 저장한다.
+                lotteryIso = null;
+                draftIso   = null;
+                if (!startIso || new Date(startIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
+                    setErr(`토너먼트 시작 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
+                }
+            } else {
+                if (!lotteryIso || new Date(lotteryIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
+                    setErr(`로터리 추첨 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
+                }
+                if (!draftIso || new Date(draftIso).getTime() <= new Date(lotteryIso).getTime()) {
+                    setErr('드래프트 시작 일시는 로터리 추첨 일시보다 늦어야 합니다'); return;
+                }
+                if (!startIso || new Date(startIso).getTime() <= new Date(draftIso).getTime()) {
+                    setErr('토너먼트 시작 일시는 드래프트 시작 일시보다 늦어야 합니다'); return;
+                }
             }
             if (!Number.isFinite(gameIntervalMinutes) || gameIntervalMinutes < 10 || gameIntervalMinutes > 360) {
                 setErr('경기 사이 인터벌은 10~360분 사이여야 합니다'); return;
             }
             if (!teamPickLocked && selectedTeamSlugs.length !== teamPickCount) {
                 setErr(`참가 팀을 정확히 ${teamPickCount}팀 선택해주세요 (현재 ${selectedTeamSlugs.length}팀)`); return;
+            }
+        }
+        if (type === 'main_league') {
+            if (realStartDate < kstTodayPlusDays(0)) { setErr('실제 시작일은 오늘 이후여야 합니다'); return; }
+            if (!timelineFeasibility.feasible) {
+                setErr(`이 설정으로는 세션을 구성할 수 없습니다 — ${timelineFeasibility.reasons.join(' ')}`); return;
             }
         }
 
@@ -261,11 +310,27 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
             // [2026-09-17] 드래프트 풀 용량 가드 — 참가팀 × 라운드만큼 선수가 없으면 서버 DraftRoom이
             // 마지막 픽에서 "no available players"로 멈춘 채 영영 완료되지 않는다("New League" 세션:
             // 풀 431명 < 30팀×15라운드=450픽). 세션 자체를 만들 수 없게 여기서 차단한다.
-            const capacityErr = await checkDraftPoolCapacity({
-                teamCount: maxTeams, totalRounds,
-                draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
-            });
-            if (capacityErr) throw new Error(capacityErr);
+            // 개인 팩 드래프트는 공유풀이 아니라 라운드별 후보 목록을 저장 시점에 확정한다 —
+            // buildPersonalDraftFormat()이 라운드마다 노출 카드 수 이상의 후보가 있는지 검사하고,
+            // 부족하면 에러를 돌려주므로 위 공유풀 용량 가드 대신 이걸로 막는다.
+            let personalFormat: PersonalDraftFormat | null = null;
+            if (isPersonalDraft) {
+                const built = await buildPersonalDraftFormat({
+                    pickTimerSec: personalTimer,
+                    globalDraftYearMin: draftYearMin, globalDraftYearMax: draftYearMax,
+                    globalOvrMin: draftOvrMin, globalOvrMax: draftOvrMax,
+                    useCustomOverrides, rounds: personalRounds,
+                });
+                if (built.ok === false) throw new Error(built.error);
+                personalFormat = built.format;
+            } else {
+                const capacityErr = await checkDraftPoolCapacity({
+                    teamCount: maxTeams, totalRounds,
+                    draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+                });
+                if (capacityErr) throw new Error(capacityErr);
+            }
+            const personalRosterSize = personalFormat ? computeRosterSize(personalFormat.rounds) : null;
 
             let leagueId: string;
             let shortCode: string | null = null;
@@ -280,7 +345,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                     matchFormat,
                     finalsMatchFormat: finalsMatchFormat !== matchFormat ? finalsMatchFormat : undefined,
                     options: {
-                        draftTotalRounds:     totalRounds,
+                        // 개인 팩 드래프트: 포맷 저장 + 트레이드 강제 off + 로스터 상한을 픽 합계에 맞춤.
+                        // draft_total_rounds는 공유풀 드래프트에서만 쓰이지만 표시 일관성을 위해 로스터 크기로 둔다.
+                        ...(personalFormat ? {
+                            personalDraftFormat: personalFormat,
+                            tradeEnabled: false,
+                            maxRosterSize: Math.min(20, Math.max(15, personalRosterSize ?? 15)),
+                        } : {}),
+                        draftTotalRounds:     personalRosterSize ?? totalRounds,
                         draftPickDurationSec: pickDurationSec,
                         draftAutoPickAfterMisses: autoPickAfterMisses,
                         draftPoolStrategy:    draftFormat,
@@ -307,13 +379,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 });
                 if (ge || !group) throw new Error(ge ?? '리그 그룹 생성 실패');
 
-                const refToday = new Date().toISOString().slice(0, 10);
-                const endDate  = (() => {
-                    const d = new Date(refToday);
-                    d.setDate(d.getDate() + durationWeeks * 7);
-                    return d.toISOString().slice(0, 10);
-                })();
-
+                const windowStartMin = hhmmToMin(windowStart);
                 const { data: league, error: le } = await createLeague({
                     type:         'main_league',
                     name:         trimName,
@@ -332,11 +398,18 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftYearMin,
                         draftYearMax,
                         useCustomOverrides,
-                        seasonStartDate:      refToday,
-                        seasonEndDate:        endDate,
-                        durationWeeks,
-                        dailyWindowStartMin: hhmmToMin(dailyWindowStart),
-                        dailyWindowEndMin:   hhmmToMin(dailyWindowEnd),
+                        seasonStartDate:      realStartDate,
+                        seasonEndDate:        realEndDate,
+                        // duration_weeks / daily_window_end_min은 이제 파생값(호환용) — 실제 배치는 아래
+                        // dayLengthMin/realStartDate/realEndDate/dailyWindowStartMin으로 서버(finalize.ts)가 계산.
+                        durationWeeks:        Math.max(1, Math.ceil(timelineFeasibility.realDays / 7)),
+                        dailyWindowStartMin:  windowStartMin,
+                        dailyWindowEndMin:    Math.min(1440, timelineFeasibility.windowEndMin),
+                        dayLengthMin,
+                        realStartDate,
+                        realEndDate,
+                        playoffGameIntervalDays: playoffIntervalDays,
+                        replayMinutes,
                         virtualSeasonYear,
                         tradeDeadlineDate,
                         tradeDeadlineEnabled,
@@ -356,6 +429,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
                         k:       NORMALIZATION_LEVELS[normalizationLevel].k,
                     },
+                    // 개인 팩 드래프트 토너먼트는 부상 비활성(설계 결정) — 세션 설정 엔진 탭에서도 잠긴다.
+                    ...(isPersonalDraft ? { injuriesEnabled: false } : {}),
                 } as any,
             });
             if (re || !room) throw new Error(re ?? '방 생성 실패');
@@ -375,11 +450,30 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
         }
     };
 
-    // ── 시즌 기간 미리보기 ─────────────────────────────────────────────────────
-    // server/src/shared/leagueScheduleCompressor.ts와 동일한 공식 — 실제 압축 결과와
-    // 일치하는 값을 미리 보여준다.
-    const totalRegularDays = durationWeeks * 7;
-    const gamesPerDay      = Math.ceil(MAIN_LEAGUE_TOTAL_GAMES / totalRegularDays);
+    // ── 타임라인 실현 가능성(메인리그) ─────────────────────────────────────────
+    // utils/leagueTimeline.ts(서버 finalize.ts와 미러)와 동일한 계산 — 가상 캘린더 일수(정규시즌 약 175일 +
+    // 플레이오프 최대 일수)를 실제 기간에 담을 때 필요한 일일 시뮬 시간대 길이를 구하고, 자정을 넘기면
+    // 생성을 막고 대안(종료일/하루 길이/시작 시각)을 제시한다.
+    const virtualCalendarDays = React.useMemo(() => buildVirtualCalendar({
+        virtualSeasonYear,
+        keyDates: getAllStarKeyDates(virtualSeasonYear),
+        playoff: {
+            intervalDays: playoffIntervalDays, playInEnabled: true,
+            teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF,
+            targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
+        },
+    }).length, [virtualSeasonYear, playoffIntervalDays]);
+    const playoffDays = playoffMaxDays({
+        intervalDays: playoffIntervalDays, playInEnabled: true,
+        teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF, targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
+    });
+    const timelineFeasibility = React.useMemo(() => computeTimelineFeasibility({
+        realStartDate, realEndDate, dayLengthMin, windowStartMin: hhmmToMin(windowStart), virtualDayCount: virtualCalendarDays, replayMin: replayMinutes,
+    }), [realStartDate, realEndDate, dayLengthMin, windowStart, virtualCalendarDays, replayMinutes]);
+    // 가상 하루 안 슬롯 간격(30가상분)과 22:30 경기 종료 여유 — 안내용.
+    const slotIntervalSec = Math.round(dayLengthMin * 30 / 480 * 60);
+    const lastGameEndMin  = dayLengthMin * (3.5 * 60) / 480 + replayMinutes;
+    const lateGameClamped = lateGameClampsAt(dayLengthMin, replayMinutes);
 
     // [2026-09-10] 홈 화면(StartScreen)에서 열면 이 모달이 InlineLeagueList → "relative z-10"
     // 콘텐츠 래퍼 안에 중첩돼, 그 z-10이 새 스태킹 컨텍스트를 만들어버려 내부의 z-50이
@@ -472,6 +566,29 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                             </ToggleBtn>
                                         ))}
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">드래프트 방식</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {([
+                                            { value: 'shared',   label: '공유 풀 (턴제)' },
+                                            { value: 'personal', label: '개인 팩 드래프트' },
+                                        ] as { value: 'shared' | 'personal'; label: string }[]).map(o => (
+                                            <ToggleBtn
+                                                key={o.value}
+                                                active={draftMode === o.value}
+                                                onClick={() => setDraftMode(o.value)}
+                                            >
+                                                {o.label}
+                                            </ToggleBtn>
+                                        ))}
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        {draftMode === 'personal'
+                                            ? '참가자가 팀을 고르면 바로 각자 라운드별 카드 팩에서 선수를 뽑습니다. 로터리·드래프트 룸이 없고, 같은 선수가 여러 팀에 있을 수 있으며 트레이드·부상은 꺼집니다.'
+                                            : '추첨된 순서대로 정해진 시각에 모두 함께 공유 풀에서 한 명씩 지명합니다.'}
+                                    </p>
                                 </div>
 
                                 <div>
@@ -615,30 +732,34 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                     </p>
                                 </div>
 
-                                <div>
-                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">로터리 추첨 일시</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={lotteryStartAt}
-                                        min={minLotteryKst()}
-                                        onChange={e => setLotteryStartAt(e.target.value)}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
-                                        현재로부터 최소 {MIN_LOTTERY_LEAD_MS / 60_000}분 이후로 설정할 수 있습니다.
-                                    </p>
-                                </div>
+                                {!isPersonalDraft && (
+                                    <>
+                                        <div>
+                                            <label className="text-xs text-slate-400 ko-normal block mb-1.5">로터리 추첨 일시</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={lotteryStartAt}
+                                                min={minLotteryKst()}
+                                                onChange={e => setLotteryStartAt(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                            <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                                현재로부터 최소 {MIN_LOTTERY_LEAD_MS / 60_000}분 이후로 설정할 수 있습니다.
+                                            </p>
+                                        </div>
 
-                                <div>
-                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">드래프트 시작 일시</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={draftStartAt}
-                                        onChange={e => setDraftStartAt(e.target.value)}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                    />
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">로터리 추첨 일시보다 늦어야 합니다.</p>
-                                </div>
+                                        <div>
+                                            <label className="text-xs text-slate-400 ko-normal block mb-1.5">드래프트 시작 일시</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={draftStartAt}
+                                                onChange={e => setDraftStartAt(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                            <p className="text-[11px] text-slate-600 ko-normal mt-1">로터리 추첨 일시보다 늦어야 합니다.</p>
+                                        </div>
+                                    </>
+                                )}
 
                                 <div>
                                     <label className="text-xs text-slate-400 ko-normal block mb-1.5">토너먼트 시작 일시</label>
@@ -648,7 +769,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                         onChange={e => setTournamentStartAt(e.target.value)}
                                         className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                     />
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">드래프트 시작 일시보다 늦어야 합니다(첫 경기 시작 시각).</p>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        {isPersonalDraft
+                                            ? `첫 경기 시작 시각. 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 하며, 참가자들은 그 전까지 각자 팩 드래프트를 마쳐야 합니다.`
+                                            : '드래프트 시작 일시보다 늦어야 합니다(첫 경기 시작 시각).'}
+                                    </p>
                                 </div>
 
                                 <div>
@@ -689,19 +814,76 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                 </div>
 
                                 <div>
-                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">정규시즌 기간</label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {[1, 2, 3, 4].map(w => (
-                                            <ToggleBtn
-                                                key={w}
-                                                active={durationWeeks === w}
-                                                onClick={() => setDurationWeeks(w)}
-                                                className="px-3"
-                                            >
-                                                {w}주
-                                            </ToggleBtn>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">실제 진행 기간 (KST)</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="date"
+                                            value={realStartDate}
+                                            min={kstTodayPlusDays(0)}
+                                            onChange={e => { const v = e.target.value; if (!v) return; setRealStartDate(v); if (realEndDate < v) setRealEndDate(v); }}
+                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                        <span className="text-slate-500 text-xs">~</span>
+                                        <input
+                                            type="date"
+                                            value={realEndDate}
+                                            min={realStartDate}
+                                            onChange={e => { const v = e.target.value; if (v) setRealEndDate(v < realStartDate ? realStartDate : v); }}
+                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        시작일의 시뮬 시간대부터 정규시즌이 시작되고, 종료일 안에 플레이오프(최대 {playoffDays}일)까지 끝나도록 배치합니다. 드래프트는 시작일 시뮬 시간대 전에 끝나야 합니다.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs text-slate-400 ko-normal block mb-1.5">가상 하루 길이 (분) <span className="text-slate-600">{MIN_DAY_LENGTH_MIN}–{MAX_DAY_LENGTH_MIN}</span></label>
+                                        <input
+                                            type="number"
+                                            min={MIN_DAY_LENGTH_MIN}
+                                            max={MAX_DAY_LENGTH_MIN}
+                                            step={1}
+                                            value={dayLengthMin}
+                                            onChange={e => setDayLengthMin(Math.min(MAX_DAY_LENGTH_MIN, Math.max(MIN_DAY_LENGTH_MIN, Number(e.target.value) || MIN_DAY_LENGTH_MIN)))}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 ko-normal block mb-1.5">시뮬 시간대 시작 (KST)</label>
+                                        <input
+                                            type="time"
+                                            value={windowStart}
+                                            onChange={e => e.target.value && setWindowStart(e.target.value)}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-slate-600 ko-normal -mt-2">
+                                    가상 하루(19:00~다음 날 03:00)가 실제 {dayLengthMin}분 동안 흐릅니다. 경기 시작 슬롯 간격은 {slotIntervalSec}초, 가장 늦은 22:30 경기는 하루 시작 {Math.round(lastGameEndMin * 10) / 10}분 뒤에 끝납니다. 경기 없는 날도 같은 길이로 지나갑니다.
+                                </p>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">플레이오프 경기 간격</label>
+                                    <div className="flex gap-2">
+                                        <ToggleBtn active={playoffIntervalDays === 1} onClick={() => setPlayoffIntervalDays(1)} className="px-3">매일 (최대 30일)</ToggleBtn>
+                                        <ToggleBtn active={playoffIntervalDays === 2} onClick={() => setPlayoffIntervalDays(2)} className="px-3">격일 (최대 59일)</ToggleBtn>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">시리즈 안 경기와 라운드 사이 간격(가상 일). 짧은 리그는 매일, 3~4주 리그는 격일이 자연스럽습니다. 생성 후 변경 불가.</p>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">경기 리플레이 길이 (결과 공개 지연)</label>
+                                    <div className="flex gap-2">
+                                        {REPLAY_MINUTE_OPTIONS.map(m => (
+                                            <ToggleBtn key={m} active={replayMinutes === m} onClick={() => setReplayMinutes(m)} className="px-3">{m}분</ToggleBtn>
                                         ))}
                                     </div>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                        한 경기(48분)를 이 시간 동안 실시간처럼 재생하고, 끝나는 순간 결과가 공개됩니다. 짧을수록 관전 밀도가 높고, 하루 길이는 리플레이보다 최소 2분 길어야 합니다.
+                                        {lateGameClamped && <span className="text-amber-400"> 이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다(하루 길이를 늘리거나 리플레이를 줄이면 해소).</span>}
+                                    </p>
                                 </div>
 
                                 <div>
@@ -733,36 +915,32 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                     </p>
                                 </div>
 
-                                <div>
-                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">일일 시뮬 시간대 (KST)</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="time"
-                                            value={dailyWindowStart}
-                                            onChange={e => setDailyWindowStart(e.target.value)}
-                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                        />
-                                        <span className="text-slate-500 text-xs">~</span>
-                                        <input
-                                            type="time"
-                                            value={dailyWindowEnd}
-                                            onChange={e => setDailyWindowEnd(e.target.value)}
-                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                        />
+                                <div className={`rounded-xl px-3 py-2.5 space-y-1 border ${timelineFeasibility.feasible ? 'bg-slate-800/60 border-transparent' : 'bg-red-500/10 border-red-500/30'}`}>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-slate-500 ko-normal">가상 일수</span>
+                                        <span className="text-slate-300 font-mono">{virtualCalendarDays}일 (정규 {virtualCalendarDays - playoffDays} + 플레이오프 최대 {playoffDays})</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">이 시간대 안에서만 경기가 진행됩니다.</p>
-
-                                    <div className="bg-slate-800/60 rounded-lg px-3 py-2.5 mt-2 space-y-1">
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-slate-500 ko-normal">정규시즌</span>
-                                            <span className="text-slate-300 font-mono">{totalRegularDays}일 · 하루 약 {gamesPerDay}경기</span>
-                                        </div>
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-slate-500 ko-normal">일일 시뮬 시간대</span>
-                                            <span className="text-slate-300 font-mono">{dailyWindowStart} ~ {dailyWindowEnd} KST</span>
-                                        </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-slate-500 ko-normal">실제 기간 / 하루당 가상 일수</span>
+                                        <span className="text-slate-300 font-mono">{timelineFeasibility.realDays}일 / {timelineFeasibility.perDay}일</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-slate-500 ko-normal">일일 시뮬 시간대(계산)</span>
+                                        <span className={`font-mono ${timelineFeasibility.feasible ? 'text-slate-300' : 'text-red-300'}`}>
+                                            {windowStart} ~ {minToHHMM(Math.min(1440, timelineFeasibility.windowEndMin))}{timelineFeasibility.windowEndMin > 1440 ? ' (자정 초과)' : ''} · {Math.floor(timelineFeasibility.windowMin / 60)}시간 {timelineFeasibility.windowMin % 60}분
+                                        </span>
+                                    </div>
+                                    {!timelineFeasibility.feasible && (
+                                        <div className="text-[11px] text-red-300 ko-normal leading-relaxed pt-1">
+                                            <p>이 설정으로는 세션을 구성할 수 없습니다. 아래 중 하나를 적용하세요.</p>
+                                            <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                                                {timelineFeasibility.suggestions.minEndDate && <li>종료일을 {timelineFeasibility.suggestions.minEndDate} 이후로</li>}
+                                                {timelineFeasibility.suggestions.maxDayLengthMin && <li>가상 하루 길이를 {timelineFeasibility.suggestions.maxDayLengthMin}분 이하로</li>}
+                                                {timelineFeasibility.suggestions.latestWindowStartMin != null && <li>시뮬 시간대 시작을 {minToHHMM(timelineFeasibility.suggestions.latestWindowStartMin)} 이전으로</li>}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    <p className="text-[11px] text-slate-600 ko-normal pt-1">
                                         정규시즌이 끝나면 상위 8팀이 자동으로 플레이오프에 진출합니다.
                                     </p>
                                 </div>
@@ -774,9 +952,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                     <div className="px-6 py-5 space-y-5 overflow-y-auto">
 
                         {/* 드래프트 설정 (공통) */}
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">드래프트 설정</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            {isPersonalDraft ? '개인 팩 드래프트 설정' : '드래프트 설정'}
+                        </p>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        {!isPersonalDraft && <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1.5">
                                     드래프트 라운드
@@ -819,8 +999,9 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
-                        </div>
+                        </div>}
 
+                        {/* 글로벌 풀 범위 — 개인 팩 드래프트에선 라운드별 하위범위의 상한선 역할(픽 순서·용량 표시는 숨김) */}
                         <DraftPoolSettings
                             ovrMin={draftOvrMin}
                             onOvrMinChange={setDraftOvrMin}
@@ -834,9 +1015,24 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             onDraftFormatChange={setDraftFormat}
                             useCustomOverrides={useCustomOverrides}
                             onUseCustomOverridesChange={setUseCustomOverrides}
-                            teamCount={maxTeams}
-                            totalRounds={totalRounds}
+                            teamCount={isPersonalDraft ? undefined : maxTeams}
+                            totalRounds={isPersonalDraft ? undefined : totalRounds}
+                            hideDraftOrder={isPersonalDraft}
                         />
+
+                        {isPersonalDraft && (
+                            <PersonalDraftFormatEditor
+                                rounds={personalRounds}
+                                onRoundsChange={setPersonalRounds}
+                                pickTimerSec={personalTimer}
+                                onPickTimerSecChange={setPersonalTimer}
+                                globalOvrMin={draftOvrMin}
+                                globalOvrMax={draftOvrMax}
+                                globalDraftYearMin={draftYearMin}
+                                globalDraftYearMax={draftYearMax}
+                                useCustomOverrides={useCustomOverrides}
+                            />
+                        )}
 
                         <div className="border-t border-slate-800 pt-5" />
 

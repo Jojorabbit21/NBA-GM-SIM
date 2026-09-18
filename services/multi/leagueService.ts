@@ -5,6 +5,7 @@ import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import type { SimSettings } from '../../types/simSettings';
 import { HEX_COLOR_RE } from '../../utils/colorContrast';
+import type { PersonalDraftFormat } from './personalDraftFormat';
 
 // URL에 노출되는 리그 UUID를 대체하는 짧은 코드 — 헷갈리는 문자(0/O, 1/I/l) 제외 32종, 8자리.
 // [2026-08-01] leagues.id(UUID)는 여전히 진짜 PK로 유지, short_code는 라우팅 전용 별칭.
@@ -104,6 +105,14 @@ export interface CreateLeagueParams {
         durationWeeks:        number;
         dailyWindowStartMin:  number;
         dailyWindowEndMin:    number;
+        /** [2026-09-18] 고정 길이 가상 하루 타임라인 — 하루 길이(분, 20~40), 실제 시작/종료일(KST 'YYYY-MM-DD'),
+         *  플레이오프 시리즈 경기 간격(가상 일, 1=매일/2=격일). utils/leagueTimeline.ts 참조. */
+        dayLengthMin:         number;
+        realStartDate:        string;
+        realEndDate:          string;
+        playoffGameIntervalDays: number;
+        /** [2026-09-18 2단계] 리플레이(결과 공개 지연) 길이(분, 5/8/10/12). 미지정 시 DB 기본 10. */
+        replayMinutes:        number;
         /** 컨퍼런스별 진출 팀 수(리그 전체 총원이 아님) */
         playoffTeamCount:     number;
         /** NBA 방식 플레이인 토너먼트(7~10위) 활성화 여부 */
@@ -126,6 +135,11 @@ export interface CreateLeagueParams {
         twoWayDeadlineDate:   string | null;
         /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5). 미지정 시 DB 기본값(3) 사용. */
         twoWaySlots:          number;
+        /** [2026-09-18] Two-Way 계약 사용 여부. 미지정 시 DB 기본값(true). */
+        twoWayEnabled:        boolean;
+        /** [2026-09-18] 토너먼트 전용 개인 팩 드래프트 포맷 — buildPersonalDraftFormat()이
+         *  만든 결과를 그대로 넣는다. 미지정/null이면 기존 공유풀 턴제 드래프트를 그대로 사용. */
+        personalDraftFormat:  PersonalDraftFormat | null;
     }>;
 }
 
@@ -188,6 +202,11 @@ export const createLeague = async (
     if (opts.durationWeeks        !== undefined) payload.duration_weeks          = opts.durationWeeks;
     if (opts.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = opts.dailyWindowStartMin;
     if (opts.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = opts.dailyWindowEndMin;
+    if (opts.dayLengthMin         !== undefined) payload.day_length_min          = opts.dayLengthMin;
+    if (opts.realStartDate        !== undefined) payload.real_start_date         = opts.realStartDate;
+    if (opts.realEndDate          !== undefined) payload.real_end_date           = opts.realEndDate;
+    if (opts.playoffGameIntervalDays !== undefined) payload.playoff_game_interval_days = opts.playoffGameIntervalDays;
+    if (opts.replayMinutes        !== undefined) payload.replay_minutes          = opts.replayMinutes;
     if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
     if (opts.playInEnabled        !== undefined) payload.play_in_enabled         = opts.playInEnabled;
     if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
@@ -197,6 +216,8 @@ export const createLeague = async (
     if (opts.maxRosterSize        !== undefined) payload.max_roster_size         = opts.maxRosterSize;
     if (opts.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = opts.twoWayDeadlineDate;
     if (opts.twoWaySlots          !== undefined) payload.two_way_slots           = opts.twoWaySlots;
+    if (opts.twoWayEnabled        !== undefined) payload.two_way_enabled         = opts.twoWayEnabled;
+    if (opts.personalDraftFormat  !== undefined) payload.personal_draft_format   = opts.personalDraftFormat;
 
     // short_code 충돌(32^8 조합이라 사실상 발생 안 하지만) 대비 최대 3회 재시도.
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -416,6 +437,22 @@ export interface UpdateLeagueSettingsParams {
     twoWayDeadlineDate?:  string | null;
     /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5). */
     twoWaySlots?:         number;
+    /** [2026-09-18] Two-Way 계약 사용 여부 — 끄면 슬롯 표시/설정이 사라지고 투웨이 계약 체결이 서버에서도 차단된다. */
+    twoWayEnabled?:       boolean;
+    /** [2026-09-18] 메인리그 타임라인 설정(세션 설정 "일정" 탭) — 값만 저장되며 기존 타임라인/경기 시각은
+     *  자동 재계산되지 않는다. 재배치는 applyLeagueReschedule()(RPC, 원자적)로 별도 실행. */
+    durationWeeks?:       number;
+    dailyWindowStartMin?: number;
+    dailyWindowEndMin?:   number;
+    dayLengthMin?:        number;
+    realEndDate?:         string;
+    /** [2026-09-18 2단계] 리플레이 길이(분). 값만 저장 — 이미 배정된 경기 시각의 클램프는 재배치 때 다시 계산된다. */
+    replayMinutes?:       number;
+    /** [2026-09-18] 올스타 서브 이벤트 실제 발동 시각(재배치가 브레이크 경계를 다시 지났을 때 갱신). */
+    allstarSchedule?:     { announceAt: string; risingStarsAt: string; contestsAt: string; mainGameAt: string } | null;
+    /** [2026-09-18] 토너먼트 전용 개인 팩 드래프트 포맷 — buildPersonalDraftFormat() 결과를 그대로 저장.
+     *  null이면 기존 공유풀 턴제 드래프트로 되돌린다(드래프트 시작 전에만 의미 있음). */
+    personalDraftFormat?: PersonalDraftFormat | null;
 }
 
 export const updateLeagueSettings = async (
@@ -461,6 +498,15 @@ export const updateLeagueSettings = async (
     if (p.maxRosterSize        !== undefined) payload.max_roster_size         = p.maxRosterSize;
     if (p.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = p.twoWayDeadlineDate;
     if (p.twoWaySlots          !== undefined) payload.two_way_slots           = p.twoWaySlots;
+    if (p.twoWayEnabled        !== undefined) payload.two_way_enabled         = p.twoWayEnabled;
+    if (p.durationWeeks        !== undefined) payload.duration_weeks          = p.durationWeeks;
+    if (p.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = p.dailyWindowStartMin;
+    if (p.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = p.dailyWindowEndMin;
+    if (p.dayLengthMin         !== undefined) payload.day_length_min          = p.dayLengthMin;
+    if (p.realEndDate          !== undefined) payload.real_end_date           = p.realEndDate;
+    if (p.replayMinutes        !== undefined) payload.replay_minutes          = p.replayMinutes;
+    if (p.allstarSchedule      !== undefined) payload.allstar_schedule        = p.allstarSchedule;
+    if (p.personalDraftFormat  !== undefined) payload.personal_draft_format   = p.personalDraftFormat;
 
     const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
     if (error) return { error: error.message };
@@ -900,6 +946,81 @@ export const updateGameScheduledAt = async (
     return { error: error?.message ?? null };
 };
 
+// ─── 남은 가상 날짜 재배치 (어드민) ─────────────────────────────────────────────
+// [2026-09-18] 세션 설정 "일정" 탭 — 클라이언트가 utils/leagueTimeline.ts(서버 미러)로 다시 계산한
+// (1) p_from_virtual_date 이후 타임라인 행, (2) 미실행 경기의 새 scheduled_at/game_seq, (3) 바뀐 설정값을
+// apply_league_reschedule RPC로 한 트랜잭션에 반영한다(migrations/add_league_virtual_days_fixed_day_schedule.sql).
+// 서버 RPC가 어드민 검증 + played=false 가드를 수행한다.
+
+export interface RescheduleDayInput {
+    virtual_date: string; day_index: number; kind: string;
+    real_start_at: string; real_midnight_at: string; real_end_at: string;
+}
+export interface RescheduleGameInput { game_id: string; scheduled_at: string; game_seq?: number }
+export interface RescheduleSettingsInput {
+    day_length_min?: number;
+    real_end_date?: string;
+    daily_window_start_min?: number;
+    daily_window_end_min?: number;
+    replay_minutes?: number;
+    allstar_schedule?: { announceAt: string; risingStarsAt: string; contestsAt: string; mainGameAt: string } | null;
+}
+
+export const applyLeagueReschedule = async (
+    leagueId: string,
+    fromVirtualDate: string,
+    days: RescheduleDayInput[],
+    games: RescheduleGameInput[],
+    settings: RescheduleSettingsInput,
+): Promise<{ days: number; games: number; error: string | null }> => {
+    const { data, error } = await supabase.rpc('apply_league_reschedule', {
+        p_league_id: leagueId,
+        p_from_virtual_date: fromVirtualDate,
+        p_days: days,
+        p_games: games,
+        p_settings: settings,
+    });
+    if (error) return { days: 0, games: 0, error: error.message };
+    const r = (data ?? {}) as { days?: number; games?: number };
+    return { days: Number(r.days ?? 0), games: Number(r.games ?? 0), error: null };
+};
+
+// ─── 어드민 강제 진행(시간 점프) ────────────────────────────────────────────────
+// [2026-09-18 3단계] 대상 가상 날짜까지를 "지금" 끝난 것으로 만든다 — admin_time_jump RPC
+// (migrations/add_admin_time_jump.sql). 대상일 이하 행/경기는 서버가 Δ만큼 과거로 옮기고, 대상일 이후 행/경기는
+// 클라이언트(ScheduleSettingsTab.buildJumpPlan)가 지금+여유부터 창 격자에 다시 깐 값(days/games)으로 교체한다.
+// 되돌릴 수 없음 — RPC가 leagues.time_jump_log에 실행 전 스냅샷을 남긴다.
+
+export interface AdminTimeJumpResult {
+    deltaSeconds: number; rowsShifted: number; rowsRelaid: number;
+    gamesShifted: number; gamesLiveFinalized: number; gamesRelaid: number; realEndDate: string | null;
+    error: string | null;
+}
+
+export const adminTimeJump = async (
+    leagueId: string,
+    throughVirtualDate: string,
+    days: RescheduleDayInput[],
+    games: RescheduleGameInput[],
+    note: Record<string, unknown> = {},
+): Promise<AdminTimeJumpResult> => {
+    const { data, error } = await supabase.rpc('admin_time_jump', {
+        p_league_id: leagueId,
+        p_through_virtual_date: throughVirtualDate,
+        p_days: days,
+        p_games: games,
+        p_note: note,
+    });
+    const empty = { deltaSeconds: 0, rowsShifted: 0, rowsRelaid: 0, gamesShifted: 0, gamesLiveFinalized: 0, gamesRelaid: 0, realEndDate: null as string | null };
+    if (error) return { ...empty, error: error.message };
+    const r = (data ?? {}) as Record<string, unknown>;
+    return {
+        deltaSeconds: Number(r.delta_seconds ?? 0), rowsShifted: Number(r.rows_shifted ?? 0), rowsRelaid: Number(r.rows_relaid ?? 0),
+        gamesShifted: Number(r.games_shifted ?? 0), gamesLiveFinalized: Number(r.games_live_finalized ?? 0), gamesRelaid: Number(r.games_relaid ?? 0),
+        realEndDate: (r.real_end_date as string | null) ?? null, error: null,
+    };
+};
+
 // ─── 토너먼트 세션 초기화 ──────────────────────────────────────────────────────
 
 export interface ResetTournamentResult {
@@ -951,6 +1072,12 @@ export const resetTournament = async (
         .update({ roster: [], draft_order: null })
         .eq('room_id', roomId);
     if (teamsErr) return { error: teamsErr.message, archiveEdition };
+
+    // [2026-09-18] 개인 팩 드래프트 룸 — 룸 스코프 선수 인스턴스/상태/진행 행도 같이 지운다
+    // (안 지우면 재참가 시 start_personal_draft가 'completed' 진행 행을 그대로 돌려줘 드래프트를
+    // 다시 못 한다). 공유풀 드래프트 룸에선 지울 행이 없어 no-op. 어드민 세션만 허용(SECURITY DEFINER 내부 검사).
+    const { error: cleanupErr } = await supabase.rpc('personal_draft_cleanup_room', { p_room_id: roomId });
+    if (cleanupErr) return { error: cleanupErr.message, archiveEdition };
 
     return { error: null, archiveEdition };
 };

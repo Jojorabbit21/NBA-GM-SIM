@@ -146,6 +146,7 @@ const MultiLeaderboardView: React.FC = () => {
             onRefresh={() => { refetchTeams(); refetchStats(); if (isPlayoffMode) refetchPlayoffStats(); }}
             refreshing={fetchRefreshing}
             enableHoverCard
+            includeZeroGamePlayers
         />
     );
 };

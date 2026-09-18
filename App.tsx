@@ -25,6 +25,7 @@ import AdminGuard from './components/AdminGuard';
 // Multi Pages — 비동기 로드
 import LeagueSettingsView from './views/multi/league/LeagueSettingsView';
 import MultiDraftView from './views/multi/league/MultiDraftView';
+import PersonalDraftView from './views/multi/league/PersonalDraftView';
 import { LeagueLayout } from './views/multi/league/LeagueLayout';
 import MultiSeasonPage from './pages/MultiSeasonPage';
 import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
@@ -398,6 +399,7 @@ const App: React.FC = () => {
                                 (사용자 리포트). MultiDraftLayout은 MultiProtectedLayout과 인증
                                 가드 로직이 완전히 동일해 별도 유지할 이유가 없어 함께 제거. */}
                             <Route path="/multi/leagues/:leagueId/draft" element={<MultiDraftView />} />
+                            <Route path="/multi/leagues/:leagueId/personal-draft" element={<PersonalDraftView />} />
                             <Route path="/multi/leagues/:leagueId/season" element={<MultiSeasonLayout />}>
                                 <Route index element={<MultiSeasonPage />} />
                                 <Route path="news"         element={<MultiNewsFeedView />} />

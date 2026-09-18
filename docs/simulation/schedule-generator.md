@@ -215,6 +215,20 @@ interface Game {
 
 ---
 
+## 멀티플레이어 실제 시각 배정 — 고정 길이 가상 하루 타임라인 (2026-09-18~)
+
+멀티 메인리그는 이 생성기의 출력(가상 캘린더 날짜/시간)을 그대로 두고, 실제 시뮬 시각(`games.scheduled_at`)만
+`server/src/shared/leagueTimeline.ts`(클라이언트 미러 `utils/leagueTimeline.ts`)가 별도로 계산한다.
+
+- 가상 하루 = 실제 D분 고정(20~40, 기본 30). 경기 없는 날도 D분. 가상 19:00→03:00을 D분에 선형 매핑, 가상 자정 = D×5/8.
+- 리그 생성 시 가상 캘린더 전체(정규 약 175일 + 플레이오프 최대 30/59일)를 `league_virtual_days`에 저장. 실제 하루에 k일(k=ceil(V/실제일수)).
+- 경기 시각 = 가상 날짜 행 시작 + (가상 시각−19:00)×(D/480분), 클램프: 시작+리플레이 ≤ 행 종료.
+- "오늘" = 시작한 마지막 가상 하루의 날짜(자정 지났으면 +1일). SQL `current_virtual_date()`와 동일 규칙.
+- 6단계 `assignGameTimes()` 직후 날짜·시간 정렬을 추가해 배열 순서 = 가상 시간 순서를 보장한다(2026-09-18).
+- 리플레이(결과 공개 지연) 길이는 리그 설정 `leagues.replay_minutes`(5/8/10/12, 기본 10). 클라이언트 `getReplayDurationMs()`, 서버 `replayConfig`, DB `room_replay_interval()`이 같은 값을 읽는다(2단계, 2026-09-18).
+
+설계 전체: `docs/plan/fixed-day-schedule-plan.md`.
+
 ## 연동 계획 (멀티시즌 전환 시)
 
 > 아래 내용은 `docs/plan/multi-season-plan.md`와 연계됨.

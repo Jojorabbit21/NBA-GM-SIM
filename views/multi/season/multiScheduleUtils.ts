@@ -1,6 +1,7 @@
 
 import type { Game } from '../../../types';
 import { resolveRealAt } from './multiGameReveal';
+import { resolveVirtualDate, type VirtualDayRow } from '../../../utils/leagueTimeline';
 
 // [2026-08-04] MultiScheduleView.tsx에 로컬(비export)로 있던 날짜 헬퍼를 공용화 —
 // MultiGamePbpView.tsx의 날짜 셀렉터 스트립에서도 동일 로직이 필요해짐. kstDateKey()의
@@ -24,8 +25,11 @@ export function fmtDayLabel(dateKey: string): string {
 // 메인리그 플레이오프(isPlayoff=true, 시드 기반으로 새로 생성됨)는 date/time이 scheduledAt과
 // 같은 실제 시각에서 파생된 값이라 자정 경계 보정을 위해 scheduledAt을 그대로 우선한다.
 // 호출부는 league.type === 'main_league' && !g.isPlayoff 조건으로 이 플래그를 넘겨야 한다.
+// [2026-09-18] preferVirtual이면 플레이오프 경기도 가상 날짜(g.date)를 쓴다 — 고정 길이 가상 하루
+// 타임라인 구조에서는 실제 하루에 가상 여러 날이 들어가므로 scheduledAt의 KST 날짜로 묶으면 서로
+// 다른 가상 날짜가 한 그룹에 섞인다. 포스트시즌 경기도 이제 game_date/game_time(가상)을 갖는다.
 export function kstDateKey(g: Game, preferVirtual = false): string {
-    if (preferVirtual && !g.isPlayoff) {
+    if (preferVirtual) {
         return g.date.slice(0, 10);
     }
     if (g.scheduledAt) {
@@ -46,8 +50,8 @@ export function fmtDateShort(g: Game, preferVirtual = false): string {
 // scheduledAt (UTC ISO) → KST 시각 문자열. game_seq 방식은 normalize 후 호출하므로 항상 scheduledAt 있음.
 // preferVirtual 조건은 kstDateKey와 동일(메인리그 정규시즌 경기만 가상 시각 우선).
 export function fmtTime(g: Game, preferVirtual = false): string {
-    if (preferVirtual && !g.isPlayoff) {
-        return g.time ?? '—';
+    if (preferVirtual && g.time) {
+        return g.time;
     }
     if (g.scheduledAt) {
         const kst = new Date(new Date(g.scheduledAt).getTime() + 9 * 3_600_000);
@@ -70,7 +74,29 @@ export function findCurrentVirtualGame(
     simStart: string | null,
     gprd: number,
     nowMs: number,
+    // [2026-09-18] 고정 길이 가상 하루 타임라인(useLeagueContext().timeline). 있으면 "오늘"은 표에서
+    // 시간으로 결정되고(resolveVirtualDate — SQL current_virtual_date와 동일 규칙), 반환 경기는 그
+    // 날짜의 첫 경기(휴식일이면 그 다음 경기일의 첫 경기). 없으면(구 리그/토너먼트) 예전
+    // "가장 가까운 경기" 폴백 — 이 폴백이 10분 전환 간격 중간에 미리 넘어가던 원인이었다.
+    timeline?: VirtualDayRow[] | null,
 ): Game | null {
+    if (timeline?.length) {
+        const today = resolveVirtualDate(timeline, nowMs);
+        if (today) {
+            let sameDay: Game | null = null;
+            let nextDay: Game | null = null;
+            for (const g of games) {
+                const d = g.date.slice(0, 10);
+                if (d === today) {
+                    if (!sameDay || (g.scheduledAt ?? '') < (sameDay.scheduledAt ?? '')) sameDay = g;
+                } else if (d > today) {
+                    if (!nextDay || d < nextDay.date.slice(0, 10) || (d === nextDay.date.slice(0, 10) && (g.scheduledAt ?? '') < (nextDay.scheduledAt ?? ''))) nextDay = g;
+                }
+            }
+            if (sameDay) return sameDay;
+            if (nextDay) return nextDay;
+        }
+    }
     let best: Game | null = null;
     let bestDiff = Infinity;
     for (const g of games) {
@@ -88,7 +114,9 @@ export function findCurrentVirtualDate(
     simStart: string | null,
     gprd: number,
     nowMs: number,
+    timeline?: VirtualDayRow[] | null,
 ): string | null {
+    if (timeline?.length) return resolveVirtualDate(timeline, nowMs);
     return findCurrentVirtualGame(games, simStart, gprd, nowMs)?.date ?? null;
 }
 

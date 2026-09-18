@@ -27,9 +27,10 @@ import { kstMidnightPlusDays } from './kst';
 import { supabase } from '../supabaseAdmin';
 import {
     computeStandingsByConference, buildAndStoreConferenceBracket, buildBracketConfirmedEvent, seasonLabelFor,
-    postseasonVirtualAnchor, addDaysStr,
+    postseasonVirtualAnchor, addDaysStr, postseasonIntervalDays,
     type StandingRow, type PostseasonLeagueRow,
 } from './playoffSeeder';
+import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
 import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
 
 function playInSeriesId(conf: 'East' | 'West', tag: '7v8' | '9v10' | '8th'): string {
@@ -56,11 +57,15 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
 
     // [2026-09-15 Fix] game_date(가상 캘린더)는 postseasonVirtualAnchor() 기반으로 계산 —
     // playInStartIso(실제 방송 시각/scheduledAt)와는 별개 축. 플레이인은 포스트시즌 day 0.
+    // [2026-09-18] 타임라인 리그는 scheduled_at을 league_virtual_days 표에서 계산(슬롯 방식은 구 리그 전용).
+    const timeline         = await loadLeagueTimeline(league.id);
+    const usesTimeline     = timeline.length > 0;
+    const g                = postseasonIntervalDays(league);
     const playInStart      = kstMidnightPlusDays(new Date().toISOString(), 1);
     const playInStartIso   = playInStart.toISOString();
     const virtualStartDate = postseasonVirtualAnchor(league.virtual_season_year);
     const gamesPerRealDay  = league.games_per_real_day ?? 48;
-    const intervalMinutes  = 1440 / gamesPerRealDay;
+    const intervalMinutes  = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
 
     const series: PlayoffSeries[] = [];
     const schedule: TournamentGame[] = [];
@@ -102,11 +107,11 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
         // 게임을 만들지 않고, handlePlayInAdvance가 양쪽 슬롯이 채워지는 시점에 슬롯 1로 생성한다.
         schedule.push(...generateAllSeriesGames(
             playInSeriesId(conf, '7v8'), s7.team_slug, s8.team_slug, 1,
-            virtualStartDate, 0, intervalMinutes, playInStartIso,
+            virtualStartDate, 0, intervalMinutes, usesTimeline ? null : playInStartIso,
         ));
         schedule.push(...generateAllSeriesGames(
             playInSeriesId(conf, '9v10'), s9.team_slug, s10.team_slug, 1,
-            virtualStartDate, 0, intervalMinutes, playInStartIso,
+            virtualStartDate, 0, intervalMinutes, usesTimeline ? null : playInStartIso,
         ));
 
         // 7/8위는 플레이인 결과로 나중에 확정 — 본선 1라운드 프레임엔 일단 TBD로 채워 넣는다.
@@ -115,7 +120,8 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     }
 
     if (schedule.length > 0) {
-        const { error: gamesErr } = await insertGames(roomId, league.id, schedule as any);
+        const timedSchedule = usesTimeline ? fillPostseasonRealTimes(schedule as any[], timeline, league) : schedule;
+        const { error: gamesErr } = await insertGames(roomId, league.id, timedSchedule as any);
         if (gamesErr) {
             console.error(`[playInSeeder] insertGames failed(${league.id}): ${gamesErr}`);
             return;
@@ -138,11 +144,11 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
         });
     }
 
-    // 플레이인 게임(있다면 "+1일" 앵커의 슬롯 0~1)과 시간이 겹치지 않도록 본선 프레임은
-    // 하루 더 늦게(+2일) 시작시킨다. 플레이인이 전혀 없는 리그는 기본값(+1일) 그대로.
-    const daysOffset = schedule.length > 0 ? 2 : 1;
-    await buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, series, daysOffset);
-    console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} play-in games)`);
+    // 본선 1라운드 가상 날짜 오프셋 — 플레이인이 있으면 디사이더(g) 다음인 2g, 없으면 0.
+    // 구 리그(타임라인 없음)는 예전 값(+1일)을 유지한다.
+    const round1DayOffset = schedule.length > 0 ? (usesTimeline ? 2 * g : 1) : 0;
+    await buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, series, round1DayOffset);
+    console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} play-in games, timeline=${usesTimeline}, g=${g})`);
 }
 
 export interface HandlePlayInAdvanceResult {
@@ -192,8 +198,11 @@ export async function handlePlayInAdvance(
     const confLabel = conf === 'East' ? '동부' : '서부';
     const tagLabel = tag === '7v8' ? '7-8위전' : tag === '9v10' ? '9-10위전' : '8시드 결정전';
     const winnerName = nameOf(finished.winnerId);
+    const timeline     = await loadLeagueTimeline(league.id);
+    const usesTimeline = timeline.length > 0;
+    const g            = postseasonIntervalDays(league);
     const playInVirtualDate = tag === '8th'
-        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1)
+        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? g : 1)
         : postseasonVirtualAnchor(league.virtual_season_year);
     const pendingEvents: PendingLeagueEvent[] = [{
         type: 'play_in_result', simDate: playInVirtualDate,
@@ -219,14 +228,17 @@ export async function handlePlayInAdvance(
             // [2026-09-15 Fix] 디사이더는 플레이인 다음날(포스트시즌 day 1) — 실제로 이 함수가
             // 언제(며칠 뒤든) 호출되든 game_date는 항상 이 가상 날짜로 고정한다. 실제 방송
             // 시각(scheduledAt)만 호출 시점의 real "now"+1일을 그대로 사용.
-            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1);
+            // [2026-09-18] 타임라인 리그: 디사이더 = 앵커 + g(가상 날짜), 슬롯 0에 두고 scheduled_at은 표에서.
+            // 구 리그: 예전 그대로(앵커+1, 슬롯 1, 30분 간격, real now+1일 앵커).
+            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? g : 1);
             const deciderStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
             const gamesPerRealDay = league.games_per_real_day ?? 48;
-            const intervalMinutes = 1440 / gamesPerRealDay;
-            const games = generateAllSeriesGames(
+            const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
+            const rawGames = generateAllSeriesGames(
                 decider.id, decider.higherSeedId, decider.lowerSeedId, 1,
-                deciderVirtualDate, 1, intervalMinutes, deciderStart.toISOString(),
+                deciderVirtualDate, usesTimeline ? 0 : 1, intervalMinutes, usesTimeline ? null : deciderStart.toISOString(),
             );
+            const games = usesTimeline ? fillPostseasonRealTimes(rawGames as any[], timeline, league) : rawGames;
             const { error } = await insertGames(roomId, league.id, games as any);
             if (error) console.error(`[playInSeeder] decider insertGames 실패(${league.id}): ${error}`);
             await insertGameShortCodes(roomId, games.map(g => ({ id: g.id }))).catch(err =>
@@ -278,7 +290,7 @@ export async function handlePlayInAdvance(
         resolveQualified('East', East),
         resolveQualified('West', West),
         series,
-        1,
+        usesTimeline ? 2 * g : 0,
         false,
     );
     if (!bracketResult) return { pendingEvents };
@@ -316,17 +328,21 @@ async function resolveRoundOneFromPlayIn(
 
     target.lowerSeedId = winnerId;
 
-    // [2026-09-15 Fix] 본선 1라운드는 플레이인 다음날(포스트시즌 day 1) — startPlayIn()이
-    // buildAndStoreConferenceBracket을 daysOffset=2로 호출할 때 계산하는 virtualStartDate와
-    // 동일한 날짜여야 같은 라운드의 다른 매치업들과 game_date가 어긋나지 않는다.
-    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), 1);
+    // [2026-09-15 Fix] 본선 1라운드 가상 날짜 — startPlayIn()이 buildAndStoreConferenceBracket에 넘긴
+    // round1DayOffset(타임라인 리그 2g / 구 리그 1)과 동일해야 같은 라운드의 다른 매치업들과
+    // game_date가 어긋나지 않는다.
+    const timeline     = await loadLeagueTimeline(league.id);
+    const usesTimeline = timeline.length > 0;
+    const g            = postseasonIntervalDays(league);
+    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? 2 * g : 1);
     const startAnchor     = kstMidnightPlusDays(new Date().toISOString(), 1);
     const gamesPerRealDay = league.games_per_real_day ?? 48;
-    const intervalMinutes = 1440 / gamesPerRealDay;
-    const games = generateAllSeriesGames(
+    const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
+    const rawGames = generateAllSeriesGames(
         target.id, target.higherSeedId, target.lowerSeedId, target.targetWins,
-        round1VirtualDate, 0, intervalMinutes, startAnchor.toISOString(),
+        round1VirtualDate, 0, intervalMinutes, usesTimeline ? null : startAnchor.toISOString(),
     );
+    const games = usesTimeline ? fillPostseasonRealTimes(rawGames as any[], timeline, league) : rawGames;
     const { error } = await insertGames(roomId, league.id, games as any);
     if (error) console.error(`[playInSeeder] round1 insertGames 실패(${league.id}): ${error}`);
     await insertGameShortCodes(roomId, games.map(g => ({ id: g.id }))).catch(err =>

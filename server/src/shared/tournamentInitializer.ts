@@ -8,6 +8,8 @@ interface Game {
     /** 실제 방송 시각(ISO) — 생성 시점에 한 번만 계산해 저장(SSOT). 없으면(레거시 데이터)
      * 클라이언트/서버가 game_seq로부터 매번 재계산하는 폴백 경로를 탄다. */
     scheduledAt?: string;
+    /** [2026-09-18] 가상 시각(HH:MM) — 타임라인 리그의 포스트시즌 경기용(timelineStore.fillPostseasonRealTimes). */
+    time?: string;
     homeScore?: number;
     awayScore?: number;
     played: boolean;

@@ -765,5 +765,11 @@ export function generateSeasonSchedule(
     // 8. 경기 시간 배정 (홈팀 시간대 기반)
     assignGameTimes(games);
 
+    // [2026-09-18 Fix] assignGameTimes()는 날짜별 "복사본" 배열만 시간순으로 정렬해 time을 붙이므로
+    // games 원본의 같은 날짜 안 순서는 매치업 배정 순서(사실상 무작위) 그대로였다. 이후 단계
+    // (타임라인 실제 시각 배정 game_seq 재번호, 화면 정렬 폴백)가 배열 순서를 그대로 쓰므로,
+    // 여기서 날짜·시간순으로 안정 정렬해 "늦은 시간대 경기가 먼저 시작"하는 여지를 없앤다.
+    games.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
+
     return games;
 }

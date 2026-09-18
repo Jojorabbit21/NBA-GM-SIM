@@ -12,6 +12,7 @@ const mapFaError = (msg: string): string => {
     if (msg.includes('not_team_owner'))         return '본인 팀에서만 계약/방출할 수 있습니다.';
     if (msg.includes('roster_full'))            return '로스터 정원이 가득 찼습니다. 다른 선수를 방출한 뒤 다시 시도하세요.';
     if (msg.includes('two_way_slots_full'))     return '투웨이 슬롯이 가득 찼습니다. 투웨이 계약을 방출한 뒤 다시 시도하세요.';
+    if (msg.includes('two_way_disabled'))       return '이 리그는 Two-Way 계약을 사용하지 않습니다. 정규 계약으로 제안하세요.';
     if (msg.includes('already_on_roster'))      return '이미 로스터에 있는 선수입니다.';
     if (msg.includes('player_already_signed'))  return '다른 팀이 이미 계약한 선수입니다. 새로고침 후 다시 시도하세요.';
     if (msg.includes('player_not_on_roster'))   return '로스터에 없는 선수입니다. 새로고침 후 다시 시도하세요.';

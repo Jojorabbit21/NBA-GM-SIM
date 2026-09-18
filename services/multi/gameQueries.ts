@@ -17,7 +17,8 @@ function toIsoZ(v: string | null): string | undefined {
     return v ? new Date(v).toISOString() : undefined;
 }
 
-function rowToGame(r: any): Game {
+/** games 행 → Game. [2026-09-18 2단계] useMultiGameData의 Realtime 증분 반영이 payload.new에 그대로 쓰므로 export. */
+export function rowToGame(r: any): Game {
     return {
         id:          r.game_id,
         homeTeamId:  r.home_team_id,

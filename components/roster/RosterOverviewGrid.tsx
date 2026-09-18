@@ -27,6 +27,11 @@ interface RosterOverviewGridProps {
     /** 팀당 Two-Way 계약 슬롯 상한 — 미지정 시 기본 3명. 멀티플레이어는
      * leagues.two_way_slots(1~5, 어드민 설정)를 그대로 전달한다. */
     twoWaySlots?: number;
+    /** [2026-09-17] 푸터의 "투웨이 슬롯" 항목 표시 여부(기본 true). 멀티플레이어에서 CBA 규정
+     * (leagues.cba_rules_enabled)이 꺼진 리그는 즉시계약 RPC(sign_free_agent)만 쓰고 투웨이
+     * 계약이라는 경로 자체가 없어 슬롯이 남아 있어도 쓸 수 없다 — "3자리 남았는데 계약이 막힌다"는
+     * 혼란을 없애기 위해 그런 리그에선 아예 숨긴다. */
+    showTwoWaySlots?: boolean;
 }
 
 const DEFAULT_MAX_ROSTER_SIZE = 15;
@@ -58,7 +63,7 @@ const getStickyStyle = (left: number, width: number, isLast: boolean = false) =>
     borderRight: isLast ? undefined : 'none',
 });
 
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS }) => {
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS, showTwoWaySlots = true }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
     // "정규 계약" = 투웨이(two-way)가 아닌 모든 계약. 실제 NBA도 투웨이 2명은 15명 정원과
@@ -246,12 +251,14 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
                                             {String(regularContractCount).padStart(2, '0')}/{String(maxRosterSize).padStart(2, '0')}
                                         </span>
                                     </span>
-                                    <span className="text-sm font-semibold text-slate-400">
-                                        투웨이 슬롯{' '}
-                                        <span className={twoWayCount >= twoWaySlots ? 'text-red-400' : 'text-slate-400'}>
-                                            {twoWayCount}/{twoWaySlots}
+                                    {showTwoWaySlots && (
+                                        <span className="text-sm font-semibold text-slate-400">
+                                            투웨이 슬롯{' '}
+                                            <span className={twoWayCount >= twoWaySlots ? 'text-red-400' : 'text-slate-400'}>
+                                                {twoWayCount}/{twoWaySlots}
+                                            </span>
                                         </span>
-                                    </span>
+                                    )}
                                 </div>
                             </td>
                         </tr>

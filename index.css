@@ -175,6 +175,17 @@ body {
 .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
 .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* [2026-09-18] 개인 팩 드래프트(PersonalDraftView) — 좌측 라운드 구성 패널의 현재 라운드 행 펄스.
+   시안(v49) 그대로: 에메랄드 8%↔26% 왕복, 모션 축소 환경에선 정지된 16% 틴트로 대체. */
+@keyframes roundPulse {
+    0%, 100% { background-color: rgba(16, 185, 129, 0.08); }
+    50%      { background-color: rgba(16, 185, 129, 0.26); }
+}
+.round-current { animation: roundPulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+    .round-current { animation: none; background-color: rgba(16, 185, 129, 0.16); }
+}
+
 /* 슬레이트 계열 배경(멀티 헤더 검색 드롭다운 등)에서 기본(zinc 계열) 스크롤바 대신 사용 */
 .scrollbar-slate::-webkit-scrollbar-track { background: #0f172a; }
 .scrollbar-slate::-webkit-scrollbar-thumb {

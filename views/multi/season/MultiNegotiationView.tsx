@@ -17,7 +17,7 @@ import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { computeMultiStandingsStats, computePlayoffOddsMap } from './multiSeasonUtils';
 import { findCurrentVirtualDate, addDaysToKey, daysBetweenKeys } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
-import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { shouldUseCustomOverrides, isTwoWayContractEnabled } from '../../../utils/leagueOverrides';
 import { buildMultiFADemand } from '../../../services/multi/negotiation/multiFaDemand';
 import { evaluateFAOffer, estimateAcceptProbability, evaluateTwoWayOffer, estimateTwoWayAcceptProbability, calcTeamFitPenalty, calcDeclineAversionPenalty } from '../../../services/fa/faValuation';
 import { calcTeamPayroll } from '../../../services/fa/faMarketBuilder';
@@ -124,7 +124,7 @@ function moodFromProbability(probability: number): MoodTier {
 }
 
 const MultiNegotiationView: React.FC = () => {
-    const { league, leagueTeams, room, isLoading: leagueLoading, reload } = useLeagueContext();
+    const { league, leagueTeams, room, isLoading: leagueLoading, reload , timeline } = useLeagueContext();
     const { tendencySeed, currentSeason, schedule, currentSimDate } = useSeasonContext();
     const { session } = useGame();
     const navigate = useNavigate();
@@ -156,11 +156,20 @@ const MultiNegotiationView: React.FC = () => {
         [leagueTeams, session],
     );
 
+    // [2026-09-17] 이 화면에서 방금 계약을 체결한 선수 ID. 체결 직후 reload()로 leagueTeams가
+    // 갱신되면 rosterMap에 이 선수가 들어가 아래 player 조회(로스터 미소속 조건)가 null이 되고
+    // "선수를 찾을 수 없습니다" 화면으로 튕긴다 — 예전엔 1.5초 뒤 자동으로 FA 목록으로 이동시켜
+    // 이걸 가렸는데, "사용자가 나가기를 누르기 전까지 화면 유지" 요청으로 자동 이동을 없애면서
+    // 서명한 선수만은 로스터 소속이어도 계속 표시하도록 예외를 둔다.
+    const [signedPlayerId, setSignedPlayerId] = useState<string | null>(null);
+
     // FA 협상 대상은 항상 어느 팀 로스터에도 없는 드래프트풀 선수 — MultiFreeAgentView.tsx의
-    // undraftedPlayers와 동일한 조건.
+    // undraftedPlayers와 동일한 조건. 단, 이 화면에서 방금 서명한 선수는 예외(위 주석).
     const player = useMemo(
-        () => (playerId ? poolPlayersWithStats.find(p => p.id === playerId && !rosterMap.has(p.id)) ?? null : null),
-        [poolPlayersWithStats, playerId, rosterMap],
+        () => (playerId
+            ? poolPlayersWithStats.find(p => p.id === playerId && (p.id === signedPlayerId || !rosterMap.has(p.id))) ?? null
+            : null),
+        [poolPlayersWithStats, playerId, rosterMap, signedPlayerId],
     );
 
     // 시장 조건(buildMarketConditions) 계산용 Team[] — MultiPlayerDetailView.tsx와 동일한
@@ -300,7 +309,9 @@ const MultiNegotiationView: React.FC = () => {
     // 더해 OVR이 명백히 로테이션급 이상(TWO_WAY_MAX_OVR 이상)이면 YOS와 무관하게 자격을
     // 주지 않는다(위 TWO_WAY_MAX_OVR 주석 참고 — marketValueScore만으로는 저연차 특급
     // 유망주를 걸러내지 못했던 버그의 하드 가드).
-    const isTwoWayEligible = playerYos < TWO_WAY_YOS_MAX && playerOvrForTwoWay < TWO_WAY_MAX_OVR;
+    // [2026-09-18] 리그 설정에서 Two-Way 계약을 끈 경우(leagues.two_way_enabled=false)도 자격 없음 — 드롭다운에서
+    // 투웨이 유형이 사라지고, 서버 RPC(sign_free_agent_negotiated)도 two_way 계약을 거부한다(two_way_disabled).
+    const isTwoWayEligible = isTwoWayContractEnabled(league) && playerYos < TWO_WAY_YOS_MAX && playerOvrForTwoWay < TWO_WAY_MAX_OVR;
     const isRookieScale = contractType === 'rookie_scale';
     const isTwoWay = contractType === 'two_way';
     // [2026-09-16] 서명 유형(예외 조항) "Minimum Salary Exception" — 실제 CBA대로 YOS(서비스
@@ -437,7 +448,7 @@ const MultiNegotiationView: React.FC = () => {
     // findCurrentVirtualDate()로 스케줄 기반 가상 날짜를 구하고, 계산 불가하면 currentSimDate로
     // 폴백한다. (쿨다운 계산과 미니멈 계약 일할계산 둘 다 이 값을 쓴다.)
     const currentVirtualDate = useMemo(
-        () => findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, getServerNow()) ?? currentSimDate,
+        () => findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, getServerNow(), timeline) ?? currentSimDate,
         [schedule, league, currentSimDate],
     );
 
@@ -800,6 +811,8 @@ const MultiNegotiationView: React.FC = () => {
                 setActionError(error);
                 return;
             }
+            // reload()보다 먼저 — 갱신된 rosterMap이 이 선수를 로스터 소속으로 바꿔도 화면이 유지되게.
+            setSignedPlayerId(player.id);
             setResult({ accepted: true });
             addMsg('gm', `${player.name}, 당신이 팀에 합류하게 되어 매우 기쁩니다. 환영합니다.`);
             addMsg('status', '계약 체결 완료', undefined, true);
@@ -810,7 +823,8 @@ const MultiNegotiationView: React.FC = () => {
             // 버그였다(MultiFreeAgentView.tsx의 즉시계약 handleSign, MultiRosterView.tsx의
             // handleReleasePlayer는 이미 reload()를 호출하고 있었음 — 이 화면만 빠져 있었다).
             reload();
-            setTimeout(() => navigate(`/multi/leagues/${leagueId}/season/free-agent`), 1500);
+            // [2026-09-17] 체결 후 자동으로 FA 목록으로 돌아가지 않는다 — 사용자가 채팅 하단
+            // "나가기"(또는 헤더 "뒤로")를 직접 누를 때까지 결과 화면을 유지한다.
         } else {
             // 투웨이는 금액 비교 자체가 성립하지 않는다(항상 정상 FA 수요보다 훨씬 낮음) —
             // 거절 사유는 "연차/실력상 정규 계약을 노려볼 만하다"는 전용 대사로 고정.
@@ -1137,7 +1151,7 @@ const MultiNegotiationView: React.FC = () => {
                                     </div>
                                 );
                             })}
-                            {(isOnCooldown || isRefusingNegotiation) && (
+                            {(isOnCooldown || isRefusingNegotiation || isSigned) && (
                                 <div className="flex justify-center">
                                     <button
                                         onClick={() => navigate(`/multi/leagues/${leagueId}/season/free-agent`)}

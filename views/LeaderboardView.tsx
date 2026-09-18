@@ -35,9 +35,11 @@ interface LeaderboardViewProps {
   refreshing?: boolean;
   /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
   enableHoverCard?: boolean;
+  /** 0경기 선수도 표시(경기가 하나도 진행되지 않은 멀티리그 리더보드용). 기본 false(기존 동작 유지). */
+  includeZeroGamePlayers?: boolean;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false, includeZeroGamePlayers = false }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -92,7 +94,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       selectedPositions,
       searchQuery,
       statCategory,
-      seasonType
+      seasonType,
+      includeZeroGamePlayers
   );
 
   // --- Pagination ---

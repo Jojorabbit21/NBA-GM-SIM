@@ -2,6 +2,7 @@
 import { supabase } from '../supabaseClient';
 import type { OffseasonPhase } from '../../types/app';
 import type { SimSettings } from '../../types/simSettings';
+import type { PersonalDraftFormat } from './personalDraftFormat';
 
 // ─── 리그 그룹 ────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,25 @@ export interface LeagueRow {
     real_time_pace: string;
     sim_real_start_at: string | null;
     games_per_real_day: number;
+    /** [2026-09-18] 메인리그 정규시즌 압축 설정 — 총 진행기간(주) + 일일 시뮬 시간대(KST 자정
+     *  기준 분). 리그 생성 시(CreateLeagueModal) 채워지고, 세션 설정 "일정" 탭에서 수정 가능.
+     *  finalize.ts가 최초 스케줄 압축에, ScheduleSettingsTab이 남은 경기 재배치에 사용한다. */
+    duration_weeks: number | null;
+    daily_window_start_min: number | null;
+    daily_window_end_min: number | null;
+    /** [2026-09-18] 고정 길이 가상 하루 타임라인 설정 — 하루 길이(분, 20~40), 실제 시작/종료일(KST),
+     *  플레이오프 시리즈 경기 간격(가상 일, 1=매일/2=격일). 이 구조 이전 리그는 전부 null(간격은 1).
+     *  duration_weeks/daily_window_end_min은 이제 이 값들에서 파생되는 호환용 값. */
+    day_length_min: number | null;
+    real_start_date: string | null;
+    real_end_date: string | null;
+    playoff_game_interval_days: number;
+    /** [2026-09-18 2단계] 리플레이(결과 공개 지연) 길이(분, 5/8/10/12, 기본 10). 클라이언트 판정
+     *  (multiGameReveal), 서버 라이브 엔드포인트, DB game_pbp RLS·시즌 스탯 함수가 모두 이 값을 쓴다. */
+    replay_minutes: number;
+    /** [2026-09-15] 올스타 서브 이벤트 4종의 실제(압축) 발동 시각 — scheduler.ts가 now()와 직접
+     *  비교해 트리거. 남은 경기 재배치가 브레이크 경계를 다시 지나면 함께 갱신된다. */
+    allstar_schedule: { announceAt?: string; risingStarsAt?: string; contestsAt?: string; mainGameAt?: string } | null;
     /** 시즌 개막 연도(가상 캘린더 기준) — getAllStarKeyDates()의 인자. finalize.ts가 리그
      *  생성 시 채운다(CreateLeagueModal.tsx 참조). */
     virtual_season_year: number | null;
@@ -120,6 +140,13 @@ export interface LeagueRow {
     two_way_deadline_date: string | null;
     /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5, 기본 3) — max_roster_size(정규 계약)와 별개. */
     two_way_slots: number;
+    /** [2026-09-18] Two-Way 계약 사용 여부(기본 true). 꺼지면 슬롯 표시/설정이 사라지고 협상 화면에서 투웨이를 고를 수
+     *  없으며 sign_free_agent_negotiated()가 two_way 계약을 거부한다. CBA 규정이 꺼진 리그는 이 값과 무관하게 투웨이 경로 없음
+     *  — 판정은 항상 utils/leagueOverrides.ts의 isTwoWayContractEnabled()를 거칠 것. */
+    two_way_enabled: boolean;
+    /** [2026-09-18] 토너먼트 전용 개인 팩 드래프트 포맷(docs/plan/tournament-personal-pack-draft-plan.md).
+     *  null이면 기존 공유풀 턴제 드래프트(DraftRoom.ts + submit_draft_pick_v2)를 그대로 사용. */
+    personal_draft_format: PersonalDraftFormat | null;
     created_at: string;
 }
 

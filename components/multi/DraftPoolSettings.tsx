@@ -38,6 +38,8 @@ interface Props {
      */
     teamCount?:   number;
     totalRounds?: number;
+    /** [2026-09-18] 개인 팩 드래프트(토너먼트)에선 픽 순서(스네이크/선형) 개념이 없어 이 블록을 숨긴다. */
+    hideDraftOrder?: boolean;
 }
 
 const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
@@ -55,6 +57,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
     draftFormat, onDraftFormatChange,
     useCustomOverrides, onUseCustomOverridesChange,
     teamCount, totalRounds,
+    hideDraftOrder = false,
 }) => {
     const [stats, setStats]               = useState<PoolStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
@@ -275,7 +278,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
             )}
 
             {/* 드래프트 순서 */}
-            <div>
+            {!hideDraftOrder && <div>
                 <label className="text-xs text-slate-400 ko-normal block mb-2">드래프트 순서</label>
                 <div className="grid grid-cols-2 gap-2">
                     {FORMATS.map(o => (
@@ -296,7 +299,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
                 <p className="mt-1.5 text-xs text-slate-500 ko-normal">
                     {FORMATS.find(o => o.value === draftFormat)?.desc}
                 </p>
-            </div>
+            </div>}
         </div>
     );
 };

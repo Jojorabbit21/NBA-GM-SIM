@@ -13,7 +13,7 @@ import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvanced
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
 import { RosterView } from '../../RosterView';
 import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
-import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { shouldUseCustomOverrides, isTwoWayContractEnabled } from '../../../utils/leagueOverrides';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
@@ -57,7 +57,7 @@ function buildGameLeadersMap(pbpRows: any[]): Map<string, GameLeaders> {
 }
 
 const MultiRosterView: React.FC = () => {
-    const { league, room, leagueTeams, members, isLoading: leagueLoading, reload } = useLeagueContext();
+    const { league, room, leagueTeams, members, isLoading: leagueLoading, reload , timeline } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
     const { session } = useGame();
     const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
@@ -74,7 +74,7 @@ const MultiRosterView: React.FC = () => {
     const preferVirtual = league?.type === 'main_league';
     const currentSimDate = useMemo(() => {
         if (!preferVirtual) return roomSimDate;
-        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow()) ?? roomSimDate;
+        return findCurrentVirtualDate(schedule, simStart, gprd, getServerNow(), timeline) ?? roomSimDate;
     }, [preferVirtual, roomSimDate, schedule, simStart, gprd]);
 
     const navigate = useNavigate();
@@ -283,6 +283,8 @@ const MultiRosterView: React.FC = () => {
                     advancedStatsByTeam={advancedStatsByTeam}
                     maxRosterSize={(league as any)?.max_roster_size}
                     twoWaySlots={(league as any)?.two_way_slots}
+                    // CBA 규정이 꺼졌거나(즉시계약 RPC만 사용) 리그 설정에서 Two-Way 계약을 끈 리그는 슬롯 표시를 숨긴다.
+                    showTwoWaySlots={isTwoWayContractEnabled(league)}
                 />
             </div>
         </div>

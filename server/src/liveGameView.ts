@@ -9,7 +9,9 @@
  */
 
 export const TOTAL_GAME_SECONDS = 2880;       // 48분 경기
-export const REPLAY_DURATION_MS = 10 * 60_000; // 10분 압축 중계
+/** 기본 리플레이 길이 — [2026-09-18 2단계] 실제 값은 리그 설정(leagues.replay_minutes)이며 호출부가
+ *  replayConfig.getRoomReplayMs()로 구해 replayMs 인자로 넘긴다. 인자를 생략하면 이 기본값. */
+export const REPLAY_DURATION_MS = 10 * 60_000;
 
 interface PbpLog {
     quarter: number;
@@ -61,8 +63,8 @@ function shotToGameSeconds(e: ShotEvent): number {
     return (e.quarter - 1) * 720 + (720 - e.gameClock);
 }
 
-function withinElapsed(gameSeconds: number, elapsedMs: number): boolean {
-    const replayMs = (gameSeconds / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+function withinElapsed(gameSeconds: number, elapsedMs: number, replayDurationMs: number): boolean {
+    const replayMs = (gameSeconds / TOTAL_GAME_SECONDS) * replayDurationMs;
     return replayMs <= elapsedMs;
 }
 
@@ -140,17 +142,17 @@ export interface WindowedGameView {
     rotationData?:   Record<string, RotationEntry[]>; // final일 때만 포함
 }
 
-export function computeGameState(gameStartTime: string, nowMs: number): { state: LiveGameState; elapsedMs: number } {
+export function computeGameState(gameStartTime: string, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): { state: LiveGameState; elapsedMs: number } {
     const startMs   = new Date(gameStartTime).getTime();
     const elapsedMs = nowMs - startMs;
     if (elapsedMs < 0)                    return { state: 'not_started', elapsedMs };
-    if (elapsedMs >= REPLAY_DURATION_MS)  return { state: 'final', elapsedMs };
+    if (elapsedMs >= replayDurationMs)    return { state: 'final', elapsedMs };
     return { state: 'live', elapsedMs };
 }
 
 /** row 전체를 elapsed 기준으로 잘라 클라이언트에 안전하게 내려줄 형태로 변환. */
-export function buildWindowedView(row: GamePbpSource, nowMs: number): WindowedGameView {
-    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs);
+export function buildWindowedView(row: GamePbpSource, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): WindowedGameView {
+    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs);
 
     if (state === 'final') {
         return {
@@ -176,10 +178,10 @@ export function buildWindowedView(row: GamePbpSource, nowMs: number): WindowedGa
     }
 
     // live: elapsedMs까지 공개된 부분만 자른다. 최종 스코어 컬럼은 절대 포함하지 않는다.
-    const events      = (row.events ?? []).filter(e => withinElapsed(pbpToGameSeconds(e), elapsedMs));
-    const shotEvents   = (row.shot_events ?? []).filter(e => withinElapsed(shotToGameSeconds(e), elapsedMs));
+    const events      = (row.events ?? []).filter(e => withinElapsed(pbpToGameSeconds(e), elapsedMs, replayDurationMs));
+    const shotEvents   = (row.shot_events ?? []).filter(e => withinElapsed(shotToGameSeconds(e), elapsedMs, replayDurationMs));
     const boxTimeline  = (row.box_timeline ?? []).filter(t => {
-        const replayMs = (t.t / TOTAL_GAME_SECONDS) * REPLAY_DURATION_MS;
+        const replayMs = (t.t / TOTAL_GAME_SECONDS) * replayDurationMs;
         return replayMs <= elapsedMs;
     });
 
@@ -212,8 +214,9 @@ export function buildWindowedViewSince(
     row: GamePbpSource,
     nowMs: number,
     since: { events?: number; shots?: number; box?: number } = {},
+    replayDurationMs: number = REPLAY_DURATION_MS,
 ): WindowedGameViewDelta {
-    const full = buildWindowedView(row, nowMs);
+    const full = buildWindowedView(row, nowMs, replayDurationMs);
     return {
         ...full,
         events:      full.events.slice(since.events ?? 0),
@@ -236,8 +239,8 @@ export interface LiveGameSummary {
     quarterScores?: { home: number[]; away: number[] };
 }
 
-export function buildLiveSummary(row: GamePbpSource, nowMs: number): LiveGameSummary {
-    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs);
+export function buildLiveSummary(row: GamePbpSource, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): LiveGameSummary {
+    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs);
 
     if (state === 'final') {
         return {
@@ -249,7 +252,7 @@ export function buildLiveSummary(row: GamePbpSource, nowMs: number): LiveGameSum
         return { gameId: row.game_id, state };
     }
 
-    const visible = (row.events ?? []).filter(e => withinElapsed(pbpToGameSeconds(e), elapsedMs));
+    const visible = (row.events ?? []).filter(e => withinElapsed(pbpToGameSeconds(e), elapsedMs, replayDurationMs));
     const last = [...visible].reverse().find(e => e.homeScore != null);
     if (!last) return { gameId: row.game_id, state, homeScore: 0, awayScore: 0, quarter: 1, clock: '12:00' };
 

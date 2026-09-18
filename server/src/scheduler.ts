@@ -15,6 +15,7 @@
 import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
+import { startPersonalDraftTournament } from './personalDraftStart';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
 import { startPlayIn } from './shared/playInSeeder';
@@ -96,6 +97,51 @@ async function sweepExpiredTradeOffers(): Promise<void> {
     if (deadlineErr) console.error('[scheduler] expire_trade_offers_past_deadline RPC error:', deadlineErr.message);
 }
 
+// [2026-09-18] 개인 팩 드래프트 픽 타이머 만료 스윕 — 클라이언트가 떠나 있어도
+// pack_started_at + pickTimerSec이 지난 진행 행을 서버가 자동 지명으로 밀어준다.
+// RPC 정의: migrations/add_personal_draft_timer.sql (service_role 전용, SKIP LOCKED).
+async function runPersonalDraftSweeps(): Promise<void> {
+    const { data, error } = await supabase.rpc('personal_draft_sweep_expired');
+    if (error) {
+        console.error('[scheduler] personal_draft_sweep_expired RPC error:', error.message);
+        return;
+    }
+    const swept = typeof data === 'number' ? data : Number(data ?? 0);
+    if (swept > 0) console.log(`[scheduler] personal draft auto-pick sweep: ${swept} row(s)`);
+}
+
+// [2026-09-18] 개인 팩 드래프트 토너먼트 시작 — 공유풀 드래프트는 DraftRoom 완료가 시작 트리거지만
+// 이 방식엔 드래프트 룸이 없다. tournament_start_at이 지난 recruiting 리그를 찾아 미완료 팀을
+// 자동 지명으로 채우고 브라켓/일정을 만든다(personalDraftStart.ts). 로터리/드래프트 룸 스케줄러는
+// lottery/draft_scheduled_at이 null이라 이 리그를 건드리지 않는다.
+async function runPersonalDraftTournamentStarts(now: string): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id')
+        .eq('status', 'recruiting')
+        .eq('type', 'tournament')
+        .not('personal_draft_format', 'is', null)
+        .not('tournament_start_at', 'is', null)
+        .lte('tournament_start_at', now);
+
+    for (const league of leagues ?? []) {
+        const { data: room } = await supabase
+            .from('rooms')
+            .select('id')
+            .eq('league_id', league.id)
+            .eq('status', 'active')
+            .maybeSingle();
+        if (!room) continue;
+
+        const result = await startPersonalDraftTournament(league.id, room.id);
+        if (result.ok === false) {
+            console.error(`[scheduler:personal-draft-start] league=${league.id}: ${result.error}`);
+        } else if (!result.skipped) {
+            console.log(`[scheduler:personal-draft-start] league=${league.id} room=${room.id} started`);
+        }
+    }
+}
+
 // ── 메인 틱 ──────────────────────────────────────────────────────────────────
 
 async function tick(): Promise<void> {
@@ -115,6 +161,8 @@ async function tick(): Promise<void> {
         runThreePointContestResult(),
         runDunkContestResult(),
         cleanupCompletedRooms(),
+        runPersonalDraftSweeps(),
+        runPersonalDraftTournamentStarts(now),
     ]);
 }
 
@@ -124,7 +172,7 @@ async function tick(): Promise<void> {
 async function checkSeasonCompletions(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at, virtual_season_year')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at, virtual_season_year, playoff_game_interval_days, day_length_min, replay_minutes')
         .eq('type', 'main_league')
         .eq('status', 'in_progress')
         .is('bracket_data', null);
