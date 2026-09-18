@@ -157,6 +157,23 @@ const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
 ---
 
+## 2026-09-18 — 카드 컬렉션(그룹핑) 어드민 탭
+
+**배경**: 사용자 요청 — "카드 관리 탭 우측에 카드 컬렉션 관리 탭을 만들어줘. 카드 컬렉션을 생성하고, 이미 생성된 카드를 컬렉션에 넣거나 제거할 수 있어. 그리고 카드 관리 화면에서도 카드 컬렉션을 선택할 수 있게 해줘." 카드 1장이 여러 컬렉션에 동시에 속할 수 있어야 자연스러워(예: "2000년대 레전드"와 "불스 특집"에 조던 카드가 동시에) M:N으로 설계.
+
+**변경 파일**:
+- `migrations/add_meta_player_card_collections.sql` (DB, **적용 완료**) — `meta_player_card_collections`(id, name UNIQUE, description) + `meta_player_card_collection_members`(collection_id, card_id, PK 복합키 — M:N 조인 테이블, 둘 다 `ON DELETE CASCADE`). RLS는 `meta_player_cards`와 동일 패턴(읽기 공개, 쓰기는 고정 어드민만).
+- `services/admin/playerCardCollectionAdminService.ts` (신규) — `listCollections`(멤버 수 포함)/`createCollection`/`updateCollection`/`deleteCollection`/`listCollectionMembers`(PostgREST 임베드로 카드 상세까지 조인)/`listCollectionsForCard`/`addCardToCollection`/`removeCardFromCollection`.
+- `pages/PlayerCardCollectionPage.tsx` (신규) — "카드 컬렉션" 탭: 좌측 컬렉션 목록+생성, 우측 선택된 컬렉션의 이름/설명 인라인 편집 + 카드 검색해서 추가(`searchCards` 재사용) + 멤버 카드 목록에서 제거.
+- `pages/PlayerCardEditorPage.tsx` — 카드 편집기에 "카드 컬렉션" 칩 목록 추가(전체 컬렉션을 한 번 로드, 카드 전환 시 그 카드의 소속만 재조회). 칩 클릭 즉시 추가/제거 반영(저장 버튼과 무관한 독립 액션).
+- `pages/EditorLayout.tsx`, `App.tsx` — "카드 관리" 우측에 "카드 컬렉션" 탭/라우트(`/admin/editor/card-collections`) 추가.
+
+**검증**: 마이그레이션 적용 성공. `npx tsc --noEmit`/`npx vite build` 클린. DB 롤백 테스트: 카드 2장 추가(count=2) → 1장 제거(count=1) → 동일 (collection_id, card_id) 재삽입 시 PK 위반으로 차단 확인.
+
+**주의사항**: 이번에도 콘텐츠 조직 도구까지만 — 개인 팩 드래프트가 "이 컬렉션을 라운드 풀로 쓴다"처럼 실제로 컬렉션을 소비하는 배선은 아직 없음(카드 자체의 드래프트 소비 배선과 마찬가지로 콘텐츠가 쌓인 뒤의 후속 작업).
+
+---
+
 ## 2026-09-18 — 카드 전용 OVR 고정값
 
 **배경**: 사용자 요청 "카드에 한정해서만 OVR을 고정값으로 만들 수 있을까?" — 능력치 기반 동적 계산(`calculateOvr`) 대신 카드마다 원하는 OVR을 그냥 박아둘 수 있게. 기존 `Player.manualOvr` 필드가 이미 타입에는 있었지만(`services/dataMapper.ts:345`, raw row의 `ovr`/`OVR` 키를 읽어 세팅) **전 코드베이스에서 실제로 읽는 곳이 한 군데도 없는 죽은 필드**임을 확인 — 그 패턴을 재활용하지 않고, "카드에만" 적용되도록 `meta_player_cards`에 독립된 컬럼을 새로 추가(범용 `Player.manualOvr`/`calculateOvr`나 `meta_players`는 전혀 건드리지 않음 — 트레이드/정규화/리더보드 등 기존 OVR 파이프라인에 영향 없음).

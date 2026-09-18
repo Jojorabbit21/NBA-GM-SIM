@@ -17,6 +17,10 @@ import {
     listCardsForPlayer, createCardFromCopy, updateCard, deleteCard,
     fetchAvailableSeasons, fetchSeasonStatLine, type PlayerCardRow, type UpdateCardPatch,
 } from '../services/admin/playerCardAdminService';
+import {
+    listCollections, listCollectionsForCard, addCardToCollection, removeCardFromCollection,
+    type CardCollectionRow,
+} from '../services/admin/playerCardCollectionAdminService';
 import { ATTR_GROUPS, ATTR_KR_LABEL } from '../data/attributeConfig';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { calculateOvr } from '../utils/ovrUtils';
@@ -100,6 +104,15 @@ const PlayerCardEditorPage: React.FC = () => {
     const [saveOk, setSaveOk] = useState(false);
     const [statLine, setStatLine] = useState<Record<string, any> | null>(null);
 
+    // ── 카드 컬렉션 — 전체 목록은 한 번만 로드, 현재 카드의 소속 여부는 카드가 바뀔 때마다 ──
+    const [allCollections, setAllCollections] = useState<CardCollectionRow[]>([]);
+    const [cardCollectionIds, setCardCollectionIds] = useState<Set<string>>(new Set());
+    const [collectionToggling, setCollectionToggling] = useState<string | null>(null);
+
+    useEffect(() => {
+        listCollections().then(rows => setAllCollections(rows)).catch(() => setAllCollections([]));
+    }, []);
+
     const loadIntoEditor = useCallback((card: PlayerCardRow) => {
         setEditing(card);
         setDraft({
@@ -111,7 +124,27 @@ const PlayerCardEditorPage: React.FC = () => {
         });
         setSaveOk(false); setSaveErr(null);
         fetchSeasonStatLine(card.source_player_id, card.season).then(setStatLine).catch(() => setStatLine(null));
+        setCardCollectionIds(new Set());
+        listCollectionsForCard(card.id).then(ids => setCardCollectionIds(new Set(ids))).catch(() => setCardCollectionIds(new Set()));
     }, []);
+
+    const handleToggleCollection = async (collectionId: string, isMember: boolean) => {
+        if (!editing) return;
+        setCollectionToggling(collectionId);
+        try {
+            if (isMember) {
+                await removeCardFromCollection(collectionId, editing.id);
+                setCardCollectionIds(prev => { const next = new Set(prev); next.delete(collectionId); return next; });
+            } else {
+                await addCardToCollection(collectionId, editing.id);
+                setCardCollectionIds(prev => new Set(prev).add(collectionId));
+            }
+        } catch (e) {
+            setSaveErr(e instanceof Error ? e.message : '컬렉션 변경에 실패했습니다.');
+        } finally {
+            setCollectionToggling(null);
+        }
+    };
 
     const handleCreate = async () => {
         if (!selectedPlayer || !newSeason.trim()) return;
@@ -379,6 +412,34 @@ const PlayerCardEditorPage: React.FC = () => {
                                 <input type="number" value={draft.attrs.age ?? ''} onChange={e => setAttr('age', Number(e.target.value))}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
                             </div>
+                        </div>
+
+                        {/* 카드 컬렉션 — 체크 즉시 반영(저장 버튼과 무관) */}
+                        <div>
+                            <label className="text-xs text-slate-400 ko-normal block mb-1.5">카드 컬렉션</label>
+                            {allCollections.length === 0 ? (
+                                <p className="text-xs text-slate-600 ko-normal">아직 만든 컬렉션이 없습니다 — "카드 컬렉션" 탭에서 먼저 만들어주세요.</p>
+                            ) : (
+                                <div className="flex flex-wrap gap-2">
+                                    {allCollections.map(col => {
+                                        const isMember = cardCollectionIds.has(col.id);
+                                        return (
+                                            <button
+                                                key={col.id}
+                                                type="button"
+                                                onClick={() => handleToggleCollection(col.id, isMember)}
+                                                disabled={collectionToggling === col.id}
+                                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-colors disabled:opacity-40 ${
+                                                    isMember ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {collectionToggling === col.id && <Loader2 size={10} className="animate-spin" />}
+                                                {col.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
 
                         {/* 능력치 — 카테고리별 */}

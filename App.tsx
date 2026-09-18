@@ -80,6 +80,7 @@ import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
 import PlayerEditorPage from './pages/PlayerEditorPage';
 import PlayerCardEditorPage from './pages/PlayerCardEditorPage';
+import PlayerCardCollectionPage from './pages/PlayerCardCollectionPage';
 import EditorLayout from './pages/EditorLayout';
 import ArchetypeConfigPage from './pages/ArchetypeConfigPage';
 import DraftSimPage from './pages/DraftSimPage';
@@ -370,6 +371,7 @@ const App: React.FC = () => {
                             <Route index element={<Navigate to="player" replace />} />
                             <Route path="player" element={<PlayerEditorPage />} />
                             <Route path="cards" element={<PlayerCardEditorPage />} />
+                            <Route path="card-collections" element={<PlayerCardCollectionPage />} />
                             <Route path="archetype" element={<ArchetypeConfigPage />} />
                             <Route path="draft-sim" element={<DraftSimPage />} />
                             <Route path="physics-lab" element={<PhysicsLabPage />} />
