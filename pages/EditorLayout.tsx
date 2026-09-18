@@ -26,6 +26,18 @@ const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
                         선수 편집
                     </NavLink>
                     <NavLink
+                        to="cards"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        카드 관리
+                    </NavLink>
+                    <NavLink
                         to="archetype"
                         className={({ isActive }) =>
                             `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${

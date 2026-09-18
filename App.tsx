@@ -79,6 +79,7 @@ import DraftBoardPage from './pages/DraftBoardPage';
 import DraftHistoryPage from './pages/DraftHistoryPage';
 import TacticsPage from './pages/TacticsPage';
 import PlayerEditorPage from './pages/PlayerEditorPage';
+import PlayerCardEditorPage from './pages/PlayerCardEditorPage';
 import EditorLayout from './pages/EditorLayout';
 import ArchetypeConfigPage from './pages/ArchetypeConfigPage';
 import DraftSimPage from './pages/DraftSimPage';
@@ -368,6 +369,7 @@ const App: React.FC = () => {
                         <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} />}>
                             <Route index element={<Navigate to="player" replace />} />
                             <Route path="player" element={<PlayerEditorPage />} />
+                            <Route path="cards" element={<PlayerCardEditorPage />} />
                             <Route path="archetype" element={<ArchetypeConfigPage />} />
                             <Route path="draft-sim" element={<DraftSimPage />} />
                             <Route path="physics-lab" element={<PhysicsLabPage />} />

@@ -157,6 +157,43 @@ const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
 ---
 
+## 2026-09-18 — 선수 "시즌 카드" 바리에이션: 신규 테이블 + 어드민 카드 편집기 탭
+
+**배경**: 사용자 요청 — 개인 팩 드래프트 풀에 한 선수의 여러 시즌 카드(예: 마이클 조던 2000-01 vs 2003-04)가 서로 다른 능력치로 등장할 수 있게 하되, 한 팀이 같은 실제 선수의 카드를 두 장 이상 뽑을 수는 없어야 함. DB 조사 결과 `meta_players.career_history`는 실제 박스스코어 통계(pts/reb/ast 등)일 뿐 36개 게임플레이 능력치가 아니고, `custom_overrides`는 시즌 미태깅 단일 "피크" 변형 하나뿐이라 시즌별 레이팅 자체가 DB에 없음을 확인 — 논의 끝에 "안 A"(카드 1장 = 별도 테이블의 row 1개, `meta_players`는 절대 안 건드림)로 확정. 이번 턴 범위는 **콘텐츠 저장소(신규 테이블) + 어드민 카드 제작 도구**까지만 — 개인 팩 드래프트가 실제로 카드를 소비하도록 `room_player_instances`/`personal_draft_format`을 재배선하는 건 카드 콘텐츠가 쌓인 뒤의 별도 후속 작업(안 A 확정 사항: `room_player_instances.source_player_id`를 나중에 `meta_player_cards.id`로 재지정하고, "동일 선수 중복 픽 방지"는 카드 row의 `source_player_id`로 그룹핑해서 판정 — 최근 고친 "팀당 이미 뽑은 `source_player_id` 제외" 로직과 정확히 같은 메커니즘이라 그 배선 자체는 가벼움).
+
+**변경 파일**:
+- `migrations/add_meta_player_cards.sql` (DB, **적용 완료**) — `meta_player_cards` 테이블 신설: `source_player_id`(→`meta_players.id` FK, `ON DELETE CASCADE`), `season`(text), `name/position/height/weight/base_team_id/base_attributes/tendencies`(meta_players와 동일 shape의 완전 독립 데이터), `UNIQUE(source_player_id, season)`. RLS는 `meta_players`와 동일 패턴(읽기 전체공개, 쓰기는 고정 어드민 UUID `d2f6a469-...`만).
+- `services/admin/playerCardAdminService.ts` (신규, client) — `listCardsForPlayer`/`searchCards`/`fetchCardById`/`createCardFromCopy`(meta_players 원본을 딥카피해 새 카드 row 생성)/`updateCard`/`deleteCard`/`fetchAvailableSeasons`(career_history의 season 라벨 목록)/`fetchSeasonStatLine`(참고용 실제 박스스코어 한 줄).
+- `pages/PlayerCardEditorPage.tsx` (신규) — 어드민 "카드 관리" 탭: 좌측 선수 검색(`searchPlayers` 재사용) → 카드 목록 → 시즌 입력(career_history 있으면 datalist로 후보 제시) → "복사" 버튼으로 카드 생성. 우측 편집기: 바이오(시즌/포지션/키/몸무게/소속팀/나이) + `ATTR_GROUPS` 기준 36개 능력치 개별 입력 + `calculateOvr`로 실시간 OVR 미리보기(`mapRawPlayerToRuntimePlayer` 재사용) + 해당 시즌 실제 스탯 한 줄(참고용) + 저장/삭제.
+- `pages/EditorLayout.tsx`, `App.tsx` — 탭 "카드 관리" + 라우트 `/admin/editor/cards` 추가.
+
+**After (신규)**:
+```sql
+CREATE TABLE meta_player_cards (
+    id uuid PK, source_player_id uuid NOT NULL REFERENCES meta_players(id) ON DELETE CASCADE,
+    season text NOT NULL, name text, position text, height numeric, weight numeric,
+    base_team_id text, base_attributes jsonb NOT NULL, tendencies jsonb,
+    created_at/updated_at timestamptz, UNIQUE(source_player_id, season)
+);
+-- RLS: SELECT true / INSERT·UPDATE·DELETE는 auth.uid() = 'd2f6a469-...'::uuid 만 (meta_players와 동일 패턴)
+```
+```ts
+// playerCardAdminService.ts
+createCardFromCopy(sourcePlayerId, season)
+  // meta_players에서 name/position/height/weight/base_team_id/base_attributes/tendencies를 읽어
+  // JSON.parse(JSON.stringify(...))로 딥카피 → meta_player_cards에 새 row insert
+```
+
+**검증**: 마이그레이션 적용 성공. `npx tsc --noEmit`/`npx vite build` 클린. DB 롤백 테스트(`DO $$`): 카드 생성 성공, 동일 `(source_player_id, season)` 재삽입 시 UNIQUE 위반으로 차단 확인. **RLS 쓰기 차단 자체는 이 방식으론 독립 검증 못 함** — Supabase MCP `execute_sql`은 테이블 소유자/superuser 권한으로 실행되어 Postgres가 RLS를 원천 우회하므로(대조군으로 기존 프로덕션 `meta_players`의 검증된 정책도 같은 방식으론 "차단 안 됨"으로 나오는 걸 확인해 테스트 방법론 한계임을 확인) — 정책 문구 자체는 `meta_players`의 실전 검증된 패턴과 완전히 동일해 신뢰도는 높지만, 실제 브라우저(anon/authenticated 키)로 한 번 더 확인 권장.
+
+**주의사항 / 한계**:
+- `career_history`가 없는 선수(레전드 일부 등)는 시즌 자유 텍스트 입력만 가능(datalist 후보 없음).
+- "복사"는 시즌별 실제 레이팅이 아니라 **현재 레이팅을 출발점 템플릿으로 복제**하는 것 — 그 시즌다운 능력치로 만드는 건 어드민이 직접 조정해야 함(편집기 옆에 그 시즌 실제 박스스코어 한 줄을 참고용으로 띄워줌).
+- 개인 팩 드래프트가 이 카드를 실제로 뽑을 수 있게 하는 배선(안 A의 `room_player_instances` 재정의, `personal_draft_format.eligiblePlayerIds`가 카드 id를 가리키도록, 팩 샘플러/OVR 정렬이 `meta_player_cards`를 조인하도록)은 **아직 안 함** — 오늘은 콘텐츠 저장소 + 제작 도구까지만.
+- fly.io/Vercel 미배포 — 로컬 커밋 대기 상태.
+
+---
+
 ## 2026-09-18 — 개인 팩 드래프트 버그 수정: 이미 지명한 선수가 다음 라운드 팩에 재등장
 
 **배경**: 사용자 보고 "퍼스널 드래프트에서 이미 뽑힌 선수는 풀에 다시 등장해선 안되는데 지금은 등장하고 있어." 원인: `personal_draft_sample_pack(p_format, p_round)`이 라운드 후보 목록(`eligiblePlayerIds`)에서만 무작위 추출하고 그 팀이 이미 지명한 선수를 제외하지 않음 — 라운드별 OVR 범위가 겹치는 포맷(하락 커브 프리셋 등)에선 같은 선수가 다시 나옴.
