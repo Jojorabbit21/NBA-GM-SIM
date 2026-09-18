@@ -8,9 +8,19 @@ import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil } from 'lucide-re
 import { searchCards, type PlayerCardRow } from '../services/admin/playerCardAdminService';
 import {
     listCollections, createCollection, updateCollection, deleteCollection,
-    listCollectionMembers, addCardToCollection, removeCardFromCollection,
+    listCollectionMembers, addCardToCollection, removeCardFromCollection, uploadCollectionBackground,
     type CardCollectionRow,
 } from '../services/admin/playerCardCollectionAdminService';
+import { buildCardBackground, DEFAULT_CARD_BACKGROUND, type CardBackgroundSettings } from '../utils/cardBackground';
+
+// 배경 미리보기에 쓰는 대표 팀 컬러(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용
+const PREVIEW_TEAM_GRADIENT: readonly [string, string] = ['#1D428A', '#FDB927'];
+const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc: string }[] = [
+    { value: 'team',     label: '팀 컬러',   desc: '카드 원팀의 컬러 그라디언트(기본)' },
+    { value: 'solid',    label: '단색',      desc: '한 가지 색으로 채움' },
+    { value: 'gradient', label: '그라디언트', desc: '두 색 + 각도' },
+    { value: 'image',    label: '이미지',    desc: 'WebP/PNG/JPEG 업로드(5MB 이하)' },
+];
 
 type CollectionWithCount = CardCollectionRow & { memberCount: number };
 
@@ -84,6 +94,67 @@ const PlayerCardCollectionPage: React.FC = () => {
             setMetaSaving(false);
         }
     };
+
+    // ── 카드 배경 설정 (컬렉션 단위) ─────────────────────────────────────────
+    const [bg, setBg] = useState<CardBackgroundSettings>(DEFAULT_CARD_BACKGROUND);
+    const [bgSaving, setBgSaving] = useState(false);
+    const [bgSaveOk, setBgSaveOk] = useState(false);
+    const [bgUploading, setBgUploading] = useState(false);
+    const [bgErr, setBgErr] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!selected) return;
+        setBg({
+            bg_type: selected.bg_type ?? 'team',
+            bg_color: selected.bg_color ?? DEFAULT_CARD_BACKGROUND.bg_color,
+            bg_gradient_from: selected.bg_gradient_from ?? DEFAULT_CARD_BACKGROUND.bg_gradient_from,
+            bg_gradient_to: selected.bg_gradient_to ?? DEFAULT_CARD_BACKGROUND.bg_gradient_to,
+            bg_gradient_angle: selected.bg_gradient_angle ?? 165,
+            bg_image_url: selected.bg_image_url ?? null,
+        });
+        setBgErr(null); setBgSaveOk(false);
+    }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const bgDirty = !!selected && (
+        bg.bg_type !== (selected.bg_type ?? 'team') ||
+        (bg.bg_color ?? null) !== (selected.bg_color ?? null) ||
+        (bg.bg_gradient_from ?? null) !== (selected.bg_gradient_from ?? null) ||
+        (bg.bg_gradient_to ?? null) !== (selected.bg_gradient_to ?? null) ||
+        bg.bg_gradient_angle !== (selected.bg_gradient_angle ?? 165) ||
+        (bg.bg_image_url ?? null) !== (selected.bg_image_url ?? null)
+    );
+
+    const handleBgUpload = async (file: File | null) => {
+        if (!selected || !file) return;
+        if (file.size > 5 * 1024 * 1024) { setBgErr('이미지는 5MB 이하여야 합니다.'); return; }
+        setBgUploading(true); setBgErr(null);
+        try {
+            const url = await uploadCollectionBackground(selected.id, file);
+            setBg(b => ({ ...b, bg_type: 'image', bg_image_url: url }));
+        } catch (e) {
+            setBgErr(e instanceof Error ? e.message : '업로드에 실패했습니다.');
+        } finally {
+            setBgUploading(false);
+        }
+    };
+
+    const handleSaveBg = async () => {
+        if (!selected) return;
+        if (bg.bg_type === 'image' && !bg.bg_image_url) { setBgErr('이미지를 먼저 업로드해주세요.'); return; }
+        setBgSaving(true); setBgErr(null); setBgSaveOk(false);
+        try {
+            await updateCollection(selected.id, bg);
+            setBgSaveOk(true);
+            setTimeout(() => setBgSaveOk(false), 2000);
+            await reloadCollections(selected.id);
+        } catch (e) {
+            setBgErr(e instanceof Error ? e.message : '저장에 실패했습니다.');
+        } finally {
+            setBgSaving(false);
+        }
+    };
+
+    const previewBackground = buildCardBackground(bg, PREVIEW_TEAM_GRADIENT);
 
     const handleDeleteCollection = async (c: CollectionWithCount) => {
         if (!window.confirm(`"${c.name}" 컬렉션을 삭제할까요? (카드 자체는 삭제되지 않습니다)`)) return;
@@ -259,6 +330,116 @@ const PlayerCardCollectionPage: React.FC = () => {
                             >
                                 <Trash2 size={12} />컬렉션 삭제
                             </button>
+                        </div>
+
+                        {/* 카드 배경 — 이 컬렉션의 카드가 드래프트 화면에서 쓸 배경 */}
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4 bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs text-slate-400 ko-normal">카드 배경</label>
+                                    <div className="flex items-center gap-2">
+                                        {bgErr && <span className="text-xs text-red-400 ko-normal">{bgErr}</span>}
+                                        <button
+                                            onClick={handleSaveBg}
+                                            disabled={!bgDirty || bgSaving || bgUploading}
+                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+                                        >
+                                            {bgSaving ? <Loader2 size={12} className="animate-spin" /> : bgSaveOk ? '저장됨 ✓' : '배경 저장'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {BG_TYPES.map(t => (
+                                        <button
+                                            key={t.value}
+                                            type="button"
+                                            onClick={() => setBg(b => ({ ...b, bg_type: t.value }))}
+                                            className={`px-2.5 py-2 rounded-lg text-left transition-colors ${
+                                                bg.bg_type === t.value ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                                            }`}
+                                        >
+                                            <p className="text-xs font-bold">{t.label}</p>
+                                            <p className={`text-[10px] ko-normal ${bg.bg_type === t.value ? 'text-indigo-100' : 'text-slate-600'}`}>{t.desc}</p>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {bg.bg_type === 'solid' && (
+                                    <div className="flex items-center gap-2">
+                                        <input type="color" value={bg.bg_color ?? '#1e293b'} onChange={e => setBg(b => ({ ...b, bg_color: e.target.value }))}
+                                            className="w-10 h-8 rounded bg-transparent border border-slate-700 cursor-pointer" />
+                                        <input value={bg.bg_color ?? ''} onChange={e => setBg(b => ({ ...b, bg_color: e.target.value }))}
+                                            className="w-28 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500" />
+                                    </div>
+                                )}
+                                {bg.bg_type === 'gradient' && (
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                                            시작
+                                            <input type="color" value={bg.bg_gradient_from ?? '#1D428A'} onChange={e => setBg(b => ({ ...b, bg_gradient_from: e.target.value }))}
+                                                className="w-9 h-8 rounded bg-transparent border border-slate-700 cursor-pointer" />
+                                            <input value={bg.bg_gradient_from ?? ''} onChange={e => setBg(b => ({ ...b, bg_gradient_from: e.target.value }))}
+                                                className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500" />
+                                        </label>
+                                        <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                                            끝
+                                            <input type="color" value={bg.bg_gradient_to ?? '#0f172a'} onChange={e => setBg(b => ({ ...b, bg_gradient_to: e.target.value }))}
+                                                className="w-9 h-8 rounded bg-transparent border border-slate-700 cursor-pointer" />
+                                            <input value={bg.bg_gradient_to ?? ''} onChange={e => setBg(b => ({ ...b, bg_gradient_to: e.target.value }))}
+                                                className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500" />
+                                        </label>
+                                        <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                                            각도
+                                            <input type="number" min={0} max={360} value={bg.bg_gradient_angle}
+                                                onChange={e => setBg(b => ({ ...b, bg_gradient_angle: Math.max(0, Math.min(360, Number(e.target.value) || 0)) }))}
+                                                className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-indigo-500" />
+                                            °
+                                        </label>
+                                    </div>
+                                )}
+                                {bg.bg_type === 'image' && (
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <label className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                                                bgUploading ? 'bg-slate-800 text-slate-500' : 'bg-slate-800 text-slate-300 hover:text-white'
+                                            }`}>
+                                                {bgUploading ? <Loader2 size={12} className="inline animate-spin" /> : null}
+                                                {bgUploading ? ' 업로드 중…' : bg.bg_image_url ? '이미지 교체' : '이미지 업로드'}
+                                                <input type="file" accept="image/webp,image/png,image/jpeg,image/avif" className="hidden" disabled={bgUploading}
+                                                    onChange={e => { handleBgUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                                            </label>
+                                            {bg.bg_image_url && (
+                                                <button type="button" onClick={() => setBg(b => ({ ...b, bg_image_url: null }))}
+                                                    className="text-xs text-slate-500 hover:text-red-400 transition-colors">제거</button>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-slate-600 ko-normal">
+                                            카드 비율(약 3:4.6)로 만든 WebP 권장. 업로드 후 "배경 저장"을 눌러야 반영됩니다.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 미리보기 — 실제 카드와 같은 상단 어둡기 오버레이(15→45%) + 능력치 영역 35% 다크 레이어 */}
+                            <div>
+                                <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기{bg.bg_type === 'team' ? ' (예: 골든스테이트)' : ''}</p>
+                                <div className="rounded-xl border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground }}>
+                                    <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/25 border-b border-white/10 truncate px-2">{selected.name}</div>
+                                    <div className="flex-1 flex flex-col items-center justify-center px-2" style={{ background: 'linear-gradient(180deg, rgba(2,6,23,.15) 0%, rgba(2,6,23,.45) 100%)' }}>
+                                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#fb7185] via-[#e11d48] to-[#ff1457] text-white text-sm font-black flex items-center justify-center self-start">85</div>
+                                        <div className="mt-auto text-sm font-black text-white">선수 이름</div>
+                                        <div className="text-[11px] text-white/70 mb-2">팀명 · SF</div>
+                                    </div>
+                                    <div className="px-2 py-2 border-t border-white/10 space-y-1" style={{ background: 'rgba(2,6,23,.35)' }}>
+                                        {[82, 74, 68, 88].map((v, i) => (
+                                            <div key={i} className="flex items-center gap-1">
+                                                <span className="w-6 text-[10px] font-semibold text-white">{['OFF','DEF','PLM','ATH'][i]}</span>
+                                                <span className="flex-1 h-[6px] rounded-full bg-slate-800 overflow-hidden"><span className="block h-full rounded-full bg-[#38d100]" style={{ width: `${v}%` }} /></span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* 카드 검색해서 추가 */}

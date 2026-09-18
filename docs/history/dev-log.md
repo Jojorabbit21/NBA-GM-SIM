@@ -157,6 +157,30 @@ const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
 ---
 
+## 2026-09-19 — 카드 컬렉션 배경 설정(팀 컬러/단색/그라디언트/이미지 업로드)
+
+**배경**: 카드 배경 그라디언트 논의(아티팩트 "카드 그라디언트 랩" 7안 비교) 끝에 사용자 결정 — 오일 슬릭 같은 복잡한 질감은 CSS 라이브 필터(카드 30장에 SVG 필터가 걸리면 스크롤 렉 위험) 대신 **이미지를 만들어 WebP로 올리는** 방식으로. 그래서 "카드 컬렉션 관리 화면에서 배경 색 지정 / 그라디언트 색 지정 / 이미지 업로드 옵션" 요청.
+
+**변경 파일**:
+- `migrations/add_card_collection_background.sql` (DB, **적용 완료**) — `meta_player_card_collections`에 `bg_type`('team'|'solid'|'gradient'|'image', 기본 'team', CHECK) / `bg_color` / `bg_gradient_from` / `bg_gradient_to` / `bg_gradient_angle`(기본 165) / `bg_image_url`. Storage 버킷 `card-backgrounds` 신설(공개 읽기, 5MB, webp/png/jpeg/avif) + `storage.objects` 정책(읽기 공개, 쓰기는 고정 어드민 UUID). 기존 `images` 버킷은 코드에서 안 쓰여 건드리지 않음 — **이 프로젝트에서 Supabase Storage를 코드로 쓰는 첫 사례**.
+- `utils/cardBackground.ts` (신규) — `CardBackgroundSettings` 타입, `buildCardBackground(settings, teamGradient)`: 설정 → CSS `background` 문자열. 'team'/이미지 없음이면 팀 그라디언트 폴백, 'image'는 `url() cover` 뒤에 팀 그라디언트를 두 겹으로 깔아 로딩 전/실패 시 비침. 어드민 미리보기와 나중의 `PersonalDraftCard.tsx`가 같은 함수를 쓰도록 분리.
+- `services/admin/playerCardCollectionAdminService.ts` — `CardCollectionRow extends CardBackgroundSettings`, select 컬럼 확장, `UpdateCollectionPatch`에 bg 필드, `uploadCollectionBackground(collectionId, file)`(`{collectionId}/{timestamp}.{ext}` 경로, `getPublicUrl`).
+- `pages/PlayerCardCollectionPage.tsx` — 선택된 컬렉션에 "카드 배경" 섹션: 타입 4종 버튼, 단색 컬러 피커, 그라디언트 2색+각도, 이미지 업로드(즉시 업로드 → URL 상태만 갱신, "배경 저장" 눌러야 DB 반영)/제거, 우측에 실제 카드와 같은 오버레이(상단 15→45% 어둡기, 능력치 35% 다크)를 얹은 미리보기.
+
+**After (요지)**:
+```ts
+buildCardBackground({bg_type:'gradient', bg_gradient_from:'#1D428A', bg_gradient_to:'#0f172a', bg_gradient_angle:165}, team)
+// → 'linear-gradient(165deg, #1D428A 0%, #0f172a 100%)'
+buildCardBackground({bg_type:'image', bg_image_url:URL}, team)
+// → 'url("URL") center / cover no-repeat, linear-gradient(165deg, p 0%, s 100%)'
+```
+
+**검증**: 마이그레이션 적용 성공. `npx tsc --noEmit`/`npx vite build` 클린. 스토리지 업로드는 어드민 계정 브라우저에서 실제 확인 필요(RLS/스토리지 정책은 SQL 도구로 검증 불가 — 실행 role이 소유자라 우회됨, 이전 항목과 동일).
+
+**주의사항**: 배경은 **컬렉션 단위**. 카드가 여러 컬렉션에 속할 수 있으므로(M:N) 드래프트 화면에서 어느 컬렉션 배경을 쓸지는 "그 팩이 어느 컬렉션에서 뽑혔는지"(드래프트 소비 배선, 미구현)가 정한다. `PersonalDraftCard.tsx`는 아직 팀 그라디언트 고정 — 소비 배선 때 `buildCardBackground`로 교체.
+
+---
+
 ## 2026-09-18 — 카드 컬렉션(그룹핑) 어드민 탭
 
 **배경**: 사용자 요청 — "카드 관리 탭 우측에 카드 컬렉션 관리 탭을 만들어줘. 카드 컬렉션을 생성하고, 이미 생성된 카드를 컬렉션에 넣거나 제거할 수 있어. 그리고 카드 관리 화면에서도 카드 컬렉션을 선택할 수 있게 해줘." 카드 1장이 여러 컬렉션에 동시에 속할 수 있어야 자연스러워(예: "2000년대 레전드"와 "불스 특집"에 조던 카드가 동시에) M:N으로 설계.
