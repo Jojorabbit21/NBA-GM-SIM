@@ -91,7 +91,9 @@ const canChangePre = isRecruiting && !lotteryDone && !(isPersonalDraft && draftD
 
 **주의사항**: 이 기능은 개인 팩 드래프트 토너먼트(`personal_draft_format` 존재)에만 적용되고 공유풀 드래프트(로터리+드래프트룸)에는 영향 없음. 마감은 선택 사항(설정 안 하면 기존처럼 토너먼트 시작 전까지 자유 참가).
 
-**배포**: 2026-09-18 — fly.io **v158**(`flyctl deploy --remote-only`, 머신 started, `curl` 200, 로그 `[scheduler] started (30s interval)` 정상, 에러 없음). 강퇴 스윕(`personalDraftDeadline.ts`)이 이제 실제로 동작. 클라이언트는 아직 미커밋/미배포(Vercel 반영 안 됨). 롤백은 `flyctl releases`에서 v157.
+**배포**: 2026-09-18 — fly.io **v158**(`flyctl deploy --remote-only`, 머신 started, `curl` 200, 로그 `[scheduler] started (30s interval)` 정상, 에러 없음). 강퇴 스윕(`personalDraftDeadline.ts`)이 이제 실제로 동작. 롤백은 `flyctl releases`에서 v157.
+
+**후속(같은 날)**: 사용자 보고 "퍼스널 드래프트를 완료해도 팀 메뉴가 표시되지 않아." 원인 파악 — 이 항목을 포함해 사이드바 메뉴 분기(`usePersonalDraftStatus`/`MultiSidebar.tsx` 등, 바로 위 "완료 후 메뉴 분기" 항목)까지 전부 로컬에만 있었고 fly.io 배포(v158) 이전엔 git 커밋조차 안 돼 있어 Vercel 프로덕션엔 옛 `MultiSidebar`(개인 드래프트에서 `isDraftComplete`가 토너먼트 시작 전까지 항상 false라 팀 메뉴가 영영 안 열리던 버전)가 그대로 떠 있었다. 커밋 `ff0a4a4`로 이 세션의 미반영 클라이언트 변경 전체(메뉴 분기, 참가/드래프트 마감, 팩 재등장 수정 클라 문구, 인스턴스 로스터 해석기)를 push → Vercel 프로덕션 자동 배포 완료(`basketball-gm-a08gej1oz-...vercel.app`, Ready, 42초 빌드). `npx vite build` 클린 확인 후 push.
 
 **롤백 방법**: `claim_team`은 위 Before 정의로 재적용(마감 체크 블록만 제거), `ALTER TABLE leagues DROP COLUMN draft_deadline_at;`. 서버/클라 파일은 Before 요지대로 되돌리고 `personalDraftDeadline.ts` 삭제.
 
