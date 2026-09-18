@@ -50,6 +50,10 @@ function toRoundInputs(league: LeagueRow): PersonalDraftRoundInput[] {
 
 export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInProgress, onSaved }) => {
     const [tournamentStartAt, setTournamentStartAt] = useState(() => toInputValue((league as any).tournament_start_at));
+    // [2026-09-18] 참가/드래프트 마감 — 지나면 신규 참가 차단 + 미완료 참가자 자동 강퇴
+    // (server/src/personalDraftDeadline.ts). null이면 마감 없음.
+    const [deadlineEnabled, setDeadlineEnabled] = useState(() => league.draft_deadline_at != null);
+    const [deadlineAt, setDeadlineAt] = useState(() => toInputValue(league.draft_deadline_at));
     const [intervalMin, setIntervalMin]   = useState(() => Math.round(1440 / Math.max(1, (league as any).games_per_real_day ?? 48)));
     const [matchFormat, setMatchFormat]   = useState(league.match_format ?? 'best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState(league.finals_match_format ?? league.match_format ?? 'best_of_1');
@@ -89,8 +93,11 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
     }), [league]);
     const currentFormatKey = JSON.stringify({ rounds, timer, ovrMin, ovrMax, yearMin, yearMax, useCustomOverrides });
     const formatDirty = currentFormatKey !== savedFormatKey;
+    const savedDeadlineInputValue = toInputValue(league.draft_deadline_at);
     const scheduleDirty =
         tournamentStartAt !== toInputValue((league as any).tournament_start_at) ||
+        deadlineEnabled !== (league.draft_deadline_at != null) ||
+        (deadlineEnabled && deadlineAt !== savedDeadlineInputValue) ||
         intervalMin !== Math.round(1440 / Math.max(1, (league as any).games_per_real_day ?? 48)) ||
         matchFormat !== (league.match_format ?? 'best_of_1') ||
         finalsMatchFormat !== (league.finals_match_format ?? league.match_format ?? 'best_of_1');
@@ -98,10 +105,19 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
 
     const handleSave = async () => {
         setSaving(true); setSaveOk(false); setSaveErr(null);
+        if (deadlineEnabled) {
+            if (!deadlineAt) { setSaveErr('드래프트 마감 일시를 입력해주세요.'); setSaving(false); return; }
+            const deadlineIso = toIso(deadlineAt);
+            const startIso = toIso(tournamentStartAt);
+            if (startIso && deadlineIso && new Date(deadlineIso).getTime() > new Date(startIso).getTime()) {
+                setSaveErr('드래프트 마감 일시는 토너먼트 시작 일시보다 늦을 수 없습니다.'); setSaving(false); return;
+            }
+        }
         try {
             const base = {
                 leagueId: league.id,
                 tournamentStartAt: toIso(tournamentStartAt),
+                draftDeadlineAt: deadlineEnabled ? toIso(deadlineAt) : null,
                 gamesPerRealDay: Math.round(1440 / Math.max(1, intervalMin)),
                 matchFormat,
                 finalsMatchFormat: finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
@@ -192,6 +208,33 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                         onChange={e => setIntervalMin(Math.min(180, Math.max(15, Number(e.target.value))))}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                     />
+                </div>
+                <div>
+                    <label className="flex items-center gap-2 mb-1 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={deadlineEnabled}
+                            onChange={e => {
+                                const on = e.target.checked;
+                                setDeadlineEnabled(on);
+                                if (on && !deadlineAt) setDeadlineAt(tournamentStartAt);
+                            }}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-slate-400 ko-normal">드래프트 마감 일시 설정</span>
+                    </label>
+                    {deadlineEnabled && (
+                        <input
+                            type="datetime-local"
+                            value={deadlineAt}
+                            max={tournamentStartAt}
+                            onChange={e => setDeadlineAt(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        />
+                    )}
+                    <p className="text-xs text-slate-600 ko-normal mt-1">
+                        지나면 새 참가자 차단 + 미완료 참가자 자동 강퇴(빈 팀은 시작 시 AI가 채움).
+                    </p>
                 </div>
             </div>
             <div className="space-y-3">

@@ -7,6 +7,7 @@ import { useGame } from '../hooks/useGameContext';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
+import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { useServerClock } from '../utils/serverClock';
@@ -285,8 +286,10 @@ export const MultiHeader: React.FC = () => {
     const draftRoomPath = isPersonalDraft
         ? `/multi/leagues/${leagueId}/personal-draft`
         : `/multi/leagues/${leagueId}/draft`;
+    // [2026-09-18] 내 개인 드래프트가 끝나면 진입 버튼도 숨긴다(사이드바 메뉴 분기와 동일 기준).
+    const personalDraftStatus = usePersonalDraftStatus(roomId ?? null, myTeam?.id ?? null, isPersonalDraft);
     const showDraftRoomButton = isPersonalDraft
-        ? !isDraftComplete && !!myTeam
+        ? !isDraftComplete && !!myTeam && personalDraftStatus !== 'completed'
         : !isDraftComplete && lotteryDone && !isDrafting;
 
     // [2026-09-11] "드래프트 진행 중일 때 헤더에도 현재 픽 정보 표시" 요청 — LeagueLobbyPanel.tsx/

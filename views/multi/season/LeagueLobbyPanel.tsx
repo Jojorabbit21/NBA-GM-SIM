@@ -12,6 +12,7 @@ import { supabase } from '../../../services/supabaseClient';
 import { applyMetaPlayerPoolFilter } from '../../../services/multi/draftPoolQuery';
 import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
+import { usePersonalDraftStatus } from '../../../hooks/usePersonalDraftStatus';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
@@ -102,12 +103,18 @@ const LeagueLobbyPanel: React.FC = () => {
     const isDrafting   = league?.status === 'drafting';
     const isRecruiting = league?.status === 'recruiting';
     const lotteryDone   = leagueTeams.length > 0 && leagueTeams.some(t => t.draft_order !== null);
-    const canClaim      = isRecruiting;              // 모집 중이면 언제든 빈 팀 선점 가능
-    const canChangePre  = isRecruiting && !lotteryDone; // 팀 변경은 로터리 전까지만
     // [2026-09-18] 토너먼트 개인 팩 드래프트(leagues.personal_draft_format 존재) — 로터리/공유풀
     // 드래프트 룸 대신 팀 확정 직후 바로 개인 드래프트 화면으로 보낸다.
     const isPersonalDraft = !!league?.personal_draft_format;
     const personalDraftPath = `/multi/leagues/${leagueId}/personal-draft`;
+    const personalDraftStatus = usePersonalDraftStatus(room?.id ?? null, myTeam?.id ?? null, isPersonalDraft);
+    const myPersonalDraftDone = personalDraftStatus === 'completed';
+    // [2026-09-18] 개인 드래프트 참가/드래프트 마감(leagues.draft_deadline_at) — 지나면 신규 참가
+    // 차단 + 팀 변경 금지(값 갱신은 아래 useEffect, claim_team RPC도 서버에서 동일하게 거부).
+    const [draftDeadlineCountdown, setDraftDeadlineCountdown] = useState<string | null>(null);
+    const [draftDeadlinePassed,    setDraftDeadlinePassed]    = useState(false);
+    const canClaim      = isRecruiting && !(isPersonalDraft && draftDeadlinePassed); // 모집 중이면 언제든 빈 팀 선점 가능
+    const canChangePre  = isRecruiting && !lotteryDone && !(isPersonalDraft && draftDeadlinePassed); // 팀 변경은 로터리 전까지만
 
     const { draftState, timeRemaining, currentPickEntry, isMyTurn } = useLeagueDraft(
         isDrafting ? (room?.id ?? null) : null,
@@ -171,6 +178,31 @@ const LeagueLobbyPanel: React.FC = () => {
         const id = setInterval(tick, 1000);
         return () => clearInterval(id);
     }, [league?.lottery_scheduled_at, lotteryDone]);
+
+    // 개인 드래프트 참가/드래프트 마감까지 남은 시간 — 지나면 즉시 canClaim/canChangePre가
+    // false로 바뀌어 참가·팀변경 버튼이 사라진다(서버는 claim_team RPC에서 동일하게 거부).
+    useEffect(() => {
+        const target = isPersonalDraft ? league?.draft_deadline_at : null;
+        if (!target) { setDraftDeadlineCountdown(null); setDraftDeadlinePassed(false); return; }
+
+        const tick = () => {
+            const diff = new Date(target).getTime() - Date.now();
+            if (diff <= 0) { setDraftDeadlineCountdown(null); setDraftDeadlinePassed(true); return; }
+            setDraftDeadlinePassed(false);
+            const d  = Math.floor(diff / 86_400_000);
+            const h  = Math.floor((diff % 86_400_000) / 3_600_000);
+            const m  = Math.floor((diff % 3_600_000)  /    60_000);
+            const s  = Math.floor((diff % 60_000)     /     1_000);
+            const hh = String(h).padStart(2, '0');
+            const mm = String(m).padStart(2, '0');
+            const ss = String(s).padStart(2, '0');
+            setDraftDeadlineCountdown(d > 0 ? `${d}일 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`);
+        };
+
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [isPersonalDraft, league?.draft_deadline_at]);
 
     // Realtime 구독
     // [2026-08-01 Fix] leagues 테이블 filter는 실제 id(UUID) 컬럼 기준 — URL의 leagueId는
@@ -274,12 +306,18 @@ const LeagueLobbyPanel: React.FC = () => {
                     </div>
                     {isPersonalDraft ? (
                         myTeam && league.status === 'recruiting' && (
-                            <button
-                                onClick={() => navigate(personalDraftPath)}
-                                className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"
-                            >
-                                팩 드래프트 입장
-                            </button>
+                            myPersonalDraftDone ? (
+                                <span className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-sm font-bold text-emerald-300 shrink-0">
+                                    드래프트 완료 · 토너먼트 시작 대기
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => navigate(personalDraftPath)}
+                                    className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"
+                                >
+                                    팩 드래프트 입장
+                                </button>
+                            )
                         )
                     ) : lotteryDone && (
                         <button
@@ -326,6 +364,9 @@ const LeagueLobbyPanel: React.FC = () => {
                             />
                         )}
                         <InfoRow label="토너먼트 시작 일시" value={fmtDate(league.tournament_start_at)} />
+                        {isPersonalDraft && (
+                            <InfoRow label="참가/드래프트 마감 일시" value={league.draft_deadline_at ? fmtDate(league.draft_deadline_at) : '마감 없음'} />
+                        )}
                         <InfoRow label="드래프트 순서 추첨 일시" value={fmtDate(league.lottery_scheduled_at)} />
                         <InfoRow label="드래프트 일시" value={fmtDate(league.draft_scheduled_at)} />
                         <InfoRow label="드래프트 형식" value={fmtDraftStrategy(league.draft_pool_strategy)} />
@@ -398,7 +439,7 @@ const LeagueLobbyPanel: React.FC = () => {
 
                                         <div className="w-44 shrink-0 flex items-center justify-end gap-1.5">
                                             {/* 참가 (비회원 + 빈 팀) */}
-                                            {isEmpty && isRecruiting && !isMember && (
+                                            {isEmpty && canClaim && !isMember && (
                                                 <button
                                                     onClick={() => handleJoinAndClaim(team)}
                                                     disabled={!!claiming}
@@ -533,7 +574,10 @@ const LeagueLobbyPanel: React.FC = () => {
                         </section>
                     )}
 
-                    <section className="space-y-3">
+                    {/* [2026-09-18] 개인 팩 드래프트는 로터리 자체가 없어(draft_order 미사용) 이
+                        섹션은 공유풀 드래프트 리그에서만 의미가 있다 — 대신 참가/드래프트 마감
+                        카운트다운 섹션을 아래에 별도로 보여준다. */}
+                    {!isPersonalDraft && <section className="space-y-3">
                         <h3 className="text-lg font-black text-white">드래프트 순서 추첨</h3>
                         <div className="bg-slate-900 overflow-hidden">
                             {!lotteryDone ? (
@@ -565,7 +609,31 @@ const LeagueLobbyPanel: React.FC = () => {
                                 </div>
                             )}
                         </div>
-                    </section>
+                    </section>}
+
+                    {isPersonalDraft && (
+                        <section className="space-y-3">
+                            <h3 className="text-lg font-black text-white">참가/드래프트 마감</h3>
+                            <div className="bg-slate-900 px-4 py-6 text-center">
+                                {!league.draft_deadline_at ? (
+                                    <p className="text-sm text-slate-500 ko-normal">마감 없음 — 토너먼트 시작 전까지 언제든 참가할 수 있습니다.</p>
+                                ) : draftDeadlinePassed ? (
+                                    <>
+                                        <p className="text-sm font-bold text-red-400 ko-normal mb-1">참가/팀 변경 마감</p>
+                                        <p className="text-xs text-slate-500 ko-normal">아직 드래프트를 끝내지 못한 참가자는 자동으로 강퇴되며, 빈 팀은 토너먼트 시작 시 AI가 대신 채웁니다.</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-slate-500 ko-normal mb-2">참가/팀 변경 마감까지 남은 시간</p>
+                                        <p className="text-5xl font-black text-white tabular-nums">{draftDeadlineCountdown ?? '--:--:--'}</p>
+                                        {myTeam && !myPersonalDraftDone && (
+                                            <p className="text-xs text-amber-400 ko-normal mt-2">이 시각까지 드래프트를 끝내지 못하면 자동으로 강퇴됩니다.</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </section>
+                    )}
                 </div>
                 </div>
             </div>

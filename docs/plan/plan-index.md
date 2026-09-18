@@ -19,4 +19,4 @@
 | [multi-role-fit-score-toggle-plan.md](multi-role-fit-score-toggle-plan.md) | 멀티플레이어 역할 적합도 점수(ArchetypeRatings, playType 액터 선정용) 토글 노출 | 폐기 (2026-07-28) |
 | [multi-player-archetype-tags-plan.md](multi-player-archetype-tags-plan.md) | 멀티플레이어 선수 정체성 아키타입(Primary/Secondary) + 14개 특성 태그 적용 | 폐기 (2026-07-28) |
 | [fixed-day-schedule-plan.md](fixed-day-schedule-plan.md) | 고정 길이 가상 하루 스케줄 구조 전환 — 타임라인 표, 기간→시간대 역산, 리플레이 설정화, Realtime 증분 반영 | 결정 완료, 착수 대기 (2026-09-18) |
-| [tournament-personal-pack-draft-plan.md](tournament-personal-pack-draft-plan.md) | 토너먼트 전용 개인 팩 드래프트 — 참가 즉시 비동기 라운드제 드래프트, 룸 스코프 player instance로 meta_players 변경 없이 로스터 중복 허용 | 코드 완료 — Phase 1~7 + 3.5 전부 구현(시작 트리거·아카이브 후 정리까지). DB 롤백 테스트 통과, 남은 건 fly.io 배포 후 브라우저 E2E(실제 경기 시뮬이 인스턴스 로스터로 도는지) (2026-09-18) |
+| [tournament-personal-pack-draft-plan.md](tournament-personal-pack-draft-plan.md) | 토너먼트 전용 개인 팩 드래프트 — 참가 즉시 비동기 라운드제 드래프트, 룸 스코프 player instance로 meta_players 변경 없이 로스터 중복 허용 | 코드 완료 — Phase 1~8 + 3.5 전부 구현(시작 트리거·아카이브 후 정리·참가/드래프트 마감 자동 강퇴까지). DB 롤백 테스트 통과, 남은 건 fly.io 배포 후 브라우저 E2E(실제 경기 시뮬이 인스턴스 로스터로 도는지, 마감 강퇴 스윕 실동작) (2026-09-18) |

@@ -16,6 +16,7 @@ import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { startPersonalDraftTournament } from './personalDraftStart';
+import { sweepPersonalDraftDeadlines } from './personalDraftDeadline';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
 import { startPlayIn } from './shared/playInSeeder';
@@ -163,6 +164,7 @@ async function tick(): Promise<void> {
         cleanupCompletedRooms(),
         runPersonalDraftSweeps(),
         runPersonalDraftTournamentStarts(now),
+        sweepPersonalDraftDeadlines(now),
     ]);
 }
 

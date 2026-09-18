@@ -94,6 +94,8 @@ CREATE INDEX idx_room_player_instances_source ON room_player_instances(source_pl
 ### 표시(이름/카드 UI)
 인스턴스 자체는 능력치를 갖지 않는 순수 포인터이므로, 화면에 선수 정보를 보여줄 땐 항상 `instance_id → source_player_id → meta_players` 조인이 필요하다. 리더보드/로스터 화면에서 "이 선수, 어느 팀 카드인지" 같이 보여주려면 `room_player_instances.team_id`를 함께 노출하면 된다.
 
+**구현(2026-09-18)**: 클라이언트 공용 해석기 `services/multi/instancePlayers.ts:fetchMetaPlayersByRosterIds(roomId, ids, cols)` — `useLeagueRawStats`(로스터/전술/리더보드/선수상세/홈 위젯의 공통 경로)와 `MultiGamePbpView`(박스스코어·예정 로스터)에 적용. 미적용: `useMultiSearchData`(검색/트레이드/FA 풀), `usePlayerCareerHistory`/`usePlayerTendencies`/`usePlayerShortCodes`, `AdminTeamEditorView` — 필요 시 같은 함수로 교체. 메뉴 분기: 내 팀 `personal_draft_progress.status='completed'`(`hooks/usePersonalDraftStatus.ts`, Realtime)이면 사이드바 "드래프트 풀" 숨김 + 로스터/전술 개방, 헤더/로비 진입 버튼 숨김. 순위표~자유계약 등 리그 메뉴는 토너먼트 시작(`in_progress`) 후.
+
 ### 트레이드 / 부상 강제 비활성화
 - `leagues.trade_enabled = false`를 personal-draft 토너먼트 생성 시 강제(관리자 UI에서 이 토글 자체를 숨김). 인스턴스 로스터가 트레이드 RPC를 절대 거치지 않도록 원천 차단.
 - **부상은 이미 존재하는 `sim_settings.injuriesEnabled` 플래그로 끈다 — 신규 컬럼 불필요.** 올스타전(`postAllStarGame.ts:22-23,288-289`)이 정확히 같은 패턴의 선례다: "전시성 경기라 부상 비활성화"를 위해 `room.sim_settings`를 얕은 복사해 `injuriesEnabled: false`(+ `suspensionsEnabled: false`)만 덮어써 `runFullGameSimulation()`에 넘긴다. 실제 확률 계산은 `server/src/shared/engine/fatigueSystem.ts:66` `calculateIncrementalFatigue()`의 `totalChance = (baseInjuryChance + fatigueBonus) * injuryFrequency`에서 일어나는데, `injuriesEnabled: false`가 이 체인을 타고 내려가 `injuryFrequency`를 사실상 0으로 만든다(정확한 배선은 `stateUpdater.ts:21`의 `state.simSettings.injuryFrequency` 참조).
@@ -216,6 +218,7 @@ CREATE TABLE personal_draft_progress (
 - `migrations/add_personal_draft_rpcs.sql` — **적용 완료(Phase 3)**. RPC 3종
 - `services/multi/personalDraft.ts` — **완료(Phase 3)**. RPC 3종의 클라이언트 래퍼(`startPersonalDraft`/`getOrGenerateRoundPack`/`submitPersonalDraftPick`)
 - `migrations/add_personal_draft_timer.sql` — **적용 완료(Phase 3.5)**. 픽 타이머/자동 지명/스윕
+- `migrations/fix_personal_draft_pack_exclude_drafted.sql` — **적용 완료(2026-09-18 버그 수정)**. 팩 샘플러가 그 팀이 이미 지명한 선수를 제외(`sample_pack(format, round, room_id, team_id)`), 후보 고갈 시 제외 없이 추출하는 폴백 + WARNING
 - `views/multi/league/PersonalDraftView.tsx` + `components/draft/PersonalDraftCard.tsx` — **완료(Phase 5)**
 - `hooks/usePersonalDraft.ts` — **완료(Phase 5)**
 
@@ -321,6 +324,13 @@ CREATE TABLE personal_draft_progress (
 21. 완료 — 계획의 `tournamentArchiver.ts` 대신 호출부인 `server/src/simRunner.ts`(아카이브 성공 직후, `status='finished'` 다음)에서 `personal_draft_cleanup_room` RPC 호출. 아카이브가 실패하면 재시도 때 박스스코어를 다시 읽어야 하므로 지우지 않는다. 추가로 클라이언트 `resetTournament()`(`services/multi/leagueService.ts`)도 로스터 초기화 뒤 같은 RPC를 호출(안 지우면 재참가 시 `start_personal_draft`가 `completed` 행을 돌려줘 재드래프트 불가).
 22. **통합 테스트** — DB 레벨 롤백 테스트 완료(Supabase MCP `DO $$` + `RAISE EXCEPTION`): 2팀(사람 1픽 후 이탈 / 미참가) × 2라운드(풀 8·픽 2) 포맷 → `force_complete_room` = `{teams:2, autoPicks:7}`, progress completed 2, 인스턴스 8, 로스터 4/4, **같은 실제 선수가 양 팀에 3명(중복 허용 확인)**; `room_player_state` 3행 삽입 후 비어드민 authenticated 호출 `not_league_admin` 거부, 어드민 세션 `cleanup_room` = `{progress:2, instances:8, playerStates:3}`, 잔여 0. **브라우저 E2E(생성 → 참가 → 드래프트 → 시작 → 경기 시뮬 → 종료 → 아카이브)는 미실시** — Bun 런타임(fly.io 배포)에서 실제 경기 시뮬레이션이 인스턴스 로스터로 도는지가 남은 마지막 검증 지점(Phase 4 보류분과 동일).
 23. `docs/history/dev-log.md` 기록 완료.
+
+### Phase 8 — 참가/드래프트 마감 + 자동 강퇴 ✅ 완료 (2026-09-18, DB 롤백 테스트 통과, fly.io 배포 전)
+사용자 요청(Phase 1~7 완료 후 후속): "토너먼트 세션을 만들 때 드래프트 기한을 설정할 수 있도록 만들어줘. 그 드래프트 기한을 넘기면 새 참가자가 더 이상 참가할 수 없고, 아직 드래프트 하지 않은 참가자는 자동으로 강퇴되어야해."
+- `leagues.draft_deadline_at`(nullable timestamptz) 추가. `claim_team` RPC가 개인 드래프트 리그에서 마감이 지나면 신규 참가/팀 변경을 거부(`draft_deadline_passed`). `server/src/personalDraftDeadline.ts`(신규)가 스케줄러 틱마다 마감 지난 리그를 찾아 `personal_draft_progress.status≠'completed'`(또는 행 없음)인 팀 소유자를 기존 `release_team` RPC로 강퇴 — 새 SQL 함수 없이 어드민 수동 강퇴와 동일 경로 재사용.
+- 강퇴 후 로스터/진행 행은 그대로 둔다 — Phase 7의 토너먼트 시작 트리거(`personal_draft_force_complete_room`)가 어차피 미완료 진행 행을 이어서 자동 지명으로 채우므로, 빈 팀은 시작 시점에 자연스럽게 AI로 넘어간다.
+- UI: `CreateLeagueModal.tsx`(생성, 선택 사항 체크박스), `PersonalDraftSettingsTab.tsx`(세션 설정, 언제든 편집 가능 — 포맷 잠금과 무관), `LeagueLobbyPanel.tsx`(카운트다운 섹션 + 참가/변경 버튼 자동 숨김; 겸사겸사 개인 드래프트 리그에서 무의미하게 뜨던 "드래프트 순서 추첨" 로터리 섹션도 이번에 가림).
+- 상세: `docs/history/dev-log.md` 2026-09-18 "참가/드래프트 마감 + 미완료 참가자 자동 강퇴" 항목. **fly.io 재배포 전까지 강퇴 스윕은 미동작**(DB의 `claim_team` 차단만 즉시 유효).
 
 ### 순서를 이렇게 잡은 이유
 - DB 스키마가 가장 먼저인 이유: 이후 모든 단계(서버 로직, RPC, UI)가 이 스키마를 전제로 하므로.

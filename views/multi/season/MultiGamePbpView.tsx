@@ -7,6 +7,7 @@ import { useSeasonContext } from './seasonContext';
 import { computeWL } from './multiSeasonUtils';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
+import { fetchMetaPlayersByRosterIds } from '../../../services/multi/instancePlayers';
 import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
 import type { Game, ShotEvent, Team, Player } from '../../../types';
@@ -1489,7 +1490,8 @@ const MultiGamePbpView: React.FC = () => {
         if (ids.length === 0) return;
         let cancelled = false;
         (async () => {
-            const { data } = await supabase.from('meta_players').select('id, name, position, base_attributes, tendencies').in('id', ids);
+            // [2026-09-18] 개인 팩 드래프트 룸은 박스스코어 playerId가 인스턴스 id — 해석기로 조회
+            const data = await fetchMetaPlayersByRosterIds(room?.id, ids, 'id, name, position, base_attributes, tendencies').catch(() => null);
             if (cancelled || !data) return;
             const map: Record<string, Player> = {};
             for (const raw of data) {
@@ -1607,7 +1609,7 @@ const MultiGamePbpView: React.FC = () => {
         if (ids.length === 0) return;
         let cancelled = false;
         (async () => {
-            const { data } = await supabase.from('meta_players').select('id, name, position').in('id', ids);
+            const data = await fetchMetaPlayersByRosterIds(room?.id, ids, 'id, name, position').catch(() => null);
             if (cancelled || !data) return;
             const map: Record<string, { name: string; position: string }> = {};
             for (const raw of data) map[String(raw.id)] = { name: raw.name as string, position: raw.position as string };

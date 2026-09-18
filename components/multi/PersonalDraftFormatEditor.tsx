@@ -279,7 +279,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                     <p className="text-xs text-emerald-400 ko-normal">모든 라운드에 노출 카드 수 이상의 후보가 있습니다. 저장 시 이 후보 목록이 고정됩니다.</p>
                 )}
                 {!syncError && !checkErr && !eligibleCounts && (
-                    <p className="text-[11px] text-slate-600 ko-normal">저장 시 라운드별 후보 인원을 다시 검사하며, 어느 라운드든 노출 카드 수보다 후보가 적으면 저장이 거부됩니다.</p>
+                    <p className="text-[11px] text-slate-600 ko-normal">저장 시 라운드별 후보 인원을 다시 검사하며, 어느 라운드든 노출 카드 수보다 후보가 적으면 저장이 거부됩니다. 이미 지명한 선수는 다음 라운드 팩에서 제외되므로, 범위가 겹치는 라운드는 후보를 넉넉히 잡아주세요.</p>
                 )}
             </div>
         </div>

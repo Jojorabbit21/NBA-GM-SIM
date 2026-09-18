@@ -211,6 +211,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
         buildFixedDeclineCurve(0, 99, { totalRounds: 15, windowSize: 10, poolSize: 8, picks: 1 }));
     const [personalTimer,   setPersonalTimer]   = useState<number | null>(PICK_TIMER_SEC_DEFAULT);
     const isPersonalDraft = type === 'tournament' && draftMode === 'personal';
+    // [2026-09-18] 개인 팩 드래프트 참가/드래프트 마감 — 지나면 신규 참가 차단 + 미완료 참가자 자동 강퇴
+    // (server/src/personalDraftDeadline.ts). 선택 사항(꺼두면 마감 없이 기존처럼 동작).
+    const [draftDeadlineEnabled, setDraftDeadlineEnabled] = useState(false);
+    const [draftDeadlineAt,      setDraftDeadlineAt]      = useState('');
 
     // ── 엔진 설정 ──────────────────────────────────────────────────────────────
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
@@ -277,6 +281,16 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 draftIso   = null;
                 if (!startIso || new Date(startIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
                     setErr(`토너먼트 시작 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
+                }
+                if (draftDeadlineEnabled) {
+                    if (!draftDeadlineAt) { setErr('드래프트 마감 일시를 입력해주세요'); return; }
+                    const deadlineIso = kstLocalToIso(draftDeadlineAt);
+                    if (new Date(deadlineIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
+                        setErr(`드래프트 마감 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
+                    }
+                    if (new Date(deadlineIso).getTime() > new Date(startIso).getTime()) {
+                        setErr('드래프트 마감 일시는 토너먼트 시작 일시보다 늦을 수 없습니다'); return;
+                    }
                 }
             } else {
                 if (!lotteryIso || new Date(lotteryIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
@@ -351,6 +365,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             personalDraftFormat: personalFormat,
                             tradeEnabled: false,
                             maxRosterSize: Math.min(20, Math.max(15, personalRosterSize ?? 15)),
+                            draftDeadlineAt: draftDeadlineEnabled && draftDeadlineAt ? kstLocalToIso(draftDeadlineAt) : null,
                         } : {}),
                         draftTotalRounds:     personalRosterSize ?? totalRounds,
                         draftPickDurationSec: pickDurationSec,
@@ -775,6 +790,37 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                             : '드래프트 시작 일시보다 늦어야 합니다(첫 경기 시작 시각).'}
                                     </p>
                                 </div>
+
+                                {isPersonalDraft && (
+                                    <div>
+                                        <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={draftDeadlineEnabled}
+                                                onChange={e => {
+                                                    const on = e.target.checked;
+                                                    setDraftDeadlineEnabled(on);
+                                                    if (on && !draftDeadlineAt) setDraftDeadlineAt(tournamentStartAt);
+                                                }}
+                                                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                                            />
+                                            <span className="text-xs text-slate-400 ko-normal">드래프트 마감 일시 설정</span>
+                                        </label>
+                                        {draftDeadlineEnabled && (
+                                            <input
+                                                type="datetime-local"
+                                                value={draftDeadlineAt}
+                                                min={minLotteryKst()}
+                                                max={tournamentStartAt}
+                                                onChange={e => setDraftDeadlineAt(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                            />
+                                        )}
+                                        <p className="text-[11px] text-slate-600 ko-normal mt-1">
+                                            이 시각이 지나면 새 참가자는 더 이상 팀을 선택할 수 없고, 그때까지 드래프트를 끝내지 못한 참가자는 자동으로 강퇴됩니다(빈 팀은 토너먼트 시작 시 AI가 대신 채웁니다). 끄면 마감 없이 토너먼트 시작 시각까지 계속 참가할 수 있습니다.
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className="text-xs text-slate-400 ko-normal block mb-1.5">

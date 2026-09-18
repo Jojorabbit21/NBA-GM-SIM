@@ -9,6 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useGame } from '../hooks/useGameContext';
 import { usePendingTradeCount } from '../hooks/usePendingTradeCount';
+import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
@@ -112,6 +113,15 @@ export const MultiSidebar: React.FC = () => {
     const roomId = room?.id ?? null;
     const myTeamDbId = myTeam?.id ?? null;
     const pendingTradeCount = usePendingTradeCount(roomId, myTeamDbId);
+    // [2026-09-18] 개인 팩 드래프트(토너먼트) — 리그 상태는 토너먼트 시작 전까지 recruiting이라
+    // isDraftComplete만으로는 팀 메뉴가 영영 안 열린다. "내 팀의 개인 드래프트 완료"를 기준으로
+    // 드래프트 풀 메뉴는 숨기고 로스터/전술(팀 메뉴)은 미리 연다(요청). 순위표~자유계약 등
+    // 리그 메뉴는 여전히 토너먼트 시작(in_progress) 후에만.
+    const isPersonalDraft = !!league?.personal_draft_format;
+    const personalDraftStatus = usePersonalDraftStatus(roomId, myTeamDbId, isPersonalDraft);
+    const myPersonalDraftDone = personalDraftStatus === 'completed';
+    const showPoolMenu  = !isDraftComplete && !myPersonalDraftDone;
+    const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -159,7 +169,7 @@ export const MultiSidebar: React.FC = () => {
                 />
                 {/* [2026-09-11] 드래프트가 끝나면(정규 시즌 진입) 더 이상 지명 대상 풀을
                     조회할 필요가 없어 메뉴 자체를 숨긴다(요청 — 접근 자체를 막음). */}
-                {!isDraftComplete && (
+                {showPoolMenu && (
                     <NavItem
                         active={pathname.startsWith(`${base}/pool`)}
                         icon={<NavIcon name="pool" active={pathname.startsWith(`${base}/pool`)} />}
@@ -169,8 +179,9 @@ export const MultiSidebar: React.FC = () => {
                 )}
                 {/* [2026-09-11 후속] "리그 메뉴도 모두 숨겨줘야, 홈/뉴스/드래프트풀 3개만
                     접근 가능해야" 요청 — 로스터/전술뿐 아니라 순위표~자유계약, 어드민 팀
-                    관리까지 드래프트 완료 전엔 전부 숨긴다(구분선 포함). */}
-                {isDraftComplete && (
+                    관리까지 드래프트 완료 전엔 전부 숨긴다(구분선 포함).
+                    [2026-09-18] 개인 팩 드래프트는 내 드래프트가 끝나면 팀 메뉴(로스터/전술)만 먼저 연다. */}
+                {showTeamMenus && (
                     <>
                         <NavItem
                             active={isRosterActive}
@@ -184,7 +195,10 @@ export const MultiSidebar: React.FC = () => {
                             label="전술"
                             onClick={() => navigate(`${base}/tactics`)}
                         />
-
+                    </>
+                )}
+                {isDraftComplete && (
+                    <>
                         <Divider />
 
                         <NavItem

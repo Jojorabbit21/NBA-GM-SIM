@@ -100,6 +100,10 @@ export interface CreateLeagueParams {
         tournamentStartAt:    string | null;
         draftScheduledAt:     string | null;
         lotteryScheduledAt:   string | null;
+        /** [2026-09-18] 개인 팩 드래프트 참가/드래프트 마감 시각. null이면 마감 없음. 지나면
+         *  claim_team RPC가 신규 참가·팀 변경을 거부하고, 서버 스케줄러가 아직 드래프트를 끝내지
+         *  못한 참가자를 자동 강퇴한다(server/src/personalDraftDeadline.ts). */
+        draftDeadlineAt:      string | null;
         realTimePace:         string;
         // 메인리그 스케줄 압축 설정
         durationWeeks:        number;
@@ -198,6 +202,7 @@ export const createLeague = async (
     if (opts.tournamentStartAt    !== undefined) payload.tournament_start_at     = opts.tournamentStartAt;
     if (opts.draftScheduledAt     !== undefined) payload.draft_scheduled_at      = opts.draftScheduledAt;
     if (opts.lotteryScheduledAt   !== undefined) payload.lottery_scheduled_at    = opts.lotteryScheduledAt;
+    if (opts.draftDeadlineAt      !== undefined) payload.draft_deadline_at       = opts.draftDeadlineAt;
     if (opts.realTimePace         !== undefined) payload.real_time_pace          = opts.realTimePace;
     if (opts.durationWeeks        !== undefined) payload.duration_weeks          = opts.durationWeeks;
     if (opts.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = opts.dailyWindowStartMin;
@@ -403,6 +408,8 @@ export interface UpdateLeagueSettingsParams {
     seasonStartDate?:    string;
     seasonEndDate?:      string | null;
     tournamentStartAt?:  string | null;
+    /** [2026-09-18] 개인 팩 드래프트 참가/드래프트 마감 시각. null이면 마감 없음. */
+    draftDeadlineAt?:    string | null;
     matchFormat?:        string | null;
     finalsMatchFormat?:  string | null;
     gamesPerRealDay?:    number;
@@ -476,6 +483,7 @@ export const updateLeagueSettings = async (
     if (p.seasonStartDate      !== undefined) payload.season_start_date       = p.seasonStartDate;
     if (p.seasonEndDate        !== undefined) payload.season_end_date         = p.seasonEndDate;
     if (p.tournamentStartAt    !== undefined) payload.tournament_start_at     = p.tournamentStartAt;
+    if (p.draftDeadlineAt      !== undefined) payload.draft_deadline_at       = p.draftDeadlineAt;
     if (p.matchFormat          !== undefined) payload.match_format            = p.matchFormat;
     if (p.finalsMatchFormat    !== undefined) payload.finals_match_format     = p.finalsMatchFormat;
     if (p.gamesPerRealDay      !== undefined) payload.games_per_real_day      = p.gamesPerRealDay;
@@ -675,6 +683,7 @@ export const claimTeam = async (
         const msg = error.message ?? '';
         if (msg.includes('team_already_claimed'))   return { data: null, error: '이미 다른 유저가 선점한 팀입니다.' };
         if (msg.includes('draft_already_ordered'))  return { data: null, error: '드래프트 추첨 후에는 팀을 변경할 수 없습니다.' };
+        if (msg.includes('draft_deadline_passed'))  return { data: null, error: '드래프트 마감 시각이 지나 더 이상 참가하거나 팀을 변경할 수 없습니다.' };
         return { data: null, error: msg };
     }
 

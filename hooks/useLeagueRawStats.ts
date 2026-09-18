@@ -2,6 +2,7 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
+import { fetchMetaPlayersByRosterIds } from '../services/multi/instancePlayers';
 
 // 홈 로스터 위젯 / 로스터 화면 / 리더보드 화면 / 선수상세 화면이 각자 따로 meta_players+
 // game_pbp를 긁어오던 걸 하나로 통합 — 같은 queryKey를 쓰는 useQuery라면 어느 화면에서
@@ -104,13 +105,13 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     const pbpEnabled          = !!roomId && allRosterIds.length > 0 && extraEnabled && includePbp;
 
     const playersQuery = useQuery({
-        queryKey: ['leagueRawPlayers', idsKey],
+        // [2026-09-18] 개인 팩 드래프트 룸은 roster id가 room_player_instances.instance_id라 roomId가
+        // 결과에 영향을 준다 — 키에 포함. 공유풀 룸은 인스턴스 행이 없어 결과가 기존과 동일.
+        queryKey: ['leagueRawPlayers', roomId ?? null, idsKey],
         enabled: playersEnabled,
         placeholderData: keepPreviousData,
         queryFn: async (): Promise<any[]> => {
-            const { data, error } = await supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds);
-            if (error) throw error;
-            return data ?? [];
+            return fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS);
         },
     });
 

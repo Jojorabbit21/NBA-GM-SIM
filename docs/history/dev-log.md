@@ -35,6 +35,150 @@
 
 ---
 
+## 2026-09-18 — 개인 팩 드래프트: 참가/드래프트 마감 시각 + 미완료 참가자 자동 강퇴
+
+**배경**: 사용자 요청 "이제 토너먼트 세션을 만들 때 드래프트 기한을 설정할 수 있도록 만들어줘. 그 드래프트 기한을 넘기면 새 참가자가 더 이상 참가할 수 없고, 아직 드래프트 하지 않은 참가자는 자동으로 강퇴되어야해." `leagues.draft_deadline_at`(nullable) 신설 — 지나면 `claim_team` RPC가 서버에서 신규 참가/팀 변경을 거부하고, 스케줄러가 미완료 참가자를 `release_team` RPC로 강퇴한다(어드민 수동 강퇴와 동일한 함수 재사용).
+
+**변경 파일**:
+- `migrations/add_personal_draft_deadline.sql` (DB, **적용 완료**) — `leagues.draft_deadline_at timestamptz NULL` 추가, `claim_team` RPC 재정의(개인 드래프트 + 마감 지남 → `draft_deadline_passed` 예외)
+- `server/src/personalDraftDeadline.ts` (신규, server) — `sweepPersonalDraftDeadlines(now)`: 마감 지난 개인 드래프트 리그를 찾아 미완료(진행 행 없음 또는 `status≠'completed'') 팀 소유자를 `release_team` RPC로 강퇴
+- `server/src/scheduler.ts` (server) — 틱에 `sweepPersonalDraftDeadlines(now)` 추가
+- `services/multi/roomQueries.ts` (client) — `LeagueRow.draft_deadline_at`
+- `services/multi/leagueService.ts` (client) — `createLeague`/`updateLeagueSettings`에 `draftDeadlineAt` 옵션 + `claimTeam` 에러 메시지 매핑
+- `components/multi/CreateLeagueModal.tsx` (client) — 개인 드래프트 생성 시 "드래프트 마감 일시 설정" 체크박스+입력(선택 사항), 검증(현재+15분 이후, 토너먼트 시작 일시 이하)
+- `views/multi/league/settings/PersonalDraftSettingsTab.tsx` (client) — 세션 설정에서도 동일 필드 편집 가능
+- `views/multi/season/LeagueLobbyPanel.tsx` (client) — 마감 카운트다운 섹션(기존에 개인 드래프트 리그에서도 무의미하게 뜨던 "드래프트 순서 추첨" 로터리 섹션을 `!isPersonalDraft`로 가리고 대체), 참가/팀변경 버튼을 `canClaim`/`canChangePre`에 마감 여부 반영해 자동 숨김, InfoRow 추가
+
+**Before**:
+```sql
+-- claim_team: 로터리 완료 여부만 체크, 마감 개념 없음
+CREATE FUNCTION claim_team(p_room_id, p_team_id, p_user_id) ... 
+  -- v_lottery_done 체크만 존재
+```
+```ts
+// scheduler.ts tick() — 개인 드래프트 마감/강퇴 관련 작업 없음(토너먼트 시작 시각까지 언제나 참가 가능)
+// LeagueLobbyPanel.tsx — canClaim = isRecruiting; canChangePre = isRecruiting && !lotteryDone (마감 개념 없음)
+// "참가" 버튼: isEmpty && isRecruiting && !isMember (canClaim 우회)
+// 우측 컬럼에 개인 드래프트 리그에서도 "드래프트 순서 추첨" 섹션이 항상 렌더(lottery_scheduled_at이 null이라 "--:--:--" 무한 표시 — 별도 버그였음, 이번에 같이 고침)
+```
+
+**After**:
+```sql
+CREATE FUNCTION claim_team(p_room_id, p_team_id, p_user_id) ...
+  SELECT l.personal_draft_format, l.draft_deadline_at INTO v_pdf, v_deadline FROM rooms r JOIN leagues l ON l.id=r.league_id WHERE r.id=p_room_id;
+  IF v_pdf IS NOT NULL AND v_deadline IS NOT NULL AND now() > v_deadline THEN
+      RAISE EXCEPTION 'draft_deadline_passed';
+  END IF;
+  -- 이하 기존 로터리 체크 동일
+```
+```ts
+// personalDraftDeadline.ts
+export async function sweepPersonalDraftDeadlines(now) {
+  // status='recruiting' AND type='tournament' AND personal_draft_format IS NOT NULL
+  // AND draft_deadline_at IS NOT NULL AND draft_deadline_at <= now 인 리그를 찾아
+  // league_teams(user_id IS NOT NULL) 중 personal_draft_progress.status <> 'completed'(또는 행 없음)인
+  // 팀의 user_id로 release_team RPC 호출(멱등 — 강퇴된 팀은 다음 틱에 user_id NULL이라 자연히 제외)
+}
+// scheduler.ts: await Promise.allSettled([..., sweepPersonalDraftDeadlines(now)]);
+// LeagueLobbyPanel.tsx
+const canClaim = isRecruiting && !(isPersonalDraft && draftDeadlinePassed);
+const canChangePre = isRecruiting && !lotteryDone && !(isPersonalDraft && draftDeadlinePassed);
+// "참가" 버튼: isEmpty && canClaim && !isMember
+// 우측: {!isPersonalDraft && <로터리 섹션/>} {isPersonalDraft && <마감 카운트다운 섹션/>}
+```
+
+**검증**: DB 롤백 테스트(`DO $$`) 2건 — ① `claim_team`: 마감 1시간 전(과거) → `draft_deadline_passed` 예외, 마감을 미래로 옮기면 성공, 공유풀 리그(`personal_draft_format NULL`)는 `draft_deadline_at`이 과거여도 무시(회귀 없음). ② 강퇴 대상 판정 쿼리(TS 로직과 동일한 조인/필터를 SQL로 재현): 진행 행 없음→대상, `in_progress`→대상, `completed`→제외, 3가지 전부 기대값과 일치. `npx tsc --noEmit` 클라·서버 변경 파일 오류 0(클라 쪽 사전 존재하던 `roomQueries.ts` `RoomRow` 오류 1건은 줄번호만 밀렸을 뿐 이번 변경과 무관 — stash로 대조 확인).
+
+**주의사항**: 이 기능은 개인 팩 드래프트 토너먼트(`personal_draft_format` 존재)에만 적용되고 공유풀 드래프트(로터리+드래프트룸)에는 영향 없음. 마감은 선택 사항(설정 안 하면 기존처럼 토너먼트 시작 전까지 자유 참가).
+
+**배포**: 2026-09-18 — fly.io **v158**(`flyctl deploy --remote-only`, 머신 started, `curl` 200, 로그 `[scheduler] started (30s interval)` 정상, 에러 없음). 강퇴 스윕(`personalDraftDeadline.ts`)이 이제 실제로 동작. 클라이언트는 아직 미커밋/미배포(Vercel 반영 안 됨). 롤백은 `flyctl releases`에서 v157.
+
+**롤백 방법**: `claim_team`은 위 Before 정의로 재적용(마감 체크 블록만 제거), `ALTER TABLE leagues DROP COLUMN draft_deadline_at;`. 서버/클라 파일은 Before 요지대로 되돌리고 `personalDraftDeadline.ts` 삭제.
+
+---
+
+## 2026-09-18 — 개인 팩 드래프트: 완료 후 메뉴 분기(드래프트 풀 숨김·팀 메뉴 개방) + 클라이언트 인스턴스 로스터 해석
+
+**배경**: 사용자 요청 "세션에 참가해서 드래프트를 완료한 사용자에게는 드래프트 풀 메뉴는 숨기고, 팀 메뉴들은 숨김 해제 처리해줘." 조사 중 더 큰 문제 발견 — 클라이언트의 로스터 하이드레이션(`useLeagueRawStats`, PBP 뷰 등)이 `league_teams.roster`/박스스코어 `playerId`를 `meta_players.id`로 바로 조회해서, 인스턴스 id를 쓰는 개인 팩 드래프트 룸에선 로스터/전술/경기 화면의 선수가 전부 비어 보였을 것. 메뉴만 열면 빈 화면이라 해석기를 같이 붙였다.
+
+**변경 파일**:
+- `services/multi/instancePlayers.ts` (신규, client) — `fetchMetaPlayersByRosterIds(roomId, ids, cols)`: `room_player_instances`로 instance→source 해석 후 `meta_players` 조회, row.id는 instance_id로 덮어씀(서버 `simRunner.ts`/`finalize.ts` 규칙과 동일). 인스턴스 없으면 기존과 같은 결과.
+- `hooks/usePersonalDraftStatus.ts` (신규, client) — `personal_draft_progress(room_id, team_id).status` react-query + Realtime 구독
+- `hooks/useLeagueRawStats.ts` (client) — playersQuery를 해석기로 교체, queryKey에 roomId 추가
+- `views/multi/season/MultiGamePbpView.tsx` (client) — 박스스코어/예정 로스터 조회 2곳을 해석기로 교체
+- `components/MultiSidebar.tsx`, `components/MultiHeader.tsx`, `views/multi/season/LeagueLobbyPanel.tsx` (client) — 완료 상태 분기
+- `migrations/add_personal_draft_progress_realtime.sql` (DB, **적용 완료**) — `ALTER PUBLICATION supabase_realtime ADD TABLE personal_draft_progress`
+
+**Before**:
+```ts
+// useLeagueRawStats.ts
+queryKey: ['leagueRawPlayers', idsKey]
+queryFn: supabase.from('meta_players').select(RAW_PLAYER_COLS).in('id', allRosterIds)
+// MultiGamePbpView.tsx (2곳) — supabase.from('meta_players')...in('id', ids)
+// MultiSidebar.tsx
+{!isDraftComplete && <드래프트 풀/>}
+{isDraftComplete && (<> 로스터, 전술, <Divider/>, 순위표 … 어드민 </>)}
+// MultiHeader.tsx
+const showDraftRoomButton = isPersonalDraft ? !isDraftComplete && !!myTeam : …;
+// LeagueLobbyPanel.tsx — personal: myTeam && recruiting → "팩 드래프트 입장" 버튼
+```
+
+**After**:
+```ts
+// useLeagueRawStats.ts
+queryKey: ['leagueRawPlayers', roomId ?? null, idsKey]
+queryFn: fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS)
+// MultiGamePbpView.tsx — fetchMetaPlayersByRosterIds(room?.id, ids, cols) (2곳)
+// MultiSidebar.tsx
+const personalDraftStatus = usePersonalDraftStatus(roomId, myTeamDbId, isPersonalDraft);
+const myPersonalDraftDone = personalDraftStatus === 'completed';
+const showPoolMenu  = !isDraftComplete && !myPersonalDraftDone;
+const showTeamMenus = isDraftComplete || myPersonalDraftDone;
+{showPoolMenu && <드래프트 풀/>}
+{showTeamMenus && (<> 로스터, 전술 </>)}          // 팀 메뉴만 먼저 개방
+{isDraftComplete && (<> <Divider/>, 순위표 … 어드민 </>)}  // 리그 메뉴는 토너먼트 시작 후
+// MultiHeader.tsx — personal: … && personalDraftStatus !== 'completed'
+// LeagueLobbyPanel.tsx — 완료 시 버튼 대신 "드래프트 완료 · 토너먼트 시작 대기" 배지
+```
+
+**검증**: `npx tsc --noEmit` 변경 파일 오류 0. Realtime 발행 SQL 적용 성공(`pg_publication_tables`에서 미포함 확인 후 추가). 브라우저 확인은 push/배포 후.
+
+**남은 갭(해석기 미적용)**: `useMultiSearchData`(검색/트레이드/FA 풀 — meta id 기준이라 인스턴스 roster와 매칭 안 됨), `usePlayerCareerHistory`/`usePlayerTendencies`/`usePlayerShortCodes`(선수 상세의 커리어/성향 — instance id로 meta_players 조회 → 비어 보임), `AdminTeamEditorView`. 토너먼트는 트레이드 off라 실사용 영향은 선수 상세 일부 탭 정도 — 필요 시 같은 해석기로 교체.
+
+**롤백 방법**: 위 Before대로 되돌리고 신규 2파일 삭제. DB: `ALTER PUBLICATION supabase_realtime DROP TABLE public.personal_draft_progress;`
+
+---
+
+## 2026-09-18 — 개인 팩 드래프트 버그 수정: 이미 지명한 선수가 다음 라운드 팩에 재등장
+
+**배경**: 사용자 보고 "퍼스널 드래프트에서 이미 뽑힌 선수는 풀에 다시 등장해선 안되는데 지금은 등장하고 있어." 원인: `personal_draft_sample_pack(p_format, p_round)`이 라운드 후보 목록(`eligiblePlayerIds`)에서만 무작위 추출하고 그 팀이 이미 지명한 선수를 제외하지 않음 — 라운드별 OVR 범위가 겹치는 포맷(하락 커브 프리셋 등)에선 같은 선수가 다시 나옴.
+
+**변경 파일**:
+- `migrations/fix_personal_draft_pack_exclude_drafted.sql` (DB, **적용 완료**) — 샘플러 시그니처 변경 + 호출부 3개 함수 재정의 + 옛 샘플러 DROP. 서버/클라 코드 변경 없음(재배포 불필요, DB 즉시 반영).
+
+**Before**:
+```sql
+personal_draft_sample_pack(p_format jsonb, p_round integer)
+  -- eligiblePlayerIds ORDER BY random() LIMIT poolSize  (제외 없음)
+-- 호출: personal_draft_apply_pick(다음 팩), get_or_generate_round_pack(팩 없을 때), personal_draft_force_complete_room(2곳)
+```
+
+**After**:
+```sql
+personal_draft_sample_pack(p_format jsonb, p_round integer, p_room_id uuid, p_team_id uuid)
+  -- eligiblePlayerIds 중 NOT EXISTS(room_player_instances WHERE room_id, team_id, source_player_id = 후보) 만 추출
+  -- 제외 후 후보 수 < 이번 라운드 picks 이면 RAISE WARNING 후 제외 없이 추출(폴백 — 드래프트가 멈추지 않게)
+-- personal_draft_apply_pick / get_or_generate_round_pack / personal_draft_force_complete_room: 새 시그니처로 호출(본문 그 외 동일)
+DROP FUNCTION personal_draft_sample_pack(jsonb, integer);
+```
+설계 유지: 제외는 "같은 팀"에 한정 — 다른 팀이 뽑은 선수는 여전히 등장(로스터 중복 허용).
+
+**검증**: 롤백 테스트(`DO $$`) — 후보 8명, 라운드 (풀8·픽4)/(풀8·픽4)/(풀8·픽1): 1라운드 4픽 후 2라운드 팩 길이 4·기지명 겹침 0, 2라운드 4픽으로 후보 소진 후 3라운드 팩은 폴백으로 8장(status in_progress, 경고 로그).
+
+**롤백 방법**: `migrations/add_personal_draft_timer.sql`의 `personal_draft_sample_pack(jsonb,integer)`/`personal_draft_apply_pick`/`get_or_generate_round_pack` 정의와 `add_personal_draft_room_ops.sql`의 `personal_draft_force_complete_room` 정의를 재적용한 뒤 `DROP FUNCTION personal_draft_sample_pack(jsonb,integer,uuid,uuid)`.
+
+---
+
 ## 2026-09-18 — 토너먼트 개인 팩 드래프트 Phase 7: 시작 트리거 + 아카이브 후 정리
 
 **배경**: `docs/plan/tournament-personal-pack-draft-plan.md` Phase 7. 사용자 요청 "phase 7 진행해줘". Phase 6까지 끝났지만 토너먼트가 `in_progress`로 넘어가며 브라켓이 생기는 경로는 공유풀 드래프트 룸 완료(`finalize.ts:finalizeDraft`) 하나뿐이라 개인 드래프트 리그는 영영 시작되지 않았다. 또 룸 스코프 선수 인스턴스(`room_player_instances`)를 종료 후 지우는 정리 로직이 없었다.
@@ -88,7 +232,9 @@ if (!archiveErr) await supabase.rpc('personal_draft_cleanup_room', { p_room_id: 
 ```
 DB(요지): `force_complete_room`은 팀마다 진행 행 `ON CONFLICT DO NOTHING`으로 보장(1라운드 팩 + `pack_started_at=now()`), `FOR UPDATE` 루프에서 `status='completed'`까지 팩 내 최고 `base_attributes->>'ovr'`를 `personal_draft_apply_pick`으로 적용(팀당 500회 가드). `cleanup_room`은 `room_player_state`(player_id = 해당 룸 instance_id) → `room_player_instances` → `personal_draft_progress` 순으로 삭제하고 카운트 반환; 호출자 검증은 `auth.jwt()->>'role'='service_role'` 또는 `auth.uid()=leagues.admin_user_id`(파괴적이라 `p_user_id` 우회 인자 없음).
 
-**검증**: 마이그레이션 Supabase MCP 적용 성공. DB 롤백 테스트(`DO $$`): 2팀×2라운드(풀8·픽2) 포맷, 팀 A는 사람이 1픽 후 이탈·팀 B 미참가 → `force_complete_room={teams:2,autoPicks:7}`, completed 2, 인스턴스 8, 로스터 4/4, 같은 실제 선수 양 팀 중복 3명(의도), 비어드민 `cleanup_room` → `not_league_admin`, 어드민 `cleanup_room={progress:2,instances:8,playerStates:3}`, 잔여 0. `tsc --noEmit` — 클라·서버 변경 파일 오류 0(서버 `scheduler.ts:495/538`의 `prep.error`·`simRunner.ts` SupabaseClient 제네릭 오류는 HEAD부터 존재, 무관). **미검증**: fly.io 배포 후 실제 스케줄러 틱 → 브라켓 생성 → 경기 시뮬 → 아카이브 → 정리 전 과정(브라우저 E2E).
+**검증**: 마이그레이션 Supabase MCP 적용 성공. DB 롤백 테스트(`DO $$`): 2팀×2라운드(풀8·픽2) 포맷, 팀 A는 사람이 1픽 후 이탈·팀 B 미참가 → `force_complete_room={teams:2,autoPicks:7}`, completed 2, 인스턴스 8, 로스터 4/4, 같은 실제 선수 양 팀 중복 3명(의도), 비어드민 `cleanup_room` → `not_league_admin`, 어드민 `cleanup_room={progress:2,instances:8,playerStates:3}`, 잔여 0. `tsc --noEmit` — 클라·서버 변경 파일 오류 0(서버 `scheduler.ts:495/538`의 `prep.error`·`simRunner.ts` SupabaseClient 제네릭 오류는 HEAD부터 존재, 무관). **미검증**: 실제 스케줄러 틱 → 브라켓 생성 → 경기 시뮬 → 아카이브 → 정리 전 과정(브라우저 E2E).
+
+**배포**: 2026-09-18 — 서버 fly.io **v157**(`flyctl deploy --remote-only`, 머신 started, `curl` 200, 로그 `[scheduler] started (30s interval)`), 클라이언트 커밋 `b7366a9` push → Vercel 프로덕션 Ready(28s). 커밋에는 같은 작업 트리에 있던 다른 세션의 미커밋 변경(고정 하루 타임라인/재배치 등)도 함께 포함됨(사용자 선택). 롤백은 `flyctl releases`에서 v156, 클라는 `git revert b7366a9`.
 
 **롤백 방법**: 서버/클라 5파일은 Before 요지대로 되돌리고 `personalDraftStart.ts` 삭제. DB: `DROP FUNCTION public.personal_draft_force_complete_room(uuid); DROP FUNCTION public.personal_draft_cleanup_room(uuid);`. 스케줄러/simRunner/resetTournament의 RPC 호출은 함수가 없으면 에러 로그(리셋은 에러 반환)만 남기고 다른 작업엔 영향 없음.
 

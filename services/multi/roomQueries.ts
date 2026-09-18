@@ -101,6 +101,10 @@ export interface LeagueRow {
     season_start_date: string;
     season_end_date: string | null;
     tournament_start_at: string | null;
+    /** [2026-09-18] 개인 팩 드래프트 참가/드래프트 마감 시각(null=마감 없음). 지나면
+     *  claim_team RPC가 신규 참가·팀 변경을 거부하고, 서버 스케줄러가 그때까지 드래프트를
+     *  끝내지 못한 참가자를 자동 강퇴한다(server/src/personalDraftDeadline.ts). */
+    draft_deadline_at: string | null;
     real_time_pace: string;
     sim_real_start_at: string | null;
     games_per_real_day: number;
