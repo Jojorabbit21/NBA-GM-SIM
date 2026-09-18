@@ -157,6 +157,21 @@ const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
 ---
 
+## 2026-09-18 — 카드 전용 OVR 고정값
+
+**배경**: 사용자 요청 "카드에 한정해서만 OVR을 고정값으로 만들 수 있을까?" — 능력치 기반 동적 계산(`calculateOvr`) 대신 카드마다 원하는 OVR을 그냥 박아둘 수 있게. 기존 `Player.manualOvr` 필드가 이미 타입에는 있었지만(`services/dataMapper.ts:345`, raw row의 `ovr`/`OVR` 키를 읽어 세팅) **전 코드베이스에서 실제로 읽는 곳이 한 군데도 없는 죽은 필드**임을 확인 — 그 패턴을 재활용하지 않고, "카드에만" 적용되도록 `meta_player_cards`에 독립된 컬럼을 새로 추가(범용 `Player.manualOvr`/`calculateOvr`나 `meta_players`는 전혀 건드리지 않음 — 트레이드/정규화/리더보드 등 기존 OVR 파이프라인에 영향 없음).
+
+**변경 파일**:
+- `migrations/add_meta_player_cards_manual_ovr.sql` (DB, **적용 완료**) — `meta_player_cards.manual_ovr integer NULL`, `CHECK (manual_ovr IS NULL OR manual_ovr BETWEEN 0 AND 99)`.
+- `services/admin/playerCardAdminService.ts` — `PlayerCardRow`/`UpdateCardPatch`에 `manual_ovr` 추가, `CARD_COLS`에 컬럼 포함.
+- `pages/PlayerCardEditorPage.tsx` — `computeOvrPreview()`가 `card.manual_ovr`를 우선 사용(없으면 기존처럼 `calculateOvr` 동적 계산). 헤더에 "OVR 고정값" 체크박스 + 0~99 숫자 입력 추가, 편집 중 라이브 미리보기(`draftOvrPreview`)도 체크 시 그 값을 그대로 반영. 저장 시 `manual_ovr`을 패치에 포함(체크 해제 시 `null`로 저장 → 동적 계산으로 복귀).
+
+**검증**: 마이그레이션 적용 성공. `npx tsc --noEmit`/`npx vite build` 클린.
+
+**주의사항**: `manual_ovr`은 `meta_player_cards`에만 존재 — `meta_players`나 일반 `Player.manualOvr`/`calculateOvr` 경로는 전혀 손대지 않아 다른 시스템(트레이드 가치, 리더보드, 정규화 등)에 영향 없음. 드래프트 소비 배선(안 A)이 나중에 구현될 때 팩 샘플러의 OVR 자동지명 정렬도 이 값을 우선 사용하도록 같이 챙겨야 함.
+
+---
+
 ## 2026-09-18 — 선수 "시즌 카드" 바리에이션: 신규 테이블 + 어드민 카드 편집기 탭
 
 **배경**: 사용자 요청 — 개인 팩 드래프트 풀에 한 선수의 여러 시즌 카드(예: 마이클 조던 2000-01 vs 2003-04)가 서로 다른 능력치로 등장할 수 있게 하되, 한 팀이 같은 실제 선수의 카드를 두 장 이상 뽑을 수는 없어야 함. DB 조사 결과 `meta_players.career_history`는 실제 박스스코어 통계(pts/reb/ast 등)일 뿐 36개 게임플레이 능력치가 아니고, `custom_overrides`는 시즌 미태깅 단일 "피크" 변형 하나뿐이라 시즌별 레이팅 자체가 DB에 없음을 확인 — 논의 끝에 "안 A"(카드 1장 = 별도 테이블의 row 1개, `meta_players`는 절대 안 건드림)로 확정. 이번 턴 범위는 **콘텐츠 저장소(신규 테이블) + 어드민 카드 제작 도구**까지만 — 개인 팩 드래프트가 실제로 카드를 소비하도록 `room_player_instances`/`personal_draft_format`을 재배선하는 건 카드 콘텐츠가 쌓인 뒤의 별도 후속 작업(안 A 확정 사항: `room_player_instances.source_player_id`를 나중에 `meta_player_cards.id`로 재지정하고, "동일 선수 중복 픽 방지"는 카드 row의 `source_player_id`로 그룹핑해서 판정 — 최근 고친 "팀당 이미 뽑은 `source_player_id` 제외" 로직과 정확히 같은 메커니즘이라 그 배선 자체는 가벼움).

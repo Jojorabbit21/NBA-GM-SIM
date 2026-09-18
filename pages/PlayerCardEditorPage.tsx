@@ -26,7 +26,11 @@ import { TEAM_DATA } from '../data/teamData';
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 const TEAM_OPTIONS = Object.values(TEAM_DATA).sort((a, b) => a.city.localeCompare(b.city));
 
+/** [2026-09-18] manual_ovr가 있으면 그대로 쓰고(카드 전용 고정값), 없으면 지금처럼
+ *  base_attributes 기반 동적 계산. meta_players/일반 선수 OVR 파이프라인은 건드리지 않음 —
+ *  이 함수는 카드 목록·미리보기 표시 전용. */
 function computeOvrPreview(card: PlayerCardRow): number | null {
+    if (card.manual_ovr != null) return card.manual_ovr;
     try {
         const player = mapRawPlayerToRuntimePlayer({
             id: card.id, name: card.name, position: card.position,
@@ -102,6 +106,8 @@ const PlayerCardEditorPage: React.FC = () => {
             season: card.season, name: card.name, position: card.position,
             height: card.height ?? '', weight: card.weight ?? '', base_team_id: card.base_team_id ?? '',
             attrs: { ...(card.base_attributes ?? {}) },
+            manualOvrEnabled: card.manual_ovr != null,
+            manualOvr: card.manual_ovr ?? '',
         });
         setSaveOk(false); setSaveErr(null);
         fetchSeasonStatLine(card.source_player_id, card.season).then(setStatLine).catch(() => setStatLine(null));
@@ -128,8 +134,9 @@ const PlayerCardEditorPage: React.FC = () => {
 
     const draftOvrPreview = useMemo(() => {
         if (!editing) return null;
-        return computeOvrPreview({ ...editing, position: draft.position, base_attributes: draft.attrs });
-    }, [editing, draft.position, draft.attrs]);
+        if (draft.manualOvrEnabled) return draft.manualOvr === '' ? null : Number(draft.manualOvr);
+        return computeOvrPreview({ ...editing, position: draft.position, base_attributes: draft.attrs, manual_ovr: null });
+    }, [editing, draft.position, draft.attrs, draft.manualOvrEnabled, draft.manualOvr]);
 
     const handleSave = async () => {
         if (!editing) return;
@@ -143,6 +150,7 @@ const PlayerCardEditorPage: React.FC = () => {
                 weight: draft.weight === '' ? null : Number(draft.weight),
                 base_team_id: draft.base_team_id || null,
                 base_attributes: { ...draft.attrs, age: draft.attrs.age != null ? Number(draft.attrs.age) : undefined },
+                manual_ovr: draft.manualOvrEnabled && draft.manualOvr !== '' ? Number(draft.manualOvr) : null,
             };
             await updateCard(editing.id, patch);
             setSaveOk(true);
@@ -281,8 +289,31 @@ const PlayerCardEditorPage: React.FC = () => {
                                     <p className="text-xs text-slate-500 ko-normal">원본 선수: {editing.source_player_id}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {saveErr && <span className="text-xs text-red-400 ko-normal">{saveErr}</span>}
+                            <div className="flex items-center gap-4 flex-wrap justify-end">
+                                {/* [2026-09-18] 이 카드에 한정된 OVR 고정값 — meta_players/일반 선수
+                                    OVR 계산 파이프라인과 완전히 분리, 여기서만 적용됨. 꺼두면 지금처럼
+                                    아래 능력치 기반으로 항상 다시 계산. */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={draft.manualOvrEnabled}
+                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvrEnabled: e.target.checked }))}
+                                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                                        />
+                                        <span className="text-xs text-slate-400 ko-normal">OVR 고정값</span>
+                                    </label>
+                                    {draft.manualOvrEnabled && (
+                                        <input
+                                            type="number" min={0} max={99}
+                                            value={draft.manualOvr}
+                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvr: e.target.value === '' ? '' : Math.max(0, Math.min(99, Number(e.target.value))) }))}
+                                            className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500"
+                                        />
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {saveErr && <span className="text-xs text-red-400 ko-normal">{saveErr}</span>}
                                 <button
                                     onClick={handleDelete}
                                     disabled={saving}
@@ -298,6 +329,7 @@ const PlayerCardEditorPage: React.FC = () => {
                                     {saving ? <Loader2 size={12} className="animate-spin" /> : saveOk ? null : <Save size={12} />}
                                     {saving ? '저장 중…' : saveOk ? '저장됨 ✓' : '저장'}
                                 </button>
+                                </div>
                             </div>
                         </div>
 

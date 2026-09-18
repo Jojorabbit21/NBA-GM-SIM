@@ -16,11 +16,14 @@ export interface PlayerCardRow {
     base_team_id: string | null;
     base_attributes: Record<string, any>;
     tendencies: Record<string, any> | null;
+    /** [2026-09-18] 카드 전용 OVR 고정값. null이면 지금처럼 base_attributes 기반 동적 계산(calculateOvr).
+     *  meta_players/일반 선수 OVR 파이프라인과는 완전히 분리 — 이 카드에만 적용됨. */
+    manual_ovr: number | null;
     created_at: string;
     updated_at: string;
 }
 
-const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, created_at, updated_at';
+const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, created_at, updated_at';
 
 /** 특정 실제 선수(meta_players.id)의 카드 전체 — 시즌 오름차순 정렬은 문자열이라 완벽하지 않을 수 있음(참고용). */
 export async function listCardsForPlayer(sourcePlayerId: string): Promise<PlayerCardRow[]> {
@@ -92,6 +95,7 @@ export interface UpdateCardPatch {
     base_team_id?: string | null;
     base_attributes?: Record<string, any>;
     tendencies?: Record<string, any> | null;
+    manual_ovr?: number | null;
 }
 
 export async function updateCard(id: string, patch: UpdateCardPatch): Promise<void> {
