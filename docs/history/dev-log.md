@@ -157,6 +157,21 @@ const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
 ---
 
+## 2026-09-19 — 카드 배경 이미지: 아무 형식이나 올리면 브라우저에서 WebP로 자동 변환
+
+**배경**: 사용자 요청 "아무 이미지나 올려도 webp로 변환해주는 기능은 추가하기 어려울까?" — 서버 없이 `<canvas>.toBlob('image/webp')`로 클라이언트 변환.
+
+**변경 파일**:
+- `utils/imageToWebp.ts` (신규) — `convertImageToWebp(file, {maxWidth=1200, maxHeight=2000, quality=0.85})`: 이미지 로드 → 비율 유지 축소(확대 없음) → WebP 인코딩. 미지원 브라우저(toBlob이 null이거나 PNG로 폴백)면 `null` 반환, 디코드 불가 형식(HEIC 등)은 throw.
+- `services/admin/playerCardCollectionAdminService.ts` — `uploadCollectionBackground(collectionId, blob, ext, contentType)`로 시그니처 변경(변환된 Blob을 받도록).
+- `pages/PlayerCardCollectionPage.tsx` — 업로드 흐름: 변환 성공 → `.webp`/`image/webp`로 업로드, 변환 실패 → 원본이 버킷 허용 형식(webp/png/jpeg/avif)일 때만 그대로 업로드, 아니면 안내 에러. 5MB 검사는 **변환 후** 크기 기준. 파일 선택 `accept="image/*"`, 안내 문구 갱신.
+
+**검증**: `npx tsc --noEmit`/`npx vite build` 클린. 실제 변환/업로드는 어드민 브라우저에서 확인 필요(canvas WebP 인코딩은 Chrome/Edge/Firefox 96+/Safari 16+).
+
+**롤백 방법**: `imageToWebp.ts` 삭제, 서비스 시그니처를 `(collectionId, file: File)`로, 페이지 `handleBgUpload`를 원본 직접 업로드로 되돌리고 `accept`를 4형식으로 복구.
+
+---
+
 ## 2026-09-19 — 카드 컬렉션 배경 설정(팀 컬러/단색/그라디언트/이미지 업로드)
 
 **배경**: 카드 배경 그라디언트 논의(아티팩트 "카드 그라디언트 랩" 7안 비교) 끝에 사용자 결정 — 오일 슬릭 같은 복잡한 질감은 CSS 라이브 필터(카드 30장에 SVG 필터가 걸리면 스크롤 렉 위험) 대신 **이미지를 만들어 WebP로 올리는** 방식으로. 그래서 "카드 컬렉션 관리 화면에서 배경 색 지정 / 그라디언트 색 지정 / 이미지 업로드 옵션" 요청.

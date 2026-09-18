@@ -63,12 +63,16 @@ export async function updateCollection(id: string, patch: UpdateCollectionPatch)
  * updateCollection({ bg_type:'image', bg_image_url })로 따로 한다. 경로에 타임스탬프를 넣어
  * 같은 컬렉션에 다시 올려도 CDN 캐시가 옛 이미지를 물고 있지 않게 한다.
  */
-export async function uploadCollectionBackground(collectionId: string, file: File): Promise<string> {
-    const ext = (file.name.split('.').pop() || 'webp').toLowerCase();
-    const path = `${collectionId}/${Date.now()}.${ext}`;
+export async function uploadCollectionBackground(
+    collectionId: string,
+    blob: Blob,
+    ext: string,
+    contentType: string,
+): Promise<string> {
+    const path = `${collectionId}/${Date.now()}.${ext.replace(/^\./, '').toLowerCase()}`;
     const { error } = await supabase.storage
         .from(BG_BUCKET)
-        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+        .upload(path, blob, { contentType, upsert: false });
     if (error) throw error;
     const { data } = supabase.storage.from(BG_BUCKET).getPublicUrl(path);
     return data.publicUrl;

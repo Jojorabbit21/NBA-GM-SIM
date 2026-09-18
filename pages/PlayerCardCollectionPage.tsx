@@ -12,6 +12,7 @@ import {
     type CardCollectionRow,
 } from '../services/admin/playerCardCollectionAdminService';
 import { buildCardBackground, DEFAULT_CARD_BACKGROUND, type CardBackgroundSettings } from '../utils/cardBackground';
+import { convertImageToWebp } from '../utils/imageToWebp';
 
 // 배경 미리보기에 쓰는 대표 팀 컬러(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용
 const PREVIEW_TEAM_GRADIENT: readonly [string, string] = ['#1D428A', '#FDB927'];
@@ -19,7 +20,7 @@ const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc:
     { value: 'team',     label: '팀 컬러',   desc: '카드 원팀의 컬러 그라디언트(기본)' },
     { value: 'solid',    label: '단색',      desc: '한 가지 색으로 채움' },
     { value: 'gradient', label: '그라디언트', desc: '두 색 + 각도' },
-    { value: 'image',    label: '이미지',    desc: 'WebP/PNG/JPEG 업로드(5MB 이하)' },
+    { value: 'image',    label: '이미지',    desc: '아무 이미지나 업로드 — WebP로 자동 변환' },
 ];
 
 type CollectionWithCount = CardCollectionRow & { memberCount: number };
@@ -126,10 +127,21 @@ const PlayerCardCollectionPage: React.FC = () => {
 
     const handleBgUpload = async (file: File | null) => {
         if (!selected || !file) return;
-        if (file.size > 5 * 1024 * 1024) { setBgErr('이미지는 5MB 이하여야 합니다.'); return; }
         setBgUploading(true); setBgErr(null);
         try {
-            const url = await uploadCollectionBackground(selected.id, file);
+            // 어떤 형식이든 브라우저에서 WebP로 변환(+긴 변 1200/2000px 이내로 축소) 후 업로드.
+            // 변환 미지원 브라우저면 원본 그대로(버킷 허용 형식이면).
+            let blob: Blob = file;
+            let ext = (file.name.split('.').pop() || 'png').toLowerCase();
+            let contentType = file.type || 'application/octet-stream';
+            const converted = await convertImageToWebp(file);
+            if (converted) {
+                blob = converted.blob; ext = 'webp'; contentType = 'image/webp';
+            } else if (!['image/webp', 'image/png', 'image/jpeg', 'image/avif'].includes(contentType)) {
+                throw new Error('이 브라우저에서는 WebP 변환이 안 되고, 원본 형식은 업로드가 허용되지 않습니다(WebP/PNG/JPEG/AVIF).');
+            }
+            if (blob.size > 5 * 1024 * 1024) { throw new Error(`변환 후에도 5MB를 넘습니다(${(blob.size / 1024 / 1024).toFixed(1)}MB). 더 작은 이미지를 써주세요.`); }
+            const url = await uploadCollectionBackground(selected.id, blob, ext, contentType);
             setBg(b => ({ ...b, bg_type: 'image', bg_image_url: url }));
         } catch (e) {
             setBgErr(e instanceof Error ? e.message : '업로드에 실패했습니다.');
@@ -405,7 +417,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                             }`}>
                                                 {bgUploading ? <Loader2 size={12} className="inline animate-spin" /> : null}
                                                 {bgUploading ? ' 업로드 중…' : bg.bg_image_url ? '이미지 교체' : '이미지 업로드'}
-                                                <input type="file" accept="image/webp,image/png,image/jpeg,image/avif" className="hidden" disabled={bgUploading}
+                                                <input type="file" accept="image/*" className="hidden" disabled={bgUploading}
                                                     onChange={e => { handleBgUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
                                             </label>
                                             {bg.bg_image_url && (
@@ -414,7 +426,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                             )}
                                         </div>
                                         <p className="text-[11px] text-slate-600 ko-normal">
-                                            카드 비율(약 3:4.6)로 만든 WebP 권장. 업로드 후 "배경 저장"을 눌러야 반영됩니다.
+                                            PNG/JPEG 등 어떤 형식이든 올리면 브라우저에서 WebP로 변환하고 긴 변 1200×2000px 이내로 줄여서 저장합니다(권장 비율 3:5). 업로드 후 "배경 저장"을 눌러야 반영됩니다.
                                         </p>
                                     </div>
                                 )}
