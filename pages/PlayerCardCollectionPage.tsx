@@ -4,18 +4,27 @@
 // (카드 자체의 소비 배선과 마찬가지로 콘텐츠가 쌓인 뒤의 별도 후속 작업).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw } from 'lucide-react';
 import { searchCards, type PlayerCardRow } from '../services/admin/playerCardAdminService';
 import {
     listCollections, createCollection, updateCollection, deleteCollection,
     listCollectionMembers, addCardToCollection, removeCardFromCollection, uploadCollectionBackground,
     type CardCollectionRow,
 } from '../services/admin/playerCardCollectionAdminService';
-import { buildCardBackground, DEFAULT_CARD_BACKGROUND, type CardBackgroundSettings } from '../utils/cardBackground';
+import { fetchCardTeamColors, upsertCardTeamColor, deleteCardTeamColor } from '../services/cardTeamColorService';
+import { CARD_TEAM_COLORS_QUERY_KEY } from '../hooks/useCardTeamColors';
+import {
+    buildCardBackground, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
+    type CardBackgroundSettings, type CardTeamColor,
+} from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
+import { getAllTeamsList } from '../data/teamData';
+import { getRealTeamLogoUrl } from '../utils/constants';
 
-// 배경 미리보기에 쓰는 대표 팀 컬러(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용
-const PREVIEW_TEAM_GRADIENT: readonly [string, string] = ['#1D428A', '#FDB927'];
+// 배경 미리보기에 쓰는 대표 팀(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용.
+// [2026-09-20] 팀별 컬러 오버라이드가 있으면 그것을 따른다(resolveCardTeamGradient).
+const PREVIEW_TEAM_ID = 'gs';
 const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc: string }[] = [
     { value: 'team',     label: '팀 컬러',   desc: '카드 원팀의 컬러 그라디언트(기본)' },
     { value: 'solid',    label: '단색',      desc: '한 가지 색으로 채움' },
@@ -25,8 +34,81 @@ const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc:
 
 type CollectionWithCount = CardCollectionRow & { memberCount: number };
 
+const sameTeamColor = (a: CardTeamColor, b: CardTeamColor) =>
+    a.gradient_from.toLowerCase() === b.gradient_from.toLowerCase() &&
+    a.gradient_to.toLowerCase() === b.gradient_to.toLowerCase() &&
+    a.gradient_angle === b.gradient_angle;
+
 const PlayerCardCollectionPage: React.FC = () => {
     useOutletContext<{ userId?: string }>();
+    const queryClient = useQueryClient();
+
+    // 우측 패널 모드: 컬렉션 상세 / 카드 팀별 컬러 편집
+    const [mode, setMode] = useState<'collection' | 'teamColors'>('collection');
+
+    // ── 카드 전용 팀별 컬러 오버라이드(meta_card_team_colors) ───────────────────
+    // [2026-09-20] 사용자 요청 "카드 컬렉션의 팀별 컬러를 선택할 수 있게 개조" — 팀 컬러 원본
+    // (TEAM_COLORS 코드 상수)은 그대로 두고, 카드 배경('팀 컬러' 타입 + 이미지 아래 폴백 + 드래프트
+    // 카드)에 한해 팀별 그라디언트를 DB로 덮어쓴다. 행이 없는 팀은 기본값 폴백.
+    const [teamColors, setTeamColors] = useState<Record<string, CardTeamColor>>({});
+    const [teamColorsLoading, setTeamColorsLoading] = useState(true);
+    const [teamDrafts, setTeamDrafts] = useState<Record<string, CardTeamColor>>({});
+    const [teamSaving, setTeamSaving] = useState<string | null>(null);
+    const [teamErr, setTeamErr] = useState<string | null>(null);
+    const teams = useMemo(() => getAllTeamsList().slice().sort((a, b) => a.city.localeCompare(b.city, 'ko')), []);
+
+    const reloadTeamColors = useCallback(async () => {
+        setTeamColorsLoading(true);
+        try {
+            const map = await fetchCardTeamColors();
+            setTeamColors(map);
+            // 드래프트(편집 중 값)는 저장된 값으로 초기화 — 팀별로 오버라이드 없으면 기본값
+            const drafts: Record<string, CardTeamColor> = {};
+            for (const t of getAllTeamsList()) drafts[t.id] = resolveCardTeamGradient(t.id, map);
+            setTeamDrafts(drafts);
+        } catch (e) {
+            setTeamErr(e instanceof Error ? e.message : '팀별 컬러를 불러오지 못했습니다.');
+        } finally {
+            setTeamColorsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { reloadTeamColors(); }, [reloadTeamColors]);
+
+    const setTeamDraft = (teamId: string, patch: Partial<CardTeamColor>) =>
+        setTeamDrafts(d => ({ ...d, [teamId]: { ...d[teamId], ...patch } }));
+
+    const handleSaveTeamColor = async (teamId: string) => {
+        const draft = teamDrafts[teamId];
+        if (!draft) return;
+        if (!/^#[0-9a-fA-F]{6}$/.test(draft.gradient_from) || !/^#[0-9a-fA-F]{6}$/.test(draft.gradient_to)) {
+            setTeamErr('색상은 #RRGGBB 형식이어야 합니다.'); return;
+        }
+        setTeamSaving(teamId); setTeamErr(null);
+        try {
+            await upsertCardTeamColor(teamId, draft);
+            setTeamColors(m => ({ ...m, [teamId]: draft }));
+            queryClient.invalidateQueries({ queryKey: CARD_TEAM_COLORS_QUERY_KEY });
+        } catch (e) {
+            setTeamErr(e instanceof Error ? e.message : '저장에 실패했습니다.');
+        } finally {
+            setTeamSaving(null);
+        }
+    };
+
+    const handleResetTeamColor = async (teamId: string) => {
+        setTeamSaving(teamId); setTeamErr(null);
+        try {
+            await deleteCardTeamColor(teamId);
+            setTeamColors(m => { const next = { ...m }; delete next[teamId]; return next; });
+            setTeamDrafts(d => ({ ...d, [teamId]: resolveCardTeamGradient(teamId, null) }));
+            queryClient.invalidateQueries({ queryKey: CARD_TEAM_COLORS_QUERY_KEY });
+        } catch (e) {
+            setTeamErr(e instanceof Error ? e.message : '초기화에 실패했습니다.');
+        } finally {
+            setTeamSaving(null);
+        }
+    };
 
     const [collections, setCollections] = useState<CollectionWithCount[]>([]);
     const [collectionsLoading, setCollectionsLoading] = useState(true);
@@ -166,7 +248,7 @@ const PlayerCardCollectionPage: React.FC = () => {
         }
     };
 
-    const previewBackground = buildCardBackground(bg, PREVIEW_TEAM_GRADIENT);
+    const previewBackground = buildCardBackground(bg, resolveCardTeamGradient(PREVIEW_TEAM_ID, teamColors));
 
     const handleDeleteCollection = async (c: CollectionWithCount) => {
         if (!window.confirm(`"${c.name}" 컬렉션을 삭제할까요? (카드 자체는 삭제되지 않습니다)`)) return;
@@ -287,9 +369,9 @@ const PlayerCardCollectionPage: React.FC = () => {
                     ) : collections.map(c => (
                         <button
                             key={c.id}
-                            onClick={() => setSelected(c)}
+                            onClick={() => { setSelected(c); setMode('collection'); }}
                             className={`w-full flex items-center justify-between px-3 py-2.5 text-left border-b border-slate-800/60 last:border-b-0 transition-colors ${
-                                selected?.id === c.id ? 'bg-indigo-600/20 text-white' : 'text-slate-300 hover:bg-white/5'
+                                mode === 'collection' && selected?.id === c.id ? 'bg-indigo-600/20 text-white' : 'text-slate-300 hover:bg-white/5'
                             }`}
                         >
                             <div className="min-w-0">
@@ -305,11 +387,126 @@ const PlayerCardCollectionPage: React.FC = () => {
                         <AlertCircle size={12} className="shrink-0 mt-0.5" />{listErr}
                     </p>
                 )}
+
+                {/* 카드 팀별 컬러 — 컬렉션과 무관한 카드 시스템 공용 설정이라 목록 아래 별도 진입점 */}
+                <button
+                    type="button"
+                    onClick={() => setMode('teamColors')}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                        mode === 'teamColors'
+                            ? 'bg-indigo-600/20 border-indigo-500/40 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-white/5'
+                    }`}
+                >
+                    <span className="flex items-center gap-2 text-sm font-bold"><Palette size={14} />팀별 컬러</span>
+                    <span className="text-xs text-slate-500">{Object.keys(teamColors).length}팀 변경됨</span>
+                </button>
             </div>
 
-            {/* ── 우측: 선택된 컬렉션 상세 ── */}
+            {/* ── 우측: 선택된 컬렉션 상세 / 팀별 컬러 편집 ── */}
             <div className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6">
-                {!selected ? (
+                {mode === 'teamColors' ? (
+                    <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">카드 팀별 컬러</h2>
+                                <p className="text-xs text-slate-500 ko-normal mt-0.5">
+                                    카드 배경 "팀 컬러" 타입과 이미지 아래 폴백, 드래프트 카드에만 적용됩니다. 리그/플레이오프 등 다른 화면의 팀 컬러는 바뀌지 않습니다.
+                                    저장하지 않은 팀은 기본값(코드 상수)을 그대로 씁니다.
+                                </p>
+                            </div>
+                            {teamErr && (
+                                <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal shrink-0 max-w-xs">
+                                    <AlertCircle size={12} className="shrink-0 mt-0.5" />{teamErr}
+                                </p>
+                            )}
+                        </div>
+
+                        {teamColorsLoading ? (
+                            <div className="flex items-center justify-center py-10"><Loader2 size={16} className="animate-spin text-slate-500" /></div>
+                        ) : (
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                                {teams.map(t => {
+                                    const draft = teamDrafts[t.id] ?? resolveCardTeamGradient(t.id, teamColors);
+                                    const saved = resolveCardTeamGradient(t.id, teamColors);
+                                    const isOverridden = !!teamColors[t.id];
+                                    const dirty = !sameTeamColor(draft, saved);
+                                    const busy = teamSaving === t.id;
+                                    const defaultColor = getDefaultCardTeamColor(t.id);
+                                    return (
+                                        <div
+                                            key={t.id}
+                                            className={`flex items-center gap-3 px-3 py-2 rounded-xl border ${
+                                                isOverridden ? 'border-indigo-500/30 bg-indigo-500/5' : 'border-slate-800 bg-slate-900/60'
+                                            }`}
+                                        >
+                                            {/* 미리보기 스와치: 실제 카드와 같은 그라디언트 위에 로고 */}
+                                            <div
+                                                className="w-12 h-16 rounded-lg border border-white/10 shrink-0 flex items-center justify-center"
+                                                style={{ background: buildCardBackground(null, draft) }}
+                                            >
+                                                <img src={getRealTeamLogoUrl(t.id)} alt="" draggable={false} className="w-7 h-7 object-contain"
+                                                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.6))' }} />
+                                            </div>
+                                            <div className="flex-1 min-w-0 space-y-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-bold text-white truncate">{t.city} {t.name}</p>
+                                                    {isOverridden && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 shrink-0">변경됨</span>}
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <label className="flex items-center gap-1 text-[11px] text-slate-400">
+                                                        시작
+                                                        <input type="color" value={draft.gradient_from} onChange={e => setTeamDraft(t.id, { gradient_from: e.target.value })}
+                                                            className="w-7 h-7 rounded bg-transparent border border-slate-700 cursor-pointer" />
+                                                        <input value={draft.gradient_from} onChange={e => setTeamDraft(t.id, { gradient_from: e.target.value })}
+                                                            className="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-[11px] text-white font-mono focus:outline-none focus:border-indigo-500" />
+                                                    </label>
+                                                    <label className="flex items-center gap-1 text-[11px] text-slate-400">
+                                                        끝
+                                                        <input type="color" value={draft.gradient_to} onChange={e => setTeamDraft(t.id, { gradient_to: e.target.value })}
+                                                            className="w-7 h-7 rounded bg-transparent border border-slate-700 cursor-pointer" />
+                                                        <input value={draft.gradient_to} onChange={e => setTeamDraft(t.id, { gradient_to: e.target.value })}
+                                                            className="w-20 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-[11px] text-white font-mono focus:outline-none focus:border-indigo-500" />
+                                                    </label>
+                                                    <label className="flex items-center gap-1 text-[11px] text-slate-400">
+                                                        각도
+                                                        <input type="number" min={0} max={360} value={draft.gradient_angle}
+                                                            onChange={e => setTeamDraft(t.id, { gradient_angle: Math.max(0, Math.min(360, Number(e.target.value) || 0)) })}
+                                                            className="w-14 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-[11px] text-white text-center focus:outline-none focus:border-indigo-500" />
+                                                        °
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveTeamColor(t.id)}
+                                                    disabled={!dirty || busy}
+                                                    className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+                                                >
+                                                    {busy ? <Loader2 size={11} className="animate-spin" /> : '저장'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        // 오버라이드가 있으면 DB에서 지워 기본값으로, 없으면 편집 중 값만 기본값으로 되돌림
+                                                        if (isOverridden) handleResetTeamColor(t.id);
+                                                        else if (defaultColor) setTeamDraft(t.id, defaultColor);
+                                                    }}
+                                                    disabled={busy || (!isOverridden && !dirty)}
+                                                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                    title="기본값(코드 상수)으로 되돌리기"
+                                                >
+                                                    <RotateCcw size={10} />기본값
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : !selected ? (
                     <p className="text-sm text-slate-500 ko-normal text-center py-16">왼쪽에서 컬렉션을 선택하거나 새로 만들어주세요.</p>
                 ) : (
                     <div className="space-y-5">

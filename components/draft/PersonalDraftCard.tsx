@@ -1,12 +1,15 @@
 // PersonalDraftCard.tsx — 개인 팩 드래프트 카드 1장(승인된 시안 v49 기준).
 // [OVR 배지 ··· 시즌] / 원팀 로고 / 이름 / 팀명 · POS / 아키타입 / 나이·키·몸무게 / OFF DEF PLM ATH 바.
-// 배경은 원팀(meta_players.base_team_id) 테마 컬러 그라데이션(TEAM_COLORS), 로고는 getRealTeamLogoUrl.
+// 배경은 원팀(meta_players.base_team_id) 테마 컬러 그라데이션, 로고는 getRealTeamLogoUrl.
+// [2026-09-20] 팀 그라데이션은 카드 전용 오버라이드(meta_card_team_colors, teamColors prop) →
+// TEAM_COLORS 기본값 순으로 푼다(utils/cardBackground.ts resolveCardTeamGradient).
 // 은퇴 레전드처럼 base_team_id가 없는 선수는 중립 그라데이션 + 로고 자리 빈 채로 둔다.
 import React from 'react';
 import { OvrBadge } from '../common/OvrBadge';
 import { getAttrBarColor, getAttrColor } from '../../utils/attrRatingColor';
 import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
-import { TEAM_COLORS, TEAM_DATA } from '../../data/teamData';
+import { TEAM_DATA } from '../../data/teamData';
+import { buildCardBackground, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
 import type { PersonalDraftPlayer } from '../../hooks/usePersonalDraft';
 
 interface PersonalDraftCardProps {
@@ -16,9 +19,9 @@ interface PersonalDraftCardProps {
     selected: boolean;
     disabled?: boolean;
     onSelect: (sourcePlayerId: string) => void;
+    /** 카드 전용 팀별 컬러 오버라이드 맵(useCardTeamColors). 없으면 TEAM_COLORS 기본값. */
+    teamColors?: Record<string, CardTeamColor> | null;
 }
-
-const NEUTRAL_GRADIENT = ['#334155', '#0f172a'] as const;
 
 const TOP_OVERLAY =
     'repeating-linear-gradient(135deg, rgba(255,255,255,.035) 0 2px, transparent 2px 9px),' +
@@ -26,21 +29,20 @@ const TOP_OVERLAY =
 
 const SELECTED_SHADOW = '0 0 0 1px rgba(16,185,129,.6), 0 0 18px rgba(16,185,129,.35)';
 
-function resolveTeamVisual(baseTeamId: string | null) {
-    if (!baseTeamId) return { teamId: null, teamName: null, colors: NEUTRAL_GRADIENT };
+function resolveTeamVisual(baseTeamId: string | null, teamColors?: Record<string, CardTeamColor> | null) {
+    if (!baseTeamId) return { teamId: null, teamName: null, colors: resolveCardTeamGradient(null, teamColors) };
     const teamId = resolveTeamId(baseTeamId);
-    if (teamId === 'unknown') return { teamId: null, teamName: null, colors: NEUTRAL_GRADIENT };
+    if (teamId === 'unknown') return { teamId: null, teamName: null, colors: resolveCardTeamGradient(null, teamColors) };
     const data = TEAM_DATA[teamId];
-    const colors = TEAM_COLORS[teamId];
     return {
         teamId,
         teamName: data ? `${data.city} ${data.name}` : null,
-        colors: colors ? ([colors.primary, colors.secondary] as const) : NEUTRAL_GRADIENT,
+        colors: resolveCardTeamGradient(teamId, teamColors),
     };
 }
 
-export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, season, selected, disabled = false, onSelect }) => {
-    const { teamId, teamName, colors } = resolveTeamVisual(player.baseTeamId);
+export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, season, selected, disabled = false, onSelect, teamColors }) => {
+    const { teamId, teamName, colors } = resolveTeamVisual(player.baseTeamId, teamColors);
     const off = Math.round(((player.ins ?? 0) + (player.out ?? 0)) / 2);
     const groups: Array<[string, number]> = [
         ['OFF', off],
@@ -65,7 +67,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                 selected ? 'border-emerald-500' : 'border-slate-700'
             } ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
             style={{
-                background: `linear-gradient(165deg, ${colors[0]} 0%, ${colors[1]} 100%)`,
+                background: buildCardBackground(null, colors),
                 boxShadow: selected ? SELECTED_SHADOW : undefined,
             }}
         >

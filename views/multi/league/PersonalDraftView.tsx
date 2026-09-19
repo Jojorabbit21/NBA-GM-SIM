@@ -11,6 +11,7 @@ import { usePersonalDraft } from '../../../hooks/usePersonalDraft';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { computeRosterSize } from '../../../services/multi/personalDraftFormat';
 import { PersonalDraftCard } from '../../../components/draft/PersonalDraftCard';
+import { useCardTeamColors } from '../../../hooks/useCardTeamColors';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 
 function formatClock(sec: number): string {
@@ -24,6 +25,8 @@ const PersonalDraftView: React.FC = () => {
     const navigate     = useNavigate();
     const { session }  = useGame();
     const { league, room, leagueTeams, isLoading: ctxLoading } = useLeagueContext();
+    // [2026-09-20] 카드 전용 팀별 컬러 오버라이드(어드민 카드 컬렉션 탭에서 설정) — 카드 배경에 반영
+    const cardTeamColors = useCardTeamColors();
     const userId = session?.user?.id ?? null;
     const myTeam = useMemo(() => leagueTeams.find(t => t.user_id === userId) ?? null, [leagueTeams, userId]);
     const format = league?.personal_draft_format ?? null;
@@ -222,6 +225,7 @@ const PersonalDraftView: React.FC = () => {
                                         selected={selectedId === p.id}
                                         disabled={isSubmitting || pickedThisRound.has(p.id)}
                                         onSelect={handleSelect}
+                                        teamColors={cardTeamColors}
                                     />
                                 ))}
                             </div>

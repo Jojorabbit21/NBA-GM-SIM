@@ -35,6 +35,91 @@
 
 ---
 
+## 2026-09-20 — 카드 전용 팀별 컬러 오버라이드(meta_card_team_colors) + 어드민 편집 패널
+
+**배경**: 사용자 질문 "어드민 페이지에서 팀별 컬러를 설정하는것이 가능한가?" → 팀 컬러는 `data/teamData.ts` `TEAM_COLORS` 코드 상수뿐이고 `meta_teams`도 컬러를 갖지 않아 불가능했음. 이어진 요청 "카드 컬렉션의 팀별 컬러를 선택할 수 있게 개조해줘." — 리그/플레이오프 등 전역 팀 컬러는 **건드리지 않고**, 카드 시스템(컬렉션 배경 '팀 컬러' 타입, 이미지 아래 폴백, 개인 팩 드래프트 카드)에 한해 팀별 그라디언트를 DB로 덮어쓸 수 있게 했다. 컬렉션 단위가 아니라 카드 시스템 공용(같은 팀은 어느 컬렉션에서든 같은 컬러). 행이 없는 팀은 지금처럼 `TEAM_COLORS` 폴백.
+
+**변경 파일**:
+- `migrations/add_meta_card_team_colors.sql` (DB, **적용 완료**) — `meta_card_team_colors(team_id PK, gradient_from, gradient_to, gradient_angle 0~360 기본 165, updated_at)`, RLS 공개 읽기/어드민 UUID 쓰기(meta_player_cards와 동일 패턴)
+- `services/cardTeamColorService.ts` (신규, client) — `fetchCardTeamColors()`(team_id→컬러 맵), `upsertCardTeamColor()`, `deleteCardTeamColor()`
+- `hooks/useCardTeamColors.ts` (신규, client) — react-query `['cardTeamColors']`, `staleTime` 5분(전역 Infinity 상속 금지)
+- `utils/cardBackground.ts` (client) — `CardTeamColor` 타입, `getDefaultCardTeamColor()`(TEAM_COLORS 기준), `resolveCardTeamGradient(teamId, overrides)`(오버라이드→기본→중립), `buildCardBackground()` 두 번째 인자가 `CardTeamColor | [from, to]` 둘 다 허용(각도 반영). `data/teamData`를 import(순수 데이터 모듈, 순환 없음)
+- `components/draft/PersonalDraftCard.tsx` (client) — `teamColors?` prop 추가, 배경을 `buildCardBackground(null, resolveCardTeamGradient(...))`로 계산(직접 TEAM_COLORS 참조 제거)
+- `views/multi/league/PersonalDraftView.tsx` (client) — `useCardTeamColors()` 결과를 카드에 전달
+- `pages/PlayerCardCollectionPage.tsx` (client) — 좌측 목록 아래 "팀별 컬러" 진입 버튼(변경된 팀 수 표시) + 우측 패널 `mode==='teamColors'`에서 30팀 편집(스와치 미리보기+로고, 시작/끝 색상 피커+hex, 각도, 저장/기본값). 컬렉션 배경 미리보기의 예시 팀(골든스테이트)도 오버라이드 반영
+
+**Before**:
+```ts
+// PersonalDraftCard.tsx — 팀 컬러를 코드 상수에서 직접
+const colors = TEAM_COLORS[teamId];
+colors: colors ? [colors.primary, colors.secondary] : NEUTRAL_GRADIENT
+background: `linear-gradient(165deg, ${colors[0]} 0%, ${colors[1]} 100%)`
+// cardBackground.ts
+buildCardBackground(settings, teamGradient: readonly [string, string])
+// PlayerCardCollectionPage.tsx
+const PREVIEW_TEAM_GRADIENT = ['#1D428A', '#FDB927'];
+```
+
+**After**:
+```ts
+// PersonalDraftCard.tsx
+colors: resolveCardTeamGradient(teamId, teamColors)   // DB 오버라이드 → TEAM_COLORS → 중립
+background: buildCardBackground(null, colors)
+// cardBackground.ts
+buildCardBackground(settings, team: CardTeamColor | readonly [string, string])
+resolveCardTeamGradient(teamId, overrides?) → { gradient_from, gradient_to, gradient_angle }
+// PlayerCardCollectionPage.tsx
+buildCardBackground(bg, resolveCardTeamGradient('gs', teamColors))
+```
+
+**검증**: DB 롤백 테스트로 upsert(ON CONFLICT) 동작·각도 400 check_violation·정책 4개 확인. `tsc --noEmit` 오류 56건은 변경 전후 동일(전부 기존 파일, 이번 변경 파일 오류 0).
+
+**주의**: 팀 컬러 오버라이드는 카드 시스템에서만 읽는다 — 컬렉션의 '팀 컬러' 배경 타입, 이미지 배경 아래 폴백, 드래프트 카드. 다른 화면(플레이오프 브래킷, 리그 서비스 등)의 `TEAM_COLORS`/`getTeamColor()`는 그대로. 드래프트 화면은 5분 캐시라 어드민 변경 직후엔 새로고침이 필요할 수 있다.
+
+**롤백 방법**: `DROP TABLE public.meta_card_team_colors;` 후 위 Before 블록으로 되돌리기(신규 파일 3개 삭제). 클라이언트만 되돌려도 행이 없으면 폴백이라 안전.
+
+---
+
+## 2026-09-20 — 시즌 카드 전용 세 자리 OVR(manual_ovr 0~999) 허용
+
+**배경**: 사용자 질문 "현재 시스템에서 오버롤이 3자리를 넘는것도 가능한가?" → 엔진 clamp(40~99, 클라/서버 미러), DB CHECK(0~99), 편집기 입력(0~99), 드래프트 ovrMax(99)에 막혀 불가능함을 확인. 이어진 요청 "카드 전용에만 세 자리 수의 오버롤을 적용하고싶다." — 일반 선수 OVR 파이프라인(`calculateOvr`/`ovrEngine` clamp, meta_players)은 **건드리지 않고** `meta_player_cards.manual_ovr`의 상한만 999로 열었다. 세 자리 OVR은 카드에 고정값을 직접 입력한 경우에만 나온다.
+
+**변경 파일**:
+- `migrations/alter_meta_player_cards_manual_ovr_three_digits.sql` (DB, **적용 완료**) — CHECK 제약 `meta_player_cards_manual_ovr_range` 재정의
+- `pages/PlayerCardEditorPage.tsx` (client) — OVR 고정값 입력 `max`/clamp 99 → 999
+- `components/common/OvrBadge.tsx` (client) — 값 100 이상일 때만 고정 폭(`w-*`)을 `w-auto px-1.5`로 바꿔 세 자리가 잘리지 않게 함. 두 자리 이하는 기존과 동일(다른 76곳 호출부 영향 없음)
+
+**Before**:
+```sql
+CHECK (manual_ovr IS NULL OR (manual_ovr BETWEEN 0 AND 99))
+```
+```tsx
+// PlayerCardEditorPage.tsx
+type="number" min={0} max={99}  ... Math.max(0, Math.min(99, Number(e.target.value)))
+// OvrBadge.tsx
+<div className={`${baseStyles} ${boxStyles[size]} ...`}>
+```
+
+**After**:
+```sql
+CHECK (manual_ovr IS NULL OR (manual_ovr BETWEEN 0 AND 999))
+```
+```tsx
+// PlayerCardEditorPage.tsx
+type="number" min={0} max={999} ... Math.max(0, Math.min(999, Number(e.target.value)))
+// OvrBadge.tsx
+const box = value >= 100 ? boxStyles[size].replace(/\bw-\S+/, 'w-auto px-1.5') : boxStyles[size];
+<div className={`${baseStyles} ${box} ...`}>
+```
+
+**검증**: DB 롤백 테스트(`DO $$ … RAISE EXCEPTION`)로 150 저장 성공·1000은 check_violation 확인. `tsc --noEmit` 오류 56건은 변경 전후 동일(전부 기존 파일 `hooks/useGameData.ts`, `pages/PlayerEditorPage.tsx` 등, 이번 변경과 무관).
+
+**주의**: 카드/컬렉션을 실제 드래프트에 연결(안 A)할 때 `personal_draft_format.rounds[].ovrMax`(현재 99 상한)와 SQL 샘플러의 OVR 정렬/필터가 `manual_ovr` 100 이상을 포함하도록 함께 열어야 한다. OvrBadge 색상 등급은 97 이상이 최상위라 100 이상도 같은 보라색 계열로 표시됨.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석(100 초과 값 먼저 99로 정리 후 CHECK 원복) + 위 Before 블록.
+
+---
+
 ## 2026-09-18 — 개인 팩 드래프트: 참가/드래프트 마감 시각 + 미완료 참가자 자동 강퇴
 
 **배경**: 사용자 요청 "이제 토너먼트 세션을 만들 때 드래프트 기한을 설정할 수 있도록 만들어줘. 그 드래프트 기한을 넘기면 새 참가자가 더 이상 참가할 수 없고, 아직 드래프트 하지 않은 참가자는 자동으로 강퇴되어야해." `leagues.draft_deadline_at`(nullable) 신설 — 지나면 `claim_team` RPC가 서버에서 신규 참가/팀 변경을 거부하고, 스케줄러가 미완료 참가자를 `release_team` RPC로 강퇴한다(어드민 수동 강퇴와 동일한 함수 재사용).
