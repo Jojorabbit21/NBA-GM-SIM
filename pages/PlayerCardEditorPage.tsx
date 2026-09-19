@@ -336,11 +336,13 @@ const PlayerCardEditorPage: React.FC = () => {
                                         />
                                         <span className="text-xs text-slate-400 ko-normal">OVR 고정값</span>
                                     </label>
+                                    {/* [2026-09-20] 카드 전용 세 자리 OVR 허용(0~999, DB CHECK와 동일).
+                                        일반 선수 OVR은 여전히 99가 상한 — 이 입력만 예외. */}
                                     {draft.manualOvrEnabled && (
                                         <input
-                                            type="number" min={0} max={99}
+                                            type="number" min={0} max={999}
                                             value={draft.manualOvr}
-                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvr: e.target.value === '' ? '' : Math.max(0, Math.min(99, Number(e.target.value))) }))}
+                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvr: e.target.value === '' ? '' : Math.max(0, Math.min(999, Number(e.target.value))) }))}
                                             className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500"
                                         />
                                     )}

@@ -41,8 +41,13 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
     else if (value >= 60)  colorStyles = 'bg-gradient-to-br from-[#83644e] via-[#5a4e3f] to-[#66594d] text-white shadow-[0_0_12px_rgba(90,78,63,0.12)] border border-[rgba(131,100,78,0.22)]';
     else                   colorStyles = 'bg-gradient-to-br from-[#85807a] via-[#635e5a] to-[#71706f] text-white shadow-[0_0_12px_rgba(99,94,90,0.08)] border border-[rgba(133,128,122,0.18)]';
 
+    // [2026-09-20] 카드 전용 세 자리 OVR(meta_player_cards.manual_ovr 100~999) 대응 —
+    // 값이 100 이상일 때만 고정 폭(w-*)을 풀고 좌우 패딩으로 늘린다. 두 자리 이하는
+    // 기존 정사각형 그대로라 다른 호출부 모양은 변하지 않는다.
+    const box = value >= 100 ? boxStyles[size].replace(/\bw-\S+/, 'w-auto px-1.5') : boxStyles[size];
+
     return (
-        <div className={`${baseStyles} ${boxStyles[size]} ${textClassName ?? defaultTextStyles[size]} ${colorStyles} ${className}`}>
+        <div className={`${baseStyles} ${box} ${textClassName ?? defaultTextStyles[size]} ${colorStyles} ${className}`}>
             {value}
         </div>
     );
