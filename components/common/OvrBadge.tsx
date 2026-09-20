@@ -12,7 +12,8 @@ import React from 'react';
 
 interface OvrBadgeProps {
     value: number;
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    /** card: 개인 팩 드래프트 카드 전용 60px(목업 확정값). */
+    size?: 'sm' | 'md' | 'lg' | 'xl' | 'card';
     className?: string;
     /** size가 정하는 폰트 크기만 개별적으로 덮어쓰고 싶을 때(예: 드래프트 화면처럼 배지
      * 크기(w/h)는 sm 그대로 두되 글자만 키우고 싶은 경우) — 지정하지 않으면 기존처럼
@@ -93,13 +94,14 @@ const BOX: Record<NonNullable<OvrBadgeProps['size']>, { cls: string; px: number 
     md: { cls: 'w-8 h-8 rounded-md',   px: 32 },
     lg: { cls: 'w-11 h-11 rounded-lg', px: 44 },
     xl: { cls: 'w-16 h-16 rounded-xl', px: 64 },
+    card: { cls: 'w-[60px] h-[60px] rounded-xl', px: 60 },
 };
 const TEXT: Record<NonNullable<OvrBadgeProps['size']>, string> = {
-    sm: 'text-[10px]', md: 'text-sm', lg: 'text-xl', xl: 'text-3xl',
+    sm: 'text-[10px]', md: 'text-sm', lg: 'text-xl', xl: 'text-3xl', card: 'text-3xl',
 };
 // 세 자리(100+)는 같은 정사각형 안에 들어가도록 한 단계 작게
 const TEXT_THREE_DIGIT: Record<NonNullable<OvrBadgeProps['size']>, string> = {
-    sm: 'text-[9px]', md: 'text-xs', lg: 'text-base', xl: 'text-2xl',
+    sm: 'text-[9px]', md: 'text-xs', lg: 'text-base', xl: 'text-2xl', card: 'text-2xl',
 };
 
 export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', className = '', textClassName }) => {

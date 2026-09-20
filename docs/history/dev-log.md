@@ -35,6 +35,85 @@
 
 ---
 
+## 2026-09-20 — 개인 팩 드래프트 ↔ 시즌 카드 배선(안 A) + 드래프트 카드 확정 디자인 이식
+
+**배경**: 사용자 요청 "이제 목업 더 안봐도될거같아. 배선 구현해줘." 그동안 어드민 도구(카드/컬렉션/팀별 컬러/카드 배경)만 있고 실제 드래프트는 여전히 meta_players를 뽑고 있었다. 이번에 **개인 팩 드래프트의 후보·인스턴스·표시를 전부 시즌 카드(meta_player_cards) 기준**으로 바꾸고, "팩 드래프트" 목업 v82에서 확정한 카드 디자인과 커서 추적 호버 카드를 실제 화면에 이식했다. 일반 리그/공유풀 드래프트/meta_players는 건드리지 않았다.
+
+**변경 파일**:
+- `migrations/wire_personal_draft_cards.sql` (DB, **적용 완료**) — ① `room_player_instances.source_player_id` FK: meta_players → **meta_player_cards** (적용 시 인스턴스 0행) ② `personal_draft_sample_pack`: 이 팀이 이미 지명한 카드와 **같은 실제 선수(cards.source_player_id)** 의 다른 시즌 카드도 제외 ③ 신규 `personal_draft_card_ovr(format, cardId)`: 포맷 `cardOvrById` → `manual_ovr` → `base_attributes.ovr` → 0 ④ `personal_draft_autopick_expired` / `personal_draft_force_complete_room`: OVR 정렬을 ③으로 교체(meta_players 조인 제거)
+- `services/multi/cardPool.ts` (신규, client) — `fetchCardPool()`(카드 + 컬렉션 멤버십 페이지네이션 조회), `computeCardOvr()`(manual_ovr ?? calculateOvr, 피크 오버라이드 미적용)
+- `services/multi/personalDraftFormat.ts` (client) — 후보를 meta_players 대신 카드 풀에서 확정. `PersonalDraftRoundInput.collectionIds?`(빈 배열=전체 카드), `PersonalDraftFormat.source:'cards'`, `cardOvrById`, `filterCardsForRound()`, `PERSONAL_DRAFT_OVR_MAX=999`. 연도 범위는 무시(필드 하위호환)
+- `components/multi/PersonalDraftFormatEditor.tsx` (client) — "지명 연도" 열 → "카드 컬렉션" 칩 열(라운드별 다중 선택), 후보 확인 문구 카드 기준. 창 폭 상한 999
+- `components/multi/DraftPoolSettings.tsx` (client) — `ovrCap` prop(기본 99). `CreateLeagueModal.tsx` / `PersonalDraftSettingsTab.tsx`가 개인 드래프트에서 999 전달. 설정 탭은 `collectionIds` 복원 + 옛 포맷(source≠'cards') 재저장 안내
+- `hooks/usePersonalDraft.ts` (client) — 하이드레이션을 meta_players → **meta_player_cards**(+컬렉션 멤버십 + 컬렉션 배경 + 실제 선수 `career_history` 시즌 기록)로 교체. `PersonalDraftPlayer`에 `cardId/realPlayerId/season/bgImageUrl/collection/seasonStats` 추가, `collectionsById` 반환. 컬렉션 선택 규칙: 라운드 `collectionIds` 중 카드가 속한 첫 것 → 없으면 카드의 첫 소속 → 없으면 null
+- `components/draft/PersonalDraftCard.tsx` (client) — 목업 v82 디자인 이식(컬렉션 헤더 / OVR `card` 60px 배지 / 우상단 팀 로고 40px / 정중앙 로고 / 하단 텍스트 블록 이름·시즌·팀·포지션·아키타입 + 그라디언트). 배경 `buildCardBackground(컬렉션, 팀그라디언트, 카드이미지)`. 커서 추적 호버 팝업(`PlayerRatingsStatsPopup` 재사용, 뷰포트 가장자리 반전, 기록 없으면 섹션 숨김, 캡션 "{시즌} 시즌 기록")
+- `components/common/PlayerHoverCard.tsx` (client) — `PlayerRatingsStatsPopup` export + `statsCaption`/`hideStatsWhenEmpty` props(기존 PlayerHoverCard 동작 불변)
+- `components/common/OvrBadge.tsx` (client) — `size="card"`(60px, text-3xl / 세 자리 text-2xl) 추가
+- `views/multi/league/PersonalDraftView.tsx` (client) — 라운드 구성에 연도 대신 컬렉션명 표시, 카드 `season` prop 제거(카드 자체 시즌), 로스터 행에 시즌 표시
+- `services/multi/instancePlayers.ts` (client) — 인스턴스 source를 **카드 우선** 조회(고정 컬럼) → 없으면 meta_players 폴백. 카드 row는 `draft_year`(base_attributes) 보충, `career_history/contract/custom_overrides=null`, `card_id/card_season/real_player_id` 부가
+- `server/src/simRunner.ts`, `server/src/finalize.ts` (server) — 인스턴스 하이드레이션을 카드 우선(+`manual_ovr` select) → meta_players 폴백
+- `services/dataMapper.ts` (client) ↔ `server/src/shared/dataMapper.ts` (server 미러) — row에 `manual_ovr`가 있으면 계산 OVR 대신 그 값을 `ovr`로(카드 전용; meta_players row엔 없는 컬럼이라 일반 선수 무영향). **둘 다 같이 롤백할 것**
+- `pages/PlayerCardEditorPage.tsx` (client) — 저장 시 유효 OVR을 `base_attributes.ovr`에도 기록(서버 정렬 폴백)
+
+**Before**:
+```
+포맷 rounds[].eligiblePlayerIds = meta_players.id  /  room_player_instances.source_player_id → meta_players
+샘플러 제외: 같은 meta_players.id만  /  자동 지명 정렬: meta_players.base_attributes.ovr
+하이드레이션: meta_players (draft_year, custom_overrides 적용)  /  카드 디자인: v49(로고 상단, 능력치 바)
+mapRawPlayerToRuntimePlayer: ovr = calculateOvrWithArchetype(...) (고정값 없음)
+```
+
+**After**:
+```
+포맷 rounds[].eligiblePlayerIds = meta_player_cards.id, rounds[].collectionIds, format.source='cards', format.cardOvrById
+room_player_instances.source_player_id → meta_player_cards (FK)
+샘플러 제외: 지명 카드 + 같은 실제 선수의 모든 카드  /  자동 지명 정렬: personal_draft_card_ovr()
+하이드레이션: meta_player_cards + 컬렉션/배경/시즌 기록  /  카드 디자인: 목업 v82 + 커서 호버
+mapRawPlayerToRuntimePlayer: ovr = raw.manual_ovr ?? 계산값 (client/server 미러)
+```
+
+**검증**: SQL 롤백 테스트 — 같은 선수 카드 2장 중 1장을 지명한 상태에서 샘플러가 다른 선수 카드만 반환(`pack=[other]`), `personal_draft_card_ovr`가 포맷값(123)/폴백값(96) 모두 정상. `tsc --noEmit` 클라 56건·서버 45건 모두 변경 전후 동일(전부 기존 오류, 이번 파일 0건). `vite build` 성공. **브라우저 E2E(세션 생성 → 팩 드래프트 → 토너먼트 시작)는 아직 안 함.**
+
+**주의**: (1) 기존 개인 드래프트 리그 1개는 옛 포맷(meta_players id) — 세션 설정 탭에서 한 번 저장해야 FK 위반 없이 동작(탭에 안내 배너). (2) 카드 `base_attributes.ovr`이 없는 카드(73장)는 포맷 `cardOvrById`가 있어 문제 없고, 편집기 저장 시 채워짐. (3) `useMultiSearchData`/선수 상세 훅의 인스턴스 해석 갭은 그대로(카드 배선과 무관하게 이전부터 미해결). (4) 서버 배포(fly) 필요 — simRunner/finalize/dataMapper 변경.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석(FK 원복 + 세 함수 재정의 + card_ovr DROP) 후 `git checkout 1791c56 -- <위 파일들>`; dataMapper 미러 쌍은 반드시 함께.
+
+---
+
+## 2026-09-20 — 카드별 커스텀 배경 이미지(meta_player_cards.bg_image_url) + 카드 편집기 미리보기
+
+**배경**: 사용자 질문 "카드별로 배경 이미지를 커스텀할 수 있나? 커스텀 배경 이미지가 없으면 콜렉션의 기본 배경 적용" → 배경은 컬렉션 단위뿐이라 불가능했음. 제안한 4단계(컬럼 추가 → 해석 순서 → 편집기 업로드 → 미리보기 컬렉션 셀렉터)를 "이 순서대로 구현해줘"로 승인. 카드는 이미지 커스텀만 허용(단색/그라디언트는 컬렉션 몫). 해석 순서: **카드 이미지 → 컬렉션 배경 → 팀 그라디언트**(카드 이미지는 아래에 컬렉션/팀 배경을 폴백으로 깐 두 겹).
+
+**변경 파일**:
+- `migrations/add_meta_player_cards_bg_image.sql` (DB, **적용 완료**) — `meta_player_cards.bg_image_url text NULL`
+- `utils/cardBackground.ts` (client) — `buildCardBackground(settings, team, cardImageUrl?)` 세 번째 인자 추가. 내부를 `buildCollectionBackground()`로 분리하고 카드 이미지가 있으면 `url() center/cover, <컬렉션/팀 배경>`으로 겹침
+- `services/admin/playerCardAdminService.ts` (client) — `PlayerCardRow.bg_image_url`, `CARD_COLS`에 추가, `UpdateCardPatch.bg_image_url`, `uploadCardBackground(cardId, blob, ext, contentType)`(버킷 `card-backgrounds`, 경로 `cards/{cardId}/{timestamp}.{ext}`), `removeCardBackgroundFiles(cardId)`, `deleteCard()`가 행 삭제 후 폴더 정리(실패 무시)
+- `services/admin/playerCardCollectionAdminService.ts` (client) — `CARD_COLS`에 `bg_image_url` 추가(멤버 목록에서 커스텀 배경 표시용)
+- `pages/PlayerCardEditorPage.tsx` (client) — "카드 배경 이미지" 섹션: 업로드(WebP 변환·5MB 검사는 컬렉션 배경과 동일 파이프라인)/교체/제거, 미리보기 컬렉션 셀렉터(소속 컬렉션 중 선택, 기본 첫 번째), 드래프트 카드 구성의 미리보기(컬렉션 헤더/OVR 배지/중앙 로고/하단 텍스트 그라디언트). `useCardTeamColors()`로 팀별 컬러 오버라이드 반영. 저장 시 `bg_image_url` 포함
+- `pages/PlayerCardCollectionPage.tsx` (client) — 멤버 카드 목록에 "커스텀 배경" 배지
+
+**Before**:
+```ts
+buildCardBackground(settings, team)                 // 컬렉션 배경 → 팀 그라디언트
+deleteCard(id)                                       // 행만 삭제
+// PlayerCardRow: bg_image_url 없음, 편집기에 배경/미리보기 없음
+```
+
+**After**:
+```ts
+buildCardBackground(settings, team, cardImageUrl?)   // 카드 이미지 → 컬렉션 배경 → 팀 그라디언트
+deleteCard(id)                                       // 행 삭제 + cards/{id}/ 스토리지 정리(best-effort)
+// PlayerCardRow.bg_image_url: string | null
+```
+
+**검증**: DB 컬럼 추가 성공. `tsc --noEmit` 오류 56건 변경 전후 동일(변경 파일 오류 0). `vite build` 성공.
+
+**주의**: (1) 실제 드래프트 화면은 아직 카드/컬렉션을 소비하지 않아(안 A 배선 미구현) 이 기능은 어드민 편집·미리보기까지만 동작 — 배선 시 `PersonalDraftCard`가 `buildCardBackground(collection, team, card.bg_image_url)`을 호출하면 된다. (2) 이미지를 "교체"하면 옛 파일은 카드 폴더에 남는다(카드 삭제 시에만 폴더 전체 정리). (3) 카드 이미지 아래에 컬렉션 배경이 깔리므로 투명 PNG를 올리면 컬렉션 배경이 비친다(의도된 동작).
+
+**롤백 방법**: `ALTER TABLE public.meta_player_cards DROP COLUMN bg_image_url;` + 위 Before 블록. 컬럼만 지우면 `CARD_COLS` select가 실패하므로 클라이언트를 먼저 되돌릴 것.
+
+---
+
 ## 2026-09-20 — OvrBadge 12구간 → 6단계 티어(레전드/다이아/골드/실버/브론즈/아이언) 재설계
 
 **배경**: 사용자 요청 "OVR 배지 구간을 100+, 99~90, 89~80, 79~70, 69~60, 59~0으로 단순화… 90 다이아몬드 / 80 골드 / 70 실버 / 60 브론즈 / 50 아이언". "OVR 배지 티어 랩" 아티팩트(https://claude.ai/artifact/RiqrXGF6AAZmPpx3SNN6ba)에서 조정 후 내보낸 JSON을 "이대로 적용해줘"로 확정 → `components/common/OvrBadge.tsx`에 이식. 세 자리 OVR(카드 전용 manual_ovr)은 같은 정사각형 안에서 글자만 한 단계 축소(지난 항목의 `w-auto px-1.5` 폭 확장 규칙 폐기).

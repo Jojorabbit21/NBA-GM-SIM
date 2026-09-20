@@ -126,12 +126,22 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                     .in('instance_id', allPlayerIds);
 
                 const sourceIds = [...new Set((instances ?? []).map((i: any) => i.source_player_id))];
-                const { data: rawPlayers } = await supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies')
+                // [2026-09-20 안 A 배선] source_player_id는 meta_player_cards.id — 카드는 meta_players와
+                // 같은 shape라 그대로 매핑하고, manual_ovr은 dataMapper가 카드 고정 OVR로 쓴다.
+                // 옛 포맷(meta_players id) 인스턴스는 카드에 없으면 meta_players로 폴백.
+                const { data: cardRows } = await supabase
+                    .from('meta_player_cards')
+                    .select('id, name, position, base_attributes, tendencies, manual_ovr')
                     .in('id', sourceIds);
-
-                const rawById = new Map((rawPlayers ?? []).map((r: any) => [r.id, r]));
+                const rawById = new Map((cardRows ?? []).map((r: any) => [r.id, r]));
+                const missing = sourceIds.filter(id => !rawById.has(id));
+                if (missing.length > 0) {
+                    const { data: rawPlayers } = await supabase
+                        .from('meta_players')
+                        .select('id, name, position, base_attributes, tendencies')
+                        .in('id', missing);
+                    for (const r of (rawPlayers ?? []) as any[]) rawById.set(r.id, r);
+                }
                 for (const { instance_id, source_player_id } of (instances ?? []) as any[]) {
                     const raw = rawById.get(source_player_id);
                     if (!raw) continue;

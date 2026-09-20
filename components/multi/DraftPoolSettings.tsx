@@ -40,6 +40,8 @@ interface Props {
     totalRounds?: number;
     /** [2026-09-18] 개인 팩 드래프트(토너먼트)에선 픽 순서(스네이크/선형) 개념이 없어 이 블록을 숨긴다. */
     hideDraftOrder?: boolean;
+    /** OVR 상한(기본 99). 개인 팩 드래프트는 카드 전용 세 자리 OVR(manual_ovr ≤ 999)을 허용하므로 999를 넘긴다. */
+    ovrCap?: number;
 }
 
 const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
@@ -58,6 +60,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
     useCustomOverrides, onUseCustomOverridesChange,
     teamCount, totalRounds,
     hideDraftOrder = false,
+    ovrCap = 99,
 }) => {
     const [stats, setStats]               = useState<PoolStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
@@ -82,7 +85,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
         onOvrMinChange(v);
     };
     const commitMax = () => {
-        const v = Math.min(99, Math.max(ovrMin, Number(localMax) || 99));
+        const v = Math.min(ovrCap, Math.max(ovrMin, Number(localMax) || ovrCap));
         setLocalMax(String(v));
         onOvrMaxChange(v);
     };
@@ -142,7 +145,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
                     <input
                         type="number"
                         min={0}
-                        max={99}
+                        max={ovrCap}
                         value={localMin}
                         onChange={e => setLocalMin(e.target.value)}
                         onBlur={commitMin}
@@ -152,7 +155,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
                     <input
                         type="number"
                         min={0}
-                        max={99}
+                        max={ovrCap}
                         value={localMax}
                         onChange={e => setLocalMax(e.target.value)}
                         onBlur={commitMax}

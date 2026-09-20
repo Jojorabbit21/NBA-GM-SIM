@@ -332,6 +332,14 @@ CREATE TABLE personal_draft_progress (
 - UI: `CreateLeagueModal.tsx`(생성, 선택 사항 체크박스), `PersonalDraftSettingsTab.tsx`(세션 설정, 언제든 편집 가능 — 포맷 잠금과 무관), `LeagueLobbyPanel.tsx`(카운트다운 섹션 + 참가/변경 버튼 자동 숨김; 겸사겸사 개인 드래프트 리그에서 무의미하게 뜨던 "드래프트 순서 추첨" 로터리 섹션도 이번에 가림).
 - 상세: `docs/history/dev-log.md` 2026-09-18 "참가/드래프트 마감 + 미완료 참가자 자동 강퇴" 항목. **fly.io 재배포 전까지 강퇴 스윕은 미동작**(DB의 `claim_team` 차단만 즉시 유효).
 
+### Phase 9 — 시즌 카드 배선(안 A) + 확정 카드 디자인 이식 ✅ 코드/DB 완료 (2026-09-20, 브라우저 E2E·fly 배포 전)
+사용자 요청: "이제 목업 더 안봐도될거같아. 배선 구현해줘."
+- 후보/인스턴스/표시가 전부 시즌 카드(`meta_player_cards`) 기준. `room_player_instances.source_player_id` FK → `meta_player_cards`. 포맷 `rounds[].collectionIds`(빈 배열=전체 카드), `source:'cards'`, `cardOvrById`.
+- 샘플러는 같은 실제 선수의 다른 시즌 카드까지 제외. 자동 지명 정렬은 `personal_draft_card_ovr()`(포맷값 → manual_ovr → base_attributes.ovr).
+- 드래프트 카드 = "팩 드래프트" 목업 v82 확정 디자인 + 커서 추적 호버 카드(실제 시즌 기록, 없으면 숨김). 팀별 컬러 오버라이드·컬렉션 배경·카드별 배경 이미지 모두 반영.
+- 세 자리 OVR: `dataMapper`(client/server 미러)가 row의 `manual_ovr`를 우선 적용.
+- 상세: `docs/history/dev-log.md` 2026-09-20 "개인 팩 드래프트 ↔ 시즌 카드 배선(안 A)" 항목. **옛 포맷 리그는 세션 설정에서 재저장 필요. fly.io 재배포 전까지 서버 시뮬은 카드 인스턴스를 못 읽는다(meta_players 폴백도 FK 때문에 새 인스턴스엔 해당 없음).**
+
 ### 순서를 이렇게 잡은 이유
 - DB 스키마가 가장 먼저인 이유: 이후 모든 단계(서버 로직, RPC, UI)가 이 스키마를 전제로 하므로.
 - 시뮬레이션 엔진(Phase 4)을 UI(Phase 5)보다 먼저 두는 이유: UI 없이도 RPC 직접 호출로 로스터까지는 만들 수 있고, "인스턴스 로스터로 실제 경기가 정상 도는지"가 이 설계 전체의 핵심 리스크이므로 먼저 검증해야 UI 작업이 헛수고가 되지 않음.

@@ -139,7 +139,10 @@ function formatStat(val: number, format: StatFormat): string {
     return val.toFixed(1);
 }
 
-const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player: Player; teamAbbr?: string | null; style: React.CSSProperties }>(({ player, teamAbbr, style }, ref) => {
+/** 능력치 3열 + 시즌 스탯 3열 팝업 본문. [2026-09-20] 개인 팩 드래프트 카드(커서 추적 호버)가 같은 본문을
+ *  재사용하도록 export — 위치 계산은 각 호출부가 맡는다. statsCaption이 있으면 스탯 섹션 위에 캡션을 찍고,
+ *  hideStatsWhenEmpty면 기록이 없을 때 "시즌 기록 없음" 대신 섹션 자체를 숨긴다(라이브/루키 카드). */
+export const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player: Player; teamAbbr?: string | null; style: React.CSSProperties; statsCaption?: string; hideStatsWhenEmpty?: boolean }>(({ player, teamAbbr, style, statsCaption, hideStatsWhenEmpty }, ref) => {
     const g = player.stats?.g || 0;
     const hasStats = g > 0;
 
@@ -192,7 +195,8 @@ const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player: Playe
             </div>
 
             {/* 시즌 스탯 3열 그리드 */}
-            <div className="pt-2 border-t border-slate-800">
+            {(hasStats || !hideStatsWhenEmpty) && <div className="pt-2 border-t border-slate-800">
+                {hasStats && statsCaption && <div className="text-[10px] text-slate-500 mb-1">{statsCaption}</div>}
                 {hasStats ? (
                     <div className="grid grid-cols-3 gap-x-2">
                         {STAT_COLUMNS.map((col, ci) => (
@@ -211,7 +215,7 @@ const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player: Playe
                 ) : (
                     <div className="text-xs text-slate-500 text-center py-1">시즌 기록 없음</div>
                 )}
-            </div>
+            </div>}
         </div>
     );
 });

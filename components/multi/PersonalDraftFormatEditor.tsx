@@ -1,8 +1,10 @@
 // PersonalDraftFormatEditor.tsx — 토너먼트 "개인 팩 드래프트" 라운드별 포맷 편집기 (Phase 6).
 // docs/plan/tournament-personal-pack-draft-plan.md — CreateLeagueModal(생성)과
 // PersonalDraftSettingsTab(세션 설정) 양쪽에서 같은 컴포넌트를 쓴다. 상태는 부모가 소유하고
-// 이 컴포넌트는 표시/편집만 담당. 글로벌 OVR/연도 범위는 기존 DraftPoolSettings가 편집하며
+// 이 컴포넌트는 표시/편집만 담당. 글로벌 OVR 범위는 기존 DraftPoolSettings가 편집하며
 // 여기엔 검증 기준으로만 들어온다.
+// [2026-09-20 안 A 배선] 후보는 시즌 카드(meta_player_cards). 라운드마다 카드 컬렉션을 골라
+// (비우면 전체 카드) OVR 범위와 함께 후보를 확정한다. 지명 연도 열은 카드에 연도 개념이 없어 제거.
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
 import {
@@ -20,6 +22,7 @@ import {
     PICK_TIMER_SEC_MIN,
     type PersonalDraftRoundInput,
 } from '../../services/multi/personalDraftFormat';
+import { supabase } from '../../services/supabaseClient';
 
 interface Props {
     rounds: PersonalDraftRoundInput[];
@@ -34,6 +37,8 @@ interface Props {
     /** 이미 드래프트를 시작한 팀이 있는 등 편집이 잠긴 경우. */
     disabled?: boolean;
 }
+
+interface CollectionOption { id: string; name: string; count: number }
 
 const INPUT = 'bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed';
 const SMALL_BTN = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
@@ -63,11 +68,28 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
     const [lastTimer, setLastTimer] = useState<number>(pickTimerSec ?? PICK_TIMER_SEC_DEFAULT);
     useEffect(() => { if (pickTimerSec != null) setLastTimer(pickTimerSec); }, [pickTimerSec]);
 
-    // 후보 인원 확인(비동기, meta_players 조회) — 입력이 바뀌면 결과 무효화.
+    // 카드 컬렉션 목록(공개 읽기) — 라운드별 컬렉션 선택 칩용. 카드 수는 참고 표시.
+    const [collections, setCollections] = useState<CollectionOption[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const [{ data: cols }, { data: members }] = await Promise.all([
+                supabase.from('meta_player_card_collections').select('id, name').order('name'),
+                supabase.from('meta_player_card_collection_members').select('collection_id'),
+            ]);
+            if (cancelled) return;
+            const counts = new Map<string, number>();
+            for (const m of (members ?? []) as any[]) counts.set(String(m.collection_id), (counts.get(String(m.collection_id)) ?? 0) + 1);
+            setCollections(((cols ?? []) as any[]).map(c => ({ id: String(c.id), name: String(c.name), count: counts.get(String(c.id)) ?? 0 })));
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // 후보 인원 확인(비동기, 카드 풀 조회) — 입력이 바뀌면 결과 무효화.
     const [eligibleCounts, setEligibleCounts] = useState<number[] | null>(null);
     const [checking, setChecking]             = useState(false);
     const [checkErr, setCheckErr]             = useState<string | null>(null);
-    useEffect(() => { setEligibleCounts(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, useCustomOverrides]);
+    useEffect(() => { setEligibleCounts(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax]);
 
     const rosterSize = useMemo(() => computeRosterSize(rounds), [rounds]);
     const syncError = useMemo(() => validatePersonalDraftInput({
@@ -78,6 +100,11 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
     const update = (idx: number, patch: Partial<PersonalDraftRoundInput>) => {
         onRoundsChange(rounds.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
     };
+    const toggleCollection = (idx: number, collectionId: string) => {
+        const cur = rounds[idx].collectionIds ?? [];
+        const next = cur.includes(collectionId) ? cur.filter(id => id !== collectionId) : [...cur, collectionId];
+        update(idx, { collectionIds: next });
+    };
     const remove = (idx: number) => onRoundsChange(renumber(rounds.filter((_, i) => i !== idx)));
     const add = () => {
         if (rounds.length >= PERSONAL_DRAFT_ROUNDS_MAX) return;
@@ -85,15 +112,13 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
         onRoundsChange(renumber([
             ...rounds,
             last
-                ? { ...last, draftYearMin: last.draftYearMin, draftYearMax: last.draftYearMax }
-                : { round: 1, poolSize: PRESET_DEFAULTS.poolSize, picks: 1, ovrMin: globalOvrMin, ovrMax: globalOvrMax, draftYearMin: null, draftYearMax: null },
+                ? { ...last, collectionIds: [...(last.collectionIds ?? [])] }
+                : { round: 1, poolSize: PRESET_DEFAULTS.poolSize, picks: 1, ovrMin: globalOvrMin, ovrMax: globalOvrMax, draftYearMin: null, draftYearMax: null, collectionIds: [] },
         ]));
     };
     const applyPreset = () => {
         onRoundsChange(buildFixedDeclineCurve(globalOvrMin, globalOvrMax, preset));
     };
-
-    const numOrNull = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 
     const runCheck = async () => {
         setChecking(true); setCheckErr(null); setEligibleCounts(null);
@@ -153,7 +178,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                 <div className="flex items-end gap-1.5 flex-wrap">
                     {([
                         ['라운드', 'totalRounds', 1, PERSONAL_DRAFT_ROUNDS_MAX],
-                        ['창 폭', 'windowSize', 1, 99],
+                        ['창 폭', 'windowSize', 1, 999],
                         ['노출', 'poolSize', 1, PERSONAL_DRAFT_POOL_SIZE_MAX],
                         ['픽', 'picks', 1, PERSONAL_DRAFT_POOL_SIZE_MAX],
                     ] as const).map(([label, key, min, max]) => (
@@ -182,12 +207,12 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                     </button>
                     <button type="button" onClick={runCheck} disabled={disabled || checking || !!syncError} className={`${SMALL_BTN} bg-slate-800 text-slate-300 hover:text-white`}>
                         {checking ? <Loader2 size={11} className="animate-spin" /> : null}
-                        후보 인원 확인
+                        후보 카드 확인
                     </button>
                 </div>
             </div>
             <p className="text-[11px] text-slate-600 ko-normal -mt-2">
-                프리셋은 글로벌 OVR 범위({globalOvrMin}~{globalOvrMax}) 안에서 1라운드가 가장 높은 창, 마지막 라운드가 가장 낮은 창이 되도록 등간격으로 내려 깝니다. 적용 후 표에서 라운드별로 자유롭게 고칠 수 있습니다.
+                프리셋은 글로벌 OVR 범위({globalOvrMin}~{globalOvrMax}) 안에서 1라운드가 가장 높은 창, 마지막 라운드가 가장 낮은 창이 되도록 등간격으로 내려 깝니다(컬렉션 선택은 초기화). 적용 후 표에서 라운드별로 자유롭게 고칠 수 있습니다.
             </p>
 
             {/* ── 라운드 테이블 ── */}
@@ -197,7 +222,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         <tr className="bg-slate-800/60 text-[11px] text-slate-400">
                             <th className="px-2 py-2 text-left font-bold w-14">라운드</th>
                             <th className="px-2 py-2 text-center font-bold">OVR 범위</th>
-                            <th className="px-2 py-2 text-center font-bold">지명 연도 <span className="text-slate-600 font-normal">(빈칸=전체)</span></th>
+                            <th className="px-2 py-2 text-left font-bold">카드 컬렉션 <span className="text-slate-600 font-normal">(미선택=전체 카드)</span></th>
                             <th className="px-2 py-2 text-center font-bold w-20">노출 카드</th>
                             <th className="px-2 py-2 text-center font-bold w-16">픽 수</th>
                             {eligibleCounts && <th className="px-2 py-2 text-center font-bold w-16">후보</th>}
@@ -208,6 +233,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         {rounds.map((r, idx) => {
                             const count = eligibleCounts?.[idx];
                             const short = count != null && count < r.poolSize;
+                            const chosen = r.collectionIds ?? [];
                             return (
                                 <tr key={idx} className={short ? 'bg-red-950/30' : ''}>
                                     <td className="px-2 py-1.5 text-xs font-bold text-slate-300 whitespace-nowrap">{r.round}라운드</td>
@@ -221,15 +247,29 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                                         </div>
                                     </td>
                                     <td className="px-2 py-1.5">
-                                        <div className="flex items-center justify-center gap-1">
-                                            <input type="number" min={globalDraftYearMin} max={globalDraftYearMax} placeholder={String(globalDraftYearMin)}
-                                                value={r.draftYearMin ?? ''} disabled={disabled}
-                                                onChange={e => update(idx, { draftYearMin: numOrNull(e.target.value) })} className={`${INPUT} w-20 placeholder:text-slate-600`} />
-                                            <span className="text-xs text-slate-500">~</span>
-                                            <input type="number" min={globalDraftYearMin} max={globalDraftYearMax} placeholder={String(globalDraftYearMax)}
-                                                value={r.draftYearMax ?? ''} disabled={disabled}
-                                                onChange={e => update(idx, { draftYearMax: numOrNull(e.target.value) })} className={`${INPUT} w-20 placeholder:text-slate-600`} />
-                                        </div>
+                                        {collections.length === 0 ? (
+                                            <span className="text-[11px] text-slate-600 ko-normal">컬렉션 없음 — 전체 카드</span>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1">
+                                                {collections.map(c => {
+                                                    const on = chosen.includes(c.id);
+                                                    return (
+                                                        <button
+                                                            key={c.id}
+                                                            type="button"
+                                                            disabled={disabled}
+                                                            onClick={() => toggleCollection(idx, c.id)}
+                                                            title={`${c.count}장`}
+                                                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                                                                on ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            {c.name}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-2 py-1.5 text-center">
                                         <input type="number" min={1} max={PERSONAL_DRAFT_POOL_SIZE_MAX} value={r.poolSize} disabled={disabled}
@@ -276,10 +316,10 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                     <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal"><AlertTriangle size={12} className="shrink-0 mt-0.5" /><span>로스터가 {PERSONAL_DRAFT_ROSTER_WARN_BELOW}명 미만이면 로테이션 여유가 거의 없습니다. 저장은 가능합니다.</span></p>
                 )}
                 {!syncError && !checkErr && eligibleCounts && (
-                    <p className="text-xs text-emerald-400 ko-normal">모든 라운드에 노출 카드 수 이상의 후보가 있습니다. 저장 시 이 후보 목록이 고정됩니다.</p>
+                    <p className="text-xs text-emerald-400 ko-normal">모든 라운드에 노출 카드 수 이상의 후보 카드가 있습니다. 저장 시 이 후보 목록이 고정됩니다.</p>
                 )}
                 {!syncError && !checkErr && !eligibleCounts && (
-                    <p className="text-[11px] text-slate-600 ko-normal">저장 시 라운드별 후보 인원을 다시 검사하며, 어느 라운드든 노출 카드 수보다 후보가 적으면 저장이 거부됩니다. 이미 지명한 선수는 다음 라운드 팩에서 제외되므로, 범위가 겹치는 라운드는 후보를 넉넉히 잡아주세요.</p>
+                    <p className="text-[11px] text-slate-600 ko-normal">후보는 어드민 "카드 관리" 탭의 시즌 카드입니다. 저장 시 라운드별 후보 카드를 다시 검사하며, 어느 라운드든 노출 카드 수보다 후보가 적으면 저장이 거부됩니다. 같은 선수의 다른 시즌 카드는 한 팀이 두 장 가질 수 없으므로 범위가 겹치는 라운드는 후보를 넉넉히 잡아주세요.</p>
                 )}
             </div>
         </div>

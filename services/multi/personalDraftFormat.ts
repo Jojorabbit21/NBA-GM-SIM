@@ -1,15 +1,19 @@
 // personalDraftFormat.ts — 토너먼트 전용 "개인 팩 드래프트" 포맷 빌드/검증.
 // docs/plan/tournament-personal-pack-draft-plan.md 참고 — leagues.personal_draft_format에
-// 저장되는 JSON을 만든다. 글로벌 범위(연도/오버롤)는 기존 draft_year_min/max, draft_ovr_min/max를
-// 그대로 재사용하고, 이 함수는 그 글로벌 풀 안에서 라운드별 하위범위로 eligiblePlayerIds를
-// 확정 저장한다 — 이후 드래프트 진행 중엔(RPC들) meta_players를 재쿼리하지 않고 이 배열을
-// 그대로 읽기만 하므로 "라운드 풀 고갈"이 런타임에 발생할 수 없다(저장 시점에 부족하면
-// 저장 자체를 거부한다).
+// 저장되는 JSON을 만든다.
 //
-// server/src/ 미러 없음 — eligiblePlayerIds는 이 함수가 저장 시점에 한 번 확정해두는 값이고
-// 이후 서버는 그 배열을 읽기만 하면 되므로, draftPoolQuery.ts/draftPoolCapacity.ts와 달리
-// 서버가 독립적으로 재계산할 이유가 없다.
-import { fetchDraftPoolPlayers } from './draftPoolCapacity';
+// [2026-09-20 안 A 배선] 후보는 meta_players가 아니라 시즌 카드(meta_player_cards)다.
+// 라운드마다 컬렉션(collectionIds, 비면 전체 카드)과 OVR 범위로 카드를 걸러 eligiblePlayerIds에
+// meta_player_cards.id 를 확정 저장한다 — 이후 드래프트 진행 중엔(RPC들) 카드 테이블을 재쿼리하지
+// 않고 이 배열을 그대로 읽기만 하므로 "라운드 풀 고갈"이 런타임에 발생할 수 없다(저장 시점에
+// 부족하면 저장 자체를 거부한다). 카드 OVR(manual_ovr 반영)은 포맷 최상위 cardOvrById에 함께
+// 저장해 서버 자동 지명(만료/강제 완료)이 같은 값으로 정렬하게 한다.
+// 글로벌 OVR 범위(leagues.draft_ovr_min/max)는 라운드 하위범위의 상한선으로만 쓴다. 연도 범위
+// (draftYearMin/Max)는 카드에 지명 연도 개념이 없어 무시된다(필드는 하위호환으로 남김).
+//
+// server/src/ 미러 없음 — eligiblePlayerIds/cardOvrById는 저장 시점에 한 번 확정해두는 값이고
+// 이후 서버는 그 값을 읽기만 한다.
+import { fetchCardPool, type CardPoolEntry } from './cardPool';
 
 export interface PersonalDraftRoundInput {
     round: number;
@@ -17,13 +21,15 @@ export interface PersonalDraftRoundInput {
     picks: number;
     ovrMin: number;
     ovrMax: number;
-    /** null이면 글로벌 draftYearMin/Max를 그대로 상속(이 라운드에선 연도로 추가로 좁히지 않음). */
+    /** 카드 배선 이후 미사용(하위호환) — 항상 null 권장. */
     draftYearMin: number | null;
     draftYearMax: number | null;
+    /** 이 라운드 후보를 뽑을 카드 컬렉션(meta_player_card_collections.id). 비거나 없으면 전체 카드. */
+    collectionIds?: string[];
 }
 
 export interface PersonalDraftRound extends PersonalDraftRoundInput {
-    /** 저장 시점에 확정된 후보 meta_players.id 목록 — 픽 시점엔 재쿼리하지 않고 이 배열에서만 뽑는다. */
+    /** 저장 시점에 확정된 후보 meta_player_cards.id 목록 — 픽 시점엔 재쿼리하지 않고 이 배열에서만 뽑는다. */
     eligiblePlayerIds: string[];
 }
 
@@ -32,17 +38,22 @@ export interface PersonalDraftFormat {
     /** 라운드당 픽 제한시간(초). null이면 타이머 없음. 만료 시 서버가 팩 내 최고 OVR 카드를 자동 지명. */
     pickTimerSec: number | null;
     rounds: PersonalDraftRound[];
+    /** 'cards'면 eligiblePlayerIds가 meta_player_cards.id(2026-09-20 이후). 없으면 옛 meta_players 포맷. */
+    source?: 'cards';
+    /** 카드별 유효 OVR(manual_ovr 반영) — 서버 자동 지명 정렬용. */
+    cardOvrById?: Record<string, number>;
 }
 
 export interface BuildPersonalDraftFormatParams {
     /** 라운드당 픽 제한시간(초, 정수 1 이상). null/undefined면 타이머 없음. */
     pickTimerSec?: number | null;
-    /** leagues.draft_year_min/max — 글로벌 범위. 라운드별 하위범위는 이 범위를 벗어날 수 없다. */
+    /** leagues.draft_year_min/max — 카드 배선 이후엔 검증에만 쓰이고 필터엔 영향 없음. */
     globalDraftYearMin: number;
     globalDraftYearMax: number;
     /** leagues.draft_ovr_min/max — 글로벌 범위. */
     globalOvrMin: number;
     globalOvrMax: number;
+    /** 카드는 자체 능력치를 갖는 독립 row라 피크 오버라이드가 적용되지 않는다(시그니처 호환용). */
     useCustomOverrides: boolean;
     rounds: PersonalDraftRoundInput[];
 }
@@ -67,6 +78,8 @@ export const PERSONAL_DRAFT_POOL_SIZE_MAX = 30;
 export const PICK_TIMER_SEC_MIN = 10;
 export const PICK_TIMER_SEC_MAX = 600;
 export const PICK_TIMER_SEC_DEFAULT = 90;
+/** 카드 전용 OVR 상한(meta_player_cards.manual_ovr CHECK 0~999) — 글로벌 OVR 범위 입력 상한. */
+export const PERSONAL_DRAFT_OVR_MAX = 999;
 
 export interface FixedDeclineCurveOptions {
     totalRounds: number;
@@ -109,6 +122,7 @@ export function buildFixedDeclineCurve(
             ovrMax: Math.min(globalOvrMax, ovrMax),
             draftYearMin: null,
             draftYearMax: null,
+            collectionIds: [],
         });
     }
     return rounds;
@@ -179,19 +193,25 @@ export function validatePersonalDraftInput(params: ValidatePersonalDraftInputPar
     return null;
 }
 
+/** 라운드 조건(컬렉션 + OVR 범위)에 맞는 카드만 — 빌더와 편집기의 "후보 인원 확인"이 같은 함수를 쓴다. */
+export function filterCardsForRound(pool: CardPoolEntry[], r: PersonalDraftRoundInput): CardPoolEntry[] {
+    const cols = r.collectionIds ?? [];
+    return pool.filter(c => {
+        if (c.ovr < r.ovrMin || c.ovr > r.ovrMax) return false;
+        if (cols.length > 0 && !c.collectionIds.some(id => cols.includes(id))) return false;
+        return true;
+    });
+}
+
 /**
- * 라운드별 설정을 검증하고, 글로벌 풀을 한 번만 조회해 각 라운드의 eligiblePlayerIds를
+ * 라운드별 설정을 검증하고, 카드 풀을 한 번만 조회해 각 라운드의 eligiblePlayerIds(카드 id)를
  * 메모리에서 필터링으로 확정한다. 어느 라운드든 poolSize보다 후보가 적으면 저장 전체를
  * 거부한다(부분 성공 없음 — 나중에 특정 라운드만 못 뽑는 상태가 남는 걸 막기 위함).
  */
 export async function buildPersonalDraftFormat(
     params: BuildPersonalDraftFormatParams,
 ): Promise<BuildPersonalDraftFormatResult> {
-    const {
-        globalDraftYearMin, globalDraftYearMax,
-        globalOvrMin, globalOvrMax,
-        useCustomOverrides, rounds,
-    } = params;
+    const { globalDraftYearMin, globalDraftYearMax, globalOvrMin, globalOvrMax, rounds } = params;
     const pickTimerSec = params.pickTimerSec ?? null;
 
     const syncError = validatePersonalDraftInput({
@@ -199,50 +219,39 @@ export async function buildPersonalDraftFormat(
     });
     if (syncError) return { ok: false, error: syncError };
 
-    // 글로벌 풀은 한 번만 조회 — 라운드별 하위범위는 이 결과를 메모리에서 다시 거르기만 한다.
-    // fetchDraftPoolPlayers는 기존 공유풀 드래프트 용량 검증(draftPoolCapacity.ts)과 동일한
-    // 필터·매핑 순서(연도 → 매핑 → OVR)를 쓴다.
-    let globalPool;
+    let pool: CardPoolEntry[];
     try {
-        globalPool = await fetchDraftPoolPlayers({
-            draftYearMin: globalDraftYearMin,
-            draftYearMax: globalDraftYearMax,
-            ovrMin: globalOvrMin,
-            ovrMax: globalOvrMax,
-            useCustomOverrides,
-        });
+        pool = await fetchCardPool();
     } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : '선수 풀 조회에 실패했습니다.' };
+        return { ok: false, error: e instanceof Error ? e.message : '카드 풀 조회에 실패했습니다.' };
+    }
+    if (pool.length === 0) {
+        return { ok: false, error: '시즌 카드가 한 장도 없습니다. 어드민 "카드 관리" 탭에서 카드를 먼저 만들어주세요.' };
     }
 
     const resolvedRounds: PersonalDraftRound[] = [];
+    const cardOvrById: Record<string, number> = {};
     for (const r of rounds) {
-        const yearMin = r.draftYearMin ?? globalDraftYearMin;
-        const yearMax = r.draftYearMax ?? globalDraftYearMax;
-        // 라운드가 연도로 추가로 좁히지 않으면(둘 다 null) draftYear 필드 결측 여부와 무관하게
-        // 글로벌 풀을 그대로 신뢰한다 — draftYear는 일부 선수에서 base_attributes 결측으로
-        // undefined일 수 있는데(draftPoolQuery.ts 상단 주석 참고), 이미 글로벌 SQL 필터를
-        // 통과한 선수를 라운드 단계에서 다시 떨어뜨리지 않기 위함.
-        const narrowsByYear = r.draftYearMin != null || r.draftYearMax != null;
-        const eligible = globalPool.filter(p => {
-            if (p.ovr < r.ovrMin || p.ovr > r.ovrMax) return false;
-            if (narrowsByYear) {
-                if (p.draftYear == null || p.draftYear < yearMin || p.draftYear > yearMax) return false;
-            }
-            return true;
-        });
+        const eligible = filterCardsForRound(pool, r);
         if (eligible.length < r.poolSize) {
             return {
                 ok: false,
-                error: `라운드 ${r.round}: 조건을 만족하는 선수가 ${eligible.length}명뿐입니다 `
-                     + `(노출 카드 수 ${r.poolSize}명 필요). 오버롤/연도 범위를 넓혀주세요.`,
+                error: `라운드 ${r.round}: 조건을 만족하는 카드가 ${eligible.length}장뿐입니다 `
+                     + `(노출 카드 수 ${r.poolSize}장 필요). 오버롤 범위를 넓히거나 컬렉션을 더 고르세요.`,
             };
         }
-        resolvedRounds.push({ ...r, eligiblePlayerIds: eligible.map(p => String(p.id)) });
+        for (const c of eligible) cardOvrById[c.id] = c.ovr;
+        resolvedRounds.push({
+            ...r,
+            draftYearMin: null,
+            draftYearMax: null,
+            collectionIds: r.collectionIds ?? [],
+            eligiblePlayerIds: eligible.map(c => c.id),
+        });
     }
 
     return {
         ok: true,
-        format: { totalRounds: rounds.length, pickTimerSec, rounds: resolvedRounds },
+        format: { totalRounds: rounds.length, pickTimerSec, rounds: resolvedRounds, source: 'cards', cardOvrById },
     };
 }

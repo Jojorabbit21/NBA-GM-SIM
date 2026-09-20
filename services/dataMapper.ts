@@ -293,7 +293,13 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     const manualOvr = Number(getCol(p, ['ovr', 'OVR']));
     const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
     const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
-    const { ovr, archetype, secondaryArchetype } = calculateOvrWithArchetype(ovrInput, position);
+    const ovrCalc = calculateOvrWithArchetype(ovrInput, position);
+    // [2026-09-20] 시즌 카드(meta_player_cards.manual_ovr) 전용 고정 OVR — row에 manual_ovr 컬럼이 있을 때만.
+    // meta_players row에는 이 컬럼이 없으므로 일반 선수 OVR은 지금처럼 항상 능력치 기반 동적 계산.
+    // server/src/shared/dataMapper.ts 미러 — 둘 다 같이 바꿀 것.
+    const cardFixedOvr = raw.manual_ovr != null && !isNaN(Number(raw.manual_ovr)) ? Number(raw.manual_ovr) : null;
+    const ovr = cardFixedOvr ?? ovrCalc.ovr;
+    const { archetype, secondaryArchetype } = ovrCalc;
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI

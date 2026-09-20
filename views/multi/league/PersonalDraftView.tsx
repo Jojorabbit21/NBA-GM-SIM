@@ -33,7 +33,7 @@ const PersonalDraftView: React.FC = () => {
     const useCustomOverrides = shouldUseCustomOverrides(league);
 
     const {
-        packState, poolPlayers, roster,
+        packState, poolPlayers, roster, collectionsById,
         isLoading, isSubmitting, error,
         timeRemaining, lastAutoPicked,
         submitPick,
@@ -165,10 +165,9 @@ const PersonalDraftView: React.FC = () => {
                         {format.rounds.map(r => {
                             const done = isCompleted || r.round < currentRound;
                             const cur  = !isCompleted && r.round === currentRound;
-                            const narrowsByYear = r.draftYearMin != null || r.draftYearMax != null;
-                            const yearClause = narrowsByYear
-                                ? `, ${r.draftYearMin ?? league.draft_year_min}~${r.draftYearMax ?? league.draft_year_max}년 지명`
-                                : '';
+                            // [2026-09-20] 라운드 컬렉션(카드 배선) — 비어 있으면 전체 카드
+                            const colNames = (r.collectionIds ?? []).map(id => collectionsById.get(id)?.name).filter(Boolean) as string[];
+                            const yearClause = colNames.length > 0 ? `, ${colNames.join(' · ')}` : '';
                             return (
                                 <div
                                     key={r.round}
@@ -221,7 +220,6 @@ const PersonalDraftView: React.FC = () => {
                                     <PersonalDraftCard
                                         key={p.id}
                                         player={p}
-                                        season={room.season}
                                         selected={selectedId === p.id}
                                         disabled={isSubmitting || pickedThisRound.has(p.id)}
                                         onSelect={handleSelect}
@@ -252,7 +250,7 @@ const PersonalDraftView: React.FC = () => {
                                         {e.player ? (
                                             <>
                                                 <OvrRowBadge value={e.player.ovr} />
-                                                <span className="text-sm font-medium truncate flex-1 min-w-0 text-white">{e.player.name}</span>
+                                                <span className="text-sm font-medium truncate flex-1 min-w-0 text-white">{e.player.name} <span className="text-slate-500 font-normal tabular-nums">{e.player.season}</span></span>
                                                 <span className="text-sm text-slate-500 w-7 text-center shrink-0">{e.player.position}</span>
                                             </>
                                         ) : (

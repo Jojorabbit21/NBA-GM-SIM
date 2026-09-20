@@ -162,11 +162,20 @@ async function initializeTeamTactics(
 
     if (instances && instances.length > 0) {
         const sourceIds = [...new Set(instances.map((i: any) => String(i.source_player_id)))];
-        const { data: rawPlayers } = await supabase
-            .from('meta_players')
-            .select('id, name, position, base_attributes, tendencies')
+        // [2026-09-20 안 A 배선] source는 meta_player_cards.id — simRunner.ts와 같은 카드 우선 + meta_players 폴백.
+        const { data: cardRows } = await supabase
+            .from('meta_player_cards')
+            .select('id, name, position, base_attributes, tendencies, manual_ovr')
             .in('id', sourceIds);
-        const rawById = new Map((rawPlayers ?? []).map((r: any) => [String(r.id), r]));
+        const rawById = new Map((cardRows ?? []).map((r: any) => [String(r.id), r]));
+        const missing = sourceIds.filter(id => !rawById.has(id));
+        if (missing.length > 0) {
+            const { data: rawPlayers } = await supabase
+                .from('meta_players')
+                .select('id, name, position, base_attributes, tendencies')
+                .in('id', missing);
+            for (const r of (rawPlayers ?? []) as any[]) rawById.set(String(r.id), r);
+        }
         for (const { instance_id, source_player_id } of instances as any[]) {
             const raw = rawById.get(String(source_player_id));
             if (!raw) continue;

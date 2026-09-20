@@ -14,7 +14,7 @@ import { supabase } from '../../../../services/supabaseClient';
 import { DraftPoolSettings } from '../../../../components/multi/DraftPoolSettings';
 import { PersonalDraftFormatEditor } from '../../../../components/multi/PersonalDraftFormatEditor';
 import {
-    buildPersonalDraftFormat, computeRosterSize,
+    buildPersonalDraftFormat, computeRosterSize, PERSONAL_DRAFT_OVR_MAX,
     type PersonalDraftRoundInput,
 } from '../../../../services/multi/personalDraftFormat';
 import { KST_OFFSET_MS } from '../../../../utils/kstTime';
@@ -45,6 +45,7 @@ function toRoundInputs(league: LeagueRow): PersonalDraftRoundInput[] {
         round: r.round, poolSize: r.poolSize, picks: r.picks,
         ovrMin: r.ovrMin, ovrMax: r.ovrMax,
         draftYearMin: r.draftYearMin ?? null, draftYearMax: r.draftYearMax ?? null,
+        collectionIds: r.collectionIds ?? [],
     }));
 }
 
@@ -174,6 +175,13 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                 </div>
             </div>
 
+            {/* [2026-09-20] 카드 배선 이전(meta_players 후보)에 저장된 포맷 — 픽 시점에 인스턴스 FK 위반이 나므로 재저장 필요 */}
+            {!formatLocked && league.personal_draft_format && league.personal_draft_format.source !== 'cards' && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal bg-amber-950/30 border border-amber-700/40 rounded-xl px-3 py-2">
+                    <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                    <span>이 포맷은 시즌 카드 도입 이전에 저장된 옛 형식입니다. 아래 라운드 구성을 확인하고 한 번 저장해야 팩 드래프트가 정상 동작합니다.</span>
+                </p>
+            )}
             {formatLocked && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal bg-amber-950/30 border border-amber-700/40 rounded-xl px-3 py-2">
                     <Lock size={12} className="shrink-0 mt-0.5" />
@@ -279,6 +287,7 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                     draftFormat="snake" onDraftFormatChange={() => {}}
                     useCustomOverrides={useCustomOverrides} onUseCustomOverridesChange={setUseCustomOverrides}
                     hideDraftOrder
+                    ovrCap={PERSONAL_DRAFT_OVR_MAX}
                 />
                 <PersonalDraftFormatEditor
                     rounds={rounds} onRoundsChange={setRounds}

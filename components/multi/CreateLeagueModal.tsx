@@ -13,7 +13,7 @@ import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
 import { PersonalDraftFormatEditor } from './PersonalDraftFormatEditor';
 import {
     buildFixedDeclineCurve, buildPersonalDraftFormat, computeRosterSize,
-    PICK_TIMER_SEC_DEFAULT, type PersonalDraftRoundInput, type PersonalDraftFormat,
+    PICK_TIMER_SEC_DEFAULT, PERSONAL_DRAFT_OVR_MAX, type PersonalDraftRoundInput, type PersonalDraftFormat,
 } from '../../services/multi/personalDraftFormat';
 import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 import { TEAM_DATA } from '../../data/teamData';
@@ -1064,6 +1064,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             teamCount={isPersonalDraft ? undefined : maxTeams}
                             totalRounds={isPersonalDraft ? undefined : totalRounds}
                             hideDraftOrder={isPersonalDraft}
+                            ovrCap={isPersonalDraft ? PERSONAL_DRAFT_OVR_MAX : undefined}
                         />
 
                         {isPersonalDraft && (

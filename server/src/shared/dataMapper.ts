@@ -170,7 +170,11 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
     };
 
     const ovrResult = calculateOvrWithArchetype(player);
-    player.ovr = ovrResult.ovr;
+    // [2026-09-20] 시즌 카드(meta_player_cards.manual_ovr) 전용 고정 OVR — row에 manual_ovr 컬럼이 있을 때만.
+    // meta_players row에는 이 컬럼이 없으므로 일반 선수 OVR은 지금처럼 항상 능력치 기반 동적 계산.
+    // services/dataMapper.ts(클라이언트) 미러 — 둘 다 같이 바꿀 것.
+    const cardFixedOvr = raw.manual_ovr != null && !isNaN(Number(raw.manual_ovr)) ? Number(raw.manual_ovr) : null;
+    player.ovr = cardFixedOvr ?? ovrResult.ovr;
     player.archetype = ovrResult.archetype;
     player.secondaryArchetype = ovrResult.secondaryArchetype;
     // potential은 항상 현재 ovr 이상이어야 함(성장 로직이 potential < ovr을 가정하지 않음)

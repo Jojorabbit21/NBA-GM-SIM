@@ -11,12 +11,16 @@
 // 이때 참고할 수 있도록 그 시즌의 실제 스탯 라인을 편집기 옆에 같이 보여준다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Loader2, Save, Trash2, Copy, Search, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Trash2, Copy, Search, AlertCircle, ImagePlus, X } from 'lucide-react';
 import { searchPlayers, type MetaPlayerRow } from '../services/admin/playerAdminService';
 import {
-    listCardsForPlayer, createCardFromCopy, updateCard, deleteCard,
+    listCardsForPlayer, createCardFromCopy, updateCard, deleteCard, uploadCardBackground,
     fetchAvailableSeasons, fetchSeasonStatLine, type PlayerCardRow, type UpdateCardPatch,
 } from '../services/admin/playerCardAdminService';
+import { buildCardBackground, resolveCardTeamGradient } from '../utils/cardBackground';
+import { convertImageToWebp } from '../utils/imageToWebp';
+import { useCardTeamColors } from '../hooks/useCardTeamColors';
+import { getRealTeamLogoUrl } from '../utils/constants';
 import {
     listCollections, listCollectionsForCard, addCardToCollection, removeCardFromCollection,
     type CardCollectionRow,
@@ -113,6 +117,27 @@ const PlayerCardEditorPage: React.FC = () => {
         listCollections().then(rows => setAllCollections(rows)).catch(() => setAllCollections([]));
     }, []);
 
+    // ── [2026-09-20] 카드별 커스텀 배경 이미지 + 미리보기 ─────────────────────────
+    // 해석 순서: 카드 이미지 → (미리보기용으로 고른) 소속 컬렉션 배경 → 팀 그라디언트.
+    // 카드는 여러 컬렉션에 속할 수 있어 미리보기에 쓸 컬렉션을 셀렉터로 고른다(기본: 첫 소속 컬렉션).
+    const cardTeamColors = useCardTeamColors();
+    const [bgUploading, setBgUploading] = useState(false);
+    const [bgErr, setBgErr] = useState<string | null>(null);
+    const [previewCollectionId, setPreviewCollectionId] = useState<string>('');
+    const memberCollections = useMemo(
+        () => allCollections.filter(c => cardCollectionIds.has(c.id)),
+        [allCollections, cardCollectionIds],
+    );
+    const previewCollection = useMemo(
+        () => memberCollections.find(c => c.id === previewCollectionId) ?? memberCollections[0] ?? null,
+        [memberCollections, previewCollectionId],
+    );
+    const previewBackground = useMemo(() => buildCardBackground(
+        previewCollection,
+        resolveCardTeamGradient(draft.base_team_id || null, cardTeamColors),
+        draft.bg_image_url ?? null,
+    ), [previewCollection, draft.base_team_id, draft.bg_image_url, cardTeamColors]);
+
     const loadIntoEditor = useCallback((card: PlayerCardRow) => {
         setEditing(card);
         setDraft({
@@ -121,12 +146,37 @@ const PlayerCardEditorPage: React.FC = () => {
             attrs: { ...(card.base_attributes ?? {}) },
             manualOvrEnabled: card.manual_ovr != null,
             manualOvr: card.manual_ovr ?? '',
+            bg_image_url: card.bg_image_url ?? null,
         });
-        setSaveOk(false); setSaveErr(null);
+        setSaveOk(false); setSaveErr(null); setBgErr(null); setPreviewCollectionId('');
         fetchSeasonStatLine(card.source_player_id, card.season).then(setStatLine).catch(() => setStatLine(null));
         setCardCollectionIds(new Set());
         listCollectionsForCard(card.id).then(ids => setCardCollectionIds(new Set(ids))).catch(() => setCardCollectionIds(new Set()));
     }, []);
+
+    const handleBgUpload = async (file: File | null) => {
+        if (!editing || !file) return;
+        setBgUploading(true); setBgErr(null);
+        try {
+            // 컬렉션 배경과 같은 파이프라인: 어떤 형식이든 브라우저에서 WebP 변환(+긴 변 1200/2000px 이내), 5MB 검사
+            let blob: Blob = file;
+            let ext = (file.name.split('.').pop() || 'png').toLowerCase();
+            let contentType = file.type || 'application/octet-stream';
+            const converted = await convertImageToWebp(file);
+            if (converted) {
+                blob = converted.blob; ext = 'webp'; contentType = 'image/webp';
+            } else if (!['image/webp', 'image/png', 'image/jpeg', 'image/avif'].includes(contentType)) {
+                throw new Error('이 브라우저에서는 WebP 변환이 안 되고, 원본 형식은 업로드가 허용되지 않습니다(WebP/PNG/JPEG/AVIF).');
+            }
+            if (blob.size > 5 * 1024 * 1024) { throw new Error(`변환 후에도 5MB를 넘습니다(${(blob.size / 1024 / 1024).toFixed(1)}MB). 더 작은 이미지를 써주세요.`); }
+            const url = await uploadCardBackground(editing.id, blob, ext, contentType);
+            setDraft((d: any) => ({ ...d, bg_image_url: url }));
+        } catch (e) {
+            setBgErr(e instanceof Error ? e.message : '업로드에 실패했습니다.');
+        } finally {
+            setBgUploading(false);
+        }
+    };
 
     const handleToggleCollection = async (collectionId: string, isMember: boolean) => {
         if (!editing) return;
@@ -182,8 +232,15 @@ const PlayerCardEditorPage: React.FC = () => {
                 height: draft.height === '' ? null : Number(draft.height),
                 weight: draft.weight === '' ? null : Number(draft.weight),
                 base_team_id: draft.base_team_id || null,
-                base_attributes: { ...draft.attrs, age: draft.attrs.age != null ? Number(draft.attrs.age) : undefined },
+                // [2026-09-20] 유효 OVR(고정값 또는 계산값)을 base_attributes.ovr에도 기록 — 서버 자동 지명 정렬
+                // (personal_draft_card_ovr)의 폴백 기준. 포맷의 cardOvrById가 있으면 그게 우선이라 표시엔 영향 없음.
+                base_attributes: {
+                    ...draft.attrs,
+                    age: draft.attrs.age != null ? Number(draft.attrs.age) : undefined,
+                    ...(draftOvrPreview != null ? { ovr: draftOvrPreview } : {}),
+                },
                 manual_ovr: draft.manualOvrEnabled && draft.manualOvr !== '' ? Number(draft.manualOvr) : null,
+                bg_image_url: draft.bg_image_url ?? null,
             };
             await updateCard(editing.id, patch);
             setSaveOk(true);
@@ -442,6 +499,70 @@ const PlayerCardEditorPage: React.FC = () => {
                                     })}
                                 </div>
                             )}
+                        </div>
+
+                        {/* 카드 배경 이미지(카드별 커스텀) + 미리보기 — 이미지는 업로드 즉시 미리보기에 반영되고 "저장"을 눌러야 DB에 기록 */}
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4 bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs text-slate-400 ko-normal">카드 배경 이미지</label>
+                                    {bgErr && <span className="text-xs text-red-400 ko-normal">{bgErr}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                                        bgUploading ? 'bg-slate-800 text-slate-500' : 'bg-slate-800 text-slate-300 hover:text-white'
+                                    }`}>
+                                        {bgUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
+                                        {bgUploading ? '업로드 중…' : draft.bg_image_url ? '이미지 교체' : '이미지 업로드'}
+                                        <input type="file" accept="image/*" className="hidden" disabled={bgUploading}
+                                            onChange={e => { handleBgUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                                    </label>
+                                    {draft.bg_image_url && (
+                                        <button type="button" onClick={() => setDraft((d: any) => ({ ...d, bg_image_url: null }))}
+                                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-slate-500 hover:text-red-400 transition-colors">
+                                            <X size={12} />제거
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-slate-600 ko-normal">
+                                    이 카드에만 쓰는 배경입니다. 없으면 소속 컬렉션의 배경, 그것도 없으면 팀 컬러 그라디언트가 적용됩니다.
+                                    어떤 형식이든 WebP로 변환해 저장하며(권장 비율 3:4.6), 업로드 후 "저장"을 눌러야 반영됩니다.
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs text-slate-400 ko-normal shrink-0">미리보기 컬렉션</label>
+                                    {memberCollections.length === 0 ? (
+                                        <span className="text-xs text-slate-600 ko-normal">소속 컬렉션 없음 — 팀 컬러 그라디언트로 표시</span>
+                                    ) : (
+                                        <select value={previewCollection?.id ?? ''} onChange={e => setPreviewCollectionId(e.target.value)}
+                                            className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                                            {memberCollections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 미리보기 — 드래프트 카드와 같은 구성(컬렉션 헤더 / OVR 배지 / 중앙 로고 / 하단 텍스트 그라디언트) */}
+                            <div>
+                                <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기</p>
+                                <div className="relative rounded-xl border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground }}>
+                                    <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate px-2">
+                                        {previewCollection?.name ?? ''}
+                                    </div>
+                                    <div className="relative flex-1 flex flex-col px-2 pt-2">
+                                        <div className="self-start">{draftOvrPreview != null && <OvrBadge value={draftOvrPreview} size="md" />}</div>
+                                        {draft.base_team_id && (
+                                            <img src={getRealTeamLogoUrl(draft.base_team_id)} alt="" draggable={false}
+                                                className="absolute inset-0 m-auto w-[40%] aspect-square object-contain pointer-events-none"
+                                                style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,.6))' }} />
+                                        )}
+                                        <div className="mt-auto -mx-2 px-2 pt-8 pb-2 text-center relative z-10"
+                                            style={{ background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,.55) 40%, rgba(2,6,23,.85) 100%)' }}>
+                                            <div className="text-sm font-black text-white truncate">{draft.name}</div>
+                                            <div className="text-[11px] text-white/70">{draft.season}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* 능력치 — 카테고리별 */}
