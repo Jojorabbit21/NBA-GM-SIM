@@ -13,7 +13,7 @@ export interface CardCollectionRow extends CardBackgroundSettings {
     updated_at: string;
 }
 
-const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, created_at, updated_at';
+const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, created_at, updated_at';
 const COLLECTION_COLS = 'id, name, description, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url, created_at, updated_at';
 const BG_BUCKET = 'card-backgrounds';
 

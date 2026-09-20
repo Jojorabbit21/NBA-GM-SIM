@@ -19,11 +19,16 @@ export interface PlayerCardRow {
     /** [2026-09-18] 카드 전용 OVR 고정값. null이면 지금처럼 base_attributes 기반 동적 계산(calculateOvr).
      *  meta_players/일반 선수 OVR 파이프라인과는 완전히 분리 — 이 카드에만 적용됨. */
     manual_ovr: number | null;
+    /** [2026-09-20] 카드별 커스텀 배경 이미지. null이면 소속 컬렉션 배경 → 팀 그라디언트 폴백
+     *  (utils/cardBackground.ts buildCardBackground). */
+    bg_image_url: string | null;
     created_at: string;
     updated_at: string;
 }
 
-const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, created_at, updated_at';
+const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, created_at, updated_at';
+const BG_BUCKET = 'card-backgrounds';
+const CARD_BG_PREFIX = 'cards';
 
 /** 특정 실제 선수(meta_players.id)의 카드 전체 — 시즌 오름차순 정렬은 문자열이라 완벽하지 않을 수 있음(참고용). */
 export async function listCardsForPlayer(sourcePlayerId: string): Promise<PlayerCardRow[]> {
@@ -96,6 +101,7 @@ export interface UpdateCardPatch {
     base_attributes?: Record<string, any>;
     tendencies?: Record<string, any> | null;
     manual_ovr?: number | null;
+    bg_image_url?: string | null;
 }
 
 export async function updateCard(id: string, patch: UpdateCardPatch): Promise<void> {
@@ -106,9 +112,39 @@ export async function updateCard(id: string, patch: UpdateCardPatch): Promise<vo
     if (error) throw error;
 }
 
+/**
+ * 카드 배경 이미지 업로드(WebP 권장, 5MB 이하) → 공개 URL 반환. 저장은 호출부가
+ * updateCard({ bg_image_url })로 따로 한다. 컬렉션 배경과 같은 버킷을 쓰되 경로를
+ * cards/{cardId}/{timestamp}.{ext}로 나눠 삭제 시 카드 단위로 정리할 수 있게 한다.
+ */
+export async function uploadCardBackground(
+    cardId: string,
+    blob: Blob,
+    ext: string,
+    contentType: string,
+): Promise<string> {
+    const path = `${CARD_BG_PREFIX}/${cardId}/${Date.now()}.${ext.replace(/^\./, '').toLowerCase()}`;
+    const { error } = await supabase.storage
+        .from(BG_BUCKET)
+        .upload(path, blob, { contentType, upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from(BG_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+}
+
+/** 카드 폴더(cards/{cardId}/)의 배경 이미지 전부 삭제. 실패해도 카드 삭제는 막지 않는다(고아 파일만 남음). */
+export async function removeCardBackgroundFiles(cardId: string): Promise<void> {
+    const folder = `${CARD_BG_PREFIX}/${cardId}`;
+    const { data: files, error } = await supabase.storage.from(BG_BUCKET).list(folder);
+    if (error || !files?.length) return;
+    await supabase.storage.from(BG_BUCKET).remove(files.map(f => `${folder}/${f.name}`));
+}
+
 export async function deleteCard(id: string): Promise<void> {
     const { error } = await supabase.from('meta_player_cards').delete().eq('id', id);
     if (error) throw error;
+    // 카드 행이 지워진 뒤 스토리지 이미지 정리 — 실패는 무시(행 삭제가 우선)
+    try { await removeCardBackgroundFiles(id); } catch { /* noop */ }
 }
 
 /** 선수의 career_history에서 시즌 라벨 목록만 뽑아온다(최근 시즌 먼저) — 시즌 선택 드롭다운용. */

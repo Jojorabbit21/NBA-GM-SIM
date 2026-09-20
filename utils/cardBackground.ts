@@ -78,12 +78,25 @@ function teamGradientCss(team: CardTeamColor | readonly [string, string]): strin
 }
 
 /**
- * @param settings 컬렉션 배경 설정(없으면 team 취급).
- * @param team     카드 원팀 그라디언트 — resolveCardTeamGradient() 결과, 또는 옛 호출부 호환용
- *                 [primary, secondary] 튜플(각도 165 고정). 'team'일 때와 폴백에 사용.
+ * @param settings     컬렉션 배경 설정(없으면 team 취급).
+ * @param team         카드 원팀 그라디언트 — resolveCardTeamGradient() 결과, 또는 옛 호출부 호환용
+ *                     [primary, secondary] 튜플(각도 165 고정). 'team'일 때와 폴백에 사용.
+ * @param cardImageUrl [2026-09-20] 카드별 커스텀 배경 이미지(meta_player_cards.bg_image_url).
+ *                     있으면 컬렉션 배경보다 우선하고, 그 아래에 컬렉션/팀 배경을 폴백으로 깐다.
  * @returns CSS `background` 속성 문자열.
  */
 export function buildCardBackground(
+    settings: Partial<CardBackgroundSettings> | null | undefined,
+    team: CardTeamColor | readonly [string, string],
+    cardImageUrl?: string | null,
+): string {
+    const base = buildCollectionBackground(settings, team);
+    if (cardImageUrl) return `url("${cardImageUrl}") center / cover no-repeat, ${base}`;
+    return base;
+}
+
+/** 카드 이미지를 제외한 컬렉션 배경 → 팀 그라디언트 해석. */
+function buildCollectionBackground(
     settings: Partial<CardBackgroundSettings> | null | undefined,
     team: CardTeamColor | readonly [string, string],
 ): string {

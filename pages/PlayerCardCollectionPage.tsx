@@ -698,7 +698,11 @@ const PlayerCardCollectionPage: React.FC = () => {
                                 <div className="bg-slate-900/60 border border-slate-800 rounded-xl divide-y divide-slate-800/60">
                                     {members.map(card => (
                                         <div key={card.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                                            <span className="text-slate-200 truncate">{card.name} <span className="text-slate-500">· {card.season} · {card.position}</span></span>
+                                            <span className="text-slate-200 truncate flex items-center gap-2">
+                                                {card.name} <span className="text-slate-500">· {card.season} · {card.position}</span>
+                                                {/* [2026-09-20] 카드별 커스텀 배경이 있으면 이 컬렉션 배경 대신 그 이미지가 쓰임 */}
+                                                {card.bg_image_url && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">커스텀 배경</span>}
+                                            </span>
                                             <button
                                                 onClick={() => handleRemove(card.id)}
                                                 className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
