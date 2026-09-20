@@ -35,6 +35,26 @@
 
 ---
 
+## 2026-09-20 — 카드 컬렉션: 카드 모서리 둥글기(card_radius) 설정 — 직각 카드 가능
+
+**배경**: 사용자 요청 "카드에 보더 라디우스를 제거해보고싶어." 전역 상수 대신 컬렉션 옵션으로 두어 컬렉션별로 직각/둥근 카드를 비교할 수 있게.
+
+**변경 파일**:
+- `migrations/add_card_collection_radius.sql` (DB, **적용 완료**) — `meta_player_card_collections.card_radius integer DEFAULT 12 CHECK 0..32`
+- `utils/cardBackground.ts` (client) — `CardBackgroundSettings.card_radius`, 기본 12, `cardRadiusPx(settings)`
+- `services/admin/playerCardCollectionAdminService.ts`, `hooks/usePersonalDraft.ts` (client) — 조회 컬럼/매핑
+- `components/draft/PersonalDraftCard.tsx` (client) — `rounded-xl` 클래스 제거, `style.borderRadius = cardRadiusPx(컬렉션)`
+- `pages/PlayerCardCollectionPage.tsx` (client) — 배경 편집기에 슬라이더/숫자(0~32) + "직각"/"기본(12)" 버튼, 미리보기·그리드 반영, dirty 판정
+- `pages/PlayerCardEditorPage.tsx` (client) — 카드 편집기 미리보기 반영
+
+**Before**: 카드 모서리 고정 12px(`rounded-xl`) / **After**: 컬렉션별 0~32px. **기본값은 0(직각)** — 같은 날 후속 요청 "보더 라디우스 없음이 모든 카드의 기본 형식이 되도록"으로 DB 기본값·기존 행·클라이언트 기본값 모두 0으로 변경(컬렉션 없는 카드도 직각). 둥글게 하려면 컬렉션에서 값을 올린다.
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음.
+
+**롤백 방법**: 컬럼 DROP + `git checkout b16b1a72 -- <위 클라이언트 파일들>`.
+
+---
+
 ## 2026-09-20 — 카드 컬렉션: 하단 텍스트 그라디언트 on/off + 불투명도 설정
 
 **배경**: 사용자 요청 "카드 하단의 그라디언트를 컬렉션 배경 설정 화면에서 끄고 켤 수 있고, 불투명도를 조절할 수 있는 옵션도 만들어줘." 카드 하단 이름·시즌·팀·아키타입 뒤의 어두운 층(`rgba(2,6,23,0)→.55(40%)→.85`)이 컴포넌트 상수였다.

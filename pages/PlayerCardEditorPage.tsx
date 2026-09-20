@@ -17,7 +17,7 @@ import {
     listCardsForPlayer, createCardFromCopy, updateCard, deleteCard, uploadCardBackground, fetchCardById,
     fetchAvailableSeasons, fetchSeasonStatLine, type PlayerCardRow, type UpdateCardPatch,
 } from '../services/admin/playerCardAdminService';
-import { buildCardBackground, buildCardBottomGradient, resolveCardTeamGradient } from '../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { useCardTeamColors } from '../hooks/useCardTeamColors';
 import { getRealTeamLogoUrl } from '../utils/constants';
@@ -610,7 +610,7 @@ const PlayerCardEditorPage: React.FC = () => {
                             {/* 미리보기 — 드래프트 카드와 같은 구성(컬렉션 헤더 / OVR 배지 / 중앙 로고 / 하단 텍스트 그라디언트) */}
                             <div>
                                 <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기</p>
-                                <div className="relative rounded-xl border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground }}>
+                                <div className="relative border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground, borderRadius: cardRadiusPx(previewCollection) }}>
                                     <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate px-2">
                                         {previewCollection?.name ?? ''}
                                     </div>

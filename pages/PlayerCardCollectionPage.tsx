@@ -16,7 +16,7 @@ import {
 import { fetchCardTeamColors, upsertCardTeamColor, deleteCardTeamColor } from '../services/cardTeamColorService';
 import { CARD_TEAM_COLORS_QUERY_KEY } from '../hooks/useCardTeamColors';
 import {
-    buildCardBackground, buildCardBottomGradient, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
+    buildCardBackground, buildCardBottomGradient, cardRadiusPx, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
     type CardBackgroundSettings, type CardTeamColor,
 } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
@@ -72,6 +72,7 @@ function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editi
                 bg_image_url: collection.bg_image_url ?? null,
                 bottom_gradient_enabled: collection.bottom_gradient_enabled ?? true,
                 bottom_gradient_opacity: collection.bottom_gradient_opacity ?? 85,
+                card_radius: collection.card_radius ?? 0,
             },
         },
         seasonStats: null,
@@ -301,6 +302,7 @@ const PlayerCardCollectionPage: React.FC = () => {
             bg_image_url: selected.bg_image_url ?? null,
             bottom_gradient_enabled: selected.bottom_gradient_enabled ?? true,
             bottom_gradient_opacity: selected.bottom_gradient_opacity ?? 85,
+            card_radius: selected.card_radius ?? 0,
         });
         setBgErr(null); setBgSaveOk(false);
     }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -313,7 +315,8 @@ const PlayerCardCollectionPage: React.FC = () => {
         bg.bg_gradient_angle !== (selected.bg_gradient_angle ?? 165) ||
         (bg.bg_image_url ?? null) !== (selected.bg_image_url ?? null) ||
         bg.bottom_gradient_enabled !== (selected.bottom_gradient_enabled ?? true) ||
-        bg.bottom_gradient_opacity !== (selected.bottom_gradient_opacity ?? 85)
+        bg.bottom_gradient_opacity !== (selected.bottom_gradient_opacity ?? 85) ||
+        bg.card_radius !== (selected.card_radius ?? 0)
     );
 
     const handleBgUpload = async (file: File | null) => {
@@ -818,12 +821,29 @@ const PlayerCardCollectionPage: React.FC = () => {
                                     </label>
                                     <span className="text-[11px] text-slate-600 ko-normal">이름·시즌·팀 뒤에 깔리는 어두운 층. 값은 카드 맨 아래 지점의 불투명도입니다.</span>
                                 </div>
+                                {/* [2026-09-20] 카드 모서리 둥글기 — 0이면 직각 */}
+                                <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/60">
+                                    <label className="flex items-center gap-2 text-xs text-slate-300">
+                                        모서리 둥글기
+                                        <input type="range" min={0} max={32} step={1} value={bg.card_radius}
+                                            onChange={e => setBg(b => ({ ...b, card_radius: Number(e.target.value) }))}
+                                            className="w-32 accent-indigo-500" />
+                                        <input type="number" min={0} max={32} value={bg.card_radius}
+                                            onChange={e => setBg(b => ({ ...b, card_radius: Math.max(0, Math.min(32, Number(e.target.value) || 0)) }))}
+                                            className="w-14 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500" />
+                                        <span className="text-slate-400">px</span>
+                                    </label>
+                                    <button type="button" onClick={() => setBg(b => ({ ...b, card_radius: 0 }))}
+                                        className="px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-white hover:bg-white/5 transition-colors">직각(기본)</button>
+                                    <button type="button" onClick={() => setBg(b => ({ ...b, card_radius: 12 }))}
+                                        className="px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-white hover:bg-white/5 transition-colors">둥글게(12)</button>
+                                </div>
                             </div>
 
                             {/* 미리보기 — 실제 카드와 같은 상단 어둡기 오버레이(15→45%) + 능력치 영역 35% 다크 레이어 */}
                             <div>
                                 <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기{bg.bg_type === 'team' ? ' (예: 골든스테이트)' : ''}</p>
-                                <div className="rounded-xl border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground }}>
+                                <div className="border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground, borderRadius: cardRadiusPx(bg) }}>
                                     <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/25 border-b border-white/10 truncate px-2">{selected.name}</div>
                                     <div className="flex-1 flex flex-col items-center justify-center px-2" style={{ background: 'linear-gradient(180deg, rgba(2,6,23,.15) 0%, rgba(2,6,23,.45) 100%)' }}>
                                         <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#fb7185] via-[#e11d48] to-[#ff1457] text-white text-sm font-black flex items-center justify-center self-start">85</div>

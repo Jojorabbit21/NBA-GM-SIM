@@ -25,6 +25,8 @@ export interface CardBackgroundSettings {
     bottom_gradient_enabled: boolean;
     /** 하단 최대 불투명도 0~100(%). 기본 85 — 0%→40%→100% 지점이 0 / 0.65×값 / 값 으로 깔린다. */
     bottom_gradient_opacity: number;
+    /** [2026-09-20] 카드 모서리 둥글기(px, 0~32). 기본 0(직각) — 사용자 결정. */
+    card_radius: number;
 }
 
 export const DEFAULT_CARD_BACKGROUND: CardBackgroundSettings = {
@@ -36,7 +38,15 @@ export const DEFAULT_CARD_BACKGROUND: CardBackgroundSettings = {
     bg_image_url: null,
     bottom_gradient_enabled: true,
     bottom_gradient_opacity: 85,
+    card_radius: 0,
 };
+
+/** 카드 컨테이너 border-radius(px). 설정이 없으면 기본 0(직각). */
+export function cardRadiusPx(settings: Partial<Pick<CardBackgroundSettings, 'card_radius'>> | null | undefined): number {
+    const raw = settings?.card_radius;
+    if (raw == null || !Number.isFinite(raw)) return DEFAULT_CARD_BACKGROUND.card_radius;
+    return Math.max(0, Math.min(32, raw));
+}
 
 /**
  * 카드 하단 텍스트 블록 배경(CSS background). 꺼져 있으면 'transparent'.

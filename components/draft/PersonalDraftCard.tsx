@@ -10,7 +10,7 @@ import { PlayerRatingsStatsPopup } from '../common/PlayerHoverCard';
 import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 import { getCardExtraTeam } from '../../data/cardTeams';
-import { buildCardBackground, buildCardBottomGradient, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
 import type { PersonalDraftPlayer } from '../../hooks/usePersonalDraft';
 
 interface PersonalDraftCardProps {
@@ -49,6 +49,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
     const background = buildCardBackground(player.collection?.bg ?? null, colors, player.bgImageUrl);
     // [2026-09-20] 하단 텍스트 그라디언트 — 컬렉션 설정(on/off, 불투명도), 컬렉션 없으면 기본값
     const bottomGradient = buildCardBottomGradient(player.collection?.bg ?? null);
+    const radius = cardRadiusPx(player.collection?.bg ?? null);   // 컬렉션별 모서리 둥글기(0=직각)
     const subline = [teamName, player.position].filter(Boolean).join(' · ');
     const hasStats = (player.seasonStats?.g ?? 0) > 0;
 
@@ -94,10 +95,10 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                 onMouseEnter={onMove}
                 onMouseMove={onMove}
                 onMouseLeave={onLeave}
-                className={`relative rounded-xl border overflow-hidden flex flex-col select-none aspect-[3/4.6] outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
+                className={`relative border overflow-hidden flex flex-col select-none aspect-[3/4.6] outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
                     selected ? 'border-emerald-500' : 'border-slate-700'
                 } ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
-                style={{ background, boxShadow: selected ? SELECTED_SHADOW : undefined }}
+                style={{ background, borderRadius: radius, boxShadow: selected ? SELECTED_SHADOW : undefined }}
             >
                 {/* 컬렉션 헤더 — 소속 컬렉션이 없으면 빈 칸(높이는 유지) */}
                 <div className="h-6 shrink-0 px-2.5 flex items-center justify-center text-[11px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate text-center">

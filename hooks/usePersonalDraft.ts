@@ -86,7 +86,7 @@ interface UsePersonalDraftResult {
 }
 
 const CARD_SELECT = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, edition_id, edition:meta_card_editions(name)';
-const COLLECTION_SELECT = 'id, name, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url, bottom_gradient_enabled, bottom_gradient_opacity';
+const COLLECTION_SELECT = 'id, name, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url, bottom_gradient_enabled, bottom_gradient_opacity, card_radius';
 
 interface CachedCard {
     base: Omit<PersonalDraftPlayer, 'collection'>;
@@ -156,6 +156,7 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
                     bg_image_url: c.bg_image_url ?? null,
                     bottom_gradient_enabled: c.bottom_gradient_enabled ?? true,
                     bottom_gradient_opacity: c.bottom_gradient_opacity ?? 85,
+                    card_radius: c.card_radius ?? 0,
                 },
             });
         }
