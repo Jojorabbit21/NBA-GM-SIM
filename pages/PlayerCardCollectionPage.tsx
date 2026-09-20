@@ -21,6 +21,9 @@ import {
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { getAllTeamsList } from '../data/teamData';
 import { getRealTeamLogoUrl } from '../utils/constants';
+import { PersonalDraftCard } from '../components/draft/PersonalDraftCard';
+import type { PersonalDraftPlayer } from '../hooks/usePersonalDraft';
+import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 
 // 배경 미리보기에 쓰는 대표 팀(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용.
 // [2026-09-20] 팀별 컬러 오버라이드가 있으면 그것을 따른다(resolveCardTeamGradient).
@@ -33,6 +36,36 @@ const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc:
 ];
 
 type CollectionWithCount = CardCollectionRow & { memberCount: number };
+
+/** [2026-09-20] 카드 row → 드래프트 카드 컴포넌트가 받는 Player 형태(컬렉션 헤더/배경은 지금 보고 있는 컬렉션 기준).
+ *  실제 시즌 기록은 붙이지 않는다(호버 팝업은 기록 섹션을 숨김). */
+function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow): PersonalDraftPlayer {
+    const mapped = mapRawPlayerToRuntimePlayer(card, false, true) as PersonalDraftPlayer;
+    return {
+        ...mapped,
+        id: card.id,
+        cardId: card.id,
+        realPlayerId: card.source_player_id,
+        season: card.season,
+        baseTeamId: card.base_team_id ?? null,
+        bgImageUrl: card.bg_image_url ?? null,
+        collection: {
+            id: collection.id,
+            name: collection.name,
+            bg: {
+                bg_type: collection.bg_type ?? 'team',
+                bg_color: collection.bg_color ?? null,
+                bg_gradient_from: collection.bg_gradient_from ?? null,
+                bg_gradient_to: collection.bg_gradient_to ?? null,
+                bg_gradient_angle: collection.bg_gradient_angle ?? 165,
+                bg_image_url: collection.bg_image_url ?? null,
+            },
+        },
+        seasonStats: null,
+    };
+}
+
+const noop = () => {};
 
 const sameTeamColor = (a: CardTeamColor, b: CardTeamColor) =>
     a.gradient_from.toLowerCase() === b.gradient_from.toLowerCase() &&
@@ -695,21 +728,29 @@ const PlayerCardCollectionPage: React.FC = () => {
                             ) : members.length === 0 ? (
                                 <p className="text-xs text-slate-600 ko-normal">아직 넣은 카드가 없습니다. 위에서 검색해서 추가하세요.</p>
                             ) : (
-                                <div className="bg-slate-900/60 border border-slate-800 rounded-xl divide-y divide-slate-800/60">
+                                /* [2026-09-20] 실제 드래프트 카드 디자인 그리드 — 배경은 이 컬렉션 설정(저장된 값) + 카드별 이미지 + 팀별 컬러 반영.
+                                   호버하면 능력치 팝업(기록 없음). 카드 아래 "제거"로 컬렉션에서 뺀다(카드 자체는 삭제되지 않음). */
+                                <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                                     {members.map(card => (
-                                        <div key={card.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                                            <span className="text-slate-200 truncate flex items-center gap-2">
-                                                {card.name} <span className="text-slate-500">· {card.season} · {card.position}</span>
-                                                {/* [2026-09-20] 카드별 커스텀 배경이 있으면 이 컬렉션 배경 대신 그 이미지가 쓰임 */}
-                                                {card.bg_image_url && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">커스텀 배경</span>}
-                                            </span>
-                                            <button
-                                                onClick={() => handleRemove(card.id)}
-                                                className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-                                                aria-label={`${card.name} ${card.season} 카드 제거`}
-                                            >
-                                                <X size={14} />
-                                            </button>
+                                        <div key={card.id} className="flex flex-col gap-1.5">
+                                            <PersonalDraftCard
+                                                player={toDraftPlayer(card, selected)}
+                                                selected={false}
+                                                onSelect={noop}
+                                                teamColors={teamColors}
+                                            />
+                                            <div className="flex items-center justify-between px-0.5">
+                                                <span className="text-[11px] text-slate-500 truncate">
+                                                    {card.bg_image_url ? '커스텀 배경' : '컬렉션 배경'}
+                                                </span>
+                                                <button
+                                                    onClick={() => handleRemove(card.id)}
+                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                                                    aria-label={`${card.name} ${card.season} 카드 제거`}
+                                                >
+                                                    <X size={12} />제거
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
