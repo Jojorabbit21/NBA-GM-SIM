@@ -30,6 +30,8 @@ import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { calculateOvr } from '../utils/ovrUtils';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TEAM_DATA } from '../data/teamData';
+import { CARD_EXTRA_TEAMS } from '../data/cardTeams';
+import { listEditions, type CardEditionRow } from '../services/admin/cardEditionAdminService';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 const TEAM_OPTIONS = Object.values(TEAM_DATA).sort((a, b) => a.city.localeCompare(b.city));
@@ -78,6 +80,11 @@ const PlayerCardEditorPage: React.FC = () => {
     const [cardsLoading, setCardsLoading] = useState(false);
     const [availableSeasons, setAvailableSeasons] = useState<string[]>([]);
     const [newSeason, setNewSeason] = useState('');
+    // [2026-09-20] 에디션 — 어드민이 만든 목록(meta_card_editions)에서만 선택. ''=기본 카드
+    const [editions, setEditions] = useState<CardEditionRow[]>([]);
+    const [newEditionId, setNewEditionId] = useState<string>('');
+    useEffect(() => { listEditions().then(setEditions).catch(() => setEditions([])); }, []);
+    const editionName = useCallback((id: string | null | undefined) => (id ? editions.find(e => e.id === id)?.name ?? '?' : null), [editions]);
     const [creating, setCreating] = useState(false);
     const [listErr, setListErr] = useState<string | null>(null);
 
@@ -142,6 +149,7 @@ const PlayerCardEditorPage: React.FC = () => {
         setEditing(card);
         setDraft({
             season: card.season, name: card.name, position: card.position,
+            edition_id: card.edition_id ?? '',
             height: card.height ?? '', weight: card.weight ?? '', base_team_id: card.base_team_id ?? '',
             attrs: { ...(card.base_attributes ?? {}) },
             manualOvrEnabled: card.manual_ovr != null,
@@ -200,12 +208,12 @@ const PlayerCardEditorPage: React.FC = () => {
         if (!selectedPlayer || !newSeason.trim()) return;
         setCreating(true); setListErr(null);
         try {
-            const card = await createCardFromCopy(selectedPlayer.id, newSeason.trim());
+            const card = await createCardFromCopy(selectedPlayer.id, newSeason.trim(), newEditionId || null);
             setNewSeason('');
             await reloadCards(selectedPlayer.id);
             loadIntoEditor(card);
         } catch (e) {
-            setListErr(e instanceof Error ? e.message : '카드를 만들지 못했습니다(이미 같은 시즌 카드가 있을 수 있습니다).');
+            setListErr(e instanceof Error ? e.message : '카드를 만들지 못했습니다(같은 시즌·에디션 카드가 이미 있을 수 있습니다).');
         } finally {
             setCreating(false);
         }
@@ -229,6 +237,7 @@ const PlayerCardEditorPage: React.FC = () => {
                 season: String(draft.season).trim(),
                 name: String(draft.name).trim(),
                 position: draft.position,
+                edition_id: draft.edition_id || null,
                 height: draft.height === '' ? null : Number(draft.height),
                 weight: draft.weight === '' ? null : Number(draft.weight),
                 base_team_id: draft.base_team_id || null,
@@ -325,7 +334,7 @@ const PlayerCardEditorPage: React.FC = () => {
                                             editing?.id === c.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-300 hover:text-white'
                                         }`}
                                     >
-                                        <span>{c.season}</span>
+                                        <span>{c.season}{c.edition_id ? <span className="font-normal opacity-80"> · {editionName(c.edition_id)}</span> : null}</span>
                                         <span className="text-slate-500 font-normal">{computeOvrPreview(c) ?? '—'} OVR</span>
                                     </button>
                                 ))}
@@ -354,6 +363,17 @@ const PlayerCardEditorPage: React.FC = () => {
                             <datalist id="available-seasons">
                                 {availableSeasons.map(s => <option key={s} value={s} />)}
                             </datalist>
+                            <div className="flex items-center gap-1.5">
+                                <label className="text-xs text-slate-400 ko-normal shrink-0">에디션</label>
+                                <select value={newEditionId} onChange={e => setNewEditionId(e.target.value)}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                                    <option value="">기본 카드</option>
+                                    {editions.map(ed => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
+                                </select>
+                            </div>
+                            {editions.length === 0 && (
+                                <p className="text-[11px] text-slate-600 ko-normal">에디션은 "카드 컬렉션" 탭의 "에디션 관리"에서 만든 것만 고를 수 있습니다. 같은 선수·시즌 카드는 에디션별로 1장씩 만들 수 있습니다.</p>
+                            )}
                             <p className="text-[11px] text-slate-600 ko-normal">
                                 {availableSeasons.length > 0
                                     ? `career_history에 기록된 시즌 ${availableSeasons.length}개 중에서 고르거나 직접 입력하세요.`
@@ -375,7 +395,7 @@ const PlayerCardEditorPage: React.FC = () => {
                             <div className="flex items-center gap-3">
                                 {draftOvrPreview != null && <OvrBadge value={draftOvrPreview} size="lg" />}
                                 <div>
-                                    <h2 className="text-lg font-bold text-white">{draft.name} · {draft.season}</h2>
+                                    <h2 className="text-lg font-bold text-white">{draft.name} · {draft.season}{draft.edition_id ? ` · ${editionName(draft.edition_id)}` : ''}</h2>
                                     <p className="text-xs text-slate-500 ko-normal">원본 선수: {editing.source_player_id}</p>
                                 </div>
                             </div>
@@ -442,6 +462,14 @@ const PlayerCardEditorPage: React.FC = () => {
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
                             </div>
                             <div>
+                                <label className="text-xs text-slate-400 ko-normal block mb-1">에디션</label>
+                                <select value={draft.edition_id} onChange={e => setDraft((d: any) => ({ ...d, edition_id: e.target.value }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                                    <option value="">기본 카드</option>
+                                    {editions.map(ed => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">포지션</label>
                                 <select value={draft.position} onChange={e => setDraft((d: any) => ({ ...d, position: e.target.value }))}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
@@ -464,6 +492,12 @@ const PlayerCardEditorPage: React.FC = () => {
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
                                     <option value="">—</option>
                                     {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.city} {t.name}</option>)}
+                                    {/* [2026-09-20] 카드 전용 확장 팀(data/cardTeams.ts) — 시애틀 에메랄즈 등 */}
+                                    {CARD_EXTRA_TEAMS.length > 0 && (
+                                        <optgroup label="확장 팀">
+                                            {CARD_EXTRA_TEAMS.map(t => <option key={t.id} value={t.id}>{t.city} {t.name}</option>)}
+                                        </optgroup>
+                                    )}
                                 </select>
                             </div>
                             <div>

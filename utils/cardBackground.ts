@@ -12,6 +12,7 @@
 // 어드민이 DB로 덮어쓸 수 있다. resolveCardTeamGradient()가 오버라이드 → TEAM_COLORS 순으로 푼다.
 // data/teamData.ts는 import가 없는 순수 데이터 모듈이라 여기서 가져와도 순환이 생기지 않는다.
 import { TEAM_COLORS } from '../data/teamData';
+import { getCardExtraTeam } from '../data/cardTeams';
 
 export interface CardBackgroundSettings {
     bg_type: 'team' | 'solid' | 'gradient' | 'image';
@@ -52,8 +53,11 @@ export const NEUTRAL_CARD_TEAM_COLOR: CardTeamColor = {
 export function getDefaultCardTeamColor(teamId: string | null | undefined): CardTeamColor | null {
     if (!teamId) return null;
     const c = TEAM_COLORS[teamId];
-    if (!c) return null;
-    return { gradient_from: c.primary, gradient_to: c.secondary, gradient_angle: CARD_TEAM_GRADIENT_ANGLE };
+    if (c) return { gradient_from: c.primary, gradient_to: c.secondary, gradient_angle: CARD_TEAM_GRADIENT_ANGLE };
+    // [2026-09-20] 카드 전용 확장 팀(시애틀 에메랄즈 등) — data/cardTeams.ts
+    const extra = getCardExtraTeam(teamId);
+    if (extra) return { gradient_from: extra.primary, gradient_to: extra.secondary, gradient_angle: CARD_TEAM_GRADIENT_ANGLE };
+    return null;
 }
 
 /**

@@ -23,7 +23,7 @@ export interface ResolvedRawPlayer {
 }
 
 const CHUNK = 300;
-const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url';
+const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, edition_id';
 
 async function selectMetaPlayers(cols: string, ids: string[]): Promise<Record<string, unknown>[]> {
     const out: Record<string, unknown>[] = [];

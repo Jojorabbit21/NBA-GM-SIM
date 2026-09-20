@@ -9,6 +9,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { PlayerRatingsStatsPopup } from '../common/PlayerHoverCard';
 import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
+import { getCardExtraTeam } from '../../data/cardTeams';
 import { buildCardBackground, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
 import type { PersonalDraftPlayer } from '../../hooks/usePersonalDraft';
 
@@ -36,9 +37,10 @@ function resolveTeamVisual(baseTeamId: string | null, teamColors?: Record<string
         return { teamId: null as string | null, teamName: null as string | null, colors: resolveCardTeamGradient(null, teamColors) };
     }
     const data = TEAM_DATA[teamId];
+    const extra = data ? null : getCardExtraTeam(teamId);   // 30팀 외 카드 전용 확장 팀(시애틀 에메랄즈 등)
     return {
         teamId,
-        teamName: data ? `${data.city} ${data.name}` : null,
+        teamName: data ? `${data.city} ${data.name}` : extra ? `${extra.city} ${extra.name}` : null,
         colors: resolveCardTeamGradient(teamId, teamColors),
     };
 }
@@ -135,7 +137,9 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                         style={{ background: BOTTOM_GRADIENT }}
                     >
                         <div className="text-lg font-black text-white truncate leading-tight max-w-full text-center">{player.name}</div>
-                        <div className="text-sm font-semibold text-white/80 tabular-nums mt-0.5 text-center">{player.season}</div>
+                        <div className="text-sm font-semibold text-white/80 tabular-nums mt-0.5 text-center truncate max-w-full">
+                            {player.season}{player.edition ? ` · ${player.edition}` : ''}
+                        </div>
                         <div className="text-sm text-white/70 mt-0.5 text-center truncate max-w-full">{subline}</div>
                         <div className="text-sm font-semibold mt-0.5 text-center truncate max-w-full text-white/75 tracking-wide">
                             {player.archetype ?? ''}

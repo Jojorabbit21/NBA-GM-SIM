@@ -35,6 +35,51 @@
 
 ---
 
+## 2026-09-20 — 시즌 카드 에디션(meta_card_editions): 같은 선수·시즌 카드를 에디션별로 1장씩
+
+**배경**: 사용자 요청 "동일한 시즌에 같은 카드를 2개 이상 만들 수 있는 방법은 없을까?" → "카드 에디션은 내가 직접 생성한 에디션만을 선택할 수 있게" → "진행해". 기존 `UNIQUE (source_player_id, season)`을 에디션 축으로 확장하고, 에디션은 어드민이 만든 목록에서만 선택(자유 입력 없음).
+
+**변경 파일**:
+- `migrations/add_meta_card_editions.sql` (DB, **적용 완료**) — `meta_card_editions(id, name UNIQUE, sort_order, created_at)` + RLS(공개 읽기/어드민 쓰기), `meta_player_cards.edition_id uuid NULL REFERENCES … ON DELETE RESTRICT`, 고유 제약 `(source_player_id, season)` → `UNIQUE NULLS NOT DISTINCT (source_player_id, season, edition_id)`
+- `services/admin/cardEditionAdminService.ts` (신규, client) — list/create/update(이름·순서)/delete, `countCardsByEdition()`
+- `services/admin/playerCardAdminService.ts` (client) — `PlayerCardRow.edition_id`, `CARD_COLS`, `createCardFromCopy(sourcePlayerId, season, editionId)`, `UpdateCardPatch.edition_id`
+- `services/admin/playerCardCollectionAdminService.ts`, `services/multi/instancePlayers.ts` (client) — 카드 컬럼에 `edition_id`
+- `hooks/usePersonalDraft.ts` (client) — 카드 조회에 `edition:meta_card_editions(name)` 임베드, `PersonalDraftPlayer.edition`
+- `components/draft/PersonalDraftCard.tsx`, `views/multi/league/PersonalDraftView.tsx` (client) — 시즌 줄 "2020-21 · 플레이오프"
+- `pages/PlayerCardEditorPage.tsx` (client) — 새 카드 만들 때 에디션 셀렉트(기본 카드/목록), 바이오 그리드 "에디션" 셀렉트(저장 시 반영), 카드 목록·헤더에 에디션 표시
+- `pages/PlayerCardCollectionPage.tsx` (client) — "에디션 관리" 진입 버튼 + 패널(만들기, 이름 변경(blur), ▲▼ 순서, 삭제 — 사용 중이면 비활성), 그리드·검색 결과에 에디션 표시
+
+**Before**: 선수·시즌당 카드 1장(`UNIQUE (source_player_id, season)`) / **After**: 선수·시즌·에디션당 1장(기본 카드 = edition_id NULL도 1장), 에디션은 어드민 목록에서만.
+
+**검증**: SQL 롤백 테스트 — 같은 선수·시즌 기본 카드 재삽입 `unique_violation`, 에디션 카드 삽입 성공, 사용 중 에디션 삭제 `foreign_key_violation`, 정책 4개. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버(fly) 변경 없음(시뮬은 카드 id 기준이라 에디션과 무관).
+
+**주의**: 드래프트 중복 방지·노출 이력은 카드 id/실제 선수 기준이라 같은 선수의 다른 에디션은 한 팀에 한 장만 들어간다(의도). 에디션 카드의 호버 기록은 같은 시즌 정규시즌 기록을 그대로 쓴다(플레이오프 라인 분리는 미구현). `NULLS NOT DISTINCT`는 PostgreSQL 15+ 문법.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석(에디션 카드 정리 후 제약 원복) + `git checkout <이전 커밋> -- <위 클라이언트 파일들>`.
+
+---
+
+## 2026-09-20 — 시즌 카드: 확장 팀(시애틀 에메랄즈) 선택 가능
+
+**배경**: 사용자 요청 "카드에서 시애틀 에메랄즈 팀도 선택 가능하도록 해줘." 시애틀 에메랄즈는 `data/virtualTeams.ts`의 가상 확장팀(`sea`, 로고 `public/logos/real/SEA.svg`)이라 `resolveTeamId`/`getRealTeamLogoUrl`은 이미 해석하지만, `TEAM_DATA`/`TEAM_COLORS`에 없어 카드 편집기 선택지·카드 팀명·기본 팀 컬러에서 빠져 있었다.
+
+**변경 파일**:
+- `data/cardTeams.ts` (신규, client) — `CARD_EXTRA_TEAMS`(현재 `sea`만; `CARD_EXTRA_TEAM_SLUGS`에 slug 추가로 확장), `getCardExtraTeam()`. 순수 데이터 모듈(순환 없음)
+- `utils/cardBackground.ts` (client) — `getDefaultCardTeamColor()`가 TEAM_COLORS에 없으면 확장 팀 컬러(#006241→#C8A84B)로 폴백
+- `components/draft/PersonalDraftCard.tsx` (client) — 카드 팀명 폴백(확장 팀 도시+이름)
+- `pages/PlayerCardEditorPage.tsx` (client) — 소속팀 select에 "확장 팀" optgroup
+- `pages/PlayerCardCollectionPage.tsx` (client) — 팀별 컬러 패널 대상에 확장 팀 포함(`cardTeamList()`)
+
+**Before**: 카드 소속팀 = TEAM_DATA 30팀만 / **After**: 30팀 + 확장 팀(시애틀 에메랄즈). 카드 배경·로고·팀명·팀별 컬러 오버라이드 모두 동작.
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공(순환 의존 경고 없음).
+
+**주의**: 카드의 `base_team_id='sea'`는 카드 표시 전용 — 리그/플레이오프 등 다른 화면의 팀 컨텍스트와 무관. 다른 가상 팀도 열고 싶으면 `CARD_EXTRA_TEAM_SLUGS`에 slug만 추가(로고 파일명은 `getRealTeamLogoUrl`의 `VIRTUAL_LOGO_FILE_OVERRIDE` 규칙을 따름).
+
+**롤백 방법**: `git checkout cd39418d -- utils/cardBackground.ts components/draft/PersonalDraftCard.tsx pages/PlayerCardEditorPage.tsx pages/PlayerCardCollectionPage.tsx` + `data/cardTeams.ts` 삭제.
+
+---
+
 ## 2026-09-20 — 어드민 카드 컬렉션: 멤버 카드 목록을 드래프트 카드 디자인 그리드로
 
 **배경**: 사용자 요청 "카드 컬렉션에서 컬렉션을 선택하면 하단에 이 컬렉션의 카드 리스트가 보이는데, 여기에 카드 디자인을 적용해서 그리드로 보여줘."

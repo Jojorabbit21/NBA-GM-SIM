@@ -41,6 +41,8 @@ export interface PersonalDraftPlayer extends Player {
     realPlayerId: string;
     /** 카드 시즌 라벨(예: '2020-21') */
     season: string;
+    /** [2026-09-20] 에디션 이름(meta_card_editions.name). 기본 카드는 null. 카드 시즌 줄에 "시즌 · 에디션"으로 표시 */
+    edition: string | null;
     /** 카드별 커스텀 배경 이미지(없으면 null → 컬렉션 배경 → 팀 그라디언트) */
     bgImageUrl: string | null;
     /** 이 카드를 표시할 때 쓰는 컬렉션(라운드 컬렉션 우선, 없으면 첫 소속 컬렉션, 어디에도 없으면 null) */
@@ -83,7 +85,7 @@ interface UsePersonalDraftResult {
     refresh: () => Promise<void>;
 }
 
-const CARD_SELECT = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url';
+const CARD_SELECT = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, edition_id, edition:meta_card_editions(name)';
 const COLLECTION_SELECT = 'id, name, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url';
 
 interface CachedCard {
@@ -198,6 +200,7 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
                 cardId: id,
                 realPlayerId: String(raw.source_player_id),
                 season: String(raw.season),
+                edition: raw.edition?.name ?? null,
                 baseTeamId: raw.base_team_id ?? null,
                 bgImageUrl: raw.bg_image_url ?? null,
                 seasonStats,

@@ -311,7 +311,7 @@ const PersonalDraftView: React.FC = () => {
                                         {e.player ? (
                                             <>
                                                 <OvrRowBadge value={e.player.ovr} />
-                                                <span className="text-sm font-medium truncate flex-1 min-w-0 text-white">{e.player.name} <span className="text-slate-500 font-normal tabular-nums">{e.player.season}</span></span>
+                                                <span className="text-sm font-medium truncate flex-1 min-w-0 text-white">{e.player.name} <span className="text-slate-500 font-normal tabular-nums">{e.player.season}{e.player.edition ? ` · ${e.player.edition}` : ''}</span></span>
                                                 <span className="text-sm text-slate-500 w-7 text-center shrink-0">{e.player.position}</span>
                                             </>
                                         ) : (

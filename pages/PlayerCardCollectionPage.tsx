@@ -5,7 +5,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw, Tags } from 'lucide-react';
+import { listEditions, createEdition, updateEdition, deleteEdition, countCardsByEdition, type CardEditionRow } from '../services/admin/cardEditionAdminService';
 import { searchCards, type PlayerCardRow } from '../services/admin/playerCardAdminService';
 import {
     listCollections, createCollection, updateCollection, deleteCollection,
@@ -20,6 +21,15 @@ import {
 } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { getAllTeamsList } from '../data/teamData';
+import { CARD_EXTRA_TEAMS } from '../data/cardTeams';
+
+/** 팀별 컬러 패널 대상: 30팀 + 카드 전용 확장 팀(시애틀 에메랄즈 등). */
+function cardTeamList(): { id: string; city: string; name: string }[] {
+    return [
+        ...getAllTeamsList().map(t => ({ id: t.id, city: t.city, name: t.name })),
+        ...CARD_EXTRA_TEAMS.map(t => ({ id: t.id, city: t.city, name: t.name })),
+    ];
+}
 import { getRealTeamLogoUrl } from '../utils/constants';
 import { PersonalDraftCard } from '../components/draft/PersonalDraftCard';
 import type { PersonalDraftPlayer } from '../hooks/usePersonalDraft';
@@ -39,7 +49,7 @@ type CollectionWithCount = CardCollectionRow & { memberCount: number };
 
 /** [2026-09-20] 카드 row → 드래프트 카드 컴포넌트가 받는 Player 형태(컬렉션 헤더/배경은 지금 보고 있는 컬렉션 기준).
  *  실제 시즌 기록은 붙이지 않는다(호버 팝업은 기록 섹션을 숨김). */
-function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow): PersonalDraftPlayer {
+function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editionName: string | null): PersonalDraftPlayer {
     const mapped = mapRawPlayerToRuntimePlayer(card, false, true) as PersonalDraftPlayer;
     return {
         ...mapped,
@@ -47,6 +57,7 @@ function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow): Pers
         cardId: card.id,
         realPlayerId: card.source_player_id,
         season: card.season,
+        edition: editionName,
         baseTeamId: card.base_team_id ?? null,
         bgImageUrl: card.bg_image_url ?? null,
         collection: {
@@ -76,8 +87,64 @@ const PlayerCardCollectionPage: React.FC = () => {
     useOutletContext<{ userId?: string }>();
     const queryClient = useQueryClient();
 
-    // 우측 패널 모드: 컬렉션 상세 / 카드 팀별 컬러 편집
-    const [mode, setMode] = useState<'collection' | 'teamColors'>('collection');
+    // 우측 패널 모드: 컬렉션 상세 / 카드 팀별 컬러 편집 / 에디션 관리
+    const [mode, setMode] = useState<'collection' | 'teamColors' | 'editions'>('collection');
+
+    // ── [2026-09-20] 카드 에디션(meta_card_editions) 관리 — 카드 편집기는 이 목록에서만 고른다 ──
+    const [editions, setEditions] = useState<CardEditionRow[]>([]);
+    const [editionCounts, setEditionCounts] = useState<Record<string, number>>({});
+    const [editionErr, setEditionErr] = useState<string | null>(null);
+    const [newEditionName, setNewEditionName] = useState('');
+    const [editionBusy, setEditionBusy] = useState<string | null>(null);
+    const editionNameById = useMemo(() => new Map(editions.map(e => [e.id, e.name])), [editions]);
+    const reloadEditions = useCallback(async () => {
+        try {
+            const [rows, counts] = await Promise.all([listEditions(), countCardsByEdition()]);
+            setEditions(rows); setEditionCounts(counts);
+        } catch (e) {
+            setEditionErr(e instanceof Error ? e.message : '에디션을 불러오지 못했습니다.');
+        }
+    }, []);
+    useEffect(() => { reloadEditions(); }, [reloadEditions]);
+    const handleCreateEdition = async () => {
+        if (!newEditionName.trim()) return;
+        setEditionBusy('new'); setEditionErr(null);
+        try {
+            await createEdition(newEditionName, editions.length);
+            setNewEditionName('');
+            await reloadEditions();
+        } catch (e) {
+            setEditionErr(e instanceof Error ? e.message : '생성에 실패했습니다(이름이 이미 있을 수 있습니다).');
+        } finally {
+            setEditionBusy(null);
+        }
+    };
+    const handleRenameEdition = async (id: string, name: string) => {
+        if (!name.trim()) return;
+        setEditionBusy(id); setEditionErr(null);
+        try { await updateEdition(id, { name }); await reloadEditions(); }
+        catch (e) { setEditionErr(e instanceof Error ? e.message : '이름 변경에 실패했습니다.'); }
+        finally { setEditionBusy(null); }
+    };
+    const handleMoveEdition = async (idx: number, dir: -1 | 1) => {
+        const j = idx + dir;
+        if (j < 0 || j >= editions.length) return;
+        const a = editions[idx], b = editions[j];
+        setEditionBusy(a.id); setEditionErr(null);
+        try {
+            await Promise.all([updateEdition(a.id, { sort_order: j }), updateEdition(b.id, { sort_order: idx })]);
+            await reloadEditions();
+        } catch (e) { setEditionErr(e instanceof Error ? e.message : '순서 변경에 실패했습니다.'); }
+        finally { setEditionBusy(null); }
+    };
+    const handleDeleteEdition = async (ed: CardEditionRow) => {
+        if ((editionCounts[ed.id] ?? 0) > 0) { setEditionErr(`"${ed.name}"을 쓰는 카드가 ${editionCounts[ed.id]}장 있어 삭제할 수 없습니다.`); return; }
+        if (!window.confirm(`"${ed.name}" 에디션을 삭제할까요?`)) return;
+        setEditionBusy(ed.id); setEditionErr(null);
+        try { await deleteEdition(ed.id); await reloadEditions(); }
+        catch (e) { setEditionErr(e instanceof Error ? e.message : '삭제에 실패했습니다.'); }
+        finally { setEditionBusy(null); }
+    };
 
     // ── 카드 전용 팀별 컬러 오버라이드(meta_card_team_colors) ───────────────────
     // [2026-09-20] 사용자 요청 "카드 컬렉션의 팀별 컬러를 선택할 수 있게 개조" — 팀 컬러 원본
@@ -88,7 +155,7 @@ const PlayerCardCollectionPage: React.FC = () => {
     const [teamDrafts, setTeamDrafts] = useState<Record<string, CardTeamColor>>({});
     const [teamSaving, setTeamSaving] = useState<string | null>(null);
     const [teamErr, setTeamErr] = useState<string | null>(null);
-    const teams = useMemo(() => getAllTeamsList().slice().sort((a, b) => a.city.localeCompare(b.city, 'ko')), []);
+    const teams = useMemo(() => cardTeamList().sort((a, b) => a.city.localeCompare(b.city, 'ko')), []);
 
     const reloadTeamColors = useCallback(async () => {
         setTeamColorsLoading(true);
@@ -97,7 +164,7 @@ const PlayerCardCollectionPage: React.FC = () => {
             setTeamColors(map);
             // 드래프트(편집 중 값)는 저장된 값으로 초기화 — 팀별로 오버라이드 없으면 기본값
             const drafts: Record<string, CardTeamColor> = {};
-            for (const t of getAllTeamsList()) drafts[t.id] = resolveCardTeamGradient(t.id, map);
+            for (const t of cardTeamList()) drafts[t.id] = resolveCardTeamGradient(t.id, map);
             setTeamDrafts(drafts);
         } catch (e) {
             setTeamErr(e instanceof Error ? e.message : '팀별 컬러를 불러오지 못했습니다.');
@@ -434,11 +501,72 @@ const PlayerCardCollectionPage: React.FC = () => {
                     <span className="flex items-center gap-2 text-sm font-bold"><Palette size={14} />팀별 컬러</span>
                     <span className="text-xs text-slate-500">{Object.keys(teamColors).length}팀 변경됨</span>
                 </button>
+                <button
+                    type="button"
+                    onClick={() => setMode('editions')}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                        mode === 'editions'
+                            ? 'bg-indigo-600/20 border-indigo-500/40 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-white/5'
+                    }`}
+                >
+                    <span className="flex items-center gap-2 text-sm font-bold"><Tags size={14} />에디션 관리</span>
+                    <span className="text-xs text-slate-500">{editions.length}개</span>
+                </button>
             </div>
 
             {/* ── 우측: 선택된 컬렉션 상세 / 팀별 컬러 편집 ── */}
             <div className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6">
-                {mode === 'teamColors' ? (
+                {mode === 'editions' ? (
+                    <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">카드 에디션</h2>
+                                <p className="text-xs text-slate-500 ko-normal mt-0.5">
+                                    같은 선수·같은 시즌 카드를 에디션별로 1장씩 더 만들 수 있습니다. 카드 관리 탭의 에디션 선택지는 이 목록만 보여줍니다. 카드가 쓰고 있는 에디션은 삭제할 수 없습니다.
+                                </p>
+                            </div>
+                            {editionErr && (
+                                <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal shrink-0 max-w-xs">
+                                    <AlertCircle size={12} className="shrink-0 mt-0.5" />{editionErr}
+                                </p>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <input value={newEditionName} onChange={e => setNewEditionName(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleCreateEdition(); }}
+                                placeholder="새 에디션 이름 (예: 플레이오프, 올스타)"
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                            <button onClick={handleCreateEdition} disabled={editionBusy === 'new' || !newEditionName.trim()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
+                                {editionBusy === 'new' ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}만들기
+                            </button>
+                        </div>
+                        {editions.length === 0 ? (
+                            <p className="text-xs text-slate-600 ko-normal">아직 에디션이 없습니다.</p>
+                        ) : (
+                            <div className="bg-slate-900/60 border border-slate-800 rounded-xl divide-y divide-slate-800/60">
+                                {editions.map((ed, idx) => (
+                                    <div key={ed.id} className="flex items-center gap-2 px-3 py-2">
+                                        <div className="flex flex-col">
+                                            <button onClick={() => handleMoveEdition(idx, -1)} disabled={idx === 0 || !!editionBusy} className="text-[10px] leading-none text-slate-500 hover:text-white disabled:opacity-30">▲</button>
+                                            <button onClick={() => handleMoveEdition(idx, 1)} disabled={idx === editions.length - 1 || !!editionBusy} className="text-[10px] leading-none text-slate-500 hover:text-white disabled:opacity-30">▼</button>
+                                        </div>
+                                        <input defaultValue={ed.name} key={`${ed.id}-${ed.name}`}
+                                            onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== ed.name) handleRenameEdition(ed.id, e.target.value); }}
+                                            className="flex-1 bg-slate-950 border border-slate-800 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                                        <span className="text-[11px] text-slate-500 tabular-nums shrink-0">{editionCounts[ed.id] ?? 0}장</span>
+                                        <button onClick={() => handleDeleteEdition(ed)} disabled={!!editionBusy || (editionCounts[ed.id] ?? 0) > 0}
+                                            title={(editionCounts[ed.id] ?? 0) > 0 ? '카드가 사용 중이라 삭제할 수 없습니다' : '삭제'}
+                                            className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0">
+                                            {editionBusy === ed.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : mode === 'teamColors' ? (
                     <div className="space-y-4">
                         <div className="flex items-start justify-between gap-3">
                             <div>
@@ -703,7 +831,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                         const isMember = memberIds.has(card.id);
                                         return (
                                             <div key={card.id} className="flex items-center justify-between px-3 py-2 text-sm border-b border-slate-800/60 last:border-b-0">
-                                                <span className="text-slate-300 truncate">{card.name} <span className="text-slate-600">· {card.season}</span></span>
+                                                <span className="text-slate-300 truncate">{card.name} <span className="text-slate-600">· {card.season}{card.edition_id ? ` · ${editionNameById.get(card.edition_id) ?? ''}` : ''}</span></span>
                                                 <button
                                                     onClick={() => handleAdd(card)}
                                                     disabled={isMember || addingId === card.id}
@@ -734,7 +862,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                     {members.map(card => (
                                         <div key={card.id} className="flex flex-col gap-1.5">
                                             <PersonalDraftCard
-                                                player={toDraftPlayer(card, selected)}
+                                                player={toDraftPlayer(card, selected, card.edition_id ? editionNameById.get(card.edition_id) ?? null : null)}
                                                 selected={false}
                                                 onSelect={noop}
                                                 teamColors={teamColors}
