@@ -3,7 +3,7 @@
 // 추가/제거만 담당 — 개인 팩 드래프트가 실제로 컬렉션을 소비하는 배선은 아직 없음
 // (카드 자체의 소비 배선과 마찬가지로 콘텐츠가 쌓인 뒤의 별도 후속 작업).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw, Tags } from 'lucide-react';
 import { listEditions, createEdition, updateEdition, deleteEdition, countCardsByEdition, type CardEditionRow } from '../services/admin/cardEditionAdminService';
@@ -16,7 +16,7 @@ import {
 import { fetchCardTeamColors, upsertCardTeamColor, deleteCardTeamColor } from '../services/cardTeamColorService';
 import { CARD_TEAM_COLORS_QUERY_KEY } from '../hooks/useCardTeamColors';
 import {
-    buildCardBackground, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
+    buildCardBackground, buildCardBottomGradient, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
     type CardBackgroundSettings, type CardTeamColor,
 } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
@@ -70,13 +70,13 @@ function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editi
                 bg_gradient_to: collection.bg_gradient_to ?? null,
                 bg_gradient_angle: collection.bg_gradient_angle ?? 165,
                 bg_image_url: collection.bg_image_url ?? null,
+                bottom_gradient_enabled: collection.bottom_gradient_enabled ?? true,
+                bottom_gradient_opacity: collection.bottom_gradient_opacity ?? 85,
             },
         },
         seasonStats: null,
     };
 }
-
-const noop = () => {};
 
 const sameTeamColor = (a: CardTeamColor, b: CardTeamColor) =>
     a.gradient_from.toLowerCase() === b.gradient_from.toLowerCase() &&
@@ -86,6 +86,11 @@ const sameTeamColor = (a: CardTeamColor, b: CardTeamColor) =>
 const PlayerCardCollectionPage: React.FC = () => {
     useOutletContext<{ userId?: string }>();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    // [2026-09-20] 그리드의 카드를 누르면 카드 관리 탭에서 그 카드를 바로 연다(?cardId=)
+    const openCardEditor = useCallback((cardId: string) => {
+        navigate(`/admin/editor/cards?cardId=${encodeURIComponent(cardId)}`);
+    }, [navigate]);
 
     // 우측 패널 모드: 컬렉션 상세 / 카드 팀별 컬러 편집 / 에디션 관리
     const [mode, setMode] = useState<'collection' | 'teamColors' | 'editions'>('collection');
@@ -294,6 +299,8 @@ const PlayerCardCollectionPage: React.FC = () => {
             bg_gradient_to: selected.bg_gradient_to ?? DEFAULT_CARD_BACKGROUND.bg_gradient_to,
             bg_gradient_angle: selected.bg_gradient_angle ?? 165,
             bg_image_url: selected.bg_image_url ?? null,
+            bottom_gradient_enabled: selected.bottom_gradient_enabled ?? true,
+            bottom_gradient_opacity: selected.bottom_gradient_opacity ?? 85,
         });
         setBgErr(null); setBgSaveOk(false);
     }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -304,7 +311,9 @@ const PlayerCardCollectionPage: React.FC = () => {
         (bg.bg_gradient_from ?? null) !== (selected.bg_gradient_from ?? null) ||
         (bg.bg_gradient_to ?? null) !== (selected.bg_gradient_to ?? null) ||
         bg.bg_gradient_angle !== (selected.bg_gradient_angle ?? 165) ||
-        (bg.bg_image_url ?? null) !== (selected.bg_image_url ?? null)
+        (bg.bg_image_url ?? null) !== (selected.bg_image_url ?? null) ||
+        bg.bottom_gradient_enabled !== (selected.bottom_gradient_enabled ?? true) ||
+        bg.bottom_gradient_opacity !== (selected.bottom_gradient_opacity ?? 85)
     );
 
     const handleBgUpload = async (file: File | null) => {
@@ -788,6 +797,27 @@ const PlayerCardCollectionPage: React.FC = () => {
                                         </p>
                                     </div>
                                 )}
+
+                                {/* [2026-09-20] 카드 하단 텍스트 그라디언트 on/off + 불투명도 — 컬렉션 단위 */}
+                                <div className={`flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg ${bg.bottom_gradient_enabled ? 'bg-slate-800/60' : 'bg-slate-800/30'}`}>
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-300">
+                                        <input type="checkbox" checked={bg.bottom_gradient_enabled}
+                                            onChange={e => setBg(b => ({ ...b, bottom_gradient_enabled: e.target.checked }))}
+                                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer" />
+                                        하단 텍스트 그라디언트
+                                    </label>
+                                    <label className={`flex items-center gap-2 text-xs text-slate-400 ${bg.bottom_gradient_enabled ? '' : 'opacity-50'}`}>
+                                        불투명도
+                                        <input type="range" min={0} max={100} step={5} value={bg.bottom_gradient_opacity} disabled={!bg.bottom_gradient_enabled}
+                                            onChange={e => setBg(b => ({ ...b, bottom_gradient_opacity: Number(e.target.value) }))}
+                                            className="w-32 accent-indigo-500" />
+                                        <input type="number" min={0} max={100} value={bg.bottom_gradient_opacity} disabled={!bg.bottom_gradient_enabled}
+                                            onChange={e => setBg(b => ({ ...b, bottom_gradient_opacity: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
+                                            className="w-14 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500" />
+                                        <span>%</span>
+                                    </label>
+                                    <span className="text-[11px] text-slate-600 ko-normal">이름·시즌·팀 뒤에 깔리는 어두운 층. 값은 카드 맨 아래 지점의 불투명도입니다.</span>
+                                </div>
                             </div>
 
                             {/* 미리보기 — 실제 카드와 같은 상단 어둡기 오버레이(15→45%) + 능력치 영역 35% 다크 레이어 */}
@@ -797,8 +827,10 @@ const PlayerCardCollectionPage: React.FC = () => {
                                     <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/25 border-b border-white/10 truncate px-2">{selected.name}</div>
                                     <div className="flex-1 flex flex-col items-center justify-center px-2" style={{ background: 'linear-gradient(180deg, rgba(2,6,23,.15) 0%, rgba(2,6,23,.45) 100%)' }}>
                                         <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#fb7185] via-[#e11d48] to-[#ff1457] text-white text-sm font-black flex items-center justify-center self-start">85</div>
-                                        <div className="mt-auto text-sm font-black text-white">선수 이름</div>
-                                        <div className="text-[11px] text-white/70 mb-2">팀명 · SF</div>
+                                        <div className="mt-auto -mx-2 px-2 pt-6 pb-2 flex flex-col items-center self-stretch" style={{ background: buildCardBottomGradient(bg) }}>
+                                            <div className="text-sm font-black text-white">선수 이름</div>
+                                            <div className="text-[11px] text-white/70">팀명 · SF</div>
+                                        </div>
                                     </div>
                                     <div className="px-2 py-2 border-t border-white/10 space-y-1" style={{ background: 'rgba(2,6,23,.35)' }}>
                                         {[82, 74, 68, 88].map((v, i) => (
@@ -857,14 +889,15 @@ const PlayerCardCollectionPage: React.FC = () => {
                                 <p className="text-xs text-slate-600 ko-normal">아직 넣은 카드가 없습니다. 위에서 검색해서 추가하세요.</p>
                             ) : (
                                 /* [2026-09-20] 실제 드래프트 카드 디자인 그리드 — 배경은 이 컬렉션 설정(저장된 값) + 카드별 이미지 + 팀별 컬러 반영.
-                                   호버하면 능력치 팝업(기록 없음). 카드 아래 "제거"로 컬렉션에서 뺀다(카드 자체는 삭제되지 않음). */
+                                   호버하면 능력치 팝업(기록 없음). 카드를 누르면 카드 관리 탭에서 그 카드를 연다.
+                                   카드 아래 "제거"로 컬렉션에서 뺀다(카드 자체는 삭제되지 않음). */
                                 <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                                     {members.map(card => (
                                         <div key={card.id} className="flex flex-col gap-1.5">
                                             <PersonalDraftCard
                                                 player={toDraftPlayer(card, selected, card.edition_id ? editionNameById.get(card.edition_id) ?? null : null)}
                                                 selected={false}
-                                                onSelect={noop}
+                                                onSelect={openCardEditor}
                                                 teamColors={teamColors}
                                             />
                                             <div className="flex items-center justify-between px-0.5">

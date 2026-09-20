@@ -21,6 +21,10 @@ export interface CardBackgroundSettings {
     bg_gradient_to: string | null;
     bg_gradient_angle: number;
     bg_image_url: string | null;
+    /** [2026-09-20] 카드 하단 텍스트 뒤 어두운 그라디언트 on/off. 기본 true. */
+    bottom_gradient_enabled: boolean;
+    /** 하단 최대 불투명도 0~100(%). 기본 85 — 0%→40%→100% 지점이 0 / 0.65×값 / 값 으로 깔린다. */
+    bottom_gradient_opacity: number;
 }
 
 export const DEFAULT_CARD_BACKGROUND: CardBackgroundSettings = {
@@ -30,7 +34,24 @@ export const DEFAULT_CARD_BACKGROUND: CardBackgroundSettings = {
     bg_gradient_to: '#0f172a',
     bg_gradient_angle: 165,
     bg_image_url: null,
+    bottom_gradient_enabled: true,
+    bottom_gradient_opacity: 85,
 };
+
+/**
+ * 카드 하단 텍스트 블록 배경(CSS background). 꺼져 있으면 'transparent'.
+ * 설정이 없으면(컬렉션 없는 카드) 기본값(켜짐, 85%).
+ */
+export function buildCardBottomGradient(
+    settings: Partial<Pick<CardBackgroundSettings, 'bottom_gradient_enabled' | 'bottom_gradient_opacity'>> | null | undefined,
+): string {
+    const enabled = settings?.bottom_gradient_enabled ?? DEFAULT_CARD_BACKGROUND.bottom_gradient_enabled;
+    if (!enabled) return 'transparent';
+    const raw = settings?.bottom_gradient_opacity ?? DEFAULT_CARD_BACKGROUND.bottom_gradient_opacity;
+    const max = Math.max(0, Math.min(100, Number.isFinite(raw) ? raw : 85)) / 100;
+    const mid = max * 0.65;
+    return `linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,${mid.toFixed(3)}) 40%, rgba(2,6,23,${max.toFixed(3)}) 100%)`;
+}
 
 /** 카드 전용 팀 컬러 한 팀분(meta_card_team_colors 한 행과 같은 모양). */
 export interface CardTeamColor {

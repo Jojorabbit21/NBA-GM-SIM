@@ -10,14 +10,14 @@
 // "복사"는 그 레이팅을 출발점 템플릿으로 베끼는 것 — 시즌 반영은 어드민이 직접 조정한다.
 // 이때 참고할 수 있도록 그 시즌의 실제 스탯 라인을 편집기 옆에 같이 보여준다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { Loader2, Save, Trash2, Copy, Search, AlertCircle, ImagePlus, X } from 'lucide-react';
-import { searchPlayers, type MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, type MetaPlayerRow } from '../services/admin/playerAdminService';
 import {
-    listCardsForPlayer, createCardFromCopy, updateCard, deleteCard, uploadCardBackground,
+    listCardsForPlayer, createCardFromCopy, updateCard, deleteCard, uploadCardBackground, fetchCardById,
     fetchAvailableSeasons, fetchSeasonStatLine, type PlayerCardRow, type UpdateCardPatch,
 } from '../services/admin/playerCardAdminService';
-import { buildCardBackground, resolveCardTeamGradient } from '../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, resolveCardTeamGradient } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { useCardTeamColors } from '../hooks/useCardTeamColors';
 import { getRealTeamLogoUrl } from '../utils/constants';
@@ -167,6 +167,32 @@ const PlayerCardEditorPage: React.FC = () => {
         setCardCollectionIds(new Set());
         listCollectionsForCard(card.id).then(ids => setCardCollectionIds(new Set(ids))).catch(() => setCardCollectionIds(new Set()));
     }, []);
+
+    // [2026-09-20] ?cardId= 로 진입(카드 컬렉션 탭 그리드 클릭) — 카드 → 원본 선수 → 편집기에 로드. 한 번만.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkCardId = searchParams.get('cardId');
+    useEffect(() => {
+        if (!deepLinkCardId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const card = await fetchCardById(deepLinkCardId);
+                if (!card || cancelled) return;
+                const player = await fetchPlayerById(card.source_player_id);
+                if (!player || cancelled) return;
+                setSelectedPlayer(player);
+                setQuery(player.name);
+                loadIntoEditor(card);
+            } catch (e) {
+                if (!cancelled) setListErr(e instanceof Error ? e.message : '카드를 열지 못했습니다.');
+            } finally {
+                // 파라미터는 지워 새로고침/뒤로가기 때 다시 열리지 않게
+                if (!cancelled) setSearchParams({}, { replace: true });
+            }
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deepLinkCardId]);
 
     const handleBgUpload = async (file: File | null) => {
         if (!editing || !file) return;
@@ -596,7 +622,7 @@ const PlayerCardEditorPage: React.FC = () => {
                                                 style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,.6))' }} />
                                         )}
                                         <div className="mt-auto -mx-2 px-2 pt-8 pb-2 text-center relative z-10"
-                                            style={{ background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,.55) 40%, rgba(2,6,23,.85) 100%)' }}>
+                                            style={{ background: buildCardBottomGradient(previewCollection) }}>
                                             <div className="text-sm font-black text-white truncate">{draft.name}</div>
                                             <div className="text-[11px] text-white/70">{draft.season}</div>
                                         </div>

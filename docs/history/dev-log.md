@@ -35,6 +35,43 @@
 
 ---
 
+## 2026-09-20 — 카드 컬렉션: 하단 텍스트 그라디언트 on/off + 불투명도 설정
+
+**배경**: 사용자 요청 "카드 하단의 그라디언트를 컬렉션 배경 설정 화면에서 끄고 켤 수 있고, 불투명도를 조절할 수 있는 옵션도 만들어줘." 카드 하단 이름·시즌·팀·아키타입 뒤의 어두운 층(`rgba(2,6,23,0)→.55(40%)→.85`)이 컴포넌트 상수였다.
+
+**변경 파일**:
+- `migrations/add_card_collection_bottom_gradient.sql` (DB, **적용 완료**) — `meta_player_card_collections.bottom_gradient_enabled boolean DEFAULT true`, `bottom_gradient_opacity integer DEFAULT 85 CHECK 0..100`
+- `utils/cardBackground.ts` (client) — `CardBackgroundSettings`에 두 필드, 기본값, `buildCardBottomGradient(settings)`(꺼짐→`transparent`, 켜짐→ 0 / 0.65×값 / 값 3스톱)
+- `services/admin/playerCardCollectionAdminService.ts` (client) — 조회 컬럼 추가
+- `pages/PlayerCardCollectionPage.tsx` (client) — 배경 편집기에 체크박스 + 슬라이더/숫자 입력(0~100%, 5단위), dirty 판정, 미리보기 카드 하단에 헬퍼 적용, 그리드 카드 매핑
+- `pages/PlayerCardEditorPage.tsx` (client) — 카드 편집기 미리보기 하단이 미리보기 컬렉션 설정을 따름
+- `components/draft/PersonalDraftCard.tsx` (client) — 상수 `BOTTOM_GRADIENT` 제거, `buildCardBottomGradient(player.collection?.bg)` 사용(컬렉션 없으면 기본값)
+- `hooks/usePersonalDraft.ts` (client) — 컬렉션 조회에 두 컬럼
+
+**Before**: 하단 그라디언트 고정(켜짐, 0/.55/.85) / **After**: 컬렉션별 on/off + 최대 불투명도(기본 85% = 이전과 동일 모양).
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음.
+
+**주의**: 값은 카드 맨 아래 지점의 불투명도이고 40% 지점은 그 65%로 자동 계산된다. 끄면 밝은 배경에서 흰 글자 가독성이 떨어질 수 있다(의도된 선택).
+
+**롤백 방법**: 컬럼 DROP + `git checkout <이전 커밋> -- <위 클라이언트 파일들>`.
+
+---
+
+## 2026-09-20 — 어드민 카드 컬렉션 그리드 → 카드 편집기 딥링크
+
+**배경**: 사용자 요청 "카드 컬렉션 하단의 이 컬렉션의 카드를 누르면 해당 카드 수정 화면으로 자동 이동하도록 해줘."
+
+**변경 파일**:
+- `pages/PlayerCardCollectionPage.tsx` (client) — 그리드 카드 `onSelect` → `navigate('/admin/editor/cards?cardId=<id>')`
+- `pages/PlayerCardEditorPage.tsx` (client) — `?cardId=`가 있으면 `fetchCardById` → `fetchPlayerById(source_player_id)` → 선수 선택 + 검색어 채움 + `loadIntoEditor(card)`. 처리 후 파라미터를 `replace`로 지워 새로고침/뒤로가기 때 다시 열리지 않게
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공.
+
+**롤백 방법**: `git checkout ded9fe0e -- pages/PlayerCardCollectionPage.tsx pages/PlayerCardEditorPage.tsx`.
+
+---
+
 ## 2026-09-20 — 시즌 카드: 에디션 필수화(기본 카드 개념 제거)
 
 **배경**: 사용자 요청 "한 명의 선수에게 동일 시즌 + 다른 에디션일 경우 무제한 카드 생성이 가능하도록 수정해줘. 시즌/에디션 지정은 필수". 직전 에디션 도입에서 남겨 둔 "기본 카드(edition_id NULL)"를 없애고 카드마다 에디션을 필수로 만든다. 규칙은 선수 + 시즌 + 에디션 조합당 1장 — 에디션이 다르면 같은 시즌 카드를 제한 없이 만들 수 있다.

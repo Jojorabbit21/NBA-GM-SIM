@@ -14,7 +14,7 @@ export interface CardCollectionRow extends CardBackgroundSettings {
 }
 
 const CARD_COLS = 'id, source_player_id, season, name, position, height, weight, base_team_id, base_attributes, tendencies, manual_ovr, bg_image_url, edition_id, created_at, updated_at';
-const COLLECTION_COLS = 'id, name, description, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url, created_at, updated_at';
+const COLLECTION_COLS = 'id, name, description, bg_type, bg_color, bg_gradient_from, bg_gradient_to, bg_gradient_angle, bg_image_url, bottom_gradient_enabled, bottom_gradient_opacity, created_at, updated_at';
 const BG_BUCKET = 'card-backgrounds';
 
 export async function listCollections(): Promise<(CardCollectionRow & { memberCount: number })[]> {

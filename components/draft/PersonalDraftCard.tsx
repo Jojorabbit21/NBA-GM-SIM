@@ -10,7 +10,7 @@ import { PlayerRatingsStatsPopup } from '../common/PlayerHoverCard';
 import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 import { getCardExtraTeam } from '../../data/cardTeams';
-import { buildCardBackground, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
 import type { PersonalDraftPlayer } from '../../hooks/usePersonalDraft';
 
 interface PersonalDraftCardProps {
@@ -25,7 +25,6 @@ interface PersonalDraftCardProps {
 }
 
 const SELECTED_SHADOW = '0 0 0 1px rgba(16,185,129,.6), 0 0 18px rgba(16,185,129,.35)';
-const BOTTOM_GRADIENT = 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,.55) 40%, rgba(2,6,23,.85) 100%)';
 const POPUP_OFFSET = 14;
 const POPUP_MARGIN = 8;
 const POPUP_W_ESTIMATE = 300;
@@ -48,6 +47,8 @@ function resolveTeamVisual(baseTeamId: string | null, teamColors?: Record<string
 export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, selected, disabled = false, disabledReason, onSelect, teamColors }) => {
     const { teamId, teamName, colors } = resolveTeamVisual(player.baseTeamId, teamColors);
     const background = buildCardBackground(player.collection?.bg ?? null, colors, player.bgImageUrl);
+    // [2026-09-20] 하단 텍스트 그라디언트 — 컬렉션 설정(on/off, 불투명도), 컬렉션 없으면 기본값
+    const bottomGradient = buildCardBottomGradient(player.collection?.bg ?? null);
     const subline = [teamName, player.position].filter(Boolean).join(' · ');
     const hasStats = (player.seasonStats?.g ?? 0) > 0;
 
@@ -134,7 +135,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                     {/* 하단 텍스트 블록: 이름 / 시즌 / 팀 · 포지션 / 아키타입 — 가독성용 그라디언트 위 */}
                     <div
                         className="mt-auto -mx-2.5 -mb-3 px-2.5 pt-10 pb-3 flex flex-col items-center self-stretch relative z-10"
-                        style={{ background: BOTTOM_GRADIENT }}
+                        style={{ background: bottomGradient }}
                     >
                         <div className="text-lg font-black text-white truncate leading-tight max-w-full text-center">{player.name}</div>
                         <div className="text-sm font-semibold text-white/80 tabular-nums mt-0.5 text-center truncate max-w-full">
