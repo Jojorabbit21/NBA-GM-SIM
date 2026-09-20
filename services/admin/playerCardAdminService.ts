@@ -22,8 +22,8 @@ export interface PlayerCardRow {
     /** [2026-09-20] 카드별 커스텀 배경 이미지. null이면 소속 컬렉션 배경 → 팀 그라디언트 폴백
      *  (utils/cardBackground.ts buildCardBackground). */
     bg_image_url: string | null;
-    /** [2026-09-20] 에디션(meta_card_editions.id). null = 기본 카드. 같은 선수·시즌은 에디션별 1장. */
-    edition_id: string | null;
+    /** [2026-09-20] 에디션(meta_card_editions.id) — 필수. 같은 선수·시즌은 에디션별 1장(에디션 수만큼 무제한). */
+    edition_id: string;
     created_at: string;
     updated_at: string;
 }
@@ -65,7 +65,8 @@ export async function fetchCardById(id: string): Promise<PlayerCardRow | null> {
  * 현재 레이팅을 "출발점 템플릿"으로 복사해 온 뒤 어드민이 그 시즌에 맞게 손으로 조정하는
  * 워크플로우를 전제로 한다 — updateCard()로 이어서 편집.
  */
-export async function createCardFromCopy(sourcePlayerId: string, season: string, editionId: string | null = null): Promise<PlayerCardRow> {
+export async function createCardFromCopy(sourcePlayerId: string, season: string, editionId: string): Promise<PlayerCardRow> {
+    if (!editionId) throw new Error('에디션을 선택해주세요.');
     const { data: source, error: srcErr } = await supabase
         .from('meta_players')
         .select('id, name, position, height, weight, base_team_id, base_attributes, tendencies')
@@ -105,7 +106,7 @@ export interface UpdateCardPatch {
     tendencies?: Record<string, any> | null;
     manual_ovr?: number | null;
     bg_image_url?: string | null;
-    edition_id?: string | null;
+    edition_id?: string;
 }
 
 export async function updateCard(id: string, patch: UpdateCardPatch): Promise<void> {

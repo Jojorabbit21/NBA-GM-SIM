@@ -523,7 +523,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                             <div>
                                 <h2 className="text-lg font-bold text-white">카드 에디션</h2>
                                 <p className="text-xs text-slate-500 ko-normal mt-0.5">
-                                    같은 선수·같은 시즌 카드를 에디션별로 1장씩 더 만들 수 있습니다. 카드 관리 탭의 에디션 선택지는 이 목록만 보여줍니다. 카드가 쓰고 있는 에디션은 삭제할 수 없습니다.
+                                    카드마다 에디션이 필수입니다. 같은 선수·같은 시즌이라도 에디션이 다르면 제한 없이 만들 수 있습니다(같은 에디션은 1장). 카드 관리 탭의 선택지는 이 목록만 보여주며, 카드가 쓰고 있는 에디션은 삭제할 수 없습니다.
                                 </p>
                             </div>
                             {editionErr && (

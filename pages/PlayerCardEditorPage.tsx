@@ -83,7 +83,13 @@ const PlayerCardEditorPage: React.FC = () => {
     // [2026-09-20] 에디션 — 어드민이 만든 목록(meta_card_editions)에서만 선택. ''=기본 카드
     const [editions, setEditions] = useState<CardEditionRow[]>([]);
     const [newEditionId, setNewEditionId] = useState<string>('');
-    useEffect(() => { listEditions().then(setEditions).catch(() => setEditions([])); }, []);
+    useEffect(() => {
+        listEditions().then(rows => {
+            setEditions(rows);
+            // 에디션은 필수 — 첫 항목을 기본 선택
+            setNewEditionId(prev => prev || rows[0]?.id || '');
+        }).catch(() => setEditions([]));
+    }, []);
     const editionName = useCallback((id: string | null | undefined) => (id ? editions.find(e => e.id === id)?.name ?? '?' : null), [editions]);
     const [creating, setCreating] = useState(false);
     const [listErr, setListErr] = useState<string | null>(null);
@@ -149,7 +155,7 @@ const PlayerCardEditorPage: React.FC = () => {
         setEditing(card);
         setDraft({
             season: card.season, name: card.name, position: card.position,
-            edition_id: card.edition_id ?? '',
+            edition_id: card.edition_id,
             height: card.height ?? '', weight: card.weight ?? '', base_team_id: card.base_team_id ?? '',
             attrs: { ...(card.base_attributes ?? {}) },
             manualOvrEnabled: card.manual_ovr != null,
@@ -205,10 +211,10 @@ const PlayerCardEditorPage: React.FC = () => {
     };
 
     const handleCreate = async () => {
-        if (!selectedPlayer || !newSeason.trim()) return;
+        if (!selectedPlayer || !newSeason.trim() || !newEditionId) return;
         setCreating(true); setListErr(null);
         try {
-            const card = await createCardFromCopy(selectedPlayer.id, newSeason.trim(), newEditionId || null);
+            const card = await createCardFromCopy(selectedPlayer.id, newSeason.trim(), newEditionId);
             setNewSeason('');
             await reloadCards(selectedPlayer.id);
             loadIntoEditor(card);
@@ -237,7 +243,7 @@ const PlayerCardEditorPage: React.FC = () => {
                 season: String(draft.season).trim(),
                 name: String(draft.name).trim(),
                 position: draft.position,
-                edition_id: draft.edition_id || null,
+                edition_id: draft.edition_id,
                 height: draft.height === '' ? null : Number(draft.height),
                 weight: draft.weight === '' ? null : Number(draft.weight),
                 base_team_id: draft.base_team_id || null,
@@ -353,7 +359,7 @@ const PlayerCardEditorPage: React.FC = () => {
                                 />
                                 <button
                                     onClick={handleCreate}
-                                    disabled={creating || !newSeason.trim()}
+                                    disabled={creating || !newSeason.trim() || !newEditionId}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
                                 >
                                     {creating ? <Loader2 size={11} className="animate-spin" /> : <Copy size={11} />}
@@ -367,13 +373,14 @@ const PlayerCardEditorPage: React.FC = () => {
                                 <label className="text-xs text-slate-400 ko-normal shrink-0">에디션</label>
                                 <select value={newEditionId} onChange={e => setNewEditionId(e.target.value)}
                                     className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
-                                    <option value="">기본 카드</option>
+                                    {editions.length === 0 && <option value="">에디션 없음</option>}
                                     {editions.map(ed => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
                                 </select>
                             </div>
-                            {editions.length === 0 && (
-                                <p className="text-[11px] text-slate-600 ko-normal">에디션은 "카드 컬렉션" 탭의 "에디션 관리"에서 만든 것만 고를 수 있습니다. 같은 선수·시즌 카드는 에디션별로 1장씩 만들 수 있습니다.</p>
-                            )}
+                            <p className="text-[11px] text-slate-600 ko-normal">
+                                시즌과 에디션은 필수입니다. 같은 선수·같은 시즌이라도 에디션이 다르면 제한 없이 만들 수 있고, 같은 에디션은 1장뿐입니다.
+                                {editions.length === 0 ? ' 에디션은 "카드 컬렉션" 탭의 "에디션 관리"에서 먼저 만들어주세요.' : ''}
+                            </p>
                             <p className="text-[11px] text-slate-600 ko-normal">
                                 {availableSeasons.length > 0
                                     ? `career_history에 기록된 시즌 ${availableSeasons.length}개 중에서 고르거나 직접 입력하세요.`
@@ -465,7 +472,6 @@ const PlayerCardEditorPage: React.FC = () => {
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">에디션</label>
                                 <select value={draft.edition_id} onChange={e => setDraft((d: any) => ({ ...d, edition_id: e.target.value }))}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
-                                    <option value="">기본 카드</option>
                                     {editions.map(ed => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
                                 </select>
                             </div>

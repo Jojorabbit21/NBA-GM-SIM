@@ -35,6 +35,26 @@
 
 ---
 
+## 2026-09-20 — 시즌 카드: 에디션 필수화(기본 카드 개념 제거)
+
+**배경**: 사용자 요청 "한 명의 선수에게 동일 시즌 + 다른 에디션일 경우 무제한 카드 생성이 가능하도록 수정해줘. 시즌/에디션 지정은 필수". 직전 에디션 도입에서 남겨 둔 "기본 카드(edition_id NULL)"를 없애고 카드마다 에디션을 필수로 만든다. 규칙은 선수 + 시즌 + 에디션 조합당 1장 — 에디션이 다르면 같은 시즌 카드를 제한 없이 만들 수 있다.
+
+**변경 파일**:
+- `migrations/make_card_edition_required.sql` (DB, **적용 완료**) — '기본' 에디션 생성(sort_order 0), NULL 카드 504장을 '기본'으로 이관, `edition_id NOT NULL`, 고유 제약을 일반 `UNIQUE (source_player_id, season, edition_id)`로 교체
+- `services/admin/playerCardAdminService.ts` (client) — `edition_id: string`(필수), `createCardFromCopy(…, editionId)` 빈 값 거부
+- `pages/PlayerCardEditorPage.tsx` (client) — "기본 카드" 옵션 제거, 새 카드 에디션은 첫 항목 자동 선택, 에디션 없으면 복사 버튼 비활성, 안내 문구
+- `pages/PlayerCardCollectionPage.tsx` (client) — 에디션 관리 안내 문구
+
+**Before**: `edition_id NULL` 허용(기본 카드), `UNIQUE NULLS NOT DISTINCT (…)` / **After**: `edition_id NOT NULL`, `UNIQUE (source_player_id, season, edition_id)`.
+
+**검증**: 적용 후 NULL 에디션 카드 0장, '기본' 에디션 존재, 컬럼 NOT NULL, 제약 정의 확인. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음.
+
+**주의**: '기본' 에디션은 카드 504장이 쓰고 있어 삭제 불가(이름 변경은 가능). 에디션이 하나도 없으면 카드를 만들 수 없으므로 에디션 관리에서 먼저 만들어야 한다.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석(NOT NULL 해제 + NULLS NOT DISTINCT 제약) + `git checkout 133cac02 -- services/admin/playerCardAdminService.ts pages/PlayerCardEditorPage.tsx pages/PlayerCardCollectionPage.tsx`.
+
+---
+
 ## 2026-09-20 — 시즌 카드 에디션(meta_card_editions): 같은 선수·시즌 카드를 에디션별로 1장씩
 
 **배경**: 사용자 요청 "동일한 시즌에 같은 카드를 2개 이상 만들 수 있는 방법은 없을까?" → "카드 에디션은 내가 직접 생성한 에디션만을 선택할 수 있게" → "진행해". 기존 `UNIQUE (source_player_id, season)`을 에디션 축으로 확장하고, 에디션은 어드민이 만든 목록에서만 선택(자유 입력 없음).
