@@ -9,7 +9,10 @@ import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
 import { usePersonalDraft } from '../../../hooks/usePersonalDraft';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
-import { computeRosterSize } from '../../../services/multi/personalDraftFormat';
+import {
+    computeRosterSize, normalizeCollectionWeights, resolvePositionTargets, positionGroupOf, positionTargetsReachable,
+    POSITION_GROUP_LABEL, type PositionGroup,
+} from '../../../services/multi/personalDraftFormat';
 import { PersonalDraftCard } from '../../../components/draft/PersonalDraftCard';
 import { useCardTeamColors } from '../../../hooks/useCardTeamColors';
 import { OvrBadge } from '../../../components/common/OvrBadge';
@@ -36,7 +39,7 @@ const PersonalDraftView: React.FC = () => {
         packState, poolPlayers, roster, collectionsById,
         isLoading, isSubmitting, error,
         timeRemaining, lastAutoPicked,
-        submitPick,
+        submitPicks,
     } = usePersonalDraft({
         roomId: room?.id ?? null,
         teamId: myTeam?.id ?? null,
@@ -44,30 +47,60 @@ const PersonalDraftView: React.FC = () => {
         useCustomOverrides,
     });
 
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    // [2026-09-20] 동시 지명 — 이번 라운드 픽 수(picksRemaining)만큼 고른 뒤 한 번에 제출
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     // 팩이 바뀌면(라운드 진행/자동 지명) 선택 해제
-    useEffect(() => { setSelectedId(null); }, [packState?.packStartedAt, packState?.currentRound]);
+    useEffect(() => { setSelectedIds([]); }, [packState?.packStartedAt, packState?.currentRound]);
+    const picksNeeded = packState?.status === 'in_progress' ? Math.max(1, packState.picksRemaining) : 0;
 
     const totalRoster  = useMemo(() => (format ? computeRosterSize(format.rounds) : 0), [format]);
+    // [2026-09-20] 등장 컬렉션 비율 — 라운드 구성 상단에 "컬렉션 xx%" 로 안내
+    const collectionMix = useMemo(() => normalizeCollectionWeights(format?.collectionWeights), [format]);
     const currentRound = packState?.currentRound ?? 1;
     const isCompleted  = packState?.status === 'completed';
     const rosterCount  = roster.length;
-    // 같은 라운드에서 이미 뽑은 카드는 다시 고를 수 없게(라운드당 picks>1인 포맷 대비)
-    const pickedThisRound = useMemo(() => {
+    // 같은 실제 선수의 카드는 한 팀이 두 장 가질 수 없다 — 선택된 카드/이미 로스터에 있는 카드와 같은 선수는 잠근다
+    const lockedRealPlayers = useMemo(() => {
         const set = new Set<string>();
-        for (const r of roster) if (r.draftedRound === currentRound) set.add(r.sourcePlayerId);
+        for (const r of roster) if (r.player) set.add(r.player.realPlayerId);
+        for (const id of selectedIds) {
+            const p = poolPlayers.find(x => x.cardId === id);
+            if (p) set.add(p.realPlayerId);
+        }
         return set;
-    }, [roster, currentRound]);
+    }, [roster, selectedIds, poolPlayers]);
+
+    // [2026-09-20] 포지션 분배 — 목표/현재 수(중립 표시)와 "이 카드를 더 골라도 목표 달성이 가능한가"(DB 검증과 동일 규칙)
+    const positionTargets = useMemo(() => resolvePositionTargets(format), [format]);
+    const draftedGroups = useMemo(() => roster.map(r => r.player ? positionGroupOf(r.player.position) : null).filter((g): g is PositionGroup => !!g), [roster]);
+    const groupCounts = useMemo(() => {
+        const c: Record<PositionGroup, number> = { G: 0, F: 0, C: 0 };
+        for (const g of draftedGroups) c[g]++;
+        return c;
+    }, [draftedGroups]);
+    const selectedGroups = useMemo(
+        () => selectedIds.map(id => poolPlayers.find(p => p.cardId === id)).filter(Boolean).map(p => positionGroupOf(p!.position)),
+        [selectedIds, poolPlayers],
+    );
+    const wouldBreakTargets = useCallback((p: { position: string }) =>
+        !positionTargetsReachable(positionTargets, totalRoster, draftedGroups, [...selectedGroups, positionGroupOf(p.position)]),
+        [positionTargets, totalRoster, draftedGroups, selectedGroups]);
 
     const handleSelect = useCallback((id: string) => {
-        setSelectedId(prev => (prev === id ? null : id));
-    }, []);
+        setSelectedIds(prev => {
+            if (prev.includes(id)) return prev.filter(x => x !== id);
+            if (prev.length >= picksNeeded) return prev;
+            const p = poolPlayers.find(x => x.cardId === id);
+            if (p && wouldBreakTargets(p)) return prev;
+            return [...prev, id];
+        });
+    }, [picksNeeded, poolPlayers, wouldBreakTargets]);
 
     const handlePick = useCallback(async () => {
-        if (!selectedId || isSubmitting || isCompleted) return;
-        const ok = await submitPick(selectedId);
-        if (ok) setSelectedId(null);
-    }, [selectedId, isSubmitting, isCompleted, submitPick]);
+        if (selectedIds.length !== picksNeeded || picksNeeded === 0 || isSubmitting || isCompleted) return;
+        const ok = await submitPicks(selectedIds);
+        if (ok) setSelectedIds([]);
+    }, [selectedIds, picksNeeded, isSubmitting, isCompleted, submitPicks]);
 
     const goBack = useCallback(() => navigate(`/multi/leagues/${leagueId}/season`), [navigate, leagueId]);
 
@@ -96,7 +129,7 @@ const PersonalDraftView: React.FC = () => {
         );
     }
 
-    const canPick = !!selectedId && !isSubmitting && !isCompleted && !!packState;
+    const canPick = picksNeeded > 0 && selectedIds.length === picksNeeded && !isSubmitting && !isCompleted && !!packState;
     const timerUrgent = timeRemaining != null && timeRemaining <= 30;
     const pickBtnClass = canPick
         ? 'px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-medium text-white transition-all active:scale-[0.98] shrink-0'
@@ -146,7 +179,7 @@ const PersonalDraftView: React.FC = () => {
                             </button>
                         ) : (
                             <button type="button" onClick={handlePick} disabled={!canPick} className={pickBtnClass}>
-                                {isSubmitting ? '지명 중…' : '지명하기'}
+                                {isSubmitting ? '지명 중…' : picksNeeded > 1 ? `지명하기 (${selectedIds.length}/${picksNeeded})` : '지명하기'}
                             </button>
                         )}
                     </div>
@@ -162,11 +195,23 @@ const PersonalDraftView: React.FC = () => {
                         <span className="text-xs font-semibold text-slate-400">총 {totalRoster}명</span>
                     </div>
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                        {collectionMix.length > 0 && (
+                            <div className="px-3 py-2 border-b border-slate-800/40 text-xs leading-snug text-slate-400">
+                                <span className="font-medium text-slate-300">카드 컬렉션</span>
+                                <span className="mx-1">:</span>
+                                {collectionMix.map((w, i) => (
+                                    <span key={w.id}>
+                                        {i > 0 && <span className="text-slate-600"> · </span>}
+                                        {collectionsById.get(w.id)?.name ?? '?'} <span className="tabular-nums text-slate-500">{Math.round(w.pct)}%</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                         {format.rounds.map(r => {
                             const done = isCompleted || r.round < currentRound;
                             const cur  = !isCompleted && r.round === currentRound;
-                            // [2026-09-20] 라운드 컬렉션(카드 배선) — 비어 있으면 전체 카드
-                            const colNames = (r.collectionIds ?? []).map(id => collectionsById.get(id)?.name).filter(Boolean) as string[];
+                            // [2026-09-20] 가중치 모드면 상단 안내로 대신하고, 아니면 라운드 컬렉션(비어 있으면 전체 카드)
+                            const colNames = collectionMix.length > 0 ? [] : (r.collectionIds ?? []).map(id => collectionsById.get(id)?.name).filter(Boolean) as string[];
                             const yearClause = colNames.length > 0 ? `, ${colNames.join(' · ')}` : '';
                             return (
                                 <div
@@ -220,8 +265,19 @@ const PersonalDraftView: React.FC = () => {
                                     <PersonalDraftCard
                                         key={p.id}
                                         player={p}
-                                        selected={selectedId === p.id}
-                                        disabled={isSubmitting || pickedThisRound.has(p.id)}
+                                        selected={selectedIds.includes(p.cardId)}
+                                        disabled={isSubmitting || (
+                                            !selectedIds.includes(p.cardId) && (
+                                                selectedIds.length >= picksNeeded ||          // 이번 라운드 픽 수만큼 이미 골랐음
+                                                lockedRealPlayers.has(p.realPlayerId) ||       // 같은 실제 선수 카드가 선택/로스터에 있음
+                                                wouldBreakTargets(p)                           // 이 카드를 고르면 포지션 목표를 채울 수 없음
+                                            )
+                                        )}
+                                        disabledReason={
+                                            lockedRealPlayers.has(p.realPlayerId) ? '같은 선수의 카드를 이미 보유했거나 선택 중입니다'
+                                            : wouldBreakTargets(p) ? `${POSITION_GROUP_LABEL[positionGroupOf(p.position)]}를 더 뽑으면 포지션 목표(가드 ${positionTargets.G} · 포워드 ${positionTargets.F} · 센터 ${positionTargets.C})를 채울 수 없습니다`
+                                            : undefined
+                                        }
                                         onSelect={handleSelect}
                                         teamColors={cardTeamColors}
                                     />
@@ -240,6 +296,11 @@ const PersonalDraftView: React.FC = () => {
                         </span>
                     </div>
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                        <div className="px-2.5 py-1.5 border-b border-slate-800/40 flex items-center gap-3 text-xs text-slate-400 tabular-nums">
+                            {(['G', 'F', 'C'] as PositionGroup[]).map(g => (
+                                <span key={g}>{POSITION_GROUP_LABEL[g]} <span className="text-slate-200">{groupCounts[g]}</span>/{positionTargets[g]}</span>
+                            ))}
+                        </div>
                         {format.rounds.map(r => {
                             const filled = roster.filter(e => e.draftedRound === r.round);
                             const rows: React.ReactNode[] = [];

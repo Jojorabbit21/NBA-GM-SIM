@@ -15,7 +15,7 @@
 import { supabase } from './supabaseAdmin';
 import { RoomManager } from './RoomManager';
 import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
-import { startPersonalDraftTournament } from './personalDraftStart';
+import { startPersonalDraftTournament, preparePersonalDraftTournament, effectivePrepAt } from './personalDraftStart';
 import { sweepPersonalDraftDeadlines } from './personalDraftDeadline';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { startPlayoffs } from './shared/playoffSeeder';
@@ -115,6 +115,40 @@ async function runPersonalDraftSweeps(): Promise<void> {
 // 이 방식엔 드래프트 룸이 없다. tournament_start_at이 지난 recruiting 리그를 찾아 미완료 팀을
 // 자동 지명으로 채우고 브라켓/일정을 만든다(personalDraftStart.ts). 로터리/드래프트 룸 스케줄러는
 // lottery/draft_scheduled_at이 null이라 이 리그를 건드리지 않는다.
+// [2026-09-20] 준비 단계 — 유효 준비 시각(draft_deadline_at, 없으면 tournament_start_at - 5분)이 지난
+// recruiting 리그를 준비(강퇴 → AI 채우기 → 자동 드래프트 → 일정). 시작 시각엔 상태 전환만 남아
+// 첫 경기가 정확히 tournament_start_at 에 돌아간다. 준비 시각 판정은 JS에서(COALESCE 필터 불가).
+async function runPersonalDraftTournamentPreps(now: string): Promise<void> {
+    const { data: leagues } = await supabase
+        .from('leagues')
+        .select('id, draft_deadline_at, tournament_start_at')
+        .eq('status', 'recruiting')
+        .eq('type', 'tournament')
+        .not('personal_draft_format', 'is', null)
+        .is('personal_draft_prepared_at', null)
+        .not('tournament_start_at', 'is', null);
+
+    const nowMs = new Date(now).getTime();
+    for (const league of leagues ?? []) {
+        const prepAt = effectivePrepAt(league as any);
+        if (!prepAt || prepAt.getTime() > nowMs) continue;
+        const { data: room } = await supabase
+            .from('rooms')
+            .select('id')
+            .eq('league_id', league.id)
+            .eq('status', 'active')
+            .maybeSingle();
+        if (!room) continue;
+
+        const result = await preparePersonalDraftTournament(league.id, room.id);
+        if (result.ok === false) {
+            console.error(`[scheduler:personal-draft-prep] league=${league.id}: ${result.error}`);
+        } else if (!result.skipped) {
+            console.log(`[scheduler:personal-draft-prep] league=${league.id} room=${room.id} prepared`);
+        }
+    }
+}
+
 async function runPersonalDraftTournamentStarts(now: string): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
@@ -163,6 +197,7 @@ async function tick(): Promise<void> {
         runDunkContestResult(),
         cleanupCompletedRooms(),
         runPersonalDraftSweeps(),
+        runPersonalDraftTournamentPreps(now),
         runPersonalDraftTournamentStarts(now),
         sweepPersonalDraftDeadlines(now),
     ]);

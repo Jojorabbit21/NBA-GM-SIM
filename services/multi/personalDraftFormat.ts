@@ -29,8 +29,10 @@ export interface PersonalDraftRoundInput {
 }
 
 export interface PersonalDraftRound extends PersonalDraftRoundInput {
-    /** 저장 시점에 확정된 후보 meta_player_cards.id 목록 — 픽 시점엔 재쿼리하지 않고 이 배열에서만 뽑는다. */
+    /** 저장 시점에 확정된 후보 meta_player_cards.id 목록(컬렉션 합집합) — 픽 시점엔 재쿼리하지 않고 이 배열에서만 뽑는다. */
     eligiblePlayerIds: string[];
+    /** [2026-09-20 컬렉션 비율] 컬렉션별 후보 카드 id — 서버 샘플러가 collectionWeights 비례로 컬렉션을 고른 뒤 여기서 뽑는다. */
+    eligibleByCollection?: Record<string, string[]>;
 }
 
 export interface PersonalDraftFormat {
@@ -42,6 +44,64 @@ export interface PersonalDraftFormat {
     source?: 'cards';
     /** 카드별 유효 OVR(manual_ovr 반영) — 서버 자동 지명 정렬용. */
     cardOvrById?: Record<string, number>;
+    /** [2026-09-20 컬렉션 비율] 등장 컬렉션과 가중치(0보다 큰 것만 저장). 없으면 전체 카드 균등. */
+    collectionWeights?: Record<string, number>;
+    /** [2026-09-20 포지션 분배] 가드/포워드/센터 목표 장수(합 = 총 로스터). 없으면 서버·클라 모두 기본 비율(40/40/20, C≥2). */
+    positionTargets?: PositionTargets;
+}
+
+export type PositionGroup = 'G' | 'F' | 'C';
+export interface PositionTargets { G: number; F: number; C: number }
+export const POSITION_GROUP_LABEL: Record<PositionGroup, string> = { G: '가드', F: '포워드', C: '센터' };
+
+/** 카드 포지션(PG/SG/SF/PF/C) → 그룹. DB personal_draft_pos_group()과 동일 규칙. */
+export function positionGroupOf(position: string | null | undefined): PositionGroup {
+    const p = (position ?? '').trim().toUpperCase();
+    if (p === 'PG' || p === 'SG' || p === 'G') return 'G';
+    if (p === 'C') return 'C';
+    return 'F';
+}
+
+/** 총 로스터 N 기준 기본 목표 — C = max(2, round(N×0.2)), G = round(N×0.4), F = 나머지. DB 기본값과 동일. */
+export function defaultPositionTargets(rosterSize: number): PositionTargets {
+    const n = Math.max(0, Math.trunc(rosterSize));
+    const C = Math.max(Math.min(2, n), Math.round(n * 0.2));
+    const G = Math.round(n * 0.4);
+    const F = Math.max(0, n - G - C);
+    return { G, F, C };
+}
+
+/** 포맷의 목표(없으면 기본값)를 돌려준다 — 화면 표시용. */
+export function resolvePositionTargets(format: { rounds: { picks: number }[]; positionTargets?: PositionTargets } | null | undefined): PositionTargets {
+    if (!format) return { G: 0, F: 0, C: 0 };
+    return format.positionTargets ?? defaultPositionTargets(computeRosterSize(format.rounds));
+}
+
+/**
+ * "이 카드들을 더 지명해도 목표 달성이 가능한가" — DB submit_personal_draft_picks 의 검증과 같은 규칙.
+ * 부족분 합계가 남은 픽 수 이하면 true.
+ */
+export function positionTargetsReachable(
+    targets: PositionTargets,
+    rosterSize: number,
+    draftedGroups: PositionGroup[],
+    extraGroups: PositionGroup[],
+): boolean {
+    const counts: Record<PositionGroup, number> = { G: 0, F: 0, C: 0 };
+    for (const g of draftedGroups) counts[g]++;
+    for (const g of extraGroups) counts[g]++;
+    const remaining = Math.max(0, rosterSize - draftedGroups.length - extraGroups.length);
+    const deficit = (['G', 'F', 'C'] as PositionGroup[]).reduce((s, g) => s + Math.max(0, targets[g] - counts[g]), 0);
+    return deficit <= remaining;
+}
+
+/** 가중치 맵을 등장 비율(%)로 — 편집기 표시/라운드 구성 안내용. */
+export function normalizeCollectionWeights(weights: Record<string, number> | null | undefined): { id: string; weight: number; pct: number }[] {
+    const entries = Object.entries(weights ?? {}).filter(([, w]) => Number.isFinite(w) && w > 0);
+    const total = entries.reduce((s, [, w]) => s + w, 0);
+    return entries
+        .map(([id, weight]) => ({ id, weight, pct: total > 0 ? (weight / total) * 100 : 0 }))
+        .sort((a, b) => b.weight - a.weight);
 }
 
 export interface BuildPersonalDraftFormatParams {
@@ -56,6 +116,10 @@ export interface BuildPersonalDraftFormatParams {
     /** 카드는 자체 능력치를 갖는 독립 row라 피크 오버라이드가 적용되지 않는다(시그니처 호환용). */
     useCustomOverrides: boolean;
     rounds: PersonalDraftRoundInput[];
+    /** 등장 컬렉션 → 가중치. 비어 있거나 전부 0이면 전체 카드에서 균등 샘플링(컬렉션 구분 없음). */
+    collectionWeights?: Record<string, number> | null;
+    /** 포지션 목표(장수). null/undefined면 기본 비율로 자동 계산해 저장. */
+    positionTargets?: PositionTargets | null;
 }
 
 export type BuildPersonalDraftFormatResult =
@@ -135,6 +199,8 @@ export interface ValidatePersonalDraftInputParams {
     globalOvrMin: number;
     globalOvrMax: number;
     rounds: PersonalDraftRoundInput[];
+    collectionWeights?: Record<string, number> | null;
+    positionTargets?: PositionTargets | null;
 }
 
 /**
@@ -149,6 +215,10 @@ export function validatePersonalDraftInput(params: ValidatePersonalDraftInputPar
     if (rounds.length > PERSONAL_DRAFT_ROUNDS_MAX) return `라운드는 최대 ${PERSONAL_DRAFT_ROUNDS_MAX}개까지입니다.`;
     if (pickTimerSec != null && (!Number.isInteger(pickTimerSec) || pickTimerSec < 1)) {
         return '픽 제한시간은 1초 이상의 정수여야 합니다.';
+    }
+    const weightEntries = Object.entries(params.collectionWeights ?? {});
+    if (weightEntries.some(([, w]) => !Number.isFinite(w) || w < 0)) {
+        return '컬렉션 비율은 0 이상의 숫자여야 합니다.';
     }
 
     for (let i = 0; i < rounds.length; i++) {
@@ -190,6 +260,15 @@ export function validatePersonalDraftInput(params: ValidatePersonalDraftInputPar
     if (rosterSize < PERSONAL_DRAFT_ROSTER_MIN || rosterSize > PERSONAL_DRAFT_ROSTER_MAX) {
         return `총 로스터(라운드별 픽 수 합계)는 ${PERSONAL_DRAFT_ROSTER_MIN}~${PERSONAL_DRAFT_ROSTER_MAX}명이어야 합니다 (현재 ${rosterSize}명).`;
     }
+    const pt = params.positionTargets;
+    if (pt) {
+        for (const g of ['G', 'F', 'C'] as PositionGroup[]) {
+            if (!Number.isInteger(pt[g]) || pt[g] < 0) return `포지션 목표(${POSITION_GROUP_LABEL[g]})는 0 이상의 정수여야 합니다.`;
+        }
+        if (pt.G + pt.F + pt.C !== rosterSize) {
+            return `포지션 목표 합계(${pt.G + pt.F + pt.C})가 총 로스터(${rosterSize}명)와 같아야 합니다.`;
+        }
+    }
     return null;
 }
 
@@ -213,11 +292,17 @@ export async function buildPersonalDraftFormat(
 ): Promise<BuildPersonalDraftFormatResult> {
     const { globalDraftYearMin, globalDraftYearMax, globalOvrMin, globalOvrMax, rounds } = params;
     const pickTimerSec = params.pickTimerSec ?? null;
+    // 0보다 큰 가중치만 "등장 컬렉션". 하나도 없으면 컬렉션 구분 없이 전체 카드 균등.
+    const activeWeights = normalizeCollectionWeights(params.collectionWeights);
+    const weighted = activeWeights.length > 0;
 
     const syncError = validatePersonalDraftInput({
         pickTimerSec, globalDraftYearMin, globalDraftYearMax, globalOvrMin, globalOvrMax, rounds,
+        collectionWeights: params.collectionWeights, positionTargets: params.positionTargets,
     });
     if (syncError) return { ok: false, error: syncError };
+    const rosterSize = computeRosterSize(rounds);
+    const positionTargets = params.positionTargets ?? defaultPositionTargets(rosterSize);
 
     let pool: CardPoolEntry[];
     try {
@@ -232,7 +317,11 @@ export async function buildPersonalDraftFormat(
     const resolvedRounds: PersonalDraftRound[] = [];
     const cardOvrById: Record<string, number> = {};
     for (const r of rounds) {
-        const eligible = filterCardsForRound(pool, r);
+        // 가중치 모드면 라운드별 컬렉션 선택(collectionIds)은 무시하고 등장 컬렉션 전체를 OVR 범위로만 거른다.
+        const roundInput: PersonalDraftRoundInput = weighted
+            ? { ...r, collectionIds: activeWeights.map(w => w.id) }
+            : r;
+        const eligible = filterCardsForRound(pool, roundInput);
         if (eligible.length < r.poolSize) {
             return {
                 ok: false,
@@ -241,17 +330,48 @@ export async function buildPersonalDraftFormat(
             };
         }
         for (const c of eligible) cardOvrById[c.id] = c.ovr;
+        let eligibleByCollection: Record<string, string[]> | undefined;
+        if (weighted) {
+            eligibleByCollection = {};
+            for (const w of activeWeights) {
+                eligibleByCollection[w.id] = eligible.filter(c => c.collectionIds.includes(w.id)).map(c => c.id);
+            }
+        }
         resolvedRounds.push({
             ...r,
             draftYearMin: null,
             draftYearMax: null,
-            collectionIds: r.collectionIds ?? [],
+            collectionIds: roundInput.collectionIds ?? [],
             eligiblePlayerIds: eligible.map(c => c.id),
+            ...(eligibleByCollection ? { eligibleByCollection } : {}),
         });
     }
 
+    // 포지션 목표 달성 가능성(전 라운드 합집합 기준): 그룹별 후보 카드가 목표 장수 이상이어야 한다
+    const unionIds = new Set<string>();
+    for (const r of resolvedRounds) for (const id of r.eligiblePlayerIds) unionIds.add(id);
+    const groupAvail: Record<PositionGroup, number> = { G: 0, F: 0, C: 0 };
+    for (const c of pool) if (unionIds.has(c.id)) groupAvail[positionGroupOf(c.position)]++;
+    for (const g of ['G', 'F', 'C'] as PositionGroup[]) {
+        if (groupAvail[g] < positionTargets[g]) {
+            return {
+                ok: false,
+                error: `${POSITION_GROUP_LABEL[g]} 후보 카드가 ${groupAvail[g]}장뿐이라 목표 ${positionTargets[g]}장을 채울 수 없습니다. `
+                     + `목표를 줄이거나 오버롤 범위/컬렉션을 넓혀주세요.`,
+            };
+        }
+    }
+
+    const collectionWeights = weighted
+        ? Object.fromEntries(activeWeights.map(w => [w.id, w.weight]))
+        : undefined;
+
     return {
         ok: true,
-        format: { totalRounds: rounds.length, pickTimerSec, rounds: resolvedRounds, source: 'cards', cardOvrById },
+        format: {
+            totalRounds: rounds.length, pickTimerSec, rounds: resolvedRounds, source: 'cards', cardOvrById,
+            ...(collectionWeights ? { collectionWeights } : {}),
+            positionTargets,
+        },
     };
 }

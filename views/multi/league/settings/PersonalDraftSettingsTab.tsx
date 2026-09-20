@@ -15,7 +15,7 @@ import { DraftPoolSettings } from '../../../../components/multi/DraftPoolSetting
 import { PersonalDraftFormatEditor } from '../../../../components/multi/PersonalDraftFormatEditor';
 import {
     buildPersonalDraftFormat, computeRosterSize, PERSONAL_DRAFT_OVR_MAX,
-    type PersonalDraftRoundInput,
+    type PersonalDraftRoundInput, type PositionTargets,
 } from '../../../../services/multi/personalDraftFormat';
 import { KST_OFFSET_MS } from '../../../../utils/kstTime';
 
@@ -65,6 +65,9 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
     const [useCustomOverrides, setUseCustomOverrides] = useState<boolean>((league as any).use_custom_overrides ?? false);
     const [rounds, setRounds]   = useState<PersonalDraftRoundInput[]>(() => toRoundInputs(league));
     const [timer, setTimer]     = useState<number | null>(league.personal_draft_format?.pickTimerSec ?? null);
+    // [2026-09-20] 등장 카드 컬렉션과 비율(가중치). 비어 있으면 전체 카드 균등.
+    const [collectionWeights, setCollectionWeights] = useState<Record<string, number>>(() => ({ ...(league.personal_draft_format?.collectionWeights ?? {}) }));
+    const [positionTargets, setPositionTargets] = useState<PositionTargets | null>(() => league.personal_draft_format?.positionTargets ?? null);
 
     const [saving, setSaving]   = useState(false);
     const [saveOk, setSaveOk]   = useState(false);
@@ -88,11 +91,13 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
 
     const savedFormatKey = useMemo(() => JSON.stringify({
         rounds: toRoundInputs(league), timer: league.personal_draft_format?.pickTimerSec ?? null,
+        collectionWeights: league.personal_draft_format?.collectionWeights ?? {},
+        positionTargets: league.personal_draft_format?.positionTargets ?? null,
         ovrMin: league.draft_ovr_min ?? 0, ovrMax: league.draft_ovr_max ?? 99,
         yearMin: league.draft_year_min ?? 2001, yearMax: league.draft_year_max ?? 2025,
         useCustomOverrides: (league as any).use_custom_overrides ?? false,
     }), [league]);
-    const currentFormatKey = JSON.stringify({ rounds, timer, ovrMin, ovrMax, yearMin, yearMax, useCustomOverrides });
+    const currentFormatKey = JSON.stringify({ rounds, timer, collectionWeights, positionTargets, ovrMin, ovrMax, yearMin, yearMax, useCustomOverrides });
     const formatDirty = currentFormatKey !== savedFormatKey;
     const savedDeadlineInputValue = toInputValue(league.draft_deadline_at);
     const scheduleDirty =
@@ -132,6 +137,8 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                     globalDraftYearMin: yearMin, globalDraftYearMax: yearMax,
                     globalOvrMin: ovrMin, globalOvrMax: ovrMax,
                     useCustomOverrides, rounds,
+                    collectionWeights,
+                    positionTargets,
                 });
                 if (built.ok === false) throw new Error(built.error);
                 const rosterSize = computeRosterSize(built.format.rounds);
@@ -241,7 +248,7 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                         />
                     )}
                     <p className="text-xs text-slate-600 ko-normal mt-1">
-                        지나면 새 참가자 차단 + 미완료 참가자 자동 강퇴(빈 팀은 시작 시 AI가 채움).
+                        지나면 새 참가자 차단 + 미완료 참가자 강퇴 후 AI 채우기·자동 드래프트·대진표를 미리 준비합니다. 끄면 시작 5분 전에 같은 준비가 진행됩니다.
                     </p>
                 </div>
             </div>
@@ -292,6 +299,8 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                 <PersonalDraftFormatEditor
                     rounds={rounds} onRoundsChange={setRounds}
                     pickTimerSec={timer} onPickTimerSecChange={setTimer}
+                    collectionWeights={collectionWeights} onCollectionWeightsChange={setCollectionWeights}
+                    positionTargets={positionTargets} onPositionTargetsChange={setPositionTargets}
                     globalOvrMin={ovrMin} globalOvrMax={ovrMax}
                     globalDraftYearMin={yearMin} globalDraftYearMax={yearMax}
                     useCustomOverrides={useCustomOverrides}

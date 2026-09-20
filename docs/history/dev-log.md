@@ -35,6 +35,141 @@
 
 ---
 
+## 2026-09-20 — 개인 팩 드래프트: 준비 단계(AI 채우기·자동 드래프트·일정)를 시작 시각 앞으로 분리
+
+**배경**: 사용자 지적 "토너먼트 시작 시각에는 첫 경기가 진행되지 않아? 그때 드래프트까지 진행하고 스케쥴 생성까지 하면 첫 경기 시작을 뒤로 미룰 수 밖에 없지 않나?" 확인 결과 시작 트리거가 시작 시각 이후 틱에서 돌고, `resolveSimRealStartAt`이 시작 시각이 이미 지난 경우 "지금을 10분 단위 반올림"으로 첫 경기를 잡아 첫 경기가 30초~5분 밀리고 시각도 매번 달랐다. **준비(강퇴 → AI 채우기 → 자동 드래프트 → 전술/브라켓/일정)를 유효 준비 시각에 끝내고, 시작 시각엔 상태 전환만** 남긴다. 준비 시점엔 `tournament_start_at`이 미래라 `forceInitSchedule`이 첫 경기를 정확히 그 시각(slot 0)에 잡는다.
+
+**규칙**: 유효 준비 시각 = `draft_deadline_at`, 없으면 `tournament_start_at − 5분`(`PREP_LEAD_MIN`). 준비 시각 이후 또는 준비 완료 후엔 신규 참가/팀 변경 차단(`claim_team` → `draft_deadline_passed`, 기존 클라 매핑 재사용).
+
+**변경 파일**:
+- `migrations/add_personal_draft_prepared_at.sql` (DB, **적용 완료**) — `leagues.personal_draft_prepared_at timestamptz`, `claim_team` 재정의(차단 기준 `COALESCE(draft_deadline_at, tournament_start_at − interval '5 minutes')` 또는 `prepared_at IS NOT NULL`)
+- `server/src/personalDraftStart.ts` (server) — `PREP_LEAD_MIN=5`, `effectivePrepAt()`, 공통 `runPreparation()`(강퇴 → AI 채우기 → force_complete → forceInitSchedule), 신규 `preparePersonalDraftTournament()`(`prepared_at` 원자 클레임, 실패 시 NULL로 되돌려 재시도), `startPersonalDraftTournament()`는 준비돼 있으면 상태 전환만, 아니면 준비까지 폴백
+- `server/src/personalDraftDeadline.ts` (server) — `kickIncompleteDrafters` export(준비 단계 재사용). 마감 스윕(강퇴만) 자체는 유지
+- `server/src/scheduler.ts` (server) — `runPersonalDraftTournamentPreps(now)` 추가(recruiting·미준비·시작시각 있는 개인 드래프트 리그 중 유효 준비 시각 ≤ now인 것 → 준비), 틱에 시작 트리거 앞으로 등록
+- `components/multi/CreateLeagueModal.tsx`, `views/multi/league/settings/PersonalDraftSettingsTab.tsx` (client) — 마감 안내 문구(준비 단계·시작 5분 전 기본)
+
+**Before**:
+```
+tournament_start_at 도달 → [status in_progress 클레임 → AI 채우기 → force_complete → forceInitSchedule(첫 경기 = now 10분 반올림)]
+claim_team 차단: draft_deadline_at 있을 때만
+```
+
+**After**:
+```
+유효 준비 시각(마감 ∥ 시작−5분) 도달 → [prepared_at 클레임 → 강퇴 → AI 채우기 → force_complete → forceInitSchedule(첫 경기 = tournament_start_at)]
+tournament_start_at 도달 → status in_progress 전환만 (미준비면 준비까지 폴백)
+claim_team 차단: 준비 시각 이후 또는 prepared_at 설정 후
+```
+
+**검증**: SQL 롤백 테스트(claim_team) — 마감 없음·시작 10분 전 허용, 시작 3분 전 차단, 마감이 미래면 시작 3분 전이어도 허용, prepared_at 설정 후 차단. 서버 `tsc` 45건·클라 56건 변경 전후 동일, `vite build` 성공. **fly.io 배포 전까지 서버 동작은 이전 그대로(시작 시각에 준비)**. 실제 타이밍(첫 경기가 정확히 시작 시각에 도는지)은 배포 후 실세션으로 확인 필요.
+
+**주의**: (1) 마감 없이 만든 리그는 시작 5분 전부터 참가가 막힌다(문구 안내). (2) 준비 후 시작 전 구간엔 리그 status가 recruiting인 채 브라켓/games가 존재한다 — 시뮬 스케줄러는 `scheduled_at <= now`만 보므로 시작 시각 전에 경기가 돌지 않는다. (3) 시작 시각과 준비 시각 사이 5분 안에 준비가 끝나지 못하면(대규모 카드 풀 등) 시작 트리거가 폴백으로 준비를 이어받으며, 그 경우 첫 경기는 이전 규칙(now 반올림)이다.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석 + `git checkout <이전 커밋> -- server/src/personalDraftStart.ts server/src/personalDraftDeadline.ts server/src/scheduler.ts <클라 2파일>`.
+
+---
+
+## 2026-09-20 — 개인 팩 드래프트: 포지션 분배(가드/포워드/센터 목표) — AI 지명 · 팩 보장 · 지명 검증
+
+**배경**: 사용자 요청 "개인 팩 드래프트에도 포지션 분배에 대한 내용을 추가해줘야함. 적어도 가드/포워드/센터의 비율이 맞게끔 드래프트할 수 있어야함." + "(4번의) 필수 상태 그룹은 강조하지마." 기존 AI 자동 지명은 팩 내 최고 OVR만 봐서 포지션이 깨진 로스터가 나올 수 있었고, 사람도 센터 없는 팩만 받을 수 있었다.
+
+**규칙(DB `personal_draft_group_state` 한 곳에서 판정, 클라 `positionTargetsReachable`이 같은 공식)**:
+- 그룹 G = PG/SG, F = SF/PF, C = C. 목표 `format.positionTargets = {G,F,C}`(장수, 합 = 총 로스터). 없으면 기본 C = max(2, round(N×0.2)), G = round(N×0.4), F = 나머지.
+- deficit(g) = max(0, 목표−현재), remaining = N − 지명 수. **필수 그룹** = 부족분 합계 ≥ remaining 일 때의 부족 그룹 전부.
+- AI 자동 지명(만료·강제 완료): 필수 그룹 카드 → 목표 미달 그룹 카드 → OVR 내림차순 → 무작위.
+- 팩 보장: 필수 그룹이 있으면 그 그룹 카드가 min(이번 라운드 픽 수, 부족분)장 들어가도록 비필수 카드를 교체(노출 이력·지명 제외·같은 선수 1장 유지, 보장 슬롯은 컬렉션 비율 무시).
+- 동시 지명 검증: 제출 후에도 부족분 합계 ≤ 남은 픽(`position_target_unreachable`). 클라이언트는 같은 규칙으로 카드를 비활성화하고 툴팁으로 이유만 표시(강조 없음).
+
+**변경 파일**:
+- `migrations/add_personal_draft_position_targets.sql` (DB, **적용 완료**) — `personal_draft_pos_group()`, `personal_draft_group_state(format, room, team, extra_cards[])`, `personal_draft_sample_pack` 보장 슬롯 후처리, `personal_draft_autopick_expired`/`personal_draft_force_complete_room` ORDER BY, `submit_personal_draft_picks` 검증
+- `services/multi/personalDraftFormat.ts` (client) — `PositionTargets`/`PositionGroup`, `positionGroupOf()`, `defaultPositionTargets()`, `resolvePositionTargets()`, `positionTargetsReachable()`, 검증(합 = 로스터), 빌더가 그룹별 후보 카드 수 ≥ 목표 검사 후 `positionTargets` 저장(미입력 시 기본값 확정 저장)
+- `components/multi/PersonalDraftFormatEditor.tsx` (client) — "포지션 분배" 블록(G/F/C 입력, 합계/로스터 표시, "기본 비율" 버튼)
+- `components/multi/CreateLeagueModal.tsx`, `views/multi/league/settings/PersonalDraftSettingsTab.tsx` (client) — 상태·빌드·dirty·복원
+- `components/draft/PersonalDraftCard.tsx` (client) — `disabledReason` prop(title 툴팁)
+- `views/multi/league/PersonalDraftView.tsx` (client) — 로스터 패널 상단에 "가드 n/목표 · 포워드 · 센터"(중립 표시), 목표 달성 불가 카드 비활성 + 툴팁
+
+**Before**:
+```
+AI 픽: ORDER BY personal_draft_card_ovr DESC, random()  /  팩: 포지션 무관  /  제출: 포지션 검증 없음
+```
+
+**After**:
+```
+AI 픽: ORDER BY (필수 그룹 아님), (목표 초과 그룹), ovr DESC, random()
+팩: 3단계 샘플링 후 필수 그룹 보장 슬롯 교체  /  제출: totalDeficit > remaining → position_target_unreachable
+```
+
+**검증**: SQL 롤백 테스트(임시 리그·사람 팀 A·AI 팀 B, 5라운드×1픽·팩3, 후보 G/F/C 4장씩, 목표 G2 F2 C1): 1라운드 팩 = C·F·G 각 1장 보장, G 2장 지명 후 세 번째 G는 도달 불가 판정 true, 3라운드 팩에 F·C 보장, 서비스롤 강제 완료 후 A·B 모두 counts = {G2,F2,C1}. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버(fly) 변경 없음.
+
+**주의**: 목표 합이 로스터와 같으므로(항상) 처음부터 "필수" 판정이 켜지고 부족분 = 남은 픽인 상태가 유지된다 — 즉 매 팩에 부족 그룹이 최소 1장씩 보장되고, 목표를 넘기는 픽은 언제나 막힌다. 여유를 원하면 후속으로 "최소 보장(min)"과 "목표(target)"를 분리하면 된다. 옛 포맷(positionTargets 없음)은 기본 비율로 동작한다.
+
+**롤백 방법**: 마이그레이션 파일 하단 주석 + `git checkout <이전 커밋> -- <위 클라이언트 파일들>`.
+
+---
+
+## 2026-09-20 — 개인 팩 드래프트: 다중 픽 동시 지명 + 노출 카드 재등장 방지
+
+**배경**: 사용자 요청 "1라운드에서 2개 이상의 카드를 뽑게하면 중복 선택이 안되고 1개 지명 후 1개 지명하는 식으로 되는데, 이것을 동시지명으로 바꿔줘. 그리고 한번 라운드에 등장한 카드는 중복으로 등장하지 않게 해줘." (1) picks>1 라운드는 카드를 N장 고른 뒤 한 번에 제출. (2) 팀별 노출 이력(`seen_pool`)을 누적해 이후 팩에서 제외하고, 한 팩 안에 같은 실제 선수의 카드가 두 장 들어가지 않게 함(동시 지명 시 규칙 위반 방지).
+
+**변경 파일**:
+- `migrations/add_personal_draft_multi_pick_and_seen.sql` (DB, **적용 완료**) — `personal_draft_progress.seen_pool jsonb DEFAULT '[]'`; 신규 `personal_draft_sample_try(format, roundCfg, room, team, seen, mode)`(mode 0 노출+지명 제외 / 1 지명 제외만 / 2 제외 없음; 가중치·균등 두 경로 모두 같은 실제 선수 1장 제한), `personal_draft_sample_pack` 재정의(0→1→2 단계 완화 + WARNING), 신규 `personal_draft_new_pack()`(샘플링 + seen_pool 누적 — 팩 생성의 단일 진입점), `personal_draft_apply_pick`/`get_or_generate_round_pack`/`personal_draft_force_complete_room`이 new_pack 사용(force_complete는 진행 행을 팩 NULL로 만든 뒤 루프에서 생성), 신규 RPC `submit_personal_draft_picks(room, team, card_ids[], user)`: 개수 = picks_remaining 강제(`pick_count_mismatch`), 중복 카드/같은 실제 선수(`duplicate_player`) 거부, 팩 포함 검사 후 apply_pick 순차 적용, `draftedCardIds` 반환. 기존 단일 픽 RPC 유지
+- `services/multi/personalDraft.ts` (client) — `submitPersonalDraftPicks(roomId, teamId, cardIds)`
+- `hooks/usePersonalDraft.ts` (client) — `submitPick(cardId)` → `submitPicks(cardIds[])`
+- `views/multi/league/PersonalDraftView.tsx` (client) — 단일 선택 → 다중 선택(`selectedIds`, 상한 = picksRemaining), 같은 실제 선수 카드(선택/로스터)는 비활성, 버튼 "지명하기 (n/N)", `pickedThisRound` 제거
+
+**Before**:
+```
+팩 생성: personal_draft_sample_pack() 직접 호출(노출 이력 없음) / 팩 안 같은 선수 카드 2장 가능
+지명: submit_personal_draft_pick 1장씩 → picks>1이면 남은 팩에서 다시 1장
+```
+
+**After**:
+```
+팩 생성: personal_draft_new_pack() → sample_pack(seen 제외, 같은 선수 1장) + seen_pool 누적
+지명: submit_personal_draft_picks(N장) 한 번 → 마지막 픽에서 라운드 진행 + 다음 팩
+```
+
+**검증**: SQL 롤백 테스트(임시 리그/룸/팀 생성 후 RAISE로 롤백) — 1라운드 팩4·픽2 / 2라운드 팩3·픽1, 후보에 같은 선수 카드 2장 포함: 1라운드 팩에 같은 선수 중복 0, 1장만 제출 시 `pick_count_mismatch` 거부, 2장 동시 지명 후 round=2·picks_remaining=1·인스턴스 2·로스터 2, 2라운드 팩은 1라운드 노출 카드와 지명 선수(다른 시즌 카드 포함) 모두 제외, seen_pool = 두 팩 합. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버(fly) 변경 없음.
+
+**주의**: seen 제외로 후보가 픽 수에 못 미치면 노출 이력을 무시하고(경고 로그) 다시 뽑는다 — 후보가 적은 포맷은 후반 라운드에 재등장할 수 있다. 서버 자동 지명(만료/강제 완료)은 여전히 1장씩 적용(결과 동일).
+
+**롤백 방법**: 마이그레이션 파일 하단 주석 참고 + `git checkout <이전 커밋> -- services/multi/personalDraft.ts hooks/usePersonalDraft.ts views/multi/league/PersonalDraftView.tsx`.
+
+---
+
+## 2026-09-20 — 개인 팩 드래프트: 카드 컬렉션 등장 여부 + 비율(가중치) 설정
+
+**배경**: 사용자 요청 "토너먼트를 만들때, 어떤 카드 컬렉션이 등장할지와 카드 컬렉션이 얼마만큼의 비율로 나와야할지 설정할 수 있는 옵션을 구현하고싶어." 직전 배선(안 A)의 "라운드별 컬렉션 칩(합집합 균등)" 대신 **포맷 전체 단위의 컬렉션 구성표**(체크 = 등장, 가중치 = 비율)를 두고, 서버 샘플러가 팩의 슬롯마다 가중치 비례로 컬렉션을 먼저 고른 뒤 그 컬렉션에서 카드를 뽑게 했다. 구성표를 비워 두면 이전처럼 전체 카드 균등(라운드별 칩 열이 다시 보임).
+
+**변경 파일**:
+- `migrations/add_personal_draft_collection_weights.sql` (DB, **적용 완료**) — 신규 `personal_draft_card_excluded(room, team, cardId)`(지명 카드/같은 실제 선수 제외 판정 분리), `personal_draft_sample_pack` 재정의: `format.collectionWeights`와 `rounds[].eligibleByCollection`이 있으면 슬롯별 가중치 샘플링(Efraimidis–Spirakis `ORDER BY -ln(random())/w`, 남은 카드가 있는 컬렉션만), 없으면 기존 합집합 균등. 픽 수 미달 폴백 동일
+- `services/multi/personalDraftFormat.ts` (client) — `PersonalDraftFormat.collectionWeights?`, `PersonalDraftRound.eligibleByCollection?`, `normalizeCollectionWeights()`(가중치→% 정렬), 빌더가 가중치 모드면 라운드 `collectionIds`를 무시하고 등장 컬렉션 전체를 OVR로만 거른 뒤 컬렉션별 후보 목록을 함께 저장. 검증에 가중치 음수/NaN 거부 추가
+- `components/multi/PersonalDraftFormatEditor.tsx` (client) — "카드 컬렉션 구성" 표(체크·가중치 입력·카드 수·비율 바/%) 신설, 가중치 모드면 라운드 표의 컬렉션 칩 열 숨김, 후보 확인 결과에 컬렉션별 내역(툴팁). props `collectionWeights`/`onCollectionWeightsChange` 추가
+- `components/multi/CreateLeagueModal.tsx`, `views/multi/league/settings/PersonalDraftSettingsTab.tsx` (client) — 상태 보관·빌드 파라미터·dirty 키·편집기 props 연결(설정 탭은 저장된 포맷에서 복원)
+- `hooks/usePersonalDraft.ts` (client) — 카드 표시 컬렉션 우선순위: 등장 컬렉션(가중치 큰 순) → 라운드 collectionIds
+- `views/multi/league/PersonalDraftView.tsx` (client) — 라운드 구성 상단에 "카드 컬렉션: A 60% · B 30% …" 안내(가중치 모드일 때)
+
+**Before**:
+```
+샘플러: rounds[].eligiblePlayerIds(합집합)에서 균등 추출 — 컬렉션 비율 개념 없음
+편집기: 라운드마다 컬렉션 칩 다중 선택(합집합)
+```
+
+**After**:
+```
+format.collectionWeights = { colId: w }, rounds[].eligibleByCollection = { colId: [cardId] }
+샘플러: 슬롯마다 P(컬렉션) ∝ w (남은 카드 있는 컬렉션만) → 그 컬렉션에서 무작위 1장, 팩 내 중복 없음
+편집기: 포맷 전체 컬렉션 구성표(등장/가중치/%) — 비우면 이전 동작
+```
+
+**검증**: SQL 테스트 — 가중치 A70/B30/C0으로 1장 팩 400회: A 285·B 115·C 0. B에 2장만 남기고 5장 팩: `[a2,a3,b2,a1,b1]` 중복 없이 A가 나머지를 채움. `tsc --noEmit` 56건 변경 전후 동일(이번 파일 0건), `vite build` 성공. 브라우저 확인은 미실시.
+
+**주의**: 가중치는 "슬롯당 컬렉션 선택 확률"이지 "팩 안 정확한 장수 비율"이 아니다(포아송식 흔들림 있음). 어떤 라운드의 OVR 범위에 특정 컬렉션 카드가 없으면 그 라운드에선 그 컬렉션이 자동으로 빠진다(편집기 후보 확인 툴팁으로 확인 가능). 서버(fly) 변경 없음 — DB 함수만.
+
+**롤백 방법**: `wire_personal_draft_cards.sql`의 `personal_draft_sample_pack` 본문으로 재정의 + `personal_draft_card_excluded` DROP, 클라이언트는 위 파일들 `git checkout d70c5bc4 -- …`. 저장된 포맷의 추가 키는 옛 샘플러가 무시하므로 데이터 마이그레이션 불필요.
+
+---
+
 ## 2026-09-20 — 개인 팩 드래프트 ↔ 시즌 카드 배선(안 A) + 드래프트 카드 확정 디자인 이식
 
 **배경**: 사용자 요청 "이제 목업 더 안봐도될거같아. 배선 구현해줘." 그동안 어드민 도구(카드/컬렉션/팀별 컬러/카드 배경)만 있고 실제 드래프트는 여전히 meta_players를 뽑고 있었다. 이번에 **개인 팩 드래프트의 후보·인스턴스·표시를 전부 시즌 카드(meta_player_cards) 기준**으로 바꾸고, "팩 드래프트" 목업 v82에서 확정한 카드 디자인과 커서 추적 호버 카드를 실제 화면에 이식했다. 일반 리그/공유풀 드래프트/meta_players는 건드리지 않았다.

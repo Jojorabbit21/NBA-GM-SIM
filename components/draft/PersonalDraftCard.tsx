@@ -16,6 +16,8 @@ interface PersonalDraftCardProps {
     player: PersonalDraftPlayer;
     selected: boolean;
     disabled?: boolean;
+    /** 비활성 이유(툴팁). 예: 같은 선수 카드 보유, 포지션 목표 달성 불가 */
+    disabledReason?: string;
     onSelect: (cardId: string) => void;
     /** 카드 전용 팀별 컬러 오버라이드 맵(useCardTeamColors). 없으면 TEAM_COLORS 기본값. */
     teamColors?: Record<string, CardTeamColor> | null;
@@ -41,7 +43,7 @@ function resolveTeamVisual(baseTeamId: string | null, teamColors?: Record<string
     };
 }
 
-export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, selected, disabled = false, onSelect, teamColors }) => {
+export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, selected, disabled = false, disabledReason, onSelect, teamColors }) => {
     const { teamId, teamName, colors } = resolveTeamVisual(player.baseTeamId, teamColors);
     const background = buildCardBackground(player.collection?.bg ?? null, colors, player.bgImageUrl);
     const subline = [teamName, player.position].filter(Boolean).join(' · ');
@@ -80,6 +82,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                 tabIndex={disabled ? -1 : 0}
                 aria-pressed={selected}
                 aria-disabled={disabled}
+                title={disabled ? disabledReason : undefined}
                 onClick={() => { if (!disabled) onSelect(player.cardId); }}
                 onKeyDown={e => {
                     if (disabled) return;

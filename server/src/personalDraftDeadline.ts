@@ -41,7 +41,8 @@ export async function sweepPersonalDraftDeadlines(now: string): Promise<void> {
     }
 }
 
-async function kickIncompleteDrafters(roomId: string): Promise<void> {
+/** 드래프트를 끝내지 못한 사람 참가자 강퇴(멱등). [2026-09-20] 준비 단계(personalDraftStart.ts)도 재사용. */
+export async function kickIncompleteDrafters(roomId: string): Promise<void> {
     const { data: teams } = await supabase
         .from('league_teams')
         .select('id, user_id')

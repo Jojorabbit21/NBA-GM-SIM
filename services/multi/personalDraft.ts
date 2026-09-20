@@ -53,7 +53,27 @@ export async function getOrGenerateRoundPack(
     return { data: data as PersonalDraftPackState, error: null };
 }
 
-/** 현재 팩에서 한 장 픽 — 라운드 내 다중 픽이면 같은 팩에서 계속, 아니면 다음 라운드 팩이 즉시 생성됨. */
+/**
+ * [2026-09-20] 동시 지명 — 현재 팩에서 picks_remaining 장을 한 번에 지명(개수가 다르면 서버가 거부).
+ * 서버가 카드마다 팩 포함 여부·같은 실제 선수 중복을 검사한 뒤 순서대로 적용하고, 마지막 픽에서
+ * 라운드가 넘어가며 다음 팩이 즉시 생성된다. RPC: submit_personal_draft_picks.
+ */
+export async function submitPersonalDraftPicks(
+    roomId: string,
+    teamId: string,
+    cardIds: string[],
+): Promise<{ data: PersonalDraftPickResult | null; error: string | null }> {
+    const { data, error } = await supabase.rpc('submit_personal_draft_picks', {
+        p_room_id: roomId,
+        p_team_id: teamId,
+        p_card_ids: cardIds,
+    });
+    if (error) return { data: null, error: error.message };
+    return { data: data as PersonalDraftPickResult, error: null };
+}
+
+/** 현재 팩에서 한 장 픽 — 라운드 내 다중 픽이면 같은 팩에서 계속, 아니면 다음 라운드 팩이 즉시 생성됨.
+ *  (동시 지명 도입 후 화면은 submitPersonalDraftPicks를 쓴다 — 단일 픽 RPC는 호환용으로 유지) */
 export async function submitPersonalDraftPick(
     roomId: string,
     teamId: string,

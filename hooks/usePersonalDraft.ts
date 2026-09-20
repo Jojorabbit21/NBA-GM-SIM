@@ -18,10 +18,10 @@ import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import {
     getOrGenerateRoundPack,
     startPersonalDraft,
-    submitPersonalDraftPick,
+    submitPersonalDraftPicks,
     type PersonalDraftPackState,
 } from '../services/multi/personalDraft';
-import type { PersonalDraftFormat } from '../services/multi/personalDraftFormat';
+import { normalizeCollectionWeights, type PersonalDraftFormat } from '../services/multi/personalDraftFormat';
 import type { CardBackgroundSettings } from '../utils/cardBackground';
 import type { Player, PlayerStats } from '../types';
 
@@ -78,7 +78,8 @@ interface UsePersonalDraftResult {
     timeRemaining: number | null;
     /** 직전 동기화에서 서버가 자동 지명한 카드 수 — 화면에서 안내 배너로 쓴다. */
     lastAutoPicked: number;
-    submitPick: (cardId: string) => Promise<boolean>;
+    /** [2026-09-20] 동시 지명 — 현재 라운드의 picksRemaining 장을 한 번에 제출. */
+    submitPicks: (cardIds: string[]) => Promise<boolean>;
     refresh: () => Promise<void>;
 }
 
@@ -218,8 +219,12 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
         return { ...cached.base, collection: chosen ? (collections.get(chosen) ?? null) : null };
     }, []);
 
-    const roundCollectionIds = useCallback((round: number): string[] | undefined =>
-        format?.rounds?.[round - 1]?.collectionIds, [format]);
+    // 카드 표시용 컬렉션 우선순위: 포맷의 등장 컬렉션(가중치 큰 순) → 라운드 collectionIds
+    const roundCollectionIds = useCallback((round: number): string[] | undefined => {
+        const weighted = normalizeCollectionWeights(format?.collectionWeights).map(w => w.id);
+        if (weighted.length > 0) return weighted;
+        return format?.rounds?.[round - 1]?.collectionIds;
+    }, [format]);
 
     const loadRoster = useCallback(async () => {
         if (!roomId || !teamId) return;
@@ -327,11 +332,11 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
     }, [deadlineMs, packState?.packStartedAt, refresh]);
 
     // ── 픽 제출 ───────────────────────────────────────────────────────────────
-    const submitPick = useCallback(async (cardId: string): Promise<boolean> => {
-        if (!roomId || !teamId || isSubmitting) return false;
+    const submitPicks = useCallback(async (cardIds: string[]): Promise<boolean> => {
+        if (!roomId || !teamId || isSubmitting || cardIds.length === 0) return false;
         setIsSubmitting(true); setError(null);
         try {
-            const { data, error: rpcErr } = await submitPersonalDraftPick(roomId, teamId, cardId);
+            const { data, error: rpcErr } = await submitPersonalDraftPicks(roomId, teamId, cardIds);
             if (!mountedRef.current) return false;
             if (rpcErr || !data) { setError(rpcErr ?? '지명에 실패했습니다.'); return false; }
             await applyState(data, { rosterChanged: true });
@@ -352,6 +357,6 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
         packState, poolPlayers, roster, collectionsById,
         isLoading, isSubmitting, error,
         timeRemaining, lastAutoPicked,
-        submitPick, refresh,
+        submitPicks, refresh,
     };
 }

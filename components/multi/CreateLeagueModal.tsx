@@ -13,7 +13,7 @@ import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
 import { PersonalDraftFormatEditor } from './PersonalDraftFormatEditor';
 import {
     buildFixedDeclineCurve, buildPersonalDraftFormat, computeRosterSize,
-    PICK_TIMER_SEC_DEFAULT, PERSONAL_DRAFT_OVR_MAX, type PersonalDraftRoundInput, type PersonalDraftFormat,
+    PICK_TIMER_SEC_DEFAULT, PERSONAL_DRAFT_OVR_MAX, type PersonalDraftRoundInput, type PersonalDraftFormat, type PositionTargets,
 } from '../../services/multi/personalDraftFormat';
 import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
 import { TEAM_DATA } from '../../data/teamData';
@@ -210,6 +210,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const [personalRounds,  setPersonalRounds]  = useState<PersonalDraftRoundInput[]>(() =>
         buildFixedDeclineCurve(0, 99, { totalRounds: 15, windowSize: 10, poolSize: 8, picks: 1 }));
     const [personalTimer,   setPersonalTimer]   = useState<number | null>(PICK_TIMER_SEC_DEFAULT);
+    // [2026-09-20] 등장 카드 컬렉션과 비율(가중치). 비어 있으면 전체 카드 균등.
+    const [personalCollectionWeights, setPersonalCollectionWeights] = useState<Record<string, number>>({});
+    // [2026-09-20] 포지션 분배 목표(G/F/C 장수). null이면 기본 비율(40/40/20, C≥2)로 자동.
+    const [personalPositionTargets, setPersonalPositionTargets] = useState<PositionTargets | null>(null);
     const isPersonalDraft = type === 'tournament' && draftMode === 'personal';
     // [2026-09-18] 개인 팩 드래프트 참가/드래프트 마감 — 지나면 신규 참가 차단 + 미완료 참가자 자동 강퇴
     // (server/src/personalDraftDeadline.ts). 선택 사항(꺼두면 마감 없이 기존처럼 동작).
@@ -334,6 +338,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                     globalDraftYearMin: draftYearMin, globalDraftYearMax: draftYearMax,
                     globalOvrMin: draftOvrMin, globalOvrMax: draftOvrMax,
                     useCustomOverrides, rounds: personalRounds,
+                    collectionWeights: personalCollectionWeights,
+                    positionTargets: personalPositionTargets,
                 });
                 if (built.ok === false) throw new Error(built.error);
                 personalFormat = built.format;
@@ -817,7 +823,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                             />
                                         )}
                                         <p className="text-[11px] text-slate-600 ko-normal mt-1">
-                                            이 시각이 지나면 새 참가자는 더 이상 팀을 선택할 수 없고, 그때까지 드래프트를 끝내지 못한 참가자는 자동으로 강퇴됩니다(빈 팀은 토너먼트 시작 시 AI가 대신 채웁니다). 끄면 마감 없이 토너먼트 시작 시각까지 계속 참가할 수 있습니다.
+                                            이 시각이 지나면 새 참가자는 더 이상 팀을 선택할 수 없고, 그때까지 드래프트를 끝내지 못한 참가자는 자동으로 강퇴됩니다. 이어서 빈 팀에 AI가 들어가 드래프트와 대진표까지 미리 준비되고, 첫 경기는 정확히 시작 시각에 열립니다. 끄면 시작 5분 전에 같은 준비가 자동으로 진행됩니다(그때부터 참가 마감).
                                         </p>
                                     </div>
                                 )}
@@ -1073,6 +1079,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                 onRoundsChange={setPersonalRounds}
                                 pickTimerSec={personalTimer}
                                 onPickTimerSecChange={setPersonalTimer}
+                                collectionWeights={personalCollectionWeights}
+                                onCollectionWeightsChange={setPersonalCollectionWeights}
+                                positionTargets={personalPositionTargets}
+                                onPositionTargetsChange={setPersonalPositionTargets}
                                 globalOvrMin={draftOvrMin}
                                 globalOvrMax={draftOvrMax}
                                 globalDraftYearMin={draftYearMin}

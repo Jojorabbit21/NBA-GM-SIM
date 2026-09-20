@@ -20,7 +20,12 @@ import {
     PICK_TIMER_SEC_DEFAULT,
     PICK_TIMER_SEC_MAX,
     PICK_TIMER_SEC_MIN,
+    normalizeCollectionWeights,
+    defaultPositionTargets,
+    POSITION_GROUP_LABEL,
     type PersonalDraftRoundInput,
+    type PositionTargets,
+    type PositionGroup,
 } from '../../services/multi/personalDraftFormat';
 import { supabase } from '../../services/supabaseClient';
 
@@ -29,6 +34,12 @@ interface Props {
     onRoundsChange: (rounds: PersonalDraftRoundInput[]) => void;
     pickTimerSec: number | null;
     onPickTimerSecChange: (v: number | null) => void;
+    /** [2026-09-20] 등장 컬렉션 → 가중치. 비어 있으면 전체 카드 균등(컬렉션 구분 없음). */
+    collectionWeights: Record<string, number>;
+    onCollectionWeightsChange: (v: Record<string, number>) => void;
+    /** [2026-09-20] 포지션 목표(G/F/C 장수). null이면 기본 비율 자동(표시는 기본값). */
+    positionTargets: PositionTargets | null;
+    onPositionTargetsChange: (v: PositionTargets | null) => void;
     globalOvrMin: number;
     globalOvrMax: number;
     globalDraftYearMin: number;
@@ -59,6 +70,8 @@ function fmtClock(sec: number): string {
 export const PersonalDraftFormatEditor: React.FC<Props> = ({
     rounds, onRoundsChange,
     pickTimerSec, onPickTimerSecChange,
+    collectionWeights, onCollectionWeightsChange,
+    positionTargets, onPositionTargetsChange,
     globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax,
     useCustomOverrides,
     disabled = false,
@@ -87,14 +100,30 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
 
     // 후보 인원 확인(비동기, 카드 풀 조회) — 입력이 바뀌면 결과 무효화.
     const [eligibleCounts, setEligibleCounts] = useState<number[] | null>(null);
+    const [eligibleByCol, setEligibleByCol]   = useState<Record<string, number>[] | null>(null);
     const [checking, setChecking]             = useState(false);
     const [checkErr, setCheckErr]             = useState<string | null>(null);
-    useEffect(() => { setEligibleCounts(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax]);
+    useEffect(() => { setEligibleCounts(null); setEligibleByCol(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax, collectionWeights]);
+
+    const mix = useMemo(() => normalizeCollectionWeights(collectionWeights), [collectionWeights]);
+    const weighted = mix.length > 0;
+    const setWeight = (id: string, w: number) => onCollectionWeightsChange({ ...collectionWeights, [id]: Math.max(0, w) });
+    const toggleCollectionOn = (id: string, on: boolean) => {
+        const next = { ...collectionWeights };
+        if (on) next[id] = next[id] && next[id] > 0 ? next[id] : 1;
+        else delete next[id];
+        onCollectionWeightsChange(next);
+    };
 
     const rosterSize = useMemo(() => computeRosterSize(rounds), [rounds]);
+    const autoTargets = useMemo(() => defaultPositionTargets(rosterSize), [rosterSize]);
+    const shownTargets = positionTargets ?? autoTargets;
+    const targetSum = shownTargets.G + shownTargets.F + shownTargets.C;
+    const setTarget = (g: PositionGroup, v: number) =>
+        onPositionTargetsChange({ ...shownTargets, [g]: Math.max(0, Math.trunc(v)) });
     const syncError = useMemo(() => validatePersonalDraftInput({
-        pickTimerSec, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, rounds,
-    }), [pickTimerSec, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, rounds]);
+        pickTimerSec, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, rounds, collectionWeights, positionTargets,
+    }), [pickTimerSec, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, rounds, collectionWeights, positionTargets]);
     const rosterWarn = !syncError && rosterSize < PERSONAL_DRAFT_ROSTER_WARN_BELOW;
 
     const update = (idx: number, patch: Partial<PersonalDraftRoundInput>) => {
@@ -121,13 +150,16 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
     };
 
     const runCheck = async () => {
-        setChecking(true); setCheckErr(null); setEligibleCounts(null);
+        setChecking(true); setCheckErr(null); setEligibleCounts(null); setEligibleByCol(null);
         try {
             const res = await buildPersonalDraftFormat({
                 pickTimerSec, globalOvrMin, globalOvrMax, globalDraftYearMin, globalDraftYearMax, useCustomOverrides, rounds,
+                collectionWeights, positionTargets,
             });
             if (res.ok === false) { setCheckErr(res.error); return; }
             setEligibleCounts(res.format.rounds.map(r => r.eligiblePlayerIds.length));
+            setEligibleByCol(res.format.rounds.map(r =>
+                Object.fromEntries(Object.entries(r.eligibleByCollection ?? {}).map(([id, ids]) => [id, ids.length]))));
         } catch (e) {
             setCheckErr(e instanceof Error ? e.message : '후보 조회에 실패했습니다.');
         } finally {
@@ -171,6 +203,81 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         <span className="text-xs text-slate-400 tabular-nums w-11 text-right">{fmtClock(Math.max(0, pickTimerSec))}</span>
                     </div>
                 )}
+            </div>
+
+            {/* ── 카드 컬렉션 구성(등장 여부 + 비율) ── */}
+            <div className="rounded-xl border border-slate-700/60 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-800/60">
+                    <span className="text-xs font-bold text-slate-300">카드 컬렉션 구성</span>
+                    <span className="text-[11px] text-slate-500 ko-normal">
+                        {weighted ? `${mix.length}개 컬렉션 등장 · 비율은 가중치 합 대비` : '선택 없음 — 전체 카드가 균등하게 등장'}
+                    </span>
+                </div>
+                {collections.length === 0 ? (
+                    <p className="text-[11px] text-slate-600 ko-normal px-3 py-2">컬렉션이 없습니다 — 어드민 "카드 컬렉션" 탭에서 먼저 만들어주세요.</p>
+                ) : (
+                    <div className="divide-y divide-slate-800">
+                        {collections.map(c => {
+                            const w = collectionWeights[c.id];
+                            const on = w != null && w > 0;
+                            const pct = mix.find(m => m.id === c.id)?.pct ?? 0;
+                            return (
+                                <div key={c.id} className={`flex items-center gap-3 px-3 py-1.5 ${on ? '' : 'opacity-70'}`}>
+                                    <input type="checkbox" checked={on} disabled={disabled}
+                                        onChange={e => toggleCollectionOn(c.id, e.target.checked)}
+                                        className="w-4 h-4 rounded accent-indigo-500 cursor-pointer" />
+                                    <span className="text-sm font-bold text-white truncate flex-1 min-w-0">{c.name}</span>
+                                    <span className="text-[11px] text-slate-500 tabular-nums shrink-0">{c.count}장</span>
+                                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                                        가중치
+                                        <input type="number" min={0} step={1} value={on ? w : ''} placeholder="—" disabled={disabled || !on}
+                                            onChange={e => setWeight(c.id, Number(e.target.value) || 0)}
+                                            className={`${INPUT} w-16`} />
+                                    </label>
+                                    <div className="w-28 shrink-0 flex items-center gap-1.5">
+                                        <span className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                            <span className="block h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                                        </span>
+                                        <span className="text-[11px] text-slate-300 tabular-nums w-9 text-right">{on ? `${Math.round(pct)}%` : '—'}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+                <p className="text-[11px] text-slate-600 ko-normal px-3 py-2 border-t border-slate-800">
+                    팩의 카드 한 장마다 비율대로 컬렉션을 먼저 고른 뒤 그 컬렉션에서 뽑습니다. 어떤 라운드의 OVR 범위에 그 컬렉션 카드가 없으면 그 라운드에선 다른 컬렉션이 대신 채웁니다.
+                </p>
+            </div>
+
+            {/* ── 포지션 분배(가드/포워드/센터 목표 장수) ── */}
+            <div className="rounded-xl border border-slate-700/60 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-800/60">
+                    <span className="text-xs font-bold text-slate-300">포지션 분배</span>
+                    <div className="flex items-center gap-2">
+                        <span className={`text-[11px] tabular-nums ${targetSum === rosterSize ? 'text-slate-500' : 'text-red-400'}`}>
+                            합계 {targetSum} / 로스터 {rosterSize}
+                        </span>
+                        <button type="button" onClick={() => onPositionTargetsChange(null)} disabled={disabled || positionTargets == null}
+                            className={`${SMALL_BTN} bg-slate-800 text-slate-300 hover:text-white`}>
+                            기본 비율
+                        </button>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 px-3 py-2.5">
+                    {(['G', 'F', 'C'] as PositionGroup[]).map(g => (
+                        <label key={g} className="flex items-center gap-2 text-xs text-slate-400">
+                            <span className="w-12">{POSITION_GROUP_LABEL[g]}</span>
+                            <input type="number" min={0} max={rosterSize} value={shownTargets[g]} disabled={disabled}
+                                onChange={e => setTarget(g, Number(e.target.value) || 0)} className={`${INPUT} w-16`} />
+                            <span className="text-slate-600 tabular-nums">{rosterSize > 0 ? Math.round((shownTargets[g] / rosterSize) * 100) : 0}%</span>
+                        </label>
+                    ))}
+                </div>
+                <p className="text-[11px] text-slate-600 ko-normal px-3 py-2 border-t border-slate-800">
+                    가드 = PG·SG, 포워드 = SF·PF, 센터 = C. 자동 지명은 이 목표를 우선해 뽑고, 남은 픽으로 목표를 못 채우게 되는 시점부터는 팩에 부족한 포지션 카드가 보장되며 그 외 포지션은 지명할 수 없습니다.
+                    기본 비율은 40 / 40 / 20(센터 최소 2장)입니다.
+                </p>
             </div>
 
             {/* ── 프리셋 + 라운드 추가 ── */}
@@ -222,7 +329,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         <tr className="bg-slate-800/60 text-[11px] text-slate-400">
                             <th className="px-2 py-2 text-left font-bold w-14">라운드</th>
                             <th className="px-2 py-2 text-center font-bold">OVR 범위</th>
-                            <th className="px-2 py-2 text-left font-bold">카드 컬렉션 <span className="text-slate-600 font-normal">(미선택=전체 카드)</span></th>
+                            {!weighted && <th className="px-2 py-2 text-left font-bold">카드 컬렉션 <span className="text-slate-600 font-normal">(미선택=전체 카드)</span></th>}
                             <th className="px-2 py-2 text-center font-bold w-20">노출 카드</th>
                             <th className="px-2 py-2 text-center font-bold w-16">픽 수</th>
                             {eligibleCounts && <th className="px-2 py-2 text-center font-bold w-16">후보</th>}
@@ -246,7 +353,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                                                 onChange={e => update(idx, { ovrMax: Number(e.target.value) })} className={`${INPUT} w-16`} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-1.5">
+                                    {!weighted && <td className="px-2 py-1.5">
                                         {collections.length === 0 ? (
                                             <span className="text-[11px] text-slate-600 ko-normal">컬렉션 없음 — 전체 카드</span>
                                         ) : (
@@ -270,7 +377,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                                                 })}
                                             </div>
                                         )}
-                                    </td>
+                                    </td>}
                                     <td className="px-2 py-1.5 text-center">
                                         <input type="number" min={1} max={PERSONAL_DRAFT_POOL_SIZE_MAX} value={r.poolSize} disabled={disabled}
                                             onChange={e => update(idx, { poolSize: Number(e.target.value) })} className={`${INPUT} w-16`} />
@@ -280,7 +387,8 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                                             onChange={e => update(idx, { picks: Number(e.target.value) })} className={`${INPUT} w-14`} />
                                     </td>
                                     {eligibleCounts && (
-                                        <td className={`px-2 py-1.5 text-center text-xs font-bold tabular-nums ${short ? 'text-red-400' : 'text-emerald-400'}`}>
+                                        <td className={`px-2 py-1.5 text-center text-xs font-bold tabular-nums ${short ? 'text-red-400' : 'text-emerald-400'}`}
+                                            title={eligibleByCol?.[idx] ? Object.entries(eligibleByCol[idx]).map(([id, n]) => `${collections.find(c => c.id === id)?.name ?? id}: ${n}장`).join(', ') : undefined}>
                                             {count ?? '—'}
                                         </td>
                                     )}
