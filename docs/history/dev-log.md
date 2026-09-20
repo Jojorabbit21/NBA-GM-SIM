@@ -35,6 +35,41 @@
 
 ---
 
+## 2026-09-20 — OvrBadge 12구간 → 6단계 티어(레전드/다이아/골드/실버/브론즈/아이언) 재설계
+
+**배경**: 사용자 요청 "OVR 배지 구간을 100+, 99~90, 89~80, 79~70, 69~60, 59~0으로 단순화… 90 다이아몬드 / 80 골드 / 70 실버 / 60 브론즈 / 50 아이언". "OVR 배지 티어 랩" 아티팩트(https://claude.ai/artifact/RiqrXGF6AAZmPpx3SNN6ba)에서 조정 후 내보낸 JSON을 "이대로 적용해줘"로 확정 → `components/common/OvrBadge.tsx`에 이식. 세 자리 OVR(카드 전용 manual_ovr)은 같은 정사각형 안에서 글자만 한 단계 축소(지난 항목의 `w-auto px-1.5` 폭 확장 규칙 폐기).
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` (client) — 전면 재작성. 호출부 51곳의 props(value/size/className/textClassName)는 그대로.
+
+**Before**:
+```tsx
+// 12구간: 97+ 라벤더보라 / 94 진보라 / 91 마젠타 / 88 핑크 / 85 로즈 / 82 레드 / 79 오렌지 / 76 앰버 / 73 앰버(어두움) / 66 브론즈 / 60 다크브론즈 / 59- 그레이
+// Tailwind bg-gradient-to-br from/via/to + shadow-[...] 클래스 문자열, 글자 전 구간 흰색
+// 100 이상: boxStyles[size].replace(/\bw-\S+/, 'w-auto px-1.5') 로 가로 확장
+```
+
+**After** (랩 JSON 그대로):
+| 티어 | 구간 | 배경 | 보더 | 글자 | 글로우 | 베벨 |
+|---|---|---|---|---|---|---|
+| 레전드 | 100+ | `0deg #3a3a3a→#050505 50%→#262626` | #ffc400 1px | 메탈릭 `180deg #fff6c8/#f5d061 30%/#b8860b 55%/#f9e08a` | 10px #d4af37 .55 | 0.4 |
+| 다이아 | 90~99 | `0deg #a5f3fc→#0891b2 50%→#67e8f9` | #cffafe 1.5px | #ffffff | 없음 | 0 |
+| 골드 | 80~89 | `135deg #fff1b8/#f5c542 28%/#b7791f 52%/#fbd56b 72%/#9a6612` | #fcd34d 1.5px | #ffffff | 없음 | 0 |
+| 실버 | 70~79 | `135deg #e2e8f0→#94a3b8 55%→#64748b` | #cbd5e1 1.5px | #ffffff | 없음 | 0 |
+| 브론즈 | 60~69 | `135deg #d99a5e→#8a4d17 55%→#6b3a10` | #c8823f 1.5px | #ffffff | 없음 | 0 |
+| 아이언 | 0~59 | `135deg #6b7280→#374151 55%→#1f2937` | #6b7280 1px | #e5e7eb | 없음 | 0 |
+- 공통: `inset 0 0 0 1px rgba(255,255,255,.12)` 링. 베벨은 `inset ±d px` 흰/검 그림자, d = round(px/22).
+- 사이즈 박스 sm 24 / md 32 / lg 44 / xl 64 유지. 글자: 두 자리 `text-[10px]/sm/xl/3xl`, 세 자리 `text-[9px]/xs/base/2xl`. `textClassName`이 오면 그대로 우선.
+- 새 export `getOvrTierStyle(value)` — 다른 곳에서 티어 색이 필요할 때 사용.
+
+**검증**: `tsc --noEmit` 오류 56건 변경 전후 동일(OvrBadge 오류 0).
+
+**주의**: 팩 드래프트 목업 아티팩트(XWKpNkfSfdtD8wD4UrW6cq)의 `ovrGradient()`는 아직 옛 12구간 — 목업 갱신은 별도. 랩 JSON 원본은 이 항목의 표가 유일한 기록.
+
+**롤백 방법**: `git show 7ff186c:components/common/OvrBadge.tsx > components/common/OvrBadge.tsx` (직전 커밋의 12구간 버전, 100+ 폭 확장 규칙 포함).
+
+---
+
 ## 2026-09-20 — 카드 전용 팀별 컬러 오버라이드(meta_card_team_colors) + 어드민 편집 패널
 
 **배경**: 사용자 질문 "어드민 페이지에서 팀별 컬러를 설정하는것이 가능한가?" → 팀 컬러는 `data/teamData.ts` `TEAM_COLORS` 코드 상수뿐이고 `meta_teams`도 컬러를 갖지 않아 불가능했음. 이어진 요청 "카드 컬렉션의 팀별 컬러를 선택할 수 있게 개조해줘." — 리그/플레이오프 등 전역 팀 컬러는 **건드리지 않고**, 카드 시스템(컬렉션 배경 '팀 컬러' 타입, 이미지 아래 폴백, 개인 팩 드래프트 카드)에 한해 팀별 그라디언트를 DB로 덮어쓸 수 있게 했다. 컬렉션 단위가 아니라 카드 시스템 공용(같은 팀은 어느 컬렉션에서든 같은 컬러). 행이 없는 팀은 지금처럼 `TEAM_COLORS` 폴백.
