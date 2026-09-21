@@ -4,7 +4,8 @@
 import { supabase } from './supabaseClient';
 import type { CardTeamColor } from '../utils/cardBackground';
 
-const COLS = 'team_id, gradient_from, gradient_to, gradient_angle, updated_at';
+const COLS = 'team_id, gradient_from, gradient_to, gradient_angle, bg_image_url, bg_image_opacity, updated_at';
+const BG_BUCKET = 'card-backgrounds';
 
 export interface CardTeamColorRow extends CardTeamColor {
     team_id: string;
@@ -23,9 +24,23 @@ export async function fetchCardTeamColors(): Promise<Record<string, CardTeamColo
             gradient_from: row.gradient_from,
             gradient_to: row.gradient_to,
             gradient_angle: row.gradient_angle,
+            bg_image_url: row.bg_image_url ?? null,
+            bg_image_opacity: row.bg_image_opacity ?? 100,
         };
     }
     return map;
+}
+
+/**
+ * [2026-09-21] 팀 배경 이미지 업로드(WebP 권장, 5MB 이하) → 공개 URL. 저장은 upsertCardTeamColor로 따로.
+ * 경로 teams/{teamId}/{timestamp}.{ext} — 컬렉션(cards/, {collectionId}/)과 같은 버킷의 별도 접두어.
+ */
+export async function uploadTeamBackground(teamId: string, blob: Blob, ext: string, contentType: string): Promise<string> {
+    const path = `teams/${teamId}/${Date.now()}.${ext.replace(/^\./, '').toLowerCase()}`;
+    const { error } = await supabase.storage.from(BG_BUCKET).upload(path, blob, { contentType, upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from(BG_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
 }
 
 /** 한 팀의 오버라이드 저장(없으면 생성, 있으면 덮어씀). */
@@ -37,6 +52,8 @@ export async function upsertCardTeamColor(teamId: string, color: CardTeamColor):
             gradient_from: color.gradient_from,
             gradient_to: color.gradient_to,
             gradient_angle: color.gradient_angle,
+            bg_image_url: color.bg_image_url ?? null,
+            bg_image_opacity: color.bg_image_opacity ?? 100,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'team_id' });
     if (error) throw error;

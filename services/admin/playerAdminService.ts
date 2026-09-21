@@ -31,6 +31,58 @@ export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     return data ?? [];
 }
 
+/** [2026-09-21] 카드 관리 탭 고급 검색 — 능력치 범위 조건(base_attributes 키, min/max는 선택). */
+export interface AttrRangeFilter {
+    key: string;
+    min: number | null;
+    max: number | null;
+}
+
+export interface PlayerSearchFilters {
+    query?: string;
+    /** meta_players.base_team_id. '__none__'이면 소속 없음. 빈 값이면 전체 */
+    team?: string | null;
+    position?: string | null;
+    /** 커리어 연도 범위 — career_history 시즌(앞 4자리)이 하나라도 걸리면 매치 */
+    careerFrom?: number | null;
+    careerTo?: number | null;
+    /** [2026-09-21] 커리어 기록 내 소속팀 코드(career_history[].team, 예 'LAL'). 연도 범위와 함께 주면 같은 시즌 행이 둘 다 만족 */
+    careerTeam?: string | null;
+    attrs?: AttrRangeFilter[];
+    limit?: number;
+}
+
+export interface CareerTeamCode { code: string; players: number }
+
+/** career_history에 등장하는 팀 코드 목록(3글자 대문자, 합산 행 제외) — 필터 드롭다운용. */
+export async function fetchCareerTeamCodes(): Promise<CareerTeamCode[]> {
+    const { data, error } = await supabase.rpc('admin_career_team_codes');
+    if (error) throw error;
+    return (data ?? []) as CareerTeamCode[];
+}
+
+/**
+ * 이름 + 팀 + 포지션 + 커리어 연도 + 능력치 필터를 DB(RPC admin_search_meta_players)에서 한 번에 거른다 —
+ * career_history/base_attributes 조건을 클라이언트에서 걸면 전 선수를 내려받아야 해서 서버에서 처리.
+ */
+export async function searchPlayersAdvanced(filters: PlayerSearchFilters): Promise<MetaPlayerRow[]> {
+    const attrs = (filters.attrs ?? [])
+        .filter(f => f.key && (f.min != null || f.max != null))
+        .map(f => ({ key: f.key, min: f.min, max: f.max }));
+    const { data, error } = await supabase.rpc('admin_search_meta_players', {
+        p_query: filters.query?.trim() || null,
+        p_team: filters.team || null,
+        p_position: filters.position || null,
+        p_career_from: filters.careerFrom ?? null,
+        p_career_to: filters.careerTo ?? null,
+        p_attr_filters: attrs,
+        p_limit: filters.limit ?? 300,
+        p_career_team: filters.careerTeam || null,
+    });
+    if (error) throw error;
+    return (data ?? []) as MetaPlayerRow[];
+}
+
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')

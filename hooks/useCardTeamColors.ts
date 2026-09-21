@@ -13,7 +13,9 @@ export function useCardTeamColors(enabled = true): Record<string, CardTeamColor>
         enabled,
         // 전역 기본값(staleTime: Infinity + localStorage 영속화)을 상속하면 어드민이 컬러를 바꿔도
         // 영원히 옛 값이 남는다(usePersonalDraftStatus의 같은 교훈). 5분 정도면 충분히 신선하다.
-        staleTime: 5 * 60 * 1000,
+        // [2026-09-21] 5분 → 0: 어드민이 팀 컬러/배경 이미지를 바꾼 직후 카드 편집기 미리보기·드래프트 화면이 옛 값을
+        // 쓰던 문제(localStorage 영속 캐시가 5분 안이면 신선하다고 보고 재조회를 건너뜀). 30행짜리 조회라 매 마운트 재조회해도 가볍다.
+        staleTime: 0,
         queryFn: fetchCardTeamColors,
     });
     return data ?? {};

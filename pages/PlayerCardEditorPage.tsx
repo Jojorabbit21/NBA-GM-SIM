@@ -12,12 +12,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { Loader2, Save, Trash2, Copy, Search, AlertCircle, ImagePlus, X } from 'lucide-react';
-import { searchPlayers, fetchPlayerById, type MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayersAdvanced, fetchPlayerById, type MetaPlayerRow } from '../services/admin/playerAdminService';
+import { PlayerFilterPanel, EMPTY_PLAYER_FILTERS, countActiveFilters, numOrNull, type PlayerFilterState } from '../components/admin/PlayerFilterPanel';
 import {
     listCardsForPlayer, createCardFromCopy, updateCard, deleteCard, uploadCardBackground, fetchCardById,
     fetchAvailableSeasons, fetchSeasonStatLine, type PlayerCardRow, type UpdateCardPatch,
 } from '../services/admin/playerCardAdminService';
-import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient } from '../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, teamImageLayer, teamImageLayerStyle } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { useCardTeamColors } from '../hooks/useCardTeamColors';
 import { getRealTeamLogoUrl } from '../utils/constants';
@@ -34,7 +35,9 @@ import { CARD_EXTRA_TEAMS } from '../data/cardTeams';
 import { listEditions, type CardEditionRow } from '../services/admin/cardEditionAdminService';
 
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
-const TEAM_OPTIONS = Object.values(TEAM_DATA).sort((a, b) => a.city.localeCompare(b.city));
+// [2026-09-21] 소속팀 드롭다운 정렬: 영문 약어(A→Z), 라벨에 약어 표시
+const TEAM_OPTIONS = Object.values(TEAM_DATA).sort((a, b) => a.id.toUpperCase().localeCompare(b.id.toUpperCase()));
+const EXTRA_TEAM_OPTIONS = [...CARD_EXTRA_TEAMS].sort((a, b) => a.abbr.localeCompare(b.abbr));
 
 /** [2026-09-18] manual_ovr가 있으면 그대로 쓰고(카드 전용 고정값), 없으면 지금처럼
  *  base_attributes 기반 동적 계산. meta_players/일반 선수 OVR 파이프라인은 건드리지 않음 —
@@ -59,21 +62,37 @@ const PlayerCardEditorPage: React.FC = () => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<MetaPlayerRow[]>([]);
     const [searching, setSearching] = useState(false);
+    const [searchErr, setSearchErr] = useState<string | null>(null);
     const [selectedPlayer, setSelectedPlayer] = useState<MetaPlayerRow | null>(null);
+
+    // ── [2026-09-21] 고급 필터: 소속 팀 / 포지션 / 커리어 연도 / 능력치 범위 — DB RPC에서 한 번에 거른다 ──
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [filters, setFilters] = useState<PlayerFilterState>(EMPTY_PLAYER_FILTERS);
 
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(async () => {
-            setSearching(true);
+            setSearching(true); setSearchErr(null);
             try {
-                const rows = await searchPlayers(query);
-                if (!cancelled) setResults(rows.slice(0, 50));
+                const rows = await searchPlayersAdvanced({
+                    query,
+                    team: filters.team || null,
+                    position: filters.position || null,
+                    careerFrom: numOrNull(filters.careerFrom),
+                    careerTo: numOrNull(filters.careerTo),
+                    careerTeam: filters.careerTeam || null,
+                    attrs: filters.attrs,
+                    limit: 300,
+                });
+                if (!cancelled) setResults(rows);
+            } catch (e) {
+                if (!cancelled) { setResults([]); setSearchErr(e instanceof Error ? e.message : '검색에 실패했습니다.'); }
             } finally {
                 if (!cancelled) setSearching(false);
             }
         }, 250);
         return () => { cancelled = true; clearTimeout(timer); };
-    }, [query]);
+    }, [query, filters]);
 
     // ── 선택된 선수의 카드 목록 + 시즌 후보 ────────────────────────────────────
     const [cards, setCards] = useState<PlayerCardRow[]>([]);
@@ -145,11 +164,11 @@ const PlayerCardEditorPage: React.FC = () => {
         () => memberCollections.find(c => c.id === previewCollectionId) ?? memberCollections[0] ?? null,
         [memberCollections, previewCollectionId],
     );
+    const previewTeam = useMemo(() => resolveCardTeamGradient(draft.base_team_id || null, cardTeamColors), [draft.base_team_id, cardTeamColors]);
     const previewBackground = useMemo(() => buildCardBackground(
-        previewCollection,
-        resolveCardTeamGradient(draft.base_team_id || null, cardTeamColors),
-        draft.bg_image_url ?? null,
-    ), [previewCollection, draft.base_team_id, draft.bg_image_url, cardTeamColors]);
+        previewCollection, previewTeam, draft.bg_image_url ?? null, true,
+    ), [previewCollection, previewTeam, draft.bg_image_url]);
+    const previewImageLayer = useMemo(() => teamImageLayer(previewCollection, previewTeam, draft.bg_image_url ?? null), [previewCollection, previewTeam, draft.bg_image_url]);
 
     const loadIntoEditor = useCallback((card: PlayerCardRow) => {
         setEditing(card);
@@ -324,6 +343,18 @@ const PlayerCardEditorPage: React.FC = () => {
                     />
                     {searching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-500" />}
                 </div>
+
+                {/* [2026-09-21] 고급 필터 — 소속 팀 / 포지션 / 커리어 연도 / 능력치 (공용 패널) */}
+                <PlayerFilterPanel
+                    value={filters}
+                    onChange={setFilters}
+                    open={filtersOpen}
+                    onToggleOpen={() => setFiltersOpen(o => !o)}
+                    resultLabel={`결과 ${results.length}명${results.length >= 300 ? ' (최대 300명까지 표시)' : ''}`}
+                />
+                {searchErr && (
+                    <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal"><AlertCircle size={12} className="shrink-0 mt-0.5" />{searchErr}</p>
+                )}
 
                 <div className="bg-slate-900/60 border border-slate-800 rounded-xl max-h-64 overflow-y-auto">
                     {results.length === 0 ? (
@@ -523,11 +554,11 @@ const PlayerCardEditorPage: React.FC = () => {
                                 <select value={draft.base_team_id} onChange={e => setDraft((d: any) => ({ ...d, base_team_id: e.target.value }))}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500">
                                     <option value="">—</option>
-                                    {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.city} {t.name}</option>)}
+                                    {TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.id.toUpperCase()} · {t.city} {t.name}</option>)}
                                     {/* [2026-09-20] 카드 전용 확장 팀(data/cardTeams.ts) — 시애틀 에메랄즈 등 */}
-                                    {CARD_EXTRA_TEAMS.length > 0 && (
+                                    {EXTRA_TEAM_OPTIONS.length > 0 && (
                                         <optgroup label="확장 팀">
-                                            {CARD_EXTRA_TEAMS.map(t => <option key={t.id} value={t.id}>{t.city} {t.name}</option>)}
+                                            {EXTRA_TEAM_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.abbr} · {t.city} {t.name}</option>)}
                                         </optgroup>
                                     )}
                                 </select>
@@ -611,12 +642,13 @@ const PlayerCardEditorPage: React.FC = () => {
                             <div>
                                 <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기</p>
                                 <div className="relative border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground, borderRadius: cardRadiusPx(previewCollection) }}>
-                                    <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate px-2">
+                                    {previewImageLayer && <div aria-hidden="true" style={teamImageLayerStyle(previewImageLayer) as React.CSSProperties} />}
+                                    <div className="relative h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate px-2">
                                         {previewCollection?.name ?? ''}
                                     </div>
                                     <div className="relative flex-1 flex flex-col px-2 pt-2">
                                         <div className="self-start">{draftOvrPreview != null && <OvrBadge value={draftOvrPreview} size="md" />}</div>
-                                        {draft.base_team_id && (
+                                        {draft.base_team_id && (editions.find(e => e.id === draft.edition_id)?.show_center_logo ?? true) && (
                                             <img src={getRealTeamLogoUrl(draft.base_team_id)} alt="" draggable={false}
                                                 className="absolute inset-0 m-auto w-[40%] aspect-square object-contain pointer-events-none"
                                                 style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,.6))' }} />

@@ -68,6 +68,49 @@ export interface CardTeamColor {
     gradient_from: string;
     gradient_to: string;
     gradient_angle: number;
+    /** [2026-09-21] 팀별 배경 이미지(어드민 팀별 컬러 패널). 있으면 그라디언트 위에 cover로 깔린다. */
+    bg_image_url?: string | null;
+    /** 팀 이미지 불투명도(%, 0~100, 기본 100) — 카드가 이미지를 별도 레이어로 그릴 때 적용 */
+    bg_image_opacity?: number | null;
+}
+
+/** 카드가 그라디언트 위에 따로 그리는 팀 이미지 레이어 */
+export interface TeamImageLayer {
+    url: string;
+    /** 0~1 */
+    opacity: number;
+}
+
+/**
+ * [2026-09-21] 팀 이미지가 실제로 보이는 경우(카드 이미지 없음 + 컬렉션 배경이 'team'이거나 컬렉션 없음)에만 레이어를 돌려준다.
+ * 불투명도는 CSS background로 못 주므로 호출부가 absolute 레이어(그라디언트 위, 내용 아래)로 그린다.
+ * (블러 옵션은 저사양 기기 부담 때문에 2026-09-21 제거.)
+ */
+export function teamImageLayer(
+    settings: Partial<CardBackgroundSettings> | null | undefined,
+    team: CardTeamColor | readonly [string, string],
+    cardImageUrl?: string | null,
+): TeamImageLayer | null {
+    if (cardImageUrl) return null;
+    if (settings && settings.bg_type && settings.bg_type !== 'team') {
+        // 'image' 타입인데 이미지가 없으면 team 폴백 → 레이어 사용
+        if (!(settings.bg_type === 'image' && !settings.bg_image_url)) return null;
+    }
+    if (Array.isArray(team)) return null;
+    const t = team as CardTeamColor;
+    if (!t.bg_image_url) return null;
+    const opacityPct = t.bg_image_opacity == null ? 100 : Math.max(0, Math.min(100, Number(t.bg_image_opacity)));
+    return { url: t.bg_image_url, opacity: opacityPct / 100 };
+}
+
+/** 팀 이미지 레이어의 인라인 스타일(absolute inset-0). */
+export function teamImageLayerStyle(layer: TeamImageLayer): Record<string, string | number> {
+    return {
+        position: 'absolute', inset: 0,
+        backgroundImage: `url("${layer.url}")`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+        opacity: layer.opacity,
+        pointerEvents: 'none',
+    };
 }
 
 /** 팀 그라디언트 기본 각도 — 오버라이드가 없을 때 TEAM_COLORS 폴백에 쓴다. */
@@ -103,13 +146,16 @@ export function resolveCardTeamGradient(
     return getDefaultCardTeamColor(teamId) ?? NEUTRAL_CARD_TEAM_COLOR;
 }
 
-function teamGradientCss(team: CardTeamColor | readonly [string, string]): string {
+function teamGradientCss(team: CardTeamColor | readonly [string, string], withImage: boolean): string {
     if (Array.isArray(team)) {
         return `linear-gradient(${CARD_TEAM_GRADIENT_ANGLE}deg, ${team[0]} 0%, ${team[1]} 100%)`;
     }
     const t = team as CardTeamColor;
     const angle = Number.isFinite(t.gradient_angle) ? t.gradient_angle : CARD_TEAM_GRADIENT_ANGLE;
-    return `linear-gradient(${angle}deg, ${t.gradient_from} 0%, ${t.gradient_to} 100%)`;
+    const grad = `linear-gradient(${angle}deg, ${t.gradient_from} 0%, ${t.gradient_to} 100%)`;
+    // 팀 배경 이미지가 있으면 그라디언트 위에 cover(이미지 로딩 전/실패 시 그라디언트가 비침).
+    // 블러/불투명도를 쓰는 호출부는 withImage=false로 그라디언트만 받고 teamImageLayer()로 따로 그린다.
+    return withImage && t.bg_image_url ? `url("${t.bg_image_url}") center / cover no-repeat, ${grad}` : grad;
 }
 
 /**
@@ -124,8 +170,10 @@ export function buildCardBackground(
     settings: Partial<CardBackgroundSettings> | null | undefined,
     team: CardTeamColor | readonly [string, string],
     cardImageUrl?: string | null,
+    /** [2026-09-21] true면 팀 이미지를 background에 넣지 않는다(호출부가 teamImageLayer()로 블러/불투명도 레이어를 따로 그릴 때) */
+    excludeTeamImage = false,
 ): string {
-    const base = buildCollectionBackground(settings, team);
+    const base = buildCollectionBackground(settings, team, !excludeTeamImage);
     if (cardImageUrl) return `url("${cardImageUrl}") center / cover no-repeat, ${base}`;
     return base;
 }
@@ -134,8 +182,9 @@ export function buildCardBackground(
 function buildCollectionBackground(
     settings: Partial<CardBackgroundSettings> | null | undefined,
     team: CardTeamColor | readonly [string, string],
+    withTeamImage = true,
 ): string {
-    const teamCss = teamGradientCss(team);
+    const teamCss = teamGradientCss(team, withTeamImage);
     const teamFrom = Array.isArray(team) ? team[0] : (team as CardTeamColor).gradient_from;
     const teamTo = Array.isArray(team) ? team[1] : (team as CardTeamColor).gradient_to;
     if (!settings) return teamCss;

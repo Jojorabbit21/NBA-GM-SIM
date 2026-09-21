@@ -35,6 +35,125 @@
 
 ---
 
+## 2026-09-21 — 카드 팀별 배경 이미지: 불투명도 옵션(별도 레이어 렌더) — 블러는 도입 직후 제거
+
+**배경**: 사용자 요청 "팀별 카드에 적용되는 이미지에 블러, 불투명도를 조절할 수 있는 옵션을 넣어줘." CSS `background`로는 블러를 줄 수 없어 팀 이미지를 카드 안의 absolute 레이어(그라디언트 위, 내용 아래)로 분리해 `filter: blur()`/`opacity`를 적용한다.
+
+**변경 파일**:
+- `migrations/add_card_team_bg_image_effects.sql` (DB, **적용 완료**) — `meta_card_team_colors.bg_image_blur`(0~40, 기본 0), `bg_image_opacity`(0~100, 기본 100)
+- `utils/cardBackground.ts` (client) — `CardTeamColor.bg_image_blur/bg_image_opacity`, `teamImageLayer(settings, team, cardImageUrl)`(팀 이미지가 실제로 보이는 조건 — 카드 이미지 없음 + 컬렉션 'team'/없음/'image'인데 이미지 없음 — 일 때만 레이어 반환), `teamImageLayerStyle()`(cover, blur, 가장자리 번짐 방지용 소폭 scale, opacity), `buildCardBackground(..., excludeTeamImage)` 4번째 인자(레이어를 따로 그리는 호출부는 true)
+- `services/cardTeamColorService.ts` (client) — 조회/upsert에 두 컬럼
+- `components/draft/PersonalDraftCard.tsx` (client) — background는 팀 이미지 제외, 레이어 div를 헤더 앞에 삽입, 헤더 `relative`(레이어 위로)
+- `pages/PlayerCardCollectionPage.tsx` (client) — 팀별 컬러 행에 블러/불투명도 슬라이더(이미지 있을 때), 스와치·컬렉션 미리보기 레이어 방식, dirty 비교에 두 값 포함
+- `pages/PlayerCardEditorPage.tsx` (client) — 카드 미리보기 레이어 방식
+
+**Before**: 팀 이미지 = `background: url() cover, gradient`(효과 불가) / **After**: 팀 이미지 = 별도 레이어(blur px, opacity %) + 그라디언트 배경. 옛 호출 방식(`excludeTeamImage=false`)은 이미지 포함 background를 그대로 돌려줘 호환.
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음.
+
+**후속(같은 날)**: 블러는 카드 수만큼 GPU 레이어가 생겨 저사양 기기 부담 → 사용자 결정으로 **제거**. `bg_image_blur` 컬럼 DROP(마이그레이션 파일 하단 기록), `TeamImageLayer.blur`/`teamImageLayerStyle`의 filter·transform/슬라이더 삭제. 불투명도만 남김(레이어 방식은 유지 — opacity도 background로는 불가).
+
+**롤백 방법**: 컬럼 DROP + `git checkout <이전 커밋> -- <위 클라이언트 파일들>`.
+
+---
+
+## 2026-09-21 — 카드 팀별 컬러: 팀별 배경 이미지
+
+**배경**: 사용자 요청 "팀별 컬러에서 팀별 배경이미지 지정도 가능하게 해줘." 팀 그라디언트 대신 팀 이미지를 쓸 수 있게 — 컬렉션 배경이 '팀 컬러'인 카드와 컬렉션 없는 카드, 그리고 컬렉션 이미지/단색 아래 폴백 층에 적용.
+
+**변경 파일**:
+- `migrations/add_card_team_bg_image.sql` (DB, **적용 완료**) — `meta_card_team_colors.bg_image_url text NULL`
+- `utils/cardBackground.ts` (client) — `CardTeamColor.bg_image_url?`, `teamGradientCss()`가 이미지 있으면 `url() center/cover, <그라디언트>` 두 겹
+- `services/cardTeamColorService.ts` (client) — 조회/upsert에 `bg_image_url`, `uploadTeamBackground(teamId, blob, ext, contentType)`(버킷 `card-backgrounds`, 경로 `teams/{teamId}/{timestamp}.{ext}`)
+- `pages/PlayerCardCollectionPage.tsx` (client) — 팀별 컬러 행에 "배경 이미지/이미지 교체" 업로드(WebP 변환·5MB 검사, 컬렉션 배경과 동일 파이프라인) + "이미지 제거", 스와치 미리보기 반영, dirty 비교에 이미지 포함, "저장"으로 확정. 팀 행이 없던 팀은 저장 시 그라디언트 기본값과 함께 행 생성
+
+**Before**: 팀 배경 = 그라디언트만 / **After**: 팀 배경 = 이미지(있으면) + 그라디언트 폴백. 컬렉션 배경 우선순위는 그대로(카드 이미지 → 컬렉션 → 팀).
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음. 드래프트 카드는 `useCardTeamColors`가 이미 전체 행을 읽으므로 추가 변경 없이 반영(5분 캐시).
+
+**주의**: 팀 이미지를 교체해도 옛 파일은 스토리지에 남는다(수동 정리). "기본값" 버튼은 행 자체를 지우므로 이미지 URL도 함께 사라진다.
+
+**후속 (같은 날)**: 사용자 보고 "팀별 컬러에서 이미지를 지정해도 컬렉션에서 팀 컬러를 지정해놓으면 이미지 표시가 안되는데?" — 배경 계산은 정상이었고 원인은 두 가지. (1) 컬렉션 배경 미리보기가 골든스테이트로 고정 → `previewTeamId` 셀렉터 추가(`pages/PlayerCardCollectionPage.tsx`). (2) `hooks/useCardTeamColors.ts`의 `staleTime` 5분 + localStorage 영속 캐시로 카드 편집기 미리보기·드래프트 화면이 변경 직후 옛 값을 사용 → `staleTime: 0`(30행 조회라 부담 없음).
+
+**롤백 방법**: 컬럼 DROP + `git checkout <이전 커밋> -- utils/cardBackground.ts services/cardTeamColorService.ts pages/PlayerCardCollectionPage.tsx`.
+
+---
+
+## 2026-09-21 — 어드민 검색 필터: 커리어 기록 내 소속팀 + 팀 드롭다운 약어순 정렬
+
+**배경**: 사용자 요청 "현재 소속팀 검색 필터 외에도 커리어 기록 내 소속팀을 검색하는 기능도 추가해줘. 그리고 소속팀 드랍다운에서 정렬 기준을 영문 약어순으로 (A->Z) 변경해줘." `career_history[].team`은 basketball-reference 식 3글자 코드(LAL/GSW/SEA/NJN …)라 우리 팀 id와 다르고 역사 팀도 섞여 있어, 코드 자체를 드롭다운으로 제공하고 정확 일치로 검색한다.
+
+**변경 파일**:
+- `migrations/add_admin_search_career_team.sql` (DB, **적용 완료**) — `admin_search_meta_players`에 `p_career_team text` 추가(옛 7-인자 시그니처 DROP 후 8-인자로 재생성; 연도 범위와 함께 주면 **같은 시즌 행**이 둘 다 만족), 신규 `admin_career_team_codes()`(3글자 대문자 코드만, `2TM/3TM` 제외, 선수 수 포함)
+- `services/admin/playerAdminService.ts` (client) — `PlayerSearchFilters.careerTeam`, `fetchCareerTeamCodes()`, RPC 호출에 `p_career_team`
+- `components/admin/PlayerFilterPanel.tsx` (client) — 상태에 `careerTeam`, "커리어 소속팀" 드롭다운(코드 목록은 모듈 캐시로 1회 조회, 현재 팀에 대응되는 코드는 `CODE · 도시 팀명` 라벨, 선수 수 표시), `matchesPlayerFilters()`가 `CareerRow[]{year, team}`로 연도·팀 동시 판정, `TEAM_OPTIONS`/`EXTRA_TEAM_OPTIONS`를 약어 A→Z 정렬 + 라벨 `ABBR · 도시 팀명`
+- `pages/PlayerCardEditorPage.tsx` (client) — RPC에 `careerTeam` 전달, 카드 소속팀 select도 약어순 + 약어 라벨
+- `pages/PlayerCardCollectionPage.tsx` (client) — 커리어 캐시를 연도 목록 → `{year, team}` 행 목록으로, 커리어 팀 조건도 조회 트리거
+
+**검증**: RPC — 코드 66개(ATL, BAL, BKN, BOS, BRK …), LAL 커리어 101명, LAL+2000~2004 11명, SEA 15명, 전체 859명 유지. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공.
+
+**주의**: 코드 정확 일치라 프랜차이즈 이동 전 코드(NJN, SEA, VAN 등)는 별도 항목으로 뜬다(라벨에 현재 팀명을 덧붙여 안내). 시즌 중 이적 합산 행(`2TM`)은 팀 판정에서 제외되므로 그 시즌의 개별 팀 행이 있어야 매치된다.
+
+**롤백 방법**: 두 RPC DROP 후 `add_admin_search_meta_players.sql` 7-인자 버전 재생성 + `git checkout <이전 커밋> -- <위 클라이언트 파일들>`.
+
+---
+
+## 2026-09-21 — 어드민 카드 컬렉션: 컬렉션 내 카드 필터(공용 필터 패널로 분리)
+
+**배경**: 사용자 요청 "동일한 기능을 카드 컬렉션 탭의 이 컬렉션의 카드 영역 위쪽에도 추가해서 컬렉션 내 카드를 필터링할수있게 해줘." 카드 관리 탭의 인라인 필터 UI를 공용 컴포넌트로 빼서 두 화면이 같은 패널을 쓴다.
+
+**변경 파일**:
+- `components/admin/PlayerFilterPanel.tsx` (신규, client) — 패널 UI + `PlayerFilterState`/`EMPTY_PLAYER_FILTERS`/`countActiveFilters()`/`matchesPlayerFilters()`(클라이언트 판정)/`numOrNull()`/`FILTER_ATTR_KEYS`
+- `pages/PlayerCardEditorPage.tsx` (client) — 인라인 패널 → 공용 컴포넌트(동작 동일: RPC 검색)
+- `pages/PlayerCardCollectionPage.tsx` (client) — 멤버 그리드 위에 이름 검색 + 공용 필터 패널. 이미 로드된 카드 row(`base_team_id`/`position`/`base_attributes`)를 클라이언트에서 거르고, 커리어 연도 조건이 켜졌을 때만 원본 선수 `career_history`를 컬렉션 단위로 조회·캐시(시즌 앞 4자리). 제목에 "n / 전체장", 결과 없음 안내. 컬렉션 바꾸면 필터 초기화
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공(순환 경고 없음).
+
+**주의**: 컬렉션 탭 필터는 카드 자체 능력치(카드 편집값) 기준, 카드 관리 탭 필터는 meta_players 원본 능력치 기준 — 같은 선수라도 결과가 다를 수 있다(의도).
+
+**롤백 방법**: `git checkout <이전 커밋> -- pages/PlayerCardEditorPage.tsx pages/PlayerCardCollectionPage.tsx` + `components/admin/PlayerFilterPanel.tsx` 삭제.
+
+---
+
+## 2026-09-21 — 어드민 카드 관리: 선수 검색 필터(소속 팀 / 포지션 / 커리어 연도 / 능력치)
+
+**배경**: 사용자 요청 "카드 관리 탭에서 이름 검색 외에도 옵션들을 제공해줘. 소속 팀, 포지션 필터 … 선수의 커리어년도 범위 … 능력치 필터도 추가해줘." 커리어 연도(`career_history`)와 능력치(`base_attributes`)는 클라이언트에서 거르면 전 선수(859명)를 무거운 컬럼째 내려받아야 해서 DB RPC로 처리.
+
+**변경 파일**:
+- `migrations/add_admin_search_meta_players.sql` (DB, **적용 완료**) — `admin_search_meta_players(p_query, p_team, p_position, p_career_from, p_career_to, p_attr_filters jsonb, p_limit)` (SQL STABLE, SECURITY INVOKER, authenticated 실행 허용). 팀 `'__none__'`=소속 없음, 커리어 = `career_history[].season` 앞 4자리가 범위에 하나라도 포함, 능력치 = `[{key,min,max}]` 전부 AND(값 없거나 숫자 아니면 탈락). 반환 컬럼 = `MetaPlayerRow`
+- `services/admin/playerAdminService.ts` (client) — `AttrRangeFilter`, `PlayerSearchFilters`, `searchPlayersAdvanced()`(RPC 호출). 기존 `searchPlayers()`는 다른 화면용으로 유지
+- `pages/PlayerCardEditorPage.tsx` (client) — 검색창 아래 접이식 "검색 필터"(활성 필터 수 배지): 소속 팀(30팀 + 확장 팀 + 소속 없음), 포지션, 커리어 연도 from~to, 능력치 조건 행(36개 개별 능력치 × 최소/최대, 추가/삭제), 결과 수·초기화. 검색이 `searchPlayers` → `searchPlayersAdvanced`로 교체(결과 상한 50 → 300)
+
+**Before**: 이름 ilike만(클라이언트 50명 잘라 표시) / **After**: 이름 + 4종 필터 서버 처리, 최대 300명.
+
+**검증**: RPC 직접 호출 — 전체 859, GS 15, 소속 없음 356, C 150, 커리어 1995~1999 98, 탑3점 ≥85 127, 탑3점·스피드 ≥85 44, 이름 '제임스' 5. `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공.
+
+**주의**: 능력치 필터는 개별 36개 키만(카테고리 평균 ins/out 등은 DB에 21명만 있어 제외). 커리어 연도는 시즌 시작 연도 기준('2005-06' → 2005). 결과 정렬은 이름순.
+
+**롤백 방법**: `DROP FUNCTION admin_search_meta_players(...)` + `git checkout <이전 커밋> -- services/admin/playerAdminService.ts pages/PlayerCardEditorPage.tsx`.
+
+---
+
+## 2026-09-20 — 카드 에디션: 로고 표시 옵션(중앙/우상단)
+
+**배경**: 사용자 요청 "카드 에디션 설정 옵션에 로고 표시 옵션도 표시해줘." 에디션별로 카드의 정중앙 큰 로고와 우상단 작은 로고를 끄고 켤 수 있게.
+
+**변경 파일**:
+- `migrations/add_card_edition_logo_options.sql` (DB, **적용 완료**) — `meta_card_editions.show_center_logo`, `show_corner_logo` (boolean, 기본 true)
+- `services/admin/cardEditionAdminService.ts` (client) — 행 타입/컬럼/`updateEdition` patch에 두 플래그
+- `hooks/usePersonalDraft.ts` (client) — 카드 조회 임베드 `edition:meta_card_editions(name, show_center_logo, show_corner_logo)`, `PersonalDraftPlayer.showCenterLogo/showCornerLogo`
+- `components/draft/PersonalDraftCard.tsx` (client) — 두 로고를 플래그로 조건부 렌더(false일 때만 숨김)
+- `pages/PlayerCardCollectionPage.tsx` (client) — 에디션 관리 행에 "중앙 로고/우상단 로고" 체크박스(즉시 저장), 그리드 카드에 에디션 행 전달
+- `pages/PlayerCardEditorPage.tsx` (client) — 미리보기 중앙 로고가 선택한 에디션 옵션을 따름
+
+**Before**: 로고 항상 표시 / **After**: 에디션별 on/off(기본 표시). 우상단 로고 자리는 꺼도 44px 칸을 유지해 OVR 배지 정렬이 유지됨.
+
+**검증**: `tsc --noEmit` 56건 변경 전후 동일, `vite build` 성공. 서버 변경 없음.
+
+**롤백 방법**: 컬럼 DROP + `git checkout 2ae6ceb6 -- <위 클라이언트 파일들>`.
+
+---
+
 ## 2026-09-20 — 카드 컬렉션: 카드 모서리 둥글기(card_radius) 설정 — 직각 카드 가능
 
 **배경**: 사용자 요청 "카드에 보더 라디우스를 제거해보고싶어." 전역 상수 대신 컬렉션 옵션으로 두어 컬렉션별로 직각/둥근 카드를 비교할 수 있게.

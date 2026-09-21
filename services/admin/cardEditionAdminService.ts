@@ -6,10 +6,14 @@ export interface CardEditionRow {
     id: string;
     name: string;
     sort_order: number;
+    /** [2026-09-20] 카드 정중앙 팀 로고 표시 */
+    show_center_logo: boolean;
+    /** 우상단 40px 팀 로고 표시 */
+    show_corner_logo: boolean;
     created_at: string;
 }
 
-const COLS = 'id, name, sort_order, created_at';
+const COLS = 'id, name, sort_order, show_center_logo, show_corner_logo, created_at';
 
 export async function listEditions(): Promise<CardEditionRow[]> {
     const { data, error } = await supabase
@@ -31,7 +35,7 @@ export async function createEdition(name: string, sortOrder = 0): Promise<CardEd
     return data;
 }
 
-export async function updateEdition(id: string, patch: { name?: string; sort_order?: number }): Promise<void> {
+export async function updateEdition(id: string, patch: { name?: string; sort_order?: number; show_center_logo?: boolean; show_corner_logo?: boolean }): Promise<void> {
     const { error } = await supabase
         .from('meta_card_editions')
         .update({ ...patch, ...(patch.name != null ? { name: patch.name.trim() } : {}) })

@@ -10,7 +10,7 @@ import { PlayerRatingsStatsPopup } from '../common/PlayerHoverCard';
 import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 import { getCardExtraTeam } from '../../data/cardTeams';
-import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, type CardTeamColor } from '../../utils/cardBackground';
+import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, teamImageLayer, teamImageLayerStyle, type CardTeamColor } from '../../utils/cardBackground';
 import type { PersonalDraftPlayer } from '../../hooks/usePersonalDraft';
 
 interface PersonalDraftCardProps {
@@ -46,7 +46,9 @@ function resolveTeamVisual(baseTeamId: string | null, teamColors?: Record<string
 
 export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, selected, disabled = false, disabledReason, onSelect, teamColors }) => {
     const { teamId, teamName, colors } = resolveTeamVisual(player.baseTeamId, teamColors);
-    const background = buildCardBackground(player.collection?.bg ?? null, colors, player.bgImageUrl);
+    // [2026-09-21] 팀 이미지는 블러/불투명도를 위해 별도 레이어로 — background에서는 제외
+    const background = buildCardBackground(player.collection?.bg ?? null, colors, player.bgImageUrl, true);
+    const imageLayer = teamImageLayer(player.collection?.bg ?? null, colors, player.bgImageUrl);
     // [2026-09-20] 하단 텍스트 그라디언트 — 컬렉션 설정(on/off, 불투명도), 컬렉션 없으면 기본값
     const bottomGradient = buildCardBottomGradient(player.collection?.bg ?? null);
     const radius = cardRadiusPx(player.collection?.bg ?? null);   // 컬렉션별 모서리 둥글기(0=직각)
@@ -100,13 +102,16 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                 } ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
                 style={{ background, borderRadius: radius, boxShadow: selected ? SELECTED_SHADOW : undefined }}
             >
+                {/* 팀 배경 이미지 레이어(블러/불투명도) — 그라디언트 위, 모든 내용 아래 */}
+                {imageLayer && <div aria-hidden="true" style={teamImageLayerStyle(imageLayer) as React.CSSProperties} />}
+
                 {/* 컬렉션 헤더 — 소속 컬렉션이 없으면 빈 칸(높이는 유지) */}
-                <div className="h-6 shrink-0 px-2.5 flex items-center justify-center text-[11px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate text-center">
+                <div className="relative h-6 shrink-0 px-2.5 flex items-center justify-center text-[11px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate text-center">
                     {player.collection?.name ?? ''}
                 </div>
 
-                {/* 카드 정중앙 팀 로고(헤더 포함 카드 전체 기준) */}
-                {teamId && (
+                {/* 카드 정중앙 팀 로고(헤더 포함 카드 전체 기준) — 에디션 옵션 show_center_logo */}
+                {teamId && player.showCenterLogo !== false && (
                     <img
                         src={getRealTeamLogoUrl(teamId)}
                         alt=""
@@ -121,7 +126,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                     <div className="w-full flex items-start justify-between">
                         <OvrBadge value={player.ovr} size="card" />
                         <div className="w-11 h-11 flex items-center justify-center">
-                            {teamId && (
+                            {teamId && player.showCornerLogo !== false && (
                                 <img
                                     src={getRealTeamLogoUrl(teamId)}
                                     alt=""

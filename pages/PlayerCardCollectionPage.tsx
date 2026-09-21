@@ -5,18 +5,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw, Tags } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Search, AlertCircle, Pencil, Palette, RotateCcw, Tags, ImagePlus } from 'lucide-react';
 import { listEditions, createEdition, updateEdition, deleteEdition, countCardsByEdition, type CardEditionRow } from '../services/admin/cardEditionAdminService';
+import { PlayerFilterPanel, EMPTY_PLAYER_FILTERS, countActiveFilters, matchesPlayerFilters, type PlayerFilterState, type CareerRow } from '../components/admin/PlayerFilterPanel';
+import { supabase } from '../services/supabaseClient';
 import { searchCards, type PlayerCardRow } from '../services/admin/playerCardAdminService';
 import {
     listCollections, createCollection, updateCollection, deleteCollection,
     listCollectionMembers, addCardToCollection, removeCardFromCollection, uploadCollectionBackground,
     type CardCollectionRow,
 } from '../services/admin/playerCardCollectionAdminService';
-import { fetchCardTeamColors, upsertCardTeamColor, deleteCardTeamColor } from '../services/cardTeamColorService';
+import { fetchCardTeamColors, upsertCardTeamColor, deleteCardTeamColor, uploadTeamBackground } from '../services/cardTeamColorService';
 import { CARD_TEAM_COLORS_QUERY_KEY } from '../hooks/useCardTeamColors';
 import {
     buildCardBackground, buildCardBottomGradient, cardRadiusPx, DEFAULT_CARD_BACKGROUND, getDefaultCardTeamColor, resolveCardTeamGradient,
+    teamImageLayer, teamImageLayerStyle,
     type CardBackgroundSettings, type CardTeamColor,
 } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
@@ -35,8 +38,8 @@ import { PersonalDraftCard } from '../components/draft/PersonalDraftCard';
 import type { PersonalDraftPlayer } from '../hooks/usePersonalDraft';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 
-// 배경 미리보기에 쓰는 대표 팀(골든스테이트) — 'team' 타입이 실제로 어떻게 보이는지 예시용.
-// [2026-09-20] 팀별 컬러 오버라이드가 있으면 그것을 따른다(resolveCardTeamGradient).
+// 배경 미리보기에 쓰는 대표 팀 기본값(골든스테이트) — [2026-09-21] 셀렉터로 바꿀 수 있다(팀별 배경 이미지 확인용).
+// 팀별 컬러 오버라이드/배경 이미지가 있으면 그것을 따른다(resolveCardTeamGradient).
 const PREVIEW_TEAM_ID = 'gs';
 const BG_TYPES: { value: CardBackgroundSettings['bg_type']; label: string; desc: string }[] = [
     { value: 'team',     label: '팀 컬러',   desc: '카드 원팀의 컬러 그라디언트(기본)' },
@@ -49,7 +52,7 @@ type CollectionWithCount = CardCollectionRow & { memberCount: number };
 
 /** [2026-09-20] 카드 row → 드래프트 카드 컴포넌트가 받는 Player 형태(컬렉션 헤더/배경은 지금 보고 있는 컬렉션 기준).
  *  실제 시즌 기록은 붙이지 않는다(호버 팝업은 기록 섹션을 숨김). */
-function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editionName: string | null): PersonalDraftPlayer {
+function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, edition: CardEditionRow | null): PersonalDraftPlayer {
     const mapped = mapRawPlayerToRuntimePlayer(card, false, true) as PersonalDraftPlayer;
     return {
         ...mapped,
@@ -57,7 +60,9 @@ function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editi
         cardId: card.id,
         realPlayerId: card.source_player_id,
         season: card.season,
-        edition: editionName,
+        edition: edition?.name ?? null,
+        showCenterLogo: edition?.show_center_logo ?? true,
+        showCornerLogo: edition?.show_corner_logo ?? true,
         baseTeamId: card.base_team_id ?? null,
         bgImageUrl: card.bg_image_url ?? null,
         collection: {
@@ -82,7 +87,9 @@ function toDraftPlayer(card: PlayerCardRow, collection: CardCollectionRow, editi
 const sameTeamColor = (a: CardTeamColor, b: CardTeamColor) =>
     a.gradient_from.toLowerCase() === b.gradient_from.toLowerCase() &&
     a.gradient_to.toLowerCase() === b.gradient_to.toLowerCase() &&
-    a.gradient_angle === b.gradient_angle;
+    a.gradient_angle === b.gradient_angle &&
+    (a.bg_image_url ?? null) === (b.bg_image_url ?? null) &&
+    (a.bg_image_opacity ?? 100) === (b.bg_image_opacity ?? 100);
 
 const PlayerCardCollectionPage: React.FC = () => {
     useOutletContext<{ userId?: string }>();
@@ -103,6 +110,13 @@ const PlayerCardCollectionPage: React.FC = () => {
     const [newEditionName, setNewEditionName] = useState('');
     const [editionBusy, setEditionBusy] = useState<string | null>(null);
     const editionNameById = useMemo(() => new Map(editions.map(e => [e.id, e.name])), [editions]);
+    const editionById = useMemo(() => new Map(editions.map(e => [e.id, e])), [editions]);
+    const handleToggleEditionLogo = async (id: string, key: 'show_center_logo' | 'show_corner_logo', value: boolean) => {
+        setEditionBusy(id); setEditionErr(null);
+        try { await updateEdition(id, { [key]: value }); await reloadEditions(); }
+        catch (e) { setEditionErr(e instanceof Error ? e.message : '로고 옵션 저장에 실패했습니다.'); }
+        finally { setEditionBusy(null); }
+    };
     const reloadEditions = useCallback(async () => {
         try {
             const [rows, counts] = await Promise.all([listEditions(), countCardsByEdition()]);
@@ -199,6 +213,30 @@ const PlayerCardCollectionPage: React.FC = () => {
             setTeamErr(e instanceof Error ? e.message : '저장에 실패했습니다.');
         } finally {
             setTeamSaving(null);
+        }
+    };
+
+    // [2026-09-21] 팀 배경 이미지 — 컬렉션 배경과 같은 파이프라인(WebP 변환, 5MB). 업로드 즉시 드래프트에 반영, "저장"으로 확정
+    const [teamBgUploading, setTeamBgUploading] = useState<string | null>(null);
+    const handleTeamBgUpload = async (teamId: string, file: File | null) => {
+        if (!file) return;
+        setTeamBgUploading(teamId); setTeamErr(null);
+        try {
+            let blob: Blob = file;
+            let ext = (file.name.split('.').pop() || 'png').toLowerCase();
+            let contentType = file.type || 'application/octet-stream';
+            const converted = await convertImageToWebp(file);
+            if (converted) { blob = converted.blob; ext = 'webp'; contentType = 'image/webp'; }
+            else if (!['image/webp', 'image/png', 'image/jpeg', 'image/avif'].includes(contentType)) {
+                throw new Error('이 브라우저에서는 WebP 변환이 안 되고, 원본 형식은 업로드가 허용되지 않습니다(WebP/PNG/JPEG/AVIF).');
+            }
+            if (blob.size > 5 * 1024 * 1024) throw new Error(`변환 후에도 5MB를 넘습니다(${(blob.size / 1024 / 1024).toFixed(1)}MB).`);
+            const url = await uploadTeamBackground(teamId, blob, ext, contentType);
+            setTeamDraft(teamId, { bg_image_url: url });
+        } catch (e) {
+            setTeamErr(e instanceof Error ? e.message : '업로드에 실패했습니다.');
+        } finally {
+            setTeamBgUploading(null);
         }
     };
 
@@ -360,7 +398,10 @@ const PlayerCardCollectionPage: React.FC = () => {
         }
     };
 
-    const previewBackground = buildCardBackground(bg, resolveCardTeamGradient(PREVIEW_TEAM_ID, teamColors));
+    const [previewTeamId, setPreviewTeamId] = useState<string>(PREVIEW_TEAM_ID);
+    const previewTeam = resolveCardTeamGradient(previewTeamId, teamColors);
+    const previewBackground = buildCardBackground(bg, previewTeam, null, true);
+    const previewImageLayer = teamImageLayer(bg, previewTeam, null);
 
     const handleDeleteCollection = async (c: CollectionWithCount) => {
         if (!window.confirm(`"${c.name}" 컬렉션을 삭제할까요? (카드 자체는 삭제되지 않습니다)`)) return;
@@ -393,6 +434,46 @@ const PlayerCardCollectionPage: React.FC = () => {
         if (selected) reloadMembers(selected.id);
         else setMembers([]);
     }, [selected?.id, reloadMembers]);
+
+    // ── [2026-09-21] 컬렉션 내 카드 필터(이름 + 공용 필터 패널). 카드는 이미 로드돼 있어 클라이언트에서 거른다.
+    // 커리어 연도 조건이 있을 때만 원본 선수(meta_players)의 career_history를 컬렉션 단위로 한 번 조회해 시즌 연도를 캐시.
+    const [memberQuery, setMemberQuery] = useState('');
+    const [memberFilters, setMemberFilters] = useState<PlayerFilterState>(EMPTY_PLAYER_FILTERS);
+    const [memberFiltersOpen, setMemberFiltersOpen] = useState(false);
+    const [careerRowsBySource, setCareerRowsBySource] = useState<Map<string, CareerRow[]>>(new Map());
+    const careerFilterActive = memberFilters.careerFrom.trim() !== '' || memberFilters.careerTo.trim() !== '' || memberFilters.careerTeam !== '';
+    useEffect(() => { setMemberQuery(''); setMemberFilters(EMPTY_PLAYER_FILTERS); setCareerRowsBySource(new Map()); }, [selected?.id]);
+    useEffect(() => {
+        if (!careerFilterActive || members.length === 0) return;
+        const missing = Array.from(new Set(members.map(m => m.source_player_id))).filter(id => !careerRowsBySource.has(id));
+        if (missing.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase.from('meta_players').select('id, career_history').in('id', missing);
+            if (cancelled) return;
+            setCareerRowsBySource(prev => {
+                const next = new Map(prev);
+                for (const r of (data ?? []) as any[]) {
+                    const rows: CareerRow[] = (Array.isArray(r.career_history) ? r.career_history : []).map((row: any) => {
+                        const y = parseInt(String(row?.season ?? '').slice(0, 4), 10);
+                        return { year: Number.isFinite(y) ? y : null, team: row?.team ? String(row.team) : null };
+                    });
+                    next.set(String(r.id), rows);
+                }
+                for (const id of missing) if (!next.has(id)) next.set(id, []);
+                return next;
+            });
+        })();
+        return () => { cancelled = true; };
+    }, [careerFilterActive, members, careerRowsBySource]);
+    const visibleMembers = useMemo(() => {
+        const q = memberQuery.trim().toLowerCase();
+        return members.filter(card =>
+            (!q || card.name.toLowerCase().includes(q)) &&
+            matchesPlayerFilters(memberFilters, card, careerRowsBySource.get(card.source_player_id)),
+        );
+    }, [members, memberQuery, memberFilters, careerRowsBySource]);
+    const memberFilterActive = memberQuery.trim() !== '' || countActiveFilters(memberFilters) > 0;
 
     const handleRemove = async (cardId: string) => {
         if (!selected) return;
@@ -536,6 +617,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                 <h2 className="text-lg font-bold text-white">카드 에디션</h2>
                                 <p className="text-xs text-slate-500 ko-normal mt-0.5">
                                     카드마다 에디션이 필수입니다. 같은 선수·같은 시즌이라도 에디션이 다르면 제한 없이 만들 수 있습니다(같은 에디션은 1장). 카드 관리 탭의 선택지는 이 목록만 보여주며, 카드가 쓰고 있는 에디션은 삭제할 수 없습니다.
+                                    로고 옵션은 그 에디션 카드 전체에 적용됩니다(중앙 큰 로고 / 우상단 작은 로고).
                                 </p>
                             </div>
                             {editionErr && (
@@ -567,6 +649,19 @@ const PlayerCardCollectionPage: React.FC = () => {
                                         <input defaultValue={ed.name} key={`${ed.id}-${ed.name}`}
                                             onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== ed.name) handleRenameEdition(ed.id, e.target.value); }}
                                             className="flex-1 bg-slate-950 border border-slate-800 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                                        {/* [2026-09-20] 로고 표시 옵션 — 즉시 저장 */}
+                                        <label className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 cursor-pointer" title="카드 정중앙 팀 로고">
+                                            <input type="checkbox" checked={ed.show_center_logo} disabled={!!editionBusy}
+                                                onChange={e => handleToggleEditionLogo(ed.id, 'show_center_logo', e.target.checked)}
+                                                className="w-3.5 h-3.5 rounded accent-indigo-500 cursor-pointer" />
+                                            중앙 로고
+                                        </label>
+                                        <label className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 cursor-pointer" title="우상단 팀 로고">
+                                            <input type="checkbox" checked={ed.show_corner_logo} disabled={!!editionBusy}
+                                                onChange={e => handleToggleEditionLogo(ed.id, 'show_corner_logo', e.target.checked)}
+                                                className="w-3.5 h-3.5 rounded accent-indigo-500 cursor-pointer" />
+                                            우상단 로고
+                                        </label>
                                         <span className="text-[11px] text-slate-500 tabular-nums shrink-0">{editionCounts[ed.id] ?? 0}장</span>
                                         <button onClick={() => handleDeleteEdition(ed)} disabled={!!editionBusy || (editionCounts[ed.id] ?? 0) > 0}
                                             title={(editionCounts[ed.id] ?? 0) > 0 ? '카드가 사용 중이라 삭제할 수 없습니다' : '삭제'}
@@ -585,7 +680,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                 <h2 className="text-lg font-bold text-white">카드 팀별 컬러</h2>
                                 <p className="text-xs text-slate-500 ko-normal mt-0.5">
                                     카드 배경 "팀 컬러" 타입과 이미지 아래 폴백, 드래프트 카드에만 적용됩니다. 리그/플레이오프 등 다른 화면의 팀 컬러는 바뀌지 않습니다.
-                                    저장하지 않은 팀은 기본값(코드 상수)을 그대로 씁니다.
+                                    저장하지 않은 팀은 기본값(코드 상수)을 그대로 씁니다. 배경 이미지를 올리면 그 팀 카드에는 그라디언트 대신 이미지가 깔립니다(어떤 형식이든 WebP로 변환, 권장 비율 3:4.6).
                                 </p>
                             </div>
                             {teamErr && (
@@ -615,10 +710,11 @@ const PlayerCardCollectionPage: React.FC = () => {
                                         >
                                             {/* 미리보기 스와치: 실제 카드와 같은 그라디언트 위에 로고 */}
                                             <div
-                                                className="w-12 h-16 rounded-lg border border-white/10 shrink-0 flex items-center justify-center"
-                                                style={{ background: buildCardBackground(null, draft) }}
+                                                className="relative w-12 h-16 rounded-lg border border-white/10 shrink-0 flex items-center justify-center overflow-hidden"
+                                                style={{ background: buildCardBackground(null, draft, null, true) }}
                                             >
-                                                <img src={getRealTeamLogoUrl(t.id)} alt="" draggable={false} className="w-7 h-7 object-contain"
+                                                {(() => { const l = teamImageLayer(null, draft, null); return l ? <div aria-hidden="true" style={teamImageLayerStyle(l) as React.CSSProperties} /> : null; })()}
+                                                <img src={getRealTeamLogoUrl(t.id)} alt="" draggable={false} className="relative w-7 h-7 object-contain"
                                                     style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.6))' }} />
                                             </div>
                                             <div className="flex-1 min-w-0 space-y-1.5">
@@ -648,7 +744,31 @@ const PlayerCardCollectionPage: React.FC = () => {
                                                             className="w-14 bg-slate-950 border border-slate-700 rounded-md px-1.5 py-1 text-[11px] text-white text-center focus:outline-none focus:border-indigo-500" />
                                                         °
                                                     </label>
+                                                    {/* [2026-09-21] 팀 배경 이미지 */}
+                                                    <label className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] cursor-pointer transition-colors ${
+                                                        teamBgUploading === t.id ? 'bg-slate-800 text-slate-500' : 'bg-slate-800 text-slate-300 hover:text-white'
+                                                    }`}>
+                                                        {teamBgUploading === t.id ? <Loader2 size={11} className="animate-spin" /> : <ImagePlus size={11} />}
+                                                        {draft.bg_image_url ? '이미지 교체' : '배경 이미지'}
+                                                        <input type="file" accept="image/*" className="hidden" disabled={!!teamBgUploading}
+                                                            onChange={e => { handleTeamBgUpload(t.id, e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                                                    </label>
+                                                    {draft.bg_image_url && (
+                                                        <button type="button" onClick={() => setTeamDraft(t.id, { bg_image_url: null })}
+                                                            className="text-[11px] text-slate-500 hover:text-red-400 transition-colors">이미지 제거</button>
+                                                    )}
                                                 </div>
+                                                {/* [2026-09-21] 팀 이미지 효과 — 불투명도(%) (블러는 저사양 기기 부담으로 제거) */}
+                                                {draft.bg_image_url && (
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                                            불투명도
+                                                            <input type="range" min={0} max={100} step={5} value={draft.bg_image_opacity ?? 100}
+                                                                onChange={e => setTeamDraft(t.id, { bg_image_opacity: Number(e.target.value) })} className="w-24 accent-indigo-500" />
+                                                            <span className="tabular-nums w-9 text-right">{draft.bg_image_opacity ?? 100}%</span>
+                                                        </label>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex flex-col items-end gap-1 shrink-0">
                                                 <button
@@ -842,10 +962,18 @@ const PlayerCardCollectionPage: React.FC = () => {
 
                             {/* 미리보기 — 실제 카드와 같은 상단 어둡기 오버레이(15→45%) + 능력치 영역 35% 다크 레이어 */}
                             <div>
-                                <p className="text-[10px] text-slate-600 ko-normal mb-1.5">미리보기{bg.bg_type === 'team' ? ' (예: 골든스테이트)' : ''}</p>
-                                <div className="border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground, borderRadius: cardRadiusPx(bg) }}>
-                                    <div className="h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/25 border-b border-white/10 truncate px-2">{selected.name}</div>
-                                    <div className="flex-1 flex flex-col items-center justify-center px-2" style={{ background: 'linear-gradient(180deg, rgba(2,6,23,.15) 0%, rgba(2,6,23,.45) 100%)' }}>
+                                <div className="flex items-center justify-between gap-1 mb-1.5">
+                                    <p className="text-[10px] text-slate-600 ko-normal">미리보기</p>
+                                    {/* [2026-09-21] 미리보기 팀 — 팀 컬러/팀 배경 이미지가 어떻게 보이는지 팀별로 확인 */}
+                                    <select value={previewTeamId} onChange={e => setPreviewTeamId(e.target.value)}
+                                        className="bg-slate-950 border border-slate-800 rounded-md px-1 py-0.5 text-[10px] text-slate-300 focus:outline-none focus:border-indigo-500 max-w-[110px]">
+                                        {teams.map(t => <option key={t.id} value={t.id}>{t.id.toUpperCase()} · {t.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="relative border border-slate-700 overflow-hidden flex flex-col aspect-[3/4.6]" style={{ background: previewBackground, borderRadius: cardRadiusPx(bg) }}>
+                                    {previewImageLayer && <div aria-hidden="true" style={teamImageLayerStyle(previewImageLayer) as React.CSSProperties} />}
+                                    <div className="relative h-6 flex items-center justify-center text-[10px] font-bold uppercase tracking-wide text-white/70 bg-black/25 border-b border-white/10 truncate px-2">{selected.name}</div>
+                                    <div className="relative flex-1 flex flex-col items-center justify-center px-2" style={{ background: 'linear-gradient(180deg, rgba(2,6,23,.15) 0%, rgba(2,6,23,.45) 100%)' }}>
                                         <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#fb7185] via-[#e11d48] to-[#ff1457] text-white text-sm font-black flex items-center justify-center self-start">85</div>
                                         <div className="mt-auto -mx-2 px-2 pt-6 pb-2 flex flex-col items-center self-stretch" style={{ background: buildCardBottomGradient(bg) }}>
                                             <div className="text-sm font-black text-white">선수 이름</div>
@@ -902,7 +1030,28 @@ const PlayerCardCollectionPage: React.FC = () => {
 
                         {/* 컬렉션 멤버 카드 목록 */}
                         <div>
-                            <h3 className="text-sm font-bold text-white mb-2">이 컬렉션의 카드 ({members.length}장)</h3>
+                            <h3 className="text-sm font-bold text-white mb-2">이 컬렉션의 카드 ({memberFilterActive ? `${visibleMembers.length} / ` : ''}{members.length}장)</h3>
+                            {/* [2026-09-21] 컬렉션 내 카드 필터 — 이름 + 소속 팀/포지션/커리어 연도/능력치 */}
+                            {members.length > 0 && (
+                                <div className="space-y-2 mb-3">
+                                    <div className="relative">
+                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                        <input
+                                            value={memberQuery}
+                                            onChange={e => setMemberQuery(e.target.value)}
+                                            placeholder="이 컬렉션 안에서 선수 이름 검색"
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <PlayerFilterPanel
+                                        value={memberFilters}
+                                        onChange={setMemberFilters}
+                                        open={memberFiltersOpen}
+                                        onToggleOpen={() => setMemberFiltersOpen(o => !o)}
+                                        resultLabel={`${visibleMembers.length} / ${members.length}장`}
+                                    />
+                                </div>
+                            )}
                             {membersLoading ? (
                                 <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-slate-500" /></div>
                             ) : members.length === 0 ? (
@@ -912,10 +1061,13 @@ const PlayerCardCollectionPage: React.FC = () => {
                                    호버하면 능력치 팝업(기록 없음). 카드를 누르면 카드 관리 탭에서 그 카드를 연다.
                                    카드 아래 "제거"로 컬렉션에서 뺀다(카드 자체는 삭제되지 않음). */
                                 <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                                    {members.map(card => (
+                                    {visibleMembers.length === 0 && (
+                                        <p className="col-span-full text-xs text-slate-600 ko-normal py-4 text-center">조건에 맞는 카드가 없습니다.</p>
+                                    )}
+                                    {visibleMembers.map(card => (
                                         <div key={card.id} className="flex flex-col gap-1.5">
                                             <PersonalDraftCard
-                                                player={toDraftPlayer(card, selected, card.edition_id ? editionNameById.get(card.edition_id) ?? null : null)}
+                                                player={toDraftPlayer(card, selected, editionById.get(card.edition_id) ?? null)}
                                                 selected={false}
                                                 onSelect={openCardEditor}
                                                 teamColors={teamColors}
