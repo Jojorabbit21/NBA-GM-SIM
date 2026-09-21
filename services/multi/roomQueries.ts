@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import type { OffseasonPhase } from '../../types/app';
 import type { SimSettings } from '../../types/simSettings';
 import type { PersonalDraftFormat } from './personalDraftFormat';
+import type { SavedTeamFinances } from '../../types/finance';
 
 // ─── 리그 그룹 ────────────────────────────────────────────────────────────────
 
@@ -279,6 +280,10 @@ export interface RoomRow {
     sim_date: string;
     offseason_phase: OffseasonPhase;
     sim_settings: SimSettings | null;
+    /** [2026-09-21] release_player() RPC가 cap_enabled 리그의 waive 데드캡을 여기 기록한다
+     *  (team_finances[team_slug].deadMoney[]). 싱글플레이어 SavedTeamFinances와 동일 형태 —
+     *  migrations/add_release_player_waive_dead_money.sql 참고. */
+    team_finances: SavedTeamFinances | null;
     schema_version: number;
     created_at: string;
     updated_at: string;
@@ -304,7 +309,7 @@ export interface RoomMemberRow {
 export const loadRoomByLeague = async (leagueId: string): Promise<RoomRow | null> => {
     const { data, error } = await supabase
         .from('rooms')
-        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, schema_version, created_at, updated_at')
+        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, schema_version, created_at, updated_at')
         .eq('league_id', leagueId)
         .eq('status', 'active')
         .maybeSingle();
@@ -352,7 +357,7 @@ export const listUserActiveRooms = async (userId: string): Promise<RoomRow[]> =>
     const roomIds = memberships.map(m => m.room_id);
     const { data, error } = await supabase
         .from('rooms')
-        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, schema_version, created_at, updated_at')
+        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, schema_version, created_at, updated_at')
         .in('id', roomIds)
         .eq('status', 'active');
 

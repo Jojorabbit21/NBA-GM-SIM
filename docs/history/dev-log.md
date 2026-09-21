@@ -35,6 +35,909 @@
 
 ---
 
+## 2026-09-21 — OVR 배지 골드 티어 그라디언트를 다이아 티어와 동일한 구조로 변경
+
+**배경**: 골드(80~89) 티어 배지가 5스톱/135° 그라디언트로 다이아(90~99) 티어의 3스톱/0° 구조와 시각적으로 이질적이라는 사용자 지적. 색상은 골드 팔레트를 유지하되 스톱 개수와 각도만 다이아와 동일하게 맞춤.
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` — `TIERS` 배열의 `min: 80` 항목 `background`
+
+**Before**:
+```ts
+background: 'linear-gradient(135deg,#fff1b8 0%,#f5c542 28%,#b7791f 52%,#fbd56b 72%,#9a6612 100%)',
+```
+
+**After**:
+```ts
+background: 'linear-gradient(0deg,#fff1b8 0%,#9a6612 50%,#fbd56b 100%)',
+```
+
+**검증**: 시각적 변경만 있는 순수 CSS 그라디언트 값 교체, 타입/로직 영향 없음.
+
+**롤백 방법**: Before 블록 값으로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 방출 확인 화면: reload()를 "나가는 버튼마다"가 아니라 확정 즉시 1회로 통일
+
+**배경**: 바로 아래 항목("재정 탭에 데드캡이 새로고침 전까지 안 보이는 버그")을 고치면서
+헤더 "뒤로"에도 `reload()`를 추가했는데, 이렇게 나가는 버튼마다 `reload()` 호출을
+일일이 맞춰 넣는 방식 자체가 구조적으로 불안정하다는 지적(사용자: "그냥 계약,방출 하면
+자동으로 reload() 1회를 실시하게 하는건 비효율적인가?") — 답은 "비효율이 아니다"였다.
+`reload()`는 계약/방출 1건당 정확히 1번만 호출되면 되고, 그 시점이 "확정 즉시"든 "나가기
+클릭 시"든 DB 조회량은 동일하다. 오히려 나가는 경로가 여러 개(뒤로/나가기)일 때 그중
+하나가 호출을 빼먹으면 재발하는 구조라, 확정 시점 1곳에서만 부르는 쪽이 근본적으로
+더 안전하다 — `MultiNegotiationView.tsx`의 FA 서명 성공 처리가 원래 이 패턴이었다.
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client) — `handleConfirm`이 RPC 성공 직후
+  (스냅샷 저장·챗 버블 추가와 같은 자리에서) `reload()`를 직접 호출하도록 변경.
+  `handleExit`에서는 `reload()` 호출을 제거하고 `navigate(...)`만 남김 — 헤더 "뒤로"와
+  채팅 "나가기" 둘 다 이 `handleExit` 하나를 그대로 쓰므로 두 경로 모두 자동으로
+  "reload 안 함"으로 통일됨(더 이상 나가는 버튼 쪽에서 신경 쓸 필요 없음).
+  확정 즉시 `reload()`를 불러도 이 화면 자체는 `releaseSnapshot`/`frozenPlayerRef`로
+  이미 고정 표시되므로 화면이 깨지지 않는다(두 항목 전에 추가한 안전장치).
+
+**검증**: `npx tsc --noEmit` — 신규 에러 없음.
+
+**롤백 방법**: `handleConfirm`에서 `reload()` 호출을 제거하고 `handleExit` 안에 다시
+넣으면 이전 상태로 돌아감.
+
+---
+
+## 2026-09-21 — 방출 후 재정 탭에 데드캡이 새로고침 전까지 안 보이는 버그 수정
+
+**배경**: 방출 완료 후 로스터 > 재정 탭으로 이동하면 방금 생긴 데드캡이 안 보이고 브라우저를
+새로고침해야만 나타난다는 리포트. 원인은 헤더의 "← 뒤로" 버튼 — 채팅 패널의 "나가기"
+버튼(바로 위 항목에서 추가, `reload()` 호출 후 이동)과 달리 이 버튼은 예전부터 있던
+그대로 `navigate(...)`만 호출하고 `reload()`를 부르지 않았다. `hooks/useCurrentLeague.ts`는
+`league_teams`(로스터) 테이블만 실시간 구독하고 `rooms`(`team_finances`가 있는 테이블)는
+구독하지 않으므로, `reload()`를 거치지 않으면 방금 커밋된 데드캡이 클라이언트에 반영될
+경로가 전혀 없다 — 로스터는(실시간 구독 덕에) 정상으로 보이는데 재정만 안 보이는 이유가
+바로 이것.
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client) — 헤더 "뒤로" 버튼의 `onClick`을
+  `handleExit`(= `reload(); navigate(...)`)로 교체, 기존 인라인 `navigate(...)`만 하던
+  콜백 제거. 방출 전에 눌러도(아직 아무것도 안 바뀌었으므로) 무해한 재조회라 조건 분기
+  없이 항상 `handleExit`로 통일.
+
+**검증**: `npx tsc --noEmit` — 신규 에러 없음.
+
+**롤백 방법**: 헤더 버튼의 `onClick`을 `() => navigate(\`/multi/leagues/${leagueId}/season/roster\`)`로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 방출 확인 화면: 완료 직후 "선수를 찾을 수 없습니다"로 튕기는 버그 수정
+
+**배경**: 바로 위 항목("챗 버블 도입 + 완료 후 자동 이동 제거")에서 `reload()` 호출 시점을
+"나가기" 클릭까지 미루면 방출 완료 화면(챗 버블+캡 현황)이 안정적으로 유지될 거라고
+가정했는데 틀렸다 — 실사용 스크린샷으로 확인된 실제 증상은 방출 확정 직후 화면 전체가
+"로스터에서 선수를 찾을 수 없습니다"로 뒤덮이는 것이었다. 원인: `hooks/useCurrentLeague.ts`의
+`league_teams` 실시간 구독(300ms 디바운스, 드래프트/트레이드/FA서명/방출 공용, 2026-09-18
+도입)이 **이 화면이 `reload()`를 부르는지와 무관하게** `release_player` RPC의 roster 변경을
+자동으로 반영한다 — 확정 후 ~300ms 안에 `leagueTeams.roster`에서 선수가 빠지고,
+`allRosterIds`→`useLeagueRawStats` 쿼리 범위가 줄어 `myTeam.roster`에 그 선수가 아예
+없어지며 `player`가 null이 되고, 이미 있던 `if (!player) return "선수를 찾을 수
+없습니다"` 가드가 화면 전체(챗 버블·나가기 버튼째로)를 덮어써버렸다.
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client)
+  - `player`를 `livePlayer`(기존 `myTeam.roster.find` 그대로)와 `frozenPlayerRef`(한 번
+    찾은 선수를 계속 들고 있는 ref)로 분리 — `player = livePlayer ?? frozenPlayerRef.current`.
+    이후 live 값이 null이 돼도 이전에 찾은 선수를 계속 반환해 `!player` 가드가 다시는
+    발동하지 않는다.
+  - `releaseSnapshot` state 추가 — `handleConfirm`이 RPC 성공 직후 그 순간의
+    `contractRows`/`deadCapRows`/`capInfo`(전부 방출 "전" 기준 값)를 통째로 캡처해 저장.
+    `myTeam` 자체(roster/deadMoney)는 얼리지 않았기 때문에 — 이 셋이 live 값을 계속 쓰면
+    실시간 구독이 `myTeam.roster`를 이미 "방출 후" 상태로 바꿔버려 "방출 전/후" 비교가
+    무너진다(캡 스페이스가 이미 방출된 것처럼 보이는 등).
+  - 렌더 직전에 `displayContractRows`/`displayDeadCapRows`/`displayCapInfo` =
+    `releaseSnapshot?.x ?? x`로 바인딩하고, JSX의 해당 3개 값 참조를 전부 이걸로 교체.
+
+**검증**: `npx tsc --noEmit` — 이 파일 관련 신규 에러 없음.
+
+**롤백 방법**: `player`를 다시 `livePlayer` 단일 useMemo로 되돌리고(`frozenPlayerRef` 제거),
+`releaseSnapshot`/`display*` 3개 바인딩과 그 사용처를 전부 원래의 `contractRows`/
+`deadCapRows`/`capInfo` 직접 참조로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 방출 확인 화면: 챗 버블 도입 + 완료 후 자동 이동 제거
+
+**배경**: 방출 화면 중앙 대화 패널이 "요청대로 항상 빈 칸"이었는데, 사용자가 이제 FA
+협상 화면(`MultiNegotiationView.tsx`)과 동일한 챗 버블 디자인을 방출 완료 시 보여달라고
+요청. 동시에 "확인" 처리 후 로스터 화면으로 자동 이동하던 것도 없애고, 사용자가 직접
+"나가기"를 눌러야만 화면을 뜨도록 변경 — FA 협상 화면이 2026-09-17에 이미 같은 이유로
+자동 이동을 없앤 전례를 그대로 따름.
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client)
+  - `ChatMsg` 타입 + `chatMessages`/`addMsg`/`chatEndRef` 추가 — `MultiNegotiationView.tsx`와
+    동일 패턴(다만 'player' 롤은 안 씀 — 방출은 협상이 아니라 팀의 일방적 통보라 선수
+    응답 버블이 없음).
+  - `released` state 추가. `handleConfirm` 성공 시 기존 `navigate(...)` 호출을 제거하고
+    대신 GM 통보 버블("{선수명} 선수를 {웨이브/스트레치 프로비전} 처리합니다…") + 완료
+    상태 버블("방출 완료")을 채팅에 추가, `released=true`로 설정.
+  - **`reload()` 호출 시점을 확정 직후에서 "나가기" 클릭(`handleExit`)으로 미뤘다** —
+    바로 reload하면 `myTeamRow.roster`에서 선수가 즉시 빠져 `useLeagueRawStats`의 쿼리
+    범위(`allRosterIds`)가 줄고 `myTeam.roster.find`가 null이 돼 "선수를 찾을 수
+    없습니다" 화면으로 튕긴다(`MultiNegotiationView.tsx`가 `signedPlayerId` 예외 플래그로
+    푼 것과 같은 문제의 거울상 — 여기선 예외 플래그 대신 reload 자체를 미루는 더 단순한
+    방법으로 해결, 로스터 필드가 아니라 FA풀 소속 여부로 판정하는 FA 화면과 데이터 구조가
+    달라 signedPlayerId 방식을 그대로 가져올 수 없었음).
+  - 중앙 "대화" 패널을 빈 `<div />` 대신 실제 챗 버블 렌더링으로 교체(GM 버블/상태 버블
+    JSX와 클래스는 `MultiNegotiationView.tsx`에서 그대로 복제), `released`일 때만 채팅
+    하단에 "나가기" 버튼 표시(클릭 시 `handleExit` → reload 후 로스터로 이동).
+  - 우측 "방출 방식 + 캡 현황" 영역 전체를 `released`일 때 `opacity-40
+    pointer-events-none select-none`로 잠금(`MultiNegotiationView.tsx`의
+    `isOfferPanelDisabled`와 동일 패턴) — 완료 후 재확정 방지.
+  - 확인 팝업의 버튼 레이블(`effectiveMode === 'stretch' ? ... : ...`)과 GM 버블 문구가
+    같은 매핑을 쓰도록 `RELEASE_MODE_LABEL` 상수로 통합.
+
+**검증**: `npx tsc --noEmit` — 이 파일 관련 신규 에러 없음(다른 기존 무관 파일들의 에러는
+이번 변경과 무관, 사전에 있던 것).
+
+**롤백 방법**: `handleConfirm` 끝의 `reload(); navigate(...)`를 복원하고 챗 버블 관련
+state/JSX(`chatMessages`/`released`/`RELEASE_MODE_LABEL`/중앙 패널 JSX/우측 잠금 클래스)를
+제거하면 이전 상태로 돌아감.
+
+---
+
+## 2026-09-21 — 방출 확인 팝업 디자인 축소 (블러/라운드/X버튼/아이콘 박스/패딩)
+
+**배경**: 직전에 추가한 방출 최종 확인 팝업이 `ResetDataModal.tsx` 스타일(진한 블러 배경,
+`rounded-[2rem]`, X 닫기 버튼, 경고 아이콘을 감싸는 둥근 컬러 박스, `p-8` 여유 패딩)을 그대로
+가져왔는데, 더 가볍고 각진 형태로 바꿔달라는 요청.
+
+**변경 파일**:
+- `components/common/Modal.tsx` (공용 컴포넌트) — 새 옵션 prop 3개 추가: `blurBackdrop`(기본
+  `true`, 배경 `backdrop-blur-md` 여부), `rounded`(기본 `'rounded-[2rem]'`, 패널 모서리
+  클래스), `backdropClass`(기본 `'bg-slate-950/80'`, 배경 어둡기/불투명도). **기본값을 기존과
+  동일하게 둬서 이 prop들을 안 넘기는 다른 모든 모달(TradeConfirmModal 등)은 지금까지와 완전히
+  동일하게 렌더링됨** — 이 팝업 하나만 옵트아웃. `backdropClass`는 Tailwind가 소스의 리터럴
+  문자열만 정적 스캔하므로 반드시 완전한 클래스명 문자열로 넘겨야 함(동적 조합/숫자 prop
+  방식은 빌드에서 스타일이 안 잡힘).
+- `views/multi/season/MultiReleaseView.tsx` (client) — 방출 확인 `<Modal>`에
+  `hideCloseButton`(X 제거) `blurBackdrop={false}`(블러 제거) `rounded="rounded-md"`(라운드
+  축소) `backdropClass="bg-slate-950/60"`(불투명도 80%→60%) 적용. 내부 컨테이너
+  `p-8`→`p-5`로 축소, AlertTriangle 아이콘을 감싸던 `bg-red-500/10 w-16 h-16 rounded-2xl
+  border` 박스 삭제하고 아이콘만 직접 렌더.
+
+**검증**: `npx tsc --noEmit`으로 두 파일 타입 에러 없음 확인.
+
+**롤백 방법**: `Modal.tsx`의 신규 prop 3개와 그 사용처(backdrop/rounded 클래스 조합 부분)를
+제거하고, `MultiReleaseView.tsx`의 `<Modal>` 호출에서 새로 추가한 4개 prop을 빼고 내부 JSX를
+`p-8` + 아이콘 래퍼 박스가 있던 이전 형태로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 방출 확인 화면: 최종 확인 팝업 추가
+
+**배경**: `MultiReleaseView.tsx`의 "확인" 버튼이 클릭 즉시 `release_player` RPC를 실행했다 —
+되돌릴 수 없는 작업인데 오클릭 방지 장치가 없어서, 클릭 시 바로 실행하지 않고 최종 확인
+팝업(취소/실행 2버튼)을 한 번 더 거치도록 변경. `components/ResetDataModal.tsx`와 같은
+패턴(공용 `Modal` 컴포넌트 + AlertTriangle 아이콘 + 취소/확정 버튼).
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client) — `showConfirmModal` state 추가, "확인"
+  버튼 onClick을 `handleConfirm` 직접 호출에서 `setShowConfirmModal(true)`로 변경. 새 팝업의
+  확정 버튼 레이블은 `effectiveMode`(체크박스 상태)를 그대로 반영해 "웨이브"/"스트레치
+  프로비전"으로 동적 표시(실제 실행될 방식과 항상 일치시키기 위함, 하드코딩 안 함).
+
+**검증**: `npx tsc --noEmit`으로 해당 파일 타입 에러 없음 확인.
+
+**롤백 방법**: "확인" 버튼 onClick을 `handleConfirm`으로 되돌리고, 추가한 `<Modal>` 블록과
+`showConfirmModal` state를 제거하면 됨.
+
+---
+
+## 2026-09-21 — 방출 확인 화면: "이 선수의 데드캡" 표 추가 (선수별 vs 팀 합산 분리)
+
+**배경**: `MultiReleaseView.tsx` 우측의 "연도별 데드캡" 표는 팀의 기존 데드캡과 이번 방출로
+추가되는 금액을 합산해서 보여준다(재정 관점). 사용자가 이와 별도로, 좌측 "현재 계약" 표
+바로 아래에 **이 방출 하나만으로 생기는 연도별 데드캡**(다른 데드캡과 합치지 않은 순수 값)을
+보여달라고 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx` (client) — 좌측 단 "현재 계약" 블록 뒤에 "이 선수의
+  데드캡" 블록 추가. 기존에 이미 계산돼 있던 `deadCapRows`(waive/stretch 겸용, effectiveMode에
+  따라 자동 전환)의 `season`+`addition` 두 열만 재사용 — 새 계산 로직 없음, "기존"/"합계" 열은
+  뺐다(팀 합산은 우측 표의 역할).
+
+**검증**: `npx tsc --noEmit`으로 해당 파일 타입 에러 없음 확인.
+
+**롤백 방법**: 추가한 JSX 블록(`{/* 이 선수의 연도별 데드캡 ... */}` 주석부터 다음 `)}`까지)을
+삭제하면 됨 — 다른 로직과 독립적이라 삭제만으로 원상복구.
+
+---
+
+## 2026-09-21 — 멀티플레이어 방출(waive) 규칙 1단계: 캡 활성 리그 데드캡 기록
+
+**배경**: 멀티 리그에서 `cap_enabled`(샐러리캡)가 켜져 있어도 방출(`release_player` RPC)이
+로스터에서 선수를 빼는 것 외에 아무 결과도 남기지 않았다(잔여 연봉 무시). 실제 CBA를
+리서치(`docs/domain/nba-salary-cap-2025-26.md` §8 보강 — 웨이버 48시간 클레임/우선순위,
+스트레치 자격 제한($25만·15%캡·9/1 이후 1년 남음 예외)·2023 CBA 8/31 clear 요건, 바이아웃
+협상 vs 일방 waive 차이·3/1 플레이오프 자격 데드라인, set-off, 불완전 로스터 차지 등)한 뒤,
+**웨이버 클레임(48시간 동안 다른 팀이 경쟁 흡수)은 의도적으로 제외**하기로 했다 — 이 리그의
+시간압축(`day_length_min` 20~40분, 기본 30분, `server/src/shared/leagueTimeline.ts`)에서
+48시간(가상 2일)은 실제 40~80분(기본 60분)밖에 안 돼 "비동기, 동시접속 불필요"라는
+멀티플레이어 설계 원칙(CLAUDE.md 로드맵)과 정면으로 충돌하기 때문(그 시간에 접속하지 않은
+유저는 클레임 기회를 원천적으로 놓침). 사용자 확정: **waive(잔여 보장 연봉 전액 데드캡)만
+1단계로 구현, buyout 협상 할인/stretch 분산/set-off 상계는 다음 단계**.
+
+**변경 파일**:
+- `migrations/add_release_player_waive_dead_money.sql` (신규, Supabase MCP로 즉시 적용) —
+  `release_player(p_team_id, p_player_id)` RPC 재정의
+- `services/multi/roomQueries.ts` — `RoomRow.team_finances: SavedTeamFinances | null` 추가,
+  `loadRoomByLeague`/`listUserActiveRooms` select에 `team_finances`(+ 후자는 기존에 이미
+  빠져 있던 `sim_settings`도 같이) 추가
+- `views/multi/season/MultiRosterView.tsx` — `selectRosterIdentity`에서 팀 객체에
+  `deadMoney: room?.team_finances?.[t.id]?.deadMoney` 부착
+
+**Before**: `release_player()`는 `league_teams.roster`에서 선수 id를 빼는 것과 트레이드
+블록/뎁스차트 정리만 수행. `rooms.team_finances`는 멀티플레이어에서 한 번도 기록된 적
+없음(컬럼은 있었으나 write 경로 없음). `RoomRow`에 `team_finances` 필드 자체가 없어
+클라이언트가 읽을 수도 없었음.
+
+**After**: `cap_enabled=true`인 리그에서 방출 시, 방출 대상 선수의 계약을
+`room_player_state.contract`(리그 오버라이드) → 없으면
+`meta_players.base_attributes.contract` 순으로 조회해 `years[currentYear:]` 합계(진행
+중 시즌 포함 잔여 전액, 분할 없음)를 계산하고, `rooms.team_finances[team_slug].deadMoney`에
+`{playerId, playerName, amount, season, releaseType:'waive'}`(싱글플레이어
+`DeadMoneyEntry`와 동일 형태) 1건을 append한다. `cap_enabled=false` 리그는 기존 동작(즉시
+제거, 데드캡 없음) 그대로. 방출된 선수는 클레임 없이 곧장 그 리그의 일반 FA 풀로
+들어가고(기존 `sign_free_agent()`의 선착순 동시성 체크를 그대로 재사용, 이 RPC는 미변경),
+클라이언트는 `RosterView`(싱글/멀티 공유) → `TeamPayrollTable.tsx`가 이미 갖고 있던
+`team.deadMoney` 합산 로직(재정 탭 시즌별 합계 행, `d.season`로 컬럼 매칭)을 그대로 태워
+별도 UI 작업 없이 즉시 반영됨 — 재정 탭 자체도 이미 `cap_enabled`가 꺼지면 탭이 숨겨지므로
+자연스럽게 스코프가 일치한다.
+
+**검증**: SQL로 `years[currentYear:]` 합계 식과 `team_finances` jsonb 병합 식을 각각
+별도 SELECT로 검증(예: `years=[10,20,30], currentYear=1` → `remaining=50`,
+빈 `team_finances`에서 `{ATL:{deadMoney:[...]}}` 정상 생성 확인). `npx tsc --noEmit`
+수정 파일 관련 에러 0건(기존 무관 에러 80건은 그대로, 수정 전후 diff로 신규 에러 없음
+확인). RPC 자체의 실제 PBL 세션 방출 E2E 테스트는 미수행(다음 접속 시 확인 권장).
+
+**주의사항 / 한계**:
+- `rooms` 행에 명시적 `FOR UPDATE` 락 없이 `team_finances`를 갱신함 — 같은 팀에서 아주
+  짧은 간격으로 선수를 연달아 방출하면(관리자 조작 등) 드물게 lost update 가능(1단계 수용).
+- buyout 협상 할인/stretch 분산(2n+1년, 15%캡 제한)/set-off(재계약 시 상계)는 미구현 —
+  현재는 waive 한 종류만 존재하므로 `releaseType` 값도 항상 `'waive'`.
+- 데드캡은 방출 시점의 시즌(`rooms.season`) 컬럼에만 전액 기록되고 여러 시즌에 걸쳐
+  나뉘지 않음(실제 CBA의 일반 waive와 동일 — stretch를 따로 쓰지 않는 한 원래 이렇게 동작).
+- ~~`TeamPayrollTable.tsx`는 데드캡을 시즌별 합계 행에만 반영하고 개별 항목을 나열하는
+  UI는 없음~~ → 같은 날 아래 두 항목에서 개별 행 UI로 교체됨(이 문단은 더 이상 사실 아님,
+  히스토리 보존용으로만 남김).
+
+**롤백 방법**: `migrations/add_release_player_waive_dead_money.sql` 상단 주석의 이전
+정의(`add_sign_free_agent_release_player_rpc.sql`의 `release_player` 본문)로
+`CREATE OR REPLACE FUNCTION`을 재실행하면 RPC만 원복됨. 클라이언트 3개 파일은 git으로 복원.
+기록된 `rooms.team_finances`는 되돌리지 않아도 무해(다음 정상 흐름에서 자연스럽게 누적).
+**단, 아래 회귀 수정 항목이 이 RPC 정의를 다시 덮어썼으므로 실제 롤백 시엔 그 항목까지
+같이 되돌릴 것.**
+
+---
+
+## 2026-09-21 — release_player() 회귀 수정(league_transactions 로그 유실) + 재정 탭 데드캡 개별 행 UI
+
+**배경**: 위 "방출(waive) 규칙 1단계" 작업 직후 두 가지 문제가 드러났다.
+1. **회귀**: `add_release_player_waive_dead_money.sql`이 `release_player()`를 재정의하면서
+   `add_sign_free_agent_release_player_rpc.sql`(2026-09-04, 데드캡 로직 없음) 시점의 본문을
+   베이스로 삼는 바람에, 그 사이 `add_league_transactions_log.sql`(같은 날 나중에 적용)이
+   추가한 `league_transactions` INSERT가 통째로 사라졌다 — "선수 이동 내역" 위젯
+   (`services/multi/playerHistoryService.ts`)의 `type='waive'` 기록이 그 시점부터 안 쌓임.
+2. **UI**: 사용자가 "재정 탭에 데드캡 행이 안 보인다"고 리포트. 확인해보니 DB 값 자체는
+   정상 기록되고 있었지만(SQL로 직접 조회해 확인), 클라이언트가 그 금액을 "합계" 행에만
+   조용히 더할 뿐 어디서 온 금액인지 보여주는 요소가 전혀 없었다 — 사실상 안 보이는 게
+   맞았다. 1차로 "데드캡 (방출)" 요약 행을 시즌 컬럼별로 추가했다가, 사용자가 재차
+   "방출해도 그 선수 행 자체를 지우지 말고 별도 색상으로 남겨두고, 데드캡이 해소되면
+   그때 행이 사라지게 해달라"고 요청해 최종적으로 이 방식으로 교체했다.
+
+**변경 파일**:
+- `migrations/fix_release_player_restore_transaction_log.sql` (신규, Supabase MCP로 적용) —
+  `release_player()`를 `add_league_transactions_log.sql`의 `v_sim_date`+INSERT 블록과
+  `add_release_player_waive_dead_money.sql`의 데드캡 블록을 합쳐 다시 정의(현재 최신 정의,
+  앞으로 이 RPC를 또 고칠 땐 이 파일을 베이스로 할 것)
+- `components/roster/TeamPayrollTable.tsx` — (a) "데드캡 (방출)" 요약 행을 추가했다가 제거,
+  (b) `team.deadMoney`(로스터에는 없는 방출 선수)를 `players.map(...)` 아래에 개별
+  `TableRow`로 렌더링하도록 교체 — 포지션/나이/오버롤은 정보가 없어 "-", 이름 옆
+  "방출" 배지, 행 전체 붉은 톤 배경(`bg-red-950/*`), 데드캡 시즌 컬럼과 총액 셀은
+  `italic text-red-400`
+
+**Before**: `release_player()` 정의에 `league_transactions` INSERT 없음. 방출된 선수는
+`team.roster`에서 사라지는 순간 재정 탭에서도 완전히 사라지고, 데드캡은 "합계" 행 숫자에만
+비가시적으로 반영됨.
+
+**After**: `release_player()`는 데드캡 계산과 무관하게 항상(waive 자체가 성공하면)
+`league_transactions`에 `type='waive'` 1행을 기록. `TeamPayrollTable`은
+`team.deadMoney`(DeadMoneyEntry[])를 순회하며 방출된 선수마다 행을 그대로 유지 —
+해당 항목이 `deadMoney` 배열에서 빠지는 순간(현재는 정리 로직이 없어 무기한 유지, 다음
+단계에서 시즌 롤오버 시 정리하는 로직이 붙으면 그때부터 자동으로 사라짐) 행도 같이
+사라지므로 "해소되면 행이 사라진다"는 요구사항을 별도 판정 코드 없이 렌더링 소스만으로
+충족한다.
+
+**검증**: SQL로 `pg_get_functiondef`를 조회해 재정의된 `release_player()`에
+`league_transactions`/`team_finances` 처리가 둘 다 존재함을 확인. `npx tsc --noEmit` —
+수정 파일 관련 신규 에러 0건(기존 80건 무관 에러는 그대로).
+
+**주의사항 / 한계**:
+- 데드캡 정리(시즌이 지나면 `deadMoney` 항목을 제거하는) 로직이 아직 없음 — 지금은 한 번
+  기록되면 무기한 남는다. 멀티플레이어 시즌 롤오버 자체가 아직 없어서(싱글은 있음,
+  `services/simulation/offseasonEventHandler.ts`) 이번 스코프에 포함하지 않았다.
+- 방출된 선수 행은 포지션/나이/오버롤 정보가 없다(`DeadMoneyEntry`에 안 담겨 있어서) —
+  필요해지면 RPC에서 `meta_players`의 해당 필드도 같이 넣어 확장 가능.
+- 과거(이 수정 이전)에 실행된 방출 건의 `league_transactions` 누락분은 소급 복원 불가
+  (애초에 안 쓰였으므로 복원할 원본이 없음).
+
+**롤백 방법**: `release_player()`만 되돌리려면 `add_sign_free_agent_release_player_rpc.sql`
+정의로 `CREATE OR REPLACE`(단, 그러면 데드캡 로직도 같이 사라짐 — 데드캡은 유지하고
+트랜잭션 로그만 되돌리는 것은 의미 없으므로 항상 이 파일 전체를 단위로 취급할 것).
+`TeamPayrollTable.tsx`는 git으로 복원.
+
+---
+
+## 2026-09-21 — 방출 데드캡 행: 로스터 선수와 완전히 동일한 렌더 + 투웨이 제외 버그 수정
+
+**배경**: 위 항목에서 만든 개별 데드캡 행이 이름/포지션/나이/오버롤을 "-"로만 표시하고
+행 전체를 붉게 칠해서, 사용자가 "데드캡 샐러리 텍스트만 빨간 이탤릭체로, 나머지는 다른
+선수 행과 완전히 동일하게" 요청. 작업 중 별개로 **투웨이 계약 방출 시에도 데드캡이 잡히는
+버그**를 발견(투웨이는 실제 CBA상 캡에 전혀 안 잡힘 — `TeamPayrollTable.tsx`의 `colTotals`
+합산도 이미 이 규칙으로 투웨이를 제외하고 있었음)해 같이 고쳤다.
+
+**변경 파일**:
+- `migrations/fix_release_player_skip_two_way_dead_money.sql` (신규, 적용 완료) —
+  `release_player()`에 `coalesce(v_contract->>'type','') <> 'two_way'` 가드 추가(현재 최신 정의)
+- `types/team.ts` — `DeadMoneyEntry.player?: Player` 필드 추가(멀티 전용, 싱글은 항상 undefined)
+- `views/multi/season/MultiRosterView.tsx` — 방출됐지만 데드캡이 남은 선수 id도
+  `allRosterIds`(→`useLeagueRawStats`)에 합류시켜 `raw.playersRaw`에 포함되게 하고,
+  `mapRawPlayerToRuntimePlayer()`로 만든 전체 `Player`를 각 `deadMoney` 항목에 `player`로 부착
+- `components/roster/TeamPayrollTable.tsx` — 방출 행을 `players.map(...)`과 동일한 마크업으로
+  재작성(호버카드/바로가기 클릭/포지션/나이/오버롤/Cap% 전부 로스터 선수 행과 동일 로직·스타일),
+  차이는 딱 두 곳: 이름 옆 "방출" 배지, 그리고 데드캡이 걸린 시즌 컬럼+총액 셀만
+  `italic text-red-400`
+
+**After**: 방출된 선수 행이 시각적으로 로스터 선수 행과 거의 동일해짐(같은 배경/호버/이름
+색상/클릭 시 선수상세 이동/포지션·나이·오버롤 실측치). Cap%는 남은 계약이 아니라 실제
+캡에 잡히는 데드캡 금액 기준으로 계산(일관성 있음 — 이 선수가 캡에 미치는 영향은 데드캡
+그 자체이므로). 투웨이 선수는 애초에 데드캡 항목 자체가 생기지 않아 이 행에도 안 나타남.
+
+**검증**: `npx tsc --noEmit` — 수정 파일 관련 신규 에러 0건(기존 80건 무관 에러 그대로).
+
+**주의사항 / 한계**: `d.player`가 없을 때(드물게 `meta_players` 조회 실패 등) 이름만 있는
+축소 행으로 폴백하지만 실측은 못 해봄 — 정상 경로에서는 항상 채워짐.
+
+**롤백 방법**: 세 클라이언트 파일은 git으로 복원. RPC는 이전 정의
+(`migrations/fix_release_player_restore_transaction_log.sql`)로 `CREATE OR REPLACE`하면
+투웨이 가드만 빠지고 나머지는 유지됨.
+
+---
+
+## 2026-09-21 — 방출 데드캡 행: "방출" 배지 제거 + 범례에 빨간 사각형 추가
+
+**배경**: 위 항목에서 넣은 이름 옆 "방출" 텍스트 배지를 사용자가 삭제 요청 — 대신 이미
+있는 팀옵션(하늘색)/플레이어옵션(초록색) 범례에 데드캡(빨간색) 항목을 추가해 색상만으로
+구분하도록.
+
+**변경 파일**: `components/roster/TeamPayrollTable.tsx` — 이름 셀의 "방출" `<span>` 배지
+제거, 하단 Glossary(h-40 푸터)에 `bg-red-400` 사각형 + "데드캡" 레이블 추가(팀/플레이어
+옵션 항목과 동일한 마크업).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0건.
+
+**롤백 방법**: git으로 복원.
+
+---
+
+## 2026-09-21 — 협상 화면(MultiNegotiationView) "팀 샐러리캡 현황"에 데드캡 누락 수정
+
+**배경**: 사용자가 "데드캡 금액이 팀의 샐러리캡에 포함되는지 확인해봐"라고 요청해 점검하던 중
+발견. `calcTeamPayroll()`(`services/fa/faMarketBuilder.ts`)은 "로스터 연봉 합 + 데드머니"를
+계산한다는 주석이 이미 붙어 있었는데, 정작 `MultiNegotiationView.tsx`가 만드는 `Team` 객체엔
+`deadMoney`가 한 번도 채워진 적이 없어서 — 실제로는 협상 화면의 "팀 샐러리캡 현황"(캡 스페이스
+여유/현재 페이롤)이 방출로 생긴 데드캡을 전혀 반영하지 못하고 있었다(캡 여유가 실제보다
+과대평가됨). `TeamPayrollTable.tsx`(재정 탭)는 이미 `MultiRosterView.tsx`에서 별도로
+`deadMoney`를 붙여주고 있어 정상이었음 — 화면마다 각자 `buildLeagueTeams()`를 호출해 Team을
+조립하는 구조라, 데드캡을 붙이는 지점이 화면별로 따로 필요하다는 게 이번에 드러났다.
+
+**변경 파일**: `views/multi/season/MultiNegotiationView.tsx` — `selectLeagueTeams`가
+`buildLeagueTeams()` 결과에 `.map(t => ({...t, deadMoney: room?.team_finances?.[t.id]?.deadMoney}))`
+추가(`MultiRosterView.tsx`와 동일 패턴, 이 화면은 합산 금액만 필요해 Player 객체는 안 붙임).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0건.
+
+**주의사항 / 한계 — 이 시점엔 아직 남아있던 미반영 지점**: `views/multi/season/MultiFrontOfficeView.tsx`
+(트레이드 화면)의 "캡 여유분"/"샐러리 캡 여유분" 표시(`myRoster.reduce((sum,p)=>sum+(p.salary??0),0)`
+패턴, `calcTeamPayroll()` 미사용)도 데드캡을 포함하지 않는다 — 이번 수정 범위에 포함하지
+않았음(트레이드 salary matching과 얽혀 있어 손대기 전 확인 필요, 사용자에게 별도 보고).
+**→ 바로 아래 항목에서 수정 완료.**
+
+**롤백 방법**: git으로 복원.
+
+---
+
+## 2026-09-21 — 트레이드 화면(MultiFrontOfficeView)의 캡 여유분 계산에도 데드캡 반영
+
+**배경**: 앞선 협상 화면 수정 직후 사용자가 "트레이드 화면에도 고쳐줘, 데드캡이 샐러리캡에
+포함되는 건 절대적인 법칙"이라고 확인 요청. `MultiFrontOfficeView.tsx`는 `buildLeagueTeams()`
+(→ `Team.deadMoney`)를 쓰지 않고 `poolById`(선수 풀 Map) + `LeagueTeamRow.roster`로 직접
+로스터를 조립하는 구조라, 팀 페이롤을 계산하는 4곳 전부(`myCurrentTotal`,
+`myTeamTotalSalaryAfterTrade`, `renderCapSummaryFooter`의 `currentTotal` — 내 팀/상대 팀
+양쪽 호출) 데드캡이 빠져 있었다.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `myTeamDeadMoney`/`targetTeamDeadMoney` — `room.team_finances[team_slug].deadMoney` 합계를
+  각각 `useMemo`로 신설(내 팀 것은 `myRoster` 근처, 상대 팀 것은 `targetRoster` 근처)
+- `renderOfferLetter()`의 `myCurrentTotal`에 `+ myTeamDeadMoney`
+- `myTeamTotalSalaryAfterTrade`에 `+ myTeamDeadMoney`
+- `renderCapSummaryFooter(roster, outTotal, inTotal)` → `(..., deadMoneyTotal)` 4번째 인자
+  추가, `currentTotal`에 더함. 호출부 2곳(내 팀 패널 `myTeamDeadMoney`, 상대 팀 패널
+  `targetTeamDeadMoney`) 갱신
+
+**의도적으로 그대로 둔 곳**: `mineTotal`/`theirsTotal`(오퍼에 실제 포함된 선수 연봉 합),
+`cartMine`/`cartTheirs`(트레이드 빌더 장바구니 선수 연봉 합) — 이건 "지금 거래 테이블에
+오른 선수들"의 연봉 합이지 팀 전체 페이롤이 아니라서 데드캡을 더하면 오히려 틀림.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0건. 이걸로 `TeamPayrollTable.tsx`/`MultiNegotiationView.tsx`/
+`MultiFrontOfficeView.tsx` 3개 화면 전부 데드캡이 팀 페이롤에 일관되게 반영됨(다른 화면에서
+새로 캡/페이롤 계산을 추가할 때도 이 3곳의 패턴을 참고할 것 — `project_multiplayer_waive_rules.md`
+메모리에 정리).
+
+**롤백 방법**: git으로 복원.
+
+---
+
+## 2026-09-21 — 팀 페이롤 계산을 calcTeamPayroll() 하나로 통합 (데드캡 누락 회귀 재발 방지)
+
+**배경**: 앞선 두 수정(협상 화면/트레이드 화면)이 같은 버그(데드캡 누락)를 각자 독립적으로
+재현했던 것 자체가, "팀 페이롤 = 로스터 연봉 합 + 데드캡"이라는 계산이 화면마다 따로
+구현돼 있었다는 신호였다. 사용자가 "소스를 하나로 두고, 계산하는데 사용되는 리소스를
+최소화하자"고 요청 — `rooms.team_finances[team_slug].deadMoney` 조회와 실제 합산 로직을
+각각 단일 함수로 통합했다.
+
+**변경 파일**:
+- `services/multi/teamFinances.ts` (신규) — `getTeamDeadMoney(teamFinances, teamSlug):
+  DeadMoneyEntry[]` — `rooms.team_finances` 조회의 유일한 경로. 새 화면에서 필요하면
+  이 함수를 쓸 것, 인라인 `room?.team_finances?.[slug]?.deadMoney`를 복붙하지 말 것.
+- `services/fa/faMarketBuilder.ts` — `calcTeamPayroll(team: Team)` →
+  `calcTeamPayroll(team: Pick<Team, 'roster' | 'deadMoney'>)`로 파라미터 타입 완화(완전한
+  `Team`이 구조적으로 여전히 만족하므로 기존 호출부 전부 하위호환, 싱글플레이어 4곳 포함
+  영향 없음 확인). 이제 `Team` 객체가 없는 화면(`MultiFrontOfficeView.tsx`처럼 `roster:
+  Player[]`만 있는 경우)도 `{roster, deadMoney}` 최소 형태로 바로 호출 가능해짐.
+- `views/multi/season/MultiRosterView.tsx` — `deadPlayerIds`/`deadMoney` attach 둘 다
+  `getTeamDeadMoney()` 경유로 교체
+- `views/multi/season/MultiNegotiationView.tsx` — `selectLeagueTeams`의 인라인 조회를
+  `getTeamDeadMoney()`로 교체
+- `views/multi/season/MultiFrontOfficeView.tsx` — `myTeamDeadMoney`/`targetTeamDeadMoney`
+  (숫자, 각자 reduce)를 `myDeadMoney`/`targetDeadMoney`(`DeadMoneyEntry[]`, `getTeamDeadMoney()`
+  결과 그대로)로 교체. `myCurrentTotal`/`myTeamTotalSalaryAfterTrade`/
+  `renderCapSummaryFooter`의 `currentTotal` 3곳 전부 수동 `.reduce()+더하기`를
+  `calcTeamPayroll({roster, deadMoney})` 호출로 교체(`renderCapSummaryFooter`의 4번째
+  인자도 `deadMoneyTotal: number` → `deadMoney: DeadMoneyEntry[]`로 변경)
+
+**부수 효과(버그 수정)**: `MultiFrontOfficeView.tsx`의 기존 수동 reduce는 투웨이 계약을
+걸러내지 않고 있었다(`calcTeamPayroll`은 이미 `contract.type!=='two_way'` 필터 있음) —
+통합하면서 이 화면의 투웨이 급여도 이제 다른 화면(재정 탭/협상 화면)과 동일하게 캡 계산에서
+제외된다(실제 CBA상 투웨이는 캡에 안 잡힘).
+
+**리소스**: `getTeamDeadMoney()`/`calcTeamPayroll()` 둘 다 이미 메모리에 있는 배열을 순회하는
+순수 함수라 새 쿼리/fetch가 없다 — 화면당 `useMemo` 개수도 오히려 줄었다(트레이드 화면은
+기존 2개의 개별 reduce `useMemo` → `getTeamDeadMoney()` 결과를 담는 배열 `useMemo` 2개로,
+합산 자체는 렌더 시점에 `calcTeamPayroll()` 한 번만 돎).
+
+**검증**: `npx tsc --noEmit` 신규 에러 0건. `mineTotal`/`theirsTotal`/`cartMine`/`cartTheirs`
+(특정 거래 대상 선수들의 연봉 합, 팀 전체 페이롤이 아님)는 의도적으로 그대로 둠 — 여기에
+데드캡을 더하면 오히려 틀림.
+
+**롤백 방법**: git으로 복원(4개 파일 + 신규 파일 1개 삭제).
+
+---
+
+## 2026-09-21 — 스트레치 프로비전 공식 오류 수정: (잔여연수×2)-1 → +1
+
+**배경**: 사용자가 "CBA 스트레치 프로비전 규정을 공부해서 알려달라"고 요청 — 리서치해서
+설명하던 중, 실제 CBA 공식(분산 기간 = 잔여 연수×2 **+1**)과 코드에 이미 들어있던 공식
+(잔여 연수×2 **-1**)이 다르다는 걸 발견. 실측: bbref/Hoops Rumors 사례(3년 남은 계약 →
+7년 분산, 2년 남은 계약 → 5년 분산)와 대조해 `+1`이 맞음을 확인(`docs/domain/
+nba-salary-cap-2025-26.md` §8-4에 이미 정리돼 있던 내용과도 일치, 코드만 반대로 구현돼
+있었음). `-1` 공식을 쓰면 분산 기간이 실제보다 2년 짧아져 연간 데드캡이 실제보다 크게
+계산됨(예: 3년 $90M → 올바른 공식 7년 $12.86M/년, 틀린 공식으로는 5년 $18M/년).
+
+**변경 파일** (전부 동일한 `2 * remainingYears - 1` → `2 * remainingYears + 1` 치환):
+- `services/fa/cpuWaiverEngine.ts` — CPU 팀의 stretch 방출 판단·데드캡 계산
+- `views/NegotiationScreen.tsx` — 유저가 방출 협상 화면에서 보는 스트레치 미리보기(연차/연간액)
+- `pages/FAMarketPage.tsx` / `pages/FrontOfficePage.tsx` — 방출 확정 시 실제 `DeadMoneyEntry` 생성
+- `types/team.ts` — `DeadMoneyEntry.stretchYearsTotal` 필드 주석의 공식 설명도 함께 수정
+
+**검증**: `npx tsc --noEmit` — 신규 에러 0건(기존 무관 에러 1건이 삽입한 주석 줄만큼
+줄번호만 밀림). `server/src/shared/types/team.ts`(서버 미러)는 애초에 공식 주석이 없어
+수정 대상 아님.
+
+**주의사항 / 한계**: 이미 저장된 세이브에 잘못된 공식으로 만들어진 기존 stretch
+`DeadMoneyEntry`(`stretchYearsTotal`/`stretchYearsRemaining`)가 있다면 이번 수정은
+소급 반영되지 않음(다음에 새로 방출할 때부터 올바른 공식 적용) — 필요하면 해당 세이브의
+`team_finances`/`roster_state`를 직접 재계산해야 함.
+
+**롤백 방법**: 4개 파일에서 `+1`을 `-1`로 되돌리면 됨(각 줄에 표시해둔 주석 참고).
+
+---
+
+## 2026-09-21 — 멀티플레이어 팀 페이롤 계산을 "해당 시즌의 캡에만" 잡히도록 시즌 필터링 추가
+
+**배경**: 사용자가 스트레치 프로비전 이식 공수를 물어봐 조사하던 중 "팀 페이롤 계산 모델이
+스트레치와 구조적으로 안 맞는다"(② 항목)고 답했다 — `calcTeamPayroll()`이 `team.deadMoney`
+배열을 **시즌 구분 없이 전부** 합산하는데, stretch처럼 한 번의 방출로 여러 시즌에 걸친
+항목(연도별로 나눠 생성)이 생기면 올해 캡에 미래 몇 년치가 한꺼번에 잡히는 오류가 난다는
+지적이었다. 사용자가 "해당 시즌의 캡에만 잡혀야 하는 거 아니냐"고 재확인 — 시즌 롤오버
+구현을 기다리지 않고 이 부분부터 먼저 바로잡았다(시즌 롤오버는 "다음 시즌으로 넘어가는
+트리거"를 담당할 뿐, "지금 이 항목이 어느 시즌 것인지"는 항목 자체의 `season` 필드로 이미
+판별 가능하므로 선행 조건이 아니었음).
+
+**조사 결과**: `TeamPayrollTable.tsx`(재정 탭)는 원래부터 정상이었다 — `totals[i]` 계산이
+각 데드캡 항목을 `d.season`으로 정확히 그 시즌 컬럼에만 더하고 있었음(다중 시즌 프로젝션
+뷰라 애초에 시즌별로 분리해서 짜여 있었음). 버그는 **스칼라 "현재 페이롤" 하나만** 필요한
+2곳(`MultiNegotiationView.tsx`/`MultiFrontOfficeView.tsx`)이 `calcTeamPayroll()`에 팀의
+데드캡 **전체**를 그대로 넘기고 있던 데서만 발생. `calcTeamPayroll()` 자체는 "받은 걸
+그대로 더하는" 순수 함수라(싱글플레이어는 매 오프시즌 지난 항목을 배열에서 실제로 지우는
+방식이라 "배열에 있는 건 전부 유효하다"는 전제가 성립 — 그래서 안 틀렸음) 손대지 않고,
+필터링 책임을 호출부로 옮겼다.
+
+**변경 파일**:
+- `services/multi/teamFinances.ts` — `getTeamDeadMoney(teamFinances, teamSlug, season?)`에
+  3번째 인자 `season` 추가. 생략하면 전체 목록(다중 시즌 뷰용), 넘기면 그 시즌 항목만 필터.
+- `views/multi/season/MultiNegotiationView.tsx` — `selectLeagueTeams`가 `getTeamDeadMoney(...,
+  currentSeason)`으로 현재 시즌만 필터링해서 `calcTeamPayroll()`에 넘김
+- `views/multi/season/MultiFrontOfficeView.tsx` — `useSeasonContext()`에서 `currentSeason`도
+  구독, `myDeadMoney`/`targetDeadMoney` 둘 다 `currentSeason`으로 필터링
+- `views/multi/season/MultiRosterView.tsx` — 변경 없음(의도적으로 `season` 인자 생략 유지) —
+  재정 탭은 항목마다 자기 시즌 컬럼에 따로 표시해야 해서 전체 목록이 필요함. 왜 여기만
+  필터링 안 하는지 주석으로 명시(다음에 헷갈려서 "고치지" 않도록)
+
+**After**: 3화면 모두 정확해짐 — 재정 탭(다중 시즌 컬럼별 정확), 협상/트레이드 화면(스칼라
+합계가 정확히 "현재 시즌" 것만). 앞으로 stretch가 들어와 한 번의 방출이 시즌별로 여러
+`DeadMoneyEntry`(연도별 season 라벨 + 그 해 분산액)를 만들어도, 이 필터링 덕분에 협상/트레이드
+화면은 자동으로 올바르게 "이번 시즌 분산액만" 집계하고, 재정 탭은 각 항목이 자기 시즌
+컬럼에 알아서 나뉘어 보인다 — stretch 도입 시 이 부분은 추가 수정이 필요 없다.
+
+**검증**: `npx tsc --noEmit` 신규 에러 0건.
+
+**주의사항 / 한계**: 이 수정은 "이미 있는 데드캡 항목을 시즌별로 정확히 집계"하는 부분만
+고친 것 — stretch 자체(release_player() 확장, 연도별 항목 생성, UI 선택지)는 아직 구현
+안 됨. 시즌 롤오버(다음 시즌 진입 시 지난 시즌 항목 정리)도 여전히 미구현.
+
+**롤백 방법**: git으로 복원(3개 파일, `getTeamDeadMoney`의 `season` 인자는 옵셔널이라
+호출부에서만 빼면 이전 동작으로 되돌아감).
+
+---
+
+## 2026-09-21 — 멀티플레이어 방출 확인 화면(MultiReleaseView) 신설: waive/stretch 선택 + 스트레치 프로비전 RPC 구현
+
+**배경**: 로스터 화면 "방출" 버튼이 확인창 없이 즉시 웨이브만 실행했다. 사용자 요청:
+방출 버튼 → 협상 화면과 같은 레이아웃의 화면으로 이동(단, 선수-GM 대화는 없음, 대화창은
+빈칸), 우측에서 웨이브/스트레치 프로비전 선택(스트레치 불가 선수는 웨이브만), 나머지
+우측 정보는 기존 협상 화면과 동일하게, 하단 버튼은 "오퍼 제출"이 아니라 빨간 "확인" 버튼.
+
+**설계 결정 — 별도 파일로 분리**: `MultiNegotiationView.tsx`(FA 협상 화면, 1500줄+)는
+대사 엔진/인내심/쿨다운/오퍼 협상 상태머신이 깊게 얽혀 있어 같은 컴포넌트에 "방출 모드"를
+조건부로 끼워 넣으면 기존 FA 흐름을 깨뜨릴 위험이 컸다. 대신 `MultiReleaseView.tsx`를
+새로 만들어 같은 3단 레이아웃(좌 선수정보 | 중 대화 | 우 폼)을 시각적으로 복제하되, 로직은
+FA 협상과 완전히 독립적으로 구성했다 — 계산 소스(calcTeamPayroll/getTeamDeadMoney)만 기존
+것을 그대로 재사용(중복 금지 원칙 유지), UI 마크업은 새로 작성(다른 종류의 재사용 — 프레젠테이션
+레이어 복제는 통상적인 관행).
+
+**변경 파일**:
+- `migrations/add_release_player_stretch.sql` (신규, 적용 완료) — `release_player(p_team_id,
+  p_player_id, p_release_type default 'waive')`에 `p_release_type='stretch'` 분기 추가:
+  - 공식: `(잔여 연수 × 2) + 1년`(기존 코드 전반 수정과 동일 공식)
+  - 자격: 잔여 보장액 ≥ $250,000, 잔여 시즌 ≥ 1, 투웨이 아님(서버에서 최종 검증)
+  - 팀 단위 15% 캡 상한: 그 팀이 이번 시즌 이미 스트레치로 잡아둔 금액 + 이번 건 연간액이
+    `league.salary_cap_amount × 0.15` 초과 시 `stretch_15pct_exceeded` 예외
+  - 분산 연수만큼 `DeadMoneyEntry`를 시즌 라벨별로 미리 생성(예: 2026-27 방출·7년 분산 →
+    2026-27~2032-33 라벨 7개, 각각 연간액). 시즌 롤오버가 아직 없어도 "해당 시즌의 캡에만
+    잡힌다" 원칙은 지킬 수 있음(직전 항목의 `getTeamDeadMoney(...,season)` 필터가 이미
+    시즌별로 정확히 집계하므로 추가 클라이언트 작업 불필요)
+- `services/multi/faService.ts` — `releasePlayer(teamId, playerId, releaseType='waive')`
+  3번째 인자 추가, 에러 메시지 3종(`stretch_15pct_exceeded`/`stretch_not_eligible`/
+  `invalid_release_type`) 한국어 매핑 추가
+- `views/multi/season/MultiReleaseView.tsx` (신규) — 위 설계 참고
+- `App.tsx` — 라우트 `release/:playerId` 추가
+- `views/multi/season/MultiRosterView.tsx` — `handleReleasePlayer`가 RPC 직접 호출 대신
+  `/multi/leagues/:leagueId/season/release/:playerId`로 `navigate()`. 이제 쓸모없어진
+  `releasingId`/`releaseError` state와 그 렌더링(에러 배너, `RosterView`의 `releasingId`
+  prop) 제거, 미사용 `ShieldAlert`/`releasePlayer` import 정리
+
+**동작 방식**: 방출 대상은 항상 "내 팀 로스터에 있는 선수"(FA 협상 화면의 "로스터에 없는
+선수"와 정반대 조건) — 리소스 절약을 위해 `useLeagueRawStats`에 내 팀 로스터 id만 넘긴다
+(`buildLeagueTeams`가 다른 팀 선수는 조용히 null로 채워 걸러내므로 30개 팀 전체를 긁을
+필요 없음). 스트레치 선택지는 클라이언트에서 먼저 같은 자격 조건으로 걸러 보여주고(불필요한
+RPC 왕복 방지), 서버가 최종 검증한다. "팀 샐러리캡 현황"은 `MultiNegotiationView.tsx`의
+capInfo 블록과 동일한 구성이지만 방향이 반대 — `afterPayroll = beforePayroll -
+현재연도연봉 + (웨이브면 잔여전액, 스트레치면 연간분산액)`.
+
+**검증**: SQL로 시즌 라벨 생성(`remaining=3→7개 라벨 2026-27~2032-33`)과 15% 상한 집계
+쿼리를 별도 SELECT로 검증. `npx tsc --noEmit` — 전 과정 통틀어 신규 에러 0건(기존 80건
+무관 에러만 줄번호 이동), `MultiReleaseView.tsx` 자체는 작성 직후 1차 컴파일부터 에러 없음.
+
+**주의사항 / 한계**:
+- 재계약 제한(원 소속팀이 재영입한 선수의 새 계약엔 스트레치 불가)과 9월 1일 이후 타이밍
+  규정은 구현하지 않음(§8-4의 문서화된 단순화 범위 유지).
+- 스트레치로 만든 미래 시즌 항목들은 시즌 롤오버가 없어 정리(감가/제거)되지 않고 무기한
+  남는다 — 재정 탭에는 이미 각자 시즌 컬럼에 정확히 표시되지만(2026-09-21 앞선 항목),
+  실제 게임 진행상 "그 미래 시즌이 왔을 때"를 흉내낼 방법이 아직 없다.
+- 방출 확인 화면의 좌측 패널은 FA 협상 화면과 거의 동일하되 "요구 조건"(FA demand) 섹션만
+  제외 — 나머지(포지션/나이/신체정보/연차/아키타입/인기도/성격·기분/스카우팅 리포트)는
+  그대로 재사용.
+
+**롤백 방법**: `views/multi/season/MultiReleaseView.tsx` 삭제, `App.tsx`/
+`MultiRosterView.tsx`/`faService.ts` git으로 복원. RPC는 `migrations/
+fix_release_player_skip_two_way_dead_money.sql` 정의로 `CREATE OR REPLACE`하면 stretch
+분기만 빠지고 나머지는 유지됨.
+
+**후속(같은 세션, UI 개선)**: 사용자 피드백 3건 반영 —
+1. 방출 방식 라디오 버튼 → `<select>` 드롭다운(`MultiNegotiationView.tsx`의 "계약 유형"
+   드롭다운과 동일 스타일). 스트레치 불가 선수는 옵션 자체를 목록에서 제외(비활성화 표시가
+   아님), 대신 왜 안 되는지 안내 문구를 별도로 보여줌.
+2. "연도별 데드캡" 테이블 신설(waive/stretch 공통 표시) — 싱글플레이어
+   `NegotiationScreen.tsx` 방출 패널의 "향후 N년 데드캡 영향" 표와 동일한 그리드(시즌/기존/
+   추가분/합계). waive는 1행(이번 시즌 전액), stretch는 분산 연수만큼(각 시즌 라벨은
+   `seasonLabelAt()` — RPC의 시즌 라벨 산식과 동일하게 로컬로 재구현해 미리보기가 서버 결과와
+   정확히 일치).
+3. "방출 후 예상 페이롤"이 실제와 다르게 보인다는 리포트 — 두 가지를 통일해서 고침:
+   (a) 이번 시즌에 얹히는 금액을 따로 계산하지 않고 `deadCapRows[0]`(테이블 첫 행)을 그대로
+   재사용해 테이블과 캡 현황이 항상 같은 소스에서 나오게 함, (b) 빼는 값도 `contract`에서
+   재계산하지 않고 `calcTeamPayroll()`이 실제 합산에 쓰는 `player.salary` 필드를 그대로
+   사용해 `beforePayroll`과 정확히 대응시킴.
+
+변경 파일: `views/multi/season/MultiReleaseView.tsx`만. `npx tsc --noEmit` 신규 에러 0건.
+
+**후속 4**: "마지막 계약연도(잔여 1시즌)는 8월 31일까지만 스트레치 가능" CBA 타이밍 규정
+추가, 대신 "리그 캡 비활성화" 사유는 제거(사용자 요청) —
+- `migrations/add_release_player_stretch_deadline_check.sql` (신규, 적용) — 서버 RPC에도
+  같은 규정 추가(방어 심도 — 지금까지 이 규정만 클라이언트 UI 가드로만 막혀 있어서 RPC
+  직접 호출로 우회 가능했음, $25만 최소액/15% 상한은 이미 서버에도 있었는데 이것만 빠짐).
+  `current_virtual_date(room_id)`로 가상 NBA 캘린더 날짜를 구해 `그 시즌 시작연도-08-31`과
+  비교(`rooms.sim_date` 직접 비교 금지 — project_sim_date_vs_virtual_date.md).
+- `views/multi/season/MultiReleaseView.tsx` — `isStretchEligible`에서 `!!league?.cap_enabled`
+  조건 제거, `isPastStretchDeadline`(잔여 1시즌 && 가상 날짜 > 8/31) 추가.
+  `currentVirtualDate`를 `MultiRosterView.tsx`와 동일한 `findCurrentVirtualDate` 패턴으로
+  새로 계산(이 화면은 이전까지 가상 캘린더 날짜를 아예 안 쓰고 있었음 — `currentSimDate`
+  context 값은 KST 실제 날짜라 그대로 쓰면 안 됨).
+
+**검증**: DB에서 `release_player` 오버로드 1개만 유지되는지, 함수 정의에 `stretch_deadline`
+체크가 포함됐는지 재확인. `npx tsc --noEmit` 신규 에러 0건.
+
+**후속 5**: 체크박스 디자인이 이 화면 계열에서 기존에 쓰던 것과 다르다는 지적 — 직접
+`appearance-none`으로 그린 커스텀 체크박스를 버리고, `MultiNegotiationView.tsx`의 "추가
+사항: 팀 옵션/플레이어 옵션" 체크박스와 완전히 동일한 스타일(`accent-indigo-500` 네이티브
+체크박스, 라벨에 `opacity-40`로 비활성 표시, "추가 사항" 섹션 헤딩까지)로 교체.
+`npx tsc --noEmit` 신규 에러 0건.
+
+**후속 6(디자인 미세조정)**: 사용자 요청 6가지 반영 — (1) 체크박스 위 "추가 사항" 라벨
+제거, (2) 체크박스 문구 "스트레치 프로비전으로 분산 처리"→"스트레치 프로비전", (3) 체크박스
+하단 회색 설명 텍스트 제거, (4) "현재 계약" 테이블에서 팀/플레이어 옵션을 금액 좌측에
+"팀 옵션"/"플레이어 옵션" 텍스트로도 표기(기존 색상 구분은 유지), (5) `font-mono` 전부
+제거(현재 계약/연도별 데드캡 테이블), (6) "연도별 데드캡" 테이블을 좌측 단에서 우측 단
+"방출 후 예상 페이롤" 바로 아래로 이동 + 헤더 폰트를 `text-xs`→`text-sm`으로, 제목의
+`uppercase tracking-wider` 제거. `npx tsc --noEmit` 신규 에러 0건.
+
+**후속 3**: "방출 방식" 드롭다운(웨이브/스트레치 2개 옵션) → **웨이브 고정 표시 박스**(실제
+CBA상 stretch는 waive의 한 처리 방식이지 독립된 방출 유형이 아니므로) + **스트레치 프로비전
+체크박스**(자격 있을 때만 체크 가능, `disabled` + `opacity-40`, 불가 시 체크박스 아래 빨간
+글씨로 사유). `releaseMode` state를 `stretchChecked: boolean`으로 교체,
+`effectiveMode = stretchChecked && isStretchEligible ? 'stretch' : 'waive'`로 파생.
+`stretchReason` 판정을 `isStretchEligible`과 1:1 대응하는 5가지 사유로 명시화(리그 캡
+비활성화/투웨이 계약/잔여 시즌 없음/잔여 보장액 $25만 미만/팀 15% 캡 상한 초과) — 사용자가
+"불가능한 경우의 수"를 물어봐서 정리하며 발견, 이전엔 "리그 캡 비활성화"/"잔여 시즌 없음"
+두 사유가 조건에는 있었지만 안내 문구에는 빠져 있었음. `npx tsc --noEmit` 신규 에러 0건.
+
+**후속 2**: 드롭다운 바로 아래에 "현재 계약" 테이블 추가(잔여분만, `contract.currentYear`부터) —
+`yearSeasons`가 있으면 그 시즌 라벨을 그대로 쓰고(과거 시즌이 `years` 배열 앞쪽에 포함돼도
+정확), 없는 구버전 데이터는 `seasonLabelAt()` 폴백. 옵션 표시는 `TeamPayrollTable.tsx`와
+동일 색상 규칙(팀 옵션 하늘색 이탤릭/플레이어 옵션 초록색 이탤릭). 하단에 "총 잔여 계약액".
+`npx tsc --noEmit` 신규 에러 0건.
+
+**후속 수정(같은 세션)**: `p_release_type` 인자 추가는 `CREATE OR REPLACE`가 기존 2-인자
+`release_player(uuid, text)`를 대체하지 못하고 **별개 오버로드로 추가**해버리는 함정이
+있었다(파라미터 타입 시그니처가 다르면 딴 함수 취급) — `pg_get_function_identity_arguments`로
+확인해 발견, `migrations/drop_release_player_2arg_overload.sql`로 옛 2-인자 버전을
+`DROP FUNCTION`해 제거(3-인자 버전만 유일하게 남김). 방치했으면 `p_release_type`이
+DEFAULT라 2-인자 호출이 두 오버로드 모두에 매칭 가능해져 PostgREST가 모호성 에러를 낼
+위험이 있었다. **앞으로 이 RPC(혹은 다른 RPC)에 파라미터를 추가할 때는 항상 옛 시그니처를
+`DROP FUNCTION`으로 같이 정리할 것.**
+
+---
+
+## 2026-09-21 — ⚠️ 웨이브 데드캡 계산 오류 정정: "이번 시즌 전액 가속" → "원래 계약 스케줄 그대로"
+
+**배경**: 사용자가 "잔여 3년 남은 선수를 웨이브하면 3년치를 올해 다 잡는 게 아니다 — 3년이
+데드캡에 그대로 남는 거고, 스트레치는 그 기간을 늘려줄 뿐"이라고 지적. 웹 검색으로
+재검증한 결과 **사용자가 맞고 이번 세션 초반의 CBA 리서치(2026-09-17)가 틀렸다**는 걸
+확인 — "While the new payment schedule for a waived player is non-negotiable, teams get
+to decide whether or not to apply the stretch provision... **A team can stick to the
+original schedule for cap hit purposes, if it so chooses.**"(Hoops Rumors) — 즉 스트레치를
+안 쓰면 팀은 잔여 연봉을 **원래 계약 스케줄 그대로**(연도별 실제 금액이 각자의 원래
+시즌에) 데드캡으로 남긴다. "팀이 잔여 급여 전액을 책임진다"(총액 불변, 줄일 수 없음)는
+맞지만, **그게 캡에 몰아서(이번 시즌에) 잡히는 게 아니라 원래 스케줄대로 나뉘어 잡힌다**는
+점을 처음부터 잘못 이해하고 구현했었다. 스트레치는 이 원래 스케줄을 총액은 그대로 두고
+(잔여연수×2)+1년의 균등 분산 스케줄로 **대체**하는 선택지일 뿐.
+
+**변경 파일**:
+- `docs/domain/nba-salary-cap-2025-26.md` §8-2 — 정정 + 출처 링크 추가
+- `migrations/fix_release_player_waive_original_schedule.sql` (신규, 적용) —
+  `release_player()`의 waive 분기를 stretch와 동일한 "연도별 N개 DeadMoneyEntry 생성"
+  방식으로 교체. 차이는 분배 방식뿐: stretch는 총액을 균등 분할(연간액 동일), waive는
+  계약의 원래 연도별 실제 금액(`contract.years`의 각 원소)을 그대로 사용. 시즌 라벨은
+  `contract.yearSeasons`가 있으면 그 값, 없으면(구버전 데이터) `rooms.season`부터 순차 계산.
+- `views/multi/season/MultiReleaseView.tsx` — `deadCapRows`(연도별 데드캡 테이블)의 waive
+  분기를 `contractRows`(이미 계산해둔 잔여 계약 스케줄) 재사용으로 교체(1행 lump-sum →
+  N행 원래 스케줄). `capInfo.afterPayroll`은 별도 수정 없이 자동으로 맞아떨어짐 —
+  `deadCapRows[0]`(항상 이번 시즌)을 그대로 쓰던 기존 설계 덕분에, waive-미체크 상태에서는
+  이제 "방출 후 예상 페이롤"이 "현재 페이롤"과 거의 동일하게 나온다(이번 시즌엔 그 선수
+  연봉이 로스터 지급에서 데드캡으로 전환될 뿐 금액이 안 바뀌므로 — 실제로 맞는 동작).
+- `components/roster/TeamPayrollTable.tsx` — waive가 이제 선수 1명당 여러 시즌에 걸쳐
+  항목을 만들 수 있게 되면서, 방출 선수 데드캡 행을 `playerId`로 그룹핑해 **한 선수당
+  한 행**으로 다시 그리도록 변경(예전엔 항목 하나당 행 하나라 같은 선수가 여러 행으로
+  중복 표시됐을 것). 로스터 선수 행과 동일하게 여러 시즌 컬럼에 걸쳐 표시, 총액 컬럼은
+  그 선수의 전체 데드캡 항목 합계. `colTotals`(합계 행) 집계는 원본 `team.deadMoney`
+  배열을 그대로 쓰므로 영향 없음(이미 시즌별로 정확히 분배돼 있었음).
+
+**검증**: SQL로 jsonb 배열 인덱싱(`contract->'years'->i`, `contract->'yearSeasons'->>i`)
+동작 확인. DB에서 `release_player` 오버로드 1개 유지 확인. `npx tsc --noEmit` 신규 에러 0건.
+
+**주의사항 / 한계**: 이미 방출된 선수의 기존(잘못된 방식으로 생성된) waive 데드캡 항목은
+소급 수정되지 않음 — 다음 방출부터 올바른 방식 적용. 재계약 제한(원 소속팀 재영입 시
+스트레치 재사용 금지) 등 나머지 CBA 세부 규정은 여전히 미구현(문서화된 단순화 범위).
+
+**롤백 방법**: `docs/domain/nba-salary-cap-2025-26.md`는 git으로 복원. RPC는 이전 정의
+(`migrations/add_release_player_stretch_deadline_check.sql`)로 `CREATE OR REPLACE`하면
+waive가 다시 "이번 시즌 전액 lump-sum" 방식으로 돌아감(틀린 동작이므로 권장 안 함).
+클라이언트 2개 파일은 git으로 복원.
+
+---
+
+## 2026-09-21 — 홈 화면: 데이터 없는 섹션 5종을 빈 상태 문구 대신 완전히 숨김
+
+**배경**: 사용자 요청 — "리그 시작 시엔 리그 리더 데이터가 없을 수 있는데 숨겨줘. 마찬가지로 리그 트랜잭션, 리그 부상/출전정지 소식란, 내 팀 부상자 현황, 내 팀 최근 5경기도 데이터 없으면 숨겨줘." 기존엔 대부분 "아직 ~가 없습니다" 류 빈 상태 문구를 보여줬는데, 리그 시작 직후처럼 데이터가 통째로 없는 시점엔 문구 박스만 잔뜩 쌓여 지저분함.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` (client 전용, server 미러 없음) — 5개 컴포넌트
+
+**Before → After** (컴포넌트별):
+- `HomeLeagueLeadersSection`("리그 리더"): 빈 상태 분기 자체가 없었음 → `leaderGrid.every(cat => cat.ranked.length === 0)`일 때 `return null` 추가.
+- `HomeTransactionsSection`("트랜잭션 소식"): `items.length === 0 ? <p>아직 트랜잭션이 없습니다</p> : (...)` → `if (items.length === 0) return null;`로 교체, 나머지는 무조건 렌더.
+- `HomeInjurySection`("리그 부상 소식"): `isLoading ? 스피너 : items.length === 0 ? <p>아직 부상 소식이 없습니다</p> : (...)` → `if (!isLoading && items.length === 0) return null;` 추가, 로딩 스피너 분기는 그대로 유지(로딩 중 깜빡임 방지).
+- `HomeMyInjuriesSection`("내 팀 부상자 현황"): `!myTeamId ? <p>참가 중인 팀이 없습니다</p> : injuredPlayers.length === 0 ? <p>부상자가 없습니다</p> : (...)` → `if (myTeamId && injuredPlayers.length === 0) return null;` 추가(참가 팀이 아예 없는 경우의 문구는 그대로 유지, 요청 범위가 "부상 데이터 없음"이라 구분).
+- `HomeMyScheduleSection`("최근 5경기"/"예정 5경기", 2열 그리드): "최근 5경기" 칸만 `recentGames.length > 0`일 때만 렌더, 없으면 그리드를 `grid-cols-2` → `grid-cols-1`로 바꿔 "예정 5경기"가 전체 폭을 차지하도록 함. "예정 5경기"는 요청 범위 밖이라 그대로 유지(비어도 표시).
+
+**검증**: `npx tsc --noEmit -p .` 통과. Babel 파서로 전체 파일 구문 재검증(중첩 JSX 삼항연산자를 컴포넌트마다 다르게 변형해서 각 컴포넌트의 `{}`/`()`/JSX 태그 짝을 헷갈리기 쉬웠음).
+
+**롤백 방법**: 각 컴포넌트의 `if (...) return null;` 줄을 지우고, 지워졌던 `<p>...가 없습니다</p>` 빈 상태 분기를 되살리면 됨(정확한 원문은 git diff 참고). `HomeMyScheduleSection`은 `recentGames.length > 0 &&` 조건과 `grid-cols-1` 삼항을 제거하고 무조건 `grid-cols-2` + 두 칸 모두 렌더로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 홈 화면 "최근 5경기"/"예정 5경기" 헤더-테이블 간격을 다른 섹션과 통일
+
+**배경**: 사용자가 스크린샷으로 지적 — 좌측 "리그 최신 뉴스" 제목과 아래 테이블 사이 간격(12px, `space-y-3`)과 우측 "최근 5경기"/"예정 5경기" 제목과 아래 테이블 사이 간격(4px, `space-y-1`)이 서로 달라 부자연스러움. 두 제목 모두 동일한 `text-lg font-black` 톤이라 간격도 통일 필요.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeMyScheduleSection` (client 전용, server 미러 없음)
+
+**Before**:
+```tsx
+<div className="grid grid-cols-2 gap-4">
+    <div className="space-y-1 overflow-x-auto">
+        <h4 className="text-lg font-black text-white">최근 5경기</h4>
+        {renderTable(recentGames, true)}
+    </div>
+    <div className="space-y-1 overflow-x-auto">
+        <h4 className="text-lg font-black text-white">예정 5경기</h4>
+        {renderTable(upcomingGames, false)}
+    </div>
+</div>
+```
+
+**After**: 두 `<div>`의 `space-y-1` → `space-y-3`로 변경(`HomeLatestNewsSection`/`HomeStandingsSection`의 `<section className="space-y-3">` 간격과 동일하게 맞춤). `overflow-x-auto`는 유지.
+
+**검증**: `npx tsc --noEmit -p .` 통과.
+
+**롤백 방법**: 두 곳의 `space-y-3`를 `space-y-1`로 되돌림.
+
+---
+
+## 2026-09-21 — 홈 화면: "팀 스탯" 섹션 제거 + "리그 최신 뉴스" 위치를 "리그 리더" 위로 이동
+
+**배경**: 사용자 요청 "홈 화면의 팀 스탯 영역은 제거해줘" + "좌측의 리그 소식 영역을 리그 리더 위쪽으로 옮겨줘."
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` (client 전용, server 미러 없음)
+
+**Before**:
+- 우측 컬럼: `HomeMyScheduleSection` → `HomeMyTeamStatsSection`("팀 스탯", 공격/수비 2단 테이블) → `HomeMyRosterSummarySection` → `HomeMyInjuriesSection`
+- 좌측 컬럼: `HomeStandingsSection` → `HomeLeagueLeadersSection`("리그 리더") → `HomeLatestNewsSection`("리그 최신 뉴스") → (트랜잭션/부상 2열)
+- `HomeMyTeamStatsSection` 컴포넌트 및 전용 헬퍼(`computeHomeTeamStatRows`/`formatHomeStatValue`/`homeRankColor`/`HOME_OFFENSE_STATS_CONFIG`/`HOME_DEFENSE_STATS_CONFIG`/`HomeTeamStatConfig`/`HomeTeamStatRow`, 총 ~145줄) 정의되어 있었음
+
+**After**:
+- `HomeMyTeamStatsSection` 컴포넌트와 전용 헬퍼 전체 삭제(다른 곳에서 참조 없음 확인 후 완전 제거, 죽은 코드로 남기지 않음). 우측 컬럼에서 호출부도 제거.
+- 좌측 컬럼 순서를 `HomeStandingsSection` → `HomeLatestNewsSection` → `HomeLeagueLeadersSection` → (트랜잭션/부상 2열)로 재배치.
+- [후속, 같은 날] "리그 최신 뉴스를 순위 위로 올려줘" 요청으로 순서를 한 번 더 조정: `HomeLatestNewsSection` → `HomeStandingsSection` → `HomeLeagueLeadersSection` (최신 뉴스가 맨 위).
+
+**검증**: `npx tsc --noEmit -p .` 통과.
+
+**롤백 방법**: git에서 이 커밋 이전 버전의 `HomeMyTeamStatsSection` 관련 블록(주석 포함, `type HomeTeamStatConfig`부터 `};`까지)을 되살리고, 우측 컬럼에 `<HomeMyTeamStatsSection />`을 `HomeMyScheduleSection` 다음에 재삽입. 좌측 컬럼 순서는 원래대로 `HomeStandingsSection` → `HomeLeagueLeadersSection` → `HomeLatestNewsSection`로 되돌리면 됨.
+
+---
+
+## 2026-09-21 — 리그 순위 테이블 헤더 "팀" → "동부"/"서부" 라벨로 교체
+
+**배경**: 사용자 요청 "이 테이블에서 양 테이블 상단 헤더의 팀을 서부, 동부 텍스트로 바꿔줘" — 동/서 순위표 두 개의 `<th>` 컬럼 헤더가 둘 다 똑같이 "팀"이라 구분이 안 됐음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `HomeStandingsTable`(테이블), `HomeStandingsSection`(호출부) (client 전용, server 미러 없음)
+
+**Before**:
+```tsx
+// HomeStandingsTable props에 teamColumnLabel 없음, <th>는 항상 "팀" 하드코딩
+<th className="py-1 px-1 text-sm font-bold text-slate-600">팀</th>
+...
+<HomeStandingsTable teams={eastTeams} .../>
+<HomeStandingsTable teams={westTeams} .../>
+```
+
+**After**:
+- `HomeStandingsTable`에 `teamColumnLabel?: string`(기본값 `'팀'`, 컨퍼런스 미구분 폴백 테이블용) prop 추가, `<th>`를 `{teamColumnLabel}`로 교체.
+- 동부/서부 호출부에서 각각 `teamColumnLabel="동부"` / `teamColumnLabel="서부"` 전달.
+- [후속, 같은 날] 테이블 헤더에 "동부"/"서부"가 표시되면서 그 위 `<h4>` 섹션 타이틀("동부"/"서부")과 중복 → 사용자 요청으로 `<h4>` 타이틀과 감싸던 `<div className="space-y-1">` 제거, `HomeStandingsTable` 두 개를 `grid grid-cols-2 gap-4`에 바로 배치.
+
+**검증**: `npx tsc --noEmit -p .` 통과.
+
+**롤백 방법**: `teamColumnLabel` prop과 두 호출부의 인자를 제거하고 `<th>`를 `팀` 하드코딩으로 되돌림. `<h4>` 타이틀을 되살리려면 각 `HomeStandingsTable`을 `<div className="space-y-1"><h4 className="text-sm font-black text-slate-500 uppercase px-1">동부/서부</h4>...</div>`로 다시 감싸면 됨.
+
+---
+
+## 2026-09-21 — 멀티 리그 홈 마스트헤드: 리그 네이비 / 팀 테마컬러 배경 섹션으로 교체
+
+**배경**: 사용자 요청 "멀티 리그 홈 화면의 해당 영역을 배경화면이 들어간 섹션으로 디자인 바꿔줘. 좌측은 리그 색상인 네이비, 우측은 팀 테마색." 기존엔 페이지 배경(`bg-slate-950`) 위에 로고+텍스트만 떠 있는 2열 레이아웃이라 좌/우가 시각적으로 구분되지 않았음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `MultiSeasonPage` 컴포넌트 상단 마스트헤드 (client 전용, server 미러 없음)
+
+**Before**:
+```tsx
+<div className="grid grid-cols-2 gap-4 p-4 min-h-full">
+    <div className="space-y-6">
+        <div className="flex items-center gap-3">
+            <img src="/logos/real/PBL.svg" alt="PRO BASKETBALL LEAGUE" className="w-16 h-16 object-contain drop-shadow-md shrink-0" />
+            <span className="text-2xl font-black text-white">PRO BASKETBALL LEAGUE</span>
+        </div>
+        <HomeStandingsSection />
+        ...
+    </div>
+    <div className="space-y-6">
+        {myTeam && (
+            <div className="flex items-center gap-3">
+                <img src={getRealTeamLogoUrl(myTeam.team_slug)} .../>
+                <span className="text-2xl font-black text-white">{myTeam.team_name}</span>
+            </div>
+        )}
+        <HomeMyScheduleSection />
+        ...
+    </div>
+</div>
+```
+
+**After**:
+- 로고+텍스트 헤더 두 개를 본문 그리드 밖으로 빼서, 좌/우 절반으로 나뉜 통짜 마스트헤드 바 하나로 통합 (`grid grid-cols-2 overflow-hidden rounded-xl`).
+- 좌측(리그): 배경색 `LEAGUE_NAVY_COLOR = '#1D4487'`(PBL.svg 로고 자체의 감색 그대로 사용, 별도 팔레트 신설 안 함).
+- 우측(내 팀): 배경색 `myTeam?.color_primary ?? '#4338ca'`, 텍스트색 `myTeam?.color_text ?? getReadableTextColor(...)` — `components/MultiHeader.tsx` 상단 바와 동일한 팔레트/폴백 규칙 재사용.
+- 양쪽 다 해당 로고를 `opacity-10`으로 크게 확대해 우하단에 절대배치(워터마크) → "배경화면이 들어간 섹션" 느낌.
+- 본문 2열 그리드(`HomeStandingsSection` 등)는 마스트헤드 아래 별도 `<div className="grid grid-cols-2 gap-4">`로 유지, 로직 변경 없음.
+
+**검증**: `npx tsc --noEmit -p .` 통과 (해당 파일 관련 에러 없음). 브라우저 렌더링은 미확인(개발 서버 미기동).
+
+**롤백 방법**: 위 Before 블록으로 마스트헤드 JSX를 되돌리고, `import { getReadableTextColor } from '../utils/colorContrast';`와 `LEAGUE_NAVY_COLOR` 상수 선언 제거.
+
+---
+
 ## 2026-09-21 — 카드 팀별 배경 이미지: 불투명도 옵션(별도 레이어 렌더) — 블러는 도입 직후 제거
 
 **배경**: 사용자 요청 "팀별 카드에 적용되는 이미지에 블러, 불투명도를 조절할 수 있는 옵션을 넣어줘." CSS `background`로는 블러를 줄 수 없어 팀 이미지를 카드 안의 absolute 레이어(그라디언트 위, 내용 아래)로 분리해 `filter: blur()`/`opacity`를 적용한다.

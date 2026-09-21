@@ -583,7 +583,10 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
         : (releaseContract
             ? releaseContract.years.slice(releaseContract.currentYear).reduce((s, v) => s + v, 0)
             : (player?.salary ?? 0));
-    const stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
+    // CBA 스트레치 공식: (잔여 연수 × 2) + 1년 — 예전엔 "-1"로 잘못 들어가 있었음(2026-09-21
+    // 수정, docs/domain/nba-salary-cap-2025-26.md §8-4 참고. 예: 3년 남으면 7년 분산이 맞고,
+    // 5년 분산은 틀림 — 분산 기간이 짧아지면 연간 데드캡이 실제보다 커진다).
+    const stretchYearsTotal = Math.max(1, 2 * remainingYears + 1);
     const stretchAnnual     = totalRemaining / stretchYearsTotal;
     const minBuyoutPct = isCoachFire ? 50 : (() => {
         const loyalty           = tendencies.loyalty           ?? 0.5;  // 0~1

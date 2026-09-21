@@ -43,6 +43,7 @@ import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
 import MultiPlayerDetailView from './views/multi/season/MultiPlayerDetailView';
 import MultiNegotiationView from './views/multi/season/MultiNegotiationView';
+import MultiReleaseView from './views/multi/season/MultiReleaseView';
 import AdminSimView from './views/multi/league/AdminSimView';
 import AdminTeamEditorView from './views/multi/league/AdminTeamEditorView';
 
@@ -420,6 +421,7 @@ const App: React.FC = () => {
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                                 <Route path="negotiate/:playerId" element={<MultiNegotiationView />} />
+                                <Route path="release/:playerId" element={<MultiReleaseView />} />
                                 <Route path="settings"     element={<LeagueSettingsView />} />
                             </Route>
                         </Route>

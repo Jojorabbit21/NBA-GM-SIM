@@ -1,0 +1,13 @@
+-- add_release_player_stretch.sql이 3번째 파라미터(p_release_type)를 추가하면서
+-- CREATE OR REPLACE가 기존 2-인자 release_player(uuid, text)를 대체하지 못하고
+-- 새 오버로드로 추가돼버렸다(파라미터 타입 시그니처가 다르면 OR REPLACE는 별개 함수로
+-- 취급) — 2-인자 버전이 함께 남아있으면 PostgREST가 호출 시 오버로드 모호성 에러를 낼
+-- 위험이 있고(p_release_type이 DEFAULT라 2-인자 호출이 양쪽 다 매칭 가능), 두 정의가
+-- 서로 다른 버전으로 어긋날 수도 있다. 이제 클라이언트(services/multi/faService.ts)는
+-- 항상 3개 인자로 호출하므로 2-인자 버전은 완전히 죽은 코드 — 제거한다.
+--
+-- 앞으로 release_player()에 파라미터를 추가할 때는 항상 이 점을 주의할 것: 시그니처가
+-- 바뀌면 CREATE OR REPLACE가 새 오버로드를 만들 뿐 옛 버전을 안 지운다 — 반드시 옛
+-- 시그니처를 DROP FUNCTION으로 같이 정리해야 함.
+-- [적용] 2026-09-21 Supabase MCP로 반영
+DROP FUNCTION IF EXISTS public.release_player(uuid, text);

@@ -192,31 +192,64 @@
 
 ## 8. 방출 / 웨이버 / 바이아웃
 
-### 8-1. 웨이버 (Waiver)
-- 선수를 방출하면 48시간 웨이버 기간
-- 다른 팀이 클레임 가능 (남은 계약 인수)
-- 클레임 없으면 FA 전환
+### 8-1. 웨이버 (Waiver) — 클레임 절차
+- 선수를 방출(waive)하면 최소 **48시간** 웨이버 기간 동안 "웨이버 위(wire)"에 걸림
+- 이 기간 동안 다른 팀이 **웨이버 클레임**을 넣으면 잔여 계약을 그대로 인수하고 선수를 가져감
+  (협상 불가 — 클레임 = 남은 계약 전액 그대로 승계)
+- **클레임 우선순위**: 복수 팀이 클레임 시 **전적이 나쁜 팀(승률 낮은 팀)이 우선**
+  (시즌 중 12/1까지는 전 시즌 전적 기준, 오프시즌도 동일). 클레임 팀은 리그 사무국에 $1,000 수수료 납부
+- 48시간 내 클레임이 없으면 "웨이버 통과(clear waivers)" → 완전한 FA로 전환, 아무 팀과나 자유 계약 가능
+- 클레임 낸 팀의 로스터가 15명 초과이거나 캡 공간이 부족하면 클레임 불가(캡 초과 팀은 매칭 없이 그대로 흡수해야 하므로 사실상 캡 스페이스 팀만 실사용)
 
-### 8-2. 보장 계약 방출 시 캡 히트
-- 보장 계약 선수 방출 → 남은 **보장 급여 전액이 데드 머니**로 캡에 잔류
-- 즉, $40M/3년 보장 계약 방출 시 → **$40M × 3년 = $120M 전액** 팀 부담 (줄이는 것은 불가)
-- 단, 바이아웃 협상으로 금액 감면 가능
+### 8-2. 보장 계약 방출 시 캡 히트 (Dead Money)
+- [2026-09-21 정정] **웨이브 시 잔여 연봉이 당장 이번 시즌에 전부 가속되지 않는다** —
+  스트레치를 안 쓰면 팀은 **원래 계약 스케줄 그대로**(연도별 실제 금액이 각자의 원래 시즌에)
+  데드캡으로 남기는 쪽을 선택할 수 있다("A team can stick to the original schedule for cap
+  hit purposes, if it so chooses" — 이 항목 끝 출처 참고). 즉 $40M/3년(연 $12M/$13M/$15M
+  같은 실제 스케줄) 보장 계약을 웨이브하면, 그 시즌엔 $12M만 잡히고 $13M/$15M은 각각
+  다음 시즌·다다음 시즌에 잡힌다 — **$40M을 한 시즌에 몰아 잡는 게 아님**. 팀 전체가
+  "잔여 급여 전액을 책임진다"는 건 맞지만(줄일 수 없음), 그게 **캡에 언제 잡히는지**는
+  원래 스케줄을 따른다.
+- **스트레치는 이 원래 스케줄을 "대체"하는 선택지**다(§8-4) — 총액은 그대로 두고 분산
+  기간만 (잔여 연수×2)+1년으로 늘려서 연간 부담을 낮추는 것. 스트레치를 안 쓰면 원래
+  스케줄이 곧 데드캡 스케줄이 된다.
+- **1월 10일 이후 방출** 시 남은 시즌 보장 급여를 반드시 전액 지급해야 함(이 시점부터는 실무상 바이아웃 협상으로 우회)
+- 시뮬레이션에서는 모든 계약을 완전 보장으로 단순화(비보장/부분보장 개념 없음) — 실제 CBA는 논-개런티드 계약 방출 시 데드 캡이 아예 없거나 훨씬 작음(체크 지급된 만큼만)
+- 출처: [Hoops Rumors Glossary: Stretch Provision](https://www.hoopsrumors.com/2024/08/hoops-rumors-glossary-stretch-provision-3.html), [SLAM: CBA Explained – The Stretch Provision](https://www.slamonline.com/news/nba/cba-explained-the-stretch-provision/)
 
 ### 8-3. 바이아웃 (Buyout)
-- 팀과 선수가 합의하여 보장 금액을 **할인**하고 방출
-- 바이아웃된 선수는 FA로서 다른 팀과 자유 계약 가능
-- 새 계약 급여의 일부가 원래 팀의 부담에서 **상계(set-off)** 가능
+- 팀과 선수가 **합의**하여 보장 금액을 **할인**하고 방출(일방적 waiver와 달리 협상이 필요)
+- 실제 CBA에 "70%" 같은 고정 할인율은 없음 — 순수 협상(에이전트 vs 팀 재정 상황)으로 매번 다름.
+  이 시뮬레이션의 `cpuWaiverEngine.ts`가 쓰는 **70% 고정치는 단순화된 근사값**(사용자 확인 필요 시 조정 가능)
+- 바이아웃된 선수는 웨이버(48h)를 거쳐 클리어된 뒤 FA로서 다른 팀과 자유 계약 가능
+- **재계약 제한**: 원 소속팀이 stretch 없이 일반 waive/buyout한 선수를 원래 계약 만료 전에 재영입(재계약)하면,
+  그 선수의 **새 계약에는 stretch 조항 적용 불가**
+- **플레이오프 자격 데드라인**: 정규시즌 종료 약 1개월 전(현재 CBA 기준 3월 1일)까지 **방출**되어야
+  새 팀에서 플레이오프 로스터 등록 가능(그 이후 사인은 정규시즌 출전만 가능, 플레이오프 불가).
+  10-day 계약으로 온 선수는 이 규정 예외(웨이버를 거치지 않으므로)
 
 ### 8-4. 스트레치 프로비전 (Stretch Provision)
 - 방출 선수의 남은 보장 급여를 더 긴 기간에 걸쳐 분산:
   - **분산 기간 = (잔여 계약 연수 × 2) + 1년**
   - 예: 3년 $90M 남은 선수 → 7년에 걸쳐 $12.86M/년 캡 히트
 - 단기 캡 부담을 줄이지만, 장기간 데드 머니가 남음
-- **제한**: 한 시즌에 팀이 스트레치한 총 금액이 캡의 15% 초과 불가
+- **적용 자격 제한**:
+  - 스트레치 가능한 시즌이 최소 1개 남아 있고, **보장 금액이 최소 $250,000 이상**이어야 스트레치 가능
+  - 한 팀이 그 시즌에 스트레치한 **모든 계약의 합**이 그 시즌 **샐러리 캡의 15%를 초과 불가**
+  - 남은 계약이 딱 1년이고 **9월 1일 이후 방출**하는 경우 스트레치 불가 → 반드시 완전 바이아웃(일시불)
+  - 위 8-3의 재계약 제한(원 소속팀이 재영입한 선수의 새 계약엔 stretch 불가)도 동일 적용
+- **2023 CBA 변경**: 그 시즌 연봉까지 스트레치하려면 **8월 31일까지 단순 웨이버 요청이 아니라 실제로 웨이버를 통과(clear)**해야 함
+  (즉 클레임될 경우 스트레치 불발) → **매년 8월 말이 "스트레치 데드라인"**으로 불림
 
-### 8-5. 상계 (Set-off)
-- 방출된 보장 계약 선수가 새 팀과 계약하면, 원래 팀의 부담이 일부 감소
-- 감소분 = (새 계약 급여 - 최저연봉 비례분) ÷ 2
+### 8-5. 상계 (Set-off Rule, CBA Article 27)
+- 방출된 보장 계약 선수가 새 팀과 계약하면, 원래 팀의 데드머니 부담이 일부 감소
+- 감소분 = (새 계약 급여 − 해당 선수 경력 기준 최저연봉) ÷ 2 (최저연봉 상당분은 상계 대상에서 제외)
+- waive/buyout/stretch 방식 모두에 적용됨
+
+### 8-6. 불완전 로스터 차지 (Incomplete Roster Charge)
+- 로스터 인원이 **12명 미만**이면 부족한 인원 수만큼 **루키 최저연봉 상당의 캡 홀드**가 자동으로 캡에 잡힘
+  (캡 스페이스 팀이 방출을 남발해 캡 공간만 불려 놓는 것을 방지)
+- 개별 팀은 최소 13명(액티브 12 + 비활성 1) 로스터 유지 의무, 리그 전체 평균 14명 이상 유지 안 하면 리그가 페널티
 
 ---
 
@@ -252,3 +285,13 @@
 - [NBC Sports - Second Apron Explained](https://www.nbcsportsboston.com/nba/second-apron-nba-cba-explained/716143/)
 - [Hoops Rumors - Bird Rights](https://www.hoopsrumors.com/2024/03/hoops-rumors-glossary-bird-rights-6.html)
 - [Hoops Rumors - Designated Veteran Contract](https://www.hoopsrumors.com/2023/05/hoops-rumors-glossary-designated-veteran-contract.html)
+- [CBA Guide - Waivers](https://cbaguide.com/transactions/waivers/)
+- [Hoops Rumors Glossary - Stretch Provision](https://www.hoopsrumors.com/2024/08/hoops-rumors-glossary-stretch-provision-3.html)
+- [Hoops Rumors Glossary - Buyouts](https://www.hoopsrumors.com/2024/02/hoops-rumors-glossary-buyouts-4.html)
+- [Hoopsbeast - NBA Buyout vs Waiver](https://www.hoopsbeast.com/nba-buyout-vs-waiver/)
+- [Keith Smith(@KeithSmithNBA) - Playoff Eligibility Waiver Deadline(3/1) 설명](https://x.com/KeithSmithNBA/status/2019790227473100959)
+- [Hoops Rumors - Players Waived After [3/1] Won't Be Playoff-Eligible](https://www.hoopsrumors.com/2026/02/players-waived-after-sunday-wont-be-playoff-eligible.html)
+- [Third Apron - 2026 Stretch Deadline(8/29) 정리](https://www.thirdapron.com/p/2026-stretch-deadline-fitting-jonathan)
+- [Hoops Rumors - Deadline Looms For Teams To Stretch 2026/27 Salaries](https://www.hoopsrumors.com/2026/08/deadline-looms-for-teams-to-stretch-2026-27-salaries.html)
+- [Cleaning the Glass - Making Sense of the Cap (Incomplete Roster Charge)](https://cleaningtheglass.com/making-sense-of-the-cap/)
+- [Atlhawksfanatic - CBA Article 27 Right of Set-Off](https://atlhawksfanatic.github.io/NBA-CBA/right-of-set-off.html)

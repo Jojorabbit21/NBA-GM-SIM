@@ -14,6 +14,7 @@ import { usePlayerCareerHistory } from '../../../hooks/usePlayerCareerHistory';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { computeMultiStandingsStats, computePlayoffOddsMap } from './multiSeasonUtils';
 import { findCurrentVirtualDate, addDaysToKey, daysBetweenKeys } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -181,9 +182,22 @@ const MultiNegotiationView: React.FC = () => {
         () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
         [leagueTeams],
     );
+    // [2026-09-21 Fix] calcTeamPayroll()은 "로스터 연봉 합 + 데드머니"를 계산한다고 되어
+    // 있었지만(아래 capInfo 주석), buildLeagueTeams()가 만드는 Team 객체엔 deadMoney가
+    // 채워지지 않아 실제로는 항상 0으로 계산되고 있었다(방출한 선수의 데드캡이 협상 화면의
+    // "팀 샐러리캡 현황"에 전혀 반영되지 않아 캡 여유가 과대평가됨) — getTeamDeadMoney()가
+    // 유일한 소스(services/multi/teamFinances.ts)로 붙여준다. 이 화면은 합산 금액만
+    // 필요해(개별 행을 그리지 않음) MultiRosterView.tsx처럼 Player 객체까지 붙일 필요는 없다.
+    // [2026-09-21 후속] currentSeason으로 필터링 — 데드캡은 "해당 시즌의 캡에만" 잡히는 게
+    // 절대 규칙이라(stretch 도입 대비, getTeamDeadMoney() 주석 참고), 시즌 구분 없이 전부
+    // 더하면 안 됨. calcTeamPayroll()은 그저 "받은 걸 다 더하는" 순수 함수라 필터링 책임은
+    // 호출부(여기)에 있음.
     const selectLeagueTeams = useCallback(
-        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides),
-        [leagueTeams, useCustomOverrides],
+        (raw: LeagueRawStatsData): Team[] => buildLeagueTeams(raw, leagueTeams, useCustomOverrides).map(t => ({
+            ...t,
+            deadMoney: getTeamDeadMoney(room?.team_finances, t.id, currentSeason),
+        })),
+        [leagueTeams, useCustomOverrides, room?.team_finances, currentSeason],
     );
     const { data: teams = [], isPending: teamsLoading } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams, { includePbp: false });
 

@@ -2,7 +2,7 @@
 // [2026-09-20] 12구간 → 6단계 티어로 단순화 + "OVR 배지 티어 랩" 아티팩트에서 확정한 디자인 이식.
 //   100+  레전드   : 흑금속 배경(0°) + 금색 메탈릭 그라디언트 글자 + 금색 보더 + 베벨 + 글로우
 //   90~99 다이아몬드: 아이스 시안 3스톱(0°)
-//   80~89 골드     : 5스톱 메탈릭 골드(135°)
+//   80~89 골드     : 3스톱 메탈릭 골드(0°, 다이아와 동일 구조)
 //   70~79 실버     : 매끈한 3스톱 은색(135°)
 //   60~69 브론즈   : 매끈한 3스톱 구리색(135°)
 //   0~59  아이언   : 매끈한 3스톱 철회색(135°)
@@ -52,7 +52,7 @@ const TIERS: { min: number; style: TierStyle }[] = [
         glowSize: 0, glowColor: '#22d3ee', glowAlpha: 0.55, bevel: 0,
     } },
     { min: 80, style: {
-        background: 'linear-gradient(135deg,#fff1b8 0%,#f5c542 28%,#b7791f 52%,#fbd56b 72%,#9a6612 100%)',
+        background: 'linear-gradient(0deg,#fff1b8 0%,#9a6612 50%,#fbd56b 100%)',
         border: '#fcd34d', borderWidth: 1.5,
         textMode: 'solid', textColor: '#ffffff', textStops: ['#fff6c8', '#f5d061', '#b8860b', '#f9e08a'],
         glowSize: 0, glowColor: '#f59e0b', glowAlpha: 0.45, bevel: 0,

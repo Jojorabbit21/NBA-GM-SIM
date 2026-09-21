@@ -449,7 +449,9 @@ function chooseCPUReleaseType(
         params.prospectBias >= 0.80;
 
     if (remaining >= 3 && totalRemaining > 20_000_000 && isAggressiveRebuild) {
-        const stretchYearsTotal = 2 * remaining - 1;
+        // CBA 스트레치 공식: (잔여 연수 × 2) + 1년(2026-09-21 수정 — 예전엔 "-1"로 잘못
+        // 들어가 있었음, docs/domain/nba-salary-cap-2025-26.md §8-4).
+        const stretchYearsTotal = 2 * remaining + 1;
         const deadMoneyAmount   = Math.round(totalRemaining / stretchYearsTotal);
         return { type: 'stretch', deadMoneyAmount, stretchYearsTotal };
     }

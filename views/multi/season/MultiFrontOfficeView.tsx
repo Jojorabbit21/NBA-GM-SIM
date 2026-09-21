@@ -13,6 +13,8 @@ import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBa
 import { usePlayerInjuryStatus } from '../../../hooks/usePlayerInjuryStatus';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap, formatPlayerActiveInjuryLabel } from '../../../services/multi/activeInjuryStatus';
+import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
+import { calcTeamPayroll } from '../../../services/fa/faMarketBuilder';
 import { useSeasonContext } from './seasonContext';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -34,6 +36,7 @@ import {
     type TradeOfferRow, type TradeOfferAction,
 } from '../../../services/multi/tradeService';
 import type { Player } from '../../../types';
+import type { DeadMoneyEntry } from '../../../types/team';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 
 const DESIRED_POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -352,7 +355,7 @@ const TeamLogoIcon: React.FC<{ teamSlug: string; abbr?: string | null; className
 const MultiFrontOfficeView: React.FC = () => {
     const { league, room, members, leagueTeams, reload , timeline } = useLeagueContext();
     const { session } = useGame();
-    const { schedule } = useSeasonContext();
+    const { schedule, currentSeason } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
@@ -648,6 +651,23 @@ const MultiFrontOfficeView: React.FC = () => {
         [myTeamRow, poolById],
     );
 
+    // [2026-09-21] 이 화면은 Team 객체(buildLeagueTeams()) 대신 poolById(선수 풀) +
+    // LeagueTeamRow로 로스터를 직접 조립해서, MultiRosterView.tsx/MultiNegotiationView.tsx가
+    // 붙이는 team.deadMoney 경로를 안 탄다 — 모든 "현재 페이롤"/"캡 여유분" 계산에 데드캡이
+    // 누락돼 있었음(데드캡은 캡에 포함되는 게 CBA상 절대 규칙 — waive 시 남은 보장 연봉
+    // 전액이 그대로 캡에 잡힘, docs/domain/nba-salary-cap-2025-26.md §8-2). getTeamDeadMoney()가
+    // 유일한 조회 소스(services/multi/teamFinances.ts)이고, 아래 모든 "팀 페이롤" 계산은
+    // calcTeamPayroll({roster, deadMoney})(services/fa/faMarketBuilder.ts, 싱글플레이어와
+    // 공유하는 유일한 계산 소스)로 통일한다 — 화면마다 reduce를 따로 다시 짜지 않는다.
+    // [2026-09-21 후속] currentSeason으로 필터 — 이 화면은 "지금 이 팀 캡에 얼마가 잡히는가"
+    // (스칼라 합계)만 필요해서 항상 현재 시즌으로 좁힌다(재정 탭처럼 여러 시즌 컬럼에 나눠
+    // 보여줄 필요가 없음). 데드캡은 해당 시즌의 캡에만 잡히는 게 절대 규칙 — 시즌 구분 없이
+    // 전부 더치는 건 stretch(한 방출이 여러 시즌에 걸쳐 항목을 남김)가 들어오면 명백히 틀림.
+    const myDeadMoney = useMemo(
+        () => getTeamDeadMoney(room?.team_finances, myTeamRow?.team_slug, currentSeason),
+        [room?.team_finances, myTeamRow, currentSeason],
+    );
+
     const handleRespond = useCallback(async (offerId: string, action: TradeOfferAction) => {
         setRespondingId(offerId);
         setActionError(null);
@@ -675,6 +695,10 @@ const MultiFrontOfficeView: React.FC = () => {
         [targetTeamRow, poolById],
     );
     const targetTradeableIds = tradeableByTeam.get(targetTeamId) ?? new Set<string>();
+    const targetDeadMoney = useMemo(
+        () => getTeamDeadMoney(room?.team_finances, targetTeamRow?.team_slug, currentSeason),
+        [room?.team_finances, targetTeamRow, currentSeason],
+    );
 
     // [2026-08-31] PlayerChip의 PTS/REB/AST 표시용 — 이 리그(room) 안에서 실제로 뛴 경기
     // 박스스코어를 집계. 범위는 지금 화면에 보이는 두 로스터(내 팀/상대 팀)로 한정 —
@@ -1100,7 +1124,7 @@ const MultiFrontOfficeView: React.FC = () => {
         const myInIds  = myRole === 'incoming' ? mine : theirs;
         const myOutTotal = myOutIds.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
         const myInTotal  = myInIds.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
-        const myCurrentTotal = myRoster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+        const myCurrentTotal = calcTeamPayroll({ roster: myRoster, deadMoney: myDeadMoney });
         const myPostTotal = myCurrentTotal - myOutTotal + myInTotal;
         const capRoomRows = myRole ? buildCapRoomRows(myPostTotal) : [];
 
@@ -1297,8 +1321,8 @@ const MultiFrontOfficeView: React.FC = () => {
     );
     const capDifference = ingoingCapTotal - outgoingCapTotal;
     const myTeamTotalSalaryAfterTrade = useMemo(
-        () => myRoster.reduce((sum, p) => sum + (p.salary ?? 0), 0) + capDifference,
-        [myRoster, capDifference],
+        () => calcTeamPayroll({ roster: myRoster, deadMoney: myDeadMoney }) + capDifference,
+        [myRoster, myDeadMoney, capDifference],
     );
 
     // 샐러리캡/사치세/1차/2차 에이프런 "여유분" 행 배열 — postTotal(트레이드 반영 후 실제
@@ -1323,9 +1347,11 @@ const MultiFrontOfficeView: React.FC = () => {
     // 음수면 이미 그 선을 넘었다는 뜻(TeamPayrollTable.tsx의 diffRows와 동일한 부호 규칙 —
     // 초과 시 빨간색). outTotal=이 팀이 내주는 선수 연봉 합, inTotal=이 팀이 받는 선수 연봉 합
     // (호출부에서 이미 메모이즈된 outgoingCapTotal/ingoingCapTotal을 그대로 넘겨 중복 계산 방지).
-    const renderCapSummaryFooter = (roster: Player[], outTotal: number, inTotal: number) => {
+    // deadMoney: 이 로스터가 속한 팀의 방출 데드캡 목록(호출부가 myDeadMoney/targetDeadMoney를
+    // 넘김) — calcTeamPayroll()(유일한 팀 페이롤 계산 소스)에 그대로 넘겨 currentTotal을 낸다.
+    const renderCapSummaryFooter = (roster: Player[], outTotal: number, inTotal: number, deadMoney: DeadMoneyEntry[]) => {
         if (!capEnabled || !league) return null;
-        const currentTotal = roster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
+        const currentTotal = calcTeamPayroll({ roster, deadMoney });
         const postTotal = currentTotal - outTotal + inTotal;
         const roomRows = buildCapRoomRows(postTotal);
 
@@ -1866,7 +1892,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                     </table>
                                                 )}
                                             </div>
-                                            {renderCapSummaryFooter(myRoster, outgoingCapTotal, ingoingCapTotal)}
+                                            {renderCapSummaryFooter(myRoster, outgoingCapTotal, ingoingCapTotal, myDeadMoney)}
                                         </div>
                                     </div>
 
@@ -1936,7 +1962,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                     </table>
                                                 )}
                                             </div>
-                                            {renderCapSummaryFooter(targetRoster, ingoingCapTotal, outgoingCapTotal)}
+                                            {renderCapSummaryFooter(targetRoster, ingoingCapTotal, outgoingCapTotal, targetDeadMoney)}
                                         </div>
                                     </div>
 

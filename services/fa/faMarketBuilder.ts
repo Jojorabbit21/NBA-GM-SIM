@@ -16,7 +16,14 @@ import { isRoseRuleEligible } from './contractEligibility';
 
 // [2026-09-16] 투웨이 계약(contract.type === 'two_way')은 실제 CBA상 샐러리캡에 전혀
 // 잡히지 않는다 — 페이롤 합산에서 제외한다(방출/트레이드로 남는 데드머니는 그대로 포함).
-export function calcTeamPayroll(team: Team): number {
+// [2026-09-21] 파라미터를 전체 Team이 아니라 Pick<Team,'roster'|'deadMoney'>로 완화 —
+// 멀티플레이어 화면 중 일부(MultiFrontOfficeView.tsx의 트레이드 화면)는 poolById+roster id
+// 배열로 로스터를 직접 조립해서 완전한 Team 객체가 없다. 기존 호출부(싱글/멀티 전부 완전한
+// Team을 넘김)는 구조적으로 이 더 좁은 타입도 만족하므로 하위호환 그대로. "팀 페이롤 =
+// 로스터 연봉 합 + 데드캡" 계산의 유일한 소스 — 화면마다 따로 재구현하지 말고 이 함수를
+// 쓸 것(안 그러면 데드캡 누락 회귀가 반복됨, 2026-09-21에 MultiNegotiationView/
+// MultiFrontOfficeView 둘 다 각자 따로 안 붙여서 실제로 발생했었다).
+export function calcTeamPayroll(team: Pick<Team, 'roster' | 'deadMoney'>): number {
     const rosterTotal = team.roster
         .filter(p => p.contract?.type !== 'two_way')
         .reduce((sum, p) => sum + (p.salary ?? 0), 0);

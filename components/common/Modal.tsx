@@ -15,6 +15,16 @@ interface ModalProps {
     /** 모달 자체의 X 버튼(제목 있을 때 헤더 안 / 없을 때 우상단 absolute)을 감춤 —
      *  children 쪽에서 커스텀 위치의 닫기 버튼을 직접 그릴 때(onClose 호출) 사용. */
     hideCloseButton?: boolean;
+    /** 배경 블러 여부. 기본값 true(기존 모든 모달과 동일) — 확인 팝업처럼 블러 없이 즉시
+     *  아래 화면이 보여야 하는 경우에만 false로 끔. */
+    blurBackdrop?: boolean;
+    /** 패널 모서리 둥글기 클래스. 기본값은 기존 rounded-[2rem] 그대로 유지 — 작은 확인
+     *  팝업처럼 더 각진 형태가 필요할 때만 덮어씀. */
+    rounded?: string;
+    /** 배경 어둡기 클래스(불투명도 포함). 기본값은 기존 bg-slate-950/80 그대로 유지 — 다른
+     *  값이 필요한 팝업만 덮어씀. Tailwind가 리터럴 문자열을 정적 스캔하므로 완전한
+     *  클래스명 문자열로 넘길 것(동적 조합 금지). */
+    backdropClass?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -27,6 +37,9 @@ export const Modal: React.FC<ModalProps> = ({
     headerColor,
     className = '',
     hideCloseButton = false,
+    blurBackdrop = true,
+    rounded = 'rounded-[2rem]',
+    backdropClass = 'bg-slate-950/80',
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -61,13 +74,13 @@ export const Modal: React.FC<ModalProps> = ({
     };
 
     return createPortal(
-        <div 
+        <div
             id="modal-backdrop"
-            className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+            className={`fixed inset-0 z-[500] flex items-center justify-center ${backdropClass} ${blurBackdrop ? 'backdrop-blur-md' : ''} p-4 animate-in fade-in duration-200`}
         >
-            <div 
+            <div
                 ref={modalRef}
-                className={`bg-slate-900 border border-slate-700 rounded-[2rem] w-full ${maxWidthClass[size]} max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden ${className}`}
+                className={`bg-slate-900 border border-slate-700 ${rounded} w-full ${maxWidthClass[size]} max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden ${className}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Optional Header Accent */}

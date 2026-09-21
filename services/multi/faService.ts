@@ -16,6 +16,9 @@ const mapFaError = (msg: string): string => {
     if (msg.includes('already_on_roster'))      return '이미 로스터에 있는 선수입니다.';
     if (msg.includes('player_already_signed'))  return '다른 팀이 이미 계약한 선수입니다. 새로고침 후 다시 시도하세요.';
     if (msg.includes('player_not_on_roster'))   return '로스터에 없는 선수입니다. 새로고침 후 다시 시도하세요.';
+    if (msg.includes('stretch_15pct_exceeded')) return '스트레치 캡 상한(팀 캡의 15%)을 초과합니다.';
+    if (msg.includes('stretch_not_eligible'))   return '이 선수는 스트레치 프로비전 적용 대상이 아닙니다.';
+    if (msg.includes('invalid_release_type'))   return '알 수 없는 방출 방식입니다.';
     return '요청 처리 중 오류가 발생했습니다.';
 };
 
@@ -52,8 +55,14 @@ export const signFreeAgentNegotiated = async (
     return { error: null };
 };
 
-export const releasePlayer = async (teamId: string, playerId: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.rpc('release_player', { p_team_id: teamId, p_player_id: playerId });
+// [2026-09-21] p_release_type 추가 — 'waive'(전액 즉시)/'stretch'(2×잔여연수+1년 분산,
+// migrations/add_release_player_stretch.sql). 기본값 'waive'라 기존 호출부는 그대로 동작.
+export const releasePlayer = async (
+    teamId: string,
+    playerId: string,
+    releaseType: 'waive' | 'stretch' = 'waive',
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('release_player', { p_team_id: teamId, p_player_id: playerId, p_release_type: releaseType });
     if (error) return { error: mapFaError(error.message ?? '') };
     return { error: null };
 };

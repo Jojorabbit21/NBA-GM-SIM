@@ -13,7 +13,9 @@ export interface DeadMoneyEntry {
     /** 방출 방식 */
     releaseType: ReleaseType;
     /**
-     * 스트레치 웨이브인 경우 총 분산 연수 (= 2 × remainingYears - 1)
+     * 스트레치 웨이브인 경우 총 분산 연수 (= 2 × remainingYears + 1, CBA 공식 — 2026-09-21
+     * 수정: 예전엔 "-1"로 잘못 적혀있었고 코드도 그렇게 돼 있었음, docs/domain/
+     * nba-salary-cap-2025-26.md §8-4)
      * 분산 기간 동안 매 시즌 amount씩 캡에 산정됨
      */
     stretchYearsTotal?: number;
@@ -23,6 +25,14 @@ export interface DeadMoneyEntry {
      * 0이 되면 deadMoney 목록에서 제거됨.
      */
     stretchYearsRemaining?: number;
+    /**
+     * [2026-09-21] 멀티플레이어 전용 — 재정 탭이 방출된 선수 행을 로스터 선수와 동일한
+     * 모양(호버카드/바로가기/포지션/나이/오버롤)으로 그리기 위한 전체 Player 객체.
+     * 이 선수는 이미 team.roster에 없어(방출됨) 별도로 조회해 붙여야 함 —
+     * services/multi/buildLeagueTeams.ts는 채우지 않고, 호출부(MultiRosterView.tsx)가
+     * useLeagueRawStats의 raw.playersRaw에서 찾아 붙인다. 싱글플레이어는 항상 undefined.
+     */
+    player?: Player;
 }
 
 export interface TacticStatRecord {

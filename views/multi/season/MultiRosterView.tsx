@@ -1,10 +1,9 @@
 
 import React, { useMemo, useCallback, useState } from 'react';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
-import { releasePlayer } from '../../../services/multi/faService';
 import { useSeasonContext } from './seasonContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -15,6 +14,8 @@ import { RosterView } from '../../RosterView';
 import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
 import { shouldUseCustomOverrides, isTwoWayContractEnabled } from '../../../utils/leagueOverrides';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
+import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -93,17 +94,14 @@ const MultiRosterView: React.FC = () => {
         () => leagueTeams.find(lt => lt.team_slug === myTeamId) ?? null,
         [leagueTeams, myTeamId],
     );
-    const [releasingId, setReleasingId] = useState<string | null>(null);
-    const [releaseError, setReleaseError] = useState<string | null>(null);
-    const handleReleasePlayer = useCallback(async (player: Player) => {
-        if (!myTeamRow || releasingId) return;
-        setReleasingId(player.id);
-        setReleaseError(null);
-        const { error } = await releasePlayer(myTeamRow.id, player.id);
-        setReleasingId(null);
-        if (error) { setReleaseError(error); return; }
-        reload();
-    }, [myTeamRow, releasingId, reload]);
+    // [2026-09-21] 즉시 방출(releasePlayer RPC 직접 호출) 대신 방출 확인 화면
+    // (MultiReleaseView.tsx)으로 이동 — waive/stretch 프로비전 선택 + 캡 영향 미리보기를
+    // 그 화면에서 담당한다. 로딩/에러 상태도 그 화면 소관이라 여기선 더 이상 안 들고 있음
+    // (RosterView.tsx의 releasingId/onReleasePlayer 프롭은 여전히 옵셔널이라 null로 충분).
+    const handleReleasePlayer = useCallback((player: Player) => {
+        if (!leagueId) return;
+        navigate(`/multi/leagues/${leagueId}/season/release/${getPlayerUrlId(player.id)}`);
+    }, [navigate, leagueId, getPlayerUrlId]);
 
     // 헤더 우측 GM 닉네임 표시용 — AI팀은 null(미표시)
     const teamNicknames = useMemo(
@@ -111,9 +109,18 @@ const MultiRosterView: React.FC = () => {
         [leagueTeams],
     );
 
+    // 방출됐지만 아직 데드캡이 남아있는 선수들 — team.roster엔 더 이상 없지만 재정 탭에서
+    // 로스터 선수와 동일하게(호버카드/포지션/나이/오버롤) 그리려면 이들도 meta_players
+    // 조회 대상에 포함시켜야 한다(아래 allRosterIds에 합류). getTeamDeadMoney()가 유일한
+    // rooms.team_finances 조회 경로 — services/multi/teamFinances.ts 참고.
+    const deadPlayerIds = useMemo(
+        () => [...new Set(leagueTeams.flatMap(lt => getTeamDeadMoney(room?.team_finances, lt.team_slug).map(d => d.playerId)))],
+        [leagueTeams, room?.team_finances],
+    );
+
     const allRosterIds = useMemo(
-        () => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))],
-        [leagueTeams],
+        () => [...new Set([...leagueTeams.flatMap(t => t.roster ?? []), ...deadPlayerIds])],
+        [leagueTeams, deadPlayerIds],
     );
 
     // 홈 화면 로스터 위젯/리더보드/선수상세와 선수 신원(meta_players 등) fetch를 공유 —
@@ -142,8 +149,28 @@ const MultiRosterView: React.FC = () => {
             getTeamId: id => teamIdByPlayer.get(id),
         });
 
+        // 방출된 선수의 전체 Player 객체(호버카드/바로가기/포지션/나이/오버롤용) — 이미
+        // allRosterIds에 deadPlayerIds를 합류시켜뒀으므로 raw.playersRaw에 들어있다.
+        // buildLeagueTeams()가 쓰는 것과 동일한 매퍼로 만들어야 로스터 선수 행과 완전히
+        // 같은 모양이 된다(투웨이 배지 등 조건부 렌더도 동일하게 동작).
+        const deadPlayerById = new Map<string, Player>(
+            raw.playersRaw
+                .filter((r: any) => deadPlayerIds.includes(String(r.id)))
+                .map((r: any) => [String(r.id), mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true)]),
+        );
+
         return teams.map(t => ({
             ...t,
+            // [2026-09-21] release_player()가 cap_enabled 리그의 waive 데드캡을
+            // rooms.team_finances[team_slug].deadMoney에 기록한다 — TeamPayrollTable.tsx가
+            // 이미 team.deadMoney를 읽는 로직(싱글플레이어용)을 그대로 재사용. player를 같이
+            // 붙여야 재정 탭이 로스터 선수와 동일한 행(호버카드/포지션/나이/오버롤)을 그릴 수 있다.
+            // ⚠️ 여기서는 getTeamDeadMoney()에 season을 일부러 안 넘긴다(전체 목록) —
+            // TeamPayrollTable.tsx는 항목마다 자기 season에 맞는 컬럼에 따로 표시하는 다중
+            // 시즌 뷰라서(현재 시즌으로 미리 걸러버리면 미래 시즌 컬럼에 아무것도 안 뜬다).
+            // "지금 캡에 얼마가 잡히는가" 스칼라 합계가 필요한 화면(MultiNegotiationView.tsx/
+            // MultiFrontOfficeView.tsx)만 currentSeason으로 필터링해서 쓴다.
+            deadMoney: getTeamDeadMoney(room?.team_finances, t.id).map(d => ({ ...d, player: deadPlayerById.get(d.playerId) })),
             roster: t.roster.map(p => {
                 const injuryStatus = activeInjuryByPlayer.get(p.id);
                 return {
@@ -155,7 +182,7 @@ const MultiRosterView: React.FC = () => {
                 };
             }),
         }));
-    }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule]);
+    }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, room?.team_finances, deadPlayerIds, schedule]);
 
     const {
         data: allTeamsBase = [],
@@ -256,11 +283,6 @@ const MultiRosterView: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            {releaseError && (
-                <div className="shrink-0 flex items-center gap-2 mx-4 mt-3 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
-                    <ShieldAlert size={15} className="shrink-0" /> {releaseError}
-                </div>
-            )}
             <div className="flex-1 min-h-0">
                 <RosterView
                     allTeams={allTeams}
@@ -277,7 +299,6 @@ const MultiRosterView: React.FC = () => {
                     capSettings={capSettings}
                     baseSeasonYear={baseSeasonYear}
                     onReleasePlayer={handleReleasePlayer}
-                    releasingId={releasingId}
                     enableTeamSettingsTab
                     renderTeamSettingsPanel={() => <TeamSettingsPanel />}
                     advancedStatsByTeam={advancedStatsByTeam}

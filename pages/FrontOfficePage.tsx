@@ -123,7 +123,8 @@ const FrontOfficePage: React.FC = () => {
                 if (releaseType === 'waive') {
                     deadAmount = totalRemaining;
                 } else if (releaseType === 'stretch') {
-                    stretchYearsTotal = Math.max(1, 2 * remainingYears - 1);
+                    // CBA 공식: (잔여 연수 × 2) + 1년(2026-09-21 수정 — "-1"은 오류였음).
+                    stretchYearsTotal = Math.max(1, 2 * remainingYears + 1);
                     deadAmount = Math.round(totalRemaining / stretchYearsTotal);
                 } else {
                     deadAmount = buyoutAmount ?? totalRemaining;
