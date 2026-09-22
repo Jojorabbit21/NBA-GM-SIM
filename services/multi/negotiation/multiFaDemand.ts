@@ -1,10 +1,11 @@
 
 // 멀티플레이어 FA 협상 화면(MultiNegotiationView.tsx) 전용 수요 계산 헬퍼.
 //
-// 배경: 싱글플레이어의 calcFADemand()는 전역 싱글턴 LEAGUE_FINANCIALS.SALARY_CAP을 참조하는데
-// (services/fa/faValuation.ts), 멀티플레이어는 리그별로 salary_cap_amount(leagues 테이블)가
-// 다르다. calcFADemand()/calcYOSBounds()에 salaryCapOverride 파라미터를 추가해뒀으므로
-// (미지정 시 기존 싱글플레이어 동작 100% 보존), 이 얇은 래퍼에서 리그의 캡 금액을 주입한다.
+// 배경: 멀티플레이어는 리그별로 salary_cap_amount(leagues 테이블)가 다르다. [2026-09-22]
+// calcFADemand()/calcYOSBounds()(services/fa/faValuation.ts)는 캡을 필수 인자(salaryCap)로
+// 받는다 — 예전엔 optional(salaryCapOverride)이고 미지정 시 전역 싱글턴 LEAGUE_FINANCIALS.
+// SALARY_CAP(2025-26)에 폴백했는데, 그 폴백이 멀티에서 캡을 빠뜨린 호출을 조용히 통과시키는
+// 구멍이었다. 이 얇은 래퍼는 리그의 캡 금액을 주입하는 역할만 한다.
 //
 // v1 스코프: 슬롯/에이프런/MLE/버드권한 자격판정(getAvailableSigningSlots, processUserOffer,
 // calcTeamPayroll)은 이번 작업 범위 밖 — "이 선수가 얼마를 요구하는가"(calcFADemand)만 계산.

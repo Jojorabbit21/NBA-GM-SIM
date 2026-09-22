@@ -2,7 +2,13 @@ import type { Player, PlayerStats } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { FARole, FADemandResult, MarketCondition } from '../../types/fa';
 import { ARCHETYPE_TO_FA_ROLE } from '../../types/archetype';
-import { LEAGUE_FINANCIALS } from '../../utils/constants';
+// [2026-09-22] utils/constants.ts(LEAGUE_FINANCIALS)를 더 이상 import하지 않는다 — 캡은 항상
+// 호출부가 주입한다(calcFADemand/calcYOSBounds의 salaryCap 필수 파라미터). constants.ts는
+// ovrUtils→gameConfigService→supabaseClient 체인을 끌고 와서 서버(server/src)에서 이 파일을
+// import하면 클라이언트 Supabase 싱글턴이 초기화되는 부작용이 있었고, 싱글턴 폴백은 멀티
+// 리그별 캡을 조용히 덮어쓰는 버그의 원인이었다(리그 캡 $164.961M인데 2025-26 캡 기준 맥스가
+// 나오는 식). 이제 캡을 빠뜨리면 컴파일 에러다.
+import { minSalaryForYos } from '../../utils/minSalaryTable';
 import { isSeasonEndingGrade, isMajorTierGrade, isNonMinorGrade } from '../../utils/injurySeverity';
 import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { isRoseRuleEligible, isSuperMaxEligible } from './contractEligibility';
@@ -235,12 +241,16 @@ function scoreToCapShare(score: number): number {
 // Step 9: YOS → 개인 맥스 실링 + 베테랑 미니멈
 // ─────────────────────────────────────────────────────────────
 
-export function calcYOSBounds(yos: number, player?: Player, salaryCapOverride?: number): { maxAllowed: number; vetMin: number } {
-    const cap = salaryCapOverride ?? LEAGUE_FINANCIALS.SALARY_CAP;
+// [2026-09-22] salaryCap 필수(위치 인자 2번째) — 상한(maxAllowed)은 원래 캡 비율(25/30/35%)이었고,
+// 하한(vetMin)도 이제 utils/minSalaryTable.ts의 YOS별 캡 비율 표에서 나온다. 예전엔 vetMin이
+// 1.5M/2.2M/3.0M 절대금액 3단계라 캡이 달라져도 고정이었고, 설정 화면·협상 화면이 쓰는
+// MIN_SALARY_YOS_TABLE과 다른 숫자를 냈다(최저연봉 진실 공급원이 둘). 이제 모두 같은 표 하나.
+export function calcYOSBounds(yos: number, salaryCap: number, player?: Player): { maxAllowed: number; vetMin: number } {
+    const cap = salaryCap;
     // 데릭 로즈 룰: YOS 0~6 + 루키 3시즌 내 수상 → 30%
     const roseRule = yos < 7 && !!player && isRoseRuleEligible(player);
     const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : roseRule ? cap * 0.30 : cap * 0.25;
-    const vetMin     = yos >= 7  ? 3_000_000  : yos >= 4 ? 2_200_000  : 1_500_000;
+    const vetMin     = minSalaryForYos(yos, cap);
     return { maxAllowed, vetMin };
 }
 
@@ -326,7 +336,7 @@ export function calcFADemand(
     currentSeasonYear: number,
     currentSeason: string,
     tendencySeed: string,
-    salaryCapOverride?: number,
+    salaryCap: number,
 ): FADemandResult {
     const faRole = determineFARole(player);
 
@@ -368,11 +378,11 @@ export function calcFADemand(
         - injuryPenalty;
 
     const capShare = scoreToCapShare(marketValueScore);
-    let targetSalary = (salaryCapOverride ?? LEAGUE_FINANCIALS.SALARY_CAP) * capShare;
+    let targetSalary = salaryCap * capShare;
 
     // Step 9: YOS 상/하한
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const { maxAllowed, vetMin } = calcYOSBounds(yos, player, salaryCapOverride);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, salaryCap, player);
     targetSalary = Math.max(vetMin, Math.min(maxAllowed, targetSalary));
 
     // Step 10: 맥스 요구 게이트

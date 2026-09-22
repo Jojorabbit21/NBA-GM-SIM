@@ -91,6 +91,10 @@ export interface CreateLeagueParams {
         draftYearMax:         number;
         /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. 미지정 시 DB 기본값(false). */
         useCustomOverrides:   boolean;
+        /** [2026-09-22] 드래프트 계약 생성 규칙 — 'standard'(실제 계약 유지+유효계약/신인 풀 제한) | 'alternative'(전원 라운드 스케일 재생성). */
+        contractMode:         'standard' | 'alternative';
+        /** [2026-09-22] 라운드별 cap% 표(null=기본 프리셋). services/contracts/draftSalaryScale.ts의 DraftSalaryScale. */
+        draftSalaryScale:     { r1FirstPct: number; r1LastPct: number; roundsPct: number[] } | null;
         draftPickDurationSec: number;
         draftTotalRounds:     number;
         draftAutoPickAfterMisses: number;
@@ -193,6 +197,8 @@ export const createLeague = async (
     if (opts.draftYearMin         !== undefined) payload.draft_year_min          = opts.draftYearMin;
     if (opts.draftYearMax         !== undefined) payload.draft_year_max          = opts.draftYearMax;
     if (opts.useCustomOverrides   !== undefined) payload.use_custom_overrides    = opts.useCustomOverrides;
+    if (opts.contractMode         !== undefined) payload.contract_mode           = opts.contractMode;
+    if (opts.draftSalaryScale     !== undefined) payload.draft_salary_scale      = opts.draftSalaryScale;
     if (opts.draftPickDurationSec !== undefined) payload.draft_pick_duration_sec = opts.draftPickDurationSec;
     if (opts.draftTotalRounds     !== undefined) payload.draft_total_rounds      = opts.draftTotalRounds;
     if (opts.draftAutoPickAfterMisses !== undefined) payload.draft_auto_pick_after_misses = opts.draftAutoPickAfterMisses;
@@ -405,6 +411,10 @@ export interface UpdateLeagueSettingsParams {
     draftYearMax?:       number;
     /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. */
     useCustomOverrides?: boolean;
+    /** [2026-09-22] 드래프트 계약 생성 규칙 — 드래프트 시작 후엔 변경 불가(이미 적용됨). */
+    contractMode?:       'standard' | 'alternative';
+    /** [2026-09-22] 라운드별 cap% 표(null=기본 프리셋). */
+    draftSalaryScale?:   { r1FirstPct: number; r1LastPct: number; roundsPct: number[] } | null;
     seasonStartDate?:    string;
     seasonEndDate?:      string | null;
     tournamentStartAt?:  string | null;
@@ -480,6 +490,8 @@ export const updateLeagueSettings = async (
     if (p.draftYearMin         !== undefined) payload.draft_year_min          = p.draftYearMin;
     if (p.draftYearMax         !== undefined) payload.draft_year_max          = p.draftYearMax;
     if (p.useCustomOverrides   !== undefined) payload.use_custom_overrides    = p.useCustomOverrides;
+    if (p.contractMode         !== undefined) payload.contract_mode           = p.contractMode;
+    if (p.draftSalaryScale     !== undefined) payload.draft_salary_scale      = p.draftSalaryScale;
     if (p.seasonStartDate      !== undefined) payload.season_start_date       = p.seasonStartDate;
     if (p.seasonEndDate        !== undefined) payload.season_end_date         = p.seasonEndDate;
     if (p.tournamentStartAt    !== undefined) payload.tournament_start_at     = p.tournamentStartAt;

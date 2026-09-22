@@ -42,6 +42,11 @@ interface Props {
     hideDraftOrder?: boolean;
     /** OVR 상한(기본 99). 개인 팩 드래프트는 카드 전용 세 자리 OVR(manual_ovr ≤ 999)을 허용하므로 999를 넘긴다. */
     ovrCap?: number;
+    /** [2026-09-22] 계약 모드 — 'standard'면 풀 통계/용량이 "룸 시즌 유효 계약 보유자 + 당해 클래스 신인"으로
+     *  제한된다(fetchDraftPoolPlayers와 동일 필터). 미전달/'alternative'면 필터 없음. */
+    contractMode?:    'standard' | 'alternative';
+    seasonStartYear?: number;
+    rookieClassYear?: number;
 }
 
 const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
@@ -61,6 +66,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
     teamCount, totalRounds,
     hideDraftOrder = false,
     ovrCap = 99,
+    contractMode, seasonStartYear, rookieClassYear,
 }) => {
     const [stats, setStats]               = useState<PoolStats | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
@@ -105,14 +111,14 @@ export const DraftPoolSettings: React.FC<Props> = ({
         timerRef.current = setTimeout(fetchStats, 400);
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear]);
 
     const fetchStats = async () => {
         setStatsLoading(true);
         try {
             // 저장 시 용량 검증(checkDraftPoolCapacity)과 정확히 같은 조회 경로 — 여기 표시되는
             // "총 선수"가 곧 검증에 쓰이는 풀 크기다.
-            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, ovrMin, ovrMax, useCustomOverrides });
+            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, ovrMin, ovrMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear });
 
             const byPos: Record<string, number> = {};
             for (const p of all) {

@@ -145,6 +145,13 @@ export interface LeagueRow {
     two_way_deadline_date: string | null;
     /** [2026-09-16] 팀당 Two-Way 계약 슬롯 수(1~5, 기본 3) — max_roster_size(정규 계약)와 별개. */
     two_way_slots: number;
+    /** [2026-09-22] 드래프트 계약 생성 규칙. 'standard'(기본) = 실제 계약 유지 + 풀을 "룸 시즌 유효 계약
+     *  보유자 + 당해 드래프트 클래스 신인"으로 제한, 신인만 루키 스케일 생성 / 'alternative' = 드래프트된
+     *  전원에게 라운드 스케일 1년 계약 재생성(레전드 포함 판타지 리그용). services/contracts/draftSalaryScale.ts. */
+    contract_mode: 'standard' | 'alternative';
+    /** [2026-09-22] 라운드별 cap% 표(jsonb, null=기본 프리셋). 모양은 DraftSalaryScale — 읽을 때 반드시
+     *  normalizeDraftSalaryScale()을 거칠 것. 드래프트 시작 후엔 변경 불가(이미 적용됨). */
+    draft_salary_scale: { r1FirstPct: number; r1LastPct: number; roundsPct: number[] } | null;
     /** [2026-09-18] Two-Way 계약 사용 여부(기본 true). 꺼지면 슬롯 표시/설정이 사라지고 협상 화면에서 투웨이를 고를 수
      *  없으며 sign_free_agent_negotiated()가 two_way 계약을 거부한다. CBA 규정이 꺼진 리그는 이 값과 무관하게 투웨이 경로 없음
      *  — 판정은 항상 utils/leagueOverrides.ts의 isTwoWayContractEnabled()를 거칠 것. */

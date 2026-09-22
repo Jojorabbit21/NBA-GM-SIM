@@ -1402,6 +1402,19 @@ function sortBy(th) {
         setDraft(prev => ({ ...prev, contract: { ...(prev.contract ?? {}), [key]: val } }));
     }, []);
 
+    // [2026-09-22] Base 계약을 "없음"으로 — draft에서 contract 키를 지운다. handleSave의
+    // updateBaseAttributes(id, draft)가 base_attributes를 통째로 교체(merge 아님)하므로 키를
+    // 지우면 DB에서도 contract가 사라진다(FA풀 무계약 선수와 동일한 저장 형태). 루트 salary는
+    // 건드리지 않는다 — 연봉 값은 사용자가 명시적으로 넣은 값만 저장한다는 원칙
+    // (feedback_salary_num_fields.md), 필요하면 아래 "salary (루트)" 입력에서 직접 비운다.
+    const clearContract = useCallback(() => {
+        setDraft(prev => {
+            const next = { ...prev };
+            delete next.contract;
+            return next;
+        });
+    }, []);
+
     // ── CO contract ────────────────────────────────────────────────────────
     const initCoContract = useCallback(() => {
         setDraft(prev => ({
@@ -3096,6 +3109,8 @@ function sortBy(th) {
                         <Section label="Base 계약">
                             <ContractForm
                                 contract={draft.contract ?? {}}
+                                isEmpty={draft.contract == null}
+                                onClearContract={clearContract}
                                 salary={draft.salary}
                                 onSetContractYear={setContractYear}
                                 onSetYearSeason={setContractYearSeason}
@@ -3119,6 +3134,8 @@ function sortBy(th) {
                             )}
                             <ContractForm
                                 contract={draft.custom_overrides?.contract ?? {}}
+                                isEmpty={draft.custom_overrides?.contract == null}
+                                onClearContract={clearCoContract}
                                 salary={draft.custom_overrides?.salary}
                                 onSetContractYear={setCoContractYear}
                                 onSetYearSeason={setCoContractYearSeason}
@@ -3962,11 +3979,20 @@ interface ContractFormProps {
     onRemoveYear: (idx: number) => void;
     onSetContractField: (key: string, val: any) => void;
     onSetSalary?: (val: string) => void;
+    /** [2026-09-22] 현재 계약(Base/CO)이 아예 없는 상태. true면 "계약 유형" 드롭다운만 "없음"으로
+     *  보여주고 나머지 행·연봉 테이블은 숨긴다. 예전엔 호출부가 `contract ?? {}`를 넘겨 빈 계약도
+     *  free_agent 폼으로 그려져 "계약 없음" 상태를 볼 수도, 되돌아갈 수도 없었다. 계약 이력
+     *  항목(과거 묶음)은 "없음" 개념이 없어 넘기지 않는다. */
+    isEmpty?: boolean;
+    /** "없음"을 선택했을 때 — Base는 draft.contract 키 삭제, CO는 clearCoContract. 넘기지 않으면
+     *  드롭다운에 "없음" 옵션 자체가 안 뜬다(계약 이력 폼). */
+    onClearContract?: () => void;
 }
 
 const ContractForm: React.FC<ContractFormProps> = ({
     contract, salary,
     onSetContractYear, onSetYearSeason, onSetYearOption, onAddYear, onRemoveYear, onSetContractField, onSetSalary,
+    isEmpty = false, onClearContract,
 }) => {
     const years: number[] = contract.years ?? [];
     const yearSeasons: number[] = contract.yearSeasons ?? [];
@@ -3980,35 +4006,56 @@ const ContractForm: React.FC<ContractFormProps> = ({
 
     const inputCls = 'w-full bg-white/5 rounded px-2 py-0.5 text-sm text-white ring-1 ring-inset ring-white/10 focus:outline-none focus:ring-indigo-500/60 transition-colors';
 
+    const typeSelectRow = (
+        <tr className="hover:bg-white/5 transition-colors">
+            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap w-24">계약 유형</td>
+            <td className="px-3 py-2.5">
+                <select
+                    className={inputCls}
+                    value={isEmpty ? '' : contractType}
+                    onChange={e => {
+                        if (e.target.value === '') { onClearContract?.(); return; }
+                        const newType = e.target.value as ContractType;
+                        // 계약 유형이 바뀌면 이전 유형 하위였던 예외 조항/세부사항 값은
+                        // 더 이상 유효하지 않으므로 같이 지운다(핸들러가 순수 merge라
+                        // 자동으로는 안 지워짐 — setContractField류 3개 핸들러 전부
+                        // functional setState라 같은 틱에 순차 호출해도 안전하게 합쳐짐).
+                        // 빈 상태(isEmpty)에서 유형을 고르면 핸들러의 `...(prev.contract ?? {})`가
+                        // 계약 객체를 새로 만들어 "없음 → 계약 있음"으로 전환된다.
+                        onSetContractField('type', newType);
+                        onSetContractField('signingType', undefined);
+                        onSetContractField('contractDetail', undefined);
+                    }}
+                >
+                    {onClearContract && <option value="">없음</option>}
+                    {(['extension', 'free_agent', 'rookie_scale', 'two_way'] as ContractType[]).map(t => (
+                        <option key={t} value={t}>{CONTRACT_TYPE_LABEL[t]}</option>
+                    ))}
+                </select>
+            </td>
+        </tr>
+    );
+
+    if (isEmpty) {
+        return (
+            <div className="space-y-3">
+                <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
+                    <table className="min-w-full divide-y divide-white/5">
+                        <tbody className="divide-y divide-white/5">{typeSelectRow}</tbody>
+                    </table>
+                </div>
+                <p className="px-1 text-sm text-gray-600">계약 없음 — 유형을 선택하면 새 계약이 만들어집니다.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-3">
             {/* 메타 */}
             <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
                 <table className="min-w-full divide-y divide-white/5">
                     <tbody className="divide-y divide-white/5">
-                        <tr className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap w-24">계약 유형</td>
-                            <td className="px-3 py-2.5">
-                                <select
-                                    className={inputCls}
-                                    value={contractType}
-                                    onChange={e => {
-                                        const newType = e.target.value as ContractType;
-                                        // 계약 유형이 바뀌면 이전 유형 하위였던 예외 조항/세부사항 값은
-                                        // 더 이상 유효하지 않으므로 같이 지운다(핸들러가 순수 merge라
-                                        // 자동으로는 안 지워짐 — setContractField류 3개 핸들러 전부
-                                        // functional setState라 같은 틱에 순차 호출해도 안전하게 합쳐짐).
-                                        onSetContractField('type', newType);
-                                        onSetContractField('signingType', undefined);
-                                        onSetContractField('contractDetail', undefined);
-                                    }}
-                                >
-                                    {(['extension', 'free_agent', 'rookie_scale', 'two_way'] as ContractType[]).map(t => (
-                                        <option key={t} value={t}>{CONTRACT_TYPE_LABEL[t]}</option>
-                                    ))}
-                                </select>
-                            </td>
-                        </tr>
+                        {typeSelectRow}
                         {allowedSigningTypes.length > 0 && (
                             <tr className="hover:bg-white/5 transition-colors">
                                 <td className="py-3 pl-4 pr-3 text-sm text-gray-400 whitespace-nowrap">예외 조항</td>

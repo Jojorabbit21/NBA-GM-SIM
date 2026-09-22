@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play, RefreshCw } from 'lucide-react';
+import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play, RefreshCw, Loader2 } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
 import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
@@ -73,6 +73,17 @@ interface DraftHeaderProps {
     teamMeta?: RoomTeamMetaMap;
     /** 현재 차례 팀이 오토픽 모드인지 (멀티 드래프트 전용, 싱글/루키 드래프트는 미전달) */
     isCurrentTeamAutoPick?: boolean;
+    /** [2026-09-22] 현재 픽에 부여될 계약 표기(예: "계약 28.3% · $46.7M") — contract_mode 'alternative'
+     *  멀티 드래프트에서만 전달. 없으면 라운드/픽 줄만 표시. */
+    salaryLabel?: string;
+    /** [2026-09-22] 드래프트 완료 후 상태(멀티 전용). 전달되면 중앙은 "드래프트 완료 + 일정 생성 진행",
+     *  우측은 시즌 이동 버튼으로 바뀌고, games 준비 전엔 뒤로가기/이동을 막는다(빈 일정 화면 방지). */
+    completion?: {
+        ready:    boolean;
+        progress: number;
+        timedOut: boolean;
+        onGoToSeason: () => void;
+    };
 }
 
 export const DraftHeader: React.FC<DraftHeaderProps> = ({
@@ -93,7 +104,10 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     onBack,
     teamMeta,
     isCurrentTeamAutoPick = false,
+    salaryLabel,
+    completion,
 }) => {
+    const navLocked = !!completion && !completion.ready;   // 시즌 일정 생성 전 — 이동 금지
     // Announcement 중에는 픽한 팀의 배경/로고 유지
     const displayTeamId = announcement ? announcement.teamId : currentTeamId;
     const displayDisplay = resolveTeamDisplay(displayTeamId, teamMeta);
@@ -147,7 +161,9 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                            disabled={navLocked}
+                            title={navLocked ? '시즌 일정 생성 중' : undefined}
+                            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                             <ArrowLeft size={16} />
                         </button>
@@ -159,7 +175,16 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                 {/* Center: Announcement or Paused or Timer + Round/Pick — fixed height */}
                 <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
-                    {announcement ? (
+                    {completion ? (
+                        <>
+                            <div className="pretendard font-black text-xl leading-none text-white">드래프트 완료</div>
+                            <div className={`text-xs font-bold mt-0.5 ${completion.timedOut ? 'text-red-300' : 'text-white/60'}`}>
+                                {completion.timedOut ? '시즌 일정 생성에 문제가 발생했습니다'
+                                    : completion.ready ? '시즌 일정 준비 완료'
+                                    : `시즌 일정 생성 중 · ${completion.progress}%`}
+                            </div>
+                        </>
+                    ) : announcement ? (
                         <div
                             className="pretendard font-black text-sm text-white leading-snug max-w-[400px]"
                             style={{ animation: 'draft-flash 0.6s ease-in-out 2' }}
@@ -174,6 +199,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                             </div>
                             <div className="text-xs text-white/60 font-bold mt-0.5">
                                 {currentRound}라운드 #{currentPickInRound}픽
+                                {salaryLabel && <span className="text-emerald-300/80 ml-2">{salaryLabel}</span>}
                             </div>
                         </>
                     )}
@@ -181,6 +207,31 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                 {/* Right: Current team + user turn info + advance control */}
                 <div className="flex items-center justify-end gap-3">
+                    {completion ? (
+                        /* 드래프트 완료 — 현재 차례 대신 시즌 이동 버튼. games 준비 전엔 비활성(진행률 표시). */
+                        completion.timedOut ? (
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm text-white font-bold transition-colors border border-white/10"
+                            >
+                                새로고침
+                            </button>
+                        ) : (
+                            <button
+                                onClick={completion.onGoToSeason}
+                                disabled={!completion.ready}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm text-white font-bold flex items-center gap-2 transition-colors disabled:bg-white/10 disabled:text-white/60 disabled:cursor-not-allowed"
+                            >
+                                {completion.ready ? '시즌 대시보드로' : (
+                                    <>
+                                        <Loader2 size={12} className="animate-spin" />
+                                        일정 생성 중 {completion.progress}%
+                                    </>
+                                )}
+                            </button>
+                        )
+                    ) : (
+                    <>
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-white/50 font-medium">현재 차례</span>
@@ -254,6 +305,8 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                                 </div>
                             )}
                         </div>
+                    )}
+                    </>
                     )}
                 </div>
             </div>

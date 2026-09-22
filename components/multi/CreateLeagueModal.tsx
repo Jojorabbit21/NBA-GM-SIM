@@ -10,6 +10,14 @@ import {
 } from '../../services/multi/leagueService';
 import { DraftPoolSettings, type DraftFormat } from './DraftPoolSettings';
 import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
+import { DraftSalaryScaleSettings } from './DraftSalaryScaleSettings';
+import {
+    type ContractMode, type DraftSalaryScale, DEFAULT_DRAFT_SALARY_SCALE, validateDraftSalaryScale,
+} from '../../services/contracts/draftSalaryScale';
+
+// 리그 생성 시점엔 캡 금액 입력이 없어(설정 화면에서 나중에 조정) 표시용으로만 쓰는 기본값 —
+// views/multi/league/LeagueSettingsView.tsx CAP_DEFAULTS(2026-27 공식 수치)와 같은 값.
+const CREATE_CAP_DEFAULTS = { salaryCap: 164_961_000, tax: 200_428_000, apron1: 209_015_000, apron2: 221_686_000 };
 import { PersonalDraftFormatEditor } from './PersonalDraftFormatEditor';
 import {
     buildFixedDeclineCurve, buildPersonalDraftFormat, computeRosterSize,
@@ -202,6 +210,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const [draftYearMin,   setDraftYearMin]   = useState(2001);
     const [draftYearMax,   setDraftYearMax]   = useState(2025);
     const [useCustomOverrides, setUseCustomOverrides] = useState(false);
+    // [2026-09-22] 드래프트 계약 생성 — 'standard'(실제 계약 유지, 풀은 유효 계약자+당해 신인) /
+    // 'alternative'(드래프트 전원 라운드 스케일 1년 계약). 표는 services/contracts/draftSalaryScale.ts 기본값.
+    const [contractMode,     setContractMode]     = useState<ContractMode>('standard');
+    const [draftSalaryScale, setDraftSalaryScale] = useState<DraftSalaryScale>(() => ({ ...DEFAULT_DRAFT_SALARY_SCALE, roundsPct: [...DEFAULT_DRAFT_SALARY_SCALE.roundsPct] }));
     const [draftFormat,    setDraftFormat]    = useState<DraftFormat>('snake');
     // [2026-09-18] 토너먼트 드래프트 방식 — 'shared'(기존 공유풀 턴제) / 'personal'(개인 팩 드래프트,
     // docs/plan/tournament-personal-pack-draft-plan.md). personal이면 로터리/드래프트 룸 일정이 없고
@@ -344,9 +356,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                 if (built.ok === false) throw new Error(built.error);
                 personalFormat = built.format;
             } else {
+                if (contractMode === 'alternative') {
+                    const v = validateDraftSalaryScale(draftSalaryScale, totalRounds, maxTeams, {});
+                    if (!v.ok) throw new Error(`드래프트 계약 표 오류: ${v.errors[0]}`);
+                }
                 const capacityErr = await checkDraftPoolCapacity({
                     teamCount: maxTeams, totalRounds,
                     draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+                    contractMode, seasonStartYear: virtualSeasonYear, rookieClassYear: draftYearMax,
                 });
                 if (capacityErr) throw new Error(capacityErr);
             }
@@ -382,6 +399,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftYearMin,
                         draftYearMax,
                         useCustomOverrides,
+                        contractMode,
+                        draftSalaryScale,
                         tournamentStartAt:  startIso,
                         draftScheduledAt:   draftIso,
                         lotteryScheduledAt: lotteryIso,
@@ -419,6 +438,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                         draftYearMin,
                         draftYearMax,
                         useCustomOverrides,
+                        contractMode,
+                        draftSalaryScale,
                         seasonStartDate:      realStartDate,
                         seasonEndDate:        realEndDate,
                         // duration_weeks / daily_window_end_min은 이제 파생값(호환용) — 실제 배치는 아래
@@ -1071,7 +1092,29 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                             totalRounds={isPersonalDraft ? undefined : totalRounds}
                             hideDraftOrder={isPersonalDraft}
                             ovrCap={isPersonalDraft ? PERSONAL_DRAFT_OVR_MAX : undefined}
+                            contractMode={isPersonalDraft ? undefined : contractMode}
+                            seasonStartYear={virtualSeasonYear}
+                            rookieClassYear={draftYearMax}
                         />
+
+                        {/* [2026-09-22] 드래프트 계약 생성 규칙 — 공유풀 드래프트 전용(개인 팩 드래프트는 카드 리그라 무관).
+                            캡 금액은 생성 시점에 리그 설정 기본값(2026-27 공식 수치)으로 표시하고, 실제 생성은 finalize가
+                            리그의 salary_cap_amount로 계산한다. */}
+                        {!isPersonalDraft && (
+                            <DraftSalaryScaleSettings
+                                contractMode={contractMode}
+                                onContractModeChange={setContractMode}
+                                scale={draftSalaryScale}
+                                onScaleChange={setDraftSalaryScale}
+                                totalRounds={totalRounds}
+                                teamCount={maxTeams}
+                                salaryCap={CREATE_CAP_DEFAULTS.salaryCap}
+                                taxPct={CREATE_CAP_DEFAULTS.tax / CREATE_CAP_DEFAULTS.salaryCap * 100}
+                                apron1Pct={CREATE_CAP_DEFAULTS.apron1 / CREATE_CAP_DEFAULTS.salaryCap * 100}
+                                apron2Pct={CREATE_CAP_DEFAULTS.apron2 / CREATE_CAP_DEFAULTS.salaryCap * 100}
+                                draftYearMin={draftYearMin}
+                            />
+                        )}
 
                         {isPersonalDraft && (
                             <PersonalDraftFormatEditor

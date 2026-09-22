@@ -2,8 +2,8 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
-import { countGames } from '../../../services/multi/gameQueries';
 import { useGame } from '../../../hooks/useGameContext';
+import { useSeasonReady } from '../../../hooks/useSeasonReady';
 import { useLeagueContext } from './LeagueLayout';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import { useDraftPresence } from '../../../hooks/useDraftPresence';
@@ -11,6 +11,8 @@ import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft
 import type { Player } from '../../../types';
 import { ATTR_GROUPS, ATTR_AVG_KEYS } from '../../../data/attributeConfig';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { normalizeDraftSalaryScale, resolveDraftSalaryPct, draftSalaryAmount } from '../../../services/contracts/draftSalaryScale';
+import { formatMoney } from '../../../utils/formatMoney';
 
 import { DraftHeader } from '../../../components/draft/DraftHeader';
 import { DraftBoard } from '../../../components/draft/DraftBoard';
@@ -155,7 +157,8 @@ const MultiDraftView: React.FC = () => {
 
     // ── draftState → DraftBoard 용 파생 값 ──────────────────────────────────
     const teamCount = draftState?.teamCount ?? 1;
-
+    // 드래프트 완료 후 서버 일정 생성 대기(games 행 폴링) — 얼리 리턴들보다 위에서 호출해야 함
+    const seasonReady = useSeasonReady(room?.id, draftState?.status === 'completed');
     const teamIds = useMemo((): string[] => {
         if (!draftState) return [];
         const seen = new Set<string>();
@@ -206,6 +209,16 @@ const MultiDraftView: React.FC = () => {
         return map;
     }, [leagueTeams]);
 
+    // [2026-09-22] alternative 계약 모드 — 픽(round, slot)에 생성될 연봉 계산기. standard/캡 없음이면 null(표시 안 함).
+    // 서버 finalize의 generateDraftContracts와 같은 모듈(resolveDraftSalaryPct)이라 화면 금액 = 실제 생성 금액.
+    const draftSalaryOf = useMemo((): ((round: number, slot: number) => number) | null => {
+        if ((league as any)?.contract_mode !== 'alternative') return null;
+        const cap = Number((league as any)?.salary_cap_amount ?? 0);
+        if (!(cap > 0)) return null;
+        const scale = normalizeDraftSalaryScale((league as any)?.draft_salary_scale);
+        return (round, slot) => draftSalaryAmount(cap, resolveDraftSalaryPct(scale, round, slot, teamCount));
+    }, [league, teamCount]);
+
     const boardPicks = useMemo((): BoardPick[] =>
         (draftState?.picks ?? []).map(p => ({
             round:      p.round,
@@ -214,8 +227,17 @@ const MultiDraftView: React.FC = () => {
             playerName: p.playerName,
             ovr:        p.ovr,
             position:   p.position,
+            salary:     draftSalaryOf?.(p.round, p.slot),
         })),
-    [draftState?.picks]);
+    [draftState?.picks, draftSalaryOf]);
+
+    // 내 로스터 행 우측 연봉 — playerId → 금액 (alternative 모드에서만)
+    const myRosterSalaries = useMemo((): Record<string, number> | undefined => {
+        if (!draftSalaryOf || !myTeamId) return undefined;
+        const m: Record<string, number> = {};
+        for (const p of draftState?.picks ?? []) if (p.teamId === myTeamId) m[p.playerId] = draftSalaryOf(p.round, p.slot);
+        return m;
+    }, [draftSalaryOf, draftState?.picks, myTeamId]);
 
     // ── PlayerPool / MyRoster 용 어댑터 ──────────────────────────────────────
     const draftedSet = useMemo(
@@ -243,6 +265,16 @@ const MultiDraftView: React.FC = () => {
     const currentRound      = draftState ? Math.floor(draftState.currentPickIndex / teamCount) + 1 : 1;
     const currentPickInRound = draftState ? (draftState.currentPickIndex % teamCount) + 1 : 1;
     const isCurrentTeamAutoPick = !!(currentPickEntry && (draftState?.autoPickUserIds ?? []).includes(currentPickEntry.userId));
+    // [2026-09-22] alternative 계약 모드 — 현재 픽이 받을 라운드 스케일 계약(캡 %·금액)을 헤더에 표시.
+    // R1은 슬롯(=1라운드 픽 순번) 선형 감소, R2+는 라운드 균일이라 슬롯이 무관 → currentPickInRound로 충분.
+    const salaryLabel = useMemo(() => {
+        if ((league as any)?.contract_mode !== 'alternative') return undefined;
+        const cap = Number((league as any)?.salary_cap_amount ?? 0);
+        if (!(cap > 0)) return undefined;
+        const scale = normalizeDraftSalaryScale((league as any)?.draft_salary_scale);
+        const pct = resolveDraftSalaryPct(scale, currentRound, currentPickInRound, teamCount);
+        return `계약 ${pct.toFixed(1)}% · ${formatMoney(draftSalaryAmount(cap, pct))}`;
+    }, [league, currentRound, currentPickInRound, teamCount]);
 
     const picksUntilUser = useMemo(() => {
         if (isMyTurn || !draftState) return 0;
@@ -369,22 +401,22 @@ const MultiDraftView: React.FC = () => {
                     </div>
 
                     <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                        <MyRoster players={myRosterPlayers} />
+                        <MyRoster players={myRosterPlayers} salaries={myRosterSalaries} />
                     </div>
                 </div>
             </div>
         );
     }
 
-    if (draftState.status === 'completed') {
-        return (
-            <DraftCompletedScreen
-                leagueId={leagueId ?? ''}
-                roomId={room?.id ?? ''}
-                onNavigate={() => navigate(`/multi/leagues/${leagueId}/season`)}
-            />
-        );
-    }
+    // [2026-09-22] 드래프트 완료 후에도 별도 로더 화면으로 갈아타지 않고 이 화면에 머무른다(보드/기록/로스터
+    // 리캡). 서버 finalize가 games를 넣기 전엔 헤더의 시즌 이동/뒤로가기를 막는다(빈 일정 화면 방지).
+    // 멀티 드래프트는 픽 발표(announcement)를 쓰지 않으므로(싱글 RookieDraftView 전용) 완료 즉시 헤더를 전환한다.
+    const isCompleted    = draftState.status === 'completed';
+    const lastPickTeamId = draftState.picks[draftState.picks.length - 1]?.teamId;
+    const completion = isCompleted ? {
+        ...seasonReady,
+        onGoToSeason: () => navigate(`/multi/leagues/${leagueId}/season`),
+    } : undefined;
 
     return (
         <div ref={containerRef} className="pretendard flex flex-col h-screen bg-slate-950">
@@ -405,7 +437,7 @@ const MultiDraftView: React.FC = () => {
             <DraftHeader
                 currentRound={currentRound}
                 currentPickInRound={currentPickInRound}
-                currentTeamId={currentPickEntry?.teamId ?? ''}
+                currentTeamId={currentPickEntry?.teamId ?? lastPickTeamId ?? ''}
                 isUserTurn={isMyTurn}
                 picksUntilUser={picksUntilUser}
                 timeRemaining={displayTimeRemaining}
@@ -415,6 +447,8 @@ const MultiDraftView: React.FC = () => {
                 nextPickTeamId={currentPickEntry?.teamId}
                 teamMeta={teamMeta}
                 isCurrentTeamAutoPick={isCurrentTeamAutoPick}
+                salaryLabel={isCompleted ? undefined : salaryLabel}
+                completion={completion}
                 onBack={() => navigate(`/multi/leagues/${leagueId}/season`)}
             />
 
@@ -478,6 +512,7 @@ const MultiDraftView: React.FC = () => {
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
                     <MyRoster
                         players={myRosterPlayers}
+                        salaries={myRosterSalaries}
                         myAutoPick={myAutoPick}
                         onToggleAutoPick={myTeamId ? (next) => toggleAutoPick(next) : undefined}
                     />
@@ -488,103 +523,3 @@ const MultiDraftView: React.FC = () => {
 };
 
 export default MultiDraftView;
-
-// ─── 드래프트 완료 화면 ───────────────────────────────────────────────────────
-
-interface DraftCompletedScreenProps {
-    leagueId: string;
-    roomId:   string;
-    onNavigate: () => void;
-}
-
-const MAX_POLL_ATTEMPTS = 30; // 3초 × 30 = 90초
-const POLL_INTERVAL_MS  = 3000;
-
-const DraftCompletedScreen: React.FC<DraftCompletedScreenProps> = ({ roomId, onNavigate }) => {
-    const [isReady,   setIsReady]   = useState(false);
-    const [timedOut,  setTimedOut]  = useState(false);
-    const [progress,  setProgress]  = useState(0); // 0~100, 실제 완료 신호 전까진 근사치
-
-    useEffect(() => {
-        if (!roomId) return;
-        let cancelled = false;
-        let attempts  = 0;
-        let timerId:  ReturnType<typeof setTimeout>;
-
-        const poll = async () => {
-            if (cancelled) return;
-            attempts += 1;
-
-            // 실측 진행률 신호가 없어 경과 시간 기반 근사치로 채운다 — 실제 완료 전엔 95%를
-            // 넘지 않는 점근선으로 올라가다가, 완료되면 100%로 스냅.
-            const elapsedSec = attempts * (POLL_INTERVAL_MS / 1000);
-            setProgress(Math.min(95, Math.round(100 * (1 - Math.exp(-elapsedSec / 8)))));
-
-            if (attempts > MAX_POLL_ATTEMPTS) {
-                setTimedOut(true);
-                return;
-            }
-
-            // [Fix 2026-07-29] leagues.status는 finalizeDraft() 시작 "직후"(실제 일정/전술 생성이
-            // 끝나기 전) 원자적 claim으로 바로 'in_progress'가 되는 플래그라 완료 신호로 쓸 수 없었음
-            // — "드래프트 완료" 화면에서 시즌으로 이동한 직후 일정이 아직 비어있어 안 보이는 버그의
-            // 원인. [migration 2026-08-06] rooms.schedule 대신 games 테이블 행 존재 여부로 확인.
-            const n = await countGames(roomId);
-            if (cancelled) return;
-            if (n > 0) {
-                setProgress(100);
-                setIsReady(true);
-            } else {
-                timerId = setTimeout(poll, POLL_INTERVAL_MS);
-            }
-        };
-
-        poll();
-        return () => {
-            cancelled = true;
-            clearTimeout(timerId);
-        };
-    }, [roomId]);
-
-    if (timedOut) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-                <p className="text-red-400 text-sm ko-normal">시즌 일정 생성 중 문제가 발생했습니다.</p>
-                <button
-                    onClick={() => window.location.reload()}
-                    className="text-indigo-400 text-sm hover:underline ko-normal"
-                >
-                    새로고침
-                </button>
-            </div>
-        );
-    }
-
-    if (!isReady) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-4 px-8">
-                <p className="text-slate-400 text-sm ko-normal">시즌 일정을 생성하고 있습니다...</p>
-                <div className="w-64 h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-indigo-500 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${progress}%` }}
-                    />
-                </div>
-                <p className="text-slate-600 text-xs ko-normal">{progress}%</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-            <h2 className="text-xl font-black text-white ko-tight">드래프트 완료!</h2>
-            <p className="text-slate-400 text-sm ko-normal">시즌 일정이 준비됐습니다.</p>
-            <button
-                onClick={onNavigate}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-6 py-3 rounded-xl transition-colors"
-            >
-                시즌 대시보드로
-            </button>
-        </div>
-    );
-};

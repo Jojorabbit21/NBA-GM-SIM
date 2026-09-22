@@ -11,23 +11,10 @@ import { editorLogoUrls } from './editorState';
 
 import { DEFAULT_SEASON_CONFIG } from './seasonConfig';
 
-// YOS(서비스타임)별 미니멈 샐러리 = 해당 시즌 캡 × 아래 비율(%). 실제 NBA CBA 룰북 비율
-// 고정값. 원래 views/multi/league/LeagueSettingsView.tsx(설정 페이지의 미니멈 샐러리
-// 전망 테이블)에만 있었는데, views/multi/season/MultiNegotiationView.tsx(FA 협상 화면의
-// Minimum Salary Exception 자동 계산)도 똑같은 표가 필요해져서 공용 상수로 승격.
-export const MIN_SALARY_YOS_TABLE: { label: string; capPct: number }[] = [
-    { label: '0 YOS',   capPct: 0.82 },
-    { label: '1 YOS',   capPct: 1.32 },
-    { label: '2 YOS',   capPct: 1.48 },
-    { label: '3 YOS',   capPct: 1.54 },
-    { label: '4 YOS',   capPct: 1.59 },
-    { label: '5 YOS',   capPct: 1.73 },
-    { label: '6 YOS',   capPct: 1.86 },
-    { label: '7 YOS',   capPct: 1.99 },
-    { label: '8 YOS',   capPct: 2.13 },
-    { label: '9 YOS',   capPct: 2.14 },
-    { label: '10+ YOS', capPct: 2.35 },
-];
+// YOS(서비스타임)별 미니멈 샐러리 테이블 — [2026-09-22] 정의를 utils/minSalaryTable.ts로 이동
+// (서버가 constants.ts를 import하면 supabaseClient 초기화 부작용이 따라와서 순수 데이터만 분리).
+// 기존 import 경로(LeagueSettingsView.tsx / MultiNegotiationView.tsx) 호환을 위해 재export.
+export { MIN_SALARY_YOS_TABLE, minSalaryForYos } from './minSalaryTable';
 
 // YOS(서비스타임)를 "실제 커리어 기록(career_history)에 몇 시즌이 있는지 세는" 방식으로
 // 계산 — 드래프트 연도만으로 역산(currentSeasonYear - draftYear)하면 해외리그 체류/부상
@@ -82,8 +69,11 @@ export const TRADE_DEADLINE = DEFAULT_SEASON_CONFIG.tradeDeadline;
 //
 // ⚠️ 싱글플레이어 전용 전역 싱글턴. 멀티플레이어는 리그마다 salary_cap_amount 등이
 // 달라서(leagues 테이블 컬럼, LeagueSettingsView.tsx에서 설정) 이 상수를 참조하지 않는다.
-// 멀티 FA/협상 코드(services/multi/negotiation/multiFaDemand.ts 등)는 calcFADemand()의
-// salaryCapOverride 파라미터로 리그별 캡 금액을 주입해서 이 싱글턴을 우회한다.
+// [2026-09-22] calcFADemand()/calcYOSBounds()(services/fa/faValuation.ts)는 이제 캡을 필수 인자
+// (salaryCap)로 받고 이 상수를 import하지 않는다 — 멀티는 리그 캡을, 싱글 호출부(faMarketBuilder/
+// extensionEngine)는 LEAGUE_FINANCIALS.SALARY_CAP을 명시적으로 넘긴다. 폴백이 없으므로 캡을
+// 빠뜨리면 컴파일 에러. 서버(server/src)가 faValuation을 import해도 이 파일(→ ovrUtils →
+// gameConfigService → supabaseClient)이 따라오지 않는다.
 // 새 멀티 코드에서 이 상수를 직접 import하면 안 됨 — 리그별 캡이 서로 덮어써지는 버그가 남.
 export const LEAGUE_FINANCIALS = {
     SALARY_FLOOR:   139_182_000,

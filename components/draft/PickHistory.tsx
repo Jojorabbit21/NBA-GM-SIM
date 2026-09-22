@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react';
 import { BoardPick } from './DraftBoard';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface PickHistoryProps {
     picks: BoardPick[];
@@ -101,6 +102,12 @@ const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, 
                             <span className={`text-sm font-semibold truncate flex-1 ${isUserPick ? 'text-emerald-300' : 'text-slate-200'}`}>
                                 {pick.playerName}
                             </span>
+                            {/* 생성 연봉 — alternative 계약 모드에서만 값이 있음 */}
+                            {pick.salary != null && (
+                                <span className="text-sm text-slate-400 shrink-0 pl-2">
+                                    {formatMoney(pick.salary)}
+                                </span>
+                            )}
                         </div>
                     );
                 })}

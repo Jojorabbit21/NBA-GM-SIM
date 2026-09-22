@@ -14,6 +14,10 @@ import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { checkDraftPoolCapacity } from '../../../services/multi/draftPoolCapacity';
+import { DraftSalaryScaleSettings } from '../../../components/multi/DraftSalaryScaleSettings';
+import {
+    type ContractMode, type DraftSalaryScale, normalizeDraftSalaryScale, validateDraftSalaryScale,
+} from '../../../services/contracts/draftSalaryScale';
 import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -138,6 +142,8 @@ const LeagueSettingsView: React.FC = () => {
     const userId      = session?.user?.id ?? null;
     const isAdmin     = !!(league && userId && league.admin_user_id === userId);
     const isInProgress = league?.status === 'in_progress';
+    // [2026-09-22] 드래프트 계약 규칙은 드래프트 시작(drafting) 이후엔 이미 풀/계약에 반영됐으므로 recruiting에서만 편집.
+    const contractSettingsEditable = league?.status === 'recruiting';
     // [2026-09-18] 토너먼트 개인 팩 드래프트 — 드래프트 탭은 PersonalDraftSettingsTab이 대신 렌더하고,
     // 공유풀 드래프트 전용 섹션(일정/라운드/추첨/결과)과 부상 토글은 숨기거나 잠근다.
     const isPersonalDraft = !!league?.personal_draft_format;
@@ -183,6 +189,9 @@ const LeagueSettingsView: React.FC = () => {
     const [capEnabled,         setCapEnabled]         = useState(true);
     // [2026-09-18] CBA 규정 기본값 켜짐(DB 기본값도 true로 변경) — 값이 없는 구 리그도 켜진 것으로 취급.
     const [cbaRulesEnabled,    setCbaRulesEnabled]    = useState(true);
+    // [2026-09-22] 드래프트 계약 생성 규칙 — 드래프트 시작 후엔 이미 적용된 값이라 읽기 전용(recruiting에서만 편집).
+    const [contractMode,       setContractMode]       = useState<ContractMode>('standard');
+    const [draftSalaryScale,   setDraftSalaryScale]   = useState<DraftSalaryScale>(() => normalizeDraftSalaryScale(null));
     const [salaryCapAmount,    setSalaryCapAmount]    = useState(CAP_DEFAULTS.salaryCapAmount);
     const [luxuryTaxEnabled,   setLuxuryTaxEnabled]   = useState(true);
     const [luxuryTaxAmount,    setLuxuryTaxAmount]    = useState(CAP_DEFAULTS.luxuryTaxAmount);
@@ -320,6 +329,8 @@ const LeagueSettingsView: React.FC = () => {
         setTradeDeadlineEnabled((league as any).trade_deadline_enabled ?? true);
         setCapEnabled((league as any).cap_enabled ?? true);
         setCbaRulesEnabled((league as any).cba_rules_enabled ?? true);
+        setContractMode(((league as any).contract_mode ?? 'standard') as ContractMode);
+        setDraftSalaryScale(normalizeDraftSalaryScale((league as any).draft_salary_scale));
         setSalaryCapAmount((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount);
         setLuxuryTaxEnabled((league as any).luxury_tax_enabled ?? true);
         setLuxuryTaxAmount((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount);
@@ -406,6 +417,7 @@ const LeagueSettingsView: React.FC = () => {
         return checkDraftPoolCapacity({
             teamCount: maxTeams, totalRounds,
             draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+            contractMode, seasonStartYear: (league as any)?.virtual_season_year ?? new Date().getFullYear(), rookieClassYear: draftYearMax,
         });
     };
 
@@ -525,10 +537,16 @@ const LeagueSettingsView: React.FC = () => {
         setSavingCap(true);
         setSaveCapOk(false);
         setSaveCapErr(null);
+        if (contractSettingsEditable && contractMode === 'alternative') {
+            const v = validateDraftSalaryScale(draftSalaryScale, totalRounds, maxTeams, {});
+            if (!v.ok) { setSavingCap(false); setSaveCapErr(`드래프트 계약 표 오류: ${v.errors[0]}`); return; }
+        }
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
             capEnabled,
             cbaRulesEnabled,
+            // 드래프트 시작 후엔 이미 적용된 값 — 폼이 읽기 전용이므로 보내지 않는다(서버 값 보존).
+            ...(contractSettingsEditable ? { contractMode, draftSalaryScale } : {}),
             salaryCapAmount,
             luxuryTaxEnabled,
             luxuryTaxAmount,
@@ -720,6 +738,8 @@ const LeagueSettingsView: React.FC = () => {
     const isCapTabDirty =
         capEnabled !== ((league as any).cap_enabled ?? true) ||
         cbaRulesEnabled !== ((league as any).cba_rules_enabled ?? true) ||
+        contractMode !== (((league as any).contract_mode ?? 'standard') as ContractMode) ||
+        JSON.stringify(draftSalaryScale) !== JSON.stringify(normalizeDraftSalaryScale((league as any).draft_salary_scale)) ||
         salaryCapAmount !== ((league as any).salary_cap_amount ?? CAP_DEFAULTS.salaryCapAmount) ||
         luxuryTaxEnabled !== ((league as any).luxury_tax_enabled ?? true) ||
         luxuryTaxAmount !== ((league as any).luxury_tax_amount ?? CAP_DEFAULTS.luxuryTaxAmount) ||
@@ -1523,6 +1543,27 @@ const LeagueSettingsView: React.FC = () => {
                     </div>
                 </label>
 
+                {/* [2026-09-22] 드래프트 계약 생성 규칙 — 드래프트 시작 후엔 읽기 전용 */}
+                <div className="rounded-xl bg-slate-900/40 border border-slate-700/40 p-3">
+                    {!contractSettingsEditable && (
+                        <p className="text-xs text-slate-500 ko-normal mb-2">드래프트가 시작된 뒤에는 계약 생성 규칙을 바꿀 수 없습니다(이미 풀/계약에 반영됨).</p>
+                    )}
+                    <DraftSalaryScaleSettings
+                        contractMode={contractMode}
+                        onContractModeChange={setContractMode}
+                        scale={draftSalaryScale}
+                        onScaleChange={setDraftSalaryScale}
+                        totalRounds={totalRounds}
+                        teamCount={maxTeams}
+                        salaryCap={salaryCapAmount}
+                        taxPct={luxuryTaxAmount / salaryCapAmount * 100}
+                        apron1Pct={apron1Amount / salaryCapAmount * 100}
+                        apron2Pct={apron2Amount / salaryCapAmount * 100}
+                        readOnly={!contractSettingsEditable}
+                        draftYearMin={draftYearMin}
+                    />
+                </div>
+
                 <div className={`space-y-2 ${capEnabled ? '' : 'opacity-40 pointer-events-none'}`}>
                     <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/60 border border-transparent">
                         <span className="text-xs font-bold text-slate-300">캡 금액</span>
@@ -2020,6 +2061,9 @@ const LeagueSettingsView: React.FC = () => {
                     onUseCustomOverridesChange={setUseCustomOverrides}
                     teamCount={maxTeams}
                     totalRounds={totalRounds}
+                    contractMode={contractMode}
+                    seasonStartYear={(league as any)?.virtual_season_year ?? new Date().getFullYear()}
+                    rookieClassYear={draftYearMax}
                 />
 
                 {/* 경기 포맷 — 토너먼트만 */}

@@ -93,11 +93,12 @@ export function previewFAStatusAfterContract(
 // ─────────────────────────────────────────────────────────────
 
 /** 표준 경로(YOS≤3, 루키스케일 아님) QO — CBA 135% 룰.
- *  max(직전 연봉 × 1.35, 다음 시즌 최저연봉 + $200,000). "다음 시즌 최저연봉"은 기존
- *  calcYOSBounds()의 vetMin 사다리(1.5M/2.2M/3.0M)를 재사용 — 새 최저연봉 테이블을 또
- *  안 만든다(faMarketBuilder.ts가 동일 사다리를 중복 보유 중인 것과 같은 이유로 재사용). */
-export function calcStandardQO(prevSalary: number, yos: number): number {
-    const nextSeasonMin = calcYOSBounds(yos).vetMin;
+ *  max(직전 연봉 × 1.35, 다음 시즌 최저연봉 + $200,000). "다음 시즌 최저연봉"은
+ *  calcYOSBounds(yos, salaryCap).vetMin — [2026-09-22] 이제 utils/minSalaryTable.ts의 YOS별 캡
+ *  비율 표에서 나오므로 리그 캡(leagues.salary_cap_amount, 다음 시즌이면 성장률 적용값)을
+ *  반드시 넘긴다. 예전엔 캡 없이 호출해 전역 싱글턴(2025-26 캡)에 폴백했었다. */
+export function calcStandardQO(prevSalary: number, yos: number, salaryCap: number): number {
+    const nextSeasonMin = calcYOSBounds(yos, salaryCap).vetMin;
     return Math.max(prevSalary * 1.35, nextSeasonMin + 200_000);
 }
 
@@ -148,10 +149,12 @@ export function calcRookieScaleQO(
     pickNumber: number,
     year4Salary: number,
     starterCriteriaMet: boolean,
+    salaryCap: number,
 ): number {
     const baseQO = year4Salary * rookieScaleQOPercent(pickNumber);
     if (pickNumber <= 14 && !starterCriteriaMet) {
-        const minBase = calcYOSBounds(4).vetMin;
+        // [2026-09-22] 4 YOS 최저연봉 = 리그 캡 × MIN_SALARY_YOS_TABLE 비율(캡 필수 주입)
+        const minBase = calcYOSBounds(4, salaryCap).vetMin;
         return Math.min(baseQO, minBase);
     }
     return baseQO;

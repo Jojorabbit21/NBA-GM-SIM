@@ -35,6 +35,507 @@
 
 ---
 
+## 2026-09-22 — 멀티 드래프트 완료 후 별도 로더 화면 제거 → 드래프트 화면 유지 + 헤더 소프트 게이트
+
+**배경**: 드래프트가 끝나면 `MultiDraftView`가 `status === 'completed'`에서 `DraftCompletedScreen`(빈 화면 +
+"시즌 일정을 생성하고 있습니다" 프로그레스 바)으로 갈아타고 있었다. 이 화면의 유일한 역할은 서버
+`finalizeDraft()`가 `games` 행을 넣을 때까지 시즌 이동을 막는 것(2026-07-29 "빈 일정 시즌 화면" 버그 방지).
+사용자 판단: 리캡을 원하는 유저를 위해 보드/기록/로스터를 그대로 두는 게 낫다 → 화면은 유지하고 게이트만 헤더로 이동.
+게이트를 완전히 없애지 않은 이유: `useMultiGameData`의 백업 재시도는 1.5초×4회=6초뿐이고(Alt Salary League
+finalize 실측 9초), `games` realtime 구독은 1,230행 INSERT 버스트가 전부 도착하는지 미확인.
+
+**변경 파일**:
+- `hooks/useSeasonReady.ts` (신규) — `useSeasonReady(roomId, enabled)` → `{ ready, progress, timedOut }`. 폴링 로직은
+  `DraftCompletedScreen`에서 그대로 이동(3초×30회=90초, `countGames(roomId) > 0`이면 ready, progress는 `100(1−e^(−t/8))` 95% 상한 근사 → 완료 시 100)
+- `views/multi/league/MultiDraftView.tsx` — `status === 'completed'` 얼리 리턴 삭제, `DraftCompletedScreen` 컴포넌트(약 100행) 삭제,
+  `useSeasonReady` 호출(얼리 리턴들보다 위), 헤더에 `completion` 전달, `currentTeamId`는 완료 시 마지막 픽 팀으로 폴백(배경 컬러 유지),
+  완료 시 `salaryLabel` 숨김
+- `components/draft/DraftHeader.tsx` — `completion?: { ready, progress, timedOut, onGoToSeason }` prop.
+  중앙: "드래프트 완료" + `시즌 일정 생성 중 · N%` / `시즌 일정 준비 완료` / (timedOut) 빨간 안내.
+  우측: "현재 차례" 블록 대신 버튼 — 준비 전 비활성 `⟳ 일정 생성 중 N%`, 준비 후 `시즌 대시보드로`, timedOut이면 `새로고침`.
+  좌측 `←`: 준비 전 `disabled`(툴팁 "시즌 일정 생성 중").
+
+**Before** (MultiDraftView.tsx):
+```tsx
+if (draftState.status === 'completed') {
+    return <DraftCompletedScreen leagueId={leagueId ?? ''} roomId={room?.id ?? ''} onNavigate={() => navigate(`/multi/leagues/${leagueId}/season`)} />;
+}
+```
+**After**:
+```tsx
+const isCompleted    = draftState.status === 'completed';
+const lastPickTeamId = draftState.picks[draftState.picks.length - 1]?.teamId;
+const completion = isCompleted ? { ...seasonReady, onGoToSeason: () => navigate(`/multi/leagues/${leagueId}/season`) } : undefined;
+// <DraftHeader currentTeamId={currentPickEntry?.teamId ?? lastPickTeamId ?? ''} completion={completion} ... />
+```
+
+**(검토 후 철회) 마지막 픽 발표 유지**: 멀티에는 싱글의 커미셔너 발표(`announcement`)가 원래 전달되지 않는다(`RookieDraftView`
+전용). 한때 마지막 픽만 4초간 `announcement`로 띄운 뒤 완료 전환하는 로직을 넣었으나, "다른 픽엔 발표가 없는데 마지막만
+발표하는 건 비일관"이라는 사용자 판단으로 같은 세션에서 제거 → 완료 즉시 헤더 전환(최종). 마지막 픽은 보드/기록 하이라이트로 확인 가능.
+
+**동작 확인 포인트**: 완료 상태에서 타이머는 `useLeagueDraft`가 0으로 멈추고 `currentPickEntry`는 `pickOrder[450]`=null,
+`isMyTurn`=false, PlayerPool `isUserTurn`=false라 일반 렌더가 그대로 안전. 싱글 `FantasyDraftView`/`RookieDraftView`는 `completion` 미전달 → 변화 없음.
+
+**검증**: `npx tsc --noEmit` 터치 파일 오류 0(아래 참고).
+
+**롤백 방법**: 얼리 리턴 복구 + `DraftCompletedScreen` 본체는 `git show HEAD:views/multi/league/MultiDraftView.tsx`의 파일 끝 블록에서 복원, `useSeasonReady.ts` 삭제, `DraftHeader`의 `completion` 분기 제거.
+
+---
+
+## 2026-09-22 — 멀티 드래프트 화면: alternative 모드 생성 연봉을 드래프트 기록·내 로스터 행 우측에 표시
+
+**배경**: 라운드 기반 계약 생성이 배선된 뒤(아래 항목) 사용자가 드래프트 진행 중 각 픽에 붙는 연봉을 바로 보고
+싶어 함. 헤더의 "현재 픽 계약 N%·$M"에 더해, **드래프트 기록 각 행 우측**과 **내 로스터 각 행 우측**에 금액 표시.
+사용자 제약: `font-mono`/`tabular-nums` 절대 사용 금지(새로 추가한 요소엔 미사용; 기존 `#픽번호`의 font-mono는 건드리지 않음).
+
+**변경 파일**:
+- `components/draft/DraftBoard.tsx` — `BoardPick.salary?: number` 추가
+- `components/draft/PickHistory.tsx` — 행 끝에 `pick.salary != null`이면 `formatMoney` 표시(`text-sm text-slate-400 shrink-0 pl-2`)
+- `components/draft/MyRoster.tsx` — `salaries?: Record<playerId, number>` prop, 선발/벤치 행 이름 뒤 `ml-auto`로 우측 정렬 표시.
+  (추가 요청) `salaries` 있을 때 스크롤 영역 최하단에 **"팀 토탈" 합계 행**(`sticky bottom-0`, `h-10`, 섹션 헤더와 같은 타이포) — 현재 `players`에 있는 선수 합계
+- `views/multi/league/MultiDraftView.tsx` — `draftSalaryOf(round, slot)` 계산기(alternative && cap>0일 때만, `normalizeDraftSalaryScale`+`resolveDraftSalaryPct`+`draftSalaryAmount`), `boardPicks`에 `salary`, `myRosterSalaries` 맵을 두 `<MyRoster>`(대기/진행 화면)에 전달
+
+**동작**: standard 모드·캡 미설정·싱글 `FantasyDraftView`/`RookieDraftView`(prop 미전달)에서는 렌더링 자체가 없음.
+금액은 서버 `generateDraftContracts`와 같은 모듈로 계산하므로 finalize 후 실제 `room_player_state.contract.years[0]`과 일치.
+`slot`은 `DraftPickEntry.slot`(라운드 내 순번) — R1에서만 금액에 영향(선형), R2+는 라운드 균일.
+
+**검증**: `npx tsc --noEmit` 터치 파일 오류 0.
+
+**롤백 방법**: 네 파일에서 `salary`/`salaries`/`draftSalaryOf`/`myRosterSalaries` 관련 줄 제거(순수 표시 기능, 데이터 영향 없음).
+
+---
+
+## 2026-09-22 — 드래프트 라운드 기반 계약 생성 구현 (`contract_mode` standard/alternative + `draft_salary_scale`)
+
+**배경**: 직전 항목(라운드 기반 확정 + 드라이런)의 설계를 실제로 배선. 추가 확정 사항: 모드 이름은
+`contract_mode = 'standard' | 'alternative'`(사용자 명명), **standard는 실제 계약을 쓰므로 풀에서
+"룸 시즌 유효 계약이 없는 선수(은퇴 레전드)"를 자동 제외**하고 당해 드래프트 클래스 신인만 예외(연봉
+없는 시대 선수가 뽑히면 안 되기 때문 — 실측 443 유효 + 80 신인 = 523 ≥ 450 필요), **R1은 첫 픽→마지막
+픽 슬롯 기준 선형 감소(30%→25%)**, R11~R15는 YOS 무관 고정 % (기본 1.0%). 서버 컨테이너는
+`server/src/`만 복사하므로(`server/Dockerfile: COPY src/ src/`) 순수 모듈은 `server/src/shared/`에 미러.
+
+**변경 파일**:
+- `migrations/add_leagues_contract_mode_and_draft_salary_scale.sql` (신규, **적용 완료** — Supabase MCP)
+  `leagues.contract_mode text NOT NULL DEFAULT 'standard'` + CHECK(`standard|alternative`), `leagues.draft_salary_scale jsonb NULL`
+- `services/contracts/draftSalaryScale.ts` (신규, 순수) ⇄ `server/src/shared/contracts/draftSalaryScale.ts` (미러, 동일 파일)
+- `services/contracts/rookieScaleTable.ts` (신규, `rookieGenerator.ts`에서 추출) ⇄ `server/src/shared/contracts/rookieScaleTable.ts` (미러)
+- `utils/minSalaryTable.ts` ⇄ `server/src/shared/utils/minSalaryTable.ts` (미러, 신규 복사)
+- `services/draft/rookieGenerator.ts` — 표/함수 본체 삭제 → `../contracts/rookieScaleTable` re-export
+- `server/src/shared/draftContracts.ts` (신규) — `generateDraftContracts(supabase, roomId, league, teamCount)`
+- `server/src/finalize.ts` — 리그 select에 `contract_mode, draft_salary_scale, salary_cap_amount` 추가, `initializeTeamTactics` 직후 호출
+- `server/src/startDraft.ts` — 풀 select에 `draft_year`, standard 모드 raw 필터 (client `draftPoolCapacity.ts`와 미러)
+- `services/multi/draftPoolCapacity.ts` — `DraftPoolFilterParams`에 `contractMode/seasonStartYear/rookieClassYear`, 매핑 전 raw 필터
+- `services/multi/roomQueries.ts`(`LeagueRow`), `services/multi/leagueService.ts`(create/update 옵션 + payload 매핑)
+- `components/multi/DraftSalaryScaleSettings.tsx` (신규 편집기), `components/multi/DraftPoolSettings.tsx`(props 3개 전달)
+- `components/multi/CreateLeagueModal.tsx` — state 2개, 편집기 렌더(공유풀 드래프트만), 두 `createLeague` payload, 용량 검사에 모드 전달, alternative면 표 검증
+- `views/multi/league/LeagueSettingsView.tsx` — 캡 탭에 편집기(`status==='recruiting'`에서만 편집, 이후 읽기 전용·저장 payload에서 제외), dirty 체크, 용량 검사에 모드 전달
+- `components/draft/DraftHeader.tsx`(`salaryLabel?`), `views/multi/league/MultiDraftView.tsx`(alternative면 "계약 28.3% · $46.7M" 계산)
+- `scripts/dryrun_round_scale.ts` — 로컬 상수 제거, 서버 공유 모듈로 계산(argv[3] `alternative|standard`, 옛 별칭 `alltime|current` 유지)
+
+**규칙(`draftSalaryScale.ts`)**:
+- `DEFAULT_DRAFT_SALARY_SCALE = { r1FirstPct: 30, r1LastPct: 25, roundsPct: [18, 12, 9, 7.5, 6.5, 6, 5.5, 5.2, 5, 1, 1, 1, 1, 1] }` (R2…R15), `DRAFT_SALARY_PCT_MAX = 35`
+- `resolveDraftSalaryPct(scale, round, slot, teamCount)`: R1 = `first + (last-first) × (slot-1)/(teamCount-1)`, R2+ = `roundsPct[min(round-2, len-1)]`
+- `buildDraftScaleContract(cap, pct, season)` → `{ type:'free_agent', years:[amt], yearSeasons:[season], currentYear:0, contractDetail:'general' }` (signingType 없음 = 캡스페이스; `SigningType` 유니온에 새 값 추가하지 않음)
+- `isEligibleForStandardPool(contract, draftYear, seasonStart, rookieClassYear)`: `yearSeasons[0] ≤ seasonStart ≤ yearSeasons[last]` 또는 `draftYear ≥ rookieClassYear`
+- `validateDraftSalaryScale` → 오류(범위/길이) + 경고(뒷 라운드가 더 비쌈, 팀 초기 페이롤 > 택스/에이프런)
+
+**generateDraftContracts (finalize)**:
+- `draft_picks(round, slot, player_id)` 전건 → alternative: 전원 `buildDraftScaleContract` (기존 `room_player_state.contract` 덮어씀) / standard: 룸 시즌 포함 유효 계약(rps → base_attributes 순)이면 유지(kept), 없으면 `draft_year ≥ draft_year_max` && `base_attributes.draft_pick` 1~30 → 4년 `rookie_scale`(`calcRookieScaleYears`, 팀옵션 2·3년차, `signingType:'rookie_scale_exception'`) / 그 외 YOS0 미니멈 1년(`minimum_exception`)
+- `room_player_state` upsert `onConflict: 'room_id,player_id'` 200건 배치. 시즌 = `rooms.season` 앞 4자리(없으면 `virtual_season_year`). `salary_cap_amount` 없으면 생성 건너뜀(경고 로그). 실패해도 finalize 계속.
+- **force 스케줄 초기화 경로(finalize.ts 1번째 select, `[finalize:force]`)에는 붙이지 않음** — 시즌 중 재실행 시 계약 덮어쓰기 방지.
+
+**Before → After 핵심**:
+```ts
+// startDraft.ts buildDraftSetup — Before
+let q = supabase.from('meta_players').select('id, position, base_attributes');
+q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+const { data: poolData } = await q;
+const rawPlayers = (poolData ?? []).map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
+// After
+let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year');
+...
+const contractMode    = (league as any).contract_mode ?? 'standard';
+const seasonStartYear = Number((league as any).virtual_season_year ?? new Date().getFullYear());
+const poolRows = (poolData ?? []).filter((p: any) => contractMode !== 'standard'
+    || isEligibleForStandardPool(p.base_attributes?.contract, p.draft_year, seasonStartYear, draftYearMax));
+const rawPlayers = poolRows.map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
+```
+```ts
+// finalize.ts (드래프트 완료 경로) — After 추가
+await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+await generateDraftContracts(supabase as any, roomId, league as any, leagueTeams.length)
+    .catch(err => console.error('[finalize] generateDraftContracts failed:', err));
+```
+```ts
+// rookieGenerator.ts — Before: ROOKIE_SCALE_PICK_PCT/Y2/Y3/FOURTH_YEAR_RAISE_ANCHORS/estimateFourthYearRaisePct/calcRookieScaleYears 본체(63~112행)
+// After: export { ... } from '../contracts/rookieScaleTable'; (본체는 새 파일로 그대로 이동, 값 불변)
+```
+
+**검증**: 루트 `npx tsc --noEmit` 57건(stash 베이스라인 60건 대비 신규 0 — 감소분은 옛 드라이런 스크립트가
+stash된 시그니처와 어긋난 것), 서버 `tsc -p server/tsconfig.json` 신규 0(startDraft.ts `.error` 유니온 4건은 기존).
+드라이런 재실행(공유 모듈 사용, Weakly League 30팀×15R): **alternative — 446명 생성, 팀 페이롤 100.8%(13인 PHX)
+~109.7%, avg 107.0%**, 모듈 자체 예측(슬롯1 109.7% ~ 슬롯30 104.7%)과 일치(직전 113.7%에서 내려온 이유: R1 후반 25%
++ R11~15 고정 1%). R1 슬롯 선형: 1픽 $49.49M(30%) → 30픽 $41.24M(25%). 결과 파일
+`scripts/output/dryrun_round_scale_alltime.txt` / standard 모드 `dryrun_round_scale.txt`(같은 룸에 standard를 가정: 118명만
+생성, 팀 페이롤 78.9~191.8% — 실제 현역 맥스 계약이 지배. 이 리그는 레전드 포함이라 alternative가 맞고, 진짜 standard
+리그라면 풀 필터로 레전드 자체가 안 뽑힌다. 드라이런 스크립트는 standard의 루키스케일/미니멈 세부는 흉내내지 않음).
+**⚠ 기존 리그 중 standard 모드인데 레전드 포함 범위인 리그**: 기존 드래프트는 이미 끝났으므로 영향 없음(풀 필터는
+`buildDraftSetup` 시점에만). 새 리그에서 `draft_year_min<2010`이면 편집기가 alternative 권장 문구를 띄움.
+**배포**: Fly.io `basketballgm-app-server` **v161**(2026-09-22 07:23Z, 이전 v160 9/20) — 부팅 로그 `[scheduler] started`, import 오류 없음.
+첫 finalize 시 `[draftContracts] room=… mode=… generated=…` 로그로 실동작 확인할 것.
+
+**롤백 방법**: 마이그레이션은 컬럼만 추가(DEFAULT 'standard')라 코드만 되돌리면 무해. finalize 호출 1줄 + import 제거,
+startDraft 풀 블록 Before로, rookieGenerator는 새 파일 본체를 다시 붙이면 됨. 생성된 계약은
+`DELETE FROM room_player_state WHERE room_id=… AND contract->>'contractDetail'='general' AND jsonb_array_length(contract->'years')=1`(alternative)로 식별 가능.
+
+---
+
+## 2026-09-22 — 계약 생성 방식 확정: 드래프트 라운드 기반 cap% 스케일 + 드라이런 실측
+
+**배경**: 가치평가(`calcFADemand`) 기반 생성은 스탯 없는 finalize 시점 전원 저평가·시장조건 노이즈·
+페이롤 정규화 난제가 있었다(직전 항목). 사용자 제안으로 **드래프트 라운드가 연봉을 정하는 방식**
+으로 전환 — 오버/언더페이 판단이 GM의 드래프트 전략이 되고, 스네이크 드래프트라 팀 초기 페이롤이
+표의 합계로 정확히 정규화되며, `draft_picks`(round/slot)만으로 구현 가능. 합의 사항: (1) 전부
+**1년 계약**(시즌 롤오버 후 재계약/방출 흐름), (2) 미드래프트 선수는 연봉 없음(FA 협상 엔진 담당),
+(3) R1~R10 cap%를 30%→5%로 볼록 배분, R11~R15는 미니멈, (4) 적용 범위: 올타임형 리그는 드래프트
+전원 재생성 / 현역형 리그는 실제 계약 유지 + 유효 계약 없는 픽만 생성, (5) 표는 리그 생성 시
+어드민 조정 가능. 수상 보너스·YOS는 사용하지 않음.
+
+**변경 파일**: `scripts/dryrun_round_scale.ts` (신규, DB 무변경) — 룸의 `draft_picks`를 읽어 프리셋
+`[30,18,12,9,7.5,6.5,6,5.5,5.2,5]`(R1~10, 합 104.7%) + R11~15 `minSalaryForYos`를 적용, 라운드별
+OVR 분포·팀별 페이롤·라운드 내 편차 출력. 실행: `npx tsx -r ./scripts/ws-shim.cjs scripts/dryrun_round_scale.ts [roomId] [alltime|current]`.
+출력: `scripts/output/dryrun_round_scale.txt`(current 모드), `…_alltime.txt`.
+
+**실측(Weakly League, alltime 모드, 446명 생성)**:
+- 팀 페이롤 **30팀 전부 112~115%**(avg 113.7%, 13인 PHX 106.6%) — 정규화가 설계대로 성립.
+  110% 예상보다 높은 건 R11~15 미니멈이 YOS 표 기반이라 레전드(YOS 10+ 취급) 5명분이 ≈11.7%로
+  잡히기 때문 → **R11~15는 YOS 무관 고정 비율(예 1.0%)로 표에 직접 넣는 것**이 맞다(YOS 미사용
+  결정과도 일치, 어드민이 15칸 전부 보게 됨).
+- 라운드별 OVR 밴드가 좁다(R1 89~99, R2 86~89, R3 83~87, R4 82~85 …) — 라운드 스케일이 가치를
+  잘 근사하되, **R1만 거칠다**(론도 89 = 르브론 99 = 30%). 필요하면 R1을 슬롯 전후반으로 나누는
+  옵션(예 1~15픽 30% / 16~30픽 25%)을 후속으로 — 스네이크가 라운드 간 상쇄해 팀 불균형은 작다.
+- 규칙 처리 확인: 픽 없는 로스터 선수(FA 영입 브로니 제임스) 기존 계약 유지, 로스터에 없는 고아
+  픽 2건(삭제/방출) 무시.
+- current 모드(118명만 생성)에선 기존 실제 계약이 지배해 22팀 캡 초과 유지 — 이 리그는 레전드
+  포함이라 alltime 모드가 맞음.
+
+**⚠ 모드 판별 관련 발견**: `leagues.draft_pool`은 두 리그 모두 `'standard'`이고, `'standard'/'alltime'`
+풀 타입은 **2026-09-16에 폐지**됨(`DraftPoolSettings.tsx` 주석) — 풀은 `draft_year_min~max`·
+`draft_ovr_min~max`·`use_custom_overrides`로 정의된다. 따라서 계약 모드는 파생이 불가능하고
+**리그 생성 옵션 `contract_mode`('real_plus_generated' | 'regenerate_all')를 명시적으로 두되, 기본값은
+`draft_year_min < 2010`(레전드 포함 범위)이면 `regenerate_all`**로 제안. `types/app.ts`의
+`DraftPoolType = 'current' | 'alltime'`은 실제 DB 값과 어긋난 잔재.
+
+**다음**: 사용자 확인 후 구현 — (1) `leagues.draft_salary_scale`(jsonb 15칸) + `contract_mode` +
+기본 프리셋 상수(서버 공유), (2) 생성/설정 UI(15칸 표 + 팀 초기 페이롤 % 실시간 표시 + 택스/
+에이프런 경고, 드래프트 시작 후 읽기 전용), (3) `finalizeDraft()`에서 `draft_picks` 기반 생성 →
+`room_player_state` INSERT, (4) 드래프트 보드에 라운드 cap% 표시, (5) 드라이런 재실행으로 검증.
+
+---
+
+## 2026-09-22 — 계약 자동 생성기 드라이런 스크립트 + 첫 실측 결과 (코드 배선 전 캘리브레이션 점검)
+
+**배경**: 올타임 레전드 드래프트 시 계약 자동 생성기를 `finalizeDraft()`에 얹기 전에, 실제 룸
+(Weakly League, 447명/30팀) 로스터 전원에 대해 `calcFADemand()`를 그대로 돌려 어떤 연봉이
+나오는지 **DB 무변경**으로 표를 뽑는 도구. finalize와 동일한 선수 객체를 쓰기 위해 서버 매퍼
+(`server/src/shared/dataMapper.ts`의 `mapRawPlayerToRuntimePlayer`/`buildTeamForSim`)를 그대로 import.
+
+**변경 파일**:
+- `scripts/dryrun_contract_generation.ts` (신규) — 룸 로드 → 서버 매퍼로 Player 조립(+`career_history`
+  부착) → 유효 계약 판정(`room_player_state.contract` → `base_attributes.contract` 순, 룸 시즌 포함
+  여부; **매퍼가 모든 선수에 박는 플레이스홀더 `{years:[5_000_000]}`는 무시**) → `buildMarketConditions`
+  → `calcFADemand(…, cap)` → 선수별 표(hist=현재 코드 YOS 클램프 / bal=35% 상한 추정) + OVR 밴드
+  요약 + 팀별 페이롤. 출력: `scripts/output/dryrun_contract_generation.txt`.
+- `scripts/ws-shim.cjs` (신규) — Node 20 preload. 실행: `npx tsx -r ./scripts/ws-shim.cjs scripts/dryrun_contract_generation.ts [roomId]`.
+
+**실행 환경 함정 3개(해결 순서대로)**: (1) 루트에 `dotenv` 패키지 없음 → 스크립트 안에 `.env` 인라인
+로더. (2) 서버 매퍼 import 체인이 `server/src/supabaseAdmin.ts`(`Bun.env`)에 닿음 → 로컬에 Bun 없어
+`globalThis.Bun = { env: process.env }` 심 + `SUPABASE_URL ← REACT_APP_SUPABASE_URL` 매핑, 프로젝트
+모듈은 심 이후 `main()`에서 동적 import(정적 import는 호이스팅). (3) 그 클라이언트의 realtime이
+native WebSocket(Node 22+)을 요구 → `ws`를 `globalThis.WebSocket`으로 preload.
+
+**첫 실측 결과(생성 대상 118명)** — 배선 전에 고쳐야 할 캘리브레이션 문제 4개:
+1. **전원 저평가**: 요키치 99 OVR → MVS 59.6 → 7.5%($12.4M), SGA/야니스/돈치치/테이텀 97~99 → 12.5%
+   ($20.6M). 원인은 스탯 없는 finalize 시점에 `calcFADemand`가 `ovrToRoleScore(ovr) × reliability 0.65`
+   경로를 타기 때문 — 99 OVR도 96×0.65≈62 → `scoreToCapShare` 12.5% 티어. 이 폴백은 "정체 모를
+   생성 FA"용 할인이라 드래프트 직후 전원에게 적용되면 리그 전체가 1.5~12.5%로 압축된다.
+   → 생성기 모드에선 reliability 1.0(또는 전용 OVR→MVS 곡선) 필요.
+2. **시장 조건 무의미**: `combo_guard supply=0 → ratio=10.0`, demand=30(전 팀 강도 0). 판타지
+   드래프트 직후 "FA 풀"은 후보 118명뿐이라 희소성/수요 보정이 노이즈 → 생성기 모드에서 중립화.
+3. **수상 보너스 0**: `calcAwardBonus`가 직전 시즌(2025-26)만 봐서 레전드 전원 0 → 피크 시즌 분기 필요.
+4. **YOS 무의미**: `2026 − draftYear` → 멜로/웨이드 23, 배런 데이비스 27, 하워드(age 24) 22. Historical
+   모드는 "저장 시즌 시점 YOS"가 있어야 하고, 지금은 MVS가 낮아 클램프가 어차피 안 걸려 hist≈bal.
+
+**더 근본적인 발견 — 팀 페이롤**: 생성 전에 **기존 실제 계약만으로** 30팀 중 22팀이 캡 초과, GS
+$310M(188%)·BOS $265M·ORL $252M. 판타지 드래프트가 현역 스타의 실제 맥스 계약을 팀당 여럿 모아
+놓기 때문. 레전드를 "제대로" 25~35%로 평가하면 페이롤은 더 커진다 → 올타임 리그에서 캡 기반
+기능(사치세/에이프런/데드캡)이 의미를 갖으려면 (a) 118명뿐 아니라 **전원 재생성 + 팀/리그 단위
+정규화**(15인 합계 ≈ 캡×α) 또는 (b) 순번/리그 랭크 기반 가격 또는 (c) 올타임 리그는 캡 비활성 —
+사용자 결정 필요. 상세 수치는 위 출력 파일.
+
+**롤백 방법**: 도구 파일 2개 삭제(프로덕션 코드 무변경).
+
+---
+
+## 2026-09-22 — FA 가치평가 캡 주입 필수화 + 최저연봉 단일 소스화 (faValuation ↔ LEAGUE_FINANCIALS 분리)
+
+**배경**: 올타임 레전드 드래프트 시 계약 자동 생성기를 서버(`finalizeDraft()`)에 얹기 위한
+선행 정리. (1) `services/fa/faValuation.ts`가 `utils/constants.ts`(`LEAGUE_FINANCIALS`)를
+import했는데, 그 체인(`constants → ovrUtils → gameConfigService → supabaseClient`)이 서버에서
+import 시 클라이언트 Supabase 싱글턴을 초기화하는 부작용을 냈다(tsx 스모크로 실측 — 환경변수
+오류 배너 출력). (2) `calcFADemand`/`calcYOSBounds`의 캡이 optional(`salaryCapOverride`)이라
+빠뜨리면 2025-26 싱글턴 캡으로 조용히 폴백 — 리그 캡 $164.961M에서 맥스가 $54.1M(싱글턴)
+vs $57.7M(리그 캡)으로 어긋남. `rfaEligibility.ts` 두 곳이 실제로 캡 없이 호출 중이었다
+(`.vetMin`만 써서 결과 영향은 없었음). (3) 최저연봉의 진실 공급원이 둘 — 설정 화면·협상 화면은
+`MIN_SALARY_YOS_TABLE`(11단계 캡 비율), `calcYOSBounds.vetMin`과 `faMarketBuilder.ts`의 **동일
+복제본**은 1.5M/2.2M/3.0M 절대금액 3단계. 2026-27 캡 기준 4~6 YOS가 $2.20M vs $2.62~3.07M,
+10+ YOS가 $3.00M vs $3.88M으로 서로 달랐다.
+
+**변경 파일**:
+- `utils/minSalaryTable.ts` (신규) — `MIN_SALARY_YOS_TABLE` 정의 이동 + `minSalaryForYos(yos, cap)`.
+  의존 0인 순수 데이터 모듈(서버 안전).
+- `utils/constants.ts` — 테이블 정의 삭제 → `export { MIN_SALARY_YOS_TABLE, minSalaryForYos } from
+  './minSalaryTable'` 재export(`LeagueSettingsView`/`MultiNegotiationView` import 무변경). 경고 주석 갱신.
+- `services/fa/faValuation.ts` — `LEAGUE_FINANCIALS` import 제거, `minSalaryForYos` import.
+- `services/fa/faMarketBuilder.ts` — 사설 `calcYOSBounds` 복제본 삭제 → 공용 함수 import.
+  `calcYOSBounds` 3곳·`calcFADemand` 2곳에 `LEAGUE_FINANCIALS.SALARY_CAP` 명시 전달.
+  이제 안 쓰는 `isRoseRuleEligible` import 제거.
+- `services/fa/extensionEngine.ts` — `calcFADemand` 3곳에 `LEAGUE_FINANCIALS.SALARY_CAP` 전달.
+- `services/multi/negotiation/rfaEligibility.ts` — `calcStandardQO(prevSalary, yos, salaryCap)`,
+  `calcRookieScaleQO(pick, year4Salary, starterCriteriaMet, salaryCap)` — 캡 파라미터 추가(호출부 0곳).
+- `services/multi/negotiation/multiFaDemand.ts` — 주석만 갱신(이미 `leagueSalaryCap` 주입 중).
+
+**Before**:
+```ts
+export function calcYOSBounds(yos: number, player?: Player, salaryCapOverride?: number) {
+    const cap = salaryCapOverride ?? LEAGUE_FINANCIALS.SALARY_CAP;
+    …
+    const vetMin = yos >= 7 ? 3_000_000 : yos >= 4 ? 2_200_000 : 1_500_000;
+}
+export function calcFADemand(…, tendencySeed: string, salaryCapOverride?: number)
+    let targetSalary = (salaryCapOverride ?? LEAGUE_FINANCIALS.SALARY_CAP) * capShare;
+```
+
+**After**:
+```ts
+export function calcYOSBounds(yos: number, salaryCap: number, player?: Player) {
+    const cap = salaryCap;
+    …
+    const vetMin = minSalaryForYos(yos, cap);   // MIN_SALARY_YOS_TABLE[yos].capPct × cap
+}
+export function calcFADemand(…, tendencySeed: string, salaryCap: number)
+    let targetSalary = salaryCap * capShare;
+```
+
+**동작 변화(의도됨)**: FA 요구액 하한·RFA QO 최저선이 3단계 사다리에서 11단계 캡 비율 표로
+바뀜. 2025-26 캡 기준 0 YOS $1.50M→$1.27M, 4 YOS $2.20M→$2.46M, 10+ YOS $3.00M→$3.63M.
+싱글플레이어 CPU 서명·유저 오퍼 최저선도 같이 움직인다(실제 CBA에 더 가까움).
+
+**검증**: `npx tsc --noEmit` 총 55건 — 전부 사전 존재(`PlayerEditorPage` 9건 등), **변경 파일
+7개에는 0건**. `calcYOSBounds`/`calcFADemand` 호출부 전수 grep — 전부 캡 전달 확인. tsx로 서버
+스타일 import 스모크: `calcYOSBounds(0/3/4/6/7/10/15, 164_961_000)`의 vetMin이 테이블 값과
+전부 일치, max 25/30/35% 정상, **Supabase 환경변수 오류 배너 미출력**(부작용 체인 절단 확인).
+
+**롤백 방법**: `minSalaryTable.ts` 삭제, constants.ts에 테이블 원본 복원, faValuation의
+두 함수 시그니처를 Before로, faMarketBuilder에 사설 `calcYOSBounds` 복원 + 호출부 캡 인자 제거,
+extensionEngine 3곳 캡 인자 제거, rfaEligibility 두 함수 캡 파라미터 제거.
+
+---
+
+## 2026-09-22 — 계약 비정상 케이스 158명 처리: 3명 삭제 + 레전드 이력 "연봉 연속성" 폴백 묶음
+
+**배경**: FA풀 계약 갭 조사에서 정상 케이스(첫 계약 진행 중 147 / 2026+ 미체결 42 / 현재계약
+null·이력 있음 67)를 뺀 비정상 158명(A 계약·이력 없음 60 / C 계약 있으나 yearSeasons 없음 88 /
+E 첫 계약 아닌데 이력 없음 10)을 `scripts/data/contract_abnormal_cases.csv`로 추렸고, 사용자가
+slug를 채운 `contract_abnormal_cases_verified.csv`(155명 slug 확보, 3명 미확보)를 기준으로
+(1) 못 찾은 3명 DB 삭제, (2) 나머지 데이터 수집, (3) C 그룹 레전드 61명 과거 이력 전부 수집을
+지시. 단, 어제 수집에서 레전드 44명은 bbref에 샐러리 행 자체가 0이라 재수집으로는 못 채우고,
+16명은 샐러리 행은 있는데 서명 이벤트가 없어 묶음이 안 된 상태(래리 버드 14행·아이재아 토마스
+10행 등)였다 — 이 16명이 실제로 구제 가능한 대상.
+
+**변경 파일**:
+- `scripts/scrape_bbref_contracts.py`
+  - `WORKSHEETS`에 `contract_abnormal_cases_verified.csv` 추가. ⚠ 첫 실행은 이걸 빠뜨려 58명이
+    전원 "워크시트에 없는 slug(스킵)"으로 **0명 처리**되고 조용히 exit 0 했다(DB 무변경, 무해).
+    `--slug`는 워크시트에 있는 slug만 통과시키므로 새 워크시트는 반드시 등록할 것.
+  - `build_bundles()`에 폴백 추가(`continuity_chains`): 경계 이벤트가 0개이거나 첫 경계 이전에
+    연봉만 남은 고아 시즌을 "연속 시즌(전년+1) & 전년 대비 EXT_RATIO ±10% 이내"로 묶어
+    `free_agent/general` 묶음(`inferred: True`)으로 만들고, 묶음마다 issue
+    `'서명 이벤트 없음 — 연봉 연속성으로 A~B 묶음 추정(free_agent), 유형 확인 필요'`를 남긴다.
+    종전 `'서명 이벤트 없음 — 계약 묶음 근거 없어 미기록'`(367행) / `'첫 서명 이벤트 이전 시즌'`
+    (378행) 분기는 폴백이 소진한 뒤의 안전망으로 그대로 둠. 실제 경계가 있는 시즌 이후 로직은
+    무변경. `--rebundle` 경로(`bundle_with_issues`)가 같은 함수를 쓰므로 재수집 없이 적용 가능.
+- DB `meta_players` 3행 삭제(사용자 지시, slug 없음): 이사야 조(`det`, 2020) / 카슨 에드워즈(2018) /
+  캣 바버(2021). 삭제 전 참조 검사 — `league_teams.roster` / `room_player_state` / `draft_picks` /
+  `league_transactions` / `league_trade_blocks` / `game_pbp` 전부 0건. `DELETE … RETURNING`으로
+  받은 행 전체를 `scripts/output/deleted_players_backup_2026-09-22.json`에 저장(복구 = 그대로
+  INSERT). 이사야 조는 `base_team_id=det`인 현역이라 기본 로스터 풀에서 빠지는 효과가 있음 — 지시대로
+  진행했고 보고에 명시.
+
+**실행 결과**:
+- `--rebundle --dry-run` 97명 → 변경 16 / 무변경 81 / 실패 0 → 실제 적용 99명(스크래핑으로 새
+  체크포인트 2건 추가됨) 변경 16 / 무변경 83 / 실패 0. 변경 16 = 잭 시크마·카림 압둘자바·케빈
+  맥헤일·데니스 존슨·래리 버드(0→6묶음 1979~92)·롤란도 블랙먼·마이클 쿠퍼·무키 블레이록·아이재아
+  토마스(0→6 1984~93)·제임스 워디·제프 호나섹·존 스탁턴·클라이드 드렉슬러·토니 쿠코치(레전드 14)
+  + 키숀 길버트·트레이 제이미슨 III(첫 경계 이전 시즌 구제). 수작업 목록 904→867건.
+- 1980년대는 연봉이 매년 10% 넘게 뛰는 경우가 많아 단년 묶음이 여럿 생긴다(버드 1989/90/91/92 각
+  1년). 전부 '추정' 표시라 문서에서 합치기 가능 — 밴드를 넓히면 진짜 새 계약을 합칠 위험이 있어
+  ±10% 유지.
+- 체크포인트 없던 58명 스크래핑(워크시트 등록 후 재실행, `scripts/output/contract_abnormal_scrape_run.log`):
+  성공 58 / 실패 0. DB 반영 56(2명은 쓸 데이터 없음), 현재 계약 생성 11, "2026-27 계약 없음"
+  (은퇴/FA → 현재 계약 미변경, 이력만) 44, bbref에 Salaries/Current Contract 표 자체가 없는 선수 20,
+  연속성 폴백 발동 2건. 수작업 목록 867→931건.
+
+**후속(최종 집계, DB 재분류 — 같은 CASE 로직)**: 풀 859→856명(3명 삭제). `contract_history` 보유
+512→**581**(+69). 비정상 **158→84**: A(계약·이력 없음) 60→**9**(전원 레전드, bbref에 샐러리 표 없음
+— 이 소스로는 불가), C(계약 있음·yearSeasons 없음) 88→**65**(레전드 49 + 기타 16), E 10→10
+(예상대로 — 이전 시즌이 투웨이/미니멈이라 이력 없음이 자연스러운 그룹). 정상/제외 그룹은 EXCL-a
+147→149, EXCL-b 42→42, **EXCL-x(현재계약 null·이력 있음 = 계획상 목표 상태) 67→112**(+45: A에서
+이력이 채워지며 넘어옴). 남은 A 9 + C 65 중 레전드 58명은 bbref 샐러리 데이터 자체가 없어(1985년
+이전 시대) 재수집·규칙 변경으로 못 채우며, 2026-27 기준 신규 계약 부여 로직에서 OVR 등 별도 기준이
+필요한 집합.
+
+**후속 2 — "못 채운 86명" 검증에서 slug 충돌 5건 발견 (같은 날 오전)**: 155명 중 이력이 여전히
+빈 86명을 분류하니 69명은 bbref 샐러리 표 없음, 12명은 정상(샐러리 행이 현재 계약에 속하거나 이전
+시즌이 투웨이), **5명은 CSV의 id와 체크포인트의 id가 달랐다** — `load_worksheet()`가 slug를 키로
+쓰고 `--rebundle`은 체크포인트의 `id`에 쓰기 때문에, 같은 slug를 다른 DB 행이 먼저 차지하고 있으면
+비정상 목록의 행은 조용히 아무것도 못 받는다. 내역: ⓐ **slug 오기입 2건** — 래리 낸스(1985)에
+`nancela02`(=래리 낸스 주니어), 팀 하더웨이(1989)에 `hardati02`(=팀 하더웨이 주니어). 사용자 확인 후
+`nancela01`/`hardati01`로 CSV 수정(`.bak_20260922` 백업)하고 수집 → 낸스 7묶음(1984~93), 하더웨이
+11묶음(1990~2002), 전부 연속성 '추정'. ⓑ **같은 실제 선수가 DB에 두 행 3쌍** — 마이클 아담스/애덤스
+(`adamsmi01`), 아미르 코피/커피(`coffeam01`), 토니 브래들리×2(`bradlto01`). 09-17 원 실행이 한쪽에만
+데이터를 넣었고 비정상 목록엔 빈 쪽이 올라왔던 것. 사용자 지시로 빈 쪽 삭제: 마이클 아담스
+(abc99374)·아미르 코피(7eee1668) — 참조 0건 확인 후 `DELETE … RETURNING`, 백업
+`scripts/output/deleted_players_backup_2026-09-22_dupes.json`. 마이클 애덤스(9bba623c)
+`include_alltime=true`로 변경. **토니 브래들리 행1(d52a26a1)은 삭제 보류** — Weakly League
+(ed6d4865)에서 BKN 로스터·`room_player_state`·드래프트 픽·박스스코어 57경기가 이 id를 가리키고, 생존
+행2(97dd6510)는 같은 방 NO 로스터에 있음(두 중복 행이 한 리그에서 각각 드래프트됨). 삭제하면 BKN
+로스터에 빈 슬롯과 고아 경기기록이 남고, id를 행2로 치환하면 한 선수가 두 팀 소속이 되므로 사용자
+결정 대기.
+
+**교훈(재발 방지)**: 새 워크시트의 slug는 실행 전에 기존 체크포인트/워크시트와 **slug 충돌**을
+검사할 것 — 같은 slug가 다른 id에 이미 매핑돼 있으면 (1) Jr./Sr. 오기입이거나 (2) 중복 행이다.
+검사 스니펫: 워크시트 `(slug → id)` vs `scripts/output/bbref_contracts/<slug>.json`의 `id` 비교.
+
+**후속 3 — 토니 브래들리 행1 삭제 실행(사용자 선택 (a): 참조 정리 없이 그대로 삭제)**:
+d52a26a1 삭제, 백업 `scripts/output/deleted_players_backup_2026-09-22_bradley.json`(career 17행 포함,
+파싱 검증). ⚠ 의도적으로 남긴 고아 참조 — Weakly League(ed6d4865) **BKN `league_teams.roster`에
+존재하지 않는 id 1개**, `room_player_state` 1행, `draft_picks` 1행, `game_pbp` 박스스코어 57경기.
+`buildLeagueTeams()`는 meta_players에 없는 roster id를 null→필터하므로 화면은 깨지지 않지만 BKN
+로스터 인원이 1명 적게 보이고, 그 경기들의 선수 집계에서 이 id는 이름 없이 남는다. 정리하려면
+BKN roster에서 id 제거 + `room_player_state`/`draft_picks` 행 삭제(박스스코어는 그대로 두는 편이
+안전). 최종: 이번 세션 삭제 총 6행(slug 없음 3 + 중복 3), 풀 853명.
+
+**롤백 방법**: `WORKSHEETS` 마지막 항목 제거, `build_bundles`의 `continuity_chains` 블록 삭제 후
+같은 99명에 `--rebundle` 재실행(종전 규칙으로 되돌아감). 삭제 3명은 백업 JSON의 `rows`를
+`meta_players`에 INSERT(중복 2행은 `_dupes.json`). CSV slug 수정은 `.bak_20260922`로 복원.
+58명 신규 체크포인트는 `scripts/output/bbref_contracts/<slug>.json`(2026-09-22 10:2x~10:5x mtime)로
+식별 가능.
+
+---
+
+## 2026-09-22 — 어드민 플레이어 편집기: Base/CO 계약 유형에 "없음" 추가 (계약 삭제 가능하게)
+
+**배경**: 편집기에서 계약을 한 번 만들면 되돌릴 방법이 없었다. `ContractForm`이 항상
+`draft.contract ?? {}`를 받아 빈 계약도 `free_agent` 폼으로 그렸기 때문에 (1) 계약이 없는 선수도
+"계약 있음"처럼 보이고, (2) 유형 드롭다운에 "없음" 선택지가 없어 삭제 자체가 불가능했다.
+FA풀 무계약 168명(2026-27 기준 신규 부여 예정)을 편집기에서 다루려면 "계약 없음" 상태를 볼 수
+있고 되돌릴 수 있어야 함.
+
+**변경 파일**:
+- `pages/PlayerEditorPage.tsx` (client)
+  - `ContractFormProps`에 `isEmpty?: boolean`, `onClearContract?: () => void` 추가.
+    `isEmpty`면 "계약 유형" 행만 그리고(값 `''`="없음") 예외조항/세부사항/현재시즌/NTC 행, 연봉
+    테이블, 루트 salary 블록을 전부 숨김 + "계약 없음 — 유형을 선택하면 새 계약이 만들어집니다"
+    안내. 드롭다운 첫 옵션 `없음`은 `onClearContract`를 넘긴 호출부(Base/CO)에만 뜬다 — 계약
+    이력(과거 묶음) 폼은 "없음" 개념이 없어 그대로.
+  - 드롭다운 onChange: `''` 선택 → `onClearContract()`; 그 외는 기존대로 type 설정 + signingType/
+    contractDetail 초기화. 빈 상태에서 유형을 고르면 기존 `setContractField`의
+    `{...(prev.contract ?? {}), type}`가 객체를 새로 만들어 "없음→계약 있음" 전환이 자연히 된다.
+  - Base용 `clearContract` 핸들러 신설: `draft`에서 `contract` 키 삭제. `handleSave`의
+    `updateBaseAttributes(id, draft)`가 `meta_players.base_attributes`를 **통째로 교체**(merge 아님,
+    `services/admin/playerAdminService.ts:96`)하므로 키 삭제만으로 DB에서도 사라진다 — FA풀
+    무계약 선수의 저장 형태(`base_attributes->'contract'` 없음)와 동일. 루트 `salary`는 건드리지
+    않음(feedback_salary_num_fields.md — 연봉은 사용자가 명시한 값만 저장; 필요하면 "salary (루트)"
+    입력에서 직접 비움).
+  - 호출부: Base `<ContractForm isEmpty={draft.contract == null} onClearContract={clearContract}>`,
+    CO `<ContractForm isEmpty={draft.custom_overrides?.contract == null} onClearContract={clearCoContract}>`
+    (기존 `clearCoContract`는 `co.contract`+`co.salary` 삭제 — 기존 "CO 계약 삭제" 버튼은 그대로 유지).
+
+**검증**: `npx tsc --noEmit` — 이 파일의 에러 9건은 전부 사전 존재(`git diff -U0`로 추가된 줄에
+해당 심볼 없음 확인). 그중 `setCareerHistoryMsg`(1343/1946/1978행, 선언 없음)는 HEAD 커밋에도
+그대로 있는 기존 버그 — `handleSelect` 마지막 줄이라 편집기 동작은 되지만 선수 선택마다
+콘솔에 ReferenceError가 남고, 커리어 CSV 적용 후 메시지 표시가 죽는다. 이번 범위 밖이라 미수정.
+
+**롤백 방법**: `ContractFormProps`의 두 prop과 `typeSelectRow`/`isEmpty` 분기 제거(드롭다운
+`value={contractType}`·옵션 목록만 남김), `clearContract` 핸들러 삭제, 두 호출부의 `isEmpty`/
+`onClearContract` 두 줄 제거.
+
+---
+
+## 2026-09-21 — 멀티 FA풀 계약 데이터 갭(429명) 1차 스크래핑 — 현재 계약 채움은 소수, 이력 데이터는 대량 확보
+
+**배경**: 보리스 디아우 방출 시 데드캡이 안 잡히는 버그를 조사하다가, `meta_players.base_attributes.
+contract`가 아예 없거나(169명) 있어도 `yearSeasons`가 없는(260명) 선수가 멀티 풀
+(`in_multi_pool=true`, 총 859명 중 429명, 약 50%)에 걸쳐 광범위하게 존재함을 확인. 사용자가
+slug를 채운 워크시트(`scripts/data/bbref_id_worksheet_contract_gaps_verified.csv`, 261명 slug
+확보)를 넘겨줘서 기존 `scripts/scrape_bbref_contracts.py`(2026-09-17 완료된 현역 527명
+스크래핑과 동일 스크립트)로 1차 수집을 실행.
+
+**변경 파일**:
+- `scripts/data/bbref_id_worksheet_contract_gaps.csv` (신규) — 429명 원본 목록(id/이름/bucket/
+  gap_type/base_team_id/draft_year/position, slug 컬럼은 사용자가 채우도록 비워둠).
+- `scripts/data/bbref_id_worksheet_contract_gaps_verified.csv` (사용자 작성, slug 261명분 채움 —
+  나머지 168명은 bbref에서 못 찾음 `#N/A`).
+- `scripts/scrape_bbref_contracts.py` — `WORKSHEETS` 목록에 위 verified CSV 추가(한 줄, 기존
+  두 워크시트는 그대로 유지되므로 원래 현역 527명 처리 동작에 영향 없음).
+
+**실행 결과** (`scripts/output/contract_gaps_scrape_run.log`, `--slug` 246명 지정 — 261명 중
+중복 slug 자동 dedup): 성공 241 / 페이지 타임아웃 실패 5(댄 이셀·데론 윌리엄스·마누 지노빌리·
+패티 밀스·푸르칸 코르크마즈 — 재시도하면 될 네트워크성 실패로 보임).
+
+**⚠ 중요 — 이번 실행으로 실제 "현재 계약"이 채워진 건 소수뿐**: 이 스크립트는 원래 현역
+선수용으로 설계돼 "bbref Current Contract 표에 2026-27 시즌이 있어야만" `contract`(현재 계약)를
+갱신하고, 없으면("FA/은퇴/미계약") `contract_history`만 채우고 `contract`는 기존값(대개 null)
+그대로 둔다(스크립트 467행 분기). 대상 429명 대부분이 이미 은퇴했거나(레전드 플래그
+`include_alltime`가 없어도 실제로는 은퇴한 경우가 다수 — 예: 데이비드 리, 루올 뎅) 2026-27
+계약이 없어서, 처리된 241명 중 187명이 이 분기를 탔다. 실행 전후 DB 집계:
+`no_contract` 169→168, `has_contract_no_yearseasons` 260→258, `has_contract_with_yearseasons`
+430→433 — **딱 3명만 실제로 해결됨**, 나머지는 `contract_history`(과거 실제 계약 이력)만
+정확하게 채워진 상태(보리스 디아우 확인: `contract` 여전히 null, `contract_history` 4건 생김).
+
+**후속(같은 날 밤, 마감 처리)**:
+- 타임아웃 실패 5명 `--force` 재수집 → 전원 성공.
+- ⚠ **함정 발견 — `--dry-run`도 체크포인트 JSON을 남기고, 실제 실행은 체크포인트가 있는 slug를
+  조용히 건너뛴다**(로그 첫 줄 "체크포인트 있어 스킵: 15명"). 실행 전 리허설로 돌린 dry-run 2명
+  (smithjr01 J.R. 스미스, leeda02 데이비드 리)이 그대로 스킵돼 DB에 아무것도 안 써졌고(이력·
+  draft_round/pick 전부 null), 나머지 13명은 09-17 원 실행 체크포인트(웨스트브룩·케빈 러브 등
+  현역, 이미 DB 반영돼 있던 선수)라 무해했다. 15명 전부 `--rebundle --slug …`(재수집 없이 체크포인트
+  raw를 DB에 반영, `apply_to_db`가 draft/current/history 모두 씀)로 적용 → 2명 복구 확인
+  (J.R. 스미스 이력 7묶음·R1#18, 데이비드 리 이력 4묶음·R1#30). **교훈: 리허설은 `--dry-run` 후
+  반드시 해당 slug 체크포인트를 지우거나 실제 실행에 `--force`를 붙일 것.**
+- 최종 집계(`in_multi_pool=true` 859명): `contract_history` 보유 512 / 없음 347 /
+  `contract`(현재 계약) null 168(의도적으로 미변경). 이력 없음 347의 구성 — 2026·27 드래프트
+  클래스 80(NBA 계약 이력이 없는 게 정상), 2018~2025 드래프티 172(대부분 첫 계약 중, 이력 비어
+  있는 게 정상), 2017 이전 베테랑 95(≈69명은 slug는 있지만 bbref에 그 시대 샐러리/서명 데이터
+  자체가 없음 — 래리 버드·빌 러셀·밥 쿠지 등, 재수집으로 못 채움; 나머지 ≈26명은 slug 없음).
+- **slug 자체가 없어 못 채운 82명**(other 61 / 신인 20 / 레전드 1)은
+  `scripts/data/bbref_id_worksheet_history_blocked.csv`로 추출 — slug가 채워지면 같은 스크립트로
+  이어서 처리 가능.
+
+**다음 단계(사용자 결정, 2026-09-22)**: 현재 계약(`contract`)은 **비워둔 채 유지**한다 — 과거
+계약을 그대로 현재 계약으로 쓰면 2026-27 현실과 괴리가 너무 커서, 이력을 재료로 **2026-27 시즌
+기준으로 새 계약을 부여하는 별도 로직**을 만들 예정(피크 시즌 연봉 단년 합성 아이디어는 폐기).
+수작업 확인 목록 `scripts/output/contract_history_manual_followup.md` 904건은 대부분 "< $Minimum"/
+투웨이/서명 근거 없는 시즌 — 검토는 후순위.
+
+**롤백 방법**: 이번 실행은 `contract_history`/`draft_round`/`draft_pick`만 추가했고 기존 `contract`
+필드는 거의 건드리지 않았음(3명 제외) — 되돌리려면 `scripts/output/bbref_contracts/<slug>.json`
+체크포인트의 `_backup_before.json`(있다면) 또는 이 로그의 처리 대상 246명 `id` 목록으로
+`base_attributes`에서 `contract_history` 키를 제거하면 됨.
+
+---
+
 ## 2026-09-21 — OVR 배지 골드 티어 그라디언트를 다이아 티어와 동일한 구조로 변경
 
 **배경**: 골드(80~89) 티어 배지가 5스톱/135° 그라디언트로 다이아(90~99) 티어의 3스톱/0° 구조와 시각적으로 이질적이라는 사용자 지적. 색상은 골드 팔레트를 유지하되 스톱 개수와 각도만 다이아와 동일하게 맞춤.

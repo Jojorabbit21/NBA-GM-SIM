@@ -40,6 +40,8 @@ export interface BoardPick {
     playerName: string;
     ovr: number;
     position: string;
+    /** [2026-09-22] 멀티 alternative 계약 모드에서 이 픽에 생성될 연봉(달러). 없으면 표시 안 함. */
+    salary?: number;
 }
 
 interface DraftBoardProps {

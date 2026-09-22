@@ -239,7 +239,7 @@ export function calcExtensionBATNA(
     marketConditions?: Record<FARole, MarketCondition>,
 ): number {
     const mc = marketConditions ?? NEUTRAL_MARKET;
-    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
+    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed, LEAGUE_FINANCIALS.SALARY_CAP);
     const tieredFloor = getTierFloor(player.ovr);
     const personality = buildExtensionPersonality(player, tendencySeed);
     const salaryAnchor = calcSalaryAnchorBATNA(player, personality);
@@ -356,7 +356,7 @@ export function buildExtensionDemand(
     marketConditions?: Record<FARole, MarketCondition>,
 ): ExtensionDemand {
     const mc = marketConditions ?? NEUTRAL_MARKET;
-    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
+    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed, LEAGUE_FINANCIALS.SALARY_CAP);
     const tieredFloor = getTierFloor(player.ovr);
     return _buildDemandFromFA(player, personality, batnaAAV, faDemand, isContender, tieredFloor, currentSeasonYear);
 }
@@ -381,7 +381,7 @@ export function initNegotiationState(
 
     // calcFADemand는 allPlayers 450명을 12회 정렬하는 무거운 연산 — 1회만 호출
     const mc       = marketConditions ?? NEUTRAL_MARKET;
-    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed);
+    const faDemand = calcFADemand(player, allPlayers, mc, currentSeasonYear, currentSeason, tendencySeed, LEAGUE_FINANCIALS.SALARY_CAP);
     const tieredFloor = getTierFloor(player.ovr);
 
     const batnaAAV = Math.max(

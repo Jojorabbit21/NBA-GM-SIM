@@ -24,6 +24,7 @@ import {
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 import { postDraftLotteryResult } from './postDraftLotteryNews';
 import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
+import { isEligibleForStandardPool } from './shared/contracts/draftSalaryScale.ts';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides';
 
 const DEFAULT_TOTAL_ROUNDS         = 10;
@@ -265,10 +266,18 @@ async function buildDraftSetup(
     // use_custom_overrides 설정을 따른다(오버라이드 없는 선수는 no-op이라 켜도 무해하지만,
     // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
     // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
-    let q = supabase.from('meta_players').select('id, position, base_attributes');
+    let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year');
     q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
     const { data: poolData } = await q;
-    const rawPlayers = (poolData ?? []).map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
+    // [2026-09-22] contract_mode 'standard' — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는
+    // 선수(은퇴 레전드 등)"는 풀에서 제외하고 당해 클래스(draft_year ≥ draft_year_max) 신인만 예외.
+    // 매핑 전 raw 단계에서 걸러야 한다(매퍼가 모든 선수에 플레이스홀더 contract를 박음).
+    // 클라이언트 services/multi/draftPoolCapacity.ts fetchDraftPoolPlayers()와 미러 — 둘 다 고칠 것.
+    const contractMode    = (league as any).contract_mode ?? 'standard';
+    const seasonStartYear = Number((league as any).virtual_season_year ?? new Date().getFullYear());
+    const poolRows = (poolData ?? []).filter((p: any) => contractMode !== 'standard'
+        || isEligibleForStandardPool(p.base_attributes?.contract, p.draft_year, seasonStartYear, draftYearMax));
+    const rawPlayers = poolRows.map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
 
     const poolIds = rawPlayers
         .filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax)

@@ -5,10 +5,10 @@ import { LEAGUE_FINANCIALS, SIGNING_EXCEPTIONS } from '../../utils/constants';
 import {
     buildMarketConditions,
     calcFADemand,
+    calcYOSBounds,
     evaluateFAOffer,
     determineFARole,
 } from './faValuation';
-import { isRoseRuleEligible } from './contractEligibility';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -152,14 +152,9 @@ function getSlotSalaryCap(
     }
 }
 
-function calcYOSBounds(yos: number, player?: Player): { maxAllowed: number; vetMin: number } {
-    const cap = LEAGUE_FINANCIALS.SALARY_CAP;
-    // 데릭 로즈 룰: YOS 0~6 + 루키 3시즌 내 수상 → 30%
-    const roseRule = yos < 7 && !!player && isRoseRuleEligible(player);
-    const maxAllowed = yos >= 10 ? cap * 0.35 : yos >= 7 ? cap * 0.30 : roseRule ? cap * 0.30 : cap * 0.25;
-    const vetMin     = yos >= 7  ? 3_000_000  : yos >= 4 ? 2_200_000  : 1_500_000;
-    return { maxAllowed, vetMin };
-}
+// [2026-09-22] 이 파일에 있던 calcYOSBounds 복제본(3단계 절대금액 vetMin) 삭제 — faValuation.ts의
+// 공용 calcYOSBounds(yos, salaryCap, player)를 import해 쓴다. 싱글플레이어 전용 파일이므로 캡은
+// LEAGUE_FINANCIALS.SALARY_CAP(전역 싱글턴)을 호출부에서 명시적으로 넘긴다.
 
 function buildContract(
     salary: number, years: number, type: PlayerContract['type'],
@@ -215,6 +210,7 @@ export function openFAMarket(
             currentSeasonYear,
             currentSeason,
             tendencySeed,
+            LEAGUE_FINANCIALS.SALARY_CAP,
         );
 
         const interestedTeamIds = calcInterestedTeamIds(teams, player, demand.faRole);
@@ -285,6 +281,7 @@ export function releasePlayerToMarket(
         currentSeasonYear,
         currentSeason,
         tendencySeed,
+        LEAGUE_FINANCIALS.SALARY_CAP,
     );
 
     const interestedTeamIds = calcInterestedTeamIds(teams, player, demand.faRole);
@@ -385,7 +382,7 @@ export function simulateCPUSigning(
             // 유지), 부족하면 예외 조항 슬롯을 순회. bestSlot이 undefined면 "캡스페이스로
             // 체결"이라는 뜻 — bestSlotFound로 "아예 오퍼 불가"와 구분한다.
             const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-            const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
+            const { maxAllowed, vetMin } = calcYOSBounds(yos, LEAGUE_FINANCIALS.SALARY_CAP, player);
 
             let bestSlot: SigningType | undefined;
             let bestSlotFound = false;
@@ -562,7 +559,7 @@ export function processUserOffer(
     }
 
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, LEAGUE_FINANCIALS.SALARY_CAP, player);
 
     // 슬롯 유효성 검증 — entry.prevTeamTenure로 Bird Rights 판정 (teamTenure 리셋 전 값).
     // signingType이 없으면 캡 스페이스(항상 가능)라 이 검증 자체를 건너뛴다.
@@ -671,7 +668,7 @@ export function processOfferSheet(
     }
 
     const yos = currentSeasonYear - (player.draftYear ?? currentSeasonYear);
-    const { maxAllowed, vetMin } = calcYOSBounds(yos, player);
+    const { maxAllowed, vetMin } = calcYOSBounds(yos, LEAGUE_FINANCIALS.SALARY_CAP, player);
 
     let slotCap: number;
     if (offer.signingType === undefined) {

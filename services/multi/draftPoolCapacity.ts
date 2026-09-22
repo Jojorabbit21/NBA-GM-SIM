@@ -7,6 +7,7 @@
 import { supabase } from '../supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../dataMapper';
 import { applyMetaPlayerPoolFilter } from './draftPoolQuery';
+import { isEligibleForStandardPool } from '../contracts/draftSalaryScale';
 import type { Player } from '../../types';
 
 export interface DraftPoolFilterParams {
@@ -15,6 +16,12 @@ export interface DraftPoolFilterParams {
     ovrMin:             number;
     ovrMax:             number;
     useCustomOverrides: boolean;
+    /** [2026-09-22] 'standard'면 "룸 시즌(seasonStartYear)을 포함하는 유효 계약 보유자 + 당해 드래프트
+     *  클래스(draft_year ≥ rookieClassYear) 신인"만 풀에 남긴다(services/contracts/draftSalaryScale.ts의
+     *  isEligibleForStandardPool). 미지정/'alternative'면 필터 없음. 서버 buildDraftSetup()과 미러. */
+    contractMode?:      'standard' | 'alternative';
+    seasonStartYear?:   number;
+    rookieClassYear?:   number;
 }
 
 /** 드래프트에 필요한 총 픽 수 = 참가팀 수 × 라운드 수. */
@@ -30,13 +37,20 @@ export function getRequiredDraftPicks(teamCount: number, totalRounds: number): n
 export async function fetchDraftPoolPlayers(params: DraftPoolFilterParams): Promise<Player[]> {
     let query = supabase
         .from('meta_players')
-        .select('id, position, base_attributes, tendencies');
+        .select('id, position, base_attributes, tendencies, draft_year');
     query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax);
 
     const { data, error } = await query;
     if (error) throw new Error(`드래프트 풀 조회 실패: ${error.message}`);
 
-    return (data as any[] ?? [])
+    // [2026-09-22] standard 계약 모드 — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는
+    // 선수(은퇴 레전드 등)"는 풀에서 제외하고 당해 클래스 신인만 예외로 둔다. 매핑 전에 raw로 거른다
+    // (매퍼가 모든 선수에 플레이스홀더 contract를 박아 매핑 후엔 판정 불가).
+    const rows = (data as any[] ?? []).filter(r => params.contractMode !== 'standard'
+        || isEligibleForStandardPool(r.base_attributes?.contract, r.draft_year,
+            params.seasonStartYear ?? new Date().getFullYear(), params.rookieClassYear ?? params.draftYearMax));
+
+    return rows
         .map(r => mapRawPlayerToRuntimePlayer(r, params.useCustomOverrides, true))
         .filter(p => p.ovr >= params.ovrMin && p.ovr <= params.ovrMax);
 }

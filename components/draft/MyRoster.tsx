@@ -3,6 +3,7 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
+import { formatMoney } from '../../utils/formatMoney';
 
 interface MyRosterProps {
     players: Player[];
@@ -12,12 +13,22 @@ interface MyRosterProps {
      * 전용, 싱글/루키 드래프트뷰는 기존처럼 아예 렌더링 안 함). */
     myAutoPick?: boolean;
     onToggleAutoPick?: (next: boolean) => void;
+    /** [2026-09-22] playerId → 생성 연봉(달러). 멀티 alternative 계약 모드에서만 전달, 행 우측에 표시. */
+    salaries?: Record<string, number>;
 }
 
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const RESERVES = 10;
 
-const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, myAutoPick, onToggleAutoPick }) => {
+const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, myAutoPick, onToggleAutoPick, salaries }) => {
+    const salaryOf = (id: string) => {
+        const v = salaries?.[id];
+        return v != null ? <span className="ml-auto pl-2 shrink-0 text-sm text-slate-400">{formatMoney(v)}</span> : null;
+    };
+    // [2026-09-22] 팀 토탈 — salaries가 전달된 경우(alternative 모드)에만 최하단 행으로 표시. 현재 로스터에 있는 선수 합계.
+    const totalSalary = salaries
+        ? players.reduce((sum, p) => sum + (salaries[p.id] ?? 0), 0)
+        : null;
     // 루키 드래프트 모드: 기존 로스터 + 새 드래프트 픽 합산
     const allPlayers = existingRoster ? [...existingRoster, ...players] : players;
     const newPickIds = existingRoster ? new Set(players.map(p => p.id)) : null;
@@ -102,6 +113,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                                 <>
                                     <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
                                     <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
+                                    {salaryOf(player.id)}
                                 </>
                             ) : (
                                 <span className="text-sm text-slate-700 italic">비어있음</span>
@@ -128,6 +140,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                                     </span>
                                     <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
                                     <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
+                                    {salaryOf(player.id)}
                                 </>
                             ) : (
                                 <>
@@ -138,6 +151,14 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                         </div>
                     );
                 })}
+
+                {/* 팀 토탈 샐러리 — alternative 계약 모드 전용, 스크롤해도 보이도록 하단 고정 */}
+                {totalSalary != null && (
+                    <div className="sticky bottom-0 shrink-0 px-3 h-10 flex items-center justify-between border-t border-slate-800/50 bg-slate-900">
+                        <span className="text-sm font-black uppercase text-slate-400">팀 토탈</span>
+                        <span className="text-sm font-bold text-white">{formatMoney(totalSalary)}</span>
+                    </div>
+                )}
             </div>
         </div>
     );

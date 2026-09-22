@@ -22,6 +22,7 @@ import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
 import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
+import { generateDraftContracts } from './shared/draftContracts';
 import { SIM_CONFIG } from './shared/game/config/constants';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
 import type { TacticalSliders } from './shared/types/tactics';
@@ -524,7 +525,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, contract_mode, draft_salary_scale, salary_cap_amount')
         .eq('id', room.league_id)
         .single();
 
@@ -557,6 +558,13 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // (서버 부팅 이후 관리자가 튜닝했을 수 있으므로) — 실패해도 하드코딩 폴백으로 진행.
     await refetchGameConfig().catch(err => console.error('[finalize] refetchGameConfig failed:', err));
     await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+
+    // ── [2026-09-22] 드래프트 계약 생성 ──────────────────────────────────────────
+    // draft_picks(round/slot) → room_player_state.contract. contract_mode 'alternative'면 전원 라운드
+    // 스케일 1년 계약, 'standard'면 유효 계약 없는 픽(당해 클래스 신인)만 루키 스케일/미니멈.
+    // meta_players는 건드리지 않는다. 실패해도 리그 시작은 계속(계약 없는 선수는 매퍼 플레이스홀더).
+    await generateDraftContracts(supabase as any, roomId, league as any, leagueTeams.length)
+        .catch(err => console.error('[finalize] generateDraftContracts failed:', err));
     await applyLeagueNormalization(roomId, league, leagueTeams.length)
         .catch(err => console.error('[finalize] applyLeagueNormalization failed:', err));
 
