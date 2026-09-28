@@ -182,6 +182,7 @@ const AdminLeagueManagerPage: React.FC = () => {
             {isCreateOpen && userId && (
                 <CreateLeagueModal
                     userId={userId}
+                    isAdmin // 이 페이지 자체가 AdminGuard 뒤에 있어 항상 어드민 계정임
                     onClose={() => setIsCreateOpen(false)}
                     onCreated={() => {
                         setIsCreateOpen(false);

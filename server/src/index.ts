@@ -290,7 +290,7 @@ async function handleSimOverride(req: Request): Promise<Response> {
     if (!room) return json({ error: 'Room not found' }, 404);
     const { data: league } = await supabase.from('leagues').select('admin_user_id').eq('id', room.league_id).single();
     if (!league) return json({ error: 'League not found' }, 404);
-    if (league.admin_user_id !== userId) return json({ error: 'Forbidden' }, 403);
+    if (league.admin_user_id !== userId && userId !== ADMIN_USER_ID) return json({ error: 'Forbidden' }, 403);
 
     // 관리자 수동 시뮬 오버라이드는 항상 "지금 바로 시작"으로 처리 (원래 예정 시각 무시)
     const result = await simWorkerPool.runSimulationInWorker(roomId, gameId, true);

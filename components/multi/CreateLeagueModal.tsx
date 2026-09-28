@@ -44,6 +44,9 @@ function pickRandomTeamSlugs(count: number): string[] {
 
 interface CreateLeagueModalProps {
     userId: string;
+    /** 토너먼트(온라인 토너먼트) 생성은 전역 어드민 계정만 허용 — DB RLS(l_admin_write)와
+     * 동일한 제약을 클라이언트에서도 미리 막아 불필요한 요청/에러 메시지를 없앤다. */
+    isAdmin: boolean;
     onClose:  () => void;
     onCreated: (leagueId: string) => void;
 }
@@ -126,32 +129,36 @@ const MATCH_FORMAT_OPTIONS: { value: MatchFormat; label: string }[] = [
 ];
 
 function ToggleBtn({
-    active, onClick, children, className = '',
+    active, onClick, children, className = '', disabled = false, title,
 }: {
     active: boolean;
     onClick: () => void;
     children: React.ReactNode;
     className?: string;
+    disabled?: boolean;
+    title?: string;
 }) {
     return (
         <button
             type="button"
             onClick={onClick}
+            disabled={disabled}
+            title={title}
             className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${
                 active
                     ? 'bg-indigo-600 text-white'
                     : 'bg-slate-800 text-slate-400 hover:text-white'
-            } ${className}`}
+            } ${disabled ? 'opacity-40 cursor-not-allowed hover:text-slate-400' : ''} ${className}`}
         >
             {children}
         </button>
     );
 }
 
-const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, onCreated }) => {
+const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, onClose, onCreated }) => {
     // ── 공통 ──────────────────────────────────────────────────────────────────
     const [name,    setName]    = useState('');
-    const [type,    setType]    = useState<LeagueType>('tournament');
+    const [type,    setType]    = useState<LeagueType>(isAdmin ? 'tournament' : 'main_league');
     const [maxTeams, setMaxTeams] = useState(8);
 
     // ── 토너먼트 전용 ──────────────────────────────────────────────────────────
@@ -269,11 +276,15 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
     const handleRandomizeTeams = () => setSelectedTeamSlugs(pickRandomTeamSlugs(teamPickCount));
 
     const handleTypeChange = (t: LeagueType) => {
+        if (t === 'tournament' && !isAdmin) return;
         setType(t);
         setMaxTeams(t === 'tournament' ? 8 : 30);
     };
 
     const handleSubmit = async () => {
+        if (type === 'tournament' && !isAdmin) {
+            setErr('토너먼트는 어드민 계정만 생성할 수 있습니다'); return;
+        }
         const trimName = name.trim();
         if (trimName.length < 1 || trimName.length > 30) {
             setErr('리그 이름은 1~30자여야 합니다'); return;
@@ -564,6 +575,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, onClose, 
                                         key={t}
                                         active={type === t}
                                         onClick={() => handleTypeChange(t)}
+                                        disabled={t === 'tournament' && !isAdmin}
+                                        title={t === 'tournament' && !isAdmin ? '토너먼트는 어드민 계정만 생성할 수 있습니다' : undefined}
                                         className="py-2 text-sm"
                                     >
                                         {t === 'tournament' ? '토너먼트' : '메인리그'}

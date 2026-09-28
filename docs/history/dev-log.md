@@ -35,6 +35,214 @@
 
 ---
 
+## 2026-09-28 (4) — Fly.io 서버(드래프트 시작/로터리/시뮬 오버라이드)도 전역 어드민 예외 반영 + 배포
+
+**배경**: (3) 항목 "한계" 절에 남겨둔 후속 작업 — 사용자가 "fly 배포해줘"로 명시 요청.
+`server/src/startDraft.ts`(`handleStartDraft`/`handleRunLottery`)와
+`server/src/index.ts`(`handleSimOverride`)의 `league.admin_user_id !== userId → 403
+Forbidden` 체크에 전역 어드민 예외를 추가하고 Fly.io(`basketballgm-app-server`)에 배포.
+
+**변경 파일**:
+- `server/src/startDraft.ts` — 상단에 `ADMIN_USER_ID` 상수 추가(index.ts와 동일 값).
+  `handleStartDraft`(57번째 줄 부근)·`handleRunLottery`(102번째 줄 부근) 두 곳의 Forbidden
+  조건에 `&& userId !== ADMIN_USER_ID` 추가
+- `server/src/index.ts` — `handleSimOverride`(293번째 줄 부근) 동일 조건 추가 (기존
+  `ADMIN_USER_ID` 상수 재사용, `/admin/users*`에서 이미 쓰던 것)
+
+**Before**:
+```ts
+if (league.admin_user_id !== userId) return json({ error: 'Forbidden' }, 403);
+```
+
+**After**:
+```ts
+if (league.admin_user_id !== userId && userId !== ADMIN_USER_ID) return json({ error: 'Forbidden' }, 403);
+```
+
+**검증**: `npx tsc --noEmit`(server 디렉터리) — 기존에도 있던 Bun 타입/narrowing 에러 몇 개만
+그대로 남고 이번에 수정한 줄에서는 새 에러 없음 확인. `flyctl deploy -a
+basketballgm-app-server` 성공(버전 161→162), 배포 후 `GET /` 헬스체크
+`{"ok":true,...}` 200 확인.
+
+**롤백 방법**: 세 곳의 `&& userId !== ADMIN_USER_ID` 조건을 제거하고 `flyctl deploy -a
+basketballgm-app-server`로 재배포(또는 `flyctl releases`에서 버전 161로 rollback).
+
+**이걸로 완전히 정리됨**: 2026-09-28의 (1)~(4) 네 항목으로 "전역 어드민이 모든 리그를
+생성 제한 + 관리(삭제/설정/드래프트 시작/로터리/시뮬 오버라이드까지)할 수 있게" 요청이
+전부 반영됨.
+
+---
+
+## 2026-09-28 (3) — 전역 어드민이 남의 리그 "설정 화면"에도 들어가 편집 가능하게 확장
+
+**배경**: (2) 항목으로 `leagues` 테이블 자체는 어드민 전권을 줬지만, 실제로
+`LeagueSettingsView.tsx`(세션 안 설정 화면)에 들어가 보면 `isAdmin =
+league.admin_user_id === userId`로만 판정해서 전역 어드민이 남의 리그에 들어가면 즉시
+`/season`으로 리다이렉트당하고(편집 버튼 자체가 안 보임), 설령 우회해도 저장 시
+`rooms`/`league_teams`/`games` 등 여러 테이블 RLS가 전부 "그 리그를 만든 사람 본인"만
+허용이라 실패했을 것. 사용자가 "남의 리그에 들어가도 편집 버튼이 보이는것도 가능하게
+해줘"라고 명시 요청 → LeagueSettingsView가 실제로 거치는 모든 쓰기 경로에 전역 어드민
+예외를 추가.
+
+**변경 파일**:
+- `migrations/allow_global_admin_manage_league_settings.sql` (신규, DB — `apply_migration`으로 즉시 적용 완료)
+  1. `is_global_admin()` 헬퍼 함수 신설(`auth.uid() = <ADMIN_USER_ID>`)
+  2. `my_room_ids()` / `accessible_room_ids()`(방 접근 범위를 정하는 핵심 헬퍼, `rooms`/
+     `room_members`/`games`/`draft_picks`/`league_events`/`league_virtual_days` 등 16개
+     SELECT 정책이 공유) — 전역 어드민이면 멤버 여부와 무관하게 전체 room 반환하도록 UNION 추가
+  3. `rooms` / `league_teams` / `room_members` / `games` 4개 테이블에 각각
+     `<table>_global_admin_manage`(FOR ALL, `is_global_admin()`) permissive 정책 추가.
+     기존 `<table>_admin_write`류(리그 방장 본인 제약) 정책은 그대로 유지 — OR로 합쳐짐
+  4. RPC `get_room_member_emails` / `personal_draft_cleanup_room` — "호출자가 이 리그의
+     admin_user_id인가"만 보던 내부 검사에 `is_global_admin()` 예외 추가
+- `views/multi/league/LeagueSettingsView.tsx` — `ADMIN_USER_ID` 상수 추가,
+  `isAdmin = league.admin_user_id === userId` → `|| userId === ADMIN_USER_ID` 추가
+  (`LeagueSettingsView.tsx:143` 부근). 이 값 하나로 화면 진입 가드(리다이렉트)·편집 버튼
+  노출·저장 로직이 전부 같이 풀림(별도 분기 추가 없음).
+
+**Before** (`LeagueSettingsView.tsx`):
+```ts
+const isAdmin = !!(league && userId && league.admin_user_id === userId);
+```
+
+**After**:
+```ts
+const isAdmin = !!(league && userId && (league.admin_user_id === userId || userId === ADMIN_USER_ID));
+```
+
+**검증**: `apply_migration` 성공 확인. `pg_policies`에서 `rooms`/`league_teams`/
+`room_members`/`games`/`leagues` 5개 테이블에 `*_global_admin_manage` 정책이 모두 생성된
+것 확인. `npx tsc --noEmit`로 `LeagueSettingsView.tsx`/`leagueService.ts` 타입 에러 없음 확인.
+
+**롤백 방법**:
+- DB: `DROP POLICY r_global_admin_manage ON public.rooms; DROP POLICY league_teams_global_admin_manage ON public.league_teams; DROP POLICY rm_global_admin_manage ON public.room_members; DROP POLICY g_global_admin_manage ON public.games;` 후,
+  `my_room_ids()`/`accessible_room_ids()`/`get_room_member_emails()`/`personal_draft_cleanup_room()`을 이 파일에 적어둔 "전역 어드민 예외 추가 전" 원본 정의(직전 두 항목의 migrations 파일 또는 이 항목의 함수 본문에서 `is_global_admin()` 관련 줄만 제거)로 재적용.
+- 코드: `LeagueSettingsView.tsx`의 `isAdmin` 정의를 Before 블록으로 되돌리고 `ADMIN_USER_ID` 상수 제거.
+
+**한계 (아직 안 됨)**: 이 화면에서 트리거하는 동작 중 **Fly.io Bun 서버**(`server/src/index.ts`,
+`server/src/startDraft.ts`)를 거치는 3가지 — 드래프트 수동 시작(`startDraft`→`/start-draft`),
+로터리 추첨(`runDraftLottery`→`/run-lottery`), 경기 수동 시뮬 오버라이드(`simGameOverride`→
+`/sim-override`) — 는 여전히 `league.admin_user_id !== userId → 403 Forbidden`으로 하드코딩돼
+있어 전역 어드민도 남의 리그에서는 막힌다. 이건 별도 배포가 필요한 서버 코드라 이번엔 건드리지
+않음 — 필요하면 후속 작업으로 진행.
+
+---
+
+## 2026-09-28 (2) — 전역 어드민이 남이 만든 리그도 관리(삭제 등)할 수 있게 RLS 추가
+
+**배경**: 위 항목(2026-09-28)에서 무단 생성 토너먼트 2건을 지우려는 과정에서, 사이트 전역
+어드민(`admin@mail.com`)조차 AdminLeagueManagerPage에서 본인이 만들지 않은 리그를 삭제할 수
+없다는 걸 발견(`leagues.l_admin_write`가 `admin_user_id = auth.uid()`, 즉 "그 리그를 만든
+사람 본인"만 UPDATE/DELETE 허용 — 전역 어드민 개념과 무관). 결국 Supabase MCP(서비스 권한)로
+직접 삭제했음. 사용자가 "어드민은 모든 리그 관리 가능하게 해야해"라고 명시적으로 요청 → 전역
+어드민 UUID에 한해 소유자 제약 없이 리그를 관리(생성/수정/삭제)할 수 있는 permissive RLS 정책을
+추가하고, 앱 서비스 함수의 과도한 필터도 같이 고침.
+
+**변경 파일**:
+- `migrations/allow_global_admin_manage_leagues.sql` (신규, DB RLS — `apply_migration`으로 즉시 적용 완료)
+  — `leagues` 테이블에 `l_global_admin_manage` 정책(FOR ALL, `auth.uid() = <ADMIN_USER_ID>`) 추가.
+  기존 `l_admin_write`(방장 본인 제약)는 그대로 유지 — 두 정책이 OR로 합쳐져 일반 유저는 기존과
+  동일하게 제한되고 전역 어드민만 추가로 모든 행에 접근 가능.
+- `services/multi/leagueService.ts` — 상단에 `ADMIN_USER_ID` 상수 추가. `deleteLeague()`가
+  호출자가 전역 어드민이면 `admin_user_id` 필터를 걸지 않도록 수정(기존엔 항상
+  `.eq('admin_user_id', userId)`를 걸어서, 관리자가 호출해도 본인 소유가 아닌 행은 0건 삭제로
+  조용히 실패했음).
+
+**Before** (`leagueService.ts` deleteLeague):
+```ts
+export const deleteLeague = async (leagueId: string, userId: string) => {
+    const { error } = await supabase
+        .from('leagues')
+        .delete()
+        .eq('id', leagueId)
+        .eq('admin_user_id', userId);
+    ...
+};
+```
+
+**After**:
+```ts
+export const deleteLeague = async (leagueId: string, userId: string) => {
+    let query = supabase.from('leagues').delete().eq('id', leagueId);
+    if (userId !== ADMIN_USER_ID) query = query.eq('admin_user_id', userId);
+    const { error } = await query;
+    ...
+};
+```
+
+**검증**: `apply_migration` 성공 확인. `pg_policies`로 `leagues` 테이블에 `l_admin_write` /
+`l_global_admin_manage` / `l_select_all` 3개 정책이 의도대로 공존하는 것 확인.
+
+**롤백 방법**:
+- DB: `DROP POLICY l_global_admin_manage ON public.leagues;`
+- 코드: `leagueService.ts`의 `ADMIN_USER_ID` 상수와 `deleteLeague()` 분기를 이전 Before 블록으로 되돌림.
+
+**한계**: 이번 변경은 `leagues` 테이블(및 그로부터 FK CASCADE되는 rooms/room_members/
+league_teams 등)에 대한 어드민 전권만 다룬다. `LeagueSettingsView.tsx`처럼 "그 리그의
+admin_user_id === 현재 유저"로 UI 자체를 게이팅하는 화면(리그 설정 직접 편집 등)은 여전히
+전역 어드민이 남의 리그에 들어가도 편집 UI가 보이지 않는다 — 그 영역까지 열려면 별도 작업 필요.
+
+---
+
+## 2026-09-28 — 온라인 토너먼트 생성을 전역 어드민 계정으로 제한 + 무단 생성 토너먼트 2건 삭제
+
+**배경**: 사용자가 온라인 토너먼트 목록에서 본인이 만들지 않은 '스필이'/'스핑' 2건을 발견 →
+조사 결과 `ghwn3256@naver.com`(닉네임 "클레이", 가입 직후) 계정이 홈 화면의 "새 리그" 버튼으로
+직접 생성한 것으로 확인(admin_user_id가 해당 유저). 원인: `leagues.admin_user_id`는 "그 리그를
+만든 사람(방장)"일 뿐 사이트 전역 어드민과 무관했고, 기존 RLS 정책(`l_admin_write`, FOR ALL,
+`admin_user_id = auth.uid()`)이 "본인을 admin_user_id로 지정해 INSERT"하는 모든 로그인 유저를
+허용하고 있었음 — 클라이언트(`CreateLeagueModal`)에도 어드민 체크가 전혀 없었음. 요청에 따라
+토너먼트(`type='tournament'`) 생성만 전역 어드민(`admin@mail.com`, UUID
+`d2f6a469-9182-4dac-a098-278e6e758c79` — project_admin_account.md)으로 제한, 메인리그
+생성은 기존대로 누구나 허용 유지. 무단 생성된 두 토너먼트는 요청대로 DB에서 삭제.
+
+**변경 파일**:
+- `migrations/restrict_tournament_creation_to_admin.sql` (신규, DB RLS — Supabase MCP `apply_migration`으로 즉시 적용 완료)
+  — `leagues.l_admin_write` 정책의 `WITH CHECK`에 `type <> 'tournament' OR admin_user_id = <ADMIN_USER_ID>` 추가
+- `components/multi/CreateLeagueModal.tsx` — `isAdmin: boolean` prop 추가. `type` 초기값을
+  `isAdmin ? 'tournament' : 'main_league'`로 분기. `handleTypeChange`에서 `t==='tournament' && !isAdmin`이면 무시.
+  `handleSubmit` 최상단에 동일 가드(에러 메시지 표시). `ToggleBtn`에 `disabled`/`title` prop 추가하고
+  토너먼트 토글 버튼에 `disabled={!isAdmin}` + 안내 툴팁 적용.
+- `views/home/InlineLeagueList.tsx` — `ADMIN_USER_ID` 상수 추가(App.tsx 등과 동일 값),
+  `CreateLeagueModal`에 `isAdmin={userId === ADMIN_USER_ID}` 전달.
+- `pages/AdminLeagueManagerPage.tsx` — 이 페이지는 이미 `AdminGuard` 뒤에 있으므로 `isAdmin` 고정 전달.
+- DB 데이터: `leagues` 테이블에서 `스핑`(`ba63ddae-346f-4d49-a1c0-4694060c715a`),
+  `스필이`(`992dc8de-1d1a-4aca-8e8b-7175f178955b`) 두 행 DELETE. 둘 다 `status='recruiting'`(미진행)이라
+  `rooms`/`room_members`/`league_teams`/`draft_picks` 등은 전부 FK CASCADE로 함께 삭제됨(수동 정리 불필요 확인).
+
+**Before** (RLS, `leagues.l_admin_write`):
+```sql
+CREATE POLICY l_admin_write ON public.leagues
+    FOR ALL
+    USING (admin_user_id = auth.uid())
+    WITH CHECK (admin_user_id = auth.uid());
+```
+
+**After**:
+```sql
+CREATE POLICY l_admin_write ON public.leagues
+    FOR ALL
+    USING (admin_user_id = auth.uid())
+    WITH CHECK (
+        admin_user_id = auth.uid()
+        AND (
+            type <> 'tournament'
+            OR admin_user_id = 'd2f6a469-9182-4dac-a098-278e6e758c79'::uuid
+        )
+    );
+```
+
+**검증**: 마이그레이션 `apply_migration` 성공 응답 확인. 삭제 쿼리 `RETURNING`으로 두 행 삭제 확인,
+`rooms` 잔존 0건 확인. tsc 미실행(순수 prop 추가/조건문이라 타입 영향 적음) — 다음 로컬 빌드 시 확인 권장.
+
+**롤백 방법**:
+- DB: 위 Before SQL 블록을 그대로 다시 `apply_migration`(또는 SQL 편집기)으로 실행하면 원복.
+- 코드: 이 커밋을 revert하거나, `CreateLeagueModal`의 `isAdmin` prop과 관련 가드 3곳(`type` 초기값,
+  `handleTypeChange`, `handleSubmit`)을 제거하고 호출부 2곳의 `isAdmin` prop을 삭제.
+- 삭제된 두 토너먼트 데이터는 복구 불가(백업 없음) — 필요 시 사용자에게 재생성 요청.
+
+---
+
 ## 2026-09-22 — 멀티 드래프트 완료 후 별도 로더 화면 제거 → 드래프트 화면 유지 + 헤더 소프트 게이트
 
 **배경**: 드래프트가 끝나면 `MultiDraftView`가 `status === 'completed'`에서 `DraftCompletedScreen`(빈 화면 +

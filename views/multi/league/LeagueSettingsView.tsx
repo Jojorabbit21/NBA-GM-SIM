@@ -29,6 +29,12 @@ import type { Game } from '../../../types';
 import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
 import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
 
+// App.tsx/AdminGuard.tsx 등과 동일한 전역 어드민 계정. 이 화면의 isAdmin은 원래 "그 리그를
+// 만든 사람(league.admin_user_id) 본인"만 뜻했는데, 전역 어드민도 남의 리그 설정에 들어가
+// 관리할 수 있어야 한다는 요청으로 여기에 포함시켰다(DB RLS는
+// migrations/allow_global_admin_manage_league_settings.sql이 짝을 이룸).
+const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
+
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
     const k = normOverride?.k;
@@ -140,7 +146,7 @@ const LeagueSettingsView: React.FC = () => {
     const { league, room, members, leagueTeams, isLoading, error, reload } = useLeagueContext();
 
     const userId      = session?.user?.id ?? null;
-    const isAdmin     = !!(league && userId && league.admin_user_id === userId);
+    const isAdmin     = !!(league && userId && (league.admin_user_id === userId || userId === ADMIN_USER_ID));
     const isInProgress = league?.status === 'in_progress';
     // [2026-09-22] 드래프트 계약 규칙은 드래프트 시작(drafting) 이후엔 이미 풀/계약에 반영됐으므로 recruiting에서만 편집.
     const contractSettingsEditable = league?.status === 'recruiting';
