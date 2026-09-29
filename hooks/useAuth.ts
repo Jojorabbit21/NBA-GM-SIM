@@ -6,7 +6,33 @@ export const useAuth = () => {
     const [session, setSession] = useState<any | null>(null);
     const [isGuestMode, setIsGuestMode] = useState(false);
     const [authLoading, setAuthLoading] = useState(true);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [isAdminLoading, setIsAdminLoading] = useState(true);
     const isLoggingOutRef = useRef(false);
+
+    // 전역 어드민 여부 — profiles.is_admin 단일 출처(DB의 is_global_admin()과 동일 판별
+    // 기준, migrations/dynamic_global_admin_refactor.sql). 예전엔 하드코딩된
+    // UUID(d2f6a469-...)를 각 컴포넌트마다 비교했는데, 여기 한 곳에서만 조회해 하위로
+    // 내려준다 — 나중에 어드민을 동적으로 추가/해제해도 클라이언트 코드는 손댈 필요 없음.
+    useEffect(() => {
+        let cancelled = false;
+        const uid = session?.user?.id;
+        if (!uid) { setIsAdmin(false); setIsAdminLoading(false); return; }
+        setIsAdminLoading(true);
+        (async () => {
+            try {
+                const { data } = await supabase.from('profiles').select('is_admin').eq('id', uid).maybeSingle();
+                if (cancelled) return;
+                setIsAdmin(data?.is_admin === true);
+            } catch {
+                if (cancelled) return;
+                setIsAdmin(false);
+            } finally {
+                if (!cancelled) setIsAdminLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [session?.user?.id]);
 
     // --- Auth Listener ---
     useEffect(() => {
@@ -91,6 +117,8 @@ export const useAuth = () => {
         isGuestMode,
         setIsGuestMode,
         authLoading,
+        isAdmin,
+        isAdminLoading,
         handleLogout
     };
 };

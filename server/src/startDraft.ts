@@ -14,7 +14,7 @@
  * 성공하므로). draft_config가 아직 없는 레거시/예외 경로는 _runStartDraft()로 폴백한다.
  */
 import { supabase } from './supabaseAdmin';
-import { verifyToken } from './auth';
+import { verifyToken, isGlobalAdmin } from './auth';
 import { RoomManager } from './RoomManager';
 import {
     generateSnakePickOrder,
@@ -31,11 +31,6 @@ const DEFAULT_TOTAL_ROUNDS         = 10;
 const DEFAULT_PICK_DURATION_SEC    = 30;
 const DEFAULT_AUTO_PICK_AFTER_MISSES = 1;
 const POOL_QUERY_CHUNK             = 100;
-
-// 전역 어드민 계정(admin@mail.com) — index.ts의 ADMIN_USER_ID와 동일한 값. 리그별
-// admin_user_id(그 리그를 만든 사람) 본인이 아니어도 전역 어드민은 드래프트 시작/로터리
-// 추첨을 대신 실행할 수 있어야 한다는 요청으로 추가.
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
 
 // ── HTTP POST /start-draft 핸들러 ─────────────────────────────────────────────
 
@@ -58,9 +53,9 @@ export async function handleStartDraft(req: Request): Promise<Response> {
         .eq('id', body.leagueId)
         .single();
 
-    if (!league)                                                            return json({ error: 'league not found' }, 404);
-    if (league.admin_user_id !== userId && userId !== ADMIN_USER_ID)        return json({ error: 'Forbidden' }, 403);
-    if (league.status !== 'recruiting')                                     return json({ error: 'league not in recruiting status' }, 400);
+    if (!league)                                                     return json({ error: 'league not found' }, 404);
+    if (league.admin_user_id !== userId && !(await isGlobalAdmin(userId))) return json({ error: 'Forbidden' }, 403);
+    if (league.status !== 'recruiting')                              return json({ error: 'league not in recruiting status' }, 400);
 
     const { data: room } = await supabase
         .from('rooms')
@@ -103,9 +98,9 @@ export async function handleRunLottery(req: Request): Promise<Response> {
         .eq('id', body.leagueId)
         .single();
 
-    if (!league)                                                     return json({ error: 'league not found' }, 404);
-    if (league.admin_user_id !== userId && userId !== ADMIN_USER_ID) return json({ error: 'Forbidden' }, 403);
-    if (league.status !== 'recruiting')                              return json({ error: 'league not in recruiting status' }, 400);
+    if (!league)                                                            return json({ error: 'league not found' }, 404);
+    if (league.admin_user_id !== userId && !(await isGlobalAdmin(userId)))  return json({ error: 'Forbidden' }, 403);
+    if (league.status !== 'recruiting')                                     return json({ error: 'league not in recruiting status' }, 400);
 
     const { data: lotteryResult, error: lotteryErr } = await supabase.rpc('run_draft_lottery', {
         p_room_id:  body.roomId,

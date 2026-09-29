@@ -19,9 +19,11 @@ export interface AdminUserRow {
     avatar_url: string | null;
     created_at: string;
     updated_at: string;
+    is_admin: boolean;
 }
 
-export type AdminUserEditableFields = Omit<AdminUserRow, 'id' | 'created_at' | 'updated_at'>;
+// is_admin은 이 일반 프로필 편집 경로가 아니라 set_global_admin RPC를 통해서만 바뀐다.
+export type AdminUserEditableFields = Omit<AdminUserRow, 'id' | 'created_at' | 'updated_at' | 'is_admin'>;
 
 async function authHeader(): Promise<Record<string, string>> {
     const token = (await supabase.auth.getSession()).data.session?.access_token;

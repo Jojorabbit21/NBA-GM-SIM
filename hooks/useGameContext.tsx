@@ -14,6 +14,11 @@ export interface GameContextValue {
     session: Session | null;
     isGuestMode: boolean;
     authLoading: boolean;
+    // 전역 어드민 여부 — profiles.is_admin 조회(useAuth.ts) 결과. 세션이 바뀌면 다시
+    // 조회하는 동안 isAdminLoading이 true — AdminGuard 등에서 로딩 중 섣부른 리다이렉트를
+    // 막는 데 사용.
+    isAdmin: boolean;
+    isAdminLoading: boolean;
     logout: () => void;
 
     // 게임 데이터 (useGameData 전체)

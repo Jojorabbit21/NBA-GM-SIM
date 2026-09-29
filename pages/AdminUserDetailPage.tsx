@@ -9,8 +9,6 @@ import {
     type AdminLeagueHistoryRow, type AdminTournamentHistoryRow,
 } from '../services/admin/userAdminService';
 
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div>
         <label className="text-xs text-slate-400 ko-normal block mb-1.5">{label}</label>
@@ -110,7 +108,7 @@ const AdminUserDetailPage: React.FC = () => {
         });
     }, [user]);
 
-    const isSelf = userId === ADMIN_USER_ID;
+    const isSelf = user?.is_admin === true;
 
     const handleSave = async () => {
         if (!userId) return;

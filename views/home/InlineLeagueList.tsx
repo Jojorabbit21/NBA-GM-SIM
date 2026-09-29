@@ -9,10 +9,7 @@ import type { LeagueListEntry } from '../../services/multi/roomQueries';
 import CreateLeagueModal from '../../components/multi/CreateLeagueModal';
 import { TeamSelectModal } from '../../components/multi/TeamSelectModal';
 import { STATUS_LABEL } from '../multi/league/leagueConstants';
-
-// App.tsx/AdminGuard.tsx 등과 동일한 전역 어드민 계정 — 토너먼트(온라인 토너먼트) 생성은
-// 이 계정만 허용한다(DB RLS l_admin_write와 동일 제약, migrations/restrict_tournament_creation_to_admin.sql).
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
+import { useGame } from '../../hooks/useGameContext';
 
 type Tab = 'tournament' | 'main_league';
 
@@ -33,6 +30,7 @@ const TH: React.FC<{ children: React.ReactNode; className?: string }> = ({ child
 // listLeaguesWithStats(userId)의 RLS 정책을 그대로 따른다.
 export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onRequireLogin }) => {
     const navigate = useNavigate();
+    const { isAdmin } = useGame();
     const userId = session?.user?.id ?? null;
 
     const [entries,      setEntries]      = useState<LeagueListEntry[]>([]);
@@ -223,7 +221,7 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
             {isCreateOpen && userId && (
                 <CreateLeagueModal
                     userId={userId}
-                    isAdmin={userId === ADMIN_USER_ID}
+                    isAdmin={isAdmin}
                     onClose={() => setIsCreateOpen(false)}
                     // [2026-09-10] "어드민이 리그를 만들어도 바로 입장되지 않도록" 요청 —
                     // 생성 직후 자동으로 /season 이동하던 걸 없애고 목록만 새로고침한다.

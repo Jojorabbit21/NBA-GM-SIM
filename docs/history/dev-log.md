@@ -35,6 +35,184 @@
 
 ---
 
+## 2026-09-29 (3) — 리그 삭제 시 "statement timeout" 에러 수정 (누락 인덱스 6개 + 전용 RPC)
+
+**배경**: (2)로 FK 에러는 고쳤지만 같은 "Weakly League"(실제로 완주된 main_league —
+games 1327행/league_events 5400행/room_player_state 451행 등 이 방 하나에만 총 9천여 행)를
+다시 삭제하니 이번엔 `canceling statement due to statement timeout`으로 실패. 원인 조사 결과
+두 가지 겹친 문제:
+1. `leagues`/`rooms`를 참조하는 FK 컬럼 32개 중 6개(`league_allstar_votes.league_id`,
+   `league_events.league_id`, `league_player_awards.league_id`,
+   `league_trade_offers.league_id`, `league_user_history.league_id`,
+   `tournament_archives.room_id`)에 인덱스가 없었음 — Postgres는 FK 참조 컬럼에 자동으로
+   인덱스를 만들지 않는다(PK 쪽만 생김). CASCADE/SET NULL 처리 때마다 이 컬럼들을
+   시퀀셜 스캔.
+2. `authenticated` 롤의 `statement_timeout`이 Supabase 기본값인 8초로 고정 — 10여 개
+   테이블에 걸쳐 총 9천+ 행을 CASCADE로 지우는 무거운 삭제가 이 짧은 제한에 걸림.
+
+**변경 파일**:
+- `migrations/fix_league_delete_timeout.sql` (신규, Supabase MCP로 즉시 적용 완료) — 누락
+  인덱스 6개 추가 + `admin_delete_league(p_league_id)` RPC 신설(SECURITY DEFINER, 호출
+  트랜잭션 안에서만 `SET LOCAL statement_timeout = '60s'`로 연장 — 다른 요청의 타임아웃엔
+  영향 없음. 전역 어드민 또는 그 리그 본인 방장인지 내부에서 재검증, 원래 RLS가 하던
+  권한 체크와 동일 조건)
+- `services/multi/leagueService.ts` — `deleteLeague()`가 `leagues` 테이블을 직접
+  DELETE하던 것을 `admin_delete_league` RPC 호출로 교체. 시그니처 단순화:
+  `(leagueId, userId, isAdmin)` → `(leagueId)`만 받음(권한 판단을 전부 RPC/RLS 쪽으로
+  위임했으므로 클라이언트가 굳이 판단해서 넘길 필요가 없어짐)
+- `views/multi/league/LeagueSettingsView.tsx`, `pages/AdminLeagueManagerPage.tsx` —
+  `deleteLeague()` 호출부를 새 시그니처에 맞춰 수정
+
+**Before** (`leagueService.ts`):
+```ts
+export const deleteLeague = async (leagueId: string, userId: string, isAdmin = false) => {
+    let query = supabase.from('leagues').delete().eq('id', leagueId);
+    if (!isAdmin) query = query.eq('admin_user_id', userId);
+    const { error } = await query;
+    ...
+};
+```
+
+**After**:
+```ts
+export const deleteLeague = async (leagueId: string) => {
+    const { error } = await supabase.rpc('admin_delete_league', { p_league_id: leagueId });
+    ...
+};
+```
+
+**검증**: `apply_migration` 성공. 실제로 "Weakly League"를 이 세션에서 직접 삭제(MCP는
+service-role급 접근이라 8초 제한 자체가 적용 안 되므로, 클라이언트 재현 대신 바로 실행) —
+즉시 완료됨(인덱스 추가만으로 이미 충분히 빨라진 것으로 보임). `rooms` 잔존 0건,
+`league_user_history` 행은 `league_id=null`로 살아남아 `wins=32/losses=50` 등 통산 기록
+그대로 보존된 것 확인. `npx tsc --noEmit`으로 `leagueService.ts`/`LeagueSettingsView.tsx`/
+`AdminLeagueManagerPage.tsx` 타입 에러 없음 확인. **미검증**: 실제 앱(브라우저)에서
+"삭제" 버튼을 눌러 RPC 경로 자체를 재현하지는 않음 — Vercel 재배포 후 확인 권장.
+
+**롤백 방법**:
+- 인덱스는 되돌릴 필요 없음(성능 개선일 뿐 동작 변화 없음, 지워도 무해하지만 안 지우는 걸 권장).
+- RPC: `DROP FUNCTION admin_delete_league(uuid);` 후 `leagueService.ts`의 `deleteLeague()`를 이 항목의 Before 블록으로, 호출부 2곳도 `(leagueId, userId, isAdmin)` 형태로 되돌림.
+
+**참고**: 클라이언트 코드 변경분은 Vercel에 배포해야 실제 반영됨 — 아직 배포 안 함.
+
+---
+
+## 2026-09-29 (2) — 리그 삭제 시 league_user_history FK 위반 에러 수정 (NO ACTION → SET NULL)
+
+**배경**: 사용자가 "Weakly League"(main_league, finished, 실제로 완주된 시즌) 삭제를
+시도하자 `update or delete on table "leagues" violates foreign key constraint
+"league_user_history_league_id_fkey"` 에러로 실패. `leagues`를 참조하는 자식 테이블은
+전부 `ON DELETE CASCADE`인데(2026-09-28 조사 시 확인) `league_user_history`만 유일하게
+제약 없음(`NO ACTION`, 암묵적 기본값)으로 빠져 있었음. 이 테이블은 유저 통산 기록
+아카이버(project_multiplayer_career_history.md)가 채우는 곳으로, `league_name`/
+`team_count`/`wins`/`losses`/`playoff_wins`/`playoff_losses`/`final_rank`/
+`playoff_result`/`completed_at` 등 화면 표시에 필요한 값을 전부 그 행 자체에 비정규화해
+저장해 둔다 — `league_id`는 원본으로의 참조 포인터일 뿐 렌더링엔 안 쓰인다. 따라서
+CASCADE(기록도 같이 삭제)가 아니라 SET NULL(참조만 끊고 유저의 영구 통산 기록은 보존)이
+맞는 정책이라고 판단.
+
+**변경 파일**:
+- `migrations/league_user_history_league_id_set_null_on_delete.sql` (신규, Supabase MCP로 즉시 적용 완료)
+  — `league_user_history_league_id_fkey` 제약을 DROP 후 `ON DELETE SET NULL`로 재생성
+
+**Before**:
+```sql
+FOREIGN KEY (league_id) REFERENCES leagues(id)  -- 기본값 NO ACTION
+```
+
+**After**:
+```sql
+FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE SET NULL
+```
+
+**검증**: `apply_migration` 성공, `pg_get_constraintdef`로 `ON DELETE SET NULL` 반영 확인.
+`leagues`/`rooms`를 참조하는 전체 FK 중 `NO ACTION`으로 남은 게 이거 하나뿐이었다는 것도
+재조회로 재확인(다른 자식 테이블은 전부 CASCADE라 이런 문제가 없음). 실제 "Weakly League"
+삭제까지 이 세션에서 직접 실행하진 않음 — 사용자가 앱에서 재시도하면 될 것으로 예상.
+
+**롤백 방법**: `ALTER TABLE league_user_history DROP CONSTRAINT league_user_history_league_id_fkey; ALTER TABLE league_user_history ADD CONSTRAINT league_user_history_league_id_fkey FOREIGN KEY (league_id) REFERENCES leagues(id);`
+
+---
+
+## 2026-09-29 — 전역 어드민 판별을 하드코딩 UUID → profiles.is_admin 단일 출처로 리팩터링
+
+**배경**: 2026-09-28 세션에서 토너먼트/리그 어드민 전권 기능을 만들며, 전역 어드민 UUID
+(`d2f6a469-9182-4dac-a098-278e6e758c79`) 리터럴이 client 12곳·server 2곳·DB RLS 정책
+25개·RPC 2개, 총 18개 이상 파일에 중복 하드코딩된 걸 발견. 사용자가 "나중에 어드민을
+동적으로 지정하는 기능을 추가해야 함"이라며 리팩터링을 요청 → DB에 `profiles.is_admin`
+컬럼을 단일 출처로 두고, 이 리터럴을 참조하던 모든 곳을 그 컬럼을 보는 헬퍼로 교체.
+Server 변경분은 같은 날 후속 요청("서버 배포해줘")으로 `flyctl deploy -a
+basketballgm-app-server`(버전 162→163) 배포 완료 — 헬스체크 `{"ok":true,...}` 확인.
+
+**변경 파일**:
+
+*DB (`migrations/dynamic_global_admin_refactor.sql`, Supabase MCP로 즉시 적용 완료)*:
+- `profiles.is_admin boolean NOT NULL DEFAULT false` 컬럼 추가, 기존 어드민 계정 1명 백필
+- `guard_profiles_is_admin()` BEFORE UPDATE 트리거 — "본인 프로필 수정" RLS가 컬럼 단위
+  제한이 없어서, 이 트리거 없인 유저가 자기 `is_admin`을 직접 켤 수 있었음(권한 상승 방지)
+- `set_global_admin(p_target_user_id, p_is_admin)` RPC 신설 — **이번 리팩터링의 실제
+  목적**: 기존 어드민만 호출 가능(SECURITY DEFINER), 이후 "다른 유저를 어드민으로 지정"
+  기능은 이 RPC 하나 호출하면 끝. 아직 이걸 부르는 UI는 없음(다음 단계)
+- `is_global_admin()` 본문 교체 — 리터럴 비교 → `profiles.is_admin` 조회로 변경(이 함수는
+  2026-09-28에 이미 만들어둔 것이라 본문 하나만 바꾸면 그걸 참조하는 모든 RLS/RPC에 자동 반영)
+- 리터럴을 직접 비교하던 RLS 정책 25개(leagues·archetypes·meta_players·meta_player_cards·
+  meta_card_editions·meta_card_team_colors·meta_player_card_collections·
+  meta_player_card_collection_members·player_edit_log·storage.objects 등)를 전부
+  `is_global_admin()` 호출로 `ALTER POLICY`
+
+*Server (Bun, 코드만 변경 — 미배포)*:
+- `server/src/auth.ts` — `isGlobalAdmin(userId)` 헬퍼 추가(service-role 클라이언트로
+  `profiles.is_admin` 직접 조회)
+- `server/src/index.ts` — `requireGlobalAdmin()`/`handleSimOverride`/
+  `handleAdminDeleteUser`의 리터럴 비교를 `isGlobalAdmin()` 호출로 교체,
+  `handleAdminListUsers`의 select에 `is_admin` 컬럼 추가
+- `server/src/startDraft.ts` — `handleStartDraft`/`handleRunLottery` 동일 교체, 로컬
+  `ADMIN_USER_ID` 상수 삭제
+
+*Client*:
+- `hooks/useAuth.ts` — `isAdmin`/`isAdminLoading` state 신설. 세션의 `user.id`가 바뀔 때마다
+  `profiles.is_admin` 조회(RLS "본인 행만 SELECT" 정책으로 이미 허용됨)
+- `hooks/useGameContext.tsx` — `GameContextValue`에 `isAdmin`/`isAdminLoading` 추가
+- `App.tsx` — 로컬 `ADMIN_USER_ID` 리터럴 비교 제거, `useAuth()`가 주는 `isAdmin` 사용,
+  `EditorLayout`에 `isAdmin` prop 추가 전달
+- `components/AdminGuard.tsx` — 리터럴 비교 → `useGame().isAdmin` 사용. **주의**:
+  `isAdminLoading`이 끝나기 전엔 로딩 화면을 보여주고 리다이렉트를 보류 — 안 그러면 실제
+  어드민도 `/admin/*` 새로고침 시 DB 조회가 끝나기 전에 튕겨나감(예전엔 동기 비교라 이 문제가
+  없었음, 비동기 전환의 유일한 트레이드오프)
+- `pages/EditorLayout.tsx` — `isAdmin` prop을 받아 Outlet context에 같이 실어 하위 페이지에 전달
+- `pages/ArchetypeConfigPage.tsx`, `pages/PlayerEditorPage.tsx` — 로컬 리터럴 비교 제거,
+  outlet context의 `isAdmin` 사용 (이 페이지들은 이미 AdminGuard 뒤라 실질적 동작 변화 없음)
+- `pages/AdminLeagueManagerPage.tsx` — 동일 교체 + `deleteLeague()` 호출에 `isAdmin` 인자 전달
+- `pages/AdminUserManagerPage.tsx`, `pages/AdminUserDetailPage.tsx` — "isSelf"(목록의 특정
+  유저가 보호된 어드민 계정인가) 판정을 `u.id === <리터럴>` → `u.is_admin`으로 변경(멀티
+  어드민이 되어도 전부 보호되도록 일반화). `AdminUserManagerPage`는 변수명도
+  `isSelf`→`isProtectedAdmin`으로 개명(의미가 더 이상 "나 자신"이 아니므로)
+- `services/admin/userAdminService.ts` — `AdminUserRow.is_admin` 필드 추가,
+  `AdminUserEditableFields`에서는 제외(이 필드는 `set_global_admin` RPC 전용 경로로만 변경)
+- `services/multi/leagueService.ts` — `deleteLeague(leagueId, userId, isAdmin=false)`로
+  시그니처 변경(리터럴 비교 대신 호출자가 판단한 `isAdmin`을 인자로 받음)
+- `views/home/InlineLeagueList.tsx` — 리터럴 비교 제거, `useGame().isAdmin` 사용
+- `views/multi/league/LeagueSettingsView.tsx` — 화면 자체의 `isAdmin`(그 리그 방장 또는
+  전역 어드민) 계산에서 리터럴 비교 부분만 `useGame()`의 `isAdmin`(→ `isGlobalAdmin`으로
+  구조분해 개명, 지역 변수명 충돌 회피)으로 교체. `handleDeleteLeague`에서 `deleteLeague()`에
+  `isAdmin` 인자 추가 전달
+
+**검증**: DB — `apply_migration` 성공, `pg_policies`에서 리터럴 남은 정책 0개 확인,
+`profiles.is_admin=true` 1행 확인. 클라이언트 — `npx tsc --noEmit` 전체 실행, 이번에 건드린
+17개 파일 전부 새 타입 에러 없음 확인(`App.tsx`의 `RosterMode` 관련 에러 등은 이 세션 이전부터
+있던 무관한 기존 에러). 서버 — `npx tsc --noEmit`(server 디렉터리)도 동일하게 확인(Bun 타입
+관련 기존 에러만 남고 새 에러 없음). **런타임 미검증**: 실제 로그인 세션으로
+로그인 → `/admin` 진입 → 어드민 생성/삭제 흐름은 브라우저로 확인하지 않음.
+
+**롤백 방법**:
+- DB: `DROP TRIGGER trg_guard_profiles_is_admin ON public.profiles; DROP FUNCTION guard_profiles_is_admin(); DROP FUNCTION set_global_admin(uuid, boolean);` 후 `is_global_admin()`과 25개 정책을 2026-09-28 세 마이그레이션 파일(`restrict_tournament_creation_to_admin.sql`/`allow_global_admin_manage_leagues.sql`/`allow_global_admin_manage_league_settings.sql`)의 리터럴 버전으로 재적용, `profiles.is_admin` 컬럼은 남겨둬도 무해(안 쓰일 뿐).
+- 코드: 이 커밋을 revert. client/server 어느 한쪽만 되돌려도 무방(server 코드가 DB 컬럼을 직접 읽는 방식이라 client만 롤백해도 서버는 그대로 동작). server만 되돌릴 경우 `flyctl deploy -a basketballgm-app-server`로 재배포까지 해야 실제로 반영됨(현재 버전 163, 되돌릴 대상은 버전 162).
+
+**다음 단계 (사용자가 예고한 후속 작업)**: `set_global_admin(target_user_id, is_admin)` RPC를
+호출하는 관리자 UI(예: `AdminUserManagerPage`에 "어드민으로 지정" 버튼) — 아직 미구현.
+
+---
+
 ## 2026-09-28 (4) — Fly.io 서버(드래프트 시작/로터리/시뮬 오버라이드)도 전역 어드민 예외 반영 + 배포
 
 **배경**: (3) 항목 "한계" 절에 남겨둔 후속 작업 — 사용자가 "fly 배포해줘"로 명시 요청.

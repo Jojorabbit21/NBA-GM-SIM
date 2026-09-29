@@ -7,7 +7,7 @@ import { deleteLeague } from '../services/multi/leagueService';
 import CreateLeagueModal from '../components/multi/CreateLeagueModal';
 import { STATUS_LABEL } from '../views/multi/league/leagueConstants';
 
-type EditorContext = { userId?: string };
+type EditorContext = { userId?: string; isAdmin?: boolean };
 type Tab = 'all' | 'tournament' | 'main_league';
 
 const TH: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
@@ -27,7 +27,7 @@ const fmtDate = (iso: string) => {
 // 동일 컴포넌트)을 그대로 재사용하고, 삭제는 LeagueSettingsView와 동일한
 // deleteLeague()(leagues 삭제 → rooms/room_members/league_teams 등 CASCADE)를 그대로 쓴다.
 const AdminLeagueManagerPage: React.FC = () => {
-    const { userId } = useOutletContext<EditorContext>();
+    const { userId, isAdmin } = useOutletContext<EditorContext>();
 
     const [entries,      setEntries]      = useState<LeagueListEntry[]>([]);
     const [isLoading,    setIsLoading]    = useState(true);
@@ -54,7 +54,7 @@ const AdminLeagueManagerPage: React.FC = () => {
         if (!userId) return;
         setDeleting(true);
         setDeleteErr(null);
-        const { error } = await deleteLeague(leagueId, userId);
+        const { error } = await deleteLeague(leagueId);
         setDeleting(false);
         if (error) { setDeleteErr(error); return; }
         setDeleteTarget(null);
@@ -182,7 +182,7 @@ const AdminLeagueManagerPage: React.FC = () => {
             {isCreateOpen && userId && (
                 <CreateLeagueModal
                     userId={userId}
-                    isAdmin // 이 페이지 자체가 AdminGuard 뒤에 있어 항상 어드민 계정임
+                    isAdmin={!!isAdmin}
                     onClose={() => setIsCreateOpen(false)}
                     onCreated={() => {
                         setIsCreateOpen(false);

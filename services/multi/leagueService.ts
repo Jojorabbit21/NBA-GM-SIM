@@ -14,11 +14,6 @@ import type { PersonalDraftFormat } from './personalDraftFormat';
 // "팀 설정"에서 사용자가 원하는 대로 바꿀 수 있다.
 export const DEFAULT_COURT_COLORS = { background: '#DDC8AD', paint: '#C3AC91', line: '#4A3728' };
 
-// App.tsx/AdminGuard.tsx 등과 동일한 전역 어드민 계정. DB RLS(leagues.l_global_admin_manage,
-// migrations/allow_global_admin_manage_leagues.sql)와 짝을 이룬다 — 어드민은 본인이 만들지
-// 않은 리그(예: AdminLeagueManagerPage에서 발견한 무단 생성 토너먼트)도 관리/삭제할 수 있어야 한다.
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
 // league_teams row 삽입 4곳(신규 생성/팀 수 증가 × 실제팀/가상팀)이 전부 동일하게 반복하던
 // court_* 3필드 — 여기 한 번만 만들어 스프레드로 재사용.
 const COURT_DEFAULT_FIELDS = {
@@ -842,21 +837,23 @@ export const leaveLeague = async (
 };
 
 // ─── 리그 삭제 (어드민 전용) ──────────────────────────────────────────────────
-// leagues 삭제 → rooms / room_members / league_teams 등 CASCADE 자동 정리
+// leagues 삭제 → rooms / room_members / league_teams 등 CASCADE 자동 정리.
+// 완주된 리그(games/league_events 등 수천 행)는 CASCADE 삭제량이 많아 authenticated
+// 롤의 기본 statement_timeout(8초, Supabase 기본값)을 넘겨 "canceling statement due to
+// statement timeout"로 실패할 수 있다 — 직접 테이블 DELETE 대신 admin_delete_league RPC를
+// 거친다. 이 RPC는 자기 트랜잭션 안에서만 SET LOCAL로 타임아웃을 60초로 늘리고(다른 요청에는
+// 영향 없음), 전역 어드민 또는 그 리그 본인 방장인지도 내부에서 재검증한다
+// (migrations/fix_league_delete_timeout.sql).
 
 export const deleteLeague = async (
     leagueId: string,
-    userId: string
 ): Promise<{ error: string | null }> => {
-    // 전역 어드민(ADMIN_USER_ID)은 본인이 만들지 않은 리그도 삭제할 수 있어야 하므로
-    // admin_user_id 필터를 걸지 않는다 — RLS의 l_global_admin_manage 정책이 실제 허용 여부를
-    // 검증한다. 일반 유저(각 리그의 방장 본인)는 여전히 admin_user_id = userId인 행만
-    // 지울 수 있도록 필터를 유지 — RLS(l_admin_write)와 이중으로 맞물려 있다.
-    let query = supabase.from('leagues').delete().eq('id', leagueId);
-    if (userId !== ADMIN_USER_ID) query = query.eq('admin_user_id', userId);
-    const { error } = await query;
-
-    if (error) return { error: error.message };
+    const { error } = await supabase.rpc('admin_delete_league', { p_league_id: leagueId });
+    if (error) {
+        if (error.message?.includes('not_authorized')) return { error: '이 리그를 삭제할 권한이 없습니다.' };
+        if (error.message?.includes('league_not_found')) return { error: '리그를 찾을 수 없습니다.' };
+        return { error: error.message };
+    }
     return { error: null };
 };
 

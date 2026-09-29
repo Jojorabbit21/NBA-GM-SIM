@@ -25,3 +25,21 @@ export async function verifyToken(token: string): Promise<string | null> {
         return null;
     }
 }
+
+/**
+ * 전역 어드민 여부 — profiles.is_admin 단일 출처(DB의 is_global_admin()과 동일 판별
+ * 기준, migrations/dynamic_global_admin_refactor.sql) 조회. 예전엔 하드코딩된
+ * UUID(d2f6a469-...)를 각 파일마다 비교했는데, 이 함수 하나로 대체 — 이후 어드민을
+ * 동적으로 추가/해제(profiles.is_admin 갱신)해도 서버 코드는 손댈 필요 없음.
+ * 이 서버는 service_role 클라이언트를 쓰므로 RLS와 무관하게 직접 조회한다.
+ */
+export async function isGlobalAdmin(userId: string | null | undefined): Promise<boolean> {
+    if (!userId) return false;
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', userId)
+        .maybeSingle();
+    if (error || !data) return false;
+    return data.is_admin === true;
+}

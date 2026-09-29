@@ -13,9 +13,7 @@ import type {
 } from '../types/gameConfig';
 import type { ArchetypeModuleScores } from '../types/archetype';
 
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
-type EditorContext = { userId?: string };
+type EditorContext = { userId?: string; isAdmin?: boolean };
 
 const DEFAULT_LABELS: ArchetypeLabelConfig = {
     PRIMARY_CREATOR_GUARD: 'Primary Creator',  SCORING_COMBO_GUARD: 'Dual Guard',
@@ -408,8 +406,7 @@ const TagConfigPanel: React.FC<{ tags: TagConfigList; onChange: (t: TagConfigLis
 };
 
 const ArchetypeConfigPage: React.FC = () => {
-    const { userId } = useOutletContext<EditorContext>();
-    const isAdmin = userId === ADMIN_USER_ID;
+    const { isAdmin } = useOutletContext<EditorContext>();
 
     const [tab, setTab] = useState<'gates' | 'weights' | 'tags'>('gates');
     const [tagConfig, setTagConfig] = useState<TagConfigList>([]);

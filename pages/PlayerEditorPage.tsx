@@ -14,8 +14,6 @@ import { COMPACT_ATTR_GROUPS, getCompactAttrValue } from '../data/attributeConfi
 import type { ContractType } from '../types/player';
 import { CONTRACT_TYPE_LABEL, SIGNING_TYPE_LABEL, CONTRACT_DETAIL_LABEL, getAllowedSigningTypes, getAllowedContractDetails } from '../utils/contractLabels';
 
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
 // ── 능력치 색상 헬퍼 (tailwind.config attribute 스케일) ──────────────────────────
 function attrColor(v: number): string {
     if (v >= 97) return 'text-attribute-s';
@@ -542,13 +540,12 @@ function parseBBRefCsv(text: string, playoff: boolean): { rows: any[]; errors: s
     return { rows, errors };
 }
 
-type EditorContext = { userId?: string };
+type EditorContext = { userId?: string; isAdmin?: boolean };
 
 // ── PlayerEditorPage ──────────────────────────────────────────────────────────
 
 const PlayerEditorPage: React.FC = () => {
-    const { userId } = useOutletContext<EditorContext>();
-    const isAdmin = userId === ADMIN_USER_ID;
+    const { isAdmin } = useOutletContext<EditorContext>();
 
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<MetaPlayerRow[]>([]);

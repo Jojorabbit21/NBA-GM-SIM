@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 
-const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
+const EditorLayout: React.FC<{ userId?: string; isAdmin?: boolean }> = ({ userId, isAdmin }) => {
     const navigate = useNavigate();
     return (
         <div className="min-h-screen bg-slate-950 text-slate-200 pretendard">
@@ -110,7 +110,7 @@ const EditorLayout: React.FC<{ userId?: string }> = ({ userId }) => {
                         사용자 관리
                     </NavLink>
                 </div>
-                <Outlet context={{ userId }} />
+                <Outlet context={{ userId, isAdmin }} />
             </div>
         </div>
     );

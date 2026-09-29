@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, Trash2 } from 'lucide-react';
 import { adminListUsers, adminDeleteUser, type AdminUserRow } from '../services/admin/userAdminService';
 
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
 const TH: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
     <th className={`px-3 py-2 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap ${className}`}>
         {children}
@@ -81,7 +79,7 @@ const AdminUserManagerPage: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-800">
                             {users.map(u => {
-                                const isSelf = u.id === ADMIN_USER_ID;
+                                const isProtectedAdmin = u.is_admin;
                                 const fullName = [u.last_name, u.first_name].filter(Boolean).join(' ');
                                 return (
                                     <tr
@@ -91,7 +89,7 @@ const AdminUserManagerPage: React.FC = () => {
                                     >
                                         <td className="pl-4 pr-2 py-2.5 font-bold text-white max-w-[160px] truncate">
                                             {u.nickname || '—'}
-                                            {isSelf && <span className="ml-1.5 text-[10px] font-bold text-indigo-400">ADMIN</span>}
+                                            {isProtectedAdmin && <span className="ml-1.5 text-[10px] font-bold text-indigo-400">ADMIN</span>}
                                         </td>
                                         <td className="px-3 py-2.5 text-slate-400 max-w-[220px] truncate">{u.email ?? '—'}</td>
                                         <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{fullName || '—'}</td>
@@ -99,7 +97,7 @@ const AdminUserManagerPage: React.FC = () => {
                                         <td className="px-3 py-2.5 text-slate-400 tabular-nums whitespace-nowrap">{u.birth_year ?? '—'}</td>
                                         <td className="px-3 py-2.5 text-slate-500 tabular-nums whitespace-nowrap">{fmtDate(u.created_at)}</td>
                                         <td className="pl-2 pr-4 py-2.5 text-right" onClick={e => e.stopPropagation()}>
-                                            {isSelf ? (
+                                            {isProtectedAdmin ? (
                                                 <span className="text-xs text-slate-600">삭제 불가</span>
                                             ) : deleteTarget === u.id ? (
                                                 <div className="flex items-center justify-end gap-1.5">

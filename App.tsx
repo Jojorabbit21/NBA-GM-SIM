@@ -96,13 +96,11 @@ const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
     DraftRoom:    '/draft/',
 };
 
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
-
 const App: React.FC = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const { pathname } = useLocation();
-    const { session, isGuestMode, authLoading, handleLogout } = useAuth();
+    const { session, isGuestMode, authLoading, isAdmin, isAdminLoading, handleLogout } = useAuth();
     const [quickplayOnly, setQuickplayOnly] = useState(false);
     const [rosterMode, setRosterModeState] = useState<RosterMode | null>(() => {
         const stored = localStorage.getItem('nbagm:rosterMode');
@@ -275,6 +273,8 @@ const App: React.FC = () => {
         session,
         isGuestMode,
         authLoading,
+        isAdmin,
+        isAdminLoading,
         logout,
         gameData,
         sim,
@@ -350,7 +350,6 @@ const App: React.FC = () => {
             });
     }, []);
 
-    const isAdmin = session?.user?.id === ADMIN_USER_ID;
     const shouldRestrictToQuickPlay = quickplayOnly && !isAdmin;
 
     // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
@@ -368,7 +367,7 @@ const App: React.FC = () => {
                     <Route path="/admin/player-editor" element={<Navigate to="/admin/editor/player" replace />} />
                     <Route element={<AdminGuard />}>
                         <Route path="/admin" element={<Navigate to="/admin/editor/player" replace />} />
-                        <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} />}>
+                        <Route path="/admin/editor" element={<EditorLayout userId={session?.user?.id} isAdmin={isAdmin} />}>
                             <Route index element={<Navigate to="player" replace />} />
                             <Route path="player" element={<PlayerEditorPage />} />
                             <Route path="cards" element={<PlayerCardEditorPage />} />

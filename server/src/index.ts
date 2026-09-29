@@ -13,7 +13,7 @@
  *   submitPick / admin / ping 처리
  */
 import type { ServerWebSocket } from 'bun';
-import { verifyToken } from './auth';
+import { verifyToken, isGlobalAdmin } from './auth';
 import { RoomManager } from './RoomManager';
 import { startScheduler } from './scheduler';
 import { handleStartDraft, handleRunLottery } from './startDraft';
@@ -28,10 +28,10 @@ import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
 
-// 전역 어드민 계정(admin@mail.com) — App.tsx/AdminGuard.tsx의 ADMIN_USER_ID와 동일한 값.
-// 리그별 admin_user_id(leagues.admin_user_id)와는 별개로, /admin/users* 는 이 고정 계정만
-// 호출할 수 있어야 한다(전체 유저를 다루는 기능이라 특정 리그 소유권 체크로는 대체 불가).
-const ADMIN_USER_ID = 'd2f6a469-9182-4dac-a098-278e6e758c79';
+// 전역 어드민 판별 — profiles.is_admin 단일 출처(isGlobalAdmin(), migrations/
+// dynamic_global_admin_refactor.sql). 리그별 admin_user_id(leagues.admin_user_id)와는
+// 별개로, /admin/users* 는 전역 어드민만 호출할 수 있어야 한다(전체 유저를 다루는
+// 기능이라 특정 리그 소유권 체크로는 대체 불가).
 
 // ── WebSocket 핸들러 ──────────────────────────────────────────────────────────
 
@@ -290,7 +290,7 @@ async function handleSimOverride(req: Request): Promise<Response> {
     if (!room) return json({ error: 'Room not found' }, 404);
     const { data: league } = await supabase.from('leagues').select('admin_user_id').eq('id', room.league_id).single();
     if (!league) return json({ error: 'League not found' }, 404);
-    if (league.admin_user_id !== userId && userId !== ADMIN_USER_ID) return json({ error: 'Forbidden' }, 403);
+    if (league.admin_user_id !== userId && !(await isGlobalAdmin(userId))) return json({ error: 'Forbidden' }, 403);
 
     // 관리자 수동 시뮬 오버라이드는 항상 "지금 바로 시작"으로 처리 (원래 예정 시각 무시)
     const result = await simWorkerPool.runSimulationInWorker(roomId, gameId, true);
@@ -475,7 +475,7 @@ async function requireGlobalAdmin(req: Request): Promise<string | null> {
     const authHeader = req.headers.get('Authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     const userId = token ? await verifyToken(token) : null;
-    return userId === ADMIN_USER_ID ? userId : null;
+    return userId && (await isGlobalAdmin(userId)) ? userId : null;
 }
 
 async function handleAdminListUsers(req: Request): Promise<Response> {
@@ -483,7 +483,7 @@ async function handleAdminListUsers(req: Request): Promise<Response> {
 
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, nickname, first_name, last_name, birth_year, nationality, avatar_url, created_at, updated_at')
+        .select('id, email, nickname, first_name, last_name, birth_year, nationality, avatar_url, created_at, updated_at, is_admin')
         .order('created_at', { ascending: false });
 
     if (error) return adminCorsJson({ error: error.message }, 500);
@@ -532,7 +532,7 @@ async function handleAdminDeleteUser(req: Request): Promise<Response> {
 
     const { userId } = body;
     if (!userId) return adminCorsJson({ error: 'userId required' }, 400);
-    if (userId === ADMIN_USER_ID) return adminCorsJson({ error: '어드민 계정은 삭제할 수 없습니다' }, 400);
+    if (await isGlobalAdmin(userId)) return adminCorsJson({ error: '어드민 계정은 삭제할 수 없습니다' }, 400);
 
     // 삭제 전 이 유저가 붙잡고 있는 팀/참가 상태를 먼저 정리 — release_team이 room_members
     // 삭제까지 처리하므로(leagueService.releaseTeam과 동일 RPC), 계정만 지우고 팀은
