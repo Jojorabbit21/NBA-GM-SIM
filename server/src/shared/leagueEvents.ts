@@ -5,7 +5,7 @@
  * [2026-08-30] "전 경기 결과+MVP로 대체" 요청으로 detectBlowout()을 폐지하고
  * detectGameResult()로 교체 — 이제 모든 경기가 무조건 하나씩 기록된다(마진 필터 없음).
  * 개인 활약(detectPlayerFeats)도 "경기당 최고 1명"에서 "자격 있는 선수 전원 각 1건"으로
- * 넓어졌고, 여러 경기에 걸친 선수 연속 기록(detectPlayerStatStreaks)이 새로 추가됐다.
+ * 넓어졌다가 [2026-10-07] 다시 "경기당 최고 1명(PIE 기준)"으로 좁혀졌고, 여러 경기에 걸친 선수 연속 기록(detectPlayerStatStreaks)이 새로 추가됐다.
  *
  * 호출부(simRunner.ts)는 이 파일의 감지 함수 결과를 그대로 league_events에 insert하면
  * 된다. 트레이드 이벤트는 respond_trade_offer RPC(SQL) 안에서 직접 insert한다(이 파일과
@@ -371,8 +371,12 @@ function evaluatePlayerFeat(
     };
 }
 
-// 경기당 최고 1명이 아니라, 자격 있는 선수마다 각각 1건씩 반환. home/away를 concat하지 않고
-// 각자 순회 — 선수마다 본인 팀/상대팀 슬러그를 정확히 붙이기 위함(위 주석 참고).
+// [2026-10-07] 뉴스피드에 경기당 활약 뉴스가 여러 건 쌓여 무의미한 뉴스만 늘어난다는 요청 —
+// 자격 있는 선수 전원 각 1건에서 "경기당 최고 1명"으로 되돌림. "가장 잘한" 기준은 경기 MVP
+// 선정과 같은 PIE(pieRaw) — 트리플더블/더블더블/스탯폭발 등급(score)끼리는 단위가 달라
+// 직접 비교하기 어렵고, 동점이면 score가 높은 쪽, 그래도 같으면 먼저 순회한 선수(홈 우선).
+// home/away를 concat하지 않고 각자 순회 — 선수마다 본인 팀/상대팀 슬러그를 정확히 붙이기 위함
+// (위 주석 참고). 반환 타입은 호출부 호환을 위해 배열 유지(0건 또는 1건).
 export function detectPlayerFeats(
     homeBox: PlayerBoxScore[] | null | undefined,
     awayBox: PlayerBoxScore[] | null | undefined,
@@ -381,16 +385,19 @@ export function detectPlayerFeats(
     homeScore: number,
     awayScore: number,
 ): DetectedEvent[] {
-    const events: DetectedEvent[] = [];
+    let best: { ev: DetectedEvent; pie: number } | null = null;
+    const consider = (p: PlayerBoxScore, ev: DetectedEvent | null) => {
+        if (!ev) return;
+        const pie = pieRaw(p);
+        if (!best || pie > best.pie || (pie === best.pie && ev.score > best.ev.score)) best = { ev, pie };
+    };
     for (const p of homeBox ?? []) {
-        const ev = evaluatePlayerFeat(p, homeTeamSlug, awayTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore);
-        if (ev) events.push(ev);
+        consider(p, evaluatePlayerFeat(p, homeTeamSlug, awayTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore));
     }
     for (const p of awayBox ?? []) {
-        const ev = evaluatePlayerFeat(p, awayTeamSlug, homeTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore);
-        if (ev) events.push(ev);
+        consider(p, evaluatePlayerFeat(p, awayTeamSlug, homeTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore));
     }
-    return events;
+    return best ? [(best as { ev: DetectedEvent }).ev] : [];
 }
 
 // ── 팀 연승 ──────────────────────────────────────────────────────────────────

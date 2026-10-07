@@ -436,7 +436,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                     result.homeBox, result.awayBox, result.pbpShotEvents,
                 ));
 
-                // 개인 활약 — 자격 있는 선수마다 각각 1건.
+                // 개인 활약 — 경기당 PIE 최고 1명만(자격자 없으면 0건).
                 events.push(...detectPlayerFeats(result.homeBox, result.awayBox, homeTeamId, awayTeamId, homeScore, awayScore));
 
                 // 선수 연속 기록 — player_stat_streaks 갱신 후 보고 기준 넘은 것만 반환.

@@ -35,6 +35,38 @@
 
 ---
 
+## 2026-10-07 — 멀티 뉴스피드: 경기당 개인 활약 뉴스를 PIE 최고 1명으로 제한
+
+**배경**: 사용자 요청. 한 경기에서 트리플더블/더블더블/스탯폭발 자격자 전원에게 각각 `player_feat` 뉴스가 발송돼 의미 없는 뉴스 수만 늘어남. 경기당 가장 잘한 1명만 노출.
+
+**변경 파일**:
+- `server/src/shared/leagueEvents.ts` — `detectPlayerFeats()` (서버 전용, 클라이언트 미러 없음). 상단 헤더 주석도 갱신.
+- `server/src/simRunner.ts` — 호출부 주석만 변경(로직 동일).
+
+**Before**:
+```ts
+const events: DetectedEvent[] = [];
+for (const p of homeBox ?? []) {
+    const ev = evaluatePlayerFeat(p, homeTeamSlug, awayTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore);
+    if (ev) events.push(ev);
+}
+for (const p of awayBox ?? []) {
+    const ev = evaluatePlayerFeat(p, awayTeamSlug, homeTeamSlug, homeTeamSlug, awayTeamSlug, homeScore, awayScore);
+    if (ev) events.push(ev);
+}
+return events;
+```
+
+**After**: 자격자(evaluatePlayerFeat != null) 중 `pieRaw(p)` 최대 1명만 반환(동점 시 ev.score 높은 쪽 → 먼저 순회한 홈 선수). 자격자 없으면 `[]`. 반환 타입은 배열 유지.
+
+**검증**: `server tsc --noEmit` — 수정 구간 신규 오류 0(기존 SupabaseClient 제네릭 오류만 잔존).
+
+**주의**: 이미 DB에 쌓인 과거 `player_feat` 이벤트는 그대로(소급 정리 안 함). `player_streak`(연속 기록)은 이번 범위 밖. 서버 변경이라 Fly.io 배포 후 반영.
+
+**롤백 방법**: `detectPlayerFeats` 본문을 위 Before 코드로 되돌림.
+
+---
+
 ## 2026-10-06 (8) — 리그 진입 로더 화면 상단에 BM27 로고 추가
 
 **배경**: 사용자 요청. 저장소에 "BM27" 이름의 파일은 없고 시작 메뉴(`views/home/StartMenu.tsx`)가 쓰는 앱 메인 로고 `public/logos/main.svg`가 그 로고(렌더해서 확인).
