@@ -138,6 +138,10 @@ export interface LeagueRow {
     /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 trade_deadline_date
      *  값이 있어도 무시(무제한) — cap_enabled/luxury_tax_enabled와 동일한 on/off + 값 패턴. */
     trade_deadline_enabled: boolean;
+    /** [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 강제 여부. cap_enabled와는
+     *  별개 축 — 캡 금액은 추적하되 트레이드 매칭까진 원치 않는 캐주얼 리그를 지원. 기본 true.
+     *  respond_trade_offer(accept)가 cap_enabled && trade_salary_matching_enabled일 때만 강제. */
+    trade_salary_matching_enabled: boolean;
     /** [2026-09-16] 팀당 최대 로스터 인원(15~20, 기본 15) — FA 계약 시 sign_free_agent()/
      *  sign_free_agent_negotiated() RPC가 이 값을 기준으로 슬롯 초과 여부를 검증한다. */
     max_roster_size: number;
@@ -384,9 +388,14 @@ export interface LeagueTeamRow {
     color_secondary: string;
     color_tertiary: string;
     color_text: string;
-    court_background: string;
-    court_paint: string;
-    court_line: string;
+    // null = follows the global default (app_settings.court_default_colors)
+    court_background: string | null;
+    court_paint: string | null;
+    court_line: string | null;
+    court_three: string | null;  // fill inside the 3-point line (null = follows default)
+    // true = draw the team's logo at center court on its home games
+    court_show_logo: boolean;
+    court_logo_scale: number;   // percent, 50~200 (100 = default size)
     conference: string | null;
     user_id: string | null;
     nickname: string | null;    // profiles.nickname의 비정규화된 복사본 (팀 클레임/닉네임 변경 시 동기화)

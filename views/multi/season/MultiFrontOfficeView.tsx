@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Ban, Calendar, Check, GripVertical, Loader2, Minus, Plus, RotateCcw, Search, ShieldAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Ban, Calendar, Check, ChevronDown, Loader2, Minus, Plus, Search, ShieldAlert, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
@@ -11,15 +11,18 @@ import { useLeagueRawStats } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import { usePlayerInjuryStatus } from '../../../hooks/usePlayerInjuryStatus';
-import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
+import { buildLeagueTeams, applyContractOverride } from '../../../services/multi/buildLeagueTeams';
+import { supabase } from '../../../services/supabaseClient';
 import { buildActiveInjurySeverityMap, formatPlayerActiveInjuryLabel } from '../../../services/multi/activeInjuryStatus';
 import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { calcTeamPayroll } from '../../../services/fa/faMarketBuilder';
+import { checkSalaryMatch, formatSalaryMatchMessage, describeSalaryMatchBracket, sumMatchableIncoming, type SalaryMatchThresholds } from '../../../services/multi/tradeSalaryMatching';
+import { notify } from '../../../services/notifications/notify';
 import { useSeasonContext } from './seasonContext';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
 import { TabBar } from '../../../components/common/TabBar';
-import { Modal } from '../../../components/common/Modal';
+import { MyTradeBlockModal } from './MyTradeBlockModal';
 import { Table, TableHead, TableBody, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
@@ -31,7 +34,7 @@ import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
 import { ARCHETYPE_LABEL, type OvrArchetype } from '../../../utils/ovrEngine';
 import {
     createTradeOffer, respondTradeOffer, markTradeOfferRead, listPendingTradeOffers, listAllPendingTradeOffers,
-    listTradeHistory, listTradeBlocks, setTradeBlock, updateTeamTradeRequest,
+    listTradeHistory, listTradeBlocks,
     listMyResolvedTradeOffers, listAllResolvedTradeOffers,
     type TradeOfferRow, type TradeOfferAction,
 } from '../../../services/multi/tradeService';
@@ -39,41 +42,10 @@ import type { Player } from '../../../types';
 import type { DeadMoneyEntry } from '../../../types/team';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 
-const DESIRED_POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
-
 // React Query 데이터가 아직 없을 때(최초 로드 전) 쓰는 폴백 — 매 렌더마다 새 배열을
 // 만들면 참조가 계속 바뀌어 불필요한 재계산을 유발하므로 모듈 레벨 상수로 고정.
 const EMPTY_OFFERS: TradeOfferRow[] = [];
-
-// [2026-08-26] 아키타입 27종을 가드/윙/빅 3그룹으로 분류(UI 편의용 — utils/ovrEngine.ts의
-// ARCHETYPE_CANDIDATES 위치별 후보 목록 기준, 여러 포지션에 걸치는 항목은 types/archetype.ts의
-// 원 그룹 주석을 참고해 배정). 정밀한 엔진 분류가 아니라 사용자가 훑어보기 쉽게 나눈 것.
-const ARCHETYPE_GROUPS: { label: string; keys: OvrArchetype[] }[] = [
-    {
-        label: '가드',
-        keys: [
-            'PRIMARY_CREATOR_GUARD', 'SCORING_COMBO_GUARD', 'MOVEMENT_SHOOTER', 'PERIMETER_3D',
-            'FLOOR_GENERAL_GUARD', 'SCORING_POINT_GUARD', 'DEFENSIVE_GUARD', 'ISOLATION_SCORER',
-            'ELITE_GUARD', 'LOCKDOWN_SHOOTER',
-        ],
-    },
-    {
-        label: '윙',
-        keys: [
-            'TWO_WAY_WING', 'SLASHING_WING', 'SHOT_CREATOR_WING', 'CONNECTOR_FORWARD',
-            'AERIAL_WING', 'POST_SCORING_WING', 'WING_PROTECTOR', 'LOCKDOWN_WING',
-            'THREE_LEVEL_SCORER',
-        ],
-    },
-    {
-        label: '빅',
-        keys: [
-            'POST_SCORING_BIG', 'RIM_RUNNER_BIG', 'STRETCH_BIG', 'RIM_PROTECTOR_ANCHOR',
-            'PLAYMAKING_BIG', 'SWITCHABLE_ANCHOR', 'TWO_WAY_BIG', 'REBOUNDING_BIG',
-            'ELBOW_OPERATOR',
-        ],
-    },
-];
+const EMPTY_ID_SET = new Set<string>();
 
 // [2026-08-31] 원래 '받은 제안'/'보낸 제안' 두 탭으로 나뉘어 있던 걸 'inbox' 하나로 통합
 // (받은/보낸 대기 중 제안을 시간순으로 한 리스트에서 관리 — 싱글플레이 인박스처럼 굳이
@@ -184,8 +156,13 @@ const PlayerTableCols: React.FC<{ showContract?: boolean }> = ({ showContract })
 // PlayerChip(각 행)과 반드시 <table><tbody> 안에서만 써야 함 — 호출부에서
 // <table className="w-full table-fixed border-collapse"><PlayerTableCols .../>(옵션)<PlayerListHeader .../><tbody>{...}</tbody></table>
 // 형태로 감싼다.
-const PlayerChip: React.FC<{
-    player?: Player; playerId: string; blocked?: boolean; onToggle?: () => void; showContract?: boolean;
+// [2026-09-30] React.memo — 부모(MultiFrontOfficeView)가 카트 토글 등으로 재렌더돼도 자기 props가
+// 안 바뀐 행은 건너뛴다(30행의 calculatePlayerOvr/PlayerHoverCard 재실행 회피). 이를 위해 onToggle은
+// 매 렌더 새로 만들어지는 () => toggle(p.id) 클로저가 아니라, playerId를 인자로 받는 안정된
+// useCallback(toggleMine/toggleTheirs)을 그대로 넘긴다 — 나머지 props(player/stats는 메모된 Map의
+// 값, 문자열/불리언)는 원래 안정적이라 memo 비교가 실제로 통한다.
+interface PlayerChipProps {
+    player?: Player; playerId: string; blocked?: boolean; onToggle?: (playerId: string) => void; showContract?: boolean;
     stats?: { ppg: number; rpg: number; apg: number };
     /** 'add'(로스터 리스트, 기본값) 아니면 'remove'(제공/카트 리스트) — 첫 컬럼 버튼 아이콘만 다름 */
     actionIcon?: 'add' | 'remove';
@@ -194,14 +171,15 @@ const PlayerChip: React.FC<{
     /** [2026-09-16] 트레이드 데드라인 경과 시 — blocked(untradeable, 버튼 자체를 숨김)와 달리
      *  버튼은 그대로 보이되 회색 비활성 상태로 바꿔 클릭만 막는다. */
     actionDisabled?: boolean;
-}> = ({
+}
+const PlayerChip = React.memo(function PlayerChip({
     player, playerId, blocked, onToggle, showContract, stats, actionIcon = 'add', teamAbbr, actionDisabled,
-}) => {
+}: PlayerChipProps) {
     const Icon = actionIcon === 'remove' ? Minus : Plus;
     const interactive = !blocked && !actionDisabled;
     return (
         <tr
-            onClick={interactive ? onToggle : undefined}
+            onClick={interactive && onToggle ? () => onToggle(playerId) : undefined}
             className={`h-9 bg-slate-900 border-b border-slate-800/50 transition-colors ${
                 blocked ? 'opacity-40 cursor-not-allowed' : actionDisabled ? 'cursor-not-allowed' : onToggle ? 'hover:bg-white/[0.03] cursor-pointer' : ''
             }`}
@@ -209,7 +187,7 @@ const PlayerChip: React.FC<{
             <td className="pl-2 pr-1 text-center">
                 {onToggle && !blocked && (
                     <button
-                        onClick={e => { e.stopPropagation(); if (interactive) onToggle(); }}
+                        onClick={e => { e.stopPropagation(); if (interactive) onToggle(playerId); }}
                         disabled={actionDisabled}
                         className={`w-5 h-5 rounded-full text-white inline-flex items-center justify-center transition-colors ${
                             actionDisabled
@@ -255,7 +233,7 @@ const PlayerChip: React.FC<{
             <td className="text-center">{blocked && <Ban size={13} className="text-red-400 inline" />}</td>
         </tr>
     );
-};
+});
 
 // "새 제안" 화면 로스터 리스트 정렬 키 — PlayerListHeader의 클릭 정렬과 sortPlayerList가 공유.
 type PlayerSortKey = 'ovr' | 'name' | 'position' | 'pts' | 'reb' | 'ast' | 'salary' | 'contractYears';
@@ -381,6 +359,18 @@ const MultiFrontOfficeView: React.FC = () => {
     // 세션(리그) 설정에서 샐러리캡이 켜져 있을 때만 트레이드 제안 화면의 선수 리스트에
     // 연봉/잔여계약 연수를 노출.
     const capEnabled = !!league?.cap_enabled;
+    // [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 사전 경고용 — 서버
+    // respond_trade_offer(accept)가 최종 강제하는 것과 동일한 게이트(cap_enabled &&
+    // trade_salary_matching_enabled)와 임계값. checkSalaryMatch()는 SQL의
+    // check_trade_salary_match()와 동일 로직(services/multi/tradeSalaryMatching.ts).
+    const salaryMatchingEnabled = capEnabled && !!league?.trade_salary_matching_enabled;
+    const salaryMatchThresholds: SalaryMatchThresholds | null = league ? {
+        cap: league.salary_cap_amount,
+        apron1: league.apron1_amount,
+        apron1Enabled: league.apron1_enabled,
+        apron2: league.apron2_amount,
+        apron2Enabled: league.apron2_enabled,
+    } : null;
 
     const roomId = room?.id ?? null;
     const isAdmin = !!session?.user?.id && league?.admin_user_id === session.user.id;
@@ -395,7 +385,40 @@ const MultiFrontOfficeView: React.FC = () => {
     );
 
     const teamById = useMemo(() => new Map(leagueTeams.map(t => [t.id, t])), [leagueTeams]);
-    const poolById = useMemo(() => new Map(poolPlayers.map(p => [p.id, p])), [poolPlayers]);
+
+    // [2026-09-29] poolPlayers(useMultiSearchData → meta_players 원본)는 이 리그에서
+    // 트레이드/재계약/방출로 바뀐 계약을 반영하지 않는다 — room_player_state.contract
+    // 오버라이드가 없으면 항상 meta_players 원본 연봉이 그대로 보임(실제 연봉 매칭/캡 요약이
+    // 전부 틀어짐). buildLeagueTeams.ts가 이미 쓰는 동일 규칙(applyContractOverride)을
+    // 여기서도 적용 — 리그 전체 로스터에 걸린 선수 전원 대상으로 한 번만 조회해 poolById
+    // 자체를 고쳐두면, 이 화면의 모든 연봉 계산(myRoster/targetRoster/캡 요약/샐러리 매칭
+    // 검증)이 자동으로 정확해진다.
+    const rosteredPlayerIds = useMemo(
+        () => Array.from(new Set(leagueTeams.flatMap(t => t.roster ?? []))),
+        [leagueTeams],
+    );
+    const { data: contractOverrideRows } = useQuery({
+        queryKey: ['tradeContractOverrides', roomId, rosteredPlayerIds.slice().sort().join(',')],
+        enabled: !!roomId && rosteredPlayerIds.length > 0,
+        staleTime: 0,
+        queryFn: async (): Promise<{ player_id: string; contract: Record<string, any> | null }[]> => {
+            const { data, error } = await supabase
+                .from('room_player_state')
+                .select('player_id, contract')
+                .eq('room_id', roomId!)
+                .in('player_id', rosteredPlayerIds);
+            if (error) throw error;
+            return data ?? [];
+        },
+    });
+    const poolById = useMemo(() => {
+        const m = new Map(poolPlayers.map(p => [p.id, p]));
+        for (const row of contractOverrideRows ?? []) {
+            const base = m.get(row.player_id);
+            if (base && row.contract) m.set(row.player_id, applyContractOverride(base, row.contract));
+        }
+        return m;
+    }, [poolPlayers, contractOverrideRows]);
 
     // 호버 카드용 — rosterMap(playerId → team_slug)을 team_abbr로 한 단계 더 매핑.
     // "요구 선수"처럼 한 목록 안에 여러 팀 선수가 섞여 있는 경우에 필요.
@@ -415,9 +438,11 @@ const MultiFrontOfficeView: React.FC = () => {
     // 발신 건에 한해 AI 팀 수신을 허용하도록 같이 완화했고(마이그레이션 참고), 응답은 기존
     // admin bypass(`respond_trade_offer`)로 이미 가능. 되돌릴 땐 `isAdmin ||` 조건과 아래
     // deps의 `isAdmin`만 제거하면 원래 "인간 팀만" 동작으로 복원됨.
+    // [2026-09-30] "새 제안" 탭 팀 드롭다운 정렬을 team_name → team_abbr(영문 약어) A→Z로 변경
+    // (사용자 요청). 아래 sortedTeams와 같은 이유로 로케일 'en' 고정.
     const humanTargetTeams = useMemo(
         () => leagueTeams.filter(t => t.id !== myTeamRow?.id && (isAdmin || (t.user_id && !t.is_ai)))
-            .sort((a, b) => a.team_name.localeCompare(b.team_name, 'en')),
+            .sort((a, b) => a.team_abbr.localeCompare(b.team_abbr, 'en')),
         [leagueTeams, myTeamRow, isAdmin],
     );
 
@@ -432,7 +457,8 @@ const MultiFrontOfficeView: React.FC = () => {
     // [2026-08-30] "내 트레이드 블록"은 더 이상 탭이 아니라 탭 그룹 우측 버튼으로 여는 모달 —
     // activeTab과 무관한 별도 boolean으로 관리.
     const [showMyBlockModal, setShowMyBlockModal] = useState(false);
-    const [actionError, setActionError] = useState<string | null>(null);
+    // [2026-10-02] 서버 거부/실패 문구는 인라인 빨간 배너(actionError) 대신 전역 토스트(notify.error)로 —
+    // docs/plan/toast-notification-center-plan.md 2단계. 배너 JSX와 state는 제거.
     const [respondingId, setRespondingId] = useState<string | null>(null);
     // "인박스" 탭 좌측 리스트에서 선택된 오퍼 — 싱글플레이 인박스(좌:리스트/우:디테일)와
     // 동일한 패턴. 선택된 오퍼가 목록에서 사라지면(수락/거절/취소 후 refetch) 다음 렌더에서
@@ -467,8 +493,7 @@ const MultiFrontOfficeView: React.FC = () => {
     // 옮겨서, 같은 queryKey(roomId+내 팀+어드민 여부)로 재방문하면 캐시를 그대로 재사용해
     // 로더 없이 즉시 뜨게 함. isLoading은 v5에서 "데이터가 아직 없고 fetch 중"(최초 로드)만
     // true라 initialLoading 대체로 정확히 맞고, isFetching은 백그라운드 재조회 포함 전체 fetch
-    // 중 true라 기존 loading(체크박스 로컬상태 동기화 가드용, 아래 pendingTradeableIds
-    // useEffect 참고)과 동일하게 씀.
+    // 중 true라 기존 loading(MyTradeBlockModal의 로컬 선택 상태 동기화 가드용)과 동일하게 씀.
     const {
         data: tradeData,
         isLoading: initialLoading,
@@ -642,7 +667,12 @@ const MultiFrontOfficeView: React.FC = () => {
         () => [...leagueTeams].sort((a, b) => a.team_abbr.localeCompare(b.team_abbr, 'en')),
         [leagueTeams],
     );
-    const myTradeableIds = tradeableByTeam.get(myTeamRow?.id ?? '') ?? new Set<string>();
+    // [2026-09-30] MyTradeBlockModal(React.memo)의 prop으로 넘어가므로 참조를 고정 — 없을 때
+    // 매 렌더 new Set()을 만들면 memo 얕은 비교가 매번 깨져 분리한 의미가 없어진다.
+    const myTradeableIds = useMemo(
+        () => tradeableByTeam.get(myTeamRow?.id ?? '') ?? EMPTY_ID_SET,
+        [tradeableByTeam, myTeamRow?.id],
+    );
     const myRoster = useMemo(
         () => (myTeamRow?.roster ?? [])
             .map(id => poolById.get(id))
@@ -668,12 +698,19 @@ const MultiFrontOfficeView: React.FC = () => {
         [room?.team_finances, myTeamRow, currentSeason],
     );
 
+    // [2026-10-02] 수락/거절/취소가 서버에서 거부된 사유 — 제안 id별. 제안서 본문 하단에 표시.
+    const [respondFailures, setRespondFailures] = useState<Record<string, string>>({});
     const handleRespond = useCallback(async (offerId: string, action: TradeOfferAction) => {
         setRespondingId(offerId);
-        setActionError(null);
+        setRespondFailures(prev => { if (!(offerId in prev)) return prev; const next = { ...prev }; delete next[offerId]; return next; });
         const { error } = await respondTradeOffer(offerId, action);
         setRespondingId(null);
-        if (error) { setActionError(error); return; }
+        if (error) {
+            notify.error(error, { source: `trade.respond.${action}`, title: '트레이드 처리 실패' });
+            // [2026-10-02] 토스트는 닫히면 사라지므로, 제안서 본문 하단에도 실패 사유를 남긴다(제안별로 보관, 재시도 성공 시 제거).
+            setRespondFailures(prev => ({ ...prev, [offerId]: error }));
+            return;
+        }
         reload();
         refreshTradeData();
     }, [reload, refreshTradeData]);
@@ -851,6 +888,27 @@ const MultiFrontOfficeView: React.FC = () => {
     const [cartMine, setCartMine] = useState<Set<string>>(new Set());
     const [cartTheirs, setCartTheirs] = useState<Set<string>>(new Set());
     useEffect(() => { setCartMine(new Set()); setCartTheirs(new Set()); }, [targetTeamId]);
+    // [2026-09-30] "트레이드 이후 재정 변동 사항" 아코디언 펼침 상태 — 기본 펼침(기존 항상
+    // 보이던 동작과 동일), 타이틀 클릭으로 토글.
+    const [financeSectionExpanded, setFinanceSectionExpanded] = useState(true);
+    // [2026-09-30] "제안 내역" 헤더도 "트레이드 이후 재정 변동 사항"과 동일한 아코디언 디자인
+    // 적용 — 기본 펼침.
+    const [proposalSectionExpanded, setProposalSectionExpanded] = useState(true);
+    // [2026-09-30] "제안 내역" 하단 그라디언트 — 선수 유무가 아니라 이 영역 자체(제안 내역의
+    // 독립 스크롤 박스, "재정 변동"과는 별개)에 스크롤이 발생 중인지(scrollHeight > clientHeight)
+    // 로 표시 여부를 판단. 내용이 바뀔 때마다(카트/아코디언 펼침) DOM이 갱신된 뒤 다시
+    // 측정해야 하므로 useEffect(레이아웃 반영 후 실행)로 재계산 + 창 크기 변경도 반영.
+    const proposalScrollRef = useRef<HTMLDivElement>(null);
+    const [proposalHasOverflow, setProposalHasOverflow] = useState(false);
+    useEffect(() => {
+        const checkOverflow = () => {
+            const el = proposalScrollRef.current;
+            if (el) setProposalHasOverflow(el.scrollHeight > el.clientHeight);
+        };
+        checkOverflow();
+        window.addEventListener('resize', checkOverflow);
+        return () => window.removeEventListener('resize', checkOverflow);
+    }, [cartMine, cartTheirs, proposalSectionExpanded]);
     const toggleMine = useCallback((id: string) => setCartMine(prev => {
         const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
     }), []);
@@ -869,13 +927,16 @@ const MultiFrontOfficeView: React.FC = () => {
     const handleTargetSort = useCallback((key: PlayerSortKey) => {
         setTargetSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
     }, []);
+    // [2026-09-29] "제공" 별도 패널을 없애고 로스터 한 리스트 안에서 +/- 토글로 바로 담고 빼도록
+    // 바꾸면서, 카트에 담긴 선수를 리스트에서 빼는 필터를 제거 — 이제 항상 전체 로스터를 보여주고
+    // PlayerChip의 actionIcon만 담긴 여부에 따라 바뀐다.
     const myRosterListed = useMemo(
-        () => sortPlayerList(myRoster.filter(p => !cartMine.has(p.id)), mySortConfig, statsByPlayerId),
-        [myRoster, cartMine, mySortConfig, statsByPlayerId],
+        () => sortPlayerList(myRoster, mySortConfig, statsByPlayerId),
+        [myRoster, mySortConfig, statsByPlayerId],
     );
     const targetRosterListed = useMemo(
-        () => sortPlayerList(targetRoster.filter(p => !cartTheirs.has(p.id)), targetSortConfig, statsByPlayerId),
-        [targetRoster, cartTheirs, targetSortConfig, statsByPlayerId],
+        () => sortPlayerList(targetRoster, targetSortConfig, statsByPlayerId),
+        [targetRoster, targetSortConfig, statsByPlayerId],
     );
 
     // [2026-09-16] 정규 계약 슬롯(로스터 정원) 검증 — RosterOverviewGrid.tsx의 "정규 계약"
@@ -896,9 +957,45 @@ const MultiFrontOfficeView: React.FC = () => {
         const inCount = myRoster.filter(p => cartMine.has(p.id) && isRegularContractPlayer(p)).length;
         return targetRegularCount - outCount + inCount;
     }, [myRoster, targetRoster, cartMine, cartTheirs, targetRegularCount]);
+    // [2026-09-29] CBA 샐러리 매칭 사전 검증용 — outgoingCapTotal/ingoingCapTotal(제안 컬럼
+    // 캡 요약용, 아래쪽에서 계산)과 별개로 여기서 직접 계산하는 이유는 이 useMemo가 그보다
+    // 먼저 정의돼야 해서(전송 버튼을 막는 배열이라 카트 상태 바로 다음에 두는 게 자연스러움).
+    const myOutgoingSalaries = useMemo(
+        () => [...cartMine].map(id => poolById.get(id)?.salary ?? 0),
+        [cartMine, poolById],
+    );
+    const theirOutgoingSalaries = useMemo(
+        () => [...cartTheirs].map(id => poolById.get(id)?.salary ?? 0),
+        [cartTheirs, poolById],
+    );
+    const myPayrollBeforeTrade = useMemo(
+        () => calcTeamPayroll({ roster: myRoster, deadMoney: myDeadMoney }),
+        [myRoster, myDeadMoney],
+    );
+    const targetPayrollBeforeTrade = useMemo(
+        () => calcTeamPayroll({ roster: targetRoster, deadMoney: targetDeadMoney }),
+        [targetRoster, targetDeadMoney],
+    );
+    const salaryMatchErrors = useMemo(() => {
+        if (!salaryMatchingEnabled || !salaryMatchThresholds || !myTeamRow || !targetTeamRow) return [];
+        const myOutTotal = myOutgoingSalaries.reduce((s, v) => s + v, 0);
+        const theirOutTotal = theirOutgoingSalaries.reduce((s, v) => s + v, 0);
+        // [2026-10-01] 최저연봉 예외 — 받는 쪽 매칭 대상 합계에서 최저연봉 계약 선수를 뺀다(내보내는 쪽 합계는
+        // 그대로). 서버 respond_trade_offer()의 v_*_in_total 계산과 동일 규칙.
+        const myInMatchable = sumMatchableIncoming([...cartTheirs].map(id => poolById.get(id)), salaryMatchThresholds.cap);
+        const theirInMatchable = sumMatchableIncoming([...cartMine].map(id => poolById.get(id)), salaryMatchThresholds.cap);
+        const errors: string[] = [];
+        const myResult = checkSalaryMatch(myPayrollBeforeTrade, myOutTotal, myInMatchable, myOutgoingSalaries, salaryMatchThresholds);
+        if (!myResult.ok) errors.push(formatSalaryMatchMessage(myTeamRow.team_name, myResult));
+        const targetResult = checkSalaryMatch(targetPayrollBeforeTrade, theirOutTotal, theirInMatchable, theirOutgoingSalaries, salaryMatchThresholds);
+        if (!targetResult.ok) errors.push(formatSalaryMatchMessage(targetTeamRow.team_name, targetResult));
+        return errors;
+    }, [salaryMatchingEnabled, salaryMatchThresholds, myTeamRow, targetTeamRow, myOutgoingSalaries, theirOutgoingSalaries, myPayrollBeforeTrade, targetPayrollBeforeTrade, cartMine, cartTheirs, poolById]);
     // [2026-09-16] 전송 버튼을 막는 검증 에러 전체 — 로스터 슬롯 외에 샐러리 관련 에러 등
     // 앞으로 추가될 검증도 이 배열에 이어 붙이면 되도록 이름을 일반화해뒀다(단일 문자열이
     // 아니라 배열인 이유 — 여러 조건이 동시에 걸릴 수 있고, 화면엔 전부 나열해야 함).
+    // [2026-09-29] salaryMatchErrors(서버가 최종 강제하는 것과 동일한 CBA 매칭 규칙의
+    // 사전 경고) 추가.
     const tradeSendErrors = useMemo(() => {
         if (!myTeamRow || !targetTeamRow) return [];
         const errors: string[] = [];
@@ -906,177 +1003,41 @@ const MultiFrontOfficeView: React.FC = () => {
         if (targetRegularCount > maxRosterSize) errors.push(`${targetTeamRow.team_name}의 로스터 슬롯 초과로 트레이드를 진행할 수 없습니다.`);
         if (myRegularCountAfterTrade > maxRosterSize) errors.push(`트레이드 성사 시 ${myTeamRow.team_name}의 정규 계약 슬롯이 초과되어 트레이드를 진행할 수 없습니다.`);
         if (targetRegularCountAfterTrade > maxRosterSize) errors.push(`트레이드 성사 시 ${targetTeamRow.team_name}의 정규 계약 슬롯이 초과되어 트레이드를 진행할 수 없습니다.`);
+        errors.push(...salaryMatchErrors);
         return errors;
-    }, [myTeamRow, targetTeamRow, myRegularCount, targetRegularCount, myRegularCountAfterTrade, targetRegularCountAfterTrade, maxRosterSize]);
+    }, [myTeamRow, targetTeamRow, myRegularCount, targetRegularCount, myRegularCountAfterTrade, targetRegularCountAfterTrade, maxRosterSize, salaryMatchErrors]);
 
-    const [message, setMessage] = useState('');
+    // [2026-09-30] 제안 메시지는 controlled state가 아니라 ref로 — 이 컴포넌트가 2,400줄짜리
+    // 거대 컴포넌트라 키 입력마다 setState → 전체 재렌더(양 팀 로스터 30행 + 페이롤 계산 전부)가
+    // 일어나 한글 IME 타이핑이 밀리는 렉의 원인이었다. 값은 전송 시점에만 읽고, 글자 수 제한은
+    // maxLength로 브라우저에 맡긴다.
+    const messageRef = useRef<HTMLTextAreaElement>(null);
     const [sending, setSending] = useState(false);
     const [sendSuccess, setSendSuccess] = useState(false);
 
     const handleSend = useCallback(async () => {
         if (!roomId || !myTeamRow || !targetTeamRow) return;
         setSending(true);
-        setActionError(null);
         const { error } = await createTradeOffer({
             roomId, fromTeamId: myTeamRow.id, toTeamId: targetTeamRow.id,
-            playersFrom: [...cartMine], playersTo: [...cartTheirs], message,
+            playersFrom: [...cartMine], playersTo: [...cartTheirs],
+            message: messageRef.current?.value.slice(0, 300) ?? '',
         });
         setSending(false);
-        if (error) { setActionError(error); return; }
+        if (error) { notify.error(error, { source: 'trade.create', title: '트레이드 제안 실패' }); return; }
         setCartMine(new Set());
         setCartTheirs(new Set());
-        setMessage('');
+        if (messageRef.current) messageRef.current.value = '';
         setSendSuccess(true);
         setTimeout(() => setSendSuccess(false), 2500);
         refreshTradeData();
-    }, [roomId, myTeamRow, targetTeamRow, cartMine, cartTheirs, message, refreshTradeData]);
+    }, [roomId, myTeamRow, targetTeamRow, cartMine, cartTheirs, refreshTradeData]);
 
-    // ── 트레이드 블록 탭 ─────────────────────────────────────────────────
-    // 체크박스는 로컬 선택 상태만 바꾸고, "업데이트" 버튼을 눌러야 서버에 일괄 반영된다
-    // (선수 한 명 클릭할 때마다 refreshTradeData()가 통째로 다시 돌아 화면이 리로드되는
-    // 문제가 있었음). [2026-08-24] 체크 = "트레이드 가능"(opt-in), 기본값(미체크)은 불가.
-    const [pendingTradeableIds, setPendingTradeableIds] = useState<Set<string>>(new Set());
-    const [savingBlocks, setSavingBlocks] = useState(false);
-    const [blockSaveSuccess, setBlockSaveSuccess] = useState(false);
-
-    // 서버 데이터가 (재)로드될 때만 로컬 선택 상태를 서버 값으로 동기화 — 체크박스를
-    // 토글하는 동안에는 이 effect가 재실행되지 않아 편집 중인 선택이 지워지지 않는다.
-    useEffect(() => {
-        if (!loading) setPendingTradeableIds(new Set(myTradeableIds));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loading, myTeamRow?.id]);
-
-    const togglePendingTradeable = useCallback((playerId: string) => {
-        setPendingTradeableIds(prev => {
-            const next = new Set(prev);
-            next.has(playerId) ? next.delete(playerId) : next.add(playerId);
-            return next;
-        });
-    }, []);
-
-    // 드래그&드롭 이동 — 드롭 대상 컬럼이 이미 그 선수를 갖고 있어도 안전하게 멱등 처리
-    // (toggle과 달리 "이 컬럼에 있어야 한다"는 목표 상태를 직접 지정).
-    const setPendingTradeableMembership = useCallback((playerId: string, tradeable: boolean) => {
-        setPendingTradeableIds(prev => {
-            if (prev.has(playerId) === tradeable) return prev;
-            const next = new Set(prev);
-            tradeable ? next.add(playerId) : next.delete(playerId);
-            return next;
-        });
-    }, []);
-    const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
-
-    const tradeableDirty = useMemo(() => {
-        if (pendingTradeableIds.size !== myTradeableIds.size) return true;
-        for (const id of pendingTradeableIds) if (!myTradeableIds.has(id)) return true;
-        return false;
-    }, [pendingTradeableIds, myTradeableIds]);
-
-    // ── 팀 단위 "원하는 대가" 위시리스트 — 트레이드 블록(선수 목록)과 별개 기능 ─────────
-    // 선수 리스트 하단에 별도 섹션으로 표시. league_teams에 팀당 1행 저장.
-    const [teamRequestNote, setTeamRequestNote] = useState('');
-    const [teamRequestPositions, setTeamRequestPositions] = useState<Set<string>>(new Set());
-    const [teamRequestPlayerIds, setTeamRequestPlayerIds] = useState<Set<string>>(new Set());
-    const [teamRequestArchetypes, setTeamRequestArchetypes] = useState<Set<string>>(new Set());
-    const [teamRequestPlayerQuery, setTeamRequestPlayerQuery] = useState('');
-
-    // 같은 팀이면 재초기화하지 않음 — 저장 후 reload()로 leagueTeams가 갱신돼도 편집 중인
-    // 폼(아직 저장 안 한 값 포함)을 덮어쓰지 않기 위함.
-    const initializedTeamRequestRef = useRef<string | null>(null);
-    useEffect(() => {
-        if (!myTeamRow) return;
-        if (initializedTeamRequestRef.current === myTeamRow.id) return;
-        initializedTeamRequestRef.current = myTeamRow.id;
-        setTeamRequestNote(myTeamRow.trade_request_note ?? '');
-        setTeamRequestPositions(new Set(myTeamRow.trade_request_positions ?? []));
-        setTeamRequestPlayerIds(new Set(myTeamRow.trade_request_player_ids ?? []));
-        setTeamRequestArchetypes(new Set(myTeamRow.trade_request_archetypes ?? []));
-    }, [myTeamRow]);
-
-    const toggleTeamRequestPosition = useCallback((pos: string) => {
-        setTeamRequestPositions(prev => {
-            const next = new Set(prev);
-            next.has(pos) ? next.delete(pos) : next.add(pos);
-            return next;
-        });
-    }, []);
-    const toggleTeamRequestArchetype = useCallback((arch: string) => {
-        setTeamRequestArchetypes(prev => {
-            const next = new Set(prev);
-            next.has(arch) ? next.delete(arch) : next.add(arch);
-            return next;
-        });
-    }, []);
-    const addTeamRequestPlayer = useCallback((id: string) => {
-        setTeamRequestPlayerIds(prev => new Set(prev).add(id));
-        setTeamRequestPlayerQuery('');
-    }, []);
-    const removeTeamRequestPlayer = useCallback((id: string) => {
-        setTeamRequestPlayerIds(prev => { const next = new Set(prev); next.delete(id); return next; });
-    }, []);
-
-    const teamRequestPlayerMatches = useMemo(() => {
-        const q = teamRequestPlayerQuery.trim();
-        if (q.length < 1) return [];
-        return poolPlayers
-            .filter(p => p.name.includes(q) && !teamRequestPlayerIds.has(p.id))
-            .slice(0, 8);
-    }, [teamRequestPlayerQuery, poolPlayers, teamRequestPlayerIds]);
-
-    // 서버에 저장된 값과 로컬 편집 상태를 비교 — 요구사항 메모/포지션/선수/아키타입 중 하나라도
-    // 바뀌었으면 "업데이트" 버튼 활성화(선수 목록 변경 여부와 무관하게 독립적으로 판단).
-    const teamRequestDirty = useMemo(() => {
-        if (!myTeamRow) return false;
-        if ((myTeamRow.trade_request_note ?? '') !== teamRequestNote) return true;
-        const savedPositions  = new Set(myTeamRow.trade_request_positions  ?? []);
-        const savedPlayerIds  = new Set(myTeamRow.trade_request_player_ids ?? []);
-        const savedArchetypes = new Set(myTeamRow.trade_request_archetypes ?? []);
-        const setsDiffer = (a: Set<string>, b: Set<string>) => a.size !== b.size || [...a].some(v => !b.has(v));
-        return setsDiffer(teamRequestPositions, savedPositions)
-            || setsDiffer(teamRequestPlayerIds, savedPlayerIds)
-            || setsDiffer(teamRequestArchetypes, savedArchetypes);
-    }, [myTeamRow, teamRequestNote, teamRequestPositions, teamRequestPlayerIds, teamRequestArchetypes]);
-
-    // "업데이트" 버튼 하나로 트레이드 가능 여부(on/off)와 "원하는 대가" 위시리스트를 함께 저장.
-    const handleSaveTradeable = useCallback(async () => {
-        if (!roomId || !myTeamRow) return;
-        setSavingBlocks(true);
-        setActionError(null);
-        const toMarkTradeable    = [...pendingTradeableIds].filter(id => !myTradeableIds.has(id));
-        const toMarkNotTradeable = [...myTradeableIds].filter(id => !pendingTradeableIds.has(id));
-        const results = await Promise.all([
-            ...toMarkTradeable.map(id => setTradeBlock(roomId, myTeamRow.id, id, true)),
-            ...toMarkNotTradeable.map(id => setTradeBlock(roomId, myTeamRow.id, id, false)),
-            updateTeamTradeRequest(myTeamRow.id, {
-                note:              teamRequestNote,
-                desiredPositions:  [...teamRequestPositions],
-                desiredPlayerIds:  [...teamRequestPlayerIds],
-                desiredArchetypes: [...teamRequestArchetypes],
-            }),
-        ]);
-        setSavingBlocks(false);
-        const firstError = results.find(r => r.error)?.error;
-        if (firstError) { setActionError(firstError); return; }
-        setBlockSaveSuccess(true);
-        setTimeout(() => setBlockSaveSuccess(false), 2000);
-        reload();
-        refreshTradeData();
-    }, [
-        roomId, myTeamRow, pendingTradeableIds, myTradeableIds,
-        teamRequestNote, teamRequestPositions, teamRequestPlayerIds, teamRequestArchetypes,
-        reload, refreshTradeData,
-    ]);
-
-    // 드래그&드롭 2컬럼 구성 — "내 선수 목록"(트레이드 블록에 없는 선수) / "트레이드 블록"
-    // (있는 선수)으로 로컬 선택 상태(pendingTradeableIds) 기준으로 분리.
-    const myRosterAvailable = useMemo(
-        () => myRoster.filter(p => !pendingTradeableIds.has(p.id)),
-        [myRoster, pendingTradeableIds],
-    );
-    const myRosterTradeable = useMemo(
-        () => myRoster.filter(p => pendingTradeableIds.has(p.id)),
-        [myRoster, pendingTradeableIds],
-    );
+    // ── 트레이드 블록 모달 ─────────────────────────────────────────────
+    // [2026-09-30] 편집 상태(트레이드 가능 선택/위시리스트 폼)와 저장 로직은 전부
+    // MyTradeBlockModal.tsx로 이동 — 이 컴포넌트에는 열림/닫힘 플래그와 안정된 props만 남긴다.
+    const closeMyBlockModal = useCallback(() => setShowMyBlockModal(false), []);
+    const handleMyBlockSaved = useCallback(() => { reload(); refreshTradeData(); }, [reload, refreshTradeData]);
 
     if (!league || !room) {
         return (
@@ -1110,10 +1071,12 @@ const MultiFrontOfficeView: React.FC = () => {
         const theirsTotal = theirs.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
         const busy = respondingId === offer.id;
         // 실제(wall-clock) 날짜 대신 인게임 날짜 — 리스트 행과 동일한 근거(sim_date_at_creation).
-        const dateLabel = offer.sim_date_at_creation ? offer.sim_date_at_creation.slice(5).replace('-', '/') : '-';
+        // [2026-09-30] mm/dd → yyyy/mm/dd (사용자 요청). 문자열 치환만 — Date() 변환 없이 타임존 이슈 차단 유지.
+        const dateLabel = offer.sim_date_at_creation ? offer.sim_date_at_creation.replace(/-/g, '/') : '-';
         // 섹션 헤더 공통 스타일 — 발신/수신/팀명(메시지 발신자·자산 컬럼) 전부 동일하게
         // text-sm + 볼드 해제.
-        const sectionLabelClass = 'text-sm uppercase text-slate-500 mb-1';
+        // [2026-09-30] 라벨 색 slate-500 → 흰색 + 볼드(사용자 요청).
+        const sectionLabelClass = 'text-sm uppercase text-white font-bold mb-1';
 
         // 이 오퍼가 내 팀과 관련 있을 때만("발신" 또는 "수신") 수락 시 내 팀 캡 영향을 계산.
         // 내 팀과 무관한 리그 전체 오퍼(어드민이 제3자 오퍼를 열람하는 경우)는 대상 없음.
@@ -1128,6 +1091,28 @@ const MultiFrontOfficeView: React.FC = () => {
         const myPostTotal = myCurrentTotal - myOutTotal + myInTotal;
         const capRoomRows = myRole ? buildCapRoomRows(myPostTotal) : [];
 
+        // [2026-09-29] CBA 샐러리 매칭 사전 경고 — myRole 유무와 무관하게(어드민이 제3자
+        // 오퍼를 열람하는 경우도 포함) 양 팀 모두 검사. 서버 respond_trade_offer(accept)가
+        // 최종 강제하는 것과 동일한 게이트/로직(salaryMatchingEnabled, checkSalaryMatch).
+        const mineSalaries = mine.map(id => poolById.get(id)?.salary ?? 0);
+        const theirsSalaries = theirs.map(id => poolById.get(id)?.salary ?? 0);
+        const fromRosterForCheck = (fromTeam?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p);
+        const toRosterForCheck = (toTeam?.roster ?? []).map(id => poolById.get(id)).filter((p): p is Player => !!p);
+        const fromDeadMoneyForCheck = getTeamDeadMoney(room?.team_finances, fromTeam?.team_slug, currentSeason);
+        const toDeadMoneyForCheck = getTeamDeadMoney(room?.team_finances, toTeam?.team_slug, currentSeason);
+        const salaryMatchWarnings: string[] = [];
+        if (salaryMatchingEnabled && salaryMatchThresholds && fromTeam && toTeam) {
+            const fromPayroll = calcTeamPayroll({ roster: fromRosterForCheck, deadMoney: fromDeadMoneyForCheck });
+            const toPayroll = calcTeamPayroll({ roster: toRosterForCheck, deadMoney: toDeadMoneyForCheck });
+            // [2026-10-01] 최저연봉 예외 — 받는 쪽 합계에서 최저연봉 계약 선수 제외(새 제안 탭 salaryMatchErrors와 동일).
+            const theirsMatchable = sumMatchableIncoming(theirs.map(id => poolById.get(id)), salaryMatchThresholds.cap);
+            const mineMatchable = sumMatchableIncoming(mine.map(id => poolById.get(id)), salaryMatchThresholds.cap);
+            const fromResult = checkSalaryMatch(fromPayroll, mineTotal, theirsMatchable, mineSalaries, salaryMatchThresholds);
+            if (!fromResult.ok) salaryMatchWarnings.push(`${formatSalaryMatchMessage(fromTeam.team_name, fromResult)} (수락 시 서버에서 거부됩니다)`);
+            const toResult = checkSalaryMatch(toPayroll, theirsTotal, mineMatchable, theirsSalaries, salaryMatchThresholds);
+            if (!toResult.ok) salaryMatchWarnings.push(`${formatSalaryMatchMessage(toTeam.team_name, toResult)} (수락 시 서버에서 거부됩니다)`);
+        }
+
         // 팀 이름을 로스터 화면 링크로 — 이 파일의 "트레이드 블록" 탭(1134번째 줄 부근)에서
         // 쓰는 team_slug 기반 네비게이션과 동일한 패턴 재사용.
         const renderTeamLink = (team: LeagueTeamRow | null | undefined, extraClassName = '') => (
@@ -1141,34 +1126,53 @@ const MultiFrontOfficeView: React.FC = () => {
 
         const renderAssetColumn = (team: LeagueTeamRow | undefined, playerIds: string[], total: number) => (
             <div>
-                <div className={sectionLabelClass}>{renderTeamLink(team)}</div>
-                <div className="space-y-1">
+                {/* [2026-09-30] "새 제안" 탭 제안 내역의 팀 헤더와 동일한 디자인 — 팀 컬러 배경 +
+                    대비 텍스트 색 + rounded-md 배지, 아래 선수 리스트는 px-2 인셋. 팀명 클릭 시
+                    로스터 이동(renderTeamLink)은 유지. */}
+                <div
+                    className="text-sm font-bold ko-normal block w-full px-2 py-1 rounded-md mb-1"
+                    style={{
+                        backgroundColor: team?.color_primary ?? '#0f172a',
+                        color: team?.color_text ?? getReadableTextColor(team?.color_primary ?? '#0f172a'),
+                    }}
+                >
+                    {renderTeamLink(team)}
+                </div>
+                <div className="space-y-1 px-2">
                     {playerIds.length === 0 && <p className="text-sm text-slate-600">없음</p>}
                     {playerIds.map(id => {
                         const p = poolByIdWithStats.get(id);
-                        const s = statsByPlayerId.get(id);
+                        // [2026-09-30] 버그 수정: statsByPlayerId는 "새 제안" 탭의 내 팀/상대 팀(targetTeamRow)
+                        // 로스터만 집계해서, 메시지함에서 고른 오퍼의 상대 팀이 그 targetTeamRow와 다르면
+                        // 그 팀 선수는 전부 0.0Pts로 떴다. 메시지함은 statsRequestIds(선택된 오퍼의 선수
+                        // 전원)로 받은 seasonStatsBatch가 poolByIdWithStats.stats에 이미 병합돼 있으므로
+                        // 그걸 경기당 평균으로 환산해 쓴다(PlayerHoverCard와 동일한 s.pts / g 계산).
+                        const g = Math.max(1, p?.stats?.g ?? 0);
+                        const s = p?.stats
+                            ? { ppg: (p.stats.pts ?? 0) / g, rpg: (p.stats.reb ?? 0) / g, apg: (p.stats.ast ?? 0) / g }
+                            : statsByPlayerId.get(id);
                         return (
                             <div key={id} className="flex items-center gap-3 text-sm">
                                 <PlayerHoverCard player={p} teamAbbr={team?.team_abbr}>
                                     <span
                                         onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
-                                        className="text-slate-200 truncate cursor-pointer hover:underline hover:text-indigo-400 flex-1 min-w-0"
+                                        className="text-white font-bold truncate cursor-pointer hover:underline hover:text-indigo-400 flex-1 min-w-0"
                                     >
                                         {p?.name ?? id}
                                     </span>
                                 </PlayerHoverCard>
-                                <span className="text-slate-500 shrink-0 w-8 text-center">{p?.position ?? ''}</span>
-                                <span className="text-slate-400 shrink-0 w-14 text-right">{(s?.ppg ?? 0).toFixed(1)}Pts</span>
-                                <span className="text-slate-400 shrink-0 w-14 text-right">{(s?.rpg ?? 0).toFixed(1)}Reb</span>
-                                <span className="text-slate-400 shrink-0 w-14 text-right">{(s?.apg ?? 0).toFixed(1)}Ast</span>
-                                <span className="text-slate-500 shrink-0 w-16 text-right">{formatMoney(p?.salary ?? 0)}</span>
+                                <span className="text-white shrink-0 w-8 text-center">{p?.position ?? ''}</span>
+                                <span className="text-white shrink-0 w-14 text-right">{(s?.ppg ?? 0).toFixed(1)}Pts</span>
+                                <span className="text-white shrink-0 w-14 text-right">{(s?.rpg ?? 0).toFixed(1)}Reb</span>
+                                <span className="text-white shrink-0 w-14 text-right">{(s?.apg ?? 0).toFixed(1)}Ast</span>
+                                <span className="text-white shrink-0 w-24 text-right">{formatMoneyFull(p?.salary ?? 0)}</span>
                             </div>
                         );
                     })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-700 flex items-center justify-between text-sm font-bold">
+                <div className="mt-2 pt-2 px-2 border-t border-slate-700 flex items-center justify-between text-sm font-bold">
                     <span className="text-slate-400">총합</span>
-                    <span className="text-white">{formatMoney(total)}</span>
+                    <span className="text-white">{formatMoneyFull(total)}</span>
                 </div>
             </div>
         );
@@ -1184,25 +1188,26 @@ const MultiFrontOfficeView: React.FC = () => {
                     <div>
                         <div className={sectionLabelClass}>발신</div>
                         <div className="text-white font-bold flex items-center gap-2">
-                            {fromTeam && <TeamLogoIcon teamSlug={fromTeam.team_slug} abbr={fromTeam.team_abbr} />}
+                            {fromTeam && <TeamLogoIcon teamSlug={fromTeam.team_slug} abbr={fromTeam.team_abbr} className="w-10 h-10" />}
                             {renderTeamLink(fromTeam)}
                         </div>
                     </div>
                     <div>
                         <div className={sectionLabelClass}>수신</div>
                         <div className="text-white font-bold flex items-center gap-2">
-                            {toTeam && <TeamLogoIcon teamSlug={toTeam.team_slug} abbr={toTeam.team_abbr} />}
+                            {toTeam && <TeamLogoIcon teamSlug={toTeam.team_slug} abbr={toTeam.team_abbr} className="w-10 h-10" />}
                             {renderTeamLink(toTeam)}
                         </div>
                     </div>
                 </div>
 
-                <div>
-                    <div className={sectionLabelClass}>{renderTeamLink(fromTeam)}:</div>
-                    <p className={offer.message ? 'text-slate-300 italic' : 'text-slate-600'}>
-                        {offer.message ? `"${offer.message}"` : '작성된 메시지가 없습니다.'}
-                    </p>
-                </div>
+                {/* [2026-09-30] 작성된 메시지가 없으면 영역 자체를 숨김(이전엔 "작성된 메시지가 없습니다." 표시). */}
+                {offer.message && (
+                    <div>
+                        <div className={sectionLabelClass}>{renderTeamLink(fromTeam)}:</div>
+                        <p className="text-slate-300 italic">{`"${offer.message}"`}</p>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-6 pt-2">
                     {renderAssetColumn(fromTeam, mine, mineTotal)}
@@ -1213,16 +1218,34 @@ const MultiFrontOfficeView: React.FC = () => {
                     바뀌는지 — buildCapRoomRows는 "새 제안" 탭의 캡 요약과 동일한 계산/서식을
                     공유(중복 구현 없음). */}
                 {myRole && capEnabled && league && (
-                    <div className="pt-2 space-y-1 border-t border-slate-700">
+                    // [2026-09-30] 위 선수 2컬럼 그리드와 같은 전체 너비를 쓰면 라벨↔값 간격이 너무 벌어져
+                    // 절반(w-1/2 = 선수 컬럼 하나 폭)으로 제한.
+                    <div className="pt-2 space-y-1 w-1/2">
                         <div className={sectionLabelClass}>수락 시 {renderTeamLink(myTeamRow)} 캡 여유분 변화</div>
                         {capRoomRows.map(row => (
                             <div key={row.label} className="flex items-center justify-between text-sm">
                                 <span className="text-white">{row.label}</span>
                                 <span className={`font-semibold ${row.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {row.value >= 0 ? '+' : ''}{formatMoney(row.value)}
+                                    {row.value >= 0 ? '+' : ''}{formatMoneyFull(row.value)}
                                 </span>
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {salaryMatchWarnings.length > 0 && (
+                    <div className="space-y-1">
+                        {salaryMatchWarnings.map((msg, i) => (
+                            <p key={i} className="text-sm text-fuchsia-400 ko-normal">{msg}</p>
+                        ))}
+                    </div>
+                )}
+
+                {/* [2026-10-02] 직전 수락/거절/취소 시도가 서버에서 거부된 사유 — 본문 하단, 버튼 바로 위. */}
+                {respondFailures[offer.id] && (
+                    <div className="flex items-start gap-2 text-sm text-red-400 ko-normal">
+                        <ShieldAlert size={15} className="shrink-0 mt-0.5" />
+                        <span><span className="font-bold">처리 실패:</span> {respondFailures[offer.id]}</span>
                     </div>
                 )}
 
@@ -1271,8 +1294,10 @@ const MultiFrontOfficeView: React.FC = () => {
 
     const renderOfferListRow = (offer: TradeOfferRow) => {
         const opts = getOfferOpts(offer);
-        const fromAbbr = teamById.get(offer.from_team_id)?.team_abbr ?? '?';
-        const toAbbr = teamById.get(offer.to_team_id)?.team_abbr ?? '?';
+        const fromTeam = teamById.get(offer.from_team_id);
+        const toTeam = teamById.get(offer.to_team_id);
+        const fromAbbr = fromTeam?.team_abbr ?? '?';
+        const toAbbr = toTeam?.team_abbr ?? '?';
         const selected = selectedOffer?.id === offer.id;
         // "받은" 오퍼에만 읽음 개념 적용 — 내가 보낸 건 이미 아는 내용이라 안읽음 점 없음.
         const unread = opts.direction === 'incoming' && !offer.to_team_read_at;
@@ -1299,8 +1324,15 @@ const MultiFrontOfficeView: React.FC = () => {
                 {unread ? <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" /> : <span />}
                 {/* 방향(받음/보냄)에 따라 "내 팀"에 해당하는 칸만 밝게 강조 — 어드민 뷰는
                     내 팀 기준 방향이 없는 리그 전체 오퍼라 둘 다 동일하게 표시. */}
-                <span className={`truncate font-bold ${opts.direction === 'outgoing' ? 'text-white' : 'text-slate-400'}`}>{fromAbbr}</span>
-                <span className={`truncate font-bold ${opts.direction === 'incoming' ? 'text-white' : 'text-slate-400'}`}>{toAbbr}</span>
+                {/* [2026-09-30] 약어 좌측에 팀 로고(w-4) — 칸이 좁아 로고는 shrink-0, 약어만 truncate. */}
+                <span className="flex items-center gap-1.5 min-w-0">
+                    {fromTeam && <TeamLogoIcon teamSlug={fromTeam.team_slug} abbr={fromAbbr} className="w-4 h-4" />}
+                    <span className={`truncate font-bold ${opts.direction === 'outgoing' ? 'text-white' : 'text-slate-400'}`}>{fromAbbr}</span>
+                </span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                    {toTeam && <TeamLogoIcon teamSlug={toTeam.team_slug} abbr={toAbbr} className="w-4 h-4" />}
+                    <span className={`truncate font-bold ${opts.direction === 'incoming' ? 'text-white' : 'text-slate-400'}`}>{toAbbr}</span>
+                </span>
                 <span className="text-slate-400">{dateLabel}</span>
                 <span className="text-slate-400 truncate">{remainingLabel}</span>
             </div>
@@ -1340,269 +1372,71 @@ const MultiFrontOfficeView: React.FC = () => {
         ].filter((r): r is { label: string; value: number } => !!r);
     };
 
-    // "새 제안" 탭의 각 "제공" 패널 하단 — 이 오퍼로 나가는 선수들의 연봉 합(샐러리 총합)과
-    // 트레이드가 그대로 체결됐을 때 이 팀의 실제 샐러리(실행 시 총 샐러리) 기준
+    // "새 제안" 탭의 각 팀 영역 하단 — 이 팀의 현재(카트 선택과 무관한, 고정) 총 페이롤 기준
     // 샐러리캡/사치세/에이프런 여유분. 샐러리캡이 꺼진 리그에서는 표시 자체가 의미 없어
-    // capEnabled일 때만 렌더. 여유분은 "임계값 - 실행 시 총 샐러리"라 양수면 그만큼 여유,
+    // capEnabled일 때만 렌더. 여유분은 "임계값 - 현재 총 페이롤"이라 양수면 그만큼 여유,
     // 음수면 이미 그 선을 넘었다는 뜻(TeamPayrollTable.tsx의 diffRows와 동일한 부호 규칙 —
-    // 초과 시 빨간색). outTotal=이 팀이 내주는 선수 연봉 합, inTotal=이 팀이 받는 선수 연봉 합
-    // (호출부에서 이미 메모이즈된 outgoingCapTotal/ingoingCapTotal을 그대로 넘겨 중복 계산 방지).
-    // deadMoney: 이 로스터가 속한 팀의 방출 데드캡 목록(호출부가 myDeadMoney/targetDeadMoney를
-    // 넘김) — calcTeamPayroll()(유일한 팀 페이롤 계산 소스)에 그대로 넘겨 currentTotal을 낸다.
-    const renderCapSummaryFooter = (roster: Player[], outTotal: number, inTotal: number, deadMoney: DeadMoneyEntry[]) => {
+    // 초과 시 빨간색). deadMoney: 이 로스터가 속한 팀의 방출 데드캡 목록(호출부가
+    // myDeadMoney/targetDeadMoney를 넘김) — calcTeamPayroll()(유일한 팀 페이롤 계산 소스)에
+    // 그대로 넘겨 currentTotal을 낸다.
+    // [2026-09-29] 원래는 카트에 담긴 선수 수만큼 outTotal/inTotal(postTotal)을 반영해서
+    // "실행 시 총 샐러리"까지 같이 보여줬는데, 사용자 피드백: 이 영역은 선수를 고르든 안 고르든
+    // 절대 변하면 안 된다(변하면 원래 값을 보려고 선택을 전부 해제해야 하는 문제). "트레이드가
+    // 성사되면 얼마나 바뀌는지"는 이미 우측 3번째 컬럼 "캡 변동" 섹션이 outgoingCapTotal/
+    // ingoingCapTotal로 따로 보여주고 있어 중복이기도 해서, 이 영역은 완전히 currentTotal
+    // 하나만 기준으로 삼도록 postTotal/outTotal/inTotal 의존을 전부 제거.
+    const renderCapSummaryFooter = (roster: Player[], deadMoney: DeadMoneyEntry[]) => {
         if (!capEnabled || !league) return null;
         const currentTotal = calcTeamPayroll({ roster, deadMoney });
-        const postTotal = currentTotal - outTotal + inTotal;
-        const roomRows = buildCapRoomRows(postTotal);
+        const roomRows = buildCapRoomRows(currentTotal);
 
         return (
-            <div className="shrink-0 px-4 py-2 space-y-1 border-y border-slate-800">
+            <div className="shrink-0 px-4 py-2 space-y-1 border-y border-slate-800 bg-slate-950">
                 <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 ko-normal">샐러리 총합</span>
-                    <span className="text-white font-semibold tabular-nums">{formatMoney(outTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 ko-normal">실행 시 총 샐러리</span>
-                    <span className="text-slate-300 font-semibold tabular-nums">{formatMoney(postTotal)}</span>
+                    <span className="text-white ko-normal">샐러리 총합</span>
+                    <span className="text-white font-semibold tabular-nums">{formatMoneyFull(currentTotal)}</span>
                 </div>
                 {roomRows.map(row => (
                     <div key={row.label} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500 ko-normal">{row.label}</span>
+                        <span className="text-white ko-normal">{row.label}</span>
                         <span className={`font-semibold tabular-nums ${row.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {row.value >= 0 ? '+' : ''}{formatMoney(row.value)}
+                            {row.value >= 0 ? '+' : ''}{formatMoneyFull(row.value)}
                         </span>
                     </div>
                 ))}
-            </div>
-        );
-    };
-
-    // "내 선수 목록"/"트레이드 블록" 두 컬럼이 완전히 동일한 드래그 가능 행을 렌더 —
-    // 소스 배열과 드롭 콜백만 다르므로 행 자체는 한 번만 정의해 공유.
-    const renderDraggableRow = (p: Player) => (
-        <div
-            key={p.id}
-            draggable
-            onDragStart={e => { setDraggedPlayerId(p.id); e.dataTransfer.effectAllowed = 'move'; }}
-            onDragEnd={() => setDraggedPlayerId(null)}
-            onClick={() => togglePendingTradeable(p.id)}
-            className={`flex items-center gap-2.5 px-4 h-9 bg-slate-900 border-b border-slate-800/50 hover:bg-white/[0.03] cursor-grab active:cursor-grabbing transition-opacity ${draggedPlayerId === p.id ? 'opacity-30' : ''}`}
-        >
-            <GripVertical size={14} className="text-slate-600 shrink-0" />
-            <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-sm !shadow-none shrink-0" />
-            <span className="text-sm font-semibold text-white flex-1 truncate">{p.name}</span>
-            <span className="text-sm text-slate-500 shrink-0">{p.position}</span>
-        </div>
-    );
-
-    // [2026-08-30] 원래 "내 트레이드 블록" 탭이었던 콘텐츠 — 이제 탭 그룹에서 빠지고
-    // 우측 "트레이드 블록 수정" 버튼을 눌렀을 때 뜨는 모달 안에서만 렌더된다(renderOfferCard와
-    // 동일하게 return 앞에 정의해두는 로컬 렌더 함수 패턴).
-    const renderMyBlockPanel = () => (
-        // 뎁스차트(DepthRotationBoard) 스타일 참고 — 바디 외곽 패딩 없이 화면을
-        // 꽉 채우고, 섹션마다 자체 툴바(px-6 py-3)로 여백을 표현.
-        <div className="flex flex-col">
-            {/* Modal 자체의 우상단 X는 hideCloseButton으로 꺼두고, 이 툴바 안에 제목 왼쪽
-                X 버튼을 직접 둔다 — sticky top-0으로 모달 바디를 스크롤해도 항상 보임. */}
-            <div className="sticky top-0 z-20 px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center gap-4 shrink-0">
-                <button
-                    onClick={() => setShowMyBlockModal(false)}
-                    className="p-1 -ml-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-colors shrink-0"
-                >
-                    <X size={18} />
-                </button>
-                <h5 className="text-base font-black text-slate-300 uppercase ko-normal flex-1">내 트레이드 블록 설정</h5>
-                {myTeamRow && (
-                    <div className="flex items-center gap-3 shrink-0">
-                        {blockSaveSuccess && (
-                            <span className="flex items-center gap-1.5 text-sm text-emerald-400 ko-normal">
-                                <Check size={15} /> 저장 완료
-                            </span>
-                        )}
-                        <button
-                            onClick={handleSaveTradeable}
-                            disabled={(!tradeableDirty && !teamRequestDirty) || savingBlocks}
-                            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-black uppercase transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            {savingBlocks ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                            업데이트
-                        </button>
+                {/* [2026-09-29] 위반 시에만 뜨는 tradeSendErrors/salaryMatchErrors와 별개로, 이
+                    팀이 "지금" 어느 구간에 있고 그 구간의 매칭 규칙이 뭔지 항상 보여주는 안내 —
+                    선수를 고르기 전에 미리 알 수 있게(1차 에이프런 팀이 아무것도 안 내보내고
+                    받으려다 "최대 $0"에 혼란스러워했던 사례 재발 방지). currentTotal(트레이드
+                    반영 전 페이롤)로 구간을 판정 — checkSalaryMatch()가 실제 매칭 검증에 쓰는
+                    기준과 동일(트레이드 전 페이롤 기준으로 구간이 정해짐).
+                    [2026-09-29 후속] describeSalaryMatchBracket()이 반환하는 줄 수가 구간마다
+                    2~4줄로 다르다 — 이 함수는 양쪽 팀 각각 자기 페이롤로 독립 호출되므로 왼쪽
+                    팀과 오른쪽 팀이 서로 다른 구간(=다른 줄 수)일 수 있다. 이 블록이 shrink-0로
+                    자연 높이를 그대로 차지하면 좌우 footer 전체 높이가 달라지고, 그 위 로스터
+                    영역(flex-1)이 남은 공간을 채우는 방식이라 결국 좌우 컬럼 높이가 어긋나
+                    레이아웃이 깨진다(실제 스크린샷으로 확인된 버그). 최장 케이스(제목 1줄+불릿
+                    4줄)를 기준으로 고정 높이를 주고 overflow-y-auto로 안전판을 둬서, 어떤 구간
+                    조합이 와도 좌우 footer 높이가 항상 같아지게 한다. */}
+                {salaryMatchingEnabled && salaryMatchThresholds && (
+                    <div className="h-[104px] overflow-y-auto pt-2 mt-1 border-t border-slate-800 space-y-0.5">
+                        <span className="text-xs font-bold text-emerald-400 uppercase ko-normal">트레이드 조건</span>
+                        <ul className="space-y-0.5">
+                            {describeSalaryMatchBracket(currentTotal, salaryMatchThresholds).map((line, idx) => (
+                                <li key={idx} className="text-xs text-white ko-normal">
+                                    · {line.split(/(\$[\d,]+(?:\.\d+)?[MK]?)/g).map((part, i) => (
+                                        /^\$[\d,]+(?:\.\d+)?[MK]?$/.test(part)
+                                            ? <span key={i} className="text-emerald-400 font-bold">{part}</span>
+                                            : part
+                                    ))}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
             </div>
-
-            {actionError && (
-                <div className="flex items-center gap-2 mx-6 mt-4 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
-                    <ShieldAlert size={15} className="shrink-0" /> {actionError}
-                </div>
-            )}
-
-            {!myTeamRow ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center">소속 팀이 있어야 트레이드 블록을 설정할 수 있습니다.</p>
-            ) : (
-                <>
-                    <div className="grid grid-cols-2 h-[320px]">
-                        <div
-                            className="border-r border-slate-800 overflow-y-auto custom-scrollbar bg-slate-950"
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={() => { if (draggedPlayerId) setPendingTradeableMembership(draggedPlayerId, false); setDraggedPlayerId(null); }}
-                        >
-                            <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-slate-500 uppercase border-b border-slate-800 z-10">
-                                내 선수 목록 ({myRosterAvailable.length})
-                            </div>
-                            {myRosterAvailable.length === 0 && (
-                                <p className="text-sm text-slate-600 ko-normal text-center py-6">전원 트레이드 블록에 있습니다.</p>
-                            )}
-                            {myRosterAvailable.map(renderDraggableRow)}
-                        </div>
-
-                        <div
-                            className="overflow-y-auto custom-scrollbar bg-slate-950"
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={() => { if (draggedPlayerId) setPendingTradeableMembership(draggedPlayerId, true); setDraggedPlayerId(null); }}
-                        >
-                            <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-emerald-500 uppercase border-b border-slate-800 z-10">
-                                트레이드 블록 ({myRosterTradeable.length})
-                            </div>
-                            {myRosterTradeable.length === 0 && (
-                                <p className="text-sm text-slate-600 ko-normal text-center py-6">선수 카드를 이쪽으로 드래그하세요.</p>
-                            )}
-                            {myRosterTradeable.map(renderDraggableRow)}
-                        </div>
-                    </div>
-
-                    {/* 트레이드 블록(선수 목록)과는 별개 — 팀 단위로 "원하는 대가"를 공개하는 위시리스트. */}
-                    <div className="py-4 border-t border-slate-800 space-y-6 divide-y divide-slate-800 shrink-0 pb-6">
-                        <div className="w-1/2 px-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-base font-bold text-white ko-normal">요구사항 메모</span>
-                                    <button
-                                        onClick={() => setTeamRequestNote('')}
-                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                    >
-                                        <RotateCcw size={12} /> 초기화
-                                    </button>
-                                </div>
-                                <span className="text-sm text-slate-600">{teamRequestNote.length}/200</span>
-                            </div>
-                            <textarea
-                                value={teamRequestNote}
-                                onChange={e => setTeamRequestNote(e.target.value.slice(0, 200))}
-                                placeholder="트레이드 시장에서 원하는 요구사항을 입력하세요."
-                                rows={3}
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal"
-                            />
-                        </div>
-
-                        <div className="px-6 pt-4">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="text-base font-bold text-white ko-normal">원하는 포지션</span>
-                                <button
-                                    onClick={() => setTeamRequestPositions(new Set())}
-                                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                >
-                                    <RotateCcw size={12} /> 초기화
-                                </button>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {DESIRED_POSITIONS.map(pos => (
-                                    <button
-                                        key={pos}
-                                        onClick={() => toggleTeamRequestPosition(pos)}
-                                        className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
-                                            teamRequestPositions.has(pos) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
-                                        }`}
-                                    >
-                                        {pos}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="px-6 pt-4">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="text-base font-bold text-white ko-normal">원하는 아키타입</span>
-                                <button
-                                    onClick={() => setTeamRequestArchetypes(new Set())}
-                                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                >
-                                    <RotateCcw size={12} /> 초기화
-                                </button>
-                            </div>
-                            <div className="space-y-2.5">
-                                {ARCHETYPE_GROUPS.map(group => (
-                                    <div key={group.label} className="flex items-start gap-3">
-                                        <span className="text-sm font-bold text-slate-300 ko-normal w-8 pt-1 shrink-0">{group.label}</span>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {group.keys.map(key => (
-                                                <button
-                                                    key={key}
-                                                    onClick={() => toggleTeamRequestArchetype(key)}
-                                                    className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
-                                                        teamRequestArchetypes.has(key) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
-                                                    }`}
-                                                >
-                                                    {ARCHETYPE_LABEL[key]}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="px-6 pt-4">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="text-base font-bold text-white ko-normal">원하는 특정 선수</span>
-                                <button
-                                    onClick={() => { setTeamRequestPlayerIds(new Set()); setTeamRequestPlayerQuery(''); }}
-                                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                >
-                                    <RotateCcw size={12} /> 초기화
-                                </button>
-                            </div>
-                            <div className="max-w-md relative">
-                                <input
-                                    value={teamRequestPlayerQuery}
-                                    onChange={e => setTeamRequestPlayerQuery(e.target.value)}
-                                    placeholder="선수 이름 검색"
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 ko-normal"
-                                />
-                                {teamRequestPlayerMatches.length > 0 && (
-                                    // 오버레이로 띄워서 아래 콘텐츠(저장 버튼 등)를 밀어내지 않게 함 — absolute + z-index.
-                                    <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-slate-950 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
-                                        {teamRequestPlayerMatches.map(mp => (
-                                            <button
-                                                key={mp.id}
-                                                onClick={() => addTeamRequestPlayer(mp.id)}
-                                                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
-                                            >
-                                                <span className="text-sm text-white truncate flex-1">{mp.name}</span>
-                                                <span className="text-sm text-slate-500 shrink-0">{mp.position}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            {teamRequestPlayerIds.size > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-4">
-                                    {[...teamRequestPlayerIds].map(id => (
-                                        <span key={id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-500 bg-indigo-600/30 text-sm font-bold text-white ko-normal">
-                                            {poolById.get(id)?.name ?? id}
-                                            <button onClick={() => removeTeamRequestPlayer(id)} className="text-white/70 hover:text-white">
-                                                <X size={11} />
-                                            </button>
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </>
-            )}
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
@@ -1812,20 +1646,21 @@ const MultiFrontOfficeView: React.FC = () => {
                     </Table>
                 ) : activeTab === 'new' ? (
                     // [2026-08-30] 다른 탭들과 달리 이 탭엔 바깥 여백(p-8)을 안 준다 — 3열 레이아웃이
-                    // 화면 가장자리까지 꽉 차야 한다는 요청 반영. actionError/sendSuccess는 이 탭
-                    // 전용으로 여기서만 표시(공용 wrapper 밖으로 뺐으므로 중복 없음).
-                    <div className="space-y-4">
-                        {actionError && (
-                            <div className="flex items-center gap-2 mx-4 mt-4 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
-                                <ShieldAlert size={15} className="shrink-0" /> {actionError}
-                            </div>
-                        )}
+                    // 화면 가장자리까지 꽉 차야 한다는 요청 반영. sendSuccess는 이 탭 전용으로 여기서만
+                    // 표시(오류는 2026-10-02부터 전역 토스트).
+                    // [2026-09-30] 이 탭 전체를 감싸는 조상(1838행 근처 flex-1 min-h-0 overflow-y-auto)이
+                    // 스크롤 컨테이너라, 안에 있는 자식은 내용 높이만큼만 차지하고 남는 공간은
+                    // 그대로 빈 여백으로 남는다(사용자가 스크린샷으로 지적한 하단 빈 공간의
+                    // 원인). h-full로 그 스크롤 컨테이너의 실제 렌더 높이를 그대로 채우고,
+                    // 안쪽 flex-col 체인을 flex-1/min-h-0로 이어서 최종적으로 3열 레이아웃
+                    // div(예전엔 h-[700px] 고정)가 남는 공간을 전부 차지하도록 바꾼다.
+                    <div className="h-full flex flex-col min-h-0">
                         {!myTeamRow ? (
                             <p className="text-sm text-slate-500 ko-normal py-8 text-center">소속 팀이 있어야 제안을 보낼 수 있습니다.</p>
                         ) : humanTargetTeams.length === 0 ? (
                             <p className="text-sm text-slate-500 ko-normal py-8 text-center">제안을 보낼 수 있는 상대(사람이 운영하는 다른 팀)가 없습니다.</p>
                         ) : (
-                            <div className="space-y-4">
+                            <div className="flex-1 min-h-0 flex flex-col">
                                 {/* 3열 레이아웃 — 좌:내 팀(로스터+제공 요약) / 중앙:상대 팀(로스터+제공 요약) /
                                     우:제안 메시지+전송 버튼. [2026-08-31] 원래 중앙에 있던 두 "제공" 패널을
                                     각자 해당 팀의 로스터 리스트 바로 아래로 옮기고, 원래 우측이던 상대 팀
@@ -1841,21 +1676,18 @@ const MultiFrontOfficeView: React.FC = () => {
                                     기본 min-width:auto라 내용(연봉/연차 텍스트가 붙은 PlayerChip 행)이
                                     1fr 몫보다 넓으면 트랙 자체가 그 내용에 맞춰 넓어지고, 다른 컬럼도
                                     같이 밀려서 "선수 추가하면 폭이 늘어나고 높이가 줄어드는" 현상이
-                                    있었음(grid-auto-rows가 늘어난 콘텐츠에 맞춰 재계산되면서 h-[700px]
-                                    고정도 흔들림). flex + 각 컬럼 min-w-0으로 바꾸면 flex-basis(1/3)를
-                                    절대 넘지 않고 넘치는 내용은 그 안에서 truncate/스크롤 처리되며,
-                                    높이는 flex 기본 align-items:stretch가 h-[700px] 부모 높이를 그대로
-                                    보장(grid의 align-content/auto-rows 얽힌 계산에 안 기댐). */}
-                                <div className="flex divide-x divide-slate-800 bg-slate-950 h-[700px]">
-                                    <div className="flex-[5] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
-                                        <div
-                                            className="h-10 flex items-center gap-2 pl-4 text-sm font-normal uppercase ko-normal shrink-0"
-                                            style={{
-                                                backgroundColor: myTeamRow.color_primary,
-                                                color: myTeamRow.color_text ?? getReadableTextColor(myTeamRow.color_primary),
-                                            }}
-                                        >
-                                            <TeamLogoIcon teamSlug={myTeamRow.team_slug} abbr={myTeamRow.team_abbr} />
+                                    있었음. flex + 각 컬럼 min-w-0으로 바꾸면 flex-basis(1/3)를 절대
+                                    넘지 않고 넘치는 내용은 그 안에서 truncate/스크롤 처리된다.
+                                    [2026-09-30] 이 행 자체는 원래 h-[700px] 고정이었는데, 화면이 큰
+                                    모니터에서 하단에 빈 여백이 남는다는 지적으로 flex-1 min-h-0으로
+                                    교체 — 조상 체인(위 h-full flex-col, 그 위 flex-1 min-h-0
+                                    overflow-y-auto 스크롤 컨테이너)을 따라 실제 남는 공간을 전부
+                                    채운다. 각 컬럼(flex-[5]/flex-[5]/flex-[3])도 h-[700px] →
+                                    h-full로 맞춰서 이 행의 실제 높이를 그대로 상속. */}
+                                <div className="flex-1 min-h-0 flex divide-x divide-slate-700 bg-slate-950">
+                                    <div className="flex-[5] min-w-0 h-full overflow-hidden flex flex-col bg-slate-900">
+                                        <div className="h-16 flex items-center gap-3 pl-4 text-base font-bold uppercase ko-normal shrink-0 bg-slate-800 text-white">
+                                            <TeamLogoIcon teamSlug={myTeamRow.team_slug} abbr={myTeamRow.team_abbr} className="w-9 h-9" />
                                             <span className="truncate min-w-0">{myTeamRow.team_name}</span>
                                         </div>
                                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
@@ -1864,47 +1696,21 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <PlayerListHeader showContract={capEnabled} sortConfig={mySortConfig} onSort={handleMySort} />
                                                 <tbody>
                                                     {myRosterListed.map(p => (
-                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} onToggle={() => toggleMine(p.id)} teamAbbr={myTeamRow.team_abbr} actionDisabled={isTradeDeadlinePassed} />
+                                                        <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id} showContract={capEnabled} stats={statsByPlayerId.get(p.id)} actionIcon={cartMine.has(p.id) ? 'remove' : 'add'} onToggle={toggleMine} teamAbbr={myTeamRow.team_abbr} actionDisabled={isTradeDeadlinePassed} />
                                                     ))}
                                                 </tbody>
                                             </table>
                                         </div>
 
-                                        {/* 내 팀 제공 요약 — 원래 중앙 컬럼 상단에 있던 패널을 내 팀 로스터 바로 아래로.
-                                            [2026-08-31] 빨강 틴트 제거하고 다른 헤더들과 동일한 slate 계열로 복귀,
-                                            리스트 영역은 max-h(콘텐츠에 따라 줄어듦) 대신 고정 h로 바꿔 0명일 때와
-                                            1명일 때 패널 높이가 달라지던 문제 해결. */}
-                                        <div className="shrink-0 flex flex-col border-t border-slate-800">
-                                            <div className="h-10 flex items-center bg-slate-900 pl-4 text-sm font-normal text-white uppercase ko-normal shrink-0">
-                                                {myTeamRow.team_name} 제공 ({cartMine.size})
-                                            </div>
-                                            <div className="h-[220px] overflow-y-auto custom-scrollbar bg-slate-900/50">
-                                                {cartMine.size === 0 ? (
-                                                    <p className="text-sm text-slate-600 ko-normal text-center py-6">왼쪽에서 선수를 선택하세요.</p>
-                                                ) : (
-                                                    <table className="w-full table-fixed border-collapse">
-                                                        <PlayerTableCols showContract={capEnabled} />
-                                                        <tbody>
-                                                            {[...cartMine].map(id => (
-                                                                <PlayerChip key={id} player={poolByIdWithStats.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleMine(id)} teamAbbr={myTeamRow.team_abbr} />
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                )}
-                                            </div>
-                                            {renderCapSummaryFooter(myRoster, outgoingCapTotal, ingoingCapTotal, myDeadMoney)}
-                                        </div>
+                                        {/* [2026-09-29] 별도 "제공" 패널을 없애고 renderCapSummaryFooter만 로스터
+                                            바로 아래에 — 담긴 선수는 위 로스터 리스트 안에서 (-) 아이콘으로 표시된다
+                                            (actionIcon={cartMine.has(p.id) ? 'remove' : 'add'}). */}
+                                        {renderCapSummaryFooter(myRoster, myDeadMoney)}
                                     </div>
 
-                                    <div className="flex-[5] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
-                                        <div
-                                            className="h-10 flex items-center gap-2 pl-4 shrink-0"
-                                            style={{
-                                                backgroundColor: targetTeamRow?.color_primary ?? '#0f172a',
-                                                color: targetTeamRow?.color_text ?? getReadableTextColor(targetTeamRow?.color_primary ?? '#0f172a'),
-                                            }}
-                                        >
-                                            {targetTeamRow && <TeamLogoIcon teamSlug={targetTeamRow.team_slug} abbr={targetTeamRow.team_abbr} />}
+                                    <div className="flex-[5] min-w-0 h-full overflow-hidden flex flex-col bg-slate-900">
+                                        <div className="h-16 flex items-center gap-3 pl-4 shrink-0 bg-slate-800 text-white">
+                                            {targetTeamRow && <TeamLogoIcon teamSlug={targetTeamRow.team_slug} abbr={targetTeamRow.team_abbr} className="w-9 h-9" />}
                                             <select
                                                 value={targetTeamId}
                                                 onChange={e => {
@@ -1919,7 +1725,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                     }
                                                     setTargetTeamId(e.target.value);
                                                 }}
-                                                className="w-auto bg-transparent text-sm font-normal uppercase ko-normal focus:outline-none cursor-pointer"
+                                                className="w-auto bg-transparent text-base font-bold uppercase ko-normal focus:outline-none cursor-pointer"
                                                 style={{ color: 'inherit' }}
                                             >
                                                 {humanTargetTeams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
@@ -1935,7 +1741,8 @@ const MultiFrontOfficeView: React.FC = () => {
                                                             blocked={!targetTradeableIds.has(p.id) && !isTestUnblockedTarget}
                                                             showContract={capEnabled}
                                                             stats={statsByPlayerId.get(p.id)}
-                                                            onToggle={() => toggleTheirs(p.id)}
+                                                            actionIcon={cartTheirs.has(p.id) ? 'remove' : 'add'}
+                                                            onToggle={toggleTheirs}
                                                             teamAbbr={targetTeamRow?.team_abbr}
                                                             actionDisabled={isTradeDeadlinePassed} />
                                                     ))}
@@ -1943,102 +1750,173 @@ const MultiFrontOfficeView: React.FC = () => {
                                             </table>
                                         </div>
 
-                                        {/* 상대 팀 제공 요약 — 원래 중앙 컬럼 하단에 있던 패널을 상대 팀 로스터 바로 아래로. */}
-                                        <div className="shrink-0 flex flex-col border-t border-slate-800">
-                                            <div className="h-10 flex items-center bg-slate-900 pl-4 text-sm font-normal text-white uppercase ko-normal shrink-0">
-                                                {targetTeamRow?.team_name} 제공 ({cartTheirs.size})
-                                            </div>
-                                            <div className="h-[220px] overflow-y-auto custom-scrollbar bg-slate-900/50">
-                                                {cartTheirs.size === 0 ? (
-                                                    <p className="text-sm text-slate-600 ko-normal text-center py-6">오른쪽에서 선수를 선택하세요.</p>
-                                                ) : (
-                                                    <table className="w-full table-fixed border-collapse">
-                                                        <PlayerTableCols showContract={capEnabled} />
-                                                        <tbody>
-                                                            {[...cartTheirs].map(id => (
-                                                                <PlayerChip key={id} player={poolByIdWithStats.get(id)} playerId={id} showContract={capEnabled} stats={statsByPlayerId.get(id)} actionIcon="remove" onToggle={() => toggleTheirs(id)} teamAbbr={targetTeamRow?.team_abbr} />
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                )}
-                                            </div>
-                                            {renderCapSummaryFooter(targetRoster, ingoingCapTotal, outgoingCapTotal, targetDeadMoney)}
-                                        </div>
+                                        {/* [2026-09-29] 별도 "제공" 패널을 없애고 renderCapSummaryFooter만 로스터
+                                            바로 아래에 — 담긴 선수는 위 로스터 리스트 안에서 (-) 아이콘으로 표시된다
+                                            (actionIcon={cartTheirs.has(p.id) ? 'remove' : 'add'}). */}
+                                        {renderCapSummaryFooter(targetRoster, targetDeadMoney)}
                                     </div>
 
-                                    <div className="flex-[3] min-w-0 h-[700px] overflow-hidden flex flex-col bg-slate-900">
-                                        {/* [2026-08-31] 제안 내역만 이 스크롤 영역 안에 가두고, 캡 변동/메시지/
-                                            전송 버튼은 그 아래 shrink-0으로 항상 고정 노출 — 담긴 선수가
-                                            많아져서 제안 내역이 길어져도 전송 버튼이 화면 밖으로 밀려나거나
-                                            스크롤해야 보이는 일이 없게 함(이전엔 컬럼 전체가 하나의 스크롤
-                                            영역이라 내역이 길면 버튼까지 잘려 보였음). 빈 공간은 이 영역
-                                            자체가 slate-950이라 항상 자연스럽게 채워짐. */}
-                                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
-                                            {/* 제안 내역 — 양쪽 팀이 제공하는 선수를 이름+연봉으로 재확인.
-                                                선수가 0명이어도 섹션/팀 라벨 자체는 항상 보이게(각 팀 footer의
-                                                "제공 (0)" 헤더와 동일한 관례 — 선수 목록만 없을 때 자연히
-                                                빈 채로 둠). */}
-                                            <div className="pt-4 px-4 space-y-3">
-                                                <span className="text-base font-black text-white uppercase ko-normal">제안 내역</span>
-                                                <div className="space-y-1">
-                                                    <span className="text-sm text-slate-400 ko-normal">{myTeamRow.team_name} 제공 ({cartMine.size})</span>
-                                                    {[...cartMine].map(id => {
-                                                        const p = poolById.get(id);
-                                                        return (
-                                                            <div key={id} className="flex items-center justify-between text-sm">
-                                                                <span className="text-slate-200 ko-normal truncate">{p?.name ?? id}</span>
-                                                                {capEnabled && <span className="text-slate-500 tabular-nums shrink-0">{formatMoney(p?.salary ?? 0)}</span>}
+                                    <div className="flex-[3] min-w-0 h-full overflow-hidden flex flex-col bg-slate-800">
+                                        {/* [2026-09-30] "제안 내역"과 "재정 변동 사항"을 각각 독립된 스크롤
+                                            영역으로 분리 — 하나로 합쳐서 sticky를 걸었던 이전 구조는 두 섹션이
+                                            서로의 스크롤에 영향을 주는 문제가 있었다는 피드백. grow-0 shrink
+                                            min-h-0로 각자 내용 높이만큼만 차지하다가(선수/행이 없으면 최소
+                                            높이), 둘을 합쳐도 남는 공간보다 크면 flex-shrink가 각자 눌러주고
+                                            내부 overflow-y-auto가 스크롤을 담당. 에러 리스트/메시지·버튼은
+                                            둘 중 어느 스크롤 영역에도 속하지 않는 shrink-0 형제라 항상
+                                            그대로 보임(sticky 불필요 — 이 컬럼 자체는 스크롤되지 않음). */}
+
+                                        {/* 제안 내역 — 독립 스크롤. relative — 하단 그라디언트 오버레이를
+                                            이 영역 자체의 스크롤 여부에 맞춰 얹기 위함. */}
+                                        <div className="relative grow-0 shrink min-h-0">
+                                            <div ref={proposalScrollRef} className="h-full overflow-y-auto custom-scrollbar custom-scrollbar-stable bg-slate-800">
+                                                <button
+                                                    onClick={() => setProposalSectionExpanded(v => !v)}
+                                                    className="w-full flex items-center justify-between px-4 py-4 text-sm font-black text-white uppercase ko-normal hover:bg-white/[0.03] transition-colors"
+                                                >
+                                                    제안 내역
+                                                    <ChevronDown size={16} className={`shrink-0 transition-transform ${proposalSectionExpanded ? '' : '-rotate-90'}`} />
+                                                </button>
+                                                {proposalSectionExpanded && (
+                                                <div className="px-4 pt-3 pb-6 space-y-3">
+                                                    {/* [2026-09-30] 추가된 선수가 없는 팀은 팀 이름 헤더 자체를
+                                                        생략 — 빈 섹션을 보여줄 이유가 없다는 피드백. */}
+                                                    {cartMine.size > 0 && (
+                                                        <div className="space-y-1">
+                                                            <span
+                                                                className="text-sm font-bold ko-normal block w-full px-2 py-1 rounded-md"
+                                                                style={{
+                                                                    backgroundColor: myTeamRow.color_primary,
+                                                                    color: myTeamRow.color_text ?? getReadableTextColor(myTeamRow.color_primary),
+                                                                }}
+                                                            >
+                                                                {myTeamRow.team_name}
+                                                            </span>
+                                                            <div className="px-2 space-y-1">
+                                                                {[...cartMine].map(id => {
+                                                                    const p = poolByIdWithStats.get(id);
+                                                                    return (
+                                                                        <div key={id} className="flex items-center justify-between text-sm">
+                                                                            <PlayerHoverCard player={p} teamAbbr={myTeamRow.team_abbr}>
+                                                                                <span
+                                                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
+                                                                                    className="text-white font-bold ko-normal truncate cursor-pointer hover:underline hover:text-indigo-400"
+                                                                                >
+                                                                                    {p?.name ?? id}
+                                                                                </span>
+                                                                            </PlayerHoverCard>
+                                                                            {capEnabled && <span className="text-white tabular-nums shrink-0">{formatMoney(p?.salary ?? 0)}</span>}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                {capEnabled && cartMine.size >= 2 && (
+                                                                    <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-700/60">
+                                                                        <span className="text-slate-400 ko-normal">합계</span>
+                                                                        <span className="text-white font-semibold tabular-nums">{formatMoney(outgoingCapTotal)}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <span className="text-sm text-slate-400 ko-normal">{targetTeamRow?.team_name} 제공 ({cartTheirs.size})</span>
-                                                    {[...cartTheirs].map(id => {
-                                                        const p = poolById.get(id);
-                                                        return (
-                                                            <div key={id} className="flex items-center justify-between text-sm">
-                                                                <span className="text-slate-200 ko-normal truncate">{p?.name ?? id}</span>
-                                                                {capEnabled && <span className="text-slate-500 tabular-nums shrink-0">{formatMoney(p?.salary ?? 0)}</span>}
+                                                        </div>
+                                                    )}
+                                                    {cartTheirs.size > 0 && (
+                                                        <div className="space-y-1">
+                                                            <span
+                                                                className="text-sm font-bold ko-normal block w-full px-2 py-1 rounded-md"
+                                                                style={{
+                                                                    backgroundColor: targetTeamRow?.color_primary ?? '#0f172a',
+                                                                    color: targetTeamRow?.color_text ?? getReadableTextColor(targetTeamRow?.color_primary ?? '#0f172a'),
+                                                                }}
+                                                            >
+                                                                {targetTeamRow?.team_name}
+                                                            </span>
+                                                            <div className="px-2 space-y-1">
+                                                                {[...cartTheirs].map(id => {
+                                                                    const p = poolByIdWithStats.get(id);
+                                                                    return (
+                                                                        <div key={id} className="flex items-center justify-between text-sm">
+                                                                            <PlayerHoverCard player={p} teamAbbr={targetTeamRow?.team_abbr}>
+                                                                                <span
+                                                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`)}
+                                                                                    className="text-white font-bold ko-normal truncate cursor-pointer hover:underline hover:text-indigo-400"
+                                                                                >
+                                                                                    {p?.name ?? id}
+                                                                                </span>
+                                                                            </PlayerHoverCard>
+                                                                            {capEnabled && <span className="text-white tabular-nums shrink-0">{formatMoney(p?.salary ?? 0)}</span>}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                {capEnabled && cartTheirs.size >= 2 && (
+                                                                    <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-700/60">
+                                                                        <span className="text-slate-400 ko-normal">합계</span>
+                                                                        <span className="text-white font-semibold tabular-nums">{formatMoney(ingoingCapTotal)}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        );
-                                                    })}
+                                                        </div>
+                                                    )}
+                                                    {cartMine.size === 0 && cartTheirs.size === 0 && (
+                                                        <p className="text-sm text-slate-500 ko-normal py-2">선수를 선택하면 여기에 표시됩니다.</p>
+                                                    )}
                                                 </div>
+                                                )}
                                             </div>
+                                            {/* 하단 그라디언트 — "재정 변동" 구역과의 경계에 살짝 어두워지는
+                                                느낌만 줌. 이 영역 자체에 스크롤이 발생 중일 때만 표시. */}
+                                            {proposalHasOverflow && (
+                                                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-slate-900/60 to-transparent pointer-events-none" />
+                                            )}
                                         </div>
 
-                                        {/* 캡 요약 — 내 팀(제안 발신 팀) 기준 Outgoing/Ingoing/Difference와,
-                                            이 트레이드가 성사되면 내 팀의 사치세/1차/2차 에이프런 여유분이
-                                            얼마나 바뀌는지(모두 -capDifference로 동일하게 변함 — 임계값
-                                            자체는 고정이고 내 팀 토탈 샐러리만 그만큼 바뀌므로).
-                                            스크롤 영역 밖(shrink-0)이라 제안 내역이 길어져도 항상 보임. */}
+                                        <div className="shrink-0 border-t border-slate-700" />
+
+                                        {/* 캡 요약(아코디언) — 독립 스크롤. 내 팀(제안 발신 팀) 기준 실행
+                                            전/후 페이롤과 이 트레이드가 성사되면 사치세/1차/2차 에이프런
+                                            여유분이 얼마나 바뀌는지(모두 -capDifference로 동일하게 변함 —
+                                            임계값 자체는 고정이고 내 팀 토탈 샐러리만 그만큼 바뀌므로). */}
                                         {capEnabled && (
-                                            <div className="shrink-0 px-4 py-4 space-y-1 border-y border-slate-800">
-                                                <span className="text-sm font-black text-slate-500 uppercase ko-normal">캡 변동 ({myTeamRow.team_name})</span>
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-slate-500 ko-normal">샐러리 감소</span>
-                                                    <span className="text-white font-semibold tabular-nums">{formatMoney(outgoingCapTotal)}</span>
+                                            <div className="grow-0 shrink min-h-0">
+                                                <div className="h-full overflow-y-auto custom-scrollbar custom-scrollbar-stable">
+                                                    <button
+                                                        onClick={() => setFinanceSectionExpanded(v => !v)}
+                                                        className="w-full flex items-center justify-between px-4 py-4 text-sm font-black text-white uppercase ko-normal hover:bg-white/[0.03] transition-colors"
+                                                    >
+                                                        트레이드 이후 재정 변동 사항
+                                                        <ChevronDown size={16} className={`shrink-0 transition-transform ${financeSectionExpanded ? '' : '-rotate-90'}`} />
+                                                    </button>
+                                                    {financeSectionExpanded && (
+                                                        <div className="px-4 pt-3 pb-4 space-y-1">
+                                                            <div className="flex items-center justify-between text-sm">
+                                                                <span className="text-white ko-normal">실행 전</span>
+                                                                <span className="text-white font-semibold tabular-nums">{formatMoneyFull(myPayrollBeforeTrade)}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between text-sm">
+                                                                <span className="text-white ko-normal">실행 후</span>
+                                                                <span className="text-white font-semibold tabular-nums">{formatMoneyFull(myTeamTotalSalaryAfterTrade)}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between text-sm">
+                                                                <span className="text-white ko-normal">차이</span>
+                                                                <span className={`font-semibold tabular-nums ${capDifference <= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                    {capDifference > 0 ? '+' : ''}{formatMoneyFull(capDifference)}
+                                                                </span>
+                                                            </div>
+                                                            {buildCapRoomRows(myTeamTotalSalaryAfterTrade).map(row => (
+                                                                <div key={row.label} className="flex items-center justify-between text-sm">
+                                                                    <span className="text-white ko-normal">{row.label}</span>
+                                                                    <span className={`font-semibold tabular-nums ${row.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                        {row.value >= 0 ? '+' : ''}{formatMoneyFull(row.value)}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-slate-500 ko-normal">샐러리 증가</span>
-                                                    <span className="text-white font-semibold tabular-nums">{formatMoney(ingoingCapTotal)}</span>
-                                                </div>
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-slate-500 ko-normal">차이</span>
-                                                    <span className={`font-semibold tabular-nums ${capDifference <= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                        {capDifference > 0 ? '+' : ''}{formatMoney(capDifference)}
-                                                    </span>
-                                                </div>
-                                                {buildCapRoomRows(myTeamTotalSalaryAfterTrade).map(row => (
-                                                    <div key={row.label} className="flex items-center justify-between text-sm">
-                                                        <span className="text-slate-500 ko-normal">{row.label}</span>
-                                                        <span className={`font-semibold tabular-nums ${row.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                            {row.value >= 0 ? '+' : ''}{formatMoney(row.value)}
-                                                        </span>
-                                                    </div>
-                                                ))}
                                             </div>
                                         )}
+
+                                        {/* [2026-09-30] 재정 변동 사항과 메시지 영역 사이 구분선 — capEnabled가
+                                            꺼져 위 아코디언 자체가 안 뜨는 리그에서도 항상 보이도록 별도로 뺌. */}
+                                        <div className="shrink-0 border-t border-slate-700" />
 
                                         {/* [2026-09-16] 전송 차단 에러 리스트 — 캡 변동 영역과 메시지/전송
                                             버튼 영역 사이. 로스터 슬롯 외에도 앞으로 샐러리 관련 에러 등이
@@ -2049,16 +1927,16 @@ const MultiFrontOfficeView: React.FC = () => {
                                         {tradeSendErrors.length > 0 && (
                                             <div className="shrink-0 mx-4 mt-4 space-y-1">
                                                 {tradeSendErrors.map((msg, i) => (
-                                                    <p key={i} className="text-sm text-fuchsia-400 ko-normal">{msg}</p>
+                                                    <p key={i} className="text-sm text-fuchsia-400 ko-normal">· {msg}</p>
                                                 ))}
                                             </div>
                                         )}
 
-                                        {/* 제안 메시지/전송 버튼 — 스크롤 영역 밖(shrink-0)이라 제안 내역이
-                                            길어져도 항상 화면에 보임. */}
+                                        {/* 제안 메시지/전송 버튼 — 두 스크롤 영역 밖의 shrink-0 형제라
+                                            컬럼 자체가 스크롤되지 않는 한 항상 그대로 보임. */}
                                         <div className="shrink-0 pt-4 px-4 pb-4 space-y-3 border-b border-slate-800">
                                             <textarea
-                                                value={message} onChange={e => setMessage(e.target.value.slice(0, 300))}
+                                                ref={messageRef} defaultValue="" maxLength={300}
                                                 placeholder="제안 메시지 (선택, 300자 이내)"
                                                 rows={2}
                                                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal"
@@ -2084,11 +1962,6 @@ const MultiFrontOfficeView: React.FC = () => {
                     // 동일한 패턴 적용. 리스트 행은 renderOfferListRow(압축), 디테일 패널은
                     // 기존 renderOfferCard를 그대로 재사용(내용/버튼 로직 중복 없음).
                     <div className="flex flex-col h-full">
-                        {actionError && (
-                            <div className="flex items-center gap-2 mx-4 mt-4 mb-2 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal shrink-0">
-                                <ShieldAlert size={15} className="shrink-0" /> {actionError}
-                            </div>
-                        )}
                         <div className="flex-1 min-h-0 flex">
                             <div className="w-[30%] shrink-0 border-r border-slate-800 overflow-y-auto custom-scrollbar bg-slate-900">
                                 <div className="sticky top-0 z-10 bg-slate-950">
@@ -2244,15 +2117,18 @@ const MultiFrontOfficeView: React.FC = () => {
                 )}
             </div>
 
-            <Modal
+            <MyTradeBlockModal
                 isOpen={showMyBlockModal}
-                onClose={() => setShowMyBlockModal(false)}
-                size="lg"
-                hideCloseButton
-                className="!rounded-3xl"
-            >
-                {renderMyBlockPanel()}
-            </Modal>
+                onClose={closeMyBlockModal}
+                roomId={roomId}
+                myTeamRow={myTeamRow}
+                myRoster={myRoster}
+                myTradeableIds={myTradeableIds}
+                poolPlayers={poolPlayers}
+                poolById={poolById}
+                loading={loading}
+                onSaved={handleMyBlockSaved}
+            />
         </div>
     );
 };

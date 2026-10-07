@@ -1,5 +1,14 @@
 # 트레이드 시스템 아키텍처
 
+> **⚠️ 이 문서는 싱글플레이어(CPU) 엔진 전용이다.** 아래 `services/tradeEngine/` 전체는
+> `saves` 테이블(싱글플레이어 세션)만 다루고, `salaryRules.ts`의 매칭 로직은 **2017 CBA
+> (구버전, 택스 라인 110%/125% 분기)** 기준이다 — 2026-09-29에 실제 CBA와 대조해 확인함
+> (`docs/domain/nba-trade-salary.md` §2-1 정정 참고). **멀티플레이어 트레이드는 완전히
+> 별개 구현**이다: `create_trade_offer`/`respond_trade_offer` SQL RPC
+> (`migrations/add_trade_salary_matching.sql`) + `services/multi/tradeSalaryMatching.ts`
+> (클라 사전 경고)가 **현행(2023~) CBA**로 매칭을 강제하며, 이 문서의 파일/타입은 전혀
+> 관여하지 않는다.
+
 ## 개요
 
 드래프트 픽 거래, 영속 트레이드 블록, 비동기 오퍼 파이프라인을 갖춘 통합 트레이드 시스템.

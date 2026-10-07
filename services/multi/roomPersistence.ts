@@ -131,6 +131,22 @@ export const saveMemberTactics = async (
     return { error: error?.message ?? null };
 };
 
+/** [2026-10-06] 세션 설정 "팀 전술" 탭 전용 — 어드민이 다른 참가자의 전술/뎁스차트를 저장.
+ *  saveMemberTactics와 달리 RPC(admin_save_member_tactics)를 거쳐 league_action_logs에
+ *  'admin_tactics_update'(변경된 키만 diff)를 남긴다. 변경이 없으면 로그 없이 changed=false. */
+export const adminSaveMemberTactics = async (
+    roomId: string,
+    memberUserId: string,
+    tactics: GameTactics,
+    depthChart: DepthChart | null,
+): Promise<{ error: string | null; changed: boolean }> => {
+    const { data, error } = await supabase.rpc('admin_save_member_tactics', {
+        p_room_id: roomId, p_member_user_id: memberUserId, p_tactics: tactics, p_depth_chart: depthChart,
+    });
+    if (error) return { error: error.message, changed: false };
+    return { error: null, changed: !!(data as { changed?: boolean } | null)?.changed };
+};
+
 // ─── 멤버 팀 배정 ─────────────────────────────────────────────────────────────
 
 export const assignMemberTeam = async (

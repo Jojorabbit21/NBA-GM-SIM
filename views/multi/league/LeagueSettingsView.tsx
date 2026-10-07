@@ -28,6 +28,9 @@ import { daysBetweenKeys, addDaysToKey } from '../season/multiScheduleUtils';
 import type { Game } from '../../../types';
 import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
 import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
+import { ActionLogTab } from './settings/ActionLogTab';
+import { TeamTacticsTab } from './settings/TeamTacticsTab';
+import { AdminTradeBlock } from './settings/AdminTradeBlock';
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
     if (normOverride?.enabled === false) return 0;
@@ -95,7 +98,7 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine';
+type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'league',   label: '리그' },
@@ -108,6 +111,10 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'roster',  label: '로스터' },
     { id: 'finance', label: '재정' },
     { id: 'engine',  label: '엔진' },
+    // [2026-10-05] 세션 감사 로그(league_action_logs) 읽기 전용 탭 — 저장 버튼 없음(TAB_SAVE_MAP 미등록).
+    { id: 'log',     label: '로그' },
+    // [2026-10-05] 참가자 뎁스차트/전술값 읽기 전용 탭(room_members.tactics/depth_chart) — 저장 버튼 없음.
+    { id: 'tactics', label: '팀 전술' },
 ];
 
 // 로스터 최대 인원 — 실제 CBA 기준(15명 정원)을 바탕으로 한 범위. 리그 어드민이 15~20명
@@ -240,6 +247,9 @@ const LeagueSettingsView: React.FC = () => {
     const [tradeDeadlineDate, setTradeDeadlineDate] = useState<string>(() => getTradeDeadlineBounds(2026).default);
     // [2026-09-16] 데드라인 강제 여부 마스터 스위치 — 꺼도 날짜 값은 그대로 유지.
     const [tradeDeadlineEnabled, setTradeDeadlineEnabled] = useState(true);
+    // [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 강제 여부 — cap_enabled와
+    // 별개 축. respond_trade_offer(accept)가 cap_enabled && 이 값일 때만 강제한다.
+    const [tradeSalaryMatchingEnabled, setTradeSalaryMatchingEnabled] = useState(true);
     const [savingTrade,  setSavingTrade]  = useState(false);
     const [saveTradeOk,  setSaveTradeOk]  = useState(false);
     const [saveTradeErr, setSaveTradeErr] = useState<string | null>(null);
@@ -330,6 +340,7 @@ const LeagueSettingsView: React.FC = () => {
         setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
         setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
         setTradeDeadlineEnabled((league as any).trade_deadline_enabled ?? true);
+        setTradeSalaryMatchingEnabled((league as any).trade_salary_matching_enabled ?? true);
         setCapEnabled((league as any).cap_enabled ?? true);
         setCbaRulesEnabled((league as any).cba_rules_enabled ?? true);
         setContractMode(((league as any).contract_mode ?? 'standard') as ContractMode);
@@ -509,6 +520,7 @@ const LeagueSettingsView: React.FC = () => {
             },
             tradeDeadlineDate,
             tradeDeadlineEnabled,
+            tradeSalaryMatchingEnabled,
         });
         setSavingTrade(false);
         if (err) { setSaveTradeErr(err); return; }
@@ -731,7 +743,8 @@ const LeagueSettingsView: React.FC = () => {
         tradeMinValueRatio !== (room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio) ||
         cpuTradeBaseProbability !== (room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability) ||
         tradeDeadlineDate !== ((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default) ||
-        tradeDeadlineEnabled !== ((league as any).trade_deadline_enabled ?? true);
+        tradeDeadlineEnabled !== ((league as any).trade_deadline_enabled ?? true) ||
+        tradeSalaryMatchingEnabled !== ((league as any).trade_salary_matching_enabled ?? true);
 
     const isRosterTabDirty =
         maxRosterSize !== ((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE) ||
@@ -1022,6 +1035,16 @@ const LeagueSettingsView: React.FC = () => {
             {/* ── 일정 (총 진행기간/시간대 + 재배치 + 경기별 시각 편집) ──────────── */}
             {activeTab === 'schedule' && (
                 <ScheduleSettingsTab league={league} room={room} leagueTeams={leagueTeams} onLeagueSaved={reload} />
+            )}
+
+            {/* ── 로그 (세션 감사 로그, 읽기 전용) ────────────────────────────── */}
+            {activeTab === 'log' && (
+                <ActionLogTab room={room} leagueTeams={leagueTeams} />
+            )}
+
+            {/* ── 팀 전술 (참가자 뎁스차트/전술값, 읽기 전용) ─────────────────── */}
+            {activeTab === 'tactics' && (
+                <TeamTacticsTab room={room} leagueTeams={leagueTeams} />
             )}
 
             {/* ── 리그 (좌: 제너럴 설정 / 우: 멤버) ────────────────────────────── */}
@@ -1482,8 +1505,31 @@ const LeagueSettingsView: React.FC = () => {
                         </div>
                     );
                 })()}
+
+                <div>
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        tradeSalaryMatchingEnabled ? 'bg-amber-600/20 border border-amber-600/50' : 'bg-slate-900/60 border border-transparent'
+                    }`}>
+                        <input
+                            type="checkbox"
+                            checked={tradeSalaryMatchingEnabled}
+                            onChange={e => setTradeSalaryMatchingEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                        />
+                        <span className={`text-xs font-bold flex-1 ${tradeSalaryMatchingEnabled ? 'text-white' : 'text-slate-400'}`}>샐러리 매칭 강제</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
+                        켜져 있으면 트레이드 수락 시 CBA 캡/에이프런 구간별 샐러리 매칭 규칙(캡 이하 팀은 자유,
+                        캡~1차 에이프런은 송신액 기준 3단계, 1차 에이프런 이상은 100% 매칭, 2차 에이프런 이상은
+                        추가로 다수 선수 합산 매칭 금지)을 강제합니다. 끄면 샐러리캡(위 "샐러리캡 설정" 탭)은
+                        추적하되 트레이드 자체는 제한 없이 자유롭게 진행됩니다.
+                    </p>
+                </div>
             </section>
             )}
+
+            {/* ── 어드민 트레이드 (트레이드 설정 블록 하단, 2026-10-06) ─────────── */}
+            {activeTab === 'trade' && <AdminTradeBlock />}
 
             {/* ── 재정 설정 (준비 중) ──────────────────────────────────────────── */}
             {activeTab === 'finance' && (

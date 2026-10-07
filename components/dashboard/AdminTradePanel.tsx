@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AlertTriangle, ArrowLeftRight, Check, Loader2 } from 'lucide-react';
-import { supabase } from '../../services/supabaseClient';
+import { ArrowLeftRight, Check, Loader2 } from 'lucide-react';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
 import { generateAutoTactics } from '../../services/gameEngine';
 import { saveMemberTactics } from '../../services/multi/roomPersistence';
-import { executeAdminTrade } from '../../services/multi/leagueService';
+import { executeAdminTrade, logAdminFailedAction } from '../../services/multi/leagueService';
+import { fetchMetaPlayersByRosterIds } from '../../services/multi/instancePlayers';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import type { LeagueTeamRow, RoomMemberRow } from '../../services/multi/roomQueries';
@@ -74,17 +74,15 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
         if (!teamBRow?.roster?.length) { setTeamBRoster([]); return; }
         setTeamBLoading(true);
         const ids = teamBRow.roster;
-        supabase
-            .from('meta_players')
-            .select('id, name, position, base_attributes, tendencies')
-            .in('id', ids)
-            .then(({ data }) => {
-                if (!data) { setTeamBLoading(false); return; }
-                const byId = new Map(data.map((raw: any) => [String(raw.id), raw]));
-                const ordered = ids.map(id => byId.get(String(id))).filter(Boolean);
-                setTeamBRoster(ordered.map((raw: any) => mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true)));
-                setTeamBLoading(false);
-            });
+        // [2026-10-06] 인스턴스 룸(개인 팩 드래프트) 호환 — meta_players 직접 조회 대신 해석기 사용
+        fetchMetaPlayersByRosterIds(roomId, ids, 'id, name, position, draft_year, base_attributes, tendencies')
+            .then(data => {
+                const byId = new Map(data.map(raw => [String(raw.id), raw]));
+                const ordered = ids.map(id => byId.get(String(id))).filter(Boolean) as Record<string, unknown>[];
+                setTeamBRoster(ordered.map(raw => mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true)));
+            })
+            .catch(e => console.error('[adminTrade.teamB]', e))
+            .finally(() => setTeamBLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [teamBRosterKey]);
 
@@ -93,7 +91,7 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
     const [cartBtoA, setCartBtoA] = useState<Set<string>>(new Set());
 
     // 상대 팀을 바꾸면 카트 초기화 (다른 팀 기준으로 담아둔 선수가 남아있으면 혼란)
-    useEffect(() => { setCartAtoB(new Set()); setCartBtoA(new Set()); }, [teamBSlug]);
+    useEffect(() => { setCartAtoB(new Set()); setCartBtoA(new Set()); setFailMsg(null); setNote(''); }, [teamBSlug]);
 
     const toggleA = useCallback((id: string) => {
         setCartAtoB(prev => {
@@ -112,7 +110,10 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
 
     const [confirming, setConfirming] = useState(false);
     const [executing, setExecuting]   = useState(false);
-    const [error, setError]           = useState<string | null>(null);
+    // [2026-10-06] 실행 실패는 토스트 없이 세션 로그(admin_trade_failed)에만 기록 + 패널 안 한 줄 상태 표시(사용자 결정).
+    const [failMsg, setFailMsg] = useState<string | null>(null);
+    // [2026-10-06] 트레이드 사유 — 성공/실패 로그 모두에 note로 기록
+    const [note, setNote] = useState('');
     const [successFlash, setSuccessFlash] = useState(false);
 
     const teamAOut = useMemo(() => teamARoster.filter(p => cartAtoB.has(p.id)), [teamARoster, cartAtoB]);
@@ -122,7 +123,6 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
     const handleExecute = useCallback(async () => {
         if (!teamARow || !teamBRow) return;
         setExecuting(true);
-        setError(null);
 
         const playersAtoB = [...cartAtoB];
         const playersBtoA = [...cartBtoA];
@@ -130,15 +130,29 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
         const { error: tradeErr } = await executeAdminTrade({
             roomId, adminUserId,
             teamAId: teamARow.id, teamBId: teamBRow.id,
-            playersAtoB, playersBtoA,
+            playersAtoB, playersBtoA, note,
         });
 
         if (tradeErr) {
-            setError(tradeErr);
+            const nameOf = (p: Player) => ({ id: p.id, name: p.name });
+            await logAdminFailedAction(roomId, 'admin_trade_failed', {
+                teamIds: [teamARow.id, teamBRow.id],
+                playerIds: [...playersAtoB, ...playersBtoA],
+                details: {
+                    reason: tradeErr,
+                    note: note.trim() || null,
+                    team_a: { id: teamARow.id, slug: teamARow.team_slug, name: teamARow.team_name },
+                    team_b: { id: teamBRow.id, slug: teamBRow.team_slug, name: teamBRow.team_name },
+                    players_a_to_b: teamARoster.filter(p => cartAtoB.has(p.id)).map(nameOf),
+                    players_b_to_a: teamBRoster.filter(p => cartBtoA.has(p.id)).map(nameOf),
+                },
+            });
+            setFailMsg(tradeErr);
             setExecuting(false);
             setConfirming(false);
             return;
         }
+        setFailMsg(null);
 
         // 로스터는 이미 양쪽 다 전체 Player 객체를 들고 있으므로 재조회 없이 바로 로컬 계산 →
         // 뎁스차트/로테이션 1회 자동 설정(generateAutoTactics)에 바로 사용
@@ -162,13 +176,14 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
 
         setCartAtoB(new Set());
         setCartBtoA(new Set());
+        setNote('');
         setExecuting(false);
         setConfirming(false);
         setSuccessFlash(true);
         setTimeout(() => setSuccessFlash(false), 2000);
 
         onTradeComplete(newTacticsA);
-    }, [teamARow, teamBRow, cartAtoB, cartBtoA, teamARoster, teamBRoster, teamASlug, teamBSlug, members, roomId, adminUserId, onTradeComplete]);
+    }, [teamARow, teamBRow, cartAtoB, cartBtoA, teamARoster, teamBRoster, teamASlug, teamBSlug, members, roomId, adminUserId, onTradeComplete, note]);
 
     if (otherTeams.length === 0) {
         return <div className="p-8 text-sm text-slate-500 ko-normal">트레이드할 상대 팀이 없습니다.</div>;
@@ -191,12 +206,12 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
                 {teamBLoading && <Loader2 size={14} className="animate-spin text-slate-500" />}
             </div>
 
-            {error && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/40 border border-red-900/40 text-xs text-red-400 ko-normal">
-                    <AlertTriangle size={13} className="shrink-0" />
-                    {error}
+            {failMsg && (
+                <div className="px-3 py-2 rounded-lg bg-red-950/40 border border-red-900/40 text-xs text-red-300 ko-normal">
+                    트레이드 실행 실패 — 세션 로그에 기록됐습니다. {failMsg}
                 </div>
             )}
+
             {successFlash && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-950/40 border border-emerald-900/40 text-xs text-emerald-400 ko-normal">
                     <Check size={13} className="shrink-0" />
@@ -240,6 +255,18 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
                         <ArrowLeftRight size={13} className="text-indigo-400 shrink-0" />
                         <span className="text-slate-400">{teamBRow?.team_name} → {teamARow?.team_name}:</span>
                         <span className="text-white font-semibold">{teamBOut.map(p => p.name).join(', ') || '없음'}</span>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-300 ko-normal">사유 <span className="font-normal text-slate-500">(선택 · 세션 로그에 기록)</span></label>
+                        <textarea
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            maxLength={300}
+                            rows={2}
+                            placeholder="예: 로스터 불균형 조정, 참가자 요청 반영 등"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white ko-normal focus:outline-none focus:border-indigo-500 resize-none"
+                        />
                     </div>
 
                     {confirming ? (

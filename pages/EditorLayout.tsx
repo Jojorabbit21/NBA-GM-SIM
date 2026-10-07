@@ -109,6 +109,18 @@ const EditorLayout: React.FC<{ userId?: string; isAdmin?: boolean }> = ({ userId
                     >
                         사용자 관리
                     </NavLink>
+                    <NavLink
+                        to="app-settings"
+                        className={({ isActive }) =>
+                            `px-5 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                                isActive
+                                    ? 'text-white border-indigo-500'
+                                    : 'text-slate-400 border-transparent hover:text-white'
+                            }`
+                        }
+                    >
+                        기본 설정
+                    </NavLink>
                 </div>
                 <Outlet context={{ userId, isAdmin }} />
             </div>

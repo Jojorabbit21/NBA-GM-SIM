@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryCache } from '@tanstack/query-core';
 import { PersistQueryClientProvider, removeOldestQuery } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { NotificationCenter } from './components/common/NotificationCenter';
+import { installGlobalErrorHandlers, reportQueryError, resolveHeldQueryError } from './services/notifications/errorCollector';
 import { injectSpeedInsights } from '@vercel/speed-insights';
 import './index.css'; // Tailwind CSS Import
 import App from './App';
@@ -17,9 +19,10 @@ applyEditorToTeamData();
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onError: (error, query) => {
-      console.error(`[QueryCache] Query failed:`, query.queryKey, error);
-    },
+    // [2026-10-02] 조회 실패를 전역 토스트로(docs/plan/toast-notification-center-plan.md 4단계). console.error는
+    // reportQueryError 안에서 그대로 찍는다. onSuccess는 401 보류 취소용(같은 쿼리가 토큰 갱신 후 성공하면 알림 안 냄).
+    onError: (error, query) => reportQueryError(error, query.queryKey, query.queryHash),
+    onSuccess: (_data, query) => resolveHeldQueryError(query.queryHash),
   }),
   defaultOptions: {
     queries: {
@@ -61,6 +64,8 @@ const debugStorage: Storage = {
 // 소규모로 기여했다. 이 셋을 빼면 남는 건 multiSearchPool류의 작고 안 바뀌는 데이터뿐이라
 // 캐시 전체가 다시 quota 안에 들어온다.
 const PERSIST_EXCLUDE_ROOT_KEYS = new Set(['leagueRawStats', 'playerCareerHistory', 'faCareerHistoryBulkPrefetch']);
+// 영속 캐시 버전 — 바꾸면 모든 사용자의 localStorage 캐시가 다음 로드 때 한 번 폐기된다.
+const PERSIST_CACHE_BUSTER = '2026-10-01-pool-fix';
 
 const persister = createSyncStoragePersister({
   storage: debugStorage,
@@ -73,6 +78,9 @@ const persister = createSyncStoragePersister({
 // [2026-09-04 임시 계측] 17.8MB까지 커지는 원인(어떤 쿼리가 몇 KB인지)을 콘솔에서 직접
 // 확인하기 위해 잠깐 노출 — 원인 확인 끝나면 이 줄 제거할 것.
 (window as any).__debugQueryClient = queryClient;
+
+// [2026-10-02] window error / unhandledrejection / online·offline → 전역 토스트(한 번만 설치)
+installGlobalErrorHandlers();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -88,13 +96,25 @@ root.render(
         persistOptions={{
           persister,
           maxAge: 24 * 60 * 60 * 1000,
+          // [2026-10-01] 캐시 버스터 — 이 문자열이 저장 당시와 다르면 localStorage 캐시 전체를
+          // 한 번 폐기하고 새로 받는다. 빈 선수 풀이 영속 캐시에 굳어버린 사고(AS 2 리그)의
+          // 일괄 복구용이며, 앞으로 오염된 캐시를 전원에게서 지워야 할 때 이 값만 바꾸면 된다.
+          buster: PERSIST_CACHE_BUSTER,
           dehydrateOptions: {
             shouldDehydrateQuery: (query) =>
-              query.state.status === 'success' && !PERSIST_EXCLUDE_ROOT_KEYS.has(query.queryKey[0] as string),
+              query.state.status === 'success'
+              && !PERSIST_EXCLUDE_ROOT_KEYS.has(query.queryKey[0] as string)
+              // [2026-10-01] 선수 풀이 0명이면 영속화하지 않음 — 실패를 성공으로 캐시하는 경로를
+              // 위 throw로 막았지만, 응답은 200인데 본문이 비는 식의 우회 경로까지 대비한 안전망.
+              // 메모리 캐시는 그대로 두고(필터가 극단적이라 정말 0명인 리그도 있을 수 있음)
+              // 다음 접속 때만 다시 받아오게 한다.
+              && !(query.queryKey[0] === 'multiSearchPool' && Array.isArray(query.state.data) && query.state.data.length === 0),
           },
         }}
       >
         <App />
+        {/* [2026-10-02] 전역 토스트 알림 센터 — 앱 전체에 하나. docs/plan/toast-notification-center-plan.md */}
+        <NotificationCenter />
       </PersistQueryClientProvider>
     </BrowserRouter>
   </React.StrictMode>

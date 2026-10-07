@@ -72,19 +72,21 @@ const mapTradeOfferError = (msg: string): string => {
     if (msg.includes('empty_offer'))         return '최소 한 명 이상의 선수를 선택하세요.';
     if (msg.includes('message_too_long'))    return '메시지는 300자를 넘을 수 없습니다.';
     if (msg.includes('room_not_found'))      return '방을 찾을 수 없습니다.';
-    if (msg.includes('trade_disabled'))      return '이 리그는 트레이드가 비활성화되어 있습니다.';
-    if (msg.includes('trade_deadline_passed')) return '트레이드 데드라인이 지나 더 이상 트레이드를 진행할 수 없습니다.';
+    if (msg.includes('trade_disabled'))      return '리그의 트레이드가 비활성화 상태입니다.';
+    if (msg.includes('trade_deadline_passed')) return '트레이드 데드라인이 경과했습니다.';
     if (msg.includes('team_not_found'))      return '팀을 찾을 수 없습니다.';
     if (msg.includes('not_team_owner'))      return '본인 팀에서만 제안을 보낼 수 있습니다.';
-    if (msg.includes('target_not_human'))    return 'AI가 운영하는 팀에는 제안을 보낼 수 없습니다.';
+    if (msg.includes('target_not_human'))    return '매니저가 있는 팀에만 제안을 보낼 수 있습니다.';
     if (msg.includes('player_not_on_team'))  return '선택한 선수가 더 이상 해당 팀 로스터에 없습니다. 새로고침 후 다시 시도하세요.';
-    if (msg.includes('player_not_tradeable')) return '상대가 트레이드 가능으로 지정하지 않은 선수입니다.';
+    if (msg.includes('player_not_tradeable')) return '트레이드 불가능 선수입니다.';
     if (msg.includes('offer_not_found'))     return '제안을 찾을 수 없습니다.';
     if (msg.includes('offer_not_pending'))   return '이미 처리된 제안입니다. 새로고침 후 확인하세요.';
     if (msg.includes('offer_expired'))       return '유효 기간이 지난 제안입니다.';
     if (msg.includes('not_sender'))          return '본인이 보낸 제안만 취소할 수 있습니다.';
     if (msg.includes('not_recipient'))       return '본인에게 온 제안만 응답할 수 있습니다.';
-    if (msg.includes('stale_offer'))         return '선택된 선수가 그 사이 다른 트레이드로 팀을 떠났습니다. 제안이 무효화됩니다.';
+    if (msg.includes('stale_offer'))         return '선수가 이미 트레이드 되었습니다.';
+    if (msg.includes('salary_match_failed')) return '샐러리 규칙 위반으로 트레이드가 불가능합니다.';
+    if (msg.includes('roster_overflow')) return '트레이드 성사 시 로스터 정원이 초과되어 트레이드 실행이 불가능합니다.';
     return msg;
 };
 

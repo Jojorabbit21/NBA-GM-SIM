@@ -1,6 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Search, X, ChevronDown, Check, Filter, Plus, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { notify } from '../../../services/notifications/notify';
+import { Loader2, Search, X, ChevronDown, Check, Filter, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -240,17 +241,16 @@ const MultiFreeAgentView: React.FC = () => {
     );
 
     const [signingId, setSigningId] = useState<string | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
+    // [2026-10-02] 서명 실패 문구는 인라인 배너 대신 전역 토스트(notify.error) — toast-notification-center-plan 2단계.
 
     // 1단계: 협상 없이 즉시 계약(캡 체크 없음 — 후속 작업). 성공 시 reload()로
     // leagueTeams를 갱신해 rosterMap이 업데이트되고 해당 선수가 FA 목록에서 즉시 사라진다.
     const handleSign = async (playerId: string) => {
         if (!myTeamRow || signingId) return;
         setSigningId(playerId);
-        setActionError(null);
         const { error } = await signFreeAgent(myTeamRow.id, playerId);
         setSigningId(null);
-        if (error) { setActionError(error); return; }
+        if (error) { notify.error(error, { source: 'fa.sign', title: 'FA 서명 실패' }); return; }
         reload();
     };
 
@@ -512,11 +512,6 @@ const MultiFreeAgentView: React.FC = () => {
                     </>
                 )}
 
-                {actionError && (
-                    <div className="flex items-center gap-2 mx-4 mb-3 px-3 py-2.5 rounded-lg bg-red-950/40 border border-red-900/40 text-sm text-red-400 ko-normal">
-                        <ShieldAlert size={15} className="shrink-0" /> {actionError}
-                    </div>
-                )}
             </div>
 
             <div className="flex-1 min-h-0">

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Loader2, Clock } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -12,7 +12,7 @@ import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
 import type { Game, ShotEvent, Team, Player } from '../../../types';
 import { useServerClock } from '../../../utils/serverClock';
-import { getReplayDurationMs, getGameDisplayState, resolveRealAt } from './multiGameReveal';
+import { getReplayDurationMs, getGameDisplayState, resolveRealAt, isFinal } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
@@ -24,6 +24,8 @@ import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
 import { GameOnOffTab } from '../../../components/game/tabs/GameOnOffTab';
 import type { GameStatLeaders } from '../../../components/game/BoxScoreTable';
 import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
+import { kstDateKey, fmtFullDate } from './multiScheduleUtils';
+import { TabBar } from '../../../components/common/TabBar';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
@@ -36,7 +38,7 @@ const LIVE_POLL_MS        = 5000;
 const TEAM_TIMEOUTS_TOTAL = 4;
 // [2026-09-01] ?section= 딥링크 검증용 — 6섹션 탭 배열(아래 렌더 안, ~2100줄 근방)의 id와
 // 동일한 값 목록. 그 배열은 JSX 안에서 렌더 시점에 만들어져 재사용이 번거로워 별도로 둠.
-const VALID_PBP_SECTIONS = ['insights', 'box', 'pbp', 'shotchart', 'rotation', 'onoff'] as const;
+const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'shotchart', 'rotation', 'onoff'] as const;
 
 // [Simplify 2026-08-05] 점보트론 원정/홈 슬롯에서 각각 그대로 복붙돼 있던 타임아웃 도트 렌더링을
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
@@ -124,6 +126,46 @@ function TeamHeaderColumn({
             {nameEl}
             {side === 'away' ? scoreEl : abbrEl}
         </div>
+    );
+}
+
+// 종료 화면 헤더 가운데 "스테이지 라인"용 — 시리즈 → "플레이오프 동부 1라운드" / "플레이오프 동부 컨퍼런스
+// 세미파이널" / "플레이오프 동부 컨퍼런스 파이널" / "플레이오프 파이널"(사용자 확정 표기, 2026-10-06).
+// 컨퍼런스가 없는 시리즈(conference 'BPL' — 토너먼트/결승)는 컨퍼런스 접두 없이 "파이널"/"세미파이널"/"n라운드".
+// round===0은 플레이인. totalRounds는 bracket_data 전체 시리즈 중 최댓값(다른 화면의 computeRoundLabelMap과 동일 기준).
+function computePlayoffStageLabel(series: any, bracketData: unknown): string {
+    const all: any[] = (bracketData as any)?.series ?? [];
+    const totalRounds = all.reduce((max: number, s: any) => Math.max(max, s.round ?? 1), 1);
+    const r: number = series.round ?? 1;
+    const conf: string | undefined = series.conference === 'East' ? '동부' : series.conference === 'West' ? '서부' : undefined;
+    if (r === totalRounds) return '플레이오프 파이널';
+    if (r === 0) return conf ? `플레이오프 ${conf} 플레이인` : '플레이오프 플레이인';
+    if (conf) {
+        if (r === totalRounds - 1) return `플레이오프 ${conf} 컨퍼런스 파이널`;
+        if (r === totalRounds - 2) return `플레이오프 ${conf} 컨퍼런스 세미파이널`;
+        return `플레이오프 ${conf} ${r}라운드`;
+    }
+    if (r === totalRounds - 1) return '플레이오프 세미파이널';
+    return `플레이오프 ${r}라운드`;
+}
+
+// 종료 화면 헤더 양끝 로고 — 다른 화면들과 동일한 폴백 체인(신규 로고 → 구버전 → 플레이스홀더).
+function FinalHeaderLogo({ teamSlug, abbr }: { teamSlug: string; abbr: string }) {
+    return (
+        <img
+            src={getRealTeamLogoUrl(teamSlug)}
+            alt={abbr}
+            className="h-24 w-24 object-contain shrink-0"
+            onError={(e) => {
+                const img = e.currentTarget;
+                if (img.dataset.fallback !== 'old') {
+                    img.dataset.fallback = 'old';
+                    img.src = getTeamLogoUrl(teamSlug);
+                } else {
+                    img.src = 'https://placehold.co/100x100?text=BPL';
+                }
+            }}
+        />
     );
 }
 
@@ -419,7 +461,9 @@ const QuarterScores: React.FC<{
      *  shrink-to-fit 성질 그대로 내용 크기만큼만 차지(헤더에서 쓰는 방식 — 부모가 이미
      *  가운데 정렬해주므로 폭을 강제로 늘릴 필요가 없음). */
     fullWidth?:     boolean;
-}> = ({ allLogs, homeTeamId, currentQuarter, homeAbbr, awayAbbr, fullWidth }) => {
+    /** 종료 화면 헤더용 미니멀 표(1 2 3 4 T 헤더, 배경/음영 없음, 총합만 굵게). */
+    compact?:       boolean;
+}> = ({ allLogs, homeTeamId, currentQuarter, homeAbbr, awayAbbr, fullWidth, compact }) => {
     // [Fix 2026-08-03] type==='score'|'freethrow' + teamId 매칭으로 직접 합산하던 방식은
     // 테크니컬 파울 자유투에서 깨짐 — 그 이벤트는 type:'foul'이라 필터에서 완전히 빠지고
     // (득점 자체가 누락), teamId도 파울한 팀(=득점 팀과 다름)이라 필터를 없애도 오귀속됨
@@ -454,6 +498,35 @@ const QuarterScores: React.FC<{
 
     const hTotal = scores.home.reduce((a, b) => a + b, 0);
     const aTotal = scores.away.reduce((a, b) => a + b, 0);
+
+    if (compact) {
+        const row = (abbr: string, vals: number[], total: number) => (
+            <tr>
+                <td className="text-left pr-3 py-0.5 font-bold text-white">{abbr}</td>
+                {vals.map((v, i) => (
+                    <td key={i} className="text-center w-8 py-0.5 tabular-nums text-slate-300">
+                        {i + 1 <= currentQuarter ? v : '—'}
+                    </td>
+                ))}
+                <td className="text-center w-9 py-0.5 tabular-nums font-bold text-white">{total}</td>
+            </tr>
+        );
+        return (
+            <table className="text-sm border-collapse">
+                <thead>
+                    <tr className="text-slate-400 border-b border-slate-700">
+                        <th className="pr-3 py-0.5"></th>
+                        {[1, 2, 3, 4].map(q => <th key={q} className="text-center w-8 py-0.5 font-semibold">{q}</th>)}
+                        <th className="text-center w-9 py-0.5 font-semibold">T</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {row(awayAbbr, scores.away, aTotal)}
+                    {row(homeAbbr, scores.home, hTotal)}
+                </tbody>
+            </table>
+        );
+    }
 
     // [2026-08-02] 참고 예시(리그 공식 스코어보드) 구조 적용 — 카드형 외곽 테두리 없이,
     // 헤더 밑줄 + 원정행 밑줄만 있는 미니멀한 표. 좌상단 코너 칸은 빈 칸(라벨 텍스트 없음).
@@ -1271,6 +1344,11 @@ const GameInsightsPanel: React.FC<{
 
 const MultiGamePbpView: React.FC = () => {
     const { leagueId, gameId } = useParams<{ leagueId: string; gameId: string }>();
+    const navigate = useNavigate();
+    // 종료 헤더 팀 이름 클릭 → 로스터 화면(일정/순위 화면의 팀 이름 링크와 동일 경로).
+    const goTeamRoster = (teamSlug: string | undefined) => {
+        if (teamSlug) navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
+    };
     // 뉴스피드의 "박스스코어" 버튼 등이 ?section=box로 넘어오면 진입 시 바로 그 섹션으로
     // 스크롤(아래 딥링크 useEffect). 다른 화면들처럼 파라미터 없이 들어오면 기본값(insights)
     // 그대로 — 기존 "게임으로 이동" 링크는 전혀 영향받지 않는다.
@@ -1316,7 +1394,7 @@ const MultiGamePbpView: React.FC = () => {
     // [2026-08-03] 6개 탭(박스스코어/샷차트/경기기록/로테이션/인사이트/온오프)을 스위칭하는 대신
     // 한 페이지에 세로로 이어붙임 — finalTab 전환 상태 대신 "현재 스크롤 위치가 어느 섹션인지"만
     // 추적(스크롤스파이)해서 상단 네비게이션 바의 활성 라벨 하이라이트에 쓴다.
-    const [activeSection, setActiveSection] = useState<string>('insights');
+    const [activeSection, setActiveSection] = useState<string>('box');
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const resultScrollRef = useRef<HTMLDivElement>(null);
     // live 폴링 델타 커서 — 서버가 이미 보낸 만큼(count)을 기억해뒀다가 다음 폴링에 같이 보내면
@@ -1560,6 +1638,35 @@ const MultiGamePbpView: React.FC = () => {
 
     const homeTeam = useMemo(() => leagueTeams.find(t => t.team_slug === homeTeamId), [leagueTeams, homeTeamId]);
     const awayTeam = useMemo(() => leagueTeams.find(t => t.team_slug === awayTeamId), [leagueTeams, awayTeamId]);
+
+    // [2026-10-06] 종료 화면 헤더 가운데 상단 정보 라인 — 1줄: 가상 날짜(GameDateStrip과 동일한
+    // kstDateKey 기준), 2줄(플레이오프 경기만): "{라운드} {n}차전 · 시리즈 {상위시드} w-l {하위시드}".
+    // n차전/시리즈 스코어는 TournamentBracketView의 seriesTallies와 같은 방식 — 같은 시리즈의
+    // 공개된(isFinal) 경기를 날짜순으로 누적해 "이 경기까지의" 전적을 계산한다(스포일러 방지:
+    // 이 경기 이후의 결과는 포함하지 않음).
+    const finalHeaderDateLabel = scheduleGame
+        ? fmtFullDate(kstDateKey(scheduleGame, league?.type === 'main_league'))
+        : null;
+    const finalHeaderStage = useMemo<{ stage: string; score: string | null } | null>(() => {
+        if (!scheduleGame?.isPlayoff || !scheduleGame.seriesId) return null;
+        const seriesList: any[] = (league?.bracket_data as any)?.series ?? [];
+        const series = seriesList.find(sr => sr.id === scheduleGame.seriesId);
+        if (!series) return { stage: '플레이오프', score: null };
+        const stage = computePlayoffStageLabel(series, league?.bracket_data);
+        const games = schedule
+            .filter(g => g.seriesId === scheduleGame.seriesId)
+            .sort((a, b) => a.date.localeCompare(b.date));
+        const idx = games.findIndex(g => g.id === scheduleGame.id);
+        let hi = 0, lo = 0;
+        for (const g of games.slice(0, idx < 0 ? games.length : idx + 1)) {
+            if (!isFinal(g, serverNow) || g.homeScore == null || g.awayScore == null) continue;
+            const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
+            if (winnerId === series.higherSeedId) hi++;
+            else if (winnerId === series.lowerSeedId) lo++;
+        }
+        const abbrOf = (slug: string) => leagueTeams.find(t => t.team_slug === slug)?.team_abbr ?? slug.toUpperCase().slice(0, 3);
+        return { stage, score: `${abbrOf(series.higherSeedId)} ${hi} - ${lo} ${abbrOf(series.lowerSeedId)}` };
+    }, [scheduleGame, league?.bracket_data, schedule, serverNow, leagueTeams]);
     // 올스타/라이징스타는 가상 팀 ID라 leagueTeams에 없다 — useAllStarTeamDisplay가 이름/테마색/
     // 로스터를 대신 제공(동부·서부는 컨퍼런스 대표색, 라이징스타는 시즌별 주장 성 기반 팀명).
     const homeAllstarInfo = homeTeamId ? allstarDisplay[homeTeamId] : undefined;
@@ -1941,217 +2048,277 @@ const MultiGamePbpView: React.FC = () => {
     return (
         <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
 
+            {/* ═══ 스코어버그 헤더 — 시작 전/라이브 전용(종료 화면과 완전히 분리된 별도 블록) ═══
+                종료 화면 헤더는 아래 종료 전용 블록. 한쪽만 수정해도 다른 쪽에 영향 없음(TeamHeaderColumn만 공유). */}
             {/* ── 스코어버그 헤더 ──
                 좌:중:우 = 4:3:4 고정 비율. 좌/우 컬럼은 팀 메인컬러 단색 배경(absolute 레이어로
                 헤더 높이 전체를 채움 — 그라데이션 대신 각 팀 컬러가 정확히 4/11 폭만큼 하드엣지로 채워짐),
                 중앙 3fr은 배경 없이 slate-900 그대로 노출. 단색 배경 위 텍스트는 배지와 동일한
                 대비색(awayText/homeText)을 써야 흰/밝은 팀 배경에서도 글자가 묻히지 않는다. */}
-            <div className="relative bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
-                {/* [Fix 2026-08-04] "헤더 좌우 섹션 너비를 바디 좌우 섹션(w-[30%])과 동일하게" 요청 —
-                    바디는 좌/중/우 = 30%/40%/30%(w-[30%] + flex-1)라서 헤더도 동일 비율로 맞춤
-                    (4fr/3fr/4fr → 3fr/4fr/3fr, 10등분이라 정확히 30/40/30%로 딱 떨어짐). */}
-                <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: '30%', backgroundColor: awayColor }} />
-                <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ width: '30%', backgroundColor: homeColor }} />
-                {/* [2026-08-04] 중앙 섹션 — 기존엔 배경 없이 부모 bg-slate-900이 그대로 보였음, slate-950으로 분리 */}
-                <div className="absolute inset-y-0 bg-slate-950 pointer-events-none" style={{ left: '30%', width: '40%' }} />
-                {/* [Fix 2026-08-04] "헤더 전체를 점보트론 영역으로" 요청 — 예전에 바디 상단 검은 바에만
-                    있던 LED 도트 매트릭스 텍스처를 헤더 전체(좌/중/우 컬러 밴드 포함)로 확장. */}
-                <div
-                    className="absolute inset-0 pointer-events-none opacity-70"
-                    style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px)', backgroundSize: '4px 4px' }}
-                />
+            {!showBox && (
+                <div className="relative bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
+                    {/* [Fix 2026-08-04] "헤더 좌우 섹션 너비를 바디 좌우 섹션(w-[30%])과 동일하게" 요청 —
+                        바디는 좌/중/우 = 30%/40%/30%(w-[30%] + flex-1)라서 헤더도 동일 비율로 맞춤
+                        (4fr/3fr/4fr → 3fr/4fr/3fr, 10등분이라 정확히 30/40/30%로 딱 떨어짐). */}
+                    <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: '30%', backgroundColor: awayColor }} />
+                    <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ width: '30%', backgroundColor: homeColor }} />
+                    {/* [2026-08-04] 중앙 섹션 — 기존엔 배경 없이 부모 bg-slate-900이 그대로 보였음, slate-950으로 분리 */}
+                    <div className="absolute inset-y-0 bg-slate-950 pointer-events-none" style={{ left: '30%', width: '40%' }} />
+                    {/* [Fix 2026-08-04] "헤더 전체를 점보트론 영역으로" 요청 — 예전에 바디 상단 검은 바에만
+                        있던 LED 도트 매트릭스 텍스처를 헤더 전체(좌/중/우 컬러 밴드 포함)로 확장. */}
+                    <div
+                        className="absolute inset-0 pointer-events-none opacity-70"
+                        style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px)', backgroundSize: '4px 4px' }}
+                    />
 
-                {/* [Fix 2026-08-04] "중앙과 우측 사이에 틈이 보인다" 리포트 — 원인은 CSS Grid의 fr 트랙
-                    폭 계산과, 위 배경 오버레이 3개(left/right/left+width 조합의 순수 %)의 폭 계산이
-                    서로 다른 알고리즘이라 브라우저 반올림이 어긋날 수 있다는 것. 특히 away(left:0)/
-                    center(left:30%)는 같은 "left 기준" 계산이라 우연히 잘 맞았지만, home은 anchor가
-                    반대(right:0)라 유독 그 경계에서만 1px대 오차가 보였던 것으로 추정. grid+fr 대신
-                    flex + 오버레이와 완전히 동일한 인라인 style={{width:'30%'/'40%'/'30%'}}를 각 컬럼에
-                    직접 줘서, 오버레이와 콘텐츠 컬럼이 정확히 같은 계산식(%)을 공유하도록 통일. */}
-                <div className="relative z-10 flex items-center">
-                    {/* [Fix 2026-08-05] "팀이름/성적 길이에 따라 점수 위치가 밀리는 대신, 점수는 항상
-                        안쪽(원정=우측)에 밀착되도록" 요청 — 중앙 점보트론처럼 이 컬럼도 3구획(약어=바깥쪽
-                        고정 / 이름·성적=가변(1fr, 넘치면 truncate) / 점수=안쪽 고정) grid로 재구성.
-                        flex+justify-start였을 때는 세 요소가 한 덩어리로 붙어 있어서 이름이 짧으면 점수가
-                        같이 왼쪽(바깥쪽)으로 딸려왔었음 — 이제 이름 칸이 남는 공간을 전부 흡수하므로
-                        점수는 이름 길이와 무관하게 항상 컬럼 안쪽 경계에 붙는다. */}
-                    <TeamHeaderColumn side="away" teamSlug={awayTeamId ?? ''} abbr={awayAbbr} name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
+                    {/* [Fix 2026-08-04] "중앙과 우측 사이에 틈이 보인다" 리포트 — 원인은 CSS Grid의 fr 트랙
+                        폭 계산과, 위 배경 오버레이 3개(left/right/left+width 조합의 순수 %)의 폭 계산이
+                        서로 다른 알고리즘이라 브라우저 반올림이 어긋날 수 있다는 것. 특히 away(left:0)/
+                        center(left:30%)는 같은 "left 기준" 계산이라 우연히 잘 맞았지만, home은 anchor가
+                        반대(right:0)라 유독 그 경계에서만 1px대 오차가 보였던 것으로 추정. grid+fr 대신
+                        flex + 오버레이와 완전히 동일한 인라인 style={{width:'30%'/'40%'/'30%'}}를 각 컬럼에
+                        직접 줘서, 오버레이와 콘텐츠 컬럼이 정확히 같은 계산식(%)을 공유하도록 통일. */}
+                    <div className="relative z-10 flex items-center">
+                        {/* [Fix 2026-08-05] "팀이름/성적 길이에 따라 점수 위치가 밀리는 대신, 점수는 항상
+                            안쪽(원정=우측)에 밀착되도록" 요청 — 중앙 점보트론처럼 이 컬럼도 3구획(약어=바깥쪽
+                            고정 / 이름·성적=가변(1fr, 넘치면 truncate) / 점수=안쪽 고정) grid로 재구성.
+                            flex+justify-start였을 때는 세 요소가 한 덩어리로 붙어 있어서 이름이 짧으면 점수가
+                            같이 왼쪽(바깥쪽)으로 딸려왔었음 — 이제 이름 칸이 남는 공간을 전부 흡수하므로
+                            점수는 이름 길이와 무관하게 항상 컬럼 안쪽 경계에 붙는다. */}
+                        <TeamHeaderColumn side="away" teamSlug={awayTeamId ?? ''} abbr={awayAbbr} name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
 
-                    {/* Center: Final(또는 쿼터/시계)과 쿼터별 득점 테이블을 한 블록으로 묶어 고정 3fr
-                        컬럼 안에서 항상 정중앙에 위치한다. */}
-                    <div className="flex flex-col items-center justify-center shrink-0" style={{ width: '40%' }}>
-                        {/* [Fix 2026-08-04] "경기중 화면 헤더를 전부 점보트론 영역으로" 요청 — 좌/우 팀
-                            컬럼에 있던 파울/보너스/타임아웃을 가운데로 통합하고, activeJumbotron(마일스톤/
-                            쿼터·경기 시작·종료)이 있으면 이 섹션 전체를 이벤트 문구로 교체(별도 검은 바
-                            대신 헤더 가운데 자체가 점보트론 역할). 3fr 컬럼 폭에 맞춰 기존 점보트론의
-                            상세 6스탯 줄은 생략하고 팀/선수명+마일스톤 값만 남긴 압축 버전. */}
-                        {isScheduled ? (
-                            // [Fix 2026-08-04] "카운트다운을 별도 전체화면 대신 점보트론(헤더 가운데)에" 요청.
-                            // [Fix 2026-08-05] 시계 아이콘 삭제, "시작까지 00:00" → "00:00"만, 2xl로 확대.
-                            <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
-                                <span className="text-sm font-black text-white ko-tight">
-                                    {scheduledStartLabel ? `${scheduledStartLabel} 시작 예정` : '경기 시작 전'}
-                                </span>
-                                {scheduledRemainingMs != null && (
-                                    // [Fix 2026-08-05] 라이브 게임클락과 동일한 폰트 스타일 적용
-                                    <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">
-                                        {fmtCountdown(scheduledRemainingMs)}
+                        {/* Center: Final(또는 쿼터/시계)과 쿼터별 득점 테이블을 한 블록으로 묶어 고정 3fr
+                            컬럼 안에서 항상 정중앙에 위치한다. */}
+                        <div className="flex flex-col items-center justify-center shrink-0" style={{ width: '40%' }}>
+                            {/* [Fix 2026-08-04] "경기중 화면 헤더를 전부 점보트론 영역으로" 요청 — 좌/우 팀
+                                컬럼에 있던 파울/보너스/타임아웃을 가운데로 통합하고, activeJumbotron(마일스톤/
+                                쿼터·경기 시작·종료)이 있으면 이 섹션 전체를 이벤트 문구로 교체(별도 검은 바
+                                대신 헤더 가운데 자체가 점보트론 역할). 3fr 컬럼 폭에 맞춰 기존 점보트론의
+                                상세 6스탯 줄은 생략하고 팀/선수명+마일스톤 값만 남긴 압축 버전. */}
+                            {isScheduled ? (
+                                // [Fix 2026-08-04] "카운트다운을 별도 전체화면 대신 점보트론(헤더 가운데)에" 요청.
+                                // [Fix 2026-08-05] 시계 아이콘 삭제, "시작까지 00:00" → "00:00"만, 2xl로 확대.
+                                <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+                                    <span className="text-sm font-black text-white ko-tight">
+                                        {scheduledStartLabel ? `${scheduledStartLabel} 시작 예정` : '경기 시작 전'}
                                     </span>
-                                )}
-                            </div>
-                        ) : isLive && activeJumbotron ? (
-                            activeJumbotron.kind === 'flow' ? (
-                                <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
-                                    <span
-                                        className="text-lg font-black uppercase tracking-widest text-white text-center"
-                                        style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
-                                    >
-                                        {activeJumbotron.text}
-                                    </span>
-                                </div>
-                            ) : activeJumbotron.kind === 'combo' ? (
-                                <MilestoneJumbotronBody
-                                    key={activeJumbotron.key}
-                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                    playerName={activeJumbotron.player.playerName}
-                                    accentClass={COMBO_ACCENT[activeJumbotron.combo]}
-                                    label={COMBO_LABEL[activeJumbotron.combo]}
-                                />
-                            ) : (
-                                <MilestoneJumbotronBody
-                                    key={activeJumbotron.key}
-                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                    playerName={activeJumbotron.player.playerName}
-                                    accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
-                                    label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
-                                />
-                            )
-                        ) : isLive ? (
-                        // [Fix 2026-08-05] "경기 중 화면 헤더 수정이 경기 종료 화면 헤더에도 영향을 미친다,
-                        // 둘을 분리해달라" 요청 — 이 grid(점보트론 idle 3단 레이아웃)는 이제 isLive일
-                        // 때만 렌더되고, showBox(종료 화면)일 땐 null로 완전히 분리된다. 이전엔 else(항상
-                        // 렌더)라 종료 화면에서도 이 grid의 min-h-20 등이 그대로 적용돼 헤더 높이/여백에
-                        // 영향을 주고 있었음.
-                        // [Fix 2026-08-05] "평시 디자인을 3단으로" 요청 — 1행: 원정 파울/보너스+타임아웃 |
-                        // 쿼터+게임클락 | 홈 타임아웃+파울/보너스(좌우 대칭, grid-cols-[1fr_auto_1fr]로
-                        // 중앙 열은 콘텐츠만큼만, 양옆 열은 남는 공간을 1:1로 나눠 가짐). 2행: 스코어링
-                        // 런이 있을 때만 중앙 열 아래에 추가(좌우 열은 빈 칸 — grid auto-flow가 3칸씩 채운
-                        // 뒤 자동으로 다음 행으로 넘어가는 걸 이용). self-stretch — 이 wrapper 자체가
-                        // 가운데 컬럼 전체 폭(40%)까지 늘어나야 내부 grid가 진짜 40% 폭 기준으로 계산됨.
-                        <div className="relative self-stretch w-full grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 px-4 min-h-20">
-                            {/* [Fix 2026-08-05] "스코어링 런 발생 시 점보트론 중앙 하단에 불타는 것처럼 보이는
-                                붉은 타원형 그라디언트" 요청 — 런 정보 텍스트 바로 아래에 은은하게 이글거리는
-                                불빛처럼 보이도록 radial-gradient 타원 + blur + animate-pulse. -z-10이라
-                                부모(relative)의 static 자식들(파울/타임아웃/쿼터·클락 텍스트)보다 항상 뒤에
-                                그려짐 — absolute라 grid 셀을 차지하지 않아 DOM 위치는 레이아웃에 영향 없음. */}
-                            {!showBox && isLive && activeRun && (
-                                <div
-                                    className="absolute left-1/2 -translate-x-1/2 -z-10 pointer-events-none animate-pulse"
-                                    style={{
-                                        bottom: '-40px',
-                                        width: '900px',
-                                        height: '200px',
-                                        background: 'radial-gradient(ellipse 50% 50% at 50% 100%, rgba(255,120,0,0.6) 0%, rgba(239,68,68,0.4) 45%, rgba(239,68,68,0) 75%)',
-                                        filter: 'blur(10px)',
-                                    }}
-                                />
-                            )}
-                            {/* [Fix 2026-08-05] "스코어링 런 카운트가 떠도 좌우 팀정보가 위로 밀리지 않게" —
-                                3개 컨테이너(원정/쿼터·클락/홈)에 h-full을 줘서 자기 행의 높이를 그대로
-                                채우게 함. grid 자체에 min-h-20(런 정보까지 2줄 들어갈 여유)을 줘서, 런이
-                                뜨든 안 뜨든 행 높이가 항상 동일 — 결과적으로 팀정보가 절대 안 밀림. */}
-                            {/* 1행 1열: 원정 파울/보너스 + 타임아웃 */}
-                            <div className="h-full flex items-center gap-1.5 justify-self-start text-xl text-slate-400">
-                                {/* [Fix 2026-08-05] "BONUS 칩 표시 시 타임아웃 칸과 겹침" — BONUS 뱃지
-                                    (px-1 패딩 포함) 실제 렌더링 폭이 기존 w-16(64px)보다 넓어서 박스를
-                                    벗어나 옆 타임아웃 칸 쪽으로 overflow가 흘러넘쳤음. w-24(96px)로 확장해
-                                    여유를 둠. isLive 체크는 생략 — 이 grid 자체가 isLive 분기 안에서만
-                                    렌더되므로 항상 true. */}
-                                <FoulBonusBadge fouls={awayFouls} align="left" />
-                                <TimeoutDots left={timeoutsLeft.away} />
-                            </div>
-
-                            {/* [Fix 2026-08-05] "런 발생 시 가운데 영역 텍스트는 두 줄 처리되고 수직/수평
-                                중앙정렬" 요청 — 쿼터+클락 줄과 런 정보 줄을 같은 flex-col 안에 넣어 하나의
-                                응집된 2줄 블록으로 만들고, justify-center로 그 블록 자체를(1줄이든 2줄이든)
-                                이 컬럼의 세로 중앙에 정렬. 가로는 items-center로 두 줄 모두 중앙 정렬. */}
-                            <div className="h-full flex flex-col items-center justify-center gap-0.5 justify-self-center">
-                                <div className="flex items-center gap-2">
-                                    {/* [Fix 2026-08-04] "Final" 텍스트 삭제 요청 — quarterLabel은 라이브가 아닐 때
-                                        'Final'이 되므로, 라이브일 때(Q{n} 표시)만 렌더링. */}
-                                    {isLive && (
-                                        <span className="text-3xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
-                                    )}
-                                    {isLive && currentTimeRemaining && (
-                                        <>
-                                            <span className="text-slate-600 text-3xl leading-none font-light">|</span>
-                                            <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">{currentTimeRemaining}</span>
-                                        </>
+                                    {scheduledRemainingMs != null && (
+                                        // [Fix 2026-08-05] 라이브 게임클락과 동일한 폰트 스타일 적용
+                                        <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">
+                                            {fmtCountdown(scheduledRemainingMs)}
+                                        </span>
                                     )}
                                 </div>
-                                {/* 스코어링 런 정보 — 런이 실제로 발생 중일 때만 2번째 줄로 추가(자리 예약
-                                    없이 grid 전체 min-h-20으로 이미 공간을 확보해뒀으므로 팀정보는 안 밀림). */}
+                            ) : isLive && activeJumbotron ? (
+                                activeJumbotron.kind === 'flow' ? (
+                                    <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
+                                        <span
+                                            className="text-lg font-black uppercase tracking-widest text-white text-center"
+                                            style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
+                                        >
+                                            {activeJumbotron.text}
+                                        </span>
+                                    </div>
+                                ) : activeJumbotron.kind === 'combo' ? (
+                                    <MilestoneJumbotronBody
+                                        key={activeJumbotron.key}
+                                        teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                                        playerName={activeJumbotron.player.playerName}
+                                        accentClass={COMBO_ACCENT[activeJumbotron.combo]}
+                                        label={COMBO_LABEL[activeJumbotron.combo]}
+                                    />
+                                ) : (
+                                    <MilestoneJumbotronBody
+                                        key={activeJumbotron.key}
+                                        teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                                        playerName={activeJumbotron.player.playerName}
+                                        accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
+                                        label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
+                                    />
+                                )
+                            ) : isLive ? (
+                            // [Fix 2026-08-05] "경기 중 화면 헤더 수정이 경기 종료 화면 헤더에도 영향을 미친다,
+                            // 둘을 분리해달라" 요청 — 이 grid(점보트론 idle 3단 레이아웃)는 이제 isLive일
+                            // 때만 렌더되고, showBox(종료 화면)일 땐 null로 완전히 분리된다. 이전엔 else(항상
+                            // 렌더)라 종료 화면에서도 이 grid의 min-h-20 등이 그대로 적용돼 헤더 높이/여백에
+                            // 영향을 주고 있었음.
+                            // [Fix 2026-08-05] "평시 디자인을 3단으로" 요청 — 1행: 원정 파울/보너스+타임아웃 |
+                            // 쿼터+게임클락 | 홈 타임아웃+파울/보너스(좌우 대칭, grid-cols-[1fr_auto_1fr]로
+                            // 중앙 열은 콘텐츠만큼만, 양옆 열은 남는 공간을 1:1로 나눠 가짐). 2행: 스코어링
+                            // 런이 있을 때만 중앙 열 아래에 추가(좌우 열은 빈 칸 — grid auto-flow가 3칸씩 채운
+                            // 뒤 자동으로 다음 행으로 넘어가는 걸 이용). self-stretch — 이 wrapper 자체가
+                            // 가운데 컬럼 전체 폭(40%)까지 늘어나야 내부 grid가 진짜 40% 폭 기준으로 계산됨.
+                            <div className="relative self-stretch w-full grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 px-4 min-h-20">
+                                {/* [Fix 2026-08-05] "스코어링 런 발생 시 점보트론 중앙 하단에 불타는 것처럼 보이는
+                                    붉은 타원형 그라디언트" 요청 — 런 정보 텍스트 바로 아래에 은은하게 이글거리는
+                                    불빛처럼 보이도록 radial-gradient 타원 + blur + animate-pulse. -z-10이라
+                                    부모(relative)의 static 자식들(파울/타임아웃/쿼터·클락 텍스트)보다 항상 뒤에
+                                    그려짐 — absolute라 grid 셀을 차지하지 않아 DOM 위치는 레이아웃에 영향 없음. */}
                                 {!showBox && isLive && activeRun && (
-                                    <span className="text-2xl font-bold text-white whitespace-nowrap">
-                                        🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
-                                        {activeRun.teamPts}-{activeRun.oppPts}
-                                    </span>
+                                    <div
+                                        className="absolute left-1/2 -translate-x-1/2 -z-10 pointer-events-none animate-pulse"
+                                        style={{
+                                            bottom: '-40px',
+                                            width: '900px',
+                                            height: '200px',
+                                            background: 'radial-gradient(ellipse 50% 50% at 50% 100%, rgba(255,120,0,0.6) 0%, rgba(239,68,68,0.4) 45%, rgba(239,68,68,0) 75%)',
+                                            filter: 'blur(10px)',
+                                        }}
+                                    />
                                 )}
-                            </div>
+                                {/* [Fix 2026-08-05] "스코어링 런 카운트가 떠도 좌우 팀정보가 위로 밀리지 않게" —
+                                    3개 컨테이너(원정/쿼터·클락/홈)에 h-full을 줘서 자기 행의 높이를 그대로
+                                    채우게 함. grid 자체에 min-h-20(런 정보까지 2줄 들어갈 여유)을 줘서, 런이
+                                    뜨든 안 뜨든 행 높이가 항상 동일 — 결과적으로 팀정보가 절대 안 밀림. */}
+                                {/* 1행 1열: 원정 파울/보너스 + 타임아웃 */}
+                                <div className="h-full flex items-center gap-1.5 justify-self-start text-xl text-slate-400">
+                                    {/* [Fix 2026-08-05] "BONUS 칩 표시 시 타임아웃 칸과 겹침" — BONUS 뱃지
+                                        (px-1 패딩 포함) 실제 렌더링 폭이 기존 w-16(64px)보다 넓어서 박스를
+                                        벗어나 옆 타임아웃 칸 쪽으로 overflow가 흘러넘쳤음. w-24(96px)로 확장해
+                                        여유를 둠. isLive 체크는 생략 — 이 grid 자체가 isLive 분기 안에서만
+                                        렌더되므로 항상 true. */}
+                                    <FoulBonusBadge fouls={awayFouls} align="left" />
+                                    <TimeoutDots left={timeoutsLeft.away} />
+                                </div>
 
-                            {/* 1행 3열: 홈 타임아웃 + 파울/보너스 */}
-                            <div className="h-full flex items-center gap-1.5 justify-self-end text-xl text-slate-400">
-                                <TimeoutDots left={timeoutsLeft.home} />
-                                {/* [Fix 2026-08-05] 원정쪽과 동일한 이유 — w-16 → w-24 확장. */}
-                                <FoulBonusBadge fouls={homeFouls} align="right" />
-                            </div>
+                                {/* [Fix 2026-08-05] "런 발생 시 가운데 영역 텍스트는 두 줄 처리되고 수직/수평
+                                    중앙정렬" 요청 — 쿼터+클락 줄과 런 정보 줄을 같은 flex-col 안에 넣어 하나의
+                                    응집된 2줄 블록으로 만들고, justify-center로 그 블록 자체를(1줄이든 2줄이든)
+                                    이 컬럼의 세로 중앙에 정렬. 가로는 items-center로 두 줄 모두 중앙 정렬. */}
+                                <div className="h-full flex flex-col items-center justify-center gap-0.5 justify-self-center">
+                                    <div className="flex items-center gap-2">
+                                        {/* [Fix 2026-08-04] "Final" 텍스트 삭제 요청 — quarterLabel은 라이브가 아닐 때
+                                            'Final'이 되므로, 라이브일 때(Q{n} 표시)만 렌더링. */}
+                                        {isLive && (
+                                            <span className="text-3xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
+                                        )}
+                                        {isLive && currentTimeRemaining && (
+                                            <>
+                                                <span className="text-slate-600 text-3xl leading-none font-light">|</span>
+                                                <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">{currentTimeRemaining}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    {/* 스코어링 런 정보 — 런이 실제로 발생 중일 때만 2번째 줄로 추가(자리 예약
+                                        없이 grid 전체 min-h-20으로 이미 공간을 확보해뒀으므로 팀정보는 안 밀림). */}
+                                    {!showBox && isLive && activeRun && (
+                                        <span className="text-2xl font-bold text-white whitespace-nowrap">
+                                            🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+                                            {activeRun.teamPts}-{activeRun.oppPts}
+                                        </span>
+                                    )}
+                                </div>
 
+                                {/* 1행 3열: 홈 타임아웃 + 파울/보너스 */}
+                                <div className="h-full flex items-center gap-1.5 justify-self-end text-xl text-slate-400">
+                                    <TimeoutDots left={timeoutsLeft.home} />
+                                    {/* [Fix 2026-08-05] 원정쪽과 동일한 이유 — w-16 → w-24 확장. */}
+                                    <FoulBonusBadge fouls={homeFouls} align="right" />
+                                </div>
+
+                            </div>
+                            ) : null}
                         </div>
-                        ) : null}
-                        {showBox && (
-                            <div className="self-stretch w-full">
+
+                        {/* [Fix 2026-08-05] 원정 컬럼과 동일한 이유로 3구획 grid로 재구성. DOM 순서(점수→이름→약어)는
+                            그대로 유지 — grid는 순서대로 좌→우 배치되므로 점수(1열)가 컬럼 안쪽(좌측=중앙 쪽),
+                            약어(3열)가 바깥쪽(우측)에 자동으로 고정된다. 이름/성적(2열)만 남는 공간을 흡수. */}
+                        <TeamHeaderColumn side="home" teamSlug={homeTeamId ?? ''} abbr={homeAbbr} name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ 스코어버그 헤더 — 종료(박스스코어) 화면 전용(라이브 화면과 완전히 분리된 별도 블록) ═══
+                [2026-10-06] 리그 공식 스코어보드 참고 레이아웃으로 단순화 — 팀 컬러 밴드/도트 텍스처 없이
+                단색 배경 한 줄: [원정 로고] [원정 이름·전적 → 점수] [종료 + 쿼터별 표] [점수 ← 홈 이름·전적] [홈 로고].
+                승리 팀 점수는 흰색+▸ 마커, 패배 팀 점수는 slate-500. 라이브 헤더는 위 라이브 전용 블록. */}
+            {showBox && (() => {
+                const awayWon = currentScore.away > currentScore.home;
+                const homeWon = currentScore.home > currentScore.away;
+                const scoreCls = (won: boolean) =>
+                    `text-5xl font-black tracking-tight leading-none shrink-0 ${won ? 'text-white' : 'text-slate-500'}`;
+                const wlText = (w?: { wins: number; losses: number }) => w ? `${w.wins}W ${w.losses}L` : null;
+                return (
+                    <div className="shrink-0 bg-slate-900 border-b border-slate-800 px-8 py-5">
+                        <div className="flex items-center gap-8">
+                            <FinalHeaderLogo teamSlug={awayTeamId ?? ''} abbr={awayAbbr} />
+
+                            {/* 원정: 이름·전적(우측 정렬) → 점수 → (승리 시) ◂ 마커 */}
+                            <div className="flex-1 min-w-0 flex items-center justify-end gap-5">
+                                <div className="flex flex-col items-end min-w-0 gap-0.5">
+                                    <span
+                                        className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline"
+                                        onClick={() => goTeamRoster(awayTeamId)}
+                                    >
+                                        {awayName}
+                                    </span>
+                                    {!isAllstar && wlText(awayWL) && (
+                                        <span className="text-sm text-slate-400 tabular-nums">{wlText(awayWL)}</span>
+                                    )}
+                                </div>
+                                <span className={scoreCls(awayWon)}>{currentScore.away}</span>
+                                <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-r-[7px] border-r-white shrink-0 ${awayWon ? '' : 'invisible'}`} />
+                            </div>
+
+                            {/* 가운데: 종료 라벨 + 미니멀 쿼터별 득점 표 */}
+                            <div className="flex flex-col items-center gap-1.5 shrink-0">
+                                {/* 날짜 + (플레이오프) 스테이지/시리즈 스코어 — 종료 라벨 위 */}
+                                {(finalHeaderDateLabel || finalHeaderStage) && (
+                                    <div className="flex flex-col items-center gap-0.5 text-sm text-slate-400 tabular-nums whitespace-nowrap">
+                                        {finalHeaderDateLabel && <span>{finalHeaderDateLabel}</span>}
+                                        {finalHeaderStage && <span className="text-slate-300 font-semibold">{finalHeaderStage.stage}</span>}
+                                        {finalHeaderStage?.score && <span className="text-slate-300 font-semibold">{finalHeaderStage.score}</span>}
+                                    </div>
+                                )}
+                                <span className="text-base font-bold text-white">종료</span>
                                 <QuarterScores
                                     allLogs={visibleEvents}
                                     homeTeamId={(homeTeamId ?? '')}
                                     currentQuarter={currentQuarter}
                                     homeAbbr={homeAbbr}
                                     awayAbbr={awayAbbr}
-                                    fullWidth
+                                    compact
                                 />
                             </div>
-                        )}
-                        {/* [2026-08-04] 탭 그룹을 헤더 아래 별도 줄이 아니라 중앙 섹션 하단으로 이동
-                            — 별도 h-11 바를 없애서 헤더+탭을 한 블록으로 합치고 세로 공간을 절약. */}
-                        {showBox && (
-                            <div className="self-stretch w-full grid grid-cols-6 divide-x divide-slate-800 border-t border-slate-800">
-                                {([
-                                    { id: 'insights' as const,  label: '인사이트' },
-                                    { id: 'box' as const,       label: '박스스코어' },
-                                    { id: 'pbp' as const,       label: '경기 기록' },
-                                    { id: 'shotchart' as const, label: '샷차트' },
-                                    { id: 'rotation' as const,  label: '로테이션' },
-                                    { id: 'onoff' as const,     label: '온오프' },
-                                ]).map(t => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => sectionRefs.current[t.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                                        className={`text-xs font-black uppercase tracking-wider text-center py-3 border-b-2 transition-colors ${
-                                            activeSection === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800/50'
-                                        }`}
-                                    >
-                                        {t.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
 
-                    {/* [Fix 2026-08-05] 원정 컬럼과 동일한 이유로 3구획 grid로 재구성. DOM 순서(점수→이름→약어)는
-                        그대로 유지 — grid는 순서대로 좌→우 배치되므로 점수(1열)가 컬럼 안쪽(좌측=중앙 쪽),
-                        약어(3열)가 바깥쪽(우측)에 자동으로 고정된다. 이름/성적(2열)만 남는 공간을 흡수. */}
-                    <TeamHeaderColumn side="home" teamSlug={homeTeamId ?? ''} abbr={homeAbbr} name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
-                </div>
-            </div>
+                            {/* 홈: (승리 시) ▸ 마커 → 점수 → 이름·전적(좌측 정렬) */}
+                            <div className="flex-1 min-w-0 flex items-center justify-start gap-5">
+                                <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-l-[7px] border-l-white shrink-0 ${homeWon ? '' : 'invisible'}`} />
+                                <span className={scoreCls(homeWon)}>{currentScore.home}</span>
+                                <div className="flex flex-col items-start min-w-0 gap-0.5">
+                                    <span
+                                        className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline"
+                                        onClick={() => goTeamRoster(homeTeamId)}
+                                    >
+                                        {homeName}
+                                    </span>
+                                    {!isAllstar && wlText(homeWL) && (
+                                        <span className="text-sm text-slate-400 tabular-nums">{wlText(homeWL)}</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <FinalHeaderLogo teamSlug={homeTeamId ?? ''} abbr={homeAbbr} />
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* 탭 그룹 — 점보트론(스코어 헤더) 영역 하단 별도 그룹. 트레이드 화면과 동일한 공용 TabBar 디자인. */}
+            {showBox && (
+                <TabBar
+                    tabs={[
+                        { id: 'box', label: '박스스코어' },
+                        { id: 'insights', label: '인사이트' },
+                        { id: 'pbp', label: '경기 기록' },
+                        { id: 'shotchart', label: '샷차트' },
+                        { id: 'rotation', label: '로테이션' },
+                        { id: 'onoff', label: '온오프' },
+                    ]}
+                    activeTab={activeSection}
+                    onTabChange={id => sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                />
+            )}
 
             {/* [Fix 2026-08-05] "경기 시작 전 화면에서도 바디의 모든 섹션이 다 보이도록" 요청 —
                 기존엔 scheduled 상태를 안내 문구 하나로 때웠지만(gameData.xxx 직접 참조라 null이면
@@ -2233,6 +2400,9 @@ const MultiGamePbpView: React.FC = () => {
                             courtBackground={homeTeam?.court_background}
                             courtPaint={homeTeam?.court_paint}
                             courtLine={homeTeam?.court_line}
+                            courtThree={homeTeam?.court_three}
+                            courtShowLogo={homeTeam?.court_show_logo}
+                            courtLogoScale={homeTeam?.court_logo_scale}
                         />
                     </div>
 
@@ -2459,16 +2629,34 @@ const MultiGamePbpView: React.FC = () => {
             </div>
             )}
 
-            {/* ── Body: 종료된 경기 — 6개 섹션(인사이트/박스스코어/경기기록/샷차트/로테이션/온오프)을
+            {/* ── Body: 종료된 경기 — 6개 섹션(박스스코어/인사이트/경기기록/샷차트/로테이션/온오프)을
                 세로로 이어붙인 통합 결과 페이지. [2026-08-03] 기존 탭 전환(finalTab) 방식을 걷어내고
                 한 페이지로 통합 — 상단 바는 각 섹션으로 스크롤 이동하는 네비게이션 역할만 하고,
                 활성 라벨은 스크롤스파이(위 IntersectionObserver, activeSection)로 갱신된다. ── */}
             {showBox && (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
                 <div ref={resultScrollRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
+                    <section ref={el => { sectionRefs.current.box = el; }} data-section="box" className="border-t border-slate-800">
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">박스스코어</h3>
+                        </div>
+                        <GameBoxScoreTab
+                            homeTeam={homeTeamAdapter}
+                            awayTeam={awayTeamAdapter}
+                            homeBox={gameData?.home_box ?? []}
+                            awayBox={gameData?.away_box ?? []}
+                            mvpId={finalMvpId}
+                            leaders={finalLeaders}
+                            teams={[]}
+                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
+                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                            splitLayout
+                        />
+                    </section>
+
                     <section ref={el => { sectionRefs.current.insights = el; }} data-section="insights" className="border-t border-slate-800">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">인사이트</h3>
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">인사이트</h3>
                         </div>
                         {/* [Fix 2026-08-04] 이 결과 페이지 컨텍스트에선 <section>이 일반 문서 흐름(높이 auto)이라
                             GameInsightsPanel 내부의 h-full/flex-1 체인이 참조할 확정 높이가 없음 — 이 경우
@@ -2496,27 +2684,9 @@ const MultiGamePbpView: React.FC = () => {
                         </div>
                     </section>
 
-                    <section ref={el => { sectionRefs.current.box = el; }} data-section="box" className="border-t border-slate-800">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">박스스코어</h3>
-                        </div>
-                        <GameBoxScoreTab
-                            homeTeam={homeTeamAdapter}
-                            awayTeam={awayTeamAdapter}
-                            homeBox={gameData?.home_box ?? []}
-                            awayBox={gameData?.away_box ?? []}
-                            mvpId={finalMvpId}
-                            leaders={finalLeaders}
-                            teams={[]}
-                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
-                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
-                            splitLayout
-                        />
-                    </section>
-
                     <section ref={el => { sectionRefs.current.pbp = el; }} data-section="pbp" className="border-t border-slate-800">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">경기 기록</h3>
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">경기 기록</h3>
                         </div>
                         <GamePbpTab
                             logs={gameData?.events ?? []}
@@ -2529,8 +2699,8 @@ const MultiGamePbpView: React.FC = () => {
                     </section>
 
                     <section ref={el => { sectionRefs.current.shotchart = el; }} data-section="shotchart" className="border-t border-slate-800">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">샷차트</h3>
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">샷차트</h3>
                         </div>
                         <GameShotChartTab
                             homeTeam={homeTeamAdapter}
@@ -2544,8 +2714,8 @@ const MultiGamePbpView: React.FC = () => {
                     </section>
 
                     <section ref={el => { sectionRefs.current.rotation = el; }} data-section="rotation" className="border-t border-slate-800">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">로테이션</h3>
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">로테이션</h3>
                         </div>
                         <GameRotationTab
                             homeTeam={homeTeamAdapter}
@@ -2562,8 +2732,8 @@ const MultiGamePbpView: React.FC = () => {
                     </section>
 
                     <section ref={el => { sectionRefs.current.onoff = el; }} data-section="onoff" className="border-t border-slate-800 pb-10">
-                        <div className="bg-slate-700 px-6 py-3">
-                            <h3 className="text-sm font-black uppercase text-white tracking-widest">온오프</h3>
+                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                            <h3 className="text-sm font-bold uppercase text-white">온오프</h3>
                         </div>
                         <GameOnOffTab
                             boxTimeline={gameData?.box_timeline}

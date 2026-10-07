@@ -41,6 +41,20 @@ function inferContractType(_salary: number, _ovr: number, age: number): Contract
 function buildPlayerContract(baseAttrs: any, salary: number, contractYears: number, ovr: number, age: number): PlayerContract {
     const rawContract = baseAttrs?.contract;
     if (rawContract && Array.isArray(rawContract.years)) {
+        return normalizeRawContract(rawContract, salary, ovr, age);
+    }
+    // fallback: salary/contractYears → 균등 배열
+    return {
+        years: Array(Math.max(1, contractYears)).fill(salary),
+        currentYear: 0,
+        type: inferContractType(salary, ovr, age),
+    };
+}
+
+/** JSONB contract 객체 1개 → PlayerContract. [2026-10-01] nextContract(미래 연장)가 중첩돼 있으면 같은
+ *  규칙으로 재귀 정규화해 통과시킨다(그 전엔 이 필드 자체가 없었음). */
+function normalizeRawContract(rawContract: any, salary: number, ovr: number, age: number): PlayerContract {
+    {
         const years = (rawContract.years as number[]).map((y: number) => normalizeSalary(y));
         // 연차별 옵션(options[])이 정식 형태. 예전 단일 option{type,year} 형태로 저장된 기존
         // 데이터(2026-27 일괄 갱신분 전부)도 계속 읽혀야 하므로 배열로 승격해 하위호환한다.
@@ -58,14 +72,10 @@ function buildPlayerContract(baseAttrs: any, salary: number, contractYears: numb
             // 시작해 그대로 통과시킨다 — 예전엔 두 필드를 버려서 어드민이 입력해도 화면에 안 보였음.
             ...(rawContract.signingType && { signingType: rawContract.signingType }),
             ...(rawContract.contractDetail && { contractDetail: rawContract.contractDetail }),
+            ...(rawContract.nextContract && Array.isArray(rawContract.nextContract.years) && rawContract.nextContract.years.length
+                && { nextContract: normalizeRawContract(rawContract.nextContract, salary, ovr, age) }),
         };
     }
-    // fallback: salary/contractYears → 균등 배열
-    return {
-        years: Array(Math.max(1, contractYears)).fill(salary),
-        currentYear: 0,
-        type: inferContractType(salary, ovr, age),
-    };
 }
 
 // --- Helper: Flexible Column Getter ---

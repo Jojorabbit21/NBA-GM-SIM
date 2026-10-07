@@ -11,13 +11,10 @@ import { supabase } from '../services/supabaseClient';
  * 유니크 123개) id로 타이브레이크해 항상 같은 순서가 나오게 한다.
  * meta_players는 사실상 불변(읽기전용)이므로 staleTime을 무한으로 두고 세션당 한 번만 조회.
  */
-export function usePlayerShortCodes(): {
-    getPlayerUrlId: (playerId: string) => string;
-    resolvePlayerId: (urlId: string) => string;
-    isLoading: boolean;
-} {
-    const { data: orderedIds, isLoading } = useQuery({
-        queryKey: ['metaPlayerOrder'],
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리. */
+export function metaPlayerOrderQuery() {
+    return {
+        queryKey: ['metaPlayerOrder'] as const,
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('meta_players')
@@ -29,7 +26,15 @@ export function usePlayerShortCodes(): {
         },
         staleTime: Infinity,
         gcTime: Infinity,
-    });
+    };
+}
+
+export function usePlayerShortCodes(): {
+    getPlayerUrlId: (playerId: string) => string;
+    resolvePlayerId: (urlId: string) => string;
+    isLoading: boolean;
+} {
+    const { data: orderedIds, isLoading } = useQuery(metaPlayerOrderQuery());
 
     const { toShort, toFull } = useMemo(() => {
         const toShort = new Map<string, string>();

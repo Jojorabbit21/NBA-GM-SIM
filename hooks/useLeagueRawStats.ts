@@ -78,6 +78,33 @@ export function useRoomGamePbp(roomId: string | undefined | null, enabled: boole
     });
 }
 
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리.
+ *  [2026-09-18] 개인 팩 드래프트 룸은 roster id가 room_player_instances.instance_id라 roomId가 결과에 영향 — 키에 포함. */
+export function leagueRawPlayersQuery(roomId: string | undefined | null, allRosterIds: string[]) {
+    return {
+        queryKey: ['leagueRawPlayers', roomId ?? null, allRosterIds.join(',')] as const,
+        queryFn: async (): Promise<any[]> => fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS),
+    };
+}
+export function leagueRawSeasonInjuryQuery(roomId: string | undefined | null, allRosterIds: string[]) {
+    return {
+        queryKey: ['leagueRawSeasonInjury', roomId, allRosterIds.join(',')] as const,
+        queryFn: async () => {
+            const [seasonRes, injuryRes] = await Promise.all([
+                supabase.from('league_player_seasons').select(RAW_LEAGUE_SEASON_COLS).eq('room_id', roomId!),
+                supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS).eq('room_id', roomId!).in('player_id', allRosterIds),
+            ]);
+            // [2026-10-06] 조회 오류를 빈 배열로 삼키지 않도록(게이트가 실패를 감지해야 함)
+            if (seasonRes.error) throw seasonRes.error;
+            if (injuryRes.error) throw injuryRes.error;
+            return {
+                leagueSeasonRows: seasonRes.data ?? [],
+                playerInjuryRows: injuryRes.data ?? [],
+            };
+        },
+    };
+}
+
 export interface UseLeagueRawStatsOptions {
     /** false면 game_pbp(room 전체 박스스코어) fetch를 건너뛰고 pbpRows를 빈 배열로 반환한다.
      *  팀 화면 개요 탭처럼 선수 시즌 스탯이 필요 없는 화면(usePlayerSeasonStatsFull로 대체)에서
@@ -105,30 +132,15 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     const pbpEnabled          = !!roomId && allRosterIds.length > 0 && extraEnabled && includePbp;
 
     const playersQuery = useQuery({
-        // [2026-09-18] 개인 팩 드래프트 룸은 roster id가 room_player_instances.instance_id라 roomId가
-        // 결과에 영향을 준다 — 키에 포함. 공유풀 룸은 인스턴스 행이 없어 결과가 기존과 동일.
-        queryKey: ['leagueRawPlayers', roomId ?? null, idsKey],
+        ...leagueRawPlayersQuery(roomId, allRosterIds),
         enabled: playersEnabled,
         placeholderData: keepPreviousData,
-        queryFn: async (): Promise<any[]> => {
-            return fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS);
-        },
     });
 
     const seasonInjuryQuery = useQuery({
-        queryKey: ['leagueRawSeasonInjury', roomId, idsKey],
+        ...leagueRawSeasonInjuryQuery(roomId, allRosterIds),
         enabled: seasonInjuryEnabled,
         placeholderData: keepPreviousData,
-        queryFn: async () => {
-            const [seasonRes, injuryRes] = await Promise.all([
-                supabase.from('league_player_seasons').select(RAW_LEAGUE_SEASON_COLS).eq('room_id', roomId!),
-                supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS).eq('room_id', roomId!).in('player_id', allRosterIds),
-            ]);
-            return {
-                leagueSeasonRows: seasonRes.data ?? [],
-                playerInjuryRows: injuryRes.data ?? [],
-            };
-        },
     });
 
     const pbpQuery = useRoomGamePbp(roomId, allRosterIds.length > 0 && extraEnabled && includePbp);

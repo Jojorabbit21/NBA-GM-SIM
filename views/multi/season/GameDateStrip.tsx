@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { kstDateKey, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { kstDateKey, fmtTime, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
 import type { VirtualDayRow } from '../../../utils/leagueTimeline';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { useServerClockBucket } from '../../../utils/serverClock';
+import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
 
 // [2026-08-28] views/multi/season/MultiGamePbpView.tsx에서 분리 — 원래 그 화면(경기 관람)
 // 최상단에만 있던 "오늘 경기 목록" 스트립을 모든 시즌 화면(MultiSeasonLayout, 헤더 바로
@@ -17,16 +18,35 @@ import { useServerClockBucket } from '../../../utils/serverClock';
 
 export interface TeamStripInfo { team_name: string; team_abbr: string; color_primary?: string | null; color_text?: string | null }
 
-const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean }> = ({ team, teamId, score, won }) => (
+const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean; isFinal?: boolean; selected?: boolean }> = ({ team, teamId, score, won, isFinal, selected }) => {
+    return (
     <div className="flex items-center justify-between gap-2">
-        <span className={`text-sm font-black truncate ${won ? 'text-white' : 'text-slate-500'}`}>
-            {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
-        </span>
+        {/* 팀 로고 + 약어 — 로고 폴백 체인은 일정/순위 화면과 동일(신규 로고 → 구버전 → 플레이스홀더) */}
+        <div className="flex items-center gap-1.5 min-w-0">
+            <img
+                src={getRealTeamLogoUrl(teamId)}
+                alt={team?.team_abbr ?? teamId}
+                className={`w-5 h-5 object-contain shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`}
+                onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.dataset.fallback !== 'old') {
+                        img.dataset.fallback = 'old';
+                        img.src = getTeamLogoUrl(teamId);
+                    } else {
+                        img.src = 'https://placehold.co/100x100?text=BPL';
+                    }
+                }}
+            />
+            <span className={`text-sm ${won && isFinal ? 'font-bold' : 'font-semibold'} truncate ${won || selected ? 'text-white' : 'text-slate-500'}`}>
+                {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
+            </span>
+        </div>
         {score != null && (
-            <span className={`text-sm ${won ? 'text-white font-black' : 'text-slate-500 font-bold'}`}>{score}</span>
+            <span className={`text-sm ${won && isFinal ? 'font-bold' : 'font-semibold'} tabular-nums tracking-tight ${won || selected ? 'text-white' : 'text-slate-500'}`}>{score}</span>
         )}
     </div>
-);
+    );
+};
 
 export interface GameDateStripProps {
     leagueId: string | undefined;
@@ -134,9 +154,22 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     // 이 effect가 1초마다 재실행되며 스크롤을 계속 원위치로 되돌리고 있었다. 실제로 다시 스크롤할
     // 필요가 있는 시점(날짜 전환/경기 전환)만 잡도록 원시값(activeDateKey, currentGameId)만 의존.
     const currentCardRef = useRef<HTMLButtonElement>(null);
+    // 접힘 상태 — 펼칠 때 카드 리스트가 다시 마운트되므로 현재 카드 위치 스크롤/스크롤 상태 재계산에도 의존.
+    // localStorage는 per-viewer 편의 값이라 실패해도 기본(펼침)으로 동작.
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        try { return localStorage.getItem('gameDateStripCollapsed') === '1'; } catch { return false; }
+    });
+    const toggleCollapsed = () => {
+        setIsDateMenuOpen(false);
+        setIsCollapsed(c => {
+            const next = !c;
+            try { localStorage.setItem('gameDateStripCollapsed', next ? '1' : '0'); } catch { /* ignore */ }
+            return next;
+        });
+    };
     useEffect(() => {
         currentCardRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-    }, [activeDateKey, currentGameId]);
+    }, [activeDateKey, currentGameId, isCollapsed]);
     // [Fix 2026-08-04] "무한스크롤처럼 느껴진다"는 피드백 — 스크롤바를 숨겨놔서 끝에 도달했는지
     // 알 방법이 없었음. 스크롤 위치를 추적해 끝에 도달하면 우측 버튼을 비활성화(회색 처리)해서
     // "여기가 끝"임을 명확히 보여준다. [Fix 2026-08-04] 좌측 이동 버튼 추가 요청으로 canScrollLeft도 함께 추적.
@@ -155,7 +188,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
         const ro = new ResizeObserver(updateScrollState);
         ro.observe(el);
         return () => ro.disconnect();
-    }, [activeGroup]);
+    }, [activeGroup, isCollapsed]);
     // [Fix 2026-08-04] "경기 리스트를 마우스 드래그로 스크롤" 요청 — 트랙패드/스크롤바 없이도
     // 마우스로 클릭+드래그하면 좌우로 스크롤되도록 처리. 드래그가 실제로 발생했을 때만(임계값
     // 3px 초과) 다음 클릭을 캡처 단계에서 막아, 드래그 끝에 카드 위에서 손을 떼도 경기 상세로
@@ -223,8 +256,33 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
 
     if (!activeGroup) return null;
 
+    if (isCollapsed) {
+        return (
+            <div className="shrink-0 flex items-center gap-2 bg-slate-800 border-b border-slate-700 h-8 px-1.5">
+                <button
+                    onClick={toggleCollapsed}
+                    title="경기 스트립 펼치기"
+                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                >
+                    <ChevronDown size={16} />
+                </button>
+                <span className="text-xs font-semibold text-slate-400 tabular-nums">
+                    {activeYear}.{activeMonth}.{activeDay} · {activeGroup.games.length}경기
+                </span>
+            </div>
+        );
+    }
+
     return (
-        <div className="shrink-0 flex items-stretch bg-slate-950 border-b border-slate-800 h-[76px]">
+        <div className="shrink-0 flex items-stretch bg-slate-800 border-b border-slate-600 h-[75px]">
+            {/* 접기 버튼 — 날짜 셀렉터 좌측 */}
+            <button
+                onClick={toggleCollapsed}
+                title="경기 스트립 접기"
+                className="shrink-0 flex items-center justify-center px-3 bg-slate-800 border-r border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-[color,background-color] cursor-pointer"
+            >
+                <ChevronUp size={16} />
+            </button>
             {/* 날짜 셀렉터 — 화살표 이동 + 클릭 시 전체 날짜 드롭다운.
                 [Fix 2026-08-29] 인디고 색상을 slate 계열로 변경. */}
             <div ref={dateMenuRef} className="relative shrink-0 flex items-center gap-0.5 px-1.5 bg-slate-800 border-r border-slate-700">
@@ -304,32 +362,38 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                     const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
                     const statusLabel = state === 'final' ? '종료'
                         : state === 'live' ? (live ? `${live.quarter ?? 1}Q ${live.clock ?? ''}` : 'LIVE')
-                        : '예정';
+                        : fmtTime(g, preferVirtual);
 
                     return (
                         <button
                             key={g.id}
                             ref={isCurrent ? currentCardRef : undefined}
                             onClick={() => !isCurrent && navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
-                            className={`shrink-0 w-36 px-3 py-2 flex flex-col justify-center gap-1 border-r border-slate-800 transition-colors text-left cursor-pointer ${
-                                isCurrent ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-500/50' : 'hover:bg-slate-900'
+                            className={`shrink-0 w-36 px-3 py-1.5 flex flex-col justify-center gap-1 border-r border-slate-700 transition-[color,background-color] text-left cursor-pointer ${
+                                isCurrent ? 'bg-slate-700' : state === 'live' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-900 hover:bg-slate-800'
                             }`}
                         >
-                            <span className={`text-xs font-bold uppercase tracking-wider ${state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
+                            <span className={`text-xs font-bold uppercase ${isCurrent ? 'text-white' : state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
                                 {statusLabel}
                             </span>
-                            <StripTeamRow
-                                team={teamMap[g.awayTeamId]}
-                                teamId={g.awayTeamId}
-                                score={state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : undefined}
-                                won={awayWon}
-                            />
-                            <StripTeamRow
-                                team={teamMap[g.homeTeamId]}
-                                teamId={g.homeTeamId}
-                                score={state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : undefined}
-                                won={homeWon}
-                            />
+                            <div className="flex flex-col gap-0.5">
+                                <StripTeamRow
+                                    team={teamMap[g.awayTeamId]}
+                                    teamId={g.awayTeamId}
+                                    score={state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : undefined}
+                                    won={awayWon || state === 'live'}
+                                    isFinal={state === 'final'}
+                                    selected={isCurrent}
+                                />
+                                <StripTeamRow
+                                    team={teamMap[g.homeTeamId]}
+                                    teamId={g.homeTeamId}
+                                    score={state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : undefined}
+                                    won={homeWon || state === 'live'}
+                                    isFinal={state === 'final'}
+                                    selected={isCurrent}
+                                />
+                            </div>
                         </button>
                     );
                 })}

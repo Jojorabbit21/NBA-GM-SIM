@@ -11,6 +11,18 @@ import { listPendingTradeOffers } from '../services/multi/tradeService';
 // 채널 2개)로 나갔다(네트워크 탭 실측으로 발견). react-query로 옮겨 queryKey를 공유하면
 // 두 컴포넌트가 동시에 마운트돼도 실제 fetch는 한 번만 나간다(react-query가 동일 key의
 // 동시 요청을 자동으로 하나로 묶어줌).
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리. */
+export function pendingTradeCountQuery(roomId: string | null | undefined, myTeamDbId: string | null | undefined) {
+    return {
+        queryKey: ['pendingTradeCount', roomId, myTeamDbId] as const,
+        queryFn: async () => {
+            const { incoming } = await listPendingTradeOffers(roomId!, myTeamDbId!);
+            // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
+            return incoming.filter(o => !o.to_team_read_at).length;
+        },
+    };
+}
+
 export function usePendingTradeCount(
     roomId: string | null | undefined,
     myTeamDbId: string | null | undefined,
@@ -18,15 +30,7 @@ export function usePendingTradeCount(
     const queryClient = useQueryClient();
     const enabled = !!roomId && !!myTeamDbId;
 
-    const { data: pendingTradeCount = 0 } = useQuery({
-        queryKey: ['pendingTradeCount', roomId, myTeamDbId],
-        enabled,
-        queryFn: async () => {
-            const { incoming } = await listPendingTradeOffers(roomId!, myTeamDbId!);
-            // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
-            return incoming.filter(o => !o.to_team_read_at).length;
-        },
-    });
+    const { data: pendingTradeCount = 0 } = useQuery({ ...pendingTradeCountQuery(roomId, myTeamDbId), enabled });
 
     // 채널 자체는 이 훅을 쓰는 컴포넌트 수만큼 열리지만(예: 사이드바+헤더 메뉴 동시 마운트 시
     // 2개), 콜백이 하는 일은 invalidateQueries뿐이라 실제 refetch는 react-query가 같은

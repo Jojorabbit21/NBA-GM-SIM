@@ -22,14 +22,10 @@ import { supabase } from '../services/supabaseClient';
  * finalize.ts가 시즌 파이널라이즈 시점에 한 번에 다 생성하고 이후 정상 시즌 진행 중엔
  * 안 바뀌므로(플레이오프 브라켓 재생성 시의 삭제만 예외) staleTime을 무한으로 둔다.
  */
-export function useGameShortCodes(roomId: string | undefined): {
-    getGameUrlId: (gameId: string) => string;
-    resolveGameId: (urlId: string) => string;
-    isLoading: boolean;
-} {
-    const { data: rows, isLoading } = useQuery({
-        queryKey: ['gameShortCodes', roomId],
-        enabled: !!roomId,
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리. */
+export function gameShortCodesQuery(roomId: string | undefined | null) {
+    return {
+        queryKey: ['gameShortCodes', roomId] as const,
         staleTime: Infinity,
         gcTime: Infinity,
         queryFn: async (): Promise<{ game_id: string; short_code: string }[]> => {
@@ -40,7 +36,15 @@ export function useGameShortCodes(roomId: string | undefined): {
             if (error) throw error;
             return (data ?? []) as { game_id: string; short_code: string }[];
         },
-    });
+    };
+}
+
+export function useGameShortCodes(roomId: string | undefined): {
+    getGameUrlId: (gameId: string) => string;
+    resolveGameId: (urlId: string) => string;
+    isLoading: boolean;
+} {
+    const { data: rows, isLoading } = useQuery({ ...gameShortCodesQuery(roomId), enabled: !!roomId });
 
     const map = useMemo(() => new Map((rows ?? []).map(r => [r.game_id, r.short_code])), [rows]);
     const reverseMap = useMemo(() => new Map((rows ?? []).map(r => [r.short_code, r.game_id])), [rows]);

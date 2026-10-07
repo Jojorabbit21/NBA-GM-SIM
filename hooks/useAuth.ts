@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useRef } from 'react';
+import { clearNotifications } from '../services/notifications/notificationStore';
 import { supabase } from '../services/supabaseClient';
 
 export const useAuth = () => {
@@ -86,6 +87,8 @@ export const useAuth = () => {
                 setSession((prev: any) => prev?.access_token === session.access_token ? prev : session);
             } else if (event === 'SIGNED_OUT') {
                 setSession(null);
+                // [2026-10-02] 다음 사용자에게 이전 사용자의 알림/에러가 보이면 안 됨 — 메모리 + localStorage 미러 모두 비움.
+                clearNotifications();
             } else if (event === 'TOKEN_REFRESHED' && session) {
                 setSession((prev: any) => prev?.access_token === session.access_token ? prev : session);
             }

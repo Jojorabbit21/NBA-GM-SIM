@@ -203,6 +203,12 @@ export interface PlayerContract {
                                  // free_agent/rookie_scale/two_way)과는 별개 축이라 중복
                                  // 정의하지 않음. 캡스페이스로 체결됐거나(예외 미사용) 체결
                                  // 경위를 모르는 과거 계약 이력은 비워둠(값 자체가 "예외 없음").
+    /** [2026-10-01] 이미 체결됐지만 아직 시작하지 않은 다음 계약(연장/조기 재계약). 현재 계약의
+     *  years/yearSeasons에는 포함하지 않고 여기에 별도 PlayerContract로 둔다 — 서명 유형·세부사항·
+     *  옵션이 계약마다 다르기 때문(예: 현재 non_bird 계약 + 2027~ 버드 권한 연장). 현재 계약이
+     *  자연 만료되는 시즌 롤오버 때 contractLifecycle.advanceContractSeason()이 이걸 현재 계약으로
+     *  승격시킨다. 이 슬롯이 있으면 계약 종료 시 FA가 아니다(rfaEligibility 참고). */
+    nextContract?: PlayerContract;
 }
 
 // [New] Interface for saving player state (Condition + Health + Growth)

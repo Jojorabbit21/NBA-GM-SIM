@@ -44,7 +44,8 @@ export interface LeagueEvent {
 const DEFAULT_LIMIT = 8;
 const SELECT_COLUMNS = 'id, type, team_ids, player_ids, score, payload, created_at, game_id, sim_date';
 
-function mapRow(row: any, myTeamSlug: string | null): LeagueEvent {
+// [2026-10-02] useLeagueNotifications(전역 토스트)도 같은 매핑을 쓰므로 export.
+export function mapRow(row: any, myTeamSlug: string | null): LeagueEvent {
     return {
         id: row.id,
         type: row.type,
@@ -120,15 +121,14 @@ export interface LeagueNewsFeedFilters {
     simDateTo?: string | null;
 }
 
-export function useLeagueNewsFeed(roomId: string | undefined, myTeamSlug: string | null, filters: LeagueNewsFeedFilters = {}) {
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치(fetchInfiniteQuery)할 수 있도록 분리. */
+export function leagueNewsStoriesQuery(roomId: string | undefined | null, myTeamSlug: string | null, filters: LeagueNewsFeedFilters = {}) {
     const { teamSlugs = [], types = [], bigNewsOnly = false, sortOrder = 'latest', simDateFrom = null, simDateTo = null } = filters;
     const ascending = sortOrder === 'oldest';
     const sortedTeamSlugs = [...teamSlugs].sort();
     const sortedTypes = [...types].sort();
-
-    const storiesQuery = useInfiniteQuery({
-        queryKey: ['leagueNewsStories', roomId, sortedTeamSlugs, sortedTypes, bigNewsOnly, sortOrder, simDateFrom, simDateTo],
-        enabled: !!roomId,
+    return {
+        queryKey: ['leagueNewsStories', roomId, sortedTeamSlugs, sortedTypes, bigNewsOnly, sortOrder, simDateFrom, simDateTo] as const,
         initialPageParam: 0,
         queryFn: async ({ pageParam }): Promise<LeagueEvent[]> => {
             let query = supabase
@@ -163,8 +163,15 @@ export function useLeagueNewsFeed(roomId: string | undefined, myTeamSlug: string
             if (error) throw error;
             return (data ?? []).map((row: any) => mapRow(row, myTeamSlug));
         },
-        getNextPageParam: (lastPage, allPages) =>
+        getNextPageParam: (lastPage: LeagueEvent[], allPages: LeagueEvent[][]) =>
             lastPage.length < STORIES_PAGE_SIZE ? undefined : allPages.length * STORIES_PAGE_SIZE,
+    };
+}
+
+export function useLeagueNewsFeed(roomId: string | undefined, myTeamSlug: string | null, filters: LeagueNewsFeedFilters = {}) {
+    const storiesQuery = useInfiniteQuery({
+        ...leagueNewsStoriesQuery(roomId, myTeamSlug, filters),
+        enabled: !!roomId,
     });
 
     useLeagueEventsRealtime(roomId);

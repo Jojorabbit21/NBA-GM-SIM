@@ -7,21 +7,17 @@ import type { SimSettings } from '../../types/simSettings';
 import { HEX_COLOR_RE } from '../../utils/colorContrast';
 import type { PersonalDraftFormat } from './personalDraftFormat';
 
-// URL에 노출되는 리그 UUID를 대체하는 짧은 코드 — 헷갈리는 문자(0/O, 1/I/l) 제외 32종, 8자리.
-// [2026-08-01] leagues.id(UUID)는 여전히 진짜 PK로 유지, short_code는 라우팅 전용 별칭.
-// [2026-08-05] 팀 코트 색상 기본값 — 기존 MultiFullCourtChart.tsx가 하드코딩하던 나무색 코트와
-// 동일 값(components/multi/CourtPreview.tsx의 fallback과도 일치). 새 팀 생성 시 이 값으로 시작해
-// "팀 설정"에서 사용자가 원하는 대로 바꿀 수 있다.
-export const DEFAULT_COURT_COLORS = { background: '#DDC8AD', paint: '#C3AC91', line: '#4A3728' };
-
-// league_teams row 삽입 4곳(신규 생성/팀 수 증가 × 실제팀/가상팀)이 전부 동일하게 반복하던
-// court_* 3필드 — 여기 한 번만 만들어 스프레드로 재사용.
+// [2026-10-02] 코트 색상은 이제 NULL = "전역 기본값(app_settings.court_default_colors) 따라감".
+// 새 팀은 NULL로 시작하고, 팀 설정에서 기본값과 다른 색을 저장했을 때만 팀별 값이 생긴다.
+// (services/multi/courtDefaults.ts 참고)
 const COURT_DEFAULT_FIELDS = {
-    court_background: DEFAULT_COURT_COLORS.background,
-    court_paint:      DEFAULT_COURT_COLORS.paint,
-    court_line:       DEFAULT_COURT_COLORS.line,
+    court_background: null as string | null,
+    court_paint:      null as string | null,
+    court_line:       null as string | null,
 };
 
+// URL에 노출되는 리그 UUID를 대체하는 짧은 코드 — 헷갈리는 문자(0/O, 1/I/l) 제외 32종, 8자리.
+// [2026-08-01] leagues.id(UUID)는 여전히 진짜 PK로 유지, short_code는 라우팅 전용 별칭.
 const SHORT_CODE_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz';
 export function generateShortCode(length = 8): string {
     let code = '';
@@ -448,6 +444,9 @@ export interface UpdateLeagueSettingsParams {
     tradeDeadlineDate?:   string | null;
     /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 위 날짜가 있어도 무시. */
     tradeDeadlineEnabled?: boolean;
+    /** [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 강제 여부. cap_enabled와
+     *  별개 축 — respond_trade_offer(accept)가 cap_enabled && 이 값일 때만 강제한다. */
+    tradeSalaryMatchingEnabled?: boolean;
     /** [2026-09-16] 팀당 최대 로스터 인원(15~20). */
     maxRosterSize?:       number;
     /** [2026-09-16] Two-Way 계약 전환 데드라인('YYYY-MM-DD', 가상 시즌 캘린더 날짜). null이면 데드라인 없음. */
@@ -515,6 +514,7 @@ export const updateLeagueSettings = async (
     if (p.capGrowthRate        !== undefined) payload.cap_growth_rate         = p.capGrowthRate;
     if (p.tradeDeadlineDate    !== undefined) payload.trade_deadline_date     = p.tradeDeadlineDate;
     if (p.tradeDeadlineEnabled !== undefined) payload.trade_deadline_enabled  = p.tradeDeadlineEnabled;
+    if (p.tradeSalaryMatchingEnabled !== undefined) payload.trade_salary_matching_enabled = p.tradeSalaryMatchingEnabled;
     if (p.maxRosterSize        !== undefined) payload.max_roster_size         = p.maxRosterSize;
     if (p.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = p.twoWayDeadlineDate;
     if (p.twoWaySlots          !== undefined) payload.two_way_slots           = p.twoWaySlots;
@@ -736,6 +736,8 @@ export interface ExecuteAdminTradeParams {
     teamBId:      string;
     playersAtoB:  string[]; // A에서 나가 B로 가는 playerId
     playersBtoA:  string[]; // B에서 나가 A로 가는 playerId
+    /** [2026-10-06] 트레이드 사유 — 세션 로그 admin_trade.details.note */
+    note?: string;
 }
 
 export const executeAdminTrade = async (
@@ -748,14 +750,20 @@ export const executeAdminTrade = async (
         p_team_b_id:      p.teamBId,
         p_players_a_to_b: p.playersAtoB,
         p_players_b_to_a: p.playersBtoA,
+        p_note:           p.note?.trim() || null,
     });
     if (error) {
+        // [2026-10-02] 어드민 전용이라 원인을 최대한 자세히: 한국어 설명 + 서버 원문 코드(선수 id 포함) 병기.
         const msg = error.message ?? '';
-        if (msg.includes('not_admin'))            return { error: '어드민만 트레이드를 실행할 수 있습니다.' };
-        if (msg.includes('player_not_on_team_a'))  return { error: '선택한 선수가 더 이상 A팀 로스터에 없습니다. 새로고침 후 다시 시도하세요.' };
-        if (msg.includes('player_not_on_team_b'))  return { error: '선택한 선수가 더 이상 B팀 로스터에 없습니다. 새로고침 후 다시 시도하세요.' };
-        if (msg.includes('same_team'))             return { error: '같은 팀끼리는 트레이드할 수 없습니다.' };
-        return { error: msg };
+        const detail = (ko: string) => ({ error: `${ko} (서버 응답: ${msg})` });
+        if (msg.includes('not_admin'))            return detail('어드민만 트레이드를 실행할 수 있습니다. 로그인 계정이 이 리그의 관리자인지 확인하세요.');
+        if (msg.includes('player_not_on_team_a'))  return detail('선택한 선수가 더 이상 A팀 로스터에 없습니다. 다른 트레이드/방출로 이동했을 수 있으니 새로고침 후 다시 선택하세요.');
+        if (msg.includes('player_not_on_team_b'))  return detail('선택한 선수가 더 이상 B팀 로스터에 없습니다. 다른 트레이드/방출로 이동했을 수 있으니 새로고침 후 다시 선택하세요.');
+        if (msg.includes('team_a_not_found'))      return detail('A팀을 찾을 수 없습니다. 팀이 삭제됐거나 다른 룸의 팀 id입니다.');
+        if (msg.includes('team_b_not_found'))      return detail('B팀을 찾을 수 없습니다. 팀이 삭제됐거나 다른 룸의 팀 id입니다.');
+        if (msg.includes('same_team'))             return detail('같은 팀끼리는 트레이드할 수 없습니다.');
+        if (/failed to fetch|load failed|networkerror/i.test(msg)) return detail('서버가 응답하지 않습니다. 네트워크 상태를 확인하세요.');
+        return detail('트레이드 실행 중 서버 오류가 발생했습니다.');
     }
     return { error: null };
 };
@@ -769,9 +777,12 @@ export const updateTeamProfile = async (
     colorSecondary: string,
     colorTertiary:  string,
     colorText:      string,
-    courtBackground: string,
-    courtPaint:      string,
-    courtLine:       string,
+    courtBackground: string | null,
+    courtPaint:      string | null,
+    courtLine:       string | null,
+    courtShowLogo:   boolean | null = null, // null = keep current value
+    courtLogoScale:  number | null = null,  // null = keep current value
+    courtThree?:     string | null,         // undefined = keep, null = follow default, hex = team color
 ): Promise<{ data: LeagueTeamRow | null; error: string | null }> => {
     const { data, error } = await supabase.rpc('update_team_profile', {
         p_team_id:          teamId,
@@ -785,6 +796,9 @@ export const updateTeamProfile = async (
         p_court_background: courtBackground,
         p_court_paint:      courtPaint,
         p_court_line:       courtLine,
+        p_court_show_logo:  courtShowLogo,
+        p_court_logo_scale: courtLogoScale,
+        p_court_three:      courtThree, // undefined is dropped from the payload -> RPC default '__keep__'
     });
     if (error) return { data: null, error: error.message };
     return { data: data as LeagueTeamRow, error: null };
@@ -811,6 +825,18 @@ export const updateTeamName = async (
 // profiles SELECT RLS가 본인 행만 허용해서 클라이언트에서 그냥 조회하면 남의 이메일은
 // 안 보임 — get_room_member_emails() RPC(SECURITY DEFINER, 호출자가 해당 room이 속한
 // 리그의 admin_user_id인지 내부 검증)로 우회.
+/** [2026-10-06] 어드민 조작 실패를 세션 로그(league_action_logs)에 남긴다 — 토스트 대신. 실패해도 조용히 무시(콘솔만). */
+export const logAdminFailedAction = async (
+    roomId: string,
+    action: `admin_${string}_failed`,
+    opts: { teamIds?: string[]; playerIds?: string[]; details?: Record<string, unknown> } = {},
+): Promise<void> => {
+    const { error } = await supabase.rpc('admin_log_failed_action', {
+        p_room_id: roomId, p_action: action, p_team_ids: opts.teamIds ?? [], p_player_ids: opts.playerIds ?? [], p_details: opts.details ?? {},
+    });
+    if (error) console.error('[logAdminFailedAction]', action, error.message);
+};
+
 export const getRoomMemberEmails = async (
     roomId: string,
 ): Promise<{ data: Record<string, string>; error: string | null }> => {

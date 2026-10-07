@@ -1,6 +1,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { homeLeagueTransactionsQuery, HOME_TRANSACTIONS_LIMIT } from '../hooks/useHomeLeagueTransactions';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, ArrowLeftRight, Plus, Minus, type LucideIcon } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
@@ -414,14 +415,6 @@ const HomeLatestNewsSection: React.FC = () => {
 // bOut은 반대 — TradePlayerTable과 동일한 방향 규칙). 날짜는 다른 섹션과 동일하게
 // simDate 우선 표시(트레이드는 event.simDate, FA/웨이버는 league_transactions.sim_date —
 // 이번에 select에 추가), 없으면 상대시각 폴백.
-interface RawLeagueTransactionRow {
-    id: string;
-    type: 'fa_sign' | 'waive';
-    team_id: string;
-    player_id: string;
-    sim_date: string | null;
-    created_at: string;
-}
 
 interface HomeTxnTeamRef { slug: string; abbr: string }
 
@@ -454,7 +447,6 @@ const TXN_ICON_BY_KIND: Record<HomeTxnItem['kind'], { Icon: LucideIcon; bg: stri
 const TXN_KIND_ORDER: Record<HomeTxnItem['kind'], number> = { trade: 0, fa_sign: 1, waive: 2 };
 const TXN_KIND_LABEL: Record<HomeTxnItem['kind'], string> = { trade: '트레이드', fa_sign: '자유 계약', waive: '웨이버' };
 
-const HOME_TRANSACTIONS_LIMIT = 10;
 
 const HomeTransactionsSection: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
@@ -506,20 +498,7 @@ const HomeTransactionsSection: React.FC = () => {
 
     const { stories: tradeStories } = useLeagueNewsFeed(room?.id, myTeamId, { types: ['trade'] });
 
-    const { data: faRows = [] } = useQuery({
-        queryKey: ['homeLeagueTransactions', room?.id],
-        enabled: !!room?.id,
-        queryFn: async (): Promise<RawLeagueTransactionRow[]> => {
-            const { data, error } = await supabase
-                .from('league_transactions')
-                .select('id, type, team_id, player_id, sim_date, created_at')
-                .eq('room_id', room!.id)
-                .order('created_at', { ascending: false })
-                .limit(HOME_TRANSACTIONS_LIMIT);
-            if (error) throw error;
-            return data ?? [];
-        },
-    });
+    const { data: faRows = [] } = useQuery({ ...homeLeagueTransactionsQuery(room?.id), enabled: !!room?.id });
 
     const items = useMemo((): HomeTxnItem[] => {
         const tradeItems: HomeTxnItem[] = tradeStories.flatMap(e => {

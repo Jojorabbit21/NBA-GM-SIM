@@ -18,25 +18,15 @@ const EMPTY_POOL: Player[] = [];
 // 옮겨서 같은 queryKey(리그+드래프트풀 설정)면 캐시를 그대로 재사용해 재방문 시 즉시
 // 이름이 뜨게 함. meta_players는 사실상 불변(읽기전용)이라 staleTime을 무한으로 둠
 // (hooks/usePlayerShortCodes.ts와 동일한 근거).
-export function useMultiSearchData(league: LeagueRow | null, leagueTeams: LeagueTeamRow[]) {
-    // roster 역인덱스: playerId → team_slug
-    const rosterMap = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const t of leagueTeams) {
-            for (const pid of (t.roster ?? [])) m.set(pid, t.team_slug);
-        }
-        return m;
-    }, [leagueTeams]);
-
+/** [2026-10-06] 리그 부트스트랩 게이트(hooks/useLeagueBootstrap.ts)가 같은 키·함수로 프리패치할 수 있도록 분리. */
+export function multiSearchPoolQuery(league: LeagueRow | null) {
     const ovrMin = league?.draft_ovr_min ?? 0;
     const ovrMax = league?.draft_ovr_max ?? 99;
     const draftYearMin = league?.draft_year_min ?? 2001;
     const draftYearMax = league?.draft_year_max ?? 2025;
     const useCustomOverrides = shouldUseCustomOverrides(league);
-
-    const { data: poolPlayers = EMPTY_POOL } = useQuery({
-        queryKey: ['multiSearchPool', league?.id, ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides],
-        enabled: !!league?.id,
+    return {
+        queryKey: ['multiSearchPool', league?.id, ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides] as const,
         staleTime: Infinity,
         gcTime: Infinity,
         queryFn: async (): Promise<Player[]> => {
@@ -52,8 +42,14 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
                 .from('meta_players')
                 .select('id, name, position, draft_year, base_attributes, tendencies');
             q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
-            const { data } = await q;
+            const { data, error } = await q;
             console.timeEnd('[perf] multiSearchPool: fetch');
+            // [2026-10-01] 조회 실패(401 토큰 만료, 네트워크 중단 등)를 빈 배열로 삼키던 버그 수정.
+            // 전엔 error를 버리고 `data ?? []`를 "성공"으로 반환해, staleTime/gcTime Infinity +
+            // localStorage 영속화(index.tsx)와 맞물려 빈 선수 풀이 24시간 동안 굳어버렸다(AS 2
+            // 리그 트레이드 화면 로스터 전원 미표시 사고). 예외를 던지면 React Query가 error
+            // 상태로 두고 재시도하며, 영속화 조건(status === 'success')에 걸리지 않는다.
+            if (error) throw error;
 
             console.time('[perf] multiSearchPool: map+ovr');
             const all: Player[] = [];
@@ -67,6 +63,22 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
 
             return all;
         },
+    };
+}
+
+export function useMultiSearchData(league: LeagueRow | null, leagueTeams: LeagueTeamRow[]) {
+    // roster 역인덱스: playerId → team_slug
+    const rosterMap = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const t of leagueTeams) {
+            for (const pid of (t.roster ?? [])) m.set(pid, t.team_slug);
+        }
+        return m;
+    }, [leagueTeams]);
+
+    const { data: poolPlayers = EMPTY_POOL } = useQuery({
+        ...multiSearchPoolQuery(league),
+        enabled: !!league?.id,
     });
 
     return { poolPlayers, rosterMap };

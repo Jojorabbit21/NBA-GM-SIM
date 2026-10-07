@@ -161,6 +161,10 @@ export interface PlayerContract {
                                  // (연차당 옵션은 하나뿐). 특정 연차의 옵션 조회는
                                  // options?.find(o => o.year === targetYear).
     tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
+    /** [2026-10-01] 이미 체결됐지만 아직 시작하지 않은 다음 계약(연장/조기 재계약) — 클라 types/player.ts 미러.
+     *  현재 계약 만료 시 contractLifecycle.advanceContractSeason()이 승격. 서버는 player_current_salary 등이
+     *  현재 계약만 보므로 이 필드를 읽지 않지만, 모양을 맞춰둔다. */
+    nextContract?: PlayerContract;
 }
 
 // [New] Interface for saving player state (Condition + Health + Growth)

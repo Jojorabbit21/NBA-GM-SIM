@@ -34,9 +34,6 @@ export function MultiSeasonLayout() {
     // 생긴다(선수 프로필 브레드크럼 드롭다운에서 겪었던 것과 동일한 버그 — MultiRosterView 등
     // 다른 화면들도 전부 이 패턴).
     const { leagueId } = useParams<{ leagueId: string }>();
-    // 경기 관람 화면(game/:gameId)에서는 헤더를 숨겨 화면을 넓게 쓴다 — 스트립은 이 경우에도
-    // 계속 보여야 하므로 아래 GameDateStrip 렌더는 이 조건과 무관하게 항상 실행한다.
-    const isWatchingGame = /\/season\/game\/[^/]+$/.test(location.pathname);
     // "/season" 인덱스 라우트(트레일링 슬래시 허용) — 로터리/드래프트가 아직 끝나지 않은
     // 리그는 이 라우트에서 (사이드바/헤더는 그대로 유지한 채) 본문만 LeagueLobbyPanel로
     // 바뀐다(기존 별도 라우트였던 /lobby를 대체 — 사용자 요청으로 리그 홈에 통합, 사이드바를
@@ -81,7 +78,7 @@ export function MultiSeasonLayout() {
         <div className="flex h-screen overflow-hidden bg-slate-950">
             <MultiSidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
-                {!isWatchingGame && <MultiHeader />}
+                <MultiHeader />
                 <GameDateStrip
                     leagueId={leagueId}
                     currentGameId={currentGameId}

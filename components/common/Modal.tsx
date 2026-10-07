@@ -15,8 +15,10 @@ interface ModalProps {
     /** 모달 자체의 X 버튼(제목 있을 때 헤더 안 / 없을 때 우상단 absolute)을 감춤 —
      *  children 쪽에서 커스텀 위치의 닫기 버튼을 직접 그릴 때(onClose 호출) 사용. */
     hideCloseButton?: boolean;
-    /** 배경 블러 여부. 기본값 true(기존 모든 모달과 동일) — 확인 팝업처럼 블러 없이 즉시
-     *  아래 화면이 보여야 하는 경우에만 false로 끔. */
+    /** 배경 블러(backdrop-blur-md) 여부. [2026-09-30] 기본값 true → false로 변경 — 레티나 +
+     *  내장 GPU 환경에서 backdrop-filter가 모달 안 페인트(스크롤 중 행 호버 변경 등)마다 뷰포트
+     *  전체를 다시 블러해 모달 내부 스크롤이 심하게 끊기는 원인으로 실측됨(트레이드 블록 모달,
+     *  dev-log 2026-09-30). 블러가 꼭 필요한 특수 모달만 true로 명시적으로 켤 것. */
     blurBackdrop?: boolean;
     /** 패널 모서리 둥글기 클래스. 기본값은 기존 rounded-[2rem] 그대로 유지 — 작은 확인
      *  팝업처럼 더 각진 형태가 필요할 때만 덮어씀. */
@@ -37,7 +39,7 @@ export const Modal: React.FC<ModalProps> = ({
     headerColor,
     className = '',
     hideCloseButton = false,
-    blurBackdrop = true,
+    blurBackdrop = false,
     rounded = 'rounded-[2rem]',
     backdropClass = 'bg-slate-950/80',
 }) => {

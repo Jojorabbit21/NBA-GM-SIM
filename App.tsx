@@ -45,7 +45,6 @@ import MultiPlayerDetailView from './views/multi/season/MultiPlayerDetailView';
 import MultiNegotiationView from './views/multi/season/MultiNegotiationView';
 import MultiReleaseView from './views/multi/season/MultiReleaseView';
 import AdminSimView from './views/multi/league/AdminSimView';
-import AdminTeamEditorView from './views/multi/league/AdminTeamEditorView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
@@ -88,6 +87,7 @@ import DraftSimPage from './pages/DraftSimPage';
 import PhysicsLabPage from './pages/PhysicsLabPage';
 import AdminLeagueManagerPage from './pages/AdminLeagueManagerPage';
 import AdminUserManagerPage from './pages/AdminUserManagerPage';
+import AdminAppSettingsPage from './pages/AdminAppSettingsPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 
 // 오프시즌 이벤트 → URL 매핑 (useSimulation onOffseasonEvent 용)
@@ -377,6 +377,7 @@ const App: React.FC = () => {
                             <Route path="physics-lab" element={<PhysicsLabPage />} />
                             <Route path="league" element={<AdminLeagueManagerPage />} />
                             <Route path="users" element={<AdminUserManagerPage />} />
+                            <Route path="app-settings" element={<AdminAppSettingsPage />} />
                             <Route path="users/:userId" element={<AdminUserDetailPage />} />
                         </Route>
                     </Route>
@@ -395,7 +396,6 @@ const App: React.FC = () => {
                     <Route element={<MultiProtectedLayout />}>
                         <Route element={<LeagueLayout />}>
                             <Route path="/multi/leagues/:leagueId/admin/sim" element={<AdminSimView />} />
-                            <Route path="/multi/leagues/:leagueId/admin/teams" element={<AdminTeamEditorView />} />
                             {/* [2026-09-11] /draft를 /season과 같은 LeagueLayout 서브트리로 통합 —
                                 예전엔 별도 브랜치(MultiDraftLayout)에 물려 있어 /season→/draft
                                 이동 시 LeagueLayout이 통째로 언마운트→재마운트되며 이미 로드된

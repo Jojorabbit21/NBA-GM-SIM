@@ -10,6 +10,12 @@ interface CourtPreviewProps {
     background: string;
     paint:      string;
     line:       string;
+    /** [2026-10-02] 코트 중앙(센터 서클)에 그릴 홈팀 로고 URL — 없으면 로고 미표시. */
+    /** [2026-10-02] 3점 라인 안쪽 채움색 — 없으면 background와 동일(구분 없음). */
+    three?:     string;
+    logoUrl?:   string | null;
+    /** 로고 크기(%) — 100 = LOGO_BASE_SIZE(220px). 팀 설정값(50~200). */
+    logoScale?: number;
 }
 
 const BasketLines: React.FC<{ stroke: string }> = ({ stroke }) => (
@@ -38,16 +44,39 @@ const BasketLines: React.FC<{ stroke: string }> = ({ stroke }) => (
     </g>
 );
 
+// 로고 기본(100%) 크기 — 940x500 코트 기준. 센터 서클(지름 120)보다 크게 잡아 코트 중앙을 채운다.
+const LOGO_BASE_SIZE = 220;
+
 // [주의] 자체 <svg> 태그를 만들지 않고 SVG 자식 노드만 반환한다 — 호출부가 viewBox="0 0 940 500"인
 // 자신의 <svg> 안에 이 컴포넌트를 그대로 끼워 넣어 쓴다(샷 마커 등 다른 레이어와 좌표계 공유 목적).
-export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line }) => (
+export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, logoUrl, logoScale = 100 }) => (
     <>
         {/* Background */}
         <rect width="940" height="500" fill={background} />
 
+        {/* 3점 라인 안쪽 (BasketLines의 3점 곡선 + 베이스라인으로 닫은 영역) — 페인트존보다 아래 레이어 */}
+        {three && three !== background && (
+            <>
+                <path d="M0,30h140s150,55,150,220-150,220,-150,220H0Z" fill={three} />
+                <path d="M0,30h140s150,55,150,220-150,220,-150,220H0Z" fill={three} transform="translate(940,0) scale(-1,1)" />
+            </>
+        )}
+
         {/* Paint backgrounds */}
         <rect y="170" width="190" height="160" fill={paint} />
         <rect x="750" y="170" width="190" height="160" fill={paint} />
+
+        {/* Center logo (team setting, optional) — 코트 라인보다 아래 레이어(라인이 로고 위로 지나감). 센터 서클(r=60) 안에 맞춘다. 샷 마커 등 상호작용 방해 금지 */}
+        {logoUrl && (
+            <image
+                href={logoUrl}
+                x={470 - LOGO_BASE_SIZE / 2 * logoScale / 100} y={250 - LOGO_BASE_SIZE / 2 * logoScale / 100}
+                width={LOGO_BASE_SIZE * logoScale / 100} height={LOGO_BASE_SIZE * logoScale / 100}
+                preserveAspectRatio="xMidYMid meet"
+                opacity="0.9"
+                pointerEvents="none"
+            />
+        )}
 
         {/* Left basket */}
         <BasketLines stroke={line} />

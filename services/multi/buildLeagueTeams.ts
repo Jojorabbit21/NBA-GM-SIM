@@ -6,6 +6,33 @@ import type { LeagueTeamRow } from './roomQueries';
 import { mapRawPlayerToRuntimePlayer } from '../dataMapper';
 import { INITIAL_STATS } from '../../utils/constants';
 
+/**
+ * room_player_state.contract 오버라이드를 base(meta_players 원본으로 만들어진 Player) 위에
+ * 적용한다 — roomContract가 없으면(null/undefined) base 그대로 반환. salary/contractYears도
+ * 함께 재파생해서 어느 화면에서 적용하든 결과가 어긋나지 않게 이 함수로 통일한다.
+ * roomContract는 room_player_state.contract 백필(migrations/add_room_player_state_contract.sql)
+ * 당시 meta_players 원본 JSONB를 그대로 복사해 예전 단일 option{type,year} 형태를 그대로 갖고
+ * 있을 수 있다(base.contract는 이미 dataMapper.ts의 buildPlayerContract가 승격시킴) — 여기서도
+ * 동일하게 options[] 배열로 승격해야 재정 탭 등에서 팀/플레이어 옵션이 인식된다.
+ */
+export function applyContractOverride(
+    base: Player,
+    roomContract: Record<string, any> | null | undefined,
+): Player {
+    if (!roomContract) return base;
+    const contract = {
+        ...roomContract,
+        options: Array.isArray(roomContract.options) && roomContract.options.length
+            ? roomContract.options
+            : (roomContract.option ? [roomContract.option] : undefined),
+    } as Player['contract'];
+    const salary = contract?.years?.[contract.currentYear] ?? base.salary;
+    const contractYears = contract?.years
+        ? contract.years.length - contract.currentYear
+        : base.contractYears;
+    return { ...base, contract, salary, contractYears };
+}
+
 export interface LeagueTeamWithOppZones extends Team {
     /** 이 팀이 상대에게 허용한 존별 슈팅 시즌 누적(zone_* 키, 상대 팀 zone_* 원시 합계 —
      *  경기당 평균이 아닌 시즌 총합이라 사용하는 쪽에서 games played로 직접 나눠야 함). */
@@ -100,34 +127,15 @@ export function buildLeagueTeams(
             const leagueSeasons = leagueSeasonsByPlayer.get(id);
             const injuryHistory = injuryHistoryByPlayer.get(id);
             const roomContract = contractByPlayer.get(id);
-            // dataMapper.ts의 buildPlayerContract와 동일한 파생 공식 — contract가 오버라이드
-            // 되면 salary/contractYears도 같이 재계산해야 로스터 페이롤 화면 등에서 어긋나지 않는다.
-            // roomContract는 room_player_state.contract 백필(migrations/add_room_player_state_contract.sql)
-            // 당시 meta_players 원본 JSONB를 그대로 복사해 예전 단일 option{type,year} 형태를 그대로
-            // 갖고 있을 수 있다(base.contract는 이미 dataMapper.ts의 buildPlayerContract가 승격시킴) —
-            // 여기서도 동일하게 options[] 배열로 승격해야 재정 탭에서 팀/플레이어 옵션이 인식된다.
-            const rawContract = (roomContract ?? base.contract) as Record<string, any> | undefined;
-            const contract = rawContract ? {
-                ...rawContract,
-                options: Array.isArray(rawContract.options) && rawContract.options.length
-                    ? rawContract.options
-                    : (rawContract.option ? [rawContract.option] : undefined),
-            } as Player['contract'] : base.contract;
-            const salary = contract?.years?.[contract.currentYear] ?? base.salary;
-            const contractYears = contract?.years
-                ? contract.years.length - contract.currentYear
-                : base.contractYears;
+            const withContract = applyContractOverride(base, roomContract);
             return {
-                ...base,
+                ...withContract,
                 stats: { ...INITIAL_STATS(), ...(statsByPlayer[id] ?? {}) } as PlayerStats,
                 playoffStats: { ...INITIAL_STATS(), ...(playoffStatsByPlayer[id] ?? {}) } as PlayerStats,
                 career_history: leagueSeasons
                     ? [...(base.career_history ?? []), ...leagueSeasons]
                     : base.career_history,
                 injuryHistory: injuryHistory?.length ? (injuryHistory as any) : base.injuryHistory,
-                contract,
-                salary,
-                contractYears,
             };
         }).filter(Boolean) as Player[],
         oppZoneStats: oppZoneByTeam[lt.team_slug] ?? {},

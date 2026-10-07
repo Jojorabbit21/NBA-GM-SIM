@@ -589,6 +589,10 @@ const PlayerEditorPage: React.FC = () => {
     const [togglingRows, setTogglingRows] = useState<Record<string, 'alltime' | 'multi'>>({});
     // 커리어 기록
     const [careerHistory, setCareerHistory] = useState<any[]>([]);
+    // [2026-10-01] 버그 수정: setCareerHistoryMsg가 선언 없이 handleSelect/handleCsvApply/handleAdvCsvApply에서
+    // 호출되고 있었다(tsc 오류 3곳). handleSelect는 async라 마지막 줄의 ReferenceError가 unhandled rejection으로
+    // 삼켜져 화면은 동작했지만 선수 선택마다 콘솔 오류가 났고, CSV 적용 안내 문구는 한 번도 표시되지 않았다.
+    const [careerHistoryMsg, setCareerHistoryMsg] = useState<string | null>(null);
     const [careerHistoryLoading, setCareerHistoryLoading] = useState(false);
     const [careerEditingRow, setCareerEditingRow] = useState<number | null>(null);
     const [careerTableTab, setCareerTableTab] = useState<'pergame' | 'advanced'>('pergame');
@@ -1518,6 +1522,78 @@ function sortBy(th) {
             },
         }));
     }, []);
+
+    // ── 다음 계약 (contract.nextContract: 이미 체결됐지만 아직 시작 안 한 연장/재계약) ─────────
+    // [2026-10-01] PlayerContract.nextContract 슬롯 도입(dev-log 2026-10-01 (4)) 후 이 화면에 미래 계약이
+    // 안 보이던 문제. Base 계약 안에 중첩된 객체라 ContractForm을 그대로 재사용하되 모든 변경은
+    // draft.contract.nextContract에만 쓴다. "현재 연차" 개념이 없어 onSetSalary는 넘기지 않는다(계약 이력과 동일).
+    const updateNextContract = useCallback((fn: (next: Record<string, any>) => Record<string, any>) => {
+        setDraft(prev => {
+            if (!prev.contract) return prev;
+            const next = fn({ ...(prev.contract.nextContract ?? {}) });
+            return { ...prev, contract: { ...prev.contract, nextContract: next } };
+        });
+    }, []);
+    const addNextContract = useCallback(() => {
+        setDraft(prev => {
+            if (!prev.contract || prev.contract.nextContract) return prev;
+            const lastSeason = prev.contract.yearSeasons?.[prev.contract.yearSeasons.length - 1];
+            return {
+                ...prev,
+                contract: {
+                    ...prev.contract,
+                    nextContract: { years: [0], yearSeasons: lastSeason != null ? [lastSeason + 1] : [], currentYear: 0, type: 'extension' },
+                },
+            };
+        });
+    }, []);
+    const removeNextContract = useCallback(() => {
+        setDraft(prev => {
+            if (!prev.contract?.nextContract) return prev;
+            const contract = { ...prev.contract };
+            delete contract.nextContract;
+            return { ...prev, contract };
+        });
+    }, []);
+    const setNextContractYear = useCallback((yearIdx: number, raw: string) => {
+        const num = Number(raw.replace(/,/g, ''));
+        updateNextContract(next => {
+            const years = [...(next.years ?? [])];
+            years[yearIdx] = isNaN(num) ? 0 : num;
+            return { ...next, years };
+        });
+    }, [updateNextContract]);
+    const setNextContractYearSeason = useCallback((yearIdx: number, val: number) => {
+        updateNextContract(next => {
+            const yearSeasons = [...(next.yearSeasons ?? [])];
+            yearSeasons[yearIdx] = val;
+            return { ...next, yearSeasons };
+        });
+    }, [updateNextContract]);
+    const setNextContractYearOption = useCallback((yearIdx: number, type: 'player' | 'team' | null) => {
+        updateNextContract(next => {
+            const existing = ((next.options ?? []) as { type: string; year: number }[]).filter(o => o.year !== yearIdx);
+            return { ...next, options: type ? [...existing, { type, year: yearIdx }] : existing };
+        });
+    }, [updateNextContract]);
+    const setNextContractField = useCallback((key: string, val: any) => {
+        updateNextContract(next => ({ ...next, [key]: val }));
+    }, [updateNextContract]);
+    const addNextContractYear = useCallback(() => {
+        updateNextContract(next => ({ ...next, years: [...(next.years ?? []), 0] }));
+    }, [updateNextContract]);
+    const removeNextContractYear = useCallback((yearIdx: number) => {
+        updateNextContract(next => {
+            const years = [...(next.years ?? [])];
+            years.splice(yearIdx, 1);
+            const yearSeasons = [...(next.yearSeasons ?? [])];
+            if (yearIdx < yearSeasons.length) yearSeasons.splice(yearIdx, 1);
+            const options = reindexOptionsAfterRemove(next.options, yearIdx);
+            const entry: Record<string, any> = { ...next, years, yearSeasons, options };
+            if ((entry.currentYear ?? 0) >= years.length) entry.currentYear = Math.max(0, years.length - 1);
+            return entry;
+        });
+    }, [updateNextContract]);
 
     // ── 계약 이력 (contract_history: 과거에 체결했던 계약 묶음들, 현재 contract와 별개) ────
     const addContractHistoryEntry = useCallback(() => {
@@ -3117,6 +3193,38 @@ function sortBy(th) {
                                 onSetContractField={setContractField}
                                 onSetSalary={v => setField('salary', v)}
                             />
+                            {/* [2026-10-01] 다음 계약(연장 예약) — Base 계약에 중첩된 contract.nextContract. 현재 계약이
+                                만료되는 시즌 롤오버 때 승격된다(contractLifecycle.advanceContractSeason). */}
+                            {draft.contract != null && (
+                                <div className="mt-4 relative rounded-xl ring-1 ring-amber-500/30 p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs text-amber-300">다음 계약 (이미 체결된 연장 — 현재 계약 만료 후 시작)</span>
+                                        {draft.contract.nextContract ? (
+                                            <button
+                                                onClick={removeNextContract}
+                                                className="text-xs text-red-500 hover:text-red-400 border border-red-900 rounded px-2 py-0.5"
+                                            >
+                                                다음 계약 삭제
+                                            </button>
+                                        ) : (
+                                            <button onClick={addNextContract} className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                                                + 다음 계약 추가
+                                            </button>
+                                        )}
+                                    </div>
+                                    {draft.contract.nextContract && (
+                                        <ContractForm
+                                            contract={draft.contract.nextContract}
+                                            onSetContractYear={setNextContractYear}
+                                            onSetYearSeason={setNextContractYearSeason}
+                                            onSetYearOption={setNextContractYearOption}
+                                            onAddYear={addNextContractYear}
+                                            onRemoveYear={removeNextContractYear}
+                                            onSetContractField={setNextContractField}
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </Section>
                         <Section label="CO 계약">
                             {draft.custom_overrides?.contract !== undefined && (
@@ -3631,6 +3739,9 @@ function sortBy(th) {
                                                             >
                                                                 적용 ({parsed.rows.length}행)
                                                             </button>
+                                                        )}
+                                                        {careerHistoryMsg && (
+                                                            <span className="text-xs text-emerald-400">{careerHistoryMsg}</span>
                                                         )}
                                                     </div>
                                                 </div>

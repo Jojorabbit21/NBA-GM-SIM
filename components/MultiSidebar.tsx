@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
-    CircleUser, LogOut, ChevronLeft, Settings2, Wrench, Palette,
+    CircleUser, LogOut, ChevronLeft, Settings2, Palette,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
@@ -256,17 +256,6 @@ export const MultiSidebar: React.FC = () => {
                             onClick={() => navigate(`${base}/free-agent`)}
                         />
 
-                        {isAdmin && (
-                            <>
-                                <Divider />
-                                <NavItem
-                                    active={pathname.startsWith(`/multi/leagues/${leagueId}/admin/teams`)}
-                                    icon={<Wrench size={24} />}
-                                    label="어드민: 팀 관리"
-                                    onClick={() => navigate(`/multi/leagues/${leagueId}/admin/teams`)}
-                                />
-                            </>
-                        )}
                     </>
                 )}
             </nav>

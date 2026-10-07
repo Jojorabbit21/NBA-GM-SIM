@@ -103,10 +103,22 @@ export function normalizeDraftSalaryScale(raw: unknown): DraftSalaryScale {
     return { r1FirstPct: num(o.r1FirstPct, d.r1FirstPct), r1LastPct: num(o.r1LastPct, d.r1LastPct), roundsPct: rounds };
 }
 
+/** 미니멈급 계약 판정 상한 — 캡 대비 %. 실제 최저연봉 표(utils/minSalaryTable.ts)의 최댓값인 10+ YOS
+ *  2.35%를 쓴다. [2026-10-01] 대체(alternative) 모드의 하위 라운드 계약(기본 스케일 R11~R15 = 1.0%)을
+ *  연차와 무관하게 전부 "최저연봉 계약"으로 분류하기 위한 단일 기준 — 연차별 표(0.82%~2.35%)를 그대로
+ *  쓰면 같은 라운드 선수라도 연차에 따라 판정이 갈려서 상한 하나로 통일했다. 기본 스케일에서
+ *  이 값 바로 위 라운드는 R10 5%라 경계가 충분히 떨어져 있다.
+ *  [2026-10-02] 트레이드 최저연봉 예외 판정은 이제 signingType 플래그만 보므로(금액 조건 제거) 이 상수는
+ *  "생성 시 어떤 계약에 플래그를 붙일지"에만 쓰인다. */
+export const MINIMUM_CONTRACT_CAP_PCT_MAX = 2.35;
+
 /** 라운드 스케일 1년 계약 객체(PlayerContract 모양) — 서버/클라이언트 공통.
- *  signingType은 비운다 — 어휘상 undefined가 "예외 조항 없이(캡스페이스로) 체결"이고, SigningType은
- *  10종 고정 union + 라벨 맵이라 새 값을 넣으면 types/fa.ts·utils/contractLabels.ts 전파가 필요하다.
- *  라운드 스케일 계약은 room_player_state에만 존재하고 1년·yearSeasons=[룸 시즌]이라 그 자체로 식별된다. */
+ *  [2026-10-01] 미니멈급(pct ≤ MINIMUM_CONTRACT_CAP_PCT_MAX)이면 signingType 'minimum_exception'을 붙인다 —
+ *  리그가 일괄 생성한 계약이라도 CBA 안에서 어떤 자격으로 존재하는지를 데이터에 남겨야, 세션 설정에서
+ *  CBA/캡을 켰을 때 트레이드 최저연봉 예외·FA·재계약 규칙이 전부 같은 근거로 동작한다(사용자 결정).
+ *  그 외 구간은 그대로 비운다 — 어휘상 undefined가 "예외 조항 없이(캡스페이스로) 체결"이고, MLE/BAE류를
+ *  붙이면 실제 규칙상 하드캡이 발동되는 부작용이 있어 시즌 시작 계약에는 부적합. 'minimum_exception'은
+ *  SigningType union에 이미 있는 값이라 어휘 전파는 불필요. */
 export function buildDraftScaleContract(salaryCap: number, pct: number, seasonStartYear: number) {
     return {
         type: 'free_agent' as const,
@@ -114,6 +126,7 @@ export function buildDraftScaleContract(salaryCap: number, pct: number, seasonSt
         yearSeasons: [seasonStartYear],
         currentYear: 0,
         contractDetail: 'general' as const,
+        ...(pct <= MINIMUM_CONTRACT_CAP_PCT_MAX ? { signingType: 'minimum_exception' as const } : {}),
     };
 }
 
@@ -125,6 +138,12 @@ export function isEligibleForStandardPool(
     rookieClassYear: number,
 ): boolean {
     if (draftYear != null && Number(draftYear) >= rookieClassYear) return true;
-    const ys = contract?.yearSeasons;
-    return Array.isArray(ys) && ys.length > 0 && Number(ys[0]) <= seasonStartYear && Number(ys[ys.length - 1]) >= seasonStartYear;
+    // [2026-10-01] 현재 계약이 룸 시즌 전에 끝나도 이미 체결된 다음 계약(nextContract)이 그 시즌을 덮으면 유효.
+    let c: any = contract;
+    while (c) {
+        const ys = c.yearSeasons;
+        if (Array.isArray(ys) && ys.length > 0 && Number(ys[0]) <= seasonStartYear && Number(ys[ys.length - 1]) >= seasonStartYear) return true;
+        c = c.nextContract;
+    }
+    return false;
 }

@@ -2982,7 +2982,7 @@ function buildAllStarTeamRow(teamSlug: string, teamName: string, colorPrimary: s
         id: teamSlug, room_id: '', team_slug: teamSlug, team_name: teamName, team_abbr: teamName,
         color_primary: colorPrimary, color_secondary: colorPrimary, color_tertiary: colorPrimary,
         color_text: getReadableTextColor(colorPrimary),
-        court_background: '', court_paint: '', court_line: '',
+        court_background: '', court_paint: '', court_line: '', court_three: null, court_show_logo: false, court_logo_scale: 100, // 올스타 가상 팀 — 실제 행 아님
         conference: null, user_id: null, nickname: null, is_ai: true, draft_order: null,
         roster: [], trade_request_note: null, trade_request_positions: [], trade_request_player_ids: [],
         trade_request_archetypes: [], created_at: '',

@@ -8,7 +8,8 @@ export function formatMoney(dollars: number): string {
     return `${sign}$${abs}`;
 }
 
-/** 달러 정수 → 전체 달러 표기 ($155,300,000) */
+/** 달러 정수 → 전체 달러 표기 ($155,300,000, 음수는 -$155,300,000처럼 $ 앞에 부호) */
 export function formatMoneyFull(dollars: number): string {
-    return `$${Math.round(dollars).toLocaleString()}`;
+    const sign = dollars < 0 ? '-' : '';
+    return `${sign}$${Math.abs(Math.round(dollars)).toLocaleString()}`;
 }

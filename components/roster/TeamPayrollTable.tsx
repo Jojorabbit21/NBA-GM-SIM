@@ -1,4 +1,5 @@
 
+import { flattenRemainingYears, hasNextContract } from '../../services/contracts/contractLifecycle';
 import React, { useMemo, useState } from 'react';
 import type { Team, Player } from '../../types';
 import type { DeadMoneyEntry } from '../../types/team';
@@ -53,10 +54,10 @@ interface TeamPayrollTableProps {
 }
 
 // 시즌 컬럼 인덱스(0=현재 시즌) 기준 선수의 그 해 연봉 — 계약이 없거나 범위 밖이면 0.
+// [2026-10-01] 현재 계약 뒤에 이미 체결된 다음 계약(nextContract)이 있으면 그 연차도 이어서 센다.
 function salaryAtCol(p: Player, colIndex: number): number {
     if (!p.contract) return 0;
-    const idx = colIndex + p.contract.currentYear;
-    return idx >= 0 && idx < p.contract.years.length ? p.contract.years[idx] : 0;
+    return flattenRemainingYears(p.contract)[colIndex]?.amount ?? 0;
 }
 
 // Cap% 컬러 스케일 — 캡 바 임계값(플로어/캡/사치세/에이프런)과 동일한 팔레트를 재사용해
@@ -95,10 +96,10 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
         const colTotals = new Array(cols.length).fill(0);
         for (const p of sorted) {
             if (!p.contract || p.contract.type === 'two_way') continue;
-            for (let i = 0; i < p.contract.years.length; i++) {
-                const colIdx = i - p.contract.currentYear;
-                if (colIdx >= 0 && colIdx < cols.length) colTotals[colIdx] += p.contract.years[i];
-            }
+            // [2026-10-01] 다음 계약(연장) 연차까지 합계에 포함 — 현재 계약만 세면 연장 선수의 미래 시즌이 비어 보인다.
+            flattenRemainingYears(p.contract).forEach((fy, colIdx) => {
+                if (colIdx < cols.length) colTotals[colIdx] += fy.amount;
+            });
         }
         for (const d of (team.deadMoney ?? [])) {
             const ci = cols.indexOf(d.season);
@@ -113,8 +114,7 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
         const map = new Map<string, number>();
         for (const p of players) {
             if (!p.contract) { map.set(p.id, 0); continue; }
-            let sum = 0;
-            for (let i = p.contract.currentYear; i < p.contract.years.length; i++) sum += p.contract.years[i];
+            const sum = flattenRemainingYears(p.contract).reduce((acc, fy) => acc + fy.amount, 0);
             map.set(p.id, sum);
         }
         return map;
@@ -267,24 +267,30 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                                 )}
                             </TableCell>
                             {seasonColumns.map((col, i) => {
-                                const contractIdx = p.contract ? i + p.contract.currentYear : -1;
-                                const amount = p.contract && contractIdx >= 0 && contractIdx < p.contract.years.length
-                                    ? p.contract.years[contractIdx] : null;
-                                const opt = p.contract?.options?.find(o => o.year === contractIdx);
+                                // [2026-10-01] 현재 계약 + 이미 체결된 다음 계약(nextContract)을 한 줄로 편 배열로 표시.
+                                const flat = p.contract ? flattenRemainingYears(p.contract) : [];
+                                const fy = flat[i];
+                                const amount = fy ? fy.amount : null;
+                                const opt = fy?.option;
                                 const amountColorClass = opt?.type === 'team'
                                     ? 'italic text-sky-400'
                                     : opt?.type === 'player'
                                         ? 'italic text-emerald-400'
-                                        : 'text-slate-300';
-                                // 계약 마지막 연도 바로 다음 컬럼(contractIdx === years.length)에만
-                                // UFA/RFA 칩 표시 — 그 이전/이후 컬럼은 기존처럼 금액 또는 "-".
-                                const faStatus = p.contract && contractIdx === p.contract.years.length
+                                        : fy?.segment === 'next'
+                                            ? 'text-amber-300'   // 다음 계약(연장) 연차 — 현재 계약과 구분
+                                            : 'text-slate-300';
+                                // 마지막 연차 바로 다음 컬럼에만 UFA/RFA 칩 표시 — 다음 계약이 있으면 칩 없음
+                                // (previewFAStatusAfterContract가 null을 돌려줌).
+                                const faStatus = p.contract && i === flat.length && !hasNextContract(p.contract)
                                     ? faStatusPreview.get(p.id)
                                     : null;
                                 return (
                                     <TableCell key={col} align="right" className={`pr-4 border-r border-r-slate-800/30 ${i === 0 ? 'bg-white/[0.04]' : ''}`}>
                                         {amount != null ? (
-                                            <span className={`font-medium text-sm ${amountColorClass}`}>
+                                            <span
+                                                className={`font-medium text-sm ${amountColorClass}`}
+                                                title={fy?.segment === 'next' ? '연장 계약(이미 체결된 다음 계약) 연차' : undefined}
+                                            >
                                                 {formatMoneyFull(amount)}
                                             </span>
                                         ) : faStatus ? (

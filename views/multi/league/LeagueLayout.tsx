@@ -1,12 +1,15 @@
 
 import React, { createContext, useContext } from 'react';
 import { Outlet, useParams, useLocation } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
+import { useLeagueNotifications } from '../../../hooks/useLeagueNotifications';
 import type { CurrentLeagueState } from '../../../hooks/useCurrentLeague';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { SeasonCtx } from '../season/seasonContext';
+import { useLeagueBootstrap } from '../../../hooks/useLeagueBootstrap';
+import { LeagueBootstrapErrorScreen } from '../../../components/multi/LeagueBootstrapErrorScreen';
+import { LeagueLoadingScreen } from '../../../components/multi/LeagueLoadingScreen';
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -46,16 +49,27 @@ export function LeagueLayout() {
     const state = useCurrentLeague();
     const { session } = useGame();
     const gameData = useMultiGameData(session, state.room?.id ?? null);
+    // [2026-10-02] 리그 진행 알림(트레이드 제안 도착/결과, 리그 이벤트) → 전역 토스트. 리그 레이아웃에 한 번만.
+    const myTeam = state.leagueTeams.find(t => t.user_id === session?.user?.id) ?? null;
+    useLeagueNotifications({ roomId: state.room?.id ?? null, leagueId, leagueTeams: state.leagueTeams, myTeam });
 
     const isSeasonRoute = location.pathname.includes('/season');
     const isLoading = state.isLoading || (isSeasonRoute && gameData.isLoading);
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full min-h-screen bg-gray-950">
-                <Loader2 size={32} className="animate-spin text-indigo-400" />
-            </div>
-        );
+    // [2026-10-06] 부트스트랩 게이트 — 리그/시즌 데이터가 끝난 뒤 공통 쿼리를 미리 받아 캐시에 넣고 나서 Outlet을 내린다.
+    // 그동안은 아래 스피너가 그대로 이어진다(전용 진행률 화면은 같은 날 접음 — 로딩이 1초 안쪽이라 막대가 안 보였고
+    // 화면이 두 번 바뀌는 게 더 거슬렸음). 전부 캐시에 있으면 즉시 ready. 확정 실패만 별도 안내 화면. 상세: hooks/useLeagueBootstrap.ts.
+    const boot = useLeagueBootstrap({
+        enabled: !isLoading && !state.error,
+        league: state.league, room: state.room, leagueTeams: state.leagueTeams, myTeam,
+    });
+
+    const bootPending = !state.error && (boot.status === 'idle' || boot.status === 'loading');
+    if (isLoading || bootPending) {
+        return <LeagueLoadingScreen />;   // 스피너 + 재치 문구(2026-10-06)
+    }
+    if (!state.error && boot.status === 'failed') {
+        return <LeagueBootstrapErrorScreen boot={boot} />;
     }
 
     return (

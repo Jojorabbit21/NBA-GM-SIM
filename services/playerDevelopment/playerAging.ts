@@ -896,6 +896,12 @@ export function processOffseason(
                     }
                 }
 
+                // [2026-10-01] 이미 체결된 다음 계약(연장)이 있으면 만료 대신 승격 — contractLifecycle 규칙과 동일.
+                if (!entry.contractExpired && player.contract.currentYear >= player.contract.years.length
+                    && player.contract.nextContract && player.contract.nextContract.years.length > 0) {
+                    player.contract = { ...player.contract.nextContract, currentYear: 0 };
+                }
+
                 // 일반 계약 만료 체크
                 if (!entry.contractExpired && player.contract.currentYear >= player.contract.years.length) {
                     entry.contractExpired = true;

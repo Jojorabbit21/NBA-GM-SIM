@@ -35,6 +35,2100 @@
 
 ---
 
+## 2026-10-06 (8) — 리그 진입 로더 화면 상단에 BM27 로고 추가
+
+**배경**: 사용자 요청. 저장소에 "BM27" 이름의 파일은 없고 시작 메뉴(`views/home/StartMenu.tsx`)가 쓰는 앱 메인 로고 `public/logos/main.svg`가 그 로고(렌더해서 확인).
+
+**변경 파일**:
+- `components/multi/LeagueLoadingScreen.tsx` — 스피너 위에 `<img src="/logos/main.svg" alt={APP_NAME} className="h-9 w-auto mb-3 select-none" draggable={false}/>` 추가(StartMenu와 같은 h-9). `utils/constants`의 `APP_NAME` import.
+
+**Before**: 세로 스택 = 스피너 → 문구 (gap 12px)
+
+**After**: 세로 스택 = 로고(h-9, 아래 여백 12px 추가) → 스피너 → 문구
+
+**검증**: `tsc --noEmit` 신규 오류 0(총 53). `vite build` 성공.
+
+**롤백 방법**: 위 `<img>` 한 줄과 `APP_NAME` import 제거.
+
+---
+
+## 2026-10-06 (7) — 리그 진입 스피너 아래 로딩 문구 추가
+
+**배경**: (6)에서 진행률 화면을 접고 스피너만 남긴 뒤, 사용자 요청으로 스피너 하단에 재치 문구를 다시 붙임(문구 5종은 진행률 화면 때 확정한 것 그대로).
+
+**변경 파일**:
+- 신규 `components/multi/LeagueLoadingScreen.tsx` — `Loader2`(32px, indigo-400, animate-spin) + 아래 `<p class="text-base text-white ko-normal">{문구}…</p>`, `flex-col gap-3`, 배경 `bg-gray-950`. 마운트 중 `LOADING_QUIP_INTERVAL_MS`(2000ms)마다 직전과 다른 문구로 교체.
+- `utils/loadingQuips.ts` — (6)에서 삭제했던 파일을 같은 내용으로 복원(`LOADING_QUIPS` 5종, `LOADING_QUIP_INTERVAL_MS=2000`, `nextQuipIndex`).
+- `views/multi/league/LeagueLayout.tsx` — 인라인 스피너 JSX와 `Loader2` import를 `<LeagueLoadingScreen />`으로 교체. 분기 조건(`isLoading || bootPending`)은 (6) 그대로.
+
+**Before**: `<div class="flex items-center justify-center h-full min-h-screen bg-gray-950"><Loader2 .../></div>` (문구 없음)
+
+**After**: 같은 스피너 아래에 문구 1줄. 리그/시즌 로딩 + 부트스트랩 프리패치 전 구간에서 표시.
+
+**검증**: `tsc --noEmit` 신규 오류 0(총 53). `vite build` 성공.
+
+**롤백 방법**: `LeagueLayout.tsx`에서 `LeagueLoadingScreen` import를 지우고 Before의 인라인 스피너로 되돌린 뒤 `LeagueLoadingScreen.tsx`·`loadingQuips.ts` 삭제.
+
+---
+
+## 2026-10-06 (6) — 부트스트랩 진행률 화면 폐기 → 기존 스피너로 통합, 확정 실패 화면만 분리
+
+**배경**: (5) 게이트 적용 후 실사용에서 로딩이 1초 안쪽이라 막대가 0%에서 바로 100%로 넘어갔고(구조상 `done`이
+`Promise.allSettled` 종료 후 한 번만 갱신돼 중간값도 없었음), "전체화면 스피너 → 퍼센트 화면"으로 화면이 두 번 바뀌는 게
+더 거슬린다는 사용자 지적. 결정: 진행률 화면을 쓰지 않고 기존 스피너 아래에 데이터 로드를 붙인다. 게이트(프리패치→캐시→홈) 자체는 유지.
+
+**변경 파일**:
+- `components/multi/LeagueBootstrapScreen.tsx` → **이름 변경** `components/multi/LeagueBootstrapErrorScreen.tsx` — 확정 실패 상태만 렌더.
+  퍼센트·막대·재치 문구·2초 인터벌 제거. 남긴 것: 좌상단 "‹ 홈으로"(`/`), 안내 문구(네트워크/세션), 버튼("다시 시도"=`boot.retry` / "다시 로그인"=signOut→`/auth`).
+  배경은 스피너와 같은 `bg-gray-950`(전엔 `bg-slate-900`).
+- `utils/loadingQuips.ts` — **삭제**(미사용).
+- `hooks/useLeagueBootstrap.ts` — `LeagueBootstrapState`에서 `done`/`total` 제거(`{status, failKind, retry}`), 상태 갱신을 전부 객체 통째 `setState({status, failKind})`로 단순화. 재시도/실패 판정 로직은 불변.
+- `views/multi/league/LeagueLayout.tsx` — 분기 변경(아래).
+
+**Before** (`LeagueLayout.tsx`):
+```tsx
+if (isLoading) return <스피너/>;
+if (!state.error && boot.status !== 'ready') return <LeagueBootstrapScreen boot={boot} />;
+```
+
+**After**:
+```tsx
+const bootPending = !state.error && (boot.status === 'idle' || boot.status === 'loading');
+if (isLoading || bootPending) return <스피너/>;            // 리그/시즌 로딩 + 부트스트랩을 스피너 하나로
+if (!state.error && boot.status === 'failed') return <LeagueBootstrapErrorScreen boot={boot} />;
+```
+`idle`은 `enabled=false`(isLoading 중)일 때만 나오므로 실질적으로 `isLoading` 동안과 겹치며, `ready` 전에 Outlet이 내려가는 틈은 없음.
+
+**검증**: `tsc --noEmit` 신규 오류 0(총 53, 기존과 동일). `vite build` 성공. 실 리그 E2E 미확인(첫 진입 시 스피너 1회만 보이는지, 네트워크 차단 시 9초 뒤 실패 화면).
+
+**롤백 방법**: 이 항목의 파일 4개를 (5) 상태로 되돌리면 됨 — `git checkout <이 커밋 이전> -- components/multi/LeagueBootstrapScreen.tsx utils/loadingQuips.ts hooks/useLeagueBootstrap.ts views/multi/league/LeagueLayout.tsx` 후 `LeagueBootstrapErrorScreen.tsx` 삭제.
+
+---
+
+## 2026-10-06 (6) — 경기 종료 화면 스코어 헤더 단순화(리그 공식 스코어보드 레이아웃)
+
+**배경**: 종료(박스스코어) 화면 헤더가 라이브 점보트론과 같은 팀 컬러 밴드/도트 텍스처/30-40-30 3컬럼 구조를 그대로 써서 정보가 무거웠음. 사용자가 첨부한 공식 스코어보드 이미지(로고 | 이름·전적 점수 | Final+쿼터표 | 점수 이름·전적 | 로고)처럼 한 줄로 단순화 요청. 양끝 그라디언트는 제외.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` (client 전용, 서버 미러 없음)
+
+**Before** (종료 전용 블록 — 2026-10-06 (5)에서 라이브와 분리된 직후 상태):
+```tsx
+{showBox && (
+  <div className="relative bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
+    <div ... style={{ width: '30%', backgroundColor: awayColor }} />   {/* 팀 컬러 밴드 */}
+    <div ... style={{ width: '30%', backgroundColor: homeColor }} />
+    <div className="absolute inset-y-0 bg-slate-950" style={{ left: '30%', width: '40%' }} />
+    <div className="absolute inset-0 opacity-70" style={{ backgroundImage: 'radial-gradient(...)', backgroundSize: '4px 4px' }} />
+    <div className="relative z-10 flex items-center">
+      <TeamHeaderColumn side="away" ... />                      {/* 로고 96px | 이름(2xl black uppercase)+W L | 점수 6xl, 팀 textColor */}
+      <div className="flex flex-col items-center justify-center shrink-0" style={{ width: '40%' }}>
+        <div className="self-stretch w-full"><QuarterScores ... fullWidth /></div>   {/* 1쿼터~총합 헤더, bg-slate-950/900 표 */}
+      </div>
+      <TeamHeaderColumn side="home" ... />
+    </div>
+  </div>
+)}
+```
+QuarterScores는 `fullWidth` prop만 있었음(compact 없음). FinalHeaderLogo 컴포넌트 없음.
+
+**After**:
+```tsx
+{showBox && (() => {
+  const awayWon = currentScore.away > currentScore.home;
+  const homeWon = currentScore.home > currentScore.away;
+  const scoreCls = (won: boolean) =>
+    `text-5xl font-black tabular-nums tracking-tight leading-none shrink-0 ${won ? 'text-white' : 'text-slate-500'}`;
+  const wlText = (w?: { wins: number; losses: number }) => w ? `${w.wins}W ${w.losses}L` : null;
+  return (
+    <div className="shrink-0 bg-slate-900 border-b border-slate-800 px-8 py-5">
+      <div className="flex items-center gap-8">
+        <FinalHeaderLogo teamSlug={awayTeamId ?? ''} abbr={awayAbbr} />
+        <div className="flex-1 min-w-0 flex items-center justify-end gap-5">
+          <div className="flex flex-col items-end min-w-0 gap-0.5">
+            <span className="text-xl font-bold text-white truncate">{awayName}</span>
+            {!isAllstar && wlText(awayWL) && <span className="text-sm text-slate-400 tabular-nums">{wlText(awayWL)}</span>}
+          </div>
+          <span className={scoreCls(awayWon)}>{currentScore.away}</span>
+          <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-r-[7px] border-r-white shrink-0 ${awayWon ? '' : 'invisible'}`} />
+        </div>
+        <div className="flex flex-col items-center gap-1.5 shrink-0">
+          <span className="text-base font-bold text-white">종료</span>
+          <QuarterScores allLogs={visibleEvents} homeTeamId={homeTeamId ?? ''} currentQuarter={currentQuarter}
+                         homeAbbr={homeAbbr} awayAbbr={awayAbbr} compact />
+        </div>
+        <div className="flex-1 min-w-0 flex items-center justify-start gap-5">
+          <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-l-[7px] border-l-white shrink-0 ${homeWon ? '' : 'invisible'}`} />
+          <span className={scoreCls(homeWon)}>{currentScore.home}</span>
+          <div className="flex flex-col items-start min-w-0 gap-0.5">
+            <span className="text-xl font-bold text-white truncate">{homeName}</span>
+            {!isAllstar && wlText(homeWL) && <span className="text-sm text-slate-400 tabular-nums">{wlText(homeWL)}</span>}
+          </div>
+        </div>
+        <FinalHeaderLogo teamSlug={homeTeamId ?? ''} abbr={homeAbbr} />
+      </div>
+    </div>
+  );
+})()}
+```
+- 신규 `FinalHeaderLogo({ teamSlug, abbr })` — 96×96 로고 + 기존 폴백 체인(getRealTeamLogoUrl → getTeamLogoUrl → placehold.co). TeamHeaderColumn 바로 아래 정의.
+- `QuarterScores`에 `compact?: boolean` prop 추가 — true면 `1 2 3 4 T` 헤더(text-slate-400, border-b slate-700), 행은 약어(흰색 bold)+쿼터값(slate-300)+총합(흰색 bold), 배경/음영 없음. 점수 계산(useMemo)은 기존과 공유. 기존 호출부(fullWidth)는 영향 없음.
+- 팀 컬러(awayColor/homeColor/awayText/homeText)는 종료 헤더에서 더 이상 사용하지 않음(라이브 헤더는 그대로 사용).
+
+**후속(같은 날)**: 최상단 날짜 바(`{showBox && scheduleGame && (<div className="shrink-0 bg-slate-950 border-b border-slate-800 py-2 text-center">…fmtFullDate…</div>)}`) 삭제. 대신 가운데 컬럼 "종료" 라벨 위에 정보 라인 추가:
+- 1줄 `finalHeaderDateLabel` = `fmtFullDate(kstDateKey(scheduleGame, league?.type==='main_league'))` (text-sm text-slate-400)
+- 2줄 `finalHeaderStageLabel`(플레이오프 경기만, text-slate-300 font-semibold) = `"{라운드} {n}차전 · 시리즈 {상위시드약어} hi-lo {하위시드약어}"` — 같은 seriesId 경기를 `date` 순 정렬, 이 경기까지의 `isFinal` 경기만 누적(TournamentBracketView.seriesTallies와 동일 방식, 스포일러 방지). 라운드 라벨은 로컬 `computeRoundLabelMap`(플레이인 처리 포함 버전, MultiTacticsView 사본과 동일) 신설.
+- 결과 페이지 섹션 순서 변경: 인사이트↔박스스코어 자리 교환(박스스코어가 첫 섹션). TabBar 탭 순서 동일하게 교환, 기본 `activeSection` `'insights'`→`'box'`, `VALID_PBP_SECTIONS` 순서도 맞춤(검증용 배열이라 동작 영향 없음). 롤백은 역순.
+- 종료 헤더 팀 이름(awayName/homeName span)을 클릭 링크로 — `navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${slug}`)`(MultiScheduleView.handleTeamClick/MultiStandingsView와 동일 경로), 스타일 `cursor-pointer hover:text-indigo-400 hover:underline` 추가. `useNavigate` import + `goTeamRoster` 헬퍼 신설. 롤백은 onClick/호버 클래스/헬퍼/import 제거.
+- 종료 헤더 팀 점수(`scoreCls`)에서 `tabular-nums` 제거 — 숫자 1이 고정폭 칸을 차지해 '115'의 자간이 벌어져 보이던 현상. 롤백은 클래스 재추가.
+- **표기 변경(같은 날 후속)**: 2줄 `"{라운드} {n}차전 · 시리즈 …"` 한 줄 → 두 줄로 분리. 2줄 = 스테이지 `computePlayoffStageLabel(series, bracket_data)`("플레이오프 동부 1라운드" / "플레이오프 동부 컨퍼런스 세미파이널"(r===total-2) / "플레이오프 동부 컨퍼런스 파이널"(r===total-1) / "플레이오프 파이널"(r===total); conference 'BPL'은 접두 없이 "플레이오프 파이널/세미파이널/n라운드"; r===0 플레이인), 3줄 = `"{상위약어} hi - lo {하위약어}"`. "n차전" 표기는 제거. 로컬 `computeRoundLabelMap`은 `computePlayoffStageLabel`로 대체(삭제). 변수 `finalHeaderStageLabel`(string) → `finalHeaderStage`({stage, score}).
+- import에 `isFinal`(multiGameReveal) 추가. 롤백: 날짜 바 복원, 정보 라인 div·두 변수·computeRoundLabelMap·isFinal import 제거.
+
+**검증**: `npx tsc --noEmit` MultiGamePbpView 오류 0. 화면 미확인.
+
+**롤백 방법**: Before 블록으로 종료 전용 블록 복원, `FinalHeaderLogo` 함수 삭제, QuarterScores의 `compact` prop/분기 삭제(또는 그대로 둬도 무해).
+
+## 2026-10-06 (5) — GameDateStrip 게임카드 배경 slate-950 → slate-900 (최종)
+
+> 추가 변경: 진행 중 카드의 팀명/점수 텍스트 흰색 — `StripTeamRow`에 `won={awayWon || state === 'live'}`(home 동일) 전달(won=true 스타일이 text-white). 롤백은 `|| state === 'live'` 제거.
+> 후속: 선택된 카드 배경 slate-600 → `bg-slate-700`으로 재변경(아래 항목의 slate-600은 이 값으로 읽을 것).
+> 후속: 위 날짜 바 스타일 변경 — 배경 `bg-slate-950`, 패딩 `py-2`, 글자 `text-base text-white`(아래 항목의 slate-900/py-1.5/text-xs/text-slate-300은 이 값으로 읽을 것).
+> 후속: 6개 섹션 헤더 div에 상단 구분선 `border-t border-slate-600` 추가(+1px 높이). 롤백은 해당 클래스 제거.
+> 후속: 라이브/종료 점보트론(스코어 헤더) 완전 분리 — `MultiGamePbpView.tsx`의 단일 헤더 블록(바깥 껍데기+팀 컬러 밴드+도트 텍스처+좌우 TeamHeaderColumn+가운데 컬럼)을 `{!showBox && (…)}`(시작 전/라이브: 카운트다운·점보트론·3단 평시 레이아웃)와 `{showBox && (…)}`(종료: QuarterScores만) 두 개의 독립 블록으로 복제·분기. 공유는 TeamHeaderColumn 컴포넌트뿐(껍데기 수정은 양쪽 모두 해야 함). 동작/렌더 결과는 분리 전과 동일. 롤백: 분리 전 단일 블록 복원(git diff 또는 두 블록을 하나로 합치고 가운데 컬럼에 isScheduled/isLive/showBox 분기 3종 + QuarterScores 복원).
+> 후속: 박스스코어 화면 6개 섹션 헤더(인사이트/박스스코어/경기 기록/샷차트/로테이션/온오프) 스타일 변경 — 배경 `bg-slate-700`→`bg-slate-800`, 텍스트 `font-black ... tracking-widest`→`font-bold`(tracking 제거, uppercase/text-sm/text-white 유지). 롤백은 6곳 모두 이전 클래스로 복원.
+> 후속: 분리한 탭 그룹의 디자인을 자체 grid-cols-6 버튼에서 공용 `components/common/TabBar`(트레이드 화면과 동일: px-8, gap-8, h-14, 활성 indigo-400 하단 보더, bg-slate-950)로 교체. `MultiGamePbpView.tsx` import에 TabBar 추가, 탭 항목/스크롤 동작(sectionRefs.scrollIntoView, activeSection)은 동일. 롤백: 이전 grid-cols-6 버튼 블록 복원, TabBar import 제거.
+> 후속: 박스스코어 화면 탭 그룹(인사이트/박스스코어/경기기록/샷차트/로테이션/온오프) 분리 — 점보트론 중앙 40% 컬럼 하단(QuarterScores 아래, `border-t border-slate-800`)에 있던 `grid grid-cols-6` 블록을 스코어 헤더 div 바로 아래 전체 폭 별도 그룹으로 이동(`shrink-0 ... bg-slate-950 border-b border-slate-800`). 탭 항목/동작(scrollIntoView, activeSection)은 동일. 롤백: 블록을 중앙 컬럼 QuarterScores 다음으로 되돌리고 클래스를 `self-stretch w-full ... border-t border-slate-800`으로 복원.
+> 후속: 박스스코어(종료, showBox) 화면 최상단에 가상 날짜 바 추가 — `MultiGamePbpView.tsx` 메인 return 최상단, `fmtFullDate(kstDateKey(scheduleGame, league?.type==='main_league'))`(예: 2027년 10월 24일 일요일), `bg-slate-900 border-b border-slate-800 py-1.5 text-xs text-slate-300 text-center`. `./multiScheduleUtils` import 추가. 롤백은 해당 블록·import 제거.
+> 후속: 선택된 카드(isCurrent)는 상태 라벨/팀 약어/점수 전부 `text-white` — `StripTeamRow`에 `selected` prop 추가(`won || selected`→white), 라벨은 `isCurrent ? text-white : (live ? red-400 : slate-500)`. 롤백은 selected prop/라벨 isCurrent 분기 제거.
+> 후속: 선택된(현재 보는) 카드 스타일 `bg-indigo-500/15 ring-1 ring-inset ring-indigo-500/50` → `bg-slate-600`(ring 제거). 롤백은 이전 클래스로 복원.
+> 후속: 경기 관람 화면(game/:gameId — 라이브/박스스코어)에서도 헤더 표시 — `MultiSeasonLayout.tsx`의 `isWatchingGame` 상수와 `{!isWatchingGame && <MultiHeader />}` 조건 제거(`<MultiHeader />` 항상 렌더). 롤백: 정규식 `/\/season\/game\/[^/]+$/.test(location.pathname)`로 isWatchingGame 복원 후 조건부 렌더.
+> 후속: 종료 경기 승리 팀의 이름/점수 `font-bold`(그 외 font-semibold 유지), 조건 `won && isFinal`. 롤백은 해당 삼항 제거 후 `font-semibold` 고정.
+> 후속: 게임카드 점수 span에 `tracking-tight`(-0.025em) 추가. 롤백은 해당 클래스 제거.
+> 후속: 게임카드 점수 span에 `tabular-nums` 추가(숫자 폭 고정). 롤백은 해당 클래스 제거.
+> 후속: 종료 경기 패배 팀 로고 반투명 — `StripTeamRow` 로고 img에 `isFinal && !won ? 'opacity-40'`. 예정/진행 중 카드는 영향 없음. 롤백은 해당 조건 제거.
+> 후속: 게임카드 팀 약어 좌측에 로고 추가(`StripTeamRow`) — `getRealTeamLogoUrl(teamId)` 20×20, onError 폴백(getTeamLogoUrl → placehold.co), 로고+약어는 `flex gap-1.5` 래퍼. `utils/constants` import 추가. 롤백은 래퍼/img 제거하고 약어 span만 복원.
+> 후속: 승리 팀 행 초록 배경(`-mx-3 px-3 bg-emerald-900/50`) 제거 — 행 className을 `flex items-center justify-between gap-2`로 복귀. 결과적으로 종료 카드 승리 팀은 흰 글자/패배 slate-500만 남음(isFinal prop은 미사용 상태로 잔존). 아래 항목의 초록 배경은 현재 없음.
+> 후속: 종료 카드 승리 팀 표시를 글자색 방식에서 행 배경 방식으로 변경 — 승리 팀 행(`StripTeamRow`, won&&isFinal)에 `-mx-3 px-3 bg-emerald-900/50`(ScheduleView 승리 셀과 동일 색), 글자는 승리 `text-white`/패배 `text-slate-500`, '종료' 라벨은 `text-slate-500`으로 복귀. 롤백은 행 className의 `-mx-3 px-3 ...` 제거.
+> 후속: 위 green-500을 앱 표준 초록인 `text-emerald-400`(status.success.text와 동일)으로 재변경 — 앱 전체가 green이 아닌 emerald 계열을 쓰기 때문.
+> 후속: 종료 카드 승리 팀명/점수/'종료' 라벨 색을 indigo-600 → `text-green-500`으로 재변경(아래 항목의 indigo-600은 이 값으로 읽을 것).
+> 후속: 종료(final) 카드 — 승리 팀명/점수 `text-indigo-600`, 상태 라벨('종료') `text-indigo-600`. `StripTeamRow`에 `isFinal` prop 추가(won&&isFinal→indigo-600, won&&!isFinal(live)→text-white 유지). 롤백은 isFinal prop/winColor 제거하고 라벨 분기 제거.
+> 후속(2026-10-07): 스트립 하단 구분선 `border-b border-slate-800`(배경과 동일색이라 안 보임)→`border-slate-600`. 섹션 헤더 상단선과 동일 톤. 롤백은 slate-800.
+> 후속(2026-10-07): 카드 패딩 `pt-[5px] pb-[3px]`→`py-1.5`(6/6px), 스트립 높이 `h-[71px]`→`h-[75px]`(내용 62 + 패딩 12 + border 1). 로고(20px, 줄높이 꽉 채움) 추가 후 마지막 행 아래 여백이 3px 그대로 노출돼 바닥에 붙어 보이던 문제 — 비대칭 보정은 텍스트 전용 가정이었음. 롤백은 이전 값 복원.
+> 후속: 카드 상하 여백 시각 보정 — `py-1`(4/4px)→`pt-[5px] pb-[3px]`. 박스는 대칭이지만 마지막 줄(ATL/홈팀, 대문자·숫자라 디센더 없음) 아래에 줄높이·디센더 공간이 남아 아래 여백이 더 커 보여 내용을 1px 아래로 내림(추정치 기반 보정). 롤백은 `py-1`.
+> 후속: 카드 상태 라벨(종료/시각/LIVE)의 `tracking-wider` 제거(자간 기본값). 롤백은 `tracking-wider` 재추가.
+> 후속: 카드 상하 패딩 `py-2`(8px)→`py-1`(4px) + 스트립 높이 `h-[76px]`→`h-[71px]`. 내용 62px(16+4+20+2+20)+패딩 8px+border-b 1px=71px라 패딩이 실제로 적용됨(기존엔 내용이 카드보다 커서 py가 무시되고 상하 약 6.5px 여백). 롤백은 py-2, h-[76px]로 복원.
+> 후속: 게임카드 2·3행(원정/홈 StripTeamRow)을 `<div className="flex flex-col gap-0.5">`로 묶음 — 두 팀 행 간격 4px→2px, 상태 라벨↔팀 그룹 간격은 기존 gap-1(4px) 유지. 롤백은 래퍼 div 제거.
+> 후속: 카드 사이 구분선 `border-slate-950` → `border-slate-700`(밝게). 롤백은 `border-slate-950`으로 복원.
+> 후속: 진행 중 카드 배경을 slate-600 → `bg-indigo-600`(hover indigo-500)으로 재변경. 아래 항목의 slate-600은 이 값으로 읽을 것.
+> 추가 변경: 진행 중(state==='live') 경기 카드 배경 `bg-slate-600`(hover slate-500) — 현재 보는 카드(isCurrent)의 indigo 스타일이 우선. 롤백은 `state === 'live' ? ... :` 분기 제거.
+> 추가 변경: 접기 버튼 펼침 직후 우측 구분선이 흰색→어두운색으로 변하던 현상 수정 — 접기 버튼의 `transition-colors`(border-color 포함)를 `transition-[color,background-color]`로 변경해 마운트 시 기본 border색→slate-700 전환 애니메이션 제거. 롤백은 `transition-colors`로 복원.
+> 추가 변경: 접기 버튼 클릭 영역 확대 — 래퍼 div(px-1.5)+내부 작은 button 구조를 영역 전체(px-3, 높이 전체)가 하나의 button이 되도록 변경(hover 배경도 영역 전체). 롤백은 div+내부 button(p-0.5 rounded) 구조로 복원.
+> 추가 변경: 스트립 접기/펴기 토글 추가(GameDateStrip.tsx). 날짜 셀렉터 좌측에 ChevronUp 버튼, 접으면 h-8 얇은 바(ChevronDown + `YYYY.M.D · N경기`)만 표시. 상태 `isCollapsed`는 localStorage `gameDateStripCollapsed`에 저장(try/catch). 현재 카드 scrollIntoView/스크롤 상태 effect deps에 isCollapsed 추가. 롤백: lucide import의 ChevronUp/Down·isCollapsed 상태·early return 블록·접기 버튼 div 제거, deps 원복.
+> 추가 변경: 스트립 컨테이너(GameDateStrip.tsx 227행) 배경 `bg-slate-950`→`bg-slate-800`. 카드(slate-900)와 카드 사이 구분선(slate-950)은 유지. 롤백은 `bg-slate-950`으로 복원.
+> 추가 변경: 예정 경기 카드의 '예정' 텍스트를 `fmtTime(g, preferVirtual)` 시작 시각(HH:mm)으로 교체 (GameDateStrip.tsx 약 305~307행, import에 fmtTime 추가). 롤백은 `: '예정'`으로 복원하고 import에서 fmtTime 제거.
+> 추가 변경: `StripTeamRow`(GameDateStrip.tsx 약 22·26행) 폰트 굵기 통일. 팀 약어 `font-black`→`font-semibold`, 점수 `won ? font-black : font-bold`→ 승패 무관 `font-semibold`. 롤백은 해당 값으로 복원.
+
+> 최종값은 slate-900 / hover slate-800. 처음엔 slate-800 / hover slate-700으로 적용했다가 너무 밝아 한 단계 내림. 아래 After의 `bg-slate-800 hover:bg-slate-700`을 `bg-slate-900 hover:bg-slate-800`으로 읽을 것.
+
+**배경**: 상단 날짜 스트립의 게임카드가 별도 배경 없이 컨테이너(`bg-slate-950`)가 비쳐 보여 어두웠음. 카드 배경을 slate-800으로 올려달라는 요청.
+
+**변경 파일**:
+- `views/multi/season/GameDateStrip.tsx` (카드 `<button>` className, 약 314~315행)
+
+**Before**:
+```tsx
+border-r border-slate-800 ... ${
+    isCurrent ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-500/50' : 'hover:bg-slate-900'
+}
+```
+
+**After**:
+```tsx
+border-r border-slate-950 ... ${
+    isCurrent ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-500/50' : 'bg-slate-800 hover:bg-slate-700'
+}
+```
+
+**검증**: 코드 확인만 (빌드/화면 미확인). 카드 구분선이 배경과 같아져 사라지므로 border를 slate-950으로 변경, hover는 한 단계 위(slate-700).
+
+**롤백 방법**: Before 블록 내용으로 되돌리면 됨.
+
+## 2026-10-06 (5) — 리그 진입 부트스트랩 게이트 + 진행률 로딩 화면
+
+**배경**: 리그 홈 진입 시 열 개 남짓의 쿼리가 각자 실행돼 네트워크가 흔들리면 토스트가 연발(최대 5장)하고 섹션마다 데이터가 따로 늦게 떴음.
+사용자 결정: 진입 시 공통 데이터를 전부 받아 캐시에 넣은 뒤 홈 표시, 그동안 퍼센트·막대·재치 문구만 있는 로딩 화면(아티팩트 v18 확정).
+실패는 조용히 3초×3회 재시도 후 확정 실패만 노출, 401도 같은 창, 좌상단 "‹ 홈으로"만 출구. 설계 문서: `docs/plan/league-bootstrap-gate-plan.md`.
+
+**변경 파일**:
+- 신규 `hooks/useLeagueBootstrap.ts` — `useLeagueBootstrap({enabled, league, room, leagueTeams, myTeam})` → `{status, done, total, failKind, retry}`.
+  대상 11개(공통 6 + 홈 트랜잭션 + 뉴스피드 필터 3종 + 받은 제안 수[내 팀 있을 때]) 중 캐시에 데이터 없는 것만 `fetchQuery/fetchInfiniteQuery({retry:false})`로
+  병렬 실행, 실패분만 `BOOTSTRAP_RETRY_DELAY_MS=3000` 간격 `BOOTSTRAP_RETRY_MAX=3`회. 전부 실패 시 `failed`(401 포함 시 `auth`). 캐시에 전부 있으면 즉시 `ready`.
+- 신규 `components/multi/LeagueBootstrapScreen.tsx` — 퍼센트(text-xl bold), 막대(h-3, bg-slate-800 / 채움 bg-emerald-400, 실패 bg-red-400, width 450ms ease-out-expo),
+  문구(text-base 흰색, `utils/loadingQuips.ts` 5종 2초 교체), 좌상단 "‹ 홈으로"(`/`), 확정 실패 시 문구+버튼("다시 시도"=boot.retry / "다시 로그인"=signOut→`/auth`).
+- 신규 `utils/loadingQuips.ts`, `services/notifications/bootstrapQueryKeys.ts`(루트 키 9개 Set + `isBootstrapQueryKey`).
+- `views/multi/league/LeagueLayout.tsx` — 기존 스피너 게이트 뒤에 `useLeagueBootstrap` 호출(항상 호출, `enabled: !isLoading && !state.error`), `boot.status !== 'ready'`면 `<LeagueBootstrapScreen boot={boot}/>`.
+- `services/notifications/errorCollector.ts` — `reportQueryError`에서 `isBootstrapQueryKey(queryKey)`면 return(토스트 제외).
+- 옵션 팩토리 분리(키·queryFn·staleTime 동일, 훅 동작 불변):
+  `hooks/useMultiSearchData.ts` `multiSearchPoolQuery(league)` / `hooks/usePlayerShortCodes.ts` `metaPlayerOrderQuery()` / `hooks/useGameShortCodes.ts` `gameShortCodesQuery(roomId)` /
+  `hooks/useLeagueRawStats.ts` `leagueRawPlayersQuery(roomId, ids)` `leagueRawSeasonInjuryQuery(roomId, ids)` (**부수 수정**: seasonInjury 쿼리가 Supabase error를 빈 배열로 삼키던 것을 throw로 변경 — 게이트가 실패를 감지해야 하므로) /
+  `hooks/usePlayerSeasonStatsLeague.ts` `playerSeasonStatsLeagueQuery(roomId, sortedIds, isPlayoff)` / `hooks/useLeagueHeadlines.ts` `leagueNewsStoriesQuery(roomId, myTeamSlug, filters)` /
+  `hooks/usePendingTradeCount.ts` `pendingTradeCountQuery(roomId, myTeamDbId)` / 신규 `hooks/useHomeLeagueTransactions.ts` `homeLeagueTransactionsQuery(roomId)`(+`HOME_TRANSACTIONS_LIMIT`, `HomeLeagueTransactionRow`) —
+  `pages/MultiSeasonPage.tsx`의 인라인 useQuery·상수·`RawLeagueTransactionRow` 인터페이스를 이걸로 교체.
+
+**Before**: `LeagueLayout`은 `state.isLoading || (isSeasonRoute && gameData.isLoading)`만 기다리고 `<Outlet/>`. 공통 쿼리는 화면마다 useQuery 인라인 정의, 실패 시 전부 토스트.
+
+**After**: 위 조건 통과 후 게이트 → 공통 캐시가 채워진 뒤 `<Outlet/>`. 게이트 대상 9개 루트 키는 토스트 제외.
+
+**검증**: `tsc --noEmit` 신규 오류 0(총 53, 기존과 동일). `vite build` 성공(17s), "Circular chunk: vendor ↔ react-vendor" 경고 2건은 변경 전에도 동일하게 나오는 manualChunks 경고(모듈 순환 아님). 실 리그 E2E 미확인.
+
+**롤백 방법**: `LeagueLayout.tsx`에서 `useLeagueBootstrap` 호출·`LeagueBootstrapScreen` 분기·import 제거, `errorCollector.ts`의 `isBootstrapQueryKey` 3줄 제거. 옵션 팩토리 분리는 동작 동일이라 되돌릴 필요 없음(원하면 각 훅에서 `useQuery({...xxxQuery()})`를 인라인으로 풀면 됨). 신규 4파일 삭제.
+
+---
+
+## 2026-10-06 (4) — 조회 실패 토스트: RPC 부류 원문 코드 병기 제거
+
+**배경**: 사용자 결정(2번안) — 조회 실패 4부류 중 "RPC 내부 예외"만 괄호에 서버 원문 코드를 붙이던 것을 제거해 형식 통일.
+조사 결과 조회용 RPC 6종(get_player_season_stats_batch/full/league, get_player_shot_events, get_team_opponent_zone_stats,
+get_team_season_advanced_stats)은 전부 `LANGUAGE sql` 함수라 `RAISE EXCEPTION`(P0001)이 나올 수 없어 사실상 도달 불가 분기였음.
+
+**변경 파일**: `services/notifications/queryErrorCatalog.ts` — `formatQueryErrorMessage()`.
+
+**Before**:
+```ts
+let cause = CAUSE_TEXT[category];
+if (category === 'rpc') {
+    const raw = String((err as { message?: unknown })?.message ?? '').trim();
+    if (raw) cause = `${cause} (${raw.slice(0, 60)})`;
+}
+```
+**After**: `const cause = CAUSE_TEXT[category];` (분류 'rpc' 자체는 유지, 문구 "서버 처리 중 오류가 발생했습니다." 그대로).
+
+**검증**: tsc 오류 0. **롤백**: Before 블록 복원.
+
+---
+
+## 2026-10-06 (3) — 어드민 트레이드 사유(note) 기록
+
+**배경**: 사용자 요청 — 어드민 트레이드 실행 시 사유도 세션 로그에 남긴다.
+
+**변경 파일**:
+- `migrations/add_admin_trade_note.sql` (server, Supabase 반영) — `execute_admin_trade(…, p_note text DEFAULT NULL)`. 옛 6인자 시그니처 DROP 후 7인자로 재생성(본문 동일),
+  `admin_trade` 로그 details에 `'note', nullif(btrim(p_note), '')` 추가.
+- `services/multi/leagueService.ts` (client) — `ExecuteAdminTradeParams.note?: string`, RPC 인자 `p_note: p.note?.trim() || null`.
+- `components/dashboard/AdminTradePanel.tsx` (client) — 트레이드 요약 블록에 "사유 (선택 · 세션 로그에 기록)" textarea(최대 300자). 성공 RPC와 실패 로그(`admin_trade_failed` details.note) 둘 다에 전달. 실행 성공/상대 팀 변경 시 초기화.
+- `views/multi/league/settings/ActionLogTab.tsx` (client) — `admin_trade`/`admin_trade_failed` 요약 끝에 " · 사유: …" 표시.
+
+**Before**: `execute_admin_trade(p_room_id, p_admin_user_id, p_team_a_id, p_team_b_id, p_players_a_to_b, p_players_b_to_a)` — 사유 없음.
+
+**After**: 7번째 인자 `p_note`(기본 NULL). 빈 문자열은 NULL로 정규화. 로그 details.note에 기록.
+
+**검증**: `tsc --noEmit` 변경 파일 오류 0. 실 화면 E2E 미확인.
+
+**롤백 방법**: `DROP FUNCTION public.execute_admin_trade(uuid, uuid, uuid, uuid, jsonb, jsonb, text);` 후 `migrations/add_league_action_logs.sql` §7의 6인자 버전을 다시 CREATE. 클라 3파일은 note 관련 줄 제거.
+
+---
+
+## 2026-10-06 (2) — 어드민 트레이드를 세션 설정 "트레이드" 탭 하단 블록으로 이전 + 실패는 토스트 대신 세션 로그
+
+**배경**: 사용자 결정 — AdminTeamEditorView 삭제(10-05 (3))로 진입점이 사라진 어드민 트레이드 기능을 살려 세션 설정 트레이드 탭의
+트레이드 설정 블록 아래에 둔다. 토스트 카탈로그 2번 "어드민 트레이드 실패"는 토스트 없이 세션 로그에만 기록.
+
+**변경 파일**:
+- `migrations/add_admin_log_failed_action.sql` (server, Supabase 반영) — RPC `admin_log_failed_action(p_room_id, p_action, p_team_ids, p_player_ids, p_details)`.
+  실패한 RPC는 롤백되므로 서버 안에서 기록 불가 → 클라이언트가 오류를 받은 뒤 호출. `p_action ~ '^admin_[a-z_]+_failed$'`만 허용, 리그/글로벌 어드민만.
+  `league_action_log_write(... details || {failed:true})`.
+- `services/multi/leagueService.ts` (client) — `logAdminFailedAction(roomId, action, {teamIds, playerIds, details})` 래퍼(실패해도 콘솔만).
+- `components/dashboard/AdminTradePanel.tsx` (client) — 실패 시 `notify.error(…, {source:'admin.trade'})` 제거 → `logAdminFailedAction(roomId, 'admin_trade_failed', …)`
+  (사유 문구 + 양 팀 + 카트 선수 이름) + 패널 안 한 줄 상태(`failMsg`, 상대 팀 바꾸면 초기화). 팀 B 로스터 하이드레이션을 `supabase.from('meta_players')` 직접 조회에서
+  `fetchMetaPlayersByRosterIds(roomId, ids, …)`(인스턴스 룸 호환)로 교체. `notify`/`supabase` import 제거.
+- `views/multi/league/settings/AdminTradeBlock.tsx` (client, 신규) — 팀 A 드롭다운(약어순) + 로스터 하이드레이션 후 `AdminTradePanel` 렌더, `onTradeComplete → reload()`.
+- `views/multi/league/LeagueSettingsView.tsx` (client) — 트레이드 설정 `</section>` 직후 `{activeTab === 'trade' && <AdminTradeBlock />}` + import.
+- `services/multi/actionLogService.ts` / `views/multi/league/settings/ActionLogTab.tsx` (client) — `admin_trade_failed` 라벨("어드민 트레이드 실패", 트레이드 카테고리, 빨간 톤) + 요약 "A ↔ B · 실패: 사유".
+- 토스트 갤러리 아티팩트(v16, https://claude.ai/artifact/1VCB1JD1BUNJjkaxCJ8EUk) — "그 외 에러" 섹션에서 어드민 트레이드 토스트 카드 제거(9→8), 카탈로그 2번을 "토스트 아님 · 세션 로그 기록" 안내로 교체.
+
+**Before**: 어드민 트레이드 UI 호출부 없음(죽은 코드). 실패 시 `notify.error` 토스트(제목 "어드민 트레이드 실패").
+
+**After**: 세션 설정 → 트레이드 탭 하단 "어드민 트레이드" 블록. 성공 → `admin_trade` 로그(RPC 내부, 기존), 실패 → `admin_trade_failed` 로그(클라이언트 호출) + 패널 상태줄. 토스트 없음.
+
+**검증**: `tsc --noEmit` 변경 파일 오류 0. 실 화면·실패 로그 기록은 사용자 E2E 미확인.
+
+**롤백 방법**: `DROP FUNCTION public.admin_log_failed_action(uuid, text, uuid[], text[], jsonb);` + 클라 6파일을 이 항목 이전으로(AdminTradePanel은 `notify.error(tradeErr, { source: 'admin.trade', title: '어드민 트레이드 실패' })` 복원).
+
+---
+
+## 2026-10-06 (1) — 세션 설정 "팀 전술" 탭 편집 모드 + admin_save_member_tactics RPC(어드민 전술 변경 로그)
+
+**배경**: 사용자 결정 — 어드민이 "팀 전술" 탭에서 참가자의 뎁스차트/전술값을 직접 조정할 수 있게 한다.
+(1) 동시 편집 충돌 허용, 마지막 저장이 이김. (2) 어드민이 이 탭에서 저장한 변경만 세션 로그에 기록.
+
+**변경 파일**:
+- `migrations/add_admin_save_member_tactics.sql` (server, Supabase 반영) — RPC `admin_save_member_tactics(p_room_id, p_member_user_id, p_tactics, p_depth_chart)`
+  SECURITY DEFINER. 리그 admin_user_id 또는 `is_global_admin()`만 허용. `room_members` UPDATE 후 옛 값과 diff(sliders/starters/stopperId/
+  depth_chart/rotationMap 변경 선수/minutesLimits/playerTactics)를 만들어 변경이 있을 때만 `league_action_log_write(... 'admin_tactics_update' ...)`.
+  반환 `{ok, changed, keys}`. 트리거 대신 RPC인 이유: room_members UPDATE 트리거로는 어드민이 자기 팀 전술 화면에서 저장한 것과 구분 불가.
+- `services/multi/roomPersistence.ts` (client) — `adminSaveMemberTactics(roomId, memberUserId, tactics, depthChart)` RPC 래퍼 신설(`saveMemberTactics` 바로 아래).
+- `views/multi/league/settings/TeamTacticsTab.tsx` (client) — 편집 모드 추가: "편집" 버튼 → 탭 4개(뎁스 차트/로테이션/팀 전술/개인 전술)에
+  `DepthChartEditor`/`RotationGanttChart`/`TacticsSlidersPanel`/`PlayerTacticsPanel`(삭제한 AdminTeamEditorView와 동일 부품) + 저장/보기로 버튼.
+  로스터는 `fetchMetaPlayersByRosterIds(room.id, roster, 'id, name, position, draft_year, base_attributes, tendencies')` → `mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, true)`.
+  전술이 없는 참가자는 `generateAutoTactics(team, undefined, true)`를 초안으로. 저장 성공 시 로컬 members 상태에도 반영. 멤버 전환/보기 전환/페이지 이탈 시 미저장 확인.
+  **버그 수정**: 멤버→팀 매칭이 `league_teams.id`(uuid) 기준이었는데 `room_members.team_id`는 **team_slug**라서 팀 이름/로스터가 전부 비어 있었음 → slug·id 둘 다 매칭하는 `teamByKey`로 교체.
+- `services/multi/actionLogService.ts` (client) — `ACTION_LABELS.admin_tactics_update = '어드민 전술 수정'`, "설정/운영" 카테고리에 추가.
+- `views/multi/league/settings/ActionLogTab.tsx` (client) — `admin_tactics_update` 요약("WAS · 슬라이더 1개 · 분 제한 선수명 …", 신규 생성 표시).
+
+**Before**: 팀 전술 탭은 읽기 전용. 어드민 전술 변경 경로 없음(AdminTeamEditorView 삭제 후). `ACTION_LABELS` 16종.
+
+**After**: 편집 모드에서 저장 → `room_members.tactics/depth_chart` 갱신(다음 경기부터 서버 simRunner가 읽음) + 로그 1행(변경 diff만).
+변경 없이 저장하면 로그 없음. 유저 본인의 전술 화면 저장(`saveMemberTactics`)은 기존대로 로그 없음.
+
+**검증**: `tsc --noEmit` 변경 파일 오류 0. DB: 어드민 JWT 흉내(`request.jwt.claims`)로 RPC 호출 → 로그 `actor_role=league_admin`,
+`details.sliders.pace {5→9}`, `minutes_limits.{id} {null→30}` 확인 후 ROLLBACK. 실 화면 E2E는 사용자 미확인.
+
+**롤백 방법**: `DROP FUNCTION public.admin_save_member_tactics(uuid, uuid, jsonb, jsonb);` + 클라 5파일은 이 항목 이전 상태로(`git checkout` 또는 편집 모드 블록 제거).
+
+---
+
+## 2026-10-05 (3) — 사이드바 "어드민: 팀 관리" 메뉴 + AdminTeamEditorView 삭제
+
+**배경**: 사용자 요청 — 세션 설정 "팀 전술" 탭(2026-10-05 (2))이 생겼으므로 사이드바의 어드민 전용 "모든 팀 전술 살펴보기" 버튼과 연결 화면을 제거.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` (client) — `{isAdmin && (<><Divider /><NavItem … label="어드민: 팀 관리" onClick={navigate('/multi/leagues/:id/admin/teams')} /></>)}` 블록 삭제, `Wrench` 아이콘 import 제거.
+- `App.tsx` (client) — `import AdminTeamEditorView` 및 `<Route path="/multi/leagues/:leagueId/admin/teams" …/>` 삭제.
+- `views/multi/league/AdminTeamEditorView.tsx` — 파일 삭제(git rm). 탭 5종: 뎁스차트/로테이션/팀 전술/선수 전술 편집 + 어드민 트레이드(`AdminTradePanel`).
+
+**Before**: 리그 어드민 사이드바 하단에 "어드민: 팀 관리" 메뉴 → 전 팀 전술 편집·어드민 트레이드 풀페이지.
+
+**After**: 메뉴·라우트·화면 없음. `/admin/teams` 접근 시 매칭 라우트 없음. 전술 열람은 세션 설정 "팀 전술" 탭(읽기 전용)으로 대체.
+
+**검증**: `tsc --noEmit` 변경 파일 신규 오류 0(App.tsx 105행 RosterMode 오류는 기존 것). `admin/teams`·`AdminTeamEditorView` 참조 코드 0건.
+
+**롤백 방법**: `git checkout HEAD -- views/multi/league/AdminTeamEditorView.tsx App.tsx components/MultiSidebar.tsx` (세 파일 모두 이번 세션 이전 커밋 상태엔 메뉴/라우트/화면이 존재).
+
+**주의**: `components/dashboard/AdminTradePanel.tsx`(어드민 수동 트레이드 UI)와 `leagueService.executeAdminTrade`·RPC `execute_admin_trade`는 이 화면이 유일한 호출부였으므로 **UI 진입점이 사라짐**(파일은 남겨둠, 미사용 상태).
+
+---
+
+## 2026-10-05 (2) — 세션 설정 "팀 전술" 탭 (참가자 뎁스차트/전술값 어드민 열람)
+
+**배경**: 사용자 요청 — 로그 탭 우측에 참가자들의 뎁스차트와 전술값을 볼 수 있는 어드민 전용 탭. 유저용 화면과 달리 값만 테이블로.
+
+**변경 파일**:
+- `views/multi/league/settings/TeamTacticsTab.tsx` (client, 신규) — `listRoomMembers(room.id)`로 `room_members.tactics`(GameTactics)·
+  `depth_chart`(DepthChart)를 읽고, 등장하는 선수 id 전부를 `fetchMetaPlayersByRosterIds(room.id, ids, 'id, name, position')`로 이름 해석
+  (인스턴스 룸 호환). 팀 약어 버튼으로 참가자 선택 → 표 3개: 뎁스차트(PG~C × 깊이), 전술 슬라이더 15종+zoneUsage(값 + `SLIDER_STEPS`
+  구간 라벨, 픽앤롤 수비는 드랍/헷지/블리츠), 로테이션·선수별 전술(출전 분 합계, 1~48분 구간 문자열, 분 제한, 휴식/복귀 체력,
+  파울/가비지/클러치 정책). 편집 없음. 조회 실패는 `notify.error(... source:'teamTactics.load')`.
+- `views/multi/league/LeagueSettingsView.tsx` (client) — `SettingsTabId`에 `'tactics'`, `SETTINGS_TABS` 끝(로그 다음)에 `{ id:'tactics', label:'팀 전술' }`,
+  `{activeTab === 'tactics' && <TeamTacticsTab room={room} leagueTeams={leagueTeams} />}`. TAB_SAVE_MAP 미등록.
+
+**Before**: 어드민이 다른 참가자의 전술/뎁스차트를 볼 방법 없음(본인 팀 전술 화면만). `SettingsTabId` 마지막 값 `'log'`.
+
+**After**: 세션 설정 → "팀 전술" 탭에서 참가자별 저장값 열람. DB/RLS 변경 없음(리그 어드민은 기존 `rm_admin_write`/`rm_select` 정책으로 이미 전 멤버 행 읽기 가능).
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0. 실 리그 렌더는 사용자 E2E 미확인.
+
+**롤백 방법**: `LeagueSettingsView.tsx`의 `'tactics'` 유니온·탭 항목·렌더 블록·import 4줄 제거, `TeamTacticsTab.tsx` 삭제.
+
+---
+
+## 2026-10-05 (1) — 리그 세션 감사 로그(league_action_logs) + 세션 설정 "로그" 탭
+
+**배경**: 사용자 요청 — 세션별로 리그 어드민만 볼 수 있는 행동 로그(영입/방출/트레이드/드래프트/설정 변경)를 남기고
+세션 설정 화면에 "로그" 탭을 둔다. 범위는 사용자 확정 A+B(로스터 변동 + 트레이드 제안/블록/요구 + 드래프트 픽 +
+리그 설정 변경 + 어드민 조작). 전술/뎁스차트 변경은 기록하지 않는다. 추정 용량 시즌당 1~2MB.
+
+**변경 파일**:
+- `migrations/add_league_action_logs.sql` (server, Supabase MCP로 3회 반영) — 신설 전부:
+  - 테이블 `league_action_logs`(room_id/league_id FK CASCADE, actor_user_id/actor_role(user|league_admin|global_admin|system)/
+    actor_email/actor_nickname 스냅샷, team_id, action, target_player_ids text[], target_team_ids uuid[], details jsonb, sim_date, created_at)
+    + 인덱스 3종(room+created_at, room+action, room+actor). RLS SELECT = `is_global_admin()` 또는 리그 `admin_user_id`.
+  - `league_action_log_write(p_room_id, p_team_id, p_action, p_player_ids, p_team_ids, p_details, p_actor, p_force_system)` —
+    SECURITY DEFINER. 행위자 = `coalesce(auth.uid(), p_actor)`, 역할 자동 판정, profiles에서 이메일/닉네임 복사,
+    `current_virtual_date(room)`로 sim_date. **실패해도 RAISE WARNING만 하고 원 트랜잭션을 깨지 않음.**
+  - 트리거 6종: `lal_transactions_ai`(fa_sign/waive, 선수 이름 포함) / `lal_offer_ai`(CONSTRAINT TRIGGER DEFERRABLE
+    INITIALLY DEFERRED — 커밋 시점에 `league_trade_offer_players`가 존재해야 하므로) / `lal_offer_au`(status 변경 →
+    accept/reject/cancel/expire/invalidate, expire·invalidate는 auth.uid() 없으면 system) / `lal_blocks_aiud`(set/unset,
+    unset은 선수가 아직 로스터에 있을 때만 — 트레이드 부수효과 삭제 제외) / `lal_teams_au`(trade_request_* 변경 전후 +
+    user_id 변경 → team_reassign) / `lal_draft_picks_ai`(team_id가 id 또는 slug, is_ai → system) /
+    `lal_league_settings_au`(설정 컬럼 allowlist 63종의 before/after, room = 리그의 최신 room).
+  - `execute_admin_trade` / `admin_time_jump` CREATE OR REPLACE — **본문은 기존과 동일**, RETURN 직전에
+    `league_action_log_write(... 'admin_trade' ...)` / `(... 'admin_time_jump' ...)` 한 줄씩 추가. `leagues.time_jump_log`는 그대로 유지.
+  - 백필: `league_transactions` 3건 + `league_trade_offers` 생성 2건/만료 2건 = 7건(details.backfilled=true).
+- `services/multi/actionLogService.ts` (client, 신규) — `listActionLogs({roomId, actions?, teamId?, actorUserId?, beforeId?, limit})`
+  id 내림차순 50건 커서 페이징, `ACTION_LABELS` 16종, `ACTION_CATEGORIES` 5묶음, `ROLE_LABELS`.
+- `views/multi/league/settings/ActionLogTab.tsx` (client, 신규) — 유형/팀/행위자 필터 + 테이블(시각·게임 날짜·행위자 배지·팀·유형·요약)
+  + 행 클릭 시 details JSON 펼침 + "더 보기". 조회 실패는 `notify.error(... source:'actionLog.load')`.
+- `views/multi/league/LeagueSettingsView.tsx` (client) — `SettingsTabId`에 `'log'` 추가, `SETTINGS_TABS` 마지막에 `{ id:'log', label:'로그' }`,
+  `{activeTab === 'log' && <ActionLogTab room={room} leagueTeams={leagueTeams} />}` 렌더(TAB_SAVE_MAP 미등록 = 저장 버튼 없음).
+
+**Before**: 사용자 행동 기록이 `league_transactions`(fa_sign/waive만, 멤버 전원 열람), `league_trade_offers`(상태만),
+`leagues.time_jump_log`(jsonb 배열)로 흩어져 있었고 블록/요구/설정 변경/어드민 트레이드는 아무 흔적이 없었음.
+`SettingsTabId = 'league'|'schedule'|'draft'|'trade'|'cap'|'roster'|'finance'|'engine'`.
+
+**After**: 위 전부가 `league_action_logs` 한 표에 쌓이고 어드민만 "로그" 탭에서 봄. 기존 표/RPC의 동작 자체는 변경 없음(트리거 추가뿐).
+
+**검증**: `tsc --noEmit` 새 오류 0(변경 전 68 → 후 54, 신규 3파일 무오류). DB: 백필 후 `select action, actor_role, count(*)` =
+fa_sign 1 / waive 2 / trade_offer_create 2 / trade_offer_expire 2. 실 리그에서 탭 렌더·트리거 발화는 사용자 E2E 미확인.
+
+**롤백 방법**:
+```sql
+DROP TRIGGER IF EXISTS lal_transactions_ai ON league_transactions; DROP TRIGGER IF EXISTS lal_offer_ai ON league_trade_offers;
+DROP TRIGGER IF EXISTS lal_offer_au ON league_trade_offers; DROP TRIGGER IF EXISTS lal_blocks_aiud ON league_trade_blocks;
+DROP TRIGGER IF EXISTS lal_teams_au ON league_teams; DROP TRIGGER IF EXISTS lal_draft_picks_ai ON draft_picks;
+DROP TRIGGER IF EXISTS lal_league_settings_au ON leagues;
+DROP FUNCTION IF EXISTS trg_lal_transactions, trg_lal_offer_insert, trg_lal_offer_status, trg_lal_blocks, trg_lal_teams, trg_lal_draft_picks, trg_lal_league_settings, lal_offer_details;
+-- execute_admin_trade / admin_time_jump: 본문에서 `PERFORM public.league_action_log_write(...)` 한 줄만 제거하고 CREATE OR REPLACE
+DROP FUNCTION IF EXISTS league_action_log_write; DROP TABLE IF EXISTS league_action_logs;
+```
+클라이언트: `SETTINGS_TABS`의 `log` 항목·`'log'` 유니온·`ActionLogTab` 렌더 3줄 제거, 신규 2파일 삭제.
+
+---
+
+## 2026-10-02 (16) — 코트 중앙 로고 기본 크기 2배 (100% = 220px)
+
+**변경 파일**: `components/multi/CourtPreview.tsx` — `LOGO_BASE_SIZE` 상수 신설 `110 → 220`(이전 200% 크기가 새 100%). 위치는 (470,250) 중심 유지.
+**DB 변경 없음**: `court_logo_scale` 기본 100/범위 50~200 그대로 → 기존 팀도 100%면 자동으로 새 기본 크기(220px). 최대 200% = 440px(코트 높이 500의 88%).
+**롤백**: `LOGO_BASE_SIZE`를 110으로.
+
+---
+
+## 2026-10-02 (15) — 코트 중앙 로고를 라인 아래 레이어로 이동
+
+**변경 파일**: `components/multi/CourtPreview.tsx` — 로고 `<image>` 블록을 센터 서클/센터라인 그룹 뒤에서 앞(배경·3점 안쪽·페인트존 다음, BasketLines·Center court 라인 그룹 이전)으로 이동. 이제 센터 라인/서클이 로고 위로 그려짐. UI 전용.
+**롤백**: 로고 블록을 파일 맨 끝(Center court `<g>` 뒤)으로 되돌림.
+
+---
+
+## 2026-10-02 (14) — 3점 라인 안쪽 채움색(court_three) 추가
+
+**배경**: 3점 라인 안쪽을 코트 배경과 별도 색으로 칠하고 싶다는 요청. 어드민 기본값(전역/팀별)과 팀 설정 모두 지원.
+
+**변경 파일**:
+- DB (적용 완료, `migrations/add_court_three.sql` — 함수 본문은 Supabase 마이그레이션 `add_court_three` 참고) — `league_teams.court_three text`(NULL=기본값 따라감),
+  `update_team_profile` 13-arg DROP → 14-arg(`p_court_three text default '__keep__'`: '__keep__'=유지, NULL=기본값으로 리셋, hex=지정).
+- `components/multi/CourtPreview.tsx` — `three?` prop: 3점 곡선+베이스라인으로 닫은 path(`M0,30h140s150,55,150,220-150,220,-150,220H0Z`)를 좌/우(미러)로 페인트존 아래 레이어에 fill. 배경과 같으면 생략.
+- `services/multi/courtDefaults.ts` — `CourtColors.three` 추가. 저장된 설정에 three가 없으면 같은 객체의 background로 폴백(=이전 모습 유지).
+- `pages/AdminAppSettingsPage.tsx` — "3점 라인 안쪽" 입력 + 미리보기 반영(전역/팀별 공용 폼).
+- `components/multi/TeamSettingsPanel.tsx` — 3점 안쪽 입력. 개별 지정 없을 때 기준색 = (팀이 코트 배경을 직접 바꿨으면 그 배경색, 아니면 기본값의 three). 기준색과 같게 저장하면 NULL.
+- `services/multi/leagueService.ts`(`courtThree?` — undefined는 payload에서 빠져 RPC 기본값 '__keep__'), `roomQueries.ts`(`court_three`), `newsFeedCards.tsx`, `MultiFullCourtChart.tsx`, `MultiGamePbpView.tsx`.
+
+**검증**: tsc 변경 파일 관련 에러 없음. 브라우저 확인 미수행.
+**롤백**: 코드 git revert; DB는 14-arg DROP 후 13-arg(`add_court_logo_scale.sql`) 재생성, `alter table league_teams drop column court_three;`.
+
+---
+
+## 2026-10-02 (13) — 코트 중앙 로고 크기 팀 설정
+
+**변경 파일**:
+- `migrations/add_court_logo_scale.sql` (DB, 적용 완료) — `league_teams.court_logo_scale smallint not null default 100`(check 50~200), `update_team_profile` 12-arg DROP → 13-arg(`p_court_logo_scale integer default null`, NULL=유지, 서버에서 50~200 clamp).
+- `components/multi/CourtPreview.tsx` — `logoScale?`(기본 100): 크기 `110*scale/100`, (470,250) 중심 유지. Before: 고정 `x=415 y=195 width=110 height=110`.
+- `components/multi/TeamSettingsPanel.tsx` — "로고 크기" 슬라이더(50~200%, step 5, 로고 Off면 비활성) + 미리보기 반영 + 저장 전송.
+- `services/multi/leagueService.ts`(`courtLogoScale` 인자), `services/multi/roomQueries.ts`(`court_logo_scale: number`), `views/multi/season/newsFeedCards.tsx`(가짜 row `100`), `MultiFullCourtChart.tsx`/`MultiGamePbpView.tsx`(홈팀 값 전달).
+
+**검증**: tsc 변경 파일 관련 에러 없음. 브라우저 확인 미수행.
+**롤백**: 코드 git revert; DB는 13-arg 함수 DROP 후 12-arg(`add_court_show_logo.sql`) 재생성, `alter table league_teams drop column court_logo_scale;`.
+
+---
+
+## 2026-10-02 (12) — 코트 중앙 로고 기본값 Off → On
+
+**변경**: DB `league_teams.court_show_logo` 컬럼 default `false` → `true`, 기존 행 전부 `true`로 갱신(미사용 기능이라 구분 불필요)
+(`migrations/court_show_logo_default_true.sql`, 적용 완료). `TeamSettingsPanel.tsx` 초기 state/폴백 `false` → `true`.
+**롤백**: `alter table league_teams alter column court_show_logo set default false; update league_teams set court_show_logo=false;` + 패널 state를 `false`로.
+
+---
+
+## 2026-10-02 (11) — 코트 중앙 홈팀 로고 표시 옵션 (팀 설정 On/Off)
+
+**배경**: 라이브 샷차트 코트 중앙에 홈팀 로고를 띄우는 옵션 요청. 팀 설정에서 On/Off, 기본 Off.
+
+**변경 파일**:
+- `migrations/add_court_show_logo.sql` (DB, 적용 완료) — `league_teams.court_show_logo boolean not null default false` 추가,
+  `update_team_profile` 11-arg 시그니처 DROP 후 12-arg(`p_court_show_logo boolean default null`, NULL=현재값 유지)로 교체.
+- `components/multi/CourtPreview.tsx` — `logoUrl?` prop, 센터 서클 안(415,195 / 110×110, opacity .9, pointer-events none)에 `<image>`.
+- `components/multi/TeamSettingsPanel.tsx` — "코트 중앙에 팀 로고 표시" 체크박스 + 미리보기 반영, 저장 시 `courtShowLogo` 전송.
+- `services/multi/leagueService.ts` — `updateTeamProfile(…, courtShowLogo: boolean|null = null)` → `p_court_show_logo`.
+- `services/multi/roomQueries.ts` — `LeagueTeamRow.court_show_logo: boolean`. `views/multi/season/newsFeedCards.tsx` 가짜 row에 `false`.
+- `views/multi/season/MultiFullCourtChart.tsx`, `MultiGamePbpView.tsx` — 홈팀의 `court_show_logo`면 `getRealTeamLogoUrl(homeTeamId)`를 `CourtPreview`에 전달.
+
+**검증**: tsc에서 변경 파일 관련 에러 없음(기존 무관 에러만 존재). 브라우저 확인 미수행.
+**롤백 방법**: 코드는 git revert. DB는 11-arg 함수를 (7) 시점 정의로 복원(`court_show_logo` 라인 제거, `p_court_show_logo` 인자 제거; 12-arg 함수는 먼저 DROP) 후 `alter table league_teams drop column court_show_logo;`.
+
+---
+
+## 2026-10-02 (10) — 어드민 코트 설정: 팀 컬러 칩 + 클릭 시 hex 복사
+
+**변경 파일**: `pages/AdminAppSettingsPage.tsx` — 팀 선택 시 드롭다운 아래에 팀 컬러(Primary/Secondary/Tertiary/Text, 중복 hex 제외) 칩 표시, 클릭하면 `navigator.clipboard`로 hex 복사 후 "복사됨" 1.5초 표시. UI 전용.
+**롤백 방법**: `getTeamColorChips`/`copyHex`/칩 JSX 블록 제거.
+
+---
+
+## 2026-10-02 (9) — 어드민 코트 색상 화면 공용화 (상단 드롭다운으로 전역/팀 선택)
+
+**배경**: (8)에서 전역 편집 폼 아래에 팀별 목록 섹션을 따로 둔 구조 → 하나의 편집 화면을 공용으로 쓰고 상단 드롭다운으로 대상(기본/각 팀) 선택하도록 변경.
+**변경 파일**: `pages/AdminAppSettingsPage.tsx` 전면 재작성(UI만, 서비스/DB/우선순위 로직 변경 없음). 이전 `TeamCourtDefaultsSection` 컴포넌트 제거.
+**동작**: 팀 선택 시 개별 지정 없으면 전역 값이 읽기 전용으로 표시 + "이 팀만 따로 지정" 버튼; 지정 후 편집/저장; "전역 기본값으로 되돌리기"는 즉시 저장. 드롭다운에서 개별 지정된 팀은 ● 표시.
+**롤백 방법**: git revert로 (8) 시점 파일 복원.
+
+---
+
+## 2026-10-02 (8) — 팀(슬러그)별 기본 코트 색상 (어드민 지정)
+
+**배경**: (7)의 전역 기본값에 더해, 팀마다 기본 코트 색을 따로 지정하고 싶다는 요청.
+
+**우선순위**: 팀 개별 저장값(`league_teams.court_*`) → 팀별 기본값(`app_settings.court_team_default_colors[team_slug]`) → 전역 기본값(`court_default_colors`).
+NULL(수정 안 한 팀)은 위 체인을 그대로 따라가므로 기존 팀에도 즉시 반영. DB 변경 없음(키 없으면 `{}`로 취급, 같은 `app_settings` 테이블에 첫 저장 때 upsert).
+
+**변경 파일**:
+- `services/multi/courtDefaults.ts` — 두 키를 한 번에 로드/캐시, `fetchTeamCourtDefaults`/`saveTeamCourtDefaults`(맵 전체 교체) 추가, `useCourtDefaults(teamSlug?)`가 팀별 기본값 ?? 전역 기본값 반환.
+- `components/multi/TeamSettingsPanel.tsx` — `useCourtDefaults(myTeam?.team_slug)` (저장 시 "기본값과 같으면 NULL" 비교 대상이 팀별 기본값이 됨).
+- `views/multi/season/MultiFullCourtChart.tsx` — `useCourtDefaults(homeTeamId)`.
+- `pages/AdminAppSettingsPage.tsx` — "팀별 기본 코트 색상" 섹션(실제 30팀 + 가상 34팀, 행 펼침 → 코트 미리보기/색 편집/"전역 기본값으로 되돌리기").
+
+**Before**: 모든 팀이 전역 기본값 하나를 공유.
+**After**: 슬러그별 override 가능(없으면 전역).
+
+**검증**: tsc 변경 파일 에러 없음. 브라우저 확인 미수행.
+**롤백 방법**: git revert (DB 정리는 `delete from app_settings where key='court_team_default_colors';`).
+
+---
+
+## 2026-10-02 (7) — 멀티 코트 색상 전역 기본값(어드민 설정) + NULL=기본값 따라감
+
+**배경**: 코트 기본색이 `DEFAULT_COURT_COLORS` 상수로 하드코딩 + 팀 생성 시 3컬럼에 복사 저장되던 구조.
+어드민이 전역 기본값을 정하고, 수정 안 한 팀(기존 팀 포함)은 기본값 변경을 자동으로 따라가도록 변경.
+
+**변경 파일**:
+- `migrations/add_app_settings_court_defaults.sql` (DB, 적용 완료) — `app_settings(key,value jsonb)` 신설(읽기 전체/쓰기 `is_global_admin()`),
+  `court_default_colors` 시드 `{"background":"#DDC8AD","paint":"#C3AC91","line":"#4A3728"}`, `league_teams` 중 옛 기본값 3종과 완전히
+  같은 행(62행 전부)을 `court_* = NULL`로 백필.
+- `services/multi/courtDefaults.ts` (신규) — `fetchCourtDefaults`/`saveCourtDefaults`/`useCourtDefaults`(모듈 캐시+구독), `FALLBACK_COURT_COLORS`.
+- `services/multi/leagueService.ts` — `DEFAULT_COURT_COLORS` 삭제, `COURT_DEFAULT_FIELDS`는 3필드 모두 `null`, `updateTeamProfile` court 인자 `string|null`.
+- `services/multi/roomQueries.ts` — `LeagueTeamRow.court_*`를 `string | null`로.
+- `components/multi/TeamSettingsPanel.tsx` — 코트 state를 override(null 허용)로, 표시값=`override ?? 전역기본`, 저장 시 전역기본과 같으면 NULL 전송.
+- `views/multi/season/MultiFullCourtChart.tsx` — 하드코딩 기본 hex 제거, `courtX || useCourtDefaults().x`.
+- `pages/AdminAppSettingsPage.tsx`(신규), `pages/EditorLayout.tsx`("기본 설정" 탭), `App.tsx`(`/admin/editor/app-settings` 라우트).
+
+**Before**: `DEFAULT_COURT_COLORS={background:'#DDC8AD',paint:'#C3AC91',line:'#4A3728'}`를 팀 insert 4곳이 복사 저장, 차트 props 기본값에도 같은 hex 하드코딩.
+**After**: 새 팀 court_*=NULL, 실제 색은 `app_settings.court_default_colors`에서 해석. 팀이 기본값과 다른 색을 저장해야만 팀별 값이 생김.
+
+**검증**: tsc에서 변경 파일 관련 에러 없음(App.tsx:106 RosterMode 에러는 기존 것). 실제 브라우저 확인은 미수행.
+
+**롤백 방법**: 코드는 git revert. DB는 `update league_teams set court_background='#DDC8AD', court_paint='#C3AC91', court_line='#4A3728' where court_background is null and court_paint is null and court_line is null;` 후 `drop table app_settings;` (※ 롤백 후 코드는 null을 처리하지 못하므로 코드와 함께 되돌릴 것).
+
+---
+
+## 2026-10-02 (15) — 리그 이벤트 토스트를 허용 목록 5종으로 축소 (사용자 지정)
+
+**변경 파일**: `hooks/useLeagueNotifications.ts` — `TOASTED_EVENT_TYPES = {injury, suspension, playoff_series_result,
+playoff_champion, finals_mvp}` 허용 목록 신설, league_events INSERT 처리에서 이 목록 밖 25종(trade, power_ranking, win_streak,
+player_streak, player_feat, game_result, mvp/dpoy/all_nba/all_def, allstar_* 10종, draft_lottery_result, play_in_bracket/result,
+playoff_bracket_confirmed, playoff_game_result)은 토스트를 보내지 않음(뉴스피드는 그대로). 수신 범위 필터(내 팀 관련/전체)는
+허용 5종 안에서만 적용. 갤러리 아티팩트 동기화(발생 종류 46 → 21).
+
+**롤백**: 허용 목록 제거(git diff).
+
+---
+
+## 2026-10-02 (14) — 트레이드 제안 알림 문구 변경 + 경기 결과 묶음 토스트 삭제 (사용자 지정)
+
+**변경 파일**: `hooks/useLeagueNotifications.ts`
+- 문구(팀 이름 제거): 도착 "트레이드 제안이 도착했습니다." / accepted "트레이드가 실행되었습니다." / rejected "트레이드 제안이
+  거절되었습니다." / expired "트레이드 제안이 만료되었습니다." / invalidated "트레이드가 취소되었습니다.". persistent 규칙은 그대로
+  (도착·실행만 수동 닫기). `teamName`/`josaI` 의존 제거.
+- "경기 N경기가 종료됐습니다" 묶음 토스트 삭제. 내 팀과 무관한 `game_result`는 수신 범위가 '리그 전체'여도 알리지 않음(내 팀 경기만
+  개별 알림). 갤러리 아티팩트 동기화(발생 종류 47 → 46).
+
+**롤백**: git diff 원복.
+
+---
+
+## 2026-10-02 (13) — "그 외 에러" 문구 정리: 블록 저장 통일·어드민 상세화·조회 실패 원인별 분류 + 오류 카탈로그 문서
+
+**배경**: 사용자 지정 — 블록 저장 실패는 통일 문구, 어드민 트레이드는 최대한 자세히, 조회 실패는 원인별(네트워크/DB/RPC/매핑)
+한국어 문구 + 쿼리 34종·RPC·매핑 예외 전수 정리.
+
+**변경 파일**:
+- `services/notifications/queryErrorCatalog.ts` (신규) — `QUERY_LABELS`(34종 키→한국어 라벨), `classifyQueryError()`
+  (네트워크 정규식 → PostgREST 오류 객체(P0001=RPC RAISE, 그 외 DB) → JS Error=매핑), `formatQueryErrorMessage()`
+  ("{무엇}을/를 불러오지 못했습니다. {원인}", 을/를 받침 판정 자체 구현). RPC 부류만 원문 코드 60자 병기.
+- `services/notifications/errorCollector.ts` — `reportQueryError`가 위 카탈로그 문구 사용(원문은 console.error에만).
+- `views/multi/season/MyTradeBlockModal.tsx` — 저장 실패 토스트 "트레이드 블록 저장에 실패했습니다. 잠시 후 다시 시도하세요."
+  로 통일, 원문은 `console.error('[tradeBlock.save]')`.
+- `services/multi/leagueService.ts` `executeAdminTrade` — 예외 6종(기존 4 + team_a/b_not_found) 전부 설명문 + "(서버 응답:
+  원문)" 병기, 네트워크/기타 분기 추가.
+- 전수 카탈로그(쿼리 34종 라벨·소스·매핑 함수·파일, RPC 6종에 자체 RAISE 코드 없음, 매핑 함수에 throw 없음)는 사용자 지시로
+  저장소 문서가 아니라 토스트 케이스 갤러리 아티팩트(https://claude.ai/artifact/1VCB1JD1BUNJjkaxCJ8EUk)의 "오류 카탈로그" 섹션에 수록.
+
+**검증**: `tsc --noEmit` 관련 오류 0. tsx 단위 점검 8케이스(Chrome/Safari 네트워크, 57014·42501·PGRST301 → DB, P0001 → RPC
+코드 병기, Error → 매핑, null → 알 수 없음, 라벨 없는 키 → "데이터", 받침 없는 라벨 → "를").
+
+**롤백 방법**: git diff 원복(클라이언트 전용).
+
+---
+
+## 2026-10-02 (12) — 트레이드 오류 문구 7종 라이팅 변경 (사용자 지정)
+
+**변경 파일**: `services/multi/tradeService.ts` `mapTradeOfferError()` — 토스트/제안서 하단 실패 사유에 쓰이는 문구.
+
+| 코드 | Before | After |
+|---|---|---|
+| trade_disabled | 이 리그는 트레이드가 비활성화되어 있습니다. | 리그의 트레이드가 비활성화 상태입니다. |
+| trade_deadline_passed | 트레이드 데드라인이 지나 더 이상 트레이드를 진행할 수 없습니다. | 트레이드 데드라인이 경과했습니다. |
+| target_not_human | AI가 운영하는 팀에는 제안을 보낼 수 없습니다. | 매니저가 있는 팀에만 제안을 보낼 수 있습니다. |
+| player_not_tradeable | 상대가 트레이드 가능으로 지정하지 않은 선수입니다. | 트레이드 불가능 선수입니다. |
+| stale_offer | 선택된 선수가 그 사이 다른 트레이드로 팀을 떠났습니다. 제안이 무효화됩니다. | 선수가 이미 트레이드 되었습니다. |
+| roster_overflow | 트레이드 성사 시 정규 계약 슬롯(로스터 정원)을 초과하는 팀이 있어 서버에서 거부됐습니다. | 트레이드 성사 시 로스터 정원이 초과되어 트레이드 실행이 불가능합니다. |
+| salary_match_failed | 샐러리 매칭 규칙(캡/에이프런)을 위반하는 트레이드입니다. | 샐러리 규칙 위반으로 트레이드가 불가능합니다. |
+
+나머지 13종은 그대로. 토스트 케이스 갤러리(아티팩트)도 동일 문구로 갱신. 롤백은 Before 문구로.
+
+---
+
+## 2026-10-02 (11) — 메시지함 제안서 본문 하단에 수락/거절/취소 실패 사유 표시
+
+**배경**: 사용자 요청 — 트레이드 처리가 서버에서 거부되면 토스트 외에 제안서 본문에도 이유를 남길 것(토스트는 닫히면
+사라지므로 맥락 안에 상태 안내로 유지).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `respondFailures: Record<offerId, string>` state 신설. `handleRespond`: 시도 전 해당 제안의 이전 실패 제거, 실패 시
+  토스트(`notify.error`) + 해당 제안 id에 사유 저장, 성공 시 제거(재시도 성공하면 사라짐).
+- `renderOfferLetter`: 버튼 블록 바로 위에 `처리 실패: <사유>`(빨간 텍스트 + ShieldAlert) 표시. 사유 문구는 기존
+  `mapTradeOfferError()` 20종 또는 서버 원문.
+
+**검증**: `tsc --noEmit` 관련 오류 0. 실동작은 거부 시나리오로 확인 필요.
+**롤백 방법**: git diff 원복.
+
+---
+
+## 2026-10-02 (10) — 토스트 5단계: 에러 알림 localStorage 미러 + 로그아웃 비우기 + 리그 알림 수신 범위 UI
+
+**배경**: 계획 5단계(§2-3, §3, §4-2, §5-5).
+
+**변경 파일**:
+- `services/notifications/notificationStore.ts` — 미러 추가. 키 `nba-gm-sim-notifications`(`{v:1, items}`), 대상은
+  `kind==='error' && persistent`만(리그 알림·경고·오프라인 등 제외), 최근 50건·7일, 각 항목에 `visible`(아직 안 닫았는지)
+  저장. `emit()`마다 `saveMirror()`(실패 시 절반으로 줄여 1회 재시도 후 포기), 모듈 로드 시 `loadMirror()`(버전 불일치·
+  파싱 실패는 키 삭제, 만료분 제외, 닫지 않았던 것만 visible로 복원하되 표시 상한 규칙 적용). 전체 삭제 시 키 제거.
+  다른 탭과 동기화하지 않음(명시).
+- `hooks/useAuth.ts` — `SIGNED_OUT` 분기에서 `clearNotifications()`(메모리+미러) — 다음 사용자에게 이전 알림 노출 방지.
+- `views/multi/season/MultiNewsFeedView.tsx` — 타입 필터 행 아래에 "알림 범위: 내 팀 관련 / 리그 전체 / 끔" 세그먼트
+  (`get/setLeagueNotificationScope`, localStorage `nba-gm-sim-notif-league-scope`, 기본 내 팀 관련). 브라우저별 설정.
+
+**검증**: `tsc --noEmit` 관련 오류 0, `vite build` 통과. tsx 단위 점검(localStorage 셈): 복원 시 열려 있던 에러만 visible,
+닫았던 것은 history만, 7일 지난 것 제외; 발행 후 저장 항목은 error만; 닫으면 visible=false로 갱신; 전체 삭제 시 키 제거.
+브라우저 실동작(새로고침 후 에러 토스트 유지)은 확인 필요.
+
+**롤백 방법**: git diff 원복(클라이언트 전용). 저장된 키는 `localStorage.removeItem('nba-gm-sim-notifications')`.
+
+---
+
+## 2026-10-02 (9) — 토스트 4단계: 전역 오류 수집 (React Query 실패·window 예외·오프라인·401 보류)
+
+**배경**: 계획 4단계(§2-2, §5-1, §5-2). 조회 실패가 console에만 남던 것(어제 선수 풀 사고의 침묵 실패)과 처리되지 않은
+예외를 토스트로.
+
+**변경 파일**:
+- `services/notifications/errorCollector.ts` (신규) — `reportQueryError(error, queryKey, queryHash)`: 같은 메시지 30초
+  중복 억제, 알림 모듈 자체 예외 제외(루프 방지), 오프라인 중 억제, 401/JWT 만료(`status 401`·`PGRST301`·메시지
+  정규식)는 20초 보류 후 같은 queryHash 성공(`resolveHeldQueryError`)이 없을 때만 "세션 오류" 1회. 그 외는
+  "데이터 조회 실패: 데이터를 불러오지 못했습니다. (원문)" + source `query:<queryKey[0]>`.
+  `installGlobalErrorHandlers()`(1회 설치): window `error`(앱 번들 밖 출처·ResizeObserver 경고 무시),
+  `unhandledrejection`(CancelledError/AbortError/401 계열 무시), `offline`→"연결 끊김" persistent(dedupeKey
+  'offline'), `online`→그 알림 닫고 "연결이 복구됐습니다" transient. `isOffline()` export.
+- `index.tsx` — `QueryCache.onError → reportQueryError`, `onSuccess → resolveHeldQueryError`, 루트 렌더 전
+  `installGlobalErrorHandlers()`.
+
+**Before** (`index.tsx`): `onError: (error, query) => console.error(...)` 만.
+**After**: 위와 같이 수집기로 위임(console.error는 수집기 안에서 유지).
+
+**검증**: `tsc --noEmit` 관련 오류 0, `vite build` 통과. tsx 단위 점검: 같은 메시지 2회 → 토스트 1개, 401은 즉시 알림
+없음(보류) + 성공 시 취소, isAuthExpiryError 3케이스, null 오류 → "알 수 없는 오류"로 발행, source 태그 확인.
+브라우저 실동작(오프라인 토글 → DevTools Network Offline)은 확인 필요.
+
+**롤백 방법**: 신규 모듈 삭제 + index.tsx git diff 원복.
+
+---
+
+## 2026-10-02 (8) — 토스트 3단계: 리그 진행 알림 공급원 연결 (트레이드 제안 도착/결과, 리그 이벤트)
+
+**배경**: 계획 3단계(§4). 멀티엔 인박스가 없어 "내게 온 알림"이 배지·뉴스피드뿐이던 것을 토스트로.
+
+**변경 파일**:
+- `hooks/useLeagueNotifications.ts` (신규) — Realtime 공급원 3개를 한 훅에: (A) `league_events` INSERT(room 필터)를
+  400ms 창에 모아 수신 범위 필터('my_team' 기본/'all'/'off', localStorage `nba-gm-sim-notif-league-scope`, UI는 5단계)
+  → 내 팀 무관 `game_result` 2건 이상은 "경기 N경기가 종료됐습니다" 묶음 1개, 나머지는 `buildNewsTitle()`(실패 시
+  payload.headline) 한 줄로 발행. 링크: 경기 결과→경기 상세, trade→히스토리, 그 외→뉴스피드. persistent는 내 팀의
+  플레이오프 시리즈/우승/로터리 결과만. (B) `league_trade_offers` INSERT(to_team_id=내 팀) → "제안 도착" persistent,
+  메시지함 링크. (C) UPDATE(from_team_id=내 팀) → accepted persistent / rejected·expired·invalidated transient,
+  cancelled·pending은 무시. dedupeKey `levt:<id>`/`offer:<id>:<status>`. §5-4: roomId 변경/언마운트 시
+  `clearLeagueNotifications(roomId)`. 콜백은 room_id 불일치 행을 버림(권한 밖 방어).
+- `hooks/useLeagueHeadlines.ts` — `mapRow()` export(토스트 훅 재사용).
+- `views/multi/league/LeagueLayout.tsx` — `useLeagueNotifications({ roomId, leagueId, leagueTeams, myTeam })`를 한 번 마운트
+  (myTeam = leagueTeams 중 user_id === 세션 유저). 사이드바/헤더의 배지 훅(`usePendingTradeCount`)은 그대로.
+
+**검증**: `tsc --noEmit` 관련 오류 0, `vite build` 통과. Realtime publication/RLS 확인은 아래 (8) 검증 쿼리. 실동작은
+리그에서 트레이드 제안을 보내/받아보는 E2E 필요.
+
+**[같은 날 후속] 링크 경로 오타 수정**: 트레이드 화면 라우트는 `/season/transaction`(App.tsx)인데 훅이 `/season/trade?tab=…`로
+링크를 만들고 있었음(3곳) → `transaction`으로 교정. 3단계 검증 때 라우트를 대조하지 않은 실수.
+
+**롤백 방법**: 신규 훅 삭제 + LeagueLayout·useLeagueHeadlines git diff 원복(클라이언트 전용).
+
+---
+
+## 2026-10-02 (7) — 토스트 2단계 마무리: FA·트레이드 블록 모달·어드민 트레이드 패널 배너 제거 → notify.error
+
+**배경**: 사용자 "FA 화면은 왜 배너를 유지하지?" — 순서상 뒤로 뒀던 나머지 배너도 같은 방침(제거 후 통합)으로 즉시 교체.
+
+**변경 파일**:
+- `views/multi/season/MultiFreeAgentView.tsx` — `actionError` state·배너 제거, `handleSign` 실패 → `notify.error(error,
+  { source: 'fa.sign', title: 'FA 서명 실패' })`. `ShieldAlert` import 제거.
+- `views/multi/season/MyTradeBlockModal.tsx` — `saveError` state·배너 제거, `handleSaveTradeable` 실패 →
+  `notify.error(firstError, { source: 'tradeBlock.save', title: '트레이드 블록 저장 실패' })`. `ShieldAlert` import 제거.
+  (어제 분리 때 부모 공용 actionError 대신 로컬 saveError로 바꿨던 것을 하루 만에 토스트로 다시 교체.)
+- `components/dashboard/AdminTradePanel.tsx` — `error` state·배너 제거, 실행 실패 → `notify.error(tradeErr,
+  { source: 'admin.trade', title: '어드민 트레이드 실패' })`. `AlertTriangle` import 제거.
+
+**유지한 곳**: `views/multi/league/AdminTeamEditorView.tsx`의 "담당 계정(room_members) 정보가 없어 저장이 불가능합니다"
+띠 — 이건 이벤트(실패)가 아니라 **조건이 유지되는 동안 계속 보여야 하는 상태 안내**라 토스트(일회성·닫힘)로 바꾸면
+사용자가 닫은 뒤 왜 저장이 안 되는지 알 수 없게 됨. 인라인 상태 안내로 남긴다(계획 §2-2의 "에러 배너 6곳"
+중 성격이 다른 1곳).
+
+**검증**: `tsc --noEmit` 관련 오류 0, 세 파일에 setError/setActionError/setSaveError 잔존 0.
+
+**롤백 방법**: git diff 원복(클라이언트 전용).
+
+---
+
+## 2026-10-02 (6) — 토스트 2단계: 멀티 트레이드 화면 오류 배너 2곳 제거 → notify.error로 통합
+
+**배경**: 계획 2단계. 사용자 결정 "배너 제거 후 토스트로 통합"(병행 없이 바로 교체).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `actionError` state 제거, 새 제안 탭·메시지함 탭 상단의 빨간 배너 JSX 2곳 제거(`ShieldAlert` import는 빈 상태
+  아이콘에서 계속 사용).
+- `handleRespond`: 실패 시 `notify.error(error, { source: 'trade.respond.<accept|reject|cancel>', title: '트레이드 처리 실패' })`.
+- `handleSend`: 실패 시 `notify.error(error, { source: 'trade.create', title: '트레이드 제안 실패' })`.
+  문구는 기존 `mapTradeOfferError()` 결과 그대로(roster_overflow/salary_match_failed 등). 링크는 notify.error 기본값
+  (현재 주소 자동 기록)이라 다른 화면으로 간 뒤에도 "해당 화면으로 이동"으로 돌아올 수 있음.
+
+**Before**:
+```tsx
+if (error) { setActionError(error); return; }
+…
+{actionError && (<div className="… bg-red-950/40 border-red-900/40 …"><ShieldAlert … /> {actionError}</div>)}
+```
+**After**:
+```tsx
+if (error) { notify.error(error, { source: 'trade.create', title: '트레이드 제안 실패' }); return; }
+```
+
+**검증**: `tsc --noEmit` 관련 오류 0. 실제 거부 토스트는 화면에서 수락 거부(샐러리 매칭/정원) 시나리오로 확인 필요.
+
+**롤백 방법**: git diff 원복(클라이언트 전용).
+
+---
+
+## 2026-10-02 (5) — 전역 토스트 알림 센터 1단계: 저장소 + 발행 도우미 + 표시 컴포넌트 + 루트 마운트
+
+**배경**: `docs/plan/toast-notification-center-plan.md`(ZenGM notify/Notifications 분석 기반) 작업 순서 1단계.
+흩어진 빨간 오류 배너와 리그 진행 알림을 우측 하단 토스트 하나로 모으기 위한 기반. 이 단계에선 아직 어떤
+화면도 발행하지 않는다(연결은 2단계~).
+
+**변경 파일**:
+- `services/notifications/notificationStore.ts` (신규) — React 비의존 저장소. `AppNotification`(id/kind/title/message/
+  link/source/persistent/createdAt/dedupeKey/roomId/leagueEvent), `pushNotification`(절대 throw 안 함)/`removeNotification`/
+  `clearNotifications`/`clearLeagueNotifications(roomId?)`(계획 §5-4)/`subscribe`/`getSnapshot`, `normalizeMessage`(문자열·
+  Error·Supabase 오류 객체·숫자 → 문자열, 300자 절단). 표시 규칙 ZenGM 동일: 최대 5개, persistent 보존, persistent만
+  4개 초과 시 가장 오래된 것 밀어냄, dedupeKey 교체, `document.hidden`이면 transient 생략, 라이브 중계 경로
+  (`/season/game/`)에선 league transient 폐기(계획 §5-3). history 50건 별도 보관.
+- `services/notifications/notify.ts` (신규) — `notify.error/warning/info/success/league`. error는 persistent 기본 + 링크
+  미지정 시 현재 주소 자동 기록. 개발 빌드에서 `window.__notify` 디버그 손잡이(임시 트리거 코드 재발 방지).
+- `components/common/NotificationCenter.tsx` (신규) — `useSyncExternalStore` 구독, 우측 하단 `fixed z-[600]`(Modal
+  z-[500] 위), kind별 색/아이콘, 개별 ×, 스택 있을 때만 "전체 닫기 (N)", transient 8초 + 호버 일시정지(남은 시간
+  보존), link가 현재 경로와 다를 때만 "해당 화면으로 이동" 버튼(navigate), `aria-live="polite"`, `bottomOffset` prop.
+- `index.css` — `.toast-enter` 키프레임(이 프로젝트엔 tailwindcss-animate 플러그인이 없어 Modal의 `animate-in`
+  클래스는 실제로 동작하지 않음을 이번에 확인 — 직접 정의), `prefers-reduced-motion` 대응.
+- `index.tsx` — `<App />` 옆에 `<NotificationCenter />` 마운트(BrowserRouter·PersistQueryClientProvider 안쪽).
+
+**검증**: `tsc --noEmit` 관련 오류 0(`import.meta.env`는 vite/client 타입 선언이 없어 안전 접근자로 우회), tsx 단위
+점검 — transient 7개→5개 유지, persistent 6개→4개(자리 1칸 확보), dedupeKey 교체 1개, normalizeMessage 5케이스,
+빈 메시지 null, clearLeagueNotifications(A)가 A만 제거. 브라우저에서는 콘솔 `__notify.error('테스트')`로 확인 가능.
+
+**롤백 방법**: 신규 3파일 삭제 + index.tsx/index.css 변경분 git diff 원복(클라이언트 전용).
+
+---
+
+## 2026-10-02 (4) — [임시] 트레이드 화면 오류 배너 디자인 확인용 데모 트리거 (확인 후 제거 예정)
+
+`views/multi/season/MultiFrontOfficeView.tsx`: `actionError` state 바로 아래에 `useSearchParams()`로 `demoError` 쿼리를
+읽어 있으면 `setActionError('트레이드 성사 시 … 서버에서 거부됐습니다. (디자인 확인용 샘플)')`을 호출하는 useEffect 추가.
+사용자가 수락 거부 배너를 한 번도 본 적이 없어 확인 요청. **2026-10-02 같은 날 확인 완료 후 제거함(블록 + searchParamsForDemo 선언 삭제, git diff 기준 원복).** 실제 동작 영향 없음.
+
+---
+
+## 2026-10-02 (3) — 멀티 트레이드 로스터 정원(정규 계약 슬롯) 서버 강제 (체크리스트 8번)
+
+**배경**: 정원 초과 검사가 클라이언트 `tradeSendErrors`에만 있어 옛 빌드/직접 RPC 호출로 `max_roster_size`를 넘는
+트레이드가 성사될 수 있었음(`docs/plan/multi-trade-cba-gaps.md` 8번).
+
+**변경 파일**:
+- `migrations/add_trade_roster_limit_check.sql` (server, 신규, Supabase MCP 적용) — 헬퍼 `team_regular_contract_count(room_id,
+  roster jsonb)` 신설 + `respond_trade_offer` 재정의(샐러리 매칭 검증 뒤·로스터 스왑 UPDATE 앞에 정원 검사)
+- `services/multi/tradeService.ts` (client) — `mapTradeOfferError()`에 `roster_overflow` → "트레이드 성사 시 정규 계약
+  슬롯(로스터 정원)을 초과하는 팀이 있어 서버에서 거부됐습니다." 추가
+
+**규칙**: 정규 계약 = 계약 type이 `two_way`가 아닌 선수(계약 없는 선수는 정규). 계약 조회는 `player_current_salary()`와
+같은 `coalesce(room_player_state.contract, meta_players.base_attributes->'contract')` — FA RPC(`roster_full`)는
+room_player_state만 보지만 standard 모드에서 실제 계약을 그대로 쓰는 선수는 rps 행이 없어 meta까지 봐야 투웨이가
+제외됨(클라는 오버라이드 병합된 Player.contract를 보므로 이쪽이 미러). 성사 후 `정규 − 내보내는 정규 + 받는 정규 >
+coalesce(leagues.max_roster_size, 15)`이면 `roster_overflow: <team_slug>`. **관리자 바이패스 없음**(샐러리 매칭과 달리 —
+정원 초과는 로스터 불변식 위반). 클라 검사는 "이미 초과한 팀" 조건이 하나 더 있지만 성사 후 수식에 포함되므로
+결과는 동일(초과 팀이 트레이드로 정원 안으로 들어오는 경우만 클라가 더 엄격).
+
+**Before** (SQL accept 분기): 샐러리 매칭 검증 → 바로 로스터 스왑.
+**After**:
+```sql
+v_a_regular := team_regular_contract_count(room, v_a.roster); v_b_regular := ...(v_b.roster);
+v_a_out_regular := ...(v_out); v_b_out_regular := ...(v_in);
+IF v_a_regular - v_a_out_regular + v_b_out_regular > v_max_roster THEN RAISE EXCEPTION 'roster_overflow: %', v_a.team_slug; END IF;
+IF v_b_regular - v_b_out_regular + v_a_out_regular > v_max_roster THEN RAISE EXCEPTION 'roster_overflow: %', v_b.team_slug; END IF;
+```
++ accept 분기 leagues SELECT에 `coalesce(max_roster_size, 15)` 추가.
+
+**검증**: 마이그레이션 적용 성공, `tsc` 관련 오류 0. AS 2 리그 팀별 `regular_count` = 로스터 길이(투웨이 없음), 투웨이
+2명 배열 → 0 확인(아래 쿼리). 실제 거부 경로는 E2E 필요.
+
+**롤백 방법**: `migrations/add_trade_minimum_salary_exception.sql`의 `respond_trade_offer` 재적용 + `DROP FUNCTION
+team_regular_contract_count`. 클라 매핑은 git diff.
+
+---
+
+## 2026-10-02 (2) — 트레이드 최저연봉 예외 판정을 플래그 단일 기준으로 (금액 조건 제거) + Fly 서버 재배포 v164
+
+**배경**: 2026-10-01 (2)의 판정은 "signingType='minimum_exception' OR 연봉 ≤ 캡×2.35%". 금액 조건은 실제 계약에
+플래그가 없던 시절의 안전망이었고, 실제 계약 서명 유형 백필(2026-10-01 (3)) + C그룹 정리(2026-10-02)로 플래그가
+정확해져 사용자 결정으로 제거. 레전드 수기 계약($1M 등)이 금액 때문에 예외로 잡히던 부작용도 함께 해소.
+
+**변경 파일**:
+- `migrations/fix_minimum_contract_flag_only.sql` (server, 신규, Supabase MCP 적용) — `player_is_minimum_contract()`
+  본문을 플래그 검사만으로 교체(p_cap 인자는 호출부 호환용 유지)
+- `services/multi/tradeSalaryMatching.ts` (client 미러) — `isMinimumContractPlayer()` 플래그만 검사(cap 인자 선택적·미사용),
+  `sumMatchableIncoming()` 동일, `MINIMUM_CONTRACT_CAP_PCT_MAX` import 제거, 4개 구간 안내 문구
+  "최저연봉 계약 선수(최저연봉 예외 또는 캡 2.35% 이하)는…" → "최저연봉 예외 계약 선수는 매칭 없이 받을 수 있습니다."
+- `services/contracts/draftSalaryScale.ts` / `server/src/shared/contracts/draftSalaryScale.ts` — 상수 주석만(이제 생성 시
+  플래그 부여 기준으로만 쓰임)
+
+**Before** (SQL): `RETURN v_salary > 0 AND p_cap IS NOT NULL AND v_salary <= p_cap * 0.0235;` 폴백 포함
+**After**: `RETURN v_contract IS NOT NULL AND v_contract->>'signingType' = 'minimum_exception';`
+
+**배포**: `cd server && flyctl deploy --remote-only` → v164(2026-10-02). 이로써 2026-10-01 (2)의 "새 대체 모드 리그
+드래프트 계약에 플래그 미부여" 공백 해소 — 생성 시 `buildDraftScaleContract`가 pct ≤ 2.35%면 플래그를 붙임.
+같이 배포된 서버 변경: `server/src/shared/contracts/contractLifecycle.ts`(신규), types/player.ts `nextContract`,
+draftSalaryScale `isEligibleForStandardPool` nextContract 체인.
+
+**검증**: `tsc --noEmit` 관련 오류 0, 마이그레이션 적용 성공, Fly 머신 health check 통과.
+
+**롤백 방법**: SQL은 `migrations/add_trade_minimum_salary_exception.sql`의 헬퍼 정의 재적용, 클라는 git diff.
+서버는 `flyctl releases` → v163으로 `flyctl deploy --image` 롤백. 미러 쌍이라 함께 되돌릴 것.
+
+---
+
+## 2026-10-02 — C그룹(투웨이 금액인데 free_agent) 13명 계약 정정 (데이터)
+
+**배경**: 최저연봉 판정 스크립트 C그룹 — 금액 $636,435(2025-26 투웨이)인데 type free_agent. 사용자 지시로 현재
+상태에 맞게 정리(백업: `scripts/output/contract_backups/2026-10-02_twoway_group_c_before.json`).
+
+**변경(DB `meta_players`)**:
+- 계약 삭제 + base_team_id null (6명): A.J. 로슨(tor), 라클란 올브리히, 올랜도 로빈슨, 자미르 영(mia), 커티스 존스,
+  케빈 맥컬러 주니어(nyk) — 괄호는 지운 이전 팀
+- 투웨이 전환(`{"type":"two_way","years":[678882],"yearSeasons":[2026],"currentYear":0}`) + 팀 지정 (7명):
+  데이비드 존스 가르시아 sa, 로코 지카르스키 min, 블라디슬라프 골딘 mia, 일라이자 하클리스 det, 자본 스몰 mem,
+  케일럽 러브 phi, 트레이 제이미슨 III tor. 연봉 678,882는 2026-10-01 (3)과 같은 통일값.
+
+**검증**: 적용 후 13명 조회로 확인. **롤백**: 백업 JSON으로 contract/base_team_id 복원.
+
+---
+
+## 2026-10-01 (5) — 어드민 선수 편집 화면에 "다음 계약(연장 예약)" 편집기 추가
+
+**배경**: (4)에서 `contract.nextContract` 슬롯을 도입했는데 어드민 > 선수 편집(`pages/PlayerEditorPage.tsx`)은 Base/CO/
+계약 이력만 그려서 미래 계약이 보이지 않음(사용자 리포트).
+
+**변경 파일**: `pages/PlayerEditorPage.tsx`
+- 핸들러 신설: `updateNextContract`(draft.contract.nextContract만 갱신하는 공통 래퍼), `addNextContract`(기본값
+  `{years:[0], yearSeasons:[현재 계약 마지막 시즌+1], currentYear:0, type:'extension'}`), `removeNextContract`,
+  `setNextContractYear/YearSeason/YearOption/Field`, `addNextContractYear`, `removeNextContractYear`(옵션 연차 재조정 포함).
+- JSX: "Base 계약" Section 안 ContractForm 아래에 호박색 테두리 블록 — 현재 계약이 있을 때만 표시, 다음 계약이 있으면
+  `ContractForm`(onSetSalary 없이 — 계약 이력처럼 "현재 연차" 행 숨김) + "다음 계약 삭제", 없으면 "+ 다음 계약 추가".
+- 저장은 기존 `handleSave → updateBaseAttributes(id, draft)`가 draft.contract를 통째로 올리므로 추가 작업 없음.
+  CO 계약(custom_overrides.contract)의 nextContract는 편집기 미제공(필요 시 같은 패턴으로 추가).
+
+**같이 고친 기존 버그**: `setCareerHistoryMsg`가 선언 없이 `handleSelect`(선수 선택)·`handleCsvApply`·
+`handleAdvCsvApply`에서 호출되고 있었음(tsc 오류 3곳). handleSelect가 async라 마지막 줄의 ReferenceError가 unhandled
+rejection으로 삼켜져 화면은 동작했지만 선수 선택마다 콘솔 오류가 났고 CSV 적용 안내 문구는 표시된 적이 없음.
+`const [careerHistoryMsg, setCareerHistoryMsg] = useState<string | null>(null)` 선언 + 정규 CSV "적용" 버튼 옆에 문구 표시.
+
+**검증**: `tsc --noEmit` — 이 변경으로 생긴 오류 0, 위 수정으로 기존 오류 9건 → 6건(`injuryType/returnDate` 삭제 시
+타입 2곳, `ModuleScores` 캐스팅 4곳은 변경 전부터 동일, 미수정).
+
+**롤백 방법**: git diff로 되돌리기(클라이언트 전용).
+
+---
+
+## 2026-10-01 (4) — 계약 모델에 `nextContract`(이미 체결된 다음 계약) 슬롯 도입 + 병합 연장 13명 분리 (client/server 미러)
+
+**배경**: 단일 `PlayerContract`라 미래 연장이 현재 계약 뒤에 이어붙어 있었고(2026-09-17 스크랩, 13명), 니미아스
+퀘타처럼 현재 계약(non_bird)과 연장(버드)의 서명 유형이 다르면 하나만 적을 수 있었음. 사용자 결정(2026-10-01):
+"지금 미리 준비". 연차 진행 트리거(멀티 UFA/RFA 다음 단계)가 아직 없어 승격 로직은 헬퍼로 준비하고 싱글 오프시즌에만 연결.
+
+**변경 파일**:
+- `types/player.ts` (client) / `server/src/shared/types/player.ts` (server 미러) — `PlayerContract.nextContract?: PlayerContract`
+- `services/contracts/contractLifecycle.ts` (client, 신규) / `server/src/shared/contracts/contractLifecycle.ts` (server 미러, 신규 —
+  import 경로만 다름) — `advanceContractSeason()`(currentYear+1 → 끝이면 nextContract 승격 또는 만료),
+  `contractCoversSeason()`, `flattenRemainingYears()`(현재+다음 계약을 "현재 시즌+i" 배열로), `hasNextContract()`
+- `services/dataMapper.ts` — `buildPlayerContract` → `normalizeRawContract()`로 분리, 중첩 nextContract 재귀 정규화 통과
+- `services/contracts/draftSalaryScale.ts` / `server/src/shared/contracts/draftSalaryScale.ts` — `isEligibleForStandardPool`이
+  nextContract 체인까지 시즌 커버 판정
+- `services/multi/negotiation/rfaEligibility.ts` — `determineFAEligibility`: 현재 계약 끝 + nextContract 있으면 NOT_EXPIRED;
+  `previewFAStatusAfterContract`: nextContract 있으면 null(UFA/RFA 칩 없음)
+- `components/roster/TeamPayrollTable.tsx` — `salaryAtCol`/열 합계/잔여 합계/연도 셀을 `flattenRemainingYears()` 기반으로.
+  다음 계약 연차는 `text-amber-300` + title "연장 계약" 표시, FA 칩은 다음 계약 없을 때만
+- `services/playerDevelopment/playerAging.ts` — 싱글 오프시즌 계약 만료 체크 직전에 nextContract 승격
+- `scripts/scrape_bbref_contracts.py` — `build_bundles`: future_only 묶음을 현재 계약에 이어붙이지 않고 `nextContract`로
+  중첩(여러 개면 체인), `strip_meta` 재귀. 이슈 문구 "nextContract로 분리 기록"
+- DB `meta_players.base_attributes.contract` 13명 분리(아래)
+
+**Before** (`build_bundles`):
+```py
+for f in future_only:
+    offset = len(current['years'])
+    current['years'] += f['years']; current['yearSeasons'] += f['yearSeasons']
+    ... options year+offset
+```
+**After**:
+```py
+holder = current
+for f in future_only:
+    holder['nextContract'] = f; holder = f
+```
+
+**Before** (`rfaEligibility.determineFAEligibility`): `currentYear >= years.length` → 바로 terminal FA 판정.
+**After**: nextContract 있으면 `NOT_EXPIRED` 반환.
+
+**데이터 분리(SQL DO 블록, 2027 시즌 인덱스 기준)**: 나지 마샬, 니미아스 퀘타, 도노반 미첼, 딜런 브룩스, 빅터 웸반야마,
+셰이 길저스-알렉산더, 아멘 탐슨, 애런 니스미스, 앤드류 위긴스, 야콥 퍼들, 조던 월쉬, 캠 휘트모어, 허버트 존스 —
+current = 2027 이전 연도만(옵션도 그 범위만), nextContract = `{type:'extension', contractDetail: 스크랩 라벨(웸반야마·탐슨·휘트모어
+rookie_extension, 나머지 veteran_extension), years/yearSeasons 2027~, currentYear 0, options(연차 재조정)}`. 변경 전 값은
+dev-log 바로 위 (3) 항목 작업 시점의 쿼리 결과와 `scripts/output/bbref_contracts/<slug>.json` `current`에 남아 있음.
+퀘타의 연장이 버드 권한이라는 사용자 정보는 어휘상 extension에 signingType을 두지 않아(getAllowedSigningTypes) 기록 안 함 —
+연장 계약은 버드 권한 기반 재계약이 전제라 type 'extension' 자체가 그 의미.
+
+**검증**: `tsc --noEmit` 관련 오류 0, `py_compile` 통과, 두 contractLifecycle 미러 import 경로 외 동일. DB 분리 후 13명
+current/next 연도 확인(아래 (4) 검증 쿼리).
+
+**한계**: 멀티플레이어 계약 연차 진행 트리거가 없어 승격이 실제로 일어나는 곳은 싱글 오프시즌뿐. 트리거 작업 시
+`advanceContractSeason()`을 쓸 것. nextContract의 contractDetail 맥스 등급(rookie_max/supermax)은 2027+ 캡이 표에 없어 미분류.
+
+**롤백 방법**: 코드는 git diff. 데이터는 current.years+yearSeasons에 nextContract.years+yearSeasons를 다시 이어붙이고
+options 연차 복원(스크랩 체크포인트 `current`가 병합본이라 그걸 그대로 넣어도 됨, 단 (3)에서 찍은 signingType 유지).
+
+---
+
+## 2026-10-01 (3) — meta_players 계약 서명 유형(signingType) 백필 + 투웨이 전환 + 무계약자 계약 삭제 (데이터, 105명)
+
+**배경**: (2) 항목의 금액 기준(캡 2.35%) 판정은 standard 리그가 쓰는 실제 스크랩 계약에 `signingType`이 전혀
+없어서(690건 중 minimum_exception 0건) 둔 안전망이었음. 사용자 결정: 계약 데이터를 정확히 채우는 쪽으로.
+후보 184명(free_agent·signingType 없음·현재 연봉 ≤ 캡 2.35%)을 시즌별 최저연봉 표(Hoops Rumors 2023-24~
+2026-27, 웹 검증) × (1+5%×연차) 체인으로 자동 분류(`scripts/output/minimum_contract_candidates.md`) →
+사용자가 전원 검토 후 최종 지시(개리 페이튼 2세·니콜라 부셰비치·닉 리차즈 3명은 사용자가 직접 수정).
+
+**변경 대상**: `meta_players.base_attributes.contract` (DB 데이터, Supabase MCP execute_sql로 적용)
+- `signingType = 'minimum_exception'` 38명 (래리 낸스 주니어, 마빈 베글리 III, 마이크 콘리, … 르브론 제임스,
+  디안드레 조던, … 팻 코너튼, 퀜튼 잭슨, 올리비에-막생 프로스퍼)
+- `'taxpayer_mle'` 2명 (케본 루니, 도미닉 발로우) / `'non_taxpayer_mle'` 7명 (비트 크레이치, 스카티 피펜 주니어,
+  브라이스 맥고웬스, 저스틴 샴페니, 제이 허프, 제이미슨 배틀, 크레이그 포터 주니어) / `'biannual_exception'` 1명
+  (아리엘 헉포티) / `'full_bird'` 2명 (시모네 폰테키오, 제일런 클락) / `'early_bird'` 1명 (드루 스미스) /
+  `'non_bird'` 6명 (저스틴 에드워즈, 코비 샌더스, 모하메드 디아와라, 론 하퍼 주니어, 에이제이 미첼, 니미아스 퀘타)
+- 투웨이 전환 8명 (캠 존스, 아마리 윌리엄스, 제일런 피켓, 조나단 목보, 타이리스 마틴, PJ 홀, 팻 스펜서, 레이제이
+  데니스): contract 전체를 `{"type":"two_way","years":[678882],"yearSeasons":[2026],"currentYear":0}`로 교체.
+  **678,882는 2026-27 투웨이 연봉(0 YOS 최저 $1,357,763의 50%)으로 내가 정한 값** — 사용자 명시값 아님, 기존
+  DB 투웨이 행들은 금액이 제각각(0/1,000,000/비례)이라 통일 기준으로 채택. 캠 존스는 기존 4년 계약이 웨이브
+  처리됐다는 사용자 설명에 따라 교체(base_team_id 'mil' 유지).
+- 계약 삭제 39명 (제레미 소핸, 카와무라 유키, 더그 맥더못, 제프 그린, 러셀 웨스트브룩, 에릭 고든, 카일 라우리, …
+  로니 워커 4세): `base_attributes - 'contract'`(키 제거). in_multi_pool은 건드리지 않음.
+  **[같은 날 후속] base_team_id도 null로** — "소속팀이 없으므로 팀 배정도 없어야 한다"는 사용자 지시. 39명 중
+  팀이 남아 있던 18명 정리(JD 데이비슨 orl, 빈스 윌리엄스 주니어 uta, 비스맥 비욤보 sa, 존 콘차 min, 라이언 넴하드
+  atl, 카와무라 유키 law, 제레미 소핸 por, 앤서니 길 was, 딜런 카드웰 sac, 드류 유뱅크스 nyk, 더그 맥더못 sac,
+  줄리안 필립스 hou, 데일런 테리 gs, 개리 해리스 det, 크리스찬 콜로코 no, 두옵 리스 phx, 타이타이 워싱턴 주니어
+  law, 로니 워커 4세 den). 나머지 21명은 이미 null. 롤백은 이 목록대로 base_team_id를 되돌리면 됨.
+- 스비 미하일류크: 캡 스페이스 계약 = signingType 없음이 맞으므로 변경 없음.
+- 니미아스 퀘타: 현재 계약은 non_bird, 2027-28~2031-32 연장분은 버드 권한이지만 단일 PlayerContract 모델이라
+  표현 불가 — 계약 모델에 "다음 계약" 슬롯이 생기면 분리 필요(2026-09-17 스크랩 메모와 동일 한계).
+- C그룹(투웨이 금액인데 type free_agent 13명)·D그룹(레전드 수기 58명)은 사용자 지시로 그대로 둠.
+
+**Before 백업**: `scripts/output/contract_backups/2026-10-01_minimum_review_before.json` (105명 id/name/contract).
+
+**검증**: 적용 후 카운트 쿼리로 그룹별 건수 일치 확인(아래 항목 (3) 검증 결과 참고).
+
+**롤백 방법**: 백업 JSON의 contract를 `UPDATE meta_players SET base_attributes = jsonb_set(base_attributes,
+'{contract}', <backup>) WHERE id = <id>`로 되돌리기(삭제분은 키를 다시 넣는 것이므로 jsonb_set으로 동일 처리).
+
+---
+
+## 2026-10-01 (2) — 멀티 트레이드 최저연봉 예외 + 대체 모드 미니멈급 계약에 signingType 부여 (서버/클라 미러)
+
+**배경**: `docs/plan/multi-trade-cba-gaps.md` 1번. 1·2차 에이프런 팀이 내보내는 선수 없이는 최저연봉
+선수도 못 받던 문제. 조사 결과 대체(alternative) 모드 드래프트 스케일 계약은 `signingType`이 전부
+비어 있어(캡스페이스 체결 어휘) 유형으로 식별 불가였고, 금액도 연차별 최저연봉 표(0.82~2.35%)와 어긋남
+(기본 스케일 R11~R15 = 1.0%). 사용자 결정: 생성 시 캡%에 맞는 예외 조항을 부여해 CBA/캡을 켠 세션에서
+다른 규칙도 같은 근거로 돌게 하고, "미니멈급" 기준은 10+ YOS 최저연봉(캡 2.35%) 상한 하나로 통일.
+
+**변경 파일**:
+- `server/src/shared/contracts/draftSalaryScale.ts` (server) / `services/contracts/draftSalaryScale.ts` (client 미러, 내용 동일)
+- `migrations/add_trade_minimum_salary_exception.sql` (server, 신규 — Supabase MCP로 적용 완료)
+- `services/multi/tradeSalaryMatching.ts` (client)
+- `views/multi/season/MultiFrontOfficeView.tsx` (client)
+
+**Before** (`draftSalaryScale.ts` `buildDraftScaleContract`):
+```ts
+return { type: 'free_agent', years: [draftSalaryAmount(salaryCap, pct)], yearSeasons: [seasonStartYear], currentYear: 0, contractDetail: 'general' };
+```
+**After**:
+```ts
+export const MINIMUM_CONTRACT_CAP_PCT_MAX = 2.35;   // 신설
+return { ...위와 동일, ...(pct <= MINIMUM_CONTRACT_CAP_PCT_MAX ? { signingType: 'minimum_exception' } : {}) };
+```
+'minimum_exception'은 SigningType union/라벨 맵에 이미 있는 값이라 어휘 전파 없음. 다른 구간은 그대로
+signingType 없음(MLE/BAE류는 실제 규칙상 하드캡 발동 부작용).
+
+**Before** (SQL `respond_trade_offer` 매칭 블록):
+```sql
+v_a_in_total  := coalesce((SELECT sum(x) FROM unnest(v_b_out_salaries) x), 0);
+v_b_out_total := v_a_in_total;
+v_b_in_total  := v_a_out_total;
+```
+**After**:
+```sql
+v_b_out_total := coalesce((SELECT sum(x) FROM unnest(v_b_out_salaries) x), 0);
+SELECT coalesce(sum(player_current_salary(room, pid)), 0) INTO v_a_in_total
+  FROM jsonb_array_elements_text(v_in) pid WHERE NOT player_is_minimum_contract(room, pid, v_cap_amount);
+SELECT ... INTO v_b_in_total FROM jsonb_array_elements_text(v_out) pid WHERE NOT player_is_minimum_contract(...);
+```
++ 헬퍼 `player_is_minimum_contract(room_id, player_id, cap)` 신설: signingType='minimum_exception' OR
+현재 연봉 ≤ cap×0.0235. `check_trade_salary_match()`는 변경 없음(송신 합계/배열도 그대로 — 2차 에이프런
+aggregation 판정은 송신 기준). + 백필 UPDATE: alternative 리그의 1년 free_agent/general·signingType 없음·
+≤cap×2.35% 계약에 플래그 — AS 2 150건($1,649,610, 캡 1.0%) 적용, 바로 위 금액 $6,598,440(4%)은 미대상.
+
+**Before** (client `tradeSalaryMatching.ts`): 최저연봉 개념 없음.
+**After**: `isMinimumContractPlayer(player, cap)`(SQL 헬퍼 미러), `sumMatchableIncoming(players, cap)` 신설,
+`describeSalaryMatchBracket()` 4개 구간 전부 마지막 줄에 "최저연봉 계약 선수(최저연봉 예외 또는 캡 2.35%
+이하)는 매칭 없이 받을 수 있습니다." 추가(트레이드 조건 블록 `h-[104px]`라 2번 구간은 5줄 → 스크롤).
+`MultiFrontOfficeView.tsx`: 새 제안 `salaryMatchErrors`와 메시지함 `salaryMatchWarnings`의 `checkSalaryMatch()`
+호출에서 "받는 쪽 합계" 인자를 `sumMatchableIncoming(...)`으로 교체(표시용 총합 `mineTotal`/`theirsTotal`은 그대로).
+
+**검증**: `tsc --noEmit` 관련 오류 0. SQL: 백필 150건, `player_is_minimum_contract` 플래그 선수 true /
+$6.6M 선수 false, 미처리 0건. 실제 트레이드 수락 경로는 사용자 E2E 필요.
+
+**⚠️ 배포**: 생성 로직 변경은 `server/src/shared/`라 **Fly 서버 재배포 전까지 새 드래프트 리그엔 플래그가
+안 붙음**(그 경우 서버 헬퍼 ②금액 기준으로는 여전히 예외 적용됨). 배포 시 `flyctl deploy`.
+
+**롤백 방법**: `migrations/add_trade_salary_matching.sql`의 `respond_trade_offer` 재적용 + `DROP FUNCTION
+player_is_minimum_contract` + 백필 되돌리기(`UPDATE room_player_state SET contract = contract - 'signingType'
+WHERE ... contract->>'signingType'='minimum_exception' AND jsonb_array_length(contract->'years')=1` — 단 FA 미니멈
+서명 계약과 구분 필요, AS 2는 전부 백필분). 클라는 git diff로 되돌리기. 미러 쌍이라 서버/클라 같이 되돌릴 것.
+
+---
+
+## 2026-10-01 — 선수 풀 조회 실패가 빈 배열로 24시간 영속 캐시되던 버그 수정 (throw + 빈 결과 영속화 제외 + 캐시 버스터)
+
+**배경**: AS 2 리그 트레이드 화면에서 양 팀 로스터가 전원 미표시(샐러리 총합은 데드머니 2건 합
+$35,694,252만 표시). DB·REST 조회(835명)·매핑 전부 정상이었고, 사용자 콘솔에서
+`__debugQueryClient.getQueryCache().findAll({queryKey:['multiSearchPool']})` 결과 AS 2 리그 항목이
+`status: 'success', data.length: 0`으로 확인됨. 같은 시간대 Fly 서버 로그에 `token is expired` 1회 —
+액세스 토큰 만료 틈(맥 절전/백그라운드 복귀 직후)에 선수 풀 요청이 401을 받았고, 아래 코드가 그
+실패를 빈 배열 "성공"으로 바꿔 전역 `staleTime: Infinity` + localStorage 영속화(24h)에 굳은 것으로 추정.
+28개 useQuery 훅 중 에러를 버리는 곳은 이 훅뿐(나머지는 `if (error) throw error`).
+
+**변경 파일**:
+- `hooks/useMultiSearchData.ts` (client)
+- `index.tsx` (client)
+
+**Before** (`hooks/useMultiSearchData.ts` queryFn):
+```ts
+const { data } = await q;
+console.timeEnd('[perf] multiSearchPool: fetch');
+```
+
+**After**:
+```ts
+const { data, error } = await q;
+console.timeEnd('[perf] multiSearchPool: fetch');
+if (error) throw error;
+```
+→ React Query가 error 상태로 두고 기본 `retry: 1` 재시도, 영속화 조건(`status === 'success'`)에 안 걸림,
+다음 마운트 때 데이터가 없으니 재조회. 전역 `QueryCache.onError`가 콘솔에 실패 사유를 남김.
+
+**Before** (`index.tsx` persistOptions):
+```tsx
+persistOptions={{
+  persister,
+  maxAge: 24 * 60 * 60 * 1000,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query) =>
+      query.state.status === 'success' && !PERSIST_EXCLUDE_ROOT_KEYS.has(query.queryKey[0] as string),
+  },
+}}
+```
+
+**After**:
+```tsx
+const PERSIST_CACHE_BUSTER = '2026-10-01-pool-fix';   // 모듈 상수 신설
+...
+persistOptions={{
+  persister,
+  maxAge: 24 * 60 * 60 * 1000,
+  buster: PERSIST_CACHE_BUSTER,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query) =>
+      query.state.status === 'success'
+      && !PERSIST_EXCLUDE_ROOT_KEYS.has(query.queryKey[0] as string)
+      && !(query.queryKey[0] === 'multiSearchPool' && Array.isArray(query.state.data) && query.state.data.length === 0),
+  },
+}}
+```
+→ `buster`: 저장된 캐시의 버스터가 다르면 전체 폐기 후 재조회(이미 오염된 사용자 일괄 복구, 배포 직후
+첫 로드 1회는 전 화면 캐시 없이 재조회). 빈 선수 풀은 메모리 캐시만 두고 localStorage엔 안 씀.
+
+**검증**: `tsc --noEmit` 두 파일 오류 0. 실제 복구는 배포 후 AS 2 리그 트레이드 화면에서 로스터 표시 확인 필요.
+
+**롤백 방법**: 두 파일 Before로 되돌리기(서버 영향 없음). 버스터 문자열을 되돌리면 그 시점 캐시가 또 한 번 폐기됨.
+
+---
+
+## 2026-09-30 (37) — 메시지함 제안서 날짜 포맷 mm/dd → yyyy/mm/dd
+
+**배경**: 사용자 요청(UI 전용). 제안서 제목 아래 인게임 날짜(`sim_date_at_creation`, "YYYY-MM-DD").
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` `renderOfferLetter`의 `dateLabel`
+
+**Before**: `offer.sim_date_at_creation.slice(5).replace('-', '/')` → "09/30"
+
+**After**: `offer.sim_date_at_creation.replace(/-/g, '/')` → "2026/09/30". 좌측 리스트 행의 날짜(`renderOfferListRow`,
+같은 식이지만 칸이 좁아 mm/dd 유지)는 변경 없음.
+
+**검증**: `tsc --noEmit` 관련 오류 0.
+
+**롤백 방법**: Before 식으로 되돌리기.
+
+---
+
+## 2026-09-30 (36) — 메시지함 제안서 선수 행 텍스트 색상 — 이름 흰색 볼드, 포지션~연봉 흰색
+
+**배경**: 사용자 요청(UI 전용).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` `renderOfferLetter` → `renderAssetColumn` 선수 행
+
+**Before**: 이름 `text-slate-200`, 포지션 `text-slate-500`, Pts/Reb/Ast `text-slate-400`, 연봉 `text-slate-500`
+
+**After**: 이름 `text-white font-bold`, 포지션/Pts/Reb/Ast/연봉 전부 `text-white`(볼드 없음). 폭·정렬 클래스는 그대로.
+
+**검증**: `tsc --noEmit` 관련 오류 0.
+
+**롤백 방법**: Before 클래스로 되돌리기.
+
+---
+
+## 2026-09-30 (35) — 메시지함 제안서 상대 팀 선수 스탯이 전부 0.0으로 표시되던 버그 수정
+
+**배경**: 사용자 스크린샷 — 메시지함 본문 선수 목록에서 내 팀 선수는 시즌 스탯이 나오는데 상대 팀
+(LA 미라지) 선수는 전부 0.0Pts/0.0Reb/0.0Ast.
+
+**원인**: `renderAssetColumn`이 쓰던 `statsByPlayerId`는 "새 제안" 탭용으로 `statsRosterIds`(내 팀 +
+드롭다운에서 고른 `targetTeamRow` 로스터)만 집계한 Map이라, 메시지함에서 선택한 오퍼의 상대 팀이
+그 `targetTeamRow`와 다르면 그 팀 선수는 Map에 없어 `?? 0`으로 떨어짐. 내 팀 선수만 우연히 겹쳐서
+보였던 것.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` `renderOfferLetter` → `renderAssetColumn`
+
+**Before**:
+```tsx
+const p = poolByIdWithStats.get(id);
+const s = statsByPlayerId.get(id);
+```
+
+**After**:
+```tsx
+const p = poolByIdWithStats.get(id);
+const g = Math.max(1, p?.stats?.g ?? 0);
+const s = p?.stats
+    ? { ppg: (p.stats.pts ?? 0) / g, rpg: (p.stats.reb ?? 0) / g, apg: (p.stats.ast ?? 0) / g }
+    : statsByPlayerId.get(id);
+```
+메시지함 탭은 `statsRequestIds`가 "선택된 오퍼의 선수 전원"이라 `usePlayerSeasonStatsBatch` 결과가
+`poolByIdWithStats`의 `stats`(g/pts/reb/ast)에 이미 병합돼 있음 — 그걸 경기당 평균으로 환산
+(`PlayerHoverCard`와 동일한 `s.pts / g` 계산). 양 팀 모두 같은 소스를 쓰므로 표기도 일관됨.
+
+**검증**: `tsc --noEmit` 관련 오류 0. 실제 화면 확인 필요.
+
+**롤백 방법**: Before 두 줄로 되돌리기(클라이언트 전용).
+
+---
+
+## 2026-09-30 (34) — 메시지함 본문 금액 축약($34.0M) → 전체 자릿수($34,000,000)
+
+`renderOfferLetter` 안 3곳
+`formatMoney` → `formatMoneyFull` — 선수 행 연봉(폭 `w-16` → `w-24`로 확장, 8자리 금액이 들어가도록),
+컬럼 총합, "수락 시 캡 여유분 변화" 각 행 값(`+` 접두어 로직 유지, 음수 부호는 formatMoneyFull이
+자체 처리). 샐러리 매칭 경고 문구의 한도 금액은 `formatSalaryMatchMessage`(새 제안 탭과 공유)라 그대로
+축약 표기. 사용자 요청, UI 전용.
+
+---
+
+## 2026-09-30 (33) — 메시지함 "수락 시 캡 여유분 변화" 영역 너비 절반(w-1/2)
+
+`renderOfferLetter`의 해당 블록
+`pt-2 space-y-1` → `pt-2 space-y-1 w-1/2`(사용자 요청 — 전체 너비라 라벨과 값 사이가 너무 멀었음).
+
+---
+
+## 2026-09-30 (32) — 메시지함 본문 타이틀 라벨 흰색 볼드 + 캡 여유분 영역 상단 구분선 제거
+
+
+`views/multi/season/MultiFrontOfficeView.tsx` `renderOfferLetter` 안 `sectionLabelClass`
+`'text-sm uppercase text-slate-500 mb-1'` → `'text-sm uppercase text-white font-bold mb-1'`(발신/수신/
+메시지 발신팀 라벨/"수락 시 … 캡 여유분 변화" 라벨 전부 공유). "수락 시 캡 여유분 변화" 블록 div
+`pt-2 space-y-1 border-t border-slate-700` → `pt-2 space-y-1`(구분선 제거). 사용자 요청, UI 전용.
+
+---
+
+## 2026-09-30 (31) — 메시지함(inbox) 탭 UI 4건 — 리스트 로고 / 빈 메시지 숨김 / 본문 로고 2배 / 팀 헤더 배지
+
+
+`views/multi/season/MultiFrontOfficeView.tsx` (사용자 요청, UI 전용)
+1. `renderOfferListRow`: 발신/수신 약어 칸을 `flex items-center gap-1.5 min-w-0` 래퍼로 감싸고 약어
+   좌측에 `<TeamLogoIcon className="w-4 h-4" />` 추가(teamById로 팀 행 조회, 없으면 로고 생략).
+   Before: `<span className="truncate font-bold …">{fromAbbr}</span>` 단독.
+2. `renderOfferLetter`: 메시지 섹션을 `{offer.message && (…)}`로 감싸 메시지가 없으면 영역 자체를
+   숨김. Before: 항상 렌더하며 없을 땐 `text-slate-600`으로 "작성된 메시지가 없습니다." 표시.
+3. `renderOfferLetter` 발신/수신 팀 로고 `TeamLogoIcon` 기본 크기(w-5 h-5) → `className="w-10 h-10"`.
+4. `renderAssetColumn` 팀 이름 헤더: `<div className={sectionLabelClass}>{renderTeamLink(team)}</div>`
+   (회색 소문자 라벨) → "새 제안" 탭 제안 내역 팀 헤더와 동일한 팀 컬러 배지
+   (`text-sm font-bold ko-normal block w-full px-2 py-1 rounded-md mb-1`, `backgroundColor: color_primary`,
+   `color: color_text ?? getReadableTextColor(color_primary)`), 선수 리스트·총합 행에 `px-2` 인셋 추가.
+   팀명 클릭 → 로스터 이동(renderTeamLink)은 유지.
+롤백은 위 4곳 Before로 되돌리면 됨(서버 영향 없음).
+
+---
+
+## 2026-09-30 (30) — 새 제안 탭 안내 메시지(tradeSendErrors) 색상 yellow-400 → fuchsia-400 원복
+
+
+`views/multi/season/MultiFrontOfficeView.tsx` 제안 메시지 위 안내 문구 `<p>` 클래스 `text-yellow-400` →
+`text-fuchsia-400`(사용자 요청, 수신 오퍼 탭 경고 문구와 동일 색으로 재통일). `·` 접두어는 유지.
+
+---
+
+## 2026-09-30 (29) — 트레이드 "새 제안" 탭 양 팀 헤더 팀 이름 볼드
+
+`views/multi/season/MultiFrontOfficeView.tsx`
+내 팀 헤더 div(`text-base font-normal uppercase …`)와 상대 팀 `<select>`(`… text-base font-normal uppercase …`)
+둘 다 `font-normal` → `font-bold`(사용자 요청). 롤백은 두 클래스만 되돌리면 됨.
+
+---
+
+## 2026-09-30 (28) — 트레이드 "새 제안" 탭 팀 드롭다운 정렬 기준 team_name → team_abbr(A→Z)
+
+
+`views/multi/season/MultiFrontOfficeView.tsx` `humanTargetTeams` useMemo의 sort 비교 키를
+`a.team_name.localeCompare(b.team_name, 'en')` → `a.team_abbr.localeCompare(b.team_abbr, 'en')`으로
+변경(사용자 요청). 부수 효과: 드롭다운 기본 선택(`humanTargetTeams[0]`)도 약어 기준 첫 팀으로 바뀜.
+롤백은 비교 키만 되돌리면 됨.
+
+---
+
+## 2026-09-30 (27) — 전체 Modal 백드롭 블러 제거 (`blurBackdrop` 기본값 true → false)
+
+
+바로 아래 실측 항목의 결론에 따라 사용자가 "전체 모달에서 제거" 방향을 선택. 공용 `Modal` 사용처는
+10곳(EditorModal/SimSettingsModal/ResetDataModal/EndSeasonModal/LegalModal/PresetRenameModal/
+TradeConfirmModal/HallOfFameView 로스터/MultiReleaseView 방출 확인/MyTradeBlockModal) — 방출 확인만
+이미 `blurBackdrop={false}`였고 나머지 9곳은 기본값(true)에 의존하고 있었음.
+
+**변경 파일**: `components/common/Modal.tsx`
+
+**Before**:
+```ts
+    /** 배경 블러 여부. 기본값 true(기존 모든 모달과 동일) — 확인 팝업처럼 블러 없이 즉시
+     *  아래 화면이 보여야 하는 경우에만 false로 끔. */
+    blurBackdrop?: boolean;
+    ...
+    blurBackdrop = true,
+```
+
+**After**:
+```ts
+    /** 배경 블러(backdrop-blur-md) 여부. [2026-09-30] 기본값 true → false로 변경 — … */
+    blurBackdrop?: boolean;
+    ...
+    blurBackdrop = false,
+```
+
+렌더 식(`${blurBackdrop ? 'backdrop-blur-md' : ''}`)은 그대로 — 블러가 꼭 필요한 모달은 `blurBackdrop`을
+명시적으로 켜면 됨. `MultiReleaseView.tsx`의 명시적 `blurBackdrop={false}`는 이제 중복이지만 무해해서
+그대로 둠. 백드롭 어둡기(`bg-slate-950/80`)는 변경 없음이라 뒤 화면이 흐려지지 않고 어둡게만 보임.
+
+**검증**: `tsc --noEmit` 관련 오류 0. 실제 체감(트레이드 블록 모달 컬럼/바디 스크롤)은 사용자 확인 필요.
+
+**롤백 방법**: `blurBackdrop = false` → `true` 한 줄.
+
+---
+
+## 2026-09-30 (26) — 트레이드 블록 모달 스크롤 렉 실측 — 원인은 백드롭 블러 (코드 변경 없음, 사용자 결정 대기)
+
+
+사용자 리포트 "트레이드 블록 선수 목록 스크롤과 모달 내 스크롤이 렉이 심하다". 로그인 없이
+검증하려고 모달 DOM/CSS(fixed 백드롭 `bg-slate-950/80 backdrop-blur-md` + `rounded-3xl overflow-hidden`
+패널 + `overflow-y-auto` 바디 + 320px 2컬럼 스크롤러 + OvrBadge 그라디언트 행 + `hover:bg-white/[0.03]`
++ `transition-colors` 칩 33개, 뒤에는 트레이드 화면 흉내 90행)를 정적 HTML로 재현(세션 scratchpad
+`modalperf/repro.html`, 휘발)하고 Playwright headed Chromium(DPR 2, 1440×850, 이 머신의 Intel UHD 630)
+으로 컬럼 위 휠 10+10회 / 바디(칩 위) 휠 10+10회를 변형별로 트레이스, PipelineReporter 드롭률·
+프레임 b→e·GPUTask로 비교(2회 반복).
+
+| 변형(컬럼 스크롤) | 드롭률 | 프레임 max(ms) | GPU 합(ms) |
+|---|---|---|---|
+| 원본 그대로 | 8~15% | 107~275 | 36~274 |
+| 블러 제거(`blurBackdrop=false`) | **0%** | **41** | 17~18 |
+| 행 호버 배경 제거 | 2~4% | 75~91 | 12 |
+| 둥근 모서리/overflow-hidden 제거 | 9% | 108 | 25 |
+| 스크롤러 `will-change: transform` 승격 | **33% (악화)** | 658 | 30 |
+| 패널 `contain: paint` | 8% | 108 | 31 |
+
+메커니즘: `backdrop-filter: blur(12px)`는 백드롭 요소의 렌더 서피스가 다시 그려질 때마다 뷰포트
+전체(레티나 2880×1700px)를 다시 블러함. 스크롤 자체는 합성 스레드에서 처리돼 괜찮지만, 마우스가
+행 위에 있으면 프레임마다 호버 행이 바뀌며 페인트가 발생 → 그때마다 전체 블러 재실행 → Intel
+내장 GPU에서 프레임당 수십~수백 ms. 호버를 빼도 스크롤바/스티키 헤더 페인트가 남아 완전히
+사라지진 않고, 블러를 끄는 것만이 두 번 다 드롭 0을 냈다. `will-change`는 재정 탭 때와 마찬가지로
+역효과(레이어가 늘어 GPU 메모리/합성 비용 증가). 모달 바디 스크롤(칩 위)은 어느 변형이든 드롭
+2~6%로 경미 — 실제 앱에선 뒤 화면(React DOM, 호버카드)이 더 무거워 체감이 더 클 수 있음.
+`Modal`에는 이미 `blurBackdrop` prop이 있고 `MultiReleaseView.tsx`가 false로 쓰는 중.
+적용 범위(이 모달만 / 전체 Modal 기본값)는 디자인 결정이라 사용자 확인 후 적용.
+
+---
+
+## 2026-09-30 (25) — "트레이드 블록 수정" 모달을 별도 컴포넌트로 분리 (모달 타이핑 렉 수정, 방식 A)
+
+
+바로 아래 계측 항목의 결론에 따라 사용자가 A안(컴포넌트 분리)을 선택.
+
+**배경**: 모달 안의 요구사항 메모 textarea / 선수 검색 input / 위시리스트 토글이 전부
+`MultiFrontOfficeView`(2,469줄)의 최상위 `useState`라 키 하나마다 부모 전체(양 팀 로스터 30행 +
+캡 요약 + 제안 내역)가 재렌더됐고, 선수 검색은 키마다 `poolPlayers` 전체를 필터링했다. 게다가
+`renderMyBlockPanel()`이 `<Modal>` children 자리에서 매 부모 렌더마다 호출돼 모달이 닫혀 있어도
+요소 트리를 통째로 만들었다(Modal은 `isOpen=false`면 children을 버릴 뿐).
+
+**변경 파일**:
+- `views/multi/season/MyTradeBlockModal.tsx` (신규) — `React.memo` 컴포넌트. 부모에서 잘라낸
+  것: `pendingTradeableIds`/`savingBlocks`/`blockSaveSuccess`/`draggedPlayerId`/`teamRequestNote`/
+  `teamRequestPositions`/`teamRequestPlayerIds`/`teamRequestArchetypes`/`teamRequestPlayerQuery` state,
+  `togglePendingTradeable`/`setPendingTradeableMembership`/`toggleTeamRequestPosition`/
+  `toggleTeamRequestArchetype`/`addTeamRequestPlayer`/`removeTeamRequestPlayer`/`handleSaveTradeable`,
+  `tradeableDirty`/`teamRequestDirty`/`teamRequestPlayerMatches`/`myRosterAvailable`/`myRosterTradeable`
+  memo, `renderDraggableRow`, `renderMyBlockPanel` JSX 전체, 상수 `DESIRED_POSITIONS`/`ARCHETYPE_GROUPS`.
+  `<Modal>` 자체도 이 컴포넌트가 감싼다. 에러 표시는 부모의 공용 `actionError` 대신 로컬
+  `saveError`(모달 저장 실패만 표시 — 전엔 트레이드 전송 에러가 모달 안에도 새어 보였음).
+- `views/multi/season/MultiFrontOfficeView.tsx` — 위 항목 전부 삭제(2,469→2,089줄). 남긴 것:
+  `showMyBlockModal` 플래그 + `closeMyBlockModal`/`handleMyBlockSaved`(`reload();refreshTradeData();`)
+  useCallback. `myTradeableIds`를 `useMemo(..., [tradeableByTeam, myTeamRow?.id])`로 참조 고정
+  (없을 때 폴백은 모듈 상수 `EMPTY_ID_SET` — 매 렌더 `new Set()`이면 memo 얕은 비교가 매번 깨짐).
+  임포트 정리: `GripVertical`/`RotateCcw`/`Modal`/`setTradeBlock`/`updateTeamTradeRequest` 제거,
+  `MyTradeBlockModal` 추가.
+
+**Before** (부모, 요지):
+```tsx
+const [teamRequestNote, setTeamRequestNote] = useState('');            // 부모 최상위 state ×9
+const renderMyBlockPanel = () => ( <div>… <textarea value={teamRequestNote} …/> …</div> );
+const myTradeableIds = tradeableByTeam.get(myTeamRow?.id ?? '') ?? new Set<string>();
+<Modal isOpen={showMyBlockModal} onClose={() => setShowMyBlockModal(false)} size="lg" hideCloseButton className="!rounded-3xl">
+    {renderMyBlockPanel()}
+</Modal>
+```
+
+**After** (부모):
+```tsx
+const closeMyBlockModal  = useCallback(() => setShowMyBlockModal(false), []);
+const handleMyBlockSaved = useCallback(() => { reload(); refreshTradeData(); }, [reload, refreshTradeData]);
+const myTradeableIds = useMemo(() => tradeableByTeam.get(myTeamRow?.id ?? '') ?? EMPTY_ID_SET, [tradeableByTeam, myTeamRow?.id]);
+<MyTradeBlockModal isOpen={showMyBlockModal} onClose={closeMyBlockModal} roomId={roomId} myTeamRow={myTeamRow}
+    myRoster={myRoster} myTradeableIds={myTradeableIds} poolPlayers={poolPlayers} poolById={poolById}
+    loading={loading} onSaved={handleMyBlockSaved} />
+```
+
+**동작 보존**: 부모가 컴포넌트를 항상 마운트해 두고 `isOpen`만 토글하므로(언마운트 없음)
+저장 안 한 편집 내용이 닫았다 열어도 남는 기존 동작, `loading` false 전환 시 서버 값으로
+재동기화하는 effect, 같은 팀이면 위시리스트 폼을 재초기화하지 않는 ref 가드 전부 그대로.
+
+**검증**: `tsc --noEmit` 두 파일 오류 0(나머지는 기존 오류), `vite build` 성공(벤더 청크 순환
+경고 2건은 변경 전과 동일). 실제 체감(모달 타이핑)은 사용자 확인 필요.
+
+**롤백 방법**: 신규 파일 삭제 + 부모는 git diff로 되돌리기(서버 영향 없음, 클라이언트 전용).
+
+---
+
+## 2026-09-30 (24) — 타이핑 렉 후속 계측 — 사용자 트레이스 5건 분석 결론 (코드 변경 없음)
+
+
+위 수정 후에도 "아직 레이턴시가 느껴진다"는 피드백이 있어 사용자가 DevTools Performance로
+`~/Downloads/Trace-20260930T144201.json`(수정 후 제안 메시지 타이핑) + `scripts/data/{뉴스검색_영어,
+뉴스검색_한국어,트레이드_영어,트레이드_한국어}.json`(체감 렉 없음/있음 두 화면 비교)을 녹화.
+스크립트(세션 scratchpad `trace_typing.py`/`trace_frames.py`, 휘발)로 keydown별 메인스레드 비용,
+EventTiming(브라우저 자체 측정 입력 지연), PipelineReporter(`id2.local`로 b/e 순차 짝맞춤, id 재사용
+주의) 프레임 상태·표시 파이프라인 단계, GPUTask를 페이지별로 비교.
+
+| 항목 | 뉴스검색 영어 | 뉴스검색 한국어 | 트레이드 영어 | 트레이드 한국어 |
+|---|---|---|---|---|
+| 메인스레드 점유(타이핑 창) | ~5% | ~7% | ~5% | ~6% |
+| EventTiming p50/p90 (ms) | 30.8 / 47.8 | 35.2 / 45.5 | 29.1 / 47.7 | 35.1 / 45.4 |
+| 프레임 드롭률 | 13% | 14% | 14% | 9% |
+| Submit→Presentation p50 (ms) | 32.1 | 32.6 | 36.5 | 37.3 |
+| SwapEnd→Presentation p50 (ms) | 24.1 | 25.6 | 26.0 | 26.3 |
+| Paint/키 (ms) | ~0.5 | ~0.5 | ~2 | ~2 |
+| GPUTask 합계 (ms) | 36 | 51 | 86 | 77 |
+
+결론: 수정 후 트레이드 페이지의 키 입력당 페이지 비용은 2~5ms(React 재렌더 0)로, 브라우저가
+측정한 입력 지연·드롭률·표시 단계 지연이 "렉 없다"는 뉴스검색 화면과 사실상 동일. 트레이드
+쪽이 GPU 작업 약 2배, Paint 약 4배, Submit→Presentation +4~5ms로 미세하게 무겁지만 절대치가
+작아 체감 렉의 원인으로 보기 어려움. 즉 제안 메시지 textarea 자체의 남은 렉은 계측으로
+재현되지 않음(DevTools 녹화 오버헤드가 두 화면에 동일하게 ~25ms의 SwapEnd→Presentation을
+얹고 있는 점도 동일). 반면 "트레이드 블록 수정" 모달의 렉은 원인이 명확 — `teamRequestNote`/
+`teamRequestPlayerQuery`(키마다 `poolPlayers` 필터)/`historySearch`가 아직 controlled 최상위
+state이고, `renderMyBlockPanel()`이 모달이 닫혀 있어도 매 렌더 평가됨. 수정안(A: `MyBlockPanel`
+컴포넌트로 분리해 로컬 state + 닫힘 시 미렌더 / B: 메모 textarea만 uncontrolled)은 사용자
+결정 대기. `will-change: transform`은 사용자 지시로 미적용.
+
+---
+
+## 2026-09-30 (23) — 트레이드 화면 타이핑 렉 수정 — 제안 메시지 uncontrolled 전환 + PlayerChip React.memo
+
+
+사용자 리포트 "제안 메시지를 입력할 때만 렉이 심하다". 원인: `message`가 2,469줄짜리
+`MultiFrontOfficeView`의 최상위 `useState`이고 textarea가 controlled(`value={message}`)라 키 입력
+하나마다 컴포넌트 전체(양 팀 로스터 15행×2 `PlayerChip` + `PlayerHoverCard` + `calculatePlayerOvr`
+재계산 + 두 팀 `renderCapSummaryFooter` 페이롤 재계산 + 제안 내역/재정 변동)가 재렌더. 한글 IME는
+한 글자 조합 중에도 onChange가 여러 번 발생해 비용이 연속으로 쌓임(+/- 클릭은 1회라 체감 안 됨).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+1. 제안 메시지 textarea를 uncontrolled로 — `useState('')` → `useRef<HTMLTextAreaElement>`,
+   `ref={messageRef} defaultValue="" maxLength={300}`(글자 제한은 브라우저에 위임). 전송 시
+   `messageRef.current?.value.slice(0, 300)`로 읽고, 성공 후 `messageRef.current.value = ''`로 비움.
+   `handleSend` 의존성에서 `message` 제거. → 키 입력이 React 상태를 전혀 건드리지 않음(재렌더 0).
+2. `PlayerChip`을 `React.memo`로 감쌈(`React.FC<{...}>` 인라인 타입 → `PlayerChipProps` 인터페이스로
+   추출). `onToggle` 시그니처를 `() => void` → `(playerId: string) => void`로 바꿔 호출부 2곳이
+   매 렌더 새 클로저(`() => toggleMine(p.id)`) 대신 안정된 `useCallback`(`toggleMine`/`toggleTheirs`,
+   deps `[]`)을 그대로 넘기도록 변경 — 이래야 memo의 얕은 비교가 실제로 통함. 컴포넌트 내부에선
+   `onToggle(playerId)`로 호출(tr onClick은 MouseEvent가 넘어오지 않게 래핑). 나머지 props(`player`/
+   `stats`는 메모된 Map 값, 문자열/불리언)는 원래 안정적. 효과: 카트 토글 시 `actionIcon`이 바뀐
+   그 행만 재렌더, 나머지 29행은 스킵.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음. 실제 체감(타이핑/+/- 클릭)은 사용자 확인 필요.
+
+**롤백 방법**: git diff로 두 변경 되돌리기(서버 영향 없음, 클라이언트 전용).
+
+---
+
+## 2026-09-30 (22) — 후속 — 안내 메시지 접두어 `-`→`·`, 색상 fuchsia→yellow
+
+바로 아래 항목에서
+붙인 `- ` 접두어를 "트레이드 조건"과 동일한 가운뎃점(`· `)으로 통일하고, `text-fuchsia-400` →
+`text-yellow-400`. `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (21) — 우측 하단 안내 메시지(tradeSendErrors) 각 줄에 `- ` 접두어
+
+처음엔 요청을
+"트레이드 조건" 리스트로 잘못 해석해 그쪽 불릿을 `·`→`-`로 바꿨다가 사용자 지적으로 원복(`·`
+유지). 실제 대상은 우측 컬럼 하단의 전송 차단 안내 메시지(`tradeSendErrors`, fuchsia 텍스트) —
+각 `<p>` 앞에 `- `를 붙여 리스트처럼 보이게 함. `views/multi/season/MultiFrontOfficeView.tsx`.
+`tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (20) — "제안 내역" 팀명 볼드 + 선수 리스트 좌우 인셋
+
+`views/multi/season/MultiFrontOfficeView.tsx`
+— 팀명 배지에 `font-bold` 추가. 배지 바로 아래 선수 리스트(+합계 행)를 `px-2 space-y-1` 래퍼로
+감싸서 배지보다 좌우로 살짝 들어와 보이게(헤더 안쪽으로 인셋된 느낌) 변경 — 양 팀 섹션 둘 다
+동일 적용. `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (19) — scrollbar-gutter: stable을 전역 클래스에서 전용 클래스로 축소
+
+직전 항목에서
+`.custom-scrollbar` 전체에 `scrollbar-gutter: stable`을 걸었는데, 사용자가 스크린샷으로
+부작용을 지적 — 이 속성은 "오버플로 여부와 무관하게 항상 스크롤바 자리를 예약"하는 것이라,
+스크롤이 거의/전혀 안 생기는 다른 화면(뉴스피드 필터 바, 리더보드 등)에서도 우측에 불필요한
+빈 여백이 생겼음. `.custom-scrollbar`에서 그 규칙을 빼고, 별도 클래스
+`.custom-scrollbar-stable`로 옵트인 방식으로 축소 — 실제 문제가 있던 두 지점
+(`views/multi/season/MultiFrontOfficeView.tsx`의 "제안 내역"/"재정 변동" 아코디언 스크롤 박스)
+에만 `custom-scrollbar custom-scrollbar-stable` 두 클래스를 같이 붙임. `tsc --noEmit`/
+`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (18) — "제안 내역"/"재정 변동" 독립 스크롤 복원 + 빈 팀 섹션 숨김
+
+사용자 피드백 —
+직전에 sticky를 위해 통합했던 단일 스크롤 컨테이너가 "제안 내역"과 "재정 변동 사항"을 서로
+얽히게 만들어서, 각각 독립된 스크롤 구조를 갖도록 되돌려야 함. 추가로: 카트에 선수가 없는
+팀은 "제안 내역" 안에 그 팀 이름 헤더 자체를 보여줄 필요가 없음.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- 우측 컬럼의 단일 `flex-1 min-h-0 overflow-y-auto`(모든 섹션을 하나로 합침) 구조를 걷어내고,
+  "제안 내역"과 "재정 변동 사항" 각각을 `grow-0 shrink min-h-0` + 자체 `h-full overflow-y-auto`
+  독립 스크롤 박스로 분리(둘 다 없던 시절과 동일한 "내용 없으면 최소 높이, 넘치면 이 박스만
+  압축+스크롤" 동작 — 2026-09-29에 "제안 내역" 하나에 썼던 패턴을 재정 변동에도 동일하게 적용).
+  에러 리스트/메시지·버튼은 두 스크롤 영역 밖의 평범한 `shrink-0` 형제로 복귀 — 컬럼 자체가
+  스크롤되지 않으므로 `sticky`가 더 이상 필요 없음(제거).
+- 그라디언트 감지 로직도 컬럼 전체(`rightColumnScrollRef`/`rightColumnHasOverflow`) 대신
+  "제안 내역" 자신의 스크롤 박스(`proposalScrollRef`/`proposalHasOverflow`)만 관찰하도록 축소 —
+  의존성 배열도 `financeSectionExpanded`/`capEnabled` 제거(더 이상 이 영역 높이에 영향 없음).
+- "제안 내역" 본문에서 `cartMine.size > 0`/`cartTheirs.size > 0`일 때만 그 팀의 라벨+리스트
+  섹션을 렌더 — 둘 다 0이면 "선수를 선택하면 여기에 표시됩니다" 안내만 표시.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (17) — 후속 — 팀명 라벨 너비를 컨테이너 전체로 확장
+
+`inline-block`(내용 크기만큼만
+차지) → `block w-full`로 변경. `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (16) — "제안 내역" 팀명 라벨에 팀 테마 색상 + 라운드 적용
+
+두 팀명 span
+(`{myTeamRow.team_name}`/`{targetTeamRow?.team_name}`)을 `text-slate-400` 단색에서
+`backgroundColor: team.color_primary`/`color: team.color_text ?? getReadableTextColor(...)`
+(양 팀 헤더에서 빼기 전 쓰던 패턴 재사용) + `inline-block px-2 py-1 rounded-md`(가벼운 라운드
+배지 형태)로 변경. 앞서 제거했던 `getReadableTextColor` import를 다시 추가. `tsc --noEmit`/
+`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (15) — "제안 내역" 헤더도 아코디언화
+
+`proposalSectionExpanded` state 신규(기본
+펼침). 타이틀 `<span>` → "트레이드 이후 재정 변동 사항"과 동일한 클래스의 `<button>`(px-4 py-4
+text-sm font-black uppercase hover:bg-white/[0.03]) + `ChevronDown`(접으면 -rotate-90)으로
+교체. 두 팀 리스트 body는 펼쳤을 때만 렌더. 오버플로 감지 `useEffect`의 의존성 배열에도
+`proposalSectionExpanded` 추가(접으면 콘텐츠 높이가 바뀌므로 그라디언트 표시 여부 재계산
+필요). `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (14) — 그라디언트를 "실제 스크롤 발생 여부" 기준으로 변경 + 선수 이름 흰색 볼드
+
+
+스크린샷 지적 — 선수가 2명뿐이라 스크롤이 전혀 없는 상태인데도 하단 그라디언트가 떠 있었음
+(기존 조건은 `cartMine.size > 0 || cartTheirs.size > 0`, 선수 유무만 봤음).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- `rightColumnScrollRef`(우측 통합 스크롤 컨테이너에 부착) + `rightColumnHasOverflow` state 신규.
+  `useEffect`에서 `el.scrollHeight > el.clientHeight`로 실제 오버플로 여부를 측정 —
+  `cartMine`/`cartTheirs`/`financeSectionExpanded`/`capEnabled` 변경 시(내용 높이에 영향을 주는
+  요인들) + 창 크기 변경 시 재측정. `tradeSendErrors`는 `cartMine`/`cartTheirs`에서 파생되므로
+  별도 의존성 없이도 항상 같이 재계산됨.
+- 그라디언트 렌더 조건: `cartMine.size > 0 || cartTheirs.size > 0` → `rightColumnHasOverflow`.
+- "제안 내역" 선수 이름 텍스트: `text-slate-200` → `text-white font-bold`(두 리스트 공통).
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (13) — 양 팀 헤더 영역/로고 확대
+
+헤더 `h-10` → `h-16`, 로고(`TeamLogoIcon`) 기본
+`w-5 h-5` → `w-9 h-9`(className prop으로 오버라이드), 팀명 텍스트 `text-sm` → `text-base`,
+아이콘-텍스트 간격 `gap-2` → `gap-3`. 두 헤더(내 팀 고정 라벨 / 상대 팀 select) 모두 동일 적용.
+`tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (12) — 후속 — 3열 사이 구분선 색상 보강
+
+3열 레이아웃 행의 `divide-x divide-slate-800`이
+바로 앞 변경(양 팀 헤더 배경을 `bg-slate-800`으로 통일)으로 헤더 부분에서 구분선과 배경이 같은
+색이 돼 거의 안 보이게 됨 — `divide-slate-700`으로 한 단계 밝혀서 헤더/본문 배경(slate-800/900)
+양쪽 모두에서 잘 보이게 함. `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (11) — 양 팀 헤더 팀 테마 색상 → slate-800 고정색
+
+내 팀/상대 팀 헤더가
+`style={{ backgroundColor: team.color_primary, color: team.color_text ?? getReadableTextColor(...) }}`
+로 팀 컬러를 그대로 쓰던 것을 `bg-slate-800 text-white` 고정 클래스로 교체. 더 이상 쓰이지
+않게 된 `getReadableTextColor` import 제거(`utils/colorContrast.ts`). `tsc --noEmit`/`vite build`
+신규 에러 없음.
+
+---
+
+## 2026-09-30 (10) — 우측 컬럼 구조 통합 + 재정 변동 사항 하단 구분선 + 메시지/버튼 진짜 스티키화
+
+
+사용자 요청: "재정 변동 사항" 하단에도 구분선 추가, 제안 메시지/전송 버튼을 하단에 스티키하게.
+
+**배경**: `position: sticky`는 스크롤되는 조상 안에서만 의미가 있는데, 기존 구조는 "제안 내역"만
+독립적으로 `overflow-y-auto`이고 캡 변동/에러/메시지·버튼은 `shrink-0`으로 그 바깥에 별도로
+쌓여 있었다(스크롤 컨테이너가 아님). 이 상태에서 메시지/버튼에 `sticky bottom-0`을 걸어도
+스크롤 조상이 없어 아무 효과가 없다.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- 우측 컬럼 전체를 하나의 `flex-1 min-h-0 overflow-y-auto` 컨테이너로 통합 — "제안 내역"의
+  독립 스크롤 래퍼(`relative grow-0 shrink min-h-0` + 내부 `h-full overflow-y-auto`)를 제거하고
+  그 콘텐츠를 이 통합 스크롤 안의 평범한 블록으로 편입(빈 상태에서 최소 높이로 줄어드는 동작은
+  flex 트릭 없이도 자연스러운 block 흐름만으로 그대로 유지됨 — 오히려 더 단순해짐).
+  그라디언트 오버레이는 "제안 내역" 콘텐츠를 감싸는 `relative` div 하나로 축소해서 그대로 유지.
+- "제안 내역"↔"재정 변동" 사이 구분선은 기존과 동일하게 유지, **"재정 변동"↔"메시지" 사이에
+  구분선 신규 추가**(`<div className="border-t border-slate-700" />`, capEnabled가 꺼져 아코디언
+  자체가 안 뜨는 리그에서도 항상 보이도록 아코디언의 border에 얹지 않고 독립적으로 배치).
+- 메시지+전송 버튼 블록: `shrink-0` → `sticky bottom-0 bg-slate-800`(통합 스크롤 컨테이너와 같은
+  배경색 명시 — 안 하면 스크롤되는 내용이 뒤에서 비쳐 보임). 이제 내용이 길어져 스크롤이
+  생기더라도 이 블록은 항상 화면 하단에 붙어있음.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**롤백 방법**: 우측 컬럼을 "제안 내역 자체 스크롤 + 캡변동/에러/메시지 shrink-0 나열" 구조로
+되돌리려면 git diff로 이전 버전 복원.
+
+---
+
+## 2026-09-30 (9) — 후속 — 재정 변동 사항 헤더/바디 사이 패딩 추가
+
+바디 div가 `pb-4`만 있고
+`pt` 없어서 헤더(버튼) 바로 아래에 첫 행이 붙어 보이던 것 → `pt-3` 추가. `tsc --noEmit`
+신규 에러 없음.
+
+---
+
+## 2026-09-30 (8) — "트레이드 이후 재정 변동 사항" 아코디언화
+
+`financeSectionExpanded` state
+신규(기본 펼침 — 기존 항상 보이던 동작과 동일). 타이틀을 `<button>`으로 바꿔 클릭 시 토글,
+`ChevronDown`(lucide-react) 아이콘을 접혔을 때 `-rotate-90`으로 회전시켜 방향 표시. 상세 행들
+(실행 전/후, 차이, 캡 여유분들)은 펼쳤을 때만 렌더. `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (7) — 후속 — 그라디언트 완화 + 빈 상태 처리
+
+스크린샷 지적 3가지.
+1. 그라디언트가 너무 어둡다 → `from-slate-950` → `from-slate-900/60`(불투명도 60%)로 완화.
+2. 선수가 없을 때도 그라디언트가 뜬다 → `cartMine.size > 0 || cartTheirs.size > 0`일 때만
+   렌더하도록 조건 추가.
+3. 선수가 없을 때 리스트 영역이 여전히 큰 빈 박스로 떠 있다 → 원인은 래퍼가 `flex-1`(무조건
+   남는 공간을 채움)이었던 것. `flex-1` → `grow-0 shrink min-h-0`로 교체 — 내용이 적으면
+   내용 높이만큼만 차지하고(억지로 안 늘어남), 선수가 많아지면 flex-shrink가 여전히 남는
+   공간까지 눌러주고 `overflow-y-auto`가 스크롤을 담당(원래 있던 "제안 내역이 길어져도
+   전송 버튼이 안 밀려남" 설계 의도는 그대로 유지).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`. **검증**: `tsc --noEmit`/`vite build`
+신규 에러 없음.
+
+---
+
+## 2026-09-30 (6) — "제안 내역" 리스트 하단 패딩 + 어두워지는 그라디언트 추가
+
+사용자 스크린샷 지적 —
+"제안 내역"(선수 리스트) 영역 하단에 패딩이 없어 내용이 경계에 바로 붙어 보이고, "트레이드 이후
+재정 변동 사항" 영역과 구분감이 약함.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` — "제안 내역" 스크롤 구조를
+`relative` 래퍼로 한 겹 더 감싸서(`<div className="relative flex-1 min-h-0">` → 안에
+`<div className="h-full overflow-y-auto ...">` → 안에 콘텐츠), 콘텐츠 div에 `pb-6`(하단 패딩)
+추가 + `relative` 래퍼 안에 스크롤과 무관한 절대위치 그라디언트 오버레이
+(`absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-slate-950 to-transparent
+pointer-events-none`)를 추가 — 스크롤 안쪽에 넣으면 내용과 같이 스크롤돼버려 항상 붙어있는
+구분감을 못 주므로 스크롤 컨테이너 바깥(형제)에 절대위치로 얹음.
+
+**⚠️ 작업 중 발견한 실수(같은 편집에서 바로 수정)**: div를 한 겹 추가하면서 처음엔 닫는 태그를
+하나 빠뜨려 `tsc --noEmit`에서 JSX 불균형 에러(`has no corresponding closing tag` 등 9개)가
+발생 — CLAUDE.md "중첩 블록 닫기 검증 필수" 규칙이 실제로 걸린 사례. 콘텐츠 div의 닫는 태그를
+추가해 즉시 수정, 재검증 통과.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (5) — "새 제안" 탭 3열 레이아웃 고정 700px → 남는 공간 자동 채움으로 변경
+
+사용자가
+스크린샷으로 지적 — 화면이 큰 모니터에서 3열 레이아웃 아래로 빈 공간이 남음. 원인 추적:
+`MultiSeasonLayout.tsx`의 `<div className="flex-1 overflow-y-auto ...">`(라우트 콘텐츠 스크롤
+컨테이너)와 이 컴포넌트 안의 탭 콘텐츠 wrapper(`flex-1 min-h-0 overflow-y-auto`, 1838행 근처)까지는
+이미 "남는 공간 채우기" 체인이 맞게 돼 있었는데, `overflow-y-auto` 컨테이너의 자식은 명시적으로
+높이를 받지 않으면(`h-full` 등) 그 컨테이너의 실제 렌더 높이를 상속하지 않고 내용 높이만큼만
+차지한다 — "새 제안" 탭의 최상위 div가 그냥 `space-y-4`(auto 높이)였던 게 원인. 3열 레이아웃 행
+자체도 `h-[700px]` 고정이라 화면이 그보다 크면 빈 여백이 그대로 남았음.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+- "새 제안" 탭 최상위 wrapper: `space-y-4` → `h-full flex flex-col min-h-0`(조상 스크롤
+  컨테이너의 실제 높이 상속).
+- 그 안의 메인 콘텐츠 wrapper: `space-y-4` → `flex-1 min-h-0 flex flex-col`.
+- 3열 레이아웃 행: `h-[700px]` → `flex-1 min-h-0`.
+- 좌/중/우 3개 컬럼: 각각 `h-[700px]` → `h-full`(이제 동적인 부모 행 높이를 그대로 상속).
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**롤백 방법**: 5곳의 클래스를 원래 `h-[700px]`/`space-y-4`로 되돌리면 됨(git diff로 확인 가능).
+
+---
+
+## 2026-09-30 (4) — 우측 "제안 내역"/"캡 변동" 섹션 7개 항목 개편
+
+사용자 요청 7가지를 한 번에 적용.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` (해당 없음 — 전부 한 파일 내 변경)
+
+1. "제안 내역" 타이틀 하단에 구분선 추가(`pb-2 border-b border-slate-700 block`).
+2. 선수 이름에 호버 효과(`hover:underline hover:text-indigo-400`) + `PlayerHoverCard` 추가 —
+   `renderAssetColumn`(수신 오퍼 탭)이 이미 쓰는 패턴과 동일(클릭 시 선수 상세로 이동,
+   `poolByIdWithStats`로 스탯까지 포함).
+3. 연봉 텍스트 `text-slate-500` → `text-white`, 선수 2명 이상일 때 리스트 하단에 "합계" 행 추가
+   (`outgoingCapTotal`/`ingoingCapTotal` 재사용).
+4. "{팀명} 제공 (N)" → "{팀명}"(카운트 표시 제거).
+5. "제안 내역"과 "캡 변동" 사이에 구분선 추가 — `capEnabled`가 꺼져 "캡 변동" 블록 자체가 안
+   뜨는 리그에서도 항상 보이도록 그 블록의 `border-y`에 얹지 않고 별도 `<div className="shrink-0
+   border-t border-slate-700" />`로 분리(좌우 패딩 없이 컬럼 전체 너비).
+6. "캡 변동 ({팀명})" 타이틀 → "트레이드 이후 재정 변동 사항"(팀명 참조 제거).
+7. "샐러리 감소"(`outgoingCapTotal`)/"샐러리 증가"(`ingoingCapTotal`) 두 행을 "실행 전"/"실행
+   후"로 교체 — 값은 각각 이미 계산돼 있던 `myPayrollBeforeTrade`(트레이드 전 현재 총 페이롤)/
+   `myTeamTotalSalaryAfterTrade`(트레이드 반영 후 예상 페이롤). "차이" 행은 그대로 유지.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (3) — "트레이드 조건" 텍스트 초록색으로 변경
+
+타이틀 + 불릿 리스트 전부
+`text-slate-400` → `text-emerald-400`. `tsc --noEmit` 신규 에러 없음.
+
+**[같은 날 후속] 타이틀만 초록, 본문은 흰색+금액만 초록 볼드로 재조정**: 위에서 본문까지 전부
+초록으로 바꿨더니 사용자가 타이틀만 초록으로 남기고 본문은 흰색, 그 중 금액에 해당하는 부분만
+초록 볼드로 강조해달라고 요청. 구현: `describeSalaryMatchBracket()`이 반환하는 문장은 그대로
+두고(구조화하지 않음), 렌더 시 `line.split(/(\$[\d,]+(?:\.\d+)?[MK]?)/g)`로 `$7.5M`/`$29M`/
+`$250K`류 금액 토큰만 분리해 `<span className="text-emerald-400 font-bold">`로 감싸고 나머지는
+`text-white` 그대로 출력. "나가는 연봉×2+$250K"처럼 수식 문구에 금액이 섞여 있어도 `$250K`
+부분만 초록 볼드가 되고 앞의 "나가는 연봉×2+"는 흰색으로 남음. `tsc --noEmit`/`vite build`
+신규 에러 없음.
+
+---
+
+## 2026-09-30 (2) — "트레이드 조건" 캡~1차 에이프런 구간(2번 케이스) 문구 수정
+
+
+`services/multi/tradeSalaryMatching.ts`의 `describeSalaryMatchBracket()` 기본 분기(캡 초과 ~
+1차 에이프런 미만) 4줄을 사용자 확정 문구로 교체 — "캡 초과 팀입니다(1차 에이프런 미만)"→
+"캡 스페이스 초과이며 1차 에이프런 미만입니다", "내보내는 연봉이"→"보내는 선수의 연봉이",
+"최대 '송신×...'"→"'나가는 연봉×...'". 의미는 동일, 표현만 교체. `tsc --noEmit` 신규 에러 없음.
+
+---
+
+## 2026-09-30 (1) — "샐러리 총합" 영역 라벨 텍스트 밝게 변경
+
+`renderCapSummaryFooter()`의 "샐러리
+총합"/캡·택스·에이프런 여유분 라벨을 `text-slate-500` → `text-white`로 교체(값 색상은 그대로).
+"캡 변동" 섹션에서 같은 이유로 이미 적용했던 것과 동일한 패턴. `tsc --noEmit` 신규 에러 없음.
+
+---
+
+## 2026-09-29 (8) — 트레이드 화면 "제공" 패널/샐러리 정보 영역 배경색 변경 (UI, 제공 패널은 이후 원복)
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` — "새 제안" 탭의 각 팀 "제공"
+패널(헤더+리스트, 내 팀/상대 팀 둘 다) 배경을 `bg-slate-900`/`bg-slate-900/50` →
+`bg-slate-800`/`bg-slate-800/50`으로, `renderCapSummaryFooter()`(각 팀 샐러리 정보 영역) 배경을
+투명(부모 상속) → `bg-slate-950`으로 변경. 순수 색상 변경이라 Before/After 생략, `tsc --noEmit`
+신규 에러 없음.
+
+**[같은 날 후속1] 제공 패널 배경만 원복**: 사용자가 "제공" 패널 배경은 이전(`bg-slate-900`/
+`bg-slate-900/50`)으로 되돌려달라고 함 — `renderCapSummaryFooter()`의 `bg-slate-950`은 유지,
+제공 패널(헤더+리스트) 두 곳만 원래 값으로 복원. `tsc --noEmit` 신규 에러 없음.
+
+**[같은 날 후속2] 우측 컬럼(제안 내역/전송) 배경 slate-800으로 변경**: "새 제안" 탭 3열 레이아웃 중
+우측 컬럼(`flex-[3]`, 제안 내역+캡 변동+전송 버튼) 컨테이너 배경을 `bg-slate-900` → `bg-slate-800`,
+그 안의 "제안 내역" 스크롤 영역(자체 explicit bg 보유)도 동일하게 `bg-slate-900` → `bg-slate-800`으로
+맞춰서 컬럼 전체가 일관되게 보이도록 함. `tsc --noEmit` 신규 에러 없음.
+
+**[같은 날 후속3] "캡 변동" 섹션 타이틀/라벨 텍스트 흰색으로 변경**: 위 배경이 slate-800으로 밝아지며
+`text-slate-500` 라벨(타이틀 "캡 변동 (팀명)", "샐러리 감소"/"샐러리 증가"/"차이", `buildCapRoomRows`
+행 라벨 전부)이 대비가 약해져 사용자 요청으로 `text-white`로 교체. 값(숫자) 쪽 색상(백색/에메랄드/레드)은
+그대로 유지 — 라벨만 변경. `tsc --noEmit` 신규 에러 없음.
+
+**[같은 날 후속4] 각 팀 "샐러리 총합" 영역에 상시 "트레이드 조건" 안내 추가**: (7)에서 "1차 에이프런
+초과 팀은 아무것도 안 내보내면 항상 최대 $0"라는 문의가 있었는데, 이건 실제 CBA 규칙과 일치하는
+정상 동작이지만 선수를 고르기 전엔 알 방법이 없었다. 위반 시에만 뜨는 `salaryMatchErrors`/
+`checkSalaryMatch()`와 별개로, 지금 이 팀이 어느 구간(캡 이하/캡~1차 에이프런/1차~2차 에이프런/2차
+에이프런 이상)에 있고 그 구간 규칙이 뭔지 **항상** 보여주는 안내를 추가.
+
+**변경 파일**:
+- `services/multi/tradeSalaryMatching.ts` — `describeSalaryMatchBracket(teamPayroll, thresholds): string[]`
+  신규 export. 특정 트레이드를 평가하는 게 아니라 "지금 상태에서 지켜야 하는 조건"을 구간별
+  문장 배열로 반환(캡 이하→잔여 캡 스페이스, 캡~1차 에이프런→3단계 티어 설명, 1차~2차 에이프런→100%
+  매칭, 2차 에이프런 이상→100% 매칭+aggregation 금지).
+- `views/multi/season/MultiFrontOfficeView.tsx` — `renderCapSummaryFooter()`의 기존 캡/택스/
+  에이프런 여유분 행들 아래에 구분선 + "트레이드 조건" 소제목 + 위 배열을 `·` 불릿 리스트로
+  렌더. `salaryMatchingEnabled && salaryMatchThresholds`일 때만(매칭을 안 쓰는 리그엔 무의미).
+  구간 판정은 `currentTotal`(트레이드 반영 전 페이롤) 기준 — `checkSalaryMatch()`가 실제 검증에
+  쓰는 기준과 동일.
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**롤백 방법**: `renderCapSummaryFooter()`에서 추가한 `salaryMatchingEnabled && ...` 블록 삭제,
+`describeSalaryMatchBracket` export 제거.
+
+**[같은 날 후속0000] 샐러리 총합/캡 변동 금액을 축약(1.6M) 대신 전체 단위($1,600,000)로 표시**:
+`renderCapSummaryFooter()`(양 팀 샐러리 총합 영역)와 우측 3번째 컬럼 "캡 변동" 섹션의 모든 금액
+표시를 `formatMoney`(축약) → `formatMoneyFull`(전체 자리수)로 교체. 그 과정에서
+`utils/formatMoney.ts`의 `formatMoneyFull()`이 음수를 `$-46,600,000`처럼 부호가 $ 뒤에 붙는
+형태로 잘못 표시하던 버그를 발견 — `formatMoney()`와 동일하게 부호를 $ 앞으로 오게 수정
+(`-$46,600,000`). 이 수정은 `formatMoneyFull`을 이미 쓰던 다른 화면(`TeamPayrollTable.tsx`의
+음수 diff 등)에도 동일하게 적용되어 그쪽 표시도 함께 교정됨(부작용이지만 버그 수정이라 의도된
+개선).
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`(두 영역 전부 `formatMoney`→
+`formatMoneyFull`), `utils/formatMoney.ts`(`formatMoneyFull` 부호 처리 수정).
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**롤백 방법**: `formatMoneyFull` 호출부를 `formatMoney`로 되돌리면 됨. `utils/formatMoney.ts`의
+부호 수정은 버그 수정이라 되돌리지 않는 게 맞음.
+
+**[같은 날 후속000] 각 팀 영역 전체를 카트 무관 고정값으로 재구성**: 후속00으로 "샐러리 총합" 행
+하나만 고쳤는데, 사용자가 "선수를 선택해도 이 정보란 전체가 변동이 없어야 한다"고 재차 요청 —
+같은 패널 안의 "실행 시 총 샐러리" 행과 캡/사치세/에이프런 여유분(당시 `postTotal` 기준)이 여전히
+카트에 반응하고 있었음. "실행 시" 행을 제거하고, 여유분 계산도 `postTotal` → `currentTotal`로
+교체 — 이제 패널 전체가 이 팀의 "현재" 상태만 보여주고 선수 선택과 완전히 무관하다. "트레이드가
+성사되면 얼마나 바뀌는지"는 이미 우측 3번째 컬럼 "캡 변동" 섹션(outgoingCapTotal/ingoingCapTotal
+기반)이 따로 보여주고 있어 정보 손실 없음(오히려 중복 제거). `renderCapSummaryFooter()` 시그니처를
+`(roster, outTotal, inTotal, deadMoney)` → `(roster, deadMoney)`로 단순화, 호출부 2곳도 맞춰 수정.
+`tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**[같은 날 후속00] "샐러리 총합"이 카트 선택에 따라 흔들리던 것 고정값으로 수정**: `renderCapSummaryFooter()`의
+"샐러리 총합" 행이 실제로는 `outTotal`(현재 카트에 담긴 선수 연봉 합)을 보여주고 있어서, 선수를
+고를 때마다 값이 바뀌고 원래 값을 보려면 전부 선택 해제해야 하는 문제가 있었다는 지적. 이미
+계산해두고 있던 `currentTotal`(이 팀의 실제 현재 총 페이롤, `calcTeamPayroll()` 결과 — 카트와
+무관하게 고정)로 교체. 트레이드 반영 후 값은 그대로 "실행 시 총 샐러리"(`postTotal`)가 담당하므로
+정보 손실 없음. `tsc --noEmit` 신규 에러 없음.
+
+**[같은 날 후속0] 각 팀 "제공" 패널 제거 — 로스터 리스트 내 +/- 토글로 통합**: 사용자 요청으로
+좌/중 컬럼의 별도 "제공" 서브패널(헤더+담긴 선수 리스트, 260px 고정)을 완전히 제거하고, 로스터
+리스트 자체에서 선수를 담으면 그 자리에서 (+) 버튼이 (-) 버튼으로 바뀌도록 변경(선수가 목록에서
+사라지지 않음). `myRosterListed`/`targetRosterListed`에서 카트에 담긴 선수를 걸러내던
+`.filter(p => !cartMine.has(p.id))`를 제거하고, `PlayerChip`에 이미 있던 `actionIcon` prop을
+행별로 `cartMine.has(p.id) ? 'remove' : 'add'`로 동적 지정(컴포넌트 자체는 수정 불필요 — 이미
+'add'/'remove' 두 상태를 지원했음). `renderCapSummaryFooter(...)` 호출은 로스터 테이블 바로
+아래로 이동. "제안 내역"(우측 3번째 컬럼)은 이번 변경과 무관 — 그대로 유지. `tsc --noEmit` 신규
+에러 없음.
+
+**[같은 날 후속] 좌우 컬럼 높이 어긋남 수정**: 사용자가 스크린샷으로 좌/우 팀 컬럼의 내부 영역
+높이가 서로 달라 레이아웃이 깨진다고 지적. 원인은 `describeSalaryMatchBracket()`이 구간마다
+2~4줄로 다른 길이를 반환하는데, 왼쪽 팀/오른쪽 팀이 서로 다른 구간(=다른 줄 수)일 수 있어서 —
+이 블록이 `shrink-0`으로 자연 높이를 차지하다 보니 좌우 footer 전체 높이가 달라지고, 그 위
+로스터 영역(`flex-1`)이 남는 공간을 채우는 구조라 결국 좌우 컬럼이 어긋남.
+`views/multi/season/MultiFrontOfficeView.tsx`의 트레이드 조건 블록에 `h-[104px] overflow-y-auto`
+고정 — 최장 케이스(제목+불릿 4줄) 기준으로 잡아서, 어떤 구간 조합이든 좌우 footer 높이가 항상
+같아지게 함. `tsc --noEmit` 신규 에러 없음.
+
+---
+
+## 2026-09-29 (7) — 에이프런 100% 매칭 한도 $0 표시에 원인 힌트 추가
+
+**배경**: (6) 배포 후 실사용 중 "1차 에이프런 초과 팀인데 어떤 선수를 받아도 항상 최대 $0"이라는
+버그 제보. 확인 결과 버그가 아니라 정확한 동작 — 1차/2차 에이프런 이상 팀은 100% 매칭 규칙상
+"내보내는 선수"를 하나도 안 고르면(송신 $0) 100%인 한도도 $0이라 어떤 상대 선수를 골라도 항상
+$0으로 뜬다(실제 CBA도 동일: 매칭 없이는 받을 수 없음). 다만 문구만 보면 원인을 알 수 없어
+버그처럼 보인다는 게 문제 — `result.limit === 0`일 때(=송신액이 0이라는 뜻, apron1/apron2_100pct
+케이스에서만 발생 가능) 원인을 바로 알 수 있는 힌트 문구로 분기.
+
+**변경 파일**:
+- `services/multi/tradeSalaryMatching.ts` — `formatSalaryMatchMessage()`의 `apron1`/`apron2_100pct`
+  분기에서 `result.limit === 0`이면 "내보내는 선수 없이는 아무도 받을 수 없습니다 (먼저 내보낼
+  선수를 선택하세요)"로 교체, 그 외엔 기존 문구 유지.
+
+**검증**: `tsc --noEmit` 신규 에러 없음. 근본 원인(제공 카트가 비어있으면 매칭 계산상 한도가
+0이 되는 것 자체)은 CBA 규칙과 정확히 일치하므로 로직은 그대로 두고 문구만 개선.
+
+**롤백 방법**: 두 분기의 삼항 조건을 제거하고 기존 단일 문구로 되돌리면 됨.
+
+---
+
+## 2026-09-29 (6) — 샐러리 매칭 위반 얼럿을 케이스별 상세 문구로 분리
+
+**배경**: (4)에서 만든 샐러리 매칭 검증이 위반 사유와 무관하게 항상 "샐러리 매칭 규칙(캡/에이프런)
+위반으로 트레이드를 진행할 수 없습니다"라는 한 문장만 띄웠음. 사용자가 케이스별로(캡 스페이스 초과/
+티어별 한도/1차 에이프런/2차 에이프런 100%/2차 에이프런 합산금지) 왜 막히는지 구체적으로 보여줘야
+한다고 지적, 대화로 6가지 문구 템플릿을 확정.
+
+**변경 파일**:
+- `services/multi/tradeSalaryMatching.ts` — `SalaryMatchResult.reason`을 4종에서 5종으로 분리
+  (`apron2_aggregation`을 `apron2_100pct`/`apron2_aggregation`로 나눔 — 내보내는 선수가 1명뿐인데
+  100%를 넘긴 경우와, 여러 선수를 합쳐야만 실패하는 진짜 aggregation 위반을 구분). 확정된 5개
+  템플릿을 조립하는 `formatSalaryMatchMessage(teamName, result)` 신규 export.
+- `services/multi/newsBlurb.ts` — 조사 헬퍼 `i`(이/가)/`eun`(은/는)을 `gwa`와 동일하게 export
+  (기존엔 파일 내부 전용, 팀명 동적 삽입 문구에 재사용하려 공개).
+- `views/multi/season/MultiFrontOfficeView.tsx` — `salaryMatchErrors`(전송 차단)와
+  `salaryMatchWarnings`(수신 오퍼 탭 경고) 둘 다 하드코딩 문구 대신 `formatSalaryMatchMessage()` 호출로 교체.
+
+**확정된 6가지 문구(팀명은 매 호출마다 동적 삽입, 조사는 `i`/`eun`으로 자동 처리)**:
+1. 캡 스페이스 초과: `{팀}의 캡 스페이스를 초과하여 트레이드가 불가능합니다.`
+2/3/4. 캡~1차 에이프런 3단계 티어(공통 템플릿): `{팀}이 받을 수 있는 최대 샐러리는 {한도}입니다.`
+5. 1차 에이프런: `{팀}은 1차 에이프런을 초과하여 최대 {한도}까지만 받을 수 있습니다.`
+6. 2차 에이프런(단일 선수, 100% 초과): `{팀}은 2차 에이프런을 초과하여 100% 매칭({한도})만 가능합니다.`
+6b. 2차 에이프런(다수 선수 합산 시도): `{팀}은 2차 에이프런을 초과하여 합산 매칭이 불가능합니다.`
+
+**검증**: `tsc --noEmit`/`vite build` 신규 에러 없음.
+
+**롤백 방법**: `MultiFrontOfficeView.tsx`의 두 지점을 하드코딩 문구로 되돌리고,
+`tradeSalaryMatching.ts`/`newsBlurb.ts`는 git diff로 이전 버전 복원.
+
+---
+
+## 2026-09-29 (5) — 트레이드 화면 연봉이 meta_players 원본만 표시하던 버그 수정
+
+**배경**: (4) 작업 직후 사용자가 "트레이드 화면 연봉이 생성된 샐러리가 아니라 DB 원본을 그대로
+표시하는 것 같다"고 지적. 확인 결과 `MultiFrontOfficeView.tsx`가 선수 데이터를
+`useMultiSearchData()`(`hooks/useMultiSearchData.ts`)의 `poolPlayers`에서 가져오는데, 이 훅은
+**meta_players만 조회**하고 `room_player_state.contract`(이 리그에서 트레이드/재계약/방출로
+바뀐 연봉 오버라이드)를 전혀 반영하지 않음 — `buildLeagueTeams.ts`(로스터/재정 탭 등이 쓰는
+경로)는 이미 이 오버라이드를 적용하지만, 트레이드 화면은 2026-09-21에 데드캡 누락 버그를
+고치며 `buildLeagueTeams()` 대신 `poolById` 직접 조립 방식으로 바꿨을 때 이 부분을 놓침. 결과:
+리그 내에서 연장/재계약한 선수의 실제 연봉이 아니라 항상 meta_players 원본 연봉이 트레이드
+화면·(4)에서 만든 샐러리 매칭 사전 검증에 전부 반영되고 있었음 — 표시뿐 아니라 매칭 로직
+자체의 정확도 문제였음(서버 SQL은 `player_current_salary()`가 이미 `room_player_state.contract`를
+올바르게 우선 조회해서 정확했음, 클라이언트만 틀렸음).
+
+**변경 파일**:
+- `services/multi/buildLeagueTeams.ts` — 기존에 `buildLeagueTeams()` 안에 인라인으로만 있던
+  "roomContract ?? base.contract 적용 + options[] 승격 + salary/contractYears 재파생" 로직을
+  `applyContractOverride(base, roomContract)`로 추출해 export(재사용 위해 — 새 소비처가 로직을
+  또 베껴 쓰지 않게 함).
+- `views/multi/season/MultiFrontOfficeView.tsx` — `poolById` 정의부에서 리그 전체 로스터
+  (`leagueTeams[].roster` 전원)의 `room_player_state.contract`를 한 번 조회해 `applyContractOverride()`로
+  merge. `myRoster`/`targetRoster`/캡 요약/(4)에서 추가한 샐러리 매칭 검증/수신 오퍼 탭 표시가
+  전부 이 `poolById`를 거치므로 한 곳만 고치면 전체 화면이 정확해짐.
+
+**Before**:
+```ts
+const poolById = useMemo(() => new Map(poolPlayers.map(p => [p.id, p])), [poolPlayers]);
+```
+
+**After**:
+```ts
+const rosteredPlayerIds = useMemo(
+    () => Array.from(new Set(leagueTeams.flatMap(t => t.roster ?? []))),
+    [leagueTeams],
+);
+const { data: contractOverrideRows } = useQuery({
+    queryKey: ['tradeContractOverrides', roomId, rosteredPlayerIds.slice().sort().join(',')],
+    enabled: !!roomId && rosteredPlayerIds.length > 0,
+    staleTime: 0,
+    queryFn: async () => {
+        const { data, error } = await supabase
+            .from('room_player_state')
+            .select('player_id, contract')
+            .eq('room_id', roomId!)
+            .in('player_id', rosteredPlayerIds);
+        if (error) throw error;
+        return data ?? [];
+    },
+});
+const poolById = useMemo(() => {
+    const m = new Map(poolPlayers.map(p => [p.id, p]));
+    for (const row of contractOverrideRows ?? []) {
+        const base = m.get(row.player_id);
+        if (base && row.contract) m.set(row.player_id, applyContractOverride(base, row.contract));
+    }
+    return m;
+}, [poolPlayers, contractOverrideRows]);
+```
+
+**검증**: `npx tsc --noEmit`/`npx vite build` 신규 에러 없음. (4)에서 이미 구현한 서버 SQL 쪽은
+원래부터 `room_player_state.contract`를 정확히 우선 조회하고 있었으므로 이번 변경은 클라이언트
+전용(서버 재배포 불필요).
+
+**롤백 방법**: `MultiFrontOfficeView.tsx`의 `poolById` 정의를
+`new Map(poolPlayers.map(p => [p.id, p]))`로 되돌리고 `rosteredPlayerIds`/`contractOverrideRows`
+블록 삭제, `buildLeagueTeams.ts`는 `applyContractOverride` 추출 전 인라인 버전으로 복원
+(git 커밋 diff로 확인 가능).
+
+---
+
+## 2026-09-29 (4) — 멀티 트레이드에 CBA 샐러리 매칭(캡/에이프런 구간별 제약) 신규 구현
+
+**배경**: 멀티 리그 트레이드(`create_trade_offer`/`respond_trade_offer` RPC)에는 캡/사치세/에이프런
+구간별 샐러리 매칭 검증이 전혀 없었음 — 로스터 소유권/트레이드 블록/데드라인만 검사. 웹 검색으로
+현행(2023~) CBA 원문을 검증한 결과 싱글플레이어 CPU 엔진(`services/tradeEngine/salaryRules.ts`)의
+매칭 로직도 구버전(2017 CBA, 택스 라인 110%/125% 분기)이라는 게 드러남 — 그 파일은 손대지 않고
+(스코프 밖), 멀티 전용으로 검증된 현행 규칙을 새로 구현. 계획서: `~/.claude/plans/cosmic-yawning-cray.md`.
+
+**매칭 규칙(검증된 현행 2023 CBA)**:
+1. 팀 페이롤 < 캡 → 매칭 불필요, 잔여 캡 스페이스만큼 자유
+2. 캡 ≤ 페이롤 < 1차 에이프런 → 송신액 기준 3단계(택스 여부 무관): ≤$7.5M→×2+$250K,
+   $7.5M~$29M→+$7.5M, >$29M→×1.25+$250K
+3. 1차 에이프런 ≤ 페이롤 < 2차 에이프런 → 100% 매칭($250K 여유 없음, aggregation 허용)
+4. 페이롤 ≥ 2차 에이프런 → 100% 매칭 + aggregation 금지(기준은 sum이 아니라 내보내는 선수 중
+   최대 연봉 한 명 — "한 명 보내고 여러 명 받기"는 허용되므로)
+
+이번 단계는 매칭 티어+에이프런 100% 규칙만 — 하드캡 상태 영속화, TPE 뱅킹, 사인앤트레이드, 트레이드
+내 현금은 멀티에 해당 기능 자체가 없어 제외.
+
+**변경 파일**:
+- `migrations/add_trade_salary_matching.sql` (server, Supabase MCP로 적용 완료) — `leagues.trade_salary_matching_enabled`
+  컬럼 신설(기본 true) + 헬퍼 함수 3개(`player_current_salary`/`team_current_payroll`/`check_trade_salary_match`)
+  신설 + `respond_trade_offer()` accept 분기에 두 팀 각각 매칭 검사 추가(로스터 스왑 UPDATE 이전,
+  admin은 바이패스). 위반 시 `RAISE EXCEPTION 'salary_match_failed: %', team_slug`.
+- `services/multi/tradeSalaryMatching.ts` (client, 신규) — SQL과 동일 로직의 순수 TS 함수
+  `checkSalaryMatch()`. 사전 경고 전용, 강제력 없음(서버가 최종 판정).
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — "새 제안" 탭 `tradeSendErrors`에
+  양 팀 매칭 검사 추가(전송 버튼 차단), "수신 오퍼" 탭에 매칭 위반 경고 문구 추가(어드민이 제3자
+  오퍼를 볼 때도 보이도록 `myRole` 조건 밖으로 뺌).
+- `services/multi/tradeService.ts` (client) — `mapTradeOfferError()`에 `salary_match_failed` 매핑 추가.
+- `services/multi/roomQueries.ts` (client) — `LeagueRow`에 `trade_salary_matching_enabled: boolean` 추가.
+- `services/multi/leagueService.ts` (client) — `UpdateLeagueSettingsParams`에 `tradeSalaryMatchingEnabled?`
+  추가 + payload 매핑.
+- `views/multi/league/LeagueSettingsView.tsx` (client) — "트레이드" 탭에 "샐러리 매칭 강제" on/off
+  토글 추가(트레이드 데드라인 토글과 동일한 스타일/저장 경로).
+
+**Before**: `respond_trade_offer()`는 로스터 소유권/트레이드 블록/데드라인만 검사, 샐러리 관련 코드 없음.
+
+**After**: 위 매칭 규칙을 accept 시점에 양 팀 모두 강제. `leagues.cap_enabled && leagues.trade_salary_matching_enabled`
+둘 다 true일 때만 작동(기본값 모두 true라 새 리그는 기본으로 강제됨).
+
+**검증**: `check_trade_salary_match()` 12개 경계 시나리오(캡 스페이스 정확히 통과/1달러 초과 실패,
+3단계 티어 각각, 1차 에이프런 100%, 2차 에이프런 aggregation 금지 vs 분할 수신 허용, apron1_enabled=false
+폴백)를 Supabase MCP `execute_sql`로 직접 실행해 전부 기대값과 일치 확인. 실제 운영 리그(atl 팀,
+room 895d10da..., 2026-27 시즌)에 대해 `team_current_payroll()`이 $180,677,801(NBA 스케일에
+부합하는 현실적인 값)을 반환하는 것도 확인. `npx tsc --noEmit` 결과 수정한 파일들에서 신규 에러
+없음(기존에 있던 무관한 에러들만 남음).
+조사 중 "개인 팩 드래프트 토너먼트" 방(`room_player_instances`로 선수 id를 별도 매핑, `meta_player_cards`
+사용, `contract` 항상 null)이 meta_players 조회 실패로 페이롤 0을 반환하는 걸 발견했으나, 이 방 타입은
+`leagues.trade_enabled = false`로 고정돼 있어 `create_trade_offer` 자체가 막히므로 트레이드 매칭 코드
+경로에 도달할 수 없음(회귀 아님, 별도 게임 모드).
+
+**롤백 방법**: `migrations/add_trade_salary_matching.sql`의 `respond_trade_offer()` 정의를
+`migrations/add_leagues_trade_deadline_enabled.sql`의 원본으로 다시 `CREATE OR REPLACE`(Supabase
+MCP). `player_current_salary`/`team_current_payroll`/`check_trade_salary_match` 함수는
+`DROP FUNCTION`. `leagues.trade_salary_matching_enabled` 컬럼은 그대로 둬도 무해(참조하는 코드가
+없어지면 죽은 컬럼일 뿐). 클라이언트는 이 4개 파일의 diff를 되돌리면 됨.
+
+---
+
 ## 2026-09-29 (3) — 리그 삭제 시 "statement timeout" 에러 수정 (누락 인덱스 6개 + 전용 RPC)
 
 **배경**: (2)로 FK 에러는 고쳤지만 같은 "Weakly League"(실제로 완주된 main_league —

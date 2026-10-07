@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { Save, Loader2 } from 'lucide-react';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
-import { updateTeamProfile, DEFAULT_COURT_COLORS } from '../../services/multi/leagueService';
+import { updateTeamProfile } from '../../services/multi/leagueService';
+import { useCourtDefaults } from '../../services/multi/courtDefaults';
 import { TEAM_DATA } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import { HEX_COLOR_RE, contrastRatio } from '../../utils/colorContrast';
 import { CourtPreview } from './CourtPreview';
+import { getRealTeamLogoUrl } from '../../utils/constants';
 import { ColorField } from './ColorField';
 
 const HEX_RE = HEX_COLOR_RE;
@@ -41,9 +43,23 @@ export const TeamSettingsPanel: React.FC = () => {
     const [colorSecondary, setColorSecondary] = useState('#fbbf24');
     const [colorTertiary,  setColorTertiary]  = useState('#0f172a');
     const [colorText,      setColorText]      = useState('#ffffff');
-    const [courtBackground, setCourtBackground] = useState(DEFAULT_COURT_COLORS.background);
-    const [courtPaint,      setCourtPaint]      = useState(DEFAULT_COURT_COLORS.paint);
-    const [courtLine,       setCourtLine]       = useState(DEFAULT_COURT_COLORS.line);
+    // null = team follows the admin-configured global default; shown value falls back to it.
+    const courtDefaults = useCourtDefaults(myTeam?.team_slug);
+    const [courtBgOverride,    setCourtBgOverride]    = useState<string | null>(null);
+    const [courtPaintOverride, setCourtPaintOverride] = useState<string | null>(null);
+    const [courtLineOverride,  setCourtLineOverride]  = useState<string | null>(null);
+    const [courtThreeOverride, setCourtThreeOverride] = useState<string | null>(null);
+    const courtBackground = courtBgOverride    ?? courtDefaults.background;
+    const courtPaint      = courtPaintOverride ?? courtDefaults.paint;
+    const courtLine       = courtLineOverride  ?? courtDefaults.line;
+    const [courtShowLogo, setCourtShowLogo] = useState(true);
+    const [courtLogoScale, setCourtLogoScale] = useState(100);
+    // 3점 안쪽: 개별 지정이 없으면 (팀이 코트 배경을 직접 바꿨다면 그 배경색, 아니면 기본값의 3점색)
+    const defaultThree = courtBgOverride ?? courtDefaults.three;
+    const courtThree = courtThreeOverride ?? defaultThree;
+    const setCourtBackground = setCourtBgOverride;
+    const setCourtPaint      = setCourtPaintOverride;
+    const setCourtLine       = setCourtLineOverride;
     const [saving,  setSaving]  = useState(false);
     const [saveErr, setSaveErr] = useState<string | null>(null);
     const [saved,   setSaved]   = useState(false);
@@ -56,9 +72,12 @@ export const TeamSettingsPanel: React.FC = () => {
         setColorSecondary(myTeam.color_secondary ?? '#fbbf24');
         setColorTertiary(myTeam.color_tertiary ?? '#0f172a');
         setColorText(myTeam.color_text ?? '#ffffff');
-        setCourtBackground(myTeam.court_background ?? DEFAULT_COURT_COLORS.background);
-        setCourtPaint(myTeam.court_paint ?? DEFAULT_COURT_COLORS.paint);
-        setCourtLine(myTeam.court_line ?? DEFAULT_COURT_COLORS.line);
+        setCourtBgOverride(myTeam.court_background || null);
+        setCourtPaintOverride(myTeam.court_paint || null);
+        setCourtLineOverride(myTeam.court_line || null);
+        setCourtThreeOverride(myTeam.court_three || null);
+        setCourtShowLogo(myTeam.court_show_logo ?? true);
+        setCourtLogoScale(myTeam.court_logo_scale ?? 100);
         setSaveErr(null);
         setSaved(false);
     }, [myTeam?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -70,9 +89,10 @@ export const TeamSettingsPanel: React.FC = () => {
     const safeP = HEX_RE.test(colorPrimary)   ? colorPrimary   : '#e11d48';
     const safeS = HEX_RE.test(colorSecondary) ? colorSecondary : '#fbbf24';
     const safeT = HEX_RE.test(colorText)      ? colorText      : '#ffffff';
-    const safeCourtBg    = HEX_RE.test(courtBackground) ? courtBackground : DEFAULT_COURT_COLORS.background;
-    const safeCourtPaint = HEX_RE.test(courtPaint)      ? courtPaint      : DEFAULT_COURT_COLORS.paint;
-    const safeCourtLine  = HEX_RE.test(courtLine)       ? courtLine       : DEFAULT_COURT_COLORS.line;
+    const safeCourtBg    = HEX_RE.test(courtBackground) ? courtBackground : courtDefaults.background;
+    const safeCourtThree = HEX_RE.test(courtThree) ? courtThree : safeCourtBg;
+    const safeCourtPaint = HEX_RE.test(courtPaint)      ? courtPaint      : courtDefaults.paint;
+    const safeCourtLine  = HEX_RE.test(courtLine)       ? courtLine       : courtDefaults.line;
 
     const teamColorFields = [
         { key: 'primary',   label: 'Primary (배경)',       value: colorPrimary,   setter: setColorPrimary },
@@ -82,9 +102,12 @@ export const TeamSettingsPanel: React.FC = () => {
     ];
     const courtColorFields = [
         { key: 'background', label: '코트 배경',   value: courtBackground, setter: setCourtBackground },
+        { key: 'three',      label: '3점 라인 안쪽', value: courtThree,     setter: setCourtThreeOverride },
         { key: 'paint',      label: '페인트존',    value: courtPaint,      setter: setCourtPaint },
         { key: 'line',       label: '라인',        value: courtLine,       setter: setCourtLine },
     ];
+
+    const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
     const handleSave = async () => {
         if (!myTeam || !userId) return;
@@ -92,7 +115,7 @@ export const TeamSettingsPanel: React.FC = () => {
         if (trimNick.length < 1 || trimNick.length > 20) { setSaveErr('닉네임은 1~20자여야 합니다'); return; }
         for (const [label, val] of [
             ['Primary', colorPrimary], ['Secondary', colorSecondary], ['Tertiary', colorTertiary], ['Text', colorText],
-            ['코트 배경', courtBackground], ['페인트존', courtPaint], ['라인', courtLine],
+            ['코트 배경', courtBackground], ['3점 라인 안쪽', courtThree], ['페인트존', courtPaint], ['라인', courtLine],
         ]) {
             if (!HEX_RE.test(val)) { setSaveErr(`${label} 색상은 #RRGGBB 형식이어야 합니다`); return; }
         }
@@ -104,7 +127,13 @@ export const TeamSettingsPanel: React.FC = () => {
         const { error } = await updateTeamProfile(
             myTeam.id, userId, fullName, myTeam.team_abbr,
             colorPrimary, colorSecondary, colorTertiary, colorText,
-            courtBackground, courtPaint, courtLine,
+            // Same as the global default -> store NULL so the team keeps following future default changes.
+            sameHex(courtBackground, courtDefaults.background) ? null : courtBackground,
+            sameHex(courtPaint,      courtDefaults.paint)      ? null : courtPaint,
+            sameHex(courtLine,       courtDefaults.line)       ? null : courtLine,
+            courtShowLogo,
+            courtLogoScale,
+            sameHex(courtThree, defaultThree) ? null : courtThree,
         );
         setSaving(false);
         if (error) { setSaveErr(error); return; }
@@ -190,7 +219,7 @@ export const TeamSettingsPanel: React.FC = () => {
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">코트 미리보기</h3>
                         <div className="rounded-xl overflow-hidden border border-slate-800">
                             <svg viewBox="0 0 940 500" className="w-full">
-                                <CourtPreview background={safeCourtBg} paint={safeCourtPaint} line={safeCourtLine} />
+                                <CourtPreview background={safeCourtBg} paint={safeCourtPaint} line={safeCourtLine} three={safeCourtThree} logoUrl={courtShowLogo ? getRealTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
                             </svg>
                         </div>
                         <p className="text-[11px] text-slate-500 ko-normal mt-1.5 leading-relaxed">
@@ -203,6 +232,27 @@ export const TeamSettingsPanel: React.FC = () => {
                         {courtColorFields.map(({ key, label, value, setter }) => (
                             <ColorField key={key} label={label} value={value} onChange={setter} disabled={!canEditIdentity} />
                         ))}
+                        <label className="flex items-center justify-between gap-3 pt-1 cursor-pointer">
+                            <span className="text-sm text-slate-300 ko-normal">코트 중앙에 팀 로고 표시</span>
+                            <input
+                                type="checkbox"
+                                checked={courtShowLogo}
+                                onChange={e => setCourtShowLogo(e.target.checked)}
+                                disabled={!canEditIdentity}
+                                className="w-4 h-4 accent-indigo-500"
+                            />
+                        </label>
+                        <div className={`flex items-center gap-3 ${courtShowLogo ? '' : 'opacity-50'}`}>
+                            <span className="text-sm text-slate-300 ko-normal shrink-0">로고 크기</span>
+                            <input
+                                type="range" min={50} max={200} step={5}
+                                value={courtLogoScale}
+                                onChange={e => setCourtLogoScale(Number(e.target.value))}
+                                disabled={!canEditIdentity || !courtShowLogo}
+                                className="flex-1 accent-indigo-500"
+                            />
+                            <span className="text-xs font-mono text-slate-400 w-10 text-right">{courtLogoScale}%</span>
+                        </div>
                     </div>
                 </div>
             </div>

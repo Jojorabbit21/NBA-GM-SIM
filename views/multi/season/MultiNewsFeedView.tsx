@@ -1,5 +1,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { getLeagueNotificationScope, setLeagueNotificationScope, type LeagueNotificationScope } from '../../../hooks/useLeagueNotifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from 'lucide-react';
@@ -134,6 +135,7 @@ const MultiNewsFeedView: React.FC = () => {
     }, [searchParams]);
     const setSelectedTeams = (teams: string[]) => updateParams({ teams: teams.length > 0 ? teams.join(',') : null });
 
+    const [notifScope, setNotifScope] = useState<LeagueNotificationScope>(() => getLeagueNotificationScope());
     const [selectedTypes, setSelectedTypes] = useState<LeagueEventType[]>([]);
     // "수상" 그룹처럼 타입 여러 개를 한 체크박스로 묶은 경우, 그 그룹의 타입 전부를 한꺼번에
     // 추가/제거한다 — 전부 선택돼 있으면 전부 해제, 하나라도 안 돼 있으면 전부 선택.
@@ -532,6 +534,22 @@ const MultiNewsFeedView: React.FC = () => {
                                     </div>
                                 );
                             })}
+                        </div>
+                        {/* [2026-10-02] 전역 토스트의 리그 알림 수신 범위(useLeagueNotifications) — 뉴스피드 필터와 같은 자리.
+                            브라우저(localStorage)별 설정. */}
+                        <div className="flex items-center gap-2 px-3 pb-2 border-t border-slate-800 pt-2">
+                            <span className="text-xs font-bold text-slate-500 ko-normal shrink-0">알림 범위</span>
+                            {([['my_team', '내 팀 관련'], ['all', '리그 전체'], ['off', '끔']] as const).map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    onClick={() => { setLeagueNotificationScope(value); setNotifScope(value); }}
+                                    className={`px-2 py-0.5 rounded-md text-xs font-bold transition-colors ${
+                                        notifScope === value ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                     {isLoading ? (

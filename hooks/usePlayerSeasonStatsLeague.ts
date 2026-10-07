@@ -52,15 +52,10 @@ export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
 // 토글이 매번 0으로만 나오던 버그).
 // enabledOverride — 호출부가 "지금은 이 쿼리가 필요 없다"고 판단할 때(리더보드가 정규시즌
 // 모드일 때 플레이오프 쿼리를 안 돌리는 등) false로 넘겨 아예 fetch를 막는다. 기본 true.
-export function usePlayerSeasonStatsLeague(
-    roomId: string | undefined | null, playerIds: string[], isPlayoff: boolean = false, enabledOverride: boolean = true,
-) {
-    const sortedIds = [...new Set(playerIds)].sort();
-    const enabled = !!roomId && sortedIds.length > 0 && enabledOverride;
-
-    const query = useQuery({
-        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(','), isPlayoff],
-        enabled,
+/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리. playerIds는 중복 제거·정렬된 상태로 넘길 것. */
+export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, sortedIds: string[], isPlayoff: boolean = false) {
+    return {
+        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(','), isPlayoff] as const,
         queryFn: async (): Promise<PlayerSeasonStatsLeague> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_league', {
                 p_room_id: roomId,
@@ -109,6 +104,18 @@ export function usePlayerSeasonStatsLeague(
             }
             return m;
         },
+    };
+}
+
+export function usePlayerSeasonStatsLeague(
+    roomId: string | undefined | null, playerIds: string[], isPlayoff: boolean = false, enabledOverride: boolean = true,
+) {
+    const sortedIds = [...new Set(playerIds)].sort();
+    const enabled = !!roomId && sortedIds.length > 0 && enabledOverride;
+
+    const query = useQuery({
+        ...playerSeasonStatsLeagueQuery(roomId, sortedIds, isPlayoff),
+        enabled,
     });
 
     // [2026-09-11 Fix] React Query는 enabled:false인 쿼리를 "아직 실행 안 됨"으로 취급해

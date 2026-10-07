@@ -174,6 +174,23 @@ body {
 .ko-normal { letter-spacing: -0.01em; }
 .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
 .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+/* [2026-09-30] overflow-y-auto 요소가 스크롤 필요 여부에 따라 스크롤바 자리를 예약했다 안 했다
+   하면서 콘텐츠 너비가 미세하게 씰룩거리는 문제(트레이드 화면 아코디언 접기/펼치기에서 발견) —
+   scrollbar-gutter: stable로 고치려 했으나, 이 속성은 "필요할 때만 자리 예약"이 아니라
+   "오버플로 여부와 무관하게 항상 자리 예약"이라 .custom-scrollbar 전체(앱 곳곳, 스크롤이
+   거의/전혀 안 생기는 곳 포함)에 걸면 그런 화면들 우측에 불필요한 빈 여백이 그대로 남는
+   부작용이 있었다(사용자 스크린샷으로 확인). 그래서 전역 클래스가 아니라 실제로 스크롤이
+   생겼다 안 생겼다 하는 지점에만 별도 클래스(.custom-scrollbar-stable)로 옵트인. */
+.custom-scrollbar-stable { scrollbar-gutter: stable; }
+
+/* [2026-10-02] 전역 토스트(NotificationCenter) 진입 애니메이션 — 아래에서 올라오며 페이드. 이 프로젝트엔
+   tailwindcss-animate 플러그인이 없어(Modal의 animate-in 클래스는 실제로 아무것도 안 함) 직접 정의. */
+@keyframes toast-enter {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-enter { animation: toast-enter 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .toast-enter { animation: none; } }
 
 /* [2026-09-18] 개인 팩 드래프트(PersonalDraftView) — 좌측 라운드 구성 패널의 현재 라운드 행 펄스.
    시안(v49) 그대로: 에메랄드 8%↔26% 왕복, 모션 축소 환경에선 정지된 16% 틴트로 대체. */

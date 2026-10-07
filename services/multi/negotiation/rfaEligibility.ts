@@ -61,6 +61,11 @@ export function determineFAEligibility(
     if (contract.currentYear < contract.years.length) {
         return { status: 'NOT_EXPIRED' };
     }
+    // [2026-10-01] 이미 체결된 다음 계약(연장)이 있으면 현재 계약이 끝나도 FA가 아니다 — 승격은
+    // contractLifecycle.advanceContractSeason()(연차 진행 트리거)의 몫.
+    if (contract.nextContract && contract.nextContract.years.length > 0) {
+        return { status: 'NOT_EXPIRED' };
+    }
     return decideTerminalFAStatus(contract, careerYOS);
 }
 
@@ -82,6 +87,8 @@ export function previewFAStatusAfterContract(
     careerYOS: number,
 ): { status: 'UFA' } | { status: 'RFA'; path: 'rookie_scale' | 'standard' } | null {
     if (contract.type === 'two_way') return null;
+    // [2026-10-01] 다음 계약이 체결돼 있으면 만료 시 FA가 아니므로 칩 없음(재정 표는 대신 연장 연봉을 표시).
+    if (contract.nextContract && contract.nextContract.years.length > 0) return null;
 
     const remainingYears = contract.years.length - contract.currentYear;
     const yosAtExpiry = careerYOS + Math.max(0, remainingYears);
