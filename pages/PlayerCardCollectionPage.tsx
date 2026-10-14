@@ -33,7 +33,7 @@ function cardTeamList(): { id: string; city: string; name: string }[] {
         ...CARD_EXTRA_TEAMS.map(t => ({ id: t.id, city: t.city, name: t.name })),
     ];
 }
-import { getRealTeamLogoUrl } from '../utils/constants';
+import { TeamLogo } from '../components/common/TeamLogo';
 import { PersonalDraftCard } from '../components/draft/PersonalDraftCard';
 import type { PersonalDraftPlayer } from '../hooks/usePersonalDraft';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
@@ -714,7 +714,7 @@ const PlayerCardCollectionPage: React.FC = () => {
                                                 style={{ background: buildCardBackground(null, draft, null, true) }}
                                             >
                                                 {(() => { const l = teamImageLayer(null, draft, null); return l ? <div aria-hidden="true" style={teamImageLayerStyle(l) as React.CSSProperties} /> : null; })()}
-                                                <img src={getRealTeamLogoUrl(t.id)} alt="" draggable={false} className="relative w-7 h-7 object-contain"
+                                                <TeamLogo teamId={t.id} size="custom" shadow={false} draggable={false} className="relative w-7 h-7"
                                                     style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.6))' }} />
                                             </div>
                                             <div className="flex-1 min-w-0 space-y-1.5">

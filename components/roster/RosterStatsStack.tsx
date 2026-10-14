@@ -2,16 +2,13 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Team, Player, Game } from '../../types';
-import { calculatePlayerOvr } from '../../utils/constants';
-import { OvrBadge } from '../common/OvrBadge';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot, TableGroupHeaderCell } from '../common/Table';
 import { Dropdown } from '../common/Dropdown';
 import { useLeaderboardData } from '../../hooks/useLeaderboardData';
+import { useTableSort } from '../../hooks/useTableSort';
 import { PLAYER_COLUMNS, ColumnDef, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
-import { PlayerHoverCard } from '../common/PlayerHoverCard';
-import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
-import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
+import { PlayerInfoColGroup, PlayerInfoHeaderCells, PlayerInfoCells, PlayerInfoFooterCells } from './PlayerInfoColumns';
 
 interface RosterStatsStackProps {
     team: Team;
@@ -29,8 +26,6 @@ const CATEGORIES: { key: StatCategory; label: string; defaultSort: string }[] = 
     { key: 'Shooting',    label: 'SHOOTING',    defaultSort: 'g' },
     { key: 'Defense',     label: 'DEFENSE',     defaultSort: 'stl' },
 ];
-
-const WIDTHS = { NAME: 180, POS: 60, AGE: 50, OVR: 60 };
 
 // ── 값/포맷/히트맵 로직 — LeaderboardTable.tsx의 Players 모드 계산과 동일한 공식을 그대로
 // 옮겨왔다(고급 스탯 공식을 새로 재구현하는 위험을 피하기 위함). 순수 함수라 화면 스타일과
@@ -101,13 +96,6 @@ function getStatCellValue(
     };
 }
 
-const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
-    left, width, minWidth: width, maxWidth: width,
-    position: 'sticky' as const,
-    zIndex: 30,
-    borderRight: isLast ? undefined : 'none',
-});
-
 // 2행 그룹 헤더(존별 스탯: Shooting/Defense) — LeaderboardTable.tsx와 동일한 그룹핑 알고리즘
 type Row1Item = { type: 'nogroup'; col: ColumnDef } | { type: 'group'; label: string; colSpan: number };
 function buildHeaderRows(cols: ColumnDef[]) {
@@ -137,22 +125,15 @@ const CategoryTable: React.FC<{
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
     enableHoverCard?: boolean;
 }> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard }) => {
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: defaultSort, direction: 'desc' });
+    const { sortConfig, sortProps } = useTableSort({ key: defaultSort, direction: 'desc' });
     // includeZeroGamePlayers: true — 리더보드와 달리 "선수 기록" 탭은 아직 한 경기도
     // 못 뛴 로스터 선수도 그대로 보여줘야 한다(사용자 요청). 스탯 값은 전부 0으로 나온다.
     const { sortedData, statRanges } = useLeaderboardData(
         [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true,
     );
-    const handleSort = (key: string) => {
-        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
-    };
 
     const cols = PLAYER_COLUMNS.filter(c => c.category === category);
     const headerRow1 = buildHeaderRows(cols);
-
-    const LEFT_POS = WIDTHS.NAME;
-    const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
-    const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
 
     // 팀 평균(단순 평균 — 정밀 가중평균 대신 각 선수 값의 산술 평균). includeZeroGamePlayers로
     // 0경기 선수도 목록엔 표시되지만, 그 선수들의 0값이 팀 평균을 실제보다 낮게 끌어내리면
@@ -169,46 +150,29 @@ const CategoryTable: React.FC<{
 
     return (
         <div className="flex-1 min-h-0">
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
+            <Table variant="flush" fullHeight>
                 <colgroup>
-                    <col style={{ width: WIDTHS.NAME }} />
-                    <col style={{ width: WIDTHS.POS }} />
-                    <col style={{ width: WIDTHS.AGE }} />
-                    <col style={{ width: WIDTHS.OVR }} />
+                    <PlayerInfoColGroup />
                     {cols.map(c => <col key={c.key} style={{ width: c.width }} />)}
                 </colgroup>
-                <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
+                <TableHead noRow>
                     {headerRow1 && (
                         <tr className="h-10">
-                            <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
-                                <div className="h-full flex items-center justify-center">
-                                    <span className="text-sm font-black text-slate-500 uppercase tracking-widest">선수 정보</span>
-                                </div>
-                            </th>
-                            {headerRow1.map((item, i) => item.type === 'group' ? (
-                                <th key={i} colSpan={item.colSpan} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                    <div className="h-full flex items-center justify-center">
-                                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest">{item.label}</span>
-                                    </div>
-                                </th>
-                            ) : (
-                                <th key={i} className="bg-slate-950 border-b border-slate-800" />
-                            ))}
+                            <TableGroupHeaderCell colSpan={4} stickyLeft={0}>선수 정보</TableGroupHeaderCell>
+                            {headerRow1.map((item, i) => item.type === 'group'
+                                ? <TableGroupHeaderCell key={i} colSpan={item.colSpan}>{item.label}</TableGroupHeaderCell>
+                                : <TableGroupHeaderCell key={i} />
+                            )}
                         </tr>
                     )}
-                    <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
-                        <TableHeaderCell style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }} className="bg-slate-950">포지션</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }} className="bg-slate-950">나이</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50 }} className="bg-slate-950 border-r border-slate-800">OVR</TableHeaderCell>
+                    <tr className="h-10 text-slate-400 text-sm font-bold">
+                        <PlayerInfoHeaderCells />
                         {cols.map(c => (
                             <TableHeaderCell
                                 key={c.key}
                                 width={c.width}
-                                className={`border-r border-slate-800 ${sortConfig.key === c.key ? 'text-indigo-400' : ''}`}
-                                sortable={c.sortable}
-                                onSort={() => c.sortable && handleSort(c.key)}
-                                sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
+                                className={sortConfig.key === c.key ? 'text-indigo-400' : ''}
+                                {...(c.sortable ? sortProps(c.key) : {})}
                             >
                                 {c.label}
                             </TableHeaderCell>
@@ -219,45 +183,19 @@ const CategoryTable: React.FC<{
                     {sortedData.map((p: any) => {
                         const originalPlayer = team.roster.find(r => r.id === p.id) || p;
                         return (
-                            <TableRow key={p.id} className="group">
-                                <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
-                                    <span className="flex items-center gap-1.5 min-w-0">
-                                        <PlayerHoverCard player={originalPlayer} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                            <span
-                                                className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
-                                                onClick={() => onPlayerClick(originalPlayer, team.id, team.name)}
-                                            >
-                                                {p.name}
-                                            </span>
-                                        </PlayerHoverCard>
-                                        {originalPlayer.contract?.type === 'two_way' && (
-                                            <span
-                                                title="Two-Way 계약"
-                                                className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                                            >TW</span>
-                                        )}
-                                        {originalPlayer.activeInjurySeverity && (
-                                            <InjuryStatusBadge
-                                                severity={originalPlayer.activeInjurySeverity}
-                                                title={formatPlayerActiveInjuryLabel(originalPlayer) ?? undefined}
-                                                size={16}
-                                                iconSize={12}
-                                                strokeWidth={4}
-                                            />
-                                        )}
-                                    </span>
-                                </TableCell>
-                                <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
-                                    <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(originalPlayer)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                                </TableCell>
+                            <TableRow key={p.id}>
+                                <PlayerInfoCells
+                                    player={originalPlayer}
+                                    teamAbbr={team.abbr}
+                                    onClick={pl => onPlayerClick(pl, team.id, team.name)}
+                                    enableHoverCard={enableHoverCard}
+                                />
                                 {cols.map(c => {
                                     // [2026-09-16] 0경기(또는 0분) 선수도 "-" 대신 0(0.0/0.0% 등 컬럼 포맷 그대로)로
                                     // 표시 — getStatCellValue가 g=s.g||1로 나눗셈을 안전하게 처리해 그대로 호출해도 된다.
                                     const { text, bgStyle } = getStatCellValue(p.stats, c, statRanges);
                                     return (
-                                        <TableCell key={c.key} align="center" style={bgStyle} className="border-r border-slate-800/30">
+                                        <TableCell key={c.key} align="center" style={bgStyle}>
                                             <span className="font-medium text-sm text-white tabular-nums">{text}</span>
                                         </TableCell>
                                     );
@@ -267,14 +205,11 @@ const CategoryTable: React.FC<{
                     })}
                 </TableBody>
                 {sortedData.length > 0 && (
-                    <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
+                    <TableFoot>
                         <tr className="h-10">
-                            <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-sm uppercase tracking-widest">팀 평균</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950" />
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950" />
-                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-950" />
+                            <PlayerInfoFooterCells label="팀 평균" />
                             {cols.map(c => (
-                                <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                <TableCell key={c.key} align="center">
                                     <span className="font-medium text-sm text-slate-400 tabular-nums">{formatValue(averages[c.key] ?? 0, c.format)}</span>
                                 </TableCell>
                             ))}
@@ -295,7 +230,7 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
             <div className="shrink-0 px-4 py-3 border-b border-slate-800 bg-slate-950">
                 <Dropdown
                     trigger={
-                        <button className="flex items-center gap-1 text-sm font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
+                        <button className="flex items-center gap-1 text-sm font-black text-slate-400 tracking-tight hover:text-white transition-colors group">
                             <span>{current.label}</span>
                             <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
                         </button>

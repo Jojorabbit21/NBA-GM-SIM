@@ -9,6 +9,8 @@ interface DropdownItem {
     label: React.ReactNode;
     onClick: () => void;
     active?: boolean;
+    /** 이 항목 위에 구분선을 그린다(그룹 경계). [2026-10-13] 사이드바 프로필 메뉴 이관 시 추가. */
+    dividerBefore?: boolean;
 }
 
 interface DropdownProps {
@@ -16,6 +18,9 @@ interface DropdownProps {
     items?: DropdownItem[];
     children?: React.ReactNode; // For custom content instead of items
     align?: 'left' | 'right';
+    /** 패널이 열리는 방향. 기본 'bottom'(트리거 아래). 'right'는 트리거 오른쪽에 붙어 위로 자라는
+     *  형태 — 화면 왼쪽 하단의 40px 사이드바 프로필 버튼처럼 아래 공간이 없는 트리거용. [2026-10-13] */
+    side?: 'bottom' | 'right';
     className?: string;
     width?: string;
     // Controlled props
@@ -23,11 +28,16 @@ interface DropdownProps {
     onOpenChange?: (isOpen: boolean) => void;
 }
 
+type PanelPos =
+    | { kind: 'bottom'; top: number; left: number }
+    | { kind: 'right'; bottom: number; left: number };
+
 export const Dropdown: React.FC<DropdownProps> = ({
     trigger,
     items,
     children,
     align = 'right',
+    side = 'bottom',
     className = '',
     width = 'w-64',
     isOpen: controlledIsOpen,
@@ -36,17 +46,18 @@ export const Dropdown: React.FC<DropdownProps> = ({
     const [internalIsOpen, setInternalIsOpen] = useState(false);
     const triggerRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const [pos, setPos] = useState<PanelPos | null>(null);
 
     const isExpanded = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
 
-    const calcPos = useCallback(() => {
-        if (triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect();
-            return { top: rect.bottom + 8, left: align === 'right' ? rect.right : rect.left };
+    const calcPos = useCallback((): PanelPos | null => {
+        if (!triggerRef.current) return null;
+        const rect = triggerRef.current.getBoundingClientRect();
+        if (side === 'right') {
+            return { kind: 'right', bottom: window.innerHeight - rect.bottom + 8, left: rect.right + 8 };
         }
-        return null;
-    }, [align]);
+        return { kind: 'bottom', top: rect.bottom + 8, left: align === 'right' ? rect.right : rect.left };
+    }, [align, side]);
 
     const toggle = () => {
         const newState = !isExpanded;
@@ -91,29 +102,35 @@ export const Dropdown: React.FC<DropdownProps> = ({
             {isExpanded && pos && createPortal(
                 <div
                     ref={panelRef}
-                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-in fade-in duration-100`}
-                    style={{
-                        top: pos.top,
-                        ...(align === 'right' ? { right: window.innerWidth - pos.left } : { left: pos.left }),
-                    }}
+                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-popover animate-in fade-in duration-100`}
+                    style={
+                        pos.kind === 'right'
+                            ? { bottom: pos.bottom, left: pos.left }
+                            : {
+                                top: pos.top,
+                                ...(align === 'right' ? { right: window.innerWidth - pos.left } : { left: pos.left }),
+                            }
+                    }
                 >
                     {items ? (
                         <div className="p-1 max-h-80 overflow-y-auto custom-scrollbar">
                             {items.map((item) => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => {
-                                        item.onClick();
-                                        close();
-                                    }}
-                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
-                                        item.active
-                                            ? 'bg-indigo-600/10 text-indigo-400'
-                                            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                                    }`}
-                                >
-                                    {item.label}
-                                </button>
+                                <React.Fragment key={item.id}>
+                                    {item.dividerBefore && <div className="my-1 border-t border-slate-800" />}
+                                    <button
+                                        onClick={() => {
+                                            item.onClick();
+                                            close();
+                                        }}
+                                        className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
+                                            item.active
+                                                ? 'bg-indigo-600/10 text-indigo-400'
+                                                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                        }`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                </React.Fragment>
                             ))}
                         </div>
                     ) : (

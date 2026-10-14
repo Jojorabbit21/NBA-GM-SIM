@@ -1,30 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play, RefreshCw, Loader2 } from 'lucide-react';
+import { FastForward, ArrowLeft, ChevronDown, ChevronsRight, Play, RefreshCw } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
+import { TeamLogo } from '../common/TeamLogo';
+import { Button } from '../common/Button';
+import { IconButton } from '../common/IconButton';
 
-// public/logos/real/ 로고 세트 — DraftBoard.tsx와 동일한 폴백 체인(신규 로고 세트 실패 시
-// 구버전 → 플레이스홀더). size는 className으로 직접 제어(호출부마다 크기가 달라 TeamLogo의
-// 프리셋 size prop 대신 className 하나로 단순화).
-const RealTeamLogo: React.FC<{ teamId: string; teamName?: string; className?: string }> = ({ teamId, teamName = '', className = '' }) => (
-    <img
-        src={getRealTeamLogoUrl(teamId)}
-        alt={teamName}
-        className={`object-contain ${className}`}
-        onError={(e) => {
-            const img = e.currentTarget;
-            if (img.dataset.fallback !== 'old') {
-                img.dataset.fallback = 'old';
-                img.src = getTeamLogoUrl(teamId);
-            } else {
-                img.src = 'https://placehold.co/100x100?text=BPL';
-            }
-        }}
-    />
-);
-
+// public/logos/teams/ 로고 — TeamLogo 공용(리그 로고 1회 폴백). size는 className으로 직접 제어.
 // 싱글/루키 드래프트뷰에서 사용하는 기본 픽 제한 시간
 export const PICK_TIME_LIMIT = 30;
 
@@ -145,12 +128,12 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
             {/* Background team logo watermark — isCustom(팀 이름/컬러가 커스텀인지) 여부와
                 무관하게 항상 실제 로고 이미지 사용. isCustom 분기(컬러 박스+abbr 텍스트)는
                 "커스텀 팀 = 매칭되는 로고 이미지가 없다"던 싱글플레이 시절 가정이었는데,
-                멀티는 team_slug 기준으로 public/logos/real/에 전 팀 로고가 있어 더 이상
+                멀티는 team_slug 기준으로 public/logos/teams/에 전 팀 로고가 있어 더 이상
                 맞지 않음(DraftBoard.tsx도 이미 이 가정 없이 항상 실제 로고 사용) — 사용자가
                 "저건 팀배지 스타일인데 로고가 적용 안 됐다"고 정확히 짚어낸 버그. */}
             <div className="absolute inset-0 overflow-hidden flex items-center justify-center pointer-events-none">
                 <div className="opacity-[0.08]" style={{ transform: 'scale(3)' }}>
-                    <RealTeamLogo teamId={displayTeamId} className="w-32 h-32" />
+                    <TeamLogo teamId={displayTeamId} size="custom" className="w-32 h-32" shadow={false} />
                 </div>
             </div>
 
@@ -159,14 +142,16 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                 {/* Left: Back + Draft Room label */}
                 <div className="flex items-center gap-2">
                     {onBack && (
-                        <button
+                        <IconButton
+                            label={navLocked ? '시즌 일정 생성 중' : '뒤로'}
+                            tone="inherit"
+                            size="sm"
                             onClick={onBack}
                             disabled={navLocked}
-                            title={navLocked ? '시즌 일정 생성 중' : undefined}
-                            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                            className="text-white/60 hover:bg-white/10 disabled:hover:bg-transparent"
                         >
                             <ArrowLeft size={16} />
-                        </button>
+                        </IconButton>
                     )}
                     <span className="text-sm font-bold text-white/80">
                         드래프트 룸
@@ -210,32 +195,27 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     {completion ? (
                         /* 드래프트 완료 — 현재 차례 대신 시즌 이동 버튼. games 준비 전엔 비활성(진행률 표시). */
                         completion.timedOut ? (
-                            <button
-                                onClick={() => window.location.reload()}
-                                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm text-white font-bold transition-colors border border-white/10"
-                            >
+                            <Button variant="secondary" size="lg" onClick={() => window.location.reload()}>
                                 새로고침
-                            </button>
+                            </Button>
                         ) : (
-                            <button
+                            <Button
+                                variant="primary"
+                                size="lg"
                                 onClick={completion.onGoToSeason}
                                 disabled={!completion.ready}
-                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm text-white font-bold flex items-center gap-2 transition-colors disabled:bg-white/10 disabled:text-white/60 disabled:cursor-not-allowed"
+                                isLoading={!completion.ready}
+                                loadingText={`일정 생성 중 ${completion.progress}%`}
                             >
-                                {completion.ready ? '시즌 대시보드로' : (
-                                    <>
-                                        <Loader2 size={12} className="animate-spin" />
-                                        일정 생성 중 {completion.progress}%
-                                    </>
-                                )}
-                            </button>
+                                시즌 대시보드로
+                            </Button>
                         )
                     ) : (
                     <>
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-white/50 font-medium">현재 차례</span>
-                        <RealTeamLogo teamId={currentTeamId} className="w-5 h-5" />
+                        <TeamLogo teamId={currentTeamId} size="custom" className="w-5 h-5" shadow={false} />
                         <span className="text-sm font-bold text-white">
                             {currentDisplay.name}
                         </span>
@@ -267,21 +247,26 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                     {showAdvance && nextPickTeamId && (
                         <div ref={dropdownRef} className="relative flex items-stretch">
                             {/* Primary action: advance one pick */}
-                            <button
+                            <Button
+                                variant="secondary"
+                                shape="md"
                                 onClick={onAdvanceOnePick}
-                                className="px-3 py-2 rounded-l-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center gap-1.5 transition-colors border border-white/10 border-r-0"
+                                icon={<Play size={10} fill="currentColor" />}
+                                className="rounded-r-none"
                             >
-                                <Play size={10} fill="currentColor" />
                                 다음 픽(#{nextPickNumber}, {nextDisplay?.abbr ?? ''}) 진행하기
-                            </button>
+                            </Button>
 
                             {/* Chevron trigger: opens dropdown */}
-                            <button
+                            <IconButton
+                                label="옵션"
+                                tone="solid"
+                                size="lg"
                                 onClick={() => setDropdownOpen(v => !v)}
-                                className="px-2 py-2 rounded-r-lg bg-white/10 hover:bg-white/20 text-xs text-white font-bold flex items-center transition-colors border border-white/10 border-l-white/5"
+                                className="rounded-l-none"
                             >
                                 <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
+                            </IconButton>
 
                             {/* Dropdown panel */}
                             {dropdownOpen && (

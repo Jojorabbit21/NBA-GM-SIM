@@ -1,6 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
     CircleUser, LogOut, ChevronLeft, Settings2, Palette,
@@ -13,17 +12,18 @@ import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { CountBadge } from './common/CountBadge';
+import { Dropdown } from './common/Dropdown';
 
 const NavItem: React.FC<{
     active: boolean;
     icon: React.ReactNode;
     label: string;
-    onClick: () => void;
-    buttonRef?: React.RefObject<HTMLButtonElement>;
+    /** 생략 시 클릭은 바깥(Dropdown 트리거 래퍼)으로 버블만 시킨다. */
+    onClick?: () => void;
     badge?: number;
-}> = ({ active, icon, label, onClick, buttonRef, badge }) => (
+}> = ({ active, icon, label, onClick, badge }) => (
     <button
-        ref={buttonRef}
         onClick={onClick}
         title={label}
         className={`w-full flex items-center justify-center p-1.5 rounded-[4px] relative transition-colors duration-150 ${
@@ -31,11 +31,7 @@ const NavItem: React.FC<{
         }`}
     >
         {icon}
-        {!!badge && (
-            <span className="absolute top-0.5 right-1 w-3.5 h-3.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold">
-                {badge > 9 ? '9+' : badge}
-            </span>
-        )}
+        <CountBadge count={badge} className="absolute top-0.5 right-1" />
     </button>
 );
 
@@ -79,7 +75,7 @@ const RosterIcon: React.FC<{ active: boolean; primary?: string | null; secondary
 
 export const MultiSidebar: React.FC = () => {
     const navigate = useNavigate();
-    const { pathname } = useLocation();
+    const { pathname, search } = useLocation();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { handleLogout } = useAuth();
     const { league, room, leagueTeams , timeline } = useLeagueContext();
@@ -104,6 +100,8 @@ export const MultiSidebar: React.FC = () => {
 
     const base = `/multi/leagues/${leagueId}/season`;
     const isRosterActive = pathname.startsWith(`${base}/roster`);
+    const isTransactionPath = pathname.startsWith(`${base}/transaction`);
+    const isFaTab = new URLSearchParams(search).get('tab') === 'fa';
 
     // 받은 트레이드 제안 중 안읽은 것 개수 — 사이드바 트레이드 아이콘 배지용
     // (인박스 "메세지함" 탭 배지와 동일한 기준: to_team_read_at이 null인 것만 카운트)
@@ -123,33 +121,21 @@ export const MultiSidebar: React.FC = () => {
     const showPoolMenu  = !isDraftComplete && !myPersonalDraftDone;
     const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
+    // 프로필 메뉴 — [2026-10-13] 직접 구현하던 body 포탈·바깥클릭 닫기·좌표 계산을 공용 Dropdown
+    // (`side="right"`)으로 이관. 열림 상태만 여기서 들고 있는 이유는 트리거 NavItem의 active 표시 때문.
+    // "팀 설정"은 모달이 아니라 로스터 화면(내 팀)의 "팀 설정" 탭으로, "세션 설정"은 MultiSeasonLayout
+    // 하위 라우트(season/settings)로 이동해 사이드바/헤더를 유지한 채 바디만 스왑한다(2026-09-04/05 요청).
+    // 팀을 아직 선점 안 했으면 "팀 설정"은 숨김.
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const profileBtnRef = useRef<HTMLButtonElement>(null);
-    const [dropdownBottom, setDropdownBottom] = useState(0);
-    const [dropdownLeft, setDropdownLeft] = useState(0);
-
-    useEffect(() => {
-        if (!isMenuOpen) return;
-        const handler = (e: MouseEvent) => {
-            const target = e.target as Node;
-            if (!menuRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
-                setIsMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [isMenuOpen]);
-
-    const handleProfileClick = () => {
-        if (profileBtnRef.current) {
-            const rect = profileBtnRef.current.getBoundingClientRect();
-            setDropdownBottom(window.innerHeight - rect.bottom + 8);
-            setDropdownLeft(rect.right + 8);
-        }
-        setIsMenuOpen(prev => !prev);
-    };
+    const menuLabel = (icon: React.ReactNode, text: string) => (
+        <span className="flex items-center gap-3">{icon}{text}</span>
+    );
+    const profileMenuItems = [
+        ...(isAdmin ? [{ id: 'settings', label: menuLabel(<Settings2 size={14} />, '세션 설정'), onClick: () => navigate(`${base}/settings`) }] : []),
+        ...(myTeam  ? [{ id: 'team',     label: menuLabel(<Palette size={14} />, '팀 설정'),    onClick: () => navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`) }] : []),
+        { id: 'home',   label: menuLabel(<ChevronLeft size={14} />, '홈으로'), onClick: () => navigate('/'), dividerBefore: !!(isAdmin || myTeam) },
+        { id: 'logout', label: menuLabel(<LogOut size={14} />, '로그아웃'),    onClick: handleLogout, dividerBefore: true },
+    ];
 
     return (
         <aside className="w-[40px] shrink-0 flex flex-col h-screen z-20 relative bg-slate-900 border-r border-slate-700">
@@ -201,12 +187,7 @@ export const MultiSidebar: React.FC = () => {
                     <>
                         <Divider />
 
-                        <NavItem
-                            active={pathname.startsWith(`${base}/standings`)}
-                            icon={<NavIcon name="standings" active={pathname.startsWith(`${base}/standings`)} />}
-                            label="순위표"
-                            onClick={() => navigate(`${base}/standings`)}
-                        />
+                        {/* [2026-10-14] 기간 한정 메뉴(플레이오프 → 올스타)를 순위표보다 위에 — 사용자 지시 */}
                         {hasPlayoffs && (
                             <NavItem
                                 active={pathname.startsWith(`${base}/playoffs`)}
@@ -231,6 +212,12 @@ export const MultiSidebar: React.FC = () => {
                             />
                         )}
                         <NavItem
+                            active={pathname.startsWith(`${base}/standings`)}
+                            icon={<NavIcon name="standings" active={pathname.startsWith(`${base}/standings`)} />}
+                            label="순위표"
+                            onClick={() => navigate(`${base}/standings`)}
+                        />
+                        <NavItem
                             active={pathname.startsWith(`${base}/leaderboard`)}
                             icon={<NavIcon name="leaderboard" active={pathname.startsWith(`${base}/leaderboard`)} />}
                             label="리더보드"
@@ -242,18 +229,21 @@ export const MultiSidebar: React.FC = () => {
                             label="일정"
                             onClick={() => navigate(`${base}/schedule`)}
                         />
+                        {/* [2026-10-14] 리그 메뉴(순위~일정)와 선수 이동 메뉴(트레이드·자유 계약) 사이 구분선 */}
+                        <Divider />
+                        {/* [2026-10-14] 자유 계약은 트레이드 화면의 ?tab=fa 하위 탭 — 아이콘은 둘 다 두고 활성 판정만 탭으로 가른다. */}
                         <NavItem
-                            active={pathname.startsWith(`${base}/transaction`)}
-                            icon={<NavIcon name="transactions" active={pathname.startsWith(`${base}/transaction`)} />}
+                            active={isTransactionPath && !isFaTab}
+                            icon={<NavIcon name="transactions" active={isTransactionPath && !isFaTab} />}
                             label="트레이드"
                             onClick={() => navigate(`${base}/transaction`)}
                             badge={pendingTradeCount}
                         />
                         <NavItem
-                            active={pathname.startsWith(`${base}/free-agent`)}
-                            icon={<NavIcon name="free-agents" active={pathname.startsWith(`${base}/free-agent`)} />}
+                            active={isTransactionPath && isFaTab}
+                            icon={<NavIcon name="free-agents" active={isTransactionPath && isFaTab} />}
                             label="자유 계약"
-                            onClick={() => navigate(`${base}/free-agent`)}
+                            onClick={() => navigate(`${base}/transaction?tab=fa`)}
                         />
 
                     </>
@@ -261,71 +251,15 @@ export const MultiSidebar: React.FC = () => {
             </nav>
 
             <div className="flex flex-col items-center gap-6 py-6 shrink-0 relative z-10">
-                <div ref={menuRef} className="relative w-full">
-                    <NavItem
-                        active={isMenuOpen}
-                        icon={<CircleUser size={24} />}
-                        label="프로필"
-                        onClick={handleProfileClick}
-                        buttonRef={profileBtnRef}
-                    />
-
-                    {isMenuOpen && createPortal(
-                        <div
-                            ref={dropdownRef}
-                            className="fixed w-48 rounded-xl overflow-hidden shadow-2xl z-[300] bg-slate-800 border border-slate-700"
-                            style={{ bottom: `${dropdownBottom}px`, left: `${dropdownLeft}px` }}
-                        >
-                            <div className="p-1.5 space-y-0.5">
-                                {/* [2026-08-05] "팀 설정" 진입점 — 비어드민은 목록 최상단(뒤에 구분선),
-                                    어드민은 세션 설정 바로 아래에 위치. 팀을 아직 선점 안 했으면
-                                    설정할 대상이 없으므로 아예 숨김.
-                                    [Fix 2026-09-04] "모달이 아니라 탭 그룹에서 직접 수정" 요청 —
-                                    모달을 여는 대신 로스터 화면(내 팀)의 "팀 설정" 탭으로 이동(바디 스왑).
-                                    [Fix 2026-09-05] "세션 설정도 팀 설정처럼 사이드바/헤더 유지한 채
-                                    바디만 스왑" 요청 — LeagueSettingsView를 MultiSeasonLayout 하위
-                                    라우트(season/settings)로 옮겨서 이 화면도 동일한 방식이 되도록
-                                    경로를 `${base}/settings`로 변경(기존 `/multi/leagues/:id/settings`는
-                                    LeagueLayout 직계 자식이라 사이드바/헤더가 없는 별도 풀페이지였음). */}
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => { navigate(`${base}/settings`); setIsMenuOpen(false); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
-                                    >
-                                        <Settings2 size={14} />
-                                        <span className="text-xs font-bold">세션 설정</span>
-                                    </button>
-                                )}
-                                {myTeam && (
-                                    <button
-                                        onClick={() => { navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`); setIsMenuOpen(false); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
-                                    >
-                                        <Palette size={14} />
-                                        <span className="text-xs font-bold">팀 설정</span>
-                                    </button>
-                                )}
-                                {(isAdmin || myTeam) && <div className="my-1 border-t border-slate-700/60" />}
-                                <button
-                                    onClick={() => { navigate('/'); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
-                                >
-                                    <ChevronLeft size={14} />
-                                    <span className="text-xs font-bold">홈으로</span>
-                                </button>
-                                <div className="my-1 border-t border-slate-700" />
-                                <button
-                                    onClick={() => { handleLogout(); setIsMenuOpen(false); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-600 transition-all text-left"
-                                >
-                                    <LogOut size={14} />
-                                    <span className="text-xs font-bold">로그아웃</span>
-                                </button>
-                            </div>
-                        </div>,
-                        document.body
-                    )}
-                </div>
+                <Dropdown
+                    className="w-full"
+                    side="right"
+                    width="w-48"
+                    isOpen={isMenuOpen}
+                    onOpenChange={setIsMenuOpen}
+                    items={profileMenuItems}
+                    trigger={<NavItem active={isMenuOpen} icon={<CircleUser size={24} />} label="프로필" />}
+                />
             </div>
         </aside>
     );

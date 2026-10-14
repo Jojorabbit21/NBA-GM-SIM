@@ -64,7 +64,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
       
       {/* Loading Overlay */}
       {isInitializing && (
-        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-slate-950/90 z-takeover flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
            <div className="text-center space-y-8">
              <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
              <div className="space-y-3">

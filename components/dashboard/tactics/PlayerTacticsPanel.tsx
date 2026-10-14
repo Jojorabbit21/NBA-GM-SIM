@@ -5,6 +5,7 @@ import { Player, GameTactics, DepthChart, PlayerTacticConfig } from '../../../ty
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../common/Table';
 import { OvrBadge } from '../../common/OvrBadge';
+import { Button } from '../../common/Button';
 
 interface PlayerTacticsPanelProps {
     tactics: GameTactics;
@@ -91,13 +92,9 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
             {/* 액션 바 */}
             <div className="flex items-center gap-3 px-8 py-3 border-b border-slate-800">
                 {hasAnyConfig && (
-                    <button
-                        onClick={handleResetAll}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs font-bold transition-colors"
-                    >
-                        <RotateCcw size={12} />
+                    <Button variant="secondary" onClick={handleResetAll} icon={<RotateCcw size={12} />}>
                         전원 초기화
-                    </button>
+                    </Button>
                 )}
                 <span className="text-xs text-slate-500">
                     기본값이 아닌 항목은 <span className="text-indigo-400">파란 테두리</span>로 표시됩니다
@@ -107,16 +104,16 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
             {/* 테이블 */}
             <Table fullHeight={false} className="!rounded-none !border-x-0 !border-t-0 !shadow-none">
                 <TableHead noRow>
-                    <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
+                    <tr className="text-slate-400 text-sm font-bold h-10">
                         <TableHeaderCell align="center" className="w-16">포지션</TableHeaderCell>
                         <TableHeaderCell align="left" className="pl-4">선수</TableHeaderCell>
                         <TableHeaderCell className="w-28">
                             <div>휴식 임계치</div>
-                            <div className="text-slate-600 font-normal text-[10px] normal-case tracking-normal">0=비활성</div>
+                            <div className="text-slate-600 font-normal text-[10px] tracking-normal">0=비활성</div>
                         </TableHeaderCell>
                         <TableHeaderCell className="w-28">
                             <div>복귀 임계치</div>
-                            <div className="text-slate-600 font-normal text-[10px] normal-case tracking-normal">기본 70%</div>
+                            <div className="text-slate-600 font-normal text-[10px] tracking-normal">기본 70%</div>
                         </TableHeaderCell>
                         <TableHeaderCell className="w-28">파울 정책</TableHeaderCell>
                         <TableHeaderCell className="w-28">가비지타임</TableHeaderCell>
@@ -140,7 +137,7 @@ export const PlayerTacticsPanel: React.FC<PlayerTacticsPanelProps> = ({
                                     return (
                                         <TableRow key={player.id}>
                                             {/* 포지션 컬럼 — 첫 번째 선수에만 라벨 표시 */}
-                                            <TableCell align="center" className="text-[10px] font-black text-slate-500 tracking-widest uppercase">
+                                            <TableCell align="center" className="text-[10px] font-bold text-slate-500">
                                                 {idx === 0 ? label : ''}
                                             </TableCell>
 

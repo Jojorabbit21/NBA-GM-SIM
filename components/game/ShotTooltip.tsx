@@ -29,7 +29,7 @@ function PrimaryShotInfo({ shot }: { shot: ShotEvent }) {
         <div className="space-y-0.5 text-[11px]">
             {/* Row 1: Quarter + Time | Result */}
             <div className="flex items-center justify-between gap-4">
-                <span className="text-slate-400 font-mono">
+                <span className="text-slate-400">
                     Q{shot.quarter} {formatGameClock(shot.gameClock)}
                 </span>
                 {isMake ? (
@@ -51,7 +51,7 @@ function PrimaryShotInfo({ shot }: { shot: ShotEvent }) {
                 {shot.shotType && (
                     <span className="text-slate-300">{shot.shotType}</span>
                 )}
-                <span className="text-slate-300 font-mono">{dist}ft</span>
+                <span className="text-slate-300">{dist}ft</span>
             </div>
 
             {/* Row 3: Assist or Blocker */}
@@ -83,7 +83,7 @@ function ClusterShotRow({ shot }: { shot: ShotEvent }) {
             {shot.shotType && (
                 <span className="text-slate-400">{shot.shotType}</span>
             )}
-            <span className="text-slate-400 font-mono">{dist}ft</span>
+            <span className="text-slate-400">{dist}ft</span>
             {!shot.isMake && shot.isBlock && (
                 <span className="text-red-400/70 font-bold">BLK</span>
             )}

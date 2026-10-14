@@ -1,50 +1,40 @@
 
 import React from 'react';
-import { TeamLogo } from './TeamLogo';
-import { getReadableTextColor } from '../../utils/colorContrast';
+import { TeamMark } from './TeamMark';
 
 interface TeamBadgeProps {
     teamId: string;
     teamName?: string;
     abbr?: string | null;
     colorPrimary?: string | null;
+    /** @deprecated 렌더에 쓰이지 않음 — 호출부 호환용으로만 남김 */
     colorSecondary?: string | null;
     colorText?: string | null;
     size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     className?: string;
 }
 
-const SIZE_CLASS: Record<NonNullable<TeamBadgeProps['size']>, string> = {
-    xs: 'w-7 h-5 text-[9px]',
-    sm: 'w-9 h-6 text-[10px]',
-    md: 'w-11 h-7 text-xs',
-    lg: 'w-14 h-9 text-sm',
-    // [2026-09-04] 홈 화면 경기 카드(pages/MultiSeasonPage.tsx) — 옆에 나란히 붙는
-    // text-3xl 팀약어와 높이를 맞추려면 기존 lg(w-14 h-9, 직사각형)로는 안 맞아서
-    // 정사각형(h-9와 동일한 w-9) 크기를 추가.
-    xl: 'w-9 h-9 text-sm',
-};
-
+// 배지가 로고로 대체될 때의 로고 크기(기존 동작 유지: 배지 xs/sm → 로고 24px 등).
 const LOGO_SIZE: Record<NonNullable<TeamBadgeProps['size']>, 'sm' | 'md' | 'lg'> = {
     xs: 'sm', sm: 'sm', md: 'md', lg: 'lg', xl: 'lg',
 };
 
 /**
- * 팀 배지 — colorPrimary가 있으면(멀티플레이어 유저 커스텀 팀) 그 컬러의 직사각형 배지를
- * 그리고, 없으면(싱글플레이어 실제 NBA 팀) 기존 TeamLogo(실제 로고 이미지)를 그대로 사용한다.
+ * 팀 컬러 배지 — `TeamMark variant="badge"`의 얇은 래퍼. [2026-10-12] 로고/배지 선택은
+ * TeamMark로 일원화했고, 이 컴포넌트는 기존 호출부(홈/뉴스피드/리더보드/선수 상세) 호환용.
+ * colorPrimary가 없으면 TeamMark가 로고로 대체한다(예전 동작과 동일).
+ * 새 코드에서는 TeamMark를 직접 쓰고 variant를 명시할 것.
  */
 export const TeamBadge: React.FC<TeamBadgeProps> = ({
-    teamId, teamName, abbr, colorPrimary, colorSecondary, colorText, size = 'sm', className = '',
-}) => {
-    if (!colorPrimary) {
-        return <TeamLogo teamId={teamId} teamName={teamName} size={LOGO_SIZE[size]} className={className} />;
-    }
-    return (
-        <div
-            className={`shrink-0 rounded flex items-center justify-center font-black ${SIZE_CLASS[size]} ${className}`}
-            style={{ backgroundColor: colorPrimary, color: colorText ?? getReadableTextColor(colorPrimary) }}
-        >
-            {(abbr ?? teamId).slice(0, 3).toUpperCase()}
-        </div>
-    );
-};
+    teamId, teamName, abbr, colorPrimary, colorText, size = 'sm', className = '',
+}) => (
+    <TeamMark
+        teamId={teamId}
+        teamName={teamName}
+        variant="badge"
+        size={colorPrimary ? size : LOGO_SIZE[size]}
+        className={className}
+        badge={{ abbr, colorPrimary, colorText }}
+        shadow
+    />
+);

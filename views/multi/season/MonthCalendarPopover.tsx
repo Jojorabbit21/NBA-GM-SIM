@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { IconButton } from '../../../components/common/IconButton';
 
 // MultiGamePbpView.tsx의 GameDateStrip에 있던 월간 달력 드롭다운을 공용화 —
 // MultiScheduleView.tsx의 날짜 컨트롤 바에서도 똑같은 데이트피커 UI/동작을 써야 한다는
@@ -33,23 +34,27 @@ export const MonthCalendarPopover = React.forwardRef<HTMLDivElement, MonthCalend
         return (
             <div
                 ref={ref}
-                className="fixed z-50 w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
+                className="fixed z-popover w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
                 style={{ left: position.x, top: position.y }}
             >
                 <div className="flex items-center justify-between mb-2">
-                    <button
+                    <IconButton
+                        label="이전 달"
+                        tone="subtle"
+                        shape="md"
                         onClick={() => onViewYMChange(vm === 0 ? [vy - 1, 11] : [vy, vm - 1])}
-                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                     >
                         <ChevronLeft size={16} />
-                    </button>
+                    </IconButton>
                     <span className="text-sm font-bold text-white tabular-nums">{vy}년 {vm + 1}월</span>
-                    <button
+                    <IconButton
+                        label="다음 달"
+                        tone="subtle"
+                        shape="md"
                         onClick={() => onViewYMChange(vm === 11 ? [vy + 1, 0] : [vy, vm + 1])}
-                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                     >
                         <ChevronRight size={16} />
-                    </button>
+                    </IconButton>
                 </div>
                 <div className="grid grid-cols-7 gap-1 mb-1">
                     {['일', '월', '화', '수', '목', '금', '토'].map(d => (

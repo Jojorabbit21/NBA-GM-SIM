@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { EmptyState } from '../../../components/common/EmptyState';
 import { Network } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
@@ -23,12 +24,8 @@ export const PostseasonBracket: React.FC<{
 
     if (!series.length) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-slate-200 pretendard">
-                <Network size={40} className="text-slate-600" />
-                <div className="text-center">
-                    <h2 className="text-lg font-black text-slate-300 ko-tight">플레이오프 브라켓</h2>
-                    <p className="text-sm text-slate-500 ko-normal mt-1">브라켓 데이터가 아직 없습니다.</p>
-                </div>
+            <div className="h-full flex-1 min-h-0 flex items-center justify-center pretendard">
+                <EmptyState icon={Network} title="플레이오프 브라켓" subtitle="브라켓 데이터가 아직 없습니다." />
             </div>
         );
     }

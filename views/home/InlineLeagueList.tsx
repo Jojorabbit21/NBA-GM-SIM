@@ -98,7 +98,7 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
             {/* 헤더 */}
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-black text-white ko-tight">활성화된 세션</h2>
-                {session && (
+                {session && isAdmin && (
                     <button
                         onClick={() => setIsCreateOpen(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 bg-transparent border border-white/15 hover:bg-white/5 hover:border-white/30 rounded-lg text-xs font-bold text-white transition-colors"
@@ -218,7 +218,7 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
                 )}
             </div>
 
-            {isCreateOpen && userId && (
+            {isCreateOpen && userId && isAdmin && (
                 <CreateLeagueModal
                     userId={userId}
                     isAdmin={isAdmin}

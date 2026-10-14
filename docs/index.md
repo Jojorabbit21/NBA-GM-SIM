@@ -65,9 +65,10 @@ docs/
 │   └── inbox/
 │       └── inbox-index.md    Inbox 시스템 구조
 │
-├── infra/                ← 인프라/배포 (2개)
+├── infra/                ← 인프라/배포 (3개)
 │   ├── version-update.md     버전 업데이트 알림 시스템
-│   └── supabase-monitoring.md Supabase 모니터링
+│   ├── supabase-monitoring.md Supabase 모니터링
+│   └── client-cache.md       클라이언트 캐시 계층(react-query 영속·경기 리더·localStorage 한도) 현황과 개선 과제
 │
 ├── plan/                 ← 개발 계획
 │   ├── plan-index.md         인덱스

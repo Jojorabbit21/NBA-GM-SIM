@@ -1,6 +1,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Tv, ChevronLeft, ChevronRight, Calendar, Star } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { Tv, ChevronLeft, ChevronRight, Calendar, Star } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -24,7 +26,10 @@ import {
     kstDateKey, fmtDateShort, fmtTime, fmtMonthDot, groupByDay, findCurrentVirtualDate,
     addDaysToKey, type DayGroup,
 } from './multiScheduleUtils';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { ClickableText } from './newsFeedLetter';
+import { Button } from '../../../components/common/Button';
+import { IconButton } from '../../../components/common/IconButton';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
 
 const LIVE_POLL_MS = 5000;
@@ -94,24 +99,7 @@ const getScheduleTableCols = (showRound: boolean): (number | undefined)[] =>
 
 // [2026-09-07] 원정/홈 팀 이름 왼쪽에 로고 추가(사용자 요청) — 리그 순위 테이블
 // (MultiStandingsView.tsx TEAM 셀)/뉴스피드 스코어 헤드라인(newsFeedCards.tsx
-// BoxScoreHeadline)과 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
-const ScheduleTeamLogo: React.FC<{ teamSlug: string; abbr?: string }> = ({ teamSlug, abbr }) => (
-    <img
-        src={getRealTeamLogoUrl(teamSlug)}
-        alt={abbr ?? teamSlug}
-        className="w-5 h-5 object-contain shrink-0"
-        onError={(e) => {
-            const img = e.currentTarget;
-            if (img.dataset.fallback !== 'old') {
-                img.dataset.fallback = 'old';
-                img.src = getTeamLogoUrl(teamSlug);
-            } else {
-                img.src = 'https://placehold.co/100x100?text=BPL';
-            }
-        }}
-    />
-);
-
+// BoxScoreHeadline)과 동일한 폴백(TeamLogo 공용, 리그 로고 1회 폴백).
 interface GameRowProps {
     g: Game;
     state: GameDisplayState;
@@ -133,6 +121,35 @@ interface GameRowProps {
 // 값이 없을 때 항상 "-"로 표시(빈 셀 방지) — 최우수선수/쿼터·상태 컬럼 공통.
 const EMPTY_CELL = '-';
 
+// 원정/홈 팀 셀 내용 — 로고(장식, 클릭 없음) + 클릭 가능한 팀 이름.
+const TeamNameCell: React.FC<{ teamId: string; team?: { team_abbr?: string; team_name?: string }; fallbackName: string; onClick: () => void }> = ({ teamId, team, fallbackName, onClick }) => (
+    <div className="flex items-center gap-2 min-w-0">
+        <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className="w-5 h-5 shrink-0" shadow={false} />
+        <ClickableText className="font-semibold text-slate-200 truncate ko-normal" onClick={onClick}>
+            {team?.team_name ?? fallbackName}
+        </ClickableText>
+    </div>
+);
+
+// 최우수선수 1명(이름 + 팀 약어 + 대표 스탯). 두 팀 사이의 "/" 구분자는 호출부 몫.
+const MvpEntry: React.FC<{ mvp: NonNullable<GameLeaders['mvpAway']>; teamAbbr: string; playerCardMap: PlayerCardMap; onPlayerClick: (playerId: string) => void }> = ({ mvp, teamAbbr, playerCardMap, onPlayerClick }) => (
+    <>
+        <PlayerHoverCard player={playerCardMap.get(mvp.playerId)?.player} teamAbbr={playerCardMap.get(mvp.playerId)?.teamAbbr}>
+            <span
+                className="text-slate-200 shrink-0 ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
+                onClick={() => onPlayerClick(mvp.playerId)}
+            >
+                {mvp.name} ({teamAbbr})
+            </span>
+        </PlayerHoverCard>
+        {mvp.stats.length > 0 && (
+            <span className="text-white ko-normal shrink-0">
+                {mvp.stats.map(s => `${s.value} ${s.label}`).join(', ')}
+            </span>
+        )}
+    </>
+);
+
 const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSummaries, gameLeadersMap, roundLabelMap, onView, onPlayerClick, onTeamClick, playerCardMap, serverNow, preferVirtual, showRound, allstarDisplay }) => {
     const home = teamMap[g.homeTeamId];
     const away = teamMap[g.awayTeamId];
@@ -148,62 +165,44 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
     // height:100%(h-full)가 부모(테이블 셀)의 명시적 높이가 없다는 이유로 무시되는 경우가
     // 많아(퍼센트 높이 특유의 한계) 실제로 채워지지 않는 버그가 있었다. 행 높이(TableRow
     // h-10=40px)에서 셀 기본 패딩(py-2=상하 8px×2=16px)을 뺀 값(24px=h-6)으로 고정.
-    const pillBtn = "flex items-center justify-center gap-1 w-full h-6 text-white rounded-md text-sm font-bold leading-none transition-all active:scale-95 ko-normal";
-    const cellBorder = "border-r border-slate-800/30";
-
+    
     // [2026-08-29] 최우수선수(팀당 1명씩)를 한 줄로 표시하도록 바꾸면서 모든 컬럼이 다시
     // 1줄뿐이라 h-10으로 충분 — 예전에 2줄 표시 때문에 h-14로 키웠던 걸 원복.
     return (
         <TableRow className={`h-10 ${state === 'live' ? 'bg-red-500/10' : isMyGame ? 'bg-emerald-500/20' : ''}`}>
             {/* 날짜 */}
-            <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
+            <TableCell className="align-middle text-sm">
                 <span className="font-medium text-slate-400 tabular-nums ko-normal">{fmtDateShort(g, preferVirtual)}</span>
             </TableCell>
 
             {/* 시간 (KST) */}
-            <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
+            <TableCell className="align-middle text-sm">
                 <span className="font-medium text-slate-400 tabular-nums ko-normal">{fmtTime(g, preferVirtual)}</span>
             </TableCell>
 
             {/* 토너먼트 라운드 — 플레이오프 경기가 있는 날짜에서만 렌더링(showRound) */}
             {showRound && (
-                <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
+                <TableCell className="align-middle text-sm">
                     <span className="font-medium text-slate-400 truncate ko-normal">{roundLabel ?? EMPTY_CELL}</span>
                 </TableCell>
             )}
 
             {/* 원정 — 로고는 순수 장식용, 클릭은 팀 이름 텍스트에만 한정
                 (사용자 지적: 로고까지 클릭되게 만든 건 요청 밖). */}
-            <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
-                <div className="flex items-center gap-2 min-w-0">
-                    <ScheduleTeamLogo teamSlug={g.awayTeamId} abbr={away?.team_abbr} />
-                    <span
-                        className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
-                        onClick={() => onTeamClick(g.awayTeamId)}
-                    >
-                        {away?.team_name ?? allstarDisplay[g.awayTeamId]?.name ?? g.awayTeamId}
-                    </span>
-                </div>
+            <TableCell align="left" className="pl-4 align-middle text-sm">
+                <TeamNameCell teamId={g.awayTeamId} team={away} fallbackName={allstarDisplay[g.awayTeamId]?.name ?? g.awayTeamId} onClick={() => onTeamClick(g.awayTeamId)} />
             </TableCell>
 
             {/* 홈 */}
-            <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
-                <div className="flex items-center gap-2 min-w-0">
-                    <ScheduleTeamLogo teamSlug={g.homeTeamId} abbr={home?.team_abbr} />
-                    <span
-                        className="font-semibold text-slate-200 truncate ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
-                        onClick={() => onTeamClick(g.homeTeamId)}
-                    >
-                        {home?.team_name ?? allstarDisplay[g.homeTeamId]?.name ?? g.homeTeamId}
-                    </span>
-                </div>
+            <TableCell align="left" className="pl-4 align-middle text-sm">
+                <TeamNameCell teamId={g.homeTeamId} team={home} fallbackName={allstarDisplay[g.homeTeamId]?.name ?? g.homeTeamId} onClick={() => onTeamClick(g.homeTeamId)} />
             </TableCell>
 
             {/* 최우수선수 — 팀당 1명씩(computeGameLeaders().mvpAway/mvpHome: 각 팀 박스스코어
                 기준 PIE 최댓값 선수 + 두드러진 대표 스탯 최대 5개), 이름 우측에 팀 약어 표기.
                 두 선수를 절반씩 나눈 두 블록이 아니라, 하나의 흐르는 문장으로 이어 쓰고
                 그 안에서만 "/"로 구분한다 — 문장 전체가 하나의 truncate 대상. */}
-            <TableCell align="left" className={`${cellBorder} pl-4 align-middle text-sm`}>
+            <TableCell align="left" className={`pl-4 align-middle text-sm`}>
                 {state === 'live' ? (
                     <span className="flex items-center gap-1 shrink-0 animate-pulse">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -212,39 +211,11 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                 ) : state === 'final' && (leaders?.mvpAway || leaders?.mvpHome) ? (
                     <div className="flex items-center gap-1.5 min-w-0 truncate">
                         {leaders?.mvpAway && (
-                            <>
-                                <PlayerHoverCard player={playerCardMap.get(leaders.mvpAway.playerId)?.player} teamAbbr={playerCardMap.get(leaders.mvpAway.playerId)?.teamAbbr}>
-                                    <span
-                                        className="text-slate-200 shrink-0 ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={() => onPlayerClick(leaders.mvpAway!.playerId)}
-                                    >
-                                        {leaders.mvpAway.name} ({away?.team_abbr ?? allstarDisplay[g.awayTeamId]?.abbr ?? g.awayTeamId})
-                                    </span>
-                                </PlayerHoverCard>
-                                {leaders.mvpAway.stats.length > 0 && (
-                                    <span className="text-white ko-normal shrink-0">
-                                        {leaders.mvpAway.stats.map(s => `${s.value} ${s.label}`).join(', ')}
-                                    </span>
-                                )}
-                            </>
+                            <MvpEntry mvp={leaders.mvpAway} teamAbbr={away?.team_abbr ?? allstarDisplay[g.awayTeamId]?.abbr ?? g.awayTeamId} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
                         )}
                         {leaders?.mvpAway && leaders?.mvpHome && <span className="text-slate-600 shrink-0">/</span>}
                         {leaders?.mvpHome && (
-                            <>
-                                <PlayerHoverCard player={playerCardMap.get(leaders.mvpHome.playerId)?.player} teamAbbr={playerCardMap.get(leaders.mvpHome.playerId)?.teamAbbr}>
-                                    <span
-                                        className="text-slate-200 shrink-0 ko-normal cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={() => onPlayerClick(leaders.mvpHome!.playerId)}
-                                    >
-                                        {leaders.mvpHome.name} ({home?.team_abbr ?? allstarDisplay[g.homeTeamId]?.abbr ?? g.homeTeamId})
-                                    </span>
-                                </PlayerHoverCard>
-                                {leaders.mvpHome.stats.length > 0 && (
-                                    <span className="text-white ko-normal shrink-0">
-                                        {leaders.mvpHome.stats.map(s => `${s.value} ${s.label}`).join(', ')}
-                                    </span>
-                                )}
-                            </>
+                            <MvpEntry mvp={leaders.mvpHome} teamAbbr={home?.team_abbr ?? allstarDisplay[g.homeTeamId]?.abbr ?? g.homeTeamId} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
                         )}
                     </div>
                 ) : (
@@ -253,7 +224,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
             </TableCell>
 
             {/* 스코어 (원정-홈 순) */}
-            <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
+            <TableCell className="align-middle text-sm">
                 {state === 'final' && g.homeScore != null && g.awayScore != null ? (
                     <span className="font-medium tabular-nums text-slate-300">{g.awayScore}-{g.homeScore}</span>
                 ) : state === 'live' ? (() => {
@@ -268,7 +239,7 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
             </TableCell>
 
             {/* 쿼터/게임클락 (LIVE) / 종료 표시 (완료) */}
-            <TableCell className={`${cellBorder} text-center align-middle text-sm`}>
+            <TableCell className="align-middle text-sm">
                 <span className={`ko-normal ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-400'}`}>
                     {state === 'live' && liveSummaries[g.id]
                         ? `Q${liveSummaries[g.id].quarter ?? 1} ${liveSummaries[g.id].clock ?? ''}`
@@ -283,21 +254,19 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
                 둥근 모서리는 그대로 유지.
                 [Fix 2026-08-04] 시작 전 경기도 미리 중계방에 입장 가능(정시가 되면 화면이 자동으로
                 라이브로 전환됨) — 라이브 버튼과 동일한 모양, 색상만 슬레이트로 구분. */}
-            <TableCell className="text-center align-middle text-sm">
+            <TableCell className="align-middle text-sm">
                 {state === 'live' ? (
-                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-red-600 hover:bg-red-500`}>
-                        <Tv size={12} />
+                    <Button variant="danger" size="xs" shape="md" fullWidth className="ko-normal" onClick={() => onView(g.id)} icon={<Tv size={12} />}>
                         보기
-                    </button>
+                    </Button>
                 ) : state === 'scheduled' ? (
-                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-slate-700 hover:bg-slate-600`}>
-                        <Tv size={12} />
+                    <Button variant="secondary" size="xs" shape="md" fullWidth className="ko-normal" onClick={() => onView(g.id)} icon={<Tv size={12} />}>
                         보기
-                    </button>
+                    </Button>
                 ) : (
-                    <button onClick={() => onView(g.id)} className={`${pillBtn} bg-indigo-600 hover:bg-indigo-500`}>
+                    <Button variant="primary" size="xs" shape="md" fullWidth className="ko-normal" onClick={() => onView(g.id)}>
                         리뷰
-                    </button>
+                    </Button>
                 )}
             </TableCell>
         </TableRow>
@@ -305,18 +274,18 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
 };
 
 const renderColumnHeader = (showRound: boolean) => (
-    <tr className="h-10 text-slate-500 text-sm font-black uppercase">
-        <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">날짜</TableHeaderCell>
-        <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">시간</TableHeaderCell>
+    <tr className="h-10 text-slate-400 text-sm font-bold">
+        <TableHeaderCell>날짜</TableHeaderCell>
+        <TableHeaderCell>시간</TableHeaderCell>
         {showRound && (
-            <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">라운드</TableHeaderCell>
+            <TableHeaderCell>라운드</TableHeaderCell>
         )}
-        <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">원정</TableHeaderCell>
-        <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">홈</TableHeaderCell>
-        <TableHeaderCell align="left" className="pl-4 border-r border-slate-800 bg-slate-950">최우수선수</TableHeaderCell>
-        <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">스코어</TableHeaderCell>
-        <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">쿼터/시간</TableHeaderCell>
-        <TableHeaderCell className="bg-slate-950 text-center">보기</TableHeaderCell>
+        <TableHeaderCell align="left" className="pl-4">원정</TableHeaderCell>
+        <TableHeaderCell align="left" className="pl-4">홈</TableHeaderCell>
+        <TableHeaderCell align="left" className="pl-4">최우수선수</TableHeaderCell>
+        <TableHeaderCell>스코어</TableHeaderCell>
+        <TableHeaderCell>쿼터/시간</TableHeaderCell>
+        <TableHeaderCell>보기</TableHeaderCell>
     </tr>
 );
 
@@ -361,12 +330,16 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
 
     return (
         <div className="flex items-center gap-2">
-            <button
+            <IconButton
+                label="하루 전"
+                size="lg"
+                tone="inherit"
+                shape="md"
+                className="bg-indigo-600 text-white hover:bg-indigo-500"
                 onClick={() => onChange(addDaysToKey(activeDate, -1))}
-                className="p-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shrink-0"
             >
                 <ChevronLeft size={20} />
-            </button>
+            </IconButton>
 
             {CAROUSEL_OFFSETS.map(offset => {
                 const dk = addDaysToKey(activeDate, offset);
@@ -421,12 +394,16 @@ const DateControlBar: React.FC<DateControlBarProps> = ({ activeDate, onChange, s
                 );
             })}
 
-            <button
+            <IconButton
+                label="하루 후"
+                size="lg"
+                tone="inherit"
+                shape="md"
+                className="bg-indigo-600 text-white hover:bg-indigo-500"
                 onClick={() => onChange(addDaysToKey(activeDate, 1))}
-                className="p-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shrink-0"
             >
                 <ChevronRight size={20} />
-            </button>
+            </IconButton>
         </div>
     );
 };
@@ -722,9 +699,7 @@ const MultiScheduleView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 
@@ -745,16 +720,20 @@ const MultiScheduleView: React.FC = () => {
                     <div className="flex items-center gap-1 shrink-0">
                         {/* 달력 아이콘 — 클릭 시 데이트피커(MonthCalendarPopover) 표시 */}
                         <div ref={headerDateMenuRef} className="relative shrink-0">
-                            <button
+                            <IconButton
+                                label="날짜 선택"
+                                size="lg"
+                                tone="inherit"
+                                shape="md"
                                 onClick={e => {
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     setHeaderMenuPos({ x: rect.left, y: rect.bottom });
                                     setIsHeaderDateMenuOpen(o => !o);
                                 }}
-                                className={`h-8 w-8 flex items-center justify-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors ${isHeaderDateMenuOpen ? 'bg-indigo-500' : ''}`}
+                                className={`bg-indigo-600 text-white hover:bg-indigo-500 ${isHeaderDateMenuOpen ? 'bg-indigo-500' : ''}`}
                             >
                                 <Calendar size={16} />
-                            </button>
+                            </IconButton>
                             {isHeaderDateMenuOpen && headerViewYM && headerMenuPos && activeDate && (
                                 <MonthCalendarPopover
                                     position={headerMenuPos}
@@ -768,13 +747,15 @@ const MultiScheduleView: React.FC = () => {
                         </div>
 
                         {/* 달력 아이콘 우측 — 오늘 날짜로 바로 이동. 스타일을 달력 버튼과 통일. */}
-                        <button
+                        <Button
+                            variant="primary"
+                            shape="md"
+                            className="ko-normal shrink-0"
                             onClick={() => todayKey && setSelectedDate(todayKey)}
                             disabled={!todayKey}
-                            className="h-8 px-3 flex items-center rounded-md text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 transition-colors ko-normal shrink-0"
                         >
                             오늘로 이동
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
@@ -800,7 +781,7 @@ const MultiScheduleView: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <p className="text-sm text-slate-500 ko-normal py-12 text-center">이 날짜엔 예정된 경기가 없습니다.</p>
+                        <EmptyState title="이 날짜엔 예정된 경기가 없습니다." />
                     )
                 ) : (
                     <Table className="!rounded-none !shadow-none" fullHeight={false} tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
@@ -809,7 +790,7 @@ const MultiScheduleView: React.FC = () => {
                                 <col key={i} style={w !== undefined ? { width: w } : undefined} />
                             ))}
                         </colgroup>
-                        <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
+                        <TableHead noRow>
                             {renderColumnHeader(showRoundColumn)}
                         </TableHead>
                         <TableBody>

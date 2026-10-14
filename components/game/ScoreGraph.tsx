@@ -122,7 +122,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                     <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
                     <div>
                         <div className="text-2xl font-black leading-none text-white">{awayProb}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{awayTeamCode}</div>
+                        <div className="text-[10px] font-bold text-slate-500">{awayTeamCode}</div>
                     </div>
                 </div>
 
@@ -140,7 +140,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
 
                              {/* Time Section - Fixed Width for Stability */}
                              <div className="flex flex-col items-center justify-center px-2 py-2 bg-black w-[150px]">
-                                 <span className="text-5xl font-digital led-red leading-none tracking-wider tabular-nums transform translate-y-[3px]">
+                                 <span className="text-5xl font-digital led-red leading-none tabular-nums transform translate-y-[3px]">
                                      {formattedTime}
                                  </span>
                              </div>
@@ -152,7 +152,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 <div className="flex items-center gap-2 text-right mb-2">
                     <div>
                         <div className="text-2xl font-black leading-none text-white">{homeProb}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{homeTeamCode}</div>
+                        <div className="text-[10px] font-bold text-slate-500">{homeTeamCode}</div>
                     </div>
                     <img src={homeLogo} className="w-8 h-8 object-contain" alt="Home" />
                 </div>
@@ -213,7 +213,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
             </div>
 
             {/* X-Axis Labels */}
-            <div className="flex px-1 mt-1.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider relative h-4">
+            <div className="flex px-1 mt-1.5 text-[9px] font-bold text-slate-500 relative h-4">
                 <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
                 <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
                 <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>

@@ -1,7 +1,8 @@
 
 import React, { useMemo } from 'react';
+import { Spinner } from '../../../components/common/Spinner';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+
 import { MultiSidebar } from '../../../components/MultiSidebar';
 import { MultiHeader } from '../../../components/MultiHeader';
 import { TournamentChampionModal } from '../../../components/multi/TournamentChampionModal';
@@ -62,9 +63,7 @@ export function MultiSeasonLayout() {
 
     if (gameData.isLoading) {
         return (
-            <div className="flex items-center justify-center h-full min-h-screen bg-gray-950">
-                <Loader2 size={32} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" className="bg-gray-950" />
         );
     }
 

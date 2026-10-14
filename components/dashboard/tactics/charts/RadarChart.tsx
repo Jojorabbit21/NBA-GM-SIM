@@ -49,7 +49,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({ roster, hideTitle }) => 
 
     return (
         <div className="flex flex-col gap-2">
-            {!hideTitle && <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>}
+            {!hideTitle && <h5 className="text-sm font-black text-slate-300">로스터 레이더</h5>}
             <svg viewBox="0 0 280 270" className="w-full">
                 {/* Grid Levels */}
                 {LEVELS.map(level => {

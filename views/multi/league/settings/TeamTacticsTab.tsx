@@ -11,7 +11,12 @@
  * league_teams.team_slug(옛 데이터는 id일 수 있어 둘 다 매칭). 리그 어드민은 RLS로 모든 멤버 행을 읽을 수 있다.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, RefreshCw, ClipboardList, Pencil, Save, Check, X } from 'lucide-react';
+import { StatusDot } from '../../../../components/common/StatusDot';
+import { InlineNotice } from '../../../../components/common/InlineNotice';
+import { Button } from '../../../../components/common/Button';
+import { Spinner } from '../../../../components/common/Spinner';
+import { TableEmptyRow } from '../../../../components/common/EmptyState';
+import { RefreshCw, ClipboardList, Pencil, Save, Check, X } from 'lucide-react';
 import type { LeagueTeamRow, RoomRow, RoomMemberRow } from '../../../../services/multi/roomQueries';
 import { listRoomMembers } from '../../../../services/multi/roomQueries';
 import { adminSaveMemberTactics } from '../../../../services/multi/roomPersistence';
@@ -29,7 +34,6 @@ import { TacticsSlidersPanel } from '../../../../components/dashboard/tactics/Ta
 import { PlayerTacticsPanel } from '../../../../components/dashboard/tactics/PlayerTacticsPanel';
 import type { Team, Player } from '../../../../types';
 import type { GameTactics, DepthChart, TacticalSliders, PlayerTacticConfig } from '../../../../types/tactics';
-import { notify } from '../../../../services/notifications/notify';
 import { useLeagueContext } from '../LeagueLayout';
 
 interface Props {
@@ -111,6 +115,10 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
     const [isDirty, setIsDirty]           = useState(false);
     const [saving, setSaving]             = useState(false);
     const [savedFlash, setSavedFlash]     = useState(false);
+    // [2026-10-13] 로드/로스터/저장 실패 — 토스트 대신 인라인(에러 표시 정책 0-7)
+    const [loadErr, setLoadErr] = useState<string | null>(null);
+    const [rosterErr, setRosterErr] = useState<string | null>(null);
+    const [saveErr, setSaveErr] = useState<string | null>(null);
 
     // room_members.team_id(슬러그 또는 옛 id) → league_teams 행
     const teamByKey = useMemo(() => {
@@ -149,10 +157,11 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 setPlayers(map);
                 const sorted = [...rows].sort((a, b) => (a.team_abbr ?? '').localeCompare(b.team_abbr ?? ''));
                 setMembers(sorted);
+                setLoadErr(null);
                 setSelected(prev => (prev && sorted.some(m => m.user_id === prev) ? prev : (sorted[0]?.user_id ?? '')));
             } catch (e) {
                 if (cancelled) return;
-                notify.error('팀 전술 데이터를 불러오지 못했습니다. 잠시 후 다시 시도하세요.', { source: 'teamTactics.load' });
+                setLoadErr('팀 전술 데이터를 불러오지 못했습니다. 잠시 후 다시 시도하세요.');
                 console.error('[teamTactics.load]', e);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -196,6 +205,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
         let cancelled = false;
         if (!team?.roster?.length) { setRosterPlayers([]); return; }
         setRosterLoading(true);
+        setRosterErr(null);
         (async () => {
             try {
                 const raw = await fetchMetaPlayersByRosterIds(room.id, team.roster, ROSTER_COLS);
@@ -205,7 +215,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 setRosterPlayers(ordered.map(r => mapRawPlayerToRuntimePlayer(r, useCustomOverrides, true)));
             } catch (e) {
                 if (cancelled) return;
-                notify.error('로스터를 불러오지 못했습니다. 잠시 후 다시 시도하세요.', { source: 'teamTactics.roster' });
+                setRosterErr('로스터를 불러오지 못했습니다. 잠시 후 다시 시도하세요.');
                 console.error('[teamTactics.roster]', e);
             } finally {
                 if (!cancelled) setRosterLoading(false);
@@ -251,13 +261,17 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
         return () => window.removeEventListener('beforeunload', handler);
     }, [isDirty]);
 
+    useEffect(() => { setSaveErr(null); }, [current?.user_id, editing]);
+
+
     const handleSave = useCallback(async () => {
         if (!room?.id || !current?.user_id || !draftTactics) return;
         setSaving(true);
-        const { error, changed } = await adminSaveMemberTactics(room.id, current.user_id, draftTactics, draftDepth);
+        setSaveErr(null);
+        const { error } = await adminSaveMemberTactics(room.id, current.user_id, draftTactics, draftDepth);
         setSaving(false);
         if (error) {
-            notify.error('전술 저장에 실패했습니다. 잠시 후 다시 시도하세요.', { source: 'teamTactics.save' });
+            setSaveErr('전술 저장에 실패했습니다. 잠시 후 다시 시도하세요.');
             console.error('[teamTactics.save]', error);
             return;
         }
@@ -266,8 +280,8 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
         setIsDirty(false);
         setSavedFlash(true);
         setTimeout(() => setSavedFlash(false), 2000);
-        if (changed) notify.success(`${team?.team_abbr ?? ''} 전술을 저장했습니다. (로그 기록됨)`);
-    }, [room?.id, current?.user_id, draftTactics, draftDepth, team?.team_abbr]);
+        // [2026-10-13] 성공 토스트 제거 — 버튼 "저장됨" 플래시로 충분(에러 표시 정책 0-7)
+    }, [room?.id, current?.user_id, draftTactics, draftDepth]);
 
     const editReady = editing && !rosterLoading && !!draftTactics;
     const th = 'text-left py-1.5 px-2 text-slate-400 font-bold whitespace-nowrap border-b border-slate-700/60';
@@ -283,13 +297,15 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 </span>
                 <div className="ml-auto flex items-center gap-2">
                     {!editing && (
-                        <button
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setTick(t => t + 1)}
-                            disabled={loading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 rounded-lg text-xs font-bold text-white transition-colors"
+                            isLoading={loading}
+                            icon={<RefreshCw size={12} />}
                         >
-                            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}새로고침
-                        </button>
+                            새로고침
+                        </Button>
                     )}
                     {!editing && current && (
                         <button
@@ -301,14 +317,20 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                     )}
                     {editing && (
                         <>
-                            {isDirty && <span className="text-xs text-amber-400 ko-normal">저장되지 않은 변경사항</span>}
-                            <button
+                            {saveErr
+                                ? <InlineNotice tone="danger" size="sm">{saveErr}</InlineNotice>
+                                : isDirty && <InlineNotice tone="warning" size="sm">저장되지 않은 변경사항</InlineNotice>}
+                            <Button
+                                variant="success"
+                                size="sm"
                                 onClick={handleSave}
                                 disabled={saving || !isDirty || !editReady}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors"
+                                isLoading={saving}
+                                loadingText="저장 중…"
+                                icon={savedFlash ? <Check size={12} /> : <Save size={12} />}
                             >
-                                {saving ? <><Loader2 size={12} className="animate-spin" />저장 중…</> : savedFlash ? <><Check size={12} />저장됨</> : <><Save size={12} />저장</>}
-                            </button>
+                                {savedFlash ? '저장됨' : '저장'}
+                            </Button>
                             <button
                                 onClick={handleExitEdit}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold text-white transition-colors"
@@ -332,13 +354,20 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                             key={m.user_id}
                             onClick={() => handleSelect(m.user_id)}
                             title={`${t?.team_name ?? m.team_name ?? ''} · ${t?.nickname ?? ''}${m.is_ai ? ' (AI)' : ''}${has ? '' : ' · 전술 미저장'}`}
-                            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors ${active ? 'bg-indigo-600 text-white' : has ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-colors ${active ? 'bg-indigo-600 text-white' : has ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
                         >
                             {label}
+                            {/* [2026-10-13] 항목별 상태 — title 툴팁만 있던 "전술 미저장"을 StatusDot으로 */}
+                            {!has && <StatusDot tone="warning" size="sm" label="전술 미저장 — 경기 시 자동 생성 전술 사용" />}
                         </button>
                     );
                 })}
-                {members.length === 0 && !loading && <span className="text-xs text-slate-500 ko-normal">참가자가 없습니다.</span>}
+                {loadErr ? (
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <InlineNotice tone="danger" className="!w-auto">{loadErr}</InlineNotice>
+                        <Button variant="secondary" size="sm" onClick={() => setTick(t => t + 1)}>다시 불러오기</Button>
+                    </div>
+                ) : members.length === 0 && !loading && <span className="text-xs text-slate-500 ko-normal">참가자가 없습니다.</span>}
             </div>
 
             {current && (
@@ -353,11 +382,18 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
             {/* ── 편집 모드 ── */}
             {editing && (
                 !editReady ? (
-                    <div className="py-12 flex items-center justify-center"><Loader2 size={24} className="animate-spin text-indigo-400" /></div>
+                    rosterErr ? (
+                        <div className="py-12 flex flex-col items-center gap-3">
+                            <InlineNotice tone="danger" className="max-w-md">{rosterErr}</InlineNotice>
+                            <Button variant="secondary" size="sm" onClick={() => { setEditing(false); setTimeout(() => setEditing(true), 0); }}>다시 시도</Button>
+                        </div>
+                    ) : (
+                        <Spinner variant="section" />
+                    )
                 ) : (
                     <div className="bg-slate-900/60 border border-slate-700/40 rounded-xl overflow-hidden">
                         <TabBar<EditTab> tabs={EDIT_TABS} activeTab={editTab} onTabChange={setEditTab} />
-                        {!tactics && <p className="px-6 pt-3 text-xs text-amber-300 ko-normal">저장된 전술이 없어 자동 생성 전술을 초안으로 깔았습니다. 저장하면 이 참가자의 전술로 등록됩니다.</p>}
+                        {!tactics && <InlineNotice tone="warning" className="!w-auto mx-6 mt-3">저장된 전술이 없어 자동 생성 전술을 초안으로 깔았습니다. 저장하면 이 참가자의 전술로 등록됩니다.</InlineNotice>}
                         <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
                             {editTab === 'depth' && (
                                 <DepthChartEditor team={editTeam} tactics={draftTactics!} depthChart={draftDepth} onUpdateDepthChart={handleUpdateDepth} onUpdateTactics={handleUpdateTactics} />
@@ -378,7 +414,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
 
             {/* ── 보기 모드 ── */}
             {!editing && current && !tactics && !depth && (
-                <p className="text-xs text-amber-300 ko-normal">이 참가자는 아직 전술을 저장하지 않았습니다 (경기 시 자동 생성 전술 사용). "편집"으로 직접 만들어 줄 수 있습니다.</p>
+                <InlineNotice tone="warning">이 참가자는 아직 전술을 저장하지 않았습니다 (경기 시 자동 생성 전술 사용). "편집"으로 직접 만들어 줄 수 있습니다.</InlineNotice>
             )}
 
             {!editing && (tactics || depth) && (
@@ -389,7 +425,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                         <table className="w-full text-xs">
                             <thead><tr><th className={th}>#</th>{POSITIONS.map(p => <th key={p} className={th}>{p}</th>)}</tr></thead>
                             <tbody>
-                                {depthRows === 0 && <tr><td colSpan={6} className={`${td} text-slate-500`}>뎁스차트 없음</td></tr>}
+                                {depthRows === 0 && <TableEmptyRow colSpan={6}>뎁스차트 없음</TableEmptyRow>}
                                 {Array.from({ length: depthRows }).map((_, i) => (
                                     <tr key={i}>
                                         <td className={`${td} text-slate-500`}>{i + 1}</td>
@@ -445,7 +481,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {rotationRows.length === 0 && <tr><td colSpan={11} className={`${td} text-slate-500`}>로테이션 없음</td></tr>}
+                                    {rotationRows.length === 0 && <TableEmptyRow colSpan={11}>로테이션 없음</TableEmptyRow>}
                                     {rotationRows.map(id => {
                                         const rot = rotationSummary(tactics?.rotationMap?.[id]);
                                         const pt: PlayerTacticConfig = tactics?.playerTactics?.[id] ?? {};
@@ -457,13 +493,13 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                                                 <td className={`${td} text-slate-400`}>{pPos(id)}</td>
                                                 <td className={`${td} text-slate-200`}>{starterPos ?? ''}</td>
                                                 <td className={`${td} text-white tabular-nums`}>{rot.minutes}</td>
-                                                <td className={`${td} text-slate-300 tabular-nums`}>{rot.ranges || '—'}</td>
-                                                <td className={`${td} text-slate-300 tabular-nums`}>{limit ?? '—'}</td>
-                                                <td className={`${td} text-slate-300 tabular-nums`}>{pt.restThreshold ?? '—'}</td>
-                                                <td className={`${td} text-slate-300 tabular-nums`}>{pt.returnThreshold ?? '—'}</td>
-                                                <td className={`${td} text-slate-300`}>{pt.foulPolicy ? FOUL_LABEL[pt.foulPolicy] ?? pt.foulPolicy : '—'}</td>
-                                                <td className={`${td} text-slate-300`}>{pt.garbagePolicy ? GARBAGE_LABEL[pt.garbagePolicy] ?? pt.garbagePolicy : '—'}</td>
-                                                <td className={`${td} text-slate-300`}>{pt.clutchPolicy ? CLUTCH_LABEL[pt.clutchPolicy] ?? pt.clutchPolicy : '—'}</td>
+                                                <td className={`${td} text-slate-200 tabular-nums`}>{rot.ranges || '—'}</td>
+                                                <td className={`${td} text-slate-200 tabular-nums`}>{limit ?? '—'}</td>
+                                                <td className={`${td} text-slate-200 tabular-nums`}>{pt.restThreshold ?? '—'}</td>
+                                                <td className={`${td} text-slate-200 tabular-nums`}>{pt.returnThreshold ?? '—'}</td>
+                                                <td className={`${td} text-slate-200`}>{pt.foulPolicy ? FOUL_LABEL[pt.foulPolicy] ?? pt.foulPolicy : '—'}</td>
+                                                <td className={`${td} text-slate-200`}>{pt.garbagePolicy ? GARBAGE_LABEL[pt.garbagePolicy] ?? pt.garbagePolicy : '—'}</td>
+                                                <td className={`${td} text-slate-200`}>{pt.clutchPolicy ? CLUTCH_LABEL[pt.clutchPolicy] ?? pt.clutchPolicy : '—'}</td>
                                             </tr>
                                         );
                                     })}

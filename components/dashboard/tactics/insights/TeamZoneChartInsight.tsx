@@ -129,7 +129,7 @@ export const TeamZoneChartInsight: React.FC<TeamZoneChartInsightProps> = ({ rost
 
     return (
         <div className="h-full">
-            <div className="relative w-full h-full bg-slate-950 overflow-hidden" style={{ border: '1px solid #334155' }}>
+            <div className="relative w-full h-full bg-slate-950 overflow-hidden border border-slate-700">
             {/* SVG를 absolute로 분리 — in-flow 상태로 두면 viewBox 종횡비 기준으로 "선호 높이"를
                 계산해 부모(flex-1) 박스에 역으로 반영되면서, 넓은 화면일수록 우측 테이블보다
                 더 커지는 문제가 있었음(좁은 화면에선 우연히 테이블이 더 커서 안 드러났을 뿐).

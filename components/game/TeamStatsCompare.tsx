@@ -54,7 +54,7 @@ export const TeamStatsCompare: React.FC<{
 
     return (
         <div className="shrink-0 px-3 py-2">
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">팀 스탯</p>
+            <p className="text-xs text-slate-500 font-semibold mb-1.5">팀 스탯</p>
             <div className="flex flex-col gap-1">
                 {COMPARE_STATS.map(({ key, label, fmt }) => {
                     const { h, a } = stats[key as keyof typeof stats];
@@ -77,13 +77,13 @@ export const TeamStatsCompare: React.FC<{
                                 )}
                             </div>
                             {/* Away value */}
-                            <span className={`text-xs font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
+                            <span className={`text-xs text-right text-white ${aWins ? 'font-bold' : ''}`}>
                                 {fmt(a)}
                             </span>
                             {/* Label */}
-                            <span className="text-xs font-bold text-slate-400 text-center uppercase">{label}</span>
+                            <span className="text-xs font-bold text-slate-400 text-center">{label}</span>
                             {/* Home value */}
-                            <span className={`text-xs font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
+                            <span className={`text-xs text-left text-white ${hWins ? 'font-bold' : ''}`}>
                                 {fmt(h)}
                             </span>
                             {/* Home bar (grows left-to-right) */}

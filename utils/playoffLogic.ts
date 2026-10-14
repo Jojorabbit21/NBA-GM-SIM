@@ -18,6 +18,29 @@ export const CONF_NAMES: Record<string, string> = {
     East: '동부', West: '서부'
 };
 
+/**
+ * bracket_data.series 한 항목 → "플레이인" / "동부 1라운드" / "준결승" / "결승" 라벨.
+ * round 0은 플레이인(playInSeeder), 마지막 라운드는 결승(컨퍼런스 통합이라 접두어 없음), 그 직전은 준결승.
+ * [2026-10-12] MultiHeader·MultiTacticsView·MultiScheduleView·TournamentBracketView가 각자 들고 있던 규칙을 통합.
+ */
+export function getSeriesRoundLabel(
+    series: { round?: number; conference?: string | null },
+    allSeries: Array<{ round?: number }>,
+    opts: { confPrefix?: boolean } = {},
+): string {
+    const totalRounds = allSeries.reduce((max, x) => Math.max(max, x.round ?? 1), 1);
+    const r = series.round ?? 1;
+    const isFinalRound = r > 0 && r === totalRounds;
+    const base = r === 0 ? '플레이인'
+        : isFinalRound ? '결승'
+        : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
+        : `${r}라운드`;
+    const prefix = opts.confPrefix && !isFinalRound && series.conference && series.conference !== 'BPL'
+        ? (CONF_NAMES[series.conference] ?? series.conference) + ' '
+        : '';
+    return prefix + base;
+}
+
 // Play-In Seed Configs
 const SEED_MATCHUPS_PI = [
     { h: 7, l: 8, id: '7v8' },

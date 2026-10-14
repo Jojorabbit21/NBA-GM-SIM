@@ -20,7 +20,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ title, description, icon
                         </div>
                     )}
                     <div>
-                        <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight leading-none">
+                        <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 tracking-tight leading-none">
                             {title}
                         </h2>
                         {description && (

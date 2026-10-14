@@ -3,6 +3,8 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
+import { Button } from '../common/Button';
+import { SegmentedControl } from '../common/SegmentedControl';
 import { getAttrColor } from '../../utils/attrRatingColor';
 
 // 가상 스크롤 — 올타임 풀 기준 800명 이상이 한 번에 DOM에 마운트되던 걸,
@@ -18,6 +20,8 @@ interface PlayerPoolProps {
     onDraft: (player: Player) => void;
     positionColors: Record<string, string>;
     showPotential?: boolean;
+    /** [2026-10-13] 드래프트 버튼 왼쪽 슬롯 — 지명 실패/연결 끊김 InlineNotice sm(에러 표시 정책 0-7) */
+    toolbarNotice?: React.ReactNode;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -30,8 +34,8 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
     onSelectPlayer,
     isUserTurn,
     onDraft,
-    positionColors,
     showPotential = false,
+    toolbarNotice,
 }) => {
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
@@ -114,7 +118,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
         <div className="flex flex-col h-full">
             {/* Toolbar */}
             <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50 bg-slate-800/30">
-                <span className="text-sm font-black uppercase text-indigo-400 shrink-0">선수 풀</span>
+                <span className="text-sm font-black text-indigo-400 shrink-0">선수 풀</span>
                 <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -125,48 +129,25 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                         className="bg-slate-900 border border-slate-800 rounded-md pl-7 pr-2 py-1 text-sm text-slate-200 w-32 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
                     />
                 </div>
-                <div className="flex gap-0.5">
-                    {POSITIONS.map(pos => {
-                        const isActive = posFilter === pos;
-                        const posColor = pos !== 'All' ? positionColors[pos] : undefined;
-                        return (
-                            <button
-                                key={pos}
-                                onClick={() => setPosFilter(pos)}
-                                className={`text-sm px-1.5 py-0.5 rounded-md font-bold transition-colors ${
-                                    isActive
-                                        ? 'text-white'
-                                        : 'bg-transparent text-slate-500 hover:text-slate-300'
-                                }`}
-                                style={isActive ? {
-                                    backgroundColor: posColor || '#6366f1',
-                                    color: '#fff',
-                                } : {}}
-                            >
-                                {pos}
-                            </button>
-                        );
-                    })}
-                </div>
+                <SegmentedControl
+                    size="sm"
+                    value={posFilter}
+                    onChange={setPosFilter}
+                    options={POSITIONS.map(pos => ({ value: pos as string, label: pos }))}
+                />
                 <span className="text-sm text-slate-500 ml-1">{filtered.length}명</span>
-                {/* Draft button */}
-                <div className="ml-auto">
-                    <button
+                {/* Draft button (+ 왼쪽 알림 슬롯) */}
+                <div className="ml-auto flex items-center gap-3 min-w-0">
+                    {toolbarNotice}
+                    <Button
+                        variant="success"
+                        size="lg"
                         onClick={handleDraftClick}
                         disabled={!isUserTurn || !selectedPlayer}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-black uppercase transition-all ${
-                            !isUserTurn || !selectedPlayer
-                                ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                : 'hover:brightness-110 active:scale-95'
-                        }`}
-                        style={isUserTurn && selectedPlayer ? {
-                            backgroundColor: '#10b981',
-                            color: '#fff',
-                            boxShadow: '0 0 12px rgba(16,185,129,0.5)',
-                        } : {}}
+                        style={isUserTurn && selectedPlayer ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
                     >
                         드래프트
-                    </button>
+                    </Button>
                 </div>
             </div>
 
@@ -179,16 +160,16 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
             >
                 <table className="w-full border-collapse text-sm table-fixed">
                     <thead className="sticky top-0 z-10 bg-slate-900">
-                        <tr className="text-sm font-black uppercase text-slate-500 border-b border-slate-700/50">
+                        <tr className="text-sm font-bold text-slate-400 border-b border-slate-800">
                             <th className="w-6 px-1 py-1.5"></th>
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
                             <th className="px-2 py-1.5 text-left w-36">NAME</th>
-                            <th className="px-1 py-1.5 text-left text-slate-500">TYPE</th>
+                            <th className="px-1 py-1.5 text-left text-slate-400">TYPE</th>
                             <SortHeader label="OVR" field="ovr" className="w-12" />
                             {showPotential && <SortHeader label="POT" field="pot" className="w-8" />}
                             <SortHeader label="AGE" field="age" className="w-10" />
-                            <th className="px-1 py-1.5 text-center w-12 text-slate-500">HT</th>
-                            <th className="px-1 py-1.5 text-center w-12 text-slate-500">WT</th>
+                            <th className="px-1 py-1.5 text-center w-12 text-slate-400">HT</th>
+                            <th className="px-1 py-1.5 text-center w-12 text-slate-400">WT</th>
                             <SortHeader label="INS" field="ins" className="w-10" />
                             <SortHeader label="OUT" field="out" className="w-10" />
                             <SortHeader label="ATH" field="ath" className="w-10" />
@@ -237,7 +218,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                         {player.archetype ?? '—'}{player.secondaryArchetype ? ` / ${player.secondaryArchetype}` : ''}
                                     </td>
                                     <td className="px-2 py-0.5">
-                                        <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
+                                        <OvrBadge value={player.ovr} size="sm" />
                                     </td>
                                     {showPotential && (
                                         <td className={`px-1 py-0.5 text-center ${getAttrColor(player.potential)}`}>

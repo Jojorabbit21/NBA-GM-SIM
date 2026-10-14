@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trophy, Shield } from 'lucide-react';
+import { getLeagueLogoUrl } from '../../utils/constants';
 import { PlayerAwardEntry, PlayerAwardType } from '../../types/player';
 
 // ── 어워드 메타데이터 ──
@@ -28,7 +29,7 @@ const AWARD_META: Record<PlayerAwardType, AwardMeta> = {
     ALL_NBA_3:            { name: '올-오펜시브 팀',     detail: '3rd',    shortLabel: '3rd',   icon: 'trophy',           color: 'text-slate-400',  order: 7 },
     ALL_DEF_1:            { name: '올-디펜시브 팀',     detail: '1st',    shortLabel: 'D1st',  icon: 'shield',           color: 'text-green-400',  order: 8 },
     ALL_DEF_2:            { name: '올-디펜시브 팀',     detail: '2nd',    shortLabel: 'D2nd',  icon: 'shield',           color: 'text-green-500',  order: 9 },
-    ALL_STAR:             { name: '올스타',         detail: '선정',   shortLabel: 'AS',    img: '/logos/real/AS/AllStar.svg', color: 'text-sky-400', order: 10 },
+    ALL_STAR:             { name: '올스타',         detail: '선정',   shortLabel: 'AS',    img: getLeagueLogoUrl('AllStar'), color: 'text-sky-400', order: 10 },
 };
 
 // ── 헤더용 집계 ──
@@ -145,7 +146,7 @@ export const PlayerAwardList: React.FC<{ awards?: PlayerAwardEntry[] }> = ({ awa
     return (
         <table className="w-full text-xs">
             <thead>
-                <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                <tr className="text-sm font-bold text-slate-400 border-b border-slate-800">
                     <th className="px-4 py-2 text-left">시즌</th>
                     <th className="px-4 py-2 text-left">이름</th>
                     <th className="px-4 py-2 text-left">내용</th>
@@ -155,8 +156,8 @@ export const PlayerAwardList: React.FC<{ awards?: PlayerAwardEntry[] }> = ({ awa
                 {sorted.map((entry, idx) => {
                     const meta = AWARD_META[entry.type];
                     return (
-                        <tr key={idx} className="border-b border-slate-800/50 h-9 hover:bg-white/[0.02]">
-                            <td className="px-4 font-mono tabular-nums text-slate-400">{entry.season}</td>
+                        <tr key={idx} className="border-b border-slate-800 h-9 hover:bg-white/[0.02]">
+                            <td className="px-4 tabular-nums text-slate-400">{entry.season}</td>
                             <td className="px-4">
                                 <span className="flex items-center gap-1.5">
                                     {meta.img ? (
@@ -169,7 +170,7 @@ export const PlayerAwardList: React.FC<{ awards?: PlayerAwardEntry[] }> = ({ awa
                                     <span className={`font-bold ${meta.color}`}>{meta.name}</span>
                                 </span>
                             </td>
-                            <td className="px-4 font-bold text-slate-300">{meta.detail}</td>
+                            <td className="px-4 font-bold text-slate-200">{meta.detail}</td>
                         </tr>
                     );
                 })}

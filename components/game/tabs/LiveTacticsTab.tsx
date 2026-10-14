@@ -137,7 +137,7 @@ function computeTeamStats(box: PlayerBoxScore[]) {
 /** 플레이타입 PPP 테이블 */
 const PlayTypePPPTable: React.FC<{ title: string; data: PlayTypeStats[] }> = ({ title, data }) => (
     <div className="flex flex-col gap-1.5">
-        <h5 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{title}</h5>
+        <h5 className="text-[11px] font-black text-slate-500">{title}</h5>
         {data.length === 0 ? (
             <span className="text-[11px] text-slate-600">-</span>
         ) : (
@@ -145,10 +145,10 @@ const PlayTypePPPTable: React.FC<{ title: string; data: PlayTypeStats[] }> = ({ 
                 {/* 컬럼 헤더 */}
                 <div className="flex items-center gap-2 pb-0.5">
                     <div className="w-1.5 shrink-0" />
-                    <span className="text-[9px] font-bold text-slate-600 w-20 truncate uppercase">플레이타입</span>
+                    <span className="text-[9px] font-bold text-slate-600 w-20 truncate">플레이타입</span>
                     <div className="flex-1" />
-                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right uppercase">비율</span>
-                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right uppercase">PPP</span>
+                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right">비율</span>
+                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right">PPP</span>
                 </div>
                 {data.map(item => (
                     <div key={item.key} className="flex items-center gap-2 py-0.5">
@@ -314,7 +314,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
 
                 {/* 1. 공격 철학 (게임 운영 + 코칭 철학 통합) */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">공격 철학</h4>
+                    <h4 className="text-[11px] font-black text-white mb-1">공격 철학</h4>
                     <SliderControl label="페이스" value={sliders.pace} onChange={v => updateSlider('pace', v)}
                         steps={SLIDER_STEPS.pace} />
                     <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
@@ -329,7 +329,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
 
                 {/* 2. 슈팅 전략 (구 코칭 철학 자리) */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">슈팅 전략</h4>
+                    <h4 className="text-[11px] font-black text-white mb-1">슈팅 전략</h4>
                     <SliderControl label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
                         steps={SLIDER_STEPS.shot_3pt} />
                     <SliderControl label="골밑 공격" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
@@ -340,7 +340,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
 
                 {/* 3. 온볼 수비 */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">온볼 수비</h4>
+                    <h4 className="text-[11px] font-black text-white mb-1">온볼 수비</h4>
                     <SliderControl label="수비 압박" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
                         steps={SLIDER_STEPS.defIntensity} />
                     <SliderControl label="스위치 수비" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
@@ -353,7 +353,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
 
                 {/* 4. 오프볼 수비 */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">오프볼 수비</h4>
+                    <h4 className="text-[11px] font-black text-white mb-1">오프볼 수비</h4>
                     <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
                         steps={SLIDER_STEPS.helpDef} />
                     <SliderControl label="지역 방어" value={sliders.zoneFreq}
@@ -390,7 +390,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
 
                 {/* ── 1. 팀 스탯 비교 (3/12) ── */}
                 <div className="col-span-3 bg-slate-900/40 border border-slate-800 rounded-2xl px-2 py-2 flex flex-col overflow-y-auto">
-                    <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">팀 스탯</p>
+                    <p className="text-[9px] text-slate-500 font-semibold mb-1.5 px-1">팀 스탯</p>
                     <div className="flex flex-col gap-1">
                         {COMPARE_STATS.map(({ key, label, fmt }) => {
                             const h = compareStats.h[key as keyof typeof compareStats.h] as number;
@@ -410,11 +410,11 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                                                 style={{ width: `${aPct}%`, backgroundColor: awayColor }} />
                                         )}
                                     </div>
-                                    <span className={`text-[10px] font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
+                                    <span className={`text-[10px] text-right text-white ${aWins ? 'font-bold' : ''}`}>
                                         {fmt(a)}
                                     </span>
-                                    <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
-                                    <span className={`text-[10px] font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
+                                    <span className="text-[9px] font-bold text-slate-400 text-center">{label}</span>
+                                    <span className={`text-[10px] text-left text-white ${hWins ? 'font-bold' : ''}`}>
                                         {fmt(h)}
                                     </span>
                                     <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
@@ -495,9 +495,9 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                         {/* Player Filter */}
                         <div className="col-span-3 flex flex-col border-l border-slate-800 bg-slate-900/20" style={{ minHeight: 0 }}>
                             <div className="px-2 py-1.5 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center shrink-0">
-                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">필터</span>
+                                <span className="text-[9px] font-black text-slate-500">필터</span>
                                 <button onClick={toggleAll}
-                                    className="text-[8px] font-bold text-indigo-400 hover:text-white uppercase tracking-wider transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-1 py-0.5 rounded">
+                                    className="text-[8px] font-bold text-indigo-400 hover:text-white transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-1 py-0.5 rounded">
                                     {selectedPlayerIds.size === shootingPlayers.length ? '해제' : '전체'}
                                 </button>
                             </div>
@@ -513,7 +513,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                                                 </div>
                                                 <span className={`text-[10px] font-bold truncate max-w-[60px] ${isSelected ? 'text-white' : 'text-slate-500'}`}>{player.name}</span>
                                             </div>
-                                            <span className="text-[9px] font-mono text-slate-400">{player.made}/{player.total}</span>
+                                            <span className="text-[9px] text-slate-400">{player.made}/{player.total}</span>
                                         </button>
                                     );
                                 })}

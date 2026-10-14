@@ -293,7 +293,7 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
                         <button
                             onClick={() => setConfirming(true)}
                             disabled={!canExecute}
-                            className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             <ArrowLeftRight size={13} />
                             트레이드 실행

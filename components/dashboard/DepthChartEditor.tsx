@@ -5,6 +5,8 @@ import { calculatePlayerOvr } from '../../utils/constants';
 import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { OvrBadge } from '../common/OvrBadge';
+import { Button } from '../common/Button';
+import { IconButton } from '../common/IconButton';
 
 interface DepthChartEditorProps {
     team: Team;
@@ -177,7 +179,7 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
             SG: [...depthChart!.SG] as DepthChart['SG'],
             SF: [...depthChart!.SF] as DepthChart['SF'],
             PF: [...depthChart!.PF] as DepthChart['PF'],
-            C:  [...depthChart!.C]  as DepthChart['C'],
+            C:  [...depthChart!.C] as DepthChart['C'],
         };
 
         // 같은 선수가 다른 슬롯(포지션·뎁스 무관)에 이미 있으면 그 슬롯을 비운다 —
@@ -209,22 +211,22 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
         <div className="flex flex-col w-full bg-slate-950/30 border-t border-white/5">
             <div className="px-6 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <span className="text-base font-black text-white uppercase tracking-widest">뎁스 차트</span>
+                    <span className="text-base font-black text-white">뎁스 차트</span>
                 </div>
                 <div className="flex gap-2">
                     <div className="relative flex shadow-md group" ref={dropdownRef}>
-                        <button 
-                            onClick={() => handleAutoFill('Ability')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
-                        >
-                            <span>{coachName ? `${coachName}에게 위임` : '코치에게 위임'}</span>
-                        </button>
-                        <button 
+                        <Button variant="primary" shape="md" onClick={() => handleAutoFill('Ability')} className="rounded-r-none">
+                            {coachName ? `${coachName}에게 위임` : '코치에게 위임'}
+                        </Button>
+                        <IconButton
+                            label="옵션"
+                            tone="solid"
+                            size="lg"
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all active:bg-indigo-700 ${isDropdownOpen ? 'bg-indigo-700' : ''}`}
+                            className={`rounded-l-none !border-indigo-600 !text-white ${isDropdownOpen ? '!bg-indigo-700' : '!bg-indigo-600 hover:!bg-indigo-500'}`}
                         >
                             <ChevronDown size={14} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
+                        </IconButton>
 
                         {isDropdownOpen && (
                             <div className="absolute top-full right-0 mt-2 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -246,33 +248,29 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                         )}
                     </div>
 
-                    <button 
-                        onClick={handleResetChart}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                    >
-                        <RotateCcw size={14} />
-                        <span>초기화</span>
-                    </button>
+                    <Button variant="secondary" onClick={handleResetChart} icon={<RotateCcw size={14} />}>
+                        초기화
+                    </Button>
                 </div>
             </div>
             <Table className="border-0 !rounded-none shadow-none">
                 <TableHead>
-                    <TableHeaderCell align="center" className="text-xs w-16 border-r border-slate-800/50 py-2">포지션</TableHeaderCell>
-                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-indigo-400">주전</TableHeaderCell>
-                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-slate-300">벤치</TableHeaderCell>
-                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-slate-500">써드</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-16 py-2">포지션</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 py-2 text-indigo-400">주전</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 py-2 text-slate-300">벤치</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 py-2 text-slate-500">써드</TableHeaderCell>
                 </TableHead>
                 <TableBody>
                     {positions.map(pos => (
                         <TableRow key={String(pos)} className="hover:bg-slate-900/40 transition-colors">
-                            <TableCell align="center" className="py-1.5 px-4 border-r border-slate-800/50 bg-slate-950/20">
+                            <TableCell align="center" className="py-1.5 px-4 bg-slate-950/20">
                                 <span className="text-xs font-semibold text-slate-500">{String(pos)}</span>
                             </TableCell>
                             {[0, 1, 2].map(depthIndex => {
                                 const selectedId = depthChart[pos][depthIndex];
                                 const selectedPlayer = selectedId ? team.roster.find(p => p.id === selectedId) ?? null : null;
                                 return (
-                                <TableCell key={`${String(pos)}-${depthIndex}`} className={`!p-0 border-r border-slate-800/50 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                <TableCell key={`${String(pos)}-${depthIndex}`} className={`!p-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
                                     <div className="relative group w-full h-full">
                                         {/* 실제 select — 닫힌 상태 텍스트는 투명 처리하고 아래 커스텀 라벨로 대체 표시
                                             (드롭다운을 펼쳤을 때 보이는 옵션 목록은 각 option의 색상 클래스가 그대로 적용됨) */}

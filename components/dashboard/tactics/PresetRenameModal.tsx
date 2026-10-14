@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../common/Modal';
+import { Button } from '../../common/Button';
 
 interface RenameModalProps {
     isOpen: boolean;
@@ -13,12 +14,12 @@ export const PresetRenameModal: React.FC<RenameModalProps> = ({ isOpen, onClose,
     const [name, setName] = useState(initialName);
     useEffect(() => { setName(initialName); }, [initialName, isOpen]);
     
-    const header = <h3 className="text-lg font-black text-white uppercase tracking-tight">프리셋 이름 변경</h3>;
+    const header = <h3 className="text-lg font-black text-white tracking-tight">프리셋 이름 변경</h3>;
     
     const footer = (
         <div className="flex justify-end gap-3 w-full">
-            <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">취소</button>
-            <button onClick={() => { if(name.trim()) onConfirm(name.trim()); onClose(); }} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all">확인</button>
+            <Button variant="link" size="sm" onClick={onClose} className="px-4 py-2">취소</Button>
+            <Button variant="primary" size="lg" shape="xl" onClick={() => { if(name.trim()) onConfirm(name.trim()); onClose(); }}>확인</Button>
         </div>
     );
 

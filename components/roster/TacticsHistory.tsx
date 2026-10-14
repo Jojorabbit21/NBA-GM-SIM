@@ -2,6 +2,7 @@
 import React from 'react';
 import { Target, Shield, ClipboardList, ShieldAlert } from 'lucide-react';
 import { Team, TacticStatRecord } from '../../types';
+import { EmptyState } from '../common/EmptyState';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 const TacticTable: React.FC<{ data: Record<string, TacticStatRecord> }> = ({ data }) => {
@@ -37,17 +38,17 @@ const TacticTable: React.FC<{ data: Record<string, TacticStatRecord> }> = ({ dat
 
                         return (
                             <TableRow key={key}>
-                                <TableCell className="px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                <TableCell className="px-6 font-bold text-slate-200 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                     {key}
                                 </TableCell>
                                 <TableCell variant="stat" value={s.games} className="text-slate-400" />
-                                <TableCell align="center" className="font-mono text-sm text-slate-300">{s.wins}-{s.games - s.wins}</TableCell>
-                                <TableCell align="right" className={`font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
+                                <TableCell align="center" className="text-sm text-slate-200">{s.wins}-{s.games - s.wins}</TableCell>
+                                <TableCell align="right" className={`text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
                                 <TableCell variant="stat" value={avgPts} className="text-white" />
                                 <TableCell variant="stat" value={avgPa} className="text-slate-400" />
-                                <TableCell variant="stat" value={fgPct} className="text-slate-300" />
-                                <TableCell variant="stat" value={p3Pct} className="text-slate-300" />
-                                <TableCell variant="stat" value={rimPct} className="text-slate-300" />
+                                <TableCell variant="stat" value={fgPct} className="text-slate-200" />
+                                <TableCell variant="stat" value={p3Pct} className="text-slate-200" />
+                                <TableCell variant="stat" value={rimPct} className="text-slate-200" />
                             </TableRow>
                         );
                     })}
@@ -81,14 +82,14 @@ const StopperTacticTable: React.FC<{ stats?: TacticStatRecord }> = ({ stats }) =
                 </TableHead>
                 <TableBody>
                     <TableRow>
-                        <TableCell className="px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">에이스 스토퍼</TableCell>
+                        <TableCell className="px-6 font-bold text-slate-200 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">에이스 스토퍼</TableCell>
                         <TableCell variant="stat" value={stats.games} className="text-slate-400" />
-                        <TableCell align="center" className="font-mono text-sm text-slate-300">{stats.wins}-{stats.games - stats.wins}</TableCell>
-                        <TableCell align="right" className={`font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
+                        <TableCell align="center" className="text-sm text-slate-200">{stats.wins}-{stats.games - stats.wins}</TableCell>
+                        <TableCell align="right" className={`text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
                         <TableCell variant="stat" value={avgAcePts} className="text-white" />
                         <TableCell variant="stat" value={aceFgPct} className="text-slate-200" />
                         <TableCell variant="stat" value={ace3pPct} className="text-slate-200" />
-                        <TableCell align="right" className={`pr-6 font-mono text-sm font-black ${Number(avgImpact) < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <TableCell align="right" className={`pr-6 text-sm font-bold ${Number(avgImpact) < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {Number(avgImpact) > 0 ? '+' : ''}{avgImpact}%
                         </TableCell>
                     </TableRow>
@@ -101,10 +102,8 @@ const StopperTacticTable: React.FC<{ stats?: TacticStatRecord }> = ({ stats }) =
 export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
   if (!team.tacticHistory) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-slate-500">
-        <ClipboardList size={48} className="mb-4 opacity-20" />
-        <p className="text-lg font-black uppercase tracking-widest">No Tactical Data</p>
-        <p className="text-xs font-bold mt-2">아직 기록된 전술 데이터가 없습니다.</p>
+      <div className="flex flex-col items-center justify-center h-full">
+        <EmptyState icon={ClipboardList} title="No Tactical Data" subtitle="아직 기록된 전술 데이터가 없습니다." />
       </div>
     );
   }
@@ -121,7 +120,7 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20 text-slate-500">
         <ClipboardList size={48} className="mb-4 opacity-20" />
-        <p className="text-lg font-black uppercase tracking-widest">No Stats Recorded</p>
+        <p className="text-lg font-black">No Stats Recorded</p>
         <p className="text-xs font-bold mt-2">경기를 진행하여 전술 데이터를 수집하십시오.</p>
       </div>
     );
@@ -135,8 +134,8 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
           <div className="flex items-center gap-3 border-l-4 border-orange-500 pl-4">
             <Target size={24} className="text-orange-400" />
             <div>
-              <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider">Offensive Systems Efficiency</h4>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Performance by Strategy</p>
+              <h4 className="text-xl font-black text-slate-100">Offensive Systems Efficiency</h4>
+              <p className="text-[10px] font-bold text-slate-500">Team Performance by Strategy</p>
             </div>
           </div>
           <TacticTable data={offenseStats} />
@@ -148,8 +147,8 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
         <div className="flex items-center gap-3 border-l-4 border-blue-500 pl-4">
           <Shield size={24} className="text-blue-400" />
           <div>
-            <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider">Defensive Systems Efficiency</h4>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Overall Team Defensive Impact</p>
+            <h4 className="text-xl font-black text-slate-100">Defensive Systems Efficiency</h4>
+            <p className="text-[10px] font-bold text-slate-500">Overall Team Defensive Impact</p>
           </div>
         </div>
 
@@ -161,16 +160,14 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
             <div className="space-y-3">
               <div className="flex items-center gap-2 pl-1">
                 <ShieldAlert size={16} className="text-red-400" />
-                <span className="text-xs font-black text-red-400 uppercase tracking-widest">에이스 스토퍼 기록</span>
+                <span className="text-xs font-black text-red-400">에이스 스토퍼 기록</span>
               </div>
               <StopperTacticTable stats={stopperStats} />
             </div>
           )}
 
           {!hasDefense && !hasStopper && (
-              <div className="text-center text-slate-500 py-8 font-bold text-sm bg-slate-900/30 rounded-2xl border border-slate-800">
-                  기록된 수비 전술 데이터가 없습니다.
-              </div>
+              <EmptyState title="기록된 수비 전술 데이터가 없습니다." />
           )}
         </div>
       </div>

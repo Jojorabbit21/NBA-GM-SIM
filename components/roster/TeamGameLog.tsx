@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
+import { useTableSort } from '../../hooks/useTableSort';
 import { Team, Game } from '../../types';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
 import { fetchFullGameResult } from '../../services/queries';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../common/Spinner';
+import { EmptyState } from '../common/EmptyState';
 
 interface TeamGameLogProps {
     team: Team;
@@ -71,11 +73,7 @@ type GameRow = {
 
 export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick }) => {
     const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
-
-    const handleSort = (key: string) => {
-        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
-    };
+    const { sortConfig, sortProps } = useTableSort({ key: 'date', direction: 'asc' });
 
     // Build game rows with stats from homeStats/awayStats
     const gameRows = useMemo((): GameRow[] => {
@@ -224,36 +222,36 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         return (
             <TableRow key={row.gameId} className="h-10">
                 {/* 날짜 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                <TableCell className="text-center align-middle text-sm">
                     <span className="font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
                 </TableCell>
                 {/* 구분 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                <TableCell className="text-center align-middle text-sm">
                     <span className="font-medium text-slate-400">
                         {row.isHome ? 'vs' : '@'}
                     </span>
                 </TableCell>
                 {/* 상대 */}
-                <TableCell className="border-r border-slate-800/30 pl-4">
+                <TableCell className="pl-4">
                     <div
                         className={`flex items-center gap-2 ${onTeamClick ? 'cursor-pointer group/opp' : ''}`}
                         onClick={onTeamClick ? () => onTeamClick(row.oppId) : undefined}
                     >
-                        <span className={`text-sm font-semibold text-slate-300 uppercase truncate ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
+                        <span className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
                             {oppTeam?.name || row.oppId}
                         </span>
                     </div>
                 </TableCell>
                 {/* 결과 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                <TableCell className="text-center align-middle text-sm">
                     <span className={`font-medium ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                         {row.isWin ? 'W' : 'L'}
                     </span>
                 </TableCell>
                 {/* 스코어 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                <TableCell className="text-center align-middle text-sm">
                     {isFetching ? (
-                        <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
+                        <Spinner variant="inline" className="justify-center w-full" />
                     ) : (
                         <span
                             className={`font-medium tabular-nums cursor-pointer hover:underline ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}
@@ -265,7 +263,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 </TableCell>
                 {/* STAT COLS */}
                 {STAT_COLS.map(c => (
-                    <TableCell key={c.key} className={`border-r border-slate-800/30 text-center ${statCellClass}`}>
+                    <TableCell key={c.key} className={`text-center ${statCellClass}`}>
                         {formatStat(c.key, row.stats[c.key])}
                     </TableCell>
                 ))}
@@ -275,9 +273,9 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
     const renderSectionHeader = (label: string) => (
         <tr key={`section-${label}`} className="h-8">
-            <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800/50 h-8">
+            <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800 h-8">
                 <div className="flex items-center h-full pl-4">
-                    <span className="text-sm font-black text-slate-500 tracking-widest">{label}</span>
+                    <span className="text-sm font-black text-slate-500">{label}</span>
                 </div>
             </td>
         </tr>
@@ -286,7 +284,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
     if (gameRows.length === 0) {
         return (
             <div className="h-full flex items-center justify-center">
-                <span className="text-slate-500 font-bold uppercase tracking-widest text-sm">경기 기록이 없습니다.</span>
+                <EmptyState title="경기 기록이 없습니다." />
             </div>
         );
     }
@@ -300,37 +298,33 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {/* Column headers — 구분+상대, 결과+스코어는 헤더 셀만 병합(바디 컬럼은 그대로 분리 유지) */}
-                <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-8">
+                <tr className="text-slate-400 text-sm font-bold h-8">
                     <TableHeaderCell
                         align="center"
-                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === 'date' ? 'text-indigo-400' : 'text-slate-400'}`}
-                        sortable
-                        onSort={() => handleSort('date')}
-                        sortDirection={sortConfig.key === 'date' ? sortConfig.direction : null}
+                        className={`bg-slate-950 ${sortConfig.key === 'date' ? 'text-indigo-400' : 'text-slate-400'}`}
+                        {...sortProps('date')}
                     >
                         날짜
                     </TableHeaderCell>
                     <TableHeaderCell
                         colSpan={2}
                         align="left"
-                        className="border-r border-slate-800 bg-slate-950 pl-4 text-slate-400"
+                        className="bg-slate-950 pl-4 text-slate-400"
                     >
                         상대
                     </TableHeaderCell>
                     <TableHeaderCell
                         colSpan={2}
                         align="center"
-                        className="border-r border-slate-800 bg-slate-950 text-slate-400"
+                        className="bg-slate-950 text-slate-400"
                     >
                         결과
                     </TableHeaderCell>
                     {STAT_COLS.map(c => (
                         <TableHeaderCell
                             key={c.key}
-                            className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === c.key ? 'text-indigo-400' : 'text-slate-400'}`}
-                            sortable
-                            onSort={() => handleSort(c.key)}
-                            sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
+                            className={`bg-slate-950 ${sortConfig.key === c.key ? 'text-indigo-400' : 'text-slate-400'}`}
+                            {...sortProps(c.key)}
                         >
                             {c.label}
                         </TableHeaderCell>
@@ -357,14 +351,14 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
                     {regularAvg && (
                         <tr>
-                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950 border-r border-slate-800">
-                                <span className="font-black text-indigo-400 text-sm tracking-widest">정규 시즌</span>
+                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950">
+                                <span className="font-black text-indigo-400 text-sm">정규 시즌</span>
                             </TableCell>
-                            <TableCell colSpan={2} className="!py-3 border-r border-slate-800 text-center bg-slate-950">
+                            <TableCell colSpan={2} className="!py-3 text-center bg-slate-950">
                                 <span className="text-sm font-medium text-slate-400 tabular-nums">{toRecord(regularRows)}</span>
                             </TableCell>
                             {STAT_COLS.map(c => (
-                                <TableCell key={c.key} className="!py-3 border-r border-slate-800/30 text-center">
+                                <TableCell key={c.key} className="!py-3 text-center">
                                     <span className="text-sm font-medium text-slate-400 tabular-nums">
                                         {formatAvg(c.key, regularAvg[c.key])}
                                     </span>
@@ -374,14 +368,14 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     )}
                     {playoffAvg && (
                         <tr>
-                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950 border-r border-slate-800 border-t border-slate-800/50">
-                                <span className="font-black text-indigo-400 text-sm tracking-widest">플레이오프</span>
+                            <TableCell colSpan={3} className="!py-3 pl-4 text-left bg-slate-950 border-t border-slate-800">
+                                <span className="font-black text-indigo-400 text-sm">플레이오프</span>
                             </TableCell>
-                            <TableCell colSpan={2} className="!py-3 border-r border-slate-800 border-t border-slate-800/50 text-center bg-slate-950">
+                            <TableCell colSpan={2} className="!py-3 border-t border-slate-800 text-center bg-slate-950">
                                 <span className="text-sm font-medium text-slate-400 tabular-nums">{toRecord(playoffRows)}</span>
                             </TableCell>
                             {STAT_COLS.map(c => (
-                                <TableCell key={c.key} className="!py-3 border-r border-slate-800/30 border-t border-slate-800/50 text-center">
+                                <TableCell key={c.key} className="!py-3 border-t border-slate-800 text-center">
                                     <span className="text-sm font-medium text-slate-400 tabular-nums">
                                         {formatAvg(c.key, playoffAvg[c.key])}
                                     </span>

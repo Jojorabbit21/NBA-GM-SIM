@@ -325,6 +325,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     return {
         id: team.id,
         name: team.name,
+        city: team.city || undefined,
         score: 0,
         tactics: safeTactics,
         depthChart: effectiveDepthChart || undefined,

@@ -148,7 +148,7 @@ export const GameResultView: React.FC<{
   return (
     <div 
         ref={scrollContainerRef}
-        className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24"
+        className="fixed inset-0 bg-slate-950 z-takeover overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24"
     >
        <div className="min-h-screen flex flex-col">
           

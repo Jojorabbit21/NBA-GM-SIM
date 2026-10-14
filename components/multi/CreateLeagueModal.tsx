@@ -1,7 +1,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { InlineNotice } from '../../components/common/InlineNotice';
+import { Button } from '../common/Button';
 import { createPortal } from 'react-dom';
-import { X, Loader2, Shuffle } from 'lucide-react';
+import { X, Shuffle } from 'lucide-react';
 import {
     createLeagueGroup,
     createLeague,
@@ -108,6 +110,12 @@ const DEFAULT_PLAYOFF_TARGET_WINS = 4;
 // 이벤트인 로터리가 생성 즉시 과거가 되면 스케줄러가 준비 안 된 방에 즉시 추첨을 실행해버리는
 // 버그로 이어지므로 그 지점만 방어).
 const MIN_LOTTERY_LEAD_MS = 15 * 60_000;
+const MIN_LEAD_MIN = MIN_LOTTERY_LEAD_MS / 60_000;
+
+// 입력별 검증 키 — 각 입력 아래 sm으로 표시되는 것만. 어드민 여부·타임라인 가능성·서버 실패는 푸터 슬롯(err).
+type FieldKey = 'name' | 'lotteryStartAt' | 'draftStartAt' | 'tournamentStartAt' | 'draftDeadlineAt'
+              | 'gameIntervalMinutes' | 'teamPick' | 'realStartDate';
+type FieldErrors = Partial<Record<FieldKey, string>>;
 
 function minLotteryKst(): string {
     return new Date(Date.now() + MIN_LOTTERY_LEAD_MS + KST_OFFSET_MS).toISOString().slice(0, 16);
@@ -243,7 +251,16 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
 
     const [saving, setSaving] = useState(false);
+    // err = 입력 하나에 귀속되지 않는 것(어드민 아님·타임라인 불가·서버 생성 실패) → 푸터 md 슬롯.
+    // fieldErrors = 입력별 검증 → 해당 입력 아래 sm. [2026-10-13] 에러 표시 정책 2차(입력별 분리).
     const [err,    setErr]    = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+    const clearField = (key: FieldKey) =>
+        setFieldErrors(prev => (key in prev ? { ...prev, [key]: undefined } : prev));
+    const fieldBorder = (key: FieldKey) => (fieldErrors[key] ? 'border-red-500/60' : 'border-slate-700');
+    // 렌더 안에서 컴포넌트를 새로 정의하면 매 렌더마다 리마운트되므로 함수로 둔다.
+    const renderFieldError = (field: FieldKey) =>
+        fieldErrors[field] ? <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors[field]}</InlineNotice> : null;
 
     // 32팀처럼 실제 30팀을 초과하는 정원은 선택 UI 없이 30팀 전원이 강제 포함된다.
     const teamPickLocked = maxTeams > ALL_REAL_TEAMS.length;
@@ -266,6 +283,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
 
     const toggleTeam = (slug: string) => {
         if (teamPickLocked) return;
+        clearField('teamPick');
         setSelectedTeamSlugs(prev => {
             if (prev.includes(slug)) return prev.filter(s => s !== slug);
             if (prev.length >= teamPickCount) return prev;
@@ -273,26 +291,62 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
         });
     };
 
-    const handleRandomizeTeams = () => setSelectedTeamSlugs(pickRandomTeamSlugs(teamPickCount));
+    const handleRandomizeTeams = () => { setSelectedTeamSlugs(pickRandomTeamSlugs(teamPickCount)); clearField('teamPick'); };
 
     const handleTypeChange = (t: LeagueType) => {
         if (t === 'tournament' && !isAdmin) return;
         setType(t);
+        setFieldErrors({}); // 유형이 바뀌면 보이는 입력 세트가 달라지므로 이전 검증 문구는 전부 소거
         setMaxTeams(t === 'tournament' ? 8 : 30);
     };
 
+    // 입력별 검증 — 모든 입력을 한 번에 훑어 맵을 돌려준다(첫 실패에서 끊지 않음 → 틀린 입력 전부 동시에 표시).
+    // 토너먼트: 로터리 → 드래프트 → 시작 순서로 시각이 늦어져야 하고, 가장 이른 이벤트인
+    // 로터리가 최소 리드타임보다 가까우면(=생성 즉시 과거) 스케줄러가 준비 안 된 방에
+    // 즉시 추첨을 실행해버리는 버그로 이어진다 — 여기서 미리 막는다.
+    const validateFields = (trimName: string, iso: { startIso: string | null; draftIso: string | null; lotteryIso: string | null }): FieldErrors => {
+        const e: FieldErrors = {};
+        const minLead = Date.now() + MIN_LOTTERY_LEAD_MS;
+        const ms = (s: string | null) => (s ? new Date(s).getTime() : NaN);
+        if (trimName.length < 1 || trimName.length > 30) e.name = '리그 이름은 1~30자여야 합니다';
+
+        if (type === 'tournament') {
+            const { startIso, draftIso, lotteryIso } = iso;
+            if (isPersonalDraft) {
+                if (!startIso || ms(startIso) < minLead) e.tournamentStartAt = `현재로부터 최소 ${MIN_LEAD_MIN}분 이후여야 합니다`;
+                if (draftDeadlineEnabled) {
+                    if (!draftDeadlineAt) e.draftDeadlineAt = '드래프트 마감 일시를 입력해주세요';
+                    else {
+                        const deadlineMs = ms(kstLocalToIso(draftDeadlineAt));
+                        if (deadlineMs < minLead) e.draftDeadlineAt = `현재로부터 최소 ${MIN_LEAD_MIN}분 이후여야 합니다`;
+                        else if (startIso && deadlineMs > ms(startIso)) e.draftDeadlineAt = `토너먼트 시작 일시보다 늦을 수 없습니다. ${tournamentStartAt.replace('T', ' ')} 이전으로 설정하세요`;
+                    }
+                }
+            } else {
+                if (!lotteryIso || ms(lotteryIso) < minLead) e.lotteryStartAt = `현재로부터 최소 ${MIN_LEAD_MIN}분 이후여야 합니다`;
+                if (!draftIso) e.draftStartAt = '드래프트 시작 일시를 입력해주세요';
+                else if (lotteryIso && ms(draftIso) <= ms(lotteryIso)) e.draftStartAt = '로터리 추첨 일시보다 늦어야 합니다';
+                if (!startIso) e.tournamentStartAt = '토너먼트 시작 일시를 입력해주세요';
+                else if (draftIso && ms(startIso) <= ms(draftIso)) e.tournamentStartAt = '드래프트 시작 일시보다 늦어야 합니다';
+            }
+            if (!Number.isFinite(gameIntervalMinutes) || gameIntervalMinutes < 10 || gameIntervalMinutes > 360) {
+                e.gameIntervalMinutes = '경기 사이 인터벌은 10~360분 사이여야 합니다';
+            }
+            if (!teamPickLocked && selectedTeamSlugs.length !== teamPickCount) {
+                e.teamPick = `참가 팀을 정확히 ${teamPickCount}팀 선택해주세요 (현재 ${selectedTeamSlugs.length}팀)`;
+            }
+        }
+        if (type === 'main_league' && realStartDate < kstTodayPlusDays(0)) e.realStartDate = '실제 시작일은 오늘 이후여야 합니다';
+        return e;
+    };
+
     const handleSubmit = async () => {
-        if (type === 'tournament' && !isAdmin) {
-            setErr('토너먼트는 어드민 계정만 생성할 수 있습니다'); return;
+        setErr(null);
+        if (!isAdmin) {
+            setErr('리그는 어드민 계정만 생성할 수 있습니다'); return;
         }
         const trimName = name.trim();
-        if (trimName.length < 1 || trimName.length > 30) {
-            setErr('리그 이름은 1~30자여야 합니다'); return;
-        }
 
-        // 토너먼트: 로터리 → 드래프트 → 시작 순서로 시각이 늦어져야 하고, 가장 이른 이벤트인
-        // 로터리가 최소 리드타임보다 가까우면(=생성 즉시 과거) 스케줄러가 준비 안 된 방에
-        // 즉시 추첨을 실행해버리는 버그로 이어진다 — 여기서 미리 막는다.
         let startIso: string | null = null;
         let draftIso: string | null = null;
         let lotteryIso: string | null = null;
@@ -300,52 +354,25 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
             startIso   = tournamentStartAt ? kstLocalToIso(tournamentStartAt) : null;
             draftIso   = draftStartAt      ? kstLocalToIso(draftStartAt)      : null;
             lotteryIso = lotteryStartAt    ? kstLocalToIso(lotteryStartAt)    : null;
-
             if (isPersonalDraft) {
                 // 개인 팩 드래프트: 로터리/드래프트 룸 일정이 없다 — 스케줄러(runLotteries/
                 // runScheduledDraftStarts)가 null 일정을 건너뛰도록 둘 다 null로 저장한다.
                 lotteryIso = null;
                 draftIso   = null;
-                if (!startIso || new Date(startIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
-                    setErr(`토너먼트 시작 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
-                }
-                if (draftDeadlineEnabled) {
-                    if (!draftDeadlineAt) { setErr('드래프트 마감 일시를 입력해주세요'); return; }
-                    const deadlineIso = kstLocalToIso(draftDeadlineAt);
-                    if (new Date(deadlineIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
-                        setErr(`드래프트 마감 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
-                    }
-                    if (new Date(deadlineIso).getTime() > new Date(startIso).getTime()) {
-                        setErr('드래프트 마감 일시는 토너먼트 시작 일시보다 늦을 수 없습니다'); return;
-                    }
-                }
-            } else {
-                if (!lotteryIso || new Date(lotteryIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) {
-                    setErr(`로터리 추첨 일시는 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 합니다`); return;
-                }
-                if (!draftIso || new Date(draftIso).getTime() <= new Date(lotteryIso).getTime()) {
-                    setErr('드래프트 시작 일시는 로터리 추첨 일시보다 늦어야 합니다'); return;
-                }
-                if (!startIso || new Date(startIso).getTime() <= new Date(draftIso).getTime()) {
-                    setErr('토너먼트 시작 일시는 드래프트 시작 일시보다 늦어야 합니다'); return;
-                }
-            }
-            if (!Number.isFinite(gameIntervalMinutes) || gameIntervalMinutes < 10 || gameIntervalMinutes > 360) {
-                setErr('경기 사이 인터벌은 10~360분 사이여야 합니다'); return;
-            }
-            if (!teamPickLocked && selectedTeamSlugs.length !== teamPickCount) {
-                setErr(`참가 팀을 정확히 ${teamPickCount}팀 선택해주세요 (현재 ${selectedTeamSlugs.length}팀)`); return;
-            }
-        }
-        if (type === 'main_league') {
-            if (realStartDate < kstTodayPlusDays(0)) { setErr('실제 시작일은 오늘 이후여야 합니다'); return; }
-            if (!timelineFeasibility.feasible) {
-                setErr(`이 설정으로는 세션을 구성할 수 없습니다 — ${timelineFeasibility.reasons.join(' ')}`); return;
             }
         }
 
+        const errors = validateFields(trimName, { startIso, draftIso, lotteryIso });
+        setFieldErrors(errors);
+        if (Object.values(errors).some(Boolean)) return;
+
+        // 타임라인 가능성은 여러 입력(기간·하루 길이·시뮬 시간대)의 교차 검증 — 일정 요약 박스에 이미 상세 안내가
+        // 떠 있으므로 푸터에는 짧게만. 특정 입력에 귀속되지 않아 fieldErrors가 아니라 err.
+        if (type === 'main_league' && !timelineFeasibility.feasible) {
+            setErr(`이 설정으로는 세션을 구성할 수 없습니다 — ${timelineFeasibility.reasons.join(' ')}`); return;
+        }
+
         setSaving(true);
-        setErr(null);
 
         try {
             // [2026-09-17] 드래프트 풀 용량 가드 — 참가팀 × 라운드만큼 선수가 없으면 서버 DraftRoom이
@@ -534,7 +561,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     // 있었다. 단순히 z-index 숫자를 올리는 걸로는 스태킹 컨텍스트를 못 벗어나므로
     // document.body로 포탈해서 렌더 — MultiSidebar.tsx의 프로필 드롭다운과 동일 패턴.
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-6xl max-h-[85vh] flex flex-col">
 
                 {/* 헤더 */}
@@ -550,7 +577,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
 
                     {/* ── 1단: 공통 기본 설정 ─────────────────────────────────── */}
                     <div className="px-6 py-5 space-y-5 overflow-y-auto">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">기본 설정</p>
+                        <p className="text-xs font-bold text-slate-500">기본 설정</p>
 
                         {/* 리그 이름 */}
                         <div>
@@ -558,12 +585,13 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                             <input
                                 type="text"
                                 value={name}
-                                onChange={e => setName(e.target.value)}
+                                onChange={e => { setName(e.target.value); clearField('name'); }}
                                 maxLength={30}
                                 placeholder="예: 스프링 인비테이셔널"
-                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                                className={`w-full bg-slate-800 border ${fieldBorder('name')} rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500`}
                                 autoFocus
                             />
+                            {renderFieldError('name')}
                         </div>
 
                         {/* 리그 유형 */}
@@ -735,7 +763,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                     <div className="grid grid-cols-2 gap-3">
                                         {([['동부', EAST_TEAMS], ['서부', WEST_TEAMS]] as const).map(([label, confTeams]) => (
                                             <div key={label}>
-                                                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">{label}</p>
+                                                <p className="text-[10px] font-bold text-slate-600 mb-1">{label}</p>
                                                 <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
                                                     {confTeams.map(t => {
                                                         const selected = selectedTeamSlugs.includes(t.id);
@@ -763,13 +791,14 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                         ))}
                                     </div>
                                 )}
+                                {renderFieldError('teamPick')}
                             </div>
                         )}
                     </div>
 
                     {/* ── 2단: 일시 설정 ─────────────────────────────────────────── */}
                     <div className="px-6 py-5 space-y-5 overflow-y-auto">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">일시 설정</p>
+                        <p className="text-xs font-bold text-slate-500">일시 설정</p>
 
                         {/* 토너먼트: 로터리 → 드래프트 → 토너먼트 시작 순서로 전부 독립 입력 */}
                         {type === 'tournament' && (
@@ -795,11 +824,12 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                                 type="datetime-local"
                                                 value={lotteryStartAt}
                                                 min={minLotteryKst()}
-                                                onChange={e => setLotteryStartAt(e.target.value)}
-                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                                onChange={e => { setLotteryStartAt(e.target.value); clearField('lotteryStartAt'); }}
+                                                className={`w-full bg-slate-800 border ${fieldBorder('lotteryStartAt')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                             />
+                                            {renderFieldError('lotteryStartAt')}
                                             <p className="text-[11px] text-slate-600 ko-normal mt-1">
-                                                현재로부터 최소 {MIN_LOTTERY_LEAD_MS / 60_000}분 이후로 설정할 수 있습니다.
+                                                현재로부터 최소 {MIN_LEAD_MIN}분 이후로 설정할 수 있습니다.
                                             </p>
                                         </div>
 
@@ -808,9 +838,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                             <input
                                                 type="datetime-local"
                                                 value={draftStartAt}
-                                                onChange={e => setDraftStartAt(e.target.value)}
-                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                                onChange={e => { setDraftStartAt(e.target.value); clearField('draftStartAt'); }}
+                                                className={`w-full bg-slate-800 border ${fieldBorder('draftStartAt')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                             />
+                                            {renderFieldError('draftStartAt')}
                                             <p className="text-[11px] text-slate-600 ko-normal mt-1">로터리 추첨 일시보다 늦어야 합니다.</p>
                                         </div>
                                     </>
@@ -821,12 +852,13 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                     <input
                                         type="datetime-local"
                                         value={tournamentStartAt}
-                                        onChange={e => setTournamentStartAt(e.target.value)}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        onChange={e => { setTournamentStartAt(e.target.value); clearField('tournamentStartAt'); clearField('draftDeadlineAt'); }}
+                                        className={`w-full bg-slate-800 border ${fieldBorder('tournamentStartAt')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                     />
+                                    {renderFieldError('tournamentStartAt')}
                                     <p className="text-[11px] text-slate-600 ko-normal mt-1">
                                         {isPersonalDraft
-                                            ? `첫 경기 시작 시각. 현재로부터 최소 ${MIN_LOTTERY_LEAD_MS / 60_000}분 이후여야 하며, 참가자들은 그 전까지 각자 팩 드래프트를 마쳐야 합니다.`
+                                            ? `첫 경기 시작 시각. 현재로부터 최소 ${MIN_LEAD_MIN}분 이후여야 하며, 참가자들은 그 전까지 각자 팩 드래프트를 마쳐야 합니다.`
                                             : '드래프트 시작 일시보다 늦어야 합니다(첫 경기 시작 시각).'}
                                     </p>
                                 </div>
@@ -841,6 +873,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                                     const on = e.target.checked;
                                                     setDraftDeadlineEnabled(on);
                                                     if (on && !draftDeadlineAt) setDraftDeadlineAt(tournamentStartAt);
+                                                    clearField('draftDeadlineAt');
                                                 }}
                                                 className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
                                             />
@@ -852,10 +885,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                                 value={draftDeadlineAt}
                                                 min={minLotteryKst()}
                                                 max={tournamentStartAt}
-                                                onChange={e => setDraftDeadlineAt(e.target.value)}
-                                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                                onChange={e => { setDraftDeadlineAt(e.target.value); clearField('draftDeadlineAt'); }}
+                                                className={`w-full bg-slate-800 border ${fieldBorder('draftDeadlineAt')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                             />
                                         )}
+                                        {renderFieldError('draftDeadlineAt')}
                                         <p className="text-[11px] text-slate-600 ko-normal mt-1">
                                             이 시각이 지나면 새 참가자는 더 이상 팀을 선택할 수 없고, 그때까지 드래프트를 끝내지 못한 참가자는 자동으로 강퇴됩니다. 이어서 빈 팀에 AI가 들어가 드래프트와 대진표까지 미리 준비되고, 첫 경기는 정확히 시작 시각에 열립니다. 끄면 시작 5분 전에 같은 준비가 자동으로 진행됩니다(그때부터 참가 마감).
                                         </p>
@@ -873,9 +907,10 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                         max={360}
                                         step={5}
                                         value={gameIntervalMinutes}
-                                        onChange={e => setGameIntervalMinutes(Math.min(360, Math.max(10, Number(e.target.value) || 10)))}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        onChange={e => { setGameIntervalMinutes(Math.min(360, Math.max(10, Number(e.target.value) || 10))); clearField('gameIntervalMinutes'); }}
+                                        className={`w-full bg-slate-800 border ${fieldBorder('gameIntervalMinutes')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                     />
+                                    {renderFieldError('gameIntervalMinutes')}
                                     <p className="text-[11px] text-slate-600 ko-normal mt-1">
                                         첫 경기(토너먼트 시작 일시) 이후 경기들이 이 간격으로 자동 배정됩니다.
                                     </p>
@@ -906,8 +941,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                             type="date"
                                             value={realStartDate}
                                             min={kstTodayPlusDays(0)}
-                                            onChange={e => { const v = e.target.value; if (!v) return; setRealStartDate(v); if (realEndDate < v) setRealEndDate(v); }}
-                                            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                            onChange={e => { const v = e.target.value; if (!v) return; setRealStartDate(v); if (realEndDate < v) setRealEndDate(v); clearField('realStartDate'); }}
+                                            className={`flex-1 bg-slate-800 border ${fieldBorder('realStartDate')} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500`}
                                         />
                                         <span className="text-slate-500 text-xs">~</span>
                                         <input
@@ -918,6 +953,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                             className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
+                                    {renderFieldError('realStartDate')}
                                     <p className="text-[11px] text-slate-600 ko-normal mt-1">
                                         시작일의 시뮬 시간대부터 정규시즌이 시작되고, 종료일 안에 플레이오프(최대 {playoffDays}일)까지 끝나도록 배치합니다. 드래프트는 시작일 시뮬 시간대 전에 끝나야 합니다.
                                     </p>
@@ -968,8 +1004,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                     </div>
                                     <p className="text-[11px] text-slate-600 ko-normal mt-1">
                                         한 경기(48분)를 이 시간 동안 실시간처럼 재생하고, 끝나는 순간 결과가 공개됩니다. 짧을수록 관전 밀도가 높고, 하루 길이는 리플레이보다 최소 2분 길어야 합니다.
-                                        {lateGameClamped && <span className="text-amber-400"> 이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다(하루 길이를 늘리거나 리플레이를 줄이면 해소).</span>}
                                     </p>
+                                    {lateGameClamped && <InlineNotice tone="warning" size="sm" className="mt-1">이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다(하루 길이를 늘리거나 리플레이를 줄이면 해소).</InlineNotice>}
                                 </div>
 
                                 <div>
@@ -1001,30 +1037,31 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                     </p>
                                 </div>
 
-                                <div className={`rounded-xl px-3 py-2.5 space-y-1 border ${timelineFeasibility.feasible ? 'bg-slate-800/60 border-transparent' : 'bg-red-500/10 border-red-500/30'}`}>
+                                <div className="rounded-xl px-3 py-2.5 space-y-1 border bg-slate-800/60 border-transparent">
                                     <div className="flex justify-between text-[11px]">
                                         <span className="text-slate-500 ko-normal">가상 일수</span>
-                                        <span className="text-slate-300 font-mono">{virtualCalendarDays}일 (정규 {virtualCalendarDays - playoffDays} + 플레이오프 최대 {playoffDays})</span>
+                                        <span className="text-slate-300">{virtualCalendarDays}일 (정규 {virtualCalendarDays - playoffDays} + 플레이오프 최대 {playoffDays})</span>
                                     </div>
                                     <div className="flex justify-between text-[11px]">
                                         <span className="text-slate-500 ko-normal">실제 기간 / 하루당 가상 일수</span>
-                                        <span className="text-slate-300 font-mono">{timelineFeasibility.realDays}일 / {timelineFeasibility.perDay}일</span>
+                                        <span className="text-slate-300">{timelineFeasibility.realDays}일 / {timelineFeasibility.perDay}일</span>
                                     </div>
                                     <div className="flex justify-between text-[11px]">
                                         <span className="text-slate-500 ko-normal">일일 시뮬 시간대(계산)</span>
-                                        <span className={`font-mono ${timelineFeasibility.feasible ? 'text-slate-300' : 'text-red-300'}`}>
+                                        <span className={`${timelineFeasibility.feasible ? 'text-slate-300' : 'text-red-300'}`}>
                                             {windowStart} ~ {minToHHMM(Math.min(1440, timelineFeasibility.windowEndMin))}{timelineFeasibility.windowEndMin > 1440 ? ' (자정 초과)' : ''} · {Math.floor(timelineFeasibility.windowMin / 60)}시간 {timelineFeasibility.windowMin % 60}분
                                         </span>
                                     </div>
+                                    {/* [2026-10-13] 박스 전체 빨간 틴트 → 바탕 고정 + 에러 부분만 InlineNotice(에러 표시 정책 0-7) */}
                                     {!timelineFeasibility.feasible && (
-                                        <div className="text-[11px] text-red-300 ko-normal leading-relaxed pt-1">
+                                        <InlineNotice tone="danger" className="mt-1">
                                             <p>이 설정으로는 세션을 구성할 수 없습니다. 아래 중 하나를 적용하세요.</p>
                                             <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
                                                 {timelineFeasibility.suggestions.minEndDate && <li>종료일을 {timelineFeasibility.suggestions.minEndDate} 이후로</li>}
                                                 {timelineFeasibility.suggestions.maxDayLengthMin && <li>가상 하루 길이를 {timelineFeasibility.suggestions.maxDayLengthMin}분 이하로</li>}
                                                 {timelineFeasibility.suggestions.latestWindowStartMin != null && <li>시뮬 시간대 시작을 {minToHHMM(timelineFeasibility.suggestions.latestWindowStartMin)} 이전으로</li>}
                                             </ul>
-                                        </div>
+                                        </InlineNotice>
                                     )}
                                     <p className="text-[11px] text-slate-600 ko-normal pt-1">
                                         정규시즌이 끝나면 상위 8팀이 자동으로 플레이오프에 진출합니다.
@@ -1038,7 +1075,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                     <div className="px-6 py-5 space-y-5 overflow-y-auto">
 
                         {/* 드래프트 설정 (공통) */}
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        <p className="text-xs font-bold text-slate-500">
                             {isPersonalDraft ? '개인 팩 드래프트 설정' : '드래프트 설정'}
                         </p>
 
@@ -1150,7 +1187,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                         <div className="border-t border-slate-800 pt-5" />
 
                         {/* 엔진 설정 */}
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">엔진 설정</p>
+                        <p className="text-xs font-bold text-slate-500">엔진 설정</p>
                         <div>
                             <div className="flex items-center justify-between px-1">
                                 <span className="text-xs font-bold text-slate-300">리그 상대 정규화 강도</span>
@@ -1173,7 +1210,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
 
                 {/* 푸터 */}
                 <div className="px-6 py-4 border-t border-slate-800 shrink-0 space-y-3">
-                    {err && <p className="text-xs text-red-400 ko-normal">{err}</p>}
+                    {err && <InlineNotice tone="danger">{err}</InlineNotice>}
                     <div className="flex gap-2">
                         <button
                             type="button"
@@ -1182,19 +1219,17 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                         >
                             취소
                         </button>
-                        <button
-                            type="button"
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            shape="xl"
+                            className="flex-1"
                             onClick={handleSubmit}
-                            disabled={saving}
-                            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            isLoading={saving}
+                            loadingText="생성 중…"
                         >
-                            {saving
-                                ? <span className="flex items-center justify-center gap-1.5">
-                                    <Loader2 size={13} className="animate-spin" />생성 중…
-                                  </span>
-                                : '만들기'
-                            }
-                        </button>
+                            만들기
+                        </Button>
                     </div>
                 </div>
             </div>

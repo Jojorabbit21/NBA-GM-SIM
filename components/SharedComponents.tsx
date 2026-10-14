@@ -73,7 +73,7 @@ export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ mess
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-toast animate-in slide-in-from-bottom-5 duration-300">
       <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-6 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw] overflow-hidden">
         <div 
             className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all ease-linear duration-[3000ms] shadow-[0_0_10px_rgba(99,102,241,0.5)]"
@@ -93,7 +93,7 @@ export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ mess
 
 export const ActionToast: React.FC<{ message: string; actionLabel: string; onAction: () => void; onClose: () => void }> = ({ message, actionLabel, onAction, onClose }) => {
   return (
-    <div className="fixed top-6 right-6 z-[300] animate-in slide-in-from-right-5 duration-500">
+    <div className="fixed top-6 right-6 z-toast animate-in slide-in-from-right-5 duration-500">
       <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-5 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw]">
         <div className="bg-indigo-500/20 p-2 rounded-full flex-shrink-0">
           <RefreshCw size={18} className="text-indigo-400" />

@@ -79,7 +79,7 @@ export const StarRating: React.FC<StarRatingProps> = ({ ovr, stars: directStars,
             ))}
 
             {showValue && (
-                <span className="ml-1 font-mono font-bold tabular-nums text-slate-400" style={{ fontSize: px * 0.7 }}>
+                <span className="ml-1 font-bold tabular-nums text-slate-400" style={{ fontSize: px * 0.7 }}>
                     {stars.toFixed(1)}
                 </span>
             )}

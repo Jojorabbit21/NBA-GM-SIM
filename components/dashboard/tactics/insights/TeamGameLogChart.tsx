@@ -1,5 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
+import { EmptyState } from '../../../common/EmptyState';
+import { InsightCard } from './InsightCard';
 
 export interface GameLogEntry {
     id: string;
@@ -382,9 +384,9 @@ const SplitStatsTable: React.FC<{ rows: SplitStatsRow[] }> = ({ rows }) => (
     <div className="inline-block bg-slate-900/40 border border-slate-700 overflow-hidden">
         <div className="grid grid-cols-[repeat(4,auto)]">
             <div className="bg-slate-700/50 px-3 py-2 border-b border-slate-700" />
-            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 uppercase tracking-wider text-left">전적</div>
-            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 uppercase tracking-wider text-left">득점</div>
-            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 uppercase tracking-wider text-left">실점</div>
+            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 text-left">전적</div>
+            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 text-left">득점</div>
+            <div className="bg-slate-700/50 px-3 py-2 border-b border-l border-slate-700 text-sm font-bold text-slate-300 text-left">실점</div>
 
             {rows.map((r, i) => {
                 const bCls = i < rows.length - 1 ? 'border-b border-slate-700' : '';
@@ -407,9 +409,9 @@ const SplitStatsTable: React.FC<{ rows: SplitStatsRow[] }> = ({ rows }) => (
 export const TeamGameLogChart: React.FC<{ games: GameLogEntry[]; onBarClick?: (gameId: string) => void }> = ({ games, onBarClick }) => {
     if (games.length === 0) {
         return (
-            <div className="w-full bg-slate-900/40 border border-slate-800 p-6 text-center text-sm text-slate-500">
-                아직 시즌 일정이 없습니다.
-            </div>
+            <InsightCard>
+                <EmptyState padding="sm" title="아직 시즌 일정이 없습니다." />
+            </InsightCard>
         );
     }
 
@@ -428,15 +430,12 @@ export const TeamGameLogChart: React.FC<{ games: GameLogEntry[]; onBarClick?: (g
     ];
 
     return (
-        <div className="w-full bg-slate-900/40 border border-slate-800 overflow-hidden">
-            <div className="px-3 py-2 border-b border-slate-800">
-                <h4 className="text-sm font-black text-white uppercase tracking-widest">시즌 경기 로그</h4>
-            </div>
+        <InsightCard title="시즌 경기 로그">
             <div className="p-4 bg-slate-700/25">
                 <GameLogSparkline games={games} onBarClick={onBarClick} />
             </div>
             {playedGames.length === 0 ? (
-                <div className="p-6 text-center text-sm text-slate-500">아직 완료된 경기가 없습니다.</div>
+                <EmptyState padding="sm" title="아직 완료된 경기가 없습니다." />
             ) : (
                 <div className="flex flex-col lg:flex-row gap-4 p-4">
                     <div className="flex-none flex flex-col justify-center">
@@ -455,6 +454,6 @@ export const TeamGameLogChart: React.FC<{ games: GameLogEntry[]; onBarClick?: (g
                     </div>
                 </div>
             )}
-        </div>
+        </InsightCard>
     );
 };

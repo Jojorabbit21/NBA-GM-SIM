@@ -9,7 +9,7 @@ interface UpdateToastProps {
 
 export const UpdateToast: React.FC<UpdateToastProps> = ({ onRefresh, onDismiss }) => {
     return (
-        <div className="fixed bottom-6 right-6 z-[9999] w-[360px] animate-in slide-in-from-bottom-4 fade-in duration-300">
+        <div className="fixed bottom-6 right-6 z-toast w-[360px] animate-in slide-in-from-bottom-4 fade-in duration-300">
             <div
                 className="bg-surface-card border border-status-info-strong rounded-2xl p-4 flex flex-col gap-5"
                 style={{ boxShadow: '0 20px 25px -5px rgba(0,0,0,0.10), 0 10px 10px -5px rgba(0,0,0,0.04)' }}

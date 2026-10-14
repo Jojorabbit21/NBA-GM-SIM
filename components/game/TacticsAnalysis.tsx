@@ -80,10 +80,10 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                 <div className="flex items-center gap-3 border-b border-slate-700 pb-3">
                     <TeamLogo teamId={team.id} size="md" />
                     <div className="flex-1">
-                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        <div className="text-[10px] font-black text-slate-500">
                             {isHome ? 'HOME' : 'AWAY'}
                         </div>
-                        <div className="font-black text-white uppercase text-sm">{team.name}</div>
+                        <div className="font-black text-white text-sm">{team.name}</div>
                     </div>
                     {coach && (
                         <div className="text-right">
@@ -96,15 +96,15 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                 {/* 테이블 A: 코치 성향 */}
                 {coach && (
                     <div>
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                        <div className="text-[10px] font-black text-slate-400 mb-2">
                             코치 전술 성향 (영향도 40%)
                         </div>
                         <table className="w-full text-xs border-collapse">
                             <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className="text-left py-1.5 px-2 text-slate-500 font-bold">항목</th>
-                                    <th className="text-center py-1.5 px-2 text-slate-500 font-bold w-10">값</th>
-                                    <th className="text-left py-1.5 px-2 text-slate-500 font-bold">성향</th>
+                                <tr className="border-b border-slate-800">
+                                    <th className="text-left py-1.5 px-2 text-slate-400 font-bold">항목</th>
+                                    <th className="text-center py-1.5 px-2 text-slate-400 font-bold w-10">값</th>
+                                    <th className="text-left py-1.5 px-2 text-slate-400 font-bold">성향</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -113,9 +113,9 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                                     const val = coach.preferences[key];
                                     const { tag } = getAxisResult(axis, val);
                                     return (
-                                        <tr key={key} className="border-b border-slate-800/50">
-                                            <td className="py-1.5 px-2 text-slate-300 font-medium">{axis.label}</td>
-                                            <td className="py-1.5 px-2 text-center font-mono font-bold text-white">{val}</td>
+                                        <tr key={key} className="border-b border-slate-800">
+                                            <td className="py-1.5 px-2 text-slate-200 font-medium">{axis.label}</td>
+                                            <td className="py-1.5 px-2 text-center font-bold text-white">{val}</td>
                                             <td className={`py-1.5 px-2 font-bold ${axis.color}`}>{tag}</td>
                                         </tr>
                                     );
@@ -128,16 +128,16 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                 {/* 테이블 B: 적용된 전술 슬라이더 */}
                 {tactics?.sliders && (
                     <div>
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                        <div className="text-[10px] font-black text-slate-400 mb-2">
                             적용된 전술 슬라이더
                         </div>
                         <table className="w-full text-xs border-collapse">
                             <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className="text-left py-1.5 px-2 text-slate-500 font-bold">그룹</th>
-                                    <th className="text-left py-1.5 px-2 text-slate-500 font-bold">슬라이더</th>
-                                    <th className="text-center py-1.5 px-2 text-slate-500 font-bold w-10">값</th>
-                                    <th className="text-left py-1.5 px-2 text-slate-500 font-bold">코치 영향</th>
+                                <tr className="border-b border-slate-800">
+                                    <th className="text-left py-1.5 px-2 text-slate-400 font-bold">그룹</th>
+                                    <th className="text-left py-1.5 px-2 text-slate-400 font-bold">슬라이더</th>
+                                    <th className="text-center py-1.5 px-2 text-slate-400 font-bold w-10">값</th>
+                                    <th className="text-left py-1.5 px-2 text-slate-400 font-bold">코치 영향</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -147,16 +147,16 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                                         if (val === undefined) return null;
                                         const coachSource = SLIDER_TO_COACH[key];
                                         return (
-                                            <tr key={key} className="border-b border-slate-800/50">
+                                            <tr key={key} className="border-b border-slate-800">
                                                 {idx === 0 ? (
                                                     <td className="py-1.5 px-2 text-slate-400 font-bold align-top" rowSpan={group.keys.length}>
                                                         {group.label}
                                                     </td>
                                                 ) : null}
-                                                <td className="py-1.5 px-2 text-slate-300 font-medium">
+                                                <td className="py-1.5 px-2 text-slate-200 font-medium">
                                                     {SLIDER_LABELS[key] || key}
                                                 </td>
-                                                <td className="py-1.5 px-2 text-center font-mono font-bold text-white">{val}</td>
+                                                <td className="py-1.5 px-2 text-center font-bold text-white">{val}</td>
                                                 <td className="py-1.5 px-2 text-slate-500 text-[11px]">
                                                     {coachSource
                                                         ? <span className="text-indigo-400/70">{`← ${coachSource}`}</span>

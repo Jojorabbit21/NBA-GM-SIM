@@ -5,7 +5,8 @@ import { ATTR_NAME_MAP, COMPACT_ATTR_GROUPS, getCompactAttrValue, type CompactAt
 export type SortKey = string;
 export type ViewMode = 'Players' | 'Teams';
 export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Defense' | 'Opponent' | 'Attributes';
-export type Operator = '>' | '<' | '>=' | '<=' | '=';
+export type { Operator } from '../utils/statFilter';
+import type { Operator } from '../utils/statFilter';
 
 export interface FilterItem {
     id: string;

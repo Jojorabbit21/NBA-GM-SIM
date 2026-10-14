@@ -197,22 +197,22 @@ const TeamRotationCard: React.FC<{
     badge?: { color: string; abbr: string },
     standalone?: boolean,
     children: React.ReactNode,
-}> = ({ team, badge, standalone, children }) => (
+}> = ({ team, standalone, children }) => (
     <div className={standalone
         ? "w-full relative"
         : "w-full bg-slate-900 border-y border-slate-800 relative"
     }>
         <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
             <div className="flex items-center gap-3">
-                <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
-                <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
+                <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
+                <span className="text-sm font-black text-white">{team.name}</span>
             </div>
         </div>
 
         <div className={standalone ? "bg-slate-900 border border-slate-800 shadow-lg" : "bg-slate-900"}>
             <div className="grid h-10 bg-slate-950 border-b border-slate-800" style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}>
-                <div className="flex items-center px-4 text-xs font-black uppercase tracking-widest text-slate-500 border-r border-slate-800">선수</div>
-                <div className="grid grid-cols-4 divide-x divide-slate-800 text-xs font-black uppercase tracking-widest text-slate-500 text-center items-center">
+                <div className="flex items-center px-4 text-xs font-black text-slate-500 border-r border-slate-800">선수</div>
+                <div className="grid grid-cols-4 divide-x divide-slate-800 text-xs font-black text-slate-500 text-center items-center">
                     <span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span>
                 </div>
             </div>

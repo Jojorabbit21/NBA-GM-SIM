@@ -1,30 +1,22 @@
 
 import { flattenRemainingYears, hasNextContract } from '../../services/contracts/contractLifecycle';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import type { Team, Player } from '../../types';
 import type { DeadMoneyEntry } from '../../types/team';
 import { formatMoneyFull } from '../../utils/formatMoney';
-import { calculatePlayerOvr, estimatePlayerYOS } from '../../utils/constants';
+import { Money } from '../common/Money';
+import { estimatePlayerYOS } from '../../utils/constants';
 import { previewFAStatusAfterContract } from '../../services/multi/negotiation/rfaEligibility';
 import { usePlayerCareerHistoryBatch } from '../../hooks/usePlayerCareerHistoryBatch';
-import { OvrBadge } from '../common/OvrBadge';
-import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
-import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { useTableSort } from '../../hooks/useTableSort';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableGroupHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { PlayerInfoColGroup, PlayerInfoHeaderCells, PlayerInfoCells, PLAYER_INFO_TOTAL_WIDTH } from './PlayerInfoColumns';
 
 // RosterGrid.tsx(로스터/능력치/선수 기록 탭)와 동일한 디자인 언어 — 2단 헤더(그룹행+라벨행),
-// !rounded-none 풀블리드 테이블, 이름|포지션|나이|오버롤 다중 sticky 컬럼.
-const WIDTHS = { NAME: 180, POS: 60, AGE: 50, OVR: 60, CAPPCT: 70 };
-const LEFT_POS = WIDTHS.NAME;
-const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
-const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
-const LEFT_CAPPCT = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE + WIDTHS.OVR;
-const INFO_COL_WIDTH = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE + WIDTHS.OVR + WIDTHS.CAPPCT;
-
-const getStickyStyle = (left: number, width: number, isLast = false): React.CSSProperties => ({
-    left, width, minWidth: width, maxWidth: width,
-    position: 'sticky', zIndex: 30,
-    borderRight: isLast ? undefined : 'none',
-});
+// 풀블리드(flush) 테이블, 이름|포지션|나이|오버롤 다중 sticky 컬럼(PlayerInfoColumns 공용).
+const CAPPCT_WIDTH = 70;
+const LEFT_CAPPCT = PLAYER_INFO_TOTAL_WIDTH;
+const INFO_COL_WIDTH = PLAYER_INFO_TOTAL_WIDTH + CAPPCT_WIDTH;
 
 /** 리그별 샐러리캡 세부 설정 — 마스터 스위치(capEnabled) + 항목별 개별 on/off + 금액. */
 export interface RosterCapSettings {
@@ -71,19 +63,74 @@ function capPctColor(pct: number): string {
     return '#ef4444';
 }
 
+interface PayrollSeasonCell {
+    amount: number | null;
+    className: string;
+    title?: string;
+    chip?: { label: string; title: string; className: string };
+}
+
+interface PayrollRowProps {
+    player?: Player;            // 데드캡 축소 행이면 undefined
+    fallbackName?: string;
+    teamAbbr: string;
+    enableHoverCard: boolean;
+    onClick?: () => void;
+    twoWay: boolean;            // 행 opacity-60
+    capPct: number | null;      // null이면 '-'
+    seasonCells: PayrollSeasonCell[];
+    total: number;
+    totalClassName: string;     // 선수 행 'text-slate-200', 데드 행 'italic text-red-400'
+}
+
+// [2026-10-13] 선수 행과 데드캡 행이 같은 마크업을 복붙하던 것을 하나로 합침 — 한쪽만 고치는 회귀가 구조적으로 불가능.
+const PayrollRow: React.FC<PayrollRowProps> = ({
+    player, fallbackName, teamAbbr, enableHoverCard, onClick, twoWay, capPct, seasonCells, total, totalClassName,
+}) => (
+    <TableRow className={twoWay ? 'opacity-60' : ''} onClick={onClick}>
+        <PlayerInfoCells
+            player={player}
+            fallbackName={fallbackName}
+            teamAbbr={teamAbbr}
+            clickable={!!onClick}
+            enableHoverCard={enableHoverCard}
+            showInjury={false}
+        />
+        <TableCell stickyLeft={LEFT_CAPPCT} width={CAPPCT_WIDTH}>
+            {capPct != null ? (
+                <span className="text-sm font-bold" style={{ color: capPctColor(capPct) }}>{capPct.toFixed(1)}%</span>
+            ) : (
+                <span className="text-sm font-medium text-slate-600">-</span>
+            )}
+        </TableCell>
+        {seasonCells.map((c, i) => (
+            <TableCell key={i} align="right" className={`pr-4 ${i === 0 ? 'bg-white/[0.04]' : ''}`}>
+                {c.amount != null ? (
+                    <span className={`font-medium text-sm tabular-nums ${c.className}`} title={c.title}>
+                        {formatMoneyFull(c.amount)}
+                    </span>
+                ) : c.chip ? (
+                    <span title={c.chip.title} className={`font-bold text-sm ${c.chip.className}`}>{c.chip.label}</span>
+                ) : (
+                    <span className="text-slate-600">-</span>
+                )}
+            </TableCell>
+        ))}
+        <TableCell align="right" className="pr-4 border-l border-l-slate-800">
+            <span className={`font-semibold text-sm tabular-nums ${totalClassName}`}>{formatMoneyFull(total)}</span>
+        </TableCell>
+    </TableRow>
+);
+
+
 export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSettings, baseSeasonYear, onPlayerClick, enableHoverCard = false }) => {
     // 연도 컬럼 헤더를 클릭하면 그 시즌 연봉 기준으로 정렬 — 기본은 0번(현재 시즌) 내림차순.
-    const [sortCol, setSortCol] = useState(0);
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-    const handleSort = (colIndex: number) => {
-        setSortCol(colIndex);
-        setSortDirection(prev => (sortCol === colIndex && prev === 'desc') ? 'asc' : 'desc');
-    };
+    const { sortConfig, sortProps } = useTableSort<number>({ key: 0, direction: 'desc' });
 
     const { players, seasonColumns, totals } = useMemo(() => {
-        const sorted = [...team.roster].sort((a, b) => sortDirection === 'asc'
-            ? salaryAtCol(a, sortCol) - salaryAtCol(b, sortCol)
-            : salaryAtCol(b, sortCol) - salaryAtCol(a, sortCol));
+        const sorted = [...team.roster].sort((a, b) => sortConfig.direction === 'asc'
+            ? salaryAtCol(a, sortConfig.key) - salaryAtCol(b, sortConfig.key)
+            : salaryAtCol(b, sortConfig.key) - salaryAtCol(a, sortConfig.key));
 
         const cols: string[] = [];
         for (let y = baseSeasonYear; y < baseSeasonYear + 6; y++) {
@@ -107,7 +154,7 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
         }
 
         return { players: sorted, seasonColumns: cols, totals: colTotals };
-    }, [team.roster, team.deadMoney, baseSeasonYear, sortCol, sortDirection]);
+    }, [team.roster, team.deadMoney, baseSeasonYear, sortConfig]);
 
     // 잔여 계약기간 전체(표에 보이는 6개 시즌 컬럼 범위를 넘어서도) 합산 — 계약 만료 시즌까지 전부.
     const remainingTotal = useMemo(() => {
@@ -186,241 +233,148 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                 대비 행(diffRows)에서 계속 보여준다. */}
 
             <div className="flex-1 min-h-0">
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
+            <Table variant="flush" fullHeight>
                 <colgroup>
-                    <col style={{ width: WIDTHS.NAME }} />
-                    <col style={{ width: WIDTHS.POS }} />
-                    <col style={{ width: WIDTHS.AGE }} />
-                    <col style={{ width: WIDTHS.OVR }} />
-                    <col style={{ width: WIDTHS.CAPPCT }} />
+                    <PlayerInfoColGroup />
+                    <col style={{ width: CAPPCT_WIDTH }} />
                     {seasonColumns.map((_, i) => <col key={i} />)}
                     <col style={{ width: 140 }} />
                 </colgroup>
-                <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                <TableHead noRow>
                     {/* Header Row 1: 그룹 */}
                     <tr className="h-10">
-                        <th colSpan={5} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
-                            <div className="h-full flex items-center justify-center">
-                                <span className="text-sm font-black text-slate-500 uppercase ko-normal">선수 정보</span>
-                            </div>
-                        </th>
-                        <th colSpan={seasonColumns.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
-                            <div className="h-full flex items-center justify-center">
-                                <span className="text-sm font-black text-slate-400 uppercase ko-normal">시즌별 페이롤</span>
-                            </div>
-                        </th>
-                        <th className="bg-slate-950 border-b border-l border-slate-800 px-2 align-middle" />
+                        <TableGroupHeaderCell colSpan={5} stickyLeft={0}>선수 정보</TableGroupHeaderCell>
+                        <TableGroupHeaderCell colSpan={seasonColumns.length}>시즌별 페이롤</TableGroupHeaderCell>
+                        <TableGroupHeaderCell />
                     </tr>
                     {/* Header Row 2: 라벨 */}
-                    <tr className="h-10 text-slate-500 text-sm font-black uppercase">
-                        <TableHeaderCell style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }} className="bg-slate-950">포지션</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }} className="bg-slate-950">나이</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR), zIndex: 50 }} className="bg-slate-950">오버롤</TableHeaderCell>
-                        <TableHeaderCell style={{ ...getStickyStyle(LEFT_CAPPCT, WIDTHS.CAPPCT, true), zIndex: 50 }} className="bg-slate-950 border-r border-slate-800">Cap%</TableHeaderCell>
+                    <tr className="h-10 text-slate-400 text-sm font-bold">
+                        <PlayerInfoHeaderCells ovrLabel="오버롤" />
+                        <TableHeaderCell stickyLeft={LEFT_CAPPCT} width={CAPPCT_WIDTH}>Cap%</TableHeaderCell>
                         {seasonColumns.map((col, i) => (
-                            <TableHeaderCell
-                                key={col} align="right" className="pr-4 border-r border-r-slate-800/30"
-                                sortable onSort={() => handleSort(i)} sortDirection={sortCol === i ? sortDirection : null}
-                            >
+                            <TableHeaderCell key={col} align="right" className="pr-4" {...sortProps(i)}>
                                 {col}
                             </TableHeaderCell>
                         ))}
-                        <TableHeaderCell align="right" className="pr-4 border-l border-slate-800">총액</TableHeaderCell>
+                        <TableHeaderCell align="right" className="pr-4">총액</TableHeaderCell>
                     </tr>
-                </thead>
+                </TableHead>
                 <TableBody>
-                    {players.map(p => (
-                        <TableRow
-                            key={p.id}
-                            className={`group ${p.contract?.type === 'two_way' ? 'opacity-60' : ''}`}
-                            onClick={onPlayerClick ? () => onPlayerClick(p) : undefined}
-                        >
-                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
-                                <span className="flex items-center gap-1.5 min-w-0">
-                                    <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                        <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer">{p.name}</span>
-                                    </PlayerHoverCard>
-                                    {p.contract?.type === 'two_way' && (
-                                        <span
-                                            title="Two-Way 계약"
-                                            className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                                        >TW</span>
-                                    )}
-                                </span>
-                            </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} className="bg-slate-900 group-hover:bg-slate-800 text-center">
-                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                            </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_CAPPCT, WIDTHS.CAPPCT, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
-                                {/* 투웨이는 샐러리캡에 전혀 잡히지 않아 Cap%가 의미 없음 — "-" 표시. */}
-                                {p.contract?.type === 'two_way' ? (
-                                    <span className="text-sm font-medium text-slate-600">-</span>
-                                ) : capSettings.salaryCapAmount > 0 ? (
-                                    <span className="text-sm font-bold" style={{ color: capPctColor((salaryAtCol(p, 0) / capSettings.salaryCapAmount) * 100) }}>
-                                        {((salaryAtCol(p, 0) / capSettings.salaryCapAmount) * 100).toFixed(1)}%
-                                    </span>
-                                ) : (
-                                    <span className="text-sm font-medium text-slate-600">-</span>
-                                )}
-                            </TableCell>
-                            {seasonColumns.map((col, i) => {
-                                // [2026-10-01] 현재 계약 + 이미 체결된 다음 계약(nextContract)을 한 줄로 편 배열로 표시.
-                                const flat = p.contract ? flattenRemainingYears(p.contract) : [];
-                                const fy = flat[i];
-                                const amount = fy ? fy.amount : null;
-                                const opt = fy?.option;
-                                const amountColorClass = opt?.type === 'team'
-                                    ? 'italic text-sky-400'
-                                    : opt?.type === 'player'
-                                        ? 'italic text-emerald-400'
-                                        : fy?.segment === 'next'
-                                            ? 'text-amber-300'   // 다음 계약(연장) 연차 — 현재 계약과 구분
-                                            : 'text-slate-300';
-                                // 마지막 연차 바로 다음 컬럼에만 UFA/RFA 칩 표시 — 다음 계약이 있으면 칩 없음
-                                // (previewFAStatusAfterContract가 null을 돌려줌).
-                                const faStatus = p.contract && i === flat.length && !hasNextContract(p.contract)
-                                    ? faStatusPreview.get(p.id)
-                                    : null;
-                                return (
-                                    <TableCell key={col} align="right" className={`pr-4 border-r border-r-slate-800/30 ${i === 0 ? 'bg-white/[0.04]' : ''}`}>
-                                        {amount != null ? (
-                                            <span
-                                                className={`font-medium text-sm ${amountColorClass}`}
-                                                title={fy?.segment === 'next' ? '연장 계약(이미 체결된 다음 계약) 연차' : undefined}
-                                            >
-                                                {formatMoneyFull(amount)}
-                                            </span>
-                                        ) : faStatus ? (
-                                            <span
-                                                title={faStatus.status === 'RFA' ? 'Restricted Free Agent' : 'Unrestricted Free Agent'}
-                                                className={`font-bold text-sm ${
-                                                    faStatus.status === 'RFA' ? 'text-violet-400' : 'text-emerald-400'
-                                                }`}
-                                            >
-                                                {faStatus.status}
-                                            </span>
-                                        ) : (
-                                            <span className="text-slate-600">-</span>
-                                        )}
-                                    </TableCell>
-                                );
-                            })}
-                            <TableCell align="right" className="pr-4 border-l border-l-slate-800">
-                                <span className="font-semibold text-sm text-slate-200">{formatMoneyFull(remainingTotal.get(p.id) ?? 0)}</span>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    {/* [2026-09-21] 방출된 선수 — team.roster엔 없지만 데드캡이 남아있는 동안 계속
-                        표시한다. 데드캡 샐러리 텍스트(해당 시즌 컬럼 + 총액)만 빨간 이탤릭체이고,
-                        나머지(행 배경/호버/이름/바로가기/포지션/나이/오버롤/Cap%)는 로스터 선수
-                        행과 완전히 동일 — 이름 옆 별도 배지도 없음(범례에서 색으로만 구분). 위
-                        players.map(...) 블록과 최대한 같은 마크업을 유지할 것(둘 중 하나만 고치는
-                        회귀 방지). d.player가 없으면(드물게 meta_players 조회 실패) 이름만 보이는
-                        축소 행으로 폴백.
-                        [2026-09-21 정정] waive가 원래 계약 스케줄 그대로(연도별) 데드캡을 남기게
-                        되면서 한 선수당 여러 시즌에 항목이 걸쳐 생길 수 있어, playerId로 묶은
-                        deadRows(그룹)를 시즌 컬럼별로 조회해 한 선수당 한 행만 그린다(로스터
-                        선수 행과 동일한 "한 선수 = 한 행, 여러 시즌 컬럼" 구성). */}
+                    {players.map(p => {
+                        // [2026-10-01] 현재 계약 + 이미 체결된 다음 계약(nextContract)을 한 줄로 편 배열로 표시.
+                        const flat = p.contract ? flattenRemainingYears(p.contract) : [];
+                        const seasonCells: PayrollSeasonCell[] = seasonColumns.map((_, i) => {
+                            const fy = flat[i];
+                            const amount = fy ? fy.amount : null;
+                            const opt = fy?.option;
+                            const className = opt?.type === 'team'
+                                ? 'italic text-sky-400'
+                                : opt?.type === 'player'
+                                    ? 'italic text-emerald-400'
+                                    : fy?.segment === 'next'
+                                        ? 'text-amber-300'   // 다음 계약(연장) 연차 — 현재 계약과 구분
+                                        : 'text-slate-300';
+                            // 마지막 연차 바로 다음 컬럼에만 UFA/RFA 칩 표시 — 다음 계약이 있으면 칩 없음
+                            // (previewFAStatusAfterContract가 null을 돌려줌).
+                            const faStatus = p.contract && i === flat.length && !hasNextContract(p.contract)
+                                ? faStatusPreview.get(p.id)
+                                : null;
+                            return {
+                                amount,
+                                className,
+                                title: fy?.segment === 'next' ? '연장 계약(이미 체결된 다음 계약) 연차' : undefined,
+                                chip: faStatus ? {
+                                    label: faStatus.status,
+                                    title: faStatus.status === 'RFA' ? 'Restricted Free Agent' : 'Unrestricted Free Agent',
+                                    className: faStatus.status === 'RFA' ? 'text-violet-400' : 'text-emerald-400',
+                                } : undefined,
+                            };
+                        });
+                        // 투웨이는 샐러리캡에 전혀 잡히지 않아 Cap%가 의미 없음 — "-" 표시.
+                        const capPct = p.contract?.type === 'two_way' || capSettings.salaryCapAmount <= 0
+                            ? null
+                            : (salaryAtCol(p, 0) / capSettings.salaryCapAmount) * 100;
+                        return (
+                            <PayrollRow
+                                key={p.id}
+                                player={p}
+                                teamAbbr={team.abbr}
+                                enableHoverCard={enableHoverCard}
+                                onClick={onPlayerClick ? () => onPlayerClick(p) : undefined}
+                                twoWay={p.contract?.type === 'two_way'}
+                                capPct={capPct}
+                                seasonCells={seasonCells}
+                                total={remainingTotal.get(p.id) ?? 0}
+                                totalClassName="text-slate-200"
+                            />
+                        );
+                    })}
+                    {/* [2026-09-21] 방출된 선수 — team.roster엔 없지만 데드캡이 남아있는 동안 계속 표시한다.
+                        선수 행과 같은 PayrollRow를 쓰고 데드캡 금액 텍스트만 빨간 이탤릭(범례에서 색으로만 구분).
+                        d.player가 없으면(드물게 meta_players 조회 실패) 이름만 보이는 축소 행으로 폴백.
+                        [2026-09-21 정정] waive가 원래 계약 스케줄 그대로(연도별) 데드캡을 남기게 되면서 한 선수당
+                        여러 시즌에 항목이 걸쳐 생길 수 있어, playerId로 묶은 deadRows(그룹)를 시즌 컬럼별로
+                        조회해 한 선수당 한 행만 그린다.
+                        [2026-10-13] 선수 행과 PayrollRow 공유 — 둘 중 하나만 고치는 회귀가 구조적으로 사라짐. */}
                     {deadRows.map((g, i) => {
                         const p = g.player;
                         const amountAt = (season: string) => g.entries.filter(e => e.season === season).reduce((s, e) => s + e.amount, 0);
                         const totalAll = g.entries.reduce((s, e) => s + e.amount, 0);
                         const col0Amount = amountAt(seasonColumns[0]);
+                        const seasonCells: PayrollSeasonCell[] = seasonColumns.map(col => {
+                            const amt = amountAt(col);
+                            return { amount: amt > 0 ? amt : null, className: 'italic text-red-400' };
+                        });
+                        // 방출 선수의 Cap%는 남은 계약이 아니라 실제로 이번 시즌 캡에 잡히는 데드캡 기준.
+                        const capPct = capSettings.salaryCapAmount > 0 && col0Amount > 0
+                            ? (col0Amount / capSettings.salaryCapAmount) * 100
+                            : null;
                         return (
-                            <TableRow
+                            <PayrollRow
                                 key={`dead-${g.playerId}-${i}`}
-                                className={`group ${p?.contract?.type === 'two_way' ? 'opacity-60' : ''}`}
+                                player={p}
+                                fallbackName={g.playerName}
+                                teamAbbr={team.abbr}
+                                enableHoverCard={enableHoverCard}
                                 onClick={p && onPlayerClick ? () => onPlayerClick(p) : undefined}
-                            >
-                                <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
-                                    <span className="flex items-center gap-1.5 min-w-0">
-                                        {p ? (
-                                            <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                                <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer">{p.name}</span>
-                                            </PlayerHoverCard>
-                                        ) : (
-                                            <span className="min-w-0 text-sm font-semibold text-slate-200 truncate">{g.playerName}</span>
-                                        )}
-                                        {p?.contract?.type === 'two_way' && (
-                                            <span
-                                                title="Two-Way 계약"
-                                                className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                                            >TW</span>
-                                        )}
-                                    </span>
-                                </TableCell>
-                                <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p?.position ?? '-'}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p?.age ?? '-'}</TableCell>
-                                <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} className="bg-slate-900 group-hover:bg-slate-800 text-center">
-                                    {p ? (
-                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                                    ) : (
-                                        <span className="text-slate-600 text-sm">-</span>
-                                    )}
-                                </TableCell>
-                                <TableCell style={getStickyStyle(LEFT_CAPPCT, WIDTHS.CAPPCT, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
-                                    {/* 방출 선수의 Cap%는 남은 계약이 아니라 실제로 이번 시즌 캡에 잡히는 데드캡 기준. */}
-                                    {capSettings.salaryCapAmount > 0 && col0Amount > 0 ? (
-                                        <span className="text-sm font-bold" style={{ color: capPctColor((col0Amount / capSettings.salaryCapAmount) * 100) }}>
-                                            {((col0Amount / capSettings.salaryCapAmount) * 100).toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-sm font-medium text-slate-600">-</span>
-                                    )}
-                                </TableCell>
-                                {seasonColumns.map((col, ci) => {
-                                    const amt = amountAt(col);
-                                    return (
-                                        <TableCell key={col} align="right" className={`pr-4 border-r border-r-slate-800/30 ${ci === 0 ? 'bg-white/[0.04]' : ''}`}>
-                                            {amt > 0 ? (
-                                                <span className="font-medium text-sm italic text-red-400">{formatMoneyFull(amt)}</span>
-                                            ) : (
-                                                <span className="text-slate-600">-</span>
-                                            )}
-                                        </TableCell>
-                                    );
-                                })}
-                                <TableCell align="right" className="pr-4 border-l border-l-slate-800">
-                                    <span className="font-semibold text-sm italic text-red-400">{formatMoneyFull(totalAll)}</span>
-                                </TableCell>
-                            </TableRow>
+                                twoWay={p?.contract?.type === 'two_way'}
+                                capPct={capPct}
+                                seasonCells={seasonCells}
+                                total={totalAll}
+                                totalClassName="italic text-red-400"
+                            />
                         );
                     })}
                 </TableBody>
-                <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
+                <TableFoot>
                     <tr className="h-10">
-                        <TableCell colSpan={5} align="left" style={getStickyStyle(0, INFO_COL_WIDTH, true)} className="pl-4 bg-slate-950 font-black text-indigo-400 text-sm uppercase border-r border-slate-800">
+                        <TableCell colSpan={5} align="left" stickyLeft={0} width={INFO_COL_WIDTH} className="pl-4 font-bold text-indigo-400 text-sm">
                             합계
                         </TableCell>
                         {totals.map((t, i) => (
-                            <TableCell key={i} align="right" className="pr-4 border-r border-r-slate-800/30">
-                                <span className="font-semibold text-sm text-white">{formatMoneyFull(t)}</span>
+                            <TableCell key={i} align="right" className="pr-4">
+                                <span className="font-semibold text-sm text-white tabular-nums">{formatMoneyFull(t)}</span>
                             </TableCell>
                         ))}
-                        <TableCell align="right" className="pr-4 border-l border-l-slate-800 bg-slate-950" />
+                        <TableCell align="right" className="pr-4 border-l border-l-slate-800" />
                     </tr>
                     {diffRows.map(row => {
                         const diff = row.v - currentPayroll;
                         return (
-                            <tr key={row.label} className="h-9 border-t border-slate-800/50">
-                                <TableCell colSpan={5} align="left" style={getStickyStyle(0, INFO_COL_WIDTH, true)} className="pl-4 bg-slate-950 font-semibold text-slate-400 text-sm border-r border-slate-800">
+                            <tr key={row.label} className="h-9 border-t border-slate-800">
+                                <TableCell colSpan={5} align="left" stickyLeft={0} width={INFO_COL_WIDTH} className="pl-4 font-semibold text-slate-400 text-sm">
                                     {row.label}
                                 </TableCell>
                                 {seasonColumns.map((col, i) => (
-                                    <TableCell key={col} align="right" className="pr-4 border-r border-r-slate-800/30 bg-slate-950">
+                                    <TableCell key={col} align="right" className="pr-4">
                                         {i === 0 ? (
-                                            <span className={`font-semibold text-sm ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                {diff >= 0 ? '+' : ''}{formatMoneyFull(diff)}
-                                            </span>
+                                            <Money value={diff} format="full" signed className="font-semibold text-sm" />
                                         ) : (
                                             <span className="text-slate-700">-</span>
                                         )}
                                     </TableCell>
                                 ))}
-                                <TableCell align="right" className="pr-4 border-l border-l-slate-800 bg-slate-950">
+                                <TableCell align="right" className="pr-4 border-l border-l-slate-800">
                                     <span className="text-slate-700">-</span>
                                 </TableCell>
                             </tr>
@@ -429,8 +383,8 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                     {/* Glossary — 로스터 탭(RosterOverviewGrid.tsx) 하단 "정규 계약 슬롯" 푸터와
                         동일한 h-40 높이. 연도별 금액에 적용되는 이탤릭+색상(하늘색/초록색/빨간색)이
                         각각 팀/플레이어 옵션/데드캡을 뜻한다는 걸 테이블 안에서 바로 확인할 수 있게 안내. */}
-                    <tr className="h-40 border-t border-slate-800/50">
-                        <TableCell colSpan={5 + seasonColumns.length + 1} className="bg-slate-950 px-4">
+                    <tr className="h-40 border-t border-slate-800">
+                        <TableCell colSpan={5 + seasonColumns.length + 1} className="px-4">
                             <div className="h-40 flex items-start justify-end gap-6 pt-3">
                                 <span className="text-sm font-semibold text-slate-500">범례</span>
                                 <span className="flex items-center gap-2 text-sm font-semibold">

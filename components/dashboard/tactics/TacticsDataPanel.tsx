@@ -29,21 +29,21 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
             <div className="flex flex-col gap-2 pb-5 border-b border-slate-800">
                 <div className="flex gap-4">
                     {!hideRadar && (
-                        <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
+                        <h5 className="flex-1 text-sm font-black text-slate-300">로스터 레이더</h5>
                     )}
                     {!hideZoneChart && (
                     <div className="flex-1 flex items-center justify-between">
-                        <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
+                        <h5 className="text-sm font-black text-slate-300">슈팅 존 히트맵</h5>
                         {hasOpponentData && (
                             <button
                                 onClick={() => setShowOpponentZone(v => !v)}
                                 className="flex items-center gap-1.5 group"
                             >
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${!showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>우리 팀</span>
+                                <span className={`text-[10px] font-bold transition-colors ${!showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>우리 팀</span>
                                 <div className="relative w-8 h-[18px] rounded-full bg-slate-700 transition-colors">
                                     <div className={`absolute top-[3px] w-3 h-3 rounded-full transition-all duration-200 ${showOpponentZone ? 'left-[17px] bg-emerald-400' : 'left-[3px] bg-emerald-400'}`} />
                                 </div>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>상대</span>
+                                <span className={`text-[10px] font-bold transition-colors ${showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>상대</span>
                             </button>
                         )}
                     </div>

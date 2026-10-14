@@ -1,9 +1,9 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { InlineNotice } from '../../../components/common/InlineNotice';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-    Loader2, AlertCircle,
-} from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { joinLeague, leaveLeague, claimTeam, updateTeamProfile } from '../../../services/multi/leagueService';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
@@ -13,8 +13,11 @@ import { applyMetaPlayerPoolFilter } from '../../../services/multi/draftPoolQuer
 import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import { usePersonalDraftStatus } from '../../../hooks/usePersonalDraftStatus';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { Button } from '../../../components/common/Button';
+import { KeyValueRow } from '../../../components/common/KeyValueRow';
 import { getReadableTextColor } from '../../../utils/colorContrast';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { getLeagueLogoUrl } from '../../../utils/constants';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 
@@ -45,34 +48,6 @@ function fmtDraftStrategy(strategy: string | null): string {
     return strategy === 'linear' ? '선형' : '스네이크';
 }
 
-// public/logos/real/ 로고 세트 — 다른 세션 내 화면들(MultiStandingsView/MultiScheduleView/
-// TeamSelectModal 등)과 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
-const TeamLogoImg: React.FC<{ teamSlug: string; abbr: string; className?: string }> = ({ teamSlug, abbr, className = 'w-7 h-7' }) => (
-    <img
-        src={getRealTeamLogoUrl(teamSlug)}
-        alt={abbr}
-        className={`${className} object-contain shrink-0`}
-        onError={(e) => {
-            const img = e.currentTarget;
-            if (img.dataset.fallback !== 'old') {
-                img.dataset.fallback = 'old';
-                img.src = getTeamLogoUrl(teamSlug);
-            } else {
-                img.src = 'https://placehold.co/100x100?text=BPL';
-            }
-        }}
-    />
-);
-
-// "토너먼트 정보" 수직 리스트 한 줄(라벨 좌측, 값 우측) — 세션 내 다른 홈 위젯들과 동일한
-// flat 리스트 톤(구분선은 부모 컨테이너의 divide-y가 그려줌).
-const InfoRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
-    <div className="flex items-center justify-between py-2 text-sm">
-        <span className="text-slate-500 ko-normal">{label}</span>
-        <span className="text-white font-bold">{value}</span>
-    </div>
-);
-
 // ── LeagueLobbyPanel ─────────────────────────────────────────────────────────
 // 리그 홈(/multi/leagues/:leagueId/season) 인덱스 라우트에서, 로터리/드래프트가 아직
 // 끝나지 않은 리그일 때 MultiSeasonLayout이 사이드바/헤더 없이 이 패널만 렌더링한다
@@ -84,11 +59,11 @@ const InfoRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, v
 // 버튼) 룩을 그대로 가져왔었는데, 사용자 요청으로 세션 내 디자인 언어로 재작성:
 // - 상단 "< 홈으로" 버튼 제거
 // - MultiSeasonPage.tsx 홈 탭 최상단과 동일한 마스트헤드(PBL 로고 + 타이틀, 타이틀만
-//   리그 이름으로 교체)
+// 리그 이름으로 교체)
 // - 이후 섹션들은 세션 내 다른 홈 위젯(HomeStandingsSection 등)과 동일하게
-//   `<h3 className="text-lg font-black text-white">섹션명</h3>` + flat `bg-slate-900`
-//   패널 스타일로 통일(예전의 bg-slate-800/60 border rounded-2xl 카드 룩 폐기)
-// - 팀 목록도 다른 세션 화면들과 동일하게 컬러 배지 대신 실제 로고(getRealTeamLogoUrl) 사용
+// `<h3 className="text-lg font-black text-white">섹션명</h3>` + flat `bg-slate-900`
+// 패널 스타일로 통일(예전의 bg-slate-800/60 border rounded-2xl 카드 룩 폐기)
+// - 팀 목록도 다른 세션 화면들과 동일하게 컬러 배지 대신 실제 로고(TeamLogo) 사용
 
 const LeagueLobbyPanel: React.FC = () => {
     const navigate             = useNavigate();
@@ -166,8 +141,8 @@ const LeagueLobbyPanel: React.FC = () => {
             if (diff <= 0) { setLotteryCountdown('곧 시작'); return; }
             const d  = Math.floor(diff / 86_400_000);
             const h  = Math.floor((diff % 86_400_000) / 3_600_000);
-            const m  = Math.floor((diff % 3_600_000)  /    60_000);
-            const s  = Math.floor((diff % 60_000)     /     1_000);
+            const m  = Math.floor((diff % 3_600_000)  / 60_000);
+            const s  = Math.floor((diff % 60_000)     / 1_000);
             const hh = String(h).padStart(2, '0');
             const mm = String(m).padStart(2, '0');
             const ss = String(s).padStart(2, '0');
@@ -191,8 +166,8 @@ const LeagueLobbyPanel: React.FC = () => {
             setDraftDeadlinePassed(false);
             const d  = Math.floor(diff / 86_400_000);
             const h  = Math.floor((diff % 86_400_000) / 3_600_000);
-            const m  = Math.floor((diff % 3_600_000)  /    60_000);
-            const s  = Math.floor((diff % 60_000)     /     1_000);
+            const m  = Math.floor((diff % 3_600_000)  / 60_000);
+            const s  = Math.floor((diff % 60_000)     / 1_000);
             const hh = String(h).padStart(2, '0');
             const mm = String(m).padStart(2, '0');
             const ss = String(s).padStart(2, '0');
@@ -246,7 +221,8 @@ const LeagueLobbyPanel: React.FC = () => {
         setActionErr(null);
         const { error: err } = await leaveLeague(room.id, kickUserId);
         setKickingId(null);
-        if (err) { setActionErr(err); }
+        // [2026-10-13] 실패 시 reload 생략 — 다른 핸들러(참가/탈퇴/선점)와 동일. 상대가 이미 나간 경우는 Realtime 구독이 목록을 갱신한다.
+        if (err) { setActionErr(err); return; }
         reload();
     };
 
@@ -262,19 +238,15 @@ const LeagueLobbyPanel: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
     if (error || !league) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-3">
-                <AlertCircle size={24} className="text-red-400" />
-                <p className="text-slate-400 text-sm ko-normal">{error ?? '리그를 불러올 수 없습니다.'}</p>
-                <button onClick={() => navigate('/')} className="text-indigo-400 text-sm hover:underline">
-                    홈으로 돌아가기
-                </button>
+            <div className="h-full flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6">
+                {/* 로드 실패는 빈 상태가 아니라 실패 — InlineNotice danger(에러 표시 정책 0-7) */}
+                <InlineNotice tone="danger" className="max-w-md">{error ?? '리그를 불러올 수 없습니다.'}</InlineNotice>
+                <Button variant="link" underline onClick={() => navigate('/')}>홈으로 돌아가기</Button>
             </div>
         );
     }
@@ -298,7 +270,7 @@ const LeagueLobbyPanel: React.FC = () => {
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <img
-                            src="/logos/real/PBL.svg"
+                            src={getLeagueLogoUrl('League')}
                             alt="PRO BASKETBALL LEAGUE"
                             className="w-16 h-16 object-contain drop-shadow-md shrink-0"
                         />
@@ -311,29 +283,21 @@ const LeagueLobbyPanel: React.FC = () => {
                                     드래프트 완료 · 토너먼트 시작 대기
                                 </span>
                             ) : (
-                                <button
-                                    onClick={() => navigate(personalDraftPath)}
-                                    className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"
-                                >
+                                <Button variant="cta" size="xl" className="shrink-0" onClick={() => navigate(personalDraftPath)}>
                                     팩 드래프트 입장
-                                </button>
+                                </Button>
                             )
                         )
                     ) : lotteryDone && (
-                        <button
-                            onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
-                            className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-base font-black text-white transition-all active:scale-[0.98] shrink-0"
-                        >
+                        <Button variant="cta" size="xl" className="shrink-0" onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}>
                             드래프트 룸 입장
-                        </button>
+                        </Button>
                     )}
                 </div>
 
-                {/* 에러 */}
+                {/* [2026-10-13] 참가/선점/탈퇴/강퇴 실패 — InlineNotice(에러 표시 정책 0-7). 마감·추첨 뒤 같은 타이밍 안내는 warning */}
                 {actionErr && (
-                    <p className="text-xs text-red-400 ko-normal bg-red-900/20 border border-red-700/30 rounded-xl px-4 py-2">
-                        {actionErr}
-                    </p>
+                    <InlineNotice tone={/마감|추첨 후/.test(actionErr) ? 'warning' : 'danger'}>{actionErr}</InlineNotice>
                 )}
 
                 {/* 2단 — 토너먼트 정보/참가 팀은 좌측, 우측은 추후 확장용 */}
@@ -345,46 +309,42 @@ const LeagueLobbyPanel: React.FC = () => {
                     <h3 className="text-lg font-black text-white">토너먼트 정보</h3>
 
                     <div className="bg-slate-900 px-4 divide-y divide-slate-800/60">
-                        <InfoRow label="참가팀 수" value={`${humanCount} / ${totalSlots}팀`} />
+                        <KeyValueRow padding="sm" label="참가팀 수">{`${humanCount} / ${totalSlots}팀`}</KeyValueRow>
                         {league.type === 'tournament' && league.tournament_format && (
-                            <InfoRow
-                                label="대진 방식"
-                                value={league.tournament_format === 'single_elim' ? 'Single Elimination' : 'Round-Robin'}
-                            />
+                            <KeyValueRow padding="sm" label="대진 방식">
+                                {league.tournament_format === 'single_elim' ? 'Single Elimination' : 'Round-Robin'}
+                            </KeyValueRow>
                         )}
                         {league.type === 'tournament' && league.match_format && (
-                            <InfoRow
-                                label="경기 방식"
-                                value={
-                                    fmtMatchFormat(league.match_format) +
+                            <KeyValueRow padding="sm" label="경기 방식">
+                                {fmtMatchFormat(league.match_format) +
                                     (league.finals_match_format && league.finals_match_format !== league.match_format
                                         ? ` / Final ${fmtMatchFormat(league.finals_match_format)}`
-                                        : '')
-                                }
-                            />
+                                        : '')}
+                            </KeyValueRow>
                         )}
-                        <InfoRow label="토너먼트 시작 일시" value={fmtDate(league.tournament_start_at)} />
+                        <KeyValueRow padding="sm" label="토너먼트 시작 일시">{fmtDate(league.tournament_start_at)}</KeyValueRow>
                         {isPersonalDraft && (
-                            <InfoRow label="참가/드래프트 마감 일시" value={league.draft_deadline_at ? fmtDate(league.draft_deadline_at) : '마감 없음'} />
+                            <KeyValueRow padding="sm" label="참가/드래프트 마감 일시">{league.draft_deadline_at ? fmtDate(league.draft_deadline_at) : '마감 없음'}</KeyValueRow>
                         )}
-                        <InfoRow label="드래프트 순서 추첨 일시" value={fmtDate(league.lottery_scheduled_at)} />
-                        <InfoRow label="드래프트 일시" value={fmtDate(league.draft_scheduled_at)} />
-                        <InfoRow label="드래프트 형식" value={fmtDraftStrategy(league.draft_pool_strategy)} />
-                        <InfoRow label="드래프트 라운드 수" value={`${league.draft_total_rounds}라운드`} />
-                        <InfoRow label="드래프트 라운드 당 시간" value={`${league.draft_pick_duration_sec}초`} />
-                        <InfoRow
-                            label="드래프트 대상"
-                            value={poolCount === null
+                        <KeyValueRow padding="sm" label="드래프트 순서 추첨 일시">{fmtDate(league.lottery_scheduled_at)}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="드래프트 일시">{fmtDate(league.draft_scheduled_at)}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="드래프트 형식">{fmtDraftStrategy(league.draft_pool_strategy)}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="드래프트 라운드 수">{`${league.draft_total_rounds}라운드`}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="드래프트 라운드 당 시간">{`${league.draft_pick_duration_sec}초`}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="드래프트 대상">
+                            {poolCount === null
                                 ? '불러오는 중…'
                                 : (
-                                    <button
+                                    <Button
+                                        variant="link"
+                                        underline
                                         onClick={() => navigate(`/multi/leagues/${leagueId}/season/pool`)}
-                                        className="hover:text-indigo-400 hover:underline transition-colors"
                                     >
                                         {poolCount}명
-                                    </button>
+                                    </Button>
                                 )}
-                        />
+                        </KeyValueRow>
                     </div>
 
                 </section>
@@ -418,10 +378,10 @@ const LeagueLobbyPanel: React.FC = () => {
                                     >
                                         <div className="flex items-center gap-2.5 flex-1 min-w-0">
                                             <div className="relative w-7 h-7 shrink-0">
-                                                <TeamLogoImg teamSlug={team.team_slug} abbr={team.team_abbr} />
+                                                <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-7 h-7 shrink-0" shadow={false} />
                                                 {isClaiming && (
                                                     <div className="absolute inset-0 flex items-center justify-center bg-slate-900/70 rounded">
-                                                        <Loader2 size={12} className="animate-spin text-white" />
+                                                        <Spinner variant="inline" />
                                                     </div>
                                                 )}
                                             </div>
@@ -440,58 +400,43 @@ const LeagueLobbyPanel: React.FC = () => {
                                         <div className="w-44 shrink-0 flex items-center justify-end gap-1.5">
                                             {/* 참가 (비회원 + 빈 팀) */}
                                             {isEmpty && canClaim && !isMember && (
-                                                <button
+                                                <Button
+                                                    variant="primary"
+                                                    size="sm"
                                                     onClick={() => handleJoinAndClaim(team)}
                                                     disabled={!!claiming}
-                                                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    isLoading={claiming === team.id}
                                                 >
-                                                    {claiming === team.id
-                                                        ? <Loader2 size={11} className="animate-spin" />
-                                                        : '참가'
-                                                    }
-                                                </button>
+                                                    참가
+                                                </Button>
                                             )}
                                             {/* 편집 + 탈퇴 (내 팀, 추첨 전) */}
                                             {canChange && (
                                                 <>
-                                                    <button
-                                                        onClick={() => setEditTarget(team)}
-                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-                                                    >
+                                                    <Button variant="secondary" size="sm" onClick={() => setEditTarget(team)}>
                                                         편집
-                                                    </button>
-                                                    <button
-                                                        onClick={handleLeave}
-                                                        disabled={leaving}
-                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                                    >
+                                                    </Button>
+                                                    <Button variant="dangerSoft" size="sm" onClick={handleLeave} disabled={leaving}>
                                                         탈퇴
-                                                    </button>
+                                                    </Button>
                                                 </>
                                             )}
                                             {/* 선택 (회원 + 빈 팀 + 추첨 전) */}
                                             {canSelect && (
-                                                <button
-                                                    onClick={() => handleClaim(team)}
-                                                    disabled={!!claiming}
-                                                    className="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white"
-                                                >
+                                                <Button variant="secondary" size="sm" onClick={() => handleClaim(team)} disabled={!!claiming}>
                                                     {myTeam ? '변경' : '선택'}
-                                                </button>
+                                                </Button>
                                             )}
                                             {/* 강퇴 (어드민 + 다른 인간 멤버) */}
                                             {isAdmin && !isMyTeam && isHuman && (
-                                                <button
+                                                <Button
+                                                    variant="dangerSoft"
+                                                    size="sm"
                                                     onClick={() => handleKick(team.user_id!)}
-                                                    disabled={kickingId === team.user_id}
-                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/10 hover:bg-red-500/25 text-red-500 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    isLoading={kickingId === team.user_id}
                                                 >
-                                                    {kickingId === team.user_id
-                                                        ? <Loader2 size={11} className="animate-spin" />
-                                                        : null
-                                                    }
                                                     강퇴
-                                                </button>
+                                                </Button>
                                             )}
                                         </div>
                                     </div>
@@ -559,17 +504,12 @@ const LeagueLobbyPanel: React.FC = () => {
                                         </>
                                     );
                                 })() : (
-                                    <div className="flex items-center justify-center py-4">
-                                        <Loader2 size={16} className="animate-spin text-slate-500" />
-                                    </div>
+                                    <Spinner variant="section" />
                                 )}
 
-                                <button
-                                    onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
-                                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 px-4 py-2.5 rounded-lg text-sm font-black text-white transition-all active:scale-[0.98]"
-                                >
+                                <Button variant="cta" size="lg" fullWidth onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}>
                                     드래프트 룸 입장
-                                </button>
+                                </Button>
                             </div>
                         </section>
                     )}
@@ -597,7 +537,7 @@ const LeagueLobbyPanel: React.FC = () => {
                                                 <span className="text-sm font-bold text-slate-500 w-8 shrink-0">{rank}</span>
                                                 {team ? (
                                                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                                        <TeamLogoImg teamSlug={team.team_slug} abbr={team.team_abbr} className="w-6 h-6" />
+                                                        <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
                                                         <span className="text-sm font-bold text-white truncate">{team.team_name}</span>
                                                     </div>
                                                 ) : (
@@ -627,7 +567,7 @@ const LeagueLobbyPanel: React.FC = () => {
                                         <p className="text-xs text-slate-500 ko-normal mb-2">참가/팀 변경 마감까지 남은 시간</p>
                                         <p className="text-5xl font-black text-white tabular-nums">{draftDeadlineCountdown ?? '--:--:--'}</p>
                                         {myTeam && !myPersonalDraftDone && (
-                                            <p className="text-xs text-amber-400 ko-normal mt-2">이 시각까지 드래프트를 끝내지 못하면 자동으로 강퇴됩니다.</p>
+                                            <InlineNotice tone="warning" size="sm" className="mt-2">이 시각까지 드래프트를 끝내지 못하면 자동으로 강퇴됩니다.</InlineNotice>
                                         )}
                                     </>
                                 )}

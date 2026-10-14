@@ -51,17 +51,17 @@ export const RatingTrend: React.FC<RatingTrendProps> = ({ roster, gameRatings })
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">공수 효율</h5>
+            <h5 className="text-[11px] font-black text-slate-400">공수 효율</h5>
 
             {/* Season Overall */}
             <div className="flex gap-4">
                 <div className="flex-1 bg-slate-900/50 rounded-lg p-3 border border-slate-800">
-                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">ORTG</span>
+                    <span className="text-[9px] font-black text-emerald-500">ORTG</span>
                     <div className="text-xl font-black text-white tabular-nums mt-0.5">{seasonRating.ortg || '—'}</div>
                     <span className="text-[9px] text-slate-500">{seasonRating.games}G 기준</span>
                 </div>
                 <div className="flex-1 bg-slate-900/50 rounded-lg p-3 border border-slate-800">
-                    <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">DRTG</span>
+                    <span className="text-[9px] font-black text-red-500">DRTG</span>
                     <div className="text-xl font-black text-white tabular-nums mt-0.5">—</div>
                     <span className="text-[9px] text-slate-500">상대 데이터 필요</span>
                 </div>

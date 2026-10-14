@@ -4,7 +4,12 @@ import { SimSettings } from '../../types/simSettings.ts';
 import type { ArchetypeRatings } from './archetypeSystem.ts';
 import type { PlayContext } from './playTypes.ts';
 
+// [2026-10-07] 퇴장 사유 — pf=6은 6반칙 외에 테크니컬 2회/플래그런트 2/싸움 퇴장의 마커로도 쓰이므로
+// 교체 로그 사유 문구를 여기로 분기한다(substitutionSystem). 미설정이면 'foul_out'으로 간주.
+export type EjectionReason = 'foul_out' | 'technical' | 'flagrant' | 'fight';
+
 export interface LivePlayer extends PlayerBoxScore {
+    ejectionReason?: EjectionReason;
     // Current runtime attributes
     currentCondition: number;
     startCondition: number;
@@ -106,6 +111,9 @@ export interface LivePlayer extends PlayerBoxScore {
 export interface TeamState {
     id: string;
     name: string;
+    // [2026-10-08] 연고지명(PBP 공격권 안내용). 싱글은 Team.city, 멀티는 빈 문자열로 들어오므로
+    // 소비처(statsMappers regionOf)가 비어 있으면 name 첫 어절로 폴백한다.
+    city?: string;
     score: number;
     tactics: GameTactics;
     depthChart?: DepthChart;
@@ -198,6 +206,9 @@ export interface RotationOverride {
 }
 
 export interface GameState {
+    // [2026-10-07] 직전 포제션 진입이 오펜시브 리바운드였는지 — 풋백 플레이 선택 조건(possessionHandler)을
+    // shotClock===14 대신 이 플래그로 판정(플래그런트 후 샷클락 14초가 풋백을 유발하지 않도록). optional: 미설정=false.
+    lastEntryWasOffReb?: boolean;
     home: TeamState;
     away: TeamState;
 

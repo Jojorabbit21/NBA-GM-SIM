@@ -1,11 +1,15 @@
 
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Check, Loader2, LogIn, X } from 'lucide-react';
+import { actionFailure } from '../../services/notifications/actionErrorCatalog';
+import { InlineNotice } from '../../components/common/InlineNotice';
+import { Check, LogIn } from 'lucide-react';
 import { joinLeague, claimTeam } from '../../services/multi/leagueService';
 import { listLeagueTeams } from '../../services/multi/roomQueries';
 import type { LeagueRow, LeagueTeamRow } from '../../services/multi/roomQueries';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
+import { TeamLogo } from '../common/TeamLogo';
+import { Button } from '../common/Button';
+import { Modal } from '../common/Modal';
+import { Spinner } from '../common/Spinner';
 
 interface TeamSelectModalProps {
     league:  LeagueRow;
@@ -15,25 +19,6 @@ interface TeamSelectModalProps {
     /** "입장하기" 클릭 시 호출 — 팀 선점이 끝난 뒤 시즌 화면으로 이동시키는 건 호출부 책임. */
     onEntered: () => void;
 }
-
-// public/logos/real/ 로고 세트 — 다른 멀티 화면들(MultiStandingsView/MultiScheduleView 등)과
-// 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
-const TeamLogoImg: React.FC<{ teamSlug: string; abbr: string }> = ({ teamSlug, abbr }) => (
-    <img
-        src={getRealTeamLogoUrl(teamSlug)}
-        alt={abbr}
-        className="w-14 h-14 object-contain shrink-0"
-        onError={(e) => {
-            const img = e.currentTarget;
-            if (img.dataset.fallback !== 'old') {
-                img.dataset.fallback = 'old';
-                img.src = getTeamLogoUrl(teamSlug);
-            } else {
-                img.src = 'https://placehold.co/100x100?text=BPL';
-            }
-        }}
-    />
-);
 
 // 홈 화면 "참가" 버튼 → 이 팝업에서 바로 팀을 고르고 "입장하기"까지 한 번에 처리한다
 // (기존엔 참가 즉시 로비로 이동해서 팀 목록 테이블에서 다시 골라야 했음). 카드 클릭은
@@ -47,17 +32,26 @@ export const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ league, roomId
     const [selectedId,    setSelectedId]    = useState<string | null>(null);
     const [entering,      setEntering]      = useState(false);
     const [err,           setErr]           = useState<string | null>(null);
+    // [2026-10-13] 목록 로딩 실패 — 예전엔 .then만 있어 스피너가 영구히 돌았음. 다시 불러오기(loadTick)로 재시도.
+    const [loadErr,       setLoadErr]       = useState<string | null>(null);
+    const [loadTick,      setLoadTick]      = useState(0);
 
     useEffect(() => {
         let cancelled = false;
+        setLoadingTeams(true);
+        setLoadErr(null);
         listLeagueTeams(roomId).then(rows => {
             if (cancelled) return;
             setTeams(rows);
             setSelectedId(rows.find(t => t.user_id === userId)?.id ?? null);
             setLoadingTeams(false);
+        }).catch(e => {
+            if (cancelled) return;
+            setLoadErr(actionFailure(e, '팀 목록 불러오기'));
+            setLoadingTeams(false);
         });
         return () => { cancelled = true; };
-    }, [roomId, userId]);
+    }, [roomId, userId, loadTick]);
 
     // 클릭 즉시 서버로 보내지 않고 로컬 선택만 갱신 — 이미 다른 유저가 선점한 팀만 막는다.
     const handleSelect = (team: LeagueTeamRow) => {
@@ -85,92 +79,91 @@ export const TeamSelectModal: React.FC<TeamSelectModalProps> = ({ league, roomId
         onEntered();
     };
 
-    // 홈 화면(InlineLeagueList)의 "relative z-10" 콘텐츠 래퍼 안에서 열리면 그 z-10이 새
-    // 스태킹 컨텍스트를 만들어 내부 z-index가 하단 footer(동일 z-10, DOM상 뒤)에 가려지는
-    // 문제가 있어 document.body로 포탈 — CreateLeagueModal.tsx와 동일 패턴.
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-
-                {/* 헤더 */}
-                <div className="flex items-center justify-between px-8 py-5 border-b border-slate-800 shrink-0">
-                    <div>
-                        <h2 className="text-xl font-black text-white ko-tight">{league.name}</h2>
-                        <p className="text-sm text-slate-500 ko-normal mt-1">참가할 팀을 선택하세요</p>
-                    </div>
-                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
-                        <X size={20} />
-                    </button>
+    // [2026-10-13] 직접 구현하던 오버레이/패널/헤더/푸터 → 공용 Modal(body 포탈·z-modal·배경 클릭 닫기 포함).
+    // 홈 화면(InlineLeagueList)의 "relative z-10" 래퍼 안에서 열려도 포탈 덕에 하단 footer에 가려지지 않는다.
+    // 패널 폭은 공용 size 단계(md 2xl / lg 4xl / xl 6xl)에 없는 5xl이라 className으로 덮어씀.
+    return (
+        <Modal
+            isOpen
+            onClose={onClose}
+            size="xl"
+            rounded="rounded-2xl"
+            backdropClass="bg-black/60"
+            className="!max-w-5xl"
+            title={(
+                <div>
+                    <div className="text-xl font-black text-white ko-tight">{league.name}</div>
+                    <p className="text-sm font-normal text-slate-500 ko-normal mt-1">참가할 팀을 선택하세요</p>
                 </div>
-
-                {/* 팀 그리드 */}
-                <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-                    {loadingTeams ? (
-                        <div className="flex items-center justify-center py-10">
-                            <Loader2 size={20} className="animate-spin text-indigo-400" />
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-3 gap-4">
-                            {teams.map(team => {
-                                const isEmpty     = team.user_id === null;
-                                const isMine      = team.id === selectedId;
-                                const isDisabled  = !isEmpty && !isMine;
-
-                                return (
-                                    <button
-                                        key={team.id}
-                                        onClick={() => handleSelect(team)}
-                                        disabled={isDisabled || entering}
-                                        className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border text-left transition-colors ${
-                                            isMine
-                                                ? 'border-indigo-500 bg-indigo-500/10'
-                                                : isDisabled
-                                                ? 'border-slate-800 bg-slate-900/40 opacity-50 cursor-not-allowed'
-                                                : 'border-slate-800 bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-800 cursor-pointer'
-                                        }`}
-                                    >
-                                        <div className="w-14 h-14 shrink-0">
-                                            <TeamLogoImg teamSlug={team.team_slug} abbr={team.team_abbr} />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-base font-bold text-white truncate">{team.team_name}</p>
-                                            <p className="text-sm text-slate-500 truncate ko-normal mt-0.5">
-                                                {isMine ? '선택됨' : isEmpty ? '선택 가능' : (team.nickname ?? '참가 중')}
-                                            </p>
-                                        </div>
-                                        {isMine && <Check size={20} className="text-indigo-400 shrink-0" />}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                {/* 푸터 — 버튼 자체는 팝업 확대와 무관하게 예전 사이즈 유지 */}
-                <div className="px-8 py-5 border-t border-slate-800 space-y-3 shrink-0">
-                    {err && <p className="text-xs text-red-400 ko-normal">{err}</p>}
+            )}
+            footer={(
+                <div className="space-y-3">
+                    {err && <InlineNotice tone="danger">{err}</InlineNotice>}
                     <div className="flex justify-end gap-2">
-                        <button
-                            onClick={onClose}
-                            className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 bg-slate-800 hover:bg-slate-700 transition-colors"
-                        >
+                        <Button variant="secondary" size="xl" shape="xl" onClick={onClose}>
                             취소
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="xl"
+                            shape="xl"
                             onClick={handleEnter}
                             disabled={!selectedTeam || entering}
-                            className="flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            isLoading={entering}
+                            loadingText="입장 중…"
+                            icon={<LogIn size={14} />}
                         >
-                            {entering
-                                ? <><Loader2 size={14} className="animate-spin" />입장 중…</>
-                                : <><LogIn size={14} />입장하기</>
-                            }
-                        </button>
+                            입장하기
+                        </Button>
                     </div>
                 </div>
+            )}
+        >
+            <div className="px-8 py-6">
+                {loadingTeams ? (
+                    <Spinner variant="section" />
+                ) : loadErr ? (
+                    <div className="flex flex-col items-center gap-3 py-10">
+                        <InlineNotice tone="danger" className="max-w-md">{loadErr}</InlineNotice>
+                        <Button variant="secondary" onClick={() => setLoadTick(t => t + 1)}>다시 불러오기</Button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-4">
+                        {teams.map(team => {
+                            const isEmpty     = team.user_id === null;
+                            const isMine      = team.id === selectedId;
+                            const isDisabled  = !isEmpty && !isMine;
+
+                            return (
+                                <button
+                                    key={team.id}
+                                    onClick={() => handleSelect(team)}
+                                    disabled={isDisabled || entering}
+                                    className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border text-left transition-colors ${
+                                        isMine
+                                            ? 'border-indigo-500 bg-indigo-500/10'
+                                            : isDisabled
+                                            ? 'border-slate-800 bg-slate-900/40 opacity-50 cursor-not-allowed'
+                                            : 'border-slate-800 bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-800 cursor-pointer'
+                                    }`}
+                                >
+                                    <div className="w-14 h-14 shrink-0">
+                                        <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-14 h-14 shrink-0" shadow={false} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-base font-bold text-white truncate">{team.team_name}</p>
+                                        <p className="text-sm text-slate-500 truncate ko-normal mt-0.5">
+                                            {isMine ? '선택됨' : isEmpty ? '선택 가능' : (team.nickname ?? '참가 중')}
+                                        </p>
+                                    </div>
+                                    {isMine && <Check size={20} className="text-indigo-400 shrink-0" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
-        </div>,
-        document.body
+        </Modal>
     );
 };
 

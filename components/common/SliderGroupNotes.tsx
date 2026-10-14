@@ -30,7 +30,7 @@ export const SliderGroupNotes: React.FC<{ notes: SliderNote[] }> = ({ notes }) =
         if (isNewCategory) {
             els.push(
                 <tr key={`cat-${note.category}`} className="bg-slate-600/50">
-                    <td colSpan={2} className="px-2 py-2.5 text-sm font-black text-slate-300 uppercase tracking-widest border-b border-slate-700">
+                    <td colSpan={2} className="px-2 py-2.5 text-sm font-bold text-slate-200 border-b border-slate-800">
                         {note.category}
                     </td>
                 </tr>
@@ -38,10 +38,10 @@ export const SliderGroupNotes: React.FC<{ notes: SliderNote[] }> = ({ notes }) =
         }
         els.push(
             <tr key={note.label} className={rowIndexInCategory % 2 === 0 ? 'bg-slate-900/40' : 'bg-slate-900/10'}>
-                <td className={`align-top w-24 px-2 py-1.5 font-semibold text-white bg-slate-600/25 border-r border-slate-700 whitespace-nowrap ${showBorderB ? 'border-b border-slate-700' : ''}`}>
+                <td className={`align-top w-24 px-2 py-1.5 font-semibold text-slate-200 bg-slate-600/25 border-r border-slate-800 whitespace-nowrap ${showBorderB ? 'border-b border-slate-800' : ''}`}>
                     {note.label}
                 </td>
-                <td className={`align-top px-2 py-1.5 text-slate-300 break-keep ${showBorderB ? 'border-b border-slate-700' : ''}`}>
+                <td className={`align-top px-2 py-1.5 text-slate-200 break-keep ${showBorderB ? 'border-b border-slate-800' : ''}`}>
                     {note.text}
                 </td>
             </tr>

@@ -6,7 +6,11 @@
 // [2026-09-20 안 A 배선] 후보는 시즌 카드(meta_player_cards). 라운드마다 카드 컬렉션을 골라
 // (비우면 전체 카드) OVR 범위와 함께 후보를 확정한다. 지명 연도 열은 카드에 연도 개념이 없어 제거.
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
+import { StatusDot } from '../common/StatusDot';
+import { Spinner } from '../common/Spinner';
+import { EmptyState } from '../common/EmptyState';
+import { InlineNotice } from '../../components/common/InlineNotice';
+import { Plus, Trash2, Wand2 } from 'lucide-react';
 import {
     buildFixedDeclineCurve,
     buildPersonalDraftFormat,
@@ -103,7 +107,8 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
     const [eligibleByCol, setEligibleByCol]   = useState<Record<string, number>[] | null>(null);
     const [checking, setChecking]             = useState(false);
     const [checkErr, setCheckErr]             = useState<string | null>(null);
-    useEffect(() => { setEligibleCounts(null); setEligibleByCol(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax, collectionWeights]);
+    // [2026-10-13] positionTargets도 후보 검사 결과에 영향을 주므로 의존성에 추가(이전엔 누락)
+    useEffect(() => { setEligibleCounts(null); setEligibleByCol(null); setCheckErr(null); }, [rounds, globalOvrMin, globalOvrMax, collectionWeights, positionTargets]);
 
     const mix = useMemo(() => normalizeCollectionWeights(collectionWeights), [collectionWeights]);
     const weighted = mix.length > 0;
@@ -214,7 +219,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                     </span>
                 </div>
                 {collections.length === 0 ? (
-                    <p className="text-[11px] text-slate-600 ko-normal px-3 py-2">컬렉션이 없습니다 — 어드민 "카드 컬렉션" 탭에서 먼저 만들어주세요.</p>
+                    <EmptyState padding="sm" title={'컬렉션이 없습니다 — 어드민 "카드 컬렉션" 탭에서 먼저 만들어주세요.'} />
                 ) : (
                     <div className="divide-y divide-slate-800">
                         {collections.map(c => {
@@ -313,7 +318,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         라운드 추가
                     </button>
                     <button type="button" onClick={runCheck} disabled={disabled || checking || !!syncError} className={`${SMALL_BTN} bg-slate-800 text-slate-300 hover:text-white`}>
-                        {checking ? <Loader2 size={11} className="animate-spin" /> : null}
+                        {checking ? <Spinner variant="inline" /> : null}
                         후보 카드 확인
                     </button>
                 </div>
@@ -329,7 +334,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                         <tr className="bg-slate-800/60 text-[11px] text-slate-400">
                             <th className="px-2 py-2 text-left font-bold w-14">라운드</th>
                             <th className="px-2 py-2 text-center font-bold">OVR 범위</th>
-                            {!weighted && <th className="px-2 py-2 text-left font-bold">카드 컬렉션 <span className="text-slate-600 font-normal">(미선택=전체 카드)</span></th>}
+                            {!weighted && <th className="px-2 py-2 text-left font-bold">카드 컬렉션 <span className="text-slate-400 font-normal">(미선택=전체 카드)</span></th>}
                             <th className="px-2 py-2 text-center font-bold w-20">노출 카드</th>
                             <th className="px-2 py-2 text-center font-bold w-16">픽 수</th>
                             {eligibleCounts && <th className="px-2 py-2 text-center font-bold w-16">후보</th>}
@@ -343,7 +348,7 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                             const chosen = r.collectionIds ?? [];
                             return (
                                 <tr key={idx} className={short ? 'bg-red-950/30' : ''}>
-                                    <td className="px-2 py-1.5 text-xs font-bold text-slate-300 whitespace-nowrap">{r.round}라운드</td>
+                                    <td className="px-2 py-1.5 text-xs font-bold text-slate-200 whitespace-nowrap">{r.round}라운드</td>
                                     <td className="px-2 py-1.5">
                                         <div className="flex items-center justify-center gap-1">
                                             <input type="number" min={globalOvrMin} max={globalOvrMax} value={r.ovrMin} disabled={disabled}
@@ -389,7 +394,11 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
                                     {eligibleCounts && (
                                         <td className={`px-2 py-1.5 text-center text-xs font-bold tabular-nums ${short ? 'text-red-400' : 'text-emerald-400'}`}
                                             title={eligibleByCol?.[idx] ? Object.entries(eligibleByCol[idx]).map(([id, n]) => `${collections.find(c => c.id === id)?.name ?? id}: ${n}장`).join(', ') : undefined}>
-                                            {count ?? '—'}
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {/* [2026-10-13] 라운드별 "후보 부족" 상태 — StatusDot(호버 툴팁) */}
+                                                {short && <StatusDot tone="danger" size="sm" label={`후보 카드 ${count}장 — 노출 카드 수 ${r.poolSize}장보다 적습니다`} />}
+                                                {count ?? '—'}
+                                            </span>
                                         </td>
                                     )}
                                     <td className="px-1 py-1.5 text-center">
@@ -407,24 +416,19 @@ export const PersonalDraftFormatEditor: React.FC<Props> = ({
             </div>
 
             {/* ── 요약 + 검증 ── */}
-            <div className={`rounded-xl px-3 py-2.5 space-y-1.5 ${
-                syncError || checkErr ? 'bg-red-950/40 border border-red-700/50' : rosterWarn ? 'bg-amber-950/30 border border-amber-700/40' : 'bg-slate-800/60'
-            }`}>
+            {/* [2026-10-13] 박스 색 분기 제거(바탕 고정) — 안내는 아래 InlineNotice 4톤이 맡는다(에러 표시 정책 0-7) */}
+            <div className="rounded-xl px-3 py-2.5 space-y-1.5 bg-slate-800/60">
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-400 ko-normal">총 로스터 <span className="text-slate-600">(라운드별 픽 수 합계, {PERSONAL_DRAFT_ROSTER_MIN}~{PERSONAL_DRAFT_ROSTER_MAX}명)</span></span>
                     <span className={`text-sm font-black ${syncError ? 'text-red-400' : 'text-white'}`}>{rosterSize}명 <span className="text-xs font-normal text-slate-500">/ {rounds.length}라운드</span></span>
                 </div>
-                {syncError && (
-                    <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal"><AlertTriangle size={12} className="shrink-0 mt-0.5" /><span>{syncError}</span></p>
-                )}
-                {!syncError && checkErr && (
-                    <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal"><AlertTriangle size={12} className="shrink-0 mt-0.5" /><span>{checkErr}</span></p>
-                )}
+                {syncError && <InlineNotice tone="danger" size="sm">{syncError}</InlineNotice>}
+                {!syncError && checkErr && <InlineNotice tone="danger" size="sm">{checkErr}</InlineNotice>}
                 {!syncError && !checkErr && rosterWarn && (
-                    <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal"><AlertTriangle size={12} className="shrink-0 mt-0.5" /><span>로스터가 {PERSONAL_DRAFT_ROSTER_WARN_BELOW}명 미만이면 로테이션 여유가 거의 없습니다. 저장은 가능합니다.</span></p>
+                    <InlineNotice tone="warning" size="sm">로스터가 {PERSONAL_DRAFT_ROSTER_WARN_BELOW}명 미만이면 로테이션 여유가 거의 없습니다. 저장은 가능합니다.</InlineNotice>
                 )}
                 {!syncError && !checkErr && eligibleCounts && (
-                    <p className="text-xs text-emerald-400 ko-normal">모든 라운드에 노출 카드 수 이상의 후보 카드가 있습니다. 저장 시 이 후보 목록이 고정됩니다.</p>
+                    <InlineNotice tone="success" size="sm">모든 라운드에 노출 카드 수 이상의 후보 카드가 있습니다. 저장 시 이 후보 목록이 고정됩니다.</InlineNotice>
                 )}
                 {!syncError && !checkErr && !eligibleCounts && (
                     <p className="text-[11px] text-slate-600 ko-normal">후보는 어드민 "카드 관리" 탭의 시즌 카드입니다. 저장 시 라운드별 후보 카드를 다시 검사하며, 어느 라운드든 노출 카드 수보다 후보가 적으면 저장이 거부됩니다. 같은 선수의 다른 시즌 카드는 한 팀이 두 장 가질 수 없으므로 범위가 겹치는 라운드는 후보를 넉넉히 잡아주세요.</p>

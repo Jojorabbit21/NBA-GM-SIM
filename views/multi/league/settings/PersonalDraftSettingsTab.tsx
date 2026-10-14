@@ -7,7 +7,9 @@
 // 더 이상 바꿀 수 없다 — RPC가 매 호출마다 저장된 포맷을 읽으므로 중간에 바꾸면 진행 중인 팀의
 // 라운드 구성이 어긋난다. 토너먼트 시작 일시/경기 간격/경기 포맷은 계속 편집 가능.
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Lock, Save, Trophy } from 'lucide-react';
+import { InlineNotice } from '../../../../components/common/InlineNotice';
+import { Button } from '../../../../components/common/Button';
+import { AlertCircle, Lock, Save, Trophy } from 'lucide-react';
 import type { LeagueRow, RoomRow } from '../../../../services/multi/roomQueries';
 import { updateLeagueSettings } from '../../../../services/multi/leagueService';
 import { supabase } from '../../../../services/supabaseClient';
@@ -72,6 +74,7 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
     const [saving, setSaving]   = useState(false);
     const [saveOk, setSaveOk]   = useState(false);
     const [saveErr, setSaveErr] = useState<string | null>(null);
+    const [deadlineErr, setDeadlineErr] = useState<string | null>(null);
 
     // 진행 중인 팀 수 — 1 이상이면 포맷 잠금.
     const [startedCount, setStartedCount] = useState<number | null>(null);
@@ -109,16 +112,24 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
         finalsMatchFormat !== (league.finals_match_format ?? league.match_format ?? 'best_of_1');
     const dirty = scheduleDirty || (!formatLocked && formatDirty);
 
-    const handleSave = async () => {
-        setSaving(true); setSaveOk(false); setSaveErr(null);
-        if (deadlineEnabled) {
-            if (!deadlineAt) { setSaveErr('드래프트 마감 일시를 입력해주세요.'); setSaving(false); return; }
-            const deadlineIso = toIso(deadlineAt);
-            const startIso = toIso(tournamentStartAt);
-            if (startIso && deadlineIso && new Date(deadlineIso).getTime() > new Date(startIso).getTime()) {
-                setSaveErr('드래프트 마감 일시는 토너먼트 시작 일시보다 늦을 수 없습니다.'); setSaving(false); return;
-            }
+    // [2026-10-13] 마감 일시 검증 2종은 입력 바로 아래 sm으로(에러 표시 정책, 입력별 분리) — saveErr는 서버 저장 실패 전용.
+    const validateDeadline = (): string | null => {
+        if (!deadlineEnabled) return null;
+        if (!deadlineAt) return '드래프트 마감 일시를 입력해주세요.';
+        const deadlineIso = toIso(deadlineAt);
+        const startIso = toIso(tournamentStartAt);
+        if (startIso && deadlineIso && new Date(deadlineIso).getTime() > new Date(startIso).getTime()) {
+            return `토너먼트 시작 일시보다 늦을 수 없습니다. ${tournamentStartAt.replace('T', ' ')} 이전으로 설정하세요.`;
         }
+        return null;
+    };
+
+    const handleSave = async () => {
+        setSaveOk(false); setSaveErr(null);
+        const deadlineError = validateDeadline();
+        setDeadlineErr(deadlineError);
+        if (deadlineError) return;
+        setSaving(true);
         try {
             const base = {
                 leagueId: league.id,
@@ -171,33 +182,33 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                     개인 팩 드래프트
                 </h2>
                 <div className="flex items-center gap-2">
-                    {saveErr && <span className="text-xs text-red-400 ko-normal">{saveErr}</span>}
-                    <button
+                    <Button
+                        variant="primary"
+                        size="sm"
                         onClick={handleSave}
                         disabled={!dirty || saving}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors"
+                        isLoading={saving}
+                        loadingText="저장 중…"
+                        icon={saveOk ? undefined : <Save size={12} />}
                     >
-                        {saving ? <><Loader2 size={12} className="animate-spin" />저장 중…</> : saveOk ? '저장됨 ✓' : <><Save size={12} />저장</>}
-                    </button>
+                        {saveOk ? '저장됨 ✓' : '저장'}
+                    </Button>
                 </div>
             </div>
 
+            {/* [2026-10-13] 저장 실패(검증 2종 + 서버) — 헤더 행 아래 md(헤더 우측은 문구가 길어 2~3줄로 깨짐). 입력별 분리는 2차 */}
+            {saveErr && <InlineNotice tone="danger">{saveErr}</InlineNotice>}
+
             {/* [2026-09-20] 카드 배선 이전(meta_players 후보)에 저장된 포맷 — 픽 시점에 인스턴스 FK 위반이 나므로 재저장 필요 */}
             {!formatLocked && league.personal_draft_format && league.personal_draft_format.source !== 'cards' && (
-                <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal bg-amber-950/30 border border-amber-700/40 rounded-xl px-3 py-2">
-                    <AlertCircle size={12} className="shrink-0 mt-0.5" />
-                    <span>이 포맷은 시즌 카드 도입 이전에 저장된 옛 형식입니다. 아래 라운드 구성을 확인하고 한 번 저장해야 팩 드래프트가 정상 동작합니다.</span>
-                </p>
+                <InlineNotice tone="warning">이 포맷은 시즌 카드 도입 이전에 저장된 옛 형식입니다. 아래 라운드 구성을 확인하고 한 번 저장해야 팩 드래프트가 정상 동작합니다.</InlineNotice>
             )}
             {formatLocked && (
-                <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal bg-amber-950/30 border border-amber-700/40 rounded-xl px-3 py-2">
-                    <Lock size={12} className="shrink-0 mt-0.5" />
-                    <span>
+                <InlineNotice tone="info">
                         {isInProgress
                             ? '토너먼트가 진행 중이라 드래프트 포맷은 잠겨 있습니다.'
                             : `${startedCount}팀이 이미 팩 드래프트를 시작해 라운드 구성·풀 범위·제한시간은 바꿀 수 없습니다. 시작 일시와 경기 포맷만 수정할 수 있습니다.`}
-                    </span>
-                </p>
+                    </InlineNotice>
             )}
 
             {/* ── 일정 / 경기 포맷 ── */}
@@ -233,6 +244,7 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                                 const on = e.target.checked;
                                 setDeadlineEnabled(on);
                                 if (on && !deadlineAt) setDeadlineAt(tournamentStartAt);
+                                setDeadlineErr(null);
                             }}
                             className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
                         />
@@ -243,10 +255,11 @@ export const PersonalDraftSettingsTab: React.FC<Props> = ({ league, room, isInPr
                             type="datetime-local"
                             value={deadlineAt}
                             max={tournamentStartAt}
-                            onChange={e => setDeadlineAt(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            onChange={e => { setDeadlineAt(e.target.value); setDeadlineErr(null); }}
+                            className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 ${deadlineErr ? 'border-red-500/60' : 'border-slate-700'}`}
                         />
                     )}
+                    {deadlineErr && <InlineNotice tone="danger" size="sm" className="mt-1">{deadlineErr}</InlineNotice>}
                     <p className="text-xs text-slate-600 ko-normal mt-1">
                         지나면 새 참가자 차단 + 미완료 참가자 강퇴 후 AI 채우기·자동 드래프트·대진표를 미리 준비합니다. 끄면 시작 5분 전에 같은 준비가 진행됩니다.
                     </p>

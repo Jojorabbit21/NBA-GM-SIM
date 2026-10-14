@@ -9,15 +9,20 @@ import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
+import { computeSeriesWins, seriesWinsFor } from '../views/multi/season/seasonPhase';
+import { fmtRemaining } from '../utils/formatRemaining';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { useServerClock } from '../utils/serverClock';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { useLeagueDraft } from '../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../utils/colorContrast';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
-import { CONF_NAMES } from '../utils/playoffLogic';
+import { TeamLogo } from './common/TeamLogo';
+import { Button } from './common/Button';
+import { getSeriesRoundLabel } from '../utils/playoffLogic';
 import type { Player } from '../types';
+
+// 남은 시간 포맷은 utils/formatRemaining.ts(홈 밴드 1 타이머와 공유). [2026-10-14 이동]
 
 function ordinal(n: number): string {
     if (n === 1) return '1st';
@@ -134,31 +139,12 @@ export const MultiHeader: React.FC = () => {
     const opponentTeam = leagueTeams.find(t => t.team_slug === opponentId);
     const isAway       = nextGame?.awayTeamId === myTeamId;
 
-    // 카운트다운 색상 (남은 시간 기준)
-    const countdownColor = useMemo(() => {
-        if (!nextGame?.resolvedAt) return 'text-indigo-400';
-        const diff = new Date(nextGame.resolvedAt).getTime() - nowMs;
-        if (diff <= 0) return 'text-indigo-400';
-        const totalSec = Math.floor(diff / 1000);
-        if (totalSec > 3600) return 'text-indigo-400';   // 1시간 초과: 기본
-        if (totalSec > 1800) return 'text-amber-400';    // 30분~1시간: 주의
-        return 'text-red-400';                           // 30분 미만: 긴박
-    }, [nextGame, nowMs]);
-
-    // 카운트다운 문자열
-    const countdown = useMemo(() => {
-        if (!nextGame?.resolvedAt) return null;
-        const diff = new Date(nextGame.resolvedAt).getTime() - nowMs;
-        if (diff <= 0) return '경기 시작';
-        const totalSec = Math.floor(diff / 1000);
-        const d  = Math.floor(totalSec / 86400);
-        const h  = Math.floor((totalSec % 86400) / 3600);
-        const m  = Math.floor((totalSec % 3600) / 60);
-        const s  = totalSec % 60;
-        if (d > 0) return `${d}일 ${h}시간`;
-        if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-        return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-    }, [nextGame, nowMs]);
+    // 다음 경기까지 남은 ms — 색상·문자열 둘 다 여기서 파생(매초 바뀌므로 useMemo 불필요).
+    const nextGameDiffMs = nextGame?.resolvedAt ? new Date(nextGame.resolvedAt).getTime() - nowMs : null;
+    const countdownColor = nextGameDiffMs == null || nextGameDiffMs > 3_600_000 ? 'text-indigo-400'   // 1시간 초과: 기본
+        : nextGameDiffMs > 1_800_000 ? 'text-amber-400'                                                // 30분~1시간: 주의
+        : nextGameDiffMs > 0 ? 'text-red-400' : 'text-indigo-400';                                     // 30분 미만: 긴박
+    const countdown = nextGameDiffMs == null ? null : fmtRemaining(nextGameDiffMs, '경기 시작');
 
     // 내 팀의 현재 진행중(LIVE)인 경기 — played=true지만 리플레이 10분 공개창 안에 있는 경기.
     // nextGame은 !played만 찾으므로 이미 시뮬레이션된 LIVE 경기는 잡히지 않아 별도로 찾는다.
@@ -182,41 +168,83 @@ export const MultiHeader: React.FC = () => {
         navigate(`${base}/game/${myLiveGame.id}`);
     }, [navigate, base, myLiveGame]);
 
+    // 시리즈별 승수 집계 — schedule을 한 번만 돌아 seriesId → (teamId → 승수) 맵을 만든다.
+    // 리플레이(10분) 공개 전 경기는 제외: 서버는 시뮬 직후 bracket_data.series를 즉시 갱신하므로
+    // played만 보면 관전 화면에 진행 중인 결과가 새어나간다. 아래 seriesInfo / seasonStatus /
+    // tournamentChampionId가 전부 이 맵을 조회한다(예전엔 셋이 각자 전체 스캔).
+    // [2026-10-14] 집계 로직은 views/multi/season/seasonPhase.ts로 이동(홈 밴드 1 "리그 현황"과 공유). 의존성은 그대로
+    // dateBucket(15초) — nowMs(1초)로 두면 매초 schedule 전체를 다시 돌게 된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const seriesWins = useMemo(() => computeSeriesWins(schedule, simStart, gprd, nowMs), [schedule, simStart, gprd, dateBucket]);
+    // 내 팀 기준 (내 승수, 상대 승수)
+    const winsFor = useCallback((seriesId: string, teamId: string | null) => seriesWinsFor(seriesWins, seriesId, teamId), [seriesWins]);
+
     // 시리즈 정보 (토너먼트 경기일 때)
     const seriesInfo = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId) return null;
-
         const allSeries: any[] = (league?.bracket_data as any)?.series ?? [];
         const s = allSeries.find((x: any) => x.id === nextGame.seriesId);
         if (!s) return null;
+        const { my: myWins, opp: oppWins } = winsFor(s.id, myTeamId);
+        return { roundLabel: getSeriesRoundLabel(s, allSeries, { confPrefix: true }), myWins, oppWins, targetWins: s.targetWins ?? 1 };
+    }, [nextGame, league, myTeamId, winsFor]);
 
-        const totalRounds = allSeries.reduce((max: number, x: any) => Math.max(max, x.round ?? 1), 1);
-        const r = s.round ?? 1;
-        const isFinalRound = r === totalRounds;
-        const baseRoundLabel = isFinalRound ? '결승'
-            : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
-            : `${r}라운드`;
-        // 결승은 동/서부 통합이라 컨퍼런스 접두어 없음 — 그 이전 라운드만 "동부 1라운드"처럼 표시.
-        const confPrefix = !isFinalRound && s.conference && s.conference !== 'BPL'
-            ? (CONF_NAMES[s.conference] ?? s.conference) + ' '
-            : '';
-        const roundLabel = confPrefix + baseRoundLabel;
+    // 내 팀의 예정 경기/카운트다운이 없을 때 시즌정보 칸에 보여줄 "현재 상황" 문구.
+    // 정규시즌 종료 / 플레이인·플레이오프 시리즈 대기 / 탈락 / 우승 등을 실제 데이터로 판정한다.
+    // 시리즈 종료 여부는 bracket_data.winnerId(서버가 시뮬 직후 즉시 세팅)가 아니라 공개창이
+    // 지난 경기만 센 승수로 판정 — 리플레이 중인 경기 결과가 헤더로 새지 않게 하기 위함.
+    const seasonStatus = useMemo((): string | null => {
+        if (!myTeamId || league?.type === 'tournament') return null;
+        const allSeries: any[] = (league?.bracket_data as any)?.series ?? [];
 
-        // schedule 기반 실시간 승수 계산 — 리플레이(10분) 공개 전 경기는 집계에서 제외.
-        // 서버는 시뮬레이션 직후 bracket_data.series를 즉시 갱신하므로, played 여부만으로
-        // 세면 아직 관전 화면에서는 진행중인 경기의 결과가 새어나간다.
-        let myWins = 0, oppWins = 0;
-        for (const g of schedule) {
-            if (g.seriesId !== nextGame.seriesId || !g.played || g.homeScore == null || g.awayScore == null) continue;
-            const resolvedAt = resolveRealAt(g, simStart, gprd);
-            if (!isFinal({ ...g, scheduledAt: resolvedAt }, nowMs)) continue;
-            const homeWon = g.homeScore > g.awayScore;
-            const myHome  = g.homeTeamId === myTeamId;
-            if ((myHome && homeWon) || (!myHome && !homeWon)) myWins++;
-            else oppWins++;
+        if (!allSeries.length) {
+            const hasRemaining = schedule.some(g => !g.played && !g.isPlayoff
+                && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
+            return hasRemaining ? null : '정규시즌 종료 · 포스트시즌 대기';
         }
-        return { roundLabel, myWins, oppWins, targetWins: s.targetWins ?? 1 };
-    }, [nextGame, league, schedule, myTeamId, simStart, gprd, dateBucket]);
+
+        const mine = allSeries.filter((x: any) => x.higherSeedId === myTeamId || x.lowerSeedId === myTeamId);
+        if (!mine.length) return '포스트시즌 진출 실패 · 시즌 종료';
+
+        const states = mine.map((x: any) => {
+            const w = winsFor(x.id, myTeamId);
+            const target = x.targetWins ?? 1;
+            return { s: x, ...w, target, done: w.my >= target || w.opp >= target };
+        });
+        const active = states.find(x => !x.done);
+        if (active) {
+            const label = getSeriesRoundLabel(active.s, allSeries, { confPrefix: true });
+            return active.target > 1
+                ? `${label} ${active.my}-${active.opp} · 다음 경기 대기`
+                : `${label} · 경기 대기`;
+        }
+
+        // 모든 시리즈 종료 — 가장 마지막(라운드 높은 쪽) 시리즈 결과로 판정.
+        const last = [...states].sort((a, b) => (a.s.round ?? 0) - (b.s.round ?? 0)).pop()!;
+        const label = getSeriesRoundLabel(last.s, allSeries, { confPrefix: true });
+        const finalRound = Math.max(...allSeries.map((x: any) => x.round ?? 1));
+        if (last.my > last.opp) {
+            if ((last.s.round ?? 0) === finalRound && finalRound > 0) return '우승!';
+            return last.s.round === 0 ? '플레이인 통과 · 1라운드 대기' : `${label} 승리 · 다음 라운드 대기`;
+        }
+        return last.s.round === 0 ? '플레이인 탈락 · 시즌 종료' : `${label} 탈락 · 시즌 종료`;
+    }, [league, schedule, myTeamId, winsFor]);
+
+    // 리그 전체에서 아직 안 치른 경기 중 가장 빠른 방송 시각 = "다음 경기일"까지의 목표 시각.
+    // 내 팀 경기가 없는 날(정규시즌 종료 후 타팀 대기, 탈락 후 등)에 seasonStatus 옆 타이머로 쓴다.
+    // 다음 라운드/플레이오프 경기가 아직 생성 전이면 null(타이머 숨김).
+    const nextLeagueGameAt = useMemo((): number | null => {
+        if (!simStart) return null;
+        let min: number | null = null;
+        for (const g of schedule) {
+            if (g.played) continue;
+            const at = resolveRealAt(g, simStart, gprd);
+            if (!at) continue;
+            const t = new Date(at).getTime();
+            if (min === null || t < min) min = t;
+        }
+        return min;
+    }, [schedule, simStart, gprd]);
 
     // 토너먼트 종료 여부 + 우승팀 (다음 경기가 없을 때 대체 표시용)
     // league.status==='finished'는 서버가 마지막 경기 시뮬 직후 즉시 세팅하므로, 그 경기의
@@ -228,21 +256,12 @@ export const MultiHeader: React.FC = () => {
         const finalRound = Math.max(...allSeries.map((s: any) => s.round ?? 1));
         const final = allSeries.find((s: any) => s.round === finalRound && s.winnerId);
         if (!final) return null;
-
-        let higherWins = 0, lowerWins = 0;
-        for (const g of schedule) {
-            if (g.seriesId !== final.id || !g.played || g.homeScore == null || g.awayScore == null) continue;
-            const resolvedAt = resolveRealAt(g, simStart, gprd);
-            if (!isFinal({ ...g, scheduledAt: resolvedAt }, nowMs)) continue;
-            const homeWon = g.homeScore > g.awayScore;
-            const winnerId = homeWon ? g.homeTeamId : g.awayTeamId;
-            if (winnerId === final.higherSeedId) higherWins++; else lowerWins++;
-        }
         const targetWins = final.targetWins ?? 1;
-        if (higherWins >= targetWins) return final.higherSeedId;
-        if (lowerWins >= targetWins) return final.lowerSeedId;
+        const byTeam = seriesWins.get(final.id);
+        if ((byTeam?.get(final.higherSeedId) ?? 0) >= targetWins) return final.higherSeedId;
+        if ((byTeam?.get(final.lowerSeedId) ?? 0) >= targetWins) return final.lowerSeedId;
         return null;
-    }, [league, schedule, simStart, gprd, dateBucket]);
+    }, [league, seriesWins]);
     const isMyTeamChampion = !!(tournamentChampionId && myTeamId && tournamentChampionId === myTeamId);
 
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -266,12 +285,8 @@ export const MultiHeader: React.FC = () => {
         ? seasonShortFromDate(currentVirtualDate)
         : nextGame ? seasonShortFromDate(nextGame.date) : null;
 
-    // [2026-08-26] 실제 예정된 경기가 없을 때 "시즌정보" 칸을 비워두지 않고 목업 "다음 경기"
-    // 표시를 보여주기로 결정(사용자 확인 후 유지 요청). 실제 데이터가 있으면 항상 실데이터 우선.
-    // [2026-09-11 Fix] 이 목업이 원래 전제한 "활성 시즌인데 아직 예정된 경기가 없는" 경우와
-    // 달리, 드래프트 완료 전(로터리/드래프트 단계)엔 애초에 시즌 자체가 없어 "동부 1라운드
-    // 2-1 @ ATL" 같은 가짜 시리즈 정보가 그대로 노출되는 버그가 있었다 — 드래프트 완료
-    // 여부를 fallbackMode 조건에 추가해 활성 시즌에서만 목업이 뜨도록 제한.
+    // [2026-10-12] 예정 경기가 없을 때 보여주던 목업("동부 1라운드 2-1 @ ATL 1:23:45") 제거 —
+    // 대신 위 seasonStatus(정규시즌 종료/시리즈 대기/탈락/우승)로 실제 상황을 표시한다.
     const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
     // [2026-09-11] LeagueLobbyPanel.tsx의 "토너먼트 정보" 섹션 하단에 있던 "드래프트 룸
     // 입장" 정적 안내 박스(로터리 완료~드래프트 시작 전 상태)를 삭제하고, 대신 로터리가
@@ -317,33 +332,14 @@ export const MultiHeader: React.FC = () => {
     const nextEventLabel = !lotteryDone ? '드래프트 순서 추첨' : '드래프트 시작';
     const nextEventAt    = !lotteryDone ? league?.lottery_scheduled_at : league?.draft_scheduled_at;
     const showEventCountdown = !isDraftComplete && !isDrafting && !!nextEventAt;
-    const eventCountdown = useMemo(() => {
-        if (!nextEventAt) return null;
-        const diff = new Date(nextEventAt).getTime() - nowMs;
-        if (diff <= 0) return '곧 시작';
-        const totalSec = Math.floor(diff / 1000);
-        const d  = Math.floor(totalSec / 86400);
-        const h  = Math.floor((totalSec % 86400) / 3600);
-        const m  = Math.floor((totalSec % 3600) / 60);
-        const s  = totalSec % 60;
-        const hh = String(h).padStart(2, '0');
-        const mm = String(m).padStart(2, '0');
-        const ss = String(s).padStart(2, '0');
-        return d > 0 ? `${d}일 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
-    }, [nextEventAt, nowMs]);
-    const fallbackMode        = isDraftComplete && !myLiveGame && !(nextGame && countdown) && !tournamentChampionId;
-    const fallbackOpponent    = leagueTeams.find(t => t.team_slug !== myTeamId) ?? null;
-    const displayOpponent     = fallbackMode ? fallbackOpponent : opponentTeam;
-    const displayOpponentId   = fallbackMode ? fallbackOpponent?.team_slug ?? null : opponentId;
-    const displayIsAway       = fallbackMode ? true : isAway;
-    const displayCountdown    = fallbackMode ? '1:23:45' : countdown;
-    const displayCountdownColor = fallbackMode ? 'text-indigo-400' : countdownColor;
-    const displaySeriesInfo   = fallbackMode ? { roundLabel: '동부 1라운드', myWins: 2, oppWins: 1, targetWins: 4 } : seriesInfo;
-    const showNextGame        = fallbackMode || (!!nextGame && !!countdown);
+    const eventCountdown = nextEventAt
+        ? fmtRemaining(new Date(nextEventAt).getTime() - nowMs, '곧 시작', 'clock')
+        : null;
+    const showNextGame = !!nextGame && !!countdown;
 
     return (
         <div
-            className="w-full sticky top-0 z-[100] flex items-center justify-between h-10 relative shrink-0 bg-slate-900 border-b border-slate-700"
+            className="w-full sticky top-0 z-header flex items-center justify-between h-10 relative shrink-0 bg-slate-900 border-b border-slate-700"
         >
             <div className="absolute inset-0 backdrop-blur-[20px] bg-[rgba(0,0,0,0.1)] pointer-events-none" />
 
@@ -358,30 +354,17 @@ export const MultiHeader: React.FC = () => {
                         style={{ backgroundColor: primaryColor, clipPath: 'polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%)' }}
                     />
                     {/* [2026-09-07] 팀명 좌측에 로고 추가(사용자 요청) — 다른 화면들과 동일한
-                        public/logos/real/ 로고 + 폴백 체인, 순수 장식용(클릭 불가, 이 영역
+                        TeamLogo 공용(리그 로고 1회 폴백), 순수 장식용(클릭 불가, 이 영역
                         자체가 원래 클릭 불가였음). */}
                     {myTeam && (
-                        <img
-                            src={getRealTeamLogoUrl(myTeam.team_slug)}
-                            alt={myTeam.team_abbr}
-                            className="relative w-5 h-5 object-contain shrink-0 mr-1.5"
-                            onError={(e) => {
-                                const img = e.currentTarget;
-                                if (img.dataset.fallback !== 'old') {
-                                    img.dataset.fallback = 'old';
-                                    img.src = getTeamLogoUrl(myTeam.team_slug);
-                                } else {
-                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                }
-                            }}
-                        />
+                        <TeamLogo teamId={myTeam.team_slug} teamName={myTeam.team_abbr} size="custom" className="relative w-5 h-5 shrink-0 mr-1.5" shadow={false} />
                     )}
                     <span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
                         {myTeam?.team_name ?? '내 팀'}
                         <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>
                         {league?.name && (
                             <span className="font-medium ml-1.5 opacity-80">
-                                {rank > 0 ? `${ordinal(rank)} in ` : ''}{league.name}
+                                {rank > 0 ? `${ordinal(rank)} in` : ''}{league.name}
                             </span>
                         )}
                     </span>
@@ -409,12 +392,14 @@ export const MultiHeader: React.FC = () => {
                                 </span>
                                 <span className={`tabular-nums ${headerDraftTimerColor}`}>{headerDraftTimer}</span>
                             </span>
-                            <button
+                            <Button
+                                variant="cta"
+                                size="sm"
                                 onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}
-                                className="flex items-center gap-1 px-3 py-1 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-xs font-black text-white transition-all active:scale-[0.98] shrink-0"
+                                className="shrink-0"
                             >
                                 드래프트 룸 입장
-                            </button>
+                            </Button>
                         </div>
                     ) : myLiveGame ? (
                         <>
@@ -424,26 +409,29 @@ export const MultiHeader: React.FC = () => {
                             </span>
                             <span className="text-red-400 font-bold shrink-0">LIVE</span>
                             <span className="shrink-0">{isLiveAway ? '@' : 'vs'} {liveOpponentTeam?.team_abbr ?? liveOpponentId ?? '—'}</span>
-                            <button
+                            <Button
+                                variant="danger"
+                                size="xs"
+                                shape="md"
                                 onClick={handleWatchLiveGame}
-                                className="flex items-center gap-1 px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-sm font-bold transition-all active:scale-95 shrink-0"
+                                icon={<Tv size={12} />}
+                                className="shrink-0"
                             >
-                                <Tv size={12} />
                                 보기
-                            </button>
+                            </Button>
                         </>
                     ) : showNextGame ? (
                         <>
-                            {displaySeriesInfo && (
+                            {seriesInfo && (
                                 <span className="shrink-0">
-                                    {displaySeriesInfo.roundLabel}
-                                    {displaySeriesInfo.targetWins > 1 && ` ${displaySeriesInfo.myWins}-${displaySeriesInfo.oppWins}`}
+                                    {seriesInfo.roundLabel}
+                                    {seriesInfo.targetWins > 1 && ` ${seriesInfo.myWins}-${seriesInfo.oppWins}`}
                                 </span>
                             )}
-                            <span className="shrink-0">{displayIsAway ? '@' : 'vs'} {displayOpponent?.team_abbr ?? displayOpponentId ?? '—'}</span>
-                            <span className={`flex items-center gap-1 font-semibold shrink-0 ${displayCountdownColor}`}>
+                            <span className="shrink-0">{isAway ? '@' : 'vs'} {opponentTeam?.team_abbr ?? opponentId ?? '—'}</span>
+                            <span className={`flex items-center gap-1 font-semibold shrink-0 ${countdownColor}`}>
                                 <Timer size={12} />
-                                {displayCountdown}
+                                {countdown}
                             </span>
                         </>
                     ) : tournamentChampionId ? (
@@ -452,6 +440,16 @@ export const MultiHeader: React.FC = () => {
                             <span className={`shrink-0 font-semibold ${isMyTeamChampion ? 'text-amber-400' : 'text-zinc-400'}`}>
                                 {isMyTeamChampion ? '우승! 토너먼트 종료' : '토너먼트 종료'}
                             </span>
+                        </>
+                    ) : isDraftComplete && seasonStatus ? (
+                        <>
+                            <span className="shrink-0">{seasonStatus}</span>
+                            {nextLeagueGameAt !== null && (
+                                <span className="flex items-center gap-1 font-semibold shrink-0 text-indigo-400">
+                                    <Timer size={12} />
+                                    다음 경기일까지 {fmtRemaining(nextLeagueGameAt - nowMs)}
+                                </span>
+                            )}
                         </>
                     ) : showEventCountdown ? (
                         <span className="flex items-center gap-1 font-semibold shrink-0 text-indigo-400">
@@ -479,12 +477,13 @@ export const MultiHeader: React.FC = () => {
                     onViewTeam={handleViewTeam}
                 />
                 {showDraftRoomButton && (
-                    <button
+                    <Button
+                        variant="cta"
                         onClick={() => navigate(draftRoomPath)}
-                        className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-black text-white transition-all active:scale-[0.98] shrink-0"
+                        className="px-4 shrink-0"
                     >
                         {isPersonalDraft ? '팩 드래프트 입장' : '드래프트 룸 입장'}
-                    </button>
+                    </Button>
                 )}
             </div>
         </div>

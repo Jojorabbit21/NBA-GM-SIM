@@ -46,7 +46,7 @@ export const QUERY_LABELS: Record<string, string> = {
 
 export type QueryErrorCategory = 'network' | 'db' | 'rpc' | 'mapping' | 'unknown';
 
-const CAUSE_TEXT: Record<QueryErrorCategory, string> = {
+export const CAUSE_TEXT: Record<QueryErrorCategory, string> = {
     network: '서버가 응답하지 않습니다.',
     db: '데이터베이스에서 오류가 발생했습니다.',
     rpc: '서버 처리 중 오류가 발생했습니다.',

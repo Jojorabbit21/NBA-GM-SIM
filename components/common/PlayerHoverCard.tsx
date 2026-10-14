@@ -150,7 +150,7 @@ export const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player
         <div
             ref={ref}
             style={style}
-            className="w-[300px] bg-slate-950 border border-slate-700 rounded-lg shadow-2xl p-3 pointer-events-none select-none"
+            className="z-tooltip w-[300px] bg-slate-950 border border-slate-700 rounded-lg shadow-2xl p-3 pointer-events-none select-none"
         >
             {/* 헤더 — 이름 · 소속팀 약어 · 포지션 · 나이 (전부 플레인 텍스트), 활성 부상/출장정지가
                 있으면 그 아래 한 줄 더 — [배지] [부상|출장정지] [부상명(부상일 때만)] [기간] */}
@@ -336,7 +336,7 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
         <>
             {child}
             {visible && coords && createPortal(
-                <PlayerRatingsStatsPopup ref={popupRef} player={player} teamAbbr={teamAbbr} style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 200 }} />,
+                <PlayerRatingsStatsPopup ref={popupRef} player={player} teamAbbr={teamAbbr} style={{ position: 'fixed', top: coords.top, left: coords.left }} />,
                 document.body,
             )}
         </>

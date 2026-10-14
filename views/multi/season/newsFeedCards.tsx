@@ -1,11 +1,13 @@
 
 import React, { useMemo, useState } from 'react';
-import { Flame, Loader2, TrendingUp, TrendingDown, Star, ArrowLeftRight, ArrowRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, type LucideIcon } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+import { Flame, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { TeamBadge } from '../../../components/common/TeamBadge';
 import { getReadableTextColor } from '../../../utils/colorContrast';
-import { getRealTeamLogoUrl, getTeamLogoUrl, CONFERENCE_COLORS, RISING_STARS_COLORS } from '../../../utils/constants';
+import { getLeagueLogoUrl, CONFERENCE_COLORS, RISING_STARS_COLORS } from '../../../utils/constants';
 import { BasketLines as ShotChartBasketLines } from '../../../components/game/tabs/GameShotChartTab';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import type { LeagueEvent, LeagueEventType } from '../../../hooks/useLeagueHeadlines';
@@ -18,6 +20,8 @@ import { useGameBoxScore } from '../../../hooks/useGameBoxScore';
 import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
 import type { GameBoxScoreData } from '../../../services/multi/gameQueries';
 import { formatMoney } from '../../../utils/formatMoney';
+import { EventLetterLogo, ClickableText, LetterShell, LetterSectionTitle, LetterLink, LetterHero, BoxScoreWaitNote, LetterPlayerCell, LetterTeamCell, LetterRankCell } from './newsFeedLetter';
+import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick } from '../../../services/multi/leagueEventPayload';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
@@ -98,22 +102,8 @@ function useBoxScorePlayerCardMap(
 // 디자인(헤더+본문+표)으로 순차 재설계 완료 — CardTier/tierFromScore/BIG_STAT_SIZE/
 // TeamMark/BigStat/CardShell은 더 이상 어떤 카드도 쓰지 않아 전부 삭제(죽은 코드).
 
-// [2026-09-02] 가상 언론사 The Basketball Chronicle 로고(public/images/bc2.svg, 원래
-// bc.svg에서 교체)를 모든 레터 카드 헤더 최상단(마스트헤드 격, h-4)에 표시(사용자 요청 —
-// 크기는 h-8→h-[22.4px]→h-4 순으로 여러 차례 축소) — 모든 레터 카드에 동일하게 적용.
-// [2026-09-03] 본문 최하단(기사 종료 표식 격, h-3)에도 같은 로고를 하나 더 찍었었는데
-// 사용자 요청으로 전부 삭제 — 헤더 마스트헤드(h-4)만 남음.
-const BrandMark: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <img src="/images/bc2.svg" alt="The Basketball Chronicle" className={className} />
-);
-
-// [2026-09-09] 올스타/라이징스타/3점 챌린지/덩크 컨테스트 서신 4종 본문 최상단에 이벤트별
-// 로고를 표시(사용자 요청) — BrandMark(마스트헤드, 매체 로고)와는 별개로, 각 서신의 본문
-// (헤더 구획 아래 첫 단락 앞)에 event-specific 로고를 크게 한 장 보여준다.
-// public/logos/real/AS/*.svg(사용자 제공, 100x100 정사각형) 재사용.
-const EventLetterLogo: React.FC<{ src: string; alt: string }> = ({ src, alt }) => (
-    <img src={src} alt={alt} className="h-16 w-16" />
-);
+// BrandMark / EventLetterLogo / LetterShell 등 레터 공용 골격은 ./newsFeedLetter.tsx로 이동 [2026-10-13].
+// (마스트헤드 h-4, 이벤트 로고 64px 정사각 — 과거 변경 이력: BrandMark 크기 h-8→h-[22.4px]→h-4, 본문 하단 로고 삭제)
 
 // [2026-09-01] "박스스코어" 텍스트 자리에 "원정팀약어 스코어-스코어 홈팀약어"를 표기하고
 // 팀약어/스코어 각각을 클릭 가능하게 해 달라는 요청 — 팀약어는 팀 화면
@@ -126,55 +116,31 @@ const BoxScoreHeadline: React.FC<{
     onOpenTeam?: (teamSlug: string) => void;
     onOpenGame?: () => void;
 }> = ({ game, teamBySlug, onOpenTeam, onOpenGame }) => {
-    if (!game) return <h4 className="text-lg font-black text-white uppercase">박스스코어</h4>;
+    if (!game) return <h4 className="text-lg font-black text-white">박스스코어</h4>;
     const awayTeam = teamBySlug.get(game.awaySlug);
     const homeTeam = teamBySlug.get(game.homeSlug);
     const teamSpan = (slug: string, team: LeagueTeamRow | undefined) => (
-        <span
-            className={`text-lg font-black text-white uppercase ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-            onClick={onOpenTeam ? (e) => { e.stopPropagation(); onOpenTeam(slug); } : undefined}
-        >
+        <ClickableText className="text-lg font-black text-white" onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
             {team?.team_abbr ?? slug}
-        </span>
+        </ClickableText>
     );
     // [2026-09-07] 팀약어 옆에 팀 로고를 붙여달라는 요청 — 컬러 배지(TeamBadge)가 아니라
-    // public/logos/real/의 실제 팀 로고 이미지 사용. RosterView.tsx/PlayerDetailView.tsx
-    // 헤더 로고와 동일한 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
-    // colorPrimary 없는(이론상만) 팀은 TeamLogo로 폴백. [2026-09-07 후속] 순수 장식용 —
+    // public/logos/teams/의 실제 팀 로고 이미지 사용. TeamLogo 공용(리그 로고 1회 폴백).
+    // [2026-09-07 후속] 순수 장식용 —
     // 클릭은 요청받은 적 없어 로고에 onClick/cursor-pointer를 붙이지 않는다(팀약어 텍스트만
     // 기존처럼 클릭 가능).
     const teamLogo = (slug: string, team: LeagueTeamRow | undefined) => (
         <span className="shrink-0">
-            {team?.color_primary ? (
-                <img
-                    src={getRealTeamLogoUrl(slug)}
-                    alt={team?.team_abbr ?? slug}
-                    className="w-8 h-8 object-contain"
-                    onError={(e) => {
-                        const img = e.currentTarget;
-                        if (img.dataset.fallback !== 'old') {
-                            img.dataset.fallback = 'old';
-                            img.src = getTeamLogoUrl(slug);
-                        } else {
-                            img.src = 'https://placehold.co/100x100?text=BPL';
-                        }
-                    }}
-                />
-            ) : (
-                <TeamLogo teamId={slug} teamName={team?.team_name} size="sm" />
-            )}
+            <TeamLogo teamId={slug} teamName={team?.team_abbr ?? slug} size="custom" className="w-8 h-8" shadow={false} />
         </span>
     );
     return (
         <h4 className="flex items-center gap-1.5">
             {teamLogo(game.awaySlug, awayTeam)}
             {teamSpan(game.awaySlug, awayTeam)}
-            <span
-                className={`text-lg font-black text-white ${onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                onClick={onOpenGame ? (e) => { e.stopPropagation(); onOpenGame(); } : undefined}
-            >
+            <ClickableText className="text-lg font-black text-white" onClick={onOpenGame}>
                 {game.awayScore}-{game.homeScore}
-            </span>
+            </ClickableText>
             {teamSpan(game.homeSlug, homeTeam)}
             {teamLogo(game.homeSlug, homeTeam)}
         </h4>
@@ -194,17 +160,12 @@ const HeadlineTitle: React.FC<{
     const namePart = hasPrefix ? playerName : headline;
     const rest = hasPrefix ? headline.slice(playerName.length) : '';
     return (
-        <h1 className="text-xl font-black text-white">
+        <>
             <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                <span
-                    className={onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                    onClick={onPlayerClick}
-                >
-                    {namePart}
-                </span>
+                <ClickableText onClick={onPlayerClick}>{namePart}</ClickableText>
             </PlayerHoverCard>
             {rest}
-        </h1>
+        </>
     );
 };
 
@@ -223,47 +184,36 @@ const QuarterScoreTable: React.FC<{
     const periodCount = Math.max(quarterScores.home.length, quarterScores.away.length, 4);
     const periodLabel = (i: number) => (i < 4 ? `Q${i + 1}` : `OT${i - 3}`);
 
-    const teamCell = (slug: string, team: LeagueTeamRow | undefined) => (
-        <span
-            className={`text-sm font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-            onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}
-        >
-            {team?.team_abbr ?? slug}
-        </span>
-    );
-
     return (
         // "쿼터별 득점" 라벨 삭제(사용자 요청) — 테이블 자체(Q1~Q4/최종 헤더)로 충분히
         // 자명해서 별도 제목 불필요. w-full 대신 콘텐츠 폭에 맞춰 자연스럽게 줄어들도록
         // (본문(max-w-5xl) 너비까지 늘어나지 않고 컴팩트하게 유지).
         <div className="space-y-1">
-            <table className="text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700">
-                        <th className="py-1.5 px-2" />
+            <Table variant="bare" density="compact" className="!w-fit text-sm text-slate-300">
+                <TableHead>
+                    <TableHeaderCell />
+                    {Array.from({ length: periodCount }, (_, i) => (
+                        <TableHeaderCell key={i}>{periodLabel(i)}</TableHeaderCell>
+                    ))}
+                    <TableHeaderCell>최종</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    <TableRow>
+                        <LetterTeamCell slug={awaySlug} team={awayTeam} onOpenTeam={onOpenTeam} />
                         {Array.from({ length: periodCount }, (_, i) => (
-                            <th key={i} className="py-1.5 px-2 text-sm font-bold text-slate-500 text-center">{periodLabel(i)}</th>
+                            <TableCell key={i} className="text-slate-200">{quarterScores.away[i] ?? '-'}</TableCell>
                         ))}
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-500 text-center">최종</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr className="border-b border-slate-800/60">
-                        <td className="py-1 px-2">{teamCell(awaySlug, awayTeam)}</td>
+                        <TableCell className="font-bold text-white">{awayScore}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <LetterTeamCell slug={homeSlug} team={homeTeam} onOpenTeam={onOpenTeam} />
                         {Array.from({ length: periodCount }, (_, i) => (
-                            <td key={i} className="py-1 px-2 text-sm text-slate-300 text-center">{quarterScores.away[i] ?? '-'}</td>
+                            <TableCell key={i} className="text-slate-200">{quarterScores.home[i] ?? '-'}</TableCell>
                         ))}
-                        <td className="py-1 px-2 text-sm font-bold text-white text-center">{awayScore}</td>
-                    </tr>
-                    <tr>
-                        <td className="py-1 px-2">{teamCell(homeSlug, homeTeam)}</td>
-                        {Array.from({ length: periodCount }, (_, i) => (
-                            <td key={i} className="py-1 px-2 text-sm text-slate-300 text-center">{quarterScores.home[i] ?? '-'}</td>
-                        ))}
-                        <td className="py-1 px-2 text-sm font-bold text-white text-center">{homeScore}</td>
-                    </tr>
-                </tbody>
-            </table>
+                        <TableCell className="font-bold text-white">{homeScore}</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
         </div>
     );
 };
@@ -298,10 +248,6 @@ function tsPct(pts: number, fga: number, fta: number): string {
     return denom > 0 ? `${((pts / denom) * 100).toFixed(1)}%` : '0';
 }
 
-const BOX_HEADER_CELL = 'py-1.5 px-2 text-sm font-bold text-slate-500 uppercase';
-const BOX_STAT_CELL = 'py-1 px-2 text-sm text-slate-300';
-const BOX_TOTAL_CELL = 'py-1.5 px-2 text-sm font-bold text-white';
-
 // [2026-09-01] 사용자가 "실제 서비스 박스스코어(components/game/BoxScoreTable.tsx)와
 // 디자인이 다르다"고 지적 — 조사해보니 이 컴포넌트는 그쪽을 재사용한 게 아니라
 // components/common/Table.tsx(카드형 UI 테이블 프리미티브: rounded-xl+shadow+sticky
@@ -309,6 +255,9 @@ const BOX_TOTAL_CELL = 'py-1.5 px-2 text-sm font-bold text-white';
 // 어색하다는 사용자 판단으로, 공용 컴포넌트로 통일하는 대신 카드 UI 자체를 걷어내고
 // 순수 HTML <table> 텍스트 테이블로 간소화(테두리 없는 얇은 구분선만, 배경/그림자 없음)
 // — 신문 박스스코어 같은 톤. 정렬 인터랙션 없음(선발 우선 + 출전시간 내림차순 고정).
+// [2026-10-13] 그 "박스 없는 텍스트 표" 톤을 공용 Table의 `variant="bare" density="compact"`로
+// 흡수해 다시 공용 컴포넌트로 돌아옴(docs/plan/ui-consolidation.md 6장 2번) — 모양은 유지,
+// 구분선 색·셀 패딩·헤더 배경이 다른 표들과 한 곳(Table.tsx)에서 결정된다.
 // [2026-09-01 후속] 로고/tracking-wide*/tabular-nums/font-mono 삭제(사용자 요청, "텍스트
 // 테이블"에 더 어울리게), MIN을 mm:ss로, REB을 OREB/TREB(offReb+defReb 합산)로 분리,
 // PF/FG%/3P%/FT%/TS% 컬럼 추가 — offReb/defReb/pf는 PlayerBoxScore에 이미 있던
@@ -324,110 +273,105 @@ const TeamBoxTable: React.FC<{
     const totals = sumBox(rows);
     // [2026-09-01] 헤더 배경에 팀 테마 컬러 적용 요청 — TeamMark와 동일한 방식
     // (color_primary를 배경으로, color_text 없으면 getReadableTextColor로 대비색 계산).
-    // 인라인 style로 적용해 BOX_HEADER_CELL의 text-slate-500 클래스와 충돌 없이 항상 이김.
+    // 인라인 style로 적용해 헤더 기본 글자색(text-slate-400)과 충돌 없이 항상 이김.
     const headerBg = team?.color_primary ?? '#1e293b';
     const headerFg = team?.color_text ?? getReadableTextColor(headerBg);
 
     return (
         <div className="space-y-2">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-700" style={{ backgroundColor: headerBg }}>
-                            <th
-                                className={`py-1.5 px-2 text-left text-sm font-black ${onOpenTeam ? 'cursor-pointer hover:underline' : ''}`}
-                                style={{ color: headerFg }}
-                                onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
+            <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                <TableHead noRow>
+                    <tr className="h-8 text-sm font-bold" style={{ backgroundColor: headerBg }}>
+                        <TableHeaderCell
+                            align="left"
+                            className="font-black"
+                            style={{ color: headerFg }}
+                            onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
+                        >
+                            <span className={onOpenTeam ? 'cursor-pointer hover:underline' : ''}>{team?.team_name ?? teamSlug}</span>
+                        </TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>POS</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>MIN</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>PTS</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>OREB</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>TREB</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>AST</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>STL</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>BLK</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>TOV</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>PF</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>FG</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>FG%</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>3P</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>3P%</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>FT</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>FT%</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>TS%</TableHeaderCell>
+                        <TableHeaderCell style={{ color: headerFg }}>+/-</TableHeaderCell>
+                    </tr>
+                </TableHead>
+                <TableBody>
+                    {rows.map(p => {
+                        const entry = playerCardMap.get(p.playerId);
+                        const isHighlighted = p.playerId === highlightPlayerId;
+                        return (
+                            <TableRow
+                                key={p.playerId}
+                                onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
+                                className={isHighlighted ? 'bg-amber-400/10' : ''}
                             >
-                                {team?.team_name ?? teamSlug}
-                            </th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>POS</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>MIN</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>PTS</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>OREB</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>TREB</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>AST</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>STL</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>BLK</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>TOV</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>PF</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>FG</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>FG%</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>3P</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>3P%</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>FT</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>FT%</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>TS%</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`} style={{ color: headerFg }}>+/-</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map(p => {
-                            const entry = playerCardMap.get(p.playerId);
-                            const isHighlighted = p.playerId === highlightPlayerId;
-                            return (
-                                <tr
-                                    key={p.playerId}
-                                    onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
-                                    className={`border-b border-slate-800/60 ${isHighlighted ? 'bg-amber-400/10' : ''} ${onPlayerClick ? 'cursor-pointer hover:bg-white/5' : ''}`}
-                                >
-                                    <td className="py-1 px-2 text-left">
-                                        <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                            <span className="text-sm font-bold text-slate-300">{p.playerName}</span>
-                                        </PlayerHoverCard>
-                                    </td>
-                                    <td className={`${BOX_STAT_CELL} text-center text-slate-500`}>{p.position ?? '-'}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{formatMinutesClock(p.mp) ?? Math.round(p.mp)}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center font-bold text-white`}>{p.pts}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.offReb}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.offReb + p.defReb}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.ast}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.stl}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.blk}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.tov}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.pf}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.fgm}/{p.fga}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{pct(p.fgm, p.fga)}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.p3m}/{p.p3a}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{pct(p.p3m, p.p3a)}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{p.ftm}/{p.fta}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{pct(p.ftm, p.fta)}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{tsPct(p.pts, p.fga, p.fta)}</td>
-                                    <td className={`${BOX_STAT_CELL} text-center font-bold ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                                        {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                    {/* 합계 행에 페이지 배경(bg-slate-900)보다 살짝 밝은 색을 깔아 테이블의
-                        마무리를 시각적으로 구분(사용자 요청 — "완결성 부여"). */}
-                    <tfoot className="bg-slate-800/40">
-                        <tr className="border-t border-slate-700">
-                            <td className="py-1.5 px-2 text-sm font-black text-white uppercase">합계</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>-</td>
-                            {/* 합계 MIN(항상 5인×48분=240:00 고정값이라 정보량 없음) — 사용자 요청으로 비움 */}
-                            <td className={`${BOX_TOTAL_CELL} text-center`} />
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.pts}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.offReb}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.offReb + totals.defReb}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.ast}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.stl}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.blk}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.tov}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.pf}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.fgm}/{totals.fga}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{pct(totals.fgm, totals.fga)}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.p3m}/{totals.p3a}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{pct(totals.p3m, totals.p3a)}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{totals.ftm}/{totals.fta}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{pct(totals.ftm, totals.fta)}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center`}>{tsPct(totals.pts, totals.fga, totals.fta)}</td>
-                            <td className={`${BOX_TOTAL_CELL} text-center text-slate-600`}>—</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+                                <LetterPlayerCell name={p.playerName} entry={entry} muted />
+                                <TableCell className="text-slate-500">{p.position ?? '-'}</TableCell>
+                                <TableCell>{formatMinutesClock(p.mp) ?? Math.round(p.mp)}</TableCell>
+                                <TableCell className="font-bold text-white">{p.pts}</TableCell>
+                                <TableCell>{p.offReb}</TableCell>
+                                <TableCell>{p.offReb + p.defReb}</TableCell>
+                                <TableCell>{p.ast}</TableCell>
+                                <TableCell>{p.stl}</TableCell>
+                                <TableCell>{p.blk}</TableCell>
+                                <TableCell>{p.tov}</TableCell>
+                                <TableCell>{p.pf}</TableCell>
+                                <TableCell>{p.fgm}/{p.fga}</TableCell>
+                                <TableCell>{pct(p.fgm, p.fga)}</TableCell>
+                                <TableCell>{p.p3m}/{p.p3a}</TableCell>
+                                <TableCell>{pct(p.p3m, p.p3a)}</TableCell>
+                                <TableCell>{p.ftm}/{p.fta}</TableCell>
+                                <TableCell>{pct(p.ftm, p.fta)}</TableCell>
+                                <TableCell>{tsPct(p.pts, p.fga, p.fta)}</TableCell>
+                                <TableCell className={`font-bold ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+                {/* 합계 행에 페이지 배경(bg-slate-900)보다 살짝 밝은 색을 깔아 테이블의
+                    마무리를 시각적으로 구분(사용자 요청 — "완결성 부여"). TableFoot(bare)이 bg-slate-800/40 제공. */}
+                <TableFoot>
+                    <TableRow>
+                        <TableCell align="left" className="font-bold text-white">합계</TableCell>
+                        <TableCell className="font-bold text-white">-</TableCell>
+                        {/* 합계 MIN(항상 5인×48분=240:00 고정값이라 정보량 없음) — 사용자 요청으로 비움 */}
+                        <TableCell className="font-bold text-white" />
+                        <TableCell className="font-bold text-white">{totals.pts}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.offReb}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.offReb + totals.defReb}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.ast}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.stl}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.blk}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.tov}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.pf}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.fgm}/{totals.fga}</TableCell>
+                        <TableCell className="font-bold text-white">{pct(totals.fgm, totals.fga)}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.p3m}/{totals.p3a}</TableCell>
+                        <TableCell className="font-bold text-white">{pct(totals.p3m, totals.p3a)}</TableCell>
+                        <TableCell className="font-bold text-white">{totals.ftm}/{totals.fta}</TableCell>
+                        <TableCell className="font-bold text-white">{pct(totals.ftm, totals.fta)}</TableCell>
+                        <TableCell className="font-bold text-white">{tsPct(totals.pts, totals.fga, totals.fta)}</TableCell>
+                        <TableCell className="font-bold text-slate-600">—</TableCell>
+                    </TableRow>
+                </TableFoot>
+            </Table>
         </div>
     );
 };
@@ -477,34 +421,18 @@ export const GameResultCard: React.FC<{
     const titleRest = hasPrefix ? title.slice(winnerName.length) : '';
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    <span
-                        className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                        onClick={onOpenTeam ? () => onOpenTeam(winnerSlug) : undefined}
-                    >
-                        {titleNamePart}
-                    </span>
-                    {titleRest}
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<>
+                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(winnerSlug) : undefined}>
+                    {titleNamePart}
+                </ClickableText>
+                {titleRest}
+            </>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             {isBoxLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="section" />
             ) : boxScore ? (
                 <div className="space-y-4">
                     <BoxScoreHeadline
@@ -519,17 +447,15 @@ export const GameResultCard: React.FC<{
                         />
                     )}
                     <div className="space-y-4">
-                        <h4 className="text-base font-black text-white uppercase">박스스코어</h4>
+                        <LetterSectionTitle level="h4">박스스코어</LetterSectionTitle>
                         <TeamBoxTable team={teamBySlug.get(boxScore.awayTeamId)} teamSlug={boxScore.awayTeamId} box={boxScore.awayBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
                         <TeamBoxTable team={teamBySlug.get(boxScore.homeTeamId)} teamSlug={boxScore.homeTeamId} box={boxScore.homeBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
                     </div>
                 </div>
             ) : event.gameId ? (
-                <p className="text-xs text-slate-500 ko-normal py-4 text-center border border-dashed border-slate-800 rounded-lg">
-                    박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
-                </p>
+                <BoxScoreWaitNote />
             ) : null}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -555,38 +481,16 @@ export const FeatCard: React.FC<{
     const entry = boxPlayerCardMap.get(player.id);
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                {/* [2026-09-01] 상대시각/피처타입 배지 줄 삭제(사용자 요청) — 대신 실제 뉴스
-                    헤드라인(예: "루디 고베어, 더블더블(25득점-15리바운드) 달성")을 선수명에
-                    쓰던 폰트(h1, font-black text-xl text-white)로 그대로 표시.
-                    [후속] 호버/클릭 효과는 헤드라인 전체가 아니라 선수 이름 부분에만
-                    적용되도록 HeadlineTitle로 분리(사용자 요청).
-                    [후속2] "제목도 바리에이션" 요청 — DB 고정 headline 대신
-                    buildNewsTitle()의 event.id 기반 결정론적 varied 제목 사용(null이면
-                    event.headline 폴백). */}
-                <HeadlineTitle
-                    headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
-                    onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
-                />
-                {/* [2026-09-01] 타이틀 하단에 뉴스 발생 날짜(인게임/시뮬레이션 날짜) 표기 요청. */}
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<HeadlineTitle
+                headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
+                onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
+            />}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             {isBoxLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="section" />
             ) : boxScore ? (
                 <div className="space-y-4">
                     <BoxScoreHeadline
@@ -603,11 +507,9 @@ export const FeatCard: React.FC<{
                 // 행 자체가 조회되지 않는다(존재는 하지만 RLS가 가려서 null로 옴). 이전엔 이
                 // 경우를 "데이터 없음"과 구분 안 하고 조용히 아무것도 안 그려서 사용자가 버그로
                 // 오인했다 — 이유를 명시.
-                <p className="text-xs text-slate-500 ko-normal py-4 text-center border border-dashed border-slate-800 rounded-lg">
-                    박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
-                </p>
+                <BoxScoreWaitNote />
             ) : null}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -617,7 +519,7 @@ export const FeatCard: React.FC<{
 // PTS/REB/AST/STL/BLK/TOV/PF/FG%/3P%/FT% 컬럼을 갖춘 테이블로 보여달라" 요청 — 이 경기
 // 하나의 전체 박스스코어(양팀 전원)는 이 선수 개인의 연속 기록과 무관한 정보라 제거하고,
 // 대신 연속 기록을 구성하는 "이 선수의" 경기별 스탯 라인을 테이블로 표시한다. 스타일은
-// TeamBoxTable(박스스코어)과 동일한 톤(BOX_HEADER_CELL/BOX_STAT_CELL, pct(), 테두리 없는
+// TeamBoxTable(박스스코어)과 동일한 톤(공용 Table bare/compact, pct(), 테두리 없는
 // 얇은 구분선)을 그대로 재사용 — "기존 서신에 쓰던 박스스코어와 동일한 스타일" 요청 반영.
 // 이제 경기당 박스스코어를 즉석 조회할 필요가 없어져 useGameBoxScore/roomId는 함께
 // 제거(entry는 playerCardMap에서 바로 조회 — player_streak 이벤트의 playerIds가 이미
@@ -634,104 +536,83 @@ export const StreakCard: React.FC<{
     const entry = playerCardMap.get(player.id);
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                {/* [2026-09-01] 상대시각/연속기록 배지 줄 삭제(사용자 요청) — 대신 실제 뉴스
-                    헤드라인(예: "N경기 연속 20+득점")을 선수명에 쓰던 폰트로 표시.
-                    [후속] 호버/클릭 효과는 선수 이름 부분에만(HeadlineTitle).
-                    [후속2] "제목도 바리에이션" 요청 — buildNewsTitle() 사용(null이면
-                    event.headline 폴백). */}
-                <HeadlineTitle
-                    headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
-                    onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
-                />
-                {/* [2026-09-01] 타이틀 하단에 뉴스 발생 날짜(인게임/시뮬레이션 날짜) 표기 요청. */}
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<HeadlineTitle
+                headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
+                onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
+            />}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             {/* [2026-09-02] "연속기록 중인 모든 경기의 결과를 표시할 수 있나" 요청 — WinStreakCard의
                 "연승 경기 기록" 리스트와 동일한 패턴. 동시에 여러 규칙(예: 20+득점 연속 + 10+리바운드
                 연속)이 걸려 있으면 규칙별로 각각 테이블을 만든다(규칙마다 연속 길이/경기 구성이
                 다를 수 있어서 — server/src/shared/leagueEvents.ts의 gamesForRule 참고). */}
             {streaks.filter(s => s.games.length > 0).map(s => (
                 <div key={s.ruleKey} className="space-y-2">
-                    <h4 className="text-base font-black text-white uppercase">{s.label} 연속 기록</h4>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className={BOX_HEADER_CELL}>날짜</th>
-                                    <th className={BOX_HEADER_CELL}>상대</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>PTS</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>REB</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>AST</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>STL</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>BLK</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>TOV</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>PF</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>FG%</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>3P%</th>
-                                    <th className={`${BOX_HEADER_CELL} text-center`}>FT%</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {s.games.map(g => {
-                                    const homeTeam = teamBySlug.get(g.homeSlug);
-                                    const awayTeam = teamBySlug.get(g.awaySlug);
-                                    return (
-                                        <tr key={g.gameId} className="border-b border-slate-800/60">
-                                            <td className={`${BOX_STAT_CELL} whitespace-nowrap`}>{g.gameDate}</td>
-                                            <td className={`${BOX_STAT_CELL} whitespace-nowrap`}>
-                                                <span
-                                                    className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                    onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
-                                                >
-                                                    {awayTeam?.team_abbr ?? g.awaySlug}
-                                                </span>
-                                                {' '}
-                                                <span
-                                                    className={onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                                                    onClick={onOpenGame ? () => onOpenGame(g.gameId) : undefined}
-                                                >
-                                                    {g.awayScore}-{g.homeScore}
-                                                </span>
-                                                {' '}
-                                                <span
-                                                    className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                    onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
-                                                >
-                                                    {homeTeam?.team_abbr ?? g.homeSlug}
-                                                </span>
-                                            </td>
-                                            <td className={`${BOX_STAT_CELL} text-center font-bold text-white`}>{g.pts}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.reb}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.ast}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.stl}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.blk}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.tov}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{g.pf}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.fgm, g.fga)}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.p3m, g.p3a)}</td>
-                                            <td className={`${BOX_STAT_CELL} text-center`}>{pct(g.ftm, g.fta)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                    <LetterSectionTitle level="h4">{s.label} 연속 기록</LetterSectionTitle>
+                    <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                        <TableHead>
+                            <TableHeaderCell align="left">날짜</TableHeaderCell>
+                            <TableHeaderCell align="left">상대</TableHeaderCell>
+                            <TableHeaderCell>PTS</TableHeaderCell>
+                            <TableHeaderCell>REB</TableHeaderCell>
+                            <TableHeaderCell>AST</TableHeaderCell>
+                            <TableHeaderCell>STL</TableHeaderCell>
+                            <TableHeaderCell>BLK</TableHeaderCell>
+                            <TableHeaderCell>TOV</TableHeaderCell>
+                            <TableHeaderCell>PF</TableHeaderCell>
+                            <TableHeaderCell>FG%</TableHeaderCell>
+                            <TableHeaderCell>3P%</TableHeaderCell>
+                            <TableHeaderCell>FT%</TableHeaderCell>
+                        </TableHead>
+                        <TableBody>
+                            {s.games.map(g => {
+                                const homeTeam = teamBySlug.get(g.homeSlug);
+                                const awayTeam = teamBySlug.get(g.awaySlug);
+                                return (
+                                    <TableRow key={g.gameId}>
+                                        <TableCell align="left">{g.gameDate}</TableCell>
+                                        <TableCell align="left">
+                                            <span
+                                                className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
+                                            >
+                                                {awayTeam?.team_abbr ?? g.awaySlug}
+                                            </span>
+                                            {' '}
+                                            <span
+                                                className={onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                                onClick={onOpenGame ? () => onOpenGame(g.gameId) : undefined}
+                                            >
+                                                {g.awayScore}-{g.homeScore}
+                                            </span>
+                                            {' '}
+                                            <span
+                                                className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
+                                            >
+                                                {homeTeam?.team_abbr ?? g.homeSlug}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="font-bold text-white">{g.pts}</TableCell>
+                                        <TableCell>{g.reb}</TableCell>
+                                        <TableCell>{g.ast}</TableCell>
+                                        <TableCell>{g.stl}</TableCell>
+                                        <TableCell>{g.blk}</TableCell>
+                                        <TableCell>{g.tov}</TableCell>
+                                        <TableCell>{g.pf}</TableCell>
+                                        <TableCell>{pct(g.fgm, g.fga)}</TableCell>
+                                        <TableCell>{pct(g.p3m, g.p3a)}</TableCell>
+                                        <TableCell>{pct(g.ftm, g.fta)}</TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
                 </div>
             ))}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -749,7 +630,7 @@ export const WinStreakCard: React.FC<{
     const team = teamBySlug.get(teamSlug);
     const blurb = buildNewsBlurb(event, teamBySlug);
 
-    // [2026-09-01] "제목도 바리에이션" 요청 — 고정된 ", N연승 질주" 대신
+    // [2026-09-01] "제목도 바리에이션" 요청 — 고정된", N연승 질주" 대신
     // buildNewsTitle()이 event.id 기반으로 매번 같은(결정론적) varied 제목을 만든다.
     // 이름 접두사는 항상 team?.team_name과 정확히 일치하도록 조립되므로(newsBlurb.ts)
     // 그 부분만 잘라 클릭 가능하게 유지. buildNewsTitle이 null이면(이론상만) 기존
@@ -759,33 +640,19 @@ export const WinStreakCard: React.FC<{
     const titleRest = title.startsWith(teamNameText) ? title.slice(teamNameText.length) : `, ${streak}연승 질주`;
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    <span
-                        className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                        onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
-                    >
-                        {teamNameText}
-                    </span>
-                    {titleRest}
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<>
+                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}>
+                    {teamNameText}
+                </ClickableText>
+                {titleRest}
+            </>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             {games.length > 0 && (
                 <div className="space-y-1">
-                    <h4 className="text-base font-black text-white uppercase">연승 경기 기록</h4>
+                    <LetterSectionTitle level="h4">연승 경기 기록</LetterSectionTitle>
                     <div className="divide-y divide-slate-800/60">
                         {games.map(g => {
                             const homeTeam = teamBySlug.get(g.homeSlug);
@@ -794,29 +661,20 @@ export const WinStreakCard: React.FC<{
                             return (
                                 <div key={g.gameId} className="flex items-center gap-2 py-2 text-sm">
                                     <span className="text-slate-500 shrink-0">{g.gameDate}</span>
-                                    <span
-                                        className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
-                                    >
+                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}>
                                         {awayTeam?.team_abbr ?? g.awaySlug}
-                                    </span>
+                                    </ClickableText>
                                     <span className="text-slate-300">{g.awayScore}-{g.homeScore}</span>
-                                    <span
-                                        className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
-                                    >
+                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}>
                                         {homeTeam?.team_abbr ?? g.homeSlug}
-                                    </span>
+                                    </ClickableText>
                                     {g.mvp && (
                                         <>
                                             <span className="text-slate-600">|</span>
                                             <PlayerHoverCard player={mvpEntry?.player} teamAbbr={mvpEntry?.teamAbbr}>
-                                                <span
-                                                    className={onPlayerClick ? 'font-bold text-slate-300 cursor-pointer hover:text-indigo-400 hover:underline' : 'font-bold text-slate-300'}
-                                                    onClick={onPlayerClick ? () => onPlayerClick(g.mvp!.playerId) : undefined}
-                                                >
+                                                <ClickableText className="font-bold text-slate-300" onClick={onPlayerClick ? () => onPlayerClick(g.mvp!.playerId) : undefined}>
                                                     {g.mvp.name}
-                                                </span>
+                                                </ClickableText>
                                             </PlayerHoverCard>
                                         </>
                                     )}
@@ -826,7 +684,7 @@ export const WinStreakCard: React.FC<{
                     </div>
                 </div>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -855,30 +713,27 @@ const TradePlayerTable: React.FC<{
 
     return (
         <div className="space-y-2">
-            <span
-                className={`text-sm font-black text-slate-300 uppercase ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
-            >
+            <ClickableText className="text-sm font-black text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}>
                 {team?.team_name ?? teamSlug}
-                <span className="text-slate-500 normal-case"> 방출 선수</span>
-            </span>
+                <span className="text-slate-500"> 방출 선수</span>
+            </ClickableText>
             {/* w-full+table-fixed — 두 팀 테이블(teamA/teamB)이 같은 부모(space-y-4) 안에서
                 항상 같은 전체 너비를 갖고(사용자 요청), 각 열의 너비도 선수 이름 길이 등
                 콘텐츠와 무관하게 항상 동일한 비율로 고정되도록(후속 요청 — table-fixed
                 없이는 브라우저가 각 테이블을 콘텐츠 기준으로 따로 계산해 두 테이블의 열
                 경계가 서로 어긋나 보임). 긴 이름은 truncate로 한 줄 유지. */}
-            <table className="w-full table-fixed text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700" style={{ backgroundColor: headerBg }}>
-                        <th className="w-[32%] py-1.5 px-2 text-sm font-bold text-left" style={{ color: headerFg }}>선수</th>
-                        <th className="w-[13%] py-1.5 px-2 text-sm font-bold text-center" style={{ color: headerFg }}>PTS</th>
-                        <th className="w-[13%] py-1.5 px-2 text-sm font-bold text-center" style={{ color: headerFg }}>REB</th>
-                        <th className="w-[13%] py-1.5 px-2 text-sm font-bold text-center" style={{ color: headerFg }}>AST</th>
-                        <th className="w-[16%] py-1.5 px-2 text-sm font-bold text-center" style={{ color: headerFg }}>연봉</th>
-                        <th className="w-[13%] py-1.5 px-2 text-sm font-bold text-center" style={{ color: headerFg }}>잔여연수</th>
+            <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
+                <TableHead noRow>
+                    <tr className="h-8 text-sm font-bold" style={{ backgroundColor: headerBg }}>
+                        <TableHeaderCell align="left" className="w-[32%]" style={{ color: headerFg }}>선수</TableHeaderCell>
+                        <TableHeaderCell className="w-[13%]" style={{ color: headerFg }}>PTS</TableHeaderCell>
+                        <TableHeaderCell className="w-[13%]" style={{ color: headerFg }}>REB</TableHeaderCell>
+                        <TableHeaderCell className="w-[13%]" style={{ color: headerFg }}>AST</TableHeaderCell>
+                        <TableHeaderCell className="w-[16%]" style={{ color: headerFg }}>연봉</TableHeaderCell>
+                        <TableHeaderCell className="w-[13%]" style={{ color: headerFg }}>잔여연수</TableHeaderCell>
                     </tr>
-                </thead>
-                <tbody>
+                </TableHead>
+                <TableBody>
                     {players.map(p => {
                         const entry = playerCardMap.get(p.id);
                         const salary = entry?.player?.salary;
@@ -886,38 +741,30 @@ const TradePlayerTable: React.FC<{
                         const stats = entry?.player?.stats;
                         const g = stats?.g ?? 0;
                         return (
-                            <tr
-                                key={p.id}
-                                onClick={onPlayerClick ? () => onPlayerClick(p.id) : undefined}
-                                className={`border-b border-slate-800/60 ${onPlayerClick ? 'cursor-pointer hover:bg-white/5' : ''}`}
-                            >
-                                <td className="py-1 px-2 text-left truncate">
-                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                        <span className="text-sm font-bold text-slate-300">{p.name}</span>
-                                    </PlayerHoverCard>
-                                </td>
-                                <td className="py-1 px-2 text-sm text-slate-300 text-center">{avgStat(stats?.pts ?? 0, g)}</td>
-                                <td className="py-1 px-2 text-sm text-slate-300 text-center">{avgStat(stats?.reb ?? 0, g)}</td>
-                                <td className="py-1 px-2 text-sm text-slate-300 text-center">{avgStat(stats?.ast ?? 0, g)}</td>
-                                <td className="py-1 px-2 text-sm text-slate-300 text-center">{salary != null ? formatMoney(salary) : '-'}</td>
-                                <td className="py-1 px-2 text-sm text-slate-300 text-center">{years != null ? `${years}년` : '-'}</td>
-                            </tr>
+                            <TableRow key={p.id} onClick={onPlayerClick ? () => onPlayerClick(p.id) : undefined}>
+                                <LetterPlayerCell name={p.name} entry={entry} muted className="truncate" />
+                                <TableCell>{avgStat(stats?.pts ?? 0, g)}</TableCell>
+                                <TableCell>{avgStat(stats?.reb ?? 0, g)}</TableCell>
+                                <TableCell>{avgStat(stats?.ast ?? 0, g)}</TableCell>
+                                <TableCell align="right" className="tabular-nums">{salary != null ? formatMoney(salary) : '-'}</TableCell>
+                                <TableCell>{years != null ? `${years}년` : '-'}</TableCell>
+                            </TableRow>
                         );
                     })}
-                </tbody>
+                </TableBody>
                 {/* 합계 행에 페이지 배경보다 살짝 밝은 색을 깔아 테이블의 마무리를 시각적으로
                     구분(TeamBoxTable의 "완결성 부여" 요청과 동일 패턴 재사용). */}
-                <tfoot className="bg-slate-800/40">
-                    <tr className="border-t border-slate-700">
-                        <td className="py-1.5 px-2 text-sm font-black text-white uppercase">합계</td>
-                        <td className="py-1.5 px-2 text-sm text-center text-slate-600">—</td>
-                        <td className="py-1.5 px-2 text-sm text-center text-slate-600">—</td>
-                        <td className="py-1.5 px-2 text-sm text-center text-slate-600">—</td>
-                        <td className="py-1.5 px-2 text-sm font-bold text-white text-center">{formatMoney(totalSalary)}</td>
-                        <td className="py-1.5 px-2 text-sm text-center text-slate-600">—</td>
-                    </tr>
-                </tfoot>
-            </table>
+                <TableFoot>
+                    <TableRow>
+                        <TableCell align="left" className="font-bold text-white">합계</TableCell>
+                        <TableCell className="text-slate-600">—</TableCell>
+                        <TableCell className="text-slate-600">—</TableCell>
+                        <TableCell className="text-slate-600">—</TableCell>
+                        <TableCell align="right" className="font-bold text-white tabular-nums">{formatMoney(totalSalary)}</TableCell>
+                        <TableCell className="text-slate-600">—</TableCell>
+                    </TableRow>
+                </TableFoot>
+            </Table>
         </div>
     );
 };
@@ -938,38 +785,22 @@ export const TradeCard: React.FC<{
     const blurb = buildNewsBlurb(event, teamBySlug);
 
     const teamSpan = (slug: string, team: LeagueTeamRow | undefined) => (
-        <span
-            className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-            onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}
-        >
+        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
             {team?.team_name ?? slug}
-        </span>
+        </ClickableText>
     );
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    {teamSpan(teamA.slug, a)} ↔ {teamSpan(teamB.slug, b)} 트레이드 성사
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<>{teamSpan(teamA.slug, a)} ↔ {teamSpan(teamB.slug, b)} 트레이드 성사</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             <div className="space-y-4">
                 <TradePlayerTable team={a} teamSlug={teamA.slug} players={aOut} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
                 <TradePlayerTable team={b} teamSlug={teamB.slug} players={bOut} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} />
             </div>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -1000,64 +831,40 @@ export const InjuryCard: React.FC<{
     const entry = playerCardMap.get(player.id);
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <HeadlineTitle
-                    headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
-                    onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
-                />
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-700">
-                            <th className={BOX_HEADER_CELL}>선수</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>소속팀</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>부상명</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>예상 결장</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>복귀 예정일</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr className="border-b border-slate-800/60">
-                            <td className="py-1.5 px-2">
-                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                    <span
-                                        className={`text-sm font-bold text-white ${onPlayerClick ? 'cursor-pointer hover:underline' : ''}`}
-                                        onClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
-                                    >
-                                        {player.name}
-                                    </span>
-                                </PlayerHoverCard>
-                            </td>
-                            <td className={`${BOX_STAT_CELL} text-center`}>
-                                <span
-                                    className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                                    onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
-                                >
-                                    {team?.team_name ?? teamSlug}
-                                </span>
-                            </td>
-                            <td className={`${BOX_STAT_CELL} text-center`}>{injuryType}</td>
-                            <td className={`${BOX_STAT_CELL} text-center`}>{duration}</td>
-                            <td className={`${BOX_STAT_CELL} text-center`}>{formatFullDateCell(returnDate)}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <LetterShell
+            title={<HeadlineTitle
+                headline={buildNewsTitle(event, teamBySlug) ?? event.headline} playerName={player.name} entry={entry}
+                onPlayerClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined}
+            />}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
+            <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                <TableHead>
+                    <TableHeaderCell align="left">선수</TableHeaderCell>
+                    <TableHeaderCell>소속팀</TableHeaderCell>
+                    <TableHeaderCell>부상명</TableHeaderCell>
+                    <TableHeaderCell>예상 결장</TableHeaderCell>
+                    <TableHeaderCell>복귀 예정일</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    <TableRow>
+                        <LetterPlayerCell name={player.name} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined} />
+                        <TableCell>
+                            <span
+                                className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
+                            >
+                                {team?.team_name ?? teamSlug}
+                            </span>
+                        </TableCell>
+                        <TableCell>{injuryType}</TableCell>
+                        <TableCell>{duration}</TableCell>
+                        <TableCell>{formatFullDateCell(returnDate)}</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1084,65 +891,41 @@ export const SuspensionCard: React.FC<{
     ];
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{title}</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-700">
-                            <th className={BOX_HEADER_CELL}>선수</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>소속팀</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>출장정지</th>
-                            <th className={`${BOX_HEADER_CELL} text-center`}>복귀 예정일</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map(row => {
-                            const entry = playerCardMap.get(row.player.id);
-                            const team = teamBySlug.get(row.teamSlug);
-                            return (
-                                <tr key={row.player.id} className="border-b border-slate-800/60">
-                                    <td className="py-1.5 px-2">
-                                        <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                            <span
-                                                className={`text-sm font-bold text-white ${onPlayerClick ? 'cursor-pointer hover:underline' : ''}`}
-                                                onClick={onPlayerClick ? () => onPlayerClick(row.player.id) : undefined}
-                                            >
-                                                {row.player.name}
-                                            </span>
-                                        </PlayerHoverCard>
-                                    </td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>
-                                        <span
-                                            className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-                                            onClick={onOpenTeam ? () => onOpenTeam(row.teamSlug) : undefined}
-                                        >
-                                            {team?.team_name ?? row.teamSlug}
-                                        </span>
-                                    </td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{row.games}경기</td>
-                                    <td className={`${BOX_STAT_CELL} text-center`}>{formatFullDateCell(row.returnDate)}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <LetterShell
+            title={title}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
+            <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                <TableHead>
+                    <TableHeaderCell align="left">선수</TableHeaderCell>
+                    <TableHeaderCell>소속팀</TableHeaderCell>
+                    <TableHeaderCell>출장정지</TableHeaderCell>
+                    <TableHeaderCell>복귀 예정일</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {rows.map(row => {
+                        const entry = playerCardMap.get(row.player.id);
+                        const team = teamBySlug.get(row.teamSlug);
+                        return (
+                            <TableRow key={row.player.id}>
+                                <LetterPlayerCell name={row.player.name} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(row.player.id) : undefined} />
+                                <TableCell>
+                                    <span
+                                        className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
+                                        onClick={onOpenTeam ? () => onOpenTeam(row.teamSlug) : undefined}
+                                    >
+                                        {team?.team_name ?? row.teamSlug}
+                                    </span>
+                                </TableCell>
+                                <TableCell>{row.games}경기</TableCell>
+                                <TableCell>{formatFullDateCell(row.returnDate)}</TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1159,33 +942,17 @@ export const PowerRankingCard: React.FC<{
     const blurb = buildNewsBlurb(event, teamBySlug);
 
     const teamSpan = (slug: string, name: string) => (
-        <span
-            className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
-            onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}
-        >
+        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
             {teamBySlug.get(slug)?.team_name ?? name}
-        </span>
+        </ClickableText>
     );
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    {Number(y)}년 {Number(m)}월 파워랭킹
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
-            {blurb && (
-                <div className="space-y-2">
-                    {blurb.map((line, idx) => (
-                        <p key={idx} className="text-sm text-slate-300 leading-relaxed">{line}</p>
-                    ))}
-                </div>
-            )}
-
+        <LetterShell
+            title={<>{Number(y)}년 {Number(m)}월 파워랭킹</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            blurb={blurb}
+        >
             {(riser || faller) && (
                 <div className="space-y-1.5">
                     {riser && (
@@ -1205,22 +972,20 @@ export const PowerRankingCard: React.FC<{
                 </div>
             )}
 
-            <table className="w-full table-fixed text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700 bg-slate-800/60">
-                        <th className="w-[8%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">순위</th>
-                        <th className="w-[44%] py-1.5 px-2 text-sm font-bold text-slate-300 text-left">팀</th>
-                        <th className="w-[12%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">재능</th>
-                        <th className="w-[12%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">공격</th>
-                        <th className="w-[12%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">수비</th>
-                        <th className="w-[12%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">파워스코어</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
+                <TableHead>
+                    <TableHeaderCell width="8%">순위</TableHeaderCell>
+                    <TableHeaderCell align="left" width="44%">팀</TableHeaderCell>
+                    <TableHeaderCell width="12%">재능</TableHeaderCell>
+                    <TableHeaderCell width="12%">공격</TableHeaderCell>
+                    <TableHeaderCell width="12%">수비</TableHeaderCell>
+                    <TableHeaderCell width="12%">파워스코어</TableHeaderCell>
+                </TableHead>
+                <TableBody>
                     {full.map(entry => (
-                        <tr key={entry.teamSlug} className="border-b border-slate-800/60">
-                            <td className="py-1.5 px-2 text-sm font-black text-slate-400 text-center tabular-nums">{entry.rank}</td>
-                            <td className="py-1.5 px-2">
+                        <TableRow key={entry.teamSlug}>
+                            <LetterRankCell rank={entry.rank} />
+                            <TableCell align="left">
                                 <div className="flex items-center gap-2">
                                     <TeamBadge
                                         teamId={entry.teamSlug}
@@ -1233,16 +998,16 @@ export const PowerRankingCard: React.FC<{
                                     />
                                     <span className="text-sm font-semibold text-slate-100 truncate">{teamSpan(entry.teamSlug, entry.teamName)}</span>
                                 </div>
-                            </td>
-                            <td className="py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums">{entry.talentScore?.toFixed(1) ?? '-'}</td>
-                            <td className="py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums">{entry.offenseScore?.toFixed(1) ?? '-'}</td>
-                            <td className="py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums">{entry.defenseScore?.toFixed(1) ?? '-'}</td>
-                            <td className="py-1.5 px-2 text-sm font-bold text-white text-center tabular-nums">{entry.powerScore.toFixed(1)}</td>
-                        </tr>
+                            </TableCell>
+                            <TableCell className="tabular-nums">{entry.talentScore?.toFixed(1) ?? '-'}</TableCell>
+                            <TableCell className="tabular-nums">{entry.offenseScore?.toFixed(1) ?? '-'}</TableCell>
+                            <TableCell className="tabular-nums">{entry.defenseScore?.toFixed(1) ?? '-'}</TableCell>
+                            <TableCell className="font-bold text-white tabular-nums">{entry.powerScore.toFixed(1)}</TableCell>
+                        </TableRow>
                     ))}
-                </tbody>
-            </table>
-        </div>
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1257,39 +1022,30 @@ export const DraftLotteryResultCard: React.FC<{
     const firstPick = picks[0] as DraftLotteryPick | undefined;
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">드래프트 순서 추첨 결과</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
+        <LetterShell
+            title="드래프트 순서 추첨 결과"
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             {firstPick && (
                 <p className="text-sm text-slate-300 leading-relaxed">
                     전체 1순위 지명권은{' '}
-                    <span
-                        className={onOpenTeam ? 'font-bold text-white cursor-pointer hover:text-indigo-400 hover:underline' : 'font-bold text-white'}
-                        onClick={onOpenTeam ? () => onOpenTeam(firstPick.teamSlug) : undefined}
-                    >
+                    <ClickableText className="font-bold text-white" onClick={onOpenTeam ? () => onOpenTeam(firstPick.teamSlug) : undefined}>
                         {teamBySlug.get(firstPick.teamSlug)?.team_name ?? firstPick.teamName}
-                    </span>
+                    </ClickableText>
                     {' '}팀에게 돌아갔습니다.
                 </p>
             )}
 
-            <table className="w-full table-fixed text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700 bg-slate-800/60">
-                        <th className="w-[15%] py-1.5 px-2 text-sm font-bold text-slate-300 text-center">순위</th>
-                        <th className="w-[85%] py-1.5 px-2 text-sm font-bold text-slate-300 text-left">팀</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
+                <TableHead>
+                    <TableHeaderCell width="15%">순위</TableHeaderCell>
+                    <TableHeaderCell align="left" width="85%">팀</TableHeaderCell>
+                </TableHead>
+                <TableBody>
                     {picks.map(pick => (
-                        <tr key={pick.rank} className="border-b border-slate-800/60">
-                            <td className="py-1.5 px-2 text-sm font-black text-slate-400 text-center tabular-nums">{pick.rank}</td>
-                            <td className="py-1.5 px-2">
+                        <TableRow key={pick.rank}>
+                            <LetterRankCell rank={pick.rank} />
+                            <TableCell align="left">
                                 <div className="flex items-center gap-2">
                                     <TeamBadge
                                         teamId={pick.teamSlug}
@@ -1307,12 +1063,12 @@ export const DraftLotteryResultCard: React.FC<{
                                         {teamBySlug.get(pick.teamSlug)?.team_name ?? pick.teamName}
                                     </span>
                                 </div>
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     ))}
-                </tbody>
-            </table>
-        </div>
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1320,8 +1076,6 @@ export const DraftLotteryResultCard: React.FC<{
 // PowerRankingCard와 동일한 레터 구조(헤더+날짜+구분선→표)를 따르되, 파워랭킹의 AI 기사체
 // 문단(newsBlurb.ts)은 생략하고 트로피 히어로+순위표 중심으로 구성. 둘 다 팀 로고 없이 약어
 // 텍스트만, 포지션은 별도 컬럼, 순위별(1~N위) 득표수 컬럼을 각각 갖는 전용 마크업.
-const AWARD_RANK_TH = 'py-1.5 px-2 text-sm font-bold text-slate-300 text-center whitespace-nowrap';
-const AWARD_RANK_TD = 'py-1.5 px-2 text-sm text-slate-300 text-center tabular-nums whitespace-nowrap';
 
 function formatAwardPct(v: number): string {
     return v > 0 ? `${(v * 100).toFixed(1)}%` : '-';
@@ -1345,20 +1099,16 @@ const AwardHero: React.FC<{
             <img src={trophySrc} alt={trophyAlt} className="h-32 w-auto object-contain" />
             <div>
                 <PlayerHoverCard player={winnerEntry?.player} teamAbbr={winnerEntry?.teamAbbr}>
-                    <span
-                        className={`text-lg font-black text-white ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                        onClick={onPlayerClick ? () => onPlayerClick(winner.playerId) : undefined}
-                    >
+                    <ClickableText className="text-lg font-black text-white" onClick={onPlayerClick ? () => onPlayerClick(winner.playerId) : undefined}>
                         {winner.playerName}
-                    </span>
+                    </ClickableText>
                 </PlayerHoverCard>
                 <span className="ml-2 text-sm text-slate-500">{winner.position}</span>
             </div>
-            <div
-                className={`text-sm font-bold text-slate-400 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                onClick={onOpenTeam ? () => onOpenTeam(winner.teamSlug) : undefined}
-            >
-                {winnerTeam?.team_name ?? winner.teamSlug}
+            <div>
+                <ClickableText className="text-sm font-bold text-slate-400" onClick={onOpenTeam ? () => onOpenTeam(winner.teamSlug) : undefined}>
+                    {winnerTeam?.team_name ?? winner.teamSlug}
+                </ClickableText>
             </div>
             <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm text-slate-300">{statLine}</div>
         </div>
@@ -1374,14 +1124,10 @@ export const MvpAwardCard: React.FC<{
     const winner = ranking[0];
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{season} 정규시즌 올해의 선수</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
+        <LetterShell
+            title={<>{season} 정규시즌 올해의 선수</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             {winner && (
                 <AwardHero
                     trophySrc="/images/mvp.webp" trophyAlt="MVP Trophy" winner={winner}
@@ -1399,78 +1145,57 @@ export const MvpAwardCard: React.FC<{
                 />
             )}
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-700 bg-slate-800/60">
-                            <th className={AWARD_RANK_TH}>순위</th>
-                            <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                            <th className={AWARD_RANK_TH}>포지션</th>
-                            <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                            <th className={AWARD_RANK_TH}>PPG</th>
-                            <th className={AWARD_RANK_TH}>RPG</th>
-                            <th className={AWARD_RANK_TH}>APG</th>
-                            <th className={AWARD_RANK_TH}>SPG</th>
-                            <th className={AWARD_RANK_TH}>BPG</th>
-                            <th className={AWARD_RANK_TH}>FG%</th>
-                            <th className={AWARD_RANK_TH}>3P%</th>
-                            <th className={AWARD_RANK_TH}>FT%</th>
-                            <th className={AWARD_RANK_TH}>1위</th>
-                            <th className={AWARD_RANK_TH}>2위</th>
-                            <th className={AWARD_RANK_TH}>3위</th>
-                            <th className={AWARD_RANK_TH}>4위</th>
-                            <th className={AWARD_RANK_TH}>5위</th>
-                            <th className={AWARD_RANK_TH}>득표</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {ranking.map((r, idx) => {
-                            const entry = playerCardMap.get(r.playerId);
-                            const team = teamBySlug.get(r.teamSlug);
-                            const votes = r.rankVotes;
-                            return (
-                                <tr key={r.playerId} className="border-b border-slate-800/60">
-                                    <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                                    <td className="py-1.5 px-2 whitespace-nowrap">
-                                        <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                            <span
-                                                className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                onClick={onPlayerClick ? () => onPlayerClick(r.playerId) : undefined}
-                                            >
-                                                {r.playerName}
-                                            </span>
-                                        </PlayerHoverCard>
-                                    </td>
-                                    <td className={`${AWARD_RANK_TD} text-slate-500`}>{r.position}</td>
-                                    <td className="py-1.5 px-2 whitespace-nowrap">
-                                        <span
-                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onOpenTeam ? () => onOpenTeam(r.teamSlug) : undefined}
-                                        >
-                                            {team?.team_abbr ?? r.teamSlug}
-                                        </span>
-                                    </td>
-                                    <td className={AWARD_RANK_TD}>{r.ppg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.rpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.apg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.spg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.bpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{formatAwardPct(r.fgPct)}</td>
-                                    <td className={AWARD_RANK_TD}>{formatAwardPct(r.p3Pct)}</td>
-                                    <td className={AWARD_RANK_TD}>{formatAwardPct(r.ftPct)}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[0] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[1] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[2] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[3] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[4] ?? 0}</td>
-                                    <td className={`${AWARD_RANK_TD} font-bold text-white`}>{r.points}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                <TableHead>
+                    <TableHeaderCell>순위</TableHeaderCell>
+                    <TableHeaderCell align="left">선수</TableHeaderCell>
+                    <TableHeaderCell>포지션</TableHeaderCell>
+                    <TableHeaderCell align="left">팀</TableHeaderCell>
+                    <TableHeaderCell>PPG</TableHeaderCell>
+                    <TableHeaderCell>RPG</TableHeaderCell>
+                    <TableHeaderCell>APG</TableHeaderCell>
+                    <TableHeaderCell>SPG</TableHeaderCell>
+                    <TableHeaderCell>BPG</TableHeaderCell>
+                    <TableHeaderCell>FG%</TableHeaderCell>
+                    <TableHeaderCell>3P%</TableHeaderCell>
+                    <TableHeaderCell>FT%</TableHeaderCell>
+                    <TableHeaderCell>1위</TableHeaderCell>
+                    <TableHeaderCell>2위</TableHeaderCell>
+                    <TableHeaderCell>3위</TableHeaderCell>
+                    <TableHeaderCell>4위</TableHeaderCell>
+                    <TableHeaderCell>5위</TableHeaderCell>
+                    <TableHeaderCell>득표</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {ranking.map((r, idx) => {
+                        const entry = playerCardMap.get(r.playerId);
+                        const votes = r.rankVotes;
+                        return (
+                            <TableRow key={r.playerId}>
+                                <LetterRankCell rank={idx + 1} />
+                                <LetterPlayerCell name={r.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(r.playerId) : undefined} />
+                                <TableCell className="tabular-nums text-slate-500">{r.position}</TableCell>
+                                <LetterTeamCell slug={r.teamSlug} team={teamBySlug.get(r.teamSlug)} onOpenTeam={onOpenTeam} />
+                                <TableCell className="tabular-nums">{r.ppg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.rpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.apg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.spg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.bpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{formatAwardPct(r.fgPct)}</TableCell>
+                                <TableCell className="tabular-nums">{formatAwardPct(r.p3Pct)}</TableCell>
+                                <TableCell className="tabular-nums">{formatAwardPct(r.ftPct)}</TableCell>
+                                <TableCell className="tabular-nums">{votes[0] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[1] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[2] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[3] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[4] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums font-bold text-white">{r.points}</TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1483,14 +1208,10 @@ export const DpoyAwardCard: React.FC<{
     const winner = ranking[0];
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{season} 정규시즌 올해의 수비수</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-
+        <LetterShell
+            title={<>{season} 정규시즌 올해의 수비수</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             {winner && (
                 <AwardHero
                     trophySrc="/images/dpoy.webp" trophyAlt="DPOY Trophy" winner={winner}
@@ -1506,70 +1227,49 @@ export const DpoyAwardCard: React.FC<{
                 />
             )}
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-700 bg-slate-800/60">
-                            <th className={AWARD_RANK_TH}>순위</th>
-                            <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                            <th className={AWARD_RANK_TH}>포지션</th>
-                            <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                            <th className={AWARD_RANK_TH}>SPG</th>
-                            <th className={AWARD_RANK_TH}>BPG</th>
-                            <th className={AWARD_RANK_TH}>TOVF</th>
-                            <th className={AWARD_RANK_TH}>DREB</th>
-                            <th className={AWARD_RANK_TH}>OREB</th>
-                            <th className={AWARD_RANK_TH}>DFG%</th>
-                            <th className={AWARD_RANK_TH}>1위</th>
-                            <th className={AWARD_RANK_TH}>2위</th>
-                            <th className={AWARD_RANK_TH}>3위</th>
-                            <th className={AWARD_RANK_TH}>득표</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {ranking.map((r, idx) => {
-                            const entry = playerCardMap.get(r.playerId);
-                            const team = teamBySlug.get(r.teamSlug);
-                            const votes = r.rankVotes;
-                            return (
-                                <tr key={r.playerId} className="border-b border-slate-800/60">
-                                    <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                                    <td className="py-1.5 px-2 whitespace-nowrap">
-                                        <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                            <span
-                                                className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                onClick={onPlayerClick ? () => onPlayerClick(r.playerId) : undefined}
-                                            >
-                                                {r.playerName}
-                                            </span>
-                                        </PlayerHoverCard>
-                                    </td>
-                                    <td className={`${AWARD_RANK_TD} text-slate-500`}>{r.position}</td>
-                                    <td className="py-1.5 px-2 whitespace-nowrap">
-                                        <span
-                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onOpenTeam ? () => onOpenTeam(r.teamSlug) : undefined}
-                                        >
-                                            {team?.team_abbr ?? r.teamSlug}
-                                        </span>
-                                    </td>
-                                    <td className={AWARD_RANK_TD}>{r.spg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.bpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.tovfpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.drebpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{r.orebpg.toFixed(1)}</td>
-                                    <td className={AWARD_RANK_TD}>{formatAwardPct(r.dfgPct)}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[0] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[1] ?? 0}</td>
-                                    <td className={AWARD_RANK_TD}>{votes[2] ?? 0}</td>
-                                    <td className={`${AWARD_RANK_TD} font-bold text-white`}>{r.points}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <Table variant="bare" density="compact" className="text-sm text-slate-300">
+                <TableHead>
+                    <TableHeaderCell>순위</TableHeaderCell>
+                    <TableHeaderCell align="left">선수</TableHeaderCell>
+                    <TableHeaderCell>포지션</TableHeaderCell>
+                    <TableHeaderCell align="left">팀</TableHeaderCell>
+                    <TableHeaderCell>SPG</TableHeaderCell>
+                    <TableHeaderCell>BPG</TableHeaderCell>
+                    <TableHeaderCell>TOVF</TableHeaderCell>
+                    <TableHeaderCell>DREB</TableHeaderCell>
+                    <TableHeaderCell>OREB</TableHeaderCell>
+                    <TableHeaderCell>DFG%</TableHeaderCell>
+                    <TableHeaderCell>1위</TableHeaderCell>
+                    <TableHeaderCell>2위</TableHeaderCell>
+                    <TableHeaderCell>3위</TableHeaderCell>
+                    <TableHeaderCell>득표</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {ranking.map((r, idx) => {
+                        const entry = playerCardMap.get(r.playerId);
+                        const votes = r.rankVotes;
+                        return (
+                            <TableRow key={r.playerId}>
+                                <LetterRankCell rank={idx + 1} />
+                                <LetterPlayerCell name={r.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(r.playerId) : undefined} />
+                                <TableCell className="tabular-nums text-slate-500">{r.position}</TableCell>
+                                <LetterTeamCell slug={r.teamSlug} team={teamBySlug.get(r.teamSlug)} onOpenTeam={onOpenTeam} />
+                                <TableCell className="tabular-nums">{r.spg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.bpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.tovfpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.drebpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{r.orebpg.toFixed(1)}</TableCell>
+                                <TableCell className="tabular-nums">{formatAwardPct(r.dfgPct)}</TableCell>
+                                <TableCell className="tabular-nums">{votes[0] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[1] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums">{votes[2] ?? 0}</TableCell>
+                                <TableCell className="tabular-nums font-bold text-white">{r.points}</TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </LetterShell>
     );
 };
 
@@ -1587,51 +1287,30 @@ const AllTeamSection: React.FC<{
     onPlayerClick?: (playerId: string) => void;
 }> = ({ tier, tierLabel, statCols, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
     <div className="space-y-2">
-        <h3 className="text-sm font-black text-slate-300 uppercase">{tierLabel}</h3>
-        <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700 bg-slate-800/60">
-                        <th className={AWARD_RANK_TH}>포지션</th>
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                        {statCols.map(c => <th key={c.label} className={AWARD_RANK_TH}>{c.label}</th>)}
-                    </tr>
-                </thead>
-                <tbody>
-                    {tier.players.map(p => {
-                        const entry = playerCardMap.get(p.playerId);
-                        const team = teamBySlug.get(p.teamSlug);
-                        return (
-                            <tr key={p.playerId} className="border-b border-slate-800/60">
-                                <td className={`${AWARD_RANK_TD} text-slate-500`}>{p.pos}</td>
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                        <span
-                                            className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
-                                        >
-                                            {p.playerName}
-                                        </span>
-                                    </PlayerHoverCard>
-                                </td>
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <span
-                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
-                                    >
-                                        {team?.team_abbr ?? p.teamSlug}
-                                    </span>
-                                </td>
-                                {statCols.map(c => (
-                                    <td key={c.label} className={AWARD_RANK_TD}>{c.get(p)}</td>
-                                ))}
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
+        <LetterSectionTitle>{tierLabel}</LetterSectionTitle>
+        <Table variant="bare" density="compact" className="text-sm text-slate-300">
+            <TableHead>
+                <TableHeaderCell>포지션</TableHeaderCell>
+                <TableHeaderCell align="left">선수</TableHeaderCell>
+                <TableHeaderCell align="left">팀</TableHeaderCell>
+                {statCols.map(c => <TableHeaderCell key={c.label}>{c.label}</TableHeaderCell>)}
+            </TableHead>
+            <TableBody>
+                {tier.players.map(p => {
+                    const entry = playerCardMap.get(p.playerId);
+                    return (
+                        <TableRow key={p.playerId}>
+                            <TableCell className="tabular-nums text-slate-500">{p.pos}</TableCell>
+                            <LetterPlayerCell name={p.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined} />
+                            <LetterTeamCell slug={p.teamSlug} team={teamBySlug.get(p.teamSlug)} onOpenTeam={onOpenTeam} />
+                            {statCols.map(c => (
+                                <TableCell key={c.label} className="tabular-nums">{c.get(p)}</TableCell>
+                            ))}
+                        </TableRow>
+                    );
+                })}
+            </TableBody>
+        </Table>
     </div>
 );
 
@@ -1644,13 +1323,10 @@ export const AllNbaTeamCard: React.FC<{
     if (event.detail.kind !== 'all_nba_team') return null;
     const { season, tiers } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{season} 올-오펜시브 팀</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            title={<>{season} 올-오펜시브 팀</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-4">
                 {tiers.map(t => (
                     <AllTeamSection
@@ -1673,7 +1349,7 @@ export const AllNbaTeamCard: React.FC<{
                     />
                 ))}
             </div>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -1684,13 +1360,10 @@ export const AllDefTeamCard: React.FC<{
     if (event.detail.kind !== 'all_def_team') return null;
     const { season, tiers } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{season} 올-디펜시브 팀</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            title={<>{season} 올-디펜시브 팀</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-4">
                 {tiers.map(t => (
                     <AllTeamSection
@@ -1712,7 +1385,7 @@ export const AllDefTeamCard: React.FC<{
                     />
                 ))}
             </div>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -1761,121 +1434,77 @@ export const AllstarRosterTable: React.FC<{
     logoSrc?: string;
 }> = ({ label, players, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showOvr, showVotes, showStats, logoSrc }) => (
     <div className="space-y-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-black text-slate-300 uppercase">
-            {logoSrc && <img src={logoSrc} alt="" className="h-5 w-5" />}
-            {label}
-        </h3>
-        <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="border-b border-slate-700 bg-slate-800/60">
-                        <th className={AWARD_RANK_TH}>포지션</th>
-                        {showOvr && <th className={AWARD_RANK_TH}>OVR</th>}
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                        {showStats && (
-                            <>
-                                <th className={AWARD_RANK_TH}>G</th>
-                                <th className={AWARD_RANK_TH}>MP</th>
-                                <th className={AWARD_RANK_TH}>PTS</th>
-                                <th className={AWARD_RANK_TH}>REB</th>
-                                <th className={AWARD_RANK_TH}>AST</th>
-                                <th className={AWARD_RANK_TH}>STL</th>
-                                <th className={AWARD_RANK_TH}>BLK</th>
-                                <th className={AWARD_RANK_TH}>TOV</th>
-                                <th className={AWARD_RANK_TH}>FG%</th>
-                            </>
-                        )}
-                        {showVotes && (
-                            <>
-                                <th className={AWARD_RANK_TH}>득표수</th>
-                                <th className={AWARD_RANK_TH}>득표율</th>
-                            </>
-                        )}
-                    </tr>
-                </thead>
-                <tbody>
-                    {players.map(p => {
-                        const entry = playerCardMap.get(p.playerId);
-                        const team = teamBySlug.get(p.teamSlug);
-                        const stats = entry?.player?.stats;
-                        const g = stats?.g ?? 0;
-                        const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
-                        const shootPct = (made: number | undefined, att: number | undefined) =>
-                            (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
-                        return (
-                            <tr key={p.playerId} className="border-b border-slate-800/60">
-                                <td className={`${AWARD_RANK_TD} text-slate-500`}>{p.posGroup}</td>
-                                {showOvr && (
-                                    <td className={AWARD_RANK_TD}>
-                                        <div className="flex justify-center">
-                                            <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
-                                        </div>
-                                    </td>
-                                )}
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                        <span
-                                            className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
-                                        >
-                                            {p.playerName}
-                                        </span>
-                                    </PlayerHoverCard>
-                                </td>
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <div className="flex items-center gap-1.5">
-                                        {team?.color_primary ? (
-                                            <img
-                                                src={getRealTeamLogoUrl(p.teamSlug)}
-                                                alt={team?.team_abbr ?? p.teamSlug}
-                                                className="w-5 h-5 object-contain shrink-0"
-                                                onError={(ev) => {
-                                                    const img = ev.currentTarget;
-                                                    if (img.dataset.fallback !== 'old') {
-                                                        img.dataset.fallback = 'old';
-                                                        img.src = getTeamLogoUrl(p.teamSlug);
-                                                    } else {
-                                                        img.src = 'https://placehold.co/100x100?text=BPL';
-                                                    }
-                                                }}
-                                            />
-                                        ) : (
-                                            <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
-                                        )}
-                                        <span
-                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
-                                        >
-                                            {team?.team_abbr ?? p.teamSlug}
-                                        </span>
+        <LetterSectionTitle logoSrc={logoSrc}>{label}</LetterSectionTitle>
+        <Table variant="bare" density="compact" className="text-sm text-slate-300">
+            <TableHead>
+                <TableHeaderCell>포지션</TableHeaderCell>
+                {showOvr && <TableHeaderCell>OVR</TableHeaderCell>}
+                <TableHeaderCell align="left">선수</TableHeaderCell>
+                <TableHeaderCell align="left">팀</TableHeaderCell>
+                {showStats && (
+                    <>
+                        <TableHeaderCell>G</TableHeaderCell>
+                        <TableHeaderCell>MP</TableHeaderCell>
+                        <TableHeaderCell>PTS</TableHeaderCell>
+                        <TableHeaderCell>REB</TableHeaderCell>
+                        <TableHeaderCell>AST</TableHeaderCell>
+                        <TableHeaderCell>STL</TableHeaderCell>
+                        <TableHeaderCell>BLK</TableHeaderCell>
+                        <TableHeaderCell>TOV</TableHeaderCell>
+                        <TableHeaderCell>FG%</TableHeaderCell>
+                    </>
+                )}
+                {showVotes && (
+                    <>
+                        <TableHeaderCell>득표수</TableHeaderCell>
+                        <TableHeaderCell>득표율</TableHeaderCell>
+                    </>
+                )}
+            </TableHead>
+            <TableBody>
+                {players.map(p => {
+                    const entry = playerCardMap.get(p.playerId);
+                    const stats = entry?.player?.stats;
+                    const g = stats?.g ?? 0;
+                    const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                    const shootPct = (made: number | undefined, att: number | undefined) =>
+                        (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
+                    return (
+                        <TableRow key={p.playerId}>
+                            <TableCell className="tabular-nums text-slate-500">{p.posGroup}</TableCell>
+                            {showOvr && (
+                                <TableCell>
+                                    <div className="flex justify-center">
+                                        <OvrBadge value={p.ovr} size="sm" className="shadow-none" />
                                     </div>
-                                </td>
-                                {showStats && (
-                                    <>
-                                        <td className={AWARD_RANK_TD}>{g}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.reb)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.ast)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.stl)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.blk)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.tov)}</td>
-                                        <td className={AWARD_RANK_TD}>{shootPct(stats?.fgm, stats?.fga)}</td>
-                                    </>
-                                )}
-                                {showVotes && (
-                                    <>
-                                        <td className={`${AWARD_RANK_TD} tabular-nums`}>{(p.votes ?? 0).toLocaleString()}</td>
-                                        <td className={`${AWARD_RANK_TD} text-white`}>{p.pct != null ? formatAwardPct(p.pct) : '-'}</td>
-                                    </>
-                                )}
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
+                                </TableCell>
+                            )}
+                            <LetterPlayerCell name={p.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined} />
+                            <LetterTeamCell slug={p.teamSlug} team={teamBySlug.get(p.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                            {showStats && (
+                                <>
+                                    <TableCell className="tabular-nums">{g}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.mp)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.pts)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.reb)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.ast)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.stl)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.blk)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.tov)}</TableCell>
+                                    <TableCell className="tabular-nums">{shootPct(stats?.fgm, stats?.fga)}</TableCell>
+                                </>
+                            )}
+                            {showVotes && (
+                                <>
+                                    <TableCell className="tabular-nums">{(p.votes ?? 0).toLocaleString()}</TableCell>
+                                    <TableCell className="tabular-nums text-white">{p.pct != null ? formatAwardPct(p.pct) : '-'}</TableCell>
+                                </>
+                            )}
+                        </TableRow>
+                    );
+                })}
+            </TableBody>
+        </Table>
     </div>
 );
 
@@ -1921,110 +1550,69 @@ export const AllstarVoteSection: React.FC<{
     showVotes?: boolean;
 }> = ({ label, entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showStats, hideLabel, scrollable, showVotes = true }) => (
     <div className="space-y-2">
-        {!hideLabel && <h3 className="text-sm font-black text-slate-300 uppercase">{label}</h3>}
-        <div className={`overflow-x-auto ${scrollable ? 'overflow-y-auto max-h-96' : ''}`}>
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className={`border-b border-slate-700 bg-slate-800/60 ${scrollable ? 'sticky top-0 z-10' : ''}`}>
-                        <th className={AWARD_RANK_TH}>순위</th>
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                        <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                        {showStats && (
-                            <>
-                                <th className={AWARD_RANK_TH}>G</th>
-                                <th className={AWARD_RANK_TH}>MP</th>
-                                <th className={AWARD_RANK_TH}>PTS</th>
-                                <th className={AWARD_RANK_TH}>REB</th>
-                                <th className={AWARD_RANK_TH}>AST</th>
-                                <th className={AWARD_RANK_TH}>STL</th>
-                                <th className={AWARD_RANK_TH}>BLK</th>
-                                <th className={AWARD_RANK_TH}>TOV</th>
-                                <th className={AWARD_RANK_TH}>FG%</th>
-                            </>
-                        )}
-                        {showVotes && (
-                            <>
-                                <th className={AWARD_RANK_TH}>득표수</th>
-                                <th className={AWARD_RANK_TH}>득표율</th>
-                            </>
-                        )}
-                    </tr>
-                </thead>
-                <tbody>
-                    {entries.map((e, idx) => {
-                        const entry = playerCardMap.get(e.playerId);
-                        const team = teamBySlug.get(e.teamSlug);
-                        const stats = entry?.player?.stats;
-                        const g = stats?.g ?? 0;
-                        const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
-                        const shootPct = (made: number | undefined, att: number | undefined) =>
-                            (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
-                        return (
-                            <tr key={e.playerId} className="border-b border-slate-800/60">
-                                <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                        <span
-                                            className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
-                                        >
-                                            {e.playerName}
-                                        </span>
-                                    </PlayerHoverCard>
-                                </td>
-                                <td className="py-1.5 px-2 whitespace-nowrap">
-                                    <div className="flex items-center gap-1.5">
-                                        {team?.color_primary ? (
-                                            <img
-                                                src={getRealTeamLogoUrl(e.teamSlug)}
-                                                alt={team?.team_abbr ?? e.teamSlug}
-                                                className="w-5 h-5 object-contain shrink-0"
-                                                onError={(ev) => {
-                                                    const img = ev.currentTarget;
-                                                    if (img.dataset.fallback !== 'old') {
-                                                        img.dataset.fallback = 'old';
-                                                        img.src = getTeamLogoUrl(e.teamSlug);
-                                                    } else {
-                                                        img.src = 'https://placehold.co/100x100?text=BPL';
-                                                    }
-                                                }}
-                                            />
-                                        ) : (
-                                            <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
-                                        )}
-                                        <span
-                                            className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                            onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
-                                        >
-                                            {team?.team_abbr ?? e.teamSlug}
-                                        </span>
-                                    </div>
-                                </td>
-                                {showStats && (
-                                    <>
-                                        <td className={AWARD_RANK_TD}>{g}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.reb)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.ast)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.stl)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.blk)}</td>
-                                        <td className={AWARD_RANK_TD}>{perGame(stats?.tov)}</td>
-                                        <td className={AWARD_RANK_TD}>{shootPct(stats?.fgm, stats?.fga)}</td>
-                                    </>
-                                )}
-                                {showVotes && (
-                                    <>
-                                        <td className={`${AWARD_RANK_TD} tabular-nums`}>{(e.votes ?? 0).toLocaleString()}</td>
-                                        <td className={`${AWARD_RANK_TD} text-white`}>{e.pct != null ? formatAwardPct(e.pct) : '-'}</td>
-                                    </>
-                                )}
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </div>
+        {!hideLabel && <LetterSectionTitle>{label}</LetterSectionTitle>}
+        <Table variant="bare" density="compact" className={`text-sm text-slate-300 ${scrollable ? 'overflow-y-auto max-h-96' : ''}`}>
+            <TableHead className={scrollable ? 'sticky top-0 z-10' : ''}>
+                <TableHeaderCell>순위</TableHeaderCell>
+                <TableHeaderCell align="left">선수</TableHeaderCell>
+                <TableHeaderCell align="left">팀</TableHeaderCell>
+                {showStats && (
+                    <>
+                        <TableHeaderCell>G</TableHeaderCell>
+                        <TableHeaderCell>MP</TableHeaderCell>
+                        <TableHeaderCell>PTS</TableHeaderCell>
+                        <TableHeaderCell>REB</TableHeaderCell>
+                        <TableHeaderCell>AST</TableHeaderCell>
+                        <TableHeaderCell>STL</TableHeaderCell>
+                        <TableHeaderCell>BLK</TableHeaderCell>
+                        <TableHeaderCell>TOV</TableHeaderCell>
+                        <TableHeaderCell>FG%</TableHeaderCell>
+                    </>
+                )}
+                {showVotes && (
+                    <>
+                        <TableHeaderCell>득표수</TableHeaderCell>
+                        <TableHeaderCell>득표율</TableHeaderCell>
+                    </>
+                )}
+            </TableHead>
+            <TableBody>
+                {entries.map((e, idx) => {
+                    const entry = playerCardMap.get(e.playerId);
+                    const stats = entry?.player?.stats;
+                    const g = stats?.g ?? 0;
+                    const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                    const shootPct = (made: number | undefined, att: number | undefined) =>
+                        (att ?? 0) > 0 ? formatAwardPct((made ?? 0) / (att as number)) : '-';
+                    return (
+                        <TableRow key={e.playerId}>
+                            <LetterRankCell rank={idx + 1} />
+                            <LetterPlayerCell name={e.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined} />
+                            <LetterTeamCell slug={e.teamSlug} team={teamBySlug.get(e.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                            {showStats && (
+                                <>
+                                    <TableCell className="tabular-nums">{g}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.mp)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.pts)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.reb)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.ast)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.stl)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.blk)}</TableCell>
+                                    <TableCell className="tabular-nums">{perGame(stats?.tov)}</TableCell>
+                                    <TableCell className="tabular-nums">{shootPct(stats?.fgm, stats?.fga)}</TableCell>
+                                </>
+                            )}
+                            {showVotes && (
+                                <>
+                                    <TableCell className="tabular-nums">{(e.votes ?? 0).toLocaleString()}</TableCell>
+                                    <TableCell className="tabular-nums text-white">{e.pct != null ? formatAwardPct(e.pct) : '-'}</TableCell>
+                                </>
+                            )}
+                        </TableRow>
+                    );
+                })}
+            </TableBody>
+        </Table>
     </div>
 );
 
@@ -2038,14 +1626,11 @@ export const AllstarVoteUpdateCard: React.FC<{
     if (event.detail.kind !== 'allstar_vote_update') return null;
     const { roundLabel, voteProgress, east, west } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">올스타 팬 투표 {roundLabel}</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+        <LetterShell
+            title={<>올스타 팬 투표 {roundLabel}</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
+            <EventLetterLogo src={getLeagueLogoUrl('AllStar')} alt="올스타" />
             <div className="space-y-4">
                 <h2 className="text-base font-black text-indigo-400">동부 컨퍼런스</h2>
                 <AllstarVoteSection label="백코트" entries={east.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
@@ -2057,16 +1642,11 @@ export const AllstarVoteUpdateCard: React.FC<{
                 <AllstarVoteSection label="프론트코트" entries={west.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar()}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar()}>
                     {voteProgress >= 1 ? '올스타 투표 결과 보러가기' : '올스타 투표 현황 보러가기'}
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2080,15 +1660,12 @@ export const AllstarVoteStartCard: React.FC<{
     if (event.detail.kind !== 'allstar_vote_start') return null;
     const { leagueName, seasonLabel, voteStart, voteEnd, allStarStart, allStarEnd, mainGameDate } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title="올스타 팬 투표가 시작됐습니다"
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">올스타 팬 투표가 시작됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+                <EventLetterLogo src={getLeagueLogoUrl('AllStar')} alt="올스타" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     오늘부터 {leagueName} {seasonLabel}시즌 올스타 투표가 시작됩니다.
                 </p>
@@ -2101,16 +1678,11 @@ export const AllstarVoteStartCard: React.FC<{
                 </p>
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar()}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar()}>
                     올스타 투표 현황 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2134,15 +1706,12 @@ export const AllstarVoteResultCard: React.FC<{
     // event.detail.risingStars 필드 자체는 여전히 존재(league_allstar_votes.roster 재사용 때문).
     const { seasonLabel, east, west, allStarStart, allStarEnd, mainGameDate } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 올스타 명단이 확정됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 올스타 명단이 확정됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/AllStar.svg" alt="올스타" />
+                <EventLetterLogo src={getLeagueLogoUrl('AllStar')} alt="올스타" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     수개월간 이어진 팬 투표를 통해 동/서부 컨퍼런스 스타터가 확정됐고, 코치단 투표로 리저브까지 최종 명단이 완성됐습니다.
                 </p>
@@ -2161,7 +1730,7 @@ export const AllstarVoteResultCard: React.FC<{
             </div>
             <div className="space-y-4">
                 <h2 className="flex items-center gap-1.5 text-base font-black text-indigo-400">
-                    <img src="/logos/real/AS/East.svg" alt="" className="h-6 w-6" />
+                    <img src={getLeagueLogoUrl('East')} alt="" className="h-6 w-6" />
                     동부 컨퍼런스
                 </h2>
                 <AllstarRosterTable label="스타터" players={east.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
@@ -2169,23 +1738,18 @@ export const AllstarVoteResultCard: React.FC<{
             </div>
             <div className="space-y-4">
                 <h2 className="flex items-center gap-1.5 text-base font-black text-indigo-400">
-                    <img src="/logos/real/AS/West.svg" alt="" className="h-6 w-6" />
+                    <img src={getLeagueLogoUrl('West')} alt="" className="h-6 w-6" />
                     서부 컨퍼런스
                 </h2>
                 <AllstarRosterTable label="스타터" players={west.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
                 <AllstarRosterTable label="리저브" players={west.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar()}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar()}>
                     올스타 투표 결과 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2205,15 +1769,12 @@ export const AllstarRisingStarsCard: React.FC<{
     if (event.detail.kind !== 'allstar_rising_stars') return null;
     const { seasonLabel, teamA, teamB, teamAName, teamBName, allStarStart, allStarEnd, gameDate } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 라이징스타 챌린지 명단이 확정됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 라이징스타 챌린지 명단이 확정됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/RisingStar.svg" alt="라이징스타" />
+                <EventLetterLogo src={getLeagueLogoUrl('RisingStar')} alt="라이징스타" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     리그 각 팀의 단장과 코칭스태프들이 투표한 결과, 이번 시즌 라이징스타 챌린지에 나설 유망주 명단이 확정됐습니다.
                 </p>
@@ -2231,20 +1792,15 @@ export const AllstarRisingStarsCard: React.FC<{
                 </p>
             </div>
             <div className="space-y-4">
-                <AllstarRosterTable label={`팀 ${teamAName}`} players={teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc="/logos/real/AS/RisingA.svg" />
-                <AllstarRosterTable label={`팀 ${teamBName}`} players={teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc="/logos/real/AS/RisingB.svg" />
+                <AllstarRosterTable label={`팀 ${teamAName}`} players={teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingA')} />
+                <AllstarRosterTable label={`팀 ${teamBName}`} players={teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingB')} />
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar('risingstars')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar('risingstars')}>
                     올스타 화면 라이징스타 탭에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2268,100 +1824,59 @@ export const ThreePointContestTable: React.FC<{
     teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
     onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
 }> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
-    <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-            <thead>
-                <tr className="border-b border-slate-700 bg-slate-800/60">
-                    <th className={AWARD_RANK_TH}>순위</th>
-                    <th className={AWARD_RANK_TH}>OVR</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                    <th className={AWARD_RANK_TH}>G</th>
-                    <th className={AWARD_RANK_TH}>MP</th>
-                    <th className={AWARD_RANK_TH}>PTS</th>
-                    <th className={AWARD_RANK_TH}>3PM</th>
-                    <th className={AWARD_RANK_TH}>3PA</th>
-                    <th className={AWARD_RANK_TH}>3P%</th>
-                    <th className={AWARD_RANK_TH}>CNR%</th>
-                    <th className={AWARD_RANK_TH}>45%</th>
-                    <th className={AWARD_RANK_TH}>ATB%</th>
-                    <th className={AWARD_RANK_TH}>TS%</th>
-                </tr>
-            </thead>
-            <tbody>
-                {participants.map((p, idx) => {
-                    const entry = playerCardMap.get(p.playerId);
-                    const team = teamBySlug.get(p.teamSlug);
-                    const stats = entry?.player?.stats;
-                    const g = stats?.g ?? 0;
-                    const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
-                    const cnrPct = threePointZonePct(stats, ['zone_c3_l_m', 'zone_c3_r_m'], ['zone_c3_l_a', 'zone_c3_r_a']);
-                    const p45Pct = threePointZonePct(stats, ['zone_atb3_l_m', 'zone_atb3_r_m'], ['zone_atb3_l_a', 'zone_atb3_r_a']);
-                    const atbPct = threePointZonePct(stats, ['zone_atb3_c_m'], ['zone_atb3_c_a']);
-                    const tsa = (stats?.fga ?? 0) + 0.44 * (stats?.fta ?? 0);
-                    const tsPct = tsa > 0 ? (stats?.pts ?? 0) / (2 * tsa) : 0;
-                    return (
-                        <tr key={p.playerId} className="border-b border-slate-800/60">
-                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                            <td className={AWARD_RANK_TD}>
-                                <div className="flex justify-center">
-                                    <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
-                                </div>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                    <span
-                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
-                                    >
-                                        {p.playerName}
-                                    </span>
-                                </PlayerHoverCard>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                    {team?.color_primary ? (
-                                        <img
-                                            src={getRealTeamLogoUrl(p.teamSlug)}
-                                            alt={team?.team_abbr ?? p.teamSlug}
-                                            className="w-5 h-5 object-contain shrink-0"
-                                            onError={(ev) => {
-                                                const img = ev.currentTarget;
-                                                if (img.dataset.fallback !== 'old') {
-                                                    img.dataset.fallback = 'old';
-                                                    img.src = getTeamLogoUrl(p.teamSlug);
-                                                } else {
-                                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                                }
-                                            }}
-                                        />
-                                    ) : (
-                                        <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
-                                    )}
-                                    <span
-                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
-                                    >
-                                        {team?.team_abbr ?? p.teamSlug}
-                                    </span>
-                                </div>
-                            </td>
-                            <td className={AWARD_RANK_TD}>{g}</td>
-                            <td className={AWARD_RANK_TD}>{perGame(stats?.mp)}</td>
-                            <td className={AWARD_RANK_TD}>{perGame(stats?.pts)}</td>
-                            <td className={AWARD_RANK_TD}>{perGame(stats?.p3m)}</td>
-                            <td className={AWARD_RANK_TD}>{perGame(stats?.p3a)}</td>
-                            <td className={AWARD_RANK_TD}>{(stats?.p3a ?? 0) > 0 ? formatAwardPct((stats?.p3m ?? 0) / (stats!.p3a)) : '-'}</td>
-                            <td className={AWARD_RANK_TD}>{formatAwardPct(cnrPct)}</td>
-                            <td className={AWARD_RANK_TD}>{formatAwardPct(p45Pct)}</td>
-                            <td className={AWARD_RANK_TD}>{formatAwardPct(atbPct)}</td>
-                            <td className={AWARD_RANK_TD}>{formatAwardPct(tsPct)}</td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    </div>
+    <Table variant="bare" density="compact" className="text-sm text-slate-300">
+        <TableHead>
+            <TableHeaderCell>순위</TableHeaderCell>
+            <TableHeaderCell>OVR</TableHeaderCell>
+            <TableHeaderCell align="left">선수</TableHeaderCell>
+            <TableHeaderCell align="left">팀</TableHeaderCell>
+            <TableHeaderCell>G</TableHeaderCell>
+            <TableHeaderCell>MP</TableHeaderCell>
+            <TableHeaderCell>PTS</TableHeaderCell>
+            <TableHeaderCell>3PM</TableHeaderCell>
+            <TableHeaderCell>3PA</TableHeaderCell>
+            <TableHeaderCell>3P%</TableHeaderCell>
+            <TableHeaderCell>CNR%</TableHeaderCell>
+            <TableHeaderCell>45%</TableHeaderCell>
+            <TableHeaderCell>ATB%</TableHeaderCell>
+            <TableHeaderCell>TS%</TableHeaderCell>
+        </TableHead>
+        <TableBody>
+            {participants.map((p, idx) => {
+                const entry = playerCardMap.get(p.playerId);
+                const stats = entry?.player?.stats;
+                const g = stats?.g ?? 0;
+                const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
+                const cnrPct = threePointZonePct(stats, ['zone_c3_l_m', 'zone_c3_r_m'], ['zone_c3_l_a', 'zone_c3_r_a']);
+                const p45Pct = threePointZonePct(stats, ['zone_atb3_l_m', 'zone_atb3_r_m'], ['zone_atb3_l_a', 'zone_atb3_r_a']);
+                const atbPct = threePointZonePct(stats, ['zone_atb3_c_m'], ['zone_atb3_c_a']);
+                const tsa = (stats?.fga ?? 0) + 0.44 * (stats?.fta ?? 0);
+                const tsPct = tsa > 0 ? (stats?.pts ?? 0) / (2 * tsa) : 0;
+                return (
+                    <TableRow key={p.playerId}>
+                        <LetterRankCell rank={idx + 1} />
+                        <TableCell>
+                            <div className="flex justify-center">
+                                <OvrBadge value={p.ovr} size="sm" className="shadow-none" />
+                            </div>
+                        </TableCell>
+                        <LetterPlayerCell name={p.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined} />
+                        <LetterTeamCell slug={p.teamSlug} team={teamBySlug.get(p.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                        <TableCell className="tabular-nums">{g}</TableCell>
+                        <TableCell className="tabular-nums">{perGame(stats?.mp)}</TableCell>
+                        <TableCell className="tabular-nums">{perGame(stats?.pts)}</TableCell>
+                        <TableCell className="tabular-nums">{perGame(stats?.p3m)}</TableCell>
+                        <TableCell className="tabular-nums">{perGame(stats?.p3a)}</TableCell>
+                        <TableCell className="tabular-nums">{(stats?.p3a ?? 0) > 0 ? formatAwardPct((stats?.p3m ?? 0) / (stats!.p3a)) : '-'}</TableCell>
+                        <TableCell className="tabular-nums">{formatAwardPct(cnrPct)}</TableCell>
+                        <TableCell className="tabular-nums">{formatAwardPct(p45Pct)}</TableCell>
+                        <TableCell className="tabular-nums">{formatAwardPct(atbPct)}</TableCell>
+                        <TableCell className="tabular-nums">{formatAwardPct(tsPct)}</TableCell>
+                    </TableRow>
+                );
+            })}
+        </TableBody>
+    </Table>
 );
 
 /** [2026-09-08] 3점 챌린지 참가자 명단 전용 서신 — 투표 없이 3점슛 능력치 기반 가중 랜덤
@@ -2382,15 +1897,12 @@ export const AllstarThreePointContestCard: React.FC<{
     if (event.detail.kind !== 'allstar_three_point_contest') return null;
     const { seasonLabel, participants, contestDate } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 3점 챌린지 참가자 명단이 확정됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 3점 챌린지 참가자 명단이 확정됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/ThreeContest.svg" alt="3점 컨테스트" />
+                <EventLetterLogo src={getLeagueLogoUrl('ThreeContest')} alt="3점 컨테스트" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     이번 시즌 최고의 슈터 8명이 3점 챌린지 참가 명단에 이름을 올렸습니다.
                 </p>
@@ -2404,20 +1916,15 @@ export const AllstarThreePointContestCard: React.FC<{
                 </p>
             </div>
             <div className="space-y-2">
-                <h3 className="text-sm font-black text-slate-300 uppercase">참가자</h3>
+                <LetterSectionTitle>참가자</LetterSectionTitle>
                 <ThreePointContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar('threept')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar('threept')}>
                     올스타 화면 3점 컨테스트 탭에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2430,75 +1937,34 @@ export const ThreePointContestResultTable: React.FC<{
     onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
     highlightPlayerId?: string;
 }> = ({ entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, highlightPlayerId }) => (
-    <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-            <thead>
-                <tr className="border-b border-slate-700 bg-slate-800/60">
-                    <th className={AWARD_RANK_TH}>순위</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                    <th className={AWARD_RANK_TH}>좌측 코너</th>
-                    <th className={AWARD_RANK_TH}>좌측 45도</th>
-                    <th className={AWARD_RANK_TH}>중앙</th>
-                    <th className={AWARD_RANK_TH}>우측 45도</th>
-                    <th className={AWARD_RANK_TH}>우측 코너</th>
-                    <th className={AWARD_RANK_TH}>합계</th>
-                </tr>
-            </thead>
-            <tbody>
-                {entries.map((e, idx) => {
-                    const entry = playerCardMap.get(e.playerId);
-                    const team = teamBySlug.get(e.teamSlug);
-                    const isHighlighted = e.playerId === highlightPlayerId;
-                    return (
-                        <tr key={e.playerId} className={`border-b border-slate-800/60 ${isHighlighted ? 'bg-amber-400/10' : ''}`}>
-                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                    <span
-                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
-                                    >
-                                        {e.playerName}
-                                    </span>
-                                </PlayerHoverCard>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                    {team?.color_primary ? (
-                                        <img
-                                            src={getRealTeamLogoUrl(e.teamSlug)}
-                                            alt={team?.team_abbr ?? e.teamSlug}
-                                            className="w-5 h-5 object-contain shrink-0"
-                                            onError={(ev) => {
-                                                const img = ev.currentTarget;
-                                                if (img.dataset.fallback !== 'old') {
-                                                    img.dataset.fallback = 'old';
-                                                    img.src = getTeamLogoUrl(e.teamSlug);
-                                                } else {
-                                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                                }
-                                            }}
-                                        />
-                                    ) : (
-                                        <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
-                                    )}
-                                    <span
-                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
-                                    >
-                                        {team?.team_abbr ?? e.teamSlug}
-                                    </span>
-                                </div>
-                            </td>
-                            {e.rackScores.map((s, i) => <td key={i} className={AWARD_RANK_TD}>{s}</td>)}
-                            <td className={`${AWARD_RANK_TD} font-black text-white`}>{e.total}</td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    </div>
+    <Table variant="bare" density="compact" className="text-sm text-slate-300">
+        <TableHead>
+            <TableHeaderCell>순위</TableHeaderCell>
+            <TableHeaderCell align="left">선수</TableHeaderCell>
+            <TableHeaderCell align="left">팀</TableHeaderCell>
+            <TableHeaderCell>좌측 코너</TableHeaderCell>
+            <TableHeaderCell>좌측 45도</TableHeaderCell>
+            <TableHeaderCell>중앙</TableHeaderCell>
+            <TableHeaderCell>우측 45도</TableHeaderCell>
+            <TableHeaderCell>우측 코너</TableHeaderCell>
+            <TableHeaderCell>합계</TableHeaderCell>
+        </TableHead>
+        <TableBody>
+            {entries.map((e, idx) => {
+                const entry = playerCardMap.get(e.playerId);
+                const isHighlighted = e.playerId === highlightPlayerId;
+                return (
+                    <TableRow key={e.playerId} className={isHighlighted ? 'bg-amber-400/10' : ''}>
+                        <LetterRankCell rank={idx + 1} />
+                        <LetterPlayerCell name={e.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined} />
+                        <LetterTeamCell slug={e.teamSlug} team={teamBySlug.get(e.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                        {e.rackScores.map((s, i) => <TableCell key={i} className="tabular-nums">{s}</TableCell>)}
+                        <TableCell className="tabular-nums font-bold text-white">{e.total}</TableCell>
+                    </TableRow>
+                );
+            })}
+        </TableBody>
+    </Table>
 );
 
 // [2026-09-09] 3점 챌린지 샷차트 그래픽 — 좌측 선수 목록에서 선수를 고르면 코트 위 각 랙
@@ -2582,20 +2048,13 @@ export const ThreePointContestShotChart: React.FC<{
     return (
         <div className="flex gap-4 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
             <div className="w-40 shrink-0 space-y-2">
-                <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 w-fit">
-                    {(['round2', 'round1'] as const).map(r => (
-                        <button
-                            key={r}
-                            type="button"
-                            onClick={() => setSelectedRound(r)}
-                            className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
-                                selectedRound === r ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
-                            }`}
-                        >
-                            {r === 'round2' ? '결선' : '예선'}
-                        </button>
-                    ))}
-                </div>
+                <SegmentedControl<'round1' | 'round2'>
+                    size="md"
+                    value={selectedRound}
+                    onChange={setSelectedRound}
+                    options={[{ value: 'round2', label: '결선' }, { value: 'round1', label: '예선' }]}
+                    className="w-fit"
+                />
                 <div className="space-y-0.5">
                     {entries.map(e => {
                         const isWinner = e.playerId === winnerId;
@@ -2663,15 +2122,12 @@ export const AllstarThreePointContestResultCard: React.FC<{
     const { seasonLabel, round1, round2, winnerId } = event.detail;
     const winner = round2.find(e => e.playerId === winnerId) ?? round2[0];
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 3점 챌린지 결과가 발표됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 3점 챌린지 결과가 발표됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/ThreeContest.svg" alt="3점 컨테스트" />
+                <EventLetterLogo src={getLeagueLogoUrl('ThreeContest')} alt="3점 컨테스트" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     3점 챌린지가 막을 내렸습니다.
                 </p>
@@ -2683,31 +2139,26 @@ export const AllstarThreePointContestResultCard: React.FC<{
             </div>
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h3 className="text-sm font-black text-slate-300 uppercase">샷차트</h3>
+                    <LetterSectionTitle>샷차트</LetterSectionTitle>
                     <ThreePointContestShotChart round1={round1} round2={round2} winnerId={winnerId} />
                 </div>
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <h3 className="text-sm font-black text-slate-300 uppercase">결선 (상위 3명)</h3>
+                        <LetterSectionTitle>결선 (상위 3명)</LetterSectionTitle>
                         <ThreePointContestResultTable entries={round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} highlightPlayerId={winnerId} />
                     </div>
                     <div className="space-y-2">
-                        <h3 className="text-sm font-black text-slate-300 uppercase">예선 (8명)</h3>
+                        <LetterSectionTitle>예선 (8명)</LetterSectionTitle>
                         <ThreePointContestResultTable entries={round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
                     </div>
                 </div>
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar('threept')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar('threept')}>
                     올스타 화면 3점 컨테스트 탭에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2719,72 +2170,31 @@ export const DunkContestResultTable: React.FC<{
     onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
     highlightPlayerId?: string;
 }> = ({ entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, highlightPlayerId }) => (
-    <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-            <thead>
-                <tr className="border-b border-slate-700 bg-slate-800/60">
-                    <th className={AWARD_RANK_TH}>순위</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                    <th className={AWARD_RANK_TH}>덩크 1</th>
-                    <th className={AWARD_RANK_TH}>덩크 2</th>
-                    <th className={AWARD_RANK_TH}>합계</th>
-                </tr>
-            </thead>
-            <tbody>
-                {entries.map((e, idx) => {
-                    const entry = playerCardMap.get(e.playerId);
-                    const team = teamBySlug.get(e.teamSlug);
-                    const isHighlighted = e.playerId === highlightPlayerId;
-                    return (
-                        <tr key={e.playerId} className={`border-b border-slate-800/60 ${isHighlighted ? 'bg-amber-400/10' : ''}`}>
-                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                    <span
-                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined}
-                                    >
-                                        {e.playerName}
-                                    </span>
-                                </PlayerHoverCard>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                    {team?.color_primary ? (
-                                        <img
-                                            src={getRealTeamLogoUrl(e.teamSlug)}
-                                            alt={team?.team_abbr ?? e.teamSlug}
-                                            className="w-5 h-5 object-contain shrink-0"
-                                            onError={(ev) => {
-                                                const img = ev.currentTarget;
-                                                if (img.dataset.fallback !== 'old') {
-                                                    img.dataset.fallback = 'old';
-                                                    img.src = getTeamLogoUrl(e.teamSlug);
-                                                } else {
-                                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                                }
-                                            }}
-                                        />
-                                    ) : (
-                                        <TeamLogo teamId={e.teamSlug} teamName={team?.team_name} size="xs" />
-                                    )}
-                                    <span
-                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(e.teamSlug) : undefined}
-                                    >
-                                        {team?.team_abbr ?? e.teamSlug}
-                                    </span>
-                                </div>
-                            </td>
-                            {e.dunks.map((d, i) => <td key={i} className={AWARD_RANK_TD}>{d.total}</td>)}
-                            <td className={`${AWARD_RANK_TD} font-black text-white`}>{e.total}</td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    </div>
+    <Table variant="bare" density="compact" className="text-sm text-slate-300">
+        <TableHead>
+            <TableHeaderCell>순위</TableHeaderCell>
+            <TableHeaderCell align="left">선수</TableHeaderCell>
+            <TableHeaderCell align="left">팀</TableHeaderCell>
+            <TableHeaderCell>덩크 1</TableHeaderCell>
+            <TableHeaderCell>덩크 2</TableHeaderCell>
+            <TableHeaderCell>합계</TableHeaderCell>
+        </TableHead>
+        <TableBody>
+            {entries.map((e, idx) => {
+                const entry = playerCardMap.get(e.playerId);
+                const isHighlighted = e.playerId === highlightPlayerId;
+                return (
+                    <TableRow key={e.playerId} className={isHighlighted ? 'bg-amber-400/10' : ''}>
+                        <LetterRankCell rank={idx + 1} />
+                        <LetterPlayerCell name={e.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(e.playerId) : undefined} />
+                        <LetterTeamCell slug={e.teamSlug} team={teamBySlug.get(e.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                        {e.dunks.map((d, i) => <TableCell key={i} className="tabular-nums">{d.total}</TableCell>)}
+                        <TableCell className="tabular-nums font-bold text-white">{e.total}</TableCell>
+                    </TableRow>
+                );
+            })}
+        </TableBody>
+    </Table>
 );
 
 /** [2026-09-09] 덩크 컨테스트 "결과" 서신 — 참가자 발표(AllstarDunkContestCard)와 달리 실제
@@ -2801,15 +2211,12 @@ export const AllstarDunkContestResultCard: React.FC<{
     const { seasonLabel, round1, round2, winnerId } = event.detail;
     const winner = round2.find(e => e.playerId === winnerId) ?? round2[0];
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 덩크 컨테스트 결과가 발표됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 덩크 컨테스트 결과가 발표됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/DunkContest.svg" alt="덩크 컨테스트" />
+                <EventLetterLogo src={getLeagueLogoUrl('DunkContest')} alt="덩크 컨테스트" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     덩크 컨테스트가 막을 내렸습니다.
                 </p>
@@ -2821,25 +2228,20 @@ export const AllstarDunkContestResultCard: React.FC<{
             </div>
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <h3 className="text-sm font-black text-slate-300 uppercase">결승 (상위 2명)</h3>
+                    <LetterSectionTitle>결승 (상위 2명)</LetterSectionTitle>
                     <DunkContestResultTable entries={round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} highlightPlayerId={winnerId} />
                 </div>
                 <div className="space-y-2">
-                    <h3 className="text-sm font-black text-slate-300 uppercase">예선 (4명)</h3>
+                    <LetterSectionTitle>예선 (4명)</LetterSectionTitle>
                     <DunkContestResultTable entries={round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
                 </div>
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar('dunk')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar('dunk')}>
                     올스타 화면 덩크 컨테스트 탭에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2850,74 +2252,33 @@ export const DunkContestTable: React.FC<{
     teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
     onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
 }> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
-    <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-            <thead>
-                <tr className="border-b border-slate-700 bg-slate-800/60">
-                    <th className={AWARD_RANK_TH}>순위</th>
-                    <th className={AWARD_RANK_TH}>OVR</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">선수</th>
-                    <th className="py-1.5 px-2 text-sm font-bold text-slate-300 text-left whitespace-nowrap">팀</th>
-                    <th className={AWARD_RANK_TH}>덩크 점수</th>
-                </tr>
-            </thead>
-            <tbody>
-                {participants.map((p, idx) => {
-                    const entry = playerCardMap.get(p.playerId);
-                    const team = teamBySlug.get(p.teamSlug);
-                    return (
-                        <tr key={p.playerId} className="border-b border-slate-800/60">
-                            <td className={`${AWARD_RANK_TD} font-black text-slate-400`}>{idx + 1}</td>
-                            <td className={AWARD_RANK_TD}>
-                                <div className="flex justify-center">
-                                    <OvrBadge value={p.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
-                                </div>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
-                                    <span
-                                        className={`text-sm font-bold text-slate-100 ${onPlayerClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
-                                    >
-                                        {p.playerName}
-                                    </span>
-                                </PlayerHoverCard>
-                            </td>
-                            <td className="py-1.5 px-2 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                    {team?.color_primary ? (
-                                        <img
-                                            src={getRealTeamLogoUrl(p.teamSlug)}
-                                            alt={team?.team_abbr ?? p.teamSlug}
-                                            className="w-5 h-5 object-contain shrink-0"
-                                            onError={(ev) => {
-                                                const img = ev.currentTarget;
-                                                if (img.dataset.fallback !== 'old') {
-                                                    img.dataset.fallback = 'old';
-                                                    img.src = getTeamLogoUrl(p.teamSlug);
-                                                } else {
-                                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                                }
-                                            }}
-                                        />
-                                    ) : (
-                                        <TeamLogo teamId={p.teamSlug} teamName={team?.team_name} size="xs" />
-                                    )}
-                                    <span
-                                        className={`text-sm text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                        onClick={onOpenTeam ? () => onOpenTeam(p.teamSlug) : undefined}
-                                    >
-                                        {team?.team_abbr ?? p.teamSlug}
-                                    </span>
-                                </div>
-                            </td>
-                            <td className={`${AWARD_RANK_TD} tabular-nums`}>{p.dunkRating}</td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    </div>
+    <Table variant="bare" density="compact" className="text-sm text-slate-300">
+        <TableHead>
+            <TableHeaderCell>순위</TableHeaderCell>
+            <TableHeaderCell>OVR</TableHeaderCell>
+            <TableHeaderCell align="left">선수</TableHeaderCell>
+            <TableHeaderCell align="left">팀</TableHeaderCell>
+            <TableHeaderCell>덩크 점수</TableHeaderCell>
+        </TableHead>
+        <TableBody>
+            {participants.map((p, idx) => {
+                const entry = playerCardMap.get(p.playerId);
+                return (
+                    <TableRow key={p.playerId}>
+                        <LetterRankCell rank={idx + 1} />
+                        <TableCell>
+                            <div className="flex justify-center">
+                                <OvrBadge value={p.ovr} size="sm" className="shadow-none" />
+                            </div>
+                        </TableCell>
+                        <LetterPlayerCell name={p.playerName} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined} />
+                        <LetterTeamCell slug={p.teamSlug} team={teamBySlug.get(p.teamSlug)} onOpenTeam={onOpenTeam} logo />
+                        <TableCell className="tabular-nums">{p.dunkRating}</TableCell>
+                    </TableRow>
+                );
+            })}
+        </TableBody>
+    </Table>
 );
 
 /** [2026-09-08] 덩크 컨테스트 참가자 명단 전용 서신 — 3점 챌린지 서신
@@ -2933,15 +2294,12 @@ export const AllstarDunkContestCard: React.FC<{
     if (event.detail.kind !== 'allstar_dunk_contest') return null;
     const { seasonLabel, participants, contestDate } = event.detail;
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
+        <LetterShell
+            title={<>{seasonLabel}시즌 덩크 컨테스트 참가자 명단이 확정됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 덩크 컨테스트 참가자 명단이 확정됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
-            <div className="space-y-2">
-                <EventLetterLogo src="/logos/real/AS/DunkContest.svg" alt="덩크 컨테스트" />
+                <EventLetterLogo src={getLeagueLogoUrl('DunkContest')} alt="덩크 컨테스트" />
                 <p className="text-sm text-slate-300 leading-relaxed">
                     이번 시즌 최고의 하이플라이어 4명이 덩크 컨테스트 참가 명단에 이름을 올렸습니다.
                 </p>
@@ -2955,20 +2313,15 @@ export const AllstarDunkContestCard: React.FC<{
                 </p>
             </div>
             <div className="space-y-2">
-                <h3 className="text-sm font-black text-slate-300 uppercase">참가자</h3>
+                <LetterSectionTitle>참가자</LetterSectionTitle>
                 <DunkContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
             </div>
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar('dunk')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar('dunk')}>
                     올스타 화면 덩크 컨테스트 탭에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -2996,7 +2349,7 @@ function buildAllStarTeamRow(teamSlug: string, teamName: string, colorPrimary: s
  * allstar_game_result/allstar_rising_stars_result 두 타입이 완전히 동일한 payload 구조
  * (AllstarGameResultDetail)를 공유해 카드도 하나로 합치고 kind로 텍스트/로고/색상/바로가기
  * 대상만 분기한다. 팀명/로고/박스스코어는 payload에 이미 서버가 구워둔 homeTeamName/
- * awayTeamName + getRealTeamLogoUrl(가상 팀 ID를 AS 로고로 매핑하도록 이미 확장돼 있음) +
+ * awayTeamName + getTeamLogoUrl(가상 팀 ID를 리그 로고로 매핑하도록 이미 확장돼 있음) +
  * useGameBoxScore(event.gameId)로 채운다 — onOpenTeam은 의도적으로 안 씀(가상 팀 ID로 로스터
  * 화면에 진입하면 빈 화면만 뜸). */
 export const AllstarGameResultCard: React.FC<{
@@ -3012,7 +2365,7 @@ export const AllstarGameResultCard: React.FC<{
     if (event.detail.kind !== 'allstar_game_result' && event.detail.kind !== 'allstar_rising_stars_result') return null;
     const isMain = event.detail.kind === 'allstar_game_result';
     const { homeTeamId, awayTeamId, homeTeamName, awayTeamName, mvp } = event.detail;
-    const logoSrc = isMain ? '/logos/real/AS/AllStar.svg' : '/logos/real/AS/RisingStar.svg';
+    const logoSrc = isMain ? getLeagueLogoUrl('AllStar') : getLeagueLogoUrl('RisingStar');
     const logoAlt = isMain ? '올스타' : '라이징스타';
     const eventLabel = isMain ? '올스타전' : '라이징스타 챌린지';
     const homeColor = isMain ? CONFERENCE_COLORS.East : RISING_STARS_COLORS.A;
@@ -3022,13 +2375,10 @@ export const AllstarGameResultCard: React.FC<{
     const mvpStatLine = mvp && mvp.stats.length > 0 ? mvp.stats.map(s => `${s.value} ${s.label}`).join(', ') : null;
 
     return (
-        <div className="max-w-5xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{event.detail.seasonLabel}시즌 {eventLabel}이 종료됐습니다</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            title={<>{event.detail.seasonLabel}시즌 {eventLabel}이 종료됐습니다</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <div className="space-y-2">
                 <EventLetterLogo src={logoSrc} alt={logoAlt} />
                 <p className="text-sm text-slate-300 leading-relaxed">
@@ -3043,9 +2393,7 @@ export const AllstarGameResultCard: React.FC<{
             </div>
 
             {isBoxLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="section" />
             ) : boxScore ? (
                 <div className="space-y-4">
                     <BoxScoreHeadline
@@ -3062,28 +2410,21 @@ export const AllstarGameResultCard: React.FC<{
                         />
                     )}
                     <div className="space-y-4">
-                        <h4 className="text-base font-black text-white uppercase">박스스코어</h4>
+                        <LetterSectionTitle level="h4">박스스코어</LetterSectionTitle>
                         <TeamBoxTable team={awayTeamRow} teamSlug={awayTeamId} box={boxScore.awayBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} highlightPlayerId={mvp?.playerId} />
                         <TeamBoxTable team={homeTeamRow} teamSlug={homeTeamId} box={boxScore.homeBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} highlightPlayerId={mvp?.playerId} />
                     </div>
                 </div>
             ) : event.gameId ? (
-                <p className="text-xs text-slate-500 ko-normal py-4 text-center border border-dashed border-slate-800 rounded-lg">
-                    박스스코어는 경기 종료 후 최대 10분 뒤 공개됩니다.
-                </p>
+                <BoxScoreWaitNote />
             ) : null}
 
             {onOpenAllStar && (
-                <button
-                    type="button"
-                    onClick={() => onOpenAllStar(isMain ? undefined : 'risingstars')}
-                    className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
-                >
+                <LetterLink onClick={() => onOpenAllStar(isMain ? undefined : 'risingstars')}>
                     올스타 화면에서 보러가기
-                    <ArrowRight size={14} />
-                </button>
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3103,29 +2444,27 @@ export const PlayInBracketCard: React.FC<{
                 <div key={`${m.conference}-${m.tag}`} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-slate-800/60 text-sm">
                     <div className="flex items-center gap-2 min-w-0">
                         <TeamBadge teamId={m.higherSeedSlug} teamName={teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName} abbr={teamBySlug.get(m.higherSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.higherSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.higherSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.higherSeedSlug)?.color_text} size="xs" />
-                        <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(m.higherSeedSlug)}>
+                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.higherSeedSlug)}>
                             {m.higherSeedRank}. {teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName}
-                        </span>
+                        </ClickableText>
                     </div>
                     <span className="text-slate-500 shrink-0 text-xs font-bold">VS</span>
                     <div className="flex items-center gap-2 min-w-0 flex-row-reverse text-right">
                         <TeamBadge teamId={m.lowerSeedSlug} teamName={teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName} abbr={teamBySlug.get(m.lowerSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.lowerSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.lowerSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.lowerSeedSlug)?.color_text} size="xs" />
-                        <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(m.lowerSeedSlug)}>
+                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.lowerSeedSlug)}>
                             {m.lowerSeedRank}. {teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName}
-                        </span>
+                        </ClickableText>
                     </div>
                 </div>
             ))}
         </div>
     );
     return (
-        <div className="max-w-3xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 플레이인 토너먼트 대진 발표</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            width="3xl"
+            title={<>{seasonLabel}시즌 플레이인 토너먼트 대진 발표</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <p className="text-sm text-slate-300 leading-relaxed">
                 플레이오프 진출의 마지막 관문, 플레이인 토너먼트 대진이 확정됐습니다. 동부와 서부에서
                 각각 4개 팀이 7~8시드 두 자리를 놓고 격돌합니다 — 7-8위전 승자는 곧바로 7시드를
@@ -3135,7 +2474,7 @@ export const PlayInBracketCard: React.FC<{
                 {renderGroup('동부', 'East')}
                 {renderGroup('서부', 'West')}
             </div>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3149,28 +2488,26 @@ export const PlayInResultCard: React.FC<{
     const winnerDisplay = teamBySlug.get(winnerSlug)?.team_name ?? winnerName;
     const loserDisplay = teamBySlug.get(loserSlug)?.team_name ?? loserName;
     return (
-        <div className="max-w-3xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
-                        {winnerDisplay}
-                    </span>
-                    , {confLabel} {tagLabel} 승리
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            width="3xl"
+            title={<>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                    {winnerDisplay}
+                </ClickableText>
+                , {confLabel} {tagLabel} 승리
+            </>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
                 이(가) {confLabel} {tagLabel}에서{' '}
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾었습니다.{' '}
                 {seedClinched
                     ? `이로써 ${winnerDisplay}이(가) ${confLabel} ${seedClinched}시드를 확정 지었습니다.`
                     : `${loserDisplay}은(는) 탈락 없이 8시드를 놓고 최종 결정전에 나섭니다.`}
             </p>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3186,21 +2523,19 @@ export const PlayoffBracketConfirmedCard: React.FC<{
                 <div key={s.seed} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800/60 text-sm">
                     <span className="text-slate-500 font-black w-5 text-center shrink-0">{s.seed}</span>
                     <TeamBadge teamId={s.teamSlug} teamName={teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName} abbr={teamBySlug.get(s.teamSlug)?.team_abbr} colorPrimary={teamBySlug.get(s.teamSlug)?.color_primary} colorSecondary={teamBySlug.get(s.teamSlug)?.color_secondary} colorText={teamBySlug.get(s.teamSlug)?.color_text} size="xs" />
-                    <span className="text-slate-200 font-semibold cursor-pointer hover:text-indigo-400 truncate" onClick={() => onOpenTeam?.(s.teamSlug)}>
+                    <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(s.teamSlug)}>
                         {teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName}
-                    </span>
+                    </ClickableText>
                 </div>
             ))}
         </div>
     );
     return (
-        <div className="max-w-3xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">{seasonLabel}시즌 플레이오프 대진 확정</h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            width="3xl"
+            title={<>{seasonLabel}시즌 플레이오프 대진 확정</>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <p className="text-sm text-slate-300 leading-relaxed">
                 {seasonLabel}시즌 플레이오프 대진표가 확정됐습니다. 동부와 서부에서 각 8개 팀이
                 우승을 향한 여정을 시작하며, 1라운드부터 각 컨퍼런스 1번 시드와 8번 시드가 맞붙습니다.
@@ -3209,7 +2544,7 @@ export const PlayoffBracketConfirmedCard: React.FC<{
                 {renderGroup('동부', east)}
                 {renderGroup('서부', west)}
             </div>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3231,36 +2566,34 @@ export const PlayoffGameResultCard: React.FC<{
     const trailWins = Math.min(higherSeedWins, lowerSeedWins);
     const isTied = higherSeedWins === lowerSeedWins;
     return (
-        <div className="max-w-3xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
-                        {winnerDisplay}
-                    </span>
-                    , {roundName} {gameNum}차전 승리
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            width="3xl"
+            title={<>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                    {winnerDisplay}
+                </ClickableText>
+                , {roundName} {gameNum}차전 승리
+            </>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
                 이(가){' '}
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾고 {roundName} {gameNum}차전을 가져갔습니다.{' '}
                 {isTied
                     ? '시리즈 전적은 원점으로 돌아갔습니다.'
                     : <>시리즈 전적은{' '}
-                        <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(leaderSlug)}>{teamBySlug.get(leaderSlug)?.team_name ?? leaderSlug}</span>
+                        <ClickableText noUnderline onClick={() => onOpenTeam?.(leaderSlug)}>{teamBySlug.get(leaderSlug)?.team_name ?? leaderSlug}</ClickableText>
                         의 {leaderWins}승 {trailWins}패로 앞서갑니다.
                     </>}
             </p>
             {event.gameId && onOpenGame && (
-                <button type="button" onClick={() => onOpenGame(event.gameId!)} className="flex items-center gap-1 text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer">
-                    경기 다시보기 <ArrowRight size={14} />
-                </button>
+                <LetterLink onClick={() => onOpenGame(event.gameId!)}>
+                    경기 다시보기
+                </LetterLink>
             )}
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3273,29 +2606,29 @@ export const PlayoffSeriesResultCard: React.FC<{
     const loserDisplay = teamBySlug.get(loserSlug)?.team_name ?? loserName;
     const isSweep = loserWins === 0;
     return (
-        <div className="max-w-3xl space-y-6 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="flex items-center gap-4 py-2">
-                <TeamBadge teamId={winnerSlug} teamName={winnerDisplay} abbr={teamBySlug.get(winnerSlug)?.team_abbr} colorPrimary={teamBySlug.get(winnerSlug)?.color_primary} colorSecondary={teamBySlug.get(winnerSlug)?.color_secondary} colorText={teamBySlug.get(winnerSlug)?.color_text} size="md" />
-                <TrendingUp size={20} className="text-emerald-400 shrink-0" />
-            </div>
-            <div className="space-y-2">
-                <h1 className="text-xl font-black text-white">
-                    <span className="cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => onOpenTeam?.(winnerSlug)}>
-                        {winnerDisplay}
-                    </span>
-                    , {roundName} 시리즈 승리
-                </h1>
-                <p className="text-sm text-slate-500">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
-                <div className="border-t border-slate-700" />
-            </div>
+        <LetterShell
+            width="3xl"
+            title={<>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                    {winnerDisplay}
+                </ClickableText>
+                , {roundName} 시리즈 승리
+            </>}
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+            beforeHeader={
+                <div className="flex items-center gap-4 py-2">
+                    <TeamBadge teamId={winnerSlug} teamName={winnerDisplay} abbr={teamBySlug.get(winnerSlug)?.team_abbr} colorPrimary={teamBySlug.get(winnerSlug)?.color_primary} colorSecondary={teamBySlug.get(winnerSlug)?.color_secondary} colorText={teamBySlug.get(winnerSlug)?.color_text} size="md" />
+                    <TrendingUp size={20} className="text-emerald-400 shrink-0" />
+                </div>
+            }
+        >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
                 이(가){' '}
-                <span className="cursor-pointer hover:text-indigo-400" onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</span>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerWins}승 {loserWins}패</b>로{isSweep ? ' 스윕하며' : ' 꺾고'} {roundName} 관문을 통과했습니다.
             </p>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3307,11 +2640,13 @@ export const PlayoffChampionCard: React.FC<{
     const team = teamBySlug.get(championSlug);
     const displayName = team?.team_name ?? championName;
     return (
-        <div className="max-w-3xl space-y-8 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="flex flex-col items-center text-center gap-3 py-4 px-6 rounded-2xl bg-gradient-to-b from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/20">
+        <LetterShell
+            width="3xl"
+            spacing={8}
+        >
+            <LetterHero>
                 <img src="/images/final.webp" alt="Playoff Champion" className="h-36 w-auto object-contain drop-shadow-[0_0_20px_rgba(251,191,36,0.35)]" />
-                <p className="text-xs font-black tracking-[0.3em] text-amber-400 uppercase">{seasonLabel} CHAMPIONS</p>
+                <p className="text-xs font-black tracking-[0.3em] text-amber-400">{seasonLabel} CHAMPIONS</p>
                 <h1
                     className="text-3xl font-black text-white cursor-pointer hover:text-amber-300 transition-colors"
                     onClick={() => onOpenTeam?.(championSlug)}
@@ -3321,7 +2656,7 @@ export const PlayoffChampionCard: React.FC<{
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
                     <span className="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300">플레이오프 {playoffWins}승 {playoffLosses}패</span>
                 </div>
-            </div>
+            </LetterHero>
             <p className="text-sm text-slate-500 -mt-4">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
             <p className="text-sm text-slate-300 leading-relaxed">
                 플레이인부터 파이널까지 이어진 길고 치열했던 여정 끝에,{' '}
@@ -3329,7 +2664,7 @@ export const PlayoffChampionCard: React.FC<{
                 {' '}이(가) {seasonLabel}시즌 정상에 올랐습니다. 플레이오프 전적 <b className="text-white">{playoffWins}승 {playoffLosses}패</b>로
                 시즌을 마무리하며 우승 트로피를 들어 올렸습니다.
             </p>
-        </div>
+        </LetterShell>
     );
 };
 
@@ -3340,11 +2675,13 @@ export const FinalsMvpCard: React.FC<{
     const { seasonLabel, playerId, playerName, teamSlug, teamName, gp, ppg, rpg, apg, spg, bpg } = event.detail;
     const displayTeamName = teamBySlug.get(teamSlug)?.team_name ?? teamName;
     return (
-        <div className="max-w-3xl space-y-8 ko-normal relative">
-            <BrandMark className="h-4 w-auto" />
-            <div className="flex flex-col items-center text-center gap-3 py-4 px-6 rounded-2xl bg-gradient-to-b from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/20">
+        <LetterShell
+            width="3xl"
+            spacing={8}
+        >
+            <LetterHero>
                 <img src="/images/fmvp.webp" alt="Finals MVP" className="h-32 w-auto object-contain drop-shadow-[0_0_20px_rgba(251,191,36,0.35)]" />
-                <p className="text-xs font-black tracking-[0.3em] text-amber-400 uppercase">{seasonLabel} FINALS MVP</p>
+                <p className="text-xs font-black tracking-[0.3em] text-amber-400">{seasonLabel} FINALS MVP</p>
                 <h1 className="text-2xl font-black text-white">
                     <span
                         className={onPlayerClick ? 'cursor-pointer hover:text-amber-300 transition-colors' : ''}
@@ -3353,12 +2690,9 @@ export const FinalsMvpCard: React.FC<{
                         {playerName}
                     </span>
                 </h1>
-                <span
-                    className="text-sm font-bold text-slate-400 cursor-pointer hover:text-indigo-400"
-                    onClick={() => onOpenTeam?.(teamSlug)}
-                >
+                <ClickableText className="text-sm font-bold text-slate-400" noUnderline onClick={() => onOpenTeam?.(teamSlug)}>
                     {displayTeamName}
-                </span>
+                </ClickableText>
                 <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm text-slate-300 mt-1">
                     <span><b className="text-white">{gp}</b> 경기</span>
                     <span><b className="text-white">{ppg.toFixed(1)}</b> PPG</span>
@@ -3367,7 +2701,7 @@ export const FinalsMvpCard: React.FC<{
                     {spg >= 0.5 && <span><b className="text-white">{spg.toFixed(1)}</b> SPG</span>}
                     {bpg >= 0.5 && <span><b className="text-white">{bpg.toFixed(1)}</b> BPG</span>}
                 </div>
-            </div>
+            </LetterHero>
             <p className="text-sm text-slate-500 -mt-4">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
             <p className="text-sm text-slate-300 leading-relaxed">
                 파이널 시리즈 {gp}경기에서 평균 <b className="text-white">{ppg.toFixed(1)}점, {rpg.toFixed(1)}리바운드,
@@ -3380,7 +2714,7 @@ export const FinalsMvpCard: React.FC<{
                 </span>
                 이(가) {seasonLabel}시즌 파이널 MVP의 영예를 안았습니다.
             </p>
-        </div>
+        </LetterShell>
     );
 };
 

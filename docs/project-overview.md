@@ -266,12 +266,11 @@ NBA-GM-SIM/
 │   │   ├── DepthChartEditor.tsx   뎁스차트 드래그 편집
 │   │   ├── RotationGanttChart.tsx 로테이션 간트 차트
 │   │   ├── RotationManager.tsx    로테이션 관리 래퍼
-│   │   ├── RotationMatrix.tsx     48분 토글 로테이션 편집
 │   │   ├── TacticsBoard.tsx       전술 슬라이더 + 6종 차트 탭
 │   │   ├── GMProfileCard.tsx      GM 프로필 카드
 │   │   ├── CoachProfileCard.tsx   코치 프로필 카드
 │   │   ├── OpponentScoutPanel.tsx 상대팀 스카우트 패널
-│   │   └── tactics/               TacticalHalfCourt, TacticsDataPanel, TacticsSlidersPanel,
+│   │   └── tactics/               TacticsDataPanel, TacticsSlidersPanel,
 │   │       charts/                PlayTypePPP, RadarChart, RatingTrend, RiskGauge,
 │   │                              ShotDistribution, TeamZoneChart, UsagePrediction
 │   ├── game/                      BoxScoreTable, PlayerMarkers, ResultFooter, ResultHeader,
@@ -291,7 +290,7 @@ NBA-GM-SIM/
 │   ├── frontoffice/               DraftPicksPanel
 │   ├── leaderboard/               LeaderboardTable, LeaderboardToolbar
 │   ├── playoffs/                  BracketConnector, GridSeriesBox
-│   ├── roster/                    RosterGrid, RosterTabs, SalaryCapDashboard,
+│   ├── roster/                    RosterGrid, RosterTabs,
 │   │                              StartingLineup, TacticsHistory, TeamGameLog
 │   └── simulation/                FullSeasonSimModal, LiveScoreboard, SimulationCourt
 │

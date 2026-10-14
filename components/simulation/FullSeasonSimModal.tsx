@@ -25,10 +25,10 @@ export const FullSeasonSimModal: React.FC<Props> = ({ progress, onCancel }) => {
             <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
 
             {/* 배경 블러 오버레이 — 클릭 차단 */}
-            <div className="fixed inset-0 z-[1999] backdrop-blur-[3px] bg-slate-950/50" />
+            <div className="fixed inset-0 z-takeover backdrop-blur-[3px] bg-slate-950/50" />
 
             <div
-                className="fixed top-0 left-0 right-0 z-[2000] overflow-hidden"
+                className="fixed top-0 left-0 right-0 z-takeover overflow-hidden"
                 style={{
                     backgroundColor: '#18181B',
                     height: '35px',

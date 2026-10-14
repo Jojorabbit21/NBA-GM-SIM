@@ -30,6 +30,9 @@ export function usePlayerSeasonStatsBatch(roomId: string | undefined, playerIds:
     return useQuery({
         queryKey: ['playerSeasonStatsBatch', roomId, sortedIds.join(',')],
         enabled: !!roomId && sortedIds.length > 0,
+        // [2026-10-14] 선수 목록이 바뀌어 새 키를 받는 동안 이전 값을 유지(배지·스탯 깜빡임 방지). 단 같은 리그(room)일 때만 —
+        // 선수 id는 리그 간 공유(meta_players id)라 다른 리그 값을 이어 쓰면 그 리그의 스탯·부상이 잘못 보인다.
+        placeholderData: (prev: any, prevQuery: any) => (prevQuery?.queryKey?.[1] === roomId ? prev : undefined),
         queryFn: async (): Promise<PlayerSeasonStatsBatch> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_batch', {
                 p_room_id: roomId,

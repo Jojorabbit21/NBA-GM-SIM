@@ -1,8 +1,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { InlineNotice } from '../../../components/common/InlineNotice';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Play, FastForward, Clock, CheckCircle2, Loader2, AlertCircle, RefreshCw, Pencil, Check, X } from 'lucide-react';
 import { useLeagueContext } from './LeagueLayout';
+import { Button } from '../../../components/common/Button';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
 import { useGame } from '../../../hooks/useGameContext';
 import { simGameOverride, updateGameScheduledAt } from '../../../services/multi/leagueService';
 import { loadSchedule as loadGamesSchedule } from '../../../services/multi/gameQueries';
@@ -98,6 +102,8 @@ const AdminSimView: React.FC = () => {
     // ── 시뮬레이션 상태 ───────────────────────────────────────────────────────
     const [running,   setRunning]   = useState(false);
     const [logs,      setLogs]      = useState<LogEntry[]>([]);
+    // [2026-10-13] 배치 시뮬 결과 요약 — 실패가 있으면 로그 패널 아래 warning(에러 표시 정책 0-7)
+    const [batchSummary, setBatchSummary] = useState<{ ok: number; fail: number } | null>(null);
     const logEndRef   = useRef<HTMLDivElement>(null);
     const cancelRef   = useRef(false);
 
@@ -133,6 +139,7 @@ const AdminSimView: React.FC = () => {
         cancelRef.current = false;
         setRunning(true);
         setLogs([]);
+        setBatchSummary(null);
 
         addLog({ type: 'header', text: `$ ${label} (${games.length}경기)` });
 
@@ -150,6 +157,7 @@ const AdminSimView: React.FC = () => {
 
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         addLog({ type: 'info', text: `완료 — 성공 ${ok} / 실패 ${fail} / ${elapsed}초` });
+        setBatchSummary({ ok, fail });
         addLog({ type: 'info', text: '$' });
 
         setRunning(false);
@@ -212,11 +220,7 @@ const AdminSimView: React.FC = () => {
 
     // ── 렌더 ──────────────────────────────────────────────────────────────────
     if (ctxLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-            </div>
-        );
+        return <Spinner variant="page" />;
     }
 
     return (
@@ -262,22 +266,28 @@ const AdminSimView: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                    <button
+                    <Button
+                        variant="primary"
+                        size="md"
+                        shape="xl"
                         onClick={handleSimUpToNow}
                         disabled={running || upToNowCount === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-sm font-bold text-white transition-colors"
+                        isLoading={running}
+                        icon={<Clock size={13} />}
                     >
-                        {running ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
                         <span className="ko-normal">현재까지 시뮬 ({upToNowCount}경기)</span>
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="warning"
+                        size="md"
+                        shape="xl"
                         onClick={handleSimAll}
                         disabled={running || remainingCount === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-sm font-bold text-white transition-colors"
+                        isLoading={running}
+                        icon={<FastForward size={13} />}
                     >
-                        {running ? <Loader2 size={13} className="animate-spin" /> : <FastForward size={13} />}
                         <span className="ko-normal">전체 시뮬 ({remainingCount}경기)</span>
-                    </button>
+                    </Button>
                     {running && (
                         <button
                             onClick={() => { cancelRef.current = true; }}
@@ -298,9 +308,9 @@ const AdminSimView: React.FC = () => {
                             <div className="w-3 h-3 rounded-full bg-amber-500/60" />
                             <div className="w-3 h-3 rounded-full bg-green-500/60" />
                         </div>
-                        <span className="text-[11px] text-slate-600 font-mono">simulation log</span>
+                        <span className="text-[11px] text-slate-600">simulation log</span>
                     </div>
-                    <pre className="font-mono text-xs p-4 max-h-64 overflow-y-auto leading-5">
+                    <pre className="text-xs p-4 max-h-64 overflow-y-auto leading-5">
                         {logs.map((log, i) => (
                             <div
                                 key={i}
@@ -321,26 +331,22 @@ const AdminSimView: React.FC = () => {
                     </pre>
                 </section>
             )}
+            {batchSummary && batchSummary.fail > 0 && (
+                <InlineNotice tone="warning">배치 시뮬 완료: {batchSummary.ok}건 성공, {batchSummary.fail}건 실패 — 로그를 확인하세요.</InlineNotice>
+            )}
 
             {/* 일정 목록 */}
             <section className="space-y-4">
-                {scheduleErr && (
-                    <p className="text-xs text-red-400 ko-normal">{scheduleErr}</p>
-                )}
+                {scheduleErr && <InlineNotice tone="danger">{scheduleErr}</InlineNotice>}
                 {schedLoading ? (
-                    <div className="flex items-center justify-center py-16">
-                        <Loader2 size={20} className="animate-spin text-indigo-400" />
-                    </div>
+                    <Spinner variant="section" />
                 ) : totalGames === 0 ? (
-                    <div className="flex items-center justify-center py-16 text-slate-600 text-sm ko-normal">
-                        <AlertCircle size={14} className="mr-2" />
-                        스케줄이 없습니다.
-                    </div>
+                    <EmptyState icon={AlertCircle} title="스케줄이 없습니다." />
                 ) : (
                     sortedDates.map(date => (
                         <div key={date} className="bg-slate-800/40 border border-slate-700/40 rounded-2xl overflow-hidden">
                             <div className="px-4 py-2 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-400 font-mono">{date}</span>
+                                <span className="text-xs font-bold text-slate-400">{date}</span>
                                 <span className="text-[11px] text-slate-600">
                                     {grouped[date].filter(g => g.played).length} / {grouped[date].length} 완료
                                 </span>
@@ -407,14 +413,14 @@ const GameRow: React.FC<GameRowProps> = ({ game, onSim, onEditSchedule, disabled
             {/* 경기 정보 */}
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-sm">
-                    <span className="font-bold text-white font-mono uppercase">{game.homeTeamId}</span>
+                    <span className="font-bold text-white">{game.homeTeamId}</span>
                     {game.played
-                        ? <span className="text-slate-400 font-mono text-xs">{game.homeScore} - {game.awayScore}</span>
+                        ? <span className="text-slate-400 text-xs">{game.homeScore} - {game.awayScore}</span>
                         : <span className="text-slate-700 text-xs">vs</span>
                     }
-                    <span className="font-bold text-white font-mono uppercase">{game.awayTeamId}</span>
+                    <span className="font-bold text-white">{game.awayTeamId}</span>
                     {game.seriesId && (
-                        <span className="text-[10px] text-slate-600 font-mono bg-slate-800 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">
                             {game.seriesId}
                         </span>
                     )}
@@ -446,7 +452,7 @@ const GameRow: React.FC<GameRowProps> = ({ game, onSim, onEditSchedule, disabled
                     </div>
                 ) : (
                     <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[11px] text-slate-600 font-mono">
+                        <span className="text-[11px] text-slate-600">
                             {fmtKst(game.scheduledAt)}
                             {!game.scheduledAt && <span className="text-slate-700"> (시간 미정)</span>}
                         </span>

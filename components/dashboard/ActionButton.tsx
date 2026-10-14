@@ -4,22 +4,22 @@ import { Loader2, ChevronRight } from 'lucide-react';
 
 // Action/Primary 토큰 (orange 고정 — 팀컬러 비의존)
 const ACTION_PRIMARY = {
-  subtle:   '#fed7aa', // orange-200  Loading 텍스트
-  accent:   '#fb923c', // orange-400  Hover gradient to
-  default:  '#f97316', // orange-500  Default gradient from
-  strong:   '#ea580c', // orange-600  Hover gradient from / border
-  stronger: '#c2410c', // orange-700  Default gradient to / border
-  strongest:'#9a3412', // orange-800  Focused gradient to
+  subtle:   '#fed7aa', // orange-200 Loading 텍스트
+  accent:   '#fb923c', // orange-400 Hover gradient to
+  default:  '#f97316', // orange-500 Default gradient from
+  strong:   '#ea580c', // orange-600 Hover gradient from / border
+  stronger: '#c2410c', // orange-700 Default gradient to / border
+  strongest:'#9a3412', // orange-800 Focused gradient to
 };
 
 // Action/Secondary 토큰 (cool-gray — 아이콘 전용)
 const ACTION_SECONDARY = {
-  subtle:       '#f9fafb', // cool-gray-50   gradient from
-  default:      '#e5e7eb', // cool-gray-200  gradient to
-  strong:       '#d1d5db', // cool-gray-300  border
-  stronger:     '#9ca3af', // cool-gray-400  Focused gradient to
-  accent:       '#6b7280', // cool-gray-500  아이콘 기본
-  accentStrong: '#374151', // cool-gray-700  아이콘 Hover/Focused
+  subtle:       '#f9fafb', // cool-gray-50 gradient from
+  default:      '#e5e7eb', // cool-gray-200 gradient to
+  strong:       '#d1d5db', // cool-gray-300 border
+  stronger:     '#9ca3af', // cool-gray-400 Focused gradient to
+  accent:       '#6b7280', // cool-gray-500 아이콘 기본
+  accentStrong: '#374151', // cool-gray-700 아이콘 Hover/Focused
 };
 
 const ACTION_DISABLED = {

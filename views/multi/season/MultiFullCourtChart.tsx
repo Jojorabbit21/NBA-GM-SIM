@@ -4,7 +4,7 @@ import { Filter } from 'lucide-react';
 import type { ShotEvent } from '../../../types';
 import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../../../components/game/ShotTooltip';
-import { getRealTeamLogoUrl } from '../../../utils/constants';
+import { getTeamLogoUrl } from '../../../utils/constants';
 import { CourtPreview } from '../../../components/multi/CourtPreview';
 import { useCourtDefaults } from '../../../services/multi/courtDefaults';
 
@@ -57,7 +57,7 @@ const PlayerFilterList: React.FC<{
                 onChange={() => (allChecked ? onDeselectAll() : onSelectAll())}
                 className="w-3 h-3 accent-indigo-500 shrink-0 disabled:opacity-40"
             />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</span>
+            <span className="text-[10px] font-bold text-slate-400 truncate">{label}</span>
         </label>
         <div className="flex flex-col gap-0.5">
             {players.length === 0 && (
@@ -178,12 +178,12 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
                 <div ref={filterRef} className="relative">
                     <button
                         onClick={() => setFilterOpen(v => !v)}
-                        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-500 transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors"
                     >
                         <Filter size={11} />
                         필터
                         {activeFilterCount > 0 && (
-                            <span className="text-[9px] font-mono">-{activeFilterCount}</span>
+                            <span className="text-[9px]">-{activeFilterCount}</span>
                         )}
                     </button>
 
@@ -220,7 +220,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
                 onClick={handleClick}
             >
                 <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
-                    <CourtPreview background={courtBackground || courtDefaults.background} paint={courtPaint || courtDefaults.paint} line={courtLine || courtDefaults.line} three={courtThree || (courtBackground ? courtBackground : courtDefaults.three)} logoUrl={courtShowLogo ? getRealTeamLogoUrl(homeTeamId) : null} logoScale={courtLogoScale ?? 100} />
+                    <CourtPreview background={courtBackground || courtDefaults.background} paint={courtPaint || courtDefaults.paint} line={courtLine || courtDefaults.line} three={courtThree || (courtBackground ? courtBackground : courtDefaults.three)} logoUrl={courtShowLogo ? getTeamLogoUrl(homeTeamId) : null} logoScale={courtLogoScale ?? 100} />
 
                     {/* Shots — raw coords (no normalization), ×10 to SVG units */}
                     {filteredShotEvents.map((shot, i) => {

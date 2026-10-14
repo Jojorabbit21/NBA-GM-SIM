@@ -168,6 +168,50 @@ export function leagueNewsStoriesQuery(roomId: string | undefined | null, myTeam
     };
 }
 
+/** [2026-10-07] 선수 프로필 "뉴스" 탭 — league_events.player_ids에 이 선수가 포함된 뉴스 중
+ * 선수 개인 기록(player_feat)/연속 기록(player_streak)만(사용자 요청 — 팀 경기 결과·팀 연승 등
+ * 그 외 타입은 제외). 정렬/페이징 규칙은 피드와 동일(sim_date→created_at→id). */
+const PLAYER_NEWS_TYPES: LeagueEventType[] = ['player_feat', 'player_streak'];
+export function playerNewsQuery(roomId: string | undefined | null, playerId: string | undefined | null, myTeamSlug: string | null) {
+    return {
+        queryKey: ['leagueNewsStories', roomId, 'player', playerId] as const,
+        initialPageParam: 0,
+        queryFn: async ({ pageParam }: { pageParam: number }): Promise<LeagueEvent[]> => {
+            const { data, error } = await supabase
+                .from('league_events')
+                .select(SELECT_COLUMNS)
+                .eq('room_id', roomId!)
+                .contains('player_ids', [playerId!])
+                .in('type', PLAYER_NEWS_TYPES)
+                .order('sim_date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: true })
+                .range(pageParam, pageParam + STORIES_PAGE_SIZE - 1);
+            if (error) throw error;
+            return (data ?? []).map((row: any) => mapRow(row, myTeamSlug));
+        },
+        getNextPageParam: (lastPage: LeagueEvent[], allPages: LeagueEvent[][]) =>
+            lastPage.length < STORIES_PAGE_SIZE ? undefined : allPages.length * STORIES_PAGE_SIZE,
+    };
+}
+
+// queryKey가 ['leagueNewsStories', roomId, ...] 접두라 useLeagueEventsRealtime의 INSERT
+// 무효화(피드 구독이 마운트돼 있을 때)와 피드 진입 시 invalidate에 자동으로 함께 걸린다.
+export function usePlayerNews(roomId: string | undefined, playerId: string | undefined, myTeamSlug: string | null) {
+    const q = useInfiniteQuery({
+        ...playerNewsQuery(roomId, playerId, myTeamSlug),
+        enabled: !!roomId && !!playerId,
+    });
+    useLeagueEventsRealtime(roomId);
+    return {
+        stories: q.data?.pages.flat() ?? [],
+        isLoading: q.isLoading,
+        hasMore: !!q.hasNextPage,
+        fetchNextPage: q.fetchNextPage,
+        isFetchingNextPage: q.isFetchingNextPage,
+    };
+}
+
 export function useLeagueNewsFeed(roomId: string | undefined, myTeamSlug: string | null, filters: LeagueNewsFeedFilters = {}) {
     const storiesQuery = useInfiniteQuery({
         ...leagueNewsStoriesQuery(roomId, myTeamSlug, filters),

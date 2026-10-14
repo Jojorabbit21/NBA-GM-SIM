@@ -35,6 +35,2804 @@
 
 ---
 
+## 2026-10-14 — OVR 배지 디자인 교체: 6티어 색·크기별 글자·숫자 서체 (OVR 배지 조정 랩 확정값)
+
+**배경**: 사용자가 "OVR 배지 조정 랩"(https://claude.ai/artifact/9w7PVdoASaQM4yybo6tkcy)에서 조정 후 내보낸 값을 그대로 적용. 랩 개발 중 header(40px)에서 세 자리 숫자가 박스를 넘치는 문제를 확인해, 랩에 크기별 글자 조정·넘침 경고를 추가한 뒤 확정.
+
+**변경 파일**: `components/common/OvrBadge.tsx`만.
+- `TIERS` 6개 전부 교체. 요약 — 레전드: 배경 더 어둡게(#171717/#050505/#1c1c1c), 메탈릭 숫자 노랑 계열 4스톱, 글로우 10→4·0.55→0.3, 베벨 0.4→0. 다이아몬드: 중간 스톱 #0891b2→#19b9e1, 테두리 1.5→0.5, 글로우 0→4. 골드: 평평한 금색 3스톱(#e2b928/#e9a435/#ffc524), 테두리 1.5→1. 실버: 밝은 회청 3스톱(#b6bec9/#9bacc5/#8da0b9), 테두리 1. 브론즈: #d09258/#cc782e/#bd5800, 테두리 1, 글로우 알파 0. 아이언: #6b7280/#5d646f/#4e555f.
+- `TEXT`(두 자리) sm 10→15 · table 12→17 · md 14→19 · header 24→23 · lg 20→25 · card 30→35 · xl 30→37 px. `TEXT_THREE_DIGIT`(100+) sm 9→11 · table 10→13 · md 12→15 · header 20→19 · lg 16→20 · card 24→28 · xl 24→30 px. 세 자리 축소 유지.
+- 숫자 서체 `DIGIT_FONT` = Schibsted Grotesk 700, 자간 -0.02em(inline style, index.html이 이미 로드). 루트 `font-black` 제거.
+- 안쪽 링 `rgba(255,255,255,.12)` → `.1`.
+
+**의도된 변화**: 앱 전역 OVR 배지 색이 바뀌고(특히 골드·실버가 평평하고 밝아짐, 레전드 덜 번쩍임), 숫자가 박스 대비 크게(sm 24px 박스에 15px) Schibsted Grotesk로.
+
+**주의(미처리)**: `textClassName`으로 글자 크기를 직접 덮어쓰는 호출부 4곳은 옛 크기 그대로 — `components/draft/PlayerPool.tsx:221`·`MyRoster.tsx:117,144`(sm 박스에 `text-sm` 14px, 새 기본 15px와 거의 같음), `views/multi/league/PersonalDraftView.tsx:341`(28px 박스에 `text-xs` 12px — 새 table 기본 17px보다 작게 보임, `size="table"`로 바꾸면 통일). 서체·색은 새 값이 적용됨. → **같은 날 후속(사용자 지시 "기본값을 따르게")**: 4곳 모두 개별 지정 제거 — 드래프트 3곳 `textClassName="text-sm"` 삭제(sm 기본 15px), PersonalDraftView는 `size="sm" className="!w-7 !h-7 !rounded" textClassName="text-xs"` → `size="table"`(28px, 17px, 표 안 그림자 없음 규칙 동일).
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0. 실제 화면 미확인.
+
+**롤백 방법**: `git checkout HEAD -- components/common/OvrBadge.tsx`. 2026-09-20 값은 이 파일 HEAD 버전과 dev-log 2026-09-20 항목에 있음.
+
+---
+
+## 2026-10-14 — 트레이드 제안 탭 진입 시 우측 상대 팀 목록 깜빡임 수정
+
+**배경**: 사용자 지적 "트레이드 제안 탭에 들어갈 때마다 우측 팀 리스트가 깜빡였다가 로드된다". 원인 두 가지: ① 상대 팀 id가 `''`로 시작해 첫 렌더 후 `useEffect`가 첫 팀으로 채움 → 화면 마운트 첫 프레임에 우측 패널이 빈 채(로고·드롭다운·로스터 없음)로 그려짐. 같은 이유로 스탯/부상 조회 키가 "내 팀만 → 내 팀+상대"로 두 번 만들어짐. ② `usePlayerSeasonStatsBatch`·`usePlayerInjuryStatus`가 `placeholderData` 없이 키가 바뀌면 값이 비어(키는 탭마다 다른 선수 목록으로 바뀜) 부상 배지·호버 스탯이 사라졌다가 다시 나타남.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` — `[targetTeamId, setTargetTeamId] = useState('')` + 보정 `useEffect` 삭제 → `[pickedTargetTeamId, setTargetTeamId]` state + 렌더 중 계산 `targetTeamId = humanTargetTeams에 있으면 picked, 아니면 humanTargetTeams[0]?.id`. 기존 사용처 5곳(팀 행·트레이드 가능 선수·카트 초기화 effect·드롭다운 value·제출)은 이름 그대로 계산값을 씀 — 특히 카트 초기화 effect가 계산값 기준이라, 상대 팀이 목록에서 빠져 자동 전환될 때도 카트가 비워짐(사이드이펙트 대응).
+- `hooks/usePlayerSeasonStatsBatch.ts`, `hooks/usePlayerInjuryStatus.ts` — `placeholderData: (prev, prevQuery) => prevQuery?.queryKey?.[1] === roomId ? prev : undefined`. 같은 리그일 때만 이전 값을 유지(선수 id가 리그 간 공유라 다른 리그 값을 이어 쓰면 잘못된 스탯·부상이 보이는 것을 막음). 공유 훅이라 일정 화면·뉴스피드 카드에도 적용되며, 세 호출처 모두 `isLoading`을 쓰지 않아 스피너 영향 없음.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일 집합), `npx vite build --logLevel error` exit 0. 실제 화면 미확인.
+
+**롤백 방법**: 세 파일 `git checkout HEAD --`(트레이드 화면은 같은 날 탭 개편과 겹치므로 이 항목의 상대 팀 id 블록만 수동 복원하는 편이 안전).
+
+---
+
+## 2026-10-14 — 트레이드 화면 개편: 히스토리 = 리그 트랜잭션 로그(FA·웨이버 포함), 자유 계약을 하위 탭으로 흡수, 탭 이름·순서 변경, 블록 수정 버튼 탭 한정
+
+**배경**: 사용자 확인 질문 "히스토리 탭에 웨이버·FA 계약 기록이 안 남는 게 맞나" → 맞음(히스토리는 `league_trade_offers` 수락분만, FA·웨이버는 `league_transactions`에만 기록되고 리그 전체 목록 화면이 없었음). 이어 지시: 히스토리를 트랜잭션 로그로 넓히고, FA 화면을 트레이드 화면 하위 탭으로, "새 제안" → "트레이드 제안", 탭 순서 `트레이드 제안 | 트레이드 블록 | 메세지함 | 자유 계약 | 히스토리`, 헤더 "트레이드 블록 수정" 버튼은 트레이드 블록 탭에서만.
+
+**변경 파일**:
+- `hooks/useHomeLeagueTransactions.ts` — `leagueTransactionsQuery(roomId)`(키 `leagueTransactionsAll`, 전체 목록 + `details`) 추가. 홈용 10건 쿼리는 그대로(부트스트랩 프리패치 대상).
+- `views/multi/season/MultiFrontOfficeView.tsx` — `Tab`에 `'fa'` 추가, `TABS` 라벨·순서 변경. `HistoryKind = 'trade'|'fa_sign'|'waive'` + `historyKind` 상태(초기값 `?kind=`), 히스토리 필터 바 맨 앞 `SegmentedControl`(트레이드/자유 계약/웨이버). `filteredTxn` useMemo — 같은 팀·날짜·검색 필터를 `league_transactions`에 적용(팀은 `team_id` uuid, 날짜는 `sim_date`). 콘텐츠: `activeTab === 'fa'` → `<MultiFreeAgentView embedded />`; `historyKind !== 'trade'` → 새 표(날짜 / OVR+선수(PlayerNameLink, 호버카드) / 계약 팀·방출 팀 / 첫해 연봉(`details.contract.years[0]`, FA만)). 기존 트레이드 표는 `trade`일 때 그대로. `rightSlot`(블록 수정 버튼)은 `activeTab === 'leagueBlocks'`일 때만.
+- `views/multi/season/MultiFreeAgentView.tsx` — `embedded?: boolean` prop: true면 h1 "자유 계약" 숨김(필터 바·목록은 동일).
+- `App.tsx` — `free-agent` 라우트 → `FreeAgentRedirect`(`Navigate … /transaction?tab=fa`, replace). `MultiFreeAgentView` import 제거, `useParams` import 추가.
+- `views/multi/season/MultiNegotiationView.tsx` — 뒤로가기/목록 링크 3곳 `season/free-agent` → `season/transaction?tab=fa`.
+- `components/MultiSidebar.tsx` — "자유 계약" 아이콘 → `transaction?tab=fa`. 일정 아이콘 아래 `<Divider />` 추가(리그 메뉴 ↔ 선수 이동 메뉴 2개 분리, 같은 날 사용자 지시). 리그 메뉴 순서 변경: 순위표 → 플레이오프 → 올스타 → 리더보드 → 일정 에서 **플레이오프 → 올스타 → 순위표** → 리더보드 → 일정(기간 한정 메뉴를 순위표 위로, 같은 날 사용자 지시). 활성 판정: 트레이드 = transaction 경로 && tab≠fa, 자유 계약 = transaction && tab=fa(`useLocation().search` 추가).
+- `pages/MultiSeasonPage.tsx` — 홈 트랜잭션 행 클릭 `…/transaction?tab=history&kind=<trade|fa_sign|waive>`(해당 종류 세그먼트로 바로), "더보기"는 `?tab=history`. 미사용 `openTransactions` 제거.
+
+**Before/After**:
+```ts
+// TABS
+[new '새 제안', inbox '메세지함', leagueBlocks '트레이드 블록', history '히스토리']
+→ [new '트레이드 제안', leagueBlocks '트레이드 블록', inbox '메세지함', fa '자유 계약', history '히스토리']
+// 히스토리 데이터
+history(league_trade_offers 수락분)만 → historyKind 세그먼트: trade=기존 표 / fa_sign·waive=league_transactions 표
+// 라우트
+<Route path="free-agent" element={<MultiFreeAgentView/>}> → <FreeAgentRedirect/>(→ transaction?tab=fa)
+```
+
+**의도된 변화**: 트레이드 화면 탭 5개·순서 변경, 자유 계약이 별도 페이지가 아니라 탭. 헤더 h1 "트레이드" → **"선수 이동"**(같은 날 사용자 지시; 사이드바 "트레이드"·헤더 메뉴 "트레이드" 라벨은 그대로). 블록 수정 버튼이 다른 탭에선 안 보임. 히스토리 기본은 트레이드(기존과 동일), 세그먼트로 FA·웨이버 전환.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일 — `App.tsx(110)` RosterMode 오류는 기존 집합), `npx vite build --logLevel error` exit 0(순환 chunk 경고는 기존). 실제 화면 미확인 — 확인 포인트: FA 탭 안에서 FA 목록 내부 스크롤이 정상인지(상위 탭 컨테이너 `overflow-y-auto` + FA 루트 `h-full`), 사이드바 두 아이콘의 활성 전환, 홈 FA/웨이버 행 클릭 시 세그먼트가 맞게 열리는지.
+
+**롤백 방법**: 위 7개 파일 `git checkout HEAD --`. 홈 링크(`?tab=history&kind=`)만 되돌리면 되는 경우는 `pages/MultiSeasonPage.tsx`만.
+
+---
+
+## 2026-10-14 — 홈 밴드 1(내 팀 상황 스트립) 삭제
+
+**배경**: 사용자 지시 "밴드 1은 삭제해줘". 같은 날 만든 리그 현황 칸·최근 5경기 카드·순위 요약 스트립 전체를 걷어냄. 홈은 밴드 2(순위+뉴스/트랜잭션) → 3(로스터+리더) → 4(부상·징계)만 남는다.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` 1,157 → 973 — `HomeMyScheduleSection` 컴포넌트 전체 삭제(다음 경기·최근 5경기 칩·순위 요약·리그 현황 칸 포함), 레이아웃에서 마운트 제거. 이 섹션만 쓰던 import 제거: `fmtRemaining`, `computeSeriesWins/resolveSeasonPhase`, `fmtDateShort/fmtTime`, `getGameDisplayState/resolveRealAt`, `useGameShortCodes`, `useServerClock`, `computeWL`.
+- `views/multi/season/seasonPhase.ts` 174 → 31 — `resolveSeasonPhase`와 전용 헬퍼(`formatSeasonLabel`·`objectParticle`·`playInSeedLabel`·`PhaseLeague`·`SeasonPhaseInfo`) 삭제. MultiHeader가 쓰는 `computeSeriesWins`/`seriesWinsFor`만 남김.
+- 유지: `utils/formatRemaining.ts`(MultiHeader가 사용), 밴드 2~4 구조·`HomeSection`·`HomeEmpty`.
+
+**복원 방법**: 밴드 1을 되살리려면 이 항목 바로 아래 4개 항목(리그 현황 칸·후속 1~5)의 코드를 `git log -p -- pages/MultiSeasonPage.tsx views/multi/season/seasonPhase.ts`에서 가져올 것. 경우의 수 문서: https://claude.ai/artifact/AWXqCQXfketchD3sHZQ3Ww
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일).
+
+---
+
+## 2026-10-14 — 홈 밴드 1 좌측: "다음 경기" 카드 → "리그 현황"(정규시즌/플레이인/플레이오프/파이널 + 내 팀 시리즈), `seasonPhase.ts` 신설
+
+**배경**: 사용자 지시 — 밴드 1 가장 좌측에 리그가 지금 어느 단계인지 보여주는 칸을 두고, 예정 경기 칸은 삭제. 문구 규칙: 정규시즌 "정규 시즌 진행 중" / 플레이인 "플레이인 토너먼트 진행 중"(참가 중이면 "현재 {컨퍼런스} {시드} 결정전에서 {상대팀}을 상대로 {시리즈스코어}") / 플레이오프 "플레이오프 진행 중"(참가 중이면 "현재 {컨퍼런스} {라운드}에서 …", 탈락 시 "플레이오프에 진출하지 못했습니다.") / 파이널 "{시즌명} 파이널 진행 중".
+
+**변경 파일**:
+- `views/multi/season/seasonPhase.ts` 신설 — `computeSeriesWins(schedule, simStart, gprd, nowMs)`·`seriesWinsFor(map, seriesId, teamId)`(MultiHeader에 있던 공개창 기준 시리즈 승수 집계를 이동), `formatSeasonLabel(startYear)`("2026-27"), `resolveSeasonPhase({league, schedule, myTeamId, teamNameBySlug, seriesWins}) → { kind, title, detail, linkTab }`.
+  - 단계 판정: 브라켓 없음 → 미실행 정규 경기 있으면 `regular`, 없으면 `regular_done`("정규시즌 종료 · 포스트시즌 대기"). 브라켓 있음 → 공개된 승수로 끝난 시리즈를 걸러 **가장 낮은 미종료 라운드**가 현재 단계(0=플레이인, 최종 라운드=파이널, 그 사이=플레이오프, 전부 종료=`season_over`). 미리 생성된 TBD 시리즈가 상위 라운드에 있어도 "가장 낮은" 규칙이라 단계가 앞서가지 않는다.
+  - 내 팀 한 줄: 내 시리즈 없음 → "플레이오프에 진출하지 못했습니다." / 진행 중 시리즈 → `현재 {무대}에서 {상대}{을/를} 상대로 {내 승수}-{상대 승수}`(플레이인 무대 = "{컨퍼런스} 7번 시드|8번 시드 진출|8번 시드 결정전", 그 외 = `getSeriesRoundLabel(confPrefix)`; 상대 TBD면 "상대 미정"; 을/를은 받침으로 판정) / 내 시리즈 전부 종료 → 이긴 쪽이면 "우승!" · "플레이인 통과 · 1라운드 대기" · "{라벨} 승리 · 다음 라운드 대기", 진 쪽이면 "플레이인 탈락 · 플레이오프에 진출하지 못했습니다." · "{라벨}에서 탈락했습니다."
+  - 토너먼트 리그는 "토너먼트 진행 중 / 토너먼트 결승 진행 중 / 토너먼트 종료".
+- `pages/MultiSeasonPage.tsx` — 밴드 1 좌측 칸을 다음 경기 카드 → 리그 현황(상태 점: 정규 emerald·포스트시즌 amber·종료 slate, "리그 현황" 라벨, 제목 16px, 내 팀 한 줄 12px). 클릭 시 `linkTab`(순위표/플레이오프). `fmtUntil`·다음 경기 카드 코드 삭제, `fmtTime` import 제거.
+- `components/MultiHeader.tsx` — `seriesWins` useMemo 본문·`winsFor`를 공용 함수 호출로 교체(동작·의존성 동일).
+
+**의도된 변화**: 밴드 1 좌측이 다음 경기 정보 대신 리그 단계 문구. 다음 경기 카운트다운은 헤더에 그대로 있음.
+
+**후속 3(같은 날, 사용자 지시)**: 칸 재구성 — "리그 현황" 라벨 삭제. 1줄은 세 가지만(`PHASE_TITLE`: regular·regular_done → "정규 시즌 진행 중", playin → "플레이인 토너먼트 진행 중", playoffs·finals·season_over → "플레이오프 진행 중"). 2줄: 정규/플레이인은 내 다음 경기 "M/D vs 팀명 · 남은 시간"(타이머는 `useServerClock` 1초, 포맷은 `utils/formatRemaining.ts`로 옮긴 `fmtRemaining` — MultiHeader도 이 공용을 import), 포스트시즌은 `phase.mySeries`(신규 구조화 필드) "무대 · vs 상대 스코어 · 다음 경기 M/D HH:MM", 진행 중 시리즈/다음 경기가 없으면 기존 `detail`(탈락·대기·우승). 3줄(키 데이트)은 같은 날 사용자 지시("헷갈린다")로 **삭제** — `resolveNextKeyDate`·`PhaseLeague` 선택 필드·`useCurrentVirtualDate` 호출까지 제거(후속 2 전체 롤백, 데드코드 없음). 세 줄 모두 `text-sm text-slate-200`, 1줄만 semibold. `describeOpp`를 `line2` 계산보다 위로 이동(const TDZ). 칸 우측 빈 영역에 다음 예정 경기 매치업 `[원정 TeamLogo 40px] @ [홈 TeamLogo 40px]` + 각 로고 아래 약칭 12px(사용자 지시, 클릭 시 경기 화면·stopPropagation으로 칸 클릭과 분리, 텍스트 블록은 `flex-1 min-w-0`).
+
+**후속 11(같은 날, 사용자 지시)**: 홈 내 로스터 요약 표 — OVR을 맨 앞(헤더 없는 열, sm 배지)에서 이름 우측 "OVR" 열(28px table 배지)로 이동, TOPG(경기당 턴오버, BPG 뒤)·TS%(`PTS / (2×(FGA+0.44×FTA))`, 3P% 뒤) 추가. 순서 `선수 | OVR | POS | MPG PPG APG RPG SPG BPG TOPG | FG% 3P% TS%`. 이어서 "이름 칸이 너무 좁다" → 이름 헤더 `min-w-[160px]`, 나머지 열 고정 폭(OVR·POS 44, 경기당 7종 50, 비율 3종 58)으로 남는 폭이 이름 칸에 가도록. 그 결과 이름 칸이 과하게 넓어져(사용자 스크린샷) 데이터 추가로 채움: G·GS(40, POS 뒤), FGM(FG% 앞)·3PM(3P% 앞)·FTM(TS% 앞) 경기당 성공 수(50). 최종 순서 `선수 | OVR | POS | G GS | MPG PPG APG RPG SPG BPG TOPG | FGM FG% 3PM 3P% FTM TS%`, 고정 폭 합 ≈ 970px.
+
+**후속 10(같은 날, 사용자 지시)**: 홈 리그 리더 표에 OVR(28px 배지)·G(출전 경기)·MP(경기당 출전 시간, `stats.mp / g`) 열 추가 — 순서 `# | OVR | 선수 | G | MP | 카테고리 값`.
+
+**후속 9(같은 날, 사용자 지시)**: 홈 트랜잭션 행 클릭·제목바 "더보기" 목적지 `…/transaction` → `…/transaction?tab=history`(트레이드 화면 히스토리 탭, `MultiFrontOfficeView`가 `?tab=`으로 탭 선택).
+
+**후속 8(같은 날, 사용자 지시)**: 홈 순위표 행 클릭 목적지 팀 로스터 → 순위표 화면(`onOpenStandings` prop 신설). 팀명 `ClickableText`만 팀 로스터로(stopPropagation).
+
+**후속 7(같은 날, 사용자 지적 "뉴스를 클릭해도 뉴스 화면으로만 이동")**: 홈 뉴스 행 클릭 → `…/season/news?story=<id>`. `views/multi/season/MultiNewsFeedView.tsx`에 딥링크 처리 — `story` 파라미터가 있으면 로드된 stories에서 찾아 `setSelectedEventId` + 좌측 목록 항목(`id="news-story-<id>"`)을 `scrollIntoView({block:'center'})`, 없으면 `fetchNextPage`로 최대 `STORY_DEEPLINK_MAX_SCAN`(150건)까지 더 받아 본 뒤 포기. 찾았거나 포기하면 파라미터 제거(replace)해 필터 조작 때 다시 튀지 않음. 홈은 필터 없는 최신순 10건이라 보통 첫 페이지에서 바로 찾힘.
+
+**후속 6(같은 날, 사용자 지시)**: 홈 순위표 팀명 `span` → `ClickableText`(호버 시 밑줄 + 인디고, 클릭 목적지는 행과 같은 팀 로스터).
+
+**후속 5(같은 날, 사용자 지시 — 밴드 2부터)**: ① 밴드 2 우측 뉴스/트랜잭션을 순위표 높이의 50:50으로 — 우측 열 `flex flex-col min-h-0`, 두 HomeSection에 `className="flex-1 min-h-0"`. 행 수 `HOME_ROWS` 뉴스 10 → 7, 트랜잭션 5 → 7(절반 높이 ≈ 7행). ② 데이터가 없어도 패널이 영역을 가득 채우도록 — `HomeSection` 본문을 `flex-1 min-h-0 overflow-y-auto flex flex-col` 래퍼로 감싸고(행이 넘치면 안에서 스크롤), 가운데 정렬 빈 상태 `HomeEmpty` 신설. 뉴스·트랜잭션·리그 부상·징계·내 팀 부상·징계·리그 리더·로스터(팀 없음)의 `EmptyState`를 `HomeEmpty`로.
+
+**후속 4(같은 날, 사용자 지시)**: 밴드 1 가운데 최근 5경기 카드 재디자인 — 2단(날짜+약칭 / 스코어, 상단 2px 승패 선) → 2단(날짜 + vs·@ + 상대 `TeamLogo` 20px 한 줄 / W·L 스코어 — 처음 3단으로 했다가 같은 날 사용자 지시로 날짜·매치업을 한 줄로 합침), 상단 선 제거하고 카드 배경을 승 `bg-emerald-500/10`(hover /20)·패 `bg-red-500/10`(hover /20) 틴트로. 높이 고정(h-11) → 내용 높이(처음 py-1·gap-0.5, 같은 날 "카드 키우고 줄 간격 늘려"로 py-2.5·gap-2 → 약 61px; 그 뒤 사용자 지적 "상하 패딩이 맞지 않다" → 스트립 칸 `h-24` 고정을 `min-h-24 py-3`(내용 높이 + 상하 12px)으로, 헤더↔카드 간격 gap-2 → gap-3. 결과 높이 약 120px, 세 칸은 그리드 stretch로 동일). `title`에 상대 팀 전체 이름. 같은 날 "최근 5경기" 헤더를 HomeSection 제목바와 같은 속성(15px bold white, 우측 12px 인디고 링크)으로 통일 — 승패 집계는 12px slate-500 보조 글자로.
+
+**후속 2(같은 날, 사용자 지시 "가상 캘린더 키 데이트 노출")**: 칸 셋째 줄에 `{라벨} · M/D D-N`(0일이면 D-Day). `seasonPhase.ts`에 `resolveNextKeyDate({league, schedule, todayVirtual, kind})` 추가 — 메인 리그만, `todayVirtual`은 `useCurrentVirtualDate`(15초 버킷). 후보: 정규시즌/대기 단계 = 트레이드 데드라인(`trade_deadline_enabled`가 false가 아닐 때 `trade_deadline_date`) · 투웨이 전환 마감(`two_way_deadline_date`) · 올스타 투표 시작/마감 · 브레이크 시작/본경기/종료(`getAllStarKeyDates`) · 정규시즌 종료(일정의 마지막 정규 경기 `date`) · 플레이인/플레이오프 시작(첫 `isPlayoff` 경기 `date`, 라벨은 `play_in_enabled`로); 포스트시즌 단계 = 아직 안 치른 다음 포스트시즌 경기 날짜; 시즌 종료 = 없음. 오늘 이후(당일 포함) 중 가장 가까운 것 하나. `PhaseLeague`에 선택 필드 4개 추가. `pages/MultiSeasonPage.tsx`는 `timeline`을 컨텍스트에서 받아 훅에 전달.
+
+**후속(같은 날, 경우의 수 전수 점검 — https://claude.ai/artifact/AWXqCQXfketchD3sHZQ3Ww)**: 플레이인 단계의 두 오판을 고침. ① 직행권(1~6위) 팀은 플레이인 중엔 1라운드 시리즈가 아직 없어 "진출하지 못했다"로 나오던 것 → `myConfRank`/`autoClinchCount` 입력을 받아 "플레이오프 직행 · 1라운드 대기". ② 플레이인 round 0 결과를 경기별로 구분: 7-8위전 승 "7번 시드 확정 · 1라운드 대기" / 패 "7-8위전 패배 · 8번 시드 결정전 대기"(이전엔 탈락으로 표시), 9-10위전 승 "9-10위전 승리 · 8번 시드 결정전 대기" / 패 탈락, 8번 시드 결정전 승 "8번 시드 확정 · 1라운드 대기" / 패 탈락. `pages/MultiSeasonPage.tsx`에서 `playoff_team_count`/`play_in_enabled`로 직행 인원 계산해 전달.
+
+**판단한 부분(확인 필요)**: 지시의 "플레이오프에서 탈락했을 때 '플레이오프에 진출하지 못했습니다.'"는 진출 자체를 못 한 팀의 문구로 쓰고, 진출 후 라운드에서 진 팀은 "{라운드}에서 탈락했습니다."로 구분했다(2라운드 탈락 팀에 "진출하지 못했다"는 사실과 다르므로). 하나로 통일하길 원하면 `resolveSeasonPhase`의 마지막 분기 한 줄.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0. 실제 화면 미확인 — 플레이인/플레이오프 단계는 해당 상태의 리그에서 확인 필요.
+
+**롤백 방법**: `git checkout HEAD -- pages/MultiSeasonPage.tsx components/MultiHeader.tsx && rm views/multi/season/seasonPhase.ts`(홈 4밴드 개편과 같은 파일이므로 밴드 1만 되돌리려면 이 항목의 "변경 파일" 기준으로 수동 복원).
+
+---
+
+## 2026-10-14 — 리그 홈 4밴드 레이아웃 개편: 좌/우 독립 스택 → 가로 밴드 4개, 섹션 = 제목바+표 패널, 내 팀 상황 스트립 신설
+
+**배경**: 사용자 지적 "좌/우 2단 안의 표들이 서로 떨어져 있고 높낮이가 안 맞아 어색". 좌/우 열이 독립 세로 스택이라 가로선이 맞을 수 없었고, 표마다 행 수(5/15/3/5/15)가 달라 높이도 제각각, 제목은 표 밖 여백, "예정 5경기"처럼 빈 표가 자리를 차지, 리그 리더 9표가 면적을 가장 많이 썼다. 시안(사용자 승인): https://claude.ai/artifact/FmLLWQXjnwGFGmPs4LSGSg
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` 1,065 → 1,157
+- 신규 `HomePanel`(bg-slate-900 · 1px slate-800 · rounded-lg) / `HomeSection({title, moreTo, moreLabel, headerRight})`(40px 제목바: 15px bold 제목 + 우측 "더보기 →" 12px 인디고 + 선택 컨트롤). `HomeSectionTitle`(h3 text-lg, 표 밖) 삭제. `HomeTable`의 `bg-slate-900` 제거(패널이 배경). `HOME_ROWS = { news: 10, transactions: 5, leaders: 10, injuries: 6 }`.
+- **밴드 1** `HomeMyScheduleSection` 재작성 — "최근 5경기 / 예정 5경기" 두 표 → 96px 스트립 3칸(12열: 4/5/3): ① 다음 경기 카드(상대 배지 lg·날짜/시각·vs/@ 팀명 클릭·상대 전적·홈/원정·남은 시간 `fmtUntil` 분 단위) ② 최근 5경기 W/L 칩(오래된 것→최신, 상단 2px 승패색, 클릭 시 경기 화면, "N승 N패", "일정 전체 →") ③ 순위·전적·GB(+승률) — `myStanding` useMemo가 `computeMultiStandingsStats`로 컨퍼런스 내 순위 계산(순위표 위젯과 같은 공용 계산). 팀 없음/경기 없음은 같은 높이 안에서 문구.
+- **밴드 2** 순위(col-span-8, 동/서 `gap-x-4`, 제목바 "순위표 전체") + 우측 col-span-4 세로: 뉴스(2열 5행 → **1열 10행**, Table 행으로) · 트랜잭션(10행 → **5행**, "팀 이동" 열을 선수 이름 뒤 작은 글자로 합침, 비어도 패널 유지).
+- **밴드 3** 내 로스터(col-span-8, 제목바 "로스터") + 리그 리더(col-span-4): 9표 3×3 → `SegmentedControl` 탭 6종(득점/리바운드/어시스트/스틸/블락/3점 성공) × **상위 10명**. 야투율·3점성공률(표본 부족 100% 문제)·턴오버 제외. 내 팀 선수는 흰색.
+- **밴드 4** 리그 부상·징계(col-span-6, 6행) + 내 팀 부상·징계(col-span-6) — 둘 다 비어도 패널 유지(이전엔 null 반환으로 레이아웃 구멍).
+- 레이아웃: `grid grid-cols-2 gap-4` + `space-y-6` 두 열 → `flex-col gap-6`(밴드 간 24px) 안에 `grid grid-cols-12 gap-4 items-stretch`(밴드 안 16px).
+
+**Before/After**:
+```tsx
+// Before
+<div className="grid grid-cols-2 gap-4">
+  <div className="space-y-6"><HomeLatestNewsSection/><HomeStandingsSection/><HomeLeagueLeadersSection/><div className="grid grid-cols-2 gap-4"><HomeTransactionsSection/><HomeInjurySection/></div></div>
+  <div className="space-y-6"><HomeMyScheduleSection/><HomeMyRosterSummarySection/><HomeMyInjuriesSection/></div>
+</div>
+// After
+<div className="flex flex-col gap-6">
+  <HomeMyScheduleSection/>                                                        {/* 밴드1 스트립 96px */}
+  <div className="grid grid-cols-12 gap-4"><div className="col-span-8"><HomeStandingsSection/></div><div className="col-span-4 flex flex-col gap-4"><HomeLatestNewsSection/><HomeTransactionsSection/></div></div>
+  <div className="grid grid-cols-12 gap-4"><div className="col-span-8"><HomeMyRosterSummarySection/></div><div className="col-span-4"><HomeLeagueLeadersSection/></div></div>
+  <div className="grid grid-cols-12 gap-4"><div className="col-span-6"><HomeInjurySection/></div><div className="col-span-6"><HomeMyInjuriesSection/></div></div>
+</div>
+```
+
+**의도된 변화**: 위 전부. 데이터 소스·훅·쿼리 키는 변경 없음(표시 행 수와 배치만). 리더 카테고리 3종 제거(야투율·3점성공률·턴오버)와 3점의 의미 변경(시도 → 성공/경기)은 정보 변화이므로 확인 필요. 밴드 3 우측(리더 10행+탭)이 로스터 15행보다 짧아 하단이 비는 것은 시안 때 알린 대로이며 "상위 10명"으로 1차 결정.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0. 실제 화면 미확인 — 체크 포인트: 1280 폭에서 밴드 1 스트립 칸 3개가 96px 한 줄에 들어오는지(다음 경기 카드의 팀명 길면 truncate), 뉴스 10행 + 트랜잭션 5행 패널 합이 순위표 15행과 비슷한지, 리더 세그먼트 6개가 4열 폭(약 400px)에 한 줄로 들어오는지.
+
+**롤백 방법**: `git checkout HEAD -- pages/MultiSeasonPage.tsx`(이 파일 하나, 공용 컴포넌트 변경 없음).
+
+---
+
+## 2026-10-14 — 공용 Table bare 헤더 반투명(`bg-slate-800/60`) → 불투명(`bg-slate-800`), sticky 헤더 셀 배경 자동화
+
+**배경**: 바로 아래 항목(1열 헤더 색 불일치)을 고치며 "헤더에 60% 틴트가 근본적으로 필요한가"를 검토 → 사용자 결정으로 불투명 전환. 틴트는 2026-10-13 bare 변형 신설 때 "호스트 배경(slate-900/950/모달)이 제각각인 표를 한 값으로 바탕보다 조금 밝게"를 노린 편의 장치였지만, (a) sticky 셀을 같은 색으로 불투명하게 만들 수 없어 호출부 우회(그라디언트)가 필요했고 (b) 결과 색이 화면마다 달랐다(slate-900 위 #18223a / slate-950 위 #131b2d). 푸터 `bg-slate-800/40`은 slate-900 바탕에서 불투명 대체 토큰이 없어(slate-900이면 사라짐) **틴트 유지**.
+
+**변경 파일**:
+- `components/common/Table.tsx` — `TableHead` bare: `bg-slate-800/60` → `bg-slate-800`. `stickyParts`에 `BARE_STICKY_BG = { head: 'bg-slate-800', body: '', foot: '' }` — bare 표의 숫자 `stickyLeft` 헤더 셀에 같은 불투명 배경을 자동으로 붙임(본문/푸터는 여전히 호출부 몫).
+- `views/PlayerDetailView.tsx` — 같은 날 넣었던 `BARE_STICKY_HEAD_BG` 그라디언트 상수와 헤더 1열 `className` 2곳 제거(Table이 자동 처리).
+
+**Before/After**:
+```ts
+// Table.tsx
+const headClass = bare ? `bg-slate-800/60 ${hClass}` : …;   →   const headClass = bare ? `bg-slate-800 ${hClass}` : …;
+return { cls: `sticky ${zClass} ${bare ? '' : STICKY_BG[section]}` }   →   `… ${bare ? BARE_STICKY_BG[section] : STICKY_BG[section]}`
+// PlayerDetailView.tsx
+<TableHeaderCell stickyLeft={0} className={i === 0 ? BARE_STICKY_HEAD_BG : ''}>   →   <TableHeaderCell stickyLeft={0}>
+```
+
+**의도된 변화**: bare 표 26개 파일(뉴스피드 레터 17표·홈 7표·선수 상세 7표·인사이트 3표·트레이드·올스타·우승 모달 등)의 헤더가 #131b2d~#18223a → **#1e293b**로 살짝 밝아지고 모든 화면에서 동일해짐. slate-950 바탕(선수 상세)에서 단차가 가장 눈에 띔. 헤더 글자(slate-400)·높이·선은 그대로. 팀색 헤더(`TableHead noRow` + 자체 `<tr style>`)는 영향 없음.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일).
+
+**롤백 방법**: Table.tsx 두 줄 복원(`bg-slate-800/60`, `bare ? ''`). PlayerDetailView 쪽은 롤백하면 1열 헤더가 다시 불투명 배경 없이 비치므로 그때는 `className="bg-slate-800"`을 다시 넣을 것(원래 코드).
+
+---
+
+## 2026-10-14 — 선수 상세 기록 탭: 고정 1열 헤더 셀 색이 나머지 헤더와 달라 보이던 것 수정
+
+**배경**: 사용자 지적. 커리어 기록 표·최근 경기 표의 첫 열 헤더(시즌/DATE)만 밝았다. 원인: bare 표 헤더는 `bg-slate-800/60`(60% 틴트, 호스트 slate-950 위에서 ≈ #131b2d)인데, bare의 sticky 셀엔 공용 Table이 배경을 붙이지 않아(호스트 배경을 모름) 호출부가 가로 스크롤 비침 방지용으로 `bg-slate-800`(불투명 100%, #1e293b)을 직접 넣어 두었던 것. 불투명이 필요한 건 맞지만 색이 틀렸다.
+
+**변경 파일**: `views/PlayerDetailView.tsx` — 상수 `BARE_STICKY_HEAD_BG = 'bg-slate-950 bg-[linear-gradient(rgb(30_41_59/0.6),rgb(30_41_59/0.6))]'`(호스트 색 + 같은 60% 틴트를 그라디언트로 겹쳐 불투명하면서 보이는 색은 동일). 헤더 1열 2곳의 `'bg-slate-800'` → 상수.
+
+**Before/After**: `className={i === 0 ? 'bg-slate-800' : ''}` → `className={i === 0 ? BARE_STICKY_HEAD_BG : ''}`.
+
+**의도된 변화**: 1열 헤더 색이 나머지 헤더와 같아짐. 가로 스크롤 시 뒤 글자 비침 방지는 그대로.
+
+**참고(미처리)**: 커리어 표 본문의 sticky 1열(`stickyLeft={0}`)은 배경이 없어 가로 스크롤 시 뒤 셀 글자가 비칠 수 있음(지브라 2% 틴트 때문에 단색으로 못 덮음). 열이 많아 실제로 스크롤되는 좁은 창에서 확인 후 필요하면 같은 그라디언트 방식으로 처리. 공용 Table 차원에서는 bare 표에 `stickyBg` 같은 호스트 배경 prop을 두는 것이 근본 해결.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일).
+
+**롤백 방법**: 상수 삭제 + 2곳을 `'bg-slate-800'`으로 복원.
+
+---
+
+## 2026-10-14 — 선수 상세 기록·샷 차트 표 글자 16px → 14px (글자 크기 미지정 셀이 페이지 기본값을 상속하던 것)
+
+**배경**: 사용자 지적 "기록 탭 표 글자가 다른 표보다 크다". 공용 `Table`/`TableCell`은 글자 크기를 정하지 않고(헤더만 `text-sm`), 다른 화면의 셀은 전부 `text-sm`/`text-xs`를 직접 지정한다. 선수 상세의 커리어 기록 표·최근 경기(가상 스크롤) 표·샷 차트 분해 표 3종(2026-10-13 Table 이관분)은 셀에 크기를 안 넣어 페이지 기본 16px을 상속했다. `ROW_HEIGHT = 36`도 "text-sm 20px + py-2" 기준으로 적힌 값이라 의도는 14px.
+
+**변경 파일**: `views/PlayerDetailView.tsx` — 세 `<Table variant="bare" …>`에 `className="text-sm"`(래퍼 div에 붙어 셀이 상속). 셀 코드 변경 없음.
+
+**Before/After**: `<Table variant="bare" dividers={false}>` → `<Table variant="bare" dividers={false} className="text-sm">` (커리어·샷 분해 2곳), `<Table variant="bare" density="compact">` → `… className="text-sm"` (최근 경기).
+
+**의도된 변화**: 세 표 본문 글자 16px → 14px(다른 표와 동일). 최근 경기 행 높이는 36px 고정이라 변화 없음, 커리어 표는 행이 약 4px 낮아짐.
+
+**참고(미처리)**: 글자 크기 미지정 `TableCell`이 리포 전체 348곳. 대부분 부모가 `text-sm`을 주고 있지만 같은 유형의 상속 사고가 다른 곳에 있을 수 있다. 근본 해결은 `Table`의 `<table>` 요소에 `text-sm` 기본값을 두는 것인데, 부모가 `text-xs`를 주던 표가 커질 수 있어 화면 확인과 함께 별도 작업으로 남김.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일).
+
+**롤백 방법**: `git checkout HEAD -- views/PlayerDetailView.tsx`(같은 날 포지션 레이팅 변경과 파일이 겹치므로 `className="text-sm"` 3곳만 제거하는 편이 안전).
+
+---
+
+## 2026-10-14 — 경기 리더 localStorage 캐시(`nbagm:gameLeaders:*`)를 현재 방 1개만 유지 (영속 캐시 한도 잠식의 실제 원인)
+
+**배경**: 같은 날 영속 캐시를 화이트리스트로 줄인 뒤에도 `[persist] localStorage 한도 초과` 경고가 1회 뜨고 `nba-gm-sim-query-cache` 길이가 111(빈 골격)이었다. 사용자 콘솔 실측: localStorage 합계 3,983KB 중 상위 10개 키가 전부 `nbagm:gameLeaders:<roomId>`(최대 1,003KB, 방 10개 이상 누적). 오리진 한도(약 5MB)에서 남은 ~1MB에 `multiSearchPool`(실측 2,220KB)이 들어갈 수 없어 `removeOldestQuery`가 쿼리를 전부 떼어낸 뒤에야 저장이 성공한 것. react-query 쪽 쿼리 크기 실측: multiSearchPool 2,220KB · leagueRawPlayers 647KB · playerSeasonStatsLeague 399KB · leagueRawSeasonInjury 112KB · gameShortCodes 73KB · metaPlayerOrder 32KB(화이트리스트 3개 합 ≈ 2.3MB).
+
+**변경 파일**:
+- `services/multi/gameLeadersCache.ts` — `KEY_PREFIX`, `pruneGameLeadersCache(keepRoomId)` 신설(접두사 일치 + keep 이외 키 `removeItem`, try/catch). `mergeGameLeadersCache`가 `setItem` 직전에 호출.
+- `hooks/useLeagueBootstrap.ts` — 부트스트랩 효과 시작(리그·룸 확정 직후)에서 `pruneGameLeadersCache(room.id)` 호출. 홈만 보고 일정 화면에 안 들어가도 다른 방 캐시가 정리되도록.
+- `docs/plan/schedule-leaders-cache-plan.md` — 6장 후속 기록(4장의 "별도 처리 불필요" 판단 정정).
+
+**Before/After**:
+```ts
+// Before: 방마다 nbagm:gameLeaders:<roomId> 키가 영구 누적(삭제는 토너먼트 리셋 때 그 방 것만)
+// After:  리그 진입·저장 시 현재 방 외 키 전부 삭제 → 최대 1개(≈1MB). 예상 localStorage 총량 ≈ 1MB + 2.3MB
+```
+
+**영향**: 방을 옮기면 그 방의 일정 화면 리더(PTS/REB/AST/MVP)를 처음 한 번 다시 계산한다(game_pbp 조회). 같은 방에 머무는 동안은 기존과 동일.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일). 실브라우저 확인: 새로고침 2회 후 `[persist]` 경고 없음 + `localStorage.getItem('nba-gm-sim-query-cache').length`가 약 2,300,000 안팎.
+
+**롤백 방법**: 두 파일 `git checkout HEAD --`.
+
+---
+
+## 2026-10-14 — PlayerHoverCard 자식 ref 경고 수정: `ClickableText` forwardRef + 트레이드 로스터 행 래핑 위치 교정
+
+**배경**: 새로고침 시 콘솔 경고 `Function components cannot be given refs … Check the render method of PlayerHoverCard` (홈 트랜잭션 표). `PlayerHoverCard`는 `cloneElement(children, { ref: anchorRef, onMouseEnter, … })`로 자식에 anchor ref와 hover 핸들러를 얹는데, 자식이 `ClickableText`(일반 함수 컴포넌트, rest 미전파)면 ref가 버려지고 핸들러도 span까지 안 내려가 **호버 팝업이 아예 뜨지 않았다**. 같은 패턴의 자식이 홈 트랜잭션 1곳, 뉴스피드 카드 3곳, 레터 PlayerCell 1곳, 그리고 트레이드 화면 로스터 행(`TableCell`을 감쌈) 1곳.
+
+**변경 파일**:
+- `views/multi/season/newsFeedLetter.tsx` — `ClickableText`를 `React.forwardRef<HTMLSpanElement, …>`로. span에 `ref`와 `...rest`(PlayerHoverCard가 주입하는 onMouseEnter/Leave 등 HTMLAttributes) 전달. `displayName` 지정. 기존 5개 호출부 변경 없음.
+- `views/multi/season/MultiFrontOfficeView.tsx` — `PlayerChip` 행에서 `<PlayerHoverCard><TableCell>…` → `<TableCell><PlayerHoverCard><span>…`(DOM 요소를 감싸도록 안쪽으로 이동). 셀 모양·클래스 동일.
+
+**Before/After**:
+```tsx
+// Before
+export const ClickableText: React.FC<{…}> = ({ onClick, children, className, noUnderline }) => <span className=… onClick=…>{children}</span>;
+// After
+export const ClickableText = React.forwardRef<HTMLSpanElement, {…} & Omit<HTMLAttributes<HTMLSpanElement>, 'onClick'|'className'|'children'>>(({ onClick, children, className, noUnderline, ...rest }, ref) => <span ref={ref} {...rest} className=… onClick=…>{children}</span>);
+```
+
+**영향**: 경고 소거 + 홈 트랜잭션·뉴스피드 레터·트레이드 로스터의 선수 이름 호버 팝업이 실제로 뜨기 시작함(기존엔 조용히 실패).
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일).
+
+**롤백 방법**: 두 파일 `git checkout HEAD --`.
+
+---
+
+## 2026-10-14 — react-query localStorage 영속 캐시: 계측 래퍼 제거 + 화이트리스트 전환 + 리그/방별 최신 1개만 저장 (QuotaExceededError 반복 원인 수정)
+
+**배경**: 콘솔에 `[perf][persist-debug] localStorage.setItem 실패! 시도한 크기 4860.7KB QuotaExceededError`가 계속 찍힘. 조사 결과 세 겹:
+1. 2026-09-04에 넣은 계측용 `debugStorage` 래퍼가 `setItem`의 예외를 try/catch로 삼키고 콘솔만 찍어서, `createSyncStoragePersister`의 `trySave()`(setItem이 throw해야 실패로 인식)가 항상 "성공"으로 판단 → 같은 날 넣은 `retry: removeOldestQuery`가 한 번도 실행되지 않음. 한도를 넘는 순간부터 캐시는 아예 저장되지 않고 캐시 변경마다(스로틀 1초) 4.8MB 직렬화 + 실패 로그만 반복.
+2. 제외 목록 `PERSIST_EXCLUDE_ROOT_KEYS`의 `'leagueRawStats'`는 그 뒤 `leagueRawPbp`/`leagueRawPlayers`/`leagueRawSeasonInjury`로 쪼개져 코드에 존재하지 않는 키(제외가 사실상 비어 있었음). `leagueRawPbp`(game_pbp 방 전체)는 DB 실측 방 1개 1,278경기 48.9MB — 로스터 화면 경기 기록/일정 탭에서 로드되면 즉시 초과.
+3. 캐시 전체가 localStorage 키 하나(`nba-gm-sim-query-cache`)에 들어가는데 `multiSearchPool`(키에 리그 id, gcTime Infinity, 선수 599명 ≈ 1.5~2MB)·`leagueRawPlayers`(방별 ≈ 0.6MB)·`gameShortCodes`(방별 120KB)가 24시간 동안 리그/방마다 1부씩 누적 → 리그 2~3개만 오가도 5MB 한도 초과(로그의 4,860KB와 일치).
+
+**변경 파일**: `index.tsx`만.
+- `debugStorage` 래퍼 삭제 → `storage: window.localStorage`. `retry`는 `removeOldestQuery`를 감싸 `errorCount === 1`일 때 `console.warn` 한 번(이제 예외가 라이브러리까지 전달되므로 복구가 실제로 동작).
+- `PERSIST_EXCLUDE_ROOT_KEYS`(블랙리스트) → `PERSIST_INCLUDE_ROOT_KEYS = {'multiSearchPool', 'metaPlayerOrder', 'gameShortCodes'}`(화이트리스트). 그 외 쿼리(leagueRawPbp/leagueRawPlayers/playerSeasonStatsLeague/league_events 페이지/박스스코어 등)는 메모리 캐시만.
+- `isLatestOfRoot(query)` — 같은 루트 키 인스턴스(리그/방별)가 여러 개면 `dataUpdatedAt`이 가장 최신인 1개만 영속. `queryClient.getQueryCache().findAll({ queryKey: [root] })`로 형제 조회.
+- `(window as any).__debugQueryClient` 노출 삭제(같은 날 넣은 임시 계측).
+- `PERSIST_CACHE_BUSTER` `'2026-10-01-pool-fix'` → `'2026-10-14-persist-whitelist'` — 전원 기존 캐시 1회 폐기.
+
+**Before**:
+```ts
+const debugStorage: Storage = { ...window.localStorage, setItem: (k, v) => { try { window.localStorage.setItem(k, v); console.log(…) } catch (e) { console.error(…) } } };
+const PERSIST_EXCLUDE_ROOT_KEYS = new Set(['leagueRawStats', 'playerCareerHistory', 'faCareerHistoryBulkPrefetch']);
+const persister = createSyncStoragePersister({ storage: debugStorage, key: 'nba-gm-sim-query-cache', retry: removeOldestQuery });
+(window as any).__debugQueryClient = queryClient;
+shouldDehydrateQuery: q => q.state.status === 'success' && !PERSIST_EXCLUDE_ROOT_KEYS.has(q.queryKey[0]) && !(빈 multiSearchPool)
+```
+**After**:
+```ts
+const PERSIST_INCLUDE_ROOT_KEYS = new Set(['multiSearchPool', 'metaPlayerOrder', 'gameShortCodes']);
+const isLatestOfRoot = (query) => queryClient.getQueryCache().findAll({ queryKey: [query.queryKey[0]] }).every(q => q.state.dataUpdatedAt <= query.state.dataUpdatedAt);
+const persister = createSyncStoragePersister({ storage: window.localStorage, key: 'nba-gm-sim-query-cache', retry: ctx => { if (ctx.errorCount === 1) console.warn(…); return removeOldestQuery(ctx); } });
+shouldDehydrateQuery: q => q.state.status === 'success' && PERSIST_INCLUDE_ROOT_KEYS.has(q.queryKey[0]) && isLatestOfRoot(q) && !(빈 multiSearchPool)
+```
+
+**영향**: 새로고침 직후 즉시 복원되는 것은 현재 리그의 선수 풀·선수 순서·경기 숏코드뿐. 로스터/시즌 스탯/뉴스 등은 부트스트랩 게이트(hooks/useLeagueBootstrap.ts)가 매 접속 때 받아온다(이전에도 quota 초과 후엔 아무것도 복원되지 않던 상태였으므로 실질 체감은 오히려 개선). 저장 크기 예상 약 1.5~2.5MB.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0. 실브라우저 확인 포인트: 새로고침 후 콘솔에 `[persist]` warn이 없고, `localStorage.getItem('nba-gm-sim-query-cache').length`가 3MB 아래.
+
+**롤백 방법**: `git checkout HEAD -- index.tsx`. 단 롤백하면 1번 버그(계측 래퍼가 복구를 무효화)로 돌아가므로, 롤백이 필요하면 `storage: window.localStorage`만은 유지할 것.
+
+---
+
+## 2026-10-14 — 로스터 탭: "레이팅" → "리그 레이팅" + 우측에 "포지션 레이팅" 열 추가 (`utils/positionRating.ts` 신설)
+
+**배경**: 사용자 지시(시각 검증 중). 로스터 탭의 별점 열은 OVR 절대 구간 별점(`getPlayerStarRating`)이고, 선수 상세 프로필엔 같은 포지션 안 OVR 백분위 별점("포지션 평점")이 따로 있었다. 로스터 탭에서도 두 별점을 나란히 보이게 한다.
+
+**변경 파일**:
+- `utils/positionRating.ts` 신설 — `getPositionStars(player, allPlayers, ovr?)`: 같은 `position` 선수들 중 OVR이 더 낮은 비율 → `0.5 + pct × 4.5`를 0.5 단위 반올림(0.5~5.0). PlayerDetailView에 있던 useMemo 본문을 그대로 옮긴 것. `calculatePlayerOvr`가 `utils/constants.ts`에 있어 `ovrUtils.ts`에 두면 constants ↔ ovrUtils 순환이 생기므로 별도 파일.
+- `views/PlayerDetailView.tsx` — `positionStars` useMemo가 헬퍼 호출 한 줄로(값·라벨 "포지션 평점" 변화 없음).
+- `components/roster/RosterOverviewGrid.tsx` 158 → 171 — `allTeams?: Team[]` prop, `WIDTHS.POS_RATING: 140`, colgroup/헤더/바디에 열 추가. 헤더 "레이팅" → **"리그 레이팅"**, 그 우측 **"포지션 레이팅"**(StarRating `stars=` lg). `positionStarsById` useMemo로 리그 풀을 1회 평탄화해 선수별 맵 생성. `allTeams` 미전달이면 '-'. 푸터 `colSpan` 10/11 → 11/12. 두 열 모두 정렬 없음(기존 레이팅 열과 동일).
+- `views/RosterView.tsx` — `<RosterOverviewGrid allTeams={allTeams}>` 전달.
+
+**Before/After**:
+```tsx
+// Before: <TableHeaderCell width={140}>레이팅</TableHeaderCell> … <StarRating ovr={calculatePlayerOvr(p)} size="lg" />
+// After:  <TableHeaderCell width={140}>리그 레이팅</TableHeaderCell><TableHeaderCell width={140}>포지션 레이팅</TableHeaderCell>
+//         … <StarRating ovr={…} size="lg" /> | <StarRating stars={positionStarsById.get(p.id)} size="lg" />
+```
+
+**의도된 변화**: 로스터 탭 고정폭 합계 1,060 → 1,200px(열 140px 추가). 좁은 창에서 가로 스크롤이 조금 빨리 생김.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0.
+
+**롤백 방법**: `git checkout HEAD -- components/roster/RosterOverviewGrid.tsx views/RosterView.tsx views/PlayerDetailView.tsx && rm utils/positionRating.ts`.
+
+---
+
+## 2026-10-13 — 인라인 안내 2차(마무리): TeamSettingsPanel 검증 9종 입력별 분리 + 일정표 행 시각 수정 실패를 행 안에 표시
+
+**배경**: `docs/plan/ui-inline-notice.md` 2차 과제의 마지막 2건. TeamSettingsPanel은 `setSaveErr`로 검증 9종(닉네임 1~20자, 팀 컬러 4·코트 컬러 4 HEX)을 첫 실패에서 끊어 하단 md 슬롯에 한 문구만 띄웠다(이전 조사에서 `setErr` 리터럴로 grep해 0건으로 잘못 보고했던 것). 일정 탭의 경기별 시각 수정은 실패 시 표 위 `editErr` 슬롯에만 문구가 떠서, 일정표가 스크롤된 상태면 행의 저장 버튼을 눌러도 아무 일도 안 일어난 것처럼 보였다. 섹션 헤더 StatusDot 2곳(추첨 완료/기록 저장 완료)은 기존 텍스트가 이미 정보를 더 잘 전달해 **기각**(사용자 결정).
+
+**변경 파일**:
+- `components/multi/TeamSettingsPanel.tsx` 278 → 298 — 모듈 레벨 `HEX_FORMAT_MSG`, `FieldKey`(nickname·primary·secondary·tertiary·text·background·three·paint·line), `FieldErrors`, `ColorFieldDef`. `fieldErrors` 상태 + `clearField`/`setField`, `validate(trimNick)`가 닉네임과 두 ColorField 배열 전체를 훑어 맵 반환. 닉네임 입력 적색 테두리 + 아래 sm, ColorField 8개에 `onChange={setField(key, setter)} error={fieldErrors[key]}`. 대비 경고는 Primary/Text에 형식 오류가 있으면 숨김. `saveErr`는 서버 실패 전용. 팀 변경(`myTeam.id`) 시 `fieldErrors` 리셋.
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` 912 → 926 — `type EditOneResult = string | null | 'cancel'`. `handleEditOne`이 boolean 대신 실패 문구/`null`/`'cancel'`을 반환하고 `editErr`를 더 이상 건드리지 않음. `GameRow`에 `rowErr` 상태 — 저장 실패 시 편집 입력 테두리 적색 + 아래 `InlineNotice danger sm`, 입력 변경·취소·재편집 시 소거. 상단 `editErr` 슬롯은 "지금 바로 시작"(`handleStartNow`) 실패 전용으로 남김.
+- `docs/plan/ui-inline-notice.md` — 7장 섹션 헤더 행 취소선+기각, 9장 5번 일정표 행 ✅·섹션 헤더 기각 사유, 2차 미룬 것 TeamSettingsPanel ✅(폼 검증 입력별 분리 전부 완료).
+
+**Before** (일정표 행):
+```ts
+const handleEditOne = async (gameId, local): Promise<boolean> => { … if (error) { setEditErr(error); return false; } setEditErr(null); await refresh(); return true; };
+// GameRow: const ok = await onEdit(game.id, draft); if (ok) setEditing(false);   ← 실패 시 행엔 아무 표시 없음, 문구는 표 위 슬롯
+```
+**After**:
+```ts
+const handleEditOne = async (gameId, local): Promise<EditOneResult> => { … if (error) return error; await refresh(); return null; };
+// GameRow: const res = await onEdit(game.id, draft); if (res === null) setEditing(false); else if (res !== 'cancel') setRowErr(res);
+//          <input className={`… ${rowErr ? 'border-red-500/60' : 'border-slate-700'}`} /> {rowErr && <InlineNotice tone="danger" size="sm" className="mt-1">{rowErr}</InlineNotice>}
+```
+
+**의도된 변화**: TeamSettingsPanel은 틀린 입력 전부 동시에 적색 테두리 + 12px 문구(입력당 약 20px 길어짐), 색상 문구에서 "Primary 색상은 …" 접두 제거. 일정표 행은 실패 시 행 높이가 한 줄(16px+4px) 늘어나며 시각 셀(`w-40`) 안에서 어절 단위로 줄바꿈된다.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0.
+
+**롤백 방법**: `git checkout HEAD -- components/multi/TeamSettingsPanel.tsx views/multi/league/settings/ScheduleSettingsTab.tsx`(공용 컴포넌트 변경 없음).
+
+---
+
+## 2026-10-13 — 인라인 안내 2차(계속): CreateLeagueModal 검증 13종 → 입력별 sm 분리
+
+**배경**: 바로 아래 항목(TeamSetupModal·PersonalDraftSettingsTab)에서 잡은 `fieldErrors` 맵 패턴을 가장 큰 폼인 리그 생성 모달에 적용. 기존엔 `setErr('…'); return;` 13개가 첫 실패에서 끊겨 푸터 md 슬롯에 한 문구만 보였고, 2단 레이아웃(좌: 기본 설정·참가 팀 / 우: 일시 설정)이라 어느 입력인지 찾으려면 양쪽을 다 봐야 했다.
+
+**변경 파일**:
+- `components/multi/CreateLeagueModal.tsx` 1206 → 1241 — 모듈 레벨 `MIN_LEAD_MIN`, `FieldKey`(name·lotteryStartAt·draftStartAt·tournamentStartAt·draftDeadlineAt·gameIntervalMinutes·teamPick·realStartDate), `FieldErrors`. 컴포넌트 안 `fieldErrors` 상태, `clearField(key)`, `fieldBorder(key)`(적색/기본 테두리 클래스), `renderFieldError(field)`(danger sm, 렌더 안 컴포넌트 재정의 대신 함수). `validateFields(trimName, {startIso, draftIso, lotteryIso})`가 모든 입력을 훑어 맵 반환 — 날짜 체인은 "비움"과 "순서 위반"을 분리(`드래프트 시작 일시를 입력해주세요` / `로터리 추첨 일시보다 늦어야 합니다`), 마감 순서 위반 문구에 토너먼트 시작 시각 포함. `handleSubmit`은 `setErr(null)` → 어드민 체크(err) → ISO 계산 → `validateFields` → 실패 시 return → 타임라인 가능성(err, 교차 검증) → 저장. 입력 8곳 onChange에 `clearField`, 토너먼트 시작 변경 시 마감 문구도 함께 소거, `toggleTeam`/`handleRandomizeTeams`에 `clearField('teamPick')`, `handleTypeChange`에 `setFieldErrors({})`. 참가 팀 그리드 아래 `renderFieldError('teamPick')`.
+- `docs/plan/ui-inline-notice.md` — 2차 미룬 것 중 CreateLeagueModal ✅.
+
+**Before**:
+```ts
+if (trimName.length < 1 || trimName.length > 30) { setErr('리그 이름은 1~30자여야 합니다'); return; }
+…
+if (!lotteryIso || new Date(lotteryIso).getTime() < Date.now() + MIN_LOTTERY_LEAD_MS) { setErr(`로터리 추첨 일시는 현재로부터 최소 ${…}분 이후여야 합니다`); return; }
+if (!draftIso || new Date(draftIso).getTime() <= new Date(lotteryIso).getTime()) { setErr('드래프트 시작 일시는 로터리 추첨 일시보다 늦어야 합니다'); return; }
+… // 13개, 첫 실패에서 끊김 → 푸터 {err && <InlineNotice tone="danger">}
+```
+**After**:
+```ts
+const errors = validateFields(trimName, { startIso, draftIso, lotteryIso });   // 모든 입력 → 맵
+setFieldErrors(errors);
+if (Object.values(errors).some(Boolean)) return;
+if (type === 'main_league' && !timelineFeasibility.feasible) { setErr(`이 설정으로는 … — ${reasons}`); return; }  // 교차 검증만 푸터
+// 입력: className={`… border ${fieldBorder('lotteryStartAt')} …`} onChange={e => { setLotteryStartAt(e.target.value); clearField('lotteryStartAt'); }}
+//       {renderFieldError('lotteryStartAt')}
+```
+
+**의도된 변화**: 틀린 입력마다 적색 테두리(`rgba(239,68,68,.6)`) + 아래 12px 문구, 동시 표시. 문구에서 "로터리 추첨 일시는 …"처럼 입력명을 반복하던 접두가 빠짐(위치가 말해줌). 푸터 슬롯은 어드민 아님·타임라인 불가·서버 생성 실패만. 안내 소문(`text-[11px] text-slate-600`)은 그대로이고 오류 문구는 그 위에 끼어 들어간다.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0.
+
+**롤백 방법**: `git checkout HEAD -- components/multi/CreateLeagueModal.tsx`(이 파일 하나, 공용 컴포넌트 변경 없음).
+
+---
+
+## 2026-10-13 — 인라인 안내 2차: 리그 설정 탭 미저장 StatusDot(TabBar `dot` 슬롯) + TeamSetupModal·PersonalDraftSettingsTab 입력별 검증 분리
+
+**배경**: `docs/plan/ui-inline-notice.md` 9장 5번 미적용분(설정 탭 라벨)과 "2차로 미룬 것"(폼 검증 입력별 sm) 중 작은 폼 2개. 리그 설정은 탭별 `dirty`가 `TAB_SAVE_MAP`에 이미 있었지만 TabBar가 문자열 라벨만 받아 탭 라벨에 미저장 표시를 못 했고(탭 이동 시 `window.confirm`에서만 드러남), TeamSetupModal·PersonalDraftSettingsTab은 검증 실패를 `setErr('…')` 한 줄 + 첫 실패 `return`으로 하단 md 슬롯 하나에만 띄워 어느 입력이 문제인지 문구로 찾아야 했다. 설계 목업: https://claude.ai/artifact/CaKweUpxAcXQiAEQ28ttqh
+
+**변경 파일**:
+- `components/common/TabBar.tsx` 51 → 61 — `tabs[].dot?: { tone: InlineNoticeTone; label: string }` 추가. 라벨 뒤 `<StatusDot size="sm" className="ml-1.5">`, 라벨 span을 `relative inline-flex items-center`로. 기존 호출부는 전부 `dot` 미지정이라 픽셀 변화 없음.
+- `views/multi/league/LeagueSettingsView.tsx` — `UNSAVED_TAB_DOT = { tone: 'warning', label: '저장하지 않은 변경사항' }` 상수(SETTINGS_TABS 아래), `TAB_SAVE_MAP` 선언 뒤 `tabsWithDot = SETTINGS_TABS.map(t => TAB_SAVE_MAP[t.id]?.dirty ? {...t, dot} : t)`, `<TabBar tabs={tabsWithDot}>`. 대상은 TAB_SAVE_MAP에 있는 6탭(리그·드래프트·트레이드·샐러리캡·로스터·엔진). 일정·재정·로그·팀 전술과 개인 드래프트일 때의 드래프트 탭은 자체 저장 흐름이라 점 없음. 저장 실패는 탭 바 아래 danger 슬롯이 담당하므로 점은 warning만. confirm 가드 유지.
+- `components/multi/ColorField.tsx` 39 → 45 — `error?: string` prop. 있으면 텍스트 입력 테두리 `border-slate-700` → `border-red-500/60`, 아래 `InlineNotice danger sm mt-1`. TeamSettingsPanel은 미전달이라 변화 없음.
+- `components/multi/TeamSetupModal.tsx` 191 → 208 — `err` 단일 상태 → `fieldErrors: Partial<Record<'name'|'abbr'|'colorPrimary'|'colorSecondary'|'colorText', string>>` + `saveErr`(서버 전용). `validate(trimName)`이 모든 입력을 훑어 맵 반환(첫 실패에서 끊지 않음, 약어는 형식 오류 우선 아니면 중복 검사). `clearField(key)`/`setField(key, setter)`로 입력 변경 시 그 키만 소거. 팀 이름·약어 입력은 `inputClass(error)`로 적색 테두리 + 아래 sm, ColorField 3개는 `error` prop. 대비 경고(warning sm)는 Primary/Text에 형식 오류(danger)가 있으면 숨김(`showContrastWarning`). 하단 md 슬롯은 `saveErr`만.
+- `views/multi/league/settings/PersonalDraftSettingsTab.tsx` 316 → 325 — `deadlineErr` 상태 + `validateDeadline()`(비움 / 토너먼트 시작보다 늦음 — 문구에 기준 시각 포함). 마감 입력 테두리 적색 + 아래 sm, 입력 변경·체크박스 토글 시 소거. `saveErr`는 서버 실패 전용. `setSaving(true)`를 검증 통과 뒤로 이동.
+- `docs/plan/ui-inline-notice.md` — 9장 5번 설정 탭 라벨 ✅, 2차 미룬 것 중 TeamSetupModal·PersonalDraftSettingsTab ✅.
+
+**Before** (TeamSetupModal 검증):
+```ts
+const [err, setErr] = useState<string | null>(null);
+const handleSave = async () => {
+  if (trimName.length < 1 || trimName.length > 16) { setErr('팀명은 1~16자여야 합니다'); return; }
+  if (!/^[A-Z0-9]{2,4}$/.test(displayAbbr)) { setErr('약어는 2~4자 영문/숫자여야 합니다'); return; }
+  if (!HEX_RE.test(colorPrimary)) { setErr('Primary 색상은 #RRGGBB 형식이어야 합니다'); return; }
+  … // 색상 2개, 약어 중복 — 첫 실패에서 끊김
+  if (saveError) { setErr(saveError); return; }
+};
+{err && <InlineNotice tone="danger">{err}</InlineNotice>}   // 폼 하단 하나
+```
+**After**:
+```ts
+const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+const [saveErr, setSaveErr] = useState<string | null>(null);
+const validate = (trimName) => { const e: FieldErrors = {}; if (…) e.name = …; if (…) e.abbr = …; else if (중복) e.abbr = …; if (!HEX) e.colorPrimary = …; …; return e; };
+const handleSave = async () => { const errors = validate(trimName); setFieldErrors(errors); if (Object.values(errors).some(Boolean)) return; … if (saveError) { setSaveErr(saveError); return; } };
+<input className={inputClass(fieldErrors.name)} onChange={e => { setName(e.target.value); clearField('name'); }} />
+{fieldErrors.name && <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors.name}</InlineNotice>}
+<ColorField … onChange={setField('colorPrimary', setColorPrimary)} error={fieldErrors.colorPrimary} />
+{saveErr && <InlineNotice tone="danger">{saveErr}</InlineNotice>}   // 서버 실패 전용
+```
+
+**Before/After** (리그 설정 탭):
+```tsx
+// Before: <TabBar tabs={SETTINGS_TABS} …/> — 미저장 표시 없음, 탭 이동 시 window.confirm만
+// After:  const tabsWithDot = SETTINGS_TABS.map(t => TAB_SAVE_MAP[t.id]?.dirty ? { ...t, dot: UNSAVED_TAB_DOT } : t);
+//         <TabBar tabs={tabsWithDot} …/> — 미저장 탭 라벨 오른쪽 16px 경고 점(툴팁 "저장하지 않은 변경사항")
+```
+
+**의도된 변화**:
+- 리그 설정: 미저장 탭 라벨 오른쪽에 16px 앰버 점(라벨과 6px 간격). 저장되면 즉시 사라짐.
+- TeamSetupModal: 틀린 입력 전부 동시에 적색 테두리(`rgba(239,68,68,.6)`) + 아래 12px 문구. 폼이 입력당 20px 길어짐. 색상 형식 오류 문구는 "Primary 색상은 …" → "#RRGGBB 형식이어야 합니다"(어느 입력인지는 위치가 말해줌).
+- PersonalDraftSettingsTab: 마감 검증 문구가 상단 슬롯에서 마감 입력 아래로. 순서 위반 문구에 토너먼트 시작 시각 포함.
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0.
+
+**롤백 방법**: 위 5개 파일 `git checkout HEAD -- <파일>`. TabBar `dot`·ColorField `error`는 다른 호출부가 아직 안 쓰므로 둘만 되돌려도 안전.
+
+---
+
+## 2026-10-13 — 크롬(사이드바·헤더·탭바·팀 모달) 공용화: `CountBadge` 신설, Dropdown `side`/`dividerBefore` 보강, 팀 모달 2개 → Modal, 카운트다운 포맷 통합
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 12번(감사 `ui-audit/10` 후보). 빨간 숫자 배지(`rounded-full bg-red-500 text-white text-[8px] font-bold`, 9+ 캡)가 사이드바 NavItem·헤더 메뉴 항목·헤더 "리그" 탭·TabBar 탭 4곳에 각자 복붙돼 있었고, 사이드바 프로필 메뉴는 공용 Dropdown이 있는데도 body 포탈·바깥클릭 mousedown·좌표 계산을 직접 구현(60여 줄). TeamSelectModal/TeamSetupModal은 오버레이·패널·헤더·푸터를 직접 그렸고, MultiHeader는 남은 시간 분해 로직을 `fmtRemaining`과 `eventCountdown` useMemo 두 벌로 들고 있었다.
+
+**변경 파일**:
+- `components/common/CountBadge.tsx` 신설(26줄) — `CountBadge({count, size 'sm'(14px·text-[8px])|'md'(16px·text-[9px]), className})`. count 0/undefined면 null, 10 이상 "9+". 위치 지정은 호출부가 `className`으로 `absolute -top-2 -right-3` 등을 넘김.
+- `components/common/Dropdown.tsx` 141 → 164 — `DropdownItem.dividerBefore?`(항목 위 `my-1 border-t border-slate-800`), `side?: 'bottom'|'right'`(기본 bottom). `side="right"`면 패널을 `fixed { bottom: innerHeight - rect.bottom + 8, left: rect.right + 8 }`로 두어 트리거 오른쪽에서 위로 자란다. 내부 좌표 상태를 `PanelPos` 판별 유니언으로 변경. 기존 7개 호출부는 기본값이라 영향 없음.
+- `components/MultiSidebar.tsx` 332 → 260 — NavItem 배지 → `CountBadge`; `buttonRef` prop 제거, `onClick` optional. 프로필 메뉴: `isMenuOpen`만 남기고 `menuRef/dropdownRef/profileBtnRef/dropdownBottom/dropdownLeft` + mousedown useEffect + `handleProfileClick` + `createPortal` 블록 전부 삭제 → `<Dropdown className="w-full" side="right" width="w-48" isOpen onOpenChange items={profileMenuItems} trigger={<NavItem active={isMenuOpen} …/>}>`. 항목 배열 `profileMenuItems` = 세션 설정(isAdmin)·팀 설정(myTeam)·홈으로(`dividerBefore: !!(isAdmin||myTeam)`)·로그아웃(`dividerBefore: true`), 라벨은 `menuLabel(icon, text)`로 아이콘+텍스트. `useRef/useEffect/createPortal` import 제거.
+- `components/dashboard/MultiHeaderNavMenu.tsx` — 드롭다운 항목 배지(`w-4 h-4 text-[9px]`) → `<CountBadge size="md">`, "리그" 탭 모서리 배지(`w-4 h-4 text-[8px]`) → `<CountBadge size="md" className="absolute -top-1.5 -right-2.5">`.
+- `components/common/TabBar.tsx` — 탭 배지 → `<CountBadge className="absolute -top-2 -right-3">`.
+- `components/MultiHeader.tsx` — `fmtRemaining(diffMs, zeroText, style: 'compact'|'clock' = 'compact')`. `clock`은 `d일 hh:mm:ss`/`hh:mm:ss` 고정 자리수. `eventCountdown` useMemo(13줄) → `fmtRemaining(…, '곧 시작', 'clock')` 한 줄(매초 바뀌는 값이라 useMemo 불필요).
+- `components/multi/TeamSelectModal.tsx` 177 → 170 — `createPortal(<div fixed inset-0 z-modal bg-black/60>…)` → `<Modal isOpen size="xl" rounded="rounded-2xl" backdropClass="bg-black/60" className="!max-w-5xl" title={리그명+부제} footer={에러 InlineNotice + 취소/입장하기}>`. 본문은 `px-8 py-6` 그리드 그대로. `IconButton`/`X`/`createPortal` import 제거.
+- `components/multi/TeamSetupModal.tsx` 187 → 191 — 동일하게 `<Modal isOpen={open} size="sm" className="!max-w-sm" title="팀 설정" footer={취소/저장}>`. 저장 버튼은 `isLoading/loadingText`로 통일, 입력 클래스는 `INPUT_CLASS` 상수로 1회 정의.
+- `docs/plan/ui-consolidation.md` — 6장 12번 ✅.
+
+**Before** (사이드바 프로필 메뉴 핵심부):
+```tsx
+const [isMenuOpen, setIsMenuOpen] = useState(false);
+const menuRef = useRef<HTMLDivElement>(null); const dropdownRef = useRef<HTMLDivElement>(null); const profileBtnRef = useRef<HTMLButtonElement>(null);
+const [dropdownBottom, setDropdownBottom] = useState(0); const [dropdownLeft, setDropdownLeft] = useState(0);
+useEffect(() => { /* mousedown 바깥클릭 → setIsMenuOpen(false) */ }, [isMenuOpen]);
+const handleProfileClick = () => { const rect = profileBtnRef.current.getBoundingClientRect(); setDropdownBottom(window.innerHeight - rect.bottom + 8); setDropdownLeft(rect.right + 8); setIsMenuOpen(p => !p); };
+…
+{isMenuOpen && createPortal(<div ref={dropdownRef} className="fixed w-48 rounded-xl … z-popover bg-slate-800 border border-slate-700" style={{ bottom, left }}><div className="p-1.5 space-y-0.5">{isAdmin && <button …>세션 설정</button>}{myTeam && <button …>팀 설정</button>}{(isAdmin||myTeam) && <div className="my-1 border-t …"/>}<button …>홈으로</button><div className="my-1 border-t …"/><button …>로그아웃</button></div></div>, document.body)}
+```
+**After**:
+```tsx
+const [isMenuOpen, setIsMenuOpen] = useState(false);
+const profileMenuItems = [ …(isAdmin ? [{ id:'settings', label: menuLabel(<Settings2/>, '세션 설정'), onClick }] : []), …(myTeam ? [{ id:'team', … }] : []), { id:'home', …, dividerBefore: !!(isAdmin||myTeam) }, { id:'logout', …, dividerBefore: true } ];
+<Dropdown className="w-full" side="right" width="w-48" isOpen={isMenuOpen} onOpenChange={setIsMenuOpen} items={profileMenuItems} trigger={<NavItem active={isMenuOpen} icon={<CircleUser size={24}/>} label="프로필" />} />
+```
+
+**Before/After** (카운트다운):
+```ts
+// Before: eventCountdown useMemo 안에서 totalSec/d/h/m/s 분해 + padStart 3회 (fmtRemaining과 중복)
+// After:  fmtRemaining(new Date(nextEventAt).getTime() - nowMs, '곧 시작', 'clock')
+```
+
+**의도된 변화**:
+- 프로필 메뉴 패널: `bg-slate-800 border-slate-700` → Dropdown 기본 `bg-slate-900 border-slate-800`, 항목 호버 `bg-slate-600` → `bg-slate-800`, 패딩 `p-1.5` → `p-1`, 열릴 때 `fade-in` 애니메이션 추가. 위치·폭(w-48)·항목 구성·구분선 위치는 동일.
+- 헤더 "리그" 탭 모서리 배지 글자 `text-[8px]` → `text-[9px]`(md 사이즈 통일). 그 외 배지는 픽셀 동일.
+- TeamSelectModal: 패널 `max-h-[90vh]` → Modal 공용 `85vh`, 헤더 `py-5` → `py-6 bg-slate-950/50`, 닫기 X 20px → 24px, 열릴 때 `fade-in/zoom-in` 애니메이션. 푸터 `bg-slate-900/90`.
+- TeamSetupModal: 제목 `text-base font-black` → Modal 공용 `text-xl font-bold` + 헤더 분리(`px-8 py-6 border-b`), 버튼 행이 `border-t` 푸터로 분리. 저장 중엔 스피너+"저장 중…".
+
+**검증**: `npx tsc --noEmit -p .` 52개(기준선 동일), `npx vite build --logLevel error` exit 0.
+
+**롤백 방법**: 위 8개 파일 `git checkout HEAD -- <파일>`로 되돌리고 `components/common/CountBadge.tsx` 삭제. Dropdown의 `side`/`dividerBefore`는 다른 호출부가 아직 안 쓰므로 Dropdown만 되돌려도 안전.
+
+---
+
+## 2026-10-13 — 올스타 화면 좌/우 미러 블록 정리 + 우승 축하 모달 → 공용 Modal(`closeOnBackdrop` 신설) + Table 이관
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 11번(감사 `ui-audit/07-playoffs-allstar.md` 후보 1·2·3·4). MultiAllStarView는 동부/서부 컨퍼런스 블록(18줄×2)과 라이징스타 팀 A/B 블록(13줄×2)이 로고·제목·데이터만 다른 복붙이고, 이벤트 로고 h2가 8회·h3 소제목이 9회(두 크기 혼용)·좌우 2열 레이아웃 2회·구분선 섹션 4회 반복. TournamentChampionModal은 공용 Modal이 있는데도 오버레이/패널/닫기/푸터를 직접 구현하고 raw `<table>`(th·td 11쌍)을 썼다. 브라켓 `SidePanel` 항목은 같은 날 다른 세션이 사이드패널을 `SeriesWindow` 플로팅 창으로 바꿔 대상이 사라져 제외.
+
+**변경 파일**:
+- `views/multi/season/MultiAllStarView.tsx` 533 → 522 — 로컬 `AllStarTitle({logo})`, `SubTitle({size sm|lg})`, `TwoPane`/`Pane`/`DividedSection`, `PanelShared` props, `RisingTeamPanel({logo, teamName, players})`, `ConferencePanel({logo, title, roster?, conference})`. `RisingStarsBody`는 `TwoPane` 안에 `RisingTeamPanel` 2개, 본올스타 본문은 `ConferencePanel` 2개. 시작 전/토너먼트 안내(Star 아이콘형)와 문장형 빈 상태 3곳(`p-10 text-sm text-slate-500`) → `EmptyState`(subtitle에 기간 문구).
+- `components/common/Modal.tsx` — `closeOnBackdrop?: boolean`(기본 true) 추가. false면 배경 mousedown 리스너를 달지 않는다.
+- `components/multi/TournamentChampionModal.tsx` 363 → 368 — 직접 구현 오버레이(`fixed inset-0 z-modal … backdrop-blur-sm`)/패널(`border-amber-500/40 rounded-3xl max-w-2xl max-h-[90vh]`)/푸터 → `<Modal isOpen size="md" rounded="rounded-3xl" blurBackdrop closeOnBackdrop={false} hideCloseButton className="!border-amber-500/40" footer={확인 버튼}>`. 앰버 그라디언트와 우상단 X는 children으로 유지. raw 표 → `Table variant="bare" density="compact" dividers={false}` + `ROSTER_COLS`(10열 label/width/value/strong) 배열. 컨페티는 `createPortal(<Confetti/>, document.body)`로 모달 뒤에 붙여 위에 뿌려지는 순서 유지.
+
+**Before** (컨퍼런스 블록 1벌):
+```tsx
+<div className="p-6 space-y-6 min-w-0">
+  <h2 className="flex items-center gap-2 text-2xl font-black text-white"><img src={getLeagueLogoUrl('East')} alt="" className="h-8 w-8" />동부 컨퍼런스</h2>
+  {snapshot.roster && (<div className="space-y-3"><h3 className="text-lg font-black text-slate-300">최종 결과</h3><div className="grid grid-cols-[3fr_2fr] gap-4"><AllStarCourtDiagram starters={snapshot.roster.east.starters} …/><AllstarRosterTable label="리저브" players={snapshot.roster.east.reserves} …/></div></div>)}
+  <div className="border-t border-slate-800 pt-6"><AllstarVoteGroupPanel conference={snapshot.detail.east} …/></div>
+</div>
+```
+**After**:
+```tsx
+<ConferencePanel logo="East" title="동부 컨퍼런스" roster={snapshot.roster?.east} conference={snapshot.detail.east} {...shared} />
+```
+
+**의도된 변화**:
+- 우승 모달: 패널 최대 높이 90vh → 85vh(Modal 기본), 푸터 패딩 `px-8 py-4` → Modal 푸터(`px-8 py-5 bg-slate-900/90`), 헤더(트로피·팀명)가 본문과 함께 스크롤(이전엔 헤더 고정·표만 스크롤). 표는 Table bare 헤더(slate-800/60 띠, slate-400 굵은 글자)·compact 패딩·행 hover. **배경 클릭으로 닫히지 않는 동작은 유지**(closeOnBackdrop=false).
+- 올스타 빈 상태 4곳: 좌측 정렬 문장 → EmptyState 중앙 정렬(제목 + 기간 부제).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일), `vite build` exit 0.
+
+**롤백 방법**: 세 파일을 git에서 되돌리면 됨(Modal `closeOnBackdrop`은 기본값 true로 추가 전용).
+
+---
+
+## 2026-10-13 — 경기 화면(MultiGamePbpView) 원정/홈 미러 블록 헬퍼화 + 결과 섹션 바 `ResultSection` (2,759 → 2,718)
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 10번(감사 `ui-audit/02-game.md` 후보 1·5). 같은 마크업이 원정/홈으로 좌우 대칭 복붙된 곳 4종(쿼터별 득점표 행 12줄×2, 종료 헤더 팀 블록 15줄×2, PBP 교체 IN/OUT 블록 12줄×2, 좌/우 박스스코어 패널 4분기 20줄×2)과 종료 결과 페이지 섹션 6개의 래퍼+제목 바(3줄×6)가 대상. 로고 폴백·IconButton·쿼터 필터 SegmentedControl은 0-1/0-5 단계에서 이미 끝나 있었다.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` 2,759 → 2,718
+  - 모듈 레벨 `FinalTeamBlock({side, name, wl, score, won, onClick})` — 이름·전적/점수/승리 마커(◂▸)를 side에 따라 순서·정렬 뒤집음. 종료 헤더 원정/홈 블록 2개가 호출 1줄씩.
+  - `SubChangeBlock({side, inPlayers, outPlayers})` — IN/OUT 두 줄, 원정은 이름→라벨 우측 정렬, 홈은 라벨→이름.
+  - `ResultSection({sectionKey, title, sectionRefs, className?})` — `<section ref data-section className="border-t border-slate-800">` + `bg-slate-800 border-t border-slate-600 px-6 py-3` 바 + h3. 박스스코어/인사이트/경기 기록/샷차트/로테이션/온오프 6개가 사용(온오프만 `className="pb-10"`). 섹션 상단 이중선(slate-800+slate-600)은 기존 그대로 유지.
+  - 컴포넌트 안 `renderBoxPanel(side)` — 종료(gameData box)/라이브(liveBox + onCourtIds)/예정(0스탯 로스터)/플레이스홀더 4분기를 한 곳에서. 2026-08-05 "예정→라이브 전환 시 플레이스홀더로 튀는" 수정의 판정 순서(hasBoxTimeline → scheduledBox.length)는 그대로.
+  - 쿼터별 득점표(full) 원정/홈 `<tr>` 2개 → `[abbr, scores, total]` 배열 map 1개.
+
+**Before** (종료 헤더 홈 블록):
+```tsx
+<div className="flex-1 min-w-0 flex items-center justify-start gap-5">
+    <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-l-[7px] border-l-white shrink-0 ${homeWon ? '' : 'invisible'}`} />
+    <span className={scoreCls(homeWon)}>{currentScore.home}</span>
+    <div className="flex flex-col items-start min-w-0 gap-0.5">
+        <span className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline" onClick={() => goTeamRoster(homeTeamId)}>{homeName}</span>
+        {!isAllstar && wlText(homeWL) && <span className="text-sm text-slate-400 tabular-nums">{wlText(homeWL)}</span>}
+    </div>
+</div>
+```
+**After**:
+```tsx
+<FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} />
+```
+
+**시각 변화**: 없음(마크업·클래스 동일, 구조만 합침).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일), `vite build` exit 0.
+
+**롤백 방법**: 이 파일 하나를 git에서 되돌리면 됨.
+
+---
+
+## 2026-10-13 — 트레이드 화면 공용화: 제안서 자산 열·카트 → `TeamAssetList` · 로스터 리스트 → Table · 오퍼 상태 `OFFER_STATUS` 배지 · Money 통일 (MultiFrontOfficeView 2,117 → 2,051)
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 8번(감사 `ui-audit/04-trade-draftpool.md` 후보 3·4·12·14·15). 제안서(메시지함 상세)의 발신/수신 자산 열과 새 제안 카트 2블록이 팀 컬러 헤더·선수 행·합계를 3벌 복붙(약 130줄), 새 제안 로스터 리스트(`PlayerChip`/`PlayerListHeader`)가 raw `<table>/<thead>/<th>/<tr>/<td>` + 자체 정렬 화살표, 오퍼 상태가 라벨 맵과 제안서 문단 4개로 흩어져 있었고(invalidated 문단은 누락), 금액 표기가 `formatMoney/formatMoneyFull` raw span 12곳(tabular 유무 혼재)이었다.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` 2,117 → 2,051
+  - 파일 로컬 `TeamColorHeader`, `TeamAssetList({team, header, rows[{id,player?,stats?}], showStats?, showMoney?, total?, emptyText?, onPlayerClick})`, `AccordionHeader({open,onToggle})` 신설. 제안서 `renderAssetColumn`은 `toAssetRows()`로 행만 만들어 `TeamAssetList showStats total`, 카트 2블록은 `showMoney={capEnabled} total={size>=2 ? … : undefined}`.
+  - `PlayerChip`: `<tr>/<td>` → `TableRow`/`TableCell`(compact), OVR `size="sm" className="!w-6 !h-6 !text-sm !shadow-none"` → `size="table"`, 연봉 `formatMoney` → `<Money>`. `PlayerListHeader`: raw thead/th + ArrowUp/Down → `TableHead noRow` + `TableHeaderCell {...sortProps(key)}`. 두 로스터 패널의 `<div overflow-y-auto><table table-fixed>` → `<div flex-1 min-h-0><Table variant="flush" fullHeight density="compact" dividers={false} tableStyle={{tableLayout:'fixed'}}>`(Table 래퍼가 스크롤 컨테이너가 되어 sticky 헤더 유지). 정렬 state 2벌 + handleMySort/handleTargetSort → `useTableSort<PlayerSortKey>` 2개.
+  - `STATUS_LABEL` → `OFFER_STATUS`(label/variant/message/tone). 메시지함 목록의 처리된 오퍼는 `<Badge size="xs" shape="square" variant>`, 제안서 하단 결과 문단 4개 → 맵 조회 1개(invalidated는 InlineNotice warning 유지).
+  - `renderPlayerList`/`renderHistoryPlayerCell`/자산·카트 이름 → `PlayerNameLink`(`openPlayer(id)` 콜백 공용), 블록 탭·히스토리 팀 링크 3곳 → `ClickableText`. 푸터 샐러리 총합·재정 변동 실행 전/후·히스토리 연봉 2열 → `<Money>`. `formatMoney/formatMoneyFull`·`ArrowUp/ArrowDown` import 제거.
+- `components/common/PlayerNameLink.tsx` — `player?: Player | null` + `fallbackName`(풀에 없는 id), `tone="strong"`(흰색 굵게) 추가.
+
+**Before** (카트 블록 1벌, 37줄):
+```tsx
+<div className="space-y-1">
+  <span className="text-sm font-bold ko-normal block w-full px-2 py-1 rounded-md" style={{ backgroundColor: myTeamRow.color_primary, color: myTeamRow.color_text ?? getReadableTextColor(myTeamRow.color_primary) }}>{myTeamRow.team_name}</span>
+  <div className="px-2 space-y-1">
+    {[...cartMine].map(id => { const p = poolByIdWithStats.get(id); return (
+      <div key={id} className="flex items-center justify-between text-sm">
+        <PlayerHoverCard player={p} teamAbbr={myTeamRow.team_abbr}><span onClick={() => navigate(`…/player/${getPlayerUrlId(id)}`)} className="text-white font-bold ko-normal truncate cursor-pointer hover:underline hover:text-indigo-400">{p?.name ?? id}</span></PlayerHoverCard>
+        {capEnabled && <span className="text-white tabular-nums shrink-0">{formatMoney(p?.salary ?? 0)}</span>}
+      </div>); })}
+    {capEnabled && cartMine.size >= 2 && <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-700/60"><span className="text-slate-400 ko-normal">합계</span><span className="text-white font-semibold tabular-nums">{formatMoney(outgoingCapTotal)}</span></div>}
+  </div>
+</div>
+```
+**After**:
+```tsx
+<TeamAssetList team={myTeamRow} header={myTeamRow.team_name} rows={[...cartMine].map(id => ({ id, player: poolByIdWithStats.get(id) }))}
+  showMoney={capEnabled} total={capEnabled && cartMine.size >= 2 ? outgoingCapTotal : undefined} onPlayerClick={openPlayer} />
+```
+
+**의도된 시각 변화**:
+- 새 제안 로스터 리스트: 셀 패딩이 compact 표준(py-1.5 px-2)으로, 행 hover가 Table 공용(`white/5`), 행 하단선 slate-800, 헤더가 TableHeaderCell(활성 열 화살표·hover 흰색). OVR 배지 24px text-sm → 28px text-xs(그림자 없음은 동일).
+- 메시지함 목록의 처리 상태(수락됨/거절됨/취소됨/만료됨/무효화됨)가 회색 글자 → 작은 사각 Badge(success/danger/neutral/warning).
+- 카트 합계 행이 제안서 자산 열과 같은 모양(`mt-2 pt-2 border-t border-slate-700`, 라벨 slate-400 bold)으로 통일. 제안서 자산 행 숫자에 tabular-nums.
+- 블록 목록·히스토리 선수 이름 slate-300 → slate-200(B1).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일), `vite build` exit 0.
+
+**롤백 방법**: 두 파일을 git에서 되돌리면 됨(PlayerNameLink 확장은 추가 전용이라 인사이트 호출부엔 영향 없음).
+
+---
+
+## 2026-10-13 — 홈·순위·일정·리더보드 공용화: 홈 표/리스트 7개 → Table · `useActiveInjuryMap` · LeaderboardTable 헤더 6벌 → 1벌 · 순위 그룹 서브헤더/컷라인/색 규칙 정리
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 7번(감사 `ui-audit/06-home-standings-schedule.md` 후보 1·3·5·7·8). 홈(MultiSeasonPage)은 raw `<table>` 3개와 flex-div 리스트 4개가 각자 th/td 클래스를 복붙하고, "활성 부상 맵" 계산 블록(allRosterIds → useLeagueRawStats → 가상 오늘 날짜 → buildActiveInjurySeverityMap)이 4개 위젯에 복제돼 있었다. LeaderboardTable은 데이터 유무 분기에 헤더 블록 전체(78줄)를 복제하고 `isLastSticky` 계산을 7번 반복, 순위표는 그룹 서브헤더에서 컬럼 라벨과 정렬 화살표를 raw td로 다시 그렸다.
+
+**변경 파일**:
+- `views/multi/season/useActiveInjuryMap.ts` (신규 57) — `useActiveInjuryMap({ playerIds? })` → `{ activeInjuryByPlayer, todaySimDate, teamIdByPlayer, allRosterIds }`. 컨텍스트(league/leagueTeams/room/schedule/currentSimDate)와 15초 서버 클록 버킷을 안에서 읽음. 가상 오늘 날짜(findCurrentVirtualDate) 기준은 2026-09-05 수정분 그대로.
+- `pages/MultiSeasonPage.tsx` 1,203 → 1,065 — 4개 위젯의 부상 맵 블록 → 훅(내 팀 부상자는 `playerIds: myRosterIds`로 필터, 트랜잭션은 `rosterMap.get` → 훅의 `teamIdByPlayer`(같은 데이터)). 로컬 `HomeTable`(= `Table variant="bare" density="compact" dividers={false} className="bg-slate-900"`)로 순위표(동/서부)·리더 9칸·트랜잭션·리그 부상·내 일정 2개·내 로스터·내 팀 부상자 표 전환. 컷라인 행은 `[&>td]:border-b-2`. `HomeSectionTitle` 9곳, 점선 빈 상태 6곳 → `EmptyState`(로딩 문구 1곳은 `Spinner inline`), 클릭 텍스트 4곳 → `ClickableText`, OvrBadge `!text-xs` → `textClassName`, 로컬 `fmtPct` → `fmtWinPct`. 미사용 import(useEffect/useRef/useState/supabase/findCurrentVirtualDate/buildActiveInjurySeverityMap) 제거.
+- `views/multi/season/multiSeasonUtils.ts` — `fmtWinPct` export(홈·순위표 로컬 사본 2개 통합, 동작 동일).
+- `components/leaderboard/LeaderboardTable.tsx` 437 → 308 — `headerCell(col, {rowSpan?})`·`renderHead()`·`colGroup`으로 데이터 없음/있음 분기 공유, 그룹 헤더 raw `<th>` → `TableGroupHeaderCell`. `getStickyStyle`/`isLastSticky`(7회) 삭제 → `stickyProps(col)` = `stickyLeft={col.stickyLeft} width={col.width}`(+stickyShadow면 clipPath). 배경/z-index/hover는 Table이 처리하므로 `stickyCellClass`·헤더 `bg-slate-950` 제거. OVR `size="sm" className="!w-7 !h-7 !text-xs !shadow-none"` → `size="table"`. Table `!rounded-none !border-0 !shadow-none` → `variant="flush"`.
+- `views/multi/season/MultiStandingsView.tsx` 849 → 801 — `useTableSort`, `Table variant="flush"`, League 헤더 `TableHead` 기본 행, 그룹 서브헤더 raw tr/td 16개(+ArrowUp/Down 재구현) → `TableHeaderCell`(정렬 화살표·hover 내장), 컷라인 2개 → `CutLineRow({colSpan, tone})`, 3상태 색 삼항 8개 → `trendColor(value, base, {inverse, neutral})`, `fmtPct` → `fmtWinPct`.
+- `views/multi/season/MultiScheduleView.tsx` 839 → 825 — 원정/홈 셀 → `TeamNameCell`, MVP 블록 2벌 → `MvpEntry`, TableHead 중복 className 제거.
+
+**Before** (홈 표 한 곳):
+```tsx
+<table className="w-full text-left border-collapse bg-slate-900">
+  <thead><tr className="border-b border-slate-800 bg-slate-900">
+    <th className="py-1 px-1 text-sm font-bold text-slate-400 w-5">#</th> …
+  </tr></thead>
+  <tbody>{sorted.map((t, i) => (
+    <tr key onClick style={rowTint} className={`cursor-pointer hover:bg-white/5 transition-colors ${isCutoffRow ? 'border-b-2 border-slate-800' : 'border-b border-slate-800'}`}>
+      <td className="py-1 px-1 text-sm text-slate-500">{i + 1}</td> …
+```
+```tsx
+// 부상 맵 블록(4벌)
+const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
+const selectInjuryRows = useCallback((raw: LeagueRawStatsData) => raw.playerInjuryRows, []);
+const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectInjuryRows, { includePbp: false });
+const todaySimDate = useMemo(() => isMainLeague ? findCurrentVirtualDate(...) ?? currentSimDate : currentSimDate, [...]);
+const teamIdByPlayer = useMemo(...); const activeInjuryByPlayer = useMemo(() => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, { schedule, getTeamId }), [...]);
+```
+**After**:
+```tsx
+<HomeTable>
+  <TableHead><TableHeaderCell align="left" width={28}>#</TableHeaderCell> …</TableHead>
+  <TableBody>{sorted.map((t, i) => (
+    <TableRow key onClick style={rowTint} className={isCutoffRow ? '[&>td]:border-b-2' : ''}>
+      <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell> …
+```
+```tsx
+const { activeInjuryByPlayer, allRosterIds } = useActiveInjuryMap();
+```
+
+**의도된 시각 변화**:
+- 홈 표/리스트: 헤더 행에 bare 배경(`bg-slate-800/60`, h-8)이 생기고 셀 패딩 py-1 px-1 → py-1.5 px-2(compact), 행 하단선은 Table 기본(slate-800, 마지막 행 포함). 리더 칸의 값 열·부상 기간 열·트랜잭션 날짜 열은 우측 정렬.
+- 홈 빈 상태 6곳: 점선 박스 → EmptyState 텍스트(0-8 결정). "로스터 정보를 불러오는 중" 문구는 빈 상태 박스 → 인라인 스피너.
+- 순위표·리더보드 래퍼 배경 slate-900 → slate-950(flush). 순위 그룹 서브헤더는 TableHeaderCell 규칙(마지막 열 우측선 없음, 활성 열만 화살표, hover 흰색).
+- 리더보드 고정 열의 hover 배경이 Table 공용(`group-hover:bg-slate-800`)으로 — 값은 이전과 동일.
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일), `vite build` exit 0.
+
+**롤백 방법**: 위 6개 파일을 git에서 되돌리고 `useActiveInjuryMap.ts` 삭제. `fmtWinPct`는 추가 전용.
+
+---
+
+## 2026-10-13 — 전술 화면군 공용화: 슬라이더 설정 배열 · `SplitButton` · `InsightCard`/`PlayerNameLink` · 인사이트 표 3개 Table 이관 · 로테이션 로직 `utils/rotationAllocation.ts` 공유
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 6번(감사 `ui-audit/09-tactics.md` 후보 1·2·3·5·6·12). TacticsSlidersPanel이 split/비-split 두 레이아웃에 SliderControl 15개와 설명 15개를 각각 복붙(총 122줄), 뎁스 보드·간트 차트가 "AI 위임" 분할 버튼(상태+ref+바깥 클릭 리스너+absolute 팝업)을 3벌, 배분 옵션·48분 맵 생성·검증·분 색 규칙을 2벌 들고 있었고, 인사이트 위젯 5개가 카드 컨테이너·헤더·빈 상태·선수 이름 링크·flex-div 표를 각자 구현하고 있었다.
+
+**변경 파일**:
+- `components/dashboard/tactics/tacticsSliderConfig.ts` (신규 72) — `OFFENSE_SLIDER_GROUPS`(공격 철학 5·슈팅 전략 3)·`DEFENSE_SLIDER_GROUPS`(온볼 4·오프볼 3): key/label/steps/note(+`mirrorKeys`), `TACTICS_SLIDER_NOTES` 파생, `PNR_STEPS` 이동.
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` 209 → 112 — `SliderColumn({groups, sliders, onChange, bordered})`로 두 레이아웃이 같은 설정을 렌더. **동작 수정**: 지역 방어는 `updateSlider('zoneFreq')`·`updateSlider('zoneUsage')`를 연달아 호출해 같은 렌더 클로저의 `sliders`를 두 번 스프레드하던 것(두 번째 호출이 첫 변경을 덮어쓸 수 있음, 감사 A2)을 `mirrorKeys`로 한 번의 `onUpdateTactics`에 합침.
+- `utils/rotationAllocation.ts` (신규 99) — `RotationAllocationMode`, `ROTATION_ALLOCATION_OPTIONS`, `ROTATION_POSITIONS`, `EMPTY_48()`, `computeRotationMap(chart, mode, roster)`, `computeRotationValidation(rotationMap, roster)` → `{minuteCounts, over42, under5Minutes, over5Minutes}`, `getMinutesColor(mins)`. 본문은 DepthRotationBoard의 것을 그대로 옮김(RotationGanttChart의 handleAllocation 인라인 본문과 동일 로직).
+- `components/common/SplitButton.tsx` (신규 77) — `Button`(메인, `rounded-r-none`) + `IconButton` 쉐브론(variant별 색 덮어씀) + 공용 `Dropdown`(controlled, `items` label=라벨+sub). props `children/onClick/items[{id,label,sub?,onClick}]/variant/size/width`.
+- `components/dashboard/DepthRotationBoard.tsx` 724 → 614 — 분할 버튼 2개 → `SplitButton`, `isDepthDropdownOpen/isAllocDropdownOpen` state·ref 2개·mousedown effect·핸들러 내 `setIs*(false)` 3곳 제거, `ROTATION_OPTIONS/EMPTY_48/computeRotationMap/validation/getMinColor` → 공유 모듈 import.
+- `components/dashboard/RotationGanttChart.tsx` 686 → 597 — 분할 버튼 → `SplitButton`, `isAiDropdownOpen/dropdownRef/effect` 제거, `ALLOCATION_OPTIONS/AllocationMode/handleAllocation 본문(36줄)/validation/getMinColor` → 공유 모듈. validation은 `{...v, under5Count: v.under5Minutes.length, over5Count: v.over5Minutes.length}`로 기존 필드 유지.
+- `components/dashboard/tactics/insights/InsightCard.tsx` (신규 29) — `w-full bg-slate-900/40 border border-slate-800 overflow-hidden` + 헤더(`title`, `headerLeft/Right` 슬롯, h4 `text-sm font-normal text-white`).
+- `components/common/PlayerNameLink.tsx` (신규 32) — PlayerHoverCard + `hover:text-indigo-400 cursor-pointer` span, `tone default(slate-200)|muted(slate-400)`, children으로 "3. 이름" 같은 접두 지원.
+- `TeamStatRankList.tsx` 103 → 90, `PlayerStatsTable.tsx` 102 → 94, `TeamZoneStatsTable.tsx` 155 → 125 — flex-div 표 → `Table variant="bare" dividers={false}` + `InsightCard`. 존별 표의 리더 2쌍은 `LeaderCells` 하나로(헤더 colSpan=2, 빈 span 스페이서 제거). 선수 스탯 빈 상태 → `TableEmptyRow`.
+- `TeamLeadersCards.tsx` 133 → 123 — 카드 6개·빈 상태 → `InsightCard`(+`EmptyState sm`), 이름 2벌 → `PlayerNameLink`.
+- `TeamGameLogChart.tsx` 460 → 459 — 빈 카드/본 카드/내부 빈 상태 → `InsightCard`+`EmptyState`. `SplitStatsTable`(grid, content-fit 폭)은 유지.
+- `TeamZoneChartInsight.tsx` — 인라인 `style={{border:'1px solid #334155'}}` → `border border-slate-700`.
+
+**Before** (분할 버튼, DRB/RGC 3벌 중 하나):
+```tsx
+const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
+const dropdownRef = useRef<HTMLDivElement>(null);
+useEffect(() => { const handle = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsAiDropdownOpen(false); }; document.addEventListener('mousedown', handle); return () => document.removeEventListener('mousedown', handle); }, []);
+<div className="relative flex shadow-md" ref={dropdownRef}>
+  <Button variant="primary" shape="md" onClick={() => handleAllocation('Overwork')} className="rounded-r-none">…</Button>
+  <IconButton label="옵션" tone="solid" size="lg" onClick={() => setIsAiDropdownOpen(v => !v)} className={`rounded-l-none !border-indigo-600 !text-white ${open ? '!bg-indigo-700' : '!bg-indigo-600 hover:!bg-indigo-500'}`}><ChevronDown …/></IconButton>
+  {isAiDropdownOpen && <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-600 rounded-xl shadow-2xl z-[100] …"><div className="p-1">{ALLOCATION_OPTIONS.map(…<button …>)}</div></div>}
+</div>
+```
+**After**:
+```tsx
+<SplitButton width="w-48" onClick={() => handleAllocation('Overwork')}
+  items={ROTATION_ALLOCATION_OPTIONS.map(({ mode, label, sub }) => ({ id: mode, label, sub, onClick: () => handleAllocation(mode) }))}>
+  {coachName ? `${coachName}에게 위임` : '코치에게 위임'}
+</SplitButton>
+```
+
+**의도된 시각 변화**:
+- 분할 버튼 팝업: 로컬 absolute(`border-slate-600`, `z-[100]`) → 공용 Dropdown 포탈(`border-slate-800 rounded-xl z-popover`), 항목 글자 text-sm/보조 text-xs(간트 차트 쪽은 예전 text-xs/9px에서 커짐).
+- 인사이트 표 3개: 헤더 배경 `bg-slate-700/50 text-slate-300 font-normal` → Table bare 헤더(`bg-slate-800/60`, `text-sm font-bold text-slate-400`), 행 hover 생김, 행 하단선 `slate-800/60` → `slate-800`, 셀 패딩 py-2.5 → py-2. 지그재그(`bg-slate-700/25`)는 유지. 선수 이름 흰색 → slate-200(B1).
+- 시즌 경기 로그 카드 제목 `font-black` → `font-normal`(다른 인사이트 카드와 동일). 빈 상태 패딩 p-4/p-6 혼재 → EmptyState sm(28px).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일 — `TeamLeadersCards.tsx:84` 타입 서술어 오류는 HEAD에도 있던 기존 건), `vite build` exit 0.
+
+**롤백 방법**: 위 11개 파일을 git에서 되돌리고 신규 5개(`tacticsSliderConfig.ts`, `rotationAllocation.ts`, `SplitButton.tsx`, `PlayerNameLink.tsx`, `InsightCard.tsx`) 삭제.
+
+---
+
+## 2026-10-13 — 선수 상세(PlayerDetailView) 공용화: raw 표 4개 → Table bare · kv 행 → KeyValueRow · 브레드크럼 드롭다운 → Dropdown · 필터 → CheckOption (2,485 → 2,279줄)
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 5번(감사 `ui-audit/03-player-detail.md` 후보 3·4·5·6·7·10). 이 파일은 공용 Table을 라이브 코드에서 0회 쓰고 raw `<table>` 5개, kv 행 17블록(94줄), 섹션 래퍼 11개, 직접 구현 드롭다운 2개(83줄), 라디오/체크박스 7블록(78줄)을 들고 있었다.
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` 2,485 → 2,279
+  - `ShotBreakdownTable` → `Table variant="bare" dividers={false}`로 재작성 + `showLeagueAvg`/`footer` 옵션 추가 → 구역별 표(47줄 raw)도 같은 컴포넌트 호출 1개로 흡수. 숫자 셀 전부 `tabular-nums`.
+  - `VirtualGameLog`(최근 경기) → `Table variant="bare" density="compact"` + `TableHead noRow`/`TableRow`/`TableCell`. 행 높이는 `ROW_HEIGHT`(36) 인라인 유지(가상 스크롤 오프셋과 일치). 미사용 props(`subHeaderStyle/rowAltStyle/rowBaseStyle/dividerColor/subHeaderTextStyle`) 제거, 지그재그는 `ZEBRA_ROW_STYLE` 상수. 스피너 → `Spinner section`, 빈 상태 → `EmptyState sm`.
+  - 커리어 표 → `Table bare` + `TableHead`/`TableRow`/`TableCell`/`TableFoot`. 첫 열 `stickyLeft={0}`(헤더만 `bg-slate-800`), 2TM 서브행은 `opacity-60 border-l-2 border-l-slate-800 !pl-5 text-white/65`(인라인 hex·rgba 제거), 커리어 평균 행 `border-t border-t-slate-700`. 모드 전환 native `<select>` 2개 → `SegmentedControl size="sm"`.
+  - 헤더 요약표(시즌/커리어 11지표)는 raw `<table>` 유지 — 레이아웃용(`ml-auto shrink-0 border-collapse`)이라 Table 래퍼와 안 맞음. 값에 `tabular-nums`만 추가.
+  - 프로필 탭: 로컬 `ProfileSection({title, first})` 신설(래퍼 `px-4 py-3 space-y-1 border-t` + 제목), kv 행 17블록 → `KeyValueRow`(값 색이 필요한 곳은 `tone="muted"|"none"` + `valueClassName`). 수상 내역/이동 내역의 3열 행은 kv가 아니라 그대로.
+  - 브레드크럼 팀/선수 드롭다운 → 공용 `Dropdown items`(포탈·바깥 클릭 닫기 내장). `teamDropOpen/playerDropOpen/ref 2개/mousedown effect` 삭제. 선수 항목 OVR 숫자 → `OvrBadge size="sm"`.
+  - 헤더 OVR `size="lg" className="!w-10 !h-10 !text-2xl"` → `size="header"`.
+  - 샷 차트 필터 7블록 → `CheckOptionGroup`/`CheckOption`, Set 토글 4벌 → `toggleInSet()`. 빈 상태 3곳(`h-40 text-slate-500`) → `EmptyState`.
+  - 데드코드 삭제: `hexAlpha/luminance/getEffectiveTintColor` + 테마 토큰 14줄(`tintColor…dropdownStyle`), `toOrdinal` 2중 정의 → 모듈 레벨 1개.
+- `components/common/filters/CheckOption.tsx` (신규 46줄) — `CheckOption({type:'radio'|'checkbox', checked, onChange, label, name?})`, `CheckOptionGroup({title, children, footer?, className?})`.
+- `components/common/OvrBadge.tsx` — `size="header"`(40px rounded-lg text-2xl).
+- `components/common/Table.tsx` — bare 변형에서는 `stickyLeft={px}`가 배경을 붙이지 않음(위치·z-index만; 배경은 호출부 className). card/flush는 이전 항목대로 섹션 배경 자동.
+
+**Before** (대표 패턴):
+```tsx
+<div className="px-4 py-3 border-t border-slate-800 space-y-1">
+  <div className="text-base font-bold text-white mb-1.5">인기도</div>
+  {[...].map(({ label, value }) => (
+    <div key={label} className="flex justify-between items-center">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="text-sm text-white font-semibold">{value}</span>
+    </div>
+  ))}
+</div>
+<label className="flex items-center gap-2.5 py-1 cursor-pointer group">
+  <input type="radio" name="shotMakeFilter" checked={active} onChange={...} className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors" />
+  <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
+</label>
+<div ref={teamDropRef} className="relative"><button onClick={() => { setTeamDropOpen(o => !o); ... }}>…</button>{teamDropOpen && <div className="absolute top-full left-0 mt-1 z-50 w-52 …">…</div>}</div>
+<select value={careerMode} onChange={…} className="pl-2.5 pr-7 py-1 text-sm font-bold rounded-md border-0 … bg-black/20 hover:bg-black/40 text-white">…</select>
+```
+**After**:
+```tsx
+<ProfileSection title="인기도">
+  <KeyValueRow label="지역적인 인기">{…}</KeyValueRow>
+</ProfileSection>
+<CheckOption type="radio" name="shotMakeFilter" checked={shotMakeFilter === key} onChange={() => setShotMakeFilter(key)} label={label} />
+<Dropdown align="left" width="w-56" trigger={teamTrigger} items={sortedTeams.map(t => ({ id, active, label, onClick }))} />
+<SegmentedControl<'regular' | 'playoff'> size="sm" value={careerMode} onChange={setCareerMode} options={[…]} />
+```
+
+**의도된 시각 변화**:
+- 프로필 탭 kv 행: 라벨 slate-500 → slate-400, 값 slate-200/white 혼용 → 흰색 semibold(KeyValueRow 기본, ui-typography B1/B2). 직전 계약·부상 이력·특성은 `muted`(slate-300)로 흐린 톤 유지.
+- 브레드크럼 드롭다운: 패널이 포탈(`z-popover`)로 뜨고 활성 항목이 흰색 굵게 → 인디고 틴트(앱 공통 "선택됨" 색). 선수 항목 OVR이 숫자 → 24px 배지.
+- 기록 탭 모드 전환이 OS 네이티브 select → 세그먼트 토글.
+- 샷 차트/기록 표: 헤더 배경 slate-800 불투명 → slate-800/60(bare), 행 hover 생김, 푸터 배경 `#0f172a` → slate-800/40, 셀 패딩 Table 기본(px-3 py-2). 최근 경기 표에 행 하단선(slate-800) 생김(이전엔 세로선만).
+- 빈 상태 4곳: 고정 160px 높이 → EmptyState 패딩(40px/28px).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일), `vite build` exit 0.
+
+**롤백 방법**: `views/PlayerDetailView.tsx`·`Table.tsx`·`OvrBadge.tsx`를 git에서 되돌리고 `CheckOption.tsx` 삭제. Table/OvrBadge 변경은 추가 전용.
+
+---
+
+## 2026-10-13 — 로스터 표 4개 + 경기 기록 공용화: `PlayerInfoColumns` · Table `stickyLeft` 오프셋 · `useTableSort` · `TableGroupHeaderCell` · Payroll 행 통합 (1,783 → 1,468줄, 신규 182줄)
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 4번(감사 `ui-audit/08-roster.md` 후보 1·7·8·9·10·11). 로스터/능력치/선수 기록/재정 탭이 각자 `WIDTHS`·`LEFT_*`·`getStickyStyle`(4사본), 정렬 state+`handleSort`(5사본)+헤더 삼항 19회, 이름 셀(호버카드+TW+부상, 5사본), 포지션/나이/OVR 셀, 그룹 헤더 raw `<th>`, OVR 배지 `!w-7 !h-7 !text-xs !shadow-none` 강제(6곳)를 복붙하고 있었고, 재정 탭은 선수 행과 데드캡 행이 65줄씩 같은 마크업이었다.
+
+**변경 파일**:
+- `components/common/Table.tsx` — (1) `stickyLeft?: boolean | number`. 숫자면 `position:sticky; left:{n}px` + 섹션별 불투명 배경(`TableSectionContext`: thead/tfoot `bg-slate-950`, tbody `bg-slate-900 group-hover:bg-slate-800`) + z-index(헤더 50 / 바디·푸터 30)를 Table이 붙임. `true`는 예전 호환(left-0, 배경 없음 — GameOnOffTab·LeaderboardTable 그대로). (2) `TableCell width` 추가(width/minWidth/maxWidth), 헤더는 sticky 숫자일 때만 maxWidth까지. (3) `variant="flush"`: 래퍼 `bg-slate-950 border-b shadow-lg h-full`(둥근 모서리·좌우/상단선 없음) — 예전 `className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950"` 덧씌움과 같은 모양. (4) `TableGroupHeaderCell({colSpan, stickyLeft?, children?})`: 그룹 헤더 th, 글자 `text-sm font-bold text-slate-500 ko-normal`, children 없으면 세로선 없는 스페이서. (5) `TableRow`에 `group` 클래스 항상 부착(이전엔 onClick 있을 때만).
+- `components/common/OvrBadge.tsx` — `size="table"`(w-7 h-7 rounded, text-xs / 세 자리 text-[10px], boxShadow 없음).
+- `components/common/Badge.tsx` — `size="xs"`(px-1 py-0.5 text-[10px] leading-none shrink-0), `shape="pill"|"square"`, `title`.
+- `hooks/useTableSort.ts` (신규) — `useTableSort(initial)` → `{sortConfig, setSortConfig, handleSort, sortProps}`; `sortProps(key)`를 `<TableHeaderCell {...sortProps('ovr')}>`로 스프레드. 오버로드로 문자열 키는 string으로 넓힘, 숫자 키는 `useTableSort<number>`. `compareSortValues`/`sortByConfig` 유틸 포함.
+- `components/roster/PlayerInfoColumns.tsx` (신규) — `PLAYER_INFO_WIDTHS{180,60,50,60}`/`PLAYER_INFO_LEFT{0,180,240,290}`/`PLAYER_INFO_TOTAL_WIDTH 350`, `PlayerInfoColGroup`, `PlayerInfoHeaderCells({sortProps?, ovrLabel?})`, `PlayerInfoCells({player?, fallbackName?, teamAbbr, onClick?, clickable?, enableHoverCard?, showInjury?, nameExtra?})`, `PlayerInfoFooterCells({label, age?, ovr?})`, `TwoWayBadge`, `OvrTableBadge`.
+- `components/roster/RosterOverviewGrid.tsx` 236 → 153, `RosterGrid.tsx` 371 → 256, `RosterStatsStack.tsx` 324 → 259, `TeamPayrollTable.tsx` 455 → 410(선수 행·데드캡 행 → 파일 내 `PayrollRow` 하나), `TeamGameLog.tsx` 397 → 390(정렬 훅만).
+
+**Before** (4파일 공통 패턴):
+```tsx
+const WIDTHS = { NAME: 180, POS: 60, AGE: 50, OVR: 60, ... };
+const getStickyStyle = (left, width, isLast = false) => ({ left, width, minWidth: width, maxWidth: width, position: 'sticky' as const, zIndex: 30 });
+const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
+const handleSort = (key) => setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
+<Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
+<thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+  <tr className="h-10"><th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle"><div ...><span className="text-sm font-black text-slate-500">선수 정보</span></div></th> ...</tr>
+  <tr ...><TableHeaderCell style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} align="left" className="pl-4 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>이름</TableHeaderCell> ×4
+<TableRow className="group">
+  <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
+    <PlayerHoverCard ...><span className="... text-white(Overview)/text-slate-200 ...">{p.name}</span></PlayerHoverCard>
+    {two_way && <span title="Two-Way 계약" className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40">TW</span>}
+    {activeInjurySeverity && <InjuryStatusBadge size={16} iconSize={12} strokeWidth={4} .../>}
+  </TableCell>
+  <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-400 font-medium text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell> (나이 동일)
+  <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="bg-slate-900 group-hover:bg-slate-800 text-center"><div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div></TableCell>
+<TableFoot className="bg-slate-900 border-t-2 border-slate-800"> ... <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-bold text-indigo-400 text-sm">팀 평균</TableCell>
+```
+**After**:
+```tsx
+const { sortConfig, sortProps } = useTableSort({ key: 'ovr', direction: 'desc' });
+const sortedRoster = useMemo(() => sortByConfig(team.roster, sortConfig, getSortValue), [team.roster, sortConfig]);
+<Table variant="flush" fullHeight>
+  <colgroup><PlayerInfoColGroup />…</colgroup>
+  <TableHead noRow>
+    <tr className="h-10"><TableGroupHeaderCell colSpan={4} stickyLeft={0}>선수 정보</TableGroupHeaderCell><TableGroupHeaderCell colSpan={n}>…</TableGroupHeaderCell><TableGroupHeaderCell /></tr>
+    <tr className="h-10 text-slate-400 text-sm font-bold"><PlayerInfoHeaderCells sortProps={sortProps} /><TableHeaderCell width={64} {...sortProps(item.key)}>…</TableHeaderCell></tr>
+  </TableHead>
+  <TableRow><PlayerInfoCells player={p} teamAbbr={team.abbr} onClick={onPlayerClick} enableHoverCard={enableHoverCard} /> …</TableRow>
+  <TableFoot><tr className="h-10"><PlayerInfoFooterCells label="팀 평균" age={avgAge} ovr={avgOvr} /> …</tr></TableFoot>
+```
+재정 탭: `players.map`/`deadRows.map`이 각각 `seasonCells[]`(amount/className/title/chip)·`capPct`·`total`만 계산해 `<PayrollRow>`에 넘김. 데드캡 행은 `player` 없으면 `fallbackName` + '-' 칸.
+
+**의도된 시각 변화**(전부 ui-typography.md·0-3·0-4 결정에 맞춘 통일):
+- 로스터 탭 이름 글자 `text-white` → `text-slate-200`(B1, 다른 3개 탭과 동일).
+- TW 배지: 불투명도 15/40 → 10/30, `font-bold` → `font-black`(공용 Badge warning).
+- 그룹 헤더 글자 `font-black` → `font-bold`, 라벨 색 slate-400/500 혼용 → slate-500 통일(그룹 헤더 톤).
+- 푸터: 능력치/선수 기록/재정 탭의 `bg-slate-900 border-t-2` 덧씌움 제거 → 기본 `bg-slate-950 border-t`(1px). 로스터 탭은 원래 기본값.
+- 재정 탭 선수 행 시즌 금액에 `tabular-nums` 추가(데드캡 행·총액엔 원래 있었음).
+- Table `style={{tableLayout:'fixed'}}`는 wrapper div에 붙어 효과가 없던 것이라 삭제(레이아웃 변화 없음, `tableStyle`로 바꾸지 않음 — 바꾸면 열 폭 계산이 달라질 수 있음).
+
+**검증**: `tsc --noEmit` 전체 52건(베이스라인 동일, 해당 파일 0), `vite build` exit 0.
+
+**롤백 방법**: 위 7개 파일 + Table/OvrBadge/Badge를 git에서 되돌리고 `PlayerInfoColumns.tsx`·`useTableSort.ts` 삭제. Table/OvrBadge/Badge 확장은 전부 추가 전용(기본값 불변)이라 남겨도 다른 화면엔 영향 없음.
+
+---
+
+## 2026-10-13 — 협상/방출 화면 공유 블록 추출 `contractScreenParts.tsx` (1,565+744 → 1,278+559+313줄) + `KeyValueRow` 확장
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 3번 나머지. `MultiNegotiationView`/`MultiReleaseView`가 상단 바·3단 레이아웃·좌측 선수 정보 패널·팀 샐러리캡 현황·말풍선을 복붙으로 공유, 협상은 숫자 스텝퍼 3회 반복.
+
+**변경 파일**:
+- `views/multi/season/contractScreenParts.tsx` (신규) — `SubPageBar`, `ContractThreePane`, `PlayerInfoSidePanel`(+`SidePanelSection`), `CapStatusPanel`, `ChatBubble`, `ContractStepper`
+- `views/multi/season/MultiNegotiationView.tsx`, `MultiReleaseView.tsx` — 해당 JSX를 위 컴포넌트 호출로 치환(상태·핸들러·계산 불변), 미사용 import 정리
+- `components/common/KeyValueRow.tsx` — `tone="none"`(색 클래스 미부착), `labelClassName` 추가
+- `views/multi/season/LeagueLobbyPanel.tsx` — 지역 `InfoRow` 제거, `KeyValueRow padding="sm"`로 교체
+
+**Before/After**: kv 행 값 색 slate-200(비굵게) -> 흰색 semibold, 캡 현황 값 비굵게 -> semibold, 로비 라벨 slate-500 -> slate-400 / 값 bold -> semibold. 그 외 클래스·DOM 구조 동일.
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0.
+
+**롤백 방법**: 위 5개 파일을 git에서 되돌리고 `contractScreenParts.tsx` 삭제(KeyValueRow 확장은 하위호환이라 유지해도 무방).
+
+---
+
+## 2026-10-13 — 뉴스피드 통합: `LetterShell` 골격 + 표 17개 공용 Table 이관 (3,351 → 2,812줄) + Table `bare`/`compact` 변형
+
+**배경**: `docs/plan/ui-consolidation.md` 6장 2번, 근거 `docs/plan/ui-audit/01-newsfeed.md`(P1~P15). 레터 카드 29종이 같은 골격(마스트헤드+h1+날짜+구분선+blurb)을 29회, 클릭 span 42회, 선수 셀 10줄×9, 팀 셀 28줄×6을 복붙하고 있었고, 표 17개는 "카드형 Table이라 raw `<table>`로 걷어냈다"(2026-09-01 사용자 요청)는 이탈 상태였다.
+
+**공용 변경 — `components/common/Table.tsx`**: `variant?: 'card'|'bare'`(bare = 박스·그림자·둥근 모서리·sticky 없음, 래퍼 `w-full overflow-x-auto`, `TableHead` `bg-slate-800/60`(sticky 없음), `TableBody` 투명, `TableFoot` `bg-slate-800/40`; `fullHeight` 기본값이 bare면 false) + `density?: 'default'|'compact'`(compact = 헤더 h-8, 헤더 셀 `py-1.5 px-2`, 본문 셀 `py-1.5 px-2`; 기본 h-10 / `py-3 px-1.5` / `py-2 px-3`). 컨텍스트(`TableLineContext`)에 `bare`/`compact` 추가. 기존 호출부(card 기본)는 영향 없음.
+
+**신규 `views/multi/season/newsFeedLetter.tsx`(161줄)**: `BrandMark`(`/images/bc2.svg`, 기본 h-4) · `EventLetterLogo`(64px) · `ClickableText`(onClick 있을 때만 `cursor-pointer hover:text-indigo-400 [hover:underline]`, `stopPropagation`) · `LetterShell`(`width 5xl|3xl`, `spacing 6|8`, `title`, `date`, `beforeHeader`, `blurb[]` — 빈 배열이면 미렌더) · `LetterSectionTitle`(h3 `text-sm font-black text-slate-300` / h4 `text-base font-black text-white`, `logoSrc`/`icon`) · `LetterPlayerCell`(PlayerHoverCard+ClickableText, `muted`) · `LetterTeamCell`(약어 클릭 + 선택 로고 TeamLogo 20px) · `LetterRankCell` · `LetterLink`(Button link underline + ArrowRight) · `LetterHero`(앰버 그라디언트) · `BoxScoreWaitNote`(EmptyState sm).
+
+**`views/multi/season/newsFeedCards.tsx` — 1단계(골격)**: 29/29 카드 `LetterShell`(3xl 7곳: 플레이인 2·플레이오프 대진확정/경기결과/시리즈결과·챔피언·FMVP, `spacing=8`+title 없음 2곳, `beforeHeader` 1곳, `blurb` 8곳); `HeadlineTitle`은 h1 없이 fragment 반환; `ClickableText` 28곳(`noUnderline` 13); `LetterLink` 10곳; `LetterSectionTitle` 14곳(h3 10·h4 4, `uppercase` 제거); `LetterHero` 2곳; `BoxScoreWaitNote` 3곳; 로컬 `BrandMark`/`EventLetterLogo` 삭제, `Button`/`ArrowRight` import 제거. 3,351 → 3,082줄. **의도적으로 남긴 것**: `AwardHero` 내부 박스(gradient 아님), 챔피언·FMVP의 amber 호버 span, 플레이인/대진확정 그룹 제목 h3(`font-bold slate-400`), `BoxScoreHeadline` h4 구조, 컨퍼런스 h2.
+**2단계(표)**: raw `<table>` 17개 → `<Table variant="bare" density="compact">` + `TableHead/Body/Foot/Row/HeaderCell/Cell`. 팀색 헤더(TeamBoxTable·TradePlayerTable)는 `TableHead noRow` + `<tr style h-8>`; `tableLayout:'fixed'` 3곳 보존(Trade·PowerRanking·DraftLottery), QuarterScore는 `!w-fit`; 선수 셀 → `LetterPlayerCell`(박스스코어·트레이드는 `muted`), 팀 셀 → `LetterTeamCell`(`logo` 6곳), 순위 → `LetterRankCell`; OVR `!w-7 !h-7 !text-xs` 덮어쓰기 → `OvrBadge size="sm" className="shadow-none"`; 하이라이트(`bg-amber-400/10`)·`highlightPlayerId`·조건부 열(`showOvr/showStats/showVotes`, `statCols`)·툴팁·`tfoot` 합계·Vote 표 `scrollable`(sticky 헤더 `z-10`) 보존. 상수 `BOX_HEADER_CELL/BOX_STAT_CELL/BOX_TOTAL_CELL/AWARD_RANK_TH/AWARD_RANK_TD` 삭제. 3,082 → 2,812줄. TeamBoxTable 위 2026-09-01 "raw table" 설계 주석에 후속 메모 추가. `MultiNewsFeedView.tsx:316` 피드 상단 로고 복붙 → `BrandMark className="h-5 w-auto"`.
+
+**의도적 시각 변화(2026-10-14 사용자 확인 — ①·⑥ 포함 전부 그대로 유지 결정)**: ① 17개 표 전부에 **세로 구분선**(slate-800, 0-3 결정의 기본값) 생김 — 레터에 과하면 `dividers={false}` 한 줄로 끌 수 있음(끄지 않기로 결정) ② 헤더 배경이 없던 표(QuarterScore·Streak·Injury·Suspension)에 `bg-slate-800/60` 헤더 ③ 본문 셀 `py-1` → `py-1.5`(행 약 4px↑) ④ 클릭 없는 행에도 hover 배경 ⑤ Injury/Suspension 선수명 `text-white` → `slate-100`, 호버가 밑줄만 → 인디고+밑줄 ⑥ 헤더 셀이 `truncate`라 긴 헤더는 말줄임 ⑦ `BoxScoreWaitNote`가 점선 박스 → EmptyState 문장 ⑧ 섹션 제목 `uppercase` 제거.
+
+**검증**: tsc 52(기준선), `vite build` 성공, `<table` 잔존 0(주석 1건).
+
+**롤백 방법**: `git checkout -- views/multi/season/newsFeedCards.tsx views/multi/season/MultiNewsFeedView.tsx components/common/Table.tsx` + `newsFeedLetter.tsx` 삭제. Table 변형만 되돌리려면 `variant/density` 블록 제거(뉴스피드가 참조하므로 함께).
+
+## 2026-10-13 — 플레이오프 브라켓 헤더: 서부/파이널/동부를 테이블 셀 → 단순 텍스트
+
+**배경**: 브라켓 상단 서부/파이널/동부 셀이 배경+테두리 박스라 서로 끊겨 보임. 텍스트로만 표시 요청.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client, 헤더 3개 div의 className만)
+
+**Before**:
+```tsx
+h-10 ... text-blue-300 bg-blue-500/10 border border-blue-500/30      // 서부
+h-20 ... text-purple-300 bg-purple-500/10 border border-purple-500/30 // 파이널
+h-10 ... text-red-300 bg-red-500/10 border border-red-500/30         // 동부
+```
+
+**After**: 위 3개에서 `bg-*-500/10 border border-*-500/30`만 제거 (높이·정렬·글자색 유지 → 바디 열 정렬 불변). 1라운드/2라운드/컨퍼런스 파이널 라벨 행은 그대로.
+
+**검증**: 코드 확인만, 브라우저 미확인
+
+**롤백 방법**: 제거한 `bg-*-500/10 border border-*-500/30` 클래스를 3곳에 되돌림
+
+## 2026-10-13 — 브라켓 서부/동부 컨퍼런스 제목 text-xl → text-3xl
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, BracketHalf 1행 제목 className)
+**Before**: `text-xl font-semibold ${titleClassName}` / **After**: `text-3xl font-semibold ${titleClassName}` (2xl 거쳐 3xl로, TITLE_H 56px 안에서 세로 중앙 정렬 유지 — 3xl line-height 36px)
+**롤백**: text-xl 복원
+
+## 2026-10-13 — 브라켓 카드 호버/선택 테두리 2px(1px border + 1px ring-inset)
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, MatchCard className)
+**Before**: 선택 `border-indigo-500 ring-1 ring-indigo-500/30`(바깥 링 30%), 호버 `hover:border-slate-300`(파이널 `hover:border-amber-400`) 1px
+**After**: 선택 `border-indigo-500 ring-1 ring-inset ring-indigo-500`, 호버 `hover:border-slate-300 hover:ring-1 hover:ring-inset hover:ring-slate-300`(파이널 amber-400). border-2 대신 ring-inset을 겹쳐 카드 크기 불변.
+**롤백**: Before 클래스 복원
+
+## 2026-10-13 — 브라켓 팀 호버 경로 하이라이트 비활성화(플래그) + 호버 효과를 슬롯 → 카드 단위로
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 슬롯 호버 → `setHoveredTeamId` → 그 팀 슬롯 `ring-sky-400 brightness-110`, 다른 팀 `opacity-30`, 커넥터/파이널 직선 하이라이트. 카드는 `hover:border-slate-600`(파이널 `hover:border-amber-400`)만, 열 수 없는 카드도 동일.
+
+**After**:
+- `TEAM_HOVER_HIGHLIGHT_ENABLED = false` + `noopHover` 추가. 메인 컴포넌트 `onHoverTeam = 플래그 ? setHoveredTeamId : noopHover`, BracketHalf 2곳·파이널·클래식 MatchCard 4곳 `onHoverTeam={onHoverTeam}`. hoveredTeamId가 항상 null이라 하이라이트 로직(TeamSlot 링/dim, highlightedConnKeys, west/eastFinalConnHighlighted) 전부 휴면 — 삭제 아님, 플래그 true로 즉시 복구.
+- MatchCard: `isSeriesOpenable`이면 `cursor-pointer hover:brightness-110` + 테두리 `hover:border-slate-300`(파이널 `hover:border-amber-400`), 아니면 `cursor-default`에 hover 효과 없음.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: 플래그 true, MatchCard className Before로
+
+## 2026-10-13 — 브라켓 매치 카드 슬롯 사이 구분선 제거
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, MatchCard)
+**Before**: 상위/하위 TeamSlot 사이 `<div className="border-t border-slate-700/40" />`
+**After**: 해당 div 삭제 — 두 슬롯이 팀 컬러 배경만으로 맞닿음(TBD/탈락 slate-800 슬롯끼리는 볼륨 오버레이의 상단 흰빛/하단 검정 띠로만 구분됨)
+**롤백**: div 재삽입
+
+## 2026-10-13 — 브라켓 연결선 색: slate-700 → slate-300, 호버 하이라이트 sky-400 → white
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client) — 두 곳 세트
+
+**Before**: `BracketConnector.colorOf = on ? 'rgb(56,189,248)' : 'rgb(51,65,85)'` / `StraightConnector` `highlighted ? 'border-sky-400 border-t-2' : 'border-slate-700'`
+**After**: `colorOf = on ? 'rgb(255,255,255)' : 'rgb(203,213,225)'` / `highlighted ? 'border-white border-t-2' : 'border-slate-300'`. 굵기(1.5/2.5px, 1/2px)는 그대로. 카드 테두리·슬롯 구분선(slate-700/40~50)은 미변경.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: 두 곳 Before 값 복원(반드시 세트로)
+
+## 2026-10-13 — 브라켓 상단 제목 "{시즌} 플레이오프" → "{시즌} PLAYOFFS" (Bebas Neue)
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, 파이널 열 1행)
+
+**Before**: `text-2xl font-semibold text-slate-200` / `{room?.season} 플레이오프`
+**After**: `font-display text-5xl font-normal text-slate-200`(최초 2xl → 4xl → 5xl) / `{room?.season} PLAYOFFS`. 5xl(48px, line-height 1)이 제목 행에 들어가도록 `TITLE_H` 40 → 56 (서부/동부 제목 행·파이널 열·StraightConnector paddingTop이 같은 상수를 공유하므로 한 곳만 변경) — `font-display`는 tailwind.config의 Bebas Neue(index.html에서 이미 로드, OVR 배지와 공유). Bebas는 400 단일 굵기라 semibold 무의미 → font-normal.
+
+**롤백**: 클래스·텍스트 복원
+
+## 2026-10-13 — SeriesWindow 스코어/LIVE 호버를 표 링크 규칙(indigo-400 + underline)으로 통일
+
+**배경**: 스코어 버튼 호버(`hover:bg-sky-400/15 hover:text-white underline-offset-[3px]`)는 아티팩트에서 임의로 만든 것이라 기존 규칙과 불일치. 표 안 클릭 텍스트 규칙은 `Table.tsx` player 셀·`MultiScheduleView` 팀명 링크의 `hover:text-indigo-400 hover:underline`(배경 없음).
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, SeriesWindow)
+
+**After**: 스코어 버튼 `group/score cursor-pointer text-slate-400 hover:text-indigo-400 hover:underline tabular-nums`, 승자 점수 span은 `text-emerald-400 group-hover/score:text-indigo-400`(호버 시 녹색→인디고). LIVE 버튼은 `underline-offset-[3px]` 제거, `cursor-pointer hover:underline`만.
+
+**검증**: tsc 0, vite build 성공
+
+## 2026-10-13 — SeriesWindow 바깥 클릭 시 닫기
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**After**: SeriesWindow에 `useEffect` — `document.addEventListener('pointerdown', handler, true)`(캡처). 타깃이 창(ref) 안이거나 `[data-series-card]`(MatchCard 루트에 새로 붙인 속성) 안이면 무시, 아니면 `onClose()`. 카드 클릭을 제외하는 이유: toggle의 "같은 카드 재클릭 닫기 / 다른 카드 이동"과 충돌 방지. import `useEffect` 추가.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: useEffect 블록·`data-series-card` 속성 제거
+
+## 2026-10-13 — SeriesWindow 펼침 방향: 화면 왼쪽 카드는 오른쪽으로, 오른쪽 카드는 왼쪽으로
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 앵커 `{x: rect.right+8, y: rect.top}` 고정 → 동부(우측) 카드는 뷰포트 클램프에 밀려 창이 카드 위를 덮는 위치에 열림.
+
+**After**: `WindowAnchor = {left, right, top, placement: 'right'|'left'}`, `WINDOW_GAP=8`. `toggle`에서 카드 중심 x ≤ innerWidth/2면 'right', 아니면 'left'. SeriesWindow useLayoutEffect에서 실측 폭으로 `x = right+GAP`(오른쪽) 또는 `left-GAP-w`(왼쪽) 계산 후 클램프. 초기 transform/posRef도 right 기준값으로 시작(레이아웃 이펙트에서 즉시 보정).
+
+**검증**: tsc 0, vite build 성공 / **롤백**: 앵커를 `{x,y}`로 되돌리고 `rect.right+8` 고정
+
+## 2026-10-13 — 브라켓 카드: 양쪽 팀 미확정이면 시리즈 창 안 열림
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 클릭 가드가 `s.lowerSeedId !== 'BYE'`뿐 → TBD/TBD, 팀/TBD 카드도 창이 열림(빈 목록). MatchCard는 항상 `cursor-pointer`.
+
+**After**: `isSeriesOpenable(s)` = `higherSeedId !== 'TBD' && lowerSeedId !== 'TBD' && lowerSeedId !== 'BYE'` 헬퍼 추가. onClick 3곳(BracketHalf 내부·파이널·클래식)이 이 헬퍼로 가드, MatchCard 커서는 openable일 때만 `cursor-pointer`(아니면 `cursor-default`). hover 테두리 변화는 유지(슬롯 호버 하이라이트와 같이 쓰이므로).
+
+**검증**: tsc 0, vite build 성공 / **롤백**: 헬퍼 삭제, 가드 `lowerSeedId !== 'BYE'`·`cursor-pointer` 복원
+
+## 2026-10-13 — SeriesWindow 드래그 렉 수정: setPos 재렌더 + left/top → ref + transform
+
+**배경**: 플로팅 창 드래그가 심하게 끊김. 원인 (1) pointermove마다 `setPos` → SeriesWindow 전체 재렌더, (2) `left/top` 변경이 레이아웃+큰 box-shadow 페인트를 프레임마다 유발, (3) 이동 중 `offsetWidth/Height` 조회로 강제 레이아웃.
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, SeriesWindow 내부)
+
+**Before**: `const [pos, setPos] = useState(anchor)`; useLayoutEffect/onPointerMove에서 `setPos(clampToViewport(..., el.offsetWidth, el.offsetHeight))`; 루트 `style={{ left: pos.x, top: pos.y }}` + `animate-in fade-in duration-150`
+
+**After**: `posRef` + `applyPos(x,y)`가 `ref.current.style.transform = translate3d(x,y,0)` 직접 기록(React 상태 없음). pointerdown에서 크기(w,h)를 한 번만 측정해 dragRef에 저장하고 `willChange='transform'` 켬, 이동 중엔 저장된 크기로만 클램프, pointerup/cancel에서 willChange 해제. 루트는 `fixed left-0 top-0` + 초기 `transform: translate3d(anchor)`, `animate-in fade-in` 제거(애니메이션 레이어와 transform 충돌 방지).
+
+**검증**: tsc 0, vite build 성공 / **롤백**: Before 블록으로 복원
+
+## 2026-10-13 — SeriesWindow 드래그 렉 수정: 상태 재렌더 + left/top → ref + transform
+
+**배경**: 플로팅 창 드래그가 심하게 끊김. 원인 (1) pointermove마다 `setPos` → SeriesWindow 전체 재렌더, (2) `left/top` 변경이 레이아웃+큰 box-shadow 페인트를 프레임마다 유발, (3) 이동 중 `offsetWidth/Height` 조회로 강제 레이아웃.
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, SeriesWindow 내부)
+
+**Before**: `const [pos, setPos] = useState(anchor)`; useLayoutEffect/onPointerMove에서 `setPos(clampToViewport(..., el.offsetWidth, el.offsetHeight))`; 루트 `style={{ left: pos.x, top: pos.y }}` + `animate-in fade-in duration-150`
+
+**After**: `posRef` + `applyPos(x,y)`가 `ref.current.style.transform = translate3d(x,y,0)` 직접 기록(React 상태 없음). pointerdown에서 크기(w,h)를 한 번만 측정해 dragRef에 저장하고 `willChange='transform'` 켬, 이동 중엔 저장된 크기로만 클램프, pointerup/cancel에서 willChange 해제. 루트는 `fixed left-0 top-0` + 초기 `transform: translate3d(anchor)`, `animate-in fade-in` 제거.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: Before 블록으로 복원
+
+## 2026-10-13 — 브라켓 사이드패널 → 카드 클릭 위치에 뜨는 드래그 가능 시리즈 플로팅 창(SeriesWindow)으로 대체
+
+**배경**: 브라켓 카드를 누르면 우측 사이드패널(w-96 + bg-black/40 백드롭)이 뜨던 UX를 "그 자리에 작은 창"으로 변경
+(사용자 요청, bbref 시리즈 표 참고). 아티팩트(https://claude.ai/artifact/9jPxBsavGq7JLLBLv3r3aM) 최종안 그대로 반영.
+오늘 앞선 사이드패널 항목 3건(폭 확대/점선 제거/약어 대문자, 연고지명, 시드 우측상단·헤더 타이포)은 이 변경에 흡수됨.
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client 전용)
+
+**Before**:
+- `{/* ── Backdrop */}` `absolute inset-0 bg-black/40 z-10` + `{/* ── Side Panel */}` `absolute right-0 top-0 h-full w-96 ...`(헤더: 라운드명, 약어+시드, 승수 / 바디: 경기 카드 리스트 `rounded-lg bg-slate-700` + "N차전 / 시리즈 h:l" + 연고지 점수)
+- `selectedGames` = `schedule.filter(seriesId && isStarted).sort(date)`; `seriesTallies`(경기별 누적 시리즈 스코어)
+- `toggle(id)`; `MatchCard.onClick: () => void`; `BracketHalf.onToggle: (id) => void`
+- import: `useState, useMemo` / `isFinal, isStarted, computeRevealedSeries`
+
+**After**:
+- 신규 `SeriesWindow` 컴포넌트(메인 컴포넌트 직전) — `createPortal(document.body)` + `fixed z-50 w-max min-w-[280px] max-w-[calc(100vw-32px)] bg-slate-900 border-slate-800` + 그림자. 헤더 `bg-slate-950 border-b slate-800`: `{roundLabel}`(text-sm bold slate-400) · `{하위시드 연고지} <b>{lw} - {hw}</b> {상위시드 연고지}`(text-sm semibold slate-200, 승수 white bold tabular) · IconButton X. 헤더 pointerdown/move/up + setPointerCapture로 드래그, `clampToViewport(x,y,w,h)`(여백 `WINDOW_MARGIN=12`)로 항상 뷰포트 안. `useLayoutEffect([anchor, rows.length])`로 앵커 변경·내용 변경 시 재배치.
+- 표: 공용 `<Table density="compact" fullHeight={false} className="!rounded-none !shadow-none !border-0">` + `TableBody/TableRow/TableCell align="left"` 4열(`Game N` / `yy.mm.dd` / `원정 @ 홈`(승자 emerald-400, @ slate-500) / 스코어). 글자 `text-xs font-semibold text-slate-200`, 예정 행은 `text-slate-500`. 스코어는 `<button>`(hover: bg-sky-400/15 + 밑줄) → `/multi/leagues/:leagueId/season/game/:shortId`; 진행 중은 빨간 점(animate-pulse)+LIVE 버튼(같은 라우트); 예정은 `fmtTime(g, preferVirtual)` 시각.
+- `selectedGames`: 시리즈 전체 경기(예정 포함) `scheduledAt ?? date` 정렬, `selectedSeries.finished`면 `isStarted`만. `seriesTallies` 삭제 → `seriesRows` useMemo: `earliestEnd = 종료 경기 수 + max(targetWins - max(hw,lw), 0)`, 그 뒤의 예정 경기는 `dateLabel='미정'`. 날짜는 `kstDateKey(g, preferVirtual)`(YYYY-MM-DD) → `yy.mm.dd`. 팀명은 `cityOfTeam`(연고지).
+- `preferVirtual = league?.type === 'main_league'`(useLeagueContext에서 `league` 추가 구독) — multiScheduleUtils 규칙과 동일(scheduledAt 노출 금지).
+- `toggle(id, e)`: `e.currentTarget.getBoundingClientRect()` → `windowAnchor = {x: right+8, y: top}`; 같은 카드 재클릭 닫기, 다른 카드는 이동+내용 교체. `MatchCard.onClick: (e: React.MouseEvent<HTMLElement>) => void`, `BracketHalf.onToggle: (id, e)`, 호출부 3곳(BracketHalf 내부 / 파이널 / 클래식) 수정.
+- 라운드 라벨: 결승 `'파이널'`(예전 '결승'), 분리 모드 `서부/동부 + getSideRoundLabel`, 클래식 `getRoundLabel`.
+- import 추가: `useRef, useLayoutEffect`, `createPortal`, `getGameDisplayState`, `kstDateKey, fmtTime`(./multiScheduleUtils), `Table, TableBody, TableRow, TableCell`.
+- 클래식(비분리) 모드도 같은 창을 사용(사이드패널은 공용이었음).
+
+**검증**: `tsc --noEmit` 에러 0, `vite build` 성공. 브라우저 실화면 미확인(드래그·클램핑·LIVE/예정 행은 실리그에서 확인 필요).
+
+**롤백 방법**: `SeriesWindow`/`SeriesWindowRow`/`clampToViewport`/`WINDOW_MARGIN` 삭제, Before의 Backdrop+Side Panel JSX·`selectedGames`·`seriesTallies`·`toggle(id)`·onClick 시그니처 복원(이 항목 직전 커밋의 파일로 되돌리는 게 가장 안전 — 단일 파일).
+
+## 2026-10-13 — 브라켓 사이드패널 경기 카드 팀 표기: 약어 → 연고지명
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: `awayAbbr/homeAbbr = leagueTeams.find(slug)?.team_abbr ?? slug.toUpperCase()` (대문자 약어 "BOS")
+
+**After**: `cityOfTeam(slug, team)` 헬퍼 추가 — `TEAM_DATA[slug]?.city ?? VIRTUAL_TEAMS.find(slug)?.city`(고정 연고지, TeamSettingsPanel.resolveCity와 동일 원칙) → 없으면 `team_name` 첫 어절(statsMappers.regionOf 가정) → `team_abbr` → 대문자 슬러그 폴백. import `TEAM_DATA`(data/teamData), `VIRTUAL_TEAMS`(data/virtualTeams) 추가. 패널 헤더(약어+시드)와 브라켓 카드는 미변경.
+
+**검증**: tsc 0, vite build 성공. 순환 임포트 없음(data/* 는 리프 모듈). 빌드의 "Circular chunk: vendor -> react-vendor" 경고는 manualChunks 설정 기존 경고(변경 전 빌드에서도 동일 출력 확인).
+
+**롤백**: 헬퍼·import 2줄 삭제, awayAbbr/homeAbbr를 team_abbr 조회로 복원
+
+## 2026-10-13 — 플레이오프 시리즈 홈/어웨이 배정을 실제 NBA 2-2-1-1-1 포맷으로 변경 (서버)
+
+**배경**: 브라켓 사이드패널에서 2·4차전에 높은 시드가 어웨이로 나오는 것을 사용자가 발견. 서버가 경기 길이와 무관하게
+매 경기 홈/어웨이를 번갈아 배정(`gameNum % 2`)하고 있었음.
+
+**변경 파일** (서버 미러 쌍 — 둘 다 같은 함수 `generateAllSeriesGames` 보유, 반드시 함께 롤백):
+- `server/src/shared/tournamentInitializer.ts`
+- `server/src/shared/tournamentBracket.ts` (playInSeeder.ts도 이 파일의 generateAllSeriesGames를 import)
+- 클라이언트 미러 없음(클라이언트는 서버가 만든 schedule을 읽기만 함)
+
+**Before** (두 파일 동일):
+```ts
+const higherHome = (gameNum % 2) === 1;
+```
+
+**After** (두 파일 동일, `generateAllSeriesGames` 바로 위에 헬퍼 추가):
+```ts
+export function isHigherSeedHome(gameNum: number, maxGames: number): boolean {
+    switch (maxGames) {
+        case 7: return gameNum === 1 || gameNum === 2 || gameNum === 5 || gameNum === 7; // 2-2-1-1-1
+        case 5: return gameNum === 1 || gameNum === 2 || gameNum === 5;                   // 2-2-1
+        case 3: return gameNum === 1 || gameNum === 3;                                    // 1-1-1
+        case 1: return true;
+        default: return (gameNum % 2) === 1; // 예전 동작 폴백
+    }
+}
+...
+const higherHome = isHigherSeedHome(gameNum, maxGames);
+```
+
+**검증**: 서버 `tsc --noEmit` — 변경 전후 오류 줄 수 동일(62줄, 전부 기존 `tournamentArchiver.ts`/Bun 타입 오류), 변경 파일 오류 0.
+**Fly.io v166 배포 완료(2026-10-13, `flyctl deploy --remote-only`, 머신 48ee24da30d108 헬스체크 통과)**. 이미 생성된 시리즈 schedule에는 소급 적용되지 않음(다음 토너먼트/플레이인 생성부터).
+
+**롤백 방법**: 두 파일에서 `isHigherSeedHome` 함수 삭제하고 `const higherHome = (gameNum % 2) === 1;`로 복원.
+
+## 2026-10-13 — 브라켓 사이드패널 헤더 라운드 텍스트 text-sm font-black → text-base font-bold
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client) — 패널 헤더 "동부 1라운드" span. tracking은 원래 없었음(font-black 한글 글리프 폭 때문에 넓어 보였던 것).
+
+## 2026-10-13 — 시드 번호 표기: 괄호 → 팀명 우측 상단 작은 숫자 (패널 헤더 + 브라켓 슬롯)
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 패널 헤더 `{abbr}<span> ({seed})</span>` (text-2xl 그대로 괄호). 브라켓 TeamSlot `flex items-baseline gap-1.5` + `text-xs opacity-70` 베이스라인 정렬.
+
+**After**: 헤더 `inline-flex items-start gap-0.5` 안에 `truncate` 약어 + `text-xs font-semibold leading-none mt-1 text-slate-300` 시드. 슬롯 `flex items-start gap-1` + 시드 `leading-none mt-0.5`로 우측 상단(위첨자 느낌) 정렬.
+
+**검증**: tsc 0, vite build 성공
+
+## 2026-10-13 — 브라켓 사이드패널: 폭 확대 · 게임 카드 점선 제거 · 팀 약어 대문자
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client, 사이드패널 블록)
+
+**Before**: 패널 `w-72`(288px) → 헤더 `BOS (2)` text-2xl이 truncate. 게임 카드 상단 `{i+1}차전 ── (border-dashed flex-1) ── 시리즈 h:l`. 팀명은 `g.awayTeamId`/`g.homeTeamId`(슬러그, 소문자 "mia") 그대로 출력.
+
+**After**: 패널 `w-96`(384px). 상단 행 `flex items-center justify-between`로 바꾸고 `<div className="flex-1 border-t border-dashed border-slate-600" />` 삭제. `awayAbbr`/`homeAbbr` = `leagueTeams.find(t => t.team_slug === g.xxxTeamId)?.team_abbr ?? g.xxxTeamId.toUpperCase()`로 리그 팀 약어(대문자) 표시.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: w-72 복원, dashed div 재삽입, `{g.awayTeamId}`/`{g.homeTeamId}` 복원
+
+## 2026-10-13 — 브라켓 배경에 서부(파랑)/동부(빨강) 테마 그라데이션
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 브라켓 스크롤 컨테이너 `<div className="flex-1 overflow-auto min-h-0 bg-slate-900">` 단색
+
+**After**: 같은 요소에 `style={isSplit ? { backgroundImage: CONFERENCE_THEME_BG } : undefined}` 추가. 상수 `CONFERENCE_THEME_BG` = `linear-gradient(90deg, rgba(59,130,246,.20) 0%, rgba(59,130,246,.07) 22%, transparent 35%, transparent 65%, rgba(239,68,68,.07) 78%, rgba(239,68,68,.20) 100%)` (최초 9%→사용자 요청으로 20%로 상향). 스크롤 컨테이너 자체 배경이라 가로 스크롤해도 뷰포트에 고정. 클래식 모드는 미적용.
+
+**롤백**: style prop과 상수 제거
+
+## 2026-10-13 — 브라켓 TeamSlot 팀명 우측에 시드 번호 표시
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 시드(`seedBySlug`, 메인 컴포넌트 useMemo)는 우측 상세 패널에서만 `(N)` 표기. 카드 슬롯은 팀명+승수만.
+
+**After**: `seedBySlug?: Map<string, number>` prop을 `BracketHalf` → `MatchCard` → `TeamSlot`으로 전달(서부/동부 BracketHalf 2곳 + 파이널 MatchCard). `TeamSlot`이 `seedBySlug?.get(teamId)`로 조회해 팀명 오른쪽에 `text-xs font-semibold tabular-nums opacity-70` 숫자 표시(`items-baseline gap-1.5`). 매핑 없으면(클래식 모드·BYE·TBD) 미표시. 클래식 모드 MatchCard에는 전달 안 함.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: prop 전달 6곳 + TeamSlot 렌더 블록 제거
+
+## 2026-10-13 — 브라켓 TeamSlot 링(챔피언/내 팀/호버)을 오버레이 레이어로 이동
+
+**배경**: 로고 확대(64px, absolute) 이후 `ring-inset`(inset box-shadow)이 자식인 로고보다 아래에 칠해져 로고가 링을 덮음.
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client)
+
+**Before**: 슬롯 컨테이너 className에 `isChampion ? 'ring-2 ring-inset ring-amber-400' : isMe ? 'ring-2 ring-inset ring-white/70' : ''` + `isHighlighted ? 'ring-2 ring-inset ring-sky-400 brightness-110'`; `SlotVolumeOverlay`는 prop 없음
+
+**After**: `ringClass`(호버 > 챔피언 > 내 팀 우선순위) 계산 후 `<SlotVolumeOverlay className={ringClass} />`로 전달. 컨테이너에는 `brightness-110`/`opacity-30`만 남김. `SlotVolumeOverlay`가 `className?` prop을 받아 `absolute inset-0 pointer-events-none transition-shadow`에 합침. BYE 카드(작은 인라인 로고)는 미변경.
+
+**검증**: tsc 0, vite build 성공 / **롤백**: 링 클래스를 컨테이너로 되돌리고 overlay prop 제거
+
+## 2026-10-13 — 플레이오프 브라켓(좌/우 대칭 모드) 헤더 구조 개편 + 트로피 위치 + 골드/로고/볼륨 스타일
+
+**배경**: 상단 헤더가 바디와 분리된 테이블이라 라운드 라벨이 카드 열 안으로 들어올 수 없었고, 우승 트로피 배너가
+바디 `absolute bottom-8`이라 브라켓 최하단에 붙어 보이는 증상. 아티팩트(https://claude.ai/artifact/9jPxBsavGq7JLLBLv3r3aM)
+안 C(혼합)로 확정 후 그대로 반영. 오늘 앞선 4개 항목(헤더 텍스트화/text-lg/pt-10/TBD slate-800)은 이 변경에 흡수됨.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client 전용, 서버 미러 없음)
+
+**Before** (핵심 구조):
+- 부모가 `[서부][파이널][동부]` 헤더 블록(h-10 제목 + `buildColTemplate` grid 라운드 라벨 2곳, `sideHeaderOrder()`)을 바디와 별도로 렌더
+- `BracketHalf` 그리드 행: `repeat(r1Count, ROW_H)`, 카드/커넥터 `gridRow: rowStart / rowStart+rowSpan`
+- 파이널 열: `flex flex-col items-center gap-4` + MatchCard만
+- 트로피: `bannerRef` + ResizeObserver로 `bannerHeight` 실측 → `bodyMinHeight = ROW_H*r1Count + bannerHeight + 32`, 바디 `absolute left-1/2 bottom-8` 배치 (w-48 트로피, text-5xl 팀명)
+- TeamSlot: 로고 `w-6 h-6` 인라인, TBD `bg-slate-800`, 볼륨 오버레이 없음. MatchCard 파이널 골드 테두리는 `finished`일 때만
+- StraightConnector: `self-stretch flex items-center`(paddingTop 없음)
+- import: `useState, useMemo, useRef, useEffect`
+
+**After**:
+- 상수 추가: `TITLE_H=40`, `LABEL_H=40`, `buildRowTemplate(r1Count)` = `40px 40px repeat(r1Count,140px)`, `CARD_ROW_START=3`
+- `BracketHalf`에 `title`/`titleClassName` prop 추가. 그리드 1행에 제목(`gridColumn 1/-1`, text-xl semibold, mirrored면 scaleX(-1) 재반전), 카드/커넥터 gridRow +2 오프셋, 각 라운드 첫 매치(`m===0`)의 relative 래퍼 안에 라운드 라벨 `absolute inset-x-0 bottom-full mb-2.5`(text-lg font-bold tracking-wide text-slate-400)
+- 부모 헤더 블록 전부 삭제, `sideHeaderOrder()` 삭제, 바디 패딩 `px-6 pt-10 pb-12`(minHeight 제거)
+- 파이널 열: 1열 grid(`minmax(0,1fr)` × `buildRowTemplate`), 모든 자식 `gridColumn: 1` 명시. 1행 `{room.season} 플레이오프`(text-2xl semibold slate-200), 트로피 `gridRow 2 / min(5, r1Count+3)` 상단 정렬(120px 트로피 + text-sm 챔피언 + 28px 팀명; `compactTrophy = r1Count<4`면 56px/text-xs/text-lg), 카드 `gridRow 3 / -1` 중앙 + 라벨 "파이널"(`FINAL_LABEL_GOLD_STYLE` 0deg 메탈릭 골드 bg-clip-text, w-max mx-auto)
+- `bannerRef`/`bannerHeight`/ResizeObserver/`BANNER_MARGIN`/`bodyMinHeight` 삭제, import `useRef, useEffect` 제거
+- `StraightConnector`에 `paddingTop: TITLE_H + LABEL_H` (카드 행 중심과 선 높이 일치)
+- `TeamSlot`: `relative overflow-hidden`, 로고 `absolute -left-1.5 top-1/2 -translate-y-1/2 w-16 h-16`(탈락팀 opacity-40 grayscale), 팀명 `pl-[52px]`, `SlotVolumeOverlay`(180deg 흰14%→투명→검12%) 모든 슬롯에 추가. `goldTbd` prop: 파이널 TBD는 `FINAL_TBD_GOLD_BG`(100deg #7d5f12↔#9a7414) + 글자 rgba(45,30,4,.78)
+- `MatchCard`: `goldTbd={isFinalRound}` 전달, 파이널 테두리 `border-amber-600/60 hover:border-amber-400`을 finished 무관 상시 적용
+- 클래식(비분리) 모드 분기는 미변경
+
+**검증**: `tsc --noEmit` 에러 0, `vite build` 성공. 브라우저 실화면 미확인(실제 로고 비율별 클리핑 정도·우승 상태 레이아웃은 실리그에서 확인 필요)
+
+**롤백 방법**: 이 항목 커밋 이전 `TournamentBracketView.tsx`로 복원(단일 파일). 부분 롤백 시 Before 항목별로 되돌리되,
+`buildRowTemplate`/`CARD_ROW_START` 오프셋과 `StraightConnector paddingTop`은 세트로 함께 되돌려야 선 높이가 맞음.
+
+## 2026-10-13 — 플레이오프 브라켓 TBD 슬롯 배경 slate-800
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client) — TeamSlot의 TBD 분기 div(99행)에 `bg-slate-800` 추가
+**Before**: `flex items-center px-4 py-4` / **After**: `flex items-center px-4 py-4 bg-slate-800`
+**롤백 방법**: `bg-slate-800` 제거
+
+## 2026-10-13 — 플레이오프 브라켓 헤더 상단 여백 추가
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client) — 헤더 컨테이너 div(`flex items-start justify-start gap-0 w-full`)에 `pt-10`(40px) 추가
+**Before**: `... gap-0 w-full` / **After**: `... gap-0 w-full pt-10`
+**롤백 방법**: `pt-10` 제거
+
+## 2026-10-13 — 플레이오프 브라켓 헤더 텍스트 text-sm → text-lg
+
+**변경 파일**: `views/multi/season/TournamentBracketView.tsx` (client) — 서부/파이널/동부 3곳 + 라운드 라벨 2곳
+**Before**: `text-sm` / **After**: `text-lg` (헤더 높이 h-10/h-20 유지)
+**롤백 방법**: 해당 5곳 `text-lg` → `text-sm`
+
+## 2026-10-13 — 플레이오프 브라켓 라운드 라벨 행도 단순 텍스트로
+
+**배경**: 직전 항목의 후속. 1라운드/2라운드/컨퍼런스 파이널 라벨 행의 띠 배경·구분선도 제거 요청.
+
+**변경 파일**:
+- `views/multi/season/TournamentBracketView.tsx` (client, 서부/동부 라벨 grid 2곳)
+
+**Before**: grid 컨테이너 `className="grid w-full bg-slate-800"`, 각 라벨에 `i > 0 ? 'border-l border-slate-700/40' : ''`
+
+**After**: `className="grid w-full"`, 라벨은 `h-10 flex items-center justify-center text-sm font-bold tracking-wide text-slate-400`만 (높이 동일 → 바디 정렬 불변)
+
+**검증**: 코드 확인만
+
+**롤백 방법**: 위 Before 클래스 복원 (서부·동부 2곳)
+
+## 2026-10-13 — 깨진 로고 경로 복구(앱 워드마크·LV/SEA) + 데드코드 삭제(7파일 + 인파일 2곳, 약 2,380줄)
+
+**배경**: `docs/plan/ui-consolidation.md` 8장 권장 순서 1번(4장 삭제) + 0-1 로고 단일화 때 남긴 깨진 경로 2건.
+
+**로고 — Before → After**:
+- `public/logos/main.svg`(앱 워드마크 1338×262, git HEAD엔 있었으나 0-1 정리 때 워킹트리에서 삭제돼 `StartMenu.tsx:56`·`LeagueLoadingScreen.tsx:22`가 깨진 경로 참조) → `git show HEAD:public/logos/main.svg`로 **`public/logos/league/Main.svg`** 복원. `utils/constants.ts` `LeagueLogoName`에 `'Main'` 추가, 두 참조를 `src={getLeagueLogoUrl('Main')}`로(StartMenu·LeagueLoadingScreen에 import 추가).
+- `public/logos/BACKUP/LV.svg`·`SEA.svg`(확장 가상 팀 라스베이거스 팬텀스 `lvp`→`LV`, 시애틀 에메랄즈 `sea`)가 `teams/`로 안 옮겨져 리그 로고 폴백으로 뜨던 것 → `teams/`로 복사(`cp -n`). `teams/` 30 → 32개.
+
+**데드코드 삭제(`git rm -f`, 전부 import 0건 재검증)**: `views/multi/season/MultiShotChartTab.tsx`(283) · `components/roster/SalaryCapDashboard.tsx`(142) · `components/dashboard/tactics/TacticalHalfCourt.tsx`(113) · `views/multi/season/MultiComingSoonView.tsx`(19) · `components/dashboard/RotationMatrix.tsx`(397) · `components/dashboard/CoachStaffTable.tsx`(160, 기준선 tsc 오류 1건도 함께 사라짐) · `views/multi/season/MultiGamePbpView.legacy.tsx`(1,148). 인파일: `views/PlayerDetailView.tsx` — 선언만 있고 참조 0인 `TRAD_COLS`·`ADVANCED_COLS`·`DEF_ZONES`+`DefenseZoneTable`·`StatsSubTable` 블록 제거(약 100줄); `components/roster/RosterGrid.tsx` — `SHOW_ATTR_LEGEND=false`로 꺼져 있던 능력치 범례 IIFE 블록(L371~412)과 상수 제거(42줄).
+
+**문서**: `docs/project-overview.md` 파일 트리에서 3개 이름 제거, `CLAUDE.md` 로테이션 설명을 `RotationGanttChart(옛 RotationMatrix.tsx 삭제)`로.
+
+**검증**: tsc 53 → **52**(삭제된 CoachStaffTable의 기준선 오류 1건 감소, 신규 0), `vite build` 성공. 삭제 파일명 잔존 참조는 `RotationGanttChart.tsx:199` 주석 1건뿐.
+
+**롤백 방법**: `git checkout HEAD -- <삭제 7파일>` + `views/PlayerDetailView.tsx components/roster/RosterGrid.tsx utils/constants.ts views/home/StartMenu.tsx components/multi/LeagueLoadingScreen.tsx` checkout. 로고는 `public/logos/league/Main.svg`·`teams/LV.svg`·`teams/SEA.svg` 삭제.
+
+## 2026-10-13 — 0-8 빈 상태/스피너: `Spinner`·`EmptyState`·`TableEmptyRow` 신설 + 멀티 스코프 약 100곳 치환
+
+**배경**: UI 통합 결정 0-8(`docs/plan/ui-consolidation.md` 7장 8번). 멀티 세션에 `<Loader2 className="animate-spin">` 71곳(크기 11종, 컨테이너 7종, 그중 `min-h-screen` 16곳은 사이드바·헤더 아래 본문에서 세로 스크롤 유발), "…없습니다" 빈 상태 30곳(글자 크기 3종·색 4종·패딩 7종). 시안 https://claude.ai/artifact/6tXapHKyDNixCzS1mNEPmb 승인 후 그대로 적용.
+
+**신규 파일**:
+- `components/common/Spinner.tsx` — `variant: page(28px, 'h-full flex-1 min-h-0 flex items-center justify-center') | section(20px, 'py-10 flex items-center justify-center') | inline(14px, 'inline-flex items-center gap-1.5 text-xs text-slate-500' + label)`. 색 `text-indigo-400` 고정, `role="status"` + sr-only "불러오는 중". 버튼 안은 `Button isLoading`을 쓴다.
+- `components/common/EmptyState.tsx` — `title`(14px font-medium slate-500) · `subtitle`(12px slate-600) · `icon`(lucide, 32px stroke 1.75 slate-700) · `action`(mt-2) · `padding md(py-10)|sm(py-7)`, `px-4 text-center`. `TableEmptyRow({colSpan, children, subtitle})` = `<tr><td colSpan class="!p-0 !border-r-0"><EmptyState padding="sm"/></td></tr>`.
+- `docs/plan/ui-audit/spinner-empty-inventory.md` — 치환 전 grep 인벤토리.
+
+**치환(에이전트 3개, 45파일) — 결과 집계(멀티 스코프)**: `<Spinner>` 48(page 29 · section 17 · inline ~7) · `<EmptyState>` 21(icon 5) · `<TableEmptyRow>` 5 · `Button isLoading` 이관 24(raw `<button>`+`Loader2` → `<Button variant size isLoading loadingText>`) · 잔존 `<Loader2>` 2(`AdminSimView` L443, `ScheduleSettingsTab` L882 — 20px 아이콘 전용 편집 확인 버튼). `min-h-screen`/`h-screen`/`min-h-[50~60vh]` 로딩·가드 컨테이너 전부 `h-full flex-1 min-h-0`으로(진짜 전체 화면인 `LeagueLoadingScreen`·`LeagueBootstrapErrorScreen`·`MultiSeasonLayout` 루트는 유지).
+- 주요 파일: `LeagueSettingsView`(Spinner page, Button 8곳, EmptyState) · `ScheduleSettingsTab`(Button 3, Spinner inline 2, EmptyState) · `TeamTacticsTab`(Button 2, Spinner section, TableEmptyRow 2) · `ActionLogTab`(Button, TableEmptyRow) · `PersonalDraftSettingsTab`·`AdminTradeBlock`·`AdminSimView`(Spinner page/section, Button 2, EmptyState icon) · `MultiDraftView`·`PersonalDraftView`(Spinner page) · `LeagueLobbyPanel`(Spinner page/section/inline, Button 참가·강퇴) · `MultiTacticsView`(Spinner page/section 2, Button) · `newsFeedCards`(section 3) · `MultiAllStarView`(page 3) · `MultiFrontOfficeView`(page, section, EmptyState 4, TableEmptyRow) · `MultiNegotiationView`(page 2) · `PlayerNewsTab`·`MultiScheduleView`·`MultiReleaseView`(icon)·`MultiNewsFeedView`·`PostseasonBracket`(icon) · 로딩 1곳짜리 9개 뷰(page) · `pages/MultiSeasonPage`(section 2) · `PersonalDraftFormatEditor`·`TournamentChampionModal`·`DraftPoolModal`·`CreateLeagueModal`(Button)·`TeamSelectModal`·`LeagueLoadingScreen`(page, `!flex-none !h-auto`)·`TeamSettingsPanel`·`TeamScheduleCalendar`·`TeamGameLog`·`TacticsHistory`(icon)·`LeaderboardTable`(TableEmptyRow — 예전 절대 위치 오버레이 제거).
+- 후속 정정 2건: 로비 로드 실패 화면은 에이전트가 `EmptyState icon=AlertCircle`로 바꿨던 것을 **`InlineNotice danger` + 홈 링크**로 되돌림(실패는 빈 상태가 아님, 0-7 정책); `LeagueSettingsView`·`MultiDraftView` 가드 화면의 `min-h-screen` → `h-full flex-1 min-h-0`.
+
+**의도적 시각 변화**: 로딩 패딩 `py-16/20` → 40px, 스피너 32/24/22 → 28/20, 버튼 로딩이 "스피너만" → "스피너+라벨", 일부 raw 버튼이 `Button` variant 색으로(warning은 slate-950 글자, secondary는 테두리), 빈 상태 글자 `text-xs`·`italic`·`slate-700` → 14px slate-500, `PostseasonBracket` 빈 상태 제목 서식(`text-lg font-black`) 제거, `LeaderboardTable` 빈 문구가 정중앙 오버레이 → 헤더 아래 행, `ScheduleSettingsTab` "스케줄러 처리 중" amber → slate.
+
+**범위 밖(그대로)**: `MyRoster` "비어있음" 행 플레이스홀더, 뎁스차트 빈 슬롯 점선 박스, 셀 안 "없음" span, 상세 패널 자리표시자("선택된 제안/소식이 없습니다"), `MultiGamePbpView.legacy.tsx`, `DraftAdminPanel.tsx`, `RefreshCw animate-spin` 새로고침 아이콘.
+
+**검증**: tsc 53줄(기준선 동일), `vite build` 성공(exit 0).
+
+**롤백 방법**: 45파일 `git checkout` + 신규 2파일 삭제. 특정 화면만 되돌리려면 해당 파일만.
+
+## 2026-10-13 — 로비 `handleKick` 실패 처리 통일 (한 줄)
+
+**변경 파일**: `views/multi/season/LeagueLobbyPanel.tsx` `handleKick` — `if (err) { setActionErr(err); }\n reload();` → `if (err) { setActionErr(err); return; }\n reload();`. 같은 파일의 `handleJoinAndClaim/handleLeave/handleClaim`과 동일하게 실패 시 새로고침 생략(상대가 이미 나간 경우는 Realtime 구독이 목록을 갱신). 이로써 `ui-inline-notice.md` 6장 버그 17건 전부 처리.
+
+**롤백 방법**: `return;` 제거.
+
+## 2026-10-13 — "부분 저장" 제거 ③: 닉네임 저장을 RPC 트랜잭션 하나로 (`set_my_nickname`)
+
+**배경**: 아래 항목과 같은 원리(버그 ⑩). `NicknameModal`이 `profiles.upsert` 성공 후 `league_teams.nickname` update 결과를 확인하지 않고 닫혀, 프로필만 바뀌고 팀 목록 GM 이름은 옛 닉네임으로 남을 수 있었다.
+
+**DB(`migrations/set_my_nickname_atomic.sql`, `apply_migration` 적용 완료)**: `set_my_nickname(p_nickname text, p_email text default null)` — `auth.uid()` 기준 본인만(`SECURITY INVOKER`). 길이 1~8자 검증(`invalid_nickname`), 미인증 `not_authenticated`. `profiles` insert … on conflict(id) do update(nickname, email은 null이면 기존 유지, updated_at) → `league_teams set nickname where user_id = auth.uid()`를 한 트랜잭션에서. 검증: 서비스 롤(auth 없음) 호출 시 `not_authenticated`로 쓰기 없이 실패.
+
+**클라이언트 — Before → After**: `views/lobby/NicknameModal.tsx` `handleSave` — `profiles.upsert` → (결과 무시) `league_teams.update` 2단계 → `supabase.rpc('set_my_nickname', { p_nickname, p_email })` 1회. 에러 매핑 `invalid_nickname`→"닉네임은 1~8자여야 합니다.", `not_authenticated`→"로그인이 만료되었습니다…", 그 외 `actionFailure(error, '닉네임 저장')`. `userId` prop은 저장에 더 이상 쓰지 않지만 호출부 호환을 위해 시그니처 유지.
+
+**검증**: tsc 53줄(기준선). 실제 저장은 로비에서 닉네임 변경 후 팀 목록 GM 이름이 바뀌는지 확인 필요.
+
+**롤백 방법**: `views/lobby/NicknameModal.tsx` `git checkout` + `drop function public.set_my_nickname(text, text);`.
+
+## 2026-10-13 — "부분 저장" 제거: 트레이드 블록·리그 설정 저장을 RPC 트랜잭션 하나로 (DB 마이그레이션)
+
+**배경**: 에러 표시 정책 조사에서 발견한 버그 ⑥·⑦(`docs/plan/ui-inline-notice.md` 6장). 한 번의 "저장"이 독립 요청 여러 개로 나가 트랜잭션으로 묶이지 않아, 일부만 커밋된 채 "저장 실패"가 뜨는 상태가 가능했다. 사용자 결정: "한 개라도 불가능하면 저장 불가능 처리" → 서버 RPC로 원자화.
+
+**DB(`migrations/atomic_trade_block_and_league_settings.sql`, `apply_migration`으로 적용 완료, 둘 다 `SECURITY INVOKER`·`authenticated` grant)**:
+- `set_trade_block_batch(p_room_id, p_team_id, p_add text[], p_remove text[], p_note, p_positions, p_player_ids, p_archetypes)` — `league_trade_blocks` insert(on conflict do nothing)/delete + `league_teams` trade_request_* update. 팀 행이 없으면 `team_not_found`.
+- `update_league_settings_atomic(p_league_id, p_payload jsonb, p_room_id, p_max_teams, p_sim_settings, p_teams_to_insert jsonb, p_team_ids_to_delete uuid[])` — payload 키마다 `information_schema.columns`로 leagues 컬럼 존재/타입 확인(`id/created_at/admin_user_id/status`는 `protected_column`, 없는 키는 `unknown_column`) 후 `%I = %L::type`으로 동적 UPDATE(jsonb/array/null 분기) → `rooms.max_players`/`sim_settings` → `league_teams` 삭제(선점 팀 포함 시 `cannot_remove_claimed_team`)/삽입(`jsonb_to_recordset`) → 최종 `count = p_max_teams` 검증(`team_count_mismatch`). 어느 단계든 RAISE면 전부 롤백.
+- 검증(DO 블록, 존재하지 않는 id로 호출 — 쓰기 없음): 1차 적용에서 두 결함 발견·수정 후 재적용(`atomic_rpcs_fix_found_and_team_check`) — ① `EXECUTE` 뒤에는 `FOUND`가 갱신되지 않아 `league_not_found`가 나지 않던 것 → `GET DIAGNOSTICS n_rows = ROW_COUNT`로 판정 ② `set_trade_block_batch`가 FK 위반 원문을 내던 것 → 팀 존재 선확인으로 `team_not_found`. 재검증: `team_not_found` / `league_not_found` / `unknown_column:nope` / `protected_column:status` / `room_not_found` 전부 도메인 코드로 발생.
+
+**클라이언트 — Before → After**:
+- `services/multi/tradeService.ts` — `setTradeBlockBatch(roomId, teamId, addIds, removeIds, request)` 신설(RPC 호출, `team_not_found` 한국어, 그 외 `actionFailure`). 기존 `setTradeBlock`/`updateTeamTradeRequest`는 다른 호출부가 없는지 확인 후 후속 정리 대상(현재는 유지).
+- `views/multi/season/MyTradeBlockModal.tsx` — `Promise.all([...setTradeBlock×N, updateTeamTradeRequest])` + `firstError` → `setTradeBlockBatch` 1회. 실패 문구는 서비스가 돌려준 것 그대로.
+- `services/multi/leagueService.ts` — `updateLeagueSettings`: `leagues.update` → `rooms.update` → `resizeLeagueTeams` → `rooms.update` 4단계 순차 쓰기 → `planLeagueTeamsResize(roomId, newCount)`(쓰기 없이 삽입 행/삭제 id만 계산, 가상 팀 채우기 로직 그대로) + `rpc('update_league_settings_atomic')` 1회. RPC 에러 `cannot_remove_claimed_team`/`team_count_mismatch`/`league_not_found`/`room_not_found` 한국어 매핑, 그 외 `actionFailure`. `resizeLeagueTeams` 삭제.
+
+**검증**: tsc 53줄(기준선). 실제 저장 동작은 리그 설정 화면·트레이드 블록 모달에서 확인 필요.
+
+**롤백 방법**: 클라 3파일 `git checkout`(예전 순차 쓰기로 복귀), DB는 `drop function public.set_trade_block_batch(uuid,uuid,text[],text[],text,text[],text[],text[]); drop function public.update_league_settings_atomic(uuid,jsonb,uuid,integer,jsonb,jsonb,uuid[]);` — 함수 추가만 했으므로 테이블 변경 없음.
+
+## 2026-10-13 — 에러 표시 정책 5단계: StatusDot 3곳 (항목별 상태)
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` `renderOfferListRow` — 남은 시간/상태 칸을 `flex items-center gap-1.5`로 바꾸고 `invalidated`→`<StatusDot tone="warning" size="sm" label="선수 구성이 바뀌어 무효화된 제안입니다">`, `expired`→`<StatusDot tone="danger" size="sm" label="유효 기간이 지난 제안입니다">`를 라벨 왼쪽에.
+- `views/multi/league/settings/TeamTacticsTab.tsx` 팀 칩 — `inline-flex items-center gap-1.5` + `!has`이면 `<StatusDot tone="warning" size="sm" label="전술 미저장 — 경기 시 자동 생성 전술 사용">`(기존 `title` 툴팁은 유지).
+- `components/multi/PersonalDraftFormatEditor.tsx` 후보 열 — `short`이면 숫자 왼쪽에 `<StatusDot tone="danger" size="sm" label="후보 카드 N장 — 노출 카드 수 M장보다 적습니다">`.
+
+**미적용(후속)**: 설정 탭 라벨 미저장 점(TabBar `tabs[].label: string`이라 슬롯 추가 필요), 섹션 헤더 점(추첨 완료 등), 일정표 행 보조 점.
+
+**검증**: tsc 53줄(기준선), `vite build` 성공.
+
+**롤백 방법**: 3파일의 해당 블록을 Before로(각 파일 `git checkout`은 1~4단계 변경까지 되돌리므로 블록 단위 권장).
+
+## 2026-10-13 — 에러 표시 정책 4단계: 리그 설정 6탭·어드민 시뮬·전술·PBP 인라인 치환 (토스트 5곳 제거, 멀티 스코프 `notify.error` 0)
+
+**배경**: `docs/plan/ui-inline-notice.md` 4-3절 + 8장 결정(세션 진행 중 문구는 league/draft 탭만, 팀 전술 성공 토스트 제거, PBP 5상태, 같은 슬롯 danger 우선).
+
+**변경 파일 — Before → After**:
+- `views/multi/league/LeagueSettingsView.tsx` — (1) 탭 바 `rightSlot`의 `activeSaveInfo.err` span 제거 → `</TabBar>` 직후·스크롤 div 밖에 `<InlineNotice tone="danger" className="shrink-0">`(6개 탭 공용 저장 실패; 탭 전환 시 `useEffect`로 6개 err state 전부 소거) (2) 세션 진행 중 indigo section → `<InlineNotice tone="info">`, **league/draft 탭에서만**, 문구 "세션이 진행 중입니다. 리그 기본 설정과 드래프트 설정은 변경할 수 없습니다." (3) `resetErr`/`deleteErr` red p → md danger (4) `teamNameErrs` 10px red → sm danger (5) 로드 실패 화면 AlertCircle+slate 글자 → md danger + "다시 불러오기"(`reload`) (6) 계약 규칙 잠김 slate p → md info (7) `draftStartErr`/`lotteryErr` → sm danger(버튼 위 같은 자리) (8) "recruiting 상태에서만 추첨 가능합니다." → sm info "모집 중 상태에서만 추첨할 수 있습니다." (9) **`handleKick` 실패 처리 신설**: `kickErrs` state, `leaveLeague(room.id, kickUserId, league?.status)`(status 전달 — 사전 차단 문구 살아남), 실패 시 추방 셀 아래 sm danger, `reload()` 생략. `AlertCircle` import 제거.
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` — 구 구조 안내 amber p → md warning; `lateGameClamped` span → 문단 아래 sm warning; `settingsMsg`/`applyMsg` 2줄 → **한 슬롯** `(applyMsg ?? settingsMsg)` md(ok→info, 실패→danger); 재배치 불가/초과/점프 불가/올스타 마감 AlertTriangle p → md danger/warning; 올스타 4종·플레이오프 생성 안내 slate → sm info; `jumpMsg`·`jumpPlan.error` → md; `editErr` red 띠 → md danger. `AlertTriangle` import 제거.
+- `views/multi/league/settings/PersonalDraftSettingsTab.tsx` — 헤더 버튼 옆 `saveErr` span 제거 → 헤더 행 아래 md danger(검증 2종 포함, 입력별 분리는 2차); 옛 포맷 amber 박스+AlertCircle → md warning; 포맷 잠김 amber 박스+Lock → md info. 미사용 아이콘 import 제거.
+- `views/multi/league/settings/TeamTacticsTab.tsx` — `notify.error` 3곳 제거 → `loadErr`/`rosterErr`/`saveErr` state: 로드 실패는 팀 칩 행 자리 md danger + "다시 불러오기"(`setTick`), 로스터 실패는 스피너 자리 md danger + "다시 시도"(editing 토글로 effect 재실행), 저장 실패는 헤더 우측 슬롯 sm danger(**isDirty warning 대신**); `notify.success` 저장 성공 토스트 **제거**(버튼 "저장됨" 플래시 유지, `changed` 변수·deps 정리); isDirty span → sm warning; 자동 생성 초안·전술 미저장 amber p → md warning. `notify` import 제거.
+- `views/multi/league/settings/ActionLogTab.tsx` — `notify.error` → `loadErr{more,text}`: 최초/필터 로드 실패는 표 자리 md danger + "다시 불러오기", 더 보기 실패는 버튼 옆 sm danger. `notify` import 제거.
+- `views/multi/league/AdminSimView.tsx` — `scheduleErr` red p → md danger; `batchSummary` state 신설 → 배치 종료 시 `fail>0`이면 로그 패널 아래 md warning "배치 시뮬 완료: N건 성공, M건 실패 — 로그를 확인하세요."
+- `views/multi/season/MultiTacticsView.tsx` — **저장 실패를 버리던 코드** → `saveError` state(고정 문구) + 탭 바 우측 슬롯 sm danger(isDirty warning 대신, `console.error` 원문).
+- `views/multi/season/MultiGamePbpView.tsx` — `error: string` → `{kind:'preparing'|'failed'|'forbidden', text}` + `retryTick`·`liveWarning`·`failStreakRef`·`lastOkAtRef`. `load`: `!isFirst`(라이브 폴링) 실패는 데이터 유지·연속 2회부터 가운데 열 상단 md warning "연결이 불안정합니다. 마지막 수신 HH:MM:SS — 자동으로 다시 시도합니다."(성공 시 소거); 최초 실패는 `not found`→preparing(info, 5초 후 `retryTick`으로 자동 재시도), `forbidden`→forbidden(danger + 뒤로가기), 그 외→failed(danger + 다시 시도). effect deps에 `retryTick`, cleanup에 retryTimer. 회색 1줄 전체 대체 화면 → md + 버튼(헤더는 팀 데이터가 필요해 유지 못 함 — 목업과 다른 점).
+
+**검증**: tsc 53줄(기준선). `views/multi`·`components/multi`의 `notify.error/success` 호출 **0**(1~4단계 합계 9곳 제거).
+
+**롤백 방법**: 위 8파일 `git checkout`.
+
+## 2026-10-13 — 에러 표시 정책 3단계: 로비·개인 드래프트·드래프트 룸(+WS 연결 보강)·팀 설정·모달 5종 인라인 치환
+
+**배경**: `docs/plan/ui-inline-notice.md` 4-2·4-4절 + 목업 검토 결정.
+
+**변경 파일 — Before → After**:
+- `views/multi/season/LeagueLobbyPanel.tsx` — `actionErr` `text-xs text-red-400 bg-red-900/20 … rounded-xl` → `<InlineNotice tone={/마감|추첨 후/.test(actionErr) ? 'warning' : 'danger'}>`(마감·추첨 뒤 타이밍 안내만 warning); 카운트다운 카드 amber 글자 → `<InlineNotice tone="warning" size="sm">`.
+- `views/multi/league/PersonalDraftView.tsx` — amber/red `rounded-md text-xs` 박스 2개 → `<InlineNotice tone="warning" onDismiss>`(자동 지명 안내, `autoPickDismissed` state 신설·`lastAutoPicked` 변화 시 리셋) + `<InlineNotice tone="danger">`(error).
+- `hooks/usePersonalDraft.ts` L355 — `data.expired`일 때 `setError('제한시간이 지나 자동 지명되었습니다.')` **제거**(같은 사건이 amber+red 두 박스로 뜨던 중복). `lastAutoPicked`로만 알림.
+- `hooks/useLeagueDraft.ts` — **4-4 연결 보강**: 반환값 `connectionState('connecting'|'connected'|'reconnecting')`·`reconnectAttempt` 추가(onopen→connected/0, onclose→reconnecting/+1); `missedPongRef` — 30초 ping마다 +1, `pong` 수신 시 0, **2 이상이면 `ws.close()`로 강제 종료**(좀비 소켓→재연결 루프); `window 'online'`·`document 'visibilitychange'(visible)` 시 소켓이 OPEN/CONNECTING이 아니면 백오프 타이머 취소·`backoffRef=1000`·즉시 `connect()`. 기존 백오프(1s→10s)·snapshot 재수신은 그대로.
+- `components/draft/PlayerPool.tsx` — `toolbarNotice?: ReactNode` prop 신설, "드래프트" 버튼 컨테이너 `ml-auto` → `ml-auto flex items-center gap-3 min-w-0`에 슬롯 렌더.
+- `components/draft/MyRoster.tsx` — `autoPickDisabled?: boolean` prop → AUTO 버튼 `disabled` + title "연결이 끊겨 변경할 수 없습니다".
+- `views/multi/league/MultiDraftView.tsx` — 선수 풀 상단 `pickError` 띠(`text-xs text-red-400 px-3 py-1 border-b`) 제거 → `PlayerPool toolbarNotice`에 `connectionState !== 'connected' ? sm danger "연결이 끊겨 지명을 보낼 수 없습니다. 다시 연결 중… (N회)" : pickError ? sm danger : null`(끊김 우선); `isUserTurn`에 `connectionState === 'connected'` 조건 추가; `useEffect(() => setPickError(null), [draftState?.currentPickIndex])`(픽 넘어가면 소거); `MyRoster autoPickDisabled`.
+- `components/multi/TeamSettingsPanel.tsx` — 드래프트 중 잠김 amber 박스 → `<InlineNotice tone="info" className="mb-4">`; 색 대비 `⚠` 글자 → `<InlineNotice tone="warning" size="sm">`(⚠ 제거); `saveErr` red 글자 → `<InlineNotice tone="danger" className="mt-4">`.
+- `components/multi/TeamSetupModal.tsx` — 색 대비 → sm warning(⚠ 제거); `err` → `<InlineNotice tone="danger">`.
+- `components/multi/TeamSelectModal.tsx` — `err` → md danger; **목록 로딩 실패 처리 신설**: `loadErr`/`loadTick` state, `.then`에 `.catch(e => setLoadErr(actionFailure(e,'팀 목록 불러오기')))`, effect deps `[roomId, userId, loadTick]`, 그리드 자리에 `md danger + "다시 불러오기" Button`(예전엔 스피너 영구 고착).
+- `components/multi/CreateLeagueModal.tsx` — `lateGameClamped` 문단 속 amber span → 문단 아래 `<InlineNotice tone="warning" size="sm" className="mt-1">`; 타임라인 요약 박스 전체 빨간 틴트 분기 제거(`bg-slate-800/60 border-transparent` 고정) → 불가 안내 `div.text-red-300` → `<InlineNotice tone="danger" className="mt-1">`(ul 포함); 푸터 `err` → md danger.
+- `components/multi/PersonalDraftFormatEditor.tsx` — 요약 박스 색 분기(red/amber/slate) 제거 → `bg-slate-800/60` 고정; 안내 4종(`syncError`/`checkErr`/`rosterWarn`/후보 확인 성공) `AlertTriangle` 글자 → `<InlineNotice size="sm">` danger/danger/warning/success; `checkErr` 소거 effect 의존성에 **`positionTargets` 추가**(누락 버그); `AlertTriangle` import 제거.
+- `views/lobby/NicknameModal.tsx` — `err` → `<InlineNotice tone="danger" size="sm">`.
+
+**검증**: tsc 53줄(기준선).
+
+**롤백 방법**: 위 13파일 `git checkout`. PlayerPool/MyRoster prop은 optional이라 MultiDraftView만 되돌려도 동작.
+
+## 2026-10-13 — 에러 표시 정책 2단계: 협상·방출·FA·트레이드·트레이드 블록 모달 인라인 치환 (토스트 4곳 제거)
+
+**배경**: `docs/plan/ui-inline-notice.md` 4-1절 + 목업 검토 결정(8장). 공용 `InlineNotice`로 치환하고 `notify.error`를 제거.
+
+**변경 파일 — Before → After**:
+- `views/multi/season/MultiNegotiationView.tsx` — L1529 amber 박스(ShieldAlert·rounded-xl) → `<InlineNotice tone="warning">`; **투웨이 정원(`isTwoWaySlotsFull`) 박스 신설**(예전엔 버튼 라벨만); L1536 red 박스 → `<InlineNotice tone="danger">`; 버튼 라벨 `isRosterFull ? '로스터 정원 초과' : isTwoWaySlotsFull ? '투웨이 정원 초과' : '오퍼 제출'` → 항상 `'오퍼 제출'`; `useEffect(() => setActionError(null), [raisePercentInput, years, contractType, signingType, optionType])` 추가(입력 변경 시 거절 사유 소거); `ShieldAlert` import 제거.
+- `views/multi/season/MultiReleaseView.tsx` — L558 스트레치 불가 사유 `text-sm text-red-400` → `<InlineNotice tone="warning" size="sm">`(사전 차단이므로 warning); L680 red 박스 → `<InlineNotice tone="danger">`. `ShieldAlert`는 L346/355에서 계속 사용.
+- `views/multi/season/MultiFreeAgentView.tsx` — `notify.error(...'fa.sign')` 제거 → `signError` state; `handleSign(playerId, playerName)`로 시그니처 변경(호출부 `handleSign(p.id, p.name)`), 문구 `"{선수명} 계약 실패: {mapFaError 문구}"`; 툴바 컨테이너와 표 사이에 `<InlineNotice tone="danger" className="shrink-0">`; 다음 시도 시작 시 소거. `notify` import 제거. (정원 가득 사전 차단은 기존 버튼 disabled+title 유지 — 8장 결정)
+- `views/multi/season/MultiFrontOfficeView.tsx` — (1) L700 `handleRespond`의 `notify.error` 제거(인라인 `respondFailures`만 유지, 이중 표시 해소) (2) `sendError` state 신설 + `useEffect(() => setSendError(null), [cartMine, cartTheirs])`; `handleSend` 시작 시 소거, 실패 시 `setSendError(error)`; "제안 보내기" Button 위 `<InlineNotice tone="danger">` (3) L1102/1104 `salaryMatchWarnings` 접미 `" (수락 시 서버에서 거부됩니다)"` 제거, fuchsia 글자 → `<InlineNotice tone="warning">`(줄마다 div) (4) `respondFailures` red 글자+ShieldAlert+"처리 실패:" 접두 → `<InlineNotice tone="danger">` (5) `offer.status === 'invalidated'` 분기 신설 → `<InlineNotice tone="warning">선수 구성이 바뀌어 제안이 무효화되었습니다.</InlineNotice>` (6) `tradeSendErrors` fuchsia `· ` 목록 → `<InlineNotice tone="warning" className="shrink-0 mx-4 mt-4 !w-auto">` (7) 헤더 데드라인: `isTradeDeadlinePassed`면 날짜 `<p>` 대신 `<InlineNotice tone="warning" size="sm">트레이드 데드라인이 지났습니다 (날짜)</InlineNotice>`; 버튼 라벨 `'트레이드 기한 경과'` 분기 제거(disabled는 유지). `notify` import 제거, L451 주석 갱신.
+- `views/multi/season/MyTradeBlockModal.tsx` — `notify.error` 제거 → `blockSaveError` state(고정 문구); 툴바 "업데이트" 왼쪽 슬롯을 `blockSaveError ? sm danger : blockSaveSuccess ? sm success('저장 완료') : (tradeableDirty||teamRequestDirty) ? sm warning('저장되지 않은 변경사항이 있습니다.') : null`로 교체(기존 emerald span 제거); 저장 시작·편집 변경(`useEffect` on pending/teamRequest 5개 state, `teamRequestDirty` 직전에 배치 — TDZ 방지) 시 소거. `notify` import 제거.
+
+**검증**: tsc 53줄(기준선). 멀티 스코프 `notify.error` 잔존: TeamTacticsTab 3 + ActionLogTab 1(4단계 대상).
+
+**롤백 방법**: 5파일 `git checkout`. 서비스 매핑(1단계)과 독립.
+
+## 2026-10-13 — 에러 표시 정책 1단계: 서비스 레이어 한국어 에러 매핑 (영어 원문 노출 차단)
+
+**배경**: `docs/plan/ui-inline-notice.md` 3장. 인라인 치환 전 선행 작업 — 트레이드/개인 드래프트/드래프트 룸/리그 서비스가 Postgres·PostgREST·fetch·서버 원문(영문)을 그대로 `error` 문자열로 돌려주고 있어, 인라인으로 옮겨도 `not_team_owner`, `pick_count_mismatch: expected 2 got 1`, `HTTP 502` 같은 문구가 보였을 것.
+
+**신규 파일**:
+- `services/notifications/actionErrorCatalog.ts` — `actionFailure(err, what)`: "{what}에 실패했습니다. {원인}". 23505/duplicate → "이미 같은 값이 있습니다", 42501/RLS/not_authorized → "권한이 없습니다", 57014/statement timeout → "처리 시간이 초과되었습니다…", JWT/not_authenticated → "로그인이 만료되었습니다…", 그 외는 `classifyQueryError` 부류 문구(`CAUSE_TEXT`, queryErrorCatalog에서 export로 변경). `httpActionFailure(status, serverError, what)`: Fly 엔드포인트용 — `not in recruiting`/`already started`/`lottery_already_done`/not found/401/403/400/5xx 분기. 둘 다 원문은 `console.warn`에만.
+- `utils/draftErrors.ts` — `mapDraftError(code)`: 드래프트 룸 WS 코드 10종(`not authenticated, not your turn, not_your_turn, connection lost, timeout, draft_not_active, already_drafted, unauthorized, not_admin, internal`) → 한국어.
+
+**변경 파일 — Before → After**:
+- `services/multi/personalDraft.ts` — `mapPersonalDraftError(err, what)` 신설(RPC RAISE 코드 11종 정규식 표 + `actionFailure` 폴백). 4개 함수의 `error: error.message` → `mapPersonalDraftError(error, '드래프트 시작'|'팩 불러오기'|'지명')`.
+- `services/multi/tradeService.ts` — `mapTradeOfferError` 기본값 `return msg` → `return actionFailure(msg, '트레이드 요청 처리')`.
+- `hooks/useLeagueDraft.ts` — `submitPick`의 4개 코드 반환과 `error` 메시지의 `code`를 전부 `mapDraftError()`로 감쌈(훅이 한국어를 돌려줌).
+- `services/multi/leagueService.ts` — 원문 반환 33곳 → `actionFailure(error, '<동작>')` / `httpActionFailure(...)`. 함수별 동작명: createLeagueGroup 리그 그룹 생성 · createLeague 리그 생성 · createRoom 방 생성 · joinLeague 리그 참가(방 없음은 "리그를 찾을 수 없습니다…") · setMemberTeam 팀 저장 · updateLeagueStatus 리그 상태 변경 · updateLeagueSettings 리그 설정 저장/참가 팀 수 저장/시뮬레이션 설정 저장/참가 팀 수 변경(×2) · initializeLeagueTeams 팀 초기화 · claimTeam 팀 선택(기본값) · releaseTeam 팀 해제 · updateTeamProfile 팀 설정 저장 · updateTeamName 팀 이름 저장 · getRoomMemberEmails 참가자 이메일 조회 · deleteLeague 리그 삭제(기본값) · startDraft/runDraftLottery/simGameOverride(HTTP+catch) 드래프트 시작/드래프트 추첨/시뮬레이션 실행 — simGameOverride는 `!res.ok`일 때 `ok:false` + 매핑 문구로 통일 · updateGameScheduledAt 경기 조회/경기 시각 변경 · applyLeagueReschedule 일정 재배치 · adminTimeJump 시간 점프 · resetTournament 토너먼트 초기화(×5) · updateLeagueGroupStatus 리그 그룹 상태 변경. 기존 한국어 매핑(claimTeam 3종, deleteLeague 2종, 23505 약어 중복)은 그대로 두고 **기본값만** 교체. 검증: `error: \w+\.message` 패턴 잔존 0.
+
+**검증**: tsc 오류 53줄(기준선 동일).
+
+**롤백 방법**: 신규 2파일 삭제, queryErrorCatalog `export const CAUSE_TEXT` → `const`, 나머지 4파일은 git checkout(`services/multi/personalDraft.ts services/multi/tradeService.ts hooks/useLeagueDraft.ts services/multi/leagueService.ts`).
+
+## 2026-10-13 — 0-7 에러 표시 정책 확정 + `InlineNotice`/`StatusDot` 신설 (치환은 아직)
+
+**배경**: UI 통합 결정 0-7. 2026-10-02 "오류는 전부 `notify.error` 토스트" 방침을 사용자가 번복 — "토스트는 인게임에서 지속돼야 할 중요 메시지만, 에러는 인라인으로 휘발성 있게". 경계는 중요도가 아니라 "붙을 자리(anchor)가 있는가"로 확정. 디자인 시안(https://claude.ai/artifact/MWDyntdpHNGc8buBeQkuRX)에서 md 아이콘 제거·라운드 제거 결정, 아이콘+툴팁은 별도 `StatusDot`으로 분리.
+
+**신규 파일(코드 변경은 이 2개뿐, 화면 치환 없음)**:
+- `components/common/InlineNotice.tsx` — `tone danger|warning|info|success` × `size md|sm`, `onDismiss`, `autoHideMs`. md `flex items-start gap-2 border px-4 py-3 text-sm font-medium leading-5 break-keep [overflow-wrap:anywhere]` + 톤(`bg-red-500/10 border-red-500/20 text-red-400` / amber 10·20·400 / indigo 10·30·300 / emerald 10·30·400), 라운드 없음. sm `text-xs font-medium leading-4` 톤 글자색. danger `role="alert"`, 그 외 `role="status"`. 닫기는 `IconButton size="xs" tone="inherit"`.
+- `components/common/StatusDot.tsx` — 원형 16/20px 틴트(`text-red-400 bg-red-500/15` 등) + lucide `AlertCircle/AlertTriangle/Info/CheckCircle2`, 툴팁은 `InjuryStatusBadge`와 같은 body 포탈 `fixed -translate-x-1/2 -translate-y-full z-tooltip max-w-[260px]`, 호버·포커스·클릭 토글·Escape·바깥 클릭 닫기.
+
+**문서**: `docs/plan/ui-inline-notice.md` 신설 — 경계 규칙, 전 화면 배치안(에이전트 3개 정독: 자리 약 70곳, md/sm/StatusDot/토스트 제거 9곳), 선행 한국어 매핑 7서비스, 발견 버그 17건, 결정 필요 5항목, 치환 순서. `ui-consolidation.md` 7장 7번 갱신. 메모리 `feedback_errors_via_notify.md` 번복 내용으로 재작성.
+
+**검증**: tsc 오류 53줄(기준선 동일), 신규 2파일 오류 0.
+
+**롤백 방법**: 두 파일 삭제(아직 import하는 곳 없음). 정책 번복 자체를 되돌리려면 메모리/문서를 2026-10-02 내용으로.
+
+## 2026-10-12 — 0-6 z-index 사다리(A안) 확정·적용: tailwind 토큰 6종, 임의 숫자 29파일 치환, 모달 4종 body 포탈
+
+**배경**: UI 통합 결정 0-6(`docs/plan/ui-consolidation.md` 7장 6번). 전역 레이어 실측 결과 토스트(600)가 Dropdown·툴팁·TeamSelect/CreateLeague 모달·UpdateToast(9999) 뒤로 숨고, TeamSetup/DraftPool/Nickname 모달(50, portal 없음)이 헤더(100)·사이드바 메뉴(300)·표 고정 열(50)에 가려지며, 팝오버 값이 100/200/300/9999, 점유 화면 값이 500/1000/1999/2000/9999로 제각각이었다. 사용자가 A안(팝오버·툴팁을 모달 *위*에 두는 사다리) 선택.
+
+**사다리(`tailwind.config.js` `theme.extend.zIndex`, 리터럴 클래스 `z-header` 등으로 사용)**:
+`header 100 < modal 500 < popover 600 < tooltip 700 < toast 800 < takeover 1000`. 표 sticky 헤더 `z-40`·고정 열 `z-50`·푸터 `z-50`·카드 내부 `z-10~30`은 로컬 값으로 사다리 비대상(변경 없음). B안(`popover 200 < modal 500`)을 기각한 이유: 모달 안에서 열리는 Dropdown/호버 카드가 백드롭 아래로 들어가 모달마다 예외 값이 다시 생김(기존 Dropdown이 9999였던 이유).
+
+**변경 파일(30개) — Before → After**:
+- header: `components/MultiHeader.tsx` L376, `components/dashboard/DashboardHeader.tsx` L116 — `sticky top-0 z-[100]` → `z-header`
+- modal: `components/common/Modal.tsx` L81 `z-[500]`; `components/multi/TeamSelectModal.tsx` L75·`CreateLeagueModal.tsx` L537 `z-[9999]` → `z-modal`. `components/multi/TeamSetupModal.tsx`·`DraftPoolModal.tsx`·`views/lobby/NicknameModal.tsx` — `return (<div className="fixed inset-0 z-50 …">…</div>)` → `return createPortal(<div className="fixed inset-0 z-modal …">…</div>, document.body)` (+`import { createPortal } from 'react-dom'`). `components/multi/TournamentChampionModal.tsx` — 모달 `z-[100]`→`z-modal`, 컨페티 `z-[101]`→`z-modal`로 맞추고 `<Confetti />`를 모달 div **뒤**로 이동(같은 z, DOM 순서로 위에 뿌려짐), 전체를 body 포탈.
+- popover: `components/common/Dropdown.tsx` L94 `z-[9999]`; `components/common/filters/CheckboxFilterDropdown.tsx` 백드롭 `z-[100]`·패널 `z-[101]`; `components/MultiSidebar.tsx` L276·`components/Sidebar.tsx` L248 `z-[300]`; `views/multi/season/MonthCalendarPopover.tsx` L37 `fixed z-50` → 전부 `z-popover`
+- tooltip: `components/common/PlayerHoverCard.tsx` — `PlayerRatingsStatsPopup` 루트 className에 `z-tooltip` 추가, L339 style의 `zIndex: 200` 제거; `components/draft/PersonalDraftCard.tsx` L82 `zIndex: 200` 제거(같은 팝업 사용); `components/common/InjuryStatusBadge.tsx` L85·`views/multi/season/MultiStandingsView.tsx` L418 `z-[9999]` → `z-tooltip`
+- toast: `components/common/NotificationCenter.tsx` L94 `z-[600]`(주석 L7 갱신); `components/UpdateToast.tsx` L12 `z-[9999]`; `components/SharedComponents.tsx` L76·L96 `z-[300]` → `z-toast`
+- takeover: `components/Loader.tsx` L99 `z-[1000]`; `pages/OnboardingPage.tsx` L18 `z-[500]`; `components/ProtectedLayout.tsx` L180·L201, `pages/DraftRoomPage.tsx` L20·L40, `views/DraftLotteryView.tsx` L504 `z-[9999]`; `components/simulation/FullSeasonSimModal.tsx` L28 `z-[1999]`·L31 `z-[2000]`; `views/GameResultView.tsx` L151·`views/TeamSelectView.tsx` L67 `z-[100]` → 전부 `z-takeover`
+
+**손대지 않은 것(로컬 컨텍스트)**: 헤더 내부 네비 메뉴·검색 결과·DateSkipDropdown의 `absolute z-[200]`(헤더 스태킹 컨텍스트 안이라 실질 100), `views/RosterView.tsx` L323 팀 드롭다운 `absolute z-[200]`(배너 `isolate` 안), `components/common/PageHeader.tsx` `relative z-[70]`, `views/TransactionsView.tsx` L124/126(싱글 레거시 `relative z-[200]` + 내부 `z-[210]`), 모든 `z-10~50`, `Loader.tsx` L43 진행바 `fixed z-50`.
+
+**검증**: `tsc --noEmit` 오류 총 53줄 = 기준선과 동일(치환 파일 신규 오류 0). `vite build` 성공, 산출 CSS에 `.z-header{z-index:100}` … `.z-takeover{z-index:1000}` 6종 생성 확인. 멀티 스코프+common의 `z-[N]`(fixed/portal 계열) 잔존 0, `z-[9999]` 저장소 전체 0.
+
+**롤백 방법**: 위 Before 값으로 되돌리면 됨. 일괄은 `git checkout -- tailwind.config.js` + 30파일(세션 scratchpad `zindex_ladder.py`의 파일 목록). 모달 4종은 `createPortal(` → `(`, 끝의 `, document.body` 제거, TournamentChampionModal의 `<Confetti />`를 모달 div 앞으로.
+
+## 2026-10-12 — 버튼 시스템 3단계: `FilterTrigger`/`CheckboxFilterDropdown`/`StatFilterBar`/`FilterChips`/`Pagination` 공용화
+
+**배경**: 2단계(아래) 후 남은 인라인 버튼 중 "다음 컴포넌트 몫"으로 분류한 필터 트리거 7곳 + 페이지네이션 3곳 치환(`docs/plan/ui-buttons.md` 3-4, `ui-consolidation.md` 6장 3번의 FA↔DraftPool 공용화 부분). FA·드래프트 풀이 79줄짜리 `CheckboxFilterDropdown`을 통째로 복제하고, 리더보드 툴바·뉴스 피드가 같은 마크업을 인라인으로 들고 있었으며, `getPageNumbers`+푸터가 3화면에 복붙돼 있었다.
+
+**신규 파일**:
+- `utils/statFilter.ts` — `Operator`, `OPERATORS`, `compareOperator()`. `data/leaderboardConfig.ts`의 `Operator`는 여기서 re-export(`export type { Operator } from '../utils/statFilter'`)로 바꿨다(기존 import 경로 유지).
+- `components/common/Pagination.tsx` — `getPageNumbers(page, totalPages)` export + `<Pagination page pageSize totalItems onPageChange onPageSizeChange? pageSizeOptions=[25,50,75,100] unit='명'>`. 푸터 컨테이너 `relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50`, 번호 버튼 `w-7 h-7 text-sm font-semibold rounded-lg` 현재 `bg-indigo-600 text-white` / 그 외 `text-indigo-400 hover:bg-slate-800 hover:text-indigo-300`, 이전·다음은 `IconButton size="sm" tone="subtle"`.
+- `components/common/filters/FilterTrigger.tsx` — forwardRef `<button>`: `flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-sm font-semibold`, `count>0`(또는 `active`)이면 `border-indigo-500/50 text-indigo-400` + 숫자 배지, 아니면 `border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white`, 우측 ChevronDown 12.
+- `components/common/filters/CheckboxFilterDropdown.tsx` — `options: (string | {value,label,icon?})[]`, `selected`, **`onChange(next[])`**(토글·모두 선택 계산을 내부에서 함), `width 'w-48'|'w-64'`. 패널은 기존처럼 fixed(`top: rect.bottom+8, right: innerWidth-rect.right`) + 투명 백드롭 `z-[100]`/패널 `z-[101]`.
+- `components/common/filters/StatFilterBar.tsx` — `<StatFilterBar options={[{value,label}]} onAdd(draft)>`: 카테고리/연산자/값 state를 내부에 두고 Enter·`+`에서 `{category, operator, value:number, label:'라벨 >= 20'}`을 넘긴다. 옵션 목록이 바뀌어 현재 카테고리가 사라지면 첫 항목으로 복귀(리더보드 카테고리 전환 대응). 같은 파일의 `<FilterChips chips onRemove onClear inset='px-4'|'px-6'>`가 칩 목록+"모두 제거".
+
+**변경 파일(치환)**:
+- `views/multi/season/MultiFreeAgentView.tsx` (−296/+49): 로컬 `Operator/OPERATORS/compareOperator`, `CheckboxFilterDropdown`(L76~154), `filterAttrKey/filterOp/filterVal` state, `getPageNumbers`, `togglePosition/Archetype(All)`, `removeStatFilter/clearStatFilters`, 스탯 필터 바 JSX, 칩 JSX, 푸터 JSX 삭제 → `ATTR_FILTER_OPTIONS` 상수 + 공용 컴포넌트 호출. `handleAddStatFilter(draft)`가 `StatFilterItem{attrKey: draft.category, …}`로 매핑.
+- `views/multi/season/MultiDraftPoolView.tsx` (−286/+39): FA와 동일 구조로 동일 치환.
+- `views/LeaderboardView.tsx` (−68/+12): `getPageNumbers`·푸터 삭제 → `<Pagination onPageChange={handlePageChange}>`. `handlePageChange`가 기존 `window.scrollTo(0,0)` 유지.
+- `components/leaderboard/LeaderboardToolbar.tsx` (−260/+23): 팀/포지션 드롭다운 state 6개(`isTeamDropdownOpen`, `teamBtnRef`, `teamDropdownPos` ×2)·`handleXDropdownToggle`·`toggleTeam/togglePosition`·`filterCat/Op/Val`+reset `useEffect` 전부 삭제 → `teamOptions`(id 정렬, `icon: <TeamBadge size="sm">`) + `<CheckboxFilterDropdown width="w-64">` ×2 + `<StatFilterBar options={options}>` + `<FilterChips inset="px-6">`. `addFilter({ id, type:'stat', ...draft })`. 칩의 "모두 제거"가 raw `<button … hover:text-red-400 underline>`에서 `Button variant="link"`로 바뀜.
+- `views/multi/season/MultiNewsFeedView.tsx` (−111/+57): 팀 필터 인라인 블록 → `<CheckboxFilterDropdown width="w-64" options={sortedTeams.map(…icon: <TeamBadge>)} onChange={setSelectedTeams}>`. `useRef`·`toggleTeam` 제거(`Check`는 이벤트 유형 체크박스에서 계속 사용).
+
+**Before(공통 패턴 요지)**: 각 화면이 `const [isOpen]`/`btnRef`/`pos` + 인라인 `<button className="flex items-center gap-2 h-[36px] … font-bold …">` + fixed 패널 + `<div className="w-4 h-4 rounded border …">{checked && <Check/>}</div>` 행을 직접 렌더; 푸터는 `getPageNumbers()` 로컬 함수 + `<button className={`w-7 h-7 text-sm font-bold rounded-lg …`}>` 삼항.
+
+**After(의도적 시각 차이)**: 필터 트리거·옵션 행·칩·푸터 글자 `font-bold → font-semibold`(0-5 버튼 굵기 통일), 범위 텍스트·페이지 번호에 `tabular-nums`, 리더보드 이전/다음 화살표가 `text-indigo-400` 오버라이드 없이 FA·풀과 같은 slate `subtle` 톤, 리더보드 "모두 제거"가 빨간 밑줄 → 공용 link 버튼. 동작은 동일(모두 선택 토글, Enter 추가, 페이지 전환 시 리더보드만 scrollTo 유지).
+
+**검증**: `npx tsc --noEmit` 오류 파일 목록이 기준선(useGameData 19 등 26파일)과 완전히 일치 — 신규/치환 파일 오류 0. `<CheckboxFilterDropdown>` 사용 8곳, `<StatFilterBar>`/`<FilterChips>`/`<Pagination>` 합계 12곳.
+
+**롤백 방법**: `git checkout -- views/multi/season/MultiFreeAgentView.tsx views/multi/season/MultiDraftPoolView.tsx views/LeaderboardView.tsx components/leaderboard/LeaderboardToolbar.tsx views/multi/season/MultiNewsFeedView.tsx data/leaderboardConfig.ts` 후 신규 5파일 삭제. 치환 스크립트 원본은 세션 scratchpad `migrate_filters.py`(저장소 외).
+
+## 2026-10-12 — 팀 화면 헤더: 팀 이동 화살표를 로고 우측으로 이동 + 간격 축소
+
+**배경:** 로고 좌측에 있던 위/아래 Chevron(이전/다음 팀)을 `로고 | 화살표 | 정보` 순서로 재배치, 로고↔화살표 간격 축소.
+
+**변경 파일:** `views/RosterView.tsx` (헤더 배너 한 곳만)
+
+**Before:** 자식 순서 `화살표 div → 로고 div(self-stretch aspect-square) → 정보 div(ml-2)`, 화살표 div 클래스 `flex flex-col items-center justify-center gap-1 shrink-0`.
+
+**After:** 순서 `로고 div → 화살표 div → 정보 div`, 화살표 div에 `-ml-2` 추가(컨테이너 gap-4=16px → 로고↔화살표 8px). 화살표↔정보는 16+ml-2(8)=24px.
+
+**검증:** tsc에서 RosterView 관련 오류 없음.
+
+**롤백 방법:** 화살표 div 블록을 로고 div 앞으로 되돌리고 `-ml-2` 제거.
+
+## 2026-10-12 — 버튼 시스템 2단계: 멀티 세션 인라인 `<button>` 전면 치환 (268 → 77)
+
+**배경**: 1단계(아래 항목) 컴포넌트를 사용자가 아티팩트(https://claude.ai/artifact/SNNi35oR4NUiJDgVuitGQw)로 확인·승인(굵기 semibold 통일 추가) 후 "지금 치환하고 넘어가자"는 지시. `docs/plan/ui-audit/buttons/buttons.csv` 인벤토리를 기준으로 화면군 3개 병렬 작업.
+
+**결과(기계 재집계, 어드민 DraftAdminPanel·common 내부 제외)**:
+- 인라인 `<button>` **268 → 77**. 공용 사용: `<Button>` 105 · `<IconButton>` 58 · `<SegmentedControl>` 9.
+- 남은 77: icon-only 25(호버 오버레이 ↺, 팀 로고 클릭 영역, Dropdown 트리거 등) · other 23(필터 트리거 `h-[36px]`·`+`·새로고침 36px → 다음 `FilterTrigger`/`Pagination` 때, 캘린더·스트립 타일, 스위치형 토글 `w-8 h-4`, 아코디언 헤더, 팀 컬러 inline 버튼, 포지션별 색 칩) · menu-item/row 17(드롭다운 항목·목록 행·NavMenu 탭 — 대상 아님) · 나머지 12.
+
+**변경 파일(37개)**: views/multi/season 16(FrontOffice·TradeBlock·Negotiation·Release·FA·DraftPool·NewsFeed·newsFeedCards·Schedule·Standings·AllStar·Lobby·GameDateStrip·MonthCalendar·GamePbp·ShotChart·Tactics·PlayerNewsTab), pages/MultiSeasonPage(변경 없음 — button 0), 크롬 2(MultiHeader·MultiGlobalSearch), views 3(RosterView·PlayerDetailView·LeaderboardView), leaderboard 2, roster 3, multi 5(DraftPoolModal·TeamSettingsPanel·TeamSelectModal·TeamSetupModal·TournamentChampionModal), dashboard 6(DepthRotationBoard·RotationGanttChart·DepthChartEditor·TacticsBoard·PlayerTacticsPanel·PresetRenameModal), game/tabs 2, draft 5, league 2.
+
+**매핑 규칙(docs/plan/ui-buttons.md 6장)**: `bg-indigo-600`→primary · `bg-slate-700/800`·`bg-white/10`→secondary · 글자색만→link(이동 링크는 `underline`) · `bg-red-600`/`bg-red-900/60`→danger · `bg-red-500/10`→dangerSoft · `bg-emerald-600`·hex 저장 버튼→success(글로우는 `style` 유지) · 주황 그라디언트→cta · 패딩 `2/0.5`→xs `2.5/1`→sm `3/1.5`→md `4/2`→lg `5/2.5`→xl · 아이콘만→IconButton(label 부여) · 단일 선택 삼항 묶음→SegmentedControl(indigo). 상태별 색 삼항은 `variant={cond ? … : …}`.
+
+**의도된 시각 변화(동작 동일)**: ① 페이지네이션 ‹ › indigo→slate(IconButton subtle) ② 트레이드 "제안 보내기" 성공 상태에 `disabled:opacity-40` 적용 ③ PBP·GamePbpTab 쿼터 필터에 컨테이너 배경(`bg-slate-800 p-1`) 추가, 활성 indigo ④ 샷차트 팀 전환·드래프트 풀 포지션 필터의 팀/포지션별 활성 색 → indigo 단색 ⑤ "존 효율 보기" 10→12px, `text-xs`+`px-3 py-1.5`였던 버튼들 `md`(text-sm)로 ⑥ DraftHeader 로딩 스피너 12→16px ⑦ AI 위임 분할 버튼의 쉐브론은 `!bg-indigo-600` 오버라이드로 색 유지, 높이 Button md(h-8) + IconButton lg ⑧ 협상 스텝퍼 12개 `Button secondary className="flex-1"`.
+
+**검증**: `tsc --noEmit` 전체 에러 집합 = 작업 전과 동일(28파일, 전부 무관). 미사용 lucide import 점검: 신규 미사용 없음(의심 5건은 HEAD에서도 미사용이거나 type import). 실제 화면 미확인 — 3개 에이전트 모두 렌더 확인 안 함.
+
+**롤백**: 커밋 revert(37파일). 컴포넌트(1단계)는 별도 커밋이면 유지 가능.
+
+---
+
+## 2026-10-12 — 버튼 시스템 1단계: `Button` 재정의 + `IconButton`/`SegmentedControl` 신설 + 닫기·지우기 X 14곳 치환
+
+**배경**: `docs/plan/ui-buttons.md` — 멀티 스코프 `<button>` 268개 조사 결과 공용 Button(rounded-2xl·font-black·사용처 1곳)이 실사용과 어긋나 아무도 안 썼음. 사용자 결정: 기본 `rounded-lg text-sm font-bold h-32`, black은 cta/xl만, scale 제거, 세그먼트 활성 indigo, 링크 밑줄은 이동 링크만, 아이콘 전용 label 필수.
+
+**변경 파일**:
+- `components/common/Button.tsx` — **재작성**. Before: variant 6(primary/secondary/danger/ghost/outline/brand), size 5(xs `px-3 py-1.5 text-[10px]` … md `px-6 py-3 text-xs`), base `font-black … active:scale-95 rounded-2xl`. After: variant 9(primary/secondary/ghost/link/danger/dangerSoft/success/warning/cta), size 5 = 높이 24/28/32/36/40(`h-6 px-2 text-xs font-semibold` … `h-10 px-5 text-base font-black`), `shape md|lg|xl|full`(기본 lg), `iconRight`, `underline`(link 전용), `type="button"` 기본. `outline`/`brand` 삭제(사용 0), `active:scale-95` 삭제. 기존 유일 사용처 `views/HelpView.tsx`(`secondary lg`)는 그대로 컴파일·동작(모양은 rounded-2xl→lg, py-4→h-9로 바뀜).
+- `components/common/IconButton.tsx`(신규) — 정사각 xs 20/sm 24/md 28/lg 32, tone ghost/subtle/solid/inherit, shape, **`label: string` 필수** → aria-label+title.
+- `components/common/SegmentedControl.tsx`(신규) — `value/onChange/options/size(sm|md)/tone(indigo|slate)`, 컨테이너 `bg-slate-800 rounded-md p-1`, `aria-pressed`.
+- 후속(같은 날, 아티팩트 확인 후 사용자 지시): Button 전 size·variant(cta·xl 포함)와 SegmentedControl의 굵기를 `font-bold`/`font-black` → **`font-semibold`**로 통일.
+- 치환 14곳(`<button … ><X size/></button>` → `<IconButton label=…>`): 검색어 지우기 5(LeaderboardToolbar·DraftPool·FA·FrontOffice 이력·NewsFeed, `size="xs"` + absolute 위치 className 유지), 필터 칩 X 3(LeaderboardToolbar·DraftPool·FA, `tone="inherit"`), 모달 닫기 4(DraftPoolModal·TeamSelectModal·TeamSetupModal·TournamentChampionModal), 브래킷 패널 닫기 1(`tone="subtle" size="lg"`), 트레이드 블록 요청 선수 제외 1(`tone="inherit"`). 전부 라벨이 없던 곳 → "검색어 지우기"/"필터 제거"/"닫기"/"제외" 라벨 부여.
+- 보류: `NotificationCenter` 닫기(이미 aria-label 있음, text-current 상속 톤), `MultiNewsFeedView` 날짜 초기화(title 있음, `h-full border-l` 레이아웃 결합) — 다음 치환 때.
+
+**검증**: tsc 에러 0(기존 집합 동일). 실제 화면 미확인 — 모달 X 버튼은 28px 정사각 hit 영역이 생겨 클릭 영역이 약간 넓어짐.
+
+**롤백**: 커밋 revert. Button.tsx만 되돌리면 HelpView 외 영향 없음.
+
+---
+
+## 2026-10-12 — 로스터 탭 테이블: 샐러리 컬럼 제거, 잔여계약 컬럼을 AAV 우측으로
+
+**배경**: 사용자 지시. 샐러리(`p.salary`, 축약)와 급여(`contract.years[currentYear]`, 전체)는 멀티에서 같은 값이라 중복(같은 날 "급여 컬럼 신설" 항목에서 보고). 잔여계약은 금액 두 열 뒤로.
+
+**변경 파일**: `components/roster/RosterOverviewGrid.tsx`
+
+**Before**: … 키 · 몸무게 · **샐러리** · 잔여계약 · 급여 · AAV (· 방출)
+**After**:  … 키 · 몸무게 · 급여 · AAV · **잔여계약** (· 방출)
+- `WIDTHS.SALARY` 삭제, 정렬 키 `'salary'` 삭제, colgroup/헤더/바디 셀 재배치, tfoot `colSpan` 12/11 → 11/10, 미사용 `formatMoney` import 제거. 고정폭 합계 1,170 → 1,060px.
+
+**롤백**: Before 순서로 복원 + `SALARY: 110`·정렬키·셀 복원.
+
+---
+
+## 2026-10-12 — 돈 표기 정책 통일(0-4): 축약 기본 · 우측 정렬+tabular · 부호색 규칙 · `Money` 공용 · 지역 formatMoney 폐기
+
+**배경**: ui-consolidation 0-4 결정. 사용자 지시 ① 기본 축약형 ② 금액 열 우측 정렬 + tabular-nums ③ 부호/색은 제안대로(좋은 방향 초록) ④ 협상·방출 지역 함수 폐기 ⑤ 회계식 제거, 로스터 급여·AAV는 전체 표기.
+
+**변경 파일**:
+- `components/common/Money.tsx`(신규) — `<Money value format="short|full" signed goodWhenPositive className>`. 숫자 폭 고정(`tabular-nums`)과 부호색만 책임, 크기·굵기는 호출부.
+- `components/roster/RosterOverviewGrid.tsx` — 회계식 `MoneyCell` 삭제. 샐러리 열 가운데→우측+tabular(`<Money>`), 급여·AAV `<Money format="full">`.
+- `views/multi/season/MultiNegotiationView.tsx`, `MultiReleaseView.tsx` — 지역 `formatMoney`(100만 미만 전체/이상 축약) 삭제 → 공용 축약. "캡 스페이스 여유/캡 대비"의 `{over ? '-' : '+'}{formatMoney(abs)}` + 색 삼항 → `<Money value={cap - payroll} signed>`. 방출 데드캡 추가분 `+{…} text-red-400` → `<Money signed goodWhenPositive={false}>`.
+- `views/multi/season/MultiFrontOfficeView.tsx` — `formatMoneyFull` 11곳 → 축약; 캡 여유분 변화 행 3곳 → `<Money signed>`(양수=좋음), 페이롤 차이 → `<Money signed goodWhenPositive={false}>`(증가=나쁨, 기존 `capDifference <= 0 ? emerald` 규칙과 동일 의미를 명시화). 칩·제안서·이력 연봉 셀에 tabular-nums.
+- `components/roster/TeamPayrollTable.tsx` — `formatMoneyFull` 5곳 → 축약 + tabular, 차이 행 → `<Money signed>`.
+- `views/PlayerDetailView.tsx` — `formatMoneyFull` 7곳 → 축약 + tabular. 현재 계약 AAV를 "잔여 평균"에서 `getContractAav(player)`(계약 전체 평균, 로스터 탭과 동일 정의)로, 이전 계약 AAV도 같은 헬퍼로.
+- `views/multi/season/MultiFreeAgentView.tsx`(연봉 열 center→right+tabular), `newsFeedCards.tsx`(계약 카드 표 2셀 center→right+tabular).
+- `utils/formatMoney.ts` — 회계식용 `formatMoneyDigits` 제거(미사용).
+
+**Before → After 대표**:
+```tsx
+// 부호 삼항 5벌 복붙
+<span className={`font-semibold ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{v >= 0 ? '+' : ''}{formatMoneyFull(v)}</span>
+→ <Money value={v} signed className="font-semibold" />                        // 양수=좋음
+→ <Money value={capDifference} signed goodWhenPositive={false} … />           // 지출 증가=나쁨
+// 협상/방출 지역 함수
+function formatMoney(d) { return Math.abs(d) < 1_000_000 ? formatMoneyFull(d) : formatMoneyAbbrev(d); }  → 삭제, 공용 formatMoney
+```
+- 시각 변화: 트레이드 제안서·푸터·이력, 재정 탭, 선수 상세가 전체 표기 → 축약. 선수 상세 현재 계약 AAV 값이 바뀜(잔여 평균 → 전체 평균).
+- **후속(같은 날, 사용자 지시)**: 협상·방출·FA 3화면은 정확한 숫자가 필요해 **전체 표기로 예외** — `formatMoney(` → `formatMoneyFull(`(협상 14·방출 15·FA 1), `<Money signed>` → `format="full"`(협상 2·방출 3). 협상 채팅 문구의 "연평균 $…"도 전체 표기. 결과적으로 전체 표기 예외는 ① 로스터 급여·AAV 열 ② 협상 ③ 방출 ④ FA 목록 ⑤ 재정 탭(`TeamPayrollTable`, 같은 날 후속 지시 — `formatMoneyFull` 5곳 + `<Money format="full" signed>` 1곳) (후속: 협상·방출 우측 "팀 샐러리캡 현황" 패널의 금액 span 7곳 × 2파일에 `tabular-nums` 추가 — 두 파일이 동일 블록이라 함께 적용. 방출 "연도별 데드캡" 표(기존/추가분/합계, `w-16` 고정폭 3열)는 전체 표기가 칸을 넘쳐 **축약형으로 되돌림** + tabular-nums) ⑥ 트레이드 "새 제안" 탭의 각 팀 샐러리 현황(샐러리 총합 + 캡 여유분 행)과 우측 "트레이드 이후 재정 변동 사항"(실행 전/후 페이롤·차이·캡 여유분 행) — `MultiFrontOfficeView` 6곳. 같은 탭의 제안 내역(카트) 선수 연봉·합계와 수신 오퍼 제안서는 축약 유지.
+- `Money`의 부호는 `+`/`−`(U+2212)이고 0은 부호·색 없음.
+
+**검증**: tsc 에러 0(기존 집합 동일). 멀티 스코프 `formatMoneyFull(` 잔존 0(Money.tsx 내부 제외), 수동 부호 삼항 잔존 0. 실제 화면 미확인.
+
+**롤백**: 커밋 revert. Money.tsx 삭제 시 호출부 12곳 함께.
+
+---
+
+## 2026-10-12 — /simplify 정리(오늘 UI 작업분): 중복 로직 통합·래퍼 제거·잔재 정리
+
+**배경**: 오늘 작업 diff(약 9,700줄)를 재사용/단순화/효율/고도 4각도로 리뷰한 결과 적용. 동작 변경 없음(순수 정리).
+
+**변경 파일 / 내용**:
+- `components/MultiHeader.tsx` — ① `countdown`·`countdownColor`가 각자 계산하던 diff를 `nextGameDiffMs` 1회 계산으로, 문자열은 `fmtRemaining(diff, '경기 시작')` 재사용(인라인 포맷 사본 제거). ② `seriesInfo`/`seasonStatus.winsOf`/`tournamentChampionId`가 각자 schedule 전체를 훑던 "공개창 지난 경기만 센 시리즈 승수"를 `seriesWins` useMemo(seriesId → teamId → 승수) 1회 집계 + `winsFor()`로 통합(15초 버킷당 스캔 3회 → 1회). ③ `seriesRoundLabel` 로컬 함수 → `utils/playoffLogic.getSeriesRoundLabel(series, all, { confPrefix })`.
+- `utils/playoffLogic.ts` — `getSeriesRoundLabel` 신설(MultiHeader·MultiTacticsView 공유, round 0=플레이인/마지막=결승/직전=준결승).
+- `views/multi/season/MultiTacticsView.tsx` — `computeRoundLabelMap`이 공용 함수 사용.
+- `components/common/Table.tsx` — `LINE_CLASS` 4맵(20 리터럴) → `LINE_COLOR` 톤 맵 1개 + `lineClass(dir, tone)`; Provider value `useMemo`로 고정; no-op `mono` prop 삭제(호출부 `mono={false}` 4곳 제거: MultiDraftPoolView·MultiFreeAgentView·RosterGrid×2).
+- `utils/contract.ts`(신규) — `getCurrentSeasonSalary`/`getContractAav` 승격(RosterOverviewGrid에서 이동). `utils/formatMoney.ts` — `formatMoneyDigits` 추가(회계식 셀의 `Math.round().toLocaleString()` 대체).
+- `components/dashboard/MultiGlobalSearch.tsx` — 결과 드롭다운을 입력 패널의 자식으로 옮겨 `left-0` 정렬. `left: calc(100% - EXPANDED_W)` 역산 제거(패널 폭이 바뀌어도 어긋나지 않음). 드롭다운 클릭이 패널 onClick(input focus)으로 버블되지 않게 stopPropagation.
+- 얇은 TeamLogo 래퍼 5개 제거 → `<TeamLogo size="custom" className shadow={false}>` 직접 호출: `DraftHeader.RealTeamLogo`, `TeamSelectModal.TeamLogoImg`, `TournamentBracketView.TeamLogoImg`, `MultiFrontOfficeView.TeamLogoIcon`(10곳), `MultiScheduleView.ScheduleTeamLogo`.
+- 잔재: `MultiScheduleView` 빈 `cellBorder` 상수+템플릿 9곳 제거, `RosterOverviewGrid`/`RosterGrid` 빈 `className=""` 13곳, `OpponentScoutPanel` 중복 `last:border-r-0`, 끝 공백 className 4곳, `TeamLogo` 클래스 조합을 `filter(Boolean).join` 으로.
+
+**건너뜀(의도적)**: TeamLogo `shadow` 기본값 뒤집기(기존 66곳 시각 변경), TeamBadge 래퍼 삭제·`colorSecondary` prop 제거(호출부 다수가 넘김), Table `frame='bare|flush'` prop으로 `!rounded-none …` 오버라이드 13곳 흡수(오버라이드 조합이 3~4종이라 별도 작업), TableCell 의미 variant(B1~B5) 승격, `getTeamLogoUrl`의 올스타/가상팀 맵 통합, RosterView 로고 `self-stretch` 구조 재검토, `eventCountdown`(기존 코드, 형식이 달라 유지), 정렬 비교마다 AAV 재계산(15명 규모라 미미).
+
+**검증**: 스코프 tsc 에러 0(기존 4건 동일).
+
+**롤백**: 커밋 revert.
+
+---
+
+## 2026-10-12 — Table 공용: 세로/가로 구분선 색을 prop + 전역 기본값으로 승격
+
+**배경**: 같은 날 선 색을 600→700→800으로 세 번 바꾸면서 매번 30파일 스크립트 치환이 필요했음(Table.tsx에 색이 7곳 하드코딩). 사용자 지적으로 prop화.
+
+**변경 파일**: `components/common/Table.tsx`만. 호출부 변경 없음(기본값이 현행 slate-800).
+
+**After**:
+```ts
+export type TableLineTone = 'slate-600' | 'slate-700' | 'slate-800' | 'slate-900' | 'none';
+export const TABLE_LINE_DEFAULTS = { vertical: 'slate-800', horizontal: 'slate-800' };   // ← 앱 전역 기본값, 여기만 바꾸면 됨
+<Table dividers?: boolean verticalLine?: TableLineTone horizontalLine?: TableLineTone>
+// 내부: TableLineContext { dividers, v, h } → useTableLines() → vClass(셀 border-r + last:border-r-0) / hClass(th·td·thead border-b) / tClass(tfoot border-t) / frameClass(래퍼 border)
+// LINE_CLASS 맵에 방향별 완전한 클래스명 리터럴을 둬서 Tailwind JIT가 스캔 가능(동적 문자열 금지)
+```
+- 가로선 색은 행 하단(td/th `border-b`), 헤더 하단(thead), 푸터 상단(tfoot), 래퍼 외곽에 공통 적용. 세로선은 `dividers=false`거나 `'none'`이면 안 그림.
+- 이전의 `DividersContext`/`DIVIDER_CLASS`는 `TableLineContext`로 대체.
+
+**한계**: raw `<table>`을 쓰는 표(뉴스피드·홈·PBP·코치/GM 카드·뎁스/간트 보드)와 화면 로컬 상수(`SB`, `groupEndBorder`, `thBase`, `cellBorder`)는 여전히 하드코딩 — Table 이관 시 흡수. 새 색을 추가하려면 `TableLineTone`과 `LINE_CLASS` 네 맵에 함께 넣어야 함.
+
+**검증**: tsc 에러 0(기존 3건 동일). 기본값이 현행과 같아 시각 변화 없음.
+
+**롤백**: 커밋 revert.
+
+---
+
+## 2026-10-12 — 테이블 구분선 색 `slate-700` → `slate-800`으로 한 단계 더 낮춤 (최종)
+
+**배경**: 700도 과하다는 사용자 판단. 같은 스크립트(표 컨텍스트 + Table.tsx + 멀티라인 태그 추적)로 `border(-r|-l|-b|-t)?-slate-700` → `-slate-800`. 대비비 1.72 → 1.22. 투명도 변형은 쓰지 않음(모든 선 불투명 `slate-800`).
+
+**변경 파일**: `components/common/Table.tsx`(`DIVIDER_CLASS` 포함) + 스코프 30파일, 토큰 260건. 표 밖 `slate-700`은 그대로.
+
+**검증**: 스코프 tsc 에러 0(기존 4건 동일), 표 컨텍스트 `slate-700` 잔존 0. 실제 화면 미확인.
+
+**롤백**: 스크립트 역적용(800→700) 또는 커밋 revert. 주의: 표 밖에 원래부터 `border-slate-800`이 많으므로 역적용은 반드시 표 컨텍스트 조건을 유지한 채 돌릴 것.
+
+---
+
+## 2026-10-12 — 테이블 구분선 색 `slate-600` → `slate-700`으로 한 단계 낮춤
+
+**배경**: 같은 날 `slate-600`으로 통일한 뒤 실제 화면에서 격자가 과하다는 사용자 판단. 표 컨텍스트(세로·가로·헤더 하단·푸터 상단·외곽, Table 공용 `DIVIDER_CLASS` 포함) 토큰만 한 단계 내림. 대비비(바디 #0f172a 기준) 2.36 → 1.72.
+
+**변경 파일**: `components/common/Table.tsx` + 스코프 30파일, 토큰 260건 (`border(-r|-l|-b|-t)?-slate-600` → `-slate-700`). 멀티라인 태그는 `=>`의 `>`를 닫힘으로 보지 않도록 추적해 누락 없이 처리. 표 밖(패널·툴팁·헤더 바)의 `slate-600`은 그대로.
+
+**Before → After (Table.tsx)**: `DIVIDER_CLASS 'border-r border-slate-600 last:border-r-0'` → `slate-700`, 래퍼/thead/tfoot/th/td의 `border-*-slate-600` → `slate-700`.
+
+**검증**: 스코프 tsc 에러 0(기존 4건 동일), 표 컨텍스트 `slate-600` 잔존 0. 실제 화면 미확인.
+
+**롤백**: 같은 스크립트를 700→600으로 역적용하거나 커밋 revert.
+
+---
+
+## 2026-10-12 — 트레이드 블록·히스토리 표: 외곽선(좌·우·하단) 제거 + 빈 상태 행 하단선 제거
+
+**배경**: 사용자 스크린샷 — 히스토리 표가 화면 폭에 꽉 차는 레이아웃인데 Table 래퍼의 `border border-slate-600`이 좌·우·하단에 그대로 보임(`!border-t-0`만 꺼둔 상태). 빈 상태 행("성사된 트레이드가 없습니다")도 TableCell 기본 `border-b`가 남아 이중선.
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx`
+
+**Before → After**:
+```tsx
+<Table className="!rounded-none !shadow-none !border-t-0" …>   → <Table className="!rounded-none !shadow-none !border-0" …>   (블록 L1531·히스토리 L2010, 2곳)
+<TableCell colSpan={8} className="text-center text-slate-500 text-sm py-10">  → … py-10 !border-b-0"   (히스토리 빈 상태 행)
+```
+- 다른 화면(로스터·순위·일정)은 이미 `!border-x-0 !border-t-0` 또는 `!border-0`로 외곽선을 끄고 있었음 — 트레이드 2곳만 `!border-t-0`이었던 불일치 해소.
+
+**롤백**: Before 복원.
+
+---
+
+## 2026-10-12 — 테이블 세로 구분선을 Table 공용에서 일괄 적용(`dividers` 컨텍스트) + sticky 열 구분선 복원
+
+**배경**: 직전 항목(색 통일) 뒤 사용자가 스크린샷 9장으로 지적 — 로스터·능력치·선수 기록은 sticky 고정 열(이름·포지션·나이·OVR)만 바디 세로선이 없고, 리더보드·로테이션 보드는 헤더엔 선이 있는데 바디엔 없고, 트레이드 이력은 일부 열만 선이 빠져 두 열이 붙어 보임. 기계 전수조사 결과 원인 3가지: ① 셀마다 `border-r`을 손으로 붙여 열마다 빠짐(th 25중 13 등), ② 로스터 4파일+리더보드의 `getStickyStyle`이 `borderRight: isLast ? undefined : 'none'`으로 sticky 셀 선을 지움, ③ 멀티라인 JSX·클래스 상수(`cellBorder`, `SB`)에 남은 `slate-800/30`을 이전 치환이 못 잡음.
+
+**변경 파일**: `components/common/Table.tsx`, Table 사용 21파일(셀 클래스 정리), 로스터 4 + LeaderboardTable(sticky), `MultiScheduleView`(상수), `DepthRotationBoard`·`RotationGanttChart`(raw 표).
+
+**Before → After**:
+```tsx
+// Table.tsx
+interface TableProps { …; dividers?: boolean }                      // 신규(기본 true)
+const DividersContext = createContext(true);
+const DIVIDER_CLASS = 'border-r border-slate-600 last:border-r-0';
+<Table>: <DividersContext.Provider value={dividers}>{children}</…>
+TableHeaderCell / TableCell: className에 `${useContext(DividersContext) ? DIVIDER_CLASS : ''}` 추가 (sticky 셀 포함)
+
+// 호출부 21파일: TableCell/TableHeaderCell의 `border-r border-slate-*`, `border-r-slate-*`, `border-l border-slate-*` 223토큰 제거(컨텍스트가 대신 그림)
+// 로스터 4파일 + LeaderboardTable getStickyStyle: `borderRight: isLast ? undefined : 'none'` 6줄 삭제
+// MultiScheduleView: const cellBorder = "border-r border-slate-800/30" → ""
+// DepthRotationBoard / RotationGanttChart(raw <table>): SB 'border-r border-slate-800' → slate-600, groupEndBorder slate-700/800 → 600, border-r 없던 th/td 9곳에 추가(마지막 열 제외)
+```
+- 효과: 공용 Table을 쓰는 모든 표(멀티 36곳 + 싱글 DraftView 등)에서 헤더·바디·sticky 열 전부 같은 세로선. 마지막 열은 `last:border-r-0`.
+- 세로선이 없어야 하는 표는 `<Table dividers={false}>`로 끔(현재 호출부 0).
+- raw `<table>`(뉴스피드·홈·PBP 박스스코어·코치/GM 카드)은 원래 세로선이 없는 스타일이라 건드리지 않음.
+
+**검증**: `tsc --noEmit` 스코프 에러 0(기존 CoachStaffTable·TeamLeadersCards·LiveTacticsTab·DraftView 4건은 변경 전과 동일). 실제 화면 확인 미실시.
+
+**롤백 방법**: 이 커밋 revert. Table.tsx만 되돌리면 호출부 셀 클래스가 이미 지워져 세로선이 전부 사라지므로 **반드시 함께** 되돌릴 것.
+
+---
+
+## 2026-10-12 — 테이블 구분선 색 전부 `slate-600`으로 통일(세로·가로·헤더 하단·푸터 상단·외곽)
+
+**배경**: UI 전수 감사 0-3 결정. 세로선 토큰 8종(`slate-800` 125 / `800/30` 72 / `800/50` 18 / `700` 9 …)이 혼재하고 바디 `800/30`(대비 1.05)은 사실상 안 보였음. 비교 아티팩트(https://claude.ai/artifact/1xh3a9t7xcQw24D4y3GFzV)로 slate-800/700/600 조합을 확인한 뒤 사용자가 "모든 선 slate-600"으로 결정.
+
+**범위**: 멀티 세션 스코프(직전 두 항목과 동일) 내 **테이블 컨텍스트 라인만** — `<tr|th|td|table|thead|tbody|tfoot>`, `Table*` 공용 컴포넌트, `thBase/tdBase/BOX_HEADER_CELL/AWARD_RANK_TH` 상수, 홈의 div 리스트 행(`border-b border-slate-800/60`). 카드·패널·입력창 등 테이블 밖 `border-slate-800`은 건드리지 않음.
+
+**변경**: 36파일, 토큰 379건 → `border(-r|-l|-b|-t)?-slate-600`
+```
+border-slate-800 148 · 800/30 68 · 800/60 45 · slate-700 44 · 800/50 40 · 700/50 13 · border-r-slate-800/30 8 · border-l-slate-800 4 · 700/40 3 · 기타 6
+```
+**Table.tsx Before → After**:
+```
+wrapper   border border-slate-800        → border-slate-600
+thead     border-b border-slate-800      → border-slate-600
+tfoot     border-t border-slate-700      → border-slate-600
+th        border-b border-slate-800      → border-slate-600
+td        border-b border-slate-800/50   → border-slate-600
+```
+- 투명도 변형(`/30`, `/50`, `/60`)은 전부 불투명 `slate-600`으로 — 가로선과 세로선 무게가 같아짐.
+- `columnDividers` prop은 아직 추가하지 않음(기존 `border-r` 클래스 자리에서 색만 교체). Table 이관 시 prop으로 승격.
+
+**검증**: `tsc --noEmit` 스코프 내 에러 0(기존 3건 동일). 테이블 컨텍스트 라인에 `slate-800/700` 선 잔존 0. 실제 화면 확인 미실시.
+
+**롤백 방법**: 이 커밋 revert. Table.tsx는 위 Before 블록으로 수동 복원 가능.
+
+---
+
+## 2026-10-12 — 테이블 타이포 위계 적용(T1 헤더 slate-400 · font-mono 전면 제거 · 바디 B1/B2/B3)
+
+**배경**: `docs/plan/ui-typography.md` 위계 승인(사용자 결정: ① 헤더 색 slate-400, ② font-mono 완전 제거, ③ 홈 표 3개도 T1). 범위는 직전 항목(uppercase 제거)과 동일한 멀티 세션 스코프.
+
+**변경 파일**: `components/common/Table.tsx`(기본값) + 스코프 내 72파일(스크립트 치환).
+
+**Before → After (Table.tsx 기본값)**:
+```
+TableHead tr        "text-slate-500 text-xs font-black h-10"   → "text-slate-400 text-sm font-bold h-10"      (T1)
+TableCell default   "font-medium text-slate-300"               → "font-semibold text-slate-200"               (B1)
+TableCell player    "font-bold text-slate-200"                  → "font-semibold text-slate-200"; subText "text-[10px] font-bold" → "text-xs font-medium"
+TableCell stat      "font-mono font-bold text-slate-300 tabular-nums" → "font-semibold text-slate-200 tabular-nums" (B3)
+TableCell attribute "${mono?'font-mono':''} font-black tabular-nums" → "font-semibold tabular-nums"; `mono` prop은 no-op(호환 유지)
+TableCell badge     "text-[9px] font-black"                    → "text-xs font-bold"
+```
+**스크립트 치환 규칙(건수)**:
+- `font-mono` 토큰 삭제: 149건(스코프 전체, 테이블 밖 포함 — 사용자 지시 "완전 제거")
+- 헤더 행/셀(`<tr className=`·`<th`·`thBase`·`BOX_HEADER_CELL`·`AWARD_RANK_TH`): `font-black`→`font-bold` 33, `text-slate-500`→`slate-400` 75, `slate-600`→`slate-400` 22(홈), `slate-300`→`slate-400` 27(피드 어워드), `text-xs`→`text-sm` 21, `text-[9|10px]`→`text-sm` 3, `tracking-tighter` 삭제 4
+- 홈 div 리스트 헤더 span(`text-sm font-bold text-slate-600`) → slate-400: 14
+- 바디(`<td`·`<TableCell` 라인): `font-black`→`font-bold` 20, `text-slate-300`→`slate-200` 71, 이름 셀 `font-semibold text-white`→`text-slate-200` 2, 보조 셀 `font-semibold text-slate-500`→`font-medium text-slate-400` 11
+- 미적용(수동 검토 대상): td 라인 밖에서 정의된 셀 클래스 상수(`tdBase` 등), `text-white` 유지된 강조/이름 셀, raw `<table>` 16파일의 나머지 바디 셀 — ui-consolidation 6장 Table 이관 때 역할 토큰으로 통일
+
+**검증**: `tsc --noEmit` 스코프 내 에러 0(기존 3건 동일). 잔존 `font-mono` 0, `<tr|th|td className="…font-black…">` 0. 실제 화면 확인 미실시.
+
+**롤백 방법**: 이 커밋 revert. Table.tsx는 위 Before 블록으로 수동 복원 가능.
+
+---
+
+## 2026-10-12 — 멀티 세션 범위 `uppercase` / `tracking-widest` / `tracking-wider` / `normal-case` 클래스 전면 제거
+
+**배경**: UI 전수 감사 0-2(테이블 헤더 타이포 표준) 결정의 1단계. 사용자 지시 "모든 uppercase, tracking-widest, wider 제거". 한글 UI에서 대문자/넓은 자간은 영문 토큰에만 효과가 있고 버튼에선 이미 제거 방침(feedback_button_typography)이 있었음.
+
+**범위**: `views/multi/**`, `pages/MultiSeasonPage.tsx`, `views/RosterView.tsx`, `views/PlayerDetailView.tsx`, `views/LeaderboardView.tsx`, `components/{leaderboard,common,roster,multi,dashboard,game,draft}/**`, `components/MultiHeader.tsx`, `components/MultiSidebar.tsx`. `MultiGamePbpView.legacy.tsx` 제외. 싱글 전용 views/pages(예: DashboardView, HelpView)는 미적용(범위 밖 uppercase 약 470건 잔존).
+
+**변경**: 90개 파일에서 클래스 토큰만 삭제 — `uppercase` 378 · `tracking-widest` 109 · `tracking-wider` 89 · `normal-case` 4. `tracking-wide`(14) · `tracking-tight(er)`(26)는 지시 범위 밖이라 유지. 스크립트: 세션 scratchpad `strip_case_tracking.py`(토큰 경계 정규식 + 공백 정리). 로직/레이아웃 변경 없음.
+
+**대표 Before → After**:
+```
+Button.tsx    baseStyles "… font-black uppercase tracking-widest … rounded-2xl" → "… font-black … rounded-2xl"
+TabBar.tsx    "font-black tracking-tight uppercase text-sm" → "font-black tracking-tight text-sm"
+Table.tsx     thead tr "text-slate-500 text-xs font-black uppercase tracking-widest h-10" → "text-slate-500 text-xs font-black h-10"
+Badge.tsx     "font-black uppercase tracking-wider rounded-full" → "font-black rounded-full"
+```
+
+**검증**: `tsc --noEmit` — 범위 내 파일 에러 0(기존 타 파일 에러 집합은 변경 전과 동일). 클래스 문자열 내 이중 공백·빈 className 잔존 0. 실제 화면 확인 미실시.
+
+**롤백 방법**: 이 커밋 revert. 토큰만 지운 변경이라 충돌 거의 없음.
+
+---
+
+## 2026-10-12 — 팀/리그 로고 소스 단일화: `/logos/real` + 3단 폴백 폐기 → `public/logos/teams|league` + TeamLogo 공용
+
+**배경**: UI 전수 감사(docs/plan/ui-consolidation.md) 0-1 결정. 사용자 지시 — ① 팀 배지/로고를 명시적 선택 옵션으로 구조화, ② "real" 구분을 코드에서 제거하고 public/logos 안의 로고만 신뢰, ③ 리그/올스타 로고는 `logos/league/`에서. 사용자가 파일을 먼저 이동함(팀 30개 → `public/logos/teams/`, `PBL.svg` → `public/logos/league/League.svg`, 올스타 세트 → `league/`). 이전엔 싱글 `/logos/{id}.svg`(소문자) + 멀티 `/logos/real/{ID}.svg` 이원화 + "신규→구버전→placehold.co" 3단 onError 체인이 18개 파일에 복붙돼 있었음.
+
+**변경 파일** (client 전용, 서버 미러 없음):
+- `utils/constants.ts` — `getRealTeamLogoUrl` **삭제**, `getTeamLogoUrl` 경로 변경, `getLeagueLogoUrl`/`LeagueLogoName`/`TEAM_LOGO_FALLBACK_URL` 신설
+- `components/common/TeamLogo.tsx` — 단일 폴백, `shadow`/`draggable` prop, `TEAM_LOGO_SIZE_CLASS` export
+- `components/common/TeamMark.tsx` — `variant="logo"|"badge"` 명시 선택으로 재작성(`badge` prop 의미 변경)
+- `components/common/TeamBadge.tsx` — TeamMark variant="badge" 얇은 래퍼로 교체(호출부 호환)
+- 호출부 29파일: MultiHeader, MultiGlobalSearch, TeamSelectModal, TeamSettingsPanel, RosterView, PlayerDetailView, DraftBoard, DraftHeader, PersonalDraftCard, PlayerCardCollectionPage, PlayerCardEditorPage, cardTeams(주석), game 6개(AdvancedBoxScoreTable/BoxScoreTable/DefenseBoxScoreTable/RotationChart/GameShotChartTab/GameOnOffTab), MultiGamePbpView, GameDateStrip, MultiScheduleView, MultiStandingsView, TournamentBracketView, MultiFrontOfficeView, MultiFullCourtChart, newsFeedCards, MultiAllStarView, LeagueLobbyPanel, MultiSeasonPage, PlayerAwardBadges
+
+**Before**:
+```ts
+export const getTeamLogoUrl = (teamId) => { ...editor override...; return `/logos/${id}.svg`; };          // 싱글(소문자)
+const ALLSTAR_LOGO_FILE = { 'EAST-ALLSTAR': 'AS/East', ... };
+export const getRealTeamLogoUrl = (teamId) => { allstar → `/logos/real/AS/..`; return `/logos/real/${override ?? id.toUpperCase()}.svg`; };
+// TeamLogo: src=getTeamLogoUrl, onError → placehold.co
+// TeamMark: badge prop 있으면 getRealTeamLogoUrl img + 3단 onError, 없으면 TeamLogo
+// TeamBadge: colorPrimary 있으면 색 배지, 없으면 TeamLogo
+// 호출부: <img src={getRealTeamLogoUrl(x)} onError={e => { if (dataset.fallback!=='old') {…getTeamLogoUrl} else {placehold.co} }} /> ×20+, 하드코딩 "/logos/real/AS/*.svg" 30곳, "/logos/real/PBL.svg" 3곳
+```
+**After**:
+```ts
+export type LeagueLogoName = 'League'|'AllStar'|'East'|'West'|'RisingStar'|'RisingA'|'RisingB'|'ThreeContest'|'DunkContest';
+export const getLeagueLogoUrl = (name) => `/logos/league/${name}.svg`;
+export const TEAM_LOGO_FALLBACK_URL = getLeagueLogoUrl('League');
+const ALLSTAR_TEAM_LOGO = { 'EAST-ALLSTAR': 'East', 'WEST-ALLSTAR': 'West', 'RISINGSTARS-A': 'RisingA', 'RISINGSTARS-B': 'RisingB' };
+const TEAM_LOGO_FILE_OVERRIDE = { 'lvp': 'LV' };
+export const getTeamLogoUrl = (teamId) => { allstar → getLeagueLogoUrl; editor override 유지; return `/logos/teams/${override ?? id.toUpperCase()}.svg`; };
+// TeamLogo: onError → TEAM_LOGO_FALLBACK_URL 1회(dataset.fallback='done' 가드), shadow prop(기본 true)
+// TeamMark: variant 'logo'(기본)|'badge'; badge={{abbr,colorPrimary,colorText}}는 badge variant 전용, colorPrimary 없으면 로고
+// TeamBadge: <TeamMark variant="badge" …/> 래퍼
+// 호출부: <TeamLogo teamId={x} teamName={…} size="custom" className="w-6 h-6" shadow={false}/>, getLeagueLogoUrl('AllStar') 등
+```
+- `colorPrimary ? <img real/> : <TeamLogo/>` 분기(RosterView 2, PlayerDetailView 1, newsFeedCards 7)는 소스가 하나가 되어 전부 TeamLogo 한 줄로.
+- game 컴포넌트 6개의 `<TeamMark badge={badge}/>`는 `badge=` 제거(기본 variant='logo'로 동일 결과). props 인터페이스는 유지.
+- 로컬 래퍼 `ScheduleTeamLogo`/`TeamLogoImg`(브래킷)/`TeamLogoIcon`/`RealTeamLogo`/`TeamLogoWatermark`는 이름 유지, 본문만 TeamLogo로. `LeagueLobbyPanel`의 `TeamLogoImg`는 제거.
+
+**검증**: `tsc --noEmit` — 이번 변경 파일 에러 0(기존 타 파일 에러는 별개). 리포 전체 `getRealTeamLogoUrl`/`/logos/real`/`placehold.co`/`dataset.fallback` 잔존 0(주석·TeamLogo 가드 제외). 실제 화면 확인 미실시.
+
+**알려진 이슈(사용자 확인 필요)**:
+1. `public/logos/main.svg`(앱 로고)가 삭제됨 — `views/home/StartMenu.tsx:56`, `components/multi/LeagueLoadingScreen.tsx:22`가 `/logos/main.svg`를 참조해 깨짐. 어디로 옮겼는지 또는 League.svg로 대체할지 결정 필요.
+2. `LV.svg`, `SEA.svg`(토너먼트 가상 확장팀)가 `teams/`에 없음(`BACKUP/`에만). 해당 팀은 리그 로고 폴백으로 표시됨.
+3. `MultiSeasonPage` 워터마크: 예전엔 로드 실패 시 숨김, 지금은 리그 로고 폴백이 표시됨.
+4. `PlayerDetailView` 싱글 분기 헤더 로고가 `TeamBadge size="lg"` → `TeamLogo w-24`로 커짐.
+
+**롤백 방법**: git revert(한 커밋으로 묶을 것). 파일 이동은 사용자 작업이라 코드만 되돌리면 `/logos/real` 경로가 404 — 반드시 파일도 함께 복원.
+
+---
+
+## 2026-10-12 — 로스터 탭 테이블: 급여·AAV 우측 정렬($ 좌측 고정) + AAV 정의를 "계약 전체 평균"으로
+
+**배경**: 사용자 요청. AAV = 현재 계약 총액 / 전체 연수. 기존 구현은 잔여 연차 평균이었음.
+
+**변경 파일**: `components/roster/RosterOverviewGrid.tsx`
+
+**Before**:
+```tsx
+function getRemainingAav(p) {              // 잔여 연차 평균
+  if (!p.contract || p.contractYears <= 0) return 0;
+  const remainingTotal = p.contract.years.slice(p.contract.currentYear).reduce((s, v) => s + v, 0);
+  return remainingTotal / p.contractYears;
+}
+급여/AAV 셀: align="center", formatMoneyFull(...) → "$46,000,000"
+```
+**After**:
+```tsx
+function getContractAav(p) {               // 계약 전체 평균
+  if (!p.contract || p.contract.years.length === 0) return 0;
+  return p.contract.years.reduce((sum, v) => sum + v, 0) / p.contract.years.length;
+}
+const MoneyCell = ({ value }) => (          // '$' 좌측 고정, 숫자 우측
+  <span className="flex items-baseline justify-between w-full"><span className="text-slate-400">$</span><span>{Math.round(value).toLocaleString()}</span></span>
+);
+급여/AAV 헤더 align="right", 셀 align="right" + <MoneyCell/>. 정렬키 'aav'도 getContractAav.
+formatMoneyFull import는 미사용이 되어 제거.
+```
+- 가능 근거: `types/player.ts` `PlayerContract.years: number[]`는 서명 시점부터의 연차별 연봉 전부이고 `currentYear`가 현재 인덱스 → 전체 합/길이로 계약 AAV 산출 가능.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백**: Before 블록 복원(getRemainingAav + center 정렬 + formatMoneyFull).
+
+---
+
+## 2026-10-12 — 로스터 탭 테이블: "급여" 컬럼 신설(AAV 좌측), 급여·AAV 전체 숫자 + tabular-nums
+
+**배경**: 사용자 요청. **변경 파일**: `components/roster/RosterOverviewGrid.tsx`
+
+**After** (신규/변경):
+```tsx
+import { formatMoney, formatMoneyFull } from '../../utils/formatMoney';          // formatMoneyFull 추가
+WIDTHS: ... REMAINING: 80, PAY: 130, AAV: 130 (AAV 110 → 130)
+function getCurrentSeasonSalary(p) { return p.contract?.years[p.contract.currentYear] ?? 0; }   // 신규
+getSortValue: if (key === 'pay') return getCurrentSeasonSalary(p);                 // 정렬 키 추가
+colgroup: REMAINING 뒤 <col PAY>
+헤더: 잔여계약 | 급여(sortable 'pay') | AAV
+바디: 급여 셀 formatMoneyFull(getCurrentSeasonSalary(p)) + tabular-nums
+      AAV 셀 formatMoney → formatMoneyFull + tabular-nums
+tfoot colSpan 11/10 → 12/11
+```
+- 컬럼 순서: 이름·포지션·나이·OVR·레이팅·키·몸무게·샐러리·잔여계약·**급여**·AAV(·방출). 고정폭 합계 1,020 → 1,170px.
+- 주의: 멀티에서 `p.salary`(샐러리 열)는 `buildLeagueTeams.ts`에서 `contract.years[currentYear]`로 파생되므로 "샐러리"와 "급여"는 같은 값(표기만 $46.0M vs $46,000,000). 사용자에게 보고.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백**: 급여 col/헤더/셀/정렬키/헬퍼/WIDTHS.PAY 제거, AAV 셀 `formatMoney` + 폭 110 복원, colSpan 11/10.
+
+---
+
+## 2026-10-12 — 로스터 탭 테이블: 아키타입(2열)·태그 컬럼 숨김
+
+**배경**: 사용자 요청. **변경 파일**: `components/roster/RosterOverviewGrid.tsx`
+
+**Before**: 컬럼 14개(방출 포함) — 이름·포지션·나이·OVR·레이팅·키·몸무게·샐러리·잔여계약·AAV·아키타입(primary/secondary, colSpan 2)·태그·방출. 고정폭 합계 1,540px.
+**After**: 11개 — 아키타입 2열(150+150)·태그(220) 제거, 합계 1,020px.
+- 제거: `<col>` 3개, `TableHeaderCell` 2개, 바디 `TableCell` 3개, 행 단위 `archetypeState/primaryInfo/secondaryInfo/tagInfos` 계산.
+- AAV 셀 우측 경계 `border-slate-800` → `border-slate-800/30`(아키타입 그룹 구분선 역할이 사라져 다른 데이터 열과 통일).
+- tfoot `colSpan` 14/13 → 11/10.
+- `WIDTHS.ARCHETYPE/SECONDARY/TAGS` 상수와 archetypeEvaluator import·`getPlayerArchetypeState` 헬퍼: 파일 내 다른 사용처 없으면 함께 제거(아래 검증 참고).
+
+**롤백**: 위 제거 항목을 AAV 열 뒤에 원래 순서로 복원 + colSpan 원복.
+
+---
+
+## 2026-10-12 — 로스터 화면: ↑/↓ 방향키로 이전/다음 팀 전환
+
+**배경**: 사용자 요청. 같은 날 추가한 배너 Chevron 버튼(`stepTeam`)의 키보드 버전.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**After** (신규, `teamMenuRef` 선언 직후):
+```tsx
+const stepTeamRef = useRef(stepTeam); stepTeamRef.current = stepTeam;   // 렌더마다 바뀌는 stepTeam의 최신본
+useEffect(() => {
+  const handler = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const el = e.target as HTMLElement | null; const tag = el?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+    if (teamMenuOpen) return;
+    e.preventDefault();
+    stepTeamRef.current(e.key === 'ArrowUp' ? -1 : 1);
+  };
+  document.addEventListener('keydown', handler);
+  return () => document.removeEventListener('keydown', handler);
+}, [teamMenuOpen]);
+```
+- document 레벨 리스너 — RosterView가 마운트된 동안(로스터 화면 전체 탭)만 활성, 언마운트 시 해제.
+- 트레이드오프: 방향키의 기본 동작(페이지/테이블 키보드 스크롤)을 이 화면에서는 팀 전환이 가로챔.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 동작 확인 미실시.
+
+**롤백**: `stepTeamRef` 2줄 + useEffect 블록 삭제.
+
+---
+
+## 2026-10-12 — 로스터 배너 배경: slate-950 → slate-950 + 팀 컬러 45% 틴트
+
+**배경**: 사용자 요청. 같은 날 앞서 팀 테마 배경을 제거하고 slate-950으로 바꿨는데, 완전 무채색 대신 팀 색을 45%만 얹기로.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before**:
+```tsx
+<div className="flex-shrink-0 px-9 py-8 border-b border-white/10 flex items-center gap-4 bg-slate-950">
+```
+**After**:
+```tsx
+<div className="relative isolate flex-shrink-0 px-9 py-8 border-b border-white/10 flex items-center gap-4 bg-slate-950">
+  <div aria-hidden className="absolute inset-0 -z-10 pointer-events-none"
+       style={{ backgroundColor: selectedTeam.colorPrimary ?? theme.bg, opacity: 0.45 }} />
+```
+- 색 소스: 멀티 `selectedTeam.colorPrimary`, 싱글은 `theme.bg`(getTeamTheme) 폴백.
+- `isolate`가 핵심 — 컨테이너를 스태킹 컨텍스트로 만들어 `-z-10` 오버레이가 컨테이너 배경(slate-950) 위·콘텐츠 아래에 깔림. 텍스트는 전부 text-white라 45% 틴트에서도 대비 유지.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백**: 오버레이 div 삭제 + 컨테이너에서 `relative isolate` 제거.
+
+---
+
+## 2026-10-12 — 로스터 배너: 로고 좌측 위/아래 Chevron으로 이전/다음 팀 이동
+
+**배경**: 사용자 요청. **변경 파일**: `views/RosterView.tsx`
+
+**After** (신규):
+```tsx
+const stepTeam = (delta: 1 | -1) => {            // handleTeamChange 선언 직전
+  const idx = allTeams.findIndex(t => t.id === selectedTeamId);               // selectedTeamId(L93, 먼저 선언)
+  const next = allTeams[(idx + delta + allTeams.length) % allTeams.length];   // 양 끝 순환
+  if (next && next.id !== selectedTeamId) handleTeamChange(next.id);
+};
+// 배너: 로고 래퍼 바로 앞에
+<div className="flex flex-col items-center justify-center gap-1 shrink-0">
+  <button onClick={() => stepTeam(-1)} aria-label="이전 팀" className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10"><ChevronUp size={18}/></button>
+  <button onClick={() => stepTeam(1)}  aria-label="다음 팀"  ...><ChevronDown size={18}/></button>
+</div>
+```
+- 순서 = 드롭다운과 동일한 `allTeams`. 팀 변경은 기존 `handleTeamChange` → `?rteam=` 쿼리 갱신(탭 유지).
+- `selectedTeam`(useMemo)은 L139로 stepTeam보다 뒤에 선언 — 클로저라 런타임 TDZ는 없지만 선언 순서 규칙(CLAUDE.md 규칙 2)에 맞춰 L93의 `selectedTeamId`를 사용.
+
+**롤백**: 버튼 컬럼 div와 `stepTeam` 함수 삭제.
+
+---
+
+## 2026-10-12 — 로스터 배너 정보 섹션: 당일 타이포/구조 수정 전부 원형 복원
+
+**배경**: 사용자 요청("아래 정보 영역은 수정 작업 하기 전 처음으로"). 아래 6개 항목(행간 4→8→12, B안 타이포, 테이블화, 2·3행 재배치, text-base 통일, 한 줄 병합, 문단화)을 전부 되돌림. 이 항목들의 dev-log 기록은 이력으로 남겨 둠.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**복원된 상태** (= 당일 작업 전 원형. 단, 별도 요청이던 두 가지는 유지):
+```tsx
+<div className="flex flex-col gap-1 min-w-0 ml-2">                 // gap-1 원형, ml-2(로고 간격 24px 요청)는 유지
+  팀명:   text-lg font-black uppercase tracking-wide text-white     // text-white(팀 테마 제거 요청)는 유지
+  Chevron: size={16}
+  2행:   flex gap-3, [W-L, Win%, GB].map → text-sm font-bold text-white
+  3행:   컨퍼런스 순위 text-sm font-bold text-white
+  4행:   flex gap-4, Pts/g·Opp span ×2 → text-xs font-semibold opacity-80 text-white
+  5행:   myAdvanced && flex gap-4, Off/Def/Pace span ×3 → 동일
+</div>
+```
+- 정보 섹션 높이 ≈ 28+20+20+16+16+4×4 = 116px → 로고(self-stretch)도 116px.
+- 로고 self-stretch 래퍼, 배너 패딩(px-9 py-8), bg-slate-950은 정보 섹션 밖이라 그대로.
+
+**검증**: tsc 해당 파일 에러 0건.
+
+**롤백(= 다시 수정본으로)**: 위 6개 항목의 After 블록을 순서대로 재적용.
+
+---
+
+## 2026-10-12 — 로스터 배너: 팀명 아래 3줄 줄 간격 제거(문단처럼)
+
+**배경**: 사용자 요청. **변경 파일**: `views/RosterView.tsx`
+
+**Before**: 정보 섹션 `flex flex-col gap-2.5` 직계 자식 = 팀명 / 전적 줄 / 지표 `<table>`(2행, 2행 셀에 `pt-2.5`) → 모든 줄 사이 10px.
+**After**: 전적 줄 + 테이블을 `<div className="flex flex-col">` 래퍼로 묶음(내부 gap 없음), 테이블 2행 셀의 `pt-2.5` 6곳 제거. 섹션 `gap-2.5`는 팀명↔블록 사이 1곳에만 적용.
+- 블록 안 3줄은 text-base 줄높이 24px로만 쌓임. 정보 섹션 높이 138 → 118px(36 + 10 + 24×3), 로고(self-stretch)도 118px.
+
+**롤백**: 래퍼 div 제거 + 2행 셀 6곳에 `pt-2.5` 복원.
+
+---
+
+## 2026-10-12 — 로스터 배너: 2·3행을 한 줄로 병합(전적 · 컨퍼런스 순위 · Win% · GB)
+
+**배경**: 사용자 요청(컨퍼런스 순위 우측에 Win%·GB 이어붙임). **변경 파일**: `views/RosterView.tsx`
+
+**Before**:
+```
+2행: {W}W-{L}L  {conf} 컨퍼런스 {rank}위
+3행: {pct} Win%  GB {gb}
+```
+**After**:
+```
+2행: {W}W-{L}L  {conf} 컨퍼런스 {rank}위  {pct} Win%  GB {gb}     (한 flex 행, gap-4, text-base font-bold)
+```
+- 정보 섹션 4줄로 줄어 높이 172 → 138px(36 + 24 + 24+10+24 + 10×3). 로고(self-stretch)도 138px로 따라감.
+
+**롤백**: 3·4번째 span을 별도 `<div className="flex items-center gap-4">`로 분리.
+
+---
+
+## 2026-10-12 — 로스터 배너: 2·3행 재배치(전적+순위 / 승률+GB), 두 줄 동일 크기
+
+**배경**: 사용자 요청. **변경 파일**: `views/RosterView.tsx`
+
+**Before**:
+```
+2행: {W}W-{L}L  {pct} Win%  GB {gb}        (text-lg font-bold, 배열 map)
+3행: {conf} 컨퍼런스 {rank}위               (text-base font-semibold)
+```
+**After**:
+```
+2행: {W}W-{L}L  {conf} 컨퍼런스 {rank}위     (text-lg font-bold)
+3행: {pct} Win%  GB {gb}                   (text-lg font-bold)
+```
+- 항목 간격 `gap-4` 유지, 숫자 항목에 `tabular-nums` 유지, 컨퍼런스 순위는 16/600 → 18/700.
+- 정보 섹션 높이 168 → 172px(3행 24 → 28).
+- 후속(같은 날, 사용자 요청): 팀명 아래 텍스트 크기 전부 `text-base`(16px)로 통일 — 2·3행 span 4곳 `text-lg` → `text-base`, 지표 `<table>` `text-sm` → `text-base`. 줄 간격은 섹션 `gap-2.5`(10px)와 테이블 2행 `pt-2.5`(10px)로 이미 동일. 정보 섹션 높이: 36 + 24×2 + (24+10+24) + 10×3 = 172px.
+
+**롤백**: Before 구조로 복원(배열 map 3항목 + 별도 span).
+
+---
+
+## 2026-10-12 — 로스터 배너: 팀 지표 2줄을 `<table>`로 구조화, 14px 흰색
+
+**배경**: 사용자 요청. "Pts/g : 109.5 (리그 6위)" 식 텍스트 나열(flex span)을 라벨 열/값 열이 세로 정렬되는 테이블로. 동시에 보조 수치 색을 70% 투명 → 완전 흰색, 크기 14px 확정.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before** (4행·5행 각각 `<div className="flex items-center gap-5">` 안에 `<span className="text-sm font-medium whitespace-nowrap opacity-70 text-white tabular-nums">라벨 : 값 (리그 N위)</span>` ×2 / ×3):
+```tsx
+<div className="flex items-center gap-5">
+  <span className="text-sm font-medium ... opacity-70 text-white tabular-nums">Pts/g : {ppg} (리그 {rank}위)</span>
+  <span ...>Opp Pts/g : ...</span>
+</div>
+{myAdvanced && <div className="flex items-center gap-5"><span>Off Rtg : ...</span><span>Def Rtg : ...</span><span>Pace : ...</span></div>}
+```
+**After**:
+```tsx
+<table className="border-separate border-spacing-0 text-sm text-white whitespace-nowrap"><tbody>
+  <tr><th scope="row" className="text-left font-medium pr-2">Pts/g</th><td className="font-semibold tabular-nums pr-5">{ppg} <span className="font-medium">(리그 {rank}위)</span></td>
+      <th ...>Opp Pts/g</th><td ...>...</td>{myAdvanced && <><th/><td/></>}</tr>
+  {myAdvanced && <tr>(pt-2.5) Off Rtg | Def Rtg | Pace</tr>}
+</tbody></table>
+```
+- 1행(Pts/g, Opp)과 2행(Off, Def, Pace)이 같은 열(th/td 쌍)을 공유 → 라벨·값 세로 정렬. 2행 상단 `pt-2.5`(10px) = 섹션 줄간격과 동일.
+- 싱글(myAdvanced 없음)은 1행만 렌더, 빈 th/td도 안 붙임.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백**: Before 블록 복원.
+
+---
+
+## 2026-10-12 — 로스터 배너: 정보 섹션 타이포 위계 확대(B안)
+
+**배경**: 패딩 36/32·로고 ~148px 대비 글자(18/14/14/12/12px)가 작고 단계 차이도 2px씩이라 위계가 안 읽힘. 사용자에게 A/B/C안 제안 후 B안 적용.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before → After** (배너 정보 섹션):
+| 요소 | Before | After |
+|---|---|---|
+| 줄 간격 | `gap-3` (12) | `gap-2.5` (10) |
+| 팀명 | `text-lg font-black` (18/900) | `text-3xl font-black` (30/900) |
+| 드롭다운 Chevron | `size={16}` | `size={20}` |
+| 전적 줄 컨테이너 | `gap-3` | `gap-4` |
+| 전적 항목 (W-L/Win%/GB) | `text-sm font-bold` | `text-lg font-bold tabular-nums` (18/700) |
+| 컨퍼런스 순위 | `text-sm font-bold` | `text-base font-semibold` (16/600) |
+| 보조 줄 컨테이너 ×2 | `gap-4` | `gap-5` |
+| 보조 수치 ×5 (Pts/g, Opp, Off, Def, Pace) | `text-xs font-semibold opacity-80` | `text-sm font-medium opacity-70 tabular-nums` (14/500/70%) |
+
+- 정보 섹션 높이 148 → 168px(36+28+24+20+20+10×4), 로고(self-stretch)도 168로 따라감. 배너 232px.
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백**: 표의 Before 열로 되돌리면 됨.
+
+---
+
+## 2026-10-12 — 로스터 배너: 로고 고정 96px → 정보 섹션 높이에 맞춰 자동
+
+**배경**: 사용자 요청. 패딩/행간을 키운 뒤 96px 로고가 정보 섹션(약 150px)보다 작아 보여, 로고가 정보 섹션 높이를 따라가도록.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before**:
+```tsx
+<img className="w-24 h-24 object-contain drop-shadow-md shrink-0" .../>            // 멀티
+<TeamLogo size="xl" className="shrink-0" />                                        // 싱글(64px)
+```
+**After**:
+```tsx
+<div className="relative self-stretch aspect-square shrink-0">
+  <img className="absolute inset-0 w-full h-full object-contain drop-shadow-md" .../>   // 멀티
+  <TeamLogo size="custom" className="absolute inset-0 w-full h-full" />                  // 싱글
+</div>
+```
+- 배너 컨테이너는 `items-center` 유지(정보 섹션·GM 닉네임 정렬 불변), 로고 래퍼만 `self-stretch`.
+- 높이 = 배너 콘텐츠 높이(가장 큰 자식 = 정보 섹션) → 폭은 `aspect-square`로 동일.
+- 1차 시도(img를 `w-full h-full` 일반 흐름으로 둠)는 실제 화면에서 로고가 정보 섹션보다 훨씬 크게 나옴 — img 원본 크기가 래퍼 콘텐츠 높이→배너 높이를 키우고 그걸 래퍼가 다시 따라가는 순환. img를 `absolute inset-0`으로 띄워 래퍼 콘텐츠 높이를 0으로 만들어 해결.
+
+**검증**: tsc 해당 파일 에러 0건. 2차 수정 후 실제 화면 확인 미실시.
+
+**롤백**: 래퍼 div 제거 + Before 블록 복원.
+
+---
+
+## 2026-10-12 — 로스터 배너: 정보 행간 4 → 8px
+
+**배경**: 사용자 요청. **변경 파일**: `views/RosterView.tsx`
+
+**Before**: 정보 섹션 `flex flex-col gap-1 min-w-0 ml-2` (행간 4px)
+**After**: `flex flex-col gap-3 min-w-0 ml-2` (행간 12px — gap-2(8px) 거쳐 같은 날 gap-3으로 확정)
+
+**롤백**: `gap-3` → `gap-1`.
+
+---
+
+## 2026-10-12 — 로스터 배너: 패딩 24/12px → 상하좌우 36px
+
+**배경**: 사용자 요청. **변경 파일**: `views/RosterView.tsx`
+
+**Before**: 배너 컨테이너 `px-6 py-3` (좌우 24 / 상하 12)
+**After**: `px-9 py-8` (좌우 36 / 상하 32 — `p-9` 거쳐 같은 날 상하만 한 단계 낮춤)
+
+**롤백**: `px-9 py-8` → `px-6 py-3`.
+
+---
+
+## 2026-10-12 — 로스터 배너: 팀 테마 배경/텍스트 색 제거 → slate-950 + 흰 텍스트
+
+**배경**: 사용자 요청. 배너(로고 + 팀명 드롭다운 + 전적 5줄 + GM)만 대상, 바로 아래 `RosterTabs` 탭 바는 여전히 `theme`(팀 컬러) 사용.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before**:
+```tsx
+<div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center gap-4" style={{ backgroundColor: theme.bg }}>
+... 배너 내부 텍스트/Chevron 11곳: className="..." style={{ color: theme.text }}
+```
+**After**:
+```tsx
+<div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center gap-4 bg-slate-950">
+... 11곳: className="... text-white"  (style 제거)
+```
+- `theme` 변수 자체(L146 `getTeamTheme`)는 탭 바용으로 유지.
+
+**검증**: tsc 해당 파일 에러 0건. **롤백**: 컨테이너 `bg-slate-950` → `style={{ backgroundColor: theme.bg }}`, 11곳 `text-white` → `style={{ color: theme.text }}`.
+
+---
+
+## 2026-10-12 — 로스터 배너: 로고↔정보 섹션 간격 16 → 24px
+
+**배경**: 사용자 요청. 컨테이너 `gap-4`(16px)는 GM 닉네임 span 등 다른 flex 자식에도 적용되므로 그대로 두고, 로고 바로 다음 정보 섹션에만 여백 추가.
+
+**변경 파일**: `views/RosterView.tsx`
+
+**Before**: `<div className="flex flex-col gap-1 min-w-0">` (정보 섹션, 로고와 간격 = 컨테이너 gap 16px)
+**After**: `<div className="flex flex-col gap-1 min-w-0 ml-2">` (16 + 8 = 24px)
+
+**검증**: 클래스 1개 추가. **롤백**: `ml-2` 제거.
+
+---
+
+## 2026-10-12 — 로스터 팀 드롭다운: 색상 배지 → 로고 이미지, MY 칩 → 노란 틴트
+
+**배경**: 로스터 화면 팀 이름 드롭다운 항목이 `TeamBadge`(약어 색상 배지)였고 내 팀은 우측 "MY" 칩으로 표시. 다른 화면과 통일된 실제 로고로 바꾸고, 내 팀 구분을 칩 대신 행 배경 틴트로(사용자 요청).
+
+**변경 파일**:
+- `views/RosterView.tsx` (client 전용, 싱글/멀티 공용 뷰)
+
+**Before**:
+```tsx
+className={`... ${t.id === selectedTeam.id ? 'bg-white/15 text-white font-semibold' : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'}`}
+<TeamBadge teamId={t.id} abbr={t.abbr} colorPrimary={t.colorPrimary} colorSecondary={t.colorSecondary} size="sm" />
+<span className="truncate">{t.city} {t.name}</span>
+{t.id === myTeamId && <span className="ml-auto text-[10px] font-bold text-indigo-400 shrink-0">MY</span>}
+```
+
+**After**:
+```tsx
+const rowClass = isMine
+  ? `bg-amber-400/10 hover:bg-amber-400/20 ${isSelected ? 'text-white font-semibold' : 'font-medium text-zinc-300 hover:text-white'}`
+  : isSelected ? 'bg-white/15 text-white font-semibold' : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white';
+{t.colorPrimary
+  ? <img src={getRealTeamLogoUrl(t.id)} className="w-6 h-6 object-contain shrink-0" onError={real→old→placehold 폴백} />
+  : <TeamLogo teamId={t.id} teamName={t.name} size="sm" className="shrink-0" />}
+// MY 칩 제거, TeamBadge import 제거
+```
+- 내 팀 틴트가 선택 상태보다 우선(두 상태 겹쳐도 노란색 유지).
+
+**검증**: tsc 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백 방법**: Before 블록 복원 + `import { TeamBadge } from '../components/common/TeamBadge';` 재추가.
+
+---
+
+## 2026-10-12 — 멀티 헤더 검색창: 고정 340px → 아이콘(32px) 접힘 + 포커스 시 200px 펼침
+
+**배경**: 40px 한 줄 헤더에 팀블록·날짜·시즌·상태칸·검색(340)·탭4개가 다 들어가 합계 ≈1,450px. 1440 뷰포트(가용 1,400)에서도 넘쳐 `truncate`가 걸린 상태 칸(다음 경기·카운트다운)이 먼저 잘림. 구조 변경(두 줄 헤더/상태칸 스트립 이동) 전에 가장 싼 조치로 검색창 폭부터 회수.
+
+**변경 파일**:
+- `components/dashboard/MultiGlobalSearch.tsx` (client 전용)
+
+**Before**:
+```tsx
+<div ref={containerRef} className="relative w-[340px]">
+  <div className={`flex items-center gap-2 px-4 h-7 transition-all duration-200 cursor-text border ${...}`} ...>
+    <Search/> <input .../> {query && <X/>}
+  </div>
+  {showDropdown && <div className="absolute left-0 top-full mt-1 w-full ...">
+// Escape 핸들러: setIsOpen(false); setQuery('');
+```
+
+**After**:
+```tsx
+const isExpanded = isFocused || query.length > 0;
+<div ref={containerRef} className="relative w-8 h-7 shrink-0">          // 접힌 footprint 고정
+  <div className={`absolute inset-y-0 right-0 flex items-center gap-2 px-2 cursor-text border
+       transition-[width,background-color,border-color] duration-200 ${isExpanded ? 'w-[200px]' : 'w-8'} ...`}
+       title={isExpanded ? undefined : '검색 (⌘K)'}>
+    <Search/> <input className={`... ${isExpanded ? 'opacity-100' : 'opacity-0 w-0'}`} aria-label="팀, 선수 검색"/>
+    {isExpanded && query && <X/>}
+  </div>
+  {showDropdown && <div className="absolute right-0 top-full mt-1 w-[340px] ...">   // 결과 패널은 340 유지, 우측 정렬
+// Escape: + inputRef.current?.blur()  → 접힘
+// ⌘K / Ctrl+K: preventDefault + inputRef.current?.focus() → 펼침
+```
+- 펼침은 absolute right-0으로 왼쪽을 향해 겹쳐지므로 헤더 좌측(상태 칸) 리플로우 없음.
+- 후속(같은 날, 사용자 요청): 접힌 상태를 아이콘 단독(32px)에서 아이콘 + "검색" 라벨(72px)로 변경 — 컨테이너/패널 `w-8` → `w-[72px]`, `!isExpanded`일 때 `<span>검색</span>` 렌더. 헤더 합계 ≈1,180px.
+- 후속 2(같은 날, 사용자 요청): 결과 드롭다운 좌측을 펼쳐진 입력창 좌측에 정렬 — `right-0 w-[340px]` → `style={{ left: calc(100% - EXPANDED_W px), width: DROPDOWN_W }}`. 폭 3종을 모듈 상수 `COLLAPSED_W=72 / EXPANDED_W=200 / DROPDOWN_W=340`으로 묶고 Tailwind 임의값 클래스 대신 inline style로 통일(정렬 계산이 EXPANDED_W에 의존). 드롭다운은 입력창보다 140px 넓어 오른쪽으로 이어짐.
+- 헤더 합계 ≈1,450 → ≈1,140px(평상시 상태). 긴 상태(시즌 상황+타이머/드래프트 중)는 1280에서 여전히 잘릴 수 있음(구조 변경 과제로 남김 — 시안 아티팩트 참조).
+
+**검증**: tsc에서 해당 파일 에러 0건. 실제 화면 확인 미실시.
+
+**롤백 방법**: Before 블록 복원(컨테이너 `w-[340px]`, 패널 `px-4` 고정폭, 드롭다운 `left-0 w-full`, 키 핸들러 원복).
+
+---
+
+## 2026-10-12 — 멀티 헤더 시즌정보 칸: 하드코딩 목업 제거 → 팀 상황별 실제 문구
+
+**배경**: 내 팀의 예정 경기가 없을 때(`!(nextGame && countdown)`) 헤더에 `동부 1라운드 2-1 @ ATL 1:23:45`라는 고정 목업이 모든 팀에 표시됨(2026-08-26 도입한 fallbackMode). AS2가 정규시즌 마지막 날 대기 중일 때 실제로는 플레이오프가 시작도 안 했는데 시리즈 진행 중인 것처럼 보였음.
+
+**변경 파일**:
+- `components/MultiHeader.tsx` (client 전용, 서버 미러 없음)
+
+**Before**:
+```ts
+const fallbackMode = isDraftComplete && !myLiveGame && !(nextGame && countdown) && !tournamentChampionId;
+const displaySeriesInfo = fallbackMode ? { roundLabel: '동부 1라운드', myWins: 2, oppWins: 1, targetWins: 4 } : seriesInfo;
+const displayCountdown  = fallbackMode ? '1:23:45' : countdown;
+const showNextGame      = fallbackMode || (!!nextGame && !!countdown);
+// + displayOpponent/displayIsAway/displayCountdownColor 도 fallback 시 가짜 값(첫 타팀, 원정)
+```
+
+**After**:
+```ts
+const showNextGame = !!nextGame && !!countdown;   // display* 래퍼 전부 제거, 실데이터만 사용
+// 신규 seasonStatus 메모 → 렌더 분기 `isDraftComplete && seasonStatus`
+```
+- `seriesRoundLabel()` 모듈 함수 신설(round 0=플레이인, 결승/준결승/N라운드, 컨퍼런스 접두어). 기존 seriesInfo도 이 함수 사용(플레이인이 "0라운드"로 나오던 것도 해소).
+- seasonStatus 문구: 정규시즌 내 경기 소진 시 "정규시즌 종료 · 포스트시즌 대기" / 시리즈 진행 중 "{라운드} {W}-{L} · 다음 경기 대기" / 승리 "{라운드} 승리 · 다음 라운드 대기"·"플레이인 통과 · 1라운드 대기" / 탈락 "{라운드} 탈락 · 시즌 종료"·"플레이인 탈락 · 시즌 종료" / 미진출 "포스트시즌 진출 실패 · 시즌 종료" / 결승 승리 "우승!".
+- 시리즈 종료 판정은 bracket_data.winnerId가 아니라 `isFinal` 통과 경기만 센 승수로 → 리플레이 중 결과 스포일러 방지.
+
+- 후속(같은 날): `nextLeagueGameAt` 메모(리그 전체 미실행 경기 중 최소 resolveRealAt) + 모듈 함수 `fmtRemaining()` 추가, seasonStatus 옆에 "다음 경기일까지 H:MM:SS" 타이머 렌더. 다음 라운드 경기 생성 전이면 타이머 숨김. 롤백: 해당 메모/함수/렌더 블록 삭제.
+
+**검증**: tsc에서 MultiHeader 관련 에러 0건(타 파일 기존 에러는 별개). 실제 화면 확인은 미실시.
+
+**롤백 방법**: 위 Before 블록 복원 + seasonStatus 메모/렌더 분기 삭제 (또는 git revert).
+
+---
+
+## 2026-10-12 — 모든 리그/토너먼트 생성을 전역 어드민 전용으로 제한
+
+**배경**: 기존 제한(`restrict_tournament_creation_to_admin.sql`)은 토너먼트만 막고 main_league는 누구나 생성 가능했음. 일반 유저가 메인리그 "ㅇㅇ"을 만든 것을 계기로, 모든 유형의 생성을 어드민 전용으로 변경.
+
+**변경 파일**:
+- `migrations/restrict_all_league_creation_to_admin.sql` (DB, `apply_migration`으로 적용 완료)
+- `components/multi/CreateLeagueModal.tsx` — `handleSubmit` 가드
+- `views/home/InlineLeagueList.tsx` — "새 리그" 버튼/모달 노출 조건
+
+**Before**:
+```sql
+CREATE POLICY l_admin_write ON public.leagues FOR ALL
+  USING (admin_user_id = auth.uid())
+  WITH CHECK (admin_user_id = auth.uid() AND (type <> 'tournament' OR is_global_admin()));
+```
+```ts
+if (type === 'tournament' && !isAdmin) { setErr('토너먼트는 어드민 계정만 생성할 수 있습니다'); return; }
+{session && ( <button 새 리그 .../> )}
+{isCreateOpen && userId && ( <CreateLeagueModal .../> )}
+```
+
+**After**:
+```sql
+DROP POLICY l_admin_write;
+CREATE POLICY l_owner_update (FOR UPDATE, 소유자, type<>'tournament' OR is_global_admin());
+CREATE POLICY l_owner_delete (FOR DELETE, 소유자);
+-- INSERT는 기존 l_global_admin_manage(is_global_admin())만 통과
+```
+```ts
+if (!isAdmin) { setErr('리그는 어드민 계정만 생성할 수 있습니다'); return; }
+{session && isAdmin && ( <button .../> )}
+{isCreateOpen && userId && isAdmin && ( <CreateLeagueModal .../> )}
+```
+
+**검증**: pg_policy 조회로 leagues 정책 4종 확인.
+
+**롤백 방법**: `l_owner_update`/`l_owner_delete` DROP 후 Before의 `l_admin_write` 재생성, 위 TS 3곳을 Before로 복원.
+
+---
+
+## 2026-10-07 — 진행 중 경기 화면 바디 세로 스크롤 허용 + 우측 패널/PBP 높이 제약 변경
+
+**배경**: 라이브/예정 경기 바디가 `flex flex-1 overflow-hidden`이라 화면 높이를 넘는 컨텐츠가 잘리고 스크롤이 안 됐음. 요청: 바디 전체 스크롤 가능, 쿼터 점수+팀 스탯 영역은 내부 스크롤 제거 후 컨텐츠 높이, PBP 섹션은 최소 160px/최대 300px.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` (client)
+
+**Before**:
+```tsx
+<div className="flex flex-1 overflow-hidden">                       {/* 바디 */}
+  <div className="w-[30%] ... flex flex-col overflow-hidden">        {/* LEFT */}
+  <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden"> {/* CENTER */}
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-t border-slate-800"> {/* PBP */}
+  <div className="w-[30%] ... flex flex-col overflow-hidden">        {/* RIGHT */}
+    <div className="flex-1 min-h-0 border-t ... flex flex-col overflow-y-auto" style={{scrollbarWidth:'none'}}> {/* 쿼터점수+팀스탯 */}
+```
+
+**After**:
+```tsx
+<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">   {/* 바디 스크롤 래퍼(신규) */}
+ <div className="flex min-h-full">
+  <div className="w-[30%] ... flex flex-col">                              {/* LEFT: overflow-hidden 제거 */}
+  <div className="flex-1 min-w-0 flex flex-col bg-slate-950">              {/* CENTER */}
+    <div className="shrink-0 min-h-[160px] max-h-[300px] flex flex-col overflow-hidden border-t border-slate-800"> {/* PBP */}
+  <div className="w-[30%] ... flex flex-col">                              {/* RIGHT */}
+    <div className="shrink-0 border-t border-slate-800 flex flex-col">     {/* 쿼터점수+팀스탯: 컨텐츠 높이 */}
+```
+
+**검증**: tsc 에러 없음(해당 파일). 시각 확인은 미실시.
+
+**롤백 방법**: Before 블록대로 되돌리고 바디 래퍼 `<div>` 1겹(닫는 태그 포함) 제거 — 또는 해당 파일 git revert.
+
+---
+
+## 2026-10-08 — 스틸 커멘터리 1문장 괄호 제거
+
+**변경 파일**: `services/game/engine/commentary/textGenerator.ts` (client), `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — generateCommentary 'turnover' / isSteal 일반 분기
+
+**Before → After**: `` `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다! (스틸)` `` → `` `… 가로챕니다!` `` (사용자 요청, 괄호 접미사 제거)
+
+**롤백**: ` (스틸)` 접미사 복원.
+
+---
+
+## 2026-10-08 — 공격권 안내 문구 분기(유지/이전) + TeamState.city 추가
+
+**배경**: 직전 항목의 `{팀 풀네임} 공격권 유지.`를 사용자 지정 형식으로 변경 — 공격권이 넘어가면 `{연고지}에게 공격권이 넘어갑니다.`, 유지되면 `{연고지}의 공격권이 유지됩니다.` 테크니컬은 자유투 팀과 공격권 팀이 다를 수 있어(공격팀 선수가 테크니컬) 자유투 팀 기준으로 분기, 플래그런트는 항상 유지.
+
+**변경 파일** (client + server 미러 쌍):
+- `pbpTypes.ts` — `TeamState.city?: string` 추가(optional)
+- `initializer.ts` — `city: team.city || undefined`
+- `statsMappers.ts` — 모듈 헬퍼 `regionOf(team)` 추가, technicalFoul/flagrantFoul 자유투 로그 문구 교체
+
+**Before → After**:
+```ts
+// Before
+const offTeamName = offTeam.id === state.home.id ? state.home.name : state.away.name;
+`… 테크니컬 자유투 n/1 성공. ${offTeamName} 공격권 유지.` / `… 플래그런트 자유투 n/2 성공. ${offTeamName} 공격권 유지.`
+// After
+function regionOf(team) { return team.city?.trim() || team.name.trim().split(/\s+/)[0] || team.name; }
+const possessionNote = ftTeam.id === offTeam.id ? `${regionOf(offTeam)}의 공격권이 유지됩니다.` : `${regionOf(offTeam)}에게 공격권이 넘어갑니다.`;
+`… 테크니컬 자유투 n/1 성공. ${possessionNote}` / `… 플래그런트 자유투 n/2 성공. ${regionOf(offTeam)}의 공격권이 유지됩니다.`
+```
+**연고지 소스**: 싱글 `Team.city`("밀워키") → `TeamState.city`. 멀티는 `buildLeagueTeams`/server `dataMapper`가 `city: ''`로 넘기고 `name`이 `"밀워키 스태그스"`(leagueService가 `${city} ${name}`으로 생성, `team_name` 개명 가능)라 **첫 어절 폴백**. 한 어절짜리 커스텀 팀명이면 이름 전체가 쓰임.
+
+**검증**: client/server tsc 해당 파일 오류 없음.
+
+**롤백 방법**: Before 문구 복원 + `regionOf`/`TeamState.city`/initializer `city` 제거(optional 필드라 남겨도 무해).
+
+---
+
+## 2026-10-08 — 테크니컬/플래그런트 자유투 로그에 공격권 명시
+
+**배경**: 두 자유투는 리바운드 없이 공격권이 정해져 있어(테크니컬=중단 시점 공격팀 유지, 플래그런트=파울당한 팀 유지) PBP만 봐선 다음 공격 팀을 알 수 없었음(사용자 요청).
+
+**변경 파일**: `services/game/engine/pbp/statsMappers.ts` (client), `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — technicalFoul / flagrantFoul 자유투 addLog
+
+**Before → After**:
+```ts
+`${ftShooter.playerName}, 테크니컬 자유투 ${ftMade}/1 성공`  →  `… 성공. ${offTeamName} 공격권 유지.`
+`${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공`     →  `… 성공. ${offTeamName} 공격권 유지.`
+// offTeamName = offTeam.id === state.home.id ? state.home.name : state.away.name (shotClockViolation 로그와 동일 방식)
+```
+테크니컬은 파울자가 공격팀이어도 offTeam(공격 중이던 팀)이 유지되므로 자유투 팀과 공격권 팀이 다를 수 있음 — 그래서 팀명을 명시.
+
+**검증**: tsc 해당 파일 오류 없음. **롤백**: 접미사 ` ${offTeamName} 공격권 유지.`와 offTeamName 선언 제거.
+
+---
+
+## 2026-10-07 — 퇴장 사유 분기(ejectionReason) + 테크니컬/플래그런트 후 시간·샷클락 처리
+
+**배경**: (A) 테크니컬 2회/플래그런트 2/싸움 퇴장도 `pf = 6` 마커만 보고 교체 로그에 `(6반칙 퇴장)`으로 찍혔음. (B) 테크니컬은 데드볼 이벤트인데 일반 포제션만큼 시간을 차감하고 공격권 유지 시 샷클락을 24로 리셋해 공격팀이 시간 손해 없이 포제션을 하나 더 얻었음. 플래그런트 후 샷클락도 24였음(규정 14).
+
+**변경 파일** (전부 client + server 미러 쌍):
+- `pbpTypes.ts` — `export type EjectionReason`, `LivePlayer.ejectionReason?`, `GameState.lastEntryWasOffReb?` 추가(모두 optional → 저장 데이터/initializer 무변경)
+- `statsMappers.ts` — 퇴장 시점에 `ejectionReason` 세팅: commitFoul(pf===6)·오펜시브 파울 → `'foul_out'`, 테크니컬 2회 → `'technical'`, F2 → `'flagrant'`, 싸움 양측 → `'fight'`
+- `substitutionSystem.ts` — `EJECTION_REASON_TEXT` 맵 추가, `pf >= 6` 영구 교체 사유를 `ejectionReason ?? 'foul_out'`으로 분기 (`benchReason: 'foul_out'`은 승계 로직용이라 유지)
+- `liveEngine.ts` — 테크니컬: `timeTaken = 0`, `possessionTimeAccum` 누적 제외, 샷클락 유지 / 플래그런트: 샷클락 14 / `lastEntryWasOffReb` 세팅
+- `possessionHandler.ts` — 풋백 플레이 선택 조건 `shotClock === 14` → `lastEntryWasOffReb === true && shotClock === 14`
+
+**Before**:
+```ts
+// substitutionSystem
+if (p.pf >= 6) requests.push({ outPlayer: p, reason: '6반칙 퇴장', exitType: 'permanent', benchReason: 'foul_out' });
+// liveEngine
+const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+sideAccum.total += timeTaken; sideAccum.count += 1;
+if (retainPossession) { state.shotClock = isOffReb ? 14 : 24; state.lastEntryWasDefReb = false; } else { … }
+// possessionHandler
+if (state.shotClock === 14 && state.gameClock < 720) { /* 풋백 후보 */ }
+```
+
+**After**:
+```ts
+// substitutionSystem
+const EJECTION_REASON_TEXT = { foul_out: '6반칙 퇴장', technical: '테크니컬 퇴장', flagrant: '플래그런트 퇴장', fight: '싸움 퇴장' };
+if (p.pf >= 6) requests.push({ outPlayer: p, reason: EJECTION_REASON_TEXT[p.ejectionReason ?? 'foul_out'], exitType: 'permanent', benchReason: 'foul_out' });
+// liveEngine
+const isTechnical = result.type === 'technicalFoul';
+const timeTaken = isTechnical ? 0 : calculatePossessionTime(…);
+if (!isTechnical) { sideAccum.total += timeTaken; sideAccum.count += 1; }
+if (retainPossession) {
+    if (isOffReb) state.shotClock = 14; else if (result.type === 'flagrantFoul') state.shotClock = 14; // technical: 유지
+    state.lastEntryWasDefReb = false; state.lastEntryWasOffReb = isOffReb;
+} else { state.lastEntryWasOffReb = false; … }
+// possessionHandler
+if (state.lastEntryWasOffReb === true && state.shotClock === 14 && state.gameClock < 720) { /* 풋백 후보 */ }
+```
+timeEngine의 상한 `Math.min(23, state.shotClock)`은 그대로 — 플래그런트 후 14초 상한이 자동 적용됨. 엔진은 포제션 도중 샷클락을 줄이지 않으므로 테크니컬 "유지"는 해당 포제션 진입 시 값(24 또는 14)이 그대로 남는 의미.
+
+**검증**: client/server tsc 해당 파일 오류 없음. 실경기 시뮬 미실시.
+
+**롤백 방법**: Before 블록으로 4개 파일(×2 미러) 복원. `ejectionReason`/`lastEntryWasOffReb` 필드는 optional이라 남겨도 무해.
+
+---
+
+## 2026-10-07 — 테크니컬/플래그런트 파울 PBP: 파울 로그와 자유투 로그 분리 (+ 자유투 점수 팀 PTS 집계 누락 수정)
+
+**배경**: 테크니컬/플래그런트는 `foul` 타입 한 줄에 커멘터리+자유투 결과를 합쳐 찍었음. 슈팅 파울/앤드원과 동일하게 파울 로그 → 자유투 로그로 분리(사용자 요청). 부수적으로, 자유투 점수(`points`)를 `foul` 타입 로그에 실어 뷰의 팀 PTS/쿼터 점수(`score`+`freethrow` points 합산)에서 빠져 있던 문제가 `freethrow` 타입 로그로 옮기면서 해결됨.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client) — technicalFoul / flagrantFoul 블록, `foulOutText` 헬퍼 삭제(마지막 사용처 소멸)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+// 테크니컬
+const ejectionSuffix = isEjected ? ' — 2 테크니컬 퇴장!' : '';
+const ftSuffix = ` ${ftShooter.playerName} 자유투 ${ftMade}/1`;
+addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
+// 플래그런트
+const ftSuffix = ` ${actor.playerName} 자유투 ${ftMade}/2`;
+const foulOutSuffix = fouledOut && defender && !isFlagrant2 ? foulOutText(defender) : '';   // " — X 6반칙 퇴장!"
+addLog(state, defTeam.id, `${commentary}${ftSuffix}${foulOutSuffix}`, 'foul', ftMade || undefined, defTeam.id);
+const foulOutText = (p: LivePlayer) => ` — ${p.playerName} 6반칙 퇴장!`;   // 헬퍼
+```
+
+**After**:
+```ts
+// 테크니컬 — PF/팀파울 미합산이라 반칙 수 괄호 없음, 퇴장 접미사는 문장형
+const ejectionSuffix = isEjected ? ' 2번째 테크니컬 파울로 퇴장당합니다.' : '';
+addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}`, 'foul');
+addLog(state, ftTeam.id, `${ftShooter.playerName}, 테크니컬 자유투 ${ftMade}/1 성공`, 'freethrow', ftMade);
+// 플래그런트 — 다른 파울과 동일 구조
+let foulLog = commentary;
+if (fouledOut && defender && !isFlagrant2) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+foulLog += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
+addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공`, 'freethrow', ftMade);
+// foulOutText 헬퍼 삭제
+```
+F2 파울 로그의 반칙 수는 `defender.pf = 6`(퇴장 마커) 설정 **이전** 값(실제 개인 반칙 수). 자유투 로그엔 foulTeamId/포제션 마커 없음(기존과 동일 — 공격권 유지).
+
+**검증**: client/server tsc 해당 파일 오류 없음.
+
+**롤백 방법**: Before 블록 복원 + `foulOutText` 헬퍼 복원(client/server 둘 다). 롤백 시 테크니컬/플래그런트 자유투 점수가 다시 팀 PTS 집계에서 빠지는 점 유의.
+
+---
+
+## 2026-10-07 — 파울 로그 반칙 표기 "(선수 N반칙, 팀 N반칙)" → "(N반칙, 팀 N반칙)"
+
+**배경**: 사용자 요청 — 선수 반칙 수 앞의 "선수" 라벨 제거.
+
+**변경 파일**: `services/game/engine/pbp/statsMappers.ts` (client), `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 비슈팅/오펜시브/슈팅/앤드원 파울 4곳씩
+
+**Before → After**: `` ` (선수 ${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` `` → `` ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` `` (오펜시브는 actor.pf/offTeam.fouls)
+
+**검증**: tsc 해당 파일 오류 없음. **롤백**: `(${` → `(선수 ${` 역치환.
+
+---
+
+## 2026-10-07 — 자유투 미스 리바운드를 별도 PBP 줄로 분리 + 리바운드 로그 teamId 버그 수정
+
+**배경**: 2026-08-05에 "리바운드 → 자유투" 순서 역전을 고치면서 리바운드 텍스트를 자유투 로그 한 줄에 이어붙였음. 사용자 지적대로 자유투 로그는 `이름, 자유투 n/m 성공`까지만, 리바운드는 별도 커멘터리여야 함 → 자유투 로그를 먼저 찍고 리바운드 info 로그를 그 다음에 찍는 방식으로 변경(순서 보장 유지). 같은 김에 FG 미스 리바운드 로그가 `teamId`에 **선수 ID**(`rebounder.playerId`)를 넣어 뷰(`isHome = teamId === homeTeamId`)에서 항상 원정 쪽에 표시되던 버그도 수정.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+const handleFreeThrowRebound = (shooter): { type; text } => { …; return { type: rebType, text: rebText }; };
+// 호출부 3곳(앤드원/보너스/슈팅파울): const reb = handleFreeThrowRebound(actor); ftEndsPossession = reb.type !== 'off'; ftLogText += ` ${reb.text}`;
+// FG 미스 리바운드: addLog(state, rebounder.playerId, rebText, 'info');
+```
+
+**After**:
+```ts
+type FtRebound = { type: 'off' | 'def'; text: string; player: LivePlayer };
+const teamIdOf = (pl) => state.home.onCourt.some(x => x.playerId === pl.playerId) ? state.home.id : state.away.id;
+const handleFreeThrowRebound = (shooter): FtRebound => { …; return { type, text, player: rebPlayer }; };
+// 호출부 3곳: let ftReb: FtRebound | null = null; if (마지막 FT 미스) { ftReb = handleFreeThrowRebound(actor); ftEndsPossession = ftReb.type !== 'off'; }
+//            addLog(자유투 로그); if (ftReb) addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info');
+// FG 미스 리바운드: addLog(state, teamIdOf(rebounder), rebText, 'info');
+```
+포제션 종료 마커는 여전히 자유투 로그(오펜시브 리바운드면 미스탬프) — 리바운드 info 로그는 마커 없음.
+
+**검증**: client/server tsc 해당 파일 오류 없음. 리바운드 로그 teamId/텍스트에 의존하는 소비처 없음(인사이트 리바운드 뱃지는 boxTimeline 델타 기반).
+
+**롤백 방법**: Before 블록으로 복원(client/server 둘 다). teamId 버그만 되돌리려면 `teamIdOf(rebounder)` → `rebounder.playerId`.
+
+---
+
+## 2026-10-07 — 슈팅 파울·앤드원 PBP 분리: 독립 파울 로그 + 슈팅 파울 커멘터리 풀 신설
+
+**배경**: 슈팅 파울은 `freethrow` 로그 한 줄(`X, 슈팅 파울 자유투 n/m 성공`)에, 앤드원은 `score` 로그 한 줄(`… + 앤드원 성공! (파울: Y)`)에 접혀 있어 파울자 이름이 파울 아웃일 때만 드러났음. 비슈팅/오펜시브 파울과 같은 구조의 독립 `foul` 로그를 먼저 찍고 자유투 로그가 뒤따르도록 변경(사용자 요청, 앤드원 포함).
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) — `getShootingFoulCommentary(defender, actor, playType?, isHelpPlay?, isAndOne?)` 신설(파일 끝). 비슈팅 파울과 동일 톤, 분기: 앤드원 3 / 헬프 3 / 돌파(Iso·PnR_Handler·DriveKick) 3 / 포스트(PostUp·PnR_Roll) 3 / 점퍼(CatchShoot·PnR_Pop·OffBallScreen) 3 / 기본 3
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — 동일
+- `services/game/engine/pbp/statsMappers.ts` (client) — import 추가, `score`(앤드원)·`freethrow` 분기 재작성
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 동일
+
+**Before** (client statsMappers):
+```ts
+// 앤드원 — score 로그 1줄, points = 야투+FT 합산, foulTeamId 없음
+let totalPointsAdded = points; let scoreEndsPossession = true;
+if (isAndOne && defender) {
+    const fouledOut = commitFoul(defender);
+    const foulText = ` (파울: ${defender.playerName})${fouledOut ? foulOutText(defender) : ''}`;
+    if (Math.random() < (actor.attr.ft / 100)) { actor.pts += 1; actor.ftm += 1; actor.fta += 1; offTeam.score += 1; totalPointsAdded += 1; updatePlusMinus(offTeam, defTeam, 1); logText += ` + 앤드원 성공!${foulText}`; }
+    else { actor.fta += 1; logText += ` + 앤드원 실패${foulText}`; const reb = handleFreeThrowRebound(actor); scoreEndsPossession = reb.type !== 'off'; logText += ` ${reb.text}`; }
+}
+addLog(state, offTeam.id, logText, 'score', totalPointsAdded, undefined, scoreEndsPossession ? 'scoring' : undefined);
+// 슈팅 파울 — freethrow 로그 1줄, foulTeamId=defTeam.id
+const fouledOut = defender ? commitFoul(defender) : false;
+… let ftLogText = `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`;
+if (fouledOut && defender) ftLogText += foulOutText(defender);
+… addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, defTeam.id, …);
+```
+
+**After**:
+```ts
+// 앤드원 — score(points=야투만, 마커 없음) → foul(defTeam, foulTeamId=defTeam.id) → freethrow(ftMade, 'scoring')
+addLog(state, offTeam.id, logText, 'score', points, undefined, (isAndOne && defender) ? undefined : 'scoring');
+if (isAndOne && defender) {
+    const fouledOut = commitFoul(defender);
+    let foulLog = getShootingFoulCommentary(defender, actor, playType, false, true);
+    if (fouledOut) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+    foulLog += ` (선수 ${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)`;
+    addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+    … `${actor.playerName}, 앤드원 자유투 1/1 성공` | `0/1 성공 {리바운드 텍스트}` → addLog(…, 'freethrow', ftMade, undefined, ftEndsPossession ? 'scoring' : undefined)
+}
+// 슈팅 파울 — foul(defTeam, foulTeamId=defTeam.id) → freethrow(foulTeamId 제거)
+if (defender) { const fouledOut = commitFoul(defender); let foulLog = getShootingFoulCommentary(defender, actor, playType, !!result.isHelpPlay, false); …동일 접미사…; addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id); }
+… let ftLogText = `${actor.playerName}, 자유투 ${ftMade}/${numShots} 성공`;
+… addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, …);
+```
+
+**파생 영향**:
+- 팀스탯 PTS/쿼터 점수(`score`+`freethrow` points 합산)는 총점 불변. 앤드원 `score` 로그의 `points`만 3→2가 됨(별도 FT 로그 +1).
+- 팀파울 집계(`foulTeamId` 개수, MultiGamePbpView 1897~)는 슈팅 파울 마커가 freethrow→foul 로그로 이동(개수 동일), 앤드원 파울은 예전에 마커가 없어 집계에서 빠졌던 것이 이번에 포함됨.
+- 인사이트 차트 포제션 마커(isPossessionEnd)는 여전히 자유투 로그에만 찍힘(앤드원은 예전 score → 지금 freethrow로 이동).
+- 플래그런트 1의 파울 아웃 접미사(`foulOutText` " — X 6반칙 퇴장!")는 무변경.
+
+**검증**: client/server tsc 해당 4파일 오류 없음. 실경기 시뮬 미실시.
+
+**롤백 방법**: Before 블록으로 두 분기 복원 + import에서 `getShootingFoulCommentary` 제거(함수 자체는 남겨도 무해), client/server 둘 다.
+
+---
+
+## 2026-10-07 — 비슈팅/오펜시브 파울 PBP 구조 변경: "(선수 N반칙, 팀 N반칙)" + 파울 아웃 문장
+
+**배경**: 파울 커멘터리에 선수 개인 반칙 수가 없고 팀 파울만 `(팀 파울 N)`으로 붙었음. 사용자 지정 구조로 통일:
+`이름, 파울 내용. (선수 N반칙, 팀 N반칙)` / 파울 아웃 시 `이름, 파울 내용. 6반칙으로 파울 아웃됩니다. (선수 6반칙, 팀 N반칙)`
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client) — `type === 'foul'` / `'offensiveFoul'` 블록
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+// 비슈팅
+logText += ` (팀 파울 ${defTeam.fouls})`;
+if (fouledOut && defender) logText += foulOutText(defender);          // " — X 6반칙 퇴장!"
+// 오펜시브
+const foulDesc = isCharge ? '차지' : '일리걸 스크린';
+const ejectionText = actor.pf >= 6 ? ' — 6반칙 퇴장!' : '';
+`${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`
+```
+
+**After**:
+```ts
+// 비슈팅
+if (fouledOut) logText += ' 6반칙으로 파울 아웃됩니다.';
+logText += defender ? ` (선수 ${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
+// 오펜시브 (팀 파울 미합산이므로 offTeam.fouls 그대로)
+const foulDesc = isCharge ? '차징' : '일리걸 스크린';
+const ejectionText = actor.pf >= 6 ? ' 6반칙으로 파울 아웃됩니다.' : '';
+`${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (선수 ${actor.pf}반칙, 팀 ${offTeam.fouls}반칙)`
+```
+앤드원/슈팅파울 자유투/플래그런트 1의 파울 아웃 접미사(`foulOutText` = " — X 6반칙 퇴장!")는 이번 범위 밖(무변경). 슈팅 파울은 별도 foul 로그 없이 freethrow 로그에 접혀 있음(별도 논의).
+
+**검증**: client/server tsc 해당 파일 오류 없음.
+
+**롤백 방법**: Before 블록으로 복원(client/server 둘 다).
+
+---
+
+## 2026-10-07 — PBP 커멘터리 "Flagrant" → "플래그런트" 번역
+
+**배경**: 플래그런트 파울 커멘터리만 영문 표기(Flagrant 1/2)로 남아 있어 한국어 커멘터리와 어긋남(사용자 요청).
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) — getFlagrant1Commentary/getFlagrant2Commentary 템플릿 문자열 22곳
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — 22곳
+- `services/game/engine/pbp/statsMappers.ts` / `server/src/shared/engine/pbp/statsMappers.ts` — 파울자 미지정 폴백 `Flagrant ${isFlagrant2 ? '2' : '1'}!` → `플래그런트 …` 각 1곳
+
+**Before → After**: 백틱 템플릿 안의 `Flagrant 1` / `Flagrant 2` → `플래그런트 1` / `플래그런트 2` (정규식 치환, 주석·식별자(`isFlagrant2`, `getFlagrant1Commentary`, `FLAGRANT_*`)는 무변경).
+
+**검증**: client/server tsc 해당 파일 오류 없음, 문자열 내 잔여 `Flagrant [12]` 0건.
+
+**롤백 방법**: 같은 파일에서 템플릿 문자열 내 `플래그런트 (1|2)` → `Flagrant \1` 역치환.
+
+---
+
+## 2026-10-07 — 테크니컬/Flagrant 2 퇴장 PBP: 🚨 전용 로그 삭제 (커멘터리 한 줄로 통합)
+
+**배경**: 6반칙 퇴장과 같은 구조 — 커멘터리에 이미 퇴장이 포함돼 있는데(테크니컬 ` — 2 테크니컬 퇴장!` 접미사, F2는 getFlagrant2Commentary 문장 자체) `🚨 X 2 테크니컬 퇴장!` / `🚨 X Flagrant 2 퇴장!` info 로그가 한 줄 더 찍혔음. 사용자 요청으로 전용 로그 삭제.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client) — technicalFoul / flagrantFoul 블록
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+- textGenerator F2 문장 1개 보강: services/game/engine/commentary/textGenerator.ts, server/src/shared/engine/commentary/textGenerator.ts
+
+**Before**:
+```ts
+// technicalFoul
+addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
+if (isEjected && defender) addLog(state, foulerTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
+// flagrantFoul
+if (isFlagrant2 && defender) { defender.pf = 6; addLog(state, defTeam.id, `🚨 ${defender.playerName} Flagrant 2 퇴장!`, 'info'); }
+// textGenerator getFlagrant2Commentary
+`${defender.playerName}, 스윙한 팔꿈치가 ${actor.playerName}의 얼굴을 강타! Flagrant 2!`
+```
+
+**After**:
+```ts
+addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);  // 🚨 줄 삭제
+if (isFlagrant2 && defender) { defender.pf = 6; }                                                               // 🚨 줄 삭제
+`${defender.playerName}, 스윙한 팔꿈치가 ${actor.playerName}의 얼굴을 강타! Flagrant 2, 퇴장!`               // 10개 문장 중 유일하게 퇴장 미언급이던 것 보강
+```
+`defender.pf = 6` / `techFouls` 처리(퇴장 상태 자체)는 무변경.
+
+**검증**: client/server tsc에서 해당 파일 오류 없음.
+
+**롤백 방법**: Before 블록의 addLog 두 줄 복원(client/server) + F2 문장 원복.
+
+---
+
+## 2026-10-07 — 6반칙 퇴장(Foul Out) PBP: 전용 로그 삭제, 파울 커멘터리 끝에 접미사로 통합
+
+**배경**: 6반칙 퇴장이 (a) `commitFoul` 헬퍼의 `🚨 X 6반칙 퇴장 (Foul Out)` 별도 info 로그, (b) 오펜시브 파울 커멘터리의 ` — 6반칙 퇴장!` 접미사 두 군데서 나와 중복됐고, (a)는 commitFoul이 파울 로그보다 먼저 호출돼 "퇴장 → 파울" 순서로 찍히는 문제도 있었음. 사용자 요청으로 전용 로그/사이렌 이모지 삭제, 파울 커멘터리 끝에 퇴장 문구를 붙이는 방식으로 통합.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+const commitFoul = (defP: LivePlayer) => {
+    defP.pf += 1; defTeam.fouls += 1;
+    if (defP.pf === 6) addLog(state, defTeam.id, `🚨 ${defP.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
+};
+// 호출부: 앤드원 commitFoul(defender) / foul·freethrow·flagrant `if (defender) commitFoul(defender);`
+// 오펜시브 파울: addLog(... `${actor}, 오펜시브 파울 (${foulDesc})${ejectionText}` ...);
+//               if (actor.pf === 6) addLog(state, offTeam.id, `🚨 ${actor.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
+```
+
+**After**:
+```ts
+const commitFoul = (defP: LivePlayer): boolean => { defP.pf += 1; defTeam.fouls += 1; return defP.pf === 6; };
+const foulOutText = (p: LivePlayer) => ` — ${p.playerName} 6반칙 퇴장!`;
+// 앤드원:   const fouledOut = commitFoul(defender);
+//           const foulText = ` (파울: ${defender.playerName})${fouledOut ? foulOutText(defender) : ''}`;
+// foul:     const fouledOut = defender ? commitFoul(defender) : false; … logText += ` (팀 파울 N)`; if (fouledOut && defender) logText += foulOutText(defender);
+// freethrow: ftLogText = `${actor}, 슈팅 파울 자유투 n/m 성공` + (fouledOut ? foulOutText) + (리바운드 텍스트)
+// flagrant: `${commentary}${ftSuffix}${fouledOut && !isFlagrant2 ? foulOutText(defender) : ''}` (F2는 커멘터리가 이미 "즉시 퇴장")
+// 오펜시브 파울: 접미사 ` — 6반칙 퇴장!` 유지, 뒤따르던 🚨 info 로그만 삭제
+```
+문구 규칙: 파울 당사자가 문장 주어가 아닌 경우(앤드원/슈팅파울/비슈팅파울/F1)는 이름 포함 ` — {이름} 6반칙 퇴장!`, 오펜시브 파울은 주어가 당사자라 기존 ` — 6반칙 퇴장!` 유지. `🚨 2 테크니컬 퇴장!` / `🚨 Flagrant 2 퇴장!` 전용 로그는 이번 범위 밖(무변경).
+
+**검증**: client/server tsc에서 statsMappers.ts 오류 없음.
+
+**롤백 방법**: Before 블록대로 commitFoul 복원 + 호출부 `fouledOut` 변수/접미사 제거 + 오펜시브 파울 🚨 로그 복원 (client/server 둘 다).
+
+---
+
+## 2026-10-07 — 싸움(fight) PBP 로그: 출장정지 줄 삭제 + 퇴장 문구 변경
+
+**배경**: 싸움 발생 시 PBP에 `📋 A n경기 출장정지 / B m경기 출장정지`가 즉시 찍혔는데, 출장정지는 경기 후 사무국이 결정하는 사항이라 경기 중 로그로는 부자연스러움(사용자 지적). 경기 후 전달 경로는 이미 존재 — 싱글 `SUSPENSION` 인박스(userGameService/batchSeasonService), 멀티 뉴스피드(server simRunner `detectSuspensionEvent`) 모두 `state.suspensions`를 읽음. PBP에는 퇴장 사실만 남기고, 주먹 이모지 제거 + 문구를 현재형으로 변경.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client, `type === 'fight'` 블록)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+addLog(state, defTeam.id, `🥊 ${fighter.playerName}이(가) ${opponent.playerName}에게 주먹을 휘둘렀습니다! 양 선수 퇴장!`, 'info');
+addLog(state, defTeam.id, `📋 ${fighter.playerName} ${fighterSusp}경기 출장정지 / ${opponent.playerName} ${oppSusp}경기 출장정지`, 'info');
+```
+
+**After**:
+```ts
+addLog(state, defTeam.id, `${fighter.playerName}이(가) ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다.`, 'info');
+```
+(`state.suspensions.push(...)` 기록은 무변경 — 경기 후 인박스/뉴스 생성에 그대로 사용)
+
+**검증**: tsc 통과 확인. 발생 확률이 포제션당 0.003%라 실경기 재현은 미실시.
+
+**롤백 방법**: Before 두 줄로 복원(client/server 둘 다). 이미 저장된 경기 로그의 `📋` 줄은 소급 삭제 안 함.
+
+---
+
+## 2026-10-07 — 진행 중 경기 PBP 섹션 max-h를 70vh로 지정
+
+**배경**: 상한 제거 시 로그가 너무 길어져 창 높이 비례 상한(70vh)으로 재설정.
+
+**변경 파일**: `views/multi/season/MultiGamePbpView.tsx` (client)
+
+**Before**: `shrink-0 min-h-[160px] flex flex-col border-t border-slate-800`
+**After**: `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800` (내부 로그 영역만 스크롤)
+
+**롤백 방법**: Before 클래스 문자열로 복원.
+
+---
+
+## 2026-10-07 — 진행 중 경기 PBP 섹션 max-h 상한 제거
+
+**배경**: 위 항목에서 PBP를 `max-h-[300px]`로 제한했으나 라이브 중 항상 상한에 걸려 높이 변화가 없어 보임 → 사용자 요청으로 상한 제거.
+
+**변경 파일**: `views/multi/season/MultiGamePbpView.tsx` (client)
+
+**Before**: `shrink-0 min-h-[160px] max-h-[300px] flex flex-col overflow-hidden border-t border-slate-800`
+**After**: `shrink-0 min-h-[160px] flex flex-col border-t border-slate-800` (컨텐츠 길이만큼 늘어남, 바디 스크롤로 확인)
+
+**롤백 방법**: Before 클래스 문자열로 복원.
+
+---
+
+## 2026-10-07 — GameDateStrip 진행 중(LIVE) 게임카드 배경을 틴트 레드로 변경
+
+**배경**: 진행 중인 경기 카드가 indigo-600 단색이라 LIVE 라벨(red-400)과 색이 어긋나 보였음. 사용자 요청으로 틴트가 들어간 빨간색으로 변경.
+
+**변경 파일**:
+- `views/multi/season/GameDateStrip.tsx` (373행 카드 className)
+
+**Before**:
+```ts
+state === 'live' ? 'bg-indigo-600 hover:bg-indigo-500'
+```
+
+**After**:
+```ts
+state === 'live' ? 'bg-red-900/50 hover:bg-red-900/70'
+```
+
+**추가 변경 (같은 날)**: 라이브 카드 상단 우측 끝에 빨간 점(animate-pulse) + "LIVE" 배지 추가. 상태 라벨 `<span>`을 `flex justify-between` div로 감싸고 `state === 'live'`일 때만 배지 렌더. 라이브 스코어 미수신 시 좌측 폴백 라벨은 'LIVE'→'진행 중'으로 변경(배지와 중복 방지). 롤백: 감싼 div/배지 제거 + 폴백 문자열 'LIVE' 복구.
+
+**추가 변경 2 (같은 날)**: 틴트 강도 하향 — `bg-red-900/50 hover:bg-red-900/70` → `bg-red-900/30 hover:bg-red-900/50`. 롤백: 이전 문자열로 복구.
+
+**검증**: 클래스 문자열만 교체 (isCurrent 선택 상태는 기존대로 bg-slate-700 우선). 시각 확인은 미실시.
+
+**롤백 방법**: After 문자열을 Before로 되돌리면 됨.
+
+## 2026-10-07 — 선수 프로필 "뉴스" 탭 추가 (멀티플레이어)
+
+**배경**: 선수 프로필에서 그 선수와 관련해 생성된 뉴스(league_events)를 모아 보고 싶다는 요청.
+
+**변경 파일**:
+- `hooks/useLeagueHeadlines.ts` (client) — `playerNewsQuery`/`usePlayerNews` 추가
+- `views/multi/season/PlayerNewsTab.tsx` (client, 신규) — 리스트 UI
+- `views/PlayerDetailView.tsx` (client) — `newsSlot?: ReactNode` prop, 탭 `news` 추가
+- `views/multi/season/MultiPlayerDetailView.tsx` (client) — `newsSlot`으로 PlayerNewsTab 전달
+
+**Before**: 탭 3개(프로필/기록/샷 차트), `activeTab` 타입 `'profile'|'records'|'shotchart'`, setActiveTab은 records/shotchart만 `?tab=` 저장.
+
+**After**: `newsSlot !== undefined`일 때만 4번째 탭 "뉴스" 노출(`?tab=news`). 싱글플레이어는 newsSlot 미전달이라 변화 없음. 쿼리는 `league_events`에서 `player_ids @> [playerId]` + 피드와 동일한 STORY_TYPES/game_result score≥15 조건, sim_date→created_at→id 정렬, 30건 페이징.
+
+**후속(같은 날)**: 탭 바디를 뉴스 피드와 동일한 좌(30% 리스트)/우(StoryCard 본문) 분할로 변경. `PlayerNewsTab.tsx`가 피드와 같은 hover 카드 맵(스탯 병합, 부상 병합은 생략)·게임/선수/팀/올스타 이동 핸들러를 사용.
+
+**후속 2(같은 날)**: 뉴스 탭 쿼리를 `type in ('player_feat','player_streak')`로 제한(기존: 피드 STORY_TYPES 전체 + game_result 특이케이스). 팀 경기 결과/팀 연승/트레이드/부상/수상 등은 탭에서 제외. 롤백: `playerNewsQuery`의 `.in('type', PLAYER_NEWS_TYPES)`를 `.or(type.in.(STORY_TYPES...),and(type.eq.game_result,score.gte.GAME_RESULT_MIN_SCORE))`로 되돌림.
+
+**검증**: tsc 오류 없음 확인. 실리그 화면 검증은 미실시.
+
+**롤백 방법**: 위 4개 파일 변경분 되돌리고 PlayerNewsTab.tsx 삭제 (git revert).
+
 ## 2026-10-07 — 멀티 뉴스피드: 경기당 개인 활약 뉴스를 PIE 최고 1명으로 제한
 
 **배경**: 사용자 요청. 한 경기에서 트리플더블/더블더블/스탯폭발 자격자 전원에게 각각 `player_feat` 뉴스가 발송돼 의미 없는 뉴스 수만 늘어남. 경기당 가장 잘한 1명만 노출.

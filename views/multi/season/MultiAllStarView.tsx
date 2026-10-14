@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Spinner } from '../../../components/common/Spinner';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Check, Star } from 'lucide-react';
+import { Check, Star } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useCurrentVirtualDate } from '../../../hooks/useCurrentVirtualDate';
@@ -13,7 +14,10 @@ import { useAllStarSideEvents } from '../../../hooks/useAllStarSideEvents';
 import { PlayerHoverCard, buildPlayerCardMap, mergeStatsIntoPlayerCardMap, type PlayerCardMap } from '../../../components/common/PlayerHoverCard';
 import { AllstarVoteSection, AllstarRosterTable, ThreePointContestTable, DunkContestTable, ThreePointContestResultTable, ThreePointContestShotChart, DunkContestResultTable } from './newsFeedCards';
 import { AllStarHalfCourt } from '../../../components/multi/AllStarHalfCourt';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { SegmentedControl } from '../../../components/common/SegmentedControl';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { getLeagueLogoUrl } from '../../../utils/constants';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import type { AllstarVoteConference, AllstarVoteEntry, AllstarConferenceRoster, RisingStarsRosterResult } from '../../../services/multi/leagueEventPayload';
 import { getAllStarKeyDates, type AllStarKeyDates } from '../../../utils/allStarSelection';
@@ -54,6 +58,34 @@ const STARTER_SLOTS: { x: number; y: number }[] = [
     { x: 250, y: 237 }, // starters[4] — 프론트코트3(센터, 코트 세로 중앙)
 ];
 
+// ── 화면 공통 조각 (2026-10-13, ui-audit/07 후보 1·3) ────────────────────────
+// 이벤트 로고 + 제목 h2(8회), 소제목 h3(9회, sm/lg 2크기), 좌/우 2열 레이아웃(2회), 구분선 섹션(4회)이
+// 같은 클래스 문자열로 복붙돼 있던 것을 로컬 컴포넌트로.
+type LeagueLogoKey = Parameters<typeof getLeagueLogoUrl>[0];
+
+const AllStarTitle: React.FC<{ logo: LeagueLogoKey; children: React.ReactNode }> = ({ logo, children }) => (
+    <h2 className="flex items-center gap-2 text-2xl font-black text-white">
+        <img src={getLeagueLogoUrl(logo)} alt="" className="h-8 w-8" />
+        {children}
+    </h2>
+);
+
+const SubTitle: React.FC<{ size?: 'sm' | 'lg'; children: React.ReactNode }> = ({ size = 'sm', children }) => (
+    <h3 className={`font-black text-slate-300 ${size === 'lg' ? 'text-lg' : 'text-sm'}`}>{children}</h3>
+);
+
+/** 좌/우 2열(동부/서부, 라이징스타 팀 A/B) */
+const TwoPane: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="grid grid-cols-2 divide-x divide-slate-800 min-h-full">{children}</div>
+);
+const Pane: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="p-6 space-y-6 min-w-0">{children}</div>
+);
+/** 위 구분선 + 여백이 있는 하위 섹션 */
+const DividedSection: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="border-t border-slate-800 pt-6">{children}</div>
+);
+
 // AllstarRosterPlayer(본올스타)와 RisingStarsRosterPlayer(라이징스타) 둘 다 이 3개 필드만
 // 있으면 그려지므로(투표 여부 관련 필드는 안 씀) 구조적 타이핑으로 공용 재사용.
 type CourtDiagramPlayer = { playerId: string; playerName: string; teamSlug: string };
@@ -67,7 +99,7 @@ const AllStarCourtDiagram: React.FC<{
     onPlayerClick?: (playerId: string) => void;
 }> = ({ starters, title = '스타터', teamBySlug, playerCardMap, onPlayerClick }) => (
     <div className="space-y-2">
-        <h3 className="text-sm font-black text-slate-300 uppercase">{title}</h3>
+        <SubTitle>{title}</SubTitle>
         <div className="relative w-full rounded-lg overflow-hidden border border-slate-700" style={{ aspectRatio: `${COURT_VIEW.w} / ${COURT_VIEW.h}` }}>
             <svg viewBox={`0 0 ${COURT_VIEW.w} ${COURT_VIEW.h}`} className="absolute inset-0 w-full h-full">
                 <AllStarHalfCourt background={ALLSTAR_COURT_COLORS.background} paint={ALLSTAR_COURT_COLORS.paint} line={ALLSTAR_COURT_COLORS.line} />
@@ -88,20 +120,7 @@ const AllStarCourtDiagram: React.FC<{
                             onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
                             className="w-20 h-20 shrink-0 cursor-pointer"
                         >
-                            <img
-                                src={getRealTeamLogoUrl(p.teamSlug)}
-                                alt={team?.team_abbr ?? p.teamSlug}
-                                className="w-full h-full object-contain drop-shadow"
-                                onError={(ev) => {
-                                    const img = ev.currentTarget;
-                                    if (img.dataset.fallback !== 'old') {
-                                        img.dataset.fallback = 'old';
-                                        img.src = getTeamLogoUrl(p.teamSlug);
-                                    } else {
-                                        img.src = 'https://placehold.co/100x100?text=BPL';
-                                    }
-                                }}
-                            />
+                            <TeamLogo teamId={p.teamSlug} teamName={team?.team_abbr ?? p.teamSlug} size="custom" className="w-full h-full drop-shadow" shadow={false} />
                         </button>
                         <PlayerHoverCard player={entry?.player} teamAbbr={entry?.teamAbbr}>
                             <span
@@ -187,41 +206,58 @@ const AllstarVoteStepper: React.FC<{ voteProgress: number | undefined; keyDates:
 // 통일, 리저브 표의 OVR 컬럼은 제거(showOvr 삭제). 그 아래엔 "올스타 후보 명단"과 동일한
 // 포맷(AllstarVoteSection showStats)으로 팀 10명 전원의 시즌 스탯을 보여준다 — 투표가 없어
 // 득표수/득표율 컬럼만 뺀다(showVotes={false}).
-const RisingStarsBody: React.FC<{
-    risingStars: RisingStarsRosterResult;
+interface PanelShared {
     teamBySlug: Map<string, LeagueTeamRow>;
     playerCardMap: PlayerCardMap;
     onOpenTeam?: (teamSlug: string) => void;
     onPlayerClick?: (playerId: string) => void;
-}> = ({ risingStars, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
-    <div className="grid grid-cols-2 divide-x divide-slate-800 min-h-full">
-        <div className="p-6 space-y-6 min-w-0">
-            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                <img src="/logos/real/AS/RisingA.svg" alt="" className="h-8 w-8" />
-                팀 {risingStars.teamAName}
-            </h2>
-            <div className="grid grid-cols-[3fr_2fr] gap-4">
-                <AllStarCourtDiagram starters={risingStars.teamA.slice(0, 5)} title="스타터" teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
-                <AllstarRosterTable label="리저브" players={risingStars.teamA.slice(5)} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
-            </div>
-            <div className="border-t border-slate-800 pt-6">
-                <AllstarVoteSection label="선수 기록" entries={risingStars.teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats showVotes={false} />
-            </div>
+}
+
+/** 라이징스타 팀 한 열 — 팀 A/B가 로고·이름·명단만 다른 같은 블록(미러 정리) */
+const RisingTeamPanel: React.FC<PanelShared & { logo: LeagueLogoKey; teamName: string; players: RisingStarsRosterResult['teamA'] }> = ({
+    logo, teamName, players, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick,
+}) => (
+    <Pane>
+        <AllStarTitle logo={logo}>팀 {teamName}</AllStarTitle>
+        <div className="grid grid-cols-[3fr_2fr] gap-4">
+            <AllStarCourtDiagram starters={players.slice(0, 5)} title="스타터" teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
+            <AllstarRosterTable label="리저브" players={players.slice(5)} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
         </div>
-        <div className="p-6 space-y-6 min-w-0">
-            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                <img src="/logos/real/AS/RisingB.svg" alt="" className="h-8 w-8" />
-                팀 {risingStars.teamBName}
-            </h2>
-            <div className="grid grid-cols-[3fr_2fr] gap-4">
-                <AllStarCourtDiagram starters={risingStars.teamB.slice(0, 5)} title="스타터" teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
-                <AllstarRosterTable label="리저브" players={risingStars.teamB.slice(5)} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+        <DividedSection>
+            <AllstarVoteSection label="선수 기록" entries={players} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats showVotes={false} />
+        </DividedSection>
+    </Pane>
+);
+
+const RisingStarsBody: React.FC<PanelShared & { risingStars: RisingStarsRosterResult }> = ({ risingStars, ...shared }) => (
+    <TwoPane>
+        <RisingTeamPanel logo="RisingA" teamName={risingStars.teamAName} players={risingStars.teamA} {...shared} />
+        <RisingTeamPanel logo="RisingB" teamName={risingStars.teamBName} players={risingStars.teamB} {...shared} />
+    </TwoPane>
+);
+
+/** 본올스타 컨퍼런스 한 열 — 동/서부가 로고·제목·데이터만 다른 같은 블록(미러 정리) */
+const ConferencePanel: React.FC<PanelShared & {
+    logo: LeagueLogoKey;
+    title: string;
+    roster?: AllstarConferenceRoster;
+    conference: AllstarVoteConference;
+}> = ({ logo, title, roster, conference, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
+    <Pane>
+        <AllStarTitle logo={logo}>{title}</AllStarTitle>
+        {roster && (
+            <div className="space-y-3">
+                <SubTitle size="lg">최종 결과</SubTitle>
+                <div className="grid grid-cols-[3fr_2fr] gap-4">
+                    <AllStarCourtDiagram starters={roster.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={onPlayerClick} />
+                    <AllstarRosterTable label="리저브" players={roster.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+                </div>
             </div>
-            <div className="border-t border-slate-800 pt-6">
-                <AllstarVoteSection label="선수 기록" entries={risingStars.teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats showVotes={false} />
-            </div>
-        </div>
-    </div>
+        )}
+        <DividedSection>
+            <AllstarVoteGroupPanel conference={conference} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+        </DividedSection>
+    </Pane>
 );
 
 // ── 득표 리더보드: 백코트/프론트코트 셀렉터 ──────────────────────────────────
@@ -240,23 +276,13 @@ const AllstarVoteGroupPanel: React.FC<{
     const [group, setGroup] = useState<VoteGroup>('backcourt');
     return (
         <div className="space-y-3">
-            <h3 className="text-lg font-black text-slate-300 uppercase">올스타 후보 명단</h3>
-            <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 w-fit">
-                <button
-                    type="button"
-                    onClick={() => setGroup('backcourt')}
-                    className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${group === 'backcourt' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                    백코트
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setGroup('frontcourt')}
-                    className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${group === 'frontcourt' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                    프론트코트
-                </button>
-            </div>
+            <SubTitle size="lg">올스타 후보 명단</SubTitle>
+            <SegmentedControl<VoteGroup>
+                className="w-fit"
+                value={group}
+                onChange={setGroup}
+                options={[{ value: 'backcourt', label: '백코트' }, { value: 'frontcourt', label: '프론트코트' }]}
+            />
             <AllstarVoteSection
                 label={group === 'backcourt' ? '백코트' : '프론트코트'}
                 hideLabel
@@ -380,17 +406,12 @@ const MultiAllStarView: React.FC = () => {
     const beforeAllStarVoteStart = !!currentVirtualDate && currentVirtualDate < keyDates.allStarVoteStart;
     if (league?.type === 'tournament' || beforeAllStarVoteStart) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-slate-200 pretendard">
-                <Star size={40} className="text-slate-600" />
-                <div className="text-center">
-                    <h2 className="text-lg font-black text-slate-300 ko-tight">올스타</h2>
-                    <p className="text-sm text-slate-500 ko-normal mt-1">
-                        {league?.type === 'tournament'
-                            ? '토너먼트 세션에서는 지원하지 않는 기능입니다.'
-                            : '올스타 투표가 아직 시작되지 않았습니다.'}
-                    </p>
-                </div>
-            </div>
+            <EmptyState
+                icon={Star}
+                title="올스타"
+                subtitle={league?.type === 'tournament' ? '토너먼트 세션에서는 지원하지 않는 기능입니다.' : '올스타 투표가 아직 시작되지 않았습니다.'}
+                className="min-h-[60vh]"
+            />
         );
     }
 
@@ -415,47 +436,34 @@ const MultiAllStarView: React.FC = () => {
                     별도 그룹으로 만들고 스테퍼 아래로 이동(다른 화면들처럼 헤더 바로 아래
                     독립된 탭 바 형태). */}
                 <div className="flex items-center px-6 py-3 border-b border-slate-800 shrink-0">
-                    <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 w-fit">
-                        {ALLSTAR_TABS.map(t => (
-                            <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => setSearchParams(t.id === 'main' ? {} : { view: t.id })}
-                                className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors whitespace-nowrap ${
-                                    view === t.id ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
-                                }`}
-                            >
-                                {t.label}
-                            </button>
-                        ))}
-                    </div>
+                    <SegmentedControl
+                        className="w-fit"
+                        value={view}
+                        onChange={(id) => setSearchParams(id === 'main' ? {} : { view: id })}
+                        options={ALLSTAR_TABS.map(t => ({ value: t.id, label: t.label }))}
+                    />
                 </div>
 
                 {view === 'threept' ? (
                     sideEventsLoading ? (
-                        <div className="flex-1 flex items-center justify-center">
-                            <Loader2 size={28} className="animate-spin text-indigo-400" />
-                        </div>
+                        <Spinner variant="page" />
                     ) : sideEvents?.threePointContestResult ? (
                         // [2026-09-09] 결과가 나온 뒤에는 이 탭 자체가 결과 화면(사용자 요청) —
                         // 참가자 표 대신 결선/예선 순위표를 보여준다.
                         <div className="p-6 space-y-6">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/ThreeContest.svg" alt="" className="h-8 w-8" />
-                                3점 컨테스트 결과
-                            </h2>
+                            <AllStarTitle logo="ThreeContest">3점 컨테스트 결과</AllStarTitle>
                             <div className="grid grid-cols-[2fr_3fr] gap-6">
                                 <div className="space-y-2">
-                                    <h3 className="text-sm font-black text-slate-300 uppercase">샷차트</h3>
+                                    <SubTitle>샷차트</SubTitle>
                                     <ThreePointContestShotChart round1={sideEvents.threePointContestResult.round1} round2={sideEvents.threePointContestResult.round2} winnerId={sideEvents.threePointContestResult.winnerId} />
                                 </div>
                                 <div className="space-y-6">
                                     <div className="space-y-2">
-                                        <h3 className="text-sm font-black text-slate-300 uppercase">결선 (상위 3명)</h3>
+                                        <SubTitle>결선 (상위 3명)</SubTitle>
                                         <ThreePointContestResultTable entries={sideEvents.threePointContestResult.round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} highlightPlayerId={sideEvents.threePointContestResult.winnerId} />
                                     </div>
                                     <div className="space-y-2">
-                                        <h3 className="text-sm font-black text-slate-300 uppercase">예선 (8명)</h3>
+                                        <SubTitle>예선 (8명)</SubTitle>
                                         <ThreePointContestResultTable entries={sideEvents.threePointContestResult.round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
                                     </div>
                                 </div>
@@ -463,101 +471,48 @@ const MultiAllStarView: React.FC = () => {
                         </div>
                     ) : sideEvents?.threePointContest ? (
                         <div className="p-6 space-y-4">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/ThreeContest.svg" alt="" className="h-8 w-8" />
-                                3점 컨테스트 참가자
-                            </h2>
+                            <AllStarTitle logo="ThreeContest">3점 컨테스트 참가자</AllStarTitle>
                             <ThreePointContestTable participants={sideEvents.threePointContest.participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
                         </div>
                     ) : (
-                        <p className="p-10 text-sm text-slate-500 ko-normal">
-                            아직 3점 컨테스트 참가자 명단이 발표되지 않았습니다. 올스타전 기간({keyDates.allStarStart} ~ {keyDates.allStarEnd}) 시작일에 발표됩니다.
-                        </p>
+                        <EmptyState title="아직 3점 컨테스트 참가자 명단이 발표되지 않았습니다." subtitle={`올스타전 기간(${keyDates.allStarStart} ~ ${keyDates.allStarEnd}) 시작일에 발표됩니다.`} />
                     )
                 ) : view === 'dunk' ? (
                     sideEventsLoading ? (
-                        <div className="flex-1 flex items-center justify-center">
-                            <Loader2 size={28} className="animate-spin text-indigo-400" />
-                        </div>
+                        <Spinner variant="page" />
                     ) : sideEvents?.dunkContestResult ? (
                         // [2026-09-09] 결과가 나온 뒤에는 이 탭 자체가 결과 화면 — 3점 컨테스트 탭과
                         // 동일 패턴(참가자 표 대신 결승/예선 순위표).
                         <div className="p-6 space-y-6">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/DunkContest.svg" alt="" className="h-8 w-8" />
-                                덩크 컨테스트 결과
-                            </h2>
+                            <AllStarTitle logo="DunkContest">덩크 컨테스트 결과</AllStarTitle>
                             <div className="space-y-2">
-                                <h3 className="text-sm font-black text-slate-300 uppercase">결승 (상위 2명)</h3>
+                                <SubTitle>결승 (상위 2명)</SubTitle>
                                 <DunkContestResultTable entries={sideEvents.dunkContestResult.round2} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} highlightPlayerId={sideEvents.dunkContestResult.winnerId} />
                             </div>
                             <div className="space-y-2">
-                                <h3 className="text-sm font-black text-slate-300 uppercase">예선 (4명)</h3>
+                                <SubTitle>예선 (4명)</SubTitle>
                                 <DunkContestResultTable entries={sideEvents.dunkContestResult.round1} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
                             </div>
                         </div>
                     ) : sideEvents?.dunkContest ? (
                         <div className="p-6 space-y-4">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/DunkContest.svg" alt="" className="h-8 w-8" />
-                                덩크 컨테스트 참가자
-                            </h2>
+                            <AllStarTitle logo="DunkContest">덩크 컨테스트 참가자</AllStarTitle>
                             <DunkContestTable participants={sideEvents.dunkContest.participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
                         </div>
                     ) : (
-                        <p className="p-10 text-sm text-slate-500 ko-normal">
-                            아직 덩크 컨테스트 참가자 명단이 발표되지 않았습니다. 올스타전 기간({keyDates.allStarStart} ~ {keyDates.allStarEnd}) 시작일에 발표됩니다.
-                        </p>
+                        <EmptyState title="아직 덩크 컨테스트 참가자 명단이 발표되지 않았습니다." subtitle={`올스타전 기간(${keyDates.allStarStart} ~ ${keyDates.allStarEnd}) 시작일에 발표됩니다.`} />
                     )
                 ) : isLoading ? (
-                    <div className="flex-1 flex items-center justify-center">
-                        <Loader2 size={28} className="animate-spin text-indigo-400" />
-                    </div>
+                    <Spinner variant="page" />
                 ) : !snapshot ? (
-                    <p className="p-10 text-sm text-slate-500 ko-normal">
-                        아직 투표 집계가 없습니다. 투표 기간({keyDates.allStarVoteStart} ~ {keyDates.allStarVoteEnd})이 시작되면 여기서 득표 현황을 볼 수 있습니다.
-                    </p>
+                    <EmptyState title="아직 투표 집계가 없습니다." subtitle={`투표 기간(${keyDates.allStarVoteStart} ~ ${keyDates.allStarVoteEnd})이 시작되면 여기서 득표 현황을 볼 수 있습니다.`} />
                 ) : view === 'risingstars' && snapshot.roster?.risingStars ? (
                     <RisingStarsBody risingStars={snapshot.roster.risingStars} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
                 ) : (
-                    <div className="grid grid-cols-2 divide-x divide-slate-800 min-h-full">
-                        <div className="p-6 space-y-6 min-w-0">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/East.svg" alt="" className="h-8 w-8" />
-                                동부 컨퍼런스
-                            </h2>
-                            {snapshot.roster && (
-                                <div className="space-y-3">
-                                    <h3 className="text-lg font-black text-slate-300 uppercase">최종 결과</h3>
-                                    <div className="grid grid-cols-[3fr_2fr] gap-4">
-                                        <AllStarCourtDiagram starters={snapshot.roster.east.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={openPlayer} />
-                                        <AllstarRosterTable label="리저브" players={snapshot.roster.east.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
-                                    </div>
-                                </div>
-                            )}
-                            <div className="border-t border-slate-800 pt-6">
-                                <AllstarVoteGroupPanel conference={snapshot.detail.east} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
-                            </div>
-                        </div>
-                        <div className="p-6 space-y-6 min-w-0">
-                            <h2 className="flex items-center gap-2 text-2xl font-black text-white">
-                                <img src="/logos/real/AS/West.svg" alt="" className="h-8 w-8" />
-                                서부 컨퍼런스
-                            </h2>
-                            {snapshot.roster && (
-                                <div className="space-y-3">
-                                    <h3 className="text-lg font-black text-slate-300 uppercase">최종 결과</h3>
-                                    <div className="grid grid-cols-[3fr_2fr] gap-4">
-                                        <AllStarCourtDiagram starters={snapshot.roster.west.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onPlayerClick={openPlayer} />
-                                        <AllstarRosterTable label="리저브" players={snapshot.roster.west.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
-                                    </div>
-                                </div>
-                            )}
-                            <div className="border-t border-slate-800 pt-6">
-                                <AllstarVoteGroupPanel conference={snapshot.detail.west} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
-                            </div>
-                        </div>
-                    </div>
+                    <TwoPane>
+                        <ConferencePanel logo="East" title="동부 컨퍼런스" roster={snapshot.roster?.east} conference={snapshot.detail.east} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
+                        <ConferencePanel logo="West" title="서부 컨퍼런스" roster={snapshot.roster?.west} conference={snapshot.detail.west} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={openTeam} onPlayerClick={openPlayer} />
+                    </TwoPane>
                 )}
             </div>
         </div>

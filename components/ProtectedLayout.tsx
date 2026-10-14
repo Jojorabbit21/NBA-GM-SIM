@@ -177,7 +177,7 @@ const ProtectedLayout: React.FC = () => {
         >
             {/* ─── LiveGame 오버레이 (URL 미변경) ─── */}
             {liveTarget && (
-                <div className="fixed inset-0 z-[9999] bg-slate-950">
+                <div className="fixed inset-0 z-takeover bg-slate-950">
                     <LiveGameView
                         homeTeam={liveTarget.homeTeam}
                         awayTeam={liveTarget.awayTeam}
@@ -198,7 +198,7 @@ const ProtectedLayout: React.FC = () => {
 
             {/* ─── Spectate 오버레이 (URL 미변경) ─── */}
             {sim.spectateTarget && (
-                <div className="fixed inset-0 z-[9999] bg-slate-950">
+                <div className="fixed inset-0 z-takeover bg-slate-950">
                     <LiveGameView
                         homeTeam={sim.spectateTarget.homeTeam}
                         awayTeam={sim.spectateTarget.awayTeam}

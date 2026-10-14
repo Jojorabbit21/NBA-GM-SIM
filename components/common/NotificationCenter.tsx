@@ -1,12 +1,12 @@
 // NotificationCenter.tsx — 우측 하단 토스트 스택. 앱 전체에 하나만 마운트(index.tsx).
 // [2026-10-02] docs/plan/toast-notification-center-plan.md 1단계. 상태는 services/notifications/
 // notificationStore.ts가 갖고, 이 컴포넌트는 useSyncExternalStore로 구독해 그리기만 한다.
-//   - 알림마다 × 닫기, 스택이 있을 때만 보이는 "전체 닫기"
-//   - transient는 8초 후 자동 소멸, 호버 중엔 타이머 정지(남은 시간 보존 — ZenGM 동일)
-//   - link가 있고 현재 경로와 다르면 "이동" 버튼(react-router navigate)
-//   - z-index는 Modal(z-[500])보다 높게(z-[600]) — 모달 위에서도 보여야 함
-//   - aria-live="polite": 낭독기에 새 알림을 알리되 폭주 시 끼어들지 않음
-//   - 하단 고정 요소와 겹치지 않도록 bottomOffset(px) prop
+// - 알림마다 × 닫기, 스택이 있을 때만 보이는 "전체 닫기"
+// - transient는 8초 후 자동 소멸, 호버 중엔 타이머 정지(남은 시간 보존 — ZenGM 동일)
+// - link가 있고 현재 경로와 다르면 "이동" 버튼(react-router navigate)
+// - z-index는 사다리의 z-toast(800) — 모달(500)·팝오버(600)·툴팁(700) 위, 전체 화면 점유(1000) 아래(tailwind.config.js zIndex)
+// - aria-live="polite": 낭독기에 새 알림을 알리되 폭주 시 끼어들지 않음
+// - 하단 고정 요소와 겹치지 않도록 bottomOffset(px) prop
 
 import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -91,7 +91,7 @@ export const NotificationCenter: React.FC<{ bottomOffset?: number }> = ({ bottom
         <div
             aria-live="polite"
             aria-relevant="additions"
-            className="fixed right-4 z-[600] w-[min(380px,calc(100vw-32px))] pointer-events-none flex flex-col items-end gap-2"
+            className="fixed right-4 z-toast w-[min(380px,calc(100vw-32px))] pointer-events-none flex flex-col items-end gap-2"
             style={{ bottom: bottomOffset }}
         >
             {visible.length > 0 && (

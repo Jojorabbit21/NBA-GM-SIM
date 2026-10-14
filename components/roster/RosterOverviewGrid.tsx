@@ -1,19 +1,21 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { OvrBadge } from '../common/OvrBadge';
+import { getPositionStars } from '../../utils/positionRating';
 import { StarRating } from '../common/StarRating';
 import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../common/Table';
-import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../services/playerDevelopment/archetypeEvaluator';
-import type { PlayerArchetypeState } from '../../types/archetype';
-import { formatMoney } from '../../utils/formatMoney';
-import { PlayerHoverCard } from '../common/PlayerHoverCard';
-import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
-import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
+import { Money } from '../common/Money';
+import { getCurrentSeasonSalary, getContractAav } from '../../utils/contract';
+import { Button } from '../common/Button';
+import { useTableSort, sortByConfig } from '../../hooks/useTableSort';
+import { PlayerInfoColGroup, PlayerInfoHeaderCells, PlayerInfoCells } from './PlayerInfoColumns';
 
 interface RosterOverviewGridProps {
     team: Team;
+    /** [2026-10-14] "포지션 레이팅" 열 — 리그 전체에서 같은 포지션 선수들 사이의 OVR 백분위 별점(선수 상세의 "포지션 평점"과 같은 계산).
+     *  미전달이면 열은 그대로 두고 '-' 표시. */
+    allTeams?: Team[];
     onPlayerClick: (player: Player) => void;
     /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
     enableHoverCard?: boolean;
@@ -37,34 +39,24 @@ interface RosterOverviewGridProps {
 const DEFAULT_MAX_ROSTER_SIZE = 15;
 const DEFAULT_TWO_WAY_SLOTS = 3;
 
-type SortConfig = { key: string; direction: 'asc' | 'desc' };
+// 이름|포지션|나이|OVR 4열은 PlayerInfoColumns.tsx(PLAYER_INFO_WIDTHS)
+const WIDTHS = { HEIGHT: 70, WEIGHT: 70, REMAINING: 80, PAY: 130, AAV: 130, RATING: 140, POS_RATING: 140, RELEASE: 90 };
 
-const WIDTHS = {
-    NAME: 180, POS: 60, AGE: 50, OVR: 60,
-    HEIGHT: 70, WEIGHT: 70, SALARY: 110, REMAINING: 80, AAV: 110,
-    ARCHETYPE: 150, SECONDARY: 150, TAGS: 220, RATING: 140, RELEASE: 90,
+const getSortValue = (p: Player, key: string): number | string => {
+    if (key === 'name') return p.name;
+    if (key === 'position') return p.position;
+    if (key === 'age') return p.age;
+    if (key === 'ovr') return calculatePlayerOvr(p);
+    if (key === 'height') return p.height ?? 0;
+    if (key === 'weight') return p.weight ?? 0;
+    if (key === 'contractYears') return p.contractYears ?? 0;
+    if (key === 'pay') return getCurrentSeasonSalary(p);
+    if (key === 'aav') return getContractAav(p);
+    return 0;
 };
 
-function getPlayerArchetypeState(p: Player): PlayerArchetypeState {
-    return p.archetypeState ?? assignArchetypes(p, '2025-26');
-}
-
-// 잔여 계약기간(현재 시즌 포함) 동안의 평균 연봉 — AAV(Average Annual Value).
-function getRemainingAav(p: Player): number {
-    if (!p.contract || p.contractYears <= 0) return 0;
-    const remainingTotal = p.contract.years.slice(p.contract.currentYear).reduce((s, v) => s + v, 0);
-    return remainingTotal / p.contractYears;
-}
-
-const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
-    left, width, minWidth: width, maxWidth: width,
-    position: 'sticky' as const,
-    zIndex: 30,
-    borderRight: isLast ? undefined : 'none',
-});
-
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS, showTwoWaySlots = true }) => {
-    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, allTeams, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS, showTwoWaySlots = true }) => {
+    const { sortConfig, sortProps } = useTableSort({ key: 'ovr', direction: 'desc' });
 
     // "정규 계약" = 투웨이(two-way)가 아닌 모든 계약. 실제 NBA도 투웨이 2명은 15명 정원과
     // 별개 슬롯이라 여기서 제외한다 — 계약 데이터가 아직 없는 선수(p.contract undefined,
@@ -79,171 +71,80 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, on
         [team.roster],
     );
 
-    const handleSort = (key: string) => {
-        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
-    };
+    const sortedRoster = useMemo(() => sortByConfig(team.roster, sortConfig, getSortValue), [team.roster, sortConfig]);
 
-    const getSortValue = (p: Player, key: string): number | string => {
-        if (key === 'name') return p.name;
-        if (key === 'position') return p.position;
-        if (key === 'age') return p.age;
-        if (key === 'ovr') return calculatePlayerOvr(p);
-        if (key === 'height') return p.height ?? 0;
-        if (key === 'weight') return p.weight ?? 0;
-        if (key === 'salary') return p.salary ?? 0;
-        if (key === 'contractYears') return p.contractYears ?? 0;
-        if (key === 'aav') return getRemainingAav(p);
-        return 0;
-    };
-
-    const sortedRoster = useMemo(() => {
-        return [...team.roster].sort((a, b) => {
-            const aVal = getSortValue(a, sortConfig.key);
-            const bVal = getSortValue(b, sortConfig.key);
-            if (typeof aVal === 'string' && typeof bVal === 'string') {
-                return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-            }
-            return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-        });
-    }, [team.roster, sortConfig]);
-
-    const LEFT_POS = WIDTHS.NAME;
-    const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
-    const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
+    // 포지션 레이팅 — 리그 전체 선수 풀을 한 번만 평탄화하고 선수별 별점을 맵으로(행마다 리그 전체를 다시 훑지 않도록).
+    const positionStarsById = useMemo(() => {
+        if (!allTeams) return null;
+        const allPlayers = allTeams.flatMap(t => t.roster ?? []);
+        return new Map(team.roster.map(p => [p.id, getPositionStars(p, allPlayers)]));
+    }, [allTeams, team.roster]);
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0">
-                <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
+                <Table variant="flush" fullHeight>
                     <colgroup>
-                        <col style={{ width: WIDTHS.NAME }} />
-                        <col style={{ width: WIDTHS.POS }} />
-                        <col style={{ width: WIDTHS.AGE }} />
-                        <col style={{ width: WIDTHS.OVR }} />
+                        <PlayerInfoColGroup />
                         <col style={{ width: WIDTHS.RATING }} />
+                        <col style={{ width: WIDTHS.POS_RATING }} />
                         <col style={{ width: WIDTHS.HEIGHT }} />
                         <col style={{ width: WIDTHS.WEIGHT }} />
-                        <col style={{ width: WIDTHS.SALARY }} />
-                        <col style={{ width: WIDTHS.REMAINING }} />
+                        <col style={{ width: WIDTHS.PAY }} />
                         <col style={{ width: WIDTHS.AAV }} />
-                        <col style={{ width: WIDTHS.ARCHETYPE }} />
-                        <col style={{ width: WIDTHS.SECONDARY }} />
-                        <col style={{ width: WIDTHS.TAGS }} />
+                        <col style={{ width: WIDTHS.REMAINING }} />
                         {onReleasePlayer && <col style={{ width: WIDTHS.RELEASE }} />}
                     </colgroup>
-                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
-                        <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
-                            <TableHeaderCell
-                                style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }}
-                                align="left" className="pl-4 bg-slate-950"
-                                sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
-                            >이름</TableHeaderCell>
-                            <TableHeaderCell
-                                style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }}
-                                className="bg-slate-950"
-                                sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
-                            >포지션</TableHeaderCell>
-                            <TableHeaderCell
-                                style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }}
-                                className="bg-slate-950"
-                                sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
-                            >나이</TableHeaderCell>
-                            <TableHeaderCell
-                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50 }}
-                                className="bg-slate-950 border-r border-slate-800"
-                                sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
-                            >OVR</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.RATING} className="border-r border-slate-800">레이팅</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.HEIGHT} className="border-r border-slate-800" sortable onSort={() => handleSort('height')} sortDirection={sortConfig.key === 'height' ? sortConfig.direction : null}>키</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.WEIGHT} className="border-r border-slate-800" sortable onSort={() => handleSort('weight')} sortDirection={sortConfig.key === 'weight' ? sortConfig.direction : null}>몸무게</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.SALARY} className="border-r border-slate-800" sortable onSort={() => handleSort('salary')} sortDirection={sortConfig.key === 'salary' ? sortConfig.direction : null}>샐러리</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.REMAINING} className="border-r border-slate-800" sortable onSort={() => handleSort('contractYears')} sortDirection={sortConfig.key === 'contractYears' ? sortConfig.direction : null}>잔여계약</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.AAV} className="border-r border-slate-800" sortable onSort={() => handleSort('aav')} sortDirection={sortConfig.key === 'aav' ? sortConfig.direction : null}>AAV</TableHeaderCell>
-                            <TableHeaderCell colSpan={2} className="border-r border-slate-800">아키타입</TableHeaderCell>
-                            <TableHeaderCell width={WIDTHS.TAGS} align="left" className="pl-3">태그</TableHeaderCell>
-                            {onReleasePlayer && <TableHeaderCell width={WIDTHS.RELEASE}>방출</TableHeaderCell>}
-                        </tr>
+                    <TableHead>
+                        <PlayerInfoHeaderCells sortProps={sortProps} />
+                        <TableHeaderCell width={WIDTHS.RATING}>리그 레이팅</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.POS_RATING}>포지션 레이팅</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.HEIGHT} {...sortProps('height')}>키</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.WEIGHT} {...sortProps('weight')}>몸무게</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.PAY} align="right" {...sortProps('pay')}>급여</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.AAV} align="right" {...sortProps('aav')}>AAV</TableHeaderCell>
+                        <TableHeaderCell width={WIDTHS.REMAINING} {...sortProps('contractYears')}>잔여계약</TableHeaderCell>
+                        {onReleasePlayer && <TableHeaderCell width={WIDTHS.RELEASE}>방출</TableHeaderCell>}
                     </TableHead>
                     <TableBody>
-                        {sortedRoster.map(p => {
-                            const archetypeState = getPlayerArchetypeState(p);
-                            const primaryInfo = getArchetypeDisplayInfo(archetypeState.primary);
-                            const secondaryInfo = archetypeState.secondary ? getArchetypeDisplayInfo(archetypeState.secondary) : null;
-                            const tagInfos = archetypeState.tags.slice(0, 3).map(t => getTraitTagDisplayInfo(t));
-
-                            return (
-                                <TableRow key={p.id} className="group">
-                                    <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
-                                        <span className="flex items-center gap-1.5 min-w-0">
-                                            <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                                <span className="min-w-0 text-sm font-semibold text-white truncate hover:text-indigo-400 hover:underline cursor-pointer" onClick={() => onPlayerClick(p)}>{p.name}</span>
-                                            </PlayerHoverCard>
-                                            {p.contract?.type === 'two_way' && (
-                                                <span
-                                                    title="Two-Way 계약"
-                                                    className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                                                >TW</span>
-                                            )}
-                                            {p.activeInjurySeverity && (
-                                                <InjuryStatusBadge
-                                                    severity={p.activeInjurySeverity}
-                                                    title={formatPlayerActiveInjuryLabel(p) ?? undefined}
-                                                    size={16}
-                                                    iconSize={12}
-                                                    strokeWidth={4}
-                                                />
-                                            )}
-                                        </span>
+                        {sortedRoster.map(p => (
+                            <TableRow key={p.id}>
+                                <PlayerInfoCells player={p} teamAbbr={team.abbr} onClick={onPlayerClick} enableHoverCard={enableHoverCard} />
+                                <TableCell align="center">
+                                    <div className="flex justify-center"><StarRating ovr={calculatePlayerOvr(p)} size="lg" /></div>
+                                </TableCell>
+                                <TableCell align="center" className="text-sm text-slate-500">
+                                    {positionStarsById?.get(p.id) != null
+                                        ? <div className="flex justify-center"><StarRating stars={positionStarsById.get(p.id)!} size="lg" /></div>
+                                        : '-'}
+                                </TableCell>
+                                <TableCell align="center" className="text-sm text-white">{p.height ? `${p.height}cm` : '-'}</TableCell>
+                                <TableCell align="center" className="text-sm text-white">{p.weight ? `${p.weight}kg` : '-'}</TableCell>
+                                <TableCell align="right" className="text-sm text-white">{p.contract ? <Money value={getCurrentSeasonSalary(p)} format="full" /> : '-'}</TableCell>
+                                <TableCell align="right" className="text-sm text-white">{p.contract ? <Money value={getContractAav(p)} format="full" /> : '-'}</TableCell>
+                                <TableCell align="center" className="text-sm text-white">{p.contract ? `${p.contractYears}년` : '-'}</TableCell>
+                                {onReleasePlayer && (
+                                    <TableCell align="center">
+                                        <Button
+                                            variant="danger"
+                                            size="sm"
+                                            shape="md"
+                                            onClick={() => onReleasePlayer(p)}
+                                            disabled={releasingId != null}
+                                        >
+                                            방출
+                                        </Button>
                                     </TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
-                                    <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)} className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center">
-                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                                    </TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30">
-                                        <div className="flex justify-center"><StarRating ovr={calculatePlayerOvr(p)} size="lg" /></div>
-                                    </TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.height ? `${p.height}cm` : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.weight ? `${p.weight}kg` : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.contract ? formatMoney(p.salary) : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white">{p.contract ? `${p.contractYears}년` : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800 text-sm text-white">{p.contract ? formatMoney(getRemainingAav(p)) : '-'}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white truncate">{primaryInfo.label}</TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/30 text-sm text-white truncate">{secondaryInfo ? secondaryInfo.label : ''}</TableCell>
-                                    <TableCell align="left" className="pl-3">
-                                        <div className="flex flex-wrap gap-1">
-                                            {tagInfos.length === 0 && <span className="text-sm text-slate-600">-</span>}
-                                            {tagInfos.map((t, i) => (
-                                                <span
-                                                    key={i}
-                                                    className="text-sm text-white whitespace-nowrap"
-                                                >
-                                                    {t.label}{i < tagInfos.length - 1 ? ',' : ''}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </TableCell>
-                                    {onReleasePlayer && (
-                                        <TableCell align="center">
-                                            <button
-                                                onClick={() => onReleasePlayer(p)}
-                                                disabled={releasingId != null}
-                                                className="px-2.5 py-1 rounded-md text-sm font-bold bg-red-900/60 hover:bg-red-800 text-red-200 transition-colors whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed"
-                                            >
-                                                방출
-                                            </button>
-                                        </TableCell>
-                                    )}
-                                </TableRow>
-                            );
-                        })}
+                                )}
+                            </TableRow>
+                        ))}
                     </TableBody>
                     {/* 컨테이너 하단에 고정(fixed)되지 않고 로스터 행 바로 아래에 붙도록 <tfoot>으로
                         렌더링 — 위 TableBody와 같은 스크롤 영역 안에 있어 마지막 행 다음에 자연스럽게
                         이어지고, 로스터가 길어 표가 스크롤될 때도 body와 함께 움직인다. */}
                     <TableFoot>
                         <tr>
-                            <td colSpan={onReleasePlayer ? 14 : 13} className="px-4">
+                            <td colSpan={onReleasePlayer ? 12 : 11} className="px-4">
                                 <div className="h-40 flex items-start justify-end gap-4 pt-3">
                                     <span className="text-sm font-semibold text-slate-400">
                                         정규 계약 슬롯{' '}

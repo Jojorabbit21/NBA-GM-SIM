@@ -391,12 +391,18 @@ export function stepPossession(state: GameState): StepResult {
 
     const result = simulatePossession(state, { clutchContext });
     state.courtSnapshot = computeCourtPositions(result, state.home.id);
-    const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+    // [2026-10-07] 테크니컬 파울은 데드볼 중 발생하는 독립 이벤트 — 시간 차감 없이(중단 시점 그대로) 자유투만
+    // 처리하고 같은 팀 공격을 재개한다. 평균 샷클락 소모 통계에서도 제외. 플래그런트는 플레이 중 발생하므로
+    // 시간은 정상 소모(아래 retainPossession에서 샷클락만 14초로).
+    const isTechnical = result.type === 'technicalFoul';
+    const timeTaken = isTechnical ? 0 : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
 
     // 포세션 시간 누적 (평균 샷클락 소모 추적)
-    const sideAccum = state.possession === 'home' ? state.possessionTimeAccum.home : state.possessionTimeAccum.away;
-    sideAccum.total += timeTaken;
-    sideAccum.count += 1;
+    if (!isTechnical) {
+        const sideAccum = state.possession === 'home' ? state.possessionTimeAccum.home : state.possessionTimeAccum.away;
+        sideAccum.total += timeTaken;
+        sideAccum.count += 1;
+    }
 
     // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
     state.gameClock = Math.max(0, state.gameClock - timeTaken);
@@ -472,9 +478,14 @@ export function stepPossession(state: GameState): StepResult {
         || result.type === 'flagrantFoul';
 
     if (retainPossession) {
-        state.shotClock = isOffReb ? 14 : 24;
+        // [2026-10-07] 오펜시브 리바운드 14 / 플래그런트 14(프런트코트 인바운드 규정) / 테크니컬은 중단 시점 샷클락 유지
+        if (isOffReb) state.shotClock = 14;
+        else if (result.type === 'flagrantFoul') state.shotClock = 14;
+        // technicalFoul: state.shotClock 그대로
         state.lastEntryWasDefReb = false;
+        state.lastEntryWasOffReb = isOffReb;
     } else {
+        state.lastEntryWasOffReb = false;
         // [New 2026-07] 수비 리바운드로 공격권이 넘어간 경우만 true — defReb 속공 트레이드오프용
         state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
         state.possession = state.possession === 'home' ? 'away' : 'home';

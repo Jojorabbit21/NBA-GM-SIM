@@ -1,7 +1,8 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { InlineNotice } from '../../../components/common/InlineNotice';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, GripHorizontal, ChevronLeft } from 'lucide-react';
+import { GripHorizontal, ChevronLeft } from 'lucide-react';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonReady } from '../../../hooks/useSeasonReady';
 import { useLeagueContext } from './LeagueLayout';
@@ -20,6 +21,9 @@ import type { BoardPick } from '../../../components/draft/DraftBoard';
 import { PickHistory } from '../../../components/draft/PickHistory';
 import { PlayerPool } from '../../../components/draft/PlayerPool';
 import { MyRoster } from '../../../components/draft/MyRoster';
+import { Button } from '../../../components/common/Button';
+import { Spinner } from '../../../components/common/Spinner';
+import { IconButton } from '../../../components/common/IconButton';
 import { DraftAdminPanel } from '../../../components/draft/DraftAdminPanel';
 
 const POSITION_COLORS: Record<string, string> = {
@@ -83,6 +87,7 @@ const MultiDraftView: React.FC = () => {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting, sendAdmin, toggleAutoPick,
+        connectionState, reconnectAttempt,
     } = useLeagueDraft(room?.id ?? null, session);
 
     const myAutoPick = !!(userId && draftState?.autoPickUserIds?.includes(userId));
@@ -91,6 +96,8 @@ const MultiDraftView: React.FC = () => {
 
     const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
     const [pickError,        setPickError]        = useState<string | null>(null);
+    // [2026-10-13] 픽이 넘어가면(내 차례 종료·다음 픽) 직전 지명 실패 문구는 더 이상 유효하지 않음 — 소거
+    useEffect(() => { setPickError(null); }, [draftState?.currentPickIndex]);
 
     // ── 대기실(waiting) 카운트다운 — 로터리 완료 후 예정 시각까지 ──────────────
     const [countdown, setCountdown] = useState<string | null>(null);
@@ -103,8 +110,8 @@ const MultiDraftView: React.FC = () => {
             if (diff <= 0) { setCountdown('곧 시작'); return; }
             const d  = Math.floor(diff / 86_400_000);
             const h  = Math.floor((diff % 86_400_000) / 3_600_000);
-            const m  = Math.floor((diff % 3_600_000)  /    60_000);
-            const s  = Math.floor((diff % 60_000)     /     1_000);
+            const m  = Math.floor((diff % 3_600_000)  / 60_000);
+            const s  = Math.floor((diff % 60_000)     / 1_000);
             const hh = String(h).padStart(2, '0');
             const mm = String(m).padStart(2, '0');
             const ss = String(s).padStart(2, '0');
@@ -301,23 +308,21 @@ const MultiDraftView: React.FC = () => {
 
     // ── 로딩 / 에러 가드 ─────────────────────────────────────────────────────
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-            </div>
-        );
+        return <Spinner variant="page" />;
     }
 
     if (!draftState) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+            <div className="h-full flex-1 min-h-0 flex flex-col items-center justify-center gap-3">
                 <p className="text-slate-400 text-sm ko-normal">드래프트가 아직 시작되지 않았습니다.</p>
-                <button
+                <Button
+                    variant="link"
+                    underline
                     onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
-                    className="text-indigo-400 text-sm hover:underline ko-normal"
+                    className="ko-normal"
                 >
                     리그 홈으로 돌아가기
-                </button>
+                </Button>
             </div>
         );
     }
@@ -330,12 +335,15 @@ const MultiDraftView: React.FC = () => {
                 <div className="shrink-0 bg-slate-900">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5">
                         <div className="flex items-center gap-2">
-                            <button
+                            <IconButton
+                                label="리그 홈으로"
+                                tone="inherit"
+                                size="sm"
                                 onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
-                                className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                                className="text-white/60 hover:bg-white/10"
                             >
                                 <ChevronLeft size={16} />
-                            </button>
+                            </IconButton>
                             <span className="text-sm font-bold text-white/80">드래프트 룸</span>
                         </div>
                         <div className="text-center min-w-[160px] h-[42px] flex flex-col items-center justify-center">
@@ -491,19 +499,25 @@ const MultiDraftView: React.FC = () => {
                     />
                 </div>
 
-                {/* 선수 풀 */}
+                {/* 선수 풀 — [2026-10-13] 지명 실패/연결 끊김은 상단 띠 대신 툴바 "드래프트" 버튼 왼쪽 sm(끊김이 우선) */}
                 <div className="flex-1 bg-slate-900/60 rounded-xl overflow-hidden flex flex-col">
-                    {pickError && (
-                        <p className="shrink-0 text-xs text-red-400 px-3 py-1 border-b border-slate-800">{pickError}</p>
-                    )}
                     <div className="flex-1 min-h-0 overflow-hidden">
                         <PlayerPool
                             players={adaptedPlayers}
                             selectedPlayerId={selectedPlayerId}
                             onSelectPlayer={handleSelectPlayer}
-                            isUserTurn={isMyTurn && !isSubmitting}
+                            isUserTurn={isMyTurn && !isSubmitting && connectionState === 'connected'}
                             onDraft={handleDraft}
                             positionColors={POSITION_COLORS}
+                            toolbarNotice={
+                                connectionState !== 'connected' ? (
+                                    <InlineNotice tone="danger" size="sm" className="text-right">
+                                        연결이 끊겨 지명을 보낼 수 없습니다. 다시 연결 중…{reconnectAttempt > 0 ? ` (${reconnectAttempt}회)` : ''}
+                                    </InlineNotice>
+                                ) : pickError ? (
+                                    <InlineNotice tone="danger" size="sm" className="text-right">{pickError}</InlineNotice>
+                                ) : null
+                            }
                         />
                     </div>
                 </div>
@@ -515,6 +529,7 @@ const MultiDraftView: React.FC = () => {
                         salaries={myRosterSalaries}
                         myAutoPick={myAutoPick}
                         onToggleAutoPick={myTeamId ? (next) => toggleAutoPick(next) : undefined}
+                        autoPickDisabled={connectionState !== 'connected'}
                     />
                 </div>
             </div>

@@ -2,7 +2,9 @@
 import React, { useMemo } from 'react';
 import { useLeaderboardData } from '../../../../hooks/useLeaderboardData';
 import type { Team, Game, Player } from '../../../../types';
-import { PlayerHoverCard } from '../../../common/PlayerHoverCard';
+import { EmptyState } from '../../../common/EmptyState';
+import { PlayerNameLink } from '../../../common/PlayerNameLink';
+import { InsightCard } from './InsightCard';
 
 interface LeaderStatConfig {
     key: string;
@@ -84,27 +86,20 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
 
     if (cards.length === 0) {
         return (
-            <div className="w-full bg-slate-900/40 border border-slate-800 p-4 text-center text-sm text-slate-500">
-                아직 완료된 경기가 없습니다.
-            </div>
+            <InsightCard>
+                <EmptyState padding="sm" title="아직 완료된 경기가 없습니다." />
+            </InsightCard>
         );
     }
 
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {cards.map(c => (
-                <div key={c.key} className="bg-slate-900/40 border border-slate-800 overflow-hidden flex flex-col">
+                <InsightCard key={c.key} className="flex flex-col">
                     {/* 상단(리더) 영역 — slate-800 배경으로 아래 TOP5 리스트와 구분(구분선 대신 면적으로 분리) */}
                     <div className="bg-slate-800 px-3 py-2 flex flex-col gap-1">
-                        <span className="text-sm font-normal text-slate-300 uppercase tracking-wider">{c.label}</span>
-                        <PlayerHoverCard player={c.player} teamAbbr={c.player.teamAbbr}>
-                            <span
-                                className="text-sm font-normal text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors"
-                                onClick={() => onPlayerClick?.(c.player)}
-                            >
-                                {c.player.name}
-                            </span>
-                        </PlayerHoverCard>
+                        <span className="text-sm font-normal text-slate-300">{c.label}</span>
+                        <PlayerNameLink player={c.player} teamAbbr={c.player.teamAbbr} onClick={onPlayerClick} />
                         <div className="flex items-baseline justify-between">
                             <span className="text-lg font-normal text-white tabular-nums">{formatValue(c.value, c.format)}</span>
                             <span className="text-lg font-normal text-white tabular-nums">리그 {c.rank}위</span>
@@ -114,19 +109,14 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
                     <div className="flex flex-col gap-0.5 px-3 py-1.5">
                         {c.top5.map((p, i) => (
                             <div key={i} className="flex items-center justify-between gap-2">
-                                <PlayerHoverCard player={p.player} teamAbbr={p.player.teamAbbr}>
-                                    <span
-                                        className="text-sm font-normal text-slate-400 truncate hover:text-indigo-400 cursor-pointer transition-colors"
-                                        onClick={() => onPlayerClick?.(p.player)}
-                                    >
-                                        {i + 1}. {p.player.name}
-                                    </span>
-                                </PlayerHoverCard>
+                                <PlayerNameLink player={p.player} teamAbbr={p.player.teamAbbr} onClick={onPlayerClick} tone="muted">
+                                    {i + 1}. {p.player.name}
+                                </PlayerNameLink>
                                 <span className="text-sm font-normal text-slate-300 tabular-nums shrink-0">{formatValue(p.value, c.format)}</span>
                             </div>
                         ))}
                     </div>
-                </div>
+                </InsightCard>
             ))}
         </div>
     );

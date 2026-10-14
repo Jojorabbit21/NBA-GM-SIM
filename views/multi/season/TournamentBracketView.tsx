@@ -1,14 +1,20 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { PlayoffSeries, Game } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { useServerClock } from '../../../utils/serverClock';
-import { isFinal, isStarted, computeRevealedSeries } from './multiGameReveal';
+import { isFinal, isStarted, getGameDisplayState, computeRevealedSeries } from './multiGameReveal';
+import { kstDateKey, fmtTime } from './multiScheduleUtils';
+import { Table, TableBody, TableRow, TableCell } from '../../../components/common/Table';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { IconButton } from '../../../components/common/IconButton';
+import { TEAM_DATA } from '../../../data/teamData';
+import { VIRTUAL_TEAMS } from '../../../data/virtualTeams';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +38,28 @@ function getRoundLabel(round: number, totalRounds: number): string {
 function getSideRoundLabel(round: number, confRounds: number): string {
     if (round === confRounds) return '컨퍼런스 파이널';
     return `${round}라운드`;
+}
+
+// 사이드패널 경기 카드용 연고지명. team_slug는 실제 팀(TEAM_DATA) 또는 가상 확장팀(VIRTUAL_TEAMS)
+// 둘 중 하나라 연고지는 고정값(TeamSettingsPanel.resolveCity와 동일 원칙). 둘 다 없으면 리그 팀명의
+// 첫 어절(leagueService가 `${city} ${name}`으로 생성 — statsMappers.regionOf와 같은 가정) → 약어 폴백.
+function cityOfTeam(slug: string, team: LeagueTeamRow | undefined): string {
+    const fixed = TEAM_DATA[slug]?.city ?? VIRTUAL_TEAMS.find(t => t.team_slug === slug)?.city;
+    if (fixed) return fixed;
+    const first = team?.team_name?.trim().split(/\s+/)[0];
+    return first || team?.team_abbr || slug.toUpperCase();
+}
+
+// [2026-10-13] 팀 호버 시 그 팀의 진출 경로 전체(슬롯 링·brightness, 비호버 팀 opacity-30, 커넥터·파이널
+// 연결선 하이라이트)를 켜는 기능. 사용자 요청으로 비활성화 — 코드는 유지하고 이 플래그만 false.
+// true로 되돌리면 메인 컴포넌트의 onHoverTeam이 다시 setHoveredTeamId로 연결된다.
+const TEAM_HOVER_HIGHLIGHT_ENABLED = false;
+const noopHover = (_teamId: string | null) => {};
+
+// 시리즈 창을 열 수 있는 카드인가 — 양쪽 팀이 모두 확정된 매치만. 빈 카드(TBD/TBD), 한쪽만 찬 카드
+// (팀/TBD), 부전승(BYE)은 경기 목록이 없거나 의미가 없으므로 클릭해도 열지 않는다.
+function isSeriesOpenable(s: PlayoffSeries): boolean {
+    return s.higherSeedId !== 'TBD' && s.lowerSeedId !== 'TBD' && s.lowerSeedId !== 'BYE';
 }
 
 function matchIndex(seriesId: string): number {
@@ -58,18 +86,7 @@ function bracketSeedOrder(size: number): number[] {
     return order;
 }
 
-// 좌/우 대칭 모드에서 한쪽 진영의 라운드 헤더 표시 순서 — 동부(mirrored)는 컨퍼런스 파이널이
-// 중앙에 붙도록 내림차순(rounds..1)으로, 서부는 오름차순(1..rounds)으로 나열한다.
-function sideHeaderOrder(rounds: number, mirrored: boolean): number[] {
-    return mirrored
-        ? Array.from({ length: rounds }, (_, i) => rounds - i)
-        : Array.from({ length: rounds }, (_, i) => i + 1);
-}
-
-// 헤더 2단(라운드 이름)과 바디 카드 그리드가 동일한 컬럼 트랙 구성을 쓰도록 공유하는 템플릿.
-// 카드 컬럼은 minmax(MATCH_W, 1fr), 커넥터 컬럼은 고정 CONN_W — 이 함수 하나로 헤더/바디를
-// 동시에 만들면 두 영역의 열 경계가 항상 정확히 일치한다(플렉스로 각자 흉내내면 계산이
-// 미묘하게 어긋나거나 여분의 채움 요소가 필요해져 시각적으로 지저분해짐).
+// 카드 그리드의 컬럼 트랙 템플릿. 카드 컬럼은 minmax(MATCH_W, 1fr), 커넥터 컬럼은 고정 CONN_W.
 function buildColTemplate(rounds: number): string {
     return Array.from({ length: 2 * rounds - 1 }, (_, i) =>
         i % 2 === 0 ? `minmax(${MATCH_W}px, 1fr)` : `${CONN_W}px`,
@@ -77,25 +94,6 @@ function buildColTemplate(rounds: number): string {
 }
 
 // ── Team Logo Img ─────────────────────────────────────────────────────────────
-// MultiStandingsView.tsx/newsFeedCards.tsx와 동일한 폴백 체인(신규 로고 실패 → 구버전 →
-// 플레이스홀더). 순수 장식용 — 클릭 영역은 부여하지 않는다.
-const TeamLogoImg: React.FC<{ teamId: string; abbr: string; className: string }> = ({ teamId, abbr, className }) => (
-    <img
-        src={getRealTeamLogoUrl(teamId)}
-        alt={abbr}
-        className={`${className} object-contain shrink-0`}
-        onError={(e) => {
-            const img = e.currentTarget;
-            if (img.dataset.fallback !== 'old') {
-                img.dataset.fallback = 'old';
-                img.src = getTeamLogoUrl(teamId);
-            } else {
-                img.src = 'https://placehold.co/100x100?text=BPL';
-            }
-        }}
-    />
-);
-
 // ── Team Slot ─────────────────────────────────────────────────────────────────
 
 const TeamSlot: React.FC<{
@@ -106,22 +104,31 @@ const TeamSlot: React.FC<{
     finished: boolean;
     isMe: boolean;
     isChampion: boolean;
+    /** 파이널 카드의 TBD 슬롯은 slate 대신 메탈 골드 바탕 */
+    goldTbd?: boolean;
+    /** 팀 슬러그 → 컨퍼런스 내 원 시드(1위…). 없거나 매핑이 없으면 시드 미표시 */
+    seedBySlug?: Map<string, number>;
     leagueTeams: LeagueTeamRow[];
     hoveredTeamId: string | null;
     onHoverTeam: (teamId: string | null) => void;
-}> = ({ teamId, wins, showWins, isWinner, finished, isMe, isChampion, leagueTeams, hoveredTeamId, onHoverTeam }) => {
+}> = ({ teamId, wins, showWins, isWinner, finished, isMe, isChampion, goldTbd, seedBySlug, leagueTeams, hoveredTeamId, onHoverTeam }) => {
     if (teamId === 'BYE') return null;
 
     if (teamId === 'TBD') {
         return (
-            <div className="flex items-center px-4 py-4">
-                <span className="text-xl font-bold text-slate-600 flex-1">TBD</span>
+            <div
+                className={`relative overflow-hidden flex items-center px-4 py-4 ${goldTbd ? '' : 'bg-slate-800'}`}
+                style={goldTbd ? { background: FINAL_TBD_GOLD_BG, color: 'rgba(45, 30, 4, .78)' } : undefined}
+            >
+                <span className={`text-xl font-bold flex-1 ${goldTbd ? '' : 'text-slate-600'}`}>TBD</span>
+                <SlotVolumeOverlay />
             </div>
         );
     }
 
     const team = leagueTeams.find(t => t.team_slug === teamId);
     const label = team?.team_abbr ?? teamId.toUpperCase();
+    const seed = seedBySlug?.get(teamId);
     const isEliminated = finished && !isWinner;
     // 탈락 팀은 팀 컬러 대신 통일된 slate 톤으로 — 취소선 없이 배경/텍스트 색만으로 구분한다.
     const bgColor = isEliminated ? '#1e293b' /* slate-800 */ : (team?.color_primary ?? '#1e293b');
@@ -129,28 +136,74 @@ const TeamSlot: React.FC<{
     const isHighlighted = hoveredTeamId === teamId;
     const isDimmed = hoveredTeamId !== null && !isHighlighted;
 
+    // 로고는 슬롯 높이(≈60px)보다 크게(64px) 키워 왼쪽 가장자리에 걸치게 두고 overflow-hidden으로
+    // 잘라낸다 — absolute로 띄워 텍스트 흐름에서 빼고, 팀명은 로고 폭만큼 왼쪽 여백(pl)을 둔다.
+    // 링(챔피언/내 팀/호버)은 슬롯 자체가 아니라 맨 위 오버레이에 그린다 — inset box-shadow는 자식보다
+    // 아래에 칠해지므로 슬롯에 두면 확대된 로고가 링을 덮어 가린다.
+    const ringClass = isHighlighted
+        ? 'ring-2 ring-inset ring-sky-400'
+        : isChampion ? 'ring-2 ring-inset ring-amber-400'
+        : isMe ? 'ring-2 ring-inset ring-white/70'
+        : '';
     return (
         <div
-            className={`flex items-center justify-between gap-2 px-4 py-4 transition-all ${
-                isChampion ? 'ring-2 ring-inset ring-amber-400' : isMe ? 'ring-2 ring-inset ring-white/70' : ''
-            } ${isHighlighted ? 'ring-2 ring-inset ring-sky-400 brightness-110' : ''} ${isDimmed ? 'opacity-30' : ''}`}
+            className={`relative overflow-hidden flex items-center justify-between gap-2 px-4 py-4 transition-all ${
+                isHighlighted ? 'brightness-110' : ''
+            } ${isDimmed ? 'opacity-30' : ''}`}
             style={{ backgroundColor: bgColor, color: textColor }}
             onMouseEnter={() => onHoverTeam(teamId)}
             onMouseLeave={() => onHoverTeam(null)}
         >
-            <span className="flex items-center gap-2 min-w-0">
-                <TeamLogoImg teamId={teamId} abbr={label} className="w-6 h-6" />
+            <TeamLogo
+                teamId={teamId}
+                teamName={label}
+                size="custom"
+                className={`absolute -left-1.5 top-1/2 -translate-y-1/2 w-16 h-16 ${isEliminated ? 'opacity-40 grayscale' : ''}`}
+                shadow={false}
+            />
+            <span className="flex items-start gap-1 min-w-0 pl-[52px]">
                 <span className="text-xl font-bold truncate">
                     {label}
                 </span>
+                {seed !== undefined && (
+                    <span className="text-xs font-semibold tabular-nums leading-none mt-0.5 opacity-70 shrink-0">{seed}</span>
+                )}
             </span>
             {showWins && (
                 <span className="text-xl font-black tabular-nums shrink-0">
                     {wins}
                 </span>
             )}
+            <SlotVolumeOverlay className={ringClass} />
         </div>
     );
+};
+
+// 슬롯 볼륨감: 상단 흰빛(14%) → 중간 투명 → 하단 검정(12%) 반투명 세로 그라데이션을 한 겹 덮는다.
+// 팀 컬러/골드/slate 어떤 배경에도 같은 비율로 얹혀 톤이 일관되고, pointer-events: none이라 호버/클릭 무관.
+// 슬롯의 최상위 레이어이므로 링(ring-inset) 클래스도 여기에 얹어야 확대 로고 위에 보인다.
+const SlotVolumeOverlay: React.FC<{ className?: string }> = ({ className = '' }) => (
+    <div
+        className={`absolute inset-0 pointer-events-none transition-shadow ${className}`}
+        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 40%, rgba(0,0,0,0) 60%, rgba(0,0,0,.12) 100%)' }}
+    />
+);
+
+// 브라켓(좌/우 대칭 모드) 배경 — 왼쪽 끝 blue-500 20% → 중앙 투명 → 오른쪽 끝 red-500 20%.
+// 서부/동부 제목색(blue-300/red-300)과 같은 계열이라 "진영 테마"로 읽히되, 카드/텍스트 대비를 해치지 않는 수준.
+const CONFERENCE_THEME_BG = 'linear-gradient(90deg, rgba(59,130,246,.20) 0%, rgba(59,130,246,.07) 22%, rgba(15,23,42,0) 35%, rgba(15,23,42,0) 65%, rgba(239,68,68,.07) 78%, rgba(239,68,68,.20) 100%)';
+
+// 파이널 카드 TBD 슬롯 바탕 — 짙은 금 두 톤을 완만한 대각선으로 섞은 "두께 없는 금속판"(입체 레이어 없음).
+const FINAL_TBD_GOLD_BG = 'linear-gradient(100deg, #7d5f12 0%, #9a7414 50%, #7d5f12 100%)';
+
+// 파이널 라벨 텍스트용 메탈릭 골드 — 밝은 하이라이트 → 골드 → 짙은 금 → 골드 → 하이라이트 세로(0deg) 그라데이션을 글자에 클리핑.
+const FINAL_LABEL_GOLD_STYLE: React.CSSProperties = {
+    background: 'linear-gradient(0deg, #fff3b0 0%, #f5c542 28%, #b8860b 52%, #f5c542 72%, #fff3b0 100%)',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    color: '#fbbf24',
+    filter: 'drop-shadow(0 1px 0 rgba(120, 80, 0, .55))',
 };
 
 // ── Match Card ────────────────────────────────────────────────────────────────
@@ -161,10 +214,11 @@ const MatchCard: React.FC<{
     myTeamId: string | null;
     selected: boolean;
     isFinalRound: boolean;
-    onClick: () => void;
+    onClick: (e: React.MouseEvent<HTMLElement>) => void;
     hoveredTeamId: string | null;
     onHoverTeam: (teamId: string | null) => void;
-}> = ({ series, leagueTeams, myTeamId, selected, isFinalRound, onClick, hoveredTeamId, onHoverTeam }) => {
+    seedBySlug?: Map<string, number>;
+}> = ({ series, leagueTeams, myTeamId, selected, isFinalRound, onClick, hoveredTeamId, onHoverTeam, seedBySlug }) => {
     const isBye = series.lowerSeedId === 'BYE';
     const showWins = series.targetWins > 1;
 
@@ -184,7 +238,7 @@ const MatchCard: React.FC<{
                 onMouseLeave={() => onHoverTeam(null)}
             >
                 <span className="flex items-center gap-2 min-w-0">
-                    <TeamLogoImg teamId={series.higherSeedId} abbr={team?.team_abbr ?? series.higherSeedId.toUpperCase()} className="w-6 h-6" />
+                    <TeamLogo teamId={series.higherSeedId} teamName={team?.team_abbr ?? series.higherSeedId.toUpperCase()} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
                     <span className="text-xl font-bold truncate">
                         {team?.team_abbr ?? series.higherSeedId.toUpperCase()}
                     </span>
@@ -196,12 +250,18 @@ const MatchCard: React.FC<{
 
     return (
         <div
-            className={`w-full overflow-hidden border cursor-pointer transition-all select-none ${
+            data-series-card=""
+            className={`w-full overflow-hidden border transition-all select-none ${
+                // 호버 효과는 슬롯이 아니라 카드 전체에 — 열 수 있는(양 팀 확정) 카드만 밝아지고 테두리가 연결선 색으로.
+                // 호버/선택 시 2px 두께는 border를 2px로 바꾸지 않고(레이아웃 1px씩 밀림) 1px border + 1px ring-inset
+                // 같은 색으로 합쳐서 낸다 — 카드 크기가 변하지 않는다.
+                isSeriesOpenable(series) ? 'cursor-pointer hover:brightness-110' : 'cursor-default'
+            } ${
                 selected
-                    ? 'border-indigo-500 ring-1 ring-indigo-500/30 bg-slate-800'
-                    : isFinalRound && series.finished
-                    ? 'border-amber-500/60 bg-slate-900 hover:border-amber-400'
-                    : 'border-slate-700/50 bg-slate-900 hover:border-slate-600'
+                    ? 'border-indigo-500 ring-1 ring-inset ring-indigo-500 bg-slate-800'
+                    : isFinalRound
+                    ? `border-amber-600/60 bg-slate-900 ${isSeriesOpenable(series) ? 'hover:border-amber-400 hover:ring-1 hover:ring-inset hover:ring-amber-400' : ''}`
+                    : `border-slate-700/50 bg-slate-900 ${isSeriesOpenable(series) ? 'hover:border-slate-300 hover:ring-1 hover:ring-inset hover:ring-slate-300' : ''}`
             }`}
             onClick={onClick}
         >
@@ -213,11 +273,12 @@ const MatchCard: React.FC<{
                 finished={series.finished}
                 isMe={series.higherSeedId === myTeamId}
                 isChampion={isFinalRound && series.finished && series.winnerId === series.higherSeedId}
+                goldTbd={isFinalRound}
+                seedBySlug={seedBySlug}
                 leagueTeams={leagueTeams}
                 hoveredTeamId={hoveredTeamId}
                 onHoverTeam={onHoverTeam}
             />
-            <div className="border-t border-slate-700/40" />
             <TeamSlot
                 teamId={series.lowerSeedId}
                 wins={series.lowerSeedWins}
@@ -226,6 +287,8 @@ const MatchCard: React.FC<{
                 finished={series.finished}
                 isMe={series.lowerSeedId === myTeamId}
                 isChampion={isFinalRound && series.finished && series.winnerId === series.lowerSeedId}
+                goldTbd={isFinalRound}
+                seedBySlug={seedBySlug}
                 leagueTeams={leagueTeams}
                 hoveredTeamId={hoveredTeamId}
                 onHoverTeam={onHoverTeam}
@@ -253,7 +316,8 @@ const BracketConnector: React.FC<{ highlightedSide?: 'upper' | 'lower' | null }>
     const upperOn = highlightedSide === 'upper';
     const lowerOn = highlightedSide === 'lower';
     const outOn = upperOn || lowerOn;
-    const colorOf = (on: boolean) => (on ? 'rgb(56,189,248)' : 'rgb(51,65,85)');
+    // 기본 slate-300, 호버(진출 경로) white — StraightConnector(border-slate-300 / border-white)와 같은 쌍으로 유지할 것
+    const colorOf = (on: boolean) => (on ? 'rgb(255,255,255)' : 'rgb(203,213,225)');
     const widthOf = (on: boolean) => (on ? 2.5 : 1.5);
     return (
         <svg
@@ -291,15 +355,22 @@ const BracketConnector: React.FC<{ highlightedSide?: 'upper' | 'lower' | null }>
 // 컨퍼런스 파이널(서부/동부 각 진영의 마지막 라운드) → 파이널을 잇는 단순 1:1 연결선.
 // BracketConnector는 "두 매치가 하나로 합쳐지는" 형태라 여기엔 안 맞는다 — 파이널 한쪽에는
 // 항상 진영당 매치가 하나뿐이라 그냥 직선 하나면 충분하다.
+// 양옆 BracketHalf/파이널 열의 상단에는 제목 행(TITLE_H)+라운드 라벨 여유 행(LABEL_H)이 있으므로,
+// 그만큼 paddingTop을 줘야 선이 카드 행 영역의 정중앙(=컨퍼런스 파이널 카드·파이널 카드 중심)에 온다.
 const StraightConnector: React.FC<{ highlighted?: boolean }> = ({ highlighted }) => (
-    <div className="self-stretch flex items-center" style={{ width: CONN_W, flexShrink: 0 }}>
-        <div className={`w-full border-t transition-colors ${highlighted ? 'border-sky-400 border-t-2' : 'border-slate-700'}`} />
+    <div className="self-stretch flex items-center" style={{ width: CONN_W, flexShrink: 0, paddingTop: TITLE_H + LABEL_H }}>
+        <div className={`w-full border-t transition-colors ${highlighted ? 'border-white border-t-2' : 'border-slate-300'}`} />
     </div>
 );
 
 const MATCH_W = 150; // px — match card column minimum width (minmax(MATCH_W, 1fr)의 하한)
 const CONN_W  = 48;  // px — connector column width
 const ROW_H   = 140; // px — one R1 match row height
+const TITLE_H = 56;  // px — 그리드 1행: 서부/동부 컨퍼런스 · {시즌} PLAYOFFS 제목 행(text-5xl=48px이 들어가도록 56)
+const LABEL_H = 40;  // px — 그리드 2행: 1라운드 라벨이 카드 위에 떠 있을 여유 행(제목과 한 줄 띄움)
+// 양 진영/파이널 열이 공유하는 행 템플릿 — 제목 행 + 라벨 여유 행 + 1라운드 매치 수만큼의 카드 행
+const buildRowTemplate = (r1Count: number) => `${TITLE_H}px ${LABEL_H}px repeat(${Math.max(r1Count, 1)}, ${ROW_H}px)`;
+const CARD_ROW_START = 3; // 카드 행이 시작하는 grid-row 라인(1행 제목, 2행 라벨 여유 다음)
 
 // ── Bracket Half (좌/우 대칭 모드에서 서부·동부 한쪽 진영) ────────────────────────
 //
@@ -315,21 +386,27 @@ const BracketHalf: React.FC<{
     byRound: Map<number, PlayoffSeries[]>;
     rounds: number;
     mirrored: boolean;
+    /** 그리드 1행에 그릴 진영 제목(예: "서부 컨퍼런스")과 글자색 클래스 */
+    title: string;
+    titleClassName: string;
     selectedId: string | null;
     myTeamId: string | null;
     leagueTeams: LeagueTeamRow[];
-    onToggle: (id: string) => void;
+    onToggle: (id: string, e: React.MouseEvent<HTMLElement>) => void;
     hoveredTeamId: string | null;
     onHoverTeam: (teamId: string | null) => void;
-}> = ({ byRound, rounds, mirrored, selectedId, myTeamId, leagueTeams, onToggle, hoveredTeamId, onHoverTeam }) => {
+    seedBySlug?: Map<string, number>;
+}> = ({ byRound, rounds, mirrored, title, titleClassName, selectedId, myTeamId, leagueTeams, onToggle, hoveredTeamId, onHoverTeam, seedBySlug }) => {
     const r1Count = (byRound.get(1) ?? []).length;
 
+    // rowStart는 카드 행 영역 기준(1부터)이고, 실제 grid-row는 CARD_ROW_START만큼 밀린다(위에 제목/라벨 행).
+    // isFirst(=그 라운드의 첫 매치)에만 라운드 라벨을 카드 바로 위에 띄운다.
     const gridSeries = useMemo(() => {
-        const items: { key: string; series: PlayoffSeries; col: number; rowStart: number; rowSpan: number }[] = [];
+        const items: { key: string; series: PlayoffSeries; col: number; rowStart: number; rowSpan: number; isFirst: boolean; round: number }[] = [];
         for (const [round, arr] of byRound) {
             const rowStep = Math.pow(2, round - 1);
             arr.forEach((s, m) => {
-                items.push({ key: s.id, series: s, col: 2 * round - 1, rowStart: m * rowStep + 1, rowSpan: rowStep });
+                items.push({ key: s.id, series: s, col: 2 * round - 1, rowStart: m * rowStep + 1, rowSpan: rowStep, isFirst: m === 0, round });
             });
         }
         return items;
@@ -373,12 +450,12 @@ const BracketHalf: React.FC<{
     // 행도 이 함수로 같은 트랙 구성을 그려서 열 경계가 항상 일치한다.
     const colTemplate = buildColTemplate(rounds);
 
-    // 라운드 헤더는 이제 부모(TournamentBracketView)가 [서부]/[파이널]/[동부] 구조화 헤더
-    // 테이블 안에서 한 번에 그린다(BracketHalf는 카드 그리드 본문만 담당).
+    // 제목/라운드 라벨은 별도 헤더 테이블이 아니라 이 카드 그리드 안에서 함께 그린다 —
+    // 1행 진영 제목(전체 열 span), 2행은 1라운드 라벨이 떠 있을 여유 행, 3행부터 카드.
+    // 라운드 라벨은 각 라운드의 첫 카드 바로 위에 absolute로 붙어, 2라운드/컨퍼런스 파이널
+    // 라벨이 해당 카드와 함께 세로 중앙으로 내려온다(어느 카드가 몇 라운드인지 바로 읽힘).
     // flex: rounds 1 0% — 서부/동부(BracketHalf)가 파이널 컬럼(flex: 1 1 0%)과 "카드 1개당
-    // 성장량"이 똑같아지도록 라운드 개수만큼 가중치를 준다. 이러면 화면이 넓어질 때 파이널
-    // 카드도 서부/동부의 각 라운드 카드와 정확히 같은 비율로 늘어난다(예전엔 파이널만 고정폭
-    // 이라 서부/동부 카드가 화면 폭에 맞춰 늘어나도 파이널만 그대로였음).
+    // 성장량"이 똑같아지도록 라운드 개수만큼 가중치를 준다.
     // min-w-0 없으면 flex 기본 min-width:auto가 내용 최소폭을 자기주장해서 grid의 minmax
     // 오버플로 판단과 이중으로 충돌한다.
     return (
@@ -389,32 +466,46 @@ const BracketHalf: React.FC<{
                     style={{
                         display: 'grid',
                         gridTemplateColumns: colTemplate,
-                        gridTemplateRows: `repeat(${Math.max(r1Count, 1)}, ${ROW_H}px)`,
+                        gridTemplateRows: buildRowTemplate(r1Count),
                     }}
                 >
-                    {gridSeries.map(({ key, series: s, col, rowStart, rowSpan }) => (
+                    <div
+                        className={`flex items-center justify-center text-3xl font-semibold ${titleClassName}`}
+                        style={{ gridColumn: '1 / -1', gridRow: 1, ...(mirrored ? { transform: 'scaleX(-1)' } : {}) }}
+                    >
+                        {title}
+                    </div>
+
+                    {gridSeries.map(({ key, series: s, col, rowStart, rowSpan, isFirst, round }) => (
                         <div
                             key={key}
                             className="flex items-center"
-                            style={{ gridColumn: col, gridRow: `${rowStart} / ${rowStart + rowSpan}` }}
+                            style={{ gridColumn: col, gridRow: `${rowStart + CARD_ROW_START - 1} / ${rowStart + rowSpan + CARD_ROW_START - 1}` }}
                         >
-                            <div style={mirrored ? { transform: 'scaleX(-1)', width: '100%' } : { width: '100%' }}>
+                            {/* mirrored면 글자가 있는 이 래퍼만 한 번 더 뒤집어 원상복구. relative는 라운드 라벨의 기준점. */}
+                            <div className="relative" style={mirrored ? { transform: 'scaleX(-1)', width: '100%' } : { width: '100%' }}>
+                                {isFirst && (
+                                    <div className="absolute inset-x-0 bottom-full mb-2.5 text-center text-lg font-bold tracking-wide text-slate-400 whitespace-nowrap">
+                                        {getSideRoundLabel(round, rounds)}
+                                    </div>
+                                )}
                                 <MatchCard
                                     series={s}
                                     leagueTeams={leagueTeams}
                                     myTeamId={myTeamId}
                                     selected={selectedId === s.id}
                                     isFinalRound={false}
-                                    onClick={() => s.lowerSeedId !== 'BYE' && onToggle(s.id)}
+                                    onClick={e => isSeriesOpenable(s) && onToggle(s.id, e)}
                                     hoveredTeamId={hoveredTeamId}
                                     onHoverTeam={onHoverTeam}
+                                    seedBySlug={seedBySlug}
                                 />
                             </div>
                         </div>
                     ))}
 
                     {gridConns.map(({ key, col, rowStart, rowSpan }) => (
-                        <div key={key} style={{ gridColumn: col, gridRow: `${rowStart} / ${rowStart + rowSpan}` }}>
+                        <div key={key} style={{ gridColumn: col, gridRow: `${rowStart + CARD_ROW_START - 1} / ${rowStart + rowSpan + CARD_ROW_START - 1}` }}>
                             <BracketConnector highlightedSide={highlightedConnKeys.get(key) ?? null} />
                         </div>
                     ))}
@@ -424,15 +515,208 @@ const BracketHalf: React.FC<{
     );
 };
 
+// ── Series Window ─────────────────────────────────────────────────────────────
+//
+// 브라켓 카드를 클릭하면 그 자리에 뜨는 작은 플로팅 창(시리즈 경기 목록). 예전 우측 사이드패널
+// (w-96 + bg-black/40 백드롭)을 대체 — 백드롭이 없으므로 창이 떠 있어도 브라켓 호버/클릭이 그대로 된다.
+// PlayerHoverCard와 같은 createPortal + position:fixed + 뷰포트 클램핑 방식에 헤더 드래그 이동을 더했다.
+// 폭은 내용에 맞춰 가변(w-max) — 헤더 제목과 표 중 더 넓은 쪽이 폭을 결정하고, 상한은 뷰포트.
+// 표는 공용 Table(card 변형, density=compact) 그대로라 테이블 컨벤션 변경을 자동으로 따라간다.
+
+type SeriesWindowRow = {
+    key: string;
+    gameNo: number;
+    /** yy.mm.dd — 미정 경기는 '미정' */
+    dateLabel: string;
+    awayName: string;
+    homeName: string;
+    awayWon: boolean;
+    homeWon: boolean;
+    state: 'final' | 'live' | 'scheduled';
+    awayScore?: number;
+    homeScore?: number;
+    /** scheduled 전용 — 경기 시각(HH:mm) */
+    timeLabel?: string;
+    /** 현재 승수로는 열릴지 확정되지 않은 경기(시리즈 조기 종료 가능) */
+    undecided: boolean;
+    onOpen: () => void;
+};
+
+const WINDOW_MARGIN = 12; // px — 뷰포트 가장자리 여백
+const WINDOW_GAP = 8;     // px — 카드와 창 사이 간격
+
+/** 창이 처음 열릴 기준 — 클릭한 카드의 뷰포트 사각형과 펼칠 방향.
+ *  카드가 화면 왼쪽 절반이면 카드 오른쪽으로(right), 오른쪽 절반이면 카드 왼쪽으로(left) 펼쳐
+ *  서부/동부 어느 쪽을 눌러도 창이 카드를 가리지 않고 중앙 쪽으로 열린다. */
+type WindowAnchor = { left: number; right: number; top: number; placement: 'right' | 'left' };
+
+function clampToViewport(x: number, y: number, w: number, h: number): { x: number; y: number } {
+    return {
+        x: Math.max(WINDOW_MARGIN, Math.min(x, window.innerWidth - w - WINDOW_MARGIN)),
+        y: Math.max(WINDOW_MARGIN, Math.min(y, window.innerHeight - h - WINDOW_MARGIN)),
+    };
+}
+
+const SeriesWindow: React.FC<{
+    roundLabel: string;
+    lowerName: string;
+    higherName: string;
+    lowerWins: number;
+    higherWins: number;
+    rows: SeriesWindowRow[];
+    /** 처음 열릴 기준(클릭한 카드 사각형 + 방향) — 바뀌면 그 위치로 다시 이동 */
+    anchor: WindowAnchor;
+    onClose: () => void;
+}> = ({ roundLabel, lowerName, higherName, lowerWins, higherWins, rows, anchor, onClose }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    // 위치는 React 상태가 아니라 ref + DOM transform으로만 관리한다 — 예전엔 pointermove마다 상태 갱신으로
+    // 재렌더(표 행 + TableCell 컨텍스트 조회 전부)하고 left/top을 바꿔 레이아웃+큰 그림자 페인트가
+    // 프레임마다 돌아 드래그가 심하게 끊겼다. transform은 합성(compositor)만 타서 그림자도 재페인트하지 않는다.
+    const posRef = useRef({ x: anchor.right + WINDOW_GAP, y: anchor.top });
+    const dragRef = useRef<{ dx: number; dy: number; w: number; h: number } | null>(null);
+    const applyPos = (x: number, y: number) => {
+        posRef.current = { x, y };
+        if (ref.current) ref.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    };
+
+    // 앵커가 바뀌면(다른 카드 클릭) 그 위치로 옮기고, 실측 크기로 뷰포트 안에 넣는다.
+    // 내용(rows)이 바뀌어 폭이 달라져도 다시 클램프.
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        const x = anchor.placement === 'right' ? anchor.right + WINDOW_GAP : anchor.left - WINDOW_GAP - w;
+        const p = clampToViewport(x, anchor.top, w, h);
+        applyPos(p.x, p.y);
+    }, [anchor, rows.length]);
+
+    // 창 바깥을 누르면 닫는다. 브라켓 카드(data-series-card) 위 클릭은 제외 — 카드 클릭은 toggle이
+    // "같은 카드면 닫기 / 다른 카드면 이동"을 처리하므로 여기서 먼저 닫아 버리면 같은 카드 재클릭이
+    // 닫힘→다시 열림으로 꼬인다. pointerdown 캡처 단계라 포털 밖 어디를 눌러도 잡힌다.
+    useEffect(() => {
+        const onDocPointerDown = (e: PointerEvent) => {
+            const t = e.target as HTMLElement | null;
+            if (!t || ref.current?.contains(t) || t.closest('[data-series-card]')) return;
+            onClose();
+        };
+        document.addEventListener('pointerdown', onDocPointerDown, true);
+        return () => document.removeEventListener('pointerdown', onDocPointerDown, true);
+    }, [onClose]);
+
+    const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if ((e.target as HTMLElement).closest('button')) return; // 닫기 버튼은 드래그 시작 안 함
+        const el = ref.current;
+        if (!el) return;
+        // 크기는 드래그 시작 때 한 번만 재서 이동 중 offsetWidth/Height(강제 레이아웃) 조회를 피한다
+        dragRef.current = { dx: e.clientX - posRef.current.x, dy: e.clientY - posRef.current.y, w: el.offsetWidth, h: el.offsetHeight };
+        el.style.willChange = 'transform';
+        e.currentTarget.setPointerCapture(e.pointerId);
+    };
+    const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const p = clampToViewport(e.clientX - d.dx, e.clientY - d.dy, d.w, d.h);
+        applyPos(p.x, p.y);
+    };
+    const endDrag = () => {
+        dragRef.current = null;
+        if (ref.current) ref.current.style.willChange = '';
+    };
+
+    return createPortal(
+        <div
+            ref={ref}
+            role="dialog"
+            aria-label="시리즈 경기 목록"
+            className="fixed left-0 top-0 z-50 w-max min-w-[280px] max-w-[calc(100vw-32px)] bg-slate-900 border border-slate-800 shadow-[0_18px_40px_rgba(0,0,0,.55),0_0_0_1px_rgba(0,0,0,.4)]"
+            style={{ transform: `translate3d(${anchor.right + WINDOW_GAP}px, ${anchor.top}px, 0)` }}
+        >
+            {/* 헤더: 라운드 · 하위시드 n - m 상위시드 · 닫기. 드래그 핸들 */}
+            <div
+                className="flex items-center gap-3 pl-3 pr-1.5 py-1.5 bg-slate-950 border-b border-slate-800 cursor-grab active:cursor-grabbing select-none"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+            >
+                <span className="text-sm font-bold text-slate-400 whitespace-nowrap">{roundLabel}</span>
+                <span className="flex-1 text-sm font-semibold text-slate-200 whitespace-nowrap">
+                    {lowerName} <b className="font-bold text-white tabular-nums">{lowerWins} - {higherWins}</b> {higherName}
+                </span>
+                <IconButton label="닫기" size="md" tone="subtle" onClick={onClose}>
+                    <X size={16} />
+                </IconButton>
+            </div>
+
+            {rows.length === 0 ? (
+                <div className="px-4 py-3 text-xs font-semibold text-slate-500">경기 일정 없음</div>
+            ) : (
+                <Table density="compact" fullHeight={false} className="!rounded-none !shadow-none !border-0">
+                    <TableBody>
+                        {rows.map(r => {
+                            const dim = r.state === 'scheduled';
+                            const base = `text-xs ${dim ? 'text-slate-500' : 'text-slate-200'}`;
+                            return (
+                                <TableRow key={r.key}>
+                                    <TableCell align="left" className={`${base} font-semibold`}>Game {r.gameNo}</TableCell>
+                                    <TableCell align="left" className={`${base} font-semibold tabular-nums`}>{r.dateLabel}</TableCell>
+                                    <TableCell align="left" className={`${base} font-semibold`}>
+                                        <span className={r.awayWon ? 'text-emerald-400' : ''}>{r.awayName}</span>
+                                        <span className="text-slate-500 mx-1">@</span>
+                                        <span className={r.homeWon ? 'text-emerald-400' : ''}>{r.homeName}</span>
+                                    </TableCell>
+                                    <TableCell align="left" className={`${base} font-semibold tabular-nums`}>
+                                        {r.state === 'final' ? (
+                                            <button
+                                                type="button"
+                                                onClick={r.onOpen}
+                                                className="group/score cursor-pointer text-slate-400 hover:text-indigo-400 hover:underline tabular-nums"
+                                                title="박스스코어 보기"
+                                            >
+                                                <span className={r.awayWon ? 'text-emerald-400 group-hover/score:text-indigo-400' : ''}>{r.awayScore}</span>
+                                                -
+                                                <span className={r.homeWon ? 'text-emerald-400 group-hover/score:text-indigo-400' : ''}>{r.homeScore}</span>
+                                            </button>
+                                        ) : r.state === 'live' ? (
+                                            <button
+                                                type="button"
+                                                onClick={r.onOpen}
+                                                className="inline-flex items-center gap-1.5 font-bold text-red-400 cursor-pointer hover:underline"
+                                                title="실시간 중계 보기"
+                                            >
+                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                                LIVE
+                                            </button>
+                                        ) : (
+                                            <span className="font-medium">{r.timeLabel ?? '—'}</span>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            )}
+        </div>,
+        document.body,
+    );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams, myTeamId }) => {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [hoveredTeamId, setHoveredTeamId] = useState<string | null>(null);
+    // 플래그 off면 호버가 상태를 건드리지 않아 hoveredTeamId가 항상 null → 하이라이트 로직 전부 휴면
+    const onHoverTeam = TEAM_HOVER_HIGHLIGHT_ENABLED ? setHoveredTeamId : noopHover;
     const serverNow = useServerClock();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
-    const { room } = useLeagueContext();
+    const { room, league } = useLeagueContext();
+    // 메인리그 정규시즌/플레이오프는 가상 캘린더 날짜·시각을 보여준다(실행 시각 scheduledAt 노출 금지 — multiScheduleUtils 규칙과 동일)
+    const preferVirtual = league?.type === 'main_league';
+    // 시리즈 창이 처음 열릴 뷰포트 좌표(클릭한 카드의 오른쪽 위)
+    const [windowAnchor, setWindowAnchor] = useState<WindowAnchor>({ left: WINDOW_MARGIN, right: WINDOW_MARGIN, top: WINDOW_MARGIN, placement: 'right' });
     const { getGameUrlId } = useGameShortCodes(room?.id);
 
     // schedule(Realtime 실시간) 기반으로 시리즈 승수를 재계산.
@@ -582,28 +866,45 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
         ? sideByKey.get(`${selectedSeries.round}_${matchIndex(selectedSeries.id)}`)
         : undefined;
 
-    // 정시 전 / live 구간 경기는 목록에서 제외 — 시리즈 진행도(시드/카운트)는 서버 권위로
-    // 그대로 노출하되, 개별 경기 결과는 isStarted(보기 가능)인 경기만 표시한다.
+    // 선택 시리즈의 전체 경기(예정 포함) — 서버가 최대 경기 수만큼 미리 만들어 두므로 미진행 경기도
+    // 날짜/시각을 갖는다. 시리즈가 끝났으면 남은 경기는 시뮬되지 않으니 시작된 경기만 남긴다.
     const selectedGames = useMemo(() => {
-        if (!selectedId) return [];
-        return schedule
-            .filter(g => g.seriesId === selectedId && isStarted(g, serverNow))
-            .sort((a, b) => a.date.localeCompare(b.date));
-    }, [schedule, selectedId, serverNow]);
+        if (!selectedId || !selectedSeries) return [];
+        const all = schedule
+            .filter(g => g.seriesId === selectedId)
+            .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date));
+        return selectedSeries.finished ? all.filter(g => isStarted(g, serverNow)) : all;
+    }, [schedule, selectedId, selectedSeries, serverNow]);
 
-    // 경기별 카드에 표시할 "그 경기까지의" 누적 시리즈 스코어(상위시드:하위시드).
-    const seriesTallies = useMemo(() => {
-        let hi = 0, lo = 0;
-        return selectedGames.map(g => {
-            const final = isFinal(g, serverNow);
-            if (final && g.homeScore != null && g.awayScore != null && selectedSeries) {
-                const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
-                if (winnerId === selectedSeries.higherSeedId) hi++;
-                else if (winnerId === selectedSeries.lowerSeedId) lo++;
-            }
-            return { higher: hi, lower: lo };
+    // 시리즈 창 행 데이터. 종료 경기 → 스코어 링크, 진행 중 → LIVE 링크, 예정 → 시각.
+    // '미정': 현재 승수로 시리즈가 끝날 수 있는 가장 이른 경기(종료 경기 수 + 선두가 더 필요한 승수)
+    // 보다 뒤의 경기 — 날짜 대신 '미정'으로 표기한다(예: 7전제 3-2면 Game 6 확정, Game 7 미정).
+    const seriesRows = useMemo<SeriesWindowRow[]>(() => {
+        if (!selectedSeries) return [];
+        const finals = selectedGames.filter(g => isFinal(g, serverNow)).length;
+        const lead = Math.max(selectedSeries.higherSeedWins, selectedSeries.lowerSeedWins);
+        const earliestEnd = finals + Math.max(selectedSeries.targetWins - lead, 0);
+        return selectedGames.map((g, i) => {
+            const state = getGameDisplayState(g, serverNow);
+            const final = state === 'final' && g.homeScore != null && g.awayScore != null;
+            const awayWon = final && g.awayScore! > g.homeScore!;
+            const homeWon = final && g.homeScore! > g.awayScore!;
+            const undecided = state === 'scheduled' && i + 1 > earliestEnd;
+            const key = kstDateKey(g, preferVirtual); // YYYY-MM-DD
+            return {
+                key: g.id,
+                gameNo: i + 1,
+                dateLabel: undecided ? '미정' : `${key.slice(2, 4)}.${key.slice(5, 7)}.${key.slice(8, 10)}`,
+                awayName: cityOfTeam(g.awayTeamId, leagueTeams.find(t => t.team_slug === g.awayTeamId)),
+                homeName: cityOfTeam(g.homeTeamId, leagueTeams.find(t => t.team_slug === g.homeTeamId)),
+                awayWon, homeWon, state,
+                awayScore: g.awayScore, homeScore: g.homeScore,
+                timeLabel: state === 'scheduled' ? fmtTime(g, preferVirtual) : undefined,
+                undecided,
+                onOpen: () => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`),
+            };
         });
-    }, [selectedGames, serverNow, selectedSeries]);
+    }, [selectedSeries, selectedGames, serverNow, preferVirtual, leagueTeams, navigate, leagueId, getGameUrlId]);
 
     const higherTeam = selectedSeries
         ? leagueTeams.find(t => t.team_slug === selectedSeries.higherSeedId)
@@ -612,8 +913,14 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
         ? leagueTeams.find(t => t.team_slug === selectedSeries.lowerSeedId)
         : null;
 
-    const toggle = (id: string) =>
+    // 같은 카드를 다시 누르면 닫고, 다른 카드를 누르면 그 카드 옆으로 창을 옮기며 내용만 교체한다.
+    // 카드 중심이 화면 왼쪽 절반이면 오른쪽으로, 오른쪽 절반이면 왼쪽으로 펼친다.
+    const toggle = (id: string, e: React.MouseEvent<HTMLElement>) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const placement = (r.left + r.right) / 2 <= window.innerWidth / 2 ? 'right' : 'left';
+        setWindowAnchor({ left: r.left, right: r.right, top: r.top, placement });
         setSelectedId(prev => prev === id ? null : id);
+    };
 
     // ── Grid layout computation (좌/우 대칭이 아닌 기존 단일 브라켓 모드) ────────
     // Each round r occupies column 2r-1 (1-indexed, odd columns).
@@ -691,24 +998,10 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
         ? leagueTeams.find(t => t.team_slug === finalSeries.winnerId)
         : null;
 
-    // 우승 배너가 겹쳐 뜰 최소 공간 계산 — 브라켓 자체 높이(1라운드 매치 수 기준, ROW_H는
-    // 화면 폭과 무관한 고정값이라 이 값 자체는 정확히 계산 가능)에 배너의 "실측" 높이를
-    // 더한다. 배너 높이는 팀명 줄바꿈 등으로 가변적이라 고정값 추정(예전엔 380px로 어림)
-    // 대신 ResizeObserver로 실제 렌더링 크기를 재서 쓴다 — 라운드 수·배너 내용과 무관하게
-    // 항상 정확히 들어맞고, 가로 폭 반응형(minmax(MATCH_W,1fr))과는 별개 축이라 서로 영향
-    // 없음.
+    // 1라운드 매치 수 — 양 진영/파이널 열의 행 템플릿(buildRowTemplate) 공유 기준.
     const bracketR1Count = westByRound.get(1)?.length ?? eastByRound.get(1)?.length ?? 1;
-    const bannerRef = useRef<HTMLDivElement>(null);
-    const [bannerHeight, setBannerHeight] = useState(0);
-    useEffect(() => {
-        const el = bannerRef.current;
-        if (!el) { setBannerHeight(0); return; }
-        const ro = new ResizeObserver(([entry]) => setBannerHeight(entry.contentRect.height));
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, [championTeam]);
-    const BANNER_MARGIN = 32; // px — 배너와 브라켓 마지막 행 사이 여백
-    const bodyMinHeight = championTeam ? ROW_H * bracketR1Count + bannerHeight + BANNER_MARGIN : undefined;
+    // 1라운드 매치가 적은 소규모 브라켓(총 4팀 등)은 파이널 카드 위 여유가 부족해 트로피를 축소한다.
+    const compactTrophy = bracketR1Count < 4;
 
     // 서부/동부 컨퍼런스 파이널 → 파이널 연결선 하이라이트 — 호버 팀이 파이널에도, 그
     // 진영의 마지막 라운드에도 있으면 그 진영 쪽 연결선이 실제 진출 경로다.
@@ -721,113 +1014,108 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
     return (
         <div className="relative flex h-full animate-in fade-in duration-500">
             {/* ── Bracket ──────────────────────────────────────────────────── */}
-            <div className="flex-1 overflow-auto min-h-0 bg-slate-900">
+            {/* 좌/우 대칭 모드 배경: 서부(파랑)·동부(빨강) 테마를 양 끝에 은은하게 깐 가로 그라데이션.
+                스크롤 컨테이너 자체의 배경이라 가로 스크롤 시에도 뷰포트에 고정돼 항상 좌=파랑/우=빨강으로 보인다.
+                중앙 30%는 완전 투명(bg-slate-900 그대로)이라 파이널 열은 중립 톤을 유지. */}
+            <div
+                className="flex-1 overflow-auto min-h-0 bg-slate-900"
+                style={isSplit ? { backgroundImage: CONFERENCE_THEME_BG } : undefined}
+            >
                 <div className="min-h-full">
 
                     {isSplit ? (
                         <>
-                            {/* ── 헤더: [서부] [파이널] [동부] 3열, 서부·동부는 다시
-                                1라운드/2라운드/컨퍼런스 파이널 3열로 세분화된 2단 테이블.
-                                바디와 분리된 영역이라 패딩 없이 상단/좌우에 그대로 붙는다.
-                                서부/동부/파이널 모두 유동폭 — 서부·동부는 라운드 개수(confRounds)
-                                만큼, 파이널은 카드 1개분(1)만큼의 flex-grow 가중치를 줘서 화면이
-                                넓어질 때 모든 카드(서부/동부의 각 라운드 카드 + 파이널 카드)가
-                                정확히 같은 비율로 늘어나며, 우측에 빈 공간도 남지 않는다. ── */}
-                            <div className="flex items-start justify-start gap-0 w-full">
-                                <div className="min-w-0" style={{ flex: `${confRounds} 1 0%` }}>
-                                    <div className="h-10 flex items-center justify-center text-sm font-black uppercase text-blue-300 bg-blue-500/10 border border-blue-500/30">
-                                        서부
-                                    </div>
-                                    {/* buildColTemplate(confRounds)로 바디(BracketHalf)와 동일한 트랙
-                                        구성을 쓰는 진짜 grid — 커넥터 칸은 별도 채움 요소 없이 그냥
-                                        비워두고 행 자체의 bg-slate-800이 그 사이로 이어져 보이게 한다.
-                                        (예전엔 flex-1 + 별도 채움 div로 흉내냈는데, 폭 계산이 미묘하게
-                                        어긋나고 채움 요소가 눈에 띄는 상자로 보이는 문제가 있었다.) */}
-                                    <div
-                                        className="grid w-full bg-slate-800"
-                                        style={{ gridTemplateColumns: buildColTemplate(confRounds) }}
-                                    >
-                                        {sideHeaderOrder(confRounds, false).map((r, i) => (
-                                            <div
-                                                key={r}
-                                                className={`h-10 flex items-center justify-center text-sm font-bold uppercase tracking-wide text-slate-400 ${
-                                                    i > 0 ? 'border-l border-slate-700/40' : ''
-                                                }`}
-                                                style={{ gridColumn: 2 * i + 1 }}
-                                            >
-                                                {getSideRoundLabel(r, confRounds)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* 바디의 StraightConnector(파이널 연결선)와 폭을 맞추기 위한 자리 —
-                                    안 넣으면 바디 쪽 서부/파이널/동부가 이 폭만큼 덜 자라서 헤더와
-                                    카드 열 경계가 다시 어긋난다. */}
-                                <div style={{ width: CONN_W, flexShrink: 0 }} />
-
-                                <div style={{ flex: '1 1 0%', minWidth: MATCH_W }}>
-                                    <div className="h-20 flex items-center justify-center text-sm font-black uppercase text-purple-300 bg-purple-500/10 border border-purple-500/30">
-                                        파이널
-                                    </div>
-                                </div>
-
-                                <div style={{ width: CONN_W, flexShrink: 0 }} />
-
-                                <div className="min-w-0" style={{ flex: `${confRounds} 1 0%` }}>
-                                    <div className="h-10 flex items-center justify-center text-sm font-black uppercase text-red-300 bg-red-500/10 border border-red-500/30">
-                                        동부
-                                    </div>
-                                    <div
-                                        className="grid w-full bg-slate-800"
-                                        style={{ gridTemplateColumns: buildColTemplate(confRounds) }}
-                                    >
-                                        {sideHeaderOrder(confRounds, true).map((r, i) => (
-                                            <div
-                                                key={r}
-                                                className={`h-10 flex items-center justify-center text-sm font-bold uppercase tracking-wide text-slate-400 ${
-                                                    i > 0 ? 'border-l border-slate-700/40' : ''
-                                                }`}
-                                                style={{ gridColumn: 2 * i + 1 }}
-                                            >
-                                                {getSideRoundLabel(r, confRounds)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ── 바디: 서부 브라켓 / 결승 카드 / 동부 브라켓. 헤더와 별도 영역이라
-                                패딩(px-6 pt-5 pb-12)은 여기에만 적용된다. ── */}
-                            <div className="relative px-6 pt-5 pb-12" style={{ minHeight: bodyMinHeight }}>
-                                <div className="flex items-center justify-start gap-0 w-full">
+                            {/* ── 서부 브라켓 / 파이널 열 / 동부 브라켓.
+                                제목(서부 컨퍼런스 · {시즌} 플레이오프 · 동부 컨퍼런스)과 라운드 라벨은
+                                별도 헤더 테이블 없이 각 열의 그리드(buildRowTemplate: 제목 행 + 라벨 여유 행
+                                + 카드 행) 안에서 함께 그린다. 세 열이 같은 행 템플릿을 쓰므로 카드 중심선과
+                                파이널 연결선(StraightConnector, paddingTop으로 보정)이 항상 일치한다. ── */}
+                            <div className="relative px-6 pt-10 pb-12">
+                                <div className="flex items-start justify-start gap-0 w-full">
                                     <BracketHalf
                                         byRound={westByRound}
                                         rounds={confRounds}
                                         mirrored={false}
+                                        title="서부 컨퍼런스"
+                                        titleClassName="text-blue-300"
                                         selectedId={selectedId}
                                         myTeamId={myTeamId}
                                         leagueTeams={leagueTeams}
                                         onToggle={toggle}
                                         hoveredTeamId={hoveredTeamId}
-                                        onHoverTeam={setHoveredTeamId}
+                                        onHoverTeam={onHoverTeam}
+                                        seedBySlug={seedBySlug}
                                     />
 
                                     <StraightConnector highlighted={westFinalConnHighlighted} />
 
-                                    <div className="flex flex-col items-center gap-4" style={{ flex: '1 1 0%', minWidth: MATCH_W }}>
-                                        {finalSeries && (
-                                            <MatchCard
-                                                series={finalSeries}
-                                                leagueTeams={leagueTeams}
-                                                myTeamId={myTeamId}
-                                                selected={selectedId === finalSeries.id}
-                                                isFinalRound
-                                                onClick={() => finalSeries.lowerSeedId !== 'BYE' && toggle(finalSeries.id)}
-                                                hoveredTeamId={hoveredTeamId}
-                                                onHoverTeam={setHoveredTeamId}
-                                            />
+                                    {/* 파이널 열: 1열 그리드. 제목(1행) / 트로피(2행~, 상단 정렬) / 카드(3행~끝, 중앙)가
+                                        행을 공유하며 겹치므로 전부 gridColumn: 1을 명시한다 — 안 주면 자동 배치가
+                                        겹침을 피하려고 암묵적 2열을 만들어 카드가 반 폭이 된다. */}
+                                    <div
+                                        style={{
+                                            flex: '1 1 0%',
+                                            minWidth: MATCH_W,
+                                            display: 'grid',
+                                            gridTemplateColumns: 'minmax(0, 1fr)',
+                                            gridTemplateRows: buildRowTemplate(bracketR1Count),
+                                        }}
+                                    >
+                                        {/* Bebas Neue(font-display, tailwind.config)는 400 단일 굵기·대문자 전용 서체라 font-normal + 영문 PLAYOFFS */}
+                                        <div
+                                            className="flex items-center justify-center font-display text-5xl font-normal text-slate-200 whitespace-nowrap"
+                                            style={{ gridColumn: 1, gridRow: 1 }}
+                                        >
+                                            {room?.season ?? ''} PLAYOFFS
+                                        </div>
+
+                                        {/* 우승 트로피 — 파이널 카드 "위" 빈 영역(라벨 여유 행 + 카드 행 상반부)에 둔다.
+                                            예전 바디 bottom-8 absolute 배치는 브라켓 최하단에 붙어 보이는 증상이 있었음.
+                                            세로 순서: 트로피 → 시즌 챔피언 → 팀명 → (파이널 라벨) → 파이널 카드. */}
+                                        {championTeam && (
+                                            <div
+                                                className="flex flex-col items-center justify-start gap-1.5 pointer-events-none"
+                                                style={{ gridColumn: 1, gridRow: `2 / ${Math.min(5, bracketR1Count + 3)}`, paddingTop: 6 }}
+                                            >
+                                                <img
+                                                    src="/images/final.webp"
+                                                    alt="트로피"
+                                                    className={`object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,.45)] ${compactTrophy ? 'w-14 h-14' : 'w-[120px] h-[120px]'}`}
+                                                />
+                                                <div className={`font-bold text-amber-400 mt-1 ${compactTrophy ? 'text-xs' : 'text-sm'}`}>
+                                                    {room?.season ?? ''} 챔피언
+                                                </div>
+                                                <div className={`font-black text-white text-center leading-tight ${compactTrophy ? 'text-lg' : 'text-[28px]'}`}>
+                                                    {championTeam.team_name}
+                                                </div>
+                                            </div>
                                         )}
+
+                                        <div className="flex items-center" style={{ gridColumn: 1, gridRow: `${CARD_ROW_START} / -1` }}>
+                                            <div className="relative w-full">
+                                                {/* 파이널 라벨 — 다른 라운드와 같이 카드 위 부착, 메탈릭 골드 텍스트.
+                                                    w-max + mx-auto: 그라데이션이 글자 폭에 정확히 걸치도록(폭이 넓으면 색 구간이 글자 밖으로 빠짐) */}
+                                                <div
+                                                    className="absolute inset-x-0 bottom-full mb-2.5 w-max mx-auto text-xl font-extrabold tracking-wide whitespace-nowrap"
+                                                    style={FINAL_LABEL_GOLD_STYLE}
+                                                >
+                                                    파이널
+                                                </div>
+                                                {finalSeries && (
+                                                    <MatchCard
+                                                        series={finalSeries}
+                                                        leagueTeams={leagueTeams}
+                                                        myTeamId={myTeamId}
+                                                        selected={selectedId === finalSeries.id}
+                                                        isFinalRound
+                                                        onClick={e => isSeriesOpenable(finalSeries) && toggle(finalSeries.id, e)}
+                                                        hoveredTeamId={hoveredTeamId}
+                                                        onHoverTeam={onHoverTeam}
+                                                        seedBySlug={seedBySlug}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <StraightConnector highlighted={eastFinalConnHighlighted} />
@@ -836,31 +1124,17 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                         byRound={eastByRound}
                                         rounds={confRounds}
                                         mirrored
+                                        title="동부 컨퍼런스"
+                                        titleClassName="text-red-300"
                                         selectedId={selectedId}
                                         myTeamId={myTeamId}
                                         leagueTeams={leagueTeams}
                                         onToggle={toggle}
                                         hoveredTeamId={hoveredTeamId}
-                                        onHoverTeam={setHoveredTeamId}
+                                        onHoverTeam={onHoverTeam}
+                                        seedBySlug={seedBySlug}
                                     />
                                 </div>
-
-                                {/* 우승 배너 — 브라켓 행(West/Final/East)의 flex 자식이 아니라
-                                    absolute로 그 위에 겹쳐서 띄운다. 일반 흐름(mt-16)으로 두면
-                                    브라켓 아래에 배너 높이만큼 페이지가 더 길어지는데, 브라켓 자체
-                                    높이(1라운드 매치 수 기준) 안에도 빈 배경 공간이 있어서 그 위에
-                                    겹쳐 보이게 하면 페이지가 그만큼 늘어나지 않는다. */}
-                                {championTeam && (
-                                    <div ref={bannerRef} className="absolute left-1/2 bottom-8 -translate-x-1/2 flex flex-col items-center gap-3">
-                                        <img src="/images/final.webp" alt="트로피" className="w-48 h-48 object-contain" />
-                                        <div className="text-lg font-bold text-amber-400 uppercase">
-                                            {room?.season ?? ''} 챔피언
-                                        </div>
-                                        <div className="text-5xl font-black text-white">
-                                            {championTeam.team_name}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </>
                     ) : (
@@ -876,7 +1150,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                 {Array.from({ length: totalRounds }, (_, i) => i + 1).map(r => (
                                     <React.Fragment key={r}>
                                         <div
-                                            className="text-center text-2xl font-black text-white uppercase"
+                                            className="text-center text-2xl font-black text-white"
                                             style={{ width: MATCH_W, flexShrink: 0 }}
                                         >
                                             {getRoundLabel(r, totalRounds)}
@@ -913,9 +1187,9 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                                 myTeamId={myTeamId}
                                                 selected={selectedId === s.id}
                                                 isFinalRound={s.round === totalRounds}
-                                                onClick={() => s.lowerSeedId !== 'BYE' && toggle(s.id)}
+                                                onClick={e => isSeriesOpenable(s) && toggle(s.id, e)}
                                                 hoveredTeamId={hoveredTeamId}
-                                                onHoverTeam={setHoveredTeamId}
+                                                onHoverTeam={onHoverTeam}
                                             />
                                         </div>
                                     ))}
@@ -936,7 +1210,7 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                                 {championTeam && (
                                     <div className="flex flex-col items-center gap-3 shrink-0">
                                         <img src="/images/final.webp" alt="트로피" className="w-40 h-40 object-contain" />
-                                        <div className="text-base font-bold text-amber-400 uppercase">
+                                        <div className="text-base font-bold text-amber-400">
                                             {room?.season ?? ''} 챔피언
                                         </div>
                                         <div className="text-4xl font-black text-white text-center">
@@ -950,125 +1224,23 @@ const TournamentBracketView: React.FC<Props> = ({ series, schedule, leagueTeams,
                 </div>
             </div>
 
-            {/* ── Backdrop ─────────────────────────────────────────────────── */}
-            {/* 패널이 떠 있는 동안 뒤쪽 브라켓을 살짝 어둡게 해서 오버레이 시인성을 높인다.
-                클릭하면 패널을 닫는 것도 오버레이 UX 관례상 자연스러워 같이 넣었다. */}
+            {/* ── Series Window(플로팅) — 사이드패널/백드롭 대체. 라운드 라벨은 좌/우 대칭 모드면
+                "서부 1라운드"식, 클래식 모드면 getRoundLabel, 결승은 '파이널'. ── */}
             {selectedSeries && (
-                <div
-                    className="absolute inset-0 bg-black/40 z-10 animate-in fade-in duration-200"
-                    onClick={() => setSelectedId(null)}
+                <SeriesWindow
+                    roundLabel={selectedSeries.round === totalRounds
+                        ? '파이널'
+                        : isSplit
+                            ? `${selectedSide === 'West' ? '서부 ' : selectedSide === 'East' ? '동부 ' : ''}${getSideRoundLabel(selectedSeries.round, confRounds)}`
+                            : getRoundLabel(selectedSeries.round, totalRounds)}
+                    lowerName={lowerTeam ? cityOfTeam(lowerTeam.team_slug, lowerTeam) : 'TBD'}
+                    higherName={higherTeam ? cityOfTeam(higherTeam.team_slug, higherTeam) : 'TBD'}
+                    lowerWins={selectedSeries.lowerSeedWins}
+                    higherWins={selectedSeries.higherSeedWins}
+                    rows={seriesRows}
+                    anchor={windowAnchor}
+                    onClose={() => setSelectedId(null)}
                 />
-            )}
-
-            {/* ── Side Panel ───────────────────────────────────────────────── */}
-            {/* absolute 오버레이 — 예전엔 flex 형제라서 패널이 뜨면 브라켓 영역(flex-1)이
-                그만큼 좁아져 유동폭 그리드가 다시 계산되며 레이아웃이 흔들렸다. 문서 흐름에서
-                빼서 브라켓 위에 떠 있게 하면 브라켓 폭은 패널 표시 여부와 무관하게 그대로다. */}
-            {selectedSeries && (
-                <div className="absolute right-0 top-0 h-full w-72 border-l border-slate-800 bg-slate-800 flex flex-col overflow-hidden shadow-2xl z-20 animate-in slide-in-from-right duration-200">
-                    {/* Header */}
-                    <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-black text-white uppercase">
-                                {selectedSeries.round === totalRounds
-                                    ? '결승'
-                                    : `${selectedSide === 'West' ? '서부 ' : selectedSide === 'East' ? '동부 ' : ''}${getSideRoundLabel(selectedSeries.round, confRounds)}`}
-                            </span>
-                            <button
-                                onClick={() => setSelectedId(null)}
-                                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-                            >
-                                <X size={18} className="text-slate-500" />
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <span className="flex-1 flex items-center justify-center gap-1.5 min-w-0 text-2xl font-bold text-white truncate">
-                                {higherTeam && <TeamLogoImg teamId={higherTeam.team_slug} abbr={higherTeam.team_abbr} className="w-6 h-6" />}
-                                <span className="truncate">
-                                    {higherTeam?.team_abbr ?? 'TBD'}
-                                    {higherTeam && seedBySlug.has(higherTeam.team_slug) && (
-                                        <span> ({seedBySlug.get(higherTeam.team_slug)})</span>
-                                    )}
-                                </span>
-                            </span>
-
-                            <div className="text-2xl font-black text-white shrink-0">
-                                {selectedSeries.higherSeedWins}-{selectedSeries.lowerSeedWins}
-                            </div>
-
-                            <span className="flex-1 flex items-center justify-center gap-1.5 min-w-0 text-2xl font-bold text-white truncate">
-                                {lowerTeam && <TeamLogoImg teamId={lowerTeam.team_slug} abbr={lowerTeam.team_abbr} className="w-6 h-6" />}
-                                <span className="truncate">
-                                    {lowerTeam?.team_abbr ?? 'TBD'}
-                                    {lowerTeam && seedBySlug.has(lowerTeam.team_slug) && (
-                                        <span> ({seedBySlug.get(lowerTeam.team_slug)})</span>
-                                    )}
-                                </span>
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Games */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        {selectedGames.length === 0 ? (
-                            <div className="flex items-center justify-center h-24">
-                                <span className="text-sm font-bold text-slate-600">경기 결과 없음</span>
-                            </div>
-                        ) : (
-                            <div className="p-4 space-y-3">
-                                {selectedGames.map((g, i) => {
-                                    const final = isFinal(g, serverNow);
-                                    const homeWon = final && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
-                                    const awayWon = final && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
-                                    const tally = seriesTallies[i];
-                                    return (
-                                        <div
-                                            key={g.id}
-                                            onClick={() => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
-                                            className="rounded-lg bg-slate-700 border border-slate-600 px-3 py-2.5 cursor-pointer hover:border-slate-500 transition-colors"
-                                        >
-                                            <div className="flex items-center gap-2 text-sm font-bold text-slate-400 mb-2">
-                                                <span className="shrink-0">{i + 1}차전</span>
-                                                <div className="flex-1 border-t border-dashed border-slate-600" />
-                                                {final ? (
-                                                    <span className="shrink-0">시리즈 {tally.higher}:{tally.lower}</span>
-                                                ) : (
-                                                    <span className="flex items-center gap-1.5 shrink-0 text-red-400">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                                        LIVE
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className={`text-lg font-bold uppercase ${awayWon ? 'text-emerald-400' : 'text-white'}`}>
-                                                    {g.awayTeamId}
-                                                </span>
-
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                    {final ? (
-                                                        <>
-                                                            <span className={`text-lg font-bold ${awayWon ? 'text-emerald-400' : 'text-slate-400'}`}>{g.awayScore}</span>
-                                                            <span className="text-slate-500">-</span>
-                                                            <span className={`text-lg font-bold ${homeWon ? 'text-emerald-400' : 'text-slate-400'}`}>{g.homeScore}</span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-lg font-black text-red-400">LIVE</span>
-                                                    )}
-                                                </div>
-
-                                                <span className={`text-lg font-bold uppercase ${homeWon ? 'text-emerald-400' : 'text-white'}`}>
-                                                    {g.homeTeamId}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
             )}
         </div>
     );

@@ -1,11 +1,15 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Loader2, Save, Check } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { Save, Check } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
+import { getSeriesRoundLabel } from '../../../utils/playoffLogic';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonContext } from './seasonContext';
 import { TabBar } from '../../../components/common/TabBar';
+import { Button } from '../../../components/common/Button';
 import { DepthRotationBoard } from '../../../components/dashboard/DepthRotationBoard';
 import { TacticsSlidersPanel } from '../../../components/dashboard/tactics/TacticsSlidersPanel';
 import { PlayerTacticsPanel } from '../../../components/dashboard/tactics/PlayerTacticsPanel';
@@ -99,23 +103,12 @@ const CONTEST_ZONES: { key: string; label: string; zoneKeys: string[] }[] = [
     { key: 'three', label: 'THREE', zoneKeys: ['zone_c3_l', 'zone_c3_r', 'zone_atb3_l', 'zone_atb3_c', 'zone_atb3_r'] },
 ];
 
-// 인사이트 탭 최상단 "시즌 경기 로그" 스파크라인용 — 플레이오프 시리즈id → 라운드 라벨
-// ("플레이인"/"1라운드"/"준결승"/"결승"). MultiScheduleView.tsx/MultiHeader.tsx/
-// TournamentBracketView.tsx와 동일한 규칙(league.bracket_data 기반) — 이 프로젝트는 화면마다
-// 각자 이 소규모 로직을 둔다. round===0은 플레이인(utils/playoffLogic.ts의 PLAYOFF_ROUNDS.PLAY_IN/
-// ROUND_NAMES와 동일 규칙) — 이 분기가 없으면 "0라운드"로 잘못 라벨링된다.
+// 인사이트 탭 최상단 "시즌 경기 로그" 스파크라인용 — 플레이오프 시리즈id → 라운드 라벨.
+// 규칙은 utils/playoffLogic.getSeriesRoundLabel 한 곳(MultiHeader와 공유).
 function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
     const series: any[] = (bracketData as any)?.series ?? [];
-    if (!series.length) return {};
-    const totalRounds = series.reduce((max: number, s: any) => Math.max(max, s.round ?? 1), 1);
     const map: Record<string, string> = {};
-    for (const s of series) {
-        const r = s.round ?? 1;
-        map[s.id] = r === 0 ? '플레이인'
-            : r === totalRounds ? '결승'
-            : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
-            : `${r}라운드`;
-    }
+    for (const s of series) map[s.id] = getSeriesRoundLabel(s, series);
     return map;
 }
 
@@ -197,14 +190,20 @@ const MultiTacticsView: React.FC = () => {
     // ── 전술 저장 ──────────────────────────────────────────────────────────────
     const [saving, setSaving] = useState(false);
     const [savedFlash, setSavedFlash] = useState(false);
+    // [2026-10-13] 저장 실패 — 예전엔 error를 완전히 버렸음(토스트·인라인·console 없음). 탭 바 우측 슬롯 sm danger(미저장 warning 대신).
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     const handleSaveTactics = useCallback(async () => {
         setSaving(true);
+        setSaveError(null);
         const { error } = await saveTactics();
         setSaving(false);
         if (!error) {
             setSavedFlash(true);
             setTimeout(() => setSavedFlash(false), 1500);
+        } else {
+            console.error('[tactics.save]', error);
+            setSaveError('전술 저장에 실패했습니다. 잠시 후 다시 시도하세요.');
         }
     }, [saveTactics]);
 
@@ -505,9 +504,7 @@ const MultiTacticsView: React.FC = () => {
 
     if (!isReady) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-950">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" className="bg-slate-950" />
         );
     }
 
@@ -525,30 +522,23 @@ const MultiTacticsView: React.FC = () => {
                 onTabChange={handleTabChange}
                 rightSlot={
                     <>
-                        {isTacticsDirty && (
-                            <span className="text-xs text-amber-400 ko-normal">저장되지 않은 변경사항이 있습니다</span>
-                        )}
-                        <button
+                        {saveError
+                            ? <InlineNotice tone="danger" size="sm">{saveError}</InlineNotice>
+                            : isTacticsDirty && <InlineNotice tone="warning" size="sm">저장되지 않은 변경사항이 있습니다</InlineNotice>}
+                        <Button
+                            variant={saving || !isTacticsDirty ? 'secondary' : 'success'}
+                            size="lg"
                             onClick={handleSaveTactics}
                             disabled={saving || !isTacticsDirty}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-black uppercase transition-all ${
-                                saving || !isTacticsDirty
-                                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'hover:brightness-110 active:scale-95'
-                            }`}
-                            style={!saving && isTacticsDirty ? {
-                                backgroundColor: '#10b981',
-                                color: '#fff',
-                                boxShadow: '0 0 12px rgba(16,185,129,0.5)',
-                            } : {}}
+                            isLoading={saving}
+                            loadingText="저장 중…"
+                            style={!saving && isTacticsDirty ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
                         >
-                            {saving
-                                ? <><Loader2 size={13} className="animate-spin" />저장 중…</>
-                                : savedFlash
+                            {savedFlash
                                 ? <><Check size={13} />저장됨</>
                                 : <><Save size={13} />저장</>
                             }
-                        </button>
+                        </Button>
                     </>
                 }
             />
@@ -583,16 +573,12 @@ const MultiTacticsView: React.FC = () => {
                             (PlayerStatsTable — TeamStatRankList와 동일한 톤의 단순 리스트, 리더보드
                             테이블 RosterStatsStack은 미사용) 배치 */}
                         {offenseRows.length === 0 ? (
-                            <div className="flex items-center justify-center py-10">
-                                <Loader2 size={20} className="animate-spin text-indigo-400" />
-                            </div>
+                            <Spinner variant="section" />
                         ) : (
                             <div className="flex flex-col lg:flex-row gap-4 items-stretch">
                                 <div className="flex-[7] flex flex-col gap-4">
                                     {leagueTeamsLoading || !myTeamWithFullStats ? (
-                                        <div className="flex items-center justify-center py-20">
-                                            <Loader2 size={24} className="animate-spin text-indigo-400" />
-                                        </div>
+                                        <Spinner variant="section" />
                                     ) : (
                                         <>
                                             <TeamLeadersCards

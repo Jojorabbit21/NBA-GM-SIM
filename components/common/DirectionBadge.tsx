@@ -19,7 +19,7 @@ export const DirectionBadge: React.FC<DirectionBadgeProps> = ({ direction, size 
     const sizeClass = size === 'sm' ? 'px-2 py-0.5 text-[9px]' : 'px-3 py-1 text-[10px]';
 
     return (
-        <span className={`inline-flex items-center justify-center font-black uppercase tracking-wider rounded-full border ${sizeClass} ${DIRECTION_STYLES[direction]}`}>
+        <span className={`inline-flex items-center justify-center font-black rounded-full border ${sizeClass} ${DIRECTION_STYLES[direction]}`}>
             {DIRECTION_LABELS[direction]}
         </span>
     );

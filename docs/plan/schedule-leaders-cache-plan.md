@@ -180,3 +180,9 @@ setResetConfirm(false);
 2. `MultiScheduleView.tsx`를 델타 조회 + 캐시 히트 구조로 수정,로컬 타입 정의 제거하고 import로 교체
 3. `LeagueSettingsView.tsx`의 `handleReset()`에 `clearGameLeadersCache(room.id)` 추가
 4. `tsc` → 브라우저 확인 → `docs/history/dev-log.md` 기록
+
+## 6. 후속 (2026-10-14) — 방별 키 누적이 localStorage 한도를 잠식
+
+실측: 방 10개를 오간 브라우저에 `nbagm:gameLeaders:*` 키가 합계 3.98MB(방 하나 최대 1,003KB ≈ 1,300경기 × 0.75KB). 오리진 한도 5MB 중 1MB만 남아 react-query 영속 캐시(`index.tsx`, 선수 풀 2.2MB)가 아예 저장되지 못했다. 설계 당시 "다른 localStorage 키를 읽고 쓰게 됨 — 별도 처리 불필요"(4장)로 본 부분이 틀렸던 것.
+
+조치: `pruneGameLeadersCache(keepRoomId)` 신설 — 지금 방 외의 `nbagm:gameLeaders:*` 키 전부 삭제. 리그 진입(`hooks/useLeagueBootstrap.ts` 효과 시작)과 `mergeGameLeadersCache` 저장 직전에 호출. 방을 옮기면 그 방 리더는 다시 계산한다(기존 "방마다 영구" → "현재 방만 영구"). dev-log 2026-10-14 항목 참고.

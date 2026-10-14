@@ -157,6 +157,19 @@ function slotToScheduledAt(simRealStartAt: string, slot: number, intervalMinutes
  * 시리즈의 최대 경기를 모두 미리 생성한다. 한 경기씩 순차 슬롯(startSlot, startSlot+1, ...)에
  * 배치되며, 슬롯 간 실제 시간 간격은 intervalMinutes(games_per_real_day로 환산)로 결정된다.
  */
+// 시리즈 홈/어웨이 배정 — 실제 NBA 포맷. 높은 시드가 홈인 경기 번호:
+//   7전4선승(2-2-1-1-1): G1·G2·G5·G7 / 5전3선승(2-2-1): G1·G2·G5 / 3전2선승(1-1-1): G1·G3 / 단판: G1
+// 그 외 길이는 홀수 경기 홈으로 폴백(예전 동작). 예전엔 길이와 무관하게 매 경기 번갈아 배정(gameNum % 2)했음.
+export function isHigherSeedHome(gameNum: number, maxGames: number): boolean {
+    switch (maxGames) {
+        case 7: return gameNum === 1 || gameNum === 2 || gameNum === 5 || gameNum === 7;
+        case 5: return gameNum === 1 || gameNum === 2 || gameNum === 5;
+        case 3: return gameNum === 1 || gameNum === 3;
+        case 1: return true;
+        default: return (gameNum % 2) === 1;
+    }
+}
+
 function generateAllSeriesGames(
     seriesId: string,
     higherSeedId: string,
@@ -171,7 +184,7 @@ function generateAllSeriesGames(
     const games: Game[] = [];
     for (let gameNum = 1; gameNum <= maxGames; gameNum++) {
         const slot       = startSlot + (gameNum - 1);
-        const higherHome = (gameNum % 2) === 1;
+        const higherHome = isHigherSeedHome(gameNum, maxGames);
         games.push({
             id:         `${seriesId}_G${gameNum}`,
             homeTeamId: higherHome ? higherSeedId : lowerSeedId,

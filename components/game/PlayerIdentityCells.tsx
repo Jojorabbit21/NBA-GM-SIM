@@ -69,7 +69,7 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
                     </div>
                 </div>
             </TableCell>
-            <TableCell align="center" className="text-xs font-semibold text-white">{playerInfo?.position || '-'}</TableCell>
+            <TableCell align="center" className="text-xs font-semibold text-slate-200">{playerInfo?.position || '-'}</TableCell>
             <TableCell align="center">
                 <div className="flex justify-center">
                     {ovr === null

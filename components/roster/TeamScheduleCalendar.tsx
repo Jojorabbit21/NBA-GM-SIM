@@ -1,12 +1,15 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Team, Game, Player } from '../../types';
 import { fetchFullGameResult } from '../../services/queries';
 import { getReadableTextColor } from '../../utils/colorContrast';
 import type { GameMvp } from '../../services/multi/gameLeadersCache';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { IconButton } from '../common/IconButton';
+import { Spinner } from '../common/Spinner';
+import { EmptyState } from '../common/EmptyState';
 
 interface TeamScheduleCalendarProps {
     team: Team;
@@ -109,19 +112,21 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
         <div className="h-full flex flex-col overflow-hidden">
             <div className="px-6 py-3 border-b border-slate-800 bg-slate-900 shrink-0">
               <div className="flex items-center justify-center gap-4">
-                <button
+                <IconButton
+                    label="이전 달"
+                    tone="subtle"
                     onClick={() => setViewYM(vm === 0 ? [vy - 1, 11] : [vy, vm - 1])}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 >
                     <ChevronLeft size={16} />
-                </button>
+                </IconButton>
                 <span className="text-base font-bold text-white tabular-nums">{vy}년 {vm + 1}월</span>
-                <button
+                <IconButton
+                    label="다음 달"
+                    tone="subtle"
                     onClick={() => setViewYM(vm === 11 ? [vy + 1, 0] : [vy, vm + 1])}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 >
                     <ChevronRight size={16} />
-                </button>
+                </IconButton>
               </div>
             </div>
 
@@ -130,7 +135,7 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                   TeamGameLog.tsx의 날짜/구분/상대/결과/스코어 컬럼 스타일을 그대로 재사용. */}
               <div className="w-1/2 min-w-0 overflow-y-auto custom-scrollbar border-r border-slate-800">
                 {monthGames.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-12">이 달엔 예정된 경기가 없습니다.</p>
+                    <EmptyState title="이 달엔 예정된 경기가 없습니다." />
                 ) : (
                     <Table className="!rounded-none !border-x-0 !border-t-0" tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                         <colgroup>
@@ -141,11 +146,11 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                             <col />
                         </colgroup>
                         <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
-                            <tr className="h-10 text-slate-500 text-sm font-black uppercase">
-                                <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">날짜</TableHeaderCell>
-                                <TableHeaderCell className="pl-4 border-r border-slate-800 bg-slate-950" align="left">상대</TableHeaderCell>
-                                <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">결과</TableHeaderCell>
-                                <TableHeaderCell className="border-r border-slate-800 bg-slate-950 text-center">스코어</TableHeaderCell>
+                            <tr className="h-10 text-slate-400 text-sm font-bold">
+                                <TableHeaderCell className="bg-slate-950 text-center">날짜</TableHeaderCell>
+                                <TableHeaderCell className="pl-4 bg-slate-950" align="left">상대</TableHeaderCell>
+                                <TableHeaderCell className="bg-slate-950 text-center">결과</TableHeaderCell>
+                                <TableHeaderCell className="bg-slate-950 text-center">스코어</TableHeaderCell>
                                 <TableHeaderCell className="pl-4 bg-slate-950" align="left">최우수선수</TableHeaderCell>
                             </tr>
                         </TableHead>
@@ -169,30 +174,30 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
 
                                 return (
                                     <TableRow key={game.id} className={`h-10 ${isToday ? 'bg-yellow-400/10' : ''}`}>
-                                        <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                                        <TableCell className="text-center align-middle text-sm">
                                             <span className="font-medium text-slate-400 tabular-nums">{dateKey.slice(5).replace('-', '/')}</span>
                                         </TableCell>
-                                        <TableCell className="border-r border-slate-800/30 pl-4">
+                                        <TableCell className="pl-4">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium text-slate-400 shrink-0">{isHome ? 'vs' : '@'}</span>
                                                 <span
-                                                    className={`text-sm font-semibold text-slate-300 uppercase truncate ${onTeamClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                    className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
                                                     onClick={onTeamClick ? () => onTeamClick(oppId) : undefined}
                                                 >
                                                     {oppTeam?.name ?? oppId}
                                                 </span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                                        <TableCell className="text-center align-middle text-sm">
                                             {game.played ? (
                                                 <span className={`font-medium ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? 'W' : 'L'}</span>
                                             ) : (
                                                 <span className="text-slate-600">-</span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="border-r border-slate-800/30 text-center align-middle text-sm">
+                                        <TableCell className="text-center align-middle text-sm">
                                             {isFetching ? (
-                                                <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
+                                                <Spinner variant="inline" className="justify-center w-full" />
                                             ) : game.played ? (
                                                 <span
                                                     className={`font-medium tabular-nums ${isClickable ? 'cursor-pointer hover:underline' : ''} ${isWin ? 'text-emerald-300' : 'text-red-300'}`}

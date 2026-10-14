@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import { Spinner } from '../../../components/common/Spinner';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
 import { useSeasonContext } from './seasonContext';
-import { computeMultiStandingsStats, computePlayoffOddsMap } from './multiSeasonUtils';
+import { computeMultiStandingsStats, computePlayoffOddsMap, fmtWinPct } from './multiSeasonUtils';
 import type { MultiStandingsRecord, MultiTeamMeta } from './multiSeasonUtils';
 import { isFinal, resolveRealAt } from './multiGameReveal';
 import { useServerClockBucket } from '../../../utils/serverClock';
@@ -17,7 +17,10 @@ import {
 } from '../../../components/common/Table';
 import { TEAM_DATA } from '../../../data/teamData';
 import { DIVISION_KOREAN } from '../../../data/mappings';
-import { getRealTeamLogoUrl, getTeamLogoUrl, CONFERENCE_COLORS } from '../../../utils/constants';
+import { CONFERENCE_COLORS } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { SegmentedControl } from '../../../components/common/SegmentedControl';
+import { useTableSort } from '../../../hooks/useTableSort';
 
 // ── 스탠딩 테이블 (main_league 전용) ─────────────────────────────────────────
 
@@ -53,9 +56,23 @@ const COLS = [
 ];
 
 const fmtRecord = (r: { w: number; l: number }) => `${r.w}-${r.l}`;
-const fmtPct    = (v: number) => v.toFixed(3).replace(/^0/, '');
 const fmtPpg    = (v: number) => v > 0 ? v.toFixed(1) : '-';
 const fmtDiff   = (v: number) => v === 0 ? '0.0' : (v > 0 ? '+' : '') + v.toFixed(1);
+// 값이 기준보다 크면 emerald, 작으면 red, 같으면 neutral. inverse면 방향 반대(패/실점처럼 낮을수록 좋은 지표).
+const trendColor = (value: number, base: number, opts?: { inverse?: boolean; neutral?: string }): string => {
+    if (value === base) return opts?.neutral ?? 'text-slate-500';
+    return (value > base) !== !!opts?.inverse ? 'text-emerald-400' : 'text-red-400';
+};
+
+// 컷라인(1px 가로선) — auto=자동진출 경계(emerald), last=마지막 진출권(플레이인 포함, amber).
+const CutLineRow: React.FC<{ colSpan: number; tone: 'auto' | 'last' }> = ({ colSpan, tone }) => (
+    <tr>
+        <td colSpan={colSpan} className="p-0">
+            <div className={`h-[1px] ${tone === 'auto' ? 'bg-emerald-500/40' : 'bg-amber-500/40'}`} />
+        </td>
+    </tr>
+);
+
 const fmtGB     = (v: number) => v <= 0 ? '컷 안쪽' : `${v.toFixed(1)}경기 차`;
 
 function getSortValue(rec: MultiStandingsRecord, key: string, sos: number, po: number): number {
@@ -85,7 +102,7 @@ function getCellValue(rec: MultiStandingsRecord, key: string, gb: string, sos: n
     switch (key) {
         case 'wins':   return String(rec.wins);
         case 'losses': return String(rec.losses);
-        case 'pct':    return fmtPct(rec.pct);
+        case 'pct':    return fmtWinPct(rec.pct);
         case 'gb':     return gb;
         case 'home':   return fmtRecord(rec.home);
         case 'away':   return fmtRecord(rec.away);
@@ -96,7 +113,7 @@ function getCellValue(rec: MultiStandingsRecord, key: string, gb: string, sos: n
         case 'diff':   return fmtDiff(rec.diff);
         case 'streak': return rec.streak;
         case 'l10':    return fmtRecord(rec.l10);
-        case 'sos':    return fmtPct(sos);
+        case 'sos':    return fmtWinPct(sos);
         case 'po':     return `${Math.round(po * 100)}%`;
         default:       return '';
     }
@@ -413,35 +430,35 @@ const PlayoffOddsCell: React.FC<{ pct: number; breakdown?: OddsBreakdown }> = ({
 
             {PLAYOFF_TOOLTIP_ENABLED && hovered && pos && breakdown && createPortal(
                 <div
-                    className="fixed pointer-events-none -translate-y-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 shadow-xl z-[9999] text-left"
+                    className="fixed pointer-events-none -translate-y-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 shadow-xl z-tooltip text-left"
                     style={{ top: pos.top, left: pos.left, width: PLAYOFF_TOOLTIP_WIDTH }}
                 >
                     <p className="text-xs font-bold text-white mb-1.5">플레이오프 진출 확률 {pct}%</p>
                     <div className="space-y-1 text-[11px] text-slate-400">
                         <div className="flex justify-between gap-3">
                             <span>컨퍼런스 순위</span>
-                            <span className="text-slate-200 font-mono tabular-nums">{breakdown.confRank}위 / {breakdown.confSize}팀</span>
+                            <span className="text-slate-200 tabular-nums">{breakdown.confRank}위 / {breakdown.confSize}팀</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span>현재 전적</span>
-                            <span className="text-slate-200 font-mono tabular-nums">{breakdown.wins}-{breakdown.losses} ({fmtPct(breakdown.pct)})</span>
+                            <span className="text-slate-200 tabular-nums">{breakdown.wins}-{breakdown.losses} ({fmtWinPct(breakdown.pct)})</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span>잔여 경기</span>
-                            <span className="text-slate-200 font-mono tabular-nums">{breakdown.gamesRemaining}경기</span>
+                            <span className="text-slate-200 tabular-nums">{breakdown.gamesRemaining}경기</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span>잔여 일정 상대 승률</span>
-                            <span className="text-slate-200 font-mono tabular-nums">{fmtPct(breakdown.remainingSos)}</span>
+                            <span className="text-slate-200 tabular-nums">{fmtWinPct(breakdown.remainingSos)}</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span>자동진출 컷</span>
-                            <span className="text-slate-200 font-mono tabular-nums">{fmtGB(breakdown.gbAuto)}</span>
+                            <span className="text-slate-200 tabular-nums">{fmtGB(breakdown.gbAuto)}</span>
                         </div>
                         {breakdown.lastQualifyingRank !== breakdown.autoClinchCount && (
                             <div className="flex justify-between gap-3">
                                 <span>마지막 진출권 컷</span>
-                                <span className="text-slate-200 font-mono tabular-nums">{fmtGB(breakdown.gbLast)}</span>
+                                <span className="text-slate-200 tabular-nums">{fmtGB(breakdown.gbLast)}</span>
                             </div>
                         )}
                     </div>
@@ -465,9 +482,7 @@ const LeagueStandingsTable: React.FC<{
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
     const [mode, setMode] = useState<StandingsMode>('League');
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
-        key: 'pct', direction: 'desc',
-    });
+    const { sortConfig, sortProps } = useTableSort({ key: 'pct', direction: 'desc' });
 
     const slugs = useMemo(() => leagueTeams.map(t => t.team_slug), [leagueTeams]);
 
@@ -487,13 +502,6 @@ const LeagueStandingsTable: React.FC<{
         () => computeMultiStandingsStats(slugs, schedule, serverNowMs, teamMeta),
         [slugs, schedule, serverNowMs, teamMeta],
     );
-
-    const handleSort = (key: string) => {
-        setSortConfig(prev => ({
-            key,
-            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
-        }));
-    };
 
     const clinchMap = useMemo(
         () => computeClinchStatus(leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled),
@@ -607,48 +615,33 @@ const LeagueStandingsTable: React.FC<{
         <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-4 py-3 shrink-0 bg-slate-900 border-b border-slate-800">
                 <h1 className="text-lg font-black text-white ko-tight truncate">리그 순위</h1>
-                <div className="flex items-center gap-1 bg-slate-800 rounded-md p-1 shrink-0">
-                    {MODE_TABS.map(t => (
-                        <button
-                            key={t.id}
-                            onClick={() => setMode(t.id)}
-                            className={`px-3 py-1.5 rounded text-sm font-bold ko-normal transition-colors ${
-                                mode === t.id ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
-                            }`}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
+                <SegmentedControl<StandingsMode>
+                    className="shrink-0"
+                    value={mode}
+                    onChange={setMode}
+                    options={MODE_TABS.map(t => ({ value: t.id, label: t.label }))}
+                />
             </div>
 
             <div className="flex-1 min-h-0">
-                <Table
-                    style={{ tableLayout: 'fixed', minWidth: '100%' }}
-                    fullHeight={true}
-                    className="!rounded-none !border-x-0 !border-t-0 custom-scrollbar-hide"
-                >
+                <Table variant="flush" fullHeight className="custom-scrollbar-hide">
                     <colgroup>
                         {COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
                     </colgroup>
                     {/* League: 상단 고정 헤더 하나. Conference/Division: 그룹별 서브헤더. */}
                     {mode === 'League' && (
-                        <TableHead noRow>
-                            <tr className="text-slate-500 text-sm font-black uppercase tracking-widest h-10">
-                                {COLS.map(c => (
-                                    <TableHeaderCell
-                                        key={c.key}
-                                        align={c.align}
-                                        width={c.width}
-                                        className={`border-r border-slate-800 bg-slate-950 ${c.key === 'team' ? 'pl-4' : ''}`}
-                                        sortable={c.sortable}
-                                        onSort={c.sortable ? () => handleSort(c.key) : undefined}
-                                        sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
-                                    >
-                                        {c.label}
-                                    </TableHeaderCell>
-                                ))}
-                            </tr>
+                        <TableHead>
+                            {COLS.map(c => (
+                                <TableHeaderCell
+                                    key={c.key}
+                                    align={c.align}
+                                    width={c.width}
+                                    className={c.key === 'team' ? 'pl-4' : ''}
+                                    {...(c.sortable ? sortProps(c.key) : {})}
+                                >
+                                    {c.label}
+                                </TableHeaderCell>
+                            ))}
                         </TableHead>
                     )}
                     <TableBody>
@@ -663,62 +656,28 @@ const LeagueStandingsTable: React.FC<{
                             return (
                                 <React.Fragment key={`${mode}-${t.id}`}>
                                     {groupLabel && (
-                                        <tr className="text-white text-sm font-black uppercase tracking-widest h-10">
-                                            <td
-                                                colSpan={2}
-                                                style={groupTint}
-                                                className={`py-3 pl-4 bg-slate-950 border-b border-slate-800 border-r border-slate-800 ${groupColor ? 'text-white' : 'text-indigo-400'}`}
-                                            >
-                                                {groupLabel}
-                                            </td>
+                                        <tr className="h-10 text-sm font-bold">
+                                            <TableHeaderCell colSpan={2} align="left" style={groupTint} className={`bg-slate-950 pl-4 ${groupColor ? 'text-white' : 'text-indigo-400'}`}>{groupLabel}</TableHeaderCell>
                                             {COLS.slice(2).map(c => (
-                                                <td
-                                                    key={c.key}
-                                                    onClick={c.sortable ? () => handleSort(c.key) : undefined}
-                                                    style={groupTint}
-                                                    className={`py-3 text-center bg-slate-950 border-b border-slate-800 border-r border-slate-800 ${c.sortable ? 'cursor-pointer hover:text-slate-300 select-none' : ''}`}
-                                                >
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <span className="truncate min-w-0">{c.label}</span>
-                                                        {c.sortable && sortConfig.key === c.key && (
-                                                            <span className="flex-shrink-0">
-                                                                {sortConfig.direction === 'asc' && <ArrowUp size={10} className="text-indigo-400" strokeWidth={3} />}
-                                                                {sortConfig.direction === 'desc' && <ArrowDown size={10} className="text-indigo-400" strokeWidth={3} />}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
+                                                <TableHeaderCell key={c.key} align="center" style={groupTint} className="bg-slate-950 text-white" {...(c.sortable ? sortProps(c.key) : {})}>{c.label}</TableHeaderCell>
                                             ))}
                                         </tr>
                                     )}
 
                                     <TableRow>
                                         {/* Rank */}
-                                        <TableCell align="center" className="text-sm tabular-nums text-white border-r border-slate-800/30">
+                                        <TableCell align="center" className="text-sm tabular-nums text-white">
                                             {rank}
                                         </TableCell>
 
-                                        {/* Team — 이름 옆에 팀 로고(public/logos/real/) 추가(사용자 요청).
+                                        {/* Team — 이름 옆에 팀 로고(public/logos/teams/) 추가(사용자 요청).
                                             뉴스피드 스코어 헤드라인(newsFeedCards.tsx BoxScoreHeadline)과
-                                            동일한 폴백 체인(신규 로고 실패 → 구버전 → 플레이스홀더).
+                                            동일한 폴백(TeamLogo 공용, 리그 로고 1회 폴백).
                                             [2026-09-07 후속] 로고는 순수 장식용 — 클릭 영역은 팀 이름
                                             텍스트에만 한정(사용자 지적: 로고까지 클릭되게 만든 건 요청 밖). */}
-                                        <TableCell align="left" className="pl-4 border-r border-slate-800/30">
+                                        <TableCell align="left" className="pl-4">
                                             <span className="flex items-center gap-2 min-w-0">
-                                                <img
-                                                    src={getRealTeamLogoUrl(t.team_slug)}
-                                                    alt={t.team_abbr}
-                                                    className="w-6 h-6 object-contain shrink-0"
-                                                    onError={(e) => {
-                                                        const img = e.currentTarget;
-                                                        if (img.dataset.fallback !== 'old') {
-                                                            img.dataset.fallback = 'old';
-                                                            img.src = getTeamLogoUrl(t.team_slug);
-                                                        } else {
-                                                            img.src = 'https://placehold.co/100x100?text=BPL';
-                                                        }
-                                                    }}
-                                                />
+                                                <TeamLogo teamId={t.team_slug} teamName={t.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
                                                 <span
                                                     onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
                                                     className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
@@ -737,7 +696,7 @@ const LeagueStandingsTable: React.FC<{
                                             if (c.key === 'po') {
                                                 const pct = Math.round((playoffOddsMap[t.team_slug] ?? 0) * 100);
                                                 return (
-                                                    <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                                    <TableCell key={c.key} align="center" className="">
                                                         <PlayoffOddsCell pct={pct} breakdown={oddsBreakdownMap[t.team_slug]} />
                                                     </TableCell>
                                                 );
@@ -745,31 +704,19 @@ const LeagueStandingsTable: React.FC<{
 
                                             const val = getCellValue(rec, c.key, gb, sosMap[t.team_slug] ?? 0, playoffOddsMap[t.team_slug] ?? 0);
                                             let colorClass = 'text-white';
-                                            if (c.key === 'wins') {
-                                                colorClass = rec.wins > leagueAverages.wins ? 'text-emerald-400' : rec.wins < leagueAverages.wins ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'losses') {
-                                                // 패배는 적을수록 좋음 — W와 반대 방향.
-                                                colorClass = rec.losses < leagueAverages.losses ? 'text-emerald-400' : rec.losses > leagueAverages.losses ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'diff') {
-                                                colorClass = rec.diff > 0 ? 'text-emerald-400' : rec.diff < 0 ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'streak') {
-                                                colorClass = rec.streak.startsWith('W') ? 'text-emerald-400' : rec.streak.startsWith('L') ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'l10') {
-                                                colorClass = rec.l10.w > rec.l10.l ? 'text-emerald-400' : rec.l10.l > rec.l10.w ? 'text-red-400' : 'text-slate-300';
-                                            } else if (c.key === 'ppg') {
-                                                colorClass = rec.ppg > leagueAverages.ppg ? 'text-emerald-400' : rec.ppg < leagueAverages.ppg ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'oppg') {
-                                                // 실점은 낮을수록 좋음 — DIFF/PPG와 반대 방향.
-                                                colorClass = rec.oppg < leagueAverages.oppg ? 'text-emerald-400' : rec.oppg > leagueAverages.oppg ? 'text-red-400' : 'text-slate-500';
-                                            } else if (c.key === 'sos') {
-                                                const sos = sosMap[t.team_slug] ?? 0;
-                                                colorClass = sos > leagueAverages.sos ? 'text-emerald-400' : sos < leagueAverages.sos ? 'text-red-400' : 'text-slate-500';
-                                            }
+                                            if (c.key === 'wins') colorClass = trendColor(rec.wins, leagueAverages.wins);
+                                            else if (c.key === 'losses') colorClass = trendColor(rec.losses, leagueAverages.losses, { inverse: true }); // 패배는 적을수록 좋음
+                                            else if (c.key === 'diff') colorClass = trendColor(rec.diff, 0);
+                                            else if (c.key === 'streak') colorClass = trendColor(rec.streak.startsWith('W') ? 1 : rec.streak.startsWith('L') ? -1 : 0, 0);
+                                            else if (c.key === 'l10') colorClass = trendColor(rec.l10.w, rec.l10.l, { neutral: 'text-slate-300' });
+                                            else if (c.key === 'ppg') colorClass = trendColor(rec.ppg, leagueAverages.ppg);
+                                            else if (c.key === 'oppg') colorClass = trendColor(rec.oppg, leagueAverages.oppg, { inverse: true }); // 실점은 낮을수록 좋음
+                                            else if (c.key === 'sos') colorClass = trendColor(sosMap[t.team_slug] ?? 0, leagueAverages.sos);
                                             return (
                                                 <TableCell
                                                     key={c.key}
                                                     align="center"
-                                                    className={`text-sm tabular-nums ${colorClass} border-r border-slate-800/30`}
+                                                    className={`text-sm tabular-nums ${colorClass}`}
                                                 >
                                                     {val}
                                                 </TableCell>
@@ -778,21 +725,9 @@ const LeagueStandingsTable: React.FC<{
                                     </TableRow>
 
                                     {/* 자동진출 컷라인(플레이인 비활성화면 이 라인이 곧 진출/탈락 경계) */}
-                                    {cutoffLines.auto.has(t.team_slug) && (
-                                        <tr>
-                                            <td colSpan={COLS.length} className="p-0">
-                                                <div className="h-[1px] bg-emerald-500/40" />
-                                            </td>
-                                        </tr>
-                                    )}
+                                    {cutoffLines.auto.has(t.team_slug) && <CutLineRow colSpan={COLS.length} tone="auto" />}
                                     {/* 마지막 진출권(플레이인 포함) 컷라인 */}
-                                    {cutoffLines.last.has(t.team_slug) && (
-                                        <tr>
-                                            <td colSpan={COLS.length} className="p-0">
-                                                <div className="h-[1px] bg-amber-500/40" />
-                                            </td>
-                                        </tr>
-                                    )}
+                                    {cutoffLines.last.has(t.team_slug) && <CutLineRow colSpan={COLS.length} tone="last" />}
                                 </React.Fragment>
                             );
                         })}
@@ -828,9 +763,7 @@ const MultiStandingsView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 

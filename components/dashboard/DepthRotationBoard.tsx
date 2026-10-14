@@ -2,12 +2,19 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { Button } from '../common/Button';
+import { SplitButton } from '../common/SplitButton';
+import { IconButton } from '../common/IconButton';
 import { OvrBadge } from '../common/OvrBadge';
 import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
 import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
 import { Dropdown } from '../common/Dropdown';
 import { AlertCircle, CheckCircle2, RotateCcw, ChevronDown, GripVertical } from 'lucide-react';
 import { GanttBar, computeStints, type Stint, type DragState } from './RotationGanttChart';
+import {
+    ROTATION_ALLOCATION_OPTIONS, EMPTY_48, computeRotationMap, computeRotationValidation, getMinutesColor,
+    type RotationAllocationMode,
+} from '../../utils/rotationAllocation';
 
 // ── 뎁스 차트 + 로테이션 통합 보드 ────────────────────────────────────────────
 // 기존엔 "뎁스 차트"(포지션별 선수 랭킹 테이블)와 "로테이션 차트"(선수별 48분 간트)가
@@ -21,15 +28,7 @@ const POSITIONS: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
 const DEPTH_LABELS = ['주전', '벤치', '써드'];
 
 type DepthAutoFillMode = 'Ability' | 'Stamina';
-type RotationAllocationMode = 'Overwork' | 'Balanced' | 'Socialist';
-
-const ROTATION_OPTIONS: { mode: RotationAllocationMode; label: string; sub: string }[] = [
-    { mode: 'Overwork',  label: '주전 혹사 (기본)', sub: '주전 36분 / 벤치 12분' },
-    { mode: 'Balanced',  label: '균형 분배',        sub: '주전 26분 / 벤치 18분 / 써드 4분' },
-    { mode: 'Socialist', label: '공산 농구',        sub: '주전 20분 / 벤치 16분 / 써드 12분' },
-];
-
-const EMPTY_48 = () => Array(48).fill(false);
+// 배분 모드/옵션/48분 맵 생성/검증/분 색은 utils/rotationAllocation.ts(RotationGanttChart와 공유)
 
 // 위반 분(minute, 0~47 절대 인덱스) 목록을 "N쿼터 시작~끝분" 형태로 묶어 표시.
 // 쿼터 경계(12분)에서 항상 구간을 끊고(쿼터를 넘나드는 구간 표기 없음), 쿼터 내 상대분은
@@ -74,47 +73,9 @@ function remapRotationByChart(
     return newMap;
 }
 
-// 뎁스 차트 + 배분 모드로 로테이션(선수별 48분 맵)을 계산하는 순수 함수.
-// handleAllocateRotation(기존 depthChart 기준)과 handleAutoFillDepth(방금 새로 만든
-// 뎁스 차트 기준, "포지션 자동 배정"에 로테이션 배분까지 한 번에 포함시키기 위함)
-// 양쪽에서 공용으로 쓴다 — 후자는 아직 props로 안 올라간 새 뎁스 차트를 즉시 써야 해서
-// 컴포넌트 state/props에 의존하는 클로저가 아니라 순수 함수로 분리했다.
-function computeRotationMap(
-    chart: DepthChart,
-    mode: RotationAllocationMode,
-    roster: Player[],
-): Record<string, boolean[]> {
-    const newMap: Record<string, boolean[]> = {};
-    roster.forEach(p => { newMap[p.id] = EMPTY_48(); });
-    const fill = (id: string, s: number, e: number) => {
-        if (!newMap[id]) newMap[id] = EMPTY_48();
-        for (let i = s - 1; i < e; i++) newMap[id][i] = true;
-    };
-    POSITIONS.forEach(pos => {
-        const [sid, bid, tid] = chart[pos];
-        if (mode === 'Overwork') {
-            if (sid) { fill(sid,1,12); fill(sid,19,24); fill(sid,25,36); fill(sid,43,48); }
-            if (bid) { fill(bid,13,18); fill(bid,37,42); }
-            else if (sid) { fill(sid,13,18); fill(sid,37,42); }
-        } else if (mode === 'Balanced') {
-            if (sid) { fill(sid,1,8); fill(sid,21,24); fill(sid,25,32); fill(sid,43,48); }
-            if (bid) { fill(bid,9,12); fill(bid,17,20); fill(bid,33,36); fill(bid,37,42); }
-            if (tid) { fill(tid,13,16); } else if (sid) { fill(sid,13,16); }
-            if (sid && !bid) { fill(sid,9,12); fill(sid,17,20); fill(sid,33,36); fill(sid,37,42); }
-        } else {
-            if (sid) { fill(sid,1,6); fill(sid,21,24); fill(sid,25,30); fill(sid,45,48); }
-            if (bid) { fill(bid,7,10); fill(bid,13,16); fill(bid,31,34); fill(bid,37,40); }
-            if (tid) { fill(tid,11,12); fill(tid,17,20); fill(tid,35,36); fill(tid,41,44); }
-            else {
-                if (sid) { fill(sid,17,20); fill(sid,41,44); }
-                if (bid) { fill(bid,11,12); fill(bid,35,36); }
-                else if (sid) { fill(sid,11,12); fill(sid,35,36); }
-            }
-            if (sid && !bid) { fill(sid,7,10); fill(sid,13,16); fill(sid,31,34); fill(sid,37,40); }
-        }
-    });
-    return newMap;
-}
+// 뎁스 차트 + 배분 모드 → 선수별 48분 맵은 utils/rotationAllocation.ts의 computeRotationMap.
+// handleAllocateRotation(기존 depthChart 기준)과 handleAutoFillDepth(방금 새로 만든 뎁스 차트 기준)
+// 양쪽에서 쓴다 — 후자는 아직 props로 안 올라간 새 뎁스 차트를 즉시 써야 해서 순수 함수여야 한다.
 
 // 두 뎁스 차트가 완전히 동일한지(15슬롯 전부 같은 선수) 비교 — "포지션 자동 배정" 결과가
 // 현재 뎁스 차트와 이미 같으면(=이미 최적 배정) 로테이션까지 덮어쓰지 않고 스킵하기 위함.
@@ -128,7 +89,7 @@ function cloneDepthChart(chart: DepthChart): DepthChart {
         SG: [...chart.SG] as DepthChart['SG'],
         SF: [...chart.SF] as DepthChart['SF'],
         PF: [...chart.PF] as DepthChart['PF'],
-        C:  [...chart.C]  as DepthChart['C'],
+        C:  [...chart.C] as DepthChart['C'],
     };
 }
 
@@ -213,13 +174,9 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
     team, tactics, depthChart, onUpdateDepthChart, onUpdateTactics, coachName,
 }) => {
     const [dragging, setDragging] = useState<DragState | null>(null);
-    const [isDepthDropdownOpen, setIsDepthDropdownOpen] = useState(false);
-    const [isAllocDropdownOpen, setIsAllocDropdownOpen] = useState(false);
     type SlotRef = { pos: keyof DepthChart; idx: number };
     const [draggedSlot, setDraggedSlot] = useState<SlotRef | null>(null);
     const [dropTargetSlot, setDropTargetSlot] = useState<SlotRef | null>(null);
-    const depthDropdownRef = useRef<HTMLDivElement>(null);
-    const allocDropdownRef = useRef<HTMLDivElement>(null);
 
     const tacticsRef = useRef(tactics);
     tacticsRef.current = tactics;
@@ -230,15 +187,6 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
 
     const rafRef = useRef<number | null>(null);
     useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); }, []);
-
-    useEffect(() => {
-        const handle = (e: MouseEvent) => {
-            if (depthDropdownRef.current && !depthDropdownRef.current.contains(e.target as Node)) setIsDepthDropdownOpen(false);
-            if (allocDropdownRef.current && !allocDropdownRef.current.contains(e.target as Node)) setIsAllocDropdownOpen(false);
-        };
-        document.addEventListener('mousedown', handle);
-        return () => document.removeEventListener('mousedown', handle);
-    }, []);
 
     // 뎁스 차트가 아직 없으면 초기 생성 (DepthChartEditor와 동일한 규칙)
     useEffect(() => {
@@ -390,10 +338,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         // 이미 지금 뎁스 차트가 이 알고리즘이 낼 수 있는 최적 배정과 완전히 같다면
         // (15슬롯 전부 동일) 아무것도 안 하고 스킵 — 그렇지 않으면 매번 로테이션까지
         // "Overwork"로 덮어써서 사용자가 직접 조정해둔 출전시간이 날아간다.
-        if (depthChart && depthChartsEqual(newChart, depthChart)) {
-            setIsDepthDropdownOpen(false);
-            return;
-        }
+        if (depthChart && depthChartsEqual(newChart, depthChart)) return;
 
         // 포지션 자동 배정 시 로테이션(출전시간)까지 한 번에 배정한다("Overwork" 기본
         // 모드) — 방금 만든 newChart는 아직 props로 안 올라간 상태라 depthChart(prop)를
@@ -406,7 +351,6 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         const newRotationMap = computeRotationMap(newChart, 'Overwork', team.roster);
         onUpdateTactics({ ...tactics, starters: newStarters, rotationMap: newRotationMap });
         onUpdateDepthChart(newChart);
-        setIsDepthDropdownOpen(false);
     }, [team.roster, tactics, depthChart, onUpdateTactics, onUpdateDepthChart]);
 
     // ── 자동 배정: 출전시간(로테이션) ─────────────────────────────────────────
@@ -414,7 +358,6 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         if (!depthChart) return;
         const newMap = computeRotationMap(depthChart, mode, team.roster);
         onUpdateTactics({ ...tactics, rotationMap: newMap });
-        setIsAllocDropdownOpen(false);
     }, [depthChart, team.roster, tactics, onUpdateTactics]);
 
     const handleResetAll = useCallback(() => {
@@ -439,30 +382,10 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         return m;
     }, [team.roster]);
 
-    const validation = useMemo(() => {
-        const minuteCounts = Array<number>(48).fill(0);
-        const over42: string[] = [];
-        const mapData = tactics.rotationMap || {};
-        Object.entries(mapData).forEach(([pid, map]) => {
-            if (map.filter(Boolean).length > 42) over42.push(team.roster.find(p => p.id === pid)?.name || pid);
-            map.forEach((active, i) => { if (active) minuteCounts[i]++; });
-        });
-        const under5Minutes: number[] = [];
-        const over5Minutes: number[] = [];
-        minuteCounts.forEach((c, i) => {
-            if (c < 5) under5Minutes.push(i);
-            if (c > 5) over5Minutes.push(i);
-        });
-        return { minuteCounts, over42, under5Minutes, over5Minutes };
-    }, [tactics.rotationMap, team.roster]);
-
-    const getMinColor = (mins: number) => {
-        if (mins === 0) return 'text-slate-600';
-        if (mins > 42) return 'text-red-500';
-        if (mins > 34) return 'text-amber-500';
-        if (mins > 20) return 'text-indigo-400';
-        return 'text-emerald-400';
-    };
+    const validation = useMemo(
+        () => computeRotationValidation(tactics.rotationMap, team.roster),
+        [tactics.rotationMap, team.roster],
+    );
 
     const SH = 'bg-slate-950';
     const SK = 'bg-slate-900';
@@ -474,66 +397,31 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
-            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 gap-4">
-                <span className="text-base font-black text-white uppercase">뎁스 차트 · 로테이션</span>
+            <div className="px-6 py-3 bg-slate-800 border-b border-slate-600 flex items-center justify-between flex-shrink-0 gap-4">
+                <span className="text-base font-black text-white">뎁스 차트 · 로테이션</span>
                 <div className="flex gap-2">
-                    <div className="relative flex shadow-md" ref={depthDropdownRef}>
-                        <button
-                            onClick={() => handleAutoFillDepth('Ability')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-sm font-bold uppercase active:scale-95 border-r border-indigo-700/50"
-                        >
-                            {coachName ? `${coachName}에게 포지션 위임` : '포지션 자동 배정'}
-                        </button>
-                        <button
-                            onClick={() => setIsDepthDropdownOpen(v => !v)}
-                            className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all ${isDepthDropdownOpen ? 'bg-indigo-700' : ''}`}
-                        >
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isDepthDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isDepthDropdownOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-36 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                <div className="p-1">
-                                    <button onClick={() => handleAutoFillDepth('Ability')} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">능력치 우선</button>
-                                    <button onClick={() => handleAutoFillDepth('Stamina')} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all">체력 우선</button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="relative flex shadow-md" ref={allocDropdownRef}>
-                        <button
-                            onClick={() => handleAllocateRotation('Overwork')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-sm font-bold uppercase active:scale-95 border-r border-indigo-700/50"
-                        >
-                            출전시간 자동 배정
-                        </button>
-                        <button
-                            onClick={() => setIsAllocDropdownOpen(v => !v)}
-                            className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all ${isAllocDropdownOpen ? 'bg-indigo-700' : ''}`}
-                        >
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isAllocDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isAllocDropdownOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                <div className="p-1">
-                                    {ROTATION_OPTIONS.map(({ mode, label, sub }) => (
-                                        <button key={mode} onClick={() => handleAllocateRotation(mode)} className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5">
-                                            <span>{label}</span>
-                                            <span className="text-sm text-slate-500 font-normal">{sub}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <button
-                        onClick={handleResetAll}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-sm font-bold uppercase shadow-sm active:scale-95"
+                    <SplitButton
+                        width="w-36"
+                        onClick={() => handleAutoFillDepth('Ability')}
+                        items={[
+                            { id: 'Ability', label: '능력치 우선', onClick: () => handleAutoFillDepth('Ability') },
+                            { id: 'Stamina', label: '체력 우선', onClick: () => handleAutoFillDepth('Stamina') },
+                        ]}
                     >
-                        <RotateCcw size={14} />
-                        <span>초기화</span>
-                    </button>
+                        {coachName ? `${coachName}에게 포지션 위임` : '포지션 자동 배정'}
+                    </SplitButton>
+
+                    <SplitButton
+                        width="w-48"
+                        onClick={() => handleAllocateRotation('Overwork')}
+                        items={ROTATION_ALLOCATION_OPTIONS.map(({ mode, label, sub }) => ({ id: mode, label, sub, onClick: () => handleAllocateRotation(mode) }))}
+                    >
+                        출전시간 자동 배정
+                    </SplitButton>
+
+                    <Button variant="secondary" onClick={handleResetAll} icon={<RotateCcw size={14} />}>
+                        초기화
+                    </Button>
                 </div>
             </div>
 
@@ -551,10 +439,10 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                         <col style={{ width: 54 }} />
                     </colgroup>
                     <thead className={`${SH} sticky top-0 z-50`}>
-                        <tr className="text-sm font-black text-slate-500 uppercase tracking-tighter">
+                        <tr className="text-sm font-bold text-slate-400">
                             <th className={`sticky left-0 z-50 ${SH} ${SB} border-b border-slate-800 py-3 w-[96px] min-w-[96px] text-center`} colSpan={2}>슬롯</th>
                             <th className={`sticky left-[96px] z-50 ${SH} ${SB} border-b border-slate-800 py-3 w-[228px] min-w-[228px] text-left px-3`} colSpan={2}>선수</th>
-                            <th className={`sticky left-[324px] z-50 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            <th className={`border-r border-slate-800 sticky left-[324px] z-50 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>OVR</th>
                             <th className={`${SH} border-l border-r border-t border-b border-slate-800 py-3 px-2`}>
                                 <div className="flex text-sm font-black">
                                     {['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map(q => (
@@ -562,7 +450,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                     ))}
                                 </div>
                             </th>
-                            <th className={`${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>시간</th>
+                            <th className={`border-r border-slate-800 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>시간</th>
                             <th className={`${SH} border-b border-slate-800 py-3 w-[54px] min-w-[54px] text-center`}>초기화</th>
                         </tr>
                     </thead>
@@ -581,11 +469,11 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                             // 그룹(주전/벤치/써드)의 마지막 행 — border-separate 테이블에선 <tr>의
                             // border가 실제로 그려지지 않으므로, 각 <td>에 개별적으로 굵은 구분선을 준다.
                             // border-b-{color}처럼 방향성 색상 클래스를 써야 한다 — 일부 셀은 ${SB}(오른쪽
-                            // 테두리, border-r border-slate-800)도 같이 쓰는데, 색상만 지정하는
+                            // 테두리, border-r border-slate-600)도 같이 쓰는데, 색상만 지정하는
                             // border-slate-600을 섞으면 Tailwind가 전체 side 색을 덮어써 border-r 색까지
                             // 바뀌는 문제가 있었음(과거 dev-log에 기록된 것과 동일한 함정).
                             const isGroupEnd = posIdx === POSITIONS.length - 1;
-                            const groupEndBorder = isGroupEnd ? 'border-b-2 border-b-slate-700' : 'border-b border-b-slate-800/50';
+                            const groupEndBorder = isGroupEnd ? 'border-b-2 border-b-slate-800' : 'border-b border-b-slate-800';
 
                             return (
                                 <tr
@@ -601,7 +489,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                     }}
                                 >
                                     {posIdx === 0 && (
-                                        <td rowSpan={POSITIONS.length} className={`sticky left-0 z-30 bg-slate-800 text-center align-middle ${SB} border-b-2 border-b-slate-700`}>
+                                        <td rowSpan={POSITIONS.length} className={`sticky left-0 z-30 bg-slate-800 text-center align-middle ${SB} border-b-2 border-b-slate-800`}>
                                             <span className={`text-sm font-bold ${POSITIONS.some(p => depthChart[p][depthIndex]) ? 'text-white' : 'text-slate-600'}`}>{depthLabel}</span>
                                         </td>
                                     )}
@@ -611,7 +499,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
 
                                     {/* 드래그 핸들 — 다른 슬롯 행 위에 드롭하면 두 슬롯의 선수(+구간)를 맞바꾼다.
                                         선수 이름 셀과 시각적으로 이어지도록 오른쪽 구분선(border-r)은 뺀다. */}
-                                    <td className={`sticky left-[96px] z-30 ${SK} text-center align-middle ${groupEndBorder}`}>
+                                    <td className={`border-r border-slate-800 sticky left-[96px] z-30 ${SK} text-center align-middle ${groupEndBorder}`}>
                                         <div
                                             draggable
                                             onDragStart={() => setDraggedSlot({ pos, idx: depthIndex })}
@@ -632,7 +520,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                         />
                                     </td>
 
-                                    <td className={`sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>
+                                    <td className={`border-r border-slate-800 sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>
                                         {selectedPlayer && (
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" />
@@ -640,7 +528,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                         )}
                                     </td>
 
-                                    <td className={`p-0 h-9 ${groupEndBorder}`}>
+                                    <td className={`border-r border-slate-800 p-0 h-9 ${groupEndBorder}`}>
                                         {/* 선수 미배정 슬롯도 GanttBar를 readOnly로 그려서 배경 격자/쿼터
                                             음영이 행마다 끊기지 않고 이어지도록 한다 — 상호작용만 막는다. */}
                                         <GanttBar
@@ -656,17 +544,23 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                         />
                                     </td>
 
-                                    <td className={`${SK} text-center align-middle ${groupEndBorder}`}>
+                                    <td className={`border-r border-slate-800 ${SK} text-center align-middle ${groupEndBorder}`}>
                                         {selectedPlayer && (
-                                            <span className={`text-sm font-semibold ${getMinColor(totalMins)}`}>{totalMins}</span>
+                                            <span className={`text-sm font-semibold ${getMinutesColor(totalMins)}`}>{totalMins}</span>
                                         )}
                                     </td>
 
-                                    <td className={`${SK} text-center align-middle ${groupEndBorder}`}>
+                                    <td className={`border-r border-slate-800 ${SK} text-center align-middle ${groupEndBorder}`}>
                                         {selectedPlayer && totalMins > 0 && (
-                                            <button onClick={(e) => { e.stopPropagation(); handleResetSlot(selectedId!); }} className="flex items-center justify-center w-full" title="이 슬롯 출전시간 초기화">
-                                                <RotateCcw size={12} className="text-slate-400 hover:text-red-400 transition-colors" />
-                                            </button>
+                                            <IconButton
+                                                label="이 슬롯 출전시간 초기화"
+                                                tone="inherit"
+                                                size="xs"
+                                                onClick={(e) => { e.stopPropagation(); handleResetSlot(selectedId!); }}
+                                                className="mx-auto text-slate-400 hover:!text-red-400"
+                                            >
+                                                <RotateCcw size={12} />
+                                            </IconButton>
                                         )}
                                     </td>
                                 </tr>
@@ -694,7 +588,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                         {validation.over42.length > 0 && (
                             <div className="flex items-center gap-2">
                                 <AlertCircle size={16} className="text-red-500 shrink-0" />
-                                <span className="text-sm font-bold text-red-500 uppercase">혹사 경고: {validation.over42.join(', ')}</span>
+                                <span className="text-sm font-bold text-red-500">혹사 경고: {validation.over42.join(', ')}</span>
                             </div>
                         )}
                     </div>

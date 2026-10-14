@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { mapDraftError } from '../utils/draftErrors';
 import type { Session } from '@supabase/supabase-js';
 import type { MultiDraftState, DraftPickEntry, DraftPoolPlayer } from '../types/multiDraft';
 
@@ -27,6 +28,11 @@ export interface UseLeagueDraftReturn {
 
     /** 본인 팀 오토픽 모드 on/off (어드민 권한 불필요) */
     toggleAutoPick:   (enabled: boolean) => void;
+
+    /** [2026-10-13] WS 연결 상태 — reconnecting이면 화면이 지명 버튼·오토픽 토글을 막고 인라인으로 알린다 */
+    connectionState:  'connecting' | 'connected' | 'reconnecting';
+    /** 연속 재연결 시도 횟수(연결 성공 시 0) */
+    reconnectAttempt: number;
 }
 
 /**
@@ -73,6 +79,10 @@ export function useLeagueDraft(
     const backoffRef   = useRef(1000);
     const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const destroyedRef = useRef(false);   // unmount 후 재연결 방지
+    // [2026-10-13] 연결 상태 노출 + 좀비 소켓 감시(docs/plan/ui-inline-notice.md 4-4)
+    const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting');
+    const [reconnectAttempt, setReconnectAttempt] = useState(0);
+    const missedPongRef = useRef(0);      // 마지막 pong 이후 보낸 ping 수 — 2개 이상 쌓이면(60초 무응답) 소켓을 강제로 닫아 재연결
 
     // submitPick Promise 콜백 (ack/error 수신 시 resolve)
     const pendingPickRef = useRef<{
@@ -89,6 +99,9 @@ export function useLeagueDraft(
 
         ws.onopen = () => {
             backoffRef.current = 1000; // 재연결 성공 → backoff 리셋
+            missedPongRef.current = 0;
+            setConnectionState('connected');
+            setReconnectAttempt(0);
             ws.send(JSON.stringify({ type: 'auth', roomId, token }));
         };
 
@@ -155,14 +168,14 @@ export function useLeagueDraft(
                     if (pendingPickRef.current) {
                         clearTimeout(pendingPickRef.current.timer);
                         const code = msg.code ?? 'internal';
-                        pendingPickRef.current.resolve({ error: code });
+                        pendingPickRef.current.resolve({ error: mapDraftError(code) });
                         pendingPickRef.current = null;
                     }
                     break;
                 }
 
                 case 'pong':
-                    break; // heartbeat — 무시
+                    missedPongRef.current = 0; // heartbeat 응답 — 좀비 카운터 리셋
 
                 default:
                     break;
@@ -171,6 +184,8 @@ export function useLeagueDraft(
 
         ws.onclose = () => {
             if (destroyedRef.current) return;
+            setConnectionState('reconnecting');
+            setReconnectAttempt(n => n + 1);
             // 지수 백오프 재연결 (1s → 2s → 4s → max 10s)
             const delay = Math.min(backoffRef.current, 10_000);
             backoffRef.current = Math.min(backoffRef.current * 2, 10_000);
@@ -192,16 +207,39 @@ export function useLeagueDraft(
 
         connect();
 
-        // 30초 heartbeat
+        // 30초 heartbeat + 좀비 감시: pong 없이 ping이 2번 쌓이면(≈60초) 소켓을 닫아 onclose의 재연결 루프에 태운다.
+        // 네트워크가 반쯤 죽은 상태(소켓은 OPEN, 서버 미응답)에서 submitPick이 5초 타임아웃으로만 실패하던 사각지대.
         const pingTimer = setInterval(() => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ type: 'ping' }));
+            const ws = wsRef.current;
+            if (ws?.readyState !== WebSocket.OPEN) return;
+            if (missedPongRef.current >= 2) {
+                console.warn('[useLeagueDraft] pong 2회 미수신 — 소켓 강제 종료 후 재연결');
+                missedPongRef.current = 0;
+                ws.close();
+                return;
             }
+            missedPongRef.current += 1;
+            ws.send(JSON.stringify({ type: 'ping' }));
         }, 30_000);
+
+        // 탭 복귀/네트워크 복귀 시 백오프를 기다리지 않고 즉시 재연결(연결 중이거나 이미 연결돼 있으면 무시)
+        const wake = () => {
+            if (destroyedRef.current) return;
+            const st = wsRef.current?.readyState;
+            if (st === WebSocket.OPEN || st === WebSocket.CONNECTING) return;
+            if (reconnectRef.current) clearTimeout(reconnectRef.current);
+            backoffRef.current = 1000;
+            connect();
+        };
+        const onVisible = () => { if (document.visibilityState === 'visible') wake(); };
+        window.addEventListener('online', wake);
+        document.addEventListener('visibilitychange', onVisible);
 
         return () => {
             destroyedRef.current = true;
             clearInterval(pingTimer);
+            window.removeEventListener('online', wake);
+            document.removeEventListener('visibilitychange', onVisible);
             if (reconnectRef.current) clearTimeout(reconnectRef.current);
             wsRef.current?.close();
         };
@@ -239,9 +277,9 @@ export function useLeagueDraft(
 
     // ── submitPick ────────────────────────────────────────────────────────────
     const submitPick = useCallback(async (playerId: string): Promise<{ error: string | null }> => {
-        if (!roomId || !token) return { error: 'not authenticated' };
-        if (!isMyTurn)         return { error: 'not your turn' };
-        if (wsRef.current?.readyState !== WebSocket.OPEN) return { error: 'connection lost' };
+        if (!roomId || !token) return { error: mapDraftError('not authenticated') };
+        if (!isMyTurn)         return { error: mapDraftError('not your turn') };
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return { error: mapDraftError('connection lost') };
 
         setIsSubmitting(true);
 
@@ -250,7 +288,7 @@ export function useLeagueDraft(
             const timer = setTimeout(() => {
                 pendingPickRef.current = null;
                 setIsSubmitting(false);
-                resolve({ error: 'timeout' });
+                resolve({ error: mapDraftError('timeout') });
             }, 5_000);
 
             pendingPickRef.current = { resolve, timer };
@@ -275,6 +313,7 @@ export function useLeagueDraft(
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting,
         sendAdmin, toggleAutoPick,
+        connectionState, reconnectAttempt,
     };
 }
 

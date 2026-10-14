@@ -1,18 +1,29 @@
 
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
-import { calculatePlayerOvr, getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
-import { formatMoneyFull } from '../utils/formatMoney';
+import { calculatePlayerOvr } from '../utils/constants';
+import { getPositionStars } from '../utils/positionRating';
+import { formatMoney } from '../utils/formatMoney';
+import { getContractAav } from '../utils/contract';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getReadableTextColor } from '../utils/colorContrast';
 import { OvrBadge } from '../components/common/OvrBadge';
+import { Button } from '../components/common/Button';
+import { IconButton } from '../components/common/IconButton';
 import { TeamBadge } from '../components/common/TeamBadge';
+import { TeamLogo } from '../components/common/TeamLogo';
 import { StarRating } from '../components/common/StarRating';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { TabBar } from '../components/common/TabBar';
+import { Dropdown } from '../components/common/Dropdown';
+import { KeyValueRow } from '../components/common/KeyValueRow';
+import { EmptyState } from '../components/common/EmptyState';
+import { Spinner } from '../components/common/Spinner';
+import { SegmentedControl } from '../components/common/SegmentedControl';
+import { CheckOption, CheckOptionGroup } from '../components/common/filters/CheckOption';
 import { formatReturnDateSuffix, formatPlayerActiveInjuryLabel } from '../services/multi/activeInjuryStatus';
 import { InjuryStatusBadge } from '../components/common/InjuryStatusBadge';
 import {
@@ -70,79 +81,10 @@ interface PlayerDetailViewProps {
     // 기본 숨김이 아니라 기본 미표시가 맞음). PlayerTransactionEntry: services/multi/
     // playerHistoryService.ts 참고.
     externalTransactionHistory?: { date: string | null; type: string; fromTeamAbbr: string | null; toTeamAbbr: string; draftRound?: number; draftPick?: number }[];
+    // [2026-10-07] "뉴스" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯.
+    // 뉴스 데이터(league_events)가 멀티 전용이라 뷰는 렌더만 하고 조회는 호출부가 한다.
+    newsSlot?: React.ReactNode;
 }
-
-
-// ── Stats Sections Config (matches Leaderboard Player > Traditional) ──
-const TRAD_COLS = [
-    { key: 'g', label: 'G' }, { key: 'mp', label: 'MIN' },
-    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
-    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
-    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
-    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
-    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
-    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
-    { key: 'pm', label: '+/-' },
-];
-
-// ── Advanced (matches Leaderboard Player > Advanced) ──
-const ADVANCED_COLS = [
-    { key: 'ts%', label: 'TS%' }, { key: 'efg%', label: 'eFG%' }, { key: 'tov%', label: 'TOV%' },
-    { key: 'usg%', label: 'USG%' }, { key: 'ast%', label: 'AST%' },
-    { key: 'orb%', label: 'ORB%' }, { key: 'drb%', label: 'DRB%' }, { key: 'trb%', label: 'TRB%' },
-    { key: 'stl%', label: 'STL%' }, { key: 'blk%', label: 'BLK%' },
-    { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
-    { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
-];
-
-// ── Defense Zones ──
-const DEF_ZONES = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
-
-const DefenseZoneTable: React.FC<{ stats: PlayerStats }> = ({ stats: st }) => (
-    <table className="w-full text-[11px]" style={{ tableLayout: 'fixed' }}>
-        <thead>
-            <tr className="h-6 border-b border-slate-800/60">
-                {DEF_ZONES.map((z, zi) => (
-                    <th key={z} colSpan={3}
-                        className={`text-center text-[9px] font-black uppercase tracking-widest text-slate-400 align-middle
-                            ${zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
-                    >
-                        {z}
-                    </th>
-                ))}
-            </tr>
-            <tr className="h-6 border-b border-slate-800">
-                {DEF_ZONES.flatMap((z, zi) =>
-                    (['DFGM', 'DFGA', 'DFG%'] as const).map((sub, si) => (
-                        <th key={`${z}_${sub}`}
-                            className={`text-center text-[9px] font-medium text-slate-500 align-middle
-                                ${si === 2 && zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
-                        >
-                            {sub}
-                        </th>
-                    ))
-                )}
-            </tr>
-        </thead>
-        <tbody>
-            <tr className="h-10">
-                {DEF_ZONES.flatMap((z, zi) => {
-                    const m = (st as any)[`def${z}Made`] ?? 0;
-                    const a = (st as any)[`def${z}Attempted`] ?? 0;
-                    const pct = a > 0 ? (m / a * 100).toFixed(1) + '%' : '-';
-                    return (['DFGM', 'DFGA', 'DFG%'] as const).map((sub, si) => (
-                        <td key={`${z}_${sub}`} align="center"
-                            className={`font-mono font-medium tabular-nums text-white text-[11px]
-                                ${si === 2 && zi < DEF_ZONES.length - 1 ? 'border-r border-slate-800/40' : ''}`}
-                        >
-                            {sub === 'DFGM' ? m : sub === 'DFGA' ? a : pct}
-                        </td>
-                    ));
-                })}
-            </tr>
-        </tbody>
-    </table>
-);
 
 // ── Career History Columns ──
 const CAREER_TRAD_COLS = [
@@ -173,10 +115,10 @@ const INT_COLS  = new Set(['age','gp','gs']);
 
 function formatCareerCell(key: string, raw: any): string {
     if (raw == null || raw === '') return '-';
-    if (PCT_COLS.has(key))  return (Number(raw) * 100).toFixed(1);
+    if (PCT_COLS.has(key)) return (Number(raw) * 100).toFixed(1);
     if (RATE_COLS.has(key)) return Number(raw).toFixed(1);
     if (key === 'season' || key === 'team') return String(raw);
-    if (INT_COLS.has(key))  return String(Math.round(Number(raw)));
+    if (INT_COLS.has(key)) return String(Math.round(Number(raw)));
     return Number(raw).toFixed(1);
 }
 
@@ -377,7 +319,6 @@ const GAME_LOG_COLS = [
     { key: 'pm', label: '+/-' },
 ];
 
-
 // 능력치 막대 그래프에 단색 대신 그라데이션(등급 고유색 → 살짝 밝아진 톤)을 적용 — 등급
 // 구간별 색상 정체성은 시작점에 그대로 유지하면서 입체감을 준다.
 const lightenHex = (hex: string, factor: number) => {
@@ -547,90 +488,89 @@ function normalizeBrefAward(a: any, parentSeason: string) {
     return null;
 }
 
-function hexAlpha(hex: string, alpha: number): string {
-    const n = parseInt(hex.replace('#', ''), 16);
-    return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
-}
-
-// ── Relative luminance (0=black, 1=white) ──
-function luminance(hex: string): number {
-    const n = parseInt(hex.replace('#', ''), 16);
-    return (0.299 * ((n >> 16) & 0xff) + 0.587 * ((n >> 8) & 0xff) + 0.114 * (n & 0xff)) / 255;
-}
-
-// ── Pick tint color: use bg if it has enough luminance, else fall back to accent ──
-function getEffectiveTintColor(theme: { bg: string; accent: string }): string {
-    return luminance(theme.bg) >= 0.05 ? theme.bg : theme.accent;
-}
-
-// ── Section Header ──
+// ── Section Header(기록·최근 경기 등 탭 본문 구획 제목 + 우측 컨트롤 슬롯) ──
 const SectionHeader: React.FC<{ title: string; className?: string; style?: React.CSSProperties; children?: React.ReactNode }> = ({ title, className, style, children }) => (
     <div className={`px-6 py-3 flex items-center justify-between${className ? ` ${className}` : ''}`} style={style}>
-        <span className="text-base font-black text-white uppercase">{title}</span>
+        <span className="text-base font-black text-white">{title}</span>
         {children && <div className="flex items-center gap-2">{children}</div>}
     </div>
 );
 
-// ── Reusable: Stats sub-table (header + single data row), uses common Table ──
-const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
-    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
-        <TableHead>
-            {cols.map((c, i) => (
-                <TableHeaderCell
-                    key={c.key}
-                    align="center"
-                    className={i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}
-                >
-                    {c.label}
-                </TableHeaderCell>
-            ))}
-        </TableHead>
-        <TableBody>
-            <TableRow className="h-10">
-                {cols.map((c, i) => {
-                    const { display, color } = resolveStatVal(stats, c.key);
-                    return (
-                        <TableCell
-                            key={c.key}
-                            align="center"
-                            className={i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}
-                        >
-                            <span className={`font-mono font-medium tabular-nums ${color}`}>{display}</span>
-                        </TableCell>
-                    );
-                })}
-            </TableRow>
-        </TableBody>
-    </Table>
+// ── 프로필 탭 좌/중앙 열의 섹션 블록(제목 + kv 행 묶음). 11개 섹션이 같은 래퍼·제목 클래스를 복붙하던 것. [2026-10-13]
+// 열의 첫 섹션은 위 구분선이 없으므로 `first`.
+const ProfileSection: React.FC<{ title: string; first?: boolean; children: React.ReactNode }> = ({ title, first = false, children }) => (
+    <div className={`px-4 py-3 space-y-1 ${first ? '' : 'border-t border-slate-800'}`}>
+        <div className="text-base font-bold text-white mb-1.5">{title}</div>
+        {children}
+    </div>
 );
 
-// ── 샷 차트 우측 "OO별 기록" 테이블 공용 — 시간대별/슛 타입별/팀별 3곳에서 재사용.
-// 구역별 테이블(리그평균/+- 열 포함)은 계산이 달라 별도로 인라인 유지.
-const ShotBreakdownTable: React.FC<{ title: string; headerLabel: string; rows: { key: string; label: string; m: number; a: number; pct: number }[] }> = ({ title, headerLabel, rows }) => (
+const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+/** Set 필터 토글 — 있으면 빼고 없으면 넣은 새 Set */
+function toggleInSet<T>(prev: Set<T>, v: T): Set<T> {
+    const next = new Set(prev);
+    if (next.has(v)) next.delete(v); else next.add(v);
+    return next;
+}
+const fgPctText = (m: number, a: number, pct: number) => (a > 0 ? `${(pct * 100).toFixed(1)}%` : '-');
+
+// ── 샷 차트 우측 "OO별 기록" 테이블 공용 — 구역별(리그평균/+- 열·합계 푸터 포함)/시간대별/슛 타입별/팀별 4곳.
+// [2026-10-13] raw <table> → 공용 Table(bare). 구역별 표도 showLeagueAvg/footer 옵션으로 흡수.
+type ShotBreakdownRow = { key: string; label: string; m: number; a: number; pct: number; avg?: number };
+type ShotBreakdownFooterRow = { label: string; m: number; a: number; pct: number; emphasis?: boolean };
+const ShotBreakdownTable: React.FC<{
+    title: string;
+    headerLabel: string;
+    rows: ShotBreakdownRow[];
+    /** 리그평균 · +/- 두 열 추가(rows[].avg 필요) */
+    showLeagueAvg?: boolean;
+    footer?: ShotBreakdownFooterRow[];
+}> = ({ title, headerLabel, rows, showLeagueAvg = false, footer }) => (
     <div>
-        <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">{title}</div>
-        <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-separate border-spacing-0 text-sm">
-                <thead>
-                    <tr>
-                        <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500">{headerLabel}</th>
-                        <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FGM</th>
-                        <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FGA</th>
-                        <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FG%</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map(r => (
-                        <tr key={r.key}>
-                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-white font-medium">{r.label}</td>
-                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-slate-300">{r.a > 0 ? r.m : '-'}</td>
-                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-slate-300">{r.a > 0 ? r.a : '-'}</td>
-                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-white">{r.a > 0 ? `${(r.pct * 100).toFixed(1)}%` : '-'}</td>
+        <div className="text-xs text-slate-500 mb-2">{title}</div>
+        <Table variant="bare" dividers={false} className="text-sm">
+            <TableHead>
+                <TableHeaderCell align="left">{headerLabel}</TableHeaderCell>
+                <TableHeaderCell align="right">FGM</TableHeaderCell>
+                <TableHeaderCell align="right">FGA</TableHeaderCell>
+                <TableHeaderCell align="right">FG%</TableHeaderCell>
+                {showLeagueAvg && <TableHeaderCell align="right">리그평균</TableHeaderCell>}
+                {showLeagueAvg && <TableHeaderCell align="right">+/-</TableHeaderCell>}
+            </TableHead>
+            <TableBody>
+                {rows.map(r => {
+                    const delta = showLeagueAvg && r.a > 0 && r.avg != null ? r.pct - r.avg : null;
+                    return (
+                        <TableRow key={r.key}>
+                            <TableCell align="left" className="text-white font-medium">{r.label}</TableCell>
+                            <TableCell align="right" className="text-slate-200 tabular-nums">{r.a > 0 ? r.m : '-'}</TableCell>
+                            <TableCell align="right" className="text-slate-200 tabular-nums">{r.a > 0 ? r.a : '-'}</TableCell>
+                            <TableCell align="right" className="text-white tabular-nums">{fgPctText(r.m, r.a, r.pct)}</TableCell>
+                            {showLeagueAvg && <TableCell align="right" className="text-slate-500 tabular-nums">{((r.avg ?? 0) * 100).toFixed(1)}%</TableCell>}
+                            {showLeagueAvg && (
+                                <TableCell align="right" className={`tabular-nums ${delta == null ? 'text-slate-600' : delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {delta == null ? '-' : `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}%p`}
+                                </TableCell>
+                            )}
+                        </TableRow>
+                    );
+                })}
+            </TableBody>
+            {footer && footer.length > 0 && (
+                <TableFoot>
+                    {footer.map(f => (
+                        <tr key={f.label}>
+                            <TableCell align="left" className={f.emphasis ? 'text-white' : 'text-slate-400'}>{f.label}</TableCell>
+                            <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{f.m}</TableCell>
+                            <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{f.a}</TableCell>
+                            <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{fgPctText(f.m, f.a, f.pct)}</TableCell>
+                            {showLeagueAvg && <TableCell />}
+                            {showLeagueAvg && <TableCell />}
                         </tr>
                     ))}
-                </tbody>
-            </table>
-        </div>
+                </TableFoot>
+            )}
+        </Table>
     </div>
 );
 
@@ -675,7 +615,10 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
 const ROW_HEIGHT = 36; // text-sm(20px 라인하이트) + py-2(16px) — text-xs(32px)에서 상향
 const OVERSCAN = 5;
 
-const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; onGameClick?: (gameId: string) => void; subHeaderStyle?: React.CSSProperties; rowAltStyle?: React.CSSProperties; rowBaseStyle?: React.CSSProperties; dividerColor?: string; subHeaderTextStyle?: React.CSSProperties }> = React.memo(({ gameLog, gameLogLoading, teamId, onGameClick, subHeaderStyle, rowAltStyle, rowBaseStyle, dividerColor, subHeaderTextStyle }) => {
+// 지그재그 행 배경 — 홀수 행만 살짝 밝게
+const ZEBRA_ROW_STYLE: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.02)' };
+
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; onGameClick?: (gameId: string) => void }> = React.memo(({ gameLog, gameLogLoading, teamId, onGameClick }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
@@ -714,32 +657,25 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 className="absolute inset-0 overflow-hidden"
                 onScroll={handleScroll}
             >
-                {gameLogLoading && teamId && (
-                    <div className="flex items-center justify-center py-8">
-                        <Loader2 size={16} className="text-slate-500 animate-spin" />
-                    </div>
-                )}
+                {gameLogLoading && teamId && <Spinner variant="section" />}
                 {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
-                    <div className="flex items-center justify-center py-8">
-                        <span className="text-xs text-slate-600">경기 기록이 없습니다</span>
-                    </div>
+                    <EmptyState padding="sm" title="경기 기록이 없습니다" />
                 )}
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
-                        <table className="w-full text-left border-separate border-spacing-0 text-sm">
-                            <thead className="sticky top-0 z-40">
-                                <tr>
+                        {/* compact 밀도 + 행 높이 ROW_HEIGHT 고정(가상 스크롤 오프셋 계산과 일치). 첫 열 헤더만 가로 스크롤 고정.
+                            text-sm: 셀이 글자 크기를 지정하지 않아 페이지 기본 16px을 상속하던 것(ROW_HEIGHT 36은 14px/20px 기준). */}
+                        <Table variant="bare" density="compact" className="text-sm">
+                            <TableHead noRow className="sticky top-0 z-40">
+                                <tr style={{ height: ROW_HEIGHT }}>
                                     {GAME_LOG_COLS.map((c, i) => (
-                                        <th
-                                            key={c.key}
-                                            className={`px-3 py-2 font-bold uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-center ${i === 0 ? 'sticky left-0 z-10' : ''}`}
-                                        >
+                                        <TableHeaderCell key={c.key} stickyLeft={i === 0 ? 0 : undefined}>
                                             {c.label}
-                                        </th>
+                                        </TableHeaderCell>
                                     ))}
                                 </tr>
-                            </thead>
-                            <tbody>
+                            </TableHead>
+                            <TableBody>
                                 {/* top spacer */}
                                 {startIdx > 0 && (
                                     <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
@@ -747,16 +683,12 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                 {processedRows.slice(startIdx, endIdx).map((cells, vi) => {
                                     const rowGameId = gameLog?.[startIdx + vi]?.gameId as string | undefined;
                                     return (
-                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT }}>
+                                    <TableRow key={startIdx + vi} className="transition-colors" style={{ height: ROW_HEIGHT, ...((startIdx + vi) % 2 !== 0 ? ZEBRA_ROW_STYLE : undefined) }}>
                                         {cells.map((cell, ci) => {
                                             const isResultCell = ci === 2;
                                             const clickable = isResultCell && !!onGameClick && !!rowGameId;
                                             return (
-                                            <td
-                                                key={ci}
-                                                className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r' : ''}`}
-                                                style={{ ...((startIdx + vi) % 2 !== 0 ? rowAltStyle : rowBaseStyle), ...(ci < cells.length - 1 && dividerColor ? { borderRightColor: dividerColor } : undefined) }}
-                                            >
+                                            <TableCell key={ci} className="tabular-nums">
                                                 {clickable ? (
                                                     <button
                                                         onClick={() => onGameClick!(rowGameId!)}
@@ -769,18 +701,18 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                                         {cell.val}
                                                     </span>
                                                 )}
-                                            </td>
+                                            </TableCell>
                                             );
                                         })}
-                                    </tr>
+                                    </TableRow>
                                     );
                                 })}
                                 {/* bottom spacer */}
                                 {endIdx < totalRows && (
                                     <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: (totalRows - endIdx) * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
-                            </tbody>
-                        </table>
+                            </TableBody>
+                        </Table>
                     </div>
                 )}
             </div>
@@ -788,7 +720,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick, newsSlot }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -802,20 +734,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     useEffect(() => { setPlayer(playerProp); setTeamId(teamIdProp); }, [playerProp, teamIdProp]);
 
     const teamName = teamId ? (allTeams?.find(t => t.id === teamId)?.name ?? teamNameProp) : undefined;
-
-    const [teamDropOpen, setTeamDropOpen] = useState(false);
-    const [playerDropOpen, setPlayerDropOpen] = useState(false);
-    const teamDropRef = useRef<HTMLDivElement>(null);
-    const playerDropRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (teamDropRef.current && !teamDropRef.current.contains(e.target as Node)) setTeamDropOpen(false);
-            if (playerDropRef.current && !playerDropRef.current.contains(e.target as Node)) setPlayerDropOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
 
     const sortedTeams = useMemo(() =>
         [...(allTeams ?? [])].sort((a, b) => (a.id ?? '').localeCompare(b.id ?? '')),
@@ -839,20 +757,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
           }
         : (teamId ? (TEAM_DATA[teamId]?.colors || null) : null);
     const theme = getTeamTheme(currentTeam?.colorPrimary ? null : (teamId || null), teamColors);
-    const tintColor = getEffectiveTintColor(theme);
-    const isLight = luminance(tintColor) > 0.5;
-    const sectionBg   = { backgroundColor: theme.bg }; // L5: SectionHeader
-    const subHeaderBg = { backgroundColor: hexAlpha(tintColor, isLight ? 0.04 : 0.35) }; // L4: thead / AVG
-    const rowAltBg    = { backgroundColor: hexAlpha(tintColor, isLight ? 0.02 : 0.12) }; // L3: odd rows
-    const rowBaseBg   = { backgroundColor: hexAlpha(tintColor, isLight ? 0.008 : 0.06) }; // L2: even rows
-    const dividerColor = hexAlpha(tintColor, isLight ? 0.08 : 0.30);
-    const heavyDividerColor = hexAlpha(tintColor, isLight ? 0.12 : 0.45);
-    const subHeaderTextStyle = { color: hexAlpha(theme.text, isLight ? 0.45 : 0.65) };
-    const dropdownStyle = {
-        backgroundColor: hexAlpha(tintColor, isLight ? 0.08 : 0.25),
-        borderColor: hexAlpha(tintColor, isLight ? 0.30 : 0.55),
-        color: 'white',
-    };
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -935,20 +839,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         return null;
     }, [player.activeInjurySeverity, player.injuryType, player.activeInjuryDuration, player.health, player.injuryHistory, player.returnDate]);
 
-    // 포지션 내 백분위 → 별점 (0.5~5.0)
+    // 포지션 내 백분위 → 별점 (0.5~5.0). [2026-10-14] 로스터 탭 "포지션 레이팅" 열과 같은 헬퍼(utils/ovrUtils getPositionStars).
     const positionStars = useMemo(() => {
         if (!allTeams) return null;
-        const allPlayers = allTeams.flatMap(t => t.roster);
-        const samePos = allPlayers.filter(p => p.position === player.position);
-        const ovrs = samePos.map(p => calculatePlayerOvr(p));
-        const belowCount = ovrs.filter(o => o < calculatedOvr).length;
-        const pct = belowCount / Math.max(1, ovrs.length);
-        return Math.round(Math.max(0.5, Math.min(5.0, 0.5 + pct * 4.5)) * 2) / 2;
+        return getPositionStars(player, allTeams.flatMap(t => t.roster), calculatedOvr);
     }, [player, allTeams, calculatedOvr]);
 
     const { data: internalGameLog, isLoading: internalGameLogLoading } = usePlayerGameLog(player.id, teamId);
-    const gameLog        = externalGameLog         !== undefined ? externalGameLog         : internalGameLog;
-    const gameLogLoading = externalGameLogLoading  !== undefined ? externalGameLogLoading  : internalGameLogLoading;
+    const gameLog        = externalGameLog !== undefined ? externalGameLog         : internalGameLog;
+    const gameLogLoading = externalGameLogLoading !== undefined ? externalGameLogLoading  : internalGameLogLoading;
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
@@ -1248,12 +1147,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     // — 안 그러면 뒤로가기를 탭 클릭 횟수만큼 눌러야 이전 화면으로 돌아가는 문제가 생긴다.
     const [searchParams, setSearchParams] = useSearchParams();
     const tabParam = searchParams.get('tab');
-    const activeTab: 'profile' | 'records' | 'shotchart' =
-        tabParam === 'records' || tabParam === 'shotchart' ? tabParam : 'profile';
+    const activeTab: 'profile' | 'records' | 'shotchart' | 'news' =
+        tabParam === 'records' || tabParam === 'shotchart' || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
     const setActiveTab = useCallback((tab: string) => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
-            if (tab === 'records' || tab === 'shotchart') next.set('tab', tab);
+            if (tab === 'records' || tab === 'shotchart' || tab === 'news') next.set('tab', tab);
             else next.delete('tab');
             return next;
         }, { replace: true });
@@ -1386,12 +1285,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             {showBreadcrumbBar && (
             <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-800 bg-slate-950 shrink-0">
                 {/* 뒤로 버튼 */}
-                <button
+                <IconButton
+                    label="뒤로"
+                    tone="inherit"
+                    shape="md"
                     onClick={onBack}
-                    className="flex items-center justify-center w-7 h-7 rounded-md bg-black/30 hover:bg-black/50 text-slate-200 transition-colors shrink-0"
+                    className="bg-black/30 hover:bg-black/50 text-slate-200"
                 >
                     <ArrowLeft size={14} />
-                </button>
+                </IconButton>
 
                 {/* [2026-09-03] "FA 선수 프로필은 브레드크럼을 숨겨달라" 요청 — teamId가 없으면
                     (FA) 팀/선수 드롭다운 트레일 자체가 의미가 없다("FA ▾"를 눌러도 갈 곳이
@@ -1399,82 +1301,84 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     이미 크게 나오니 브레드크럼 자리에는 굳이 다시 안 보여준다. */}
                 {teamId && (
                     <>
-                        {/* 팀 드롭다운 */}
-                        <div ref={teamDropRef} className="relative">
-                            <button
-                                onClick={() => { setTeamDropOpen(o => !o); setPlayerDropOpen(false); }}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors"
-                            >
-                                <TeamBadge
-                                    teamId={teamId}
-                                    abbr={currentTeam?.abbr}
-                                    colorPrimary={currentTeam?.colorPrimary}
-                                    colorSecondary={currentTeam?.colorSecondary}
-                                    size="xs"
+                        {/* 팀 드롭다운 — 공용 Dropdown(포탈·바깥 클릭 닫기 내장). 항목을 고르면 그 팀 OVR 1위 선수로 이동. */}
+                        {(() => {
+                            const teamTrigger = (
+                                <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors">
+                                    <TeamBadge
+                                        teamId={teamId}
+                                        abbr={currentTeam?.abbr}
+                                        colorPrimary={currentTeam?.colorPrimary}
+                                        colorSecondary={currentTeam?.colorSecondary}
+                                        size="xs"
+                                    />
+                                    <span className="text-sm font-bold">{teamName ?? 'FA'}</span>
+                                    {allTeams && <ChevronDown size={11} className="opacity-60" />}
+                                </button>
+                            );
+                            if (!allTeams) return teamTrigger;
+                            return (
+                                <Dropdown
+                                    align="left"
+                                    width="w-56"
+                                    trigger={teamTrigger}
+                                    items={sortedTeams.map(t => ({
+                                        id: t.id,
+                                        active: t.id === teamId,
+                                        label: (
+                                            <span className="flex items-center gap-2 min-w-0 text-sm">
+                                                <TeamBadge teamId={t.id} abbr={t.abbr} colorPrimary={t.colorPrimary} colorSecondary={t.colorSecondary} size="xs" />
+                                                <span className="truncate">{t.name}</span>
+                                            </span>
+                                        ),
+                                        onClick: () => {
+                                            const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+                                            if (roster.length > 0) {
+                                                if (onSelectPlayer) onSelectPlayer(roster[0].id);
+                                                else { setPlayer(roster[0]); setTeamId(t.id); }
+                                            }
+                                        },
+                                    }))}
                                 />
-                                <span className="text-sm font-bold">{teamName ?? 'FA'}</span>
-                                {allTeams && <ChevronDown size={11} className="opacity-60" />}
-                            </button>
-                            {teamDropOpen && allTeams && (
-                                <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-                                    {sortedTeams.map(t => (
-                                        <button
-                                            key={t.id}
-                                            onClick={() => {
-                                                const roster = [...(t.roster ?? [])].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-                                                if (roster.length > 0) {
-                                                    if (onSelectPlayer) onSelectPlayer(roster[0].id);
-                                                    else { setPlayer(roster[0]); setTeamId(t.id); }
-                                                }
-                                                setTeamDropOpen(false);
-                                            }}
-                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${t.id === teamId ? 'text-white font-bold' : 'text-slate-300'}`}
-                                        >
-                                            <TeamBadge
-                                                teamId={t.id}
-                                                abbr={t.abbr}
-                                                colorPrimary={t.colorPrimary}
-                                                colorSecondary={t.colorSecondary}
-                                                size="xs"
-                                            />
-                                            <span className="truncate">{t.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                            );
+                        })()}
 
                         <span className="text-white/30 text-sm mx-1">›</span>
 
-                        {/* 선수 드롭다운 */}
-                        <div ref={playerDropRef} className="relative min-w-0">
-                            <button
-                                onClick={() => { setPlayerDropOpen(o => !o); setTeamDropOpen(false); }}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors max-w-[180px]"
-                            >
-                                <span className="text-sm font-bold truncate">{player.name}</span>
-                                {currentTeamRoster.length > 1 && <ChevronDown size={11} className="opacity-60 shrink-0" />}
-                            </button>
-                            {playerDropOpen && currentTeamRoster.length > 1 && (
-                                <div className="absolute top-full left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto custom-scrollbar rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
-                                    {currentTeamRoster.map(p => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => {
-                                                if (onSelectPlayer) onSelectPlayer(p.id);
-                                                else setPlayer(p);
-                                                setPlayerDropOpen(false);
-                                            }}
-                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-800 transition-colors ${p.id === player.id ? 'text-white font-bold' : 'text-slate-300'}`}
-                                        >
-                                            <span className="font-mono w-6 text-center shrink-0 text-slate-400">{calculatePlayerOvr(p)}</span>
-                                            <span className="truncate">{p.name}</span>
-                                            <span className="text-slate-500 shrink-0">{p.position}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        {/* 선수 드롭다운 — 같은 팀 로스터(OVR 내림차순) */}
+                        {(() => {
+                            const hasRoster = currentTeamRoster.length > 1;
+                            const playerTrigger = (
+                                <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-black/20 hover:bg-black/40 text-white transition-colors max-w-[180px]">
+                                    <span className="text-sm font-bold truncate">{player.name}</span>
+                                    {hasRoster && <ChevronDown size={11} className="opacity-60 shrink-0" />}
+                                </button>
+                            );
+                            if (!hasRoster) return <div className="min-w-0">{playerTrigger}</div>;
+                            return (
+                                <Dropdown
+                                    align="left"
+                                    width="w-60"
+                                    className="min-w-0"
+                                    trigger={playerTrigger}
+                                    items={currentTeamRoster.map(p => ({
+                                        id: p.id,
+                                        active: p.id === player.id,
+                                        label: (
+                                            <span className="flex items-center gap-2 min-w-0 text-sm">
+                                                <OvrBadge value={calculatePlayerOvr(p)} size="sm" />
+                                                <span className="truncate">{p.name}</span>
+                                                <span className="text-slate-500 shrink-0">{p.position}</span>
+                                            </span>
+                                        ),
+                                        onClick: () => {
+                                            if (onSelectPlayer) onSelectPlayer(p.id);
+                                            else setPlayer(p);
+                                        },
+                                    }))}
+                                />
+                            );
+                        })()}
                     </>
                 )}
 
@@ -1520,39 +1424,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             {/* ═══ 프로필 헤더 — 이름/포지션/소속팀/키/체중/샐러리/등번호 요약 ═══ */}
             <div className="flex items-center gap-4 px-4 py-5 bg-slate-900 border-b border-slate-800 shrink-0">
                 {teamId && (
-                    currentTeam?.colorPrimary ? (
-                        // [2026-09-06] 테스트: 멀티플레이어(colorPrimary가 있는 경우)에 한해 헤더의
-                        // 큰 로고 자리만 신규 로고 세트(public/logos/real/)로 우선 교체. 싱글플레이어는
-                        // 기존 TeamBadge(→TeamLogo) 경로 그대로 유지. real/에 파일이 없는 팀(예: 밀워키)은
-                        // 구버전 로고로, 그마저 없으면 플레이스홀더로 순차 폴백.
-                        <img
-                            src={getRealTeamLogoUrl(teamId)}
-                            alt={currentTeam?.abbr ?? teamId}
-                            className="self-stretch !h-auto w-24 object-contain drop-shadow-md shrink-0"
-                            onError={(e) => {
-                                const img = e.currentTarget;
-                                if (img.dataset.fallback !== 'old') {
-                                    img.dataset.fallback = 'old';
-                                    img.src = getTeamLogoUrl(teamId);
-                                } else {
-                                    img.src = 'https://placehold.co/100x100?text=BPL';
-                                }
-                            }}
-                        />
-                    ) : (
-                        <TeamBadge
-                            teamId={teamId}
-                            abbr={currentTeam?.abbr}
-                            colorPrimary={currentTeam?.colorPrimary}
-                            colorSecondary={currentTeam?.colorSecondary}
-                            size="lg"
-                            className="self-stretch !h-auto !w-24 !text-2xl"
-                        />
-                    )
+                    // 큰 로고 자리는 TeamLogo 공용(public/logos/teams/, 리그 로고 1회 폴백).
+                    <TeamLogo teamId={teamId} teamName={currentTeam?.abbr ?? teamId} size="custom" className="self-stretch !h-auto w-24 shrink-0" />
                 )}
                 <div className="flex flex-col gap-1 min-w-0">
                     <div className="flex items-center gap-3 min-w-0">
-                        <OvrBadge value={calculatedOvr} size="lg" className="shrink-0 !w-10 !h-10 !text-2xl" />
+                        <OvrBadge value={calculatedOvr} size="header" className="shrink-0" />
                         <h1 className="text-3xl font-black text-white truncate">{player.name}</h1>
                         {headerInjuryBadge && (
                             <InjuryStatusBadge
@@ -1596,7 +1473,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         <span className="text-slate-600">|</span>
                         <span>{player.weight ? `${player.weight}kg` : '-'}</span>
                         <span className="text-slate-600">|</span>
-                        <span>{player.contract ? formatMoneyFull(player.salary) : '-'}</span>
+                        <span>{player.contract ? formatMoney(player.salary) : '-'}</span>
                     </div>
                 </div>
 
@@ -1608,9 +1485,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 <table className="text-sm ml-auto shrink-0 whitespace-nowrap border-collapse">
                     <thead>
                         <tr>
-                            <th className="border-r border-slate-700 pr-3 pb-1" />
+                            <th className="border-r border-slate-800 pr-3 pb-1" />
                             {HEADER_STAT_KEYS.map(sk => (
-                                <th key={sk.key} className="text-right font-normal text-slate-500 px-3 pb-1">{sk.label}</th>
+                                <th key={sk.key} className="text-right font-normal text-slate-400 px-3 pb-1">{sk.label}</th>
                             ))}
                         </tr>
                     </thead>
@@ -1620,9 +1497,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             { label: '커리어', row: headerCareerAvg },
                         ] as { label: string; row: Record<string, any> | null }[]).map(({ label, row }) => (
                             <tr key={label}>
-                                <td className="text-left text-slate-500 border-r border-slate-700 pr-3 py-1">{label}</td>
+                                <td className="text-left text-slate-500 border-r border-slate-800 pr-3 py-1">{label}</td>
                                 {HEADER_STAT_KEYS.map(sk => (
-                                    <td key={sk.key} className="text-right text-white px-3 py-1">{formatHeaderStat(sk.key, row)}</td>
+                                    <td key={sk.key} className="text-right text-white px-3 py-1 tabular-nums">{formatHeaderStat(sk.key, row)}</td>
                                 ))}
                             </tr>
                         ))}
@@ -1636,6 +1513,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     { id: 'profile', label: '프로필' },
                     { id: 'records', label: '기록' },
                     { id: 'shotchart', label: '샷 차트' },
+                    ...(newsSlot !== undefined ? [{ id: 'news', label: '뉴스' }] : []),
                 ]}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -1656,87 +1534,56 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             <div>
 
                                 {/* ─ 기본 정보 ─ */}
-                                <div className="px-4 pt-3 pb-3 space-y-1">
-                                    <div className="text-base font-bold text-white mb-1.5">선수 정보</div>
+                                <ProfileSection title="선수 정보" first>
                                     {[
                                         { label: '팀', value: teamId ? <span className="flex items-center gap-1"><TeamBadge teamId={teamId} abbr={currentTeam?.abbr} colorPrimary={currentTeam?.colorPrimary} colorSecondary={currentTeam?.colorSecondary} size="xs" />{teamName || 'FA'}</span> : 'FA' },
                                         { label: '포지션', value: player.position },
                                         { label: '나이', value: `${player.age}세` },
                                         { label: '신장', value: `${player.height}cm` },
                                         { label: '체중', value: `${player.weight}kg` },
-                                        { label: '연봉', value: player.salary > 0 ? formatMoneyFull(player.salary) : '-' },
+                                        { label: '연봉', value: player.salary > 0 ? formatMoney(player.salary) : '-', numeric: true },
                                         { label: '계약', value: player.contractYears > 0 ? `${player.contractYears}년` : '-' },
                                         { label: '리그 레벨', value: <StarRating ovr={calculatedOvr} size="md" /> },
                                         { label: '포지션 평점', value: positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-' },
-                                    ].map(({ label, value }) => (
-                                        <div key={label} className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500 shrink-0">{label}</span>
-                                            <span className="font-semibold text-slate-200 text-right">{value}</span>
-                                        </div>
+                                    ].map(({ label, value, numeric }) => (
+                                        <KeyValueRow key={label} label={label} numeric={numeric}>{value}</KeyValueRow>
                                     ))}
-                                </div>
+                                </ProfileSection>
 
                                 {/* ─ 부상 현황 ─ */}
                                 {player.health && player.health !== 'Healthy' && (() => {
                                     const currentInjury = [...(player.injuryHistory ?? [])].sort((a, b) => b.date.localeCompare(a.date))[0];
                                     return (
-                                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                            <div className="text-base font-bold text-white mb-1.5">부상 현황</div>
-                                            {[
-                                                { label: '부상명', value: player.injuryType ?? '-' },
-                                                { label: '기간', value: currentInjury?.duration ?? '-' },
-                                                { label: '예상 복귀', value: player.returnDate ?? '-' },
-                                            ].map(({ label, value }) => (
-                                                <div key={label} className="flex justify-between items-center">
-                                                    <span className="text-sm text-slate-500 shrink-0">{label}</span>
-                                                    <span className="text-sm font-semibold text-white text-right">{value}</span>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        <ProfileSection title="부상 현황">
+                                            <KeyValueRow label="부상명">{player.injuryType ?? '-'}</KeyValueRow>
+                                            <KeyValueRow label="기간">{currentInjury?.duration ?? '-'}</KeyValueRow>
+                                            <KeyValueRow label="예상 복귀">{player.returnDate ?? '-'}</KeyValueRow>
+                                        </ProfileSection>
                                     );
                                 })()}
 
                                 {/* ─ 선수 유형 ─ */}
                                 {playerArchetypeState && (
-                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                        <div className="text-base font-bold text-white mb-1.5">선수 유형</div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-sm text-slate-500">아키타입</span>
-                                            <span className="text-sm font-semibold text-white">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
-                                        </div>
+                                    <ProfileSection title="선수 유형">
+                                        <KeyValueRow label="아키타입">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</KeyValueRow>
                                         {playerArchetypeState.secondary && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-500">보조 유형</span>
-                                                <span className="text-sm font-semibold text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
-                                            </div>
+                                            <KeyValueRow label="보조 유형" tone="muted">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</KeyValueRow>
                                         )}
                                         {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
-                                            <div key={tag} className="flex justify-between items-center">
-                                                <span className="text-sm text-slate-500">{i === 0 ? '특성' : ''}</span>
-                                                <span className="text-sm text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
-                                            </div>
+                                            <KeyValueRow key={tag} label={i === 0 ? '특성' : ''} tone="muted" valueClassName="font-normal">{getTraitTagDisplayInfo(tag).label}</KeyValueRow>
                                         ))}
-                                    </div>
+                                    </ProfileSection>
                                 )}
 
                                 {/* ─ 인기도 ─ */}
-                                <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                    <div className="text-base font-bold text-white mb-1.5">인기도</div>
-                                    {[
-                                        { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
-                                        { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
-                                    ].map(({ label, value }) => (
-                                        <div key={label} className="flex justify-between items-center">
-                                            <span className="text-sm text-slate-500">{label}</span>
-                                            <span className="text-sm text-white font-semibold">{value}</span>
-                                        </div>
-                                    ))}
-                                </div>
+                                <ProfileSection title="인기도">
+                                    <KeyValueRow label="지역적인 인기">{getLocalPopularityLabel(player.popularity?.local ?? 0)}</KeyValueRow>
+                                    <KeyValueRow label="전국적인 인기">{getNationalPopularityLabel(player.popularity?.national ?? 0)}</KeyValueRow>
+                                </ProfileSection>
 
                                 {/* ─ 성격 & 기분 ─ */}
                                 {saveTendencies && (
-                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                        <div className="text-base font-bold text-white mb-1.5">성격 & 기분</div>
+                                    <ProfileSection title="성격 & 기분">
                                         {(() => {
                                             const ms = player.morale?.score ?? 50;
                                             const moraleColor = ms >= 70 ? 'text-emerald-400' : ms >= 40 ? 'text-amber-400' : 'text-red-400';
@@ -1754,20 +1601,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 { label: '우승욕', ...winLbl },
                                                 { label: '기질', ...tmpLbl },
                                             ].map(({ label, text, color }) => (
-                                                <div key={label} className="flex justify-between items-center">
-                                                    <span className="text-sm text-slate-500">{label}</span>
-                                                    <span className={`text-sm font-semibold ${color}`}>{text}</span>
-                                                </div>
+                                                <KeyValueRow key={label} label={label} tone="none" valueClassName={color}>{text}</KeyValueRow>
                                             ));
                                         })()}
-                                    </div>
+                                    </ProfileSection>
                                 )}
 
                                 {/* ─ 스카우팅 리포트 — 장점/단점/특징 구간 라벨 없이, 문장별 +/-/무기호로 표기.
                                     긍정 → 부정 → 중립 순으로 정렬(같은 감정 안에서는 생성 순서 유지, stable sort) ─ */}
                                 {scoutReport.length > 0 && (
-                                    <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                        <div className="text-base font-bold text-white mb-1">스카우팅 리포트</div>
+                                    <ProfileSection title="스카우팅 리포트">
                                         {[...scoutReport].sort((a, b) => {
                                             const order = { positive: 0, negative: 1, neutral: 2 } as const;
                                             return order[a.sentiment] - order[b.sentiment];
@@ -1783,7 +1626,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 {s.sentiment === 'positive' ? '+ ' : s.sentiment === 'negative' ? '- ' : ''}{s.text}
                                             </div>
                                         ))}
-                                    </div>
+                                    </ProfileSection>
                                 )}
 
                             </div>
@@ -1797,11 +1640,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                         {/* ── 위젯 6: 계약 정보 ── */}
                         {!hideSections?.includes('contract') && (
-                        <div className="px-4 py-3 space-y-1">
-                            {player.prevSalary != null ? (
-                                // 생성 FA 선수: 직전 계약 전체 연도 표시
-                                <>
-                                    <div className="text-base font-bold text-white mb-1.5">직전 계약</div>
+                            player.prevSalary != null ? (
+                                // 생성 FA 선수: 직전 계약 전체 연도 표시 — 지난 계약이라 값은 흐린 톤(slate-400)
+                                <ProfileSection title="직전 계약" first>
                                     {player.prevContract && player.prevContract.years.length > 0 ? (
                                         <>
                                             {player.prevContract.years.map((sal, i) => {
@@ -1809,57 +1650,38 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 // career_history는 최신순(index 0 = 가장 최근) → 계약 첫 해 = history[n-1]
                                                 const seasonLabel = player.career_history?.[n - 1 - i]?.season;
                                                 return (
-                                                    <div key={i} className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-500">{seasonLabel ?? `Year ${i + 1}`}</span>
-                                                        <span className="text-slate-400">{formatMoneyFull(sal)}</span>
-                                                    </div>
+                                                    <KeyValueRow key={i} label={seasonLabel ?? `Year ${i + 1}`} tone="muted" numeric valueClassName="font-normal">{formatMoney(sal)}</KeyValueRow>
                                                 );
                                             })}
-                                            <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-800">
-                                                <span className="text-slate-500">AAV</span>
-                                                <span className="text-slate-400">
-                                                    {formatMoneyFull(player.prevContract.years.reduce((a, b) => a + b, 0) / player.prevContract.years.length)}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500">유형</span>
-                                                <span className="text-slate-400">
-                                                    {CONTRACT_TYPE_LABEL[player.prevContract.type] ?? player.prevContract.type}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500">드래프트</span>
-                                                <span className="text-slate-400">
-                                                    {player.draftRound === 1
-                                                        ? `1라운드 ${player.draftPick}픽`
-                                                        : player.draftRound === 2
-                                                        ? `2라운드 ${(player.draftPick ?? 0) - 30}픽`
-                                                        : player.draftRound === null
-                                                        ? '언드래프트'
-                                                        : '-'}
-                                                </span>
-                                            </div>
+                                            <KeyValueRow label="AAV" tone="muted" numeric valueClassName="font-normal" className="pt-1 border-t border-slate-800">
+                                                {formatMoney(getContractAav({ contract: player.prevContract }))}
+                                            </KeyValueRow>
+                                            <KeyValueRow label="유형" tone="muted" valueClassName="font-normal">
+                                                {CONTRACT_TYPE_LABEL[player.prevContract.type] ?? player.prevContract.type}
+                                            </KeyValueRow>
+                                            <KeyValueRow label="드래프트" tone="muted" valueClassName="font-normal">
+                                                {player.draftRound === 1
+                                                    ? `1라운드 ${player.draftPick}픽`
+                                                    : player.draftRound === 2
+                                                    ? `2라운드 ${(player.draftPick ?? 0) - 30}픽`
+                                                    : player.draftRound === null
+                                                    ? '언드래프트'
+                                                    : '-'}
+                                            </KeyValueRow>
                                         </>
                                     ) : (
                                         // 폴백: 기존 DB 선수 (prev_contract 없음)
                                         <>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500">연평균 연봉</span>
-                                                <span className="text-slate-400">{formatMoneyFull(player.prevSalary)}</span>
-                                            </div>
+                                            <KeyValueRow label="연평균 연봉" tone="muted" numeric valueClassName="font-normal">{formatMoney(player.prevSalary)}</KeyValueRow>
                                             {player.prevTeamTenure != null && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-slate-500">재직 기간</span>
-                                                    <span className="text-slate-400">{player.prevTeamTenure}년</span>
-                                                </div>
+                                                <KeyValueRow label="재직 기간" tone="muted" valueClassName="font-normal">{player.prevTeamTenure}년</KeyValueRow>
                                             )}
                                         </>
                                     )}
-                                </>
+                                </ProfileSection>
                             ) : (
-                                // 일반 선수: 현재 계약 표시
-                                <>
-                                    <div className="text-base font-bold text-white mb-1.5">계약 정보</div>
+                                // 일반 선수: 현재 계약 표시 — 현재 연차는 라벨·값 모두 emerald
+                                <ProfileSection title="계약 정보" first>
                                     {!player.contract || player.contract.years.length === 0 ? (
                                         <div className="text-sm text-slate-500">계약 정보가 없습니다</div>
                                     ) : (
@@ -1870,42 +1692,35 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                 const seasonLabel = `${yearStart}-${String(yearStart + 1).slice(-2)}`;
                                                 const isCurrent   = i === player.contract!.currentYear;
                                                 return (
-                                                    <div
+                                                    <KeyValueRow
                                                         key={i}
-                                                        className="flex justify-between items-center text-sm -mx-4 px-4 rounded"
+                                                        label={seasonLabel}
+                                                        numeric
+                                                        tone={isCurrent ? 'none' : 'default'}
+                                                        labelClassName={isCurrent ? 'text-emerald-400' : ''}
+                                                        valueClassName={isCurrent ? 'text-emerald-400' : ''}
                                                     >
-                                                        <span className={isCurrent ? 'text-emerald-400' : 'text-slate-500'}>{seasonLabel}</span>
-                                                        <span className={isCurrent ? 'text-emerald-400' : 'text-slate-200'}>
-                                                            {formatMoneyFull(sal)}
-                                                        </span>
-                                                    </div>
+                                                        {formatMoney(sal)}
+                                                    </KeyValueRow>
                                                 );
                                             })}
-                                            <div className="flex justify-between items-center text-sm pt-1 border-t border-slate-800">
-                                                <span className="text-slate-500">AAV</span>
-                                                <span className="text-slate-300">
-                                                    {formatMoneyFull(player.contract.years.slice(player.contract.currentYear).reduce((a, b) => a + b, 0) / (player.contract.years.length - player.contract.currentYear))}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500">유형</span>
-                                                <span className="text-slate-400 flex items-center gap-1">
-                                                    {CONTRACT_TYPE_LABEL[player.contract.type] ?? player.contract.type}
-                                                    {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
-                                                </span>
-                                            </div>
+                                            <KeyValueRow label="AAV" numeric className="pt-1 border-t border-slate-800">
+                                                {formatMoney(getContractAav(player))}
+                                            </KeyValueRow>
+                                            <KeyValueRow label="유형" tone="muted" valueClassName="font-normal flex items-center gap-1">
+                                                {CONTRACT_TYPE_LABEL[player.contract.type] ?? player.contract.type}
+                                                {player.contract.noTrade && <span className="text-amber-400 font-black ml-1">NTC</span>}
+                                            </KeyValueRow>
                                         </>
                                     )}
-                                </>
-                            )}
-                        </div>
+                                </ProfileSection>
+                            )
                         )}
 
                         {/* ── 위젯 7: 수상 내역 (allAwards는 헤더 트로피 배지와 공유하는 useMemo) ── */}
                         {!hideSections?.includes('awards') && (() => {
                             return (
-                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                            <div className="text-base font-bold text-white mb-1.5">수상 내역</div>
+                        <ProfileSection title="수상 내역">
                             {allAwards.length === 0 ? (
                                 <div className="text-sm text-slate-500">수상 내역이 없습니다</div>
                             ) : (() => {
@@ -1930,7 +1745,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     DEF1: '1st', DEF2: '2nd',
                                     ALL_STAR: '선정',
                                 };
-                                const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
                                 const sortedAwards = [...allAwards].sort((a, b) => {
                                     const sc = (b.season ?? '').localeCompare(a.season ?? '');
                                     if (sc !== 0) return sc;
@@ -1971,7 +1785,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     </>
                                 );
                             })()}
-                        </div>
+                        </ProfileSection>
                             );
                         })()}
 
@@ -1980,15 +1794,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             표기 대신(애초에 이전 팀이 없음) "1R 3rd LAL"처럼 라운드/픽 순번/팀만 표기
                             — 트레이드(fromAbbr → toAbbr)와 시각적으로 구분된다. */}
                         {externalTransactionHistory !== undefined && (
-                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                            <div className="text-base font-bold text-white mb-1.5">선수 이동 내역</div>
+                        <ProfileSection title="선수 이동 내역">
                             {externalTransactionHistory.length === 0 ? (
                                 <div className="text-sm text-slate-500">이동 내역이 없습니다</div>
                             ) : (() => {
                                 const TX_TYPE_LABEL: Record<string, string> = {
                                     draft: '드래프트', trade: '트레이드', fa: '자유 계약', waive: '웨이버',
                                 };
-                                const toOrdinal = (n: number) => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
                                 return (
                                     <>
                                         {externalTransactionHistory.map((entry, idx) => {
@@ -2010,13 +1822,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     </>
                                 );
                             })()}
-                        </div>
+                        </ProfileSection>
                         )}
 
                         {/* ── 위젯 8: 부상 이력 ── */}
                         {!hideSections?.includes('injuryHistory') && (
-                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                            <div className="text-base font-bold text-white mb-1.5">부상 이력</div>
+                        <ProfileSection title="부상 이력">
                             {!player.injuryHistory || player.injuryHistory.length === 0 ? (
                                 <div className="text-sm text-slate-500">부상 이력이 없습니다</div>
                             ) : (
@@ -2033,17 +1844,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             const isCurrentActive = idx === 0 && !!player.activeInjurySeverity;
                                             const duration = isCurrentActive ? (player.activeInjuryDuration ?? entry.duration) : entry.duration;
                                             return (
-                                                <div key={idx} className="flex justify-between items-center text-sm">
-                                                    <span className="text-slate-500">{dateStr}</span>
-                                                    <span className="text-slate-200">
-                                                        {entry.injuryType} {duration}{formatReturnDateSuffix(entry.returnDate)}
-                                                    </span>
-                                                </div>
+                                                <KeyValueRow key={idx} label={dateStr} tone="muted" valueClassName="font-normal">
+                                                    {entry.injuryType} {duration}{formatReturnDateSuffix(entry.returnDate)}
+                                                </KeyValueRow>
                                             );
                                         })}
                                 </>
                             )}
-                        </div>
+                        </ProfileSection>
                         )}
 
                     </div>{/* end 중간열 */}
@@ -2102,15 +1910,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                 </div>
                                                                 <div className="flex items-center gap-3 shrink-0">
                                                                     {seasonDelta !== 0 && (
-                                                                        <span className={`relative group font-mono font-black text-sm tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                        <span className={`relative group font-black text-sm tabular-nums cursor-default ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                                                             {seasonDelta > 0 ? '▲' : '▼'} {Math.abs(seasonDelta)}
                                                                             {attrEvents.length > 0 && (
                                                                                 <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:flex flex-col gap-0.5 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 shadow-xl z-50 whitespace-nowrap">
                                                                                     {attrEvents.map((evt, i) => (
                                                                                         <span key={i} className="flex items-center gap-2 text-sm font-normal">
-                                                                                            <span className="text-slate-500 font-mono">{evt.date.slice(5)}</span>
+                                                                                            <span className="text-slate-500">{evt.date.slice(5)}</span>
                                                                                             <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>{evt.delta > 0 ? '▲' : '▼'}</span>
-                                                                                            <span className="text-slate-300 font-mono">{evt.oldValue} → {evt.newValue}</span>
+                                                                                            <span className="text-slate-300">{evt.oldValue} → {evt.newValue}</span>
                                                                                         </span>
                                                                                     ))}
                                                                                 </span>
@@ -2144,85 +1952,96 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
                             <div>
                                 <SectionHeader title="기록" className="bg-slate-900">
-                                    <select value={careerMode} onChange={e => setCareerMode(e.target.value as 'regular' | 'playoff')} className="pl-2.5 pr-7 py-1 text-sm font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
-                                        <option value="regular">정규시즌</option>
-                                        {hasCareerPlayoff && <option value="playoff">플레이오프</option>}
-                                    </select>
-                                    <select value={careerTab} onChange={e => setCareerTab(e.target.value as 'trad' | 'adv')} className="pl-2.5 pr-7 py-1 text-sm font-bold rounded-md border-0 cursor-pointer focus:outline-none bg-black/20 hover:bg-black/40 transition-colors text-white">
-                                        <option value="trad">기본</option>
-                                        <option value="adv">어드밴스드</option>
-                                    </select>
+                                    <SegmentedControl<'regular' | 'playoff'>
+                                        size="sm"
+                                        aria-label="시즌 구분"
+                                        value={careerMode}
+                                        onChange={setCareerMode}
+                                        options={[
+                                            { value: 'regular', label: '정규시즌' },
+                                            ...(hasCareerPlayoff ? [{ value: 'playoff' as const, label: '플레이오프' }] : []),
+                                        ]}
+                                    />
+                                    <SegmentedControl<'trad' | 'adv'>
+                                        size="sm"
+                                        aria-label="기록 종류"
+                                        value={careerTab}
+                                        onChange={setCareerTab}
+                                        options={[{ value: 'trad', label: '기본' }, { value: 'adv', label: '어드밴스드' }]}
+                                    />
                                 </SectionHeader>
-                                <div className="overflow-x-auto custom-scrollbar">
-                                    <table className="w-full text-left border-separate border-spacing-0 text-sm">
-                                        <thead>
-                                            <tr>
-                                                {(careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS).map((col, i) => (
-                                                    <th key={col.key} className={`px-3 py-2 font-bold uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 ${i === 0 ? 'sticky left-0 z-10' : ''}`}>
+                                {(() => {
+                                    const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
+                                    const isPlayoffMode = careerMode === 'playoff';
+                                    const rows = isPlayoffMode ? careerPlayoff : careerRegular;
+                                    const multiTeamSeasons = new Set(rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season));
+                                    const nonTm = rows.filter(r => (r as any).team !== '2TM');
+                                    const teamOrder: string[] = [];
+                                    nonTm.forEach(r => { const t = (r as any).team; if (!teamOrder.includes(t)) teamOrder.push(t); });
+                                    const avgRows = [...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)), computeCareerAvg(nonTm, '커리어')].filter(r => r.team);
+                                    let groupIdx = -1;
+                                    return (
+                                        // 첫 열(시즌)만 가로 스크롤 고정. 2TM 시즌의 팀별 서브행은 흐리게 + 왼쪽 들여쓰기 선.
+                                        <Table variant="bare" dividers={false} className="text-sm">
+                                            <TableHead>
+                                                {cols.map((col, i) => (
+                                                    <TableHeaderCell key={col.key} align="left" stickyLeft={i === 0 ? 0 : undefined}>
                                                         {col.label}
-                                                    </th>
+                                                    </TableHeaderCell>
                                                 ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(() => {
-                                                const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
-                                                const isPlayoffMode = careerMode === 'playoff';
-                                                const rows = isPlayoffMode ? careerPlayoff : careerRegular;
-                                                const multiTeamSeasons = new Set(rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season));
-                                                let groupIdx = -1;
-                                                return rows.map((row, ri) => {
+                                            </TableHead>
+                                            <TableBody>
+                                                {rows.map((row, ri) => {
                                                     const isCurrentSeason = String((row as any).season) === seasonShort;
                                                     const team = (row as any).team;
                                                     const season = (row as any).season;
                                                     const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
                                                     const isSummaryRow = team === '2TM';
                                                     if (!isSubRow) groupIdx++;
-                                                    const rowBg = groupIdx % 2 !== 0 ? { backgroundColor: 'rgba(255,255,255,0.02)' } : {};
                                                     return (
-                                                        <tr key={ri}>
+                                                        <TableRow key={ri} style={groupIdx % 2 !== 0 ? ZEBRA_ROW_STYLE : undefined}>
                                                             {cols.map((col, ci) => {
                                                                 const raw = (row as any)[col.key];
                                                                 const display = (isSubRow && col.key === 'season') ? '' : formatCareerCell(col.key, raw);
                                                                 const isSticky = ci === 0;
                                                                 const stickyColor = isPlayoffMode ? 'text-amber-300' : isCurrentSeason ? 'text-indigo-300' : 'text-slate-300';
                                                                 return (
-                                                                    <td key={col.key} className={`px-3 py-2 whitespace-nowrap border-b border-slate-800 ${isSticky ? `sticky left-0 z-10 font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''}`}
-                                                                        style={{ ...rowBg, ...(isSubRow && isSticky ? { borderLeft: '2px solid #1e293b', paddingLeft: '20px' } : {}), color: isSubRow && !isSticky ? 'rgba(255,255,255,0.65)' : undefined }}>
+                                                                    <TableCell
+                                                                        key={col.key}
+                                                                        align="left"
+                                                                        stickyLeft={isSticky ? 0 : undefined}
+                                                                        className={`tabular-nums ${isSticky ? `font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''} ${isSubRow && isSticky ? 'border-l-2 border-l-slate-800 !pl-5' : ''} ${isSubRow && !isSticky ? 'text-white/65' : ''}`}
+                                                                    >
                                                                         {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
-                                                                    </td>
+                                                                    </TableCell>
                                                                 );
                                                             })}
-                                                        </tr>
+                                                        </TableRow>
                                                     );
-                                                });
-                                            })()}
-                                        </tbody>
-                                        <tfoot>
-                                            {(() => {
-                                                const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
-                                                const rows = careerMode === 'playoff' ? careerPlayoff : careerRegular;
-                                                const nonTm = rows.filter(r => (r as any).team !== '2TM');
-                                                const teamOrder: string[] = [];
-                                                nonTm.forEach(r => { const t = (r as any).team; if (!teamOrder.includes(t)) teamOrder.push(t); });
-                                                const avgRows = [...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)), computeCareerAvg(nonTm, '커리어')].filter(r => r.team);
-                                                return avgRows.map((avgRow, ai) => {
+                                                })}
+                                            </TableBody>
+                                            <TableFoot>
+                                                {avgRows.map((avgRow, ai) => {
                                                     const isCareer = avgRow.team === '커리어';
                                                     return (
-                                                        <tr key={ai} style={{ backgroundColor: '#0f172a' }}>
+                                                        <tr key={ai}>
                                                             {cols.map((col, ci) => (
-                                                                <td key={col.key} className={`px-3 py-1.5 whitespace-nowrap border-t text-white ${ci === 0 ? 'sticky left-0 z-10 font-black' : isCareer ? 'font-bold' : ''}`}
-                                                                    style={{ backgroundColor: '#0f172a', borderTopColor: isCareer ? '#334155' : '#0f172a', color: 'white' }}>
+                                                                <TableCell
+                                                                    key={col.key}
+                                                                    align="left"
+                                                                    stickyLeft={ci === 0 ? 0 : undefined}
+                                                                    className={`text-white tabular-nums ${ci === 0 || isCareer ? 'font-bold' : ''} ${isCareer ? 'border-t border-t-slate-700' : ''}`}
+                                                                >
                                                                     {formatCareerCell(col.key, avgRow[col.key])}
-                                                                </td>
+                                                                </TableCell>
                                                             ))}
                                                         </tr>
                                                     );
-                                                });
-                                            })()}
-                                        </tfoot>
-                                    </table>
-                                </div>
+                                                })}
+                                            </TableFoot>
+                                        </Table>
+                                    );
+                                })()}
                             </div>
                         )}
 
@@ -2235,20 +2054,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     gameLogLoading={gameLogLoading}
                                     teamId={teamId}
                                     onGameClick={onGameClick}
-                                    subHeaderStyle={{ backgroundColor: '#1e293b' }}
-                                    rowAltStyle={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
-                                    rowBaseStyle={{}}
-                                    dividerColor="#1e293b"
-                                    subHeaderTextStyle={{ color: '#64748b' }}
                                 />
                             </div>
                         </div> : (
-                            <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
-                                최근 경기 기록이 없습니다
-                            </div>
+                            <EmptyState title="최근 경기 기록이 없습니다" />
                         )}
                     </div>
                 )}
+
+                {activeTab === 'news' && newsSlot}
 
                 {activeTab === 'shotchart' && (
                     <div>
@@ -2272,149 +2086,63 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     <div className="text-sm text-slate-500 pb-3 border-b border-slate-800">
                                         {filteredShotEvents?.length ?? 0}개 표시 중
                                         {(shotMakeFilter !== 'all' || shotQuarterFilter.size > 0 || shotTypeFilter.size > 0 || shotTeamFilter.size > 0 || shotClutchOnly) && (
-                                            <button
+                                            <Button
+                                                variant="link"
                                                 onClick={() => { setShotMakeFilter('all'); setShotQuarterFilter(new Set()); setShotTypeFilter(new Set()); setShotTeamFilter(new Set()); setShotClutchOnly(false); }}
-                                                className="ml-2 text-slate-400 hover:text-white underline underline-offset-2"
+                                                className="ml-2 underline underline-offset-2"
                                             >
                                                 초기화
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
 
                                     <div className="flex">
                                         {/* ── 1열 ── */}
                                         <div className="w-40 shrink-0 pr-4 flex flex-col divide-y divide-slate-800">
-                                            <div className="py-3 first:pt-0">
-                                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">보기 방식</div>
-                                                <div className="flex flex-col gap-1">
-                                                    {([['hexbin', '히트맵'], ['ox', 'O·X']] as const).map(([key, label]) => {
-                                                        const active = shotViewMode === key;
-                                                        return (
-                                                            <label key={key} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="shotViewMode"
-                                                                    checked={active}
-                                                                    onChange={() => setShotViewMode(key)}
-                                                                    className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
-                                                                />
-                                                                <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
+                                            <CheckOptionGroup title="보기 방식" className="first:pt-0">
+                                                {([['hexbin', '히트맵'], ['ox', 'O·X']] as const).map(([key, label]) => (
+                                                    <CheckOption key={key} type="radio" name="shotViewMode" checked={shotViewMode === key} onChange={() => setShotViewMode(key)} label={label} />
+                                                ))}
+                                            </CheckOptionGroup>
 
                                             {shotViewMode === 'hexbin' && (
-                                                <div className="py-3">
-                                                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">색상 기준</div>
-                                                    <div className="flex flex-col gap-1">
-                                                        {([['frequency', '빈도'], ['fgPct', '성공률']] as const).map(([key, label]) => {
-                                                            const active = shotColorMode === key;
-                                                            return (
-                                                                <label key={key} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                    <input
-                                                                        type="radio"
-                                                                        name="shotColorMode"
-                                                                        checked={active}
-                                                                        onChange={() => setShotColorMode(key)}
-                                                                        className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
-                                                                    />
-                                                                    <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                    {shotColorMode === 'fgPct' && (
+                                                <CheckOptionGroup
+                                                    title="색상 기준"
+                                                    footer={shotColorMode === 'fgPct' && (
                                                         <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
                                                             <span className="text-slate-500">평균 이하</span>
                                                             <span className="flex-1 h-1.5 rounded-full" style={{ background: 'linear-gradient(to right, #006106, #00b80c, #00ff11)' }} />
                                                             <span className="text-emerald-400">평균 이상</span>
                                                         </div>
                                                     )}
-                                                </div>
+                                                >
+                                                    {([['frequency', '빈도'], ['fgPct', '성공률']] as const).map(([key, label]) => (
+                                                        <CheckOption key={key} type="radio" name="shotColorMode" checked={shotColorMode === key} onChange={() => setShotColorMode(key)} label={label} />
+                                                    ))}
+                                                </CheckOptionGroup>
                                             )}
 
-                                            <div className="py-3">
-                                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">결과</div>
-                                                <div className="flex flex-col gap-1">
-                                                    {([['all', '전체'], ['make', '성공'], ['miss', '실패']] as const).map(([key, label]) => {
-                                                        const active = shotMakeFilter === key;
-                                                        return (
-                                                            <label key={key} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="shotMakeFilter"
-                                                                    checked={active}
-                                                                    onChange={() => setShotMakeFilter(key)}
-                                                                    className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
-                                                                />
-                                                                <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{label}</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
+                                            <CheckOptionGroup title="결과">
+                                                {([['all', '전체'], ['make', '성공'], ['miss', '실패']] as const).map(([key, label]) => (
+                                                    <CheckOption key={key} type="radio" name="shotMakeFilter" checked={shotMakeFilter === key} onChange={() => setShotMakeFilter(key)} label={label} />
+                                                ))}
+                                            </CheckOptionGroup>
 
                                             {availableQuarters.length > 0 && (
-                                                <div className="py-3">
-                                                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">시간대</div>
-                                                    <div className="flex flex-col gap-1">
-                                                        {availableQuarters.map(q => {
-                                                            const active = shotQuarterFilter.has(q);
-                                                            return (
-                                                                <label key={q} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={active}
-                                                                        onChange={() => setShotQuarterFilter(prev => {
-                                                                            const next = new Set(prev);
-                                                                            if (next.has(q)) next.delete(q); else next.add(q);
-                                                                            return next;
-                                                                        })}
-                                                                        className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 transition-colors"
-                                                                    />
-                                                                    <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{quarterLabel(q)}</span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                        <label className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={shotClutchOnly}
-                                                                onChange={() => setShotClutchOnly(v => !v)}
-                                                                className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 transition-colors"
-                                                            />
-                                                            <span className={`text-sm transition-colors ${shotClutchOnly ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>클러치</span>
-                                                        </label>
-                                                    </div>
-                                                </div>
+                                                <CheckOptionGroup title="시간대">
+                                                    {availableQuarters.map(q => (
+                                                        <CheckOption key={q} type="checkbox" checked={shotQuarterFilter.has(q)} onChange={() => setShotQuarterFilter(prev => toggleInSet(prev, q))} label={quarterLabel(q)} />
+                                                    ))}
+                                                    <CheckOption type="checkbox" checked={shotClutchOnly} onChange={() => setShotClutchOnly(v => !v)} label="클러치" />
+                                                </CheckOptionGroup>
                                             )}
 
                                             {availableShotTypes.length > 0 && (
-                                                <div className="py-3 last:pb-0">
-                                                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">슛 타입</div>
-                                                    <div className="flex flex-col gap-1">
-                                                        {availableShotTypes.map(t => {
-                                                            const active = shotTypeFilter.has(t);
-                                                            return (
-                                                                <label key={t} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={active}
-                                                                        onChange={() => setShotTypeFilter(prev => {
-                                                                            const next = new Set(prev);
-                                                                            if (next.has(t)) next.delete(t); else next.add(t);
-                                                                            return next;
-                                                                        })}
-                                                                        className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 transition-colors"
-                                                                    />
-                                                                    <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{SHOT_TYPE_LABEL[t] ?? t}</span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
+                                                <CheckOptionGroup title="슛 타입" className="last:pb-0">
+                                                    {availableShotTypes.map(t => (
+                                                        <CheckOption key={t} type="checkbox" checked={shotTypeFilter.has(t)} onChange={() => setShotTypeFilter(prev => toggleInSet(prev, t))} label={SHOT_TYPE_LABEL[t] ?? t} />
+                                                    ))}
+                                                </CheckOptionGroup>
                                             )}
                                         </div>
 
@@ -2426,27 +2154,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         <div className="w-40 shrink-0 pl-4 border-l border-slate-800 flex flex-col">
                                             {availableOpponentTeams.length > 0 && (
                                                 <div className="flex-1 min-h-0 flex flex-col">
-                                                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">상대팀</div>
+                                                    <div className="text-xs font-bold text-slate-500 mb-2">상대팀</div>
                                                     <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                                                        {availableOpponentTeams.map(teamId => {
-                                                            const team = teamById.get(teamId);
-                                                            const active = shotTeamFilter.has(teamId);
-                                                            return (
-                                                                <label key={teamId} className="flex items-center gap-2.5 py-1 cursor-pointer group">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={active}
-                                                                        onChange={() => setShotTeamFilter(prev => {
-                                                                            const next = new Set(prev);
-                                                                            if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
-                                                                            return next;
-                                                                        })}
-                                                                        className="w-4 h-4 shrink-0 cursor-pointer appearance-none rounded border-2 border-slate-600 bg-slate-950 checked:border-indigo-500 checked:bg-indigo-500 transition-colors"
-                                                                    />
-                                                                    <span className={`text-sm transition-colors ${active ? 'text-white font-bold' : 'text-slate-400 group-hover:text-slate-300'}`}>{team?.abbr ?? teamId}</span>
-                                                                </label>
-                                                            );
-                                                        })}
+                                                        {availableOpponentTeams.map(oppId => (
+                                                            <CheckOption
+                                                                key={oppId}
+                                                                type="checkbox"
+                                                                checked={shotTeamFilter.has(oppId)}
+                                                                onChange={() => setShotTeamFilter(prev => toggleInSet(prev, oppId))}
+                                                                label={teamById.get(oppId)?.abbr ?? oppId}
+                                                            />
+                                                        ))}
                                                     </div>
                                                 </div>
                                             )}
@@ -2523,67 +2241,23 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             <rect x="0.8" y="0.6" width="433" height="401" fill="none" stroke="#1e293b" strokeWidth="1.4" pointerEvents="none" />
                                         </svg>
                                     ) : (
-                                        <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
-                                            필터 조건에 맞는 슛이 없습니다
-                                        </div>
+                                        <EmptyState title="필터 조건에 맞는 슛이 없습니다" className="w-[46rem]" />
                                     )}
                                 </div>
 
                                 {/* ── 샷 데이터 테이블 — 차트와 동일하게 filteredShotEvents(현재 활성
                                     필터 반영) 기준 구역별 집계. 필터를 바꾸면 차트와 함께 갱신됨. */}
                                 <div className="flex-1 min-w-0 p-4 flex flex-col gap-6">
-                                <div>
-                                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">구역별 기록</div>
-                                    <div className="overflow-x-auto custom-scrollbar">
-                                        <table className="w-full text-left border-separate border-spacing-0 text-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500">구역</th>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FGM</th>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FGA</th>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">FG%</th>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">리그평균</th>
-                                                    <th className="px-3 py-2 uppercase whitespace-nowrap border-b border-slate-800 bg-slate-800 text-slate-500 text-right">+/-</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {filteredZoneBreakdown.map(z => {
-                                                    const delta = z.a > 0 ? z.pct - z.avg : null;
-                                                    return (
-                                                        <tr key={z.key}>
-                                                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-white font-medium">{z.label}</td>
-                                                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-slate-300">{z.a > 0 ? z.m : '-'}</td>
-                                                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-slate-300">{z.a > 0 ? z.a : '-'}</td>
-                                                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-white">{z.a > 0 ? `${(z.pct * 100).toFixed(1)}%` : '-'}</td>
-                                                            <td className="px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right text-slate-500">{(z.avg * 100).toFixed(1)}%</td>
-                                                            <td className={`px-3 py-1.5 whitespace-nowrap border-b border-slate-800/60 text-right ${delta == null ? 'text-slate-600' : delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                                {delta == null ? '-' : `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}%p`}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                            <tfoot>
-                                                <tr>
-                                                    <td className="px-3 py-2 whitespace-nowrap border-t border-slate-700 text-white" style={{ backgroundColor: '#0f172a' }}>전체</td>
-                                                    <td className="px-3 py-2 whitespace-nowrap border-t border-slate-700 text-right text-white" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.m}</td>
-                                                    <td className="px-3 py-2 whitespace-nowrap border-t border-slate-700 text-right text-white" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.a}</td>
-                                                    <td className="px-3 py-2 whitespace-nowrap border-t border-slate-700 text-right text-white" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.a > 0 ? `${(filteredShotTotals.pct * 100).toFixed(1)}%` : '-'}</td>
-                                                    <td className="border-t border-slate-700" style={{ backgroundColor: '#0f172a' }} />
-                                                    <td className="border-t border-slate-700" style={{ backgroundColor: '#0f172a' }} />
-                                                </tr>
-                                                <tr>
-                                                    <td className="px-3 py-1.5 whitespace-nowrap text-slate-400" style={{ backgroundColor: '#0f172a' }}>3점</td>
-                                                    <td className="px-3 py-1.5 whitespace-nowrap text-right text-slate-300" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.m3}</td>
-                                                    <td className="px-3 py-1.5 whitespace-nowrap text-right text-slate-300" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.a3}</td>
-                                                    <td className="px-3 py-1.5 whitespace-nowrap text-right text-slate-300" style={{ backgroundColor: '#0f172a' }}>{filteredShotTotals.a3 > 0 ? `${(filteredShotTotals.pct3 * 100).toFixed(1)}%` : '-'}</td>
-                                                    <td style={{ backgroundColor: '#0f172a' }} />
-                                                    <td style={{ backgroundColor: '#0f172a' }} />
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-                                </div>
+                                <ShotBreakdownTable
+                                    title="구역별 기록"
+                                    headerLabel="구역"
+                                    rows={filteredZoneBreakdown}
+                                    showLeagueAvg
+                                    footer={[
+                                        { label: '전체', m: filteredShotTotals.m, a: filteredShotTotals.a, pct: filteredShotTotals.pct, emphasis: true },
+                                        { label: '3점', m: filteredShotTotals.m3, a: filteredShotTotals.a3, pct: filteredShotTotals.pct3 },
+                                    ]}
+                                />
 
                                 <ShotBreakdownTable title="시간대별 기록" headerLabel="시간대" rows={filteredQuarterBreakdown} />
                                 <ShotBreakdownTable title="슛 타입별 기록" headerLabel="타입" rows={filteredShotTypeBreakdown} />
@@ -2591,9 +2265,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
-                                슛 기록이 없습니다
-                            </div>
+                            <EmptyState title="슛 기록이 없습니다" />
                         )}
                     </div>
                 )}

@@ -1,7 +1,10 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Spinner } from '../../../components/common/Spinner';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { Button } from '../../../components/common/Button';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Loader2, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { computeWL } from './multiSeasonUtils';
@@ -23,11 +26,13 @@ import { GamePbpTab } from '../../../components/game/tabs/GamePbpTab';
 import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
 import { GameOnOffTab } from '../../../components/game/tabs/GameOnOffTab';
 import type { GameStatLeaders } from '../../../components/game/BoxScoreTable';
-import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
+import { getTeamLogoUrl } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
 import { kstDateKey, fmtFullDate } from './multiScheduleUtils';
 import { TabBar } from '../../../components/common/TabBar';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
+import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { formatTime } from '../../../services/game/engine/pbp/timeEngine';
@@ -82,24 +87,11 @@ function TeamHeaderColumn({
     infoLoading: boolean;
 }) {
     // [2026-09-07] 팀 약칭 텍스트 영역을 로고 이미지로 대체(사용자 요청) — 다른 화면들과
-    // 동일한 public/logos/real/ 로고 + 폴백 체인(신규 로고 실패 → 구버전 → 플레이스홀더).
+    // 동일한 public/logos/teams/ 로고 + 폴백(TeamLogo 공용, 리그 로고 1회 폴백).
     const abbrEl = infoLoading
         ? <Skeleton className="h-11 w-16" />
         : (
-            <img
-                src={getRealTeamLogoUrl(teamSlug)}
-                alt={abbr}
-                className="h-24 w-24 object-contain shrink-0"
-                onError={(e) => {
-                    const img = e.currentTarget;
-                    if (img.dataset.fallback !== 'old') {
-                        img.dataset.fallback = 'old';
-                        img.src = getTeamLogoUrl(teamSlug);
-                    } else {
-                        img.src = 'https://placehold.co/100x100?text=BPL';
-                    }
-                }}
-            />
+            <TeamLogo teamId={teamSlug} teamName={abbr} size="custom" className="h-24 w-24 shrink-0" shadow={false} />
         );
     const scoreEl = (
         <span
@@ -113,7 +105,7 @@ function TeamHeaderColumn({
         <div className={`flex flex-col gap-1 min-w-0 ${side === 'away' ? 'items-start' : 'items-end'}`}>
             {infoLoading
                 ? <Skeleton className="h-6 w-32" />
-                : <span className="text-2xl font-black uppercase tracking-wide whitespace-nowrap truncate">{name}</span>}
+                : <span className="text-2xl font-black tracking-wide whitespace-nowrap truncate">{name}</span>}
             {wl && (
                 <span className="text-base font-bold tabular-nums" style={{ color: textColor }}>{wl.wins}W {wl.losses}L</span>
             )}
@@ -149,23 +141,10 @@ function computePlayoffStageLabel(series: any, bracketData: unknown): string {
     return `플레이오프 ${r}라운드`;
 }
 
-// 종료 화면 헤더 양끝 로고 — 다른 화면들과 동일한 폴백 체인(신규 로고 → 구버전 → 플레이스홀더).
+// 종료 화면 헤더 양끝 로고 — 다른 화면들과 동일한 폴백(TeamLogo 공용, 리그 로고 1회 폴백).
 function FinalHeaderLogo({ teamSlug, abbr }: { teamSlug: string; abbr: string }) {
     return (
-        <img
-            src={getRealTeamLogoUrl(teamSlug)}
-            alt={abbr}
-            className="h-24 w-24 object-contain shrink-0"
-            onError={(e) => {
-                const img = e.currentTarget;
-                if (img.dataset.fallback !== 'old') {
-                    img.dataset.fallback = 'old';
-                    img.src = getTeamLogoUrl(teamSlug);
-                } else {
-                    img.src = 'https://placehold.co/100x100?text=BPL';
-                }
-            }}
-        />
+        <TeamLogo teamId={teamSlug} teamName={abbr} size="custom" className="h-24 w-24 shrink-0" shadow={false} />
     );
 }
 
@@ -180,10 +159,10 @@ function MilestoneJumbotronBody({ teamAbbr, playerName, accentClass, label }: {
     return (
         <div className="flex flex-col items-center gap-0.5 animate-in fade-in duration-300">
             <div className="flex items-center gap-1.5 text-3xl">
-                <span className="font-mono font-black text-white">{teamAbbr}</span>
+                <span className="font-black text-white">{teamAbbr}</span>
                 <span className="font-bold text-white whitespace-nowrap">{playerName}</span>
             </div>
-            <span className={`text-3xl font-black uppercase tracking-widest ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
+            <span className={`text-3xl font-black ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
                 {label}
             </span>
         </div>
@@ -194,8 +173,8 @@ function MilestoneJumbotronBody({ teamAbbr, playerName, accentClass, label }: {
 // 전광판(Jumbotron) — 모든 스탯 변화가 아니라 "의미있는 마일스톤"만 표시.
 // [Fix 2026-08-03] "전광판에 모든 PBP를 표시할 필요 없다, 중요한 이벤트만" 요청에 따라
 // 매 스탯 증가마다 띄우던 방식 → 임계치 기반으로 전면 재설계.
-//   - 득점/리바운드/어시스트/스틸/블록: 시작 임계치 이후 5단위로 계속 발화(예: 득점 20,25,30...).
-//   - 턴오버/파울: 값이 낮고 "많을수록 나쁜" 이벤트라 동일한 반복 패턴이 안 맞음 → 고정 임계치만
+// - 득점/리바운드/어시스트/스틸/블록: 시작 임계치 이후 5단위로 계속 발화(예: 득점 20,25,30...).
+// - 턴오버/파울: 값이 낮고 "많을수록 나쁜" 이벤트라 동일한 반복 패턴이 안 맞음 → 고정 임계치만
 //     (턴오버 5개, 파울 3개/5개)에서 딱 한 번씩만 발화.
 // liveHomeBox/liveAwayBox 스냅샷을 이전 렌더와 비교해 "임계치를 새로 넘었는지"를 감지 — 라이브 PBP
 // 로그엔 선수 식별 필드가 없어서(teamId만 있음) 텍스트 파싱 대신 이미 실시간으로 갱신되는 박스스코어를
@@ -315,12 +294,12 @@ function fmtCountdown(ms: number): string {
 // 싱글플레이어 GameResultView의 탭 컴포넌트(GameBoxScoreTab/GameShotChartTab/GamePbpTab/
 // GameRotationTab)를 재사용하기 위한 Team 어댑터.
 // - logo: getTeamLogoUrl()로 실제 로고 SVG 조회 (TeamLogo 컴포넌트와 동일한 경로 — 멀티 team_slug가
-//   실제 TEAM_DATA id와 같아서 그대로 resolve됨). 빈 문자열로 두면 <img src={team.logo}>를 직접
-//   쓰는 탭(샷차트/PBP)에서 깨진 이미지로 보임.
+// 실제 TEAM_DATA id와 같아서 그대로 resolve됨). 빈 문자열로 두면 <img src={team.logo}>를 직접
+// 쓰는 탭(샷차트/PBP)에서 깨진 이미지로 보임.
 // - roster: rosterCache(meta_players에서 조회해 mapRawPlayerToRuntimePlayer로 매핑한 실제 Player)가
-//   있으면 그걸 쓰고, 아직 로딩 전이면 box에서 파생한 최소 스텁으로 폴백한다. BoxScoreTable이
-//   team.roster.find(id)로 능력치를 찾아 OVR을 계산하므로(calculatePlayerOvr), 스텁({id,name}만)만
-//   있으면 능력치가 없어 70으로 깨진다 — 실제 Player가 채워져야 정확한 OVR/포지션이 나온다.
+// 있으면 그걸 쓰고, 아직 로딩 전이면 box에서 파생한 최소 스텁으로 폴백한다. BoxScoreTable이
+// team.roster.find(id)로 능력치를 찾아 OVR을 계산하므로(calculatePlayerOvr), 스텁({id,name}만)만
+// 있으면 능력치가 없어 70으로 깨진다 — 실제 Player가 채워져야 정확한 OVR/포지션이 나온다.
 function buildTeamAdapter(
     teamId: string,
     teamName: string,
@@ -504,7 +483,7 @@ const QuarterScores: React.FC<{
             <tr>
                 <td className="text-left pr-3 py-0.5 font-bold text-white">{abbr}</td>
                 {vals.map((v, i) => (
-                    <td key={i} className="text-center w-8 py-0.5 tabular-nums text-slate-300">
+                    <td key={i} className="text-center w-8 py-0.5 tabular-nums text-slate-200">
                         {i + 1 <= currentQuarter ? v : '—'}
                     </td>
                 ))}
@@ -514,7 +493,7 @@ const QuarterScores: React.FC<{
         return (
             <table className="text-sm border-collapse">
                 <thead>
-                    <tr className="text-slate-400 border-b border-slate-700">
+                    <tr className="text-slate-400 border-b border-slate-800">
                         <th className="pr-3 py-0.5"></th>
                         {[1, 2, 3, 4].map(q => <th key={q} className="text-center w-8 py-0.5 font-semibold">{q}</th>)}
                         <th className="text-center w-9 py-0.5 font-semibold">T</th>
@@ -541,9 +520,9 @@ const QuarterScores: React.FC<{
     // uppercase/tracking-widest/text-slate-500, thead bg-slate-950 + border-b, tbody bg-slate-900,
     // 셀 구분선 border-slate-800/50로 통일(기존엔 행마다 border-b-slate-600/700/800이 제각각이었음).
     return (
-        <table className={`text-sm font-mono border-collapse ${fullWidth ? 'w-full' : 'mx-auto'}`}>
+        <table className={`text-sm border-collapse ${fullWidth ? 'w-full' : 'mx-auto'}`}>
             <thead className="bg-slate-950 border-b border-slate-800">
-                <tr className="text-slate-500 font-black uppercase tracking-widest">
+                <tr className="text-slate-400 font-bold">
                     <th className="w-12 py-1.5 px-3"></th>
                     {[1, 2, 3, 4].map(q => (
                         <th key={q} className="text-center py-1.5 px-3 w-9">{q}쿼터</th>
@@ -552,30 +531,18 @@ const QuarterScores: React.FC<{
                 </tr>
             </thead>
             <tbody className="bg-slate-900">
-                <tr>
-                    <td className="text-center py-1.5 px-3 font-bold text-slate-200 border-b border-slate-800/50">{awayAbbr}</td>
-                    {scores.away.map((v, i) => {
-                        const isPlayed = i + 1 <= currentQuarter;
-                        return (
-                            <td key={i} className="text-center py-1.5 px-3 tabular-nums text-slate-300 border-b border-slate-800/50">
-                                {isPlayed ? v : '—'}
+                {/* 원정/홈 행 — 같은 마크업을 한 헬퍼로(미러 블록 정리, 2026-10-13) */}
+                {([[awayAbbr, scores.away, aTotal], [homeAbbr, scores.home, hTotal]] as [string, number[], number][]).map(([abbr, qs, total]) => (
+                    <tr key={abbr}>
+                        <td className="text-center py-1.5 px-3 font-bold text-slate-200 border-b border-slate-800">{abbr}</td>
+                        {qs.map((v, i) => (
+                            <td key={i} className="text-center py-1.5 px-3 tabular-nums text-slate-200 border-b border-slate-800">
+                                {i + 1 <= currentQuarter ? v : '—'}
                             </td>
-                        );
-                    })}
-                    <td className="text-center py-1.5 px-3 tabular-nums font-bold text-white border-b border-slate-800/50">{aTotal}</td>
-                </tr>
-                <tr>
-                    <td className="text-center py-1.5 px-3 font-bold text-slate-200 border-b border-slate-800/50">{homeAbbr}</td>
-                    {scores.home.map((v, i) => {
-                        const isPlayed = i + 1 <= currentQuarter;
-                        return (
-                            <td key={i} className="text-center py-1.5 px-3 tabular-nums text-slate-300 border-b border-slate-800/50">
-                                {isPlayed ? v : '—'}
-                            </td>
-                        );
-                    })}
-                    <td className="text-center py-1.5 px-3 tabular-nums font-bold text-white border-b border-slate-800/50">{hTotal}</td>
-                </tr>
+                        ))}
+                        <td className="text-center py-1.5 px-3 tabular-nums font-bold text-white border-b border-slate-800">{total}</td>
+                    </tr>
+                ))}
             </tbody>
         </table>
     );
@@ -628,7 +595,7 @@ const PlayerBoxPanel: React.FC<{
                 모든 셀 텍스트가 줄바꿈 대신 한 줄 유지) ② min-w-[600px](table-fixed 퍼센트가
                 과도하게 좁아지는 것 자체를 방지하는 바닥값) ③ 부모 div에 overflow-x-auto(그래도
                 컨테이너가 600px보다 좁으면 컬럼을 찌그러뜨리는 대신 테이블 전체를 가로 스크롤). */}
-            <table className="w-full min-w-[600px] text-xs font-mono border-collapse table-fixed whitespace-nowrap">
+            <table className="w-full min-w-[600px] text-xs border-collapse table-fixed whitespace-nowrap">
                 <colgroup>
                     <col className="w-[24%]" />
                     <col className="w-[5%]" />
@@ -645,7 +612,7 @@ const PlayerBoxPanel: React.FC<{
                     <col className="w-[8%]" />
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                    <tr className="text-slate-500 font-black uppercase tracking-widest">
+                    <tr className="text-slate-400 font-bold">
                         <th className="text-left py-2 px-2 font-sans">{label}</th>
                         <th className="text-center py-2 px-1">P</th>
                         <th className="text-right py-2 px-1">MP</th>
@@ -667,7 +634,7 @@ const PlayerBoxPanel: React.FC<{
                             key={p.playerId}
                             className={`transition-colors hover:bg-white/5 ${onCourtIds?.has(p.playerId) ? 'bg-emerald-400/15' : ''}`}
                         >
-                            <td className="py-1.5 px-2 border-b border-slate-800/50 font-sans text-slate-300">
+                            <td className="py-1.5 px-2 border-b border-slate-800 font-sans text-slate-200">
                                 <span className="flex items-center gap-1 min-w-0">
                                     {p.playerName
                                         ? <span className="truncate">{p.playerName}</span>
@@ -680,8 +647,8 @@ const PlayerBoxPanel: React.FC<{
                                     })()}
                                 </span>
                             </td>
-                            <td className="text-center py-1.5 px-1 border-b border-slate-800/50 text-slate-300">{p.position ?? '-'}</td>
-                            <td className="text-right py-1.5 px-1 border-b border-slate-800/50 text-slate-300 tabular-nums">{Math.round(p.mp ?? 0)}</td>
+                            <td className="text-center py-1.5 px-1 border-b border-slate-800 text-slate-200">{p.position ?? '-'}</td>
+                            <td className="text-right py-1.5 px-1 border-b border-slate-800 text-slate-200 tabular-nums">{Math.round(p.mp ?? 0)}</td>
                             <td className={statCell}>{p.pts}</td>
                             <td className={statCell}>{p.reb}</td>
                             <td className={statCell}>{p.ast}</td>
@@ -696,8 +663,8 @@ const PlayerBoxPanel: React.FC<{
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr className="bg-slate-800/50 border-t border-slate-700 text-white font-semibold">
-                        <td className="py-1.5 px-2 font-sans uppercase text-xs">TEAM</td>
+                    <tr className="bg-slate-800/50 border-t border-slate-800 text-white font-semibold">
+                        <td className="py-1.5 px-2 font-sans text-xs">TEAM</td>
                         <td />
                         <td />
                         <td className="text-right py-1.5 px-1.5 tabular-nums">{total.pts}</td>
@@ -721,13 +688,79 @@ const PlayerBoxPanel: React.FC<{
 
 const BoxScorePlaceholder: React.FC<{ label: string }> = ({ label }) => (
     <div className="flex flex-col shrink-0">
-        <div className="flex items-center px-2 h-9 text-xs font-black uppercase tracking-widest border-b border-slate-800 bg-slate-950 text-slate-500 shadow-sm">
+        <div className="flex items-center px-2 h-9 text-xs font-black border-b border-slate-800 bg-slate-950 text-slate-500 shadow-sm">
             {label}
         </div>
         <div className="py-10 text-center text-slate-600 text-xs ko-normal">
             박스스코어는 중계 종료 후 공개됩니다
         </div>
     </div>
+);
+
+// ─── 원정/홈 미러 블록 헬퍼 (2026-10-13, ui-audit/02-game.md 후보 1) ───────────
+// 같은 마크업을 좌우 대칭으로 두 번 쓰던 곳 — side만 바꿔 정렬·순서가 뒤집힌다.
+
+/** 종료 헤더의 팀 블록: 이름·전적 / 점수 / 승리 마커(◂▸). 원정은 우측 정렬(마커가 중앙 쪽), 홈은 좌측 정렬. */
+const FinalTeamBlock: React.FC<{
+    side: 'away' | 'home';
+    name: string;
+    wl?: { wins: number; losses: number };
+    score: number;
+    won: boolean;
+    onClick: () => void;
+}> = ({ side, name, wl, score, won, onClick }) => {
+    const isAway = side === 'away';
+    const nameBlock = (
+        <div className={`flex flex-col min-w-0 gap-0.5 ${isAway ? 'items-end' : 'items-start'}`}>
+            <span className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline" onClick={onClick}>{name}</span>
+            {wl && <span className="text-sm text-slate-400 tabular-nums">{`${wl.wins}W ${wl.losses}L`}</span>}
+        </div>
+    );
+    const scoreEl = <span className={`text-5xl font-black tracking-tight leading-none shrink-0 ${won ? 'text-white' : 'text-slate-500'}`}>{score}</span>;
+    const marker = (
+        <span className={`w-0 h-0 border-y-[6px] border-y-transparent shrink-0 ${isAway ? 'border-r-[7px] border-r-white' : 'border-l-[7px] border-l-white'} ${won ? '' : 'invisible'}`} />
+    );
+    return (
+        <div className={`flex-1 min-w-0 flex items-center gap-5 ${isAway ? 'justify-end' : 'justify-start'}`}>
+            {isAway ? <>{nameBlock}{scoreEl}{marker}</> : <>{marker}{scoreEl}{nameBlock}</>}
+        </div>
+    );
+};
+
+/** PBP 교체 행의 IN/OUT 두 줄 — 원정은 이름→라벨(우측 정렬), 홈은 라벨→이름 */
+const SubChangeBlock: React.FC<{ side: 'away' | 'home'; inPlayers: string[]; outPlayers: string[] }> = ({ side, inPlayers, outPlayers }) => {
+    const isAway = side === 'away';
+    const line = (players: string[], label: 'IN' | 'OUT') => {
+        const names = <span>{players.join(', ')}</span>;
+        const tag = <span className={`shrink-0 text-xs font-bold ${label === 'IN' ? 'text-slate-500' : ''}`}>{label}</span>;
+        return (
+            <div className={`flex items-baseline gap-1.5 leading-relaxed text-xs ${label === 'IN' ? 'text-slate-300' : 'text-slate-500'}`}>
+                {isAway ? <>{names}{tag}</> : <>{tag}{names}</>}
+            </div>
+        );
+    };
+    return (
+        <div className={`flex flex-col gap-0.5 ${isAway ? 'items-end' : ''}`}>
+            {line(inPlayers, 'IN')}
+            {line(outPlayers, 'OUT')}
+        </div>
+    );
+};
+
+/** 종료 결과 페이지의 섹션(박스스코어/인사이트/…) — 스크롤스파이 ref + 제목 바. 6개 섹션이 같은 래퍼 3줄을 복붙하던 것. */
+const ResultSection: React.FC<{
+    sectionKey: string;
+    title: string;
+    sectionRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
+    className?: string;
+    children: React.ReactNode;
+}> = ({ sectionKey, title, sectionRefs, className = '', children }) => (
+    <section ref={el => { sectionRefs.current[sectionKey] = el; }} data-section={sectionKey} className={`border-t border-slate-800 ${className}`}>
+        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+            <h3 className="text-sm font-bold text-white">{title}</h3>
+        </div>
+        {children}
+    </section>
 );
 
 // ─── TeamStatsCompare ─────────────────────────────────────────────────────────
@@ -786,7 +819,7 @@ const TeamStatsCompare: React.FC<{
 
     return (
         <div className="shrink-0 px-3 py-2 border-t border-slate-800">
-            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">팀 스탯</p>
+            <p className="text-[10px] text-slate-500 font-semibold mb-1.5">팀 스탯</p>
             <div className="flex flex-col gap-1">
                 {TEAM_STAT_ROWS.map(({ key, label, fmt }) => {
                     const h = derived.home[key];
@@ -800,9 +833,9 @@ const TeamStatsCompare: React.FC<{
                             <div className="h-2.5 flex justify-end rounded-sm overflow-hidden bg-slate-900">
                                 {!bothZero && <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${aPct}%`, backgroundColor: awayColor }} />}
                             </div>
-                            <span className={`text-[10px] font-mono text-right text-white ${a > h ? 'font-bold' : ''}`}>{fmt(a)}</span>
-                            <span className="text-xs font-bold text-slate-500 text-center uppercase">{label}</span>
-                            <span className={`text-[10px] font-mono text-left text-white ${h > a ? 'font-bold' : ''}`}>{fmt(h)}</span>
+                            <span className={`text-[10px] text-right text-white ${a > h ? 'font-bold' : ''}`}>{fmt(a)}</span>
+                            <span className="text-xs font-bold text-slate-500 text-center">{label}</span>
+                            <span className={`text-[10px] text-left text-white ${h > a ? 'font-bold' : ''}`}>{fmt(h)}</span>
                             <div className="h-2.5 flex justify-start rounded-sm overflow-hidden bg-slate-900">
                                 {!bothZero && <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${hPct}%`, backgroundColor: homeColor }} />}
                             </div>
@@ -925,7 +958,7 @@ const TeamPossessionRow: React.FC<{
         // 라벨을 다시 막대 바깥 고정폭 칸(GUTTER_W)으로 분리하고, 차트/쿼터 라벨 행에도 동일한
         // 폭의 여백을 줘서 세 요소의 시간축 시작점을 픽셀 단위로 맞춘다.
         <div className="flex items-center gap-2 w-full">
-            <span className={`${GUTTER_W} shrink-0 text-[13px] font-black text-slate-300 uppercase tracking-wider truncate`}>{label}</span>
+            <span className={`${GUTTER_W} shrink-0 text-[13px] font-black text-slate-300 truncate`}>{label}</span>
             <div className="relative flex-1 h-3 flex">
                 {positioned.map((s, i) => (s.kind === 'filler' || s.kind === 'nonScoring') ? (
                     <div key={i} className="h-full" style={{ width: `${s.widthPct}%` }} />
@@ -1258,7 +1291,7 @@ const GameInsightsPanel: React.FC<{
         <div className="w-full h-full flex flex-col">
             {/* 바디 — 범례 + 마진/승률 통합 차트 */}
             <div className="flex-1 min-h-0 flex flex-col gap-2 px-6 py-6 bg-slate-900">
-                <div className="flex items-center justify-center gap-6 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <div className="flex items-center justify-center gap-6 text-[10px] font-bold text-slate-500">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded-full bg-emerald-400" />마진</span>
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded-full bg-sky-400" />승리확률</span>
                     {hasPossessionMarkers && (
@@ -1299,9 +1332,9 @@ const GameInsightsPanel: React.FC<{
                             <line x1={hoverInfo.x} y1="0" x2={hoverInfo.x} y2={H} stroke="#94a3b8" strokeWidth="1" vectorEffect="non-scaling-stroke" />
                         )}
                     </svg>
-                    <div className="absolute left-1 top-1 text-[10px] font-mono text-slate-600">-{marginScale}</div>
-                    <div className="absolute left-1 text-[10px] font-mono text-slate-600" style={{ top: '50%', transform: 'translateY(-50%)' }}>0</div>
-                    <div className="absolute left-1 bottom-1 text-[10px] font-mono text-slate-600">+{marginScale}</div>
+                    <div className="absolute left-1 top-1 text-[10px] text-slate-600">-{marginScale}</div>
+                    <div className="absolute left-1 text-[10px] text-slate-600" style={{ top: '50%', transform: 'translateY(-50%)' }}>0</div>
+                    <div className="absolute left-1 bottom-1 text-[10px] text-slate-600">+{marginScale}</div>
 
                     {/* 호버 툴팁 — 마우스 위치까지의 쿼터/시계 + 누적 스코어/마진/승률 */}
                     {hoverInfo && (
@@ -1327,7 +1360,7 @@ const GameInsightsPanel: React.FC<{
                 {hasPossessionMarkers && <TeamPossessionRow label={homeAbbr} segments={homeSegments} maxQuarter={maxQuarter} tooltipDirection="up" />}
                 <div className="flex items-center gap-2 w-full">
                     <div className={`${GUTTER_W} shrink-0`} />
-                    <div className="flex-1 text-[10px] font-bold text-slate-600 uppercase tracking-wider relative h-4">
+                    <div className="flex-1 text-[10px] font-bold text-slate-600 relative h-4">
                         {Array.from({ length: maxQuarter }).map((_, i) => (
                             <span key={i} className="absolute -translate-x-1/2" style={{ left: `${((i + 0.5) * 12 / totalMinutes) * 100}%` }}>
                                 {i < 4 ? `${i + 1}Q` : `OT${i - 3}`}
@@ -1382,7 +1415,13 @@ const MultiGamePbpView: React.FC = () => {
 
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
-    const [error,         setError]         = useState<string | null>(null);
+    // [2026-10-13] 원인별 5상태(에러 표시 정책 0-7): preparing(404)=자동 재시도 info / failed=다시 시도 / forbidden(403)=뒤로가기.
+    //   라이브 폴링 중 일시 실패는 error가 아니라 liveWarning(데이터 유지, 연속 2회부터 표시).
+    const [error,         setError]         = useState<{ kind: 'preparing' | 'failed' | 'forbidden'; text: string } | null>(null);
+    const [retryTick,     setRetryTick]     = useState(0);
+    const [liveWarning,   setLiveWarning]   = useState<string | null>(null);
+    const failStreakRef = useRef(0);
+    const lastOkAtRef   = useRef<string | null>(null);
     // undefined: 미조회, null: 레거시(scheduledAt 없음), string: 정시
     const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
     const [gamePlayed,    setGamePlayed]    = useState(false);
@@ -1499,6 +1538,7 @@ const MultiGamePbpView: React.FC = () => {
         // scheduled 화면(카운트다운)은 gameData가 필요 없으므로 여기서 명시적으로 로딩을 끝낸다.
         if (displayState === 'scheduled') { setIsLoading(false); return; }
         let cancelled = false;
+        let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
         // isFirst=false(interval 폴링)면 지금까지 받은 개수(커서)를 같이 보내 그 이후 새로
         // 공개된 구간만 받는다 — 매번 지금까지 전체를 재전송하던 것을 delta로 줄인 것.
@@ -1512,10 +1552,27 @@ const MultiGamePbpView: React.FC = () => {
             );
             if (cancelled) return;
             if (!('state' in result)) {
-                setError('경기 데이터를 준비하는 중입니다. 잠시 후 다시 시도해주세요.');
+                const msg = result.error ?? '';
+                if (!isFirst) {
+                    // 라이브 폴링 중 일시 실패 — 받아둔 경기 데이터는 유지, 연속 2회부터 상단 warning. 다음 성공 시 소거.
+                    failStreakRef.current += 1;
+                    if (failStreakRef.current >= 2) setLiveWarning(`연결이 불안정합니다. 마지막 수신 ${lastOkAtRef.current ?? '—'} — 자동으로 다시 시도합니다.`);
+                    return;
+                }
+                if (/not found/i.test(msg)) {
+                    setError({ kind: 'preparing', text: '경기 데이터를 준비하는 중입니다. 잠시 후 자동으로 다시 불러옵니다.' });
+                    retryTimer = setTimeout(() => { if (!cancelled) setRetryTick(t => t + 1); }, LIVE_POLL_MS);
+                } else if (/forbidden/i.test(msg)) {
+                    setError({ kind: 'forbidden', text: '이 리그의 참가자만 경기 기록을 볼 수 있습니다.' });
+                } else {
+                    setError({ kind: 'failed', text: '경기 기록을 불러오지 못했습니다. 잠시 후 다시 시도하세요.' });
+                }
                 setIsLoading(false);
                 return;
             }
+            failStreakRef.current = 0;
+            lastOkAtRef.current = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+            setLiveWarning(null);
             eventCountRef.current = result.eventCount;
             shotCountRef.current  = result.shotCount;
             boxCountRef.current   = result.boxCount;
@@ -1556,8 +1613,8 @@ const MultiGamePbpView: React.FC = () => {
         setIsLoading(true);
         load(true);
         const timer = displayState === 'live' ? setInterval(() => load(false), LIVE_POLL_MS) : null;
-        return () => { cancelled = true; if (timer) clearInterval(timer); };
-    }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt]);
+        return () => { cancelled = true; if (timer) clearInterval(timer); if (retryTimer) clearTimeout(retryTimer); };
+    }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt, retryTick]);
 
     // ── final 전용: 박스스코어 탭(OVR/포지션 표시)에 쓸 실제 선수 능력치 조회 ──────
     // PlayerBoxScore엔 이름/포지션/스탯만 있고 OVR이 없어서, BoxScoreTable이 team.roster에서
@@ -2022,9 +2079,7 @@ const MultiGamePbpView: React.FC = () => {
     if (scheduledAt === undefined) {
         return (
             <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
-                <div className="flex-1 min-h-0 flex items-center justify-center bg-slate-950">
-                    <Loader2 size={28} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="page" className="bg-slate-950" />
             </div>
         );
     }
@@ -2038,12 +2093,27 @@ const MultiGamePbpView: React.FC = () => {
     if (error) {
         return (
             <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
-                <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950">
-                    <p className="text-slate-400 text-sm ko-normal">{error}</p>
+                <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
+                    <InlineNotice tone={error.kind === 'preparing' ? 'info' : 'danger'} className="w-full max-w-md">{error.text}</InlineNotice>
+                    {error.kind === 'preparing' && <span className="text-xs text-slate-500">5초 후 자동으로 다시 불러옵니다</span>}
+                    {error.kind === 'failed' && <Button variant="secondary" onClick={() => setRetryTick(t => t + 1)}>다시 시도</Button>}
+                    {error.kind === 'forbidden' && <Button variant="secondary" onClick={() => navigate(-1)}>뒤로가기</Button>}
                 </div>
             </div>
         );
     }
+
+    // 좌(원정)/우(홈) 박스스코어 패널 — 종료/라이브/예정(0스탯 로스터)/플레이스홀더 4분기를 한 헬퍼로(미러 블록 정리, 2026-10-13).
+    // [Fix 2026-08-05] 예정→라이브 전환 직후 hasBoxTimeline이 아직 false인 짧은 구간에도 0스탯 로스터를 그대로 보여줘
+    // BoxScorePlaceholder로 튀지 않게 — isScheduled 대신 "0스탯 로스터를 실제로 만들었는가"로 판단.
+    const renderBoxPanel = (side: 'away' | 'home') => {
+        const abbr = side === 'away' ? awayAbbr : homeAbbr;
+        if (showBox) return <PlayerBoxPanel players={(side === 'away' ? gameData?.away_box : gameData?.home_box) ?? []} label={abbr} />;
+        if (hasBoxTimeline) return <PlayerBoxPanel players={side === 'away' ? liveAwayBox : liveHomeBox} label={abbr} onCourtIds={onCourtIds} />;
+        const scheduledBox = side === 'away' ? scheduledAwayBox : scheduledHomeBox;
+        if (scheduledBox.length > 0) return <PlayerBoxPanel players={scheduledBox} label={abbr} />;
+        return <BoxScorePlaceholder label={abbr} />;
+    };
 
     return (
         <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
@@ -2113,7 +2183,7 @@ const MultiGamePbpView: React.FC = () => {
                                 activeJumbotron.kind === 'flow' ? (
                                     <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
                                         <span
-                                            className="text-lg font-black uppercase tracking-widest text-white text-center"
+                                            className="text-lg font-black text-white text-center"
                                             style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
                                         >
                                             {activeJumbotron.text}
@@ -2235,30 +2305,13 @@ const MultiGamePbpView: React.FC = () => {
             {showBox && (() => {
                 const awayWon = currentScore.away > currentScore.home;
                 const homeWon = currentScore.home > currentScore.away;
-                const scoreCls = (won: boolean) =>
-                    `text-5xl font-black tracking-tight leading-none shrink-0 ${won ? 'text-white' : 'text-slate-500'}`;
-                const wlText = (w?: { wins: number; losses: number }) => w ? `${w.wins}W ${w.losses}L` : null;
                 return (
                     <div className="shrink-0 bg-slate-900 border-b border-slate-800 px-8 py-5">
                         <div className="flex items-center gap-8">
                             <FinalHeaderLogo teamSlug={awayTeamId ?? ''} abbr={awayAbbr} />
 
                             {/* 원정: 이름·전적(우측 정렬) → 점수 → (승리 시) ◂ 마커 */}
-                            <div className="flex-1 min-w-0 flex items-center justify-end gap-5">
-                                <div className="flex flex-col items-end min-w-0 gap-0.5">
-                                    <span
-                                        className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={() => goTeamRoster(awayTeamId)}
-                                    >
-                                        {awayName}
-                                    </span>
-                                    {!isAllstar && wlText(awayWL) && (
-                                        <span className="text-sm text-slate-400 tabular-nums">{wlText(awayWL)}</span>
-                                    )}
-                                </div>
-                                <span className={scoreCls(awayWon)}>{currentScore.away}</span>
-                                <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-r-[7px] border-r-white shrink-0 ${awayWon ? '' : 'invisible'}`} />
-                            </div>
+                            <FinalTeamBlock side="away" name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={awayWon} onClick={() => goTeamRoster(awayTeamId)} />
 
                             {/* 가운데: 종료 라벨 + 미니멀 쿼터별 득점 표 */}
                             <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -2282,21 +2335,7 @@ const MultiGamePbpView: React.FC = () => {
                             </div>
 
                             {/* 홈: (승리 시) ▸ 마커 → 점수 → 이름·전적(좌측 정렬) */}
-                            <div className="flex-1 min-w-0 flex items-center justify-start gap-5">
-                                <span className={`w-0 h-0 border-y-[6px] border-y-transparent border-l-[7px] border-l-white shrink-0 ${homeWon ? '' : 'invisible'}`} />
-                                <span className={scoreCls(homeWon)}>{currentScore.home}</span>
-                                <div className="flex flex-col items-start min-w-0 gap-0.5">
-                                    <span
-                                        className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={() => goTeamRoster(homeTeamId)}
-                                    >
-                                        {homeName}
-                                    </span>
-                                    {!isAllstar && wlText(homeWL) && (
-                                        <span className="text-sm text-slate-400 tabular-nums">{wlText(homeWL)}</span>
-                                    )}
-                                </div>
-                            </div>
+                            <FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} />
 
                             <FinalHeaderLogo teamSlug={homeTeamId ?? ''} abbr={homeAbbr} />
                         </div>
@@ -2327,34 +2366,16 @@ const MultiGamePbpView: React.FC = () => {
                 렌더된다 — scheduled에서도 라이브와 동일한 3열 레이아웃이 뜨고, 각 패널은 데이터가
                 없으므로 자연스럽게 빈 상태(BoxScorePlaceholder, "경기 시작 대기 중…" 등)로 표시된다. */}
             {(isLive || isScheduled) && (
-            <div className="flex flex-1 overflow-hidden">
+            // [Fix 2026-10-07] 바디 전체를 세로 스크롤 가능하게 — 바깥 래퍼가 스크롤을 맡고, 안쪽 3열
+            // flex는 min-h-full로 최소 화면 높이를 채우되 컨텐츠가 길면 그만큼 늘어난다.
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
+            <div className="flex min-h-full">
 
                 {/* LEFT: 원정팀 박스스코어 + 하단 인사이트 그래프.
                     [Fix 2026-08-04] "인사이트 그래프 영역을 좌측 하단으로" 요청 — CENTER 하단에 있던
                     GameInsightsPanel을 이쪽으로 이동(PBP 피드와 자리를 맞바꿈). */}
-                <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                    {showBox ? (
-                        <PlayerBoxPanel
-                            players={gameData?.away_box ?? []}
-                            label={awayAbbr}
-                        />
-                    ) : hasBoxTimeline ? (
-                        <PlayerBoxPanel
-                            players={liveAwayBox}
-                            label={awayAbbr}
-                            onCourtIds={onCourtIds}
-                        />
-                    ) : scheduledAwayBox.length > 0 ? (
-                        // [Fix 2026-08-05] "예정→라이브 전환 시 박스스코어가 사라졌다 안내 문구로
-                        // 바뀐다" 버그 — isScheduled(displayState==='scheduled') 대신 "0스탯
-                        // 로스터를 실제로 만들었는가"로 판단. displayState가 live로 넘어간 직후
-                        // hasBoxTimeline이 아직 false인 짧은 구간에도 이 0스탯 로스터를 계속 보여줘
-                        // BoxScorePlaceholder로 튀지 않고 그대로 이어지다가 실제 라이브 데이터가
-                        // 오면 자연스럽게 교체된다.
-                        <PlayerBoxPanel players={scheduledAwayBox} label={awayAbbr} />
-                    ) : (
-                        <BoxScorePlaceholder label={awayAbbr} />
-                    )}
+                <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col">
+                    {renderBoxPanel('away')}
                     {/* 경기 그래프(인사이트) — allLogs/homeOreb/awayOreb/maxQuarter는 라이브 세이프 값
                         (visibleEvents, liveHomeOreb/liveAwayOreb, liveMaxQuarter)으로 교체 — 컴포넌트
                         자체는 무수정.
@@ -2385,7 +2406,8 @@ const MultiGamePbpView: React.FC = () => {
                     [Fix 2026-08-04] "PBP 코멘터리 영역을 가운데로" 요청 — LEFT 컬럼에 있던 PBP 피드를
                     이쪽으로 이동(인사이트 그래프와 자리를 맞바꿈). 전광판은 헤더 가운데 컬럼으로 통합돼
                     여기 있던 검은 LED 바는 삭제됨. */}
-                <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+                <div className="flex-1 min-w-0 flex flex-col bg-slate-950">
+                    {liveWarning && <InlineNotice tone="warning" className="shrink-0">{liveWarning}</InlineNotice>}
 
                     {/* 샷차트 */}
                     <div className="shrink-0 border-b border-slate-700">
@@ -2407,52 +2429,45 @@ const MultiGamePbpView: React.FC = () => {
                     </div>
 
                     {/* PBP 피드 */}
-                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-t border-slate-800">
+                    <div className="shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800">
                         {/* 헤더 + 쿼터 필터 */}
                         <div className="shrink-0 px-3 h-9 flex items-center bg-slate-800 border-b border-slate-700">
                             <div className="flex items-center gap-3">
-                                <p className="text-xs text-slate-300 font-semibold uppercase tracking-wider">
+                                <p className="text-xs text-slate-300 font-semibold">
                                     플레이-바이-플레이
                                 </p>
-                                <div className="flex gap-1">
-                                    {([0, 1, 2, 3, 4, ...(maxQuarter > 4 ? Array.from({ length: maxQuarter - 4 }, (_, i) => i + 5) : [])] as number[]).map(q => (
-                                        <button
-                                            key={q}
-                                            onClick={() => setQuarterFilter(q as 0|1|2|3|4|5)}
-                                            disabled={q > maxSelectableQ && q !== 0}
-                                            className={`px-2 py-0.5 rounded text-xs font-bold transition-colors
-                                                disabled:opacity-30 disabled:cursor-not-allowed
-                                                ${quarterFilter === q
-                                                    ? 'bg-indigo-600 text-white'
-                                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                                }`}
-                                        >
-                                            {q === 0 ? '전체' : q <= 4 ? `${q}Q` : `OT${q - 4}`}
-                                        </button>
-                                    ))}
-                                </div>
+                                <SegmentedControl
+                                    size="sm"
+                                    value={String(quarterFilter)}
+                                    onChange={(v) => setQuarterFilter(Number(v) as 0|1|2|3|4|5)}
+                                    options={([0, 1, 2, 3, 4, ...(maxQuarter > 4 ? Array.from({ length: maxQuarter - 4 }, (_, i) => i + 5) : [])] as number[]).map(q => ({
+                                        value: String(q),
+                                        label: q === 0 ? '전체' : q <= 4 ? `${q}Q` : `OT${q - 4}`,
+                                        disabled: q > maxSelectableQ && q !== 0,
+                                    }))}
+                                />
                             </div>
                         </div>
 
                         {/* PBP 스크롤 */}
                         <div
-                            className="flex-1 min-h-0 overflow-y-auto font-mono text-xs bg-slate-900"
+                            className="flex-1 min-h-0 overflow-y-auto text-xs bg-slate-900"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
                         >
                             {/* [Fix 2026-08-05] "원정 코멘터리 | 원정 점수 | 쿼터 | 시간 | 홈 점수 | 홈 코멘터리"
                                 구조로 재편 — 이벤트가 어느 팀 소속인지에 따라 코멘터리가 좌(원정)/우(홈) 중
                                 한쪽에만 채워지고 반대쪽은 비워둔다(중앙 쿼터/시계/점수 기준 좌우 대칭 레이아웃). */}
                             <div className="flex items-center gap-2 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                                <div className="flex-1 text-right text-xs font-black uppercase text-slate-500 truncate">{awayName}</div>
+                                <div className="flex-1 text-right text-xs font-black text-slate-500 truncate">{awayName}</div>
                                 {/* [Fix 2026-08-05] "양 팀 스코어와 시간 컬럼 간격이 너무 넓다" 요청 — 이 3칸만
                                     별도 gap-1로 묶어서 본문 행의 centerCols와 동일하게 좁힘(바깥 코멘터리 칸
                                     사이 gap-2는 그대로 유지). */}
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                    <div className="w-8 text-center text-xs font-black uppercase text-slate-500"></div>
-                                    <div className="w-16 text-center text-xs font-black uppercase text-slate-500">시간</div>
-                                    <div className="w-8 text-center text-xs font-black uppercase text-slate-500"></div>
+                                    <div className="w-8 text-center text-xs font-black text-slate-500"></div>
+                                    <div className="w-16 text-center text-xs font-black text-slate-500">시간</div>
+                                    <div className="w-8 text-center text-xs font-black text-slate-500"></div>
                                 </div>
-                                <div className="flex-1 text-xs font-black uppercase text-slate-500 truncate">{homeName}</div>
+                                <div className="flex-1 text-xs font-black text-slate-500 truncate">{homeName}</div>
                             </div>
                             <div className="divide-y divide-slate-800/50">
                                 {filteredLogs.map(({ log, idx }, i) => {
@@ -2478,7 +2493,7 @@ const MultiGamePbpView: React.FC = () => {
                                     if (isFlowEvent) {
                                         return (
                                             <div key={idx} className={`flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
-                                                <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs uppercase tracking-widest">
+                                                <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs">
                                                     <Clock size={12} />
                                                     <span>{log.text}</span>
                                                 </div>
@@ -2518,33 +2533,11 @@ const MultiGamePbpView: React.FC = () => {
                                             return (
                                                 <div key={idx} className={`flex items-start py-2 px-3 gap-2 hover:bg-white/5 transition-colors${flashClass}`}>
                                                     <div className="flex-1 min-w-0">
-                                                        {!isSubHome && (
-                                                            <div className="flex flex-col gap-0.5 items-end">
-                                                                <div className="flex items-baseline gap-1.5 leading-relaxed text-xs text-slate-300">
-                                                                    <span>{inPlayers.join(', ')}</span>
-                                                                    <span className="shrink-0 text-xs font-bold text-slate-500">IN</span>
-                                                                </div>
-                                                                <div className="flex items-baseline gap-1.5 leading-relaxed text-xs text-slate-500">
-                                                                    <span>{outPlayers.join(', ')}</span>
-                                                                    <span className="shrink-0 text-xs font-bold">OUT</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                        {!isSubHome && <SubChangeBlock side="away" inPlayers={inPlayers} outPlayers={outPlayers} />}
                                                     </div>
                                                     {centerCols}
                                                     <div className="flex-1 min-w-0">
-                                                        {isSubHome && (
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <div className="flex items-baseline gap-1.5 leading-relaxed text-xs text-slate-300">
-                                                                    <span className="shrink-0 text-xs font-bold text-slate-500">IN</span>
-                                                                    <span>{inPlayers.join(', ')}</span>
-                                                                </div>
-                                                                <div className="flex items-baseline gap-1.5 leading-relaxed text-xs text-slate-500">
-                                                                    <span className="shrink-0 text-xs font-bold">OUT</span>
-                                                                    <span>{outPlayers.join(', ')}</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                        {isSubHome && <SubChangeBlock side="home" inPlayers={inPlayers} outPlayers={outPlayers} />}
                                                     </div>
                                                 </div>
                                             );
@@ -2552,13 +2545,13 @@ const MultiGamePbpView: React.FC = () => {
                                     }
 
                                     let textColor = 'text-slate-400';
-                                    if (isInjury)        textColor = 'text-red-400 font-bold';
-                                    else if (isInfo)     textColor = 'text-slate-300';
-                                    else if (isScore)    textColor = 'text-slate-200';
-                                    else if (isFT)       textColor = 'text-cyan-400';
-                                    else if (isFoul)     textColor = 'text-orange-400';
+                                    if (isInjury) textColor = 'text-red-400 font-bold';
+                                    else if (isInfo) textColor = 'text-slate-300';
+                                    else if (isScore) textColor = 'text-slate-200';
+                                    else if (isFT) textColor = 'text-cyan-400';
+                                    else if (isFoul) textColor = 'text-orange-400';
                                     else if (isTurnover) textColor = 'text-red-400';
-                                    else if (isBlock)    textColor = 'text-blue-400';
+                                    else if (isBlock) textColor = 'text-blue-400';
 
                                     const bgClass = isInjury
                                         ? 'bg-red-900/20 border-y border-red-900/30'
@@ -2588,24 +2581,9 @@ const MultiGamePbpView: React.FC = () => {
                 </div>
 
                 {/* RIGHT: 홈팀 박스스코어 + 팀스탯 */}
-                <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                    {showBox ? (
-                        <PlayerBoxPanel
-                            players={gameData?.home_box ?? []}
-                            label={homeAbbr}
-                        />
-                    ) : hasBoxTimeline ? (
-                        <PlayerBoxPanel
-                            players={liveHomeBox}
-                            label={homeAbbr}
-                            onCourtIds={onCourtIds}
-                        />
-                    ) : scheduledHomeBox.length > 0 ? (
-                        <PlayerBoxPanel players={scheduledHomeBox} label={homeAbbr} />
-                    ) : (
-                        <BoxScorePlaceholder label={homeAbbr} />
-                    )}
-                    <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+                <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col">
+                    {renderBoxPanel('home')}
+                    <div className="shrink-0 border-t border-slate-800 flex flex-col">
                         <div className="p-2">
                             <QuarterScores
                                 allLogs={visibleEvents}
@@ -2627,6 +2605,7 @@ const MultiGamePbpView: React.FC = () => {
                     </div>
                 </div>
             </div>
+            </div>
             )}
 
             {/* ── Body: 종료된 경기 — 6개 섹션(박스스코어/인사이트/경기기록/샷차트/로테이션/온오프)을
@@ -2636,10 +2615,7 @@ const MultiGamePbpView: React.FC = () => {
             {showBox && (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
                 <div ref={resultScrollRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
-                    <section ref={el => { sectionRefs.current.box = el; }} data-section="box" className="border-t border-slate-800">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">박스스코어</h3>
-                        </div>
+                    <ResultSection sectionKey="box" title="박스스코어" sectionRefs={sectionRefs}>
                         <GameBoxScoreTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -2652,12 +2628,9 @@ const MultiGamePbpView: React.FC = () => {
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                             splitLayout
                         />
-                    </section>
+                    </ResultSection>
 
-                    <section ref={el => { sectionRefs.current.insights = el; }} data-section="insights" className="border-t border-slate-800">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">인사이트</h3>
-                        </div>
+                    <ResultSection sectionKey="insights" title="인사이트" sectionRefs={sectionRefs}>
                         {/* [Fix 2026-08-04] 이 결과 페이지 컨텍스트에선 <section>이 일반 문서 흐름(높이 auto)이라
                             GameInsightsPanel 내부의 h-full/flex-1 체인이 참조할 확정 높이가 없음 — 이 경우
                             브라우저는 SVG의 viewBox 종횡비(800:220)로 높이를 역산해 렌더링해서 실제로는 "그래프
@@ -2682,12 +2655,9 @@ const MultiGamePbpView: React.FC = () => {
                                 awayBox={gameData?.away_box ?? []}
                             />
                         </div>
-                    </section>
+                    </ResultSection>
 
-                    <section ref={el => { sectionRefs.current.pbp = el; }} data-section="pbp" className="border-t border-slate-800">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">경기 기록</h3>
-                        </div>
+                    <ResultSection sectionKey="pbp" title="경기 기록" sectionRefs={sectionRefs}>
                         <GamePbpTab
                             logs={gameData?.events ?? []}
                             homeTeam={homeTeamAdapter}
@@ -2696,12 +2666,9 @@ const MultiGamePbpView: React.FC = () => {
                             homeBadge={{ color: homeColor, abbr: homeAbbr }}
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                         />
-                    </section>
+                    </ResultSection>
 
-                    <section ref={el => { sectionRefs.current.shotchart = el; }} data-section="shotchart" className="border-t border-slate-800">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">샷차트</h3>
-                        </div>
+                    <ResultSection sectionKey="shotchart" title="샷차트" sectionRefs={sectionRefs}>
                         <GameShotChartTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -2711,12 +2678,9 @@ const MultiGamePbpView: React.FC = () => {
                             homeBox={gameData?.home_box ?? []}
                             awayBox={gameData?.away_box ?? []}
                         />
-                    </section>
+                    </ResultSection>
 
-                    <section ref={el => { sectionRefs.current.rotation = el; }} data-section="rotation" className="border-t border-slate-800">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">로테이션</h3>
-                        </div>
+                    <ResultSection sectionKey="rotation" title="로테이션" sectionRefs={sectionRefs}>
                         <GameRotationTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -2729,12 +2693,9 @@ const MultiGamePbpView: React.FC = () => {
                             splitLayout
                             shotEvents={gameData?.shot_events ?? []}
                         />
-                    </section>
+                    </ResultSection>
 
-                    <section ref={el => { sectionRefs.current.onoff = el; }} data-section="onoff" className="border-t border-slate-800 pb-10">
-                        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-                            <h3 className="text-sm font-bold uppercase text-white">온오프</h3>
-                        </div>
+                    <ResultSection sectionKey="onoff" title="온오프" sectionRefs={sectionRefs} className="pb-10">
                         <GameOnOffTab
                             boxTimeline={gameData?.box_timeline}
                             homeBox={gameData?.home_box ?? []}
@@ -2746,7 +2707,7 @@ const MultiGamePbpView: React.FC = () => {
                             homeBadge={{ color: homeColor, abbr: homeAbbr }}
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                         />
-                    </section>
+                    </ResultSection>
                 </div>
             </div>
             )}

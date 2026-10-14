@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { Button } from '../../../components/common/Button';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-    Save, Loader2, AlertCircle, CalendarDays,
-    Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign,
-    ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp,
-} from 'lucide-react';
+import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
 import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague } from '../../../services/multi/leagueService';
@@ -116,6 +116,7 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     // [2026-10-05] 참가자 뎁스차트/전술값 읽기 전용 탭(room_members.tactics/depth_chart) — 저장 버튼 없음.
     { id: 'tactics', label: '팀 전술' },
 ];
+const UNSAVED_TAB_DOT = { tone: 'warning', label: '저장하지 않은 변경사항' } as const;
 
 // 로스터 최대 인원 — 실제 CBA 기준(15명 정원)을 바탕으로 한 범위. 리그 어드민이 15~20명
 // 사이에서 자유롭게 조정할 수 있다(services/tradeEngine/tradeExecutor.ts의 트레이드
@@ -134,7 +135,7 @@ const DEFAULT_TWO_WAY_SLOTS = 3;
 const InfoRow: React.FC<{ label: string; value: string; muted?: boolean }> = ({ label, value, muted }) => (
     <div className="flex justify-between text-xs py-1">
         <span className="text-slate-500 ko-normal">{label}</span>
-        <span className={`font-mono ${muted ? 'text-slate-600' : 'text-slate-300'}`}>{value}</span>
+        <span className={`${muted ? 'text-slate-600' : 'text-slate-300'}`}>{value}</span>
     </div>
 );
 
@@ -649,11 +650,15 @@ const LeagueSettingsView: React.FC = () => {
         navigate('/', { replace: true });
     };
 
+    // [2026-10-13] 추방 실패를 버리지 않는다(예전엔 반환값 무시 + leagueStatus 미전달로 사전 차단 문구가 죽은 코드).
+    const [kickErrs, setKickErrs] = useState<Record<string, string>>({});
     const handleKick = async (kickUserId: string) => {
         if (!room) return;
         setKickingId(kickUserId);
-        await leaveLeague(room.id, kickUserId);
+        setKickErrs(prev => { if (!(kickUserId in prev)) return prev; const n = { ...prev }; delete n[kickUserId]; return n; });
+        const { error: kickErr } = await leaveLeague(room.id, kickUserId, league?.status);
         setKickingId(null);
+        if (kickErr) { setKickErrs(prev => ({ ...prev, [kickUserId]: kickErr })); return; }
         reload();
     };
 
@@ -674,17 +679,13 @@ const LeagueSettingsView: React.FC = () => {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-            </div>
-        );
+        return <Spinner variant="page" />;
     }
     if (error || !league) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-3">
-                <AlertCircle size={24} className="text-red-400" />
-                <p className="text-slate-400 text-sm ko-normal">{error ?? '리그를 찾을 수 없습니다.'}</p>
+            <div className="h-full flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6">
+                <InlineNotice tone="danger" className="max-w-md">{error ?? '리그를 찾을 수 없습니다.'}</InlineNotice>
+                <Button variant="secondary" onClick={() => reload()}>다시 불러오기</Button>
             </div>
         );
     }
@@ -862,6 +863,14 @@ const LeagueSettingsView: React.FC = () => {
         engine: { dirty: isEngineTabDirty, saving: savingSim,    ok: saveSimOk,    err: saveSimErr,    onSave: handleSaveSimSettings },
     };
     const activeSaveInfo = TAB_SAVE_MAP[activeTab] ?? null;
+    // [2026-10-13] 미저장 탭은 라벨 옆에 경고 점 — 지금 탭을 떠나지 않아도 어느 탭을 고쳤는지 보이게.
+    // 저장 실패는 탭 바 아래 danger 슬롯이 담당하므로 점은 warning 하나만(같은 슬롯 danger/warning 겹침 없음).
+    // 자체 저장 흐름을 가진 탭(일정·재정·로그·팀 전술, 개인 드래프트일 때의 드래프트)은 TAB_SAVE_MAP에 없어 점도 없다.
+    const tabsWithDot = SETTINGS_TABS.map(t =>
+        TAB_SAVE_MAP[t.id]?.dirty ? { ...t, dot: UNSAVED_TAB_DOT } : t,
+    );
+    // [2026-10-13] 다른 탭으로 옮기면 이전 탭의 저장 실패 문구는 소거
+    useEffect(() => { setSaveLeagueErr(null); setSaveErr(null); setSaveTradeErr(null); setSaveCapErr(null); setSaveRosterErr(null); setSaveSimErr(null); }, [activeTab]);
 
     // 탭을 옮기기 전에 현재 탭에 저장 안 된 변경사항이 있으면 한 번 더 확인.
     const handleTabChange = (tab: SettingsTabId) => {
@@ -885,12 +894,12 @@ const LeagueSettingsView: React.FC = () => {
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="border-b border-slate-700">
-                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">팀</th>
-                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">GM</th>
-                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">이메일</th>
-                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">참가일시</th>
-                            <th className="px-2 py-2 text-center text-xs font-bold text-slate-500">드래프트 오더</th>
+                        <tr className="border-b border-slate-800">
+                            <th className="px-2 py-2 text-left text-sm font-bold text-slate-400">팀</th>
+                            <th className="px-2 py-2 text-left text-sm font-bold text-slate-400">GM</th>
+                            <th className="px-2 py-2 text-left text-sm font-bold text-slate-400">이메일</th>
+                            <th className="px-2 py-2 text-left text-sm font-bold text-slate-400">참가일시</th>
+                            <th className="px-2 py-2 text-center text-sm font-bold text-slate-400">드래프트 오더</th>
                             <th className="px-2 py-2" />
                         </tr>
                     </thead>
@@ -915,20 +924,18 @@ const LeagueSettingsView: React.FC = () => {
                                                 className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500 text-sm font-bold text-white transition-colors min-w-0 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                                             />
                                             {nameDirty && (
-                                                <button
+                                                <Button
+                                                    variant="primary"
+                                                    size="xs"
+                                                    className="shrink-0"
                                                     onClick={() => handleSaveTeamName(t.id)}
-                                                    disabled={savingTeamNameId === t.id}
-                                                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-[10px] font-bold text-white transition-colors shrink-0"
-                                                >
-                                                    {savingTeamNameId === t.id
-                                                        ? <Loader2 size={10} className="animate-spin" />
-                                                        : <Save size={10} />
-                                                    }
-                                                </button>
+                                                    isLoading={savingTeamNameId === t.id}
+                                                    icon={<Save size={10} />}
+                                                />
                                             )}
                                         </div>
                                         {teamNameErrs[t.id] && (
-                                            <p className="text-[10px] text-red-400 ko-normal mt-0.5">{teamNameErrs[t.id]}</p>
+                                            <InlineNotice tone="danger" size="sm" className="mt-0.5">{teamNameErrs[t.id]}</InlineNotice>
                                         )}
                                     </td>
 
@@ -951,7 +958,7 @@ const LeagueSettingsView: React.FC = () => {
                                     </td>
 
                                     {/* 참가일시 */}
-                                    <td className="px-2 py-2 text-xs text-slate-400 font-mono whitespace-nowrap">
+                                    <td className="px-2 py-2 text-xs text-slate-400 whitespace-nowrap">
                                         {fmtJoinedAt(joinedAt)}
                                     </td>
 
@@ -972,19 +979,22 @@ const LeagueSettingsView: React.FC = () => {
                                             // 로더가 항상 켜진 것처럼 보인다 — null 여부를 먼저 걸러야 함.
                                             const isKickingThis = kickingId !== null && kickingId === t.user_id;
                                             return (
-                                                <button
+                                                <Button
+                                                    variant="dangerSoft"
+                                                    size="xs"
+                                                    className="ml-auto"
                                                     onClick={() => canKick && handleKick(t.user_id!)}
-                                                    disabled={!canKick || isKickingThis}
-                                                    className="flex items-center gap-1 px-2 py-1 bg-red-600/10 hover:bg-red-600/30 text-red-500 hover:text-red-400 rounded-lg text-xs transition-colors disabled:opacity-30 disabled:hover:bg-red-600/10 disabled:cursor-not-allowed ml-auto"
+                                                    disabled={!canKick}
+                                                    isLoading={isKickingThis}
+                                                    icon={<Trash2 size={11} />}
                                                 >
-                                                    {isKickingThis
-                                                        ? <Loader2 size={11} className="animate-spin" />
-                                                        : <Trash2 size={11} />
-                                                    }
                                                     추방
-                                                </button>
+                                                </Button>
                                             );
                                         })()}
+                                        {t.user_id && kickErrs[t.user_id] && (
+                                            <InlineNotice tone="danger" size="sm" className="mt-1 text-right">{kickErrs[t.user_id]}</InlineNotice>
+                                        )}
                                     </td>
                                 </tr>
                             );
@@ -999,37 +1009,34 @@ const LeagueSettingsView: React.FC = () => {
         <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
 
             <TabBar
-                tabs={SETTINGS_TABS}
+                tabs={tabsWithDot}
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
                 rightSlot={activeSaveInfo && (
                     <>
-                        {activeSaveInfo.err && <span className="text-xs text-red-400 ko-normal">{activeSaveInfo.err}</span>}
-                        <button
+                        <Button
+                            variant="primary"
+                            size="sm"
                             onClick={activeSaveInfo.onSave}
-                            disabled={!activeSaveInfo.dirty || activeSaveInfo.saving}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors"
+                            disabled={!activeSaveInfo.dirty}
+                            isLoading={activeSaveInfo.saving}
+                            loadingText="저장 중…"
+                            icon={activeSaveInfo.ok ? undefined : <Save size={12} />}
                         >
-                            {activeSaveInfo.saving
-                                ? <><Loader2 size={12} className="animate-spin" />저장 중…</>
-                                : activeSaveInfo.ok
-                                ? '저장됨 ✓'
-                                : <><Save size={12} />저장</>
-                            }
-                        </button>
+                            {activeSaveInfo.ok ? '저장됨 ✓' : '저장'}
+                        </Button>
                     </>
                 )}
             />
 
+            {/* [2026-10-13] 탭 공용 저장 실패 — 탭 바 우측 슬롯(폭 부족)이 아니라 탭 바 바로 아래, 스크롤 영역 밖(에러 표시 정책 0-7) */}
+            {activeSaveInfo?.err && <InlineNotice tone="danger" className="shrink-0">{activeSaveInfo.err}</InlineNotice>}
+
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-8 space-y-6">
 
-            {/* ── 세션 진행 중 안내 ────────────────────────────────────────────── */}
-            {isInProgress && (
-                <section className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-5 py-4">
-                    <p className="text-xs text-indigo-300 ko-normal leading-relaxed">
-                        세션이 진행 중입니다. 팀 강퇴만 가능하며, 드래프트 설정은 변경할 수 없습니다. 경기 일정은 "일정" 탭에서 조정할 수 있습니다.
-                    </p>
-                </section>
+            {/* ── 세션 진행 중 안내 — 실제로 잠기는 리그/드래프트 탭에서만(trade·cap·roster·engine·schedule은 진행 중에도 저장 가능) ── */}
+            {isInProgress && (activeTab === 'league' || activeTab === 'draft') && (
+                <InlineNotice tone="info">세션이 진행 중입니다. 리그 기본 설정과 드래프트 설정은 변경할 수 없습니다.</InlineNotice>
             )}
 
             {/* ── 일정 (총 진행기간/시간대 + 재배치 + 경기별 시각 편집) ──────────── */}
@@ -1158,19 +1165,19 @@ const LeagueSettingsView: React.FC = () => {
                                             히스토리 기록은 유지됩니다.
                                         </p>
                                         {resetErr && (
-                                            <p className="text-xs text-red-400 ko-normal">{resetErr}</p>
+                                            <InlineNotice tone="danger">{resetErr}</InlineNotice>
                                         )}
                                         <div className="flex gap-2">
-                                            <button
+                                            <Button
+                                                variant="danger"
+                                                shape="xl"
                                                 onClick={handleReset}
-                                                disabled={resetting}
-                                                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                                isLoading={resetting}
+                                                loadingText="초기화 중…"
+                                                icon={<RotateCcw size={13} />}
                                             >
-                                                {resetting
-                                                    ? <><Loader2 size={13} className="animate-spin" />초기화 중…</>
-                                                    : <><RotateCcw size={13} />초기화 실행</>
-                                                }
-                                            </button>
+                                                초기화 실행
+                                            </Button>
                                             <button
                                                 onClick={() => { setResetConfirm(false); setResetErr(null); }}
                                                 disabled={resetting}
@@ -1261,19 +1268,19 @@ const LeagueSettingsView: React.FC = () => {
                                         "{league.name}" 리그가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
                                     </p>
                                     {deleteErr && (
-                                        <p className="text-xs text-red-400 ko-normal">{deleteErr}</p>
+                                        <InlineNotice tone="danger">{deleteErr}</InlineNotice>
                                     )}
                                     <div className="flex gap-2">
-                                        <button
+                                        <Button
+                                            variant="danger"
+                                            shape="xl"
                                             onClick={handleDeleteLeague}
-                                            disabled={deleting}
-                                            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                            isLoading={deleting}
+                                            loadingText="삭제 중…"
+                                            icon={<Trash2 size={13} />}
                                         >
-                                            {deleting
-                                                ? <><Loader2 size={13} className="animate-spin" />삭제 중…</>
-                                                : <><Trash2 size={13} />삭제 실행</>
-                                            }
-                                        </button>
+                                            삭제 실행
+                                        </Button>
                                         <button
                                             onClick={() => { setDeleteConfirm(false); setDeleteErr(null); }}
                                             disabled={deleting}
@@ -1595,7 +1602,7 @@ const LeagueSettingsView: React.FC = () => {
                 {/* [2026-09-22] 드래프트 계약 생성 규칙 — 드래프트 시작 후엔 읽기 전용 */}
                 <div className="rounded-xl bg-slate-900/40 border border-slate-700/40 p-3">
                     {!contractSettingsEditable && (
-                        <p className="text-xs text-slate-500 ko-normal mb-2">드래프트가 시작된 뒤에는 계약 생성 규칙을 바꿀 수 없습니다(이미 풀/계약에 반영됨).</p>
+                        <InlineNotice tone="info" className="mb-2">드래프트가 시작된 뒤에는 계약 생성 규칙을 바꿀 수 없습니다(이미 풀/계약에 반영됨).</InlineNotice>
                     )}
                     <DraftSalaryScaleSettings
                         contractMode={contractMode}
@@ -1788,7 +1795,7 @@ const LeagueSettingsView: React.FC = () => {
                         <div className="overflow-x-auto">
                             <table className="w-full text-xs">
                                 <thead>
-                                    <tr className="text-slate-500 border-b border-slate-700/40">
+                                    <tr className="text-slate-400 border-b border-slate-800">
                                         <th className="text-left py-1.5 pr-2 font-normal">시즌</th>
                                         <th className="text-right py-1.5 px-2 font-normal">캡</th>
                                         <th className="text-right py-1.5 px-2 font-normal">플로어</th>
@@ -1800,12 +1807,12 @@ const LeagueSettingsView: React.FC = () => {
                                 <tbody>
                                     {capProjection.map((row, i) => (
                                         <tr key={row.season} className={i === 0 ? 'text-slate-300' : 'text-slate-400'}>
-                                            <td className="py-1 pr-2 font-mono">{row.season}</td>
-                                            <td className="py-1 px-2 text-right font-mono">${row.cap.toLocaleString()}</td>
-                                            <td className="py-1 px-2 text-right font-mono">${row.floor.toLocaleString()}</td>
-                                            <td className="py-1 px-2 text-right font-mono">${row.tax.toLocaleString()}</td>
-                                            <td className="py-1 px-2 text-right font-mono">${row.apron1.toLocaleString()}</td>
-                                            <td className="py-1 pl-2 text-right font-mono">${row.apron2.toLocaleString()}</td>
+                                            <td className="py-1 pr-2">{row.season}</td>
+                                            <td className="py-1 px-2 text-right">${row.cap.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right">${row.floor.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right">${row.tax.toLocaleString()}</td>
+                                            <td className="py-1 px-2 text-right">${row.apron1.toLocaleString()}</td>
+                                            <td className="py-1 pl-2 text-right">${row.apron2.toLocaleString()}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1835,7 +1842,7 @@ const LeagueSettingsView: React.FC = () => {
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
                                         <thead>
-                                            <tr className="text-slate-500 border-b border-slate-700/40">
+                                            <tr className="text-slate-400 border-b border-slate-800">
                                                 <th className="text-left py-1.5 pr-2 font-normal">YOS</th>
                                                 <th className="text-right py-1.5 px-2 font-normal">캡 대비 %</th>
                                                 <th className="text-right py-1.5 pl-2 font-normal">미니멈 샐러리</th>
@@ -1844,9 +1851,9 @@ const LeagueSettingsView: React.FC = () => {
                                         <tbody>
                                             {minSalaryRows.map(row => (
                                                 <tr key={row.label} className="text-slate-400">
-                                                    <td className="py-1 pr-2 font-mono text-slate-300">{row.label}</td>
-                                                    <td className="py-1 px-2 text-right font-mono">{row.capPct.toFixed(2)}%</td>
-                                                    <td className="py-1 pl-2 text-right font-mono">${row.salary.toLocaleString()}</td>
+                                                    <td className="py-1 pr-2 text-slate-200">{row.label}</td>
+                                                    <td className="py-1 px-2 text-right">{row.capPct.toFixed(2)}%</td>
+                                                    <td className="py-1 pl-2 text-right">${row.salary.toLocaleString()}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1871,7 +1878,7 @@ const LeagueSettingsView: React.FC = () => {
                                 <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
                                     <table className="w-full text-xs">
                                         <thead>
-                                            <tr className="text-slate-500 border-b border-slate-700/40">
+                                            <tr className="text-slate-400 border-b border-slate-800">
                                                 <th className="text-left py-1.5 pr-2 font-normal whitespace-nowrap">체결일</th>
                                                 <th className="text-right py-1.5 px-2 font-normal whitespace-nowrap">경과일</th>
                                                 <th className="text-right py-1.5 px-2 font-normal whitespace-nowrap">잔여일</th>
@@ -1884,12 +1891,12 @@ const LeagueSettingsView: React.FC = () => {
                                         <tbody>
                                             {minSalaryByDateRows.map(row => (
                                                 <tr key={row.date} className="text-slate-400">
-                                                    <td className="py-1 pr-2 font-mono text-slate-300 whitespace-nowrap">{row.date}</td>
-                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{row.dayNum}일차</td>
-                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{row.daysRemaining}일</td>
-                                                    <td className="py-1 px-2 text-right font-mono whitespace-nowrap">{(row.pct * 100).toFixed(1)}%</td>
+                                                    <td className="py-1 pr-2 text-slate-200 whitespace-nowrap">{row.date}</td>
+                                                    <td className="py-1 px-2 text-right whitespace-nowrap">{row.dayNum}일차</td>
+                                                    <td className="py-1 px-2 text-right whitespace-nowrap">{row.daysRemaining}일</td>
+                                                    <td className="py-1 px-2 text-right whitespace-nowrap">{(row.pct * 100).toFixed(1)}%</td>
                                                     {row.salaries.map((salary, i) => (
-                                                        <td key={i} className="py-1 px-2 text-right font-mono whitespace-nowrap">${salary.toLocaleString()}</td>
+                                                        <td key={i} className="py-1 px-2 text-right whitespace-nowrap">${salary.toLocaleString()}</td>
                                                     ))}
                                                 </tr>
                                             ))}
@@ -2196,17 +2203,16 @@ const LeagueSettingsView: React.FC = () => {
                             바뀌기 전(즉 아직 'recruiting')에만 노출. */}
                         {league.status === 'recruiting' && (
                             <div className="space-y-2 pt-1">
-                                {draftStartErr && <p className="text-xs text-red-400 ko-normal">{draftStartErr}</p>}
-                                <button
+                                {draftStartErr && <InlineNotice tone="danger" size="sm">{draftStartErr}</InlineNotice>}
+                                <Button
+                                    variant="primary"
+                                    shape="xl"
                                     onClick={handleStartDraft}
-                                    disabled={draftStarting}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                                    isLoading={draftStarting}
+                                    loadingText="시작 중…"
                                 >
-                                    {draftStarting
-                                        ? <><Loader2 size={13} className="animate-spin" />시작 중…</>
-                                        : '드래프트 시작'
-                                    }
-                                </button>
+                                    드래프트 시작
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -2216,19 +2222,19 @@ const LeagueSettingsView: React.FC = () => {
                             추첨을 실행하면 드래프트 오더가 무작위로 확정됩니다.
                             이후 팀 선점 변경이 불가능합니다.
                         </p>
-                        {lotteryErr && <p className="text-xs text-red-400 ko-normal">{lotteryErr}</p>}
-                        <button
+                        {lotteryErr && <InlineNotice tone="danger" size="sm">{lotteryErr}</InlineNotice>}
+                        <Button
+                            variant="warning"
+                            shape="xl"
                             onClick={handleRunLottery}
-                            disabled={lotteryRunning || league.status !== 'recruiting'}
-                            className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-xl text-sm font-bold text-white transition-colors"
+                            disabled={league.status !== 'recruiting'}
+                            isLoading={lotteryRunning}
+                            loadingText="추첨 중…"
                         >
-                            {lotteryRunning
-                                ? <><Loader2 size={13} className="animate-spin" />추첨 중…</>
-                                : '드래프트 순서 추첨 시작'
-                            }
-                        </button>
+                            드래프트 순서 추첨 시작
+                        </Button>
                         {league.status !== 'recruiting' && (
-                            <p className="text-xs text-slate-500 ko-normal">recruiting 상태에서만 추첨 가능합니다.</p>
+                            <InlineNotice tone="info" size="sm">모집 중 상태에서만 추첨할 수 있습니다.</InlineNotice>
                         )}
                     </div>
                 )}
@@ -2246,7 +2252,7 @@ const LeagueSettingsView: React.FC = () => {
                     </h2>
 
                     {draftPicks.length === 0 ? (
-                        <p className="text-xs text-slate-500 ko-normal">아직 드래프트 결과가 없습니다.</p>
+                        <EmptyState title="아직 드래프트 결과가 없습니다." padding="sm" />
                     ) : (() => {
                         // 팀 × 라운드 매트릭스로 재구성 — 팀은 1라운드 픽 순서(pick_index) 기준 정렬.
                         const rounds = Array.from(new Set(draftPicks.map(p => p.round))).sort((a, b) => a - b);
@@ -2267,10 +2273,10 @@ const LeagueSettingsView: React.FC = () => {
                             <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-slate-700">
-                                            <th className="px-2 py-2 text-left text-xs font-bold text-slate-500">팀</th>
+                                        <tr className="border-b border-slate-800">
+                                            <th className="px-2 py-2 text-left text-sm font-bold text-slate-400">팀</th>
                                             {rounds.map(r => (
-                                                <th key={r} className="px-2 py-2 text-left text-xs font-bold text-slate-500 whitespace-nowrap">{r}R</th>
+                                                <th key={r} className="px-2 py-2 text-left text-sm font-bold text-slate-400 whitespace-nowrap">{r}R</th>
                                             ))}
                                         </tr>
                                     </thead>
@@ -2281,7 +2287,7 @@ const LeagueSettingsView: React.FC = () => {
                                                 {rounds.map(r => {
                                                     const pick = pickByTeamRound.get(teamId)?.get(r);
                                                     return (
-                                                        <td key={r} className="px-2 py-2 text-xs text-slate-300 whitespace-nowrap">
+                                                        <td key={r} className="px-2 py-2 text-xs text-slate-200 whitespace-nowrap">
                                                             {pick ? `${pick.player_name}(${pick.position},${pick.ovr})` : '—'}
                                                         </td>
                                                     );

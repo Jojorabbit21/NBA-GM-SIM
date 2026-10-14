@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { InlineNotice } from '../../components/common/InlineNotice';
 import { setMemberTeam } from '../../services/multi/leagueService';
 import { HEX_COLOR_RE, contrastRatio } from '../../utils/colorContrast';
 import { ColorField } from './ColorField';
+import { Button } from '../common/Button';
+import { Modal } from '../common/Modal';
 
 interface TeamSetupModalProps {
     open:            boolean;
@@ -28,6 +30,14 @@ interface TeamSetupModalProps {
 }
 
 const HEX_RE = HEX_COLOR_RE;
+const INPUT_CLASS = 'w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500';
+const inputClass = (error?: string) => `${INPUT_CLASS} ${error ? 'border-red-500/60' : 'border-slate-700'}`;
+
+// [2026-10-13] 폼 검증을 입력별로 분리(에러 표시 정책 2차) — 한 문구만 하단에 띄우고 첫 실패에서 끊던 방식 대신
+// 모든 입력을 한 번에 훑어 각 입력 아래 sm으로 보인다. 하단 md 슬롯은 서버 저장 실패(saveErr) 전용.
+type FieldKey = 'name' | 'abbr' | 'colorPrimary' | 'colorSecondary' | 'colorText';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+const HEX_FORMAT_MSG = '#RRGGBB 형식이어야 합니다';
 
 export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     open, roomId, userId, existingTeamIds, initial, onClose, onSaved, saveOverride,
@@ -37,7 +47,8 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     const [colorPrimary,   setColorPrimary]   = useState('#e11d48');
     const [colorSecondary, setColorSecondary] = useState('#fbbf24');
     const [colorText,      setColorText]      = useState('#ffffff');
-    const [err,            setErr]            = useState<string | null>(null);
+    const [fieldErrors,    setFieldErrors]    = useState<FieldErrors>({});
+    const [saveErr,        setSaveErr]        = useState<string | null>(null);
     const [saving,         setSaving]         = useState(false);
 
     // 모달이 열릴 때마다 초기값으로 리셋
@@ -48,7 +59,8 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
         setColorPrimary(initial?.colorPrimary   ?? '#e11d48');
         setColorSecondary(initial?.colorSecondary ?? '#fbbf24');
         setColorText(initial?.colorText ?? '#ffffff');
-        setErr(null);
+        setFieldErrors({});
+        setSaveErr(null);
     }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!open) return null;
@@ -58,32 +70,33 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     const safeS = HEX_RE.test(colorSecondary) ? colorSecondary : '#fbbf24';
     const safeT = HEX_RE.test(colorText)      ? colorText      : '#ffffff';
 
-    const handleAbbrChange = (v: string) => setAbbr(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4));
+    // 입력이 바뀌면 그 입력의 검증 문구만 즉시 소거(다른 입력의 문구는 유지)
+    const clearField = (key: FieldKey) =>
+        setFieldErrors(prev => (key in prev ? { ...prev, [key]: undefined } : prev));
+    const setField = (key: FieldKey, setter: (v: string) => void) => (v: string) => { setter(v); clearField(key); };
+
+    const handleAbbrChange = (v: string) => { setAbbr(v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)); clearField('abbr'); };
+
+    // 모든 입력을 훑어 맵을 채운다 — 첫 실패에서 return하지 않으므로 틀린 입력이 전부 동시에 표시된다.
+    const validate = (trimName: string): FieldErrors => {
+        const e: FieldErrors = {};
+        if (trimName.length < 1 || trimName.length > 16) e.name = '팀명은 1~16자여야 합니다';
+        if (!/^[A-Z0-9]{2,4}$/.test(displayAbbr)) e.abbr = '약어는 2~4자 영문/숫자여야 합니다';
+        else if (existingTeamIds.includes(displayAbbr.toLowerCase())) e.abbr = `약어 "${displayAbbr}"는 이미 같은 방에서 사용 중입니다`;
+        if (!HEX_RE.test(colorPrimary))   e.colorPrimary   = HEX_FORMAT_MSG;
+        if (!HEX_RE.test(colorSecondary)) e.colorSecondary = HEX_FORMAT_MSG;
+        if (!HEX_RE.test(colorText))      e.colorText      = HEX_FORMAT_MSG;
+        return e;
+    };
 
     const handleSave = async () => {
         const trimName = name.trim();
-
-        if (trimName.length < 1 || trimName.length > 16) {
-            setErr('팀명은 1~16자여야 합니다'); return;
-        }
-        if (!/^[A-Z0-9]{2,4}$/.test(displayAbbr)) {
-            setErr('약어는 2~4자 영문/숫자여야 합니다'); return;
-        }
-        if (!HEX_RE.test(colorPrimary)) {
-            setErr('Primary 색상은 #RRGGBB 형식이어야 합니다'); return;
-        }
-        if (!HEX_RE.test(colorSecondary)) {
-            setErr('Secondary 색상은 #RRGGBB 형식이어야 합니다'); return;
-        }
-        if (!HEX_RE.test(colorText)) {
-            setErr('텍스트 색상은 #RRGGBB 형식이어야 합니다'); return;
-        }
-        if (existingTeamIds.includes(displayAbbr.toLowerCase())) {
-            setErr(`약어 "${displayAbbr}"는 이미 같은 방에서 사용 중입니다`); return;
-        }
+        const errors = validate(trimName);
+        setFieldErrors(errors);
+        if (Object.values(errors).some(Boolean)) return;
 
         setSaving(true);
-        setErr(null);
+        setSaveErr(null);
         let saveError: string | null = null;
         if (saveOverride) {
             const res = await saveOverride({ name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
@@ -93,23 +106,47 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
             saveError = res.error;
         }
         setSaving(false);
-        if (saveError) { setErr(saveError); return; }
+        if (saveError) { setSaveErr(saveError); return; }
         onSaved();
         onClose();
     };
 
+    // 색상 대비 경고(warning sm)는 같은 자리에 형식 오류(danger sm)가 있으면 숨긴다 — 한 슬롯에 danger/warning 겹치지 않기.
+    const showContrastWarning = !fieldErrors.colorPrimary && !fieldErrors.colorText
+        && HEX_RE.test(colorPrimary) && HEX_RE.test(colorText) && contrastRatio(colorPrimary, colorText) < 3;
+
+    // [2026-10-13] 직접 구현하던 오버레이/패널/헤더 → 공용 Modal(body 포탈·z-modal·배경 클릭 닫기 포함).
+    // 공용 size 최소 단계(sm = max-w-md)보다 좁은 폼이라 className으로 max-w-sm 유지.
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm mx-4 p-6 space-y-5">
-
-                {/* 헤더 */}
-                <div className="flex items-center justify-between">
-                    <h2 className="text-base font-black text-white ko-tight">팀 설정</h2>
-                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
-                        <X size={16} />
-                    </button>
+        <Modal
+            isOpen={open}
+            onClose={onClose}
+            size="sm"
+            rounded="rounded-2xl"
+            backdropClass="bg-black/60"
+            className="!max-w-sm"
+            title="팀 설정"
+            footer={(
+                <div className="flex gap-2">
+                    <Button variant="secondary" size="xl" shape="xl" onClick={onClose} className="flex-1">
+                        취소
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="xl"
+                        shape="xl"
+                        onClick={handleSave}
+                        disabled={saving}
+                        isLoading={saving}
+                        loadingText="저장 중…"
+                        className="flex-1"
+                    >
+                        저장
+                    </Button>
                 </div>
-
+            )}
+        >
+            <div className="p-6 space-y-5">
                 {/* 미리보기 */}
                 <div className="flex flex-col items-center gap-2">
                     <div
@@ -134,11 +171,12 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                         <input
                             type="text"
                             value={name}
-                            onChange={e => setName(e.target.value)}
+                            onChange={e => { setName(e.target.value); clearField('name'); }}
                             maxLength={16}
                             placeholder="예: 서울 파이어스"
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                            className={inputClass(fieldErrors.name)}
                         />
+                        {fieldErrors.name && <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors.name}</InlineNotice>}
                     </div>
                     <div>
                         <label className="text-xs text-slate-400 ko-normal block mb-1">약어 (2~4자 영문/숫자)</label>
@@ -148,40 +186,23 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                             onChange={e => handleAbbrChange(e.target.value)}
                             maxLength={4}
                             placeholder="SFR"
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                            className={inputClass(fieldErrors.abbr)}
                         />
+                        {fieldErrors.abbr && <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors.abbr}</InlineNotice>}
                     </div>
 
                     {/* 색상 피커 3개 */}
-                    <ColorField label="Primary (로고 배경)"  value={colorPrimary}   onChange={setColorPrimary}   placeholder="#e11d48" />
-                    <ColorField label="Secondary (로고 보더)" value={colorSecondary} onChange={setColorSecondary} placeholder="#fbbf24" />
-                    <ColorField label="Text (배지 글자색)"    value={colorText}      onChange={setColorText}      placeholder="#ffffff" />
-                    {HEX_RE.test(colorPrimary) && HEX_RE.test(colorText) && contrastRatio(colorPrimary, colorText) < 3 && (
-                        <p className="text-xs text-amber-400 ko-normal">
-                            ⚠ 배경(Primary)과 텍스트 색상의 대비가 낮아 글자가 잘 안 보일 수 있습니다.
-                        </p>
+                    <ColorField label="Primary (로고 배경)"  value={colorPrimary}   onChange={setField('colorPrimary', setColorPrimary)}     placeholder="#e11d48" error={fieldErrors.colorPrimary} />
+                    <ColorField label="Secondary (로고 보더)" value={colorSecondary} onChange={setField('colorSecondary', setColorSecondary)} placeholder="#fbbf24" error={fieldErrors.colorSecondary} />
+                    <ColorField label="Text (배지 글자색)"    value={colorText}      onChange={setField('colorText', setColorText)}           placeholder="#ffffff" error={fieldErrors.colorText} />
+                    {showContrastWarning && (
+                        <InlineNotice tone="warning" size="sm">배경(Primary)과 텍스트 색상의 대비가 낮아 글자가 잘 안 보일 수 있습니다.</InlineNotice>
                     )}
                 </div>
 
-                {err && <p className="text-xs text-red-400 ko-normal">{err}</p>}
-
-                {/* 버튼 */}
-                <div className="flex gap-2 pt-1">
-                    <button
-                        onClick={onClose}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-400 bg-slate-800 hover:bg-slate-700 transition-colors"
-                    >
-                        취소
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {saving ? '저장 중…' : '저장'}
-                    </button>
-                </div>
+                {/* 서버 저장 실패 전용 — 검증 문구는 각 입력 아래로 */}
+                {saveErr && <InlineNotice tone="danger">{saveErr}</InlineNotice>}
             </div>
-        </div>
+        </Modal>
     );
 };

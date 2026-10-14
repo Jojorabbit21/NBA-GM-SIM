@@ -1,7 +1,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Trophy, X, Loader2 } from 'lucide-react';
+import { Trophy, X } from 'lucide-react';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
 import { useSeasonContext } from '../../views/multi/season/seasonContext';
@@ -10,6 +11,12 @@ import { resolveRealAt, isFinal } from '../../views/multi/season/multiGameReveal
 import { TeamLogo } from '../common/TeamLogo';
 import { supabase } from '../../services/supabaseClient';
 import type { PlayerBoxScore } from '../../types/engine';
+import { IconButton } from '../common/IconButton';
+import { Button } from '../common/Button';
+import { Spinner } from '../common/Spinner';
+import { EmptyState } from '../common/EmptyState';
+import { Modal } from '../common/Modal';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface BracketSeries {
     id: string;
@@ -55,7 +62,7 @@ const Confetti: React.FC = () => {
     const pieces = useConfettiPieces(90);
 
     return (
-        <div className="fixed inset-0 z-[101] overflow-hidden pointer-events-none">
+        <div className="fixed inset-0 z-modal overflow-hidden pointer-events-none">
             <style>{`
                 @keyframes confetti-fall {
                     0%   { transform: translate(0, -10vh) rotate(0deg); opacity: 1; }
@@ -187,6 +194,20 @@ function fmtTS(pts: number, fga: number, fta: number): string {
     return denom > 0 ? `${((pts / denom) * 100).toFixed(1)}%` : '—';
 }
 
+// 우승 로스터 표 열 — th/td 11쌍을 배열 하나로(2026-10-13, 공용 Table bare·compact 이관)
+const ROSTER_COLS: { label: string; width?: number; value: (p: AggregatedPlayer) => string; strong?: boolean }[] = [
+    { label: 'G',   width: 40, value: p => String(p.g) },
+    { label: 'MP',  width: 48, value: p => fmtAvg(p.mp, p.g) },
+    { label: 'PTS', width: 48, value: p => fmtAvg(p.pts, p.g), strong: true },
+    { label: 'REB', width: 48, value: p => fmtAvg(p.reb, p.g) },
+    { label: 'AST', width: 48, value: p => fmtAvg(p.ast, p.g) },
+    { label: 'STL', width: 48, value: p => fmtAvg(p.stl, p.g) },
+    { label: 'BLK', width: 48, value: p => fmtAvg(p.blk, p.g) },
+    { label: 'FG%', width: 56, value: p => fmtPct(p.fgm, p.fga) },
+    { label: '3P%', width: 56, value: p => fmtPct(p.p3m, p.p3a) },
+    { label: 'TS%', width: 56, value: p => fmtTS(p.pts, p.fga, p.fta) },
+];
+
 /**
  * 멀티플레이어 토너먼트가 종료되면(league.status === 'finished') 우승팀 축하 팝업을 띄운다.
  * 홈/브라켓(순위표) 페이지에 들어왔을 때만 노출 — 다른 탭(로스터/전술/리더보드 등)에서는 뜨지 않음.
@@ -269,96 +290,79 @@ export const TournamentChampionModal: React.FC = () => {
         setDismissed(true);
     };
 
+    // [2026-10-13] 공용 Modal로 이관(ui-audit/07 후보 2) — 배경 클릭으로는 닫히지 않게(closeOnBackdrop=false),
+    // X·확인만 인정(닫을 때 localStorage 저장). 앰버 테두리/그라디언트 장식은 className·children으로 유지.
+    // [2026-10-12] 컨페티는 모달과 같은 z-modal — body 포탈 순서상 모달 뒤에 붙어 위에 뿌려진다(pointer-events-none)
     return (
         <>
-            <Confetti />
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-                <div className="relative bg-slate-900 border border-amber-500/40 rounded-3xl max-w-2xl w-full max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
-                    <div className="absolute inset-0 bg-gradient-to-b from-amber-500/10 to-transparent pointer-events-none" />
-                    <button
-                        onClick={handleClose}
-                        className="absolute top-4 right-4 z-20 text-slate-500 hover:text-white transition-colors"
-                    >
-                        <X size={18} />
-                    </button>
-
-                    {/* 헤더: 트로피 + 팀 + 전적 */}
-                    <div className="relative z-10 flex flex-col items-center gap-3 px-8 pt-9 pb-5 shrink-0">
-                        <Trophy size={44} className="text-amber-400" />
-                        <div className="text-center">
-                            <p className="text-xs font-bold text-amber-400 ko-normal tracking-wide">토너먼트 우승</p>
-                            <h2 className="text-2xl font-black text-white ko-tight mt-1">{champion.team.team_name}</h2>
-                        </div>
-                        <TeamLogo teamId={champion.team.team_slug} teamName={champion.team.team_name} size="xl" />
-                        <div className="flex items-center gap-3">
-                            <p className="text-sm text-slate-400 ko-normal">축하합니다! 🎉</p>
-                            {!statsLoading && (
-                                <span className="text-sm font-bold text-white font-mono tabular-nums">
-                                    토너먼트 전적 {record.wins}승 {record.losses}패
-                                </span>
-                            )}
-                        </div>
+            <Modal
+                isOpen
+                onClose={handleClose}
+                size="md"
+                rounded="rounded-3xl"
+                blurBackdrop
+                closeOnBackdrop={false}
+                hideCloseButton
+                className="!border-amber-500/40"
+                footer={
+                    <div className="flex justify-center">
+                        <Button variant="warning" size="xl" shape="xl" onClick={handleClose}>확인</Button>
                     </div>
+                }
+            >
+                <div className="absolute inset-0 bg-gradient-to-b from-amber-500/10 to-transparent pointer-events-none" />
+                <IconButton label="닫기" size="md" onClick={handleClose} className="absolute top-4 right-4 z-20">
+                    <X size={18} />
+                </IconButton>
 
-                    {/* 로스터 스탯 */}
-                    <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar border-t border-slate-800 px-4 pb-4">
-                        {statsLoading ? (
-                            <div className="flex items-center justify-center py-10">
-                                <Loader2 size={20} className="animate-spin text-indigo-400" />
-                            </div>
-                        ) : roster.length === 0 ? (
-                            <p className="text-center text-sm text-slate-500 ko-normal py-10">스탯 데이터가 없습니다.</p>
-                        ) : (
-                            <table className="w-full text-xs mt-3">
-                                <thead>
-                                    <tr className="text-slate-500 uppercase text-[10px]">
-                                        <th className="text-left py-1.5 font-bold">선수</th>
-                                        <th className="text-center py-1.5 font-bold w-10">G</th>
-                                        <th className="text-center py-1.5 font-bold w-12">MP</th>
-                                        <th className="text-center py-1.5 font-bold w-12">PTS</th>
-                                        <th className="text-center py-1.5 font-bold w-12">REB</th>
-                                        <th className="text-center py-1.5 font-bold w-12">AST</th>
-                                        <th className="text-center py-1.5 font-bold w-12">STL</th>
-                                        <th className="text-center py-1.5 font-bold w-12">BLK</th>
-                                        <th className="text-center py-1.5 font-bold w-14">FG%</th>
-                                        <th className="text-center py-1.5 font-bold w-14">3P%</th>
-                                        <th className="text-center py-1.5 font-bold w-14">TS%</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60">
-                                    {roster.map(p => (
-                                        <tr key={p.playerId} className="text-slate-300">
-                                            <td className="py-1.5 font-bold text-white whitespace-nowrap">
-                                                {p.playerName}
-                                                {p.position && <span className="text-slate-500 font-normal ml-1">{p.position}</span>}
-                                            </td>
-                                            <td className="text-center font-mono tabular-nums">{p.g}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtAvg(p.mp, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums text-white font-bold">{fmtAvg(p.pts, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtAvg(p.reb, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtAvg(p.ast, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtAvg(p.stl, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtAvg(p.blk, p.g)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtPct(p.fgm, p.fga)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtPct(p.p3m, p.p3a)}</td>
-                                            <td className="text-center font-mono tabular-nums">{fmtTS(p.pts, p.fga, p.fta)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                {/* 헤더: 트로피 + 팀 + 전적 */}
+                <div className="relative flex flex-col items-center gap-3 px-8 pt-9 pb-5">
+                    <Trophy size={44} className="text-amber-400" />
+                    <div className="text-center">
+                        <p className="text-xs font-bold text-amber-400 ko-normal tracking-wide">토너먼트 우승</p>
+                        <h2 className="text-2xl font-black text-white ko-tight mt-1">{champion.team.team_name}</h2>
+                    </div>
+                    <TeamLogo teamId={champion.team.team_slug} teamName={champion.team.team_name} size="xl" />
+                    <div className="flex items-center gap-3">
+                        <p className="text-sm text-slate-400 ko-normal">축하합니다! 🎉</p>
+                        {!statsLoading && (
+                            <span className="text-sm font-bold text-white tabular-nums">
+                                토너먼트 전적 {record.wins}승 {record.losses}패
+                            </span>
                         )}
                     </div>
-
-                    <div className="relative z-10 flex justify-center px-8 py-4 border-t border-slate-800 shrink-0">
-                        <button
-                            onClick={handleClose}
-                            className="px-6 py-2 bg-amber-600 hover:bg-amber-500 rounded-xl text-sm font-bold text-white transition-colors"
-                        >
-                            확인
-                        </button>
-                    </div>
                 </div>
-            </div>
+
+                {/* 로스터 스탯 */}
+                <div className="relative border-t border-slate-800 px-4 pb-4 pt-3">
+                    {statsLoading ? (
+                        <Spinner variant="section" />
+                    ) : roster.length === 0 ? (
+                        <EmptyState title="스탯 데이터가 없습니다." />
+                    ) : (
+                        <Table variant="bare" density="compact" dividers={false}>
+                            <TableHead>
+                                <TableHeaderCell align="left">선수</TableHeaderCell>
+                                {ROSTER_COLS.map(c => <TableHeaderCell key={c.label} width={c.width}>{c.label}</TableHeaderCell>)}
+                            </TableHead>
+                            <TableBody>
+                                {roster.map(p => (
+                                    <TableRow key={p.playerId}>
+                                        <TableCell align="left" className="text-xs font-bold text-white">
+                                            {p.playerName}
+                                            {p.position && <span className="text-slate-500 font-normal ml-1">{p.position}</span>}
+                                        </TableCell>
+                                        {ROSTER_COLS.map(c => (
+                                            <TableCell key={c.label} className={`text-xs tabular-nums ${c.strong ? 'text-white font-bold' : 'text-slate-300'}`}>{c.value(p)}</TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </div>
+            </Modal>
+            {createPortal(<Confetti />, document.body)}
         </>
     );
 };

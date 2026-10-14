@@ -1,6 +1,14 @@
 
-import { GameState, TeamState, LivePlayer } from './pbpTypes.ts';
+import { GameState, TeamState, LivePlayer, EjectionReason } from './pbpTypes.ts';
 
+
+// [2026-10-07] 퇴장 사유별 교체 로그 문구 (`교체: IN [..] OUT [..] (사유)`)
+const EJECTION_REASON_TEXT: Record<EjectionReason, string> = {
+    foul_out:  '6반칙 퇴장',
+    technical: '테크니컬 퇴장',
+    flagrant:  '플래그런트 퇴장',
+    fight:     '싸움 퇴장',
+};
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
@@ -228,7 +236,8 @@ export function checkSubstitutionsV2(
             return;
         }
         if (p.pf >= 6) {
-            requests.push({ outPlayer: p, reason: '6반칙 퇴장', exitType: 'permanent', benchReason: 'foul_out' });
+            // [2026-10-07] pf=6은 테크니컬 2회/플래그런트 2/싸움 퇴장의 마커로도 쓰이므로 사유 문구를 ejectionReason으로 분기
+            requests.push({ outPlayer: p, reason: EJECTION_REASON_TEXT[p.ejectionReason ?? 'foul_out'], exitType: 'permanent', benchReason: 'foul_out' });
             return;
         }
 

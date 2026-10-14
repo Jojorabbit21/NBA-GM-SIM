@@ -241,38 +241,51 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     return 'unknown';
 };
 
-export const getTeamLogoUrl = (teamId: string): string => {
-    const id = resolveTeamId(teamId);
-    const editorUrl = editorLogoUrls.get(id);
-    if (editorUrl) return editorUrl;
-    return `/logos/${id}.svg`;
+// ── 로고 경로 (2026-10-12 단일화) ─────────────────────────────────────────────
+// 신뢰하는 로고 소스는 public/logos/ 아래 두 폴더뿐이다.
+//   - 팀 로고:        public/logos/teams/{ABBR}.svg   (대문자 파일명, 30팀 + 가상팀)
+//   - 리그/이벤트 로고: public/logos/league/{Name}.svg (League, AllStar, East, West, RisingStar, ...)
+// 예전의 /logos/{id}.svg(싱글 소문자 세트)와 /logos/real/(멀티 세트) 이원화, 그리고
+// "신규 → 구버전 → placehold.co" 3단 폴백 체인은 전부 폐기. 이미지 로드 실패 시 폴백은
+// 외부 서비스가 아니라 리그 로고(TEAM_LOGO_FALLBACK_URL) 하나로 통일한다.
+
+export type LeagueLogoName =
+    | 'League' | 'AllStar' | 'East' | 'West'
+    | 'RisingStar' | 'RisingA' | 'RisingB'
+    | 'ThreeContest' | 'DunkContest'
+    | 'Main';   // 앱 워드마크(시작 메뉴·리그 로딩 화면) — 예전 public/logos/main.svg, 2026-10-13 league/Main.svg로 이동
+
+export const getLeagueLogoUrl = (name: LeagueLogoName): string => `/logos/league/${name}.svg`;
+
+/** 팀 로고 이미지 로드 실패 시 쓰는 유일한 폴백 — 리그 로고. */
+export const TEAM_LOGO_FALLBACK_URL = getLeagueLogoUrl('League');
+
+// 올스타 본경기/라이징스타 챌린지 가상 팀 ID → 리그 폴더의 전용 로고.
+// resolveTeamId()의 일반 패턴(실제 30팀 약어 매핑)을 안 타게 먼저 걸러낸다 — 가상 ID를 그대로
+// resolveTeamId에 넘기면 TEAM_ID_MAP 부분일치 폴백에 걸려 엉뚱한 실제 팀 로고로 매칭될 수 있다.
+const ALLSTAR_TEAM_LOGO: Record<string, LeagueLogoName> = {
+    'EAST-ALLSTAR': 'East', 'WEST-ALLSTAR': 'West',
+    'RISINGSTARS-A': 'RisingA', 'RISINGSTARS-B': 'RisingB',
 };
 
-// [2026-09-09] 올스타 본경기/라이징스타 챌린지 가상 팀 ID → public/logos/real/AS/ 전용 로고.
-// resolveTeamId()의 일반 패턴(실제 30팀 약어 매핑)을 안 타게 getRealTeamLogoUrl()에서 먼저
-// 걸러낸다 — 가상 ID를 그대로 resolveTeamId에 넘기면 TEAM_ID_MAP 부분일치 폴백에 걸려 엉뚱한
-// 실제 팀 로고로 잘못 매칭될 위험이 있다(예: 짧은 팀 코드가 "EAST-ALLSTAR" 문자열 안에
-// 우연히 포함되는 경우).
-const ALLSTAR_LOGO_FILE: Record<string, string> = {
-    'EAST-ALLSTAR': 'AS/East', 'WEST-ALLSTAR': 'AS/West',
-    'RISINGSTARS-A': 'AS/RisingA', 'RISINGSTARS-B': 'AS/RisingB',
-};
-
-// [2026-09-06] 멀티플레이어용 신규 로고 세트(public/logos/real/, 대문자 파일명) — 테스트 목적으로
-// 선수 상세페이지 헤더 큰 로고 한 곳에만 우선 적용. 기존 /logos/{id}.svg(소문자, 싱글전용)와는
-// 별개 세트라 milwaukee('mil')처럼 real/에 파일이 없는 팀은 <img onError>에서 구버전으로 폴백.
 // 가상 확장팀(토너먼트) 로고 파일명이 team_slug/team_abbr와 다른 경우 오버라이드.
-// 예: 라스베이거스 팬텀스(team_slug='lvp', team_abbr='LVP')지만 실제 로고 파일은 LV.svg.
-const VIRTUAL_LOGO_FILE_OVERRIDE: Record<string, string> = {
+// 예: 라스베이거스 팬텀스(team_slug='lvp', team_abbr='LVP')지만 로고 파일은 LV.svg.
+const TEAM_LOGO_FILE_OVERRIDE: Record<string, string> = {
     'lvp': 'LV',
 };
 
-export const getRealTeamLogoUrl = (teamId: string): string => {
-    const allstarFile = ALLSTAR_LOGO_FILE[teamId];
-    if (allstarFile) return `/logos/real/${allstarFile}.svg`;
+/**
+ * 팀 로고 URL. 싱글플레이어 로고 에디터(localStorage) 오버라이드가 있으면 그것을, 없으면
+ * public/logos/teams/{ABBR}.svg 를 돌려준다. 멀티/싱글 구분 없이 이 함수 하나만 쓴다.
+ */
+export const getTeamLogoUrl = (teamId: string): string => {
+    const allstar = ALLSTAR_TEAM_LOGO[teamId];
+    if (allstar) return getLeagueLogoUrl(allstar);
     const id = resolveTeamId(teamId);
-    const override = VIRTUAL_LOGO_FILE_OVERRIDE[id];
-    return `/logos/real/${override ?? id.toUpperCase()}.svg`;
+    const editorUrl = editorLogoUrls.get(id);
+    if (editorUrl) return editorUrl;
+    const file = TEAM_LOGO_FILE_OVERRIDE[id] ?? id.toUpperCase();
+    return `/logos/teams/${file}.svg`;
 };
 
 // [2026-09-09] MultiStandingsView.tsx의 컨퍼런스 그룹 헤더 색상으로 도입됐던 값 — 올스타 본경기

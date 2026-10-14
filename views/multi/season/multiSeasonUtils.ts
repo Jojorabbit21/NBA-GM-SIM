@@ -234,6 +234,11 @@ export function computePlayoffOddsMap(
 
 // ── 날짜 포맷 ─────────────────────────────────────────────────────────────────
 
+/** 승률 표기 — 농구 통계 관례대로 선행 0 없이 ".650"/"1.000" (홈·순위표 공용, [2026-10-13] 로컬 사본 2개 통합) */
+export function fmtWinPct(pct: number): string {
+    return pct.toFixed(3).replace(/^0/, '');
+}
+
 export function fmtDate(d: string) {
     const dt = new Date(d.slice(0, 10) + 'T00:00:00');
     return `${dt.getMonth() + 1}/${dt.getDate()}`;

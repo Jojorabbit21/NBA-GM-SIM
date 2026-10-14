@@ -206,8 +206,8 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                         {currentProfile ? (
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-32 py-2">항목</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-40 py-2">성향</TableHeaderCell>
                                     <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
                                 </TableHead>
                                 <TableBody>
@@ -215,10 +215,10 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                                         const { tag, desc } = getGMSliderResult(key, currentProfile.sliders[key]);
                                         return (
                                             <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">
+                                                <TableCell className="text-xs font-bold text-white py-2 ko-normal">
                                                     {getGMSliderLabel(key)}
                                                 </TableCell>
-                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${SLIDER_COLORS[key]}`}>
+                                                <TableCell className={`text-xs font-black py-2 ${SLIDER_COLORS[key]}`}>
                                                     {tag}
                                                 </TableCell>
                                                 <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
@@ -245,9 +245,9 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                         {seasonHistory && seasonHistory.length > 0 ? (
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
-                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-24">시즌</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-32">팀</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs py-2 border-r border-slate-800/50 w-20">성적</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2 w-24">시즌</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2 w-32">팀</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs py-2 w-20">성적</TableHeaderCell>
                                     <TableHeaderCell className="text-xs py-2">플레이오프</TableHeaderCell>
                                 </TableHead>
                                 <TableBody>
@@ -258,10 +258,10 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                                             : null;
                                         return (
                                             <TableRow key={entry.season} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-mono text-slate-400 py-2 border-r border-slate-800/50">
+                                                <TableCell className="text-xs font-mono text-slate-400 py-2">
                                                     {entry.season}
                                                 </TableCell>
-                                                <TableCell className="py-2 border-r border-slate-800/50">
+                                                <TableCell className="py-2">
                                                     <div className="flex items-center gap-1.5">
                                                         <img src={getTeamLogoUrl(entry.teamId)} className="w-4 h-4 object-contain shrink-0" alt="" />
                                                         <span className="text-xs text-slate-300 truncate">
@@ -269,7 +269,7 @@ export const GMDetailView: React.FC<GMDetailViewProps> = ({
                                                         </span>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-xs font-mono font-bold text-white py-2 border-r border-slate-800/50">
+                                                <TableCell className="text-xs font-mono font-bold text-white py-2">
                                                     {entry.wins}승 {entry.losses}패
                                                 </TableCell>
                                                 <TableCell className="py-2">

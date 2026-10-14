@@ -9,8 +9,8 @@ interface HeadCoachTableProps {
     onCoachClick?: () => void;
 }
 
-const thBase = "py-3 px-1.5 text-xs font-black uppercase tracking-widest text-slate-500 whitespace-nowrap border-b border-slate-800 text-center";
-const tdBase = "py-2 px-3 whitespace-nowrap border-b border-slate-800/50";
+const thBase = "py-3 px-1.5 text-sm font-bold text-slate-400 whitespace-nowrap border-b border-slate-800 text-center";
+const tdBase = "py-2 px-3 whitespace-nowrap border-b border-slate-800";
 
 export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachClick }) => {
     if (!coach) {
@@ -33,13 +33,13 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
                         <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800" />
                         <th
                             colSpan={offenseKeys.length}
-                            className="py-1 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center bg-slate-950 border-b border-r border-slate-800"
+                            className="py-1 px-3 text-[10px] font-black text-slate-400 text-center bg-slate-950 border-b border-r border-slate-800"
                         >
                             공격 전술
                         </th>
                         <th
                             colSpan={defenseKeys.length}
-                            className="py-1 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center bg-slate-950 border-b border-slate-800"
+                            className="py-1 px-3 text-[10px] font-black text-slate-400 text-center bg-slate-950 border-b border-slate-800"
                         >
                             수비 전술
                         </th>
@@ -77,10 +77,10 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
                             <span className="text-xs text-slate-400 ko-normal">감독</span>
                         </td>
                         <td className={`${tdBase} border-r border-slate-800 text-center`}>
-                            <span className="text-xs font-mono tabular-nums text-emerald-400">{formatMoney(coach.contractSalary)}</span>
+                            <span className="text-xs tabular-nums text-emerald-400">{formatMoney(coach.contractSalary)}</span>
                         </td>
                         <td className={`${tdBase} border-r border-slate-800 text-center`}>
-                            <span className="text-xs font-mono tabular-nums text-slate-300">{coach.contractYearsRemaining}년</span>
+                            <span className="text-xs tabular-nums text-slate-300">{coach.contractYearsRemaining}년</span>
                         </td>
                         {offenseKeys.map((key, i) => {
                             const axis = PREF_AXES[key];

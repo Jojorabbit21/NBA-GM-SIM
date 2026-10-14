@@ -1,6 +1,7 @@
 
 import React, { useMemo, useCallback, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useGame } from '../../../hooks/useGameContext';
@@ -275,9 +276,7 @@ const MultiRosterView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 

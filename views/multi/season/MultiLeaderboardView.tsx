@@ -1,6 +1,7 @@
 
 import React, { useMemo, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -59,7 +60,7 @@ const MultiLeaderboardView: React.FC = () => {
         params.set('page',    String(s.currentPage));
         params.set('heatmap', String(s.showHeatmap));
         params.set('season',  s.seasonType);
-        if (s.searchQuery)              params.set('q', s.searchQuery);
+        if (s.searchQuery) params.set('q', s.searchQuery);
         if (s.activeFilters.length > 0) params.set('filters', btoa(JSON.stringify(s.activeFilters)));
         s.selectedTeams.forEach(t     => params.append('team', t));
         s.selectedPositions.forEach(p => params.append('pos', p));
@@ -126,9 +127,7 @@ const MultiLeaderboardView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 

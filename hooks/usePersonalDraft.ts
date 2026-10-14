@@ -352,7 +352,8 @@ export function usePersonalDraft({ roomId, teamId, format }: UsePersonalDraftPar
             if (rpcErr || !data) { setError(rpcErr ?? '지명에 실패했습니다.'); return false; }
             await applyState(data, { rosterChanged: true });
             if (data.expired) {
-                setError('제한시간이 지나 자동 지명되었습니다.');
+                // [2026-10-13] 만료는 실패가 아니라 안내 — applyState가 세팅한 lastAutoPicked(amber)로만 알리고
+                // error(red)엔 넣지 않는다(같은 사건이 두 박스로 뜨던 중복 제거).
                 return false;
             }
             return true;

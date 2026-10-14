@@ -28,8 +28,8 @@ const SLIDER_COLORS: Record<keyof GMSliders, string> = {
     pickWillingness: 'text-purple-400',
 };
 
-const thBase = "py-3 px-1.5 text-xs font-black uppercase tracking-widest text-slate-500 whitespace-nowrap border-b border-slate-800 text-center";
-const tdBase = "py-2 px-3 whitespace-nowrap border-b border-slate-800/50";
+const thBase = "py-3 px-1.5 text-sm font-bold text-slate-400 whitespace-nowrap border-b border-slate-800 text-center";
+const tdBase = "py-2 px-3 whitespace-nowrap border-b border-slate-800";
 
 export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMClick }) => {
     return (
@@ -41,7 +41,7 @@ export const GMProfileCard: React.FC<GMProfileCardProps> = ({ gmProfile, onGMCli
                         <th colSpan={3} className="bg-slate-950 border-b border-r border-slate-800" />
                         <th
                             colSpan={SLIDER_KEYS.length}
-                            className="py-1 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center bg-slate-950 border-b border-slate-800"
+                            className="py-1 px-3 text-[10px] font-black text-slate-400 text-center bg-slate-950 border-b border-slate-800"
                         >
                             GM 성향
                         </th>

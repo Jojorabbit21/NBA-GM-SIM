@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { MultiGlobalSearch } from './MultiGlobalSearch';
+import { CountBadge } from '../common/CountBadge';
 import { usePendingTradeCount } from '../../hooks/usePendingTradeCount';
 import type { Player } from '../../types';
 import type { LeagueTeamRow } from '../../services/multi/roomQueries';
@@ -179,11 +180,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                             }`}
                         >
                             {item.label}
-                            {!!item.badge && (
-                                <span className="w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold shrink-0">
-                                    {item.badge > 9 ? '9+' : item.badge}
-                                </span>
-                            )}
+                            <CountBadge count={item.badge} size="md" />
                         </button>
                     </React.Fragment>
                 );
@@ -260,11 +257,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                                 ? <ChevronUp size={16} className="shrink-0" />
                                 : <ChevronDown size={16} className="shrink-0" />
                             }
-                            {pendingTradeCount > 0 && (
-                                <span className="absolute -top-1.5 -right-2.5 w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold">
-                                    {pendingTradeCount > 9 ? '9+' : pendingTradeCount}
-                                </span>
-                            )}
+                            <CountBadge count={pendingTradeCount} size="md" className="absolute -top-1.5 -right-2.5" />
                         </button>
                         {openDropdown === 'league' && <DropdownPanel items={leagueItems} />}
                     </div>

@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabaseClient';
+import { actionFailure, httpActionFailure } from '../notifications/actionErrorCatalog';
 import type { LeagueGroupRow, LeagueRow, LeagueTeamRow } from './roomQueries';
 import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
@@ -48,7 +49,7 @@ export const createLeagueGroup = async (
         .select()
         .single();
 
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: actionFailure(error, '리그 그룹 생성') };
     return { data, error: null };
 };
 
@@ -236,7 +237,7 @@ export const createLeague = async (
 
         if (!error) return { data, error: null };
         // unique_violation(23505)이면서 short_code 충돌인 경우만 재시도, 그 외 에러는 즉시 반환
-        if ((error as { code?: string }).code !== '23505') return { data: null, error: error.message };
+        if ((error as { code?: string }).code !== '23505') return { data: null, error: actionFailure(error, '리그 생성') };
     }
     return { data: null, error: '리그 코드 생성에 실패했습니다. 다시 시도해주세요.' };
 };
@@ -283,7 +284,7 @@ export const createRoom = async (
         .select('id, league_id, max_players, status, created_at')
         .single();
 
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: actionFailure(error, '방 생성') };
     return { data, error: null };
 };
 
@@ -307,7 +308,7 @@ export const joinLeague = async (
         .maybeSingle();
 
     if (roomErr || !room) {
-        return { roomId: '', error: roomErr?.message ?? 'room not found' };
+        return { roomId: '', error: roomErr ? actionFailure(roomErr, '리그 참가') : '리그를 찾을 수 없습니다. 새로고침 후 다시 시도하세요.' };
     }
 
     // 2. 멤버 upsert — 이미 참가 중이면 무시, 정원 초과 시 DB 트리거가 에러 반환
@@ -318,7 +319,7 @@ export const joinLeague = async (
             { onConflict: 'room_id,user_id', ignoreDuplicates: true }
         );
 
-    if (upsertErr) return { roomId: '', error: upsertErr.message };
+    if (upsertErr) return { roomId: '', error: actionFailure(upsertErr, '리그 참가') };
     return { roomId: room.id, error: null };
 };
 
@@ -368,7 +369,7 @@ export const setMemberTeam = async (
     if (error) {
         if ((error as any).code === '23505')
             return { error: `약어 "${abbr}"는 이미 같은 방에서 사용 중입니다` };
-        return { error: error.message };
+        return { error: actionFailure(error, '팀 저장') };
     }
     return { error: null };
 };
@@ -384,7 +385,7 @@ export const updateLeagueStatus = async (
         .update({ status })
         .eq('id', leagueId);
 
-    return { error: error?.message ?? null };
+    return { error: error ? actionFailure(error, '리그 상태 변경') : null };
 };
 
 // ─── 세션 설정 업데이트 (어드민) ──────────────────────────────────────────────
@@ -528,41 +529,45 @@ export const updateLeagueSettings = async (
     if (p.allstarSchedule      !== undefined) payload.allstar_schedule        = p.allstarSchedule;
     if (p.personalDraftFormat  !== undefined) payload.personal_draft_format   = p.personalDraftFormat;
 
-    const { error } = await supabase.from('leagues').update(payload).eq('id', p.leagueId);
-    if (error) return { error: error.message };
-
+    // [2026-10-13] leagues + rooms + league_teams 증감을 RPC 하나(update_league_settings_atomic, 트랜잭션)로.
+    // 예전엔 leagues UPDATE가 먼저 커밋된 뒤 rooms/league_teams가 실패하면 앞부분만 반영된 채 "저장 실패"가 떴다.
+    // 가상 팀 채우기(VIRTUAL_TEAMS)는 여기서 계산해 행 목록으로 넘기고, 서버는 삽입/삭제 + 최종 정원 검증만 한다.
+    let teamsToInsert: Record<string, unknown>[] | undefined;
+    let teamIdsToDelete: string[] | undefined;
     if (p.roomId && p.maxTeams !== undefined) {
-        const { error: roomErr } = await supabase
-            .from('rooms')
-            .update({ max_players: p.maxTeams })
-            .eq('id', p.roomId);
-        if (roomErr) return { error: roomErr.message };
-
-        // league_teams 슬롯 수 동기화
-        const resizeErr = await resizeLeagueTeams(p.roomId, p.maxTeams);
-        if (resizeErr) return { error: resizeErr };
+        const plan = await planLeagueTeamsResize(p.roomId, p.maxTeams);
+        if ('error' in plan) return { error: plan.error };
+        teamsToInsert = plan.insert;
+        teamIdsToDelete = plan.remove;
     }
 
-    if (p.roomId && p.simSettings !== undefined) {
-        const { error: simErr } = await supabase
-            .from('rooms')
-            .update({ sim_settings: p.simSettings })
-            .eq('id', p.roomId);
-        if (simErr) return { error: simErr.message };
-    }
-
-    return { error: null };
+    const { error } = await supabase.rpc('update_league_settings_atomic', {
+        p_league_id:          p.leagueId,
+        p_payload:            payload,
+        p_room_id:            p.roomId ?? null,
+        p_max_teams:          p.maxTeams ?? null,
+        p_sim_settings:       p.simSettings ?? null,
+        p_teams_to_insert:    teamsToInsert ?? null,
+        p_team_ids_to_delete: teamIdsToDelete ?? null,
+    });
+    if (!error) return { error: null };
+    const msg = error.message ?? '';
+    if (msg.includes('cannot_remove_claimed_team')) return { error: '참가 중인 팀은 줄일 수 없습니다. 새로고침 후 다시 시도하세요.' };
+    if (msg.includes('team_count_mismatch'))       return { error: '참가 팀 수가 다른 작업과 겹쳐 맞지 않습니다. 새로고침 후 다시 시도하세요.' };
+    if (msg.includes('league_not_found') || msg.includes('room_not_found')) return { error: '리그를 찾을 수 없습니다. 새로고침 후 다시 시도하세요.' };
+    return { error: actionFailure(error, '리그 설정 저장') };
 };
 
-async function resizeLeagueTeams(roomId: string, newCount: number): Promise<string | null> {
+/** 참가 팀 수 변경 계획 — 쓰기는 하지 않고 RPC에 넘길 삽입 행/삭제 id만 계산한다. */
+async function planLeagueTeamsResize(roomId: string, newCount: number): Promise<{ error: string } | { insert: Record<string, unknown>[]; remove: string[] }> {
     const { data: current, error: fetchErr } = await supabase
         .from('league_teams')
         .select('id, team_slug, user_id')
         .eq('room_id', roomId);
-    if (fetchErr) return fetchErr.message;
+    if (fetchErr) return { error: actionFailure(fetchErr, '참가 팀 조회') };
 
     const currentCount = (current ?? []).length;
-    if (newCount === currentCount) return null;
+    if (newCount === currentCount) return { insert: [], remove: [] };
 
     if (newCount > currentCount) {
         // 부족한 만큼 새 팀 추가
@@ -603,20 +608,17 @@ async function resizeLeagueTeams(roomId: string, newCount: number): Promise<stri
             }
         }
 
-        if (rows.length === 0) return null;
-        const { error } = await supabase.from('league_teams').insert(rows);
-        return error?.message ?? null;
+        return { insert: rows, remove: [] };
     }
 
     // 줄이는 경우: 미선점 팀부터 제거
     const unclaimed = (current ?? []).filter((t: any) => !t.user_id);
     const removeCount = currentCount - newCount;
     if (removeCount > unclaimed.length) {
-        return `참가 중인 팀(${currentCount - unclaimed.length}개)보다 적은 수로 줄일 수 없습니다.`;
+        return { error: `참가 중인 팀(${currentCount - unclaimed.length}개)보다 적은 수로 줄일 수 없습니다.` };
     }
-    const toRemove = unclaimed.slice(0, removeCount).map((t: any) => t.id);
-    const { error } = await supabase.from('league_teams').delete().in('id', toRemove);
-    return error?.message ?? null;
+    const toRemove = unclaimed.slice(0, removeCount).map((t: any) => t.id as string);
+    return { insert: [], remove: toRemove };
 }
 
 // ─── league_teams 초기화 ──────────────────────────────────────────────────────
@@ -676,7 +678,7 @@ export const initializeLeagueTeams = async (
         p_room_id: roomId,
         p_teams:   teamsJson,
     });
-    return { error: error?.message ?? null };
+    return { error: error ? actionFailure(error, '팀 초기화') : null };
 };
 
 // ─── 팀 선점 / 반환 ───────────────────────────────────────────────────────────
@@ -696,7 +698,7 @@ export const claimTeam = async (
         if (msg.includes('team_already_claimed'))   return { data: null, error: '이미 다른 유저가 선점한 팀입니다.' };
         if (msg.includes('draft_already_ordered'))  return { data: null, error: '드래프트 추첨 후에는 팀을 변경할 수 없습니다.' };
         if (msg.includes('draft_deadline_passed'))  return { data: null, error: '드래프트 마감 시각이 지나 더 이상 참가하거나 팀을 변경할 수 없습니다.' };
-        return { data: null, error: msg };
+        return { data: null, error: actionFailure(error, '팀 선택') };
     }
 
     // 클레임 성공 직후 내 닉네임을 league_teams에 복사 — profiles는 본인 row만 SELECT 가능한 RLS라
@@ -724,7 +726,7 @@ export const releaseTeam = async (
         p_room_id: roomId,
         p_user_id: userId,
     });
-    return { error: error?.message ?? null };
+    return { error: error ? actionFailure(error, '팀 해제') : null };
 };
 
 // ─── 어드민 트레이드 (팀↔팀 선수 스왑) ────────────────────────────────────────
@@ -800,7 +802,7 @@ export const updateTeamProfile = async (
         p_court_logo_scale: courtLogoScale,
         p_court_three:      courtThree, // undefined is dropped from the payload -> RPC default '__keep__'
     });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: actionFailure(error, '팀 설정 저장') };
     return { data: data as LeagueTeamRow, error: null };
 };
 
@@ -817,7 +819,7 @@ export const updateTeamName = async (
         .from('league_teams')
         .update({ team_name: teamName })
         .eq('id', teamId);
-    if (error) return { error: error.message };
+    if (error) return { error: actionFailure(error, '팀 이름 저장') };
     return { error: null };
 };
 
@@ -841,7 +843,7 @@ export const getRoomMemberEmails = async (
     roomId: string,
 ): Promise<{ data: Record<string, string>; error: string | null }> => {
     const { data, error } = await supabase.rpc('get_room_member_emails', { p_room_id: roomId });
-    if (error) return { data: {}, error: error.message };
+    if (error) return { data: {}, error: actionFailure(error, '참가자 이메일 조회') };
     const map: Record<string, string> = {};
     for (const row of (data ?? []) as { user_id: string; email: string }[]) {
         map[row.user_id] = row.email;
@@ -878,7 +880,7 @@ export const deleteLeague = async (
     if (error) {
         if (error.message?.includes('not_authorized')) return { error: '이 리그를 삭제할 권한이 없습니다.' };
         if (error.message?.includes('league_not_found')) return { error: '리그를 찾을 수 없습니다.' };
-        return { error: error.message };
+        return { error: actionFailure(error, '리그 삭제') };
     }
     return { error: null };
 };
@@ -906,11 +908,11 @@ export const startDraft = async (
         });
         const data = await res.json().catch(() => ({})) as any;
         if (!res.ok) {
-            return { error: data?.error ?? `HTTP ${res.status}` };
+            return { error: httpActionFailure(res.status, data?.error, '드래프트 시작') };
         }
         return { error: null };
     } catch (e: any) {
-        return { error: e?.message ?? '드래프트 시작 실패' };
+        return { error: actionFailure(e, '드래프트 시작') };
     }
 };
 
@@ -936,11 +938,11 @@ export const runDraftLottery = async (
         });
         const data = await res.json().catch(() => ({})) as any;
         if (!res.ok) {
-            return { data: null, error: data?.error ?? `HTTP ${res.status}` };
+            return { data: null, error: httpActionFailure(res.status, data?.error, '드래프트 추첨') };
         }
         return { data: data.leagueTeams as LeagueTeamRow[], error: null };
     } catch (e: any) {
-        return { data: null, error: e?.message ?? '드래프트 추첨 실패' };
+        return { data: null, error: actionFailure(e, '드래프트 추첨') };
     }
 };
 
@@ -963,9 +965,10 @@ export const simGameOverride = async (
             body: JSON.stringify({ roomId, gameId }),
         });
         const data = await res.json().catch(() => ({})) as any;
-        return { ok: res.ok, ...data };
+        if (!res.ok) return { ok: false, ...data, error: httpActionFailure(res.status, data?.error, '시뮬레이션 실행') };
+        return { ok: true, ...data };
     } catch (e: any) {
-        return { ok: false, error: e?.message ?? '시뮬레이션 요청 실패' };
+        return { ok: false, error: actionFailure(e, '시뮬레이션 실행') };
     }
 };
 
@@ -983,7 +986,7 @@ export const updateGameScheduledAt = async (
         .select('played')
         .eq('room_id', roomId).eq('game_id', gameId)
         .maybeSingle();
-    if (fetchErr) return { error: fetchErr.message };
+    if (fetchErr) return { error: actionFailure(fetchErr, '경기 조회') };
     if (!target) return { error: '해당 경기를 찾을 수 없습니다.' };
     if (target.played) return { error: '이미 종료된 경기는 일정을 변경할 수 없습니다.' };
 
@@ -993,7 +996,7 @@ export const updateGameScheduledAt = async (
         .update({ scheduled_at: scheduledAtIso })
         .eq('room_id', roomId).eq('game_id', gameId).eq('played', false);
 
-    return { error: error?.message ?? null };
+    return { error: error ? actionFailure(error, '경기 시각 변경') : null };
 };
 
 // ─── 남은 가상 날짜 재배치 (어드민) ─────────────────────────────────────────────
@@ -1030,7 +1033,7 @@ export const applyLeagueReschedule = async (
         p_games: games,
         p_settings: settings,
     });
-    if (error) return { days: 0, games: 0, error: error.message };
+    if (error) return { days: 0, games: 0, error: actionFailure(error, '일정 재배치') };
     const r = (data ?? {}) as { days?: number; games?: number };
     return { days: Number(r.days ?? 0), games: Number(r.games ?? 0), error: null };
 };
@@ -1062,7 +1065,7 @@ export const adminTimeJump = async (
         p_note: note,
     });
     const empty = { deltaSeconds: 0, rowsShifted: 0, rowsRelaid: 0, gamesShifted: 0, gamesLiveFinalized: 0, gamesRelaid: 0, realEndDate: null as string | null };
-    if (error) return { ...empty, error: error.message };
+    if (error) return { ...empty, error: actionFailure(error, '시간 점프') };
     const r = (data ?? {}) as Record<string, unknown>;
     return {
         deltaSeconds: Number(r.delta_seconds ?? 0), rowsShifted: Number(r.rows_shifted ?? 0), rowsRelaid: Number(r.rows_relaid ?? 0),
@@ -1098,14 +1101,14 @@ export const resetTournament = async (
         .from('leagues')
         .update({ status: 'recruiting', bracket_data: null })
         .eq('id', leagueId);
-    if (leagueErr) return { error: leagueErr.message, archiveEdition };
+    if (leagueErr) return { error: actionFailure(leagueErr, '토너먼트 초기화'), archiveEdition };
 
     // [migration 2026-08-06] games 삭제 — game_id가 결정론적(T_R1_M0_G1 등)이라 지우지
     // 않으면 재드래프트 시 (room_id, game_id) PK 충돌로 finalize가 실패한다.
     // game_short_codes도 함께 정리(기존엔 안 지워서 재드래프트 시 UNIQUE 충돌로
     // 숏코드 insert가 조용히 실패하던 버그가 있었음 — 이번에 같이 고침).
     const { error: gamesErr } = await supabase.from('games').delete().eq('room_id', roomId);
-    if (gamesErr) return { error: gamesErr.message, archiveEdition };
+    if (gamesErr) return { error: actionFailure(gamesErr, '토너먼트 초기화'), archiveEdition };
     await supabase.from('game_short_codes').delete().eq('room_id', roomId);
 
     // rooms 초기화 — schedule은 이제 games 테이블이 SSOT이지만, 컬럼 정리(별도 후속) 전까지
@@ -1114,20 +1117,20 @@ export const resetTournament = async (
         .from('rooms')
         .update({ schedule: [], roster_state: {} })
         .eq('id', roomId);
-    if (roomErr) return { error: roomErr.message, archiveEdition };
+    if (roomErr) return { error: actionFailure(roomErr, '토너먼트 초기화'), archiveEdition };
 
     // league_teams 로스터 & 드래프트 오더 초기화
     const { error: teamsErr } = await supabase
         .from('league_teams')
         .update({ roster: [], draft_order: null })
         .eq('room_id', roomId);
-    if (teamsErr) return { error: teamsErr.message, archiveEdition };
+    if (teamsErr) return { error: actionFailure(teamsErr, '토너먼트 초기화'), archiveEdition };
 
     // [2026-09-18] 개인 팩 드래프트 룸 — 룸 스코프 선수 인스턴스/상태/진행 행도 같이 지운다
     // (안 지우면 재참가 시 start_personal_draft가 'completed' 진행 행을 그대로 돌려줘 드래프트를
     // 다시 못 한다). 공유풀 드래프트 룸에선 지울 행이 없어 no-op. 어드민 세션만 허용(SECURITY DEFINER 내부 검사).
     const { error: cleanupErr } = await supabase.rpc('personal_draft_cleanup_room', { p_room_id: roomId });
-    if (cleanupErr) return { error: cleanupErr.message, archiveEdition };
+    if (cleanupErr) return { error: actionFailure(cleanupErr, '토너먼트 초기화'), archiveEdition };
 
     return { error: null, archiveEdition };
 };
@@ -1145,5 +1148,5 @@ export const updateLeagueGroupStatus = async (
         .update(payload)
         .eq('id', groupId);
 
-    return { error: error?.message ?? null };
+    return { error: error ? actionFailure(error, '리그 그룹 상태 변경') : null };
 };

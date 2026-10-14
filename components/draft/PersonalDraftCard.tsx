@@ -7,7 +7,8 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { OvrBadge } from '../common/OvrBadge';
 import { PlayerRatingsStatsPopup } from '../common/PlayerHoverCard';
-import { getRealTeamLogoUrl, resolveTeamId } from '../../utils/constants';
+import { resolveTeamId } from '../../utils/constants';
+import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 import { getCardExtraTeam } from '../../data/cardTeams';
 import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, teamImageLayer, teamImageLayerStyle, type CardTeamColor } from '../../utils/cardBackground';
@@ -78,7 +79,7 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
         let top = hover.y + POPUP_OFFSET;
         if (left + popupSize.w > window.innerWidth - POPUP_MARGIN) left = hover.x - POPUP_OFFSET - popupSize.w;
         if (top + popupSize.h > window.innerHeight - POPUP_MARGIN) top = hover.y - POPUP_OFFSET - popupSize.h;
-        popupStyle = { position: 'fixed', top: Math.max(POPUP_MARGIN, top), left: Math.max(POPUP_MARGIN, left), zIndex: 200 };
+        popupStyle = { position: 'fixed', top: Math.max(POPUP_MARGIN, top), left: Math.max(POPUP_MARGIN, left) };
     }
 
     return (
@@ -106,17 +107,18 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                 {imageLayer && <div aria-hidden="true" style={teamImageLayerStyle(imageLayer) as React.CSSProperties} />}
 
                 {/* 컬렉션 헤더 — 소속 컬렉션이 없으면 빈 칸(높이는 유지) */}
-                <div className="relative h-6 shrink-0 px-2.5 flex items-center justify-center text-[11px] font-bold uppercase tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate text-center">
+                <div className="relative h-6 shrink-0 px-2.5 flex items-center justify-center text-[11px] font-bold tracking-wide text-white/70 bg-black/50 border-b border-white/10 truncate text-center">
                     {player.collection?.name ?? ''}
                 </div>
 
                 {/* 카드 정중앙 팀 로고(헤더 포함 카드 전체 기준) — 에디션 옵션 show_center_logo */}
                 {teamId && player.showCenterLogo !== false && (
-                    <img
-                        src={getRealTeamLogoUrl(teamId)}
-                        alt=""
+                    <TeamLogo
+                        teamId={teamId}
+                        size="custom"
+                        shadow={false}
                         draggable={false}
-                        className="absolute inset-0 m-auto w-[40%] aspect-square object-contain pointer-events-none"
+                        className="absolute inset-0 m-auto w-[40%] aspect-square pointer-events-none"
                         style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,.6))' }}
                     />
                 )}
@@ -127,11 +129,12 @@ export const PersonalDraftCard: React.FC<PersonalDraftCardProps> = ({ player, se
                         <OvrBadge value={player.ovr} size="card" />
                         <div className="w-11 h-11 flex items-center justify-center">
                             {teamId && player.showCornerLogo !== false && (
-                                <img
-                                    src={getRealTeamLogoUrl(teamId)}
-                                    alt=""
+                                <TeamLogo
+                                    teamId={teamId}
+                                    size="custom"
+                                    shadow={false}
                                     draggable={false}
-                                    className="w-10 h-10 object-contain pointer-events-none"
+                                    className="w-10 h-10 pointer-events-none"
                                     style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.6))' }}
                                 />
                             )}

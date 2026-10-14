@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { HEX_COLOR_RE } from '../../utils/colorContrast';
+import { InlineNotice } from '../common/InlineNotice';
 
 // TeamSetupModal/TeamSettingsPanel이 각자 반복 정의하던 "컬러 피커 + 헥스 텍스트 입력" 한 쌍을
 // 공용 컴포넌트로 통합 — 라벨/값만 바꿔가며 재사용.
@@ -11,9 +12,11 @@ interface ColorFieldProps {
     onChange: (v: string) => void;
     disabled?: boolean;
     placeholder?: string;
+    /** [2026-10-13] 이 입력의 검증 실패 문구 — 있으면 텍스트 입력 테두리를 적색으로 바꾸고 아래에 danger sm으로 표시(에러 표시 정책, 입력별 분리). */
+    error?: string;
 }
 
-export const ColorField: React.FC<ColorFieldProps> = ({ label, value, onChange, disabled, placeholder }) => {
+export const ColorField: React.FC<ColorFieldProps> = ({ label, value, onChange, disabled, placeholder, error }) => {
     const safe = HEX_COLOR_RE.test(value) ? value : '#000000';
     return (
         <div>
@@ -33,9 +36,10 @@ export const ColorField: React.FC<ColorFieldProps> = ({ label, value, onChange, 
                     onChange={e => onChange(e.target.value)}
                     maxLength={7}
                     placeholder={placeholder}
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`flex-1 bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed ${error ? 'border-red-500/60' : 'border-slate-700'}`}
                 />
             </div>
+            {error && <InlineNotice tone="danger" size="sm" className="mt-1">{error}</InlineNotice>}
         </div>
     );
 };

@@ -78,7 +78,7 @@ const getStickyStyle = (left: number, width: number, isLast: boolean = false) =>
     maxWidth: width,
     position: 'sticky' as const,
     zIndex: 30,
-    borderRight: isLast ? undefined : 'none',
+
 });
 
 // ── 탭 타입 ──
@@ -388,39 +388,39 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                                     >이름</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }}
-                                        align="left" className="bg-slate-950 border-r border-slate-800"
+                                        align="left" className="bg-slate-950"
                                         sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
                                     >포지션</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }}
-                                        align="left" className="bg-slate-950 border-r border-slate-800"
+                                        align="left" className="bg-slate-950"
                                         sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
                                     >나이</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_HT, WIDTHS.HT), zIndex: 50 }}
-                                        align="left" className="bg-slate-950 border-r border-slate-800"
+                                        align="left" className="bg-slate-950"
                                         sortable onSort={() => handleSort('height')} sortDirection={sortConfig.key === 'height' ? sortConfig.direction : null}
                                     >키</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_WT, WIDTHS.WT), zIndex: 50 }}
-                                        align="left" className="bg-slate-950 border-r border-slate-800"
+                                        align="left" className="bg-slate-950"
                                         sortable onSort={() => handleSort('weight')} sortDirection={sortConfig.key === 'weight' ? sortConfig.direction : null}
                                     >몸무게</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR), zIndex: 50 }}
-                                        className="bg-slate-950 border-r border-slate-800"
+                                        className="bg-slate-950"
                                         sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
                                     >OVR</TableHeaderCell>
                                     <TableHeaderCell
                                         style={{ ...getStickyStyle(LEFT_POT, WIDTHS.POT, true), zIndex: 50 }}
-                                        className="bg-slate-950 border-r border-slate-800"
+                                        className="bg-slate-950"
                                         sortable onSort={() => handleSort('pot')} sortDirection={sortConfig.key === 'pot' ? sortConfig.direction : null}
                                     >POT</TableHeaderCell>
                                     {ATTR_COLS.map(k => (
                                         <TableHeaderCell
                                             key={k}
                                             width={WIDTHS.ATTR}
-                                            className="border-r border-slate-800"
+                                            className=""
                                             sortable
                                             onSort={() => handleSort(k)}
                                             sortDirection={sortConfig.key === k ? sortConfig.direction : null}
@@ -440,18 +440,18 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                                             <TableCell style={getStickyStyle(LEFT_NAME, WIDTHS.NAME)} align="left" className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                                 <span className="font-semibold text-slate-200 truncate">{p.name}</span>
                                             </TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800">{p.position}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.age}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_HT, WIDTHS.HT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.height}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_WT, WIDTHS.WT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">{p.weight}</TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} align="center" className="bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
+                                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.position}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.age}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_HT, WIDTHS.HT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.height}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_WT, WIDTHS.WT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.weight}</TableCell>
+                                            <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} align="center" className="bg-slate-900 group-hover:bg-slate-800">
                                                 <div className="flex justify-center items-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                             </TableCell>
-                                            <TableCell style={getStickyStyle(LEFT_POT, WIDTHS.POT, true)} align="center" className="bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800">
+                                            <TableCell style={getStickyStyle(LEFT_POT, WIDTHS.POT, true)} align="center" className="bg-slate-900 group-hover:bg-slate-800">
                                                 <span className="font-mono font-black tabular-nums text-amber-400/80">{p.potential}</span>
                                             </TableCell>
                                             {ATTR_COLS.map(k => (
-                                                <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30" value={(p as any)[k]} variant="attribute" colorScale />
+                                                <TableCell key={k} align="center" className="font-semibold font-mono" value={(p as any)[k]} variant="attribute" colorScale />
                                             ))}
                                             <TableCell align="center" className="pl-3">
                                                 <span className="text-slate-500 italic truncate block">{getScoutComment(p)}</span>

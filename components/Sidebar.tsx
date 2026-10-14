@@ -245,7 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             {isMenuOpen && createPortal(
               <div
                 ref={dropdownRef}
-                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-[300] bg-slate-800 border border-slate-700"
+                className="fixed w-56 rounded-xl overflow-hidden shadow-2xl z-popover bg-slate-800 border border-slate-700"
                 style={{
                   bottom: `${dropdownBottom}px`,
                   left: `${dropdownLeft}px`,

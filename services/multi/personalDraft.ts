@@ -2,6 +2,28 @@
 // docs/plan/tournament-personal-pack-draft-plan.md Phase 3/3.5 — RPC 정의는
 // migrations/add_personal_draft_rpcs.sql + add_personal_draft_timer.sql 참고.
 import { supabase } from '../supabaseClient';
+import { actionFailure } from '../notifications/actionErrorCatalog';
+
+// [2026-10-13] RPC RAISE 코드 → 사용자 문구(migrations/add_personal_draft_rpcs.sql, add_personal_draft_multi_pick_and_seen.sql).
+// 표에 없는 원문(네트워크·권한·타임아웃)은 actionFailure가 부류별 문구로 바꾼다 — 영어 원문을 화면에 내보내지 않는다.
+const PERSONAL_DRAFT_ERROR_TEXT: [RegExp, string][] = [
+    [/not_personal_draft_league/, '이 리그는 개인 드래프트를 사용하지 않습니다.'],
+    [/draft_not_started/,         '드래프트가 아직 시작되지 않았습니다.'],
+    [/draft_already_completed/,   '드래프트가 이미 완료되었습니다.'],
+    [/pack_not_generated/,        '이번 라운드 팩이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요.'],
+    [/pick_count_mismatch/,       '지명할 카드 수가 맞지 않습니다. 남은 픽 수만큼 선택하세요.'],
+    [/duplicate_card/,            '같은 카드를 두 번 선택했습니다.'],
+    [/player_not_in_pack/,        '이번 팩에 없는 카드입니다. 팩을 새로고침합니다.'],
+    [/duplicate_player/,          '같은 선수의 카드를 이미 보유했거나 선택 중입니다.'],
+    [/invalid_format|invalid_round_config/, '드래프트 포맷 설정이 올바르지 않습니다. 어드민에게 문의하세요.'],
+    [/not_team_owner/,            '본인 팀에서만 지명할 수 있습니다.'],
+    [/team_not_found/,            '팀을 찾을 수 없습니다.'],
+];
+export function mapPersonalDraftError(err: { message?: string } | string | null | undefined, what: string): string {
+    const msg = typeof err === 'string' ? err : (err?.message ?? '');
+    for (const [re, text] of PERSONAL_DRAFT_ERROR_TEXT) if (re.test(msg)) return text;
+    return actionFailure(err, what);
+}
 
 export interface PersonalDraftPackState {
     status: 'in_progress' | 'completed';
@@ -36,7 +58,7 @@ export async function startPersonalDraft(
         p_room_id: roomId,
         p_team_id: teamId,
     });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: mapPersonalDraftError(error, '드래프트 시작') };
     return { data: data as PersonalDraftPackState, error: null };
 }
 
@@ -49,7 +71,7 @@ export async function getOrGenerateRoundPack(
         p_room_id: roomId,
         p_team_id: teamId,
     });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: mapPersonalDraftError(error, '팩 불러오기') };
     return { data: data as PersonalDraftPackState, error: null };
 }
 
@@ -68,7 +90,7 @@ export async function submitPersonalDraftPicks(
         p_team_id: teamId,
         p_card_ids: cardIds,
     });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: mapPersonalDraftError(error, '지명') };
     return { data: data as PersonalDraftPickResult, error: null };
 }
 
@@ -84,6 +106,6 @@ export async function submitPersonalDraftPick(
         p_team_id: teamId,
         p_source_player_id: sourcePlayerId,
     });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: mapPersonalDraftError(error, '지명') };
     return { data: data as PersonalDraftPickResult, error: null };
 }

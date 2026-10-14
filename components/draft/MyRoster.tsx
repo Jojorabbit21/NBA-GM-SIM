@@ -3,6 +3,7 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
+import { Button } from '../common/Button';
 import { formatMoney } from '../../utils/formatMoney';
 
 interface MyRosterProps {
@@ -13,6 +14,8 @@ interface MyRosterProps {
      * 전용, 싱글/루키 드래프트뷰는 기존처럼 아예 렌더링 안 함). */
     myAutoPick?: boolean;
     onToggleAutoPick?: (next: boolean) => void;
+    /** [2026-10-13] WS 끊김 중엔 토글을 막는다(조용히 무시되던 문제) */
+    autoPickDisabled?: boolean;
     /** [2026-09-22] playerId → 생성 연봉(달러). 멀티 alternative 계약 모드에서만 전달, 행 우측에 표시. */
     salaries?: Record<string, number>;
 }
@@ -20,7 +23,7 @@ interface MyRosterProps {
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const RESERVES = 10;
 
-const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, myAutoPick, onToggleAutoPick, salaries }) => {
+const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, myAutoPick, onToggleAutoPick, autoPickDisabled = false, salaries }) => {
     const salaryOf = (id: string) => {
         const v = salaries?.[id];
         return v != null ? <span className="ml-auto pl-2 shrink-0 text-sm text-slate-400">{formatMoney(v)}</span> : null;
@@ -64,20 +67,20 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
                 <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-black uppercase text-indigo-400 shrink-0">내 로스터</span>
+                    <span className="text-sm font-black text-indigo-400 shrink-0">내 로스터</span>
                     {onToggleAutoPick && (
-                        <button
+                        <Button
+                            variant={myAutoPick ? 'success' : 'secondary'}
+                            size="xs"
+                            shape="md"
                             onClick={() => onToggleAutoPick(!myAutoPick)}
-                            title={myAutoPick ? '오토픽 켜짐 (클릭해서 끄기)' : '오토픽 켜기'}
-                            className={`flex items-center gap-1 text-sm font-semibold px-2 py-0.5 rounded-md transition-colors shrink-0 ${
-                                myAutoPick
-                                    ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                            }`}
+                            disabled={autoPickDisabled}
+                            title={autoPickDisabled ? '연결이 끊겨 변경할 수 없습니다' : myAutoPick ? '오토픽 켜짐 (클릭해서 끄기)' : '오토픽 켜기'}
+                            icon={<RefreshCw size={11} />}
+                            className="shrink-0"
                         >
-                            <RefreshCw size={11} />
                             <span className="ko-normal">AUTO</span>
-                        </button>
+                        </Button>
                     )}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -96,7 +99,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 {/* Starters */}
                 <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
-                    <span className="text-sm font-black uppercase text-slate-400">선발</span>
+                    <span className="text-sm font-black text-slate-400">선발</span>
                 </div>
                 {POSITION_ORDER.map((pos, i) => {
                     const player = starters[i];
@@ -111,7 +114,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                             </span>
                             {player ? (
                                 <>
-                                    <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
+                                    <OvrBadge value={player.ovr} size="sm" />
                                     <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
                                     {salaryOf(player.id)}
                                 </>
@@ -124,7 +127,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
 
                 {/* Reserves */}
                 <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
-                    <span className="text-sm font-black uppercase text-slate-400">벤치</span>
+                    <span className="text-sm font-black text-slate-400">벤치</span>
                 </div>
                 {reserves.map((player, i) => {
                     const isNewPick = player && newPickIds?.has(player.id);
@@ -138,7 +141,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                                     <span className="text-sm font-bold w-8 shrink-0 text-slate-400">
                                         {player.position}
                                     </span>
-                                    <OvrBadge value={player.ovr} size="sm" textClassName="text-sm" />
+                                    <OvrBadge value={player.ovr} size="sm" />
                                     <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
                                     {salaryOf(player.id)}
                                 </>
@@ -155,7 +158,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                 {/* 팀 토탈 샐러리 — alternative 계약 모드 전용, 스크롤해도 보이도록 하단 고정 */}
                 {totalSalary != null && (
                     <div className="sticky bottom-0 shrink-0 px-3 h-10 flex items-center justify-between border-t border-slate-800/50 bg-slate-900">
-                        <span className="text-sm font-black uppercase text-slate-400">팀 토탈</span>
+                        <span className="text-sm font-black text-slate-400">팀 토탈</span>
                         <span className="text-sm font-bold text-white">{formatMoney(totalSalary)}</span>
                     </div>
                 )}

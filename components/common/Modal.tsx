@@ -27,6 +27,8 @@ interface ModalProps {
      *  값이 필요한 팝업만 덮어씀. Tailwind가 리터럴 문자열을 정적 스캔하므로 완전한
      *  클래스명 문자열로 넘길 것(동적 조합 금지). */
     backdropClass?: string;
+    /** [2026-10-13] 배경 클릭으로 닫히는지(기본 true). 우승 축하처럼 실수로 닫히면 안 되는 모달은 false — X/확인 버튼으로만 닫힘. */
+    closeOnBackdrop?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -42,6 +44,7 @@ export const Modal: React.FC<ModalProps> = ({
     blurBackdrop = false,
     rounded = 'rounded-[2rem]',
     backdropClass = 'bg-slate-950/80',
+    closeOnBackdrop = true,
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -61,9 +64,9 @@ export const Modal: React.FC<ModalProps> = ({
             }
         };
 
-        if (isOpen) window.addEventListener('mousedown', handleClickOutside);
+        if (isOpen && closeOnBackdrop) window.addEventListener('mousedown', handleClickOutside);
         return () => window.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, closeOnBackdrop]);
 
     if (!isOpen) return null;
 
@@ -78,7 +81,7 @@ export const Modal: React.FC<ModalProps> = ({
     return createPortal(
         <div
             id="modal-backdrop"
-            className={`fixed inset-0 z-[500] flex items-center justify-center ${backdropClass} ${blurBackdrop ? 'backdrop-blur-md' : ''} p-4 animate-in fade-in duration-200`}
+            className={`fixed inset-0 z-modal flex items-center justify-center ${backdropClass} ${blurBackdrop ? 'backdrop-blur-md' : ''} p-4 animate-in fade-in duration-200`}
         >
             <div
                 ref={modalRef}

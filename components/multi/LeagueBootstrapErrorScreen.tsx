@@ -9,6 +9,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import { Button } from '../common/Button';
 import type { LeagueBootstrapState } from '../../hooks/useLeagueBootstrap';
 import { supabase } from '../../services/supabaseClient';
 
@@ -27,25 +28,22 @@ export const LeagueBootstrapErrorScreen: React.FC<Props> = ({ boot }) => {
 
     return (
         <div className="relative flex items-center justify-center h-full min-h-screen bg-gray-950 px-4">
-            <button
-                type="button"
+            <Button
+                variant="link"
                 onClick={() => navigate('/')}
-                className="absolute top-4 left-4 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                icon={<ChevronLeft size={16} />}
+                className="absolute top-4 left-4"
             >
-                <ChevronLeft size={16} />홈으로
-            </button>
+                홈으로
+            </Button>
 
             <div className="w-full max-w-xs flex flex-col items-center gap-3 text-center" aria-live="polite">
                 <p className="text-base text-red-200 ko-normal">
                     {isAuth ? '세션이 만료됐습니다. 다시 로그인해 주세요' : '서버가 응답하지 않아 리그 데이터를 불러오지 못했습니다'}
                 </p>
-                <button
-                    type="button"
-                    onClick={isAuth ? handleRelogin : boot.retry}
-                    className="mt-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-bold text-white transition-colors"
-                >
+                <Button variant="primary" size="lg" onClick={isAuth ? handleRelogin : boot.retry} className="mt-1">
                     {isAuth ? '다시 로그인' : '다시 시도'}
-                </button>
+                </Button>
             </div>
         </div>
     );

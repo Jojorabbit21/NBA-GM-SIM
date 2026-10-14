@@ -1,24 +1,31 @@
-
 import React from 'react';
 
 interface BadgeProps {
     children: React.ReactNode;
     variant?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
-    size?: 'sm' | 'md';
+    /** xs[2026-10-13] = 표 셀 안 이름 옆에 붙는 한 글자~두 글자 꼬리표(TW 등): px-1 py-0.5 text-[10px] leading-none */
+    size?: 'xs' | 'sm' | 'md';
+    /** pill(기본, rounded-full) / square(rounded) — 표 셀 안 꼬리표는 square */
+    shape?: 'pill' | 'square';
+    /** 마우스 오버 설명(예: "Two-Way 계약") */
+    title?: string;
     className?: string;
     icon?: React.ReactNode;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ 
-    children, 
-    variant = 'neutral', 
+export const Badge: React.FC<BadgeProps> = ({
+    children,
+    variant = 'neutral',
     size = 'md',
+    shape = 'pill',
+    title,
     className = '',
     icon
 }) => {
-    const baseStyles = "inline-flex items-center justify-center font-black uppercase tracking-wider rounded-full border";
-    
+    const baseStyles = `inline-flex items-center justify-center font-black border ${shape === 'square' ? 'rounded' : 'rounded-full'}`;
+
     const sizes = {
+        xs: "px-1 py-0.5 text-[10px] leading-none shrink-0",
         sm: "px-2 py-0.5 text-[9px]",
         md: "px-3 py-1 text-[10px]"
     };
@@ -33,7 +40,7 @@ export const Badge: React.FC<BadgeProps> = ({
     };
 
     return (
-        <span className={`${baseStyles} ${sizes[size]} ${variants[variant]} ${className}`}>
+        <span className={`${baseStyles} ${sizes[size]} ${variants[variant]} ${className}`} title={title}>
             {icon && <span className="mr-1.5">{icon}</span>}
             {children}
         </span>

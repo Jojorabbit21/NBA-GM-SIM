@@ -1,6 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { InlineNotice } from '../../components/common/InlineNotice';
+import { Save } from 'lucide-react';
+import { Button } from '../common/Button';
+import { EmptyState } from '../common/EmptyState';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
 import { updateTeamProfile } from '../../services/multi/leagueService';
@@ -9,10 +12,16 @@ import { TEAM_DATA } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import { HEX_COLOR_RE, contrastRatio } from '../../utils/colorContrast';
 import { CourtPreview } from './CourtPreview';
-import { getRealTeamLogoUrl } from '../../utils/constants';
+import { getTeamLogoUrl } from '../../utils/constants';
 import { ColorField } from './ColorField';
 
 const HEX_RE = HEX_COLOR_RE;
+const HEX_FORMAT_MSG = '#RRGGBB 형식이어야 합니다';
+
+// 입력별 검증 키 — 닉네임 + 팀 컬러 4 + 코트 컬러 4. 각 입력 아래 sm으로 표시(에러 표시 정책 2차, 2026-10-13).
+type FieldKey = 'nickname' | 'primary' | 'secondary' | 'tertiary' | 'text' | 'background' | 'three' | 'paint' | 'line';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+type ColorFieldDef = { key: Exclude<FieldKey, 'nickname'>; label: string; value: string; setter: (v: string) => void };
 
 // team_slug는 실제 NBA 팀(TEAM_DATA) 또는 가상 확장팀(VIRTUAL_TEAMS) 둘 중 하나 — 연고지는
 // 어느 쪽이든 항상 고정값이라 유저가 바꿀 수 없다(약어와 동일 원칙).
@@ -61,8 +70,13 @@ export const TeamSettingsPanel: React.FC = () => {
     const setCourtPaint      = setCourtPaintOverride;
     const setCourtLine       = setCourtLineOverride;
     const [saving,  setSaving]  = useState(false);
+    // saveErr = 서버 저장 실패(하단 md) / fieldErrors = 입력별 검증(각 입력 아래 sm). [2026-10-13] 에러 표시 정책 2차.
     const [saveErr, setSaveErr] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
     const [saved,   setSaved]   = useState(false);
+    const clearField = (key: FieldKey) =>
+        setFieldErrors(prev => (key in prev ? { ...prev, [key]: undefined } : prev));
+    const setField = (key: FieldKey, setter: (v: string) => void) => (v: string) => { setter(v); clearField(key); };
 
     useEffect(() => {
         if (!myTeam) return;
@@ -79,11 +93,12 @@ export const TeamSettingsPanel: React.FC = () => {
         setCourtShowLogo(myTeam.court_show_logo ?? true);
         setCourtLogoScale(myTeam.court_logo_scale ?? 100);
         setSaveErr(null);
+        setFieldErrors({});
         setSaved(false);
     }, [myTeam?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!myTeam) {
-        return <p className="text-sm text-slate-400 ko-normal px-6 py-6">아직 선점한 팀이 없습니다. 로비에서 먼저 팀을 선택해주세요.</p>;
+        return <EmptyState title="아직 선점한 팀이 없습니다. 로비에서 먼저 팀을 선택해주세요." />;
     }
 
     const safeP = HEX_RE.test(colorPrimary)   ? colorPrimary   : '#e11d48';
@@ -94,13 +109,13 @@ export const TeamSettingsPanel: React.FC = () => {
     const safeCourtPaint = HEX_RE.test(courtPaint)      ? courtPaint      : courtDefaults.paint;
     const safeCourtLine  = HEX_RE.test(courtLine)       ? courtLine       : courtDefaults.line;
 
-    const teamColorFields = [
+    const teamColorFields: ColorFieldDef[] = [
         { key: 'primary',   label: 'Primary (배경)',       value: colorPrimary,   setter: setColorPrimary },
         { key: 'secondary', label: 'Secondary (보더)',      value: colorSecondary, setter: setColorSecondary },
         { key: 'tertiary',  label: 'Tertiary (포인트)',     value: colorTertiary,  setter: setColorTertiary },
         { key: 'text',      label: 'Text (배지 글자색)',    value: colorText,      setter: setColorText },
     ];
-    const courtColorFields = [
+    const courtColorFields: ColorFieldDef[] = [
         { key: 'background', label: '코트 배경',   value: courtBackground, setter: setCourtBackground },
         { key: 'three',      label: '3점 라인 안쪽', value: courtThree,     setter: setCourtThreeOverride },
         { key: 'paint',      label: '페인트존',    value: courtPaint,      setter: setCourtPaint },
@@ -109,16 +124,22 @@ export const TeamSettingsPanel: React.FC = () => {
 
     const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+    // 모든 입력을 한 번에 훑어 맵 반환 — 첫 실패에서 끊지 않으므로 틀린 입력 전부 동시에 표시된다.
+    const validate = (trimNick: string): FieldErrors => {
+        const e: FieldErrors = {};
+        if (trimNick.length < 1 || trimNick.length > 20) e.nickname = '닉네임은 1~20자여야 합니다';
+        for (const f of [...teamColorFields, ...courtColorFields]) {
+            if (!HEX_RE.test(f.value)) e[f.key] = HEX_FORMAT_MSG;
+        }
+        return e;
+    };
+
     const handleSave = async () => {
         if (!myTeam || !userId) return;
         const trimNick = nickname.trim();
-        if (trimNick.length < 1 || trimNick.length > 20) { setSaveErr('닉네임은 1~20자여야 합니다'); return; }
-        for (const [label, val] of [
-            ['Primary', colorPrimary], ['Secondary', colorSecondary], ['Tertiary', colorTertiary], ['Text', colorText],
-            ['코트 배경', courtBackground], ['3점 라인 안쪽', courtThree], ['페인트존', courtPaint], ['라인', courtLine],
-        ]) {
-            if (!HEX_RE.test(val)) { setSaveErr(`${label} 색상은 #RRGGBB 형식이어야 합니다`); return; }
-        }
+        const errors = validate(trimNick);
+        setFieldErrors(errors);
+        if (Object.values(errors).some(Boolean)) return;
 
         setSaving(true);
         setSaveErr(null);
@@ -145,11 +166,7 @@ export const TeamSettingsPanel: React.FC = () => {
     return (
         <div className="max-w-4xl mx-auto px-6 py-6">
             {!canEditIdentity && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 mb-4">
-                    <p className="text-xs text-amber-300 ko-normal leading-relaxed">
-                        드래프트가 진행되는 동안에는 팀 설정을 변경할 수 없습니다.
-                    </p>
-                </div>
+                <InlineNotice tone="info" className="mb-4">드래프트가 진행되는 동안에는 팀 설정을 변경할 수 없습니다.</InlineNotice>
             )}
 
             {/* 좌/우 2컬럼 */}
@@ -171,7 +188,7 @@ export const TeamSettingsPanel: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">팀 이름</h3>
+                        <h3 className="text-xs font-bold text-slate-500">팀 이름</h3>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">연고지 (고정)</label>
@@ -181,7 +198,7 @@ export const TeamSettingsPanel: React.FC = () => {
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">약어 (고정)</label>
-                                <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-500 font-mono">
+                                <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-500">
                                     {myTeam.team_abbr}
                                 </div>
                             </div>
@@ -192,23 +209,23 @@ export const TeamSettingsPanel: React.FC = () => {
                                 type="text"
                                 value={nickname}
                                 disabled={!canEditIdentity}
-                                onChange={e => setNickname(e.target.value)}
+                                onChange={e => { setNickname(e.target.value); clearField('nickname'); }}
                                 maxLength={20}
                                 placeholder="예: 파이어스"
-                                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed ${fieldErrors.nickname ? 'border-red-500/60' : 'border-slate-700'}`}
                             />
+                            {fieldErrors.nickname && <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors.nickname}</InlineNotice>}
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">팀 컬러</h3>
+                        <h3 className="text-xs font-bold text-slate-500">팀 컬러</h3>
                         {teamColorFields.map(({ key, label, value, setter }) => (
-                            <ColorField key={key} label={label} value={value} onChange={setter} disabled={!canEditIdentity} />
+                            <ColorField key={key} label={label} value={value} onChange={setField(key, setter)} disabled={!canEditIdentity} error={fieldErrors[key]} />
                         ))}
-                        {HEX_RE.test(colorPrimary) && HEX_RE.test(colorText) && contrastRatio(colorPrimary, colorText) < 3 && (
-                            <p className="text-xs text-amber-400 ko-normal">
-                                ⚠ 배경(Primary)과 텍스트 색상의 대비가 낮아 글자가 잘 안 보일 수 있습니다.
-                            </p>
+                        {/* 대비 경고(warning sm)는 같은 자리에 형식 오류(danger sm)가 있으면 숨김 — 한 슬롯에 danger/warning 겹치지 않기 */}
+                        {!fieldErrors.primary && !fieldErrors.text && HEX_RE.test(colorPrimary) && HEX_RE.test(colorText) && contrastRatio(colorPrimary, colorText) < 3 && (
+                            <InlineNotice tone="warning" size="sm">배경(Primary)과 텍스트 색상의 대비가 낮아 글자가 잘 안 보일 수 있습니다.</InlineNotice>
                         )}
                     </div>
                 </div>
@@ -216,10 +233,10 @@ export const TeamSettingsPanel: React.FC = () => {
                 {/* ── 우: 코트 색상 + 실시간 미리보기 ── */}
                 <div className="space-y-5">
                     <div>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">코트 미리보기</h3>
+                        <h3 className="text-xs font-bold text-slate-500 mb-2">코트 미리보기</h3>
                         <div className="rounded-xl overflow-hidden border border-slate-800">
                             <svg viewBox="0 0 940 500" className="w-full">
-                                <CourtPreview background={safeCourtBg} paint={safeCourtPaint} line={safeCourtLine} three={safeCourtThree} logoUrl={courtShowLogo ? getRealTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
+                                <CourtPreview background={safeCourtBg} paint={safeCourtPaint} line={safeCourtLine} three={safeCourtThree} logoUrl={courtShowLogo ? getTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
                             </svg>
                         </div>
                         <p className="text-[11px] text-slate-500 ko-normal mt-1.5 leading-relaxed">
@@ -228,9 +245,9 @@ export const TeamSettingsPanel: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">코트 컬러</h3>
+                        <h3 className="text-xs font-bold text-slate-500">코트 컬러</h3>
                         {courtColorFields.map(({ key, label, value, setter }) => (
-                            <ColorField key={key} label={label} value={value} onChange={setter} disabled={!canEditIdentity} />
+                            <ColorField key={key} label={label} value={value} onChange={setField(key, setter)} disabled={!canEditIdentity} error={fieldErrors[key]} />
                         ))}
                         <label className="flex items-center justify-between gap-3 pt-1 cursor-pointer">
                             <span className="text-sm text-slate-300 ko-normal">코트 중앙에 팀 로고 표시</span>
@@ -251,27 +268,30 @@ export const TeamSettingsPanel: React.FC = () => {
                                 disabled={!canEditIdentity || !courtShowLogo}
                                 className="flex-1 accent-indigo-500"
                             />
-                            <span className="text-xs font-mono text-slate-400 w-10 text-right">{courtLogoScale}%</span>
+                            <span className="text-xs text-slate-400 w-10 text-right">{courtLogoScale}%</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {saveErr && <p className="text-xs text-red-400 ko-normal mt-4">{saveErr}</p>}
+            {/* 서버 저장 실패 전용 — 검증 문구는 각 입력 아래로 */}
+            {saveErr && <InlineNotice tone="danger" className="mt-4">{saveErr}</InlineNotice>}
 
             <div className="pt-4">
-                <button
+                <Button
+                    variant="primary"
+                    size="lg"
+                    shape="xl"
+                    fullWidth
                     onClick={handleSave}
                     disabled={saving || !canEditIdentity}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    isLoading={saving}
                 >
-                    {saving
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : saved
+                    {saved
                         ? '저장됨'
                         : <><Save size={14} />저장</>
                     }
-                </button>
+                </Button>
             </div>
         </div>
     );

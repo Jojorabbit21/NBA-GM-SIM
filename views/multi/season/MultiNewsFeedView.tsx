@@ -1,12 +1,18 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BrandMark } from './newsFeedLetter';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
 import { getLeagueNotificationScope, setLeagueNotificationScope, type LeagueNotificationScope } from '../../../hooks/useLeagueNotifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, X } from 'lucide-react';
+import { Calendar, Check, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useLeagueNewsFeed, type LeagueEvent, type LeagueEventType, type NewsSortOrder } from '../../../hooks/useLeagueHeadlines';
+
+/** `?story=<id>` 딥링크로 들어왔을 때 대상 뉴스를 찾기 위해 추가로 받아 볼 최대 건수(페이지 30건 × 5). */
+const STORY_DEEPLINK_MAX_SCAN = 150;
 import { buildNewsBlurb, buildNewsTitle } from '../../../services/multi/newsBlurb';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -14,6 +20,7 @@ import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { useServerClockBucket } from '../../../utils/serverClock';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { TeamBadge } from '../../../components/common/TeamBadge';
+import { CheckboxFilterDropdown } from '../../../components/common/filters/CheckboxFilterDropdown';
 import { StoryCard, extractEventPlayerIds } from './newsFeedCards';
 import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap, mergeInjuryIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
@@ -21,6 +28,9 @@ import { usePlayerInjuryRowsBatch } from '../../../hooks/usePlayerInjuryRowsBatc
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate, addDaysToKey } from './multiScheduleUtils';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
+import { IconButton } from '../../../components/common/IconButton';
+import { Button } from '../../../components/common/Button';
+import { SegmentedControl } from '../../../components/common/SegmentedControl';
 
 // [2026-09-01] 좌측 리스트 헤더 아래 타입 필터 행 — 메세지 타입별로 다중 선택 필터링.
 // 빈 배열 = 전체 타입(팀 필터와 동일한 관례). game_result를 선택해도 useLeagueNewsFeed의
@@ -181,22 +191,6 @@ const MultiNewsFeedView: React.FC = () => {
             ? simDateFrom
             : `${simDateFrom || '처음'} ~ ${simDateTo || '지금'}`;
 
-    const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
-    const teamBtnRef = useRef<HTMLButtonElement>(null);
-    const [teamDropdownPos, setTeamDropdownPos] = useState({ top: 0, right: 0 });
-
-    const handleTeamDropdownToggle = () => {
-        if (!isTeamDropdownOpen && teamBtnRef.current) {
-            const rect = teamBtnRef.current.getBoundingClientRect();
-            setTeamDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-        }
-        setIsTeamDropdownOpen(v => !v);
-    };
-
-    const toggleTeam = (teamSlug: string) => {
-        setSelectedTeams(selectedTeams.includes(teamSlug) ? selectedTeams.filter(id => id !== teamSlug) : [...selectedTeams, teamSlug]);
-    };
-
     const { stories, isLoading, hasMore, fetchNextPage, isFetchingNextPage } = useLeagueNewsFeed(
         room?.id, myTeamId,
         { teamSlugs: selectedTeams, types: selectedTypes, bigNewsOnly, sortOrder, simDateFrom: simDateFrom || null, simDateTo: simDateTo || null },
@@ -251,6 +245,23 @@ const MultiNewsFeedView: React.FC = () => {
     // 우측 디테일도 검색 결과 기준으로 폴백되도록 stories 대신 filteredStories 사용.
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const selectedEvent = filteredStories.find(e => e.id === selectedEventId) ?? filteredStories[0] ?? null;
+
+    // [2026-10-14] 딥링크 `?story=<id>` — 홈 "리그 최신 뉴스"에서 특정 뉴스를 클릭하면 그 뉴스를 선택하고 좌측 목록을 거기로
+    // 스크롤한다(이전엔 뉴스 화면으로 이동만 하고 첫 번째 뉴스가 선택됐음). 로드된 페이지에 없으면 다음 페이지를 더 받아 보고
+    // (최대 STORY_DEEPLINK_MAX_SCAN건), 찾았거나 포기하면 파라미터를 지워 필터 조작 때 다시 튀지 않게 한다.
+    const storyParam = searchParams.get('story');
+    useEffect(() => {
+        if (!storyParam || isLoading) return;
+        const found = stories.find(e => e.id === storyParam);
+        if (found) {
+            setSelectedEventId(found.id);
+            requestAnimationFrame(() => document.getElementById(`news-story-${found.id}`)?.scrollIntoView({ block: 'center' }));
+            updateParams({ story: null });
+            return;
+        }
+        if (hasMore && !isFetchingNextPage && stories.length < STORY_DEEPLINK_MAX_SCAN) fetchNextPage();
+        else if (!hasMore || stories.length >= STORY_DEEPLINK_MAX_SCAN) updateParams({ story: null });
+    }, [storyParam, stories, isLoading, hasMore, isFetchingNextPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const hasActiveFilter = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || !isDefaultDateFilter || !!searchQuery.trim();
 
@@ -323,97 +334,55 @@ const MultiNewsFeedView: React.FC = () => {
                     <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
                         {/* [2026-09-02] "리그 소식" 텍스트를 The Basketball Chronicle
                             로고(newsFeedCards.tsx의 BrandMark와 동일 파일)로 대체(사용자 요청). */}
-                        <img src="/images/bc2.svg" alt="The Basketball Chronicle" className="h-5 w-auto" />
+                        <BrandMark className="h-5 w-auto" />
 
                         {/* 날짜 하루 단위 이동 스텝퍼 — 기본값은 오늘의 인게임 날짜. 화살표는
                             simDateFrom/simDateTo를 함께 ±1일 밀어 범위 폭을 유지한다. */}
                         <div className="flex items-center gap-0.5 h-[30px] bg-slate-950 rounded-lg border border-slate-800 pl-1 pr-1">
-                            <button
+                            <IconButton
+                                label="하루 전"
+                                size="sm"
+                                tone="subtle"
+                                shape="md"
                                 onClick={() => shiftDateRange(-1)}
-                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                title="하루 전"
                             >
                                 <ChevronLeft size={14} />
-                            </button>
+                            </IconButton>
                             <span className="text-sm text-slate-400 px-1 whitespace-nowrap">{dateLabel}</span>
-                            <button
+                            <IconButton
+                                label="하루 후"
+                                size="sm"
+                                tone="subtle"
+                                shape="md"
                                 onClick={() => shiftDateRange(1)}
-                                className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                                title="하루 후"
                             >
                                 <ChevronRight size={14} />
-                            </button>
+                            </IconButton>
                             {!isDefaultToday && (
-                                <button
+                                <Button
+                                    variant="link"
                                     onClick={resetToToday}
-                                    className="text-sm font-bold text-indigo-400 hover:text-indigo-300 pl-1.5 pr-2 ml-0.5 border-l border-slate-800 transition-colors"
+                                    className="pl-1.5 pr-2 ml-0.5 border-l border-slate-800"
                                 >
                                     오늘
-                                </button>
+                                </Button>
                             )}
                         </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 md:ml-auto w-full md:w-auto">
-                        {/* 팀별 필터 — 다중 선택. 리더보드 팀 필터(components/leaderboard/
-                            LeaderboardToolbar.tsx)와 완전히 동일한 마크업: fixed 포지셔닝
-                            커스텀 패널 + 체크박스 + "모두 선택" + TeamBadge. */}
-                        <div className="relative">
-                            <button
-                                ref={teamBtnRef}
-                                className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-sm font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'}`}
-                                onClick={handleTeamDropdownToggle}
-                            >
-                                <span>팀</span>
-                                {selectedTeams.length > 0 && (
-                                    <span className="bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedTeams.length}</span>
-                                )}
-                                <ChevronDown size={12} />
-                            </button>
-
-                            {isTeamDropdownOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-[100]" onClick={() => setIsTeamDropdownOpen(false)} />
-                                    <div
-                                        className="fixed w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
-                                        style={{ top: teamDropdownPos.top, right: teamDropdownPos.right }}
-                                    >
-                                        <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
-                                            <div
-                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                                onClick={() => setSelectedTeams(selectedTeams.length === sortedTeams.length ? [] : sortedTeams.map(t => t.team_slug))}
-                                            >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.length === sortedTeams.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                    {selectedTeams.length === sortedTeams.length && <Check size={10} className="text-white" />}
-                                                </div>
-                                                <span className={`text-sm font-bold ${selectedTeams.length === sortedTeams.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
-                                            </div>
-                                            <div className="h-px bg-slate-800 mx-2 my-1" />
-                                            {sortedTeams.map(team => (
-                                                <div
-                                                    key={team.team_slug}
-                                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                                    onClick={() => toggleTeam(team.team_slug)}
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.includes(team.team_slug) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                        {selectedTeams.includes(team.team_slug) && <Check size={10} className="text-white" />}
-                                                    </div>
-                                                    <TeamBadge
-                                                        teamId={team.team_slug}
-                                                        abbr={team.team_abbr}
-                                                        colorPrimary={team.color_primary}
-                                                        colorSecondary={team.color_secondary}
-                                                        colorText={team.color_text}
-                                                        size="sm"
-                                                    />
-                                                    <span className={`text-sm font-bold ${selectedTeams.includes(team.team_slug) ? 'text-white' : 'text-slate-400'}`}>{team.team_name}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        {/* 팀별 필터 — 다중 선택. 리더보드 팀 필터와 같은 공용 CheckboxFilterDropdown. */}
+                        <CheckboxFilterDropdown
+                            label="팀"
+                            width="w-64"
+                            options={sortedTeams.map(team => ({
+                                value: team.team_slug,
+                                label: team.team_name,
+                                icon: <TeamBadge teamId={team.team_slug} abbr={team.team_abbr} colorPrimary={team.color_primary} colorSecondary={team.color_secondary} colorText={team.color_text} size="sm" />,
+                            }))}
+                            selected={selectedTeams}
+                            onChange={setSelectedTeams}
+                        />
 
                         {/* 빅뉴스만/전체 — 리더보드 "색상 스케일" 토글과 동일한 단일 라벨 스위치 */}
                         <div
@@ -466,13 +435,14 @@ const MultiNewsFeedView: React.FC = () => {
                                 title="종료 인게임 날짜"
                             />
                             {(simDateFrom || simDateTo) && (
-                                <button
+                                <IconButton
+                                    label="날짜 필터 초기화"
+                                    tone="ghost"
+                                    className="h-full rounded-none border-l border-slate-800 px-2 w-auto"
                                     onClick={() => setSimDateRange('', '')}
-                                    className="h-full px-2 flex items-center justify-center border-l border-slate-800 text-slate-600 hover:text-white transition-colors shrink-0"
-                                    title="날짜 필터 초기화"
                                 >
                                     <X size={12} />
-                                </button>
+                                </IconButton>
                             )}
                         </div>
                     </div>
@@ -509,12 +479,9 @@ const MultiNewsFeedView: React.FC = () => {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                                 {searchQuery && (
-                                    <button
-                                        onClick={() => setSearchQuery('')}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
-                                    >
+                                    <IconButton label="검색어 지우기" size="xs" tone="ghost" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                         <X size={12} />
-                                    </button>
+                                    </IconButton>
                                 )}
                             </div>
                         </div>
@@ -539,27 +506,22 @@ const MultiNewsFeedView: React.FC = () => {
                             브라우저(localStorage)별 설정. */}
                         <div className="flex items-center gap-2 px-3 pb-2 border-t border-slate-800 pt-2">
                             <span className="text-xs font-bold text-slate-500 ko-normal shrink-0">알림 범위</span>
-                            {([['my_team', '내 팀 관련'], ['all', '리그 전체'], ['off', '끔']] as const).map(([value, label]) => (
-                                <button
-                                    key={value}
-                                    onClick={() => { setLeagueNotificationScope(value); setNotifScope(value); }}
-                                    className={`px-2 py-0.5 rounded-md text-xs font-bold transition-colors ${
-                                        notifScope === value ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                                    }`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
+                            <SegmentedControl
+                                size="sm"
+                                value={notifScope}
+                                onChange={(value) => { setLeagueNotificationScope(value); setNotifScope(value); }}
+                                options={[
+                                    { value: 'my_team', label: '내 팀 관련' },
+                                    { value: 'all', label: '리그 전체' },
+                                    { value: 'off', label: '끔' },
+                                ]}
+                            />
                         </div>
                     </div>
                     {isLoading ? (
-                        <div className="flex items-center justify-center py-16">
-                            <Loader2 size={22} className="animate-spin text-indigo-400" />
-                        </div>
+                        <Spinner variant="section" />
                     ) : filteredStories.length === 0 ? (
-                        <p className="text-sm text-slate-500 ko-normal py-8 text-center px-4">
-                            {hasActiveFilter ? '조건에 맞는 소식이 없습니다.' : '아직 소식이 없습니다.'}
-                        </p>
+                        <EmptyState title={hasActiveFilter ? '조건에 맞는 소식이 없습니다.' : '아직 소식이 없습니다.'} />
                     ) : (
                         <>
                             {/* [2026-09-01] 실제(wall-clock) 상대시각("0분 전") 대신 이벤트가 발생한
@@ -570,6 +532,7 @@ const MultiNewsFeedView: React.FC = () => {
                                 return (
                                     <div
                                         key={e.id}
+                                        id={`news-story-${e.id}`}
                                         onClick={() => setSelectedEventId(e.id)}
                                         className={`flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-slate-800/50 text-sm ko-normal transition-colors ${
                                             selected ? 'bg-slate-700 text-white' : 'bg-slate-900 hover:bg-white/5'
@@ -582,13 +545,16 @@ const MultiNewsFeedView: React.FC = () => {
                             })}
                             {hasMore && (
                                 <div className="p-3">
-                                    <button
+                                    <Button
+                                        variant="secondary"
+                                        size="lg"
+                                        fullWidth
+                                        className="ko-normal"
                                         onClick={() => fetchNextPage()}
                                         disabled={isFetchingNextPage}
-                                        className="w-full px-4 py-2 text-sm font-semibold text-slate-300 bg-slate-950 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 ko-normal"
                                     >
                                         {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                         </>

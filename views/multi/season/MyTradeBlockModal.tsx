@@ -15,15 +15,17 @@
 // 동일한 동작.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { notify } from '../../../services/notifications/notify';
-import { Check, GripVertical, Loader2, RotateCcw, X } from 'lucide-react';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { Check, GripVertical, RotateCcw, X } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { ARCHETYPE_LABEL, type OvrArchetype } from '../../../utils/ovrEngine';
-import { setTradeBlock, updateTeamTradeRequest } from '../../../services/multi/tradeService';
+import { setTradeBlockBatch } from '../../../services/multi/tradeService';
 import type { Player } from '../../../types';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
+import { IconButton } from '../../../components/common/IconButton';
+import { Button } from '../../../components/common/Button';
 
 const DESIRED_POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
@@ -86,7 +88,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
     const [pendingTradeableIds, setPendingTradeableIds] = useState<Set<string>>(() => new Set(myTradeableIds));
     const [savingBlocks, setSavingBlocks] = useState(false);
     const [blockSaveSuccess, setBlockSaveSuccess] = useState(false);
-    // [2026-10-02] 저장 실패 문구는 전역 토스트(notify.error) — toast-notification-center-plan 2단계.
+    // [2026-10-13] 저장 실패는 툴바 "업데이트" 버튼 왼쪽 InlineNotice sm(에러 표시 정책 0-7). 같은 슬롯에서
+    // 실패(danger) > 성공(success) > 미저장(warning) 순으로 하나만 보인다. 저장 시작·편집 변경 시 소거.
+    const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
     const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
 
     // 서버 데이터가 (재)로드될 때만 로컬 선택 상태를 서버 값으로 동기화 — 드래그로 옮기는
@@ -173,6 +177,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
 
     // 서버에 저장된 값과 로컬 편집 상태를 비교 — 요구사항 메모/포지션/선수/아키타입 중 하나라도
     // 바뀌었으면 "업데이트" 버튼 활성화(선수 목록 변경 여부와 무관하게 독립적으로 판단).
+    // [2026-10-13] 편집이 바뀌면 직전 저장 실패 문구는 소거
+    useEffect(() => { setBlockSaveError(null); }, [pendingTradeableIds, teamRequestNote, teamRequestPositions, teamRequestPlayerIds, teamRequestArchetypes]);
+
     const teamRequestDirty = useMemo(() => {
         if (!myTeamRow) return false;
         if ((myTeamRow.trade_request_note ?? '') !== teamRequestNote) return true;
@@ -185,24 +192,19 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
     const handleSaveTradeable = useCallback(async () => {
         if (!roomId || !myTeamRow) return;
         setSavingBlocks(true);
+        setBlockSaveError(null);
         const toMarkTradeable    = [...pendingTradeableIds].filter(id => !myTradeableIds.has(id));
         const toMarkNotTradeable = [...myTradeableIds].filter(id => !pendingTradeableIds.has(id));
-        const results = await Promise.all([
-            ...toMarkTradeable.map(id => setTradeBlock(roomId, myTeamRow.id, id, true)),
-            ...toMarkNotTradeable.map(id => setTradeBlock(roomId, myTeamRow.id, id, false)),
-            updateTeamTradeRequest(myTeamRow.id, {
-                note:              teamRequestNote,
-                desiredPositions:  [...teamRequestPositions],
-                desiredPlayerIds:  [...teamRequestPlayerIds],
-                desiredArchetypes: [...teamRequestArchetypes],
-            }),
-        ]);
+        // [2026-10-13] RPC 하나로 묶어 "부분 성공" 제거 — 실패하면 DB에 아무것도 반영되지 않는다
+        const { error } = await setTradeBlockBatch(roomId, myTeamRow.id, toMarkTradeable, toMarkNotTradeable, {
+            note:              teamRequestNote,
+            desiredPositions:  [...teamRequestPositions],
+            desiredPlayerIds:  [...teamRequestPlayerIds],
+            desiredArchetypes: [...teamRequestArchetypes],
+        });
         setSavingBlocks(false);
-        const firstError = results.find(r => r.error)?.error;
-        if (firstError) {
-            // [2026-10-02] 원문(RLS/네트워크 영문)은 콘솔에만, 사용자에겐 통일 문구(사용자 지정)
-            console.error('[tradeBlock.save]', firstError);
-            notify.error('트레이드 블록 저장에 실패했습니다. 잠시 후 다시 시도하세요.', { source: 'tradeBlock.save' });
+        if (error) {
+            setBlockSaveError(error);
             return;
         }
         setBlockSaveSuccess(true);
@@ -257,28 +259,28 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                 {/* Modal 자체의 우상단 X는 hideCloseButton으로 꺼두고, 이 툴바 안에 제목 왼쪽
                     X 버튼을 직접 둔다 — sticky top-0으로 모달 바디를 스크롤해도 항상 보임. */}
                 <div className="sticky top-0 z-20 px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center gap-4 shrink-0">
-                    <button
-                        onClick={onClose}
-                        className="p-1 -ml-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-colors shrink-0"
-                    >
+                    <IconButton label="닫기" size="md" tone="subtle" shape="full" onClick={onClose} className="-ml-1">
                         <X size={18} />
-                    </button>
-                    <h5 className="text-base font-black text-slate-300 uppercase ko-normal flex-1">내 트레이드 블록 설정</h5>
+                    </IconButton>
+                    <h5 className="text-base font-black text-slate-300 ko-normal flex-1">내 트레이드 블록 설정</h5>
                     {myTeamRow && (
                         <div className="flex items-center gap-3 shrink-0">
-                            {blockSaveSuccess && (
-                                <span className="flex items-center gap-1.5 text-sm text-emerald-400 ko-normal">
-                                    <Check size={15} /> 저장 완료
-                                </span>
-                            )}
-                            <button
+                            {blockSaveError ? (
+                                <InlineNotice tone="danger" size="sm" className="max-w-[320px] text-right">{blockSaveError}</InlineNotice>
+                            ) : blockSaveSuccess ? (
+                                <InlineNotice tone="success" size="sm">저장 완료</InlineNotice>
+                            ) : (tradeableDirty || teamRequestDirty) ? (
+                                <InlineNotice tone="warning" size="sm">저장되지 않은 변경사항이 있습니다.</InlineNotice>
+                            ) : null}
+                            <Button
+                                size="lg"
                                 onClick={handleSaveTradeable}
                                 disabled={(!tradeableDirty && !teamRequestDirty) || savingBlocks}
-                                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-black uppercase transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                isLoading={savingBlocks}
+                                icon={<Check size={15} />}
                             >
-                                {savingBlocks ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                                 업데이트
-                            </button>
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -293,7 +295,7 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                                 onDragOver={e => e.preventDefault()}
                                 onDrop={() => { if (draggedPlayerId) setPendingTradeableMembership(draggedPlayerId, false); setDraggedPlayerId(null); }}
                             >
-                                <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-slate-500 uppercase border-b border-slate-800 z-10">
+                                <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-slate-500 border-b border-slate-800 z-10">
                                     내 선수 목록 ({myRosterAvailable.length})
                                 </div>
                                 {myRosterAvailable.length === 0 && (
@@ -307,7 +309,7 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                                 onDragOver={e => e.preventDefault()}
                                 onDrop={() => { if (draggedPlayerId) setPendingTradeableMembership(draggedPlayerId, true); setDraggedPlayerId(null); }}
                             >
-                                <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-emerald-500 uppercase border-b border-slate-800 z-10">
+                                <div className="px-4 py-2 bg-slate-950 sticky top-0 text-sm font-black text-emerald-500 border-b border-slate-800 z-10">
                                     트레이드 블록 ({myRosterTradeable.length})
                                 </div>
                                 {myRosterTradeable.length === 0 && (
@@ -323,12 +325,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
                                         <span className="text-base font-bold text-white ko-normal">요구사항 메모</span>
-                                        <button
-                                            onClick={() => setTeamRequestNote('')}
-                                            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                        >
-                                            <RotateCcw size={12} /> 초기화
-                                        </button>
+                                        <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestNote('')}>
+                                                초기화
+                                        </Button>
                                     </div>
                                     <span className="text-sm text-slate-600">{teamRequestNote.length}/200</span>
                                 </div>
@@ -344,12 +343,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                             <div className="px-6 pt-4">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="text-base font-bold text-white ko-normal">원하는 포지션</span>
-                                    <button
-                                        onClick={() => setTeamRequestPositions(new Set())}
-                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                    >
-                                        <RotateCcw size={12} /> 초기화
-                                    </button>
+                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestPositions(new Set())}>
+                                            초기화
+                                    </Button>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {DESIRED_POSITIONS.map(pos => (
@@ -369,12 +365,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                             <div className="px-6 pt-4">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="text-base font-bold text-white ko-normal">원하는 아키타입</span>
-                                    <button
-                                        onClick={() => setTeamRequestArchetypes(new Set())}
-                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                    >
-                                        <RotateCcw size={12} /> 초기화
-                                    </button>
+                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestArchetypes(new Set())}>
+                                            초기화
+                                    </Button>
                                 </div>
                                 <div className="space-y-2.5">
                                     {ARCHETYPE_GROUPS.map(group => (
@@ -401,12 +394,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                             <div className="px-6 pt-4">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="text-base font-bold text-white ko-normal">원하는 특정 선수</span>
-                                    <button
-                                        onClick={() => { setTeamRequestPlayerIds(new Set()); setTeamRequestPlayerQuery(''); }}
-                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                                    >
-                                        <RotateCcw size={12} /> 초기화
-                                    </button>
+                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => { setTeamRequestPlayerIds(new Set()); setTeamRequestPlayerQuery(''); }}>
+                                            초기화
+                                    </Button>
                                 </div>
                                 <div className="max-w-md relative">
                                     <input
@@ -436,9 +426,9 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                                         {[...teamRequestPlayerIds].map(id => (
                                             <span key={id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-500 bg-indigo-600/30 text-sm font-bold text-white ko-normal">
                                                 {poolById.get(id)?.name ?? id}
-                                                <button onClick={() => removeTeamRequestPlayer(id)} className="text-white/70 hover:text-white">
+                                                <IconButton label="제외" size="xs" tone="inherit" onClick={() => removeTeamRequestPlayer(id)} className="text-white/70">
                                                     <X size={11} />
-                                                </button>
+                                                </IconButton>
                                             </span>
                                         ))}
                                     </div>

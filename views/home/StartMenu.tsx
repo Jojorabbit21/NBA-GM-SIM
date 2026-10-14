@@ -6,7 +6,7 @@ import { MyLeagues } from './MyLeagues';
 import { MultiplayerHistory } from './MultiplayerHistory';
 import { AuthForm } from '../auth/AuthForm';
 import { LogOut, Settings, User } from 'lucide-react';
-import { APP_NAME } from '../../utils/constants';
+import { APP_NAME, getLeagueLogoUrl } from '../../utils/constants';
 
 interface StartMenuProps {
     session:    Session | null;
@@ -53,7 +53,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             {/* 로고 */}
             <div className="shrink-0 flex justify-center py-2">
-                <img src="/logos/main.svg" alt={APP_NAME} className="h-9 w-auto" />
+                <img src={getLeagueLogoUrl('Main')} alt={APP_NAME} className="h-9 w-auto" />
             </div>
 
             {/* 계정 영역 */}

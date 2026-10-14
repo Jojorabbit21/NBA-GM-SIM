@@ -10,10 +10,10 @@ import { ZONE_PATHS, ZONE_CONFIG } from '../../utils/courtZones';
 // ("top of key" near canvas y=0, rim near canvas y=403) — this remaps those same paths onto our
 // engine's basket-at-LEFT, court-feet×SCALE(=10) coordinate space via a single affine transform,
 // calibrated from two facts baked into that canvas itself:
-//   - canvas y=401.6 (bottom edge, ≈baseline) → real x=0 ; canvas y=237.9 (paint's far edge,
-//     shared by the PAINT/RIM/MID_* path coordinates) → real x=PAINT_LENGTH(19ft)
-//   - canvas x=0/435 (left/right edges) → real y=COURT_HEIGHT/0 ; canvas x=217.5 (center) → real
-//     y=COURT_HEIGHT/2 (=HOOP_Y_CENTER)
+// - canvas y=401.6 (bottom edge, ≈baseline) → real x=0 ; canvas y=237.9 (paint's far edge,
+// shared by the PAINT/RIM/MID_* path coordinates) → real x=PAINT_LENGTH(19ft)
+// - canvas x=0/435 (left/right edges) → real y=COURT_HEIGHT/0 ; canvas x=217.5 (center) → real
+// y=COURT_HEIGHT/2 (=HOOP_Y_CENTER)
 // No new zone geometry is introduced here — same shapes, just reoriented. Paths are transformed
 // via the SVG matrix (fine for filled shapes regardless of the implied rotation/reflection), but
 // labels are transformed manually in JS first so the text itself stays upright and readable.

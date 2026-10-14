@@ -73,7 +73,7 @@ export const UsagePrediction: React.FC<UsagePredictionProps> = ({ roster }) => {
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">활용도 예측</h5>
+            <h5 className="text-sm font-black text-slate-300">활용도 예측</h5>
             <div className="space-y-2">
                 {data.map((item, i) => {
                     const barWidth = (item.predUsage / maxUsage) * 100;

@@ -124,8 +124,8 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                  <div className="flex items-center gap-3">
                      <TeamLogo teamId={opponent.id} size="md" />
                      <div>
-                         <h4 className="text-sm font-black text-white uppercase tracking-tight">{opponent.city} {opponent.name}</h4>
-                         <span className="text-xs font-bold text-slate-500 uppercase tracking-widest ko-normal">상대 전력 분석</span>
+                         <h4 className="text-sm font-black text-white tracking-tight">{opponent.city} {opponent.name}</h4>
+                         <span className="text-xs font-bold text-slate-500 ko-normal">상대 전력 분석</span>
                      </div>
                  </div>
             </div>
@@ -146,25 +146,25 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                     <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                         <tr className="bg-slate-950 h-8">
-                            <th colSpan={3} className="py-1 px-4 border-b border-slate-800 border-r border-slate-700"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-b border-slate-800 border-r border-slate-700">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">주요 능력치</span>
+                            <th colSpan={3} className="py-1 px-4 border-b border-slate-800 border-r border-slate-800"></th>
+                            <th colSpan={6} className="py-1 px-2 text-center border-b border-slate-800 border-r border-slate-800">
+                                <span className="text-xs font-black text-slate-400 ko-normal">주요 능력치</span>
                             </th>
                             <th colSpan={9} className="py-1 px-2 text-center border-b border-slate-800">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">시즌 스탯</span>
+                                <span className="text-xs font-black text-slate-400 ko-normal">시즌 스탯</span>
                             </th>
                         </tr>
-                        <tr className="text-xs font-black text-slate-500 uppercase tracking-widest h-10">
-                            <TableHeaderCell align="center" className="border-r border-r-slate-800/30 ko-normal">포지션</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-4 border-r border-r-slate-800/30 ko-normal">이름</TableHeaderCell>
-                            <TableHeaderCell align="center" className="border-r border-r-slate-700">OVR</TableHeaderCell>
+                        <tr className="text-sm font-bold text-slate-400 h-10">
+                            <TableHeaderCell align="center" className="ko-normal">포지션</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 ko-normal">이름</TableHeaderCell>
+                            <TableHeaderCell align="center" className="">OVR</TableHeaderCell>
 
                             {ATTR_COLS.map((col, i) => (
-                                <TableHeaderCell key={col.label} align="center" className={i === ATTR_COLS.length - 1 ? 'border-r border-r-slate-700' : 'border-r border-r-slate-800/30'} title={col.tooltip}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className={i === ATTR_COLS.length - 1 ? '' : ''} title={col.tooltip}>{col.label}</TableHeaderCell>
                             ))}
 
                             {STAT_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className="text-slate-400 border-r border-r-slate-800/30 last:border-r-0">{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="text-slate-400">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
                     </thead>
@@ -194,31 +194,31 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                             return (
                                 <TableRow key={p.id} onClick={() => onViewPlayer(p)}>
-                                    <TableCell align="center" className="border-r border-slate-800/50">
+                                    <TableCell align="center" className="">
                                         <span className={`text-xs font-semibold ${isStarter ? 'text-indigo-400' : 'text-slate-500'}`}>{p.position}</span>
                                     </TableCell>
-                                    <TableCell className="px-4 border-r border-slate-800/50">
+                                    <TableCell className="px-4">
                                         <div className="flex flex-col min-w-0">
                                             <span className="text-xs font-semibold text-slate-200 group-hover:text-white group-hover:underline truncate">{p.name}</span>
                                             {p.health !== 'Healthy' && (
-                                                <span className="text-[9px] font-black text-red-500 uppercase">{p.health}</span>
+                                                <span className="text-[9px] font-black text-red-500">{p.health}</span>
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell align="center" className="border-r border-slate-800/50">
+                                    <TableCell align="center" className="">
                                         <div className="flex justify-center">
                                             <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                         </div>
                                     </TableCell>
 
                                     {attrValues.map((val, idx) => (
-                                        <TableCell key={`attr-${idx}`} align="center" className={`text-xs font-semibold font-mono border-r border-slate-800/30 last:border-r-slate-800/50 ${getGradeColor(val)}`}>
+                                        <TableCell key={`attr-${idx}`} align="center" className={`text-xs font-semibold last: ${getGradeColor(val)}`}>
                                             {val}
                                         </TableCell>
                                     ))}
                                     
                                     {statValues.map((val, idx) => (
-                                        <TableCell key={`stat-${idx}`} align="center" className="font-mono font-semibold text-xs text-slate-300">
+                                        <TableCell key={`stat-${idx}`} align="center" className="font-semibold text-xs text-slate-200">
                                             {val}
                                         </TableCell>
                                     ))}
@@ -229,32 +229,32 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                     {teamAverages && (
                         <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr>
-                                <td className="border-r border-slate-800/50"></td>
-                                <td className="px-4 text-left border-r border-slate-800/50">
-                                    <span className="text-xs font-black text-indigo-400 uppercase tracking-widest ko-normal">팀 평균</span>
+                                <td className="border-r border-slate-800"></td>
+                                <td className="px-4 text-left border-r border-slate-800">
+                                    <span className="text-xs font-black text-indigo-400 ko-normal">팀 평균</span>
                                 </td>
-                                <td className="text-center border-r border-slate-800/50">
+                                <td className="text-center border-r border-slate-800">
                                     <div className="flex justify-center">
                                         <OvrBadge value={teamAverages.ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                     </div>
                                 </td>
                                 
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.ins)}`}>{teamAverages.ins}</td>
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.out)}`}>{teamAverages.out}</td>
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.plm)}`}>{teamAverages.plm}</td>
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.def)}`}>{teamAverages.def}</td>
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.reb)}`}>{teamAverages.reb}</td>
-                                <td className={`py-2.5 px-2 text-center text-xs font-semibold font-mono border-r border-slate-800/50 ${getGradeColor(teamAverages.ath)}`}>{teamAverages.ath}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.ins)}`}>{teamAverages.ins}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.out)}`}>{teamAverages.out}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.plm)}`}>{teamAverages.plm}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.def)}`}>{teamAverages.def}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.reb)}`}>{teamAverages.reb}</td>
+                                <td className={`py-2.5 px-2 text-center text-xs font-semibold border-r border-slate-800 ${getGradeColor(teamAverages.ath)}`}>{teamAverages.ath}</td>
 
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.mp}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.pts}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.rebs}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.ast}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.stl}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.blk}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.fg}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.p3}</td>
-                                <td className="font-mono font-semibold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.ts}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.mp}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.pts}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.rebs}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.ast}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.stl}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.blk}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.fg}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.p3}</td>
+                                <td className="font-semibold text-xs text-slate-200 py-2.5 px-2" align="center">{teamAverages.ts}</td>
                             </tr>
                         </tfoot>
                     )}

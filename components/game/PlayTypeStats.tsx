@@ -113,7 +113,7 @@ export const PlayTypeStats: React.FC<PlayTypeStatsProps> = ({ shotEvents, homeTe
         <div className="h-full flex flex-col bg-slate-900">
             {groups.length === 0 ? (
                 <>
-                    <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider px-2 pt-2 pb-1">플레이타입</p>
+                    <p className="text-xs text-slate-500 font-semibold px-2 pt-2 pb-1">플레이타입</p>
                     <p className="text-xs text-slate-600 py-4 text-center">데이터 없음</p>
                 </>
             ) : (
@@ -121,15 +121,15 @@ export const PlayTypeStats: React.FC<PlayTypeStatsProps> = ({ shotEvents, homeTe
                     {/* 헤더 — Table.tsx의 TableHead(bg-slate-950 sticky, text-slate-500 font-black, h-10)와 동일 톤.
                         막대 컬럼엔 팀 약어를 라벨로 달아 원정/홈 구분, 중앙엔 "플레이타입" 라벨 통합. */}
                     <div className={`shrink-0 grid ${GRID_COLS} items-center gap-1 px-2 h-10 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm`}>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">비율</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">성공률</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">득점</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center truncate">{awayBadge.abbr.slice(0, 3)}</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">플레이타입</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center truncate">{homeBadge.abbr.slice(0, 3)}</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">득점</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">성공률</span>
-                        <span className="text-xs font-black uppercase text-slate-500 text-center">비율</span>
+                        <span className="text-xs font-black text-slate-500 text-center">비율</span>
+                        <span className="text-xs font-black text-slate-500 text-center">성공률</span>
+                        <span className="text-xs font-black text-slate-500 text-center">득점</span>
+                        <span className="text-xs font-black text-slate-500 text-center truncate">{awayBadge.abbr.slice(0, 3)}</span>
+                        <span className="text-xs font-black text-slate-500 text-center">플레이타입</span>
+                        <span className="text-xs font-black text-slate-500 text-center truncate">{homeBadge.abbr.slice(0, 3)}</span>
+                        <span className="text-xs font-black text-slate-500 text-center">득점</span>
+                        <span className="text-xs font-black text-slate-500 text-center">성공률</span>
+                        <span className="text-xs font-black text-slate-500 text-center">비율</span>
                     </div>
 
                     {/* 바디 — Table.tsx의 TableBody(bg-slate-900) + TableRow(hover:bg-white/5) + TableCell(border-b) 동일 톤.
@@ -139,7 +139,7 @@ export const PlayTypeStats: React.FC<PlayTypeStatsProps> = ({ shotEvents, homeTe
                             const away = g.away ?? EMPTY_AGG;
                             const home = g.home ?? EMPTY_AGG;
                             // 박스스코어 탭(BoxScoreTable.tsx)의 stat 셀 톤과 동일 — 흰색/모노스페이스/세미볼드/tabular-nums
-                            const sc = 'text-xs font-mono font-semibold text-white text-center tabular-nums';
+                            const sc = 'text-xs font-semibold text-white text-center tabular-nums';
                             return (
                                 <div
                                     key={g.playType}

@@ -3,8 +3,9 @@
 // 헤더 [뒤로 + 토너먼트 이름 | {N}라운드 mm:ss | 지명하기] / 바디 [라운드 구성 17% | 카드 그리드 | 내 로스터 17%].
 // 진행 상태·타이머·자동 지명은 전부 hooks/usePersonalDraft.ts(→ 서버 RPC)가 소유한다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { InlineNotice } from '../../../components/common/InlineNotice';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { useGame } from '../../../hooks/useGameContext';
 import { useLeagueContext } from './LeagueLayout';
 import { usePersonalDraft } from '../../../hooks/usePersonalDraft';
@@ -16,6 +17,9 @@ import {
 import { PersonalDraftCard } from '../../../components/draft/PersonalDraftCard';
 import { useCardTeamColors } from '../../../hooks/useCardTeamColors';
 import { OvrBadge } from '../../../components/common/OvrBadge';
+import { Button } from '../../../components/common/Button';
+import { Spinner } from '../../../components/common/Spinner';
+import { IconButton } from '../../../components/common/IconButton';
 
 function formatClock(sec: number): string {
     const m = Math.floor(sec / 60);
@@ -35,6 +39,8 @@ const PersonalDraftView: React.FC = () => {
     const format = league?.personal_draft_format ?? null;
     const useCustomOverrides = shouldUseCustomOverrides(league);
 
+    // [2026-10-13] 자동 지명 안내 닫기 — 새 자동 지명(lastAutoPicked 변화)마다 다시 보인다
+    const [autoPickDismissed, setAutoPickDismissed] = useState(false);
     const {
         packState, poolPlayers, roster, collectionsById,
         isLoading, isSubmitting, error,
@@ -46,6 +52,7 @@ const PersonalDraftView: React.FC = () => {
         format,
         useCustomOverrides,
     });
+    useEffect(() => { setAutoPickDismissed(false); }, [lastAutoPicked]);
 
     // [2026-09-20] 동시 지명 — 이번 라운드 픽 수(picksRemaining)만큼 고른 뒤 한 번에 제출
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -106,17 +113,13 @@ const PersonalDraftView: React.FC = () => {
 
     // ── 가드 ────────────────────────────────────────────────────────────────
     if (ctxLoading) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-slate-950">
-                <Loader2 size={24} className="animate-spin text-indigo-400" />
-            </div>
-        );
+        return <Spinner variant="page" className="bg-slate-950" />;
     }
     if (!league || !room || !format) {
         return (
             <div className="flex flex-col items-center justify-center h-screen gap-3 bg-slate-950">
                 <p className="text-sm text-slate-400">이 세션은 팩 드래프트 방식이 아닙니다.</p>
-                <button onClick={goBack} className="text-indigo-400 text-sm hover:underline">로비로 돌아가기</button>
+                <Button variant="link" underline onClick={goBack}>로비로 돌아가기</Button>
             </div>
         );
     }
@@ -124,16 +127,13 @@ const PersonalDraftView: React.FC = () => {
         return (
             <div className="flex flex-col items-center justify-center h-screen gap-3 bg-slate-950">
                 <p className="text-sm text-slate-400">먼저 로비에서 팀을 선택해주세요.</p>
-                <button onClick={goBack} className="text-indigo-400 text-sm hover:underline">로비로 돌아가기</button>
+                <Button variant="link" underline onClick={goBack}>로비로 돌아가기</Button>
             </div>
         );
     }
 
     const canPick = picksNeeded > 0 && selectedIds.length === picksNeeded && !isSubmitting && !isCompleted && !!packState;
     const timerUrgent = timeRemaining != null && timeRemaining <= 30;
-    const pickBtnClass = canPick
-        ? 'px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-medium text-white transition-all active:scale-[0.98] shrink-0'
-        : 'px-4 py-1.5 rounded-lg text-sm font-medium transition-all bg-slate-800 text-slate-600 cursor-not-allowed shrink-0';
 
     return (
         <div className="pretendard flex flex-col h-screen bg-slate-950 text-slate-200">
@@ -141,14 +141,15 @@ const PersonalDraftView: React.FC = () => {
             <div className="shrink-0 relative z-30 bg-slate-900 border-b border-slate-700">
                 <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5 gap-3">
                     <div className="min-w-0 flex items-center gap-2">
-                        <button
-                            type="button"
-                            aria-label="뒤로가기"
+                        <IconButton
+                            label="뒤로가기"
+                            tone="inherit"
+                            shape="md"
                             onClick={goBack}
-                            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                            className="text-white/70 hover:bg-white/10"
                         >
                             <ChevronLeft size={18} strokeWidth={2.25} />
-                        </button>
+                        </IconButton>
                         <div className="text-sm font-bold text-white/80 truncate">{league.name}</div>
                     </div>
                     <div className="text-center">
@@ -170,17 +171,13 @@ const PersonalDraftView: React.FC = () => {
                     </div>
                     <div className="justify-self-end flex items-center">
                         {isCompleted ? (
-                            <button
-                                type="button"
-                                onClick={goBack}
-                                className="px-4 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-sm font-medium text-white transition-all active:scale-[0.98] shrink-0"
-                            >
+                            <Button variant="cta" onClick={goBack} className="shrink-0">
                                 로비로 이동
-                            </button>
+                            </Button>
                         ) : (
-                            <button type="button" onClick={handlePick} disabled={!canPick} className={pickBtnClass}>
+                            <Button variant="cta" onClick={handlePick} disabled={!canPick} className="shrink-0">
                                 {isSubmitting ? '지명 중…' : picksNeeded > 1 ? `지명하기 (${selectedIds.length}/${picksNeeded})` : '지명하기'}
-                            </button>
+                            </Button>
                         )}
                     </div>
                 </div>
@@ -191,7 +188,7 @@ const PersonalDraftView: React.FC = () => {
                 {/* 좌측: 라운드 구성 */}
                 <div className="w-[17%] flex flex-col border-r border-slate-800">
                     <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                        <span className="text-sm font-medium uppercase text-indigo-400">라운드 구성</span>
+                        <span className="text-sm font-medium text-indigo-400">라운드 구성</span>
                         <span className="text-xs font-semibold text-slate-400">총 {totalRoster}명</span>
                     </div>
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
@@ -235,25 +232,21 @@ const PersonalDraftView: React.FC = () => {
 
                 {/* 중앙: 카드 그리드 */}
                 <div className="flex-1 flex flex-col min-w-0">
-                    {(error || lastAutoPicked > 0) && (
+                    {/* [2026-10-13] 자동 지명 안내(warning, 닫기 가능)·지명 실패(danger) — InlineNotice(에러 표시 정책 0-7).
+                        expired 결과는 훅에서 error로 중복 세팅하지 않도록 고쳤으므로 평소엔 하나만 뜬다. */}
+                    {(error || (lastAutoPicked > 0 && !autoPickDismissed)) && (
                         <div className="shrink-0 px-6 pt-3 flex flex-col gap-1.5">
-                            {lastAutoPicked > 0 && (
-                                <div className="px-3 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
+                            {lastAutoPicked > 0 && !autoPickDismissed && (
+                                <InlineNotice tone="warning" onDismiss={() => setAutoPickDismissed(true)}>
                                     제한시간이 지나 {lastAutoPicked}장이 자동 지명되었습니다.
-                                </div>
+                                </InlineNotice>
                             )}
-                            {error && (
-                                <div className="px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/30 text-xs text-red-300">
-                                    {error}
-                                </div>
-                            )}
+                            {error && <InlineNotice tone="danger">{error}</InlineNotice>}
                         </div>
                     )}
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide px-6 py-6">
                         {isLoading ? (
-                            <div className="h-full flex items-center justify-center">
-                                <Loader2 size={24} className="animate-spin text-indigo-400" />
-                            </div>
+                            <Spinner variant="page" />
                         ) : isCompleted ? (
                             <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
                                 <p className="text-lg font-bold text-white">로스터 구성이 끝났습니다.</p>
@@ -290,7 +283,7 @@ const PersonalDraftView: React.FC = () => {
                 {/* 우측: 내 로스터 */}
                 <div className="w-[17%] flex flex-col border-l border-slate-800">
                     <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                        <span className="text-sm font-medium uppercase text-indigo-400">내 로스터</span>
+                        <span className="text-sm font-medium text-indigo-400">내 로스터</span>
                         <span className="text-xs font-semibold text-slate-400">
                             <span className="text-slate-200">{rosterCount}</span> / {totalRoster}
                         </span>
@@ -345,7 +338,7 @@ const PersonalDraftView: React.FC = () => {
 
 /** 로스터 행용 28px OVR 배지 — OvrBadge sm(24px)과 md(32px) 사이 크기라 w/h만 덮어쓴다. */
 const OvrRowBadge: React.FC<{ value: number }> = ({ value }) => (
-    <OvrBadge value={value} size="sm" className="!w-7 !h-7 !rounded" textClassName="text-xs" />
+    <OvrBadge value={value} size="table" />
 );
 
 export default PersonalDraftView;

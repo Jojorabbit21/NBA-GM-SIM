@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { resolveRealAt } from './multiGameReveal';
@@ -17,9 +18,7 @@ const MultiPlayoffsView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 

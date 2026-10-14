@@ -6,6 +6,7 @@ import { Check } from 'lucide-react';
 import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../ShotTooltip';
 import { TeamMark } from '../../common/TeamMark';
+import { Button } from '../../common/Button';
 
 // 선수 필터 리스트 정렬 기준: 포지션(PG→SG→SF→PF→C) 우선순위
 const POSITION_SORT_ORDER: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
@@ -112,7 +113,7 @@ const TeamSidePanel: React.FC<{
     selectedIds: Set<string>;
     onToggle: (id: string) => void;
     onToggleAll: () => void;
-}> = ({ team, badge, teamShots, teamBox, selectedIds, onToggle, onToggleAll }) => {
+}> = ({ team, teamShots, teamBox, selectedIds, onToggle, onToggleAll }) => {
     const zoneStats = useMemo(
         () => calcZoneStats(teamShots.filter(s => selectedIds.has(s.playerId))),
         [teamShots, selectedIds],
@@ -161,20 +162,20 @@ const TeamSidePanel: React.FC<{
 
     const nameCell = (checked: boolean, label: string, bold: boolean) => (
         <td className="py-1.5 pr-2 min-w-0">
-            <span className={`text-xs truncate block transition-colors ${bold ? 'font-black uppercase tracking-wide' : 'font-bold'} ${checked ? 'text-white' : 'text-slate-600'}`}>{label}</span>
+            <span className={`text-xs truncate block transition-colors ${bold ? 'font-black tracking-wide' : 'font-bold'} ${checked ? 'text-white' : 'text-slate-600'}`}>{label}</span>
         </td>
     );
 
     const posCell = (pos: string | undefined, isSelected: boolean) => (
-        <td className={`text-center text-xs font-bold py-1.5 border-l border-slate-800/60 transition-colors ${isSelected ? 'text-slate-400' : 'text-slate-600'}`}>{pos || '-'}</td>
+        <td className={`text-center text-xs font-bold py-1.5 border-l border-slate-800 transition-colors ${isSelected ? 'text-slate-400' : 'text-slate-600'}`}>{pos || '-'}</td>
     );
 
     const mpCell = (mp: number | undefined, isSelected: boolean) => (
-        <td className={`text-center text-xs font-mono py-1.5 border-l border-slate-800/60 transition-colors ${isSelected ? 'text-slate-300' : 'text-slate-600'}`}>{mp != null ? Math.round(mp) : '-'}</td>
+        <td className={`text-center text-xs py-1.5 border-l border-slate-800 transition-colors ${isSelected ? 'text-slate-200' : 'text-slate-600'}`}>{mp != null ? Math.round(mp) : '-'}</td>
     );
 
     const statCell = (m: number, a: number, isSelected: boolean) => (
-        <td className={`text-center text-xs font-mono py-1.5 border-l border-slate-800/60 transition-colors ${isSelected ? 'text-slate-300' : 'text-slate-600'}`}>{m}/{a}</td>
+        <td className={`text-center text-xs py-1.5 border-l border-slate-800 transition-colors ${isSelected ? 'text-slate-200' : 'text-slate-600'}`}>{m}/{a}</td>
     );
 
     return (
@@ -183,22 +184,22 @@ const TeamSidePanel: React.FC<{
                 디자인 — 카드/보더/라운딩 없이 좌우 꽉 채움) */}
             <div className="border-b border-slate-800 bg-slate-900/40 flex flex-col">
                 <div className="flex items-center gap-2 px-4 py-3">
-                    <TeamMark teamId={team.id} teamName={team.name} className="w-6 h-6 object-contain" badge={badge} />
-                    <span className="text-xs font-black text-slate-300 uppercase tracking-wider truncate">{team.name}</span>
+                    <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-6 h-6 object-contain" />
+                    <span className="text-xs font-black text-slate-300 truncate">{team.name}</span>
                 </div>
                 <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
                     <thead>
                         <tr className="bg-slate-900/60">
                             {zoneCols.map((c, i) => (
-                                <th key={c.label} className={`text-xs font-bold text-slate-500 uppercase tracking-widest py-1 border-t border-b border-slate-800 ${i > 0 ? 'border-l border-slate-800/60' : ''}`}>{c.label}</th>
+                                <th key={c.label} className={`text-sm font-bold text-slate-400 py-1 border-t border-b border-slate-800 ${i > 0 ? 'border-l border-slate-800' : ''}`}>{c.label}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
                             {zoneCols.map((c, i) => (
-                                <td key={c.label} className={`text-center py-1.5 ${i > 0 ? 'border-l border-slate-800/60' : ''}`}>
-                                    <div className="text-xs font-semibold text-white font-mono leading-none">{c.stat.pct}%</div>
+                                <td key={c.label} className={`text-center py-1.5 ${i > 0 ? 'border-l border-slate-800' : ''}`}>
+                                    <div className="text-xs font-semibold text-white leading-none">{c.stat.pct}%</div>
                                     <div className="text-xs text-slate-400 font-medium mt-0.5">{c.stat.m}/{c.stat.a}</div>
                                 </td>
                             ))}
@@ -215,12 +216,12 @@ const TeamSidePanel: React.FC<{
                     <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
                         <tr>
                             <th className="w-7" />
-                            <th className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider py-1">선수</th>
-                            <th className="w-9 text-xs font-bold text-slate-500 uppercase tracking-wider py-1 border-l border-slate-800/60">POS</th>
-                            <th className="w-9 text-xs font-bold text-slate-500 uppercase tracking-wider py-1 border-l border-slate-800/60">MP</th>
-                            <th className="w-12 text-xs font-bold text-slate-500 uppercase tracking-wider py-1 border-l border-slate-800/60">2FG</th>
-                            <th className="w-12 text-xs font-bold text-slate-500 uppercase tracking-wider py-1 border-l border-slate-800/60">3FG</th>
-                            <th className="w-12 text-xs font-bold text-slate-500 uppercase tracking-wider py-1 border-l border-slate-800/60">FG</th>
+                            <th className="text-left text-sm font-bold text-slate-400 py-1">선수</th>
+                            <th className="w-9 text-sm font-bold text-slate-400 py-1 border-l border-slate-800">POS</th>
+                            <th className="w-9 text-sm font-bold text-slate-400 py-1 border-l border-slate-800">MP</th>
+                            <th className="w-12 text-sm font-bold text-slate-400 py-1 border-l border-slate-800">2FG</th>
+                            <th className="w-12 text-sm font-bold text-slate-400 py-1 border-l border-slate-800">3FG</th>
+                            <th className="w-12 text-sm font-bold text-slate-400 py-1 border-l border-slate-800">FG</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -469,9 +470,11 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                             나눈다. 범례는 토글 on/off와 무관하게 항상 표시(꺼져 있어도 색 기준을
                             미리 볼 수 있도록). 코트 아래쪽에 일반 흐름으로 배치. */}
                         <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/80 backdrop-blur-sm overflow-hidden shrink-0">
-                            <button
+                            <Button
+                                variant="link"
+                                size="xs"
                                 onClick={() => setShowHeatmap(v => !v)}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-colors shrink-0"
+                                className="px-2.5 py-1.5 shrink-0"
                             >
                                 <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-colors shrink-0 ${
                                     showHeatmap ? 'bg-indigo-600 border-indigo-500' : 'bg-transparent border-slate-500'
@@ -479,7 +482,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                     {showHeatmap && <Check size={10} className="text-white" />}
                                 </div>
                                 존 효율 보기
-                            </button>
+                            </Button>
 
                             <div className="w-px self-stretch bg-slate-800" />
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold">

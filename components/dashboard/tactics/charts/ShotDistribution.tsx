@@ -78,7 +78,7 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">예상 슈팅 분포</h5>
+            <h5 className="text-sm font-black text-slate-300">예상 슈팅 분포</h5>
             <div className="space-y-2.5">
                 {ZONE_CATS.map(zone => {
                     const pred = data.predPct[zone.key] || 0;

@@ -1,13 +1,14 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { ShieldAlert, AlertTriangle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useGame } from '../../../hooks/useGameContext';
 import { Modal } from '../../../components/common/Modal';
-import { OvrBadge } from '../../../components/common/OvrBadge';
-import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerCareerHistory } from '../../../hooks/usePlayerCareerHistory';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
@@ -16,16 +17,18 @@ import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { calcTeamPayroll } from '../../../services/fa/faMarketBuilder';
 import { releasePlayer } from '../../../services/multi/faService';
 import { generateSaveTendencies } from '../../../utils/hiddenTendencies';
-import { calculatePlayerOvr, countYosFromCareerHistory } from '../../../utils/constants';
-import { formatMoney as formatMoneyAbbrev, formatMoneyFull } from '../../../utils/formatMoney';
+import { countYosFromCareerHistory } from '../../../utils/constants';
+import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
+import { Money } from '../../../components/common/Money';
+import { Button } from '../../../components/common/Button';
+import { KeyValueRow } from '../../../components/common/KeyValueRow';
 import { generateScoutReport } from '../../../utils/scoutReport';
-import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../../services/playerDevelopment/archetypeEvaluator';
-import { getLocalPopularityLabel, getNationalPopularityLabel } from '../../../services/playerPopularity';
-import { getMoraleLabel } from '../../../services/moraleService';
+import { assignArchetypes } from '../../../services/playerDevelopment/archetypeEvaluator';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
 import type { Team } from '../../../types/team';
+import { SubPageBar, ContractThreePane, PlayerInfoSidePanel, CapStatusPanel, ChatBubble } from './contractScreenParts';
 
 // 멀티플레이어 방출 확인 화면 — MultiRosterView.tsx의 "방출" 버튼이 즉시 RPC를 호출하는 대신
 // 이 화면(/multi/leagues/:leagueId/season/release/:playerId)으로 이동한다.
@@ -49,10 +52,6 @@ import type { Team } from '../../../types/team';
 // 만족할 때만 체크 가능하다 — migrations/fix_release_player_waive_original_schedule.sql까지
 // 포함한 서버 측 검증과 동일한 기준(클라이언트에서 먼저 걸러 불필요한 RPC 왕복/에러를
 // 줄임, 서버가 최종 검증).
-
-function formatMoney(dollars: number): string {
-    return Math.abs(dollars) < 1_000_000 ? formatMoneyFull(dollars) : formatMoneyAbbrev(dollars);
-}
 
 // 'YYYY-YY' 시즌 라벨에서 N시즌 뒤 라벨 계산 — migrations/add_release_player_stretch.sql의
 // 서버 측 시즌 라벨 생성과 동일한 산식(연도만 더하고 두 자리로 포맷). 테이블 미리보기가
@@ -336,9 +335,7 @@ const MultiReleaseView: React.FC = () => {
 
     if (leagueLoading || teamsLoading) {
         return (
-            <div className="flex items-center justify-center h-full min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 
@@ -353,9 +350,8 @@ const MultiReleaseView: React.FC = () => {
 
     if (!player) {
         return (
-            <div className="flex flex-col h-full items-center justify-center gap-3 text-slate-200">
-                <ShieldAlert size={28} className="text-slate-600" />
-                <p className="text-sm text-slate-500">로스터에서 선수를 찾을 수 없습니다.</p>
+            <div className="flex flex-col h-full items-center justify-center text-slate-200">
+                <EmptyState icon={ShieldAlert} title="로스터에서 선수를 찾을 수 없습니다." />
             </div>
         );
     }
@@ -368,173 +364,35 @@ const MultiReleaseView: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200">
-            {/* ── Header ── */}
-            <div className="flex-shrink-0 h-12 px-5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
-                <button
-                    onClick={handleExit}
-                    className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors"
-                >
-                    <span>←</span><span>뒤로</span>
-                </button>
-                <span className="text-sm font-bold text-white ko-tight">{player.name} 방출</span>
-            </div>
+            <SubPageBar title={`${player.name} 방출`} onBack={handleExit} />
 
-            <div className="flex-1 flex divide-x divide-slate-800 bg-slate-950 overflow-hidden min-h-0">
-
-                {/* ── 좌측: 선수 정보 ── (MultiNegotiationView.tsx와 동일 섹션, "요구 조건"만 제외 — 협상이 없으므로 의미 없음) */}
-                <div className="flex-[2] min-w-0 bg-slate-900 flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-                            <OvrBadge value={calculatePlayerOvr(player)} size="md" />
-                            <PlayerHoverCard player={player}>
-                                <div
-                                    onClick={handleViewProfile}
-                                    className="text-base font-black text-white ko-tight leading-tight cursor-pointer hover:underline hover:text-indigo-400"
-                                >
-                                    {player.name}
-                                </div>
-                            </PlayerHoverCard>
-                        </div>
-                        <div className="px-4 pb-3 space-y-1">
-                            {[
-                                { label: '포지션', value: player.position },
-                                { label: '나이', value: `${player.age}세` },
-                                { label: '키', value: `${player.height}cm` },
-                                { label: '몸무게', value: `${player.weight}kg` },
-                                { label: '연차', value: `${playerYos}년` },
-                            ].map(({ label, value }) => (
-                                <div key={label} className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">{label}</span>
-                                    <span className="text-slate-200">{value}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {playerArchetypeState && (
-                            <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                <div className="text-sm font-bold uppercase text-white mb-1.5">선수 유형</div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">아키타입</span>
-                                    <span className="font-semibold text-slate-200">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
-                                </div>
-                                {playerArchetypeState.secondary && (
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">보조 유형</span>
-                                        <span className="text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
-                                    </div>
-                                )}
-                                {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
-                                    <div key={tag} className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">{i === 0 ? '특성' : ''}</span>
-                                        <span className="text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                            <div className="text-sm font-bold uppercase text-white mb-1.5">인기도</div>
-                            {[
-                                { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
-                                { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
-                            ].map(({ label, value }) => (
-                                <div key={label} className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">{label}</span>
-                                    <span className="text-slate-200">{value}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {tendencies && (
-                            <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                <div className="text-sm font-bold uppercase text-white mb-1.5">성격 &amp; 기분</div>
-                                {(() => {
-                                    const t = tendencies;
-                                    const moraleColor = moraleScore >= 70 ? 'text-emerald-400' : moraleScore >= 40 ? 'text-amber-400' : 'text-red-400';
-                                    const egoLbl = t.ego > 0.35 ? { text: '오만', color: 'text-amber-400' } : t.ego < -0.35 ? { text: '겸손', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                    const finLbl = t.financialAmbition > 0.68 ? { text: '탐욕적', color: 'text-amber-400' } : t.financialAmbition < 0.32 ? { text: '검소', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                    const loyLbl = t.loyalty > 0.65 ? { text: '충성', color: 'text-emerald-400' } : t.loyalty < 0.35 ? { text: '이적욕 강함', color: 'text-red-400' } : { text: '보통', color: 'text-slate-400' };
-                                    const winLbl = t.winDesire > 0.65 ? { text: '우승 집착', color: 'text-emerald-400' } : t.winDesire < 0.35 ? { text: '역할 우선', color: 'text-slate-400' } : { text: '보통', color: 'text-slate-400' };
-                                    const tmpLbl = t.temperament > 0.45 ? { text: '다혈질', color: 'text-red-400' } : t.temperament < -0.40 ? { text: '냉정', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                    return [
-                                        { label: '현재 기분', text: getMoraleLabel(moraleScore), color: moraleColor },
-                                        { label: '자존심', ...egoLbl },
-                                        { label: '금전욕', ...finLbl },
-                                        { label: '팀 충성도', ...loyLbl },
-                                        { label: '우승욕', ...winLbl },
-                                        { label: '기질', ...tmpLbl },
-                                    ].map(({ label, text, color }) => (
-                                        <div key={label} className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">{label}</span>
-                                            <span className={`font-semibold ${color}`}>{text}</span>
-                                        </div>
-                                    ));
-                                })()}
-                            </div>
-                        )}
-
-                        {scoutReport.length > 0 && (
-                            <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                <div className="text-sm font-bold uppercase text-white mb-1.5">스카우팅 리포트</div>
-                                {[...scoutReport].sort((a, b) => {
-                                    const order = { positive: 0, negative: 1, neutral: 2 } as const;
-                                    return order[a.sentiment] - order[b.sentiment];
-                                }).map((s, i) => (
-                                    <div
-                                        key={i}
-                                        className={`text-sm ${
-                                            s.sentiment === 'positive' ? 'text-emerald-400'
-                                                : s.sentiment === 'negative' ? 'text-rose-400'
-                                                : 'text-slate-200'
-                                        }`}
-                                    >
-                                        {s.sentiment === 'positive' ? '+ ' : s.sentiment === 'negative' ? '- ' : ''}{s.text}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── 중앙: 대화 — MultiNegotiationView.tsx와 동일한 버블 디자인. 협상이 아니라
-                    팀의 일방적 통보라 확정 전까지는 비어 있다가, "확인"을 누르면 GM 통보
-                    버블 + 완료 상태 버블이 뜬다. */}
-                <div className="flex-[3] min-w-0 bg-slate-900 flex flex-col overflow-hidden">
+            <ContractThreePane
+                rightClassName={`transition-opacity duration-300 ${released ? 'opacity-40 pointer-events-none select-none' : ''}`}
+                left={(
+                    <PlayerInfoSidePanel
+                        player={player}
+                        playerYos={playerYos}
+                        onViewProfile={handleViewProfile}
+                        archetypeState={playerArchetypeState}
+                        tendencies={tendencies}
+                        moraleScore={moraleScore}
+                        scoutReport={scoutReport}
+                    />
+                )}
+                center={(
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                        {chatMessages.map(msg => {
-                            if (msg.role === 'status') {
-                                return (
-                                    <div key={msg.id} className="flex justify-center py-1">
-                                        <span className={`text-xs italic ${msg.isSuccess ? 'text-emerald-400' : 'text-slate-500'}`}>{msg.text}</span>
-                                    </div>
-                                );
-                            }
-                            return (
-                                <div key={msg.id} className="flex flex-col items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                                    <span className="text-xs font-bold text-indigo-400 px-1">GM</span>
-                                    <div className="max-w-[85%] bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-br-sm px-4 py-3">
-                                        <p className="text-sm text-white leading-relaxed whitespace-pre-line">{msg.text}</p>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} />)}
                         {released && (
                             <div className="flex justify-center">
-                                <button
-                                    onClick={handleExit}
-                                    className="text-sm text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-colors"
-                                >
+                                <Button variant="link" onClick={handleExit}>
                                     나가기
-                                </button>
+                                </Button>
                             </div>
                         )}
                         <div ref={chatEndRef} />
                     </div>
-                </div>
-
-                {/* ── 우측: 방출 방식 선택 + 캡 현황 ── 방출 완료 후에는 잠금(MultiNegotiationView.tsx의
-                    isOfferPanelDisabled와 동일 패턴) — "나가기"는 중앙 채팅 하단에서만 누를 수 있다. */}
-                <div className={`flex-[5] min-w-0 flex flex-col overflow-hidden bg-slate-900 transition-opacity duration-300 ${released ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                )}
+                right={(
                     <div className="flex-1 flex divide-x divide-slate-800 overflow-hidden min-h-0">
 
                         {/* 좌측 단: 방출 방식 — 웨이브가 유일한 방식이고(드롭다운은 항상 "웨이브" 하나뿐,
@@ -543,7 +401,7 @@ const MultiReleaseView: React.FC = () => {
                             CBA상으로도 stretch는 waive의 한 방식이지 독립된 방출 유형이 아님). */}
                         <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
                             <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-sm font-bold uppercase tracking-wider text-slate-400">방출 방식</div>
+                                <div className="text-sm font-bold text-slate-400">방출 방식</div>
                                 <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-400">
                                     웨이브
                                 </div>
@@ -564,7 +422,7 @@ const MultiReleaseView: React.FC = () => {
                                     스트레치 프로비전
                                 </label>
                                 {!isStretchEligible && stretchReason && (
-                                    <div className="text-sm text-red-400">{stretchReason}</div>
+                                    <InlineNotice tone="warning" size="sm">{stretchReason}</InlineNotice>
                                 )}
                             </div>
 
@@ -582,14 +440,13 @@ const MultiReleaseView: React.FC = () => {
                                                     opt?.type === 'team' ? 'italic text-sky-400'
                                                         : opt?.type === 'player' ? 'italic text-emerald-400'
                                                         : i === 0 ? 'text-white font-bold' : 'text-slate-300'
-                                                }`}>{formatMoney(amount)}</span>
+                                                }`}>{formatMoneyFull(amount)}</span>
                                             </span>
                                         </div>
                                     ))}
-                                    <div className="flex justify-between items-center text-sm pt-1.5 mt-1 border-t border-slate-800">
-                                        <span className="text-slate-400 font-semibold">총 잔여 계약액</span>
-                                        <span className="font-bold text-white">{formatMoney(totalRemaining)}</span>
-                                    </div>
+                                    <KeyValueRow label="총 잔여 계약액" numeric className="pt-1.5 mt-1 border-t border-slate-800" labelClassName="font-semibold" valueClassName="font-bold">
+                                        {formatMoneyFull(totalRemaining)}
+                                    </KeyValueRow>
                                 </div>
                             )}
 
@@ -601,7 +458,7 @@ const MultiReleaseView: React.FC = () => {
                                     {displayDeadCapRows.map(({ season, addition }, i) => (
                                         <div key={season} className="flex justify-between items-center text-sm py-0.5">
                                             <span className={i === 0 ? 'text-slate-200 font-semibold' : 'text-slate-500'}>{season}</span>
-                                            <span className={`font-medium ${i === 0 ? 'text-white font-bold' : 'text-slate-300'}`}>{formatMoney(addition)}</span>
+                                            <span className={`font-medium ${i === 0 ? 'text-white font-bold' : 'text-slate-300'}`}>{formatMoneyFull(addition)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -610,61 +467,7 @@ const MultiReleaseView: React.FC = () => {
 
                         {/* 우측 단: 팀 샐러리캡 현황 + 확인 버튼 — MultiNegotiationView.tsx의 capInfo 블록과 동일한 구성 */}
                         <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
-                            {displayCapInfo && (() => {
-                                const capInfo = displayCapInfo;
-                                const beforeOver = capInfo.beforePayroll > capInfo.capAmount;
-                                const afterOver = capInfo.afterPayroll > capInfo.capAmount;
-                                return (
-                                    <div className="flex-shrink-0 space-y-1">
-                                        <div className="text-sm font-bold text-slate-400 mb-1">팀 샐러리캡 현황</div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">캡 스페이스 여유</span>
-                                            <span className={`font-bold ${beforeOver ? 'text-red-400' : 'text-emerald-400'}`}>
-                                                {beforeOver ? '-' : '+'}{formatMoney(Math.abs(capInfo.capAmount - capInfo.beforePayroll))}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">현재 페이롤</span>
-                                            <span className="text-white">{formatMoney(capInfo.beforePayroll)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">샐러리캡</span>
-                                            <span className="text-white">{formatMoney(capInfo.capAmount)}</span>
-                                        </div>
-                                        {capInfo.luxuryTaxAmount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">럭셔리 택스 라인</span>
-                                                <span className="text-white">{formatMoney(capInfo.luxuryTaxAmount)}</span>
-                                            </div>
-                                        )}
-                                        {capInfo.apron1Amount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">1차 에이프런</span>
-                                                <span className="text-white">{formatMoney(capInfo.apron1Amount)}</span>
-                                            </div>
-                                        )}
-                                        {capInfo.apron2Amount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">2차 에이프런</span>
-                                                <span className="text-white">{formatMoney(capInfo.apron2Amount)}</span>
-                                            </div>
-                                        )}
-
-                                        <div className="pt-2 mt-1 border-t border-slate-800 space-y-1">
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400 font-semibold">방출 후 예상 페이롤</span>
-                                                <span className="font-bold text-white">{formatMoney(capInfo.afterPayroll)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">캡 대비</span>
-                                                <span className={`font-bold ${afterOver ? 'text-red-400' : 'text-emerald-400'}`}>
-                                                    {afterOver ? '-' : '+'}{formatMoney(Math.abs(capInfo.capAmount - capInfo.afterPayroll))}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+                            {displayCapInfo && <CapStatusPanel capInfo={displayCapInfo} afterLabel="방출 후 예상 페이롤" />}
 
                             {/* 연도별 데드캡 테이블 — waive/stretch 둘 다 표시(웨이브는 1행, 스트레치는
                                 분산 연수만큼). "방출 후 예상 페이롤" 바로 아래에 배치. */}
@@ -680,33 +483,34 @@ const MultiReleaseView: React.FC = () => {
                                     {displayDeadCapRows.map(({ season, existing, addition, total }, i) => (
                                         <div key={season} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-sm items-center py-0.5 ${i < displayDeadCapRows.length - 1 ? 'border-b border-slate-800/50' : ''}`}>
                                             <span className={i === 0 ? 'text-slate-200' : 'text-slate-500'}>{season}</span>
-                                            <span className="text-right w-16 text-slate-500">{existing > 0 ? formatMoney(existing) : '—'}</span>
-                                            <span className="font-bold text-right w-16 text-red-400">+{formatMoney(addition)}</span>
-                                            <span className={`font-bold text-right w-16 ${i === 0 ? 'text-white' : 'text-slate-300'}`}>{formatMoney(total)}</span>
+                                            <span className="text-right w-16 text-slate-500 tabular-nums">{existing > 0 ? formatMoney(existing) : '—'}</span>
+                                            <Money value={addition} signed goodWhenPositive={false} className="font-bold text-right w-16" />
+                                            <span className={`font-bold text-right w-16 tabular-nums ${i === 0 ? 'text-white' : 'text-slate-300'}`}>{formatMoney(total)}</span>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
                             {actionError && (
-                                <div className="flex-shrink-0 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400">
-                                    <ShieldAlert size={14} className="shrink-0" /> {actionError}
-                                </div>
+                                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
                             )}
 
                             <div className="flex-shrink-0 mt-auto pt-2">
-                                <button
+                                <Button
+                                    variant="danger"
+                                    size="xl"
+                                    shape="xl"
+                                    fullWidth
                                     onClick={() => setShowConfirmModal(true)}
                                     disabled={submitting}
-                                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     {submitting ? '처리 중...' : '확인'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                )}
+            />
 
             {/* 최종 확인 팝업 — 되돌릴 수 없는 작업이므로 한 번 더 확인. 버튼 레이블은 실제
                 실행될 방식(웨이브/스트레치)을 그대로 반영. */}
@@ -725,20 +529,26 @@ const MultiReleaseView: React.FC = () => {
                         이 작업은 되돌릴 수 없습니다. 진행할까요?
                     </p>
                     <div className="flex gap-4 w-full">
-                        <button
+                        <Button
+                            variant="secondary"
+                            size="xl"
+                            shape="xl"
+                            className="flex-1"
                             onClick={() => setShowConfirmModal(false)}
                             disabled={submitting}
-                            className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 font-black text-sm transition-all disabled:opacity-50"
                         >
                             취소
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="danger"
+                            size="xl"
+                            shape="xl"
+                            className="flex-1"
                             onClick={() => { setShowConfirmModal(false); handleConfirm(); }}
                             disabled={submitting}
-                            className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-sm transition-all shadow-lg shadow-red-900/30 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {RELEASE_MODE_LABEL[effectiveMode]}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </Modal>

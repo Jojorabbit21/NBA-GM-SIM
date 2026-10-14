@@ -115,8 +115,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     }, [box]);
 
     // Updated: Central Alignment for Stats
-    const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
-    const sc = "text-xs font-semibold text-white font-mono tabular-nums";
+    const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700";
+    const sc = "text-xs font-semibold text-white tabular-nums";
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
@@ -159,8 +159,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             {/* standalone: 헤더는 테두리 없이 라벨만 — 유일한 테두리는 아래 Table 자체가 담당 */}
             <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
-                    <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
-                    <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
+                    <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
+                    <span className="text-sm font-black text-white">{team.name}</span>
                 </div>
                 {headerRight}
             </div>
@@ -218,7 +218,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
                                 <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} />
                                 <TableCell align="center" className={hideCls}>
-                                    <span className={`text-xs font-semibold font-mono ${fatColor}`}>{Math.round(fatigueUsed)}</span>
+                                    <span className={`text-xs font-semibold ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
                                 <TableCell align="center" className={sc}>{Math.round(p.mp)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.pts}</TableCell>
@@ -237,7 +237,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                 <TableCell align="center" className={sc}>{p.ftm}/{p.fta}</TableCell>
                                 <TableCell align="center" className={`${sc} ${hideCls}`}>{formatPct(p.ftm, p.fta)}</TableCell>
                                 <TableCell align="center" className="pr-4">
-                                    <span className={`font-mono font-semibold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <span className={`font-semibold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
                                     </span>
                                 </TableCell>
@@ -247,8 +247,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-700">
-                            <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
+                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-800">
+                            <span className="text-xs font-black text-white">TEAM TOTALS</span>
                         </td>
                         {/* standalone: FAT 컬럼이 숨겨져서 POS+OVR 2칸만 span(원래 POS+OVR+FAT 3칸) */}
                         <td className={totalCellClass} colSpan={standalone ? 2 : 3}></td>

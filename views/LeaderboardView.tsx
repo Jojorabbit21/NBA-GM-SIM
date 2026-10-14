@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Team, Player, Game } from '../types';
-import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BarChart2 } from 'lucide-react';
 import { useLeaderboardData, SeasonType } from '../hooks/useLeaderboardData';
 import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar';
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
+import { Pagination } from '../components/common/Pagination';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
 
 export interface LeaderboardFilterState {
@@ -106,17 +107,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       setItemsPerPage(val);
       setCurrentPage(1);
   };
-
-  const getPageNumbers = (): (number | '...')[] => {
-      if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-      const left = Math.max(2, currentPage - 2);
-      const right = Math.min(totalPages - 1, currentPage + 2);
-      const pages: (number | '...')[] = [1];
-      if (left > 2) pages.push('...');
-      for (let i = left; i <= right; i++) pages.push(i);
-      if (right < totalPages - 1) pages.push('...');
-      pages.push(totalPages);
-      return pages;
+  const handlePageChange = (page: number) => {
+      setCurrentPage(page);
+      window.scrollTo(0, 0);
   };
 
   // --- Sorting Handler ---
@@ -217,62 +210,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           />
       </div>
 
-      {/* Pagination Footer */}
-      <div className="relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50">
-              {/* Left: Showing info */}
-              <div className="text-sm font-bold text-slate-500 w-48">
-                  총 {sortedData.length}명 중 {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)}
-              </div>
-
-              {/* Center: Page buttons */}
-              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                  <button
-                      onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo(0, 0); }}
-                      disabled={currentPage === 1}
-                      className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                      <ChevronLeft size={14} />
-                  </button>
-
-                  {getPageNumbers().map((page, idx) =>
-                      page === '...'
-                          ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-sm text-slate-600 font-bold select-none">··</span>
-                          : <button
-                              key={page}
-                              onClick={() => { setCurrentPage(page); window.scrollTo(0, 0); }}
-                              className={`w-7 h-7 text-sm font-bold rounded-lg transition-all ${
-                                  currentPage === page
-                                      ? 'bg-indigo-600 text-white'
-                                      : 'text-indigo-400 hover:bg-slate-800 hover:text-indigo-300'
-                              }`}
-                          >
-                              {page}
-                          </button>
-                  )}
-
-                  <button
-                      onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo(0, 0); }}
-                      disabled={currentPage === totalPages || totalPages === 0}
-                      className="p-1.5 text-indigo-400 hover:bg-slate-800 hover:text-indigo-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                      <ChevronRight size={14} />
-                  </button>
-              </div>
-
-              {/* Right: Items per page */}
-              <div className="ml-auto flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-500">페이지 당</span>
-                  <select
-                      value={itemsPerPage}
-                      onChange={e => handleItemsPerPageChange(Number(e.target.value))}
-                      className="bg-slate-800 border border-slate-700 text-slate-300 text-sm font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                      {[25, 50, 75, 100].map(n => (
-                          <option key={n} value={n}>{n}</option>
-                      ))}
-                  </select>
-              </div>
-          </div>
+      <Pagination
+          page={currentPage}
+          pageSize={itemsPerPage}
+          totalItems={sortedData.length}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handleItemsPerPageChange}
+      />
     </div>
   );
 };

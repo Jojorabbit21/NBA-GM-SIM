@@ -2,7 +2,9 @@
 import React, { useMemo } from 'react';
 import type { Player } from '../../../../types';
 import { ZONE_CONFIG, ZONE_AVG } from '../../../../utils/courtZones';
-import { PlayerHoverCard } from '../../../common/PlayerHoverCard';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../common/Table';
+import { PlayerNameLink } from '../../../common/PlayerNameLink';
+import { InsightCard } from './InsightCard';
 
 // TeamZoneChart.tsx의 ZONE_STAT_MAP과 동일(그쪽은 export 안 되어 있어 로컬로 재정의) — 10존
 // 각각의 원시 zone_*_m/zone_*_a 스탯 키. ZONE_CONFIG 선언 순서 그대로 테이블 행 순서로 사용.
@@ -19,6 +21,8 @@ const ZONE_STAT_KEYS: Record<string, { m: string; a: string }> = {
     atb3R: { m: 'zone_atb3_r_m', a: 'zone_atb3_r_a' },
 };
 
+type Leader = { player: Player; value: number } | null;
+
 interface ZoneRow {
     key: string;
     label: string;
@@ -26,15 +30,31 @@ interface ZoneRow {
     a: number;
     pct: number;
     avg: number;
-    countLeader: { player: Player; value: number } | null;
-    pctLeader: { player: Player; value: number } | null;
+    countLeader: Leader;
+    pctLeader: Leader;
 }
+
+/** "리더 이름 | 값" 두 칸 — 성공개수 리더와 성공률 리더가 값 포맷만 다른 같은 구조(감사 Y5) */
+const LeaderCells: React.FC<{ leader: Leader; format: (v: number) => string; teamAbbr?: string; onPlayerClick?: (p: Player) => void }> = ({ leader, format, teamAbbr, onPlayerClick }) => (
+    leader ? (
+        <>
+            <TableCell align="left"><PlayerNameLink player={leader.player} teamAbbr={teamAbbr} onClick={onPlayerClick} className="block" /></TableCell>
+            <TableCell align="left" className="text-sm text-slate-300 tabular-nums">{format(leader.value)}</TableCell>
+        </>
+    ) : (
+        <>
+            <TableCell align="left" className="text-sm text-slate-600">-</TableCell>
+            <TableCell />
+        </>
+    )
+);
 
 /** 기존 TeamZoneEfficiencyTable(존별 팀 전체 성공/시도·FG%)과 TeamZoneLeadersTable(존별
  *  성공개수·성공률 팀 내 1위 선수)을 한 행에 합친 테이블. 두 표 모두 ZONE_CONFIG 순서를
  *  그대로 행 순서로 쓰던 걸 하나의 useMemo에서 같이 계산. 선수명은 클릭 시 onPlayerClick으로
  *  프로필 이동, hover 시 PlayerHoverCard(항상 활성 — MultiTacticsView.tsx 전용 컴포넌트라
- *  enableHoverCard 게이트 불필요). */
+ *  enableHoverCard 게이트 불필요).
+ *  [2026-10-13] flex-div 표(빈 span으로 열 맞추던 구조) → 공용 Table(bare, 리더 헤더 colSpan=2). */
 export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string; onPlayerClick?: (player: Player) => void }> = ({ roster, teamAbbr, onPlayerClick }) => {
     const rows = useMemo((): ZoneRow[] => {
         return ZONE_CONFIG.map(cfg => {
@@ -42,8 +62,8 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string;
             const m = roster.reduce((sum, p) => sum + ((p.stats as any)[stat.m] || 0), 0);
             const a = roster.reduce((sum, p) => sum + ((p.stats as any)[stat.a] || 0), 0);
 
-            let countLeader: { player: Player; value: number } | null = null;
-            let pctLeader: { player: Player; value: number } | null = null;
+            let countLeader: Leader = null;
+            let pctLeader: Leader = null;
             for (const p of roster) {
                 const pm = (p.stats as any)[stat.m] || 0;
                 const pa = (p.stats as any)[stat.a] || 0;
@@ -71,85 +91,35 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string;
         });
     }, [roster]);
 
-    // 모든 컬럼 flex-1로 균등 분배. 헤더도 데이터 행과 동일한 개수의 flex 아이템을 두고
-    // 값이 필요없는 헤더 슬롯은 빈 채로 남겨 gap 개수를 맞춘다(TeamZoneLeadersTable 통합
-    // 당시 확립한 패턴 그대로).
-    const NAME_CLS = 'flex-1';
-    const VALUE_CLS = 'flex-1';
-
     return (
-        <div className="w-full bg-slate-900/40 border border-slate-800 overflow-hidden">
-            <div className="px-3 py-2 border-b border-slate-800">
-                <h4 className="text-sm font-normal text-white uppercase tracking-widest">존별 효율 · 리더</h4>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2 bg-slate-700/50 border-b border-slate-700">
-                <span className={`text-sm font-normal text-slate-300 uppercase tracking-wider text-left ${NAME_CLS}`}>존</span>
-                <span className={`text-sm font-normal text-slate-300 uppercase tracking-wider text-left ${VALUE_CLS}`}>성공/시도</span>
-                <span className={`text-sm font-normal text-slate-300 uppercase tracking-wider text-left ${VALUE_CLS}`}>FG%</span>
-                <span className={`text-sm font-normal text-slate-300 uppercase tracking-wider text-left ${NAME_CLS}`}>성공개수 리더</span>
-                <span className={VALUE_CLS} />
-                <span className={`text-sm font-normal text-slate-300 uppercase tracking-wider text-left ${NAME_CLS}`}>성공률 리더</span>
-                <span className={VALUE_CLS} />
-            </div>
-            <div className="flex flex-col">
-                {rows.map((row, i) => {
-                    const diff = row.pct - row.avg;
-                    const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
-                    return (
-                        <div
-                            key={row.key}
-                            className={`flex items-center gap-3 px-3 py-2.5 ${i % 2 === 1 ? 'bg-slate-700/25' : ''} ${i < rows.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                        >
-                            <span className={`text-sm font-normal text-slate-400 text-left ${NAME_CLS}`}>{row.label}</span>
-                            <span className={`text-sm font-normal text-white tabular-nums text-left ${VALUE_CLS}`}>
-                                {row.m}/{row.a}
-                            </span>
-                            <span className={`text-sm font-normal text-white tabular-nums text-left ${VALUE_CLS}`}>
-                                {(row.pct * 100).toFixed(1)}%
-                                <span className={`ml-1 font-normal ${diffColor}`}>
-                                    ({diff > 0 ? '+' : ''}{(diff * 100).toFixed(1)})
-                                </span>
-                            </span>
-                            {row.countLeader ? (
-                                <>
-                                    <PlayerHoverCard player={row.countLeader.player} teamAbbr={teamAbbr}>
-                                        <span
-                                            className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
-                                            onClick={() => onPlayerClick?.(row.countLeader!.player)}
-                                        >
-                                            {row.countLeader.player.name}
-                                        </span>
-                                    </PlayerHoverCard>
-                                    <span className={`text-sm font-normal text-slate-300 tabular-nums text-left ${VALUE_CLS}`}>{row.countLeader.value}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span className={`text-sm text-slate-600 text-left ${NAME_CLS}`}>-</span>
-                                    <span className={VALUE_CLS} />
-                                </>
-                            )}
-                            {row.pctLeader ? (
-                                <>
-                                    <PlayerHoverCard player={row.pctLeader.player} teamAbbr={teamAbbr}>
-                                        <span
-                                            className={`text-sm font-normal text-white text-left truncate hover:text-indigo-400 cursor-pointer transition-colors ${NAME_CLS}`}
-                                            onClick={() => onPlayerClick?.(row.pctLeader!.player)}
-                                        >
-                                            {row.pctLeader.player.name}
-                                        </span>
-                                    </PlayerHoverCard>
-                                    <span className={`text-sm font-normal text-slate-300 tabular-nums text-left ${VALUE_CLS}`}>{(row.pctLeader.value * 100).toFixed(1)}%</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span className={`text-sm text-slate-600 text-left ${NAME_CLS}`}>-</span>
-                                    <span className={VALUE_CLS} />
-                                </>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
+        <InsightCard title="존별 효율 · 리더">
+            <Table variant="bare" dividers={false}>
+                <TableHead>
+                    <TableHeaderCell align="left">존</TableHeaderCell>
+                    <TableHeaderCell align="left">성공/시도</TableHeaderCell>
+                    <TableHeaderCell align="left">FG%</TableHeaderCell>
+                    <TableHeaderCell align="left" colSpan={2}>성공개수 리더</TableHeaderCell>
+                    <TableHeaderCell align="left" colSpan={2}>성공률 리더</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {rows.map((row, i) => {
+                        const diff = row.pct - row.avg;
+                        const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
+                        return (
+                            <TableRow key={row.key} className={i % 2 === 1 ? 'bg-slate-700/25' : ''}>
+                                <TableCell align="left" className="text-sm text-slate-400">{row.label}</TableCell>
+                                <TableCell align="left" className="text-sm text-white tabular-nums">{row.m}/{row.a}</TableCell>
+                                <TableCell align="left" className="text-sm text-white tabular-nums">
+                                    {(row.pct * 100).toFixed(1)}%
+                                    <span className={`ml-1 ${diffColor}`}>({diff > 0 ? '+' : ''}{(diff * 100).toFixed(1)})</span>
+                                </TableCell>
+                                <LeaderCells leader={row.countLeader} format={v => String(v)} teamAbbr={teamAbbr} onPlayerClick={onPlayerClick} />
+                                <LeaderCells leader={row.pctLeader} format={v => `${(v * 100).toFixed(1)}%`} teamAbbr={teamAbbr} onPlayerClick={onPlayerClick} />
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </InsightCard>
     );
 };

@@ -1,5 +1,8 @@
 
 import React, { useState } from 'react';
+import { actionFailure } from '../../services/notifications/actionErrorCatalog';
+import { InlineNotice } from '../../components/common/InlineNotice';
+import { createPortal } from 'react-dom';
 import { Loader2, UserCircle2 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 
@@ -28,22 +31,23 @@ export const NicknameModal: React.FC<NicknameModalProps> = ({
         if (!isValid || saving) return;
         setSaving(true);
         setErr(null);
-        const { error } = await supabase.from('profiles').upsert({ id: userId, email, nickname: trimmed });
+        // [2026-10-13] profiles upsert + league_teams.nickname 동기화를 RPC 하나(set_my_nickname, 트랜잭션)로.
+        // 예전엔 두 번 쓰고 두 번째 실패를 무시해 프로필만 바뀌는 "부분 저장"이 가능했다. 본인(auth.uid()) 행만 갱신.
+        const { error } = await supabase.rpc('set_my_nickname', { p_nickname: trimmed, p_email: email });
+        setSaving(false);
         if (error) {
-            setSaving(false);
-            setErr('저장에 실패했습니다. 다시 시도해주세요.');
+            const msg = error.message ?? '';
+            if (msg.includes('invalid_nickname')) setErr('닉네임은 1~8자여야 합니다.');
+            else if (msg.includes('not_authenticated')) setErr('로그인이 만료되었습니다. 다시 로그인하세요.');
+            else setErr(actionFailure(error, '닉네임 저장'));
             return;
         }
-        // league_teams.nickname은 profiles의 비정규화된 복사본이라, 참가 중인 모든 리그의
-        // 내 팀 row에도 같이 반영해야 멀티플레이 화면들에서 새 닉네임이 즉시 보인다.
-        await supabase.from('league_teams').update({ nickname: trimmed }).eq('user_id', userId);
-        setSaving(false);
         onSaved(trimmed);
         onClose();
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    return createPortal(
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xs p-6 space-y-5">
                 <div className="flex items-center gap-3">
                     <div className="flex-shrink-0 w-9 h-9 rounded-full bg-indigo-500/15 flex items-center justify-center">
@@ -75,7 +79,7 @@ export const NicknameModal: React.FC<NicknameModalProps> = ({
                     </div>
                 </div>
 
-                {err && <p className="text-xs text-red-400 ko-normal">{err}</p>}
+                {err && <InlineNotice tone="danger" size="sm">{err}</InlineNotice>}
 
                 <div className="flex gap-2">
                     <button
@@ -97,6 +101,7 @@ export const NicknameModal: React.FC<NicknameModalProps> = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

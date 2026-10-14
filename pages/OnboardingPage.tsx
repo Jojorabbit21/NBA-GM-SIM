@@ -15,7 +15,7 @@ const OnboardingPage: React.FC = () => {
     const gmLastName = userGMProfile?.lastName;
 
     return (
-        <div className="fixed inset-0 z-[500]">
+        <div className="fixed inset-0 z-takeover">
             <OnboardingView
                 team={myTeam}
                 onComplete={() => navigate('/home', { replace: true })}

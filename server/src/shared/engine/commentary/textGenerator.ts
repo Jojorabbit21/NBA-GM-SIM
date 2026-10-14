@@ -1287,7 +1287,7 @@ export function generateCommentary(
                 ]);
             }
             return pick([
-                `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다! (스틸)`,
+                `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다!`,
                 `${defender.playerName}의 손질, 스틸에 성공합니다!`,
                 `${actor.playerName}, 패스 길을 읽혔습니다. ${defender.playerName}의 스틸.`,
             ]);
@@ -1368,29 +1368,29 @@ export function getTechnicalFoulCommentary(defender: LivePlayer): string {
 export function getFlagrant1Commentary(defender: LivePlayer, actor: LivePlayer, playType?: PlayType): string {
     if (playType === 'Iso' || playType === 'PnR_Handler' || playType === 'DriveKick') {
         return pick([
-            `${defender.playerName}, 돌파하는 ${actor.playerName}에게 과도한 신체 접촉! Flagrant 1.`,
-            `${defender.playerName}, 레이업을 막으려다 ${actor.playerName}의 상체를 거칠게 밀칩니다. Flagrant 1.`,
+            `${defender.playerName}, 돌파하는 ${actor.playerName}에게 과도한 신체 접촉! 플래그런트 1.`,
+            `${defender.playerName}, 레이업을 막으려다 ${actor.playerName}의 상체를 거칠게 밀칩니다. 플래그런트 1.`,
         ]);
     }
     if (playType === 'PostUp' || playType === 'PnR_Roll' || playType === 'PnR_Pop' || playType === 'OffBallScreen') {
         return pick([
-            `${defender.playerName}, 포스트 수비 중 ${actor.playerName}에게 불필요한 푸싱. Flagrant 1.`,
-            `${defender.playerName}, 스크린 상황에서 ${actor.playerName}을 과격하게 밀칩니다. Flagrant 1 선언.`,
+            `${defender.playerName}, 포스트 수비 중 ${actor.playerName}에게 불필요한 푸싱. 플래그런트 1.`,
+            `${defender.playerName}, 스크린 상황에서 ${actor.playerName}을 과격하게 밀칩니다. 플래그런트 1 선언.`,
         ]);
     }
     if (playType === 'Transition') {
         return pick([
-            `${defender.playerName}, 속공 중인 ${actor.playerName}의 유니폼을 잡아끕니다! Flagrant 1.`,
-            `${defender.playerName}, 패스트브레이크를 끊으려 ${actor.playerName}을 감싸 안습니다. Flagrant 1.`,
+            `${defender.playerName}, 속공 중인 ${actor.playerName}의 유니폼을 잡아끕니다! 플래그런트 1.`,
+            `${defender.playerName}, 패스트브레이크를 끊으려 ${actor.playerName}을 감싸 안습니다. 플래그런트 1.`,
         ]);
     }
     return pick([
-        `${defender.playerName}, ${actor.playerName}의 슛 시도를 필요 이상으로 강하게 막아섭니다. Flagrant 1 선언.`,
-        `${defender.playerName}, 블록을 시도하다 ${actor.playerName}의 얼굴을 가격합니다! Flagrant 1.`,
-        `${defender.playerName}, 샷 블록 과정에서 ${actor.playerName}에게 과도한 팔로스루. Flagrant 1.`,
-        `${defender.playerName}, 리바운드 경합에서 ${actor.playerName}을 팔꿈치로 밀어냅니다. Flagrant 1.`,
-        `${defender.playerName}, 과도한 신체 접촉! 심판진 리뷰 결과 Flagrant 1.`,
-        `${defender.playerName}, ${actor.playerName}에 대한 불필요한 접촉으로 Flagrant 1이 선언됩니다.`,
+        `${defender.playerName}, ${actor.playerName}의 슛 시도를 필요 이상으로 강하게 막아섭니다. 플래그런트 1 선언.`,
+        `${defender.playerName}, 블록을 시도하다 ${actor.playerName}의 얼굴을 가격합니다! 플래그런트 1.`,
+        `${defender.playerName}, 샷 블록 과정에서 ${actor.playerName}에게 과도한 팔로스루. 플래그런트 1.`,
+        `${defender.playerName}, 리바운드 경합에서 ${actor.playerName}을 팔꿈치로 밀어냅니다. 플래그런트 1.`,
+        `${defender.playerName}, 과도한 신체 접촉! 심판진 리뷰 결과 플래그런트 1.`,
+        `${defender.playerName}, ${actor.playerName}에 대한 불필요한 접촉으로 플래그런트 1이 선언됩니다.`,
     ]);
 }
 
@@ -1399,18 +1399,68 @@ export function getFlagrant1Commentary(defender: LivePlayer, actor: LivePlayer, 
 export function getFlagrant2Commentary(defender: LivePlayer, actor: LivePlayer, playType?: PlayType): string {
     if (playType === 'Iso' || playType === 'PnR_Handler' || playType === 'DriveKick') {
         return pick([
-            `${defender.playerName}, 공중에서 ${actor.playerName}을 밀칩니다! Flagrant 2, 즉시 퇴장!`,
-            `${defender.playerName}, 레이업 중인 ${actor.playerName}을 위험하게 밀어냅니다! Flagrant 2 퇴장!`,
+            `${defender.playerName}, 공중에서 ${actor.playerName}을 밀칩니다! 플래그런트 2, 즉시 퇴장!`,
+            `${defender.playerName}, 레이업 중인 ${actor.playerName}을 위험하게 밀어냅니다! 플래그런트 2 퇴장!`,
         ]);
     }
     return pick([
-        `${defender.playerName}, ${actor.playerName}에게 의도적인 엘보! Flagrant 2, 퇴장 처분!`,
-        `${defender.playerName}, 스윙한 팔꿈치가 ${actor.playerName}의 얼굴을 강타! Flagrant 2!`,
-        `${defender.playerName}, ${actor.playerName}을 거칠게 바닥에 끌어내립니다! Flagrant 2 퇴장!`,
-        `${defender.playerName}, 말릴 수 없는 거친 파울! 심판진 리뷰 후 Flagrant 2 선언. 퇴장!`,
-        `${defender.playerName}, 보복성 파울! ${actor.playerName}에게 과격한 접촉. Flagrant 2 퇴장!`,
-        `${defender.playerName}, 리바운드 경합 중 ${actor.playerName}을 위험하게 밀쳐냅니다! Flagrant 2, 즉시 퇴장!`,
-        `${defender.playerName}, 경기 흐름과 무관한 위험한 접촉! Flagrant 2, 즉각 퇴장 조치됩니다.`,
-        `${defender.playerName}, 도저히 용납할 수 없는 플레이! 심판진 만장일치 Flagrant 2 퇴장!`,
+        `${defender.playerName}, ${actor.playerName}에게 의도적인 엘보! 플래그런트 2, 퇴장 처분!`,
+        `${defender.playerName}, 스윙한 팔꿈치가 ${actor.playerName}의 얼굴을 강타! 플래그런트 2, 퇴장!`,
+        `${defender.playerName}, ${actor.playerName}을 거칠게 바닥에 끌어내립니다! 플래그런트 2 퇴장!`,
+        `${defender.playerName}, 말릴 수 없는 거친 파울! 심판진 리뷰 후 플래그런트 2 선언. 퇴장!`,
+        `${defender.playerName}, 보복성 파울! ${actor.playerName}에게 과격한 접촉. 플래그런트 2 퇴장!`,
+        `${defender.playerName}, 리바운드 경합 중 ${actor.playerName}을 위험하게 밀쳐냅니다! 플래그런트 2, 즉시 퇴장!`,
+        `${defender.playerName}, 경기 흐름과 무관한 위험한 접촉! 플래그런트 2, 즉각 퇴장 조치됩니다.`,
+        `${defender.playerName}, 도저히 용납할 수 없는 플레이! 심판진 만장일치 플래그런트 2 퇴장!`,
+    ]);
+}
+
+
+/**
+ * Shooting Foul Commentary — 비슈팅 파울(generateCommentary 'foul')과 동일한 톤/playType 게이팅.
+ * [2026-10-07] 슈팅 파울·앤드원이 자유투/득점 로그에 접혀 파울자 이름이 안 나오던 문제 —
+ * statsMappers가 독립 foul 로그("이름, 파울 내용. (선수 N반칙, 팀 N반칙)")를 찍을 때 사용.
+ * isAndOne이면 "득점 인정 + 추가 자유투" 문맥의 문장 풀을 쓴다.
+ */
+export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlayer, playType?: PlayType, isHelpPlay?: boolean, isAndOne?: boolean): string {
+    if (isAndOne) {
+        return pick([
+            `${defender.playerName}, 득점을 막지 못한 채 ${actor.playerName}에게 파울까지 범합니다. 바스켓 카운트!`,
+            `${actor.playerName}의 슛이 들어가는 순간 ${defender.playerName}의 접촉 — 앤드원이 선언됩니다.`,
+            `${defender.playerName}, 뒤늦은 컨테스트로 ${actor.playerName}에게 파울. 득점 인정에 추가 자유투까지 내줍니다.`,
+        ]);
+    }
+    if (isHelpPlay) {
+        return pick([
+            `${defender.playerName}, 헬프하러 나왔다가 슛 동작 중인 ${actor.playerName}에게 파울을 범합니다.`,
+            `위크사이드에서 도와준 ${defender.playerName}, 슈터와 부딪히며 슈팅 파울!`,
+            `${defender.playerName}, 로테이션 수비 중 ${actor.playerName}의 슛 동작에 접촉 — 슈팅 파울이 선언됩니다.`,
+        ]);
+    }
+    if (playType === 'Iso' || playType === 'PnR_Handler' || playType === 'DriveKick') {
+        return pick([
+            `${defender.playerName}, 돌파 후 올라가는 ${actor.playerName}를 막다가 슈팅 파울을 범합니다.`,
+            `${actor.playerName}의 레이업을 막아서던 ${defender.playerName}, 팔에 걸리며 슈팅 파울!`,
+            `${defender.playerName}, 드라이브 피니시 과정에서 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
+        ]);
+    }
+    if (playType === 'PostUp' || playType === 'PnR_Roll') {
+        return pick([
+            `${defender.playerName}, 포스트에서 올라가는 ${actor.playerName}를 잡아채며 슈팅 파울을 범합니다.`,
+            `${actor.playerName}의 골밑 슛을 막던 ${defender.playerName}, 팔을 내리치며 파울로 걸립니다.`,
+            `${defender.playerName}, 골밑 슛 컨테스트 중 무리한 접촉으로 슈팅 파울이 선언됩니다.`,
+        ]);
+    }
+    if (playType === 'CatchShoot' || playType === 'PnR_Pop' || playType === 'OffBallScreen') {
+        return pick([
+            `${defender.playerName}, 클로즈아웃하다 슛 동작 중인 ${actor.playerName}에게 파울을 범합니다.`,
+            `${actor.playerName}의 점퍼에 급하게 달려든 ${defender.playerName}, 착지 공간을 침범하며 슈팅 파울!`,
+            `${defender.playerName}, 슛 컨테스트 과정에서 슈터의 팔을 건드리며 슈팅 파울이 선언됩니다.`,
+        ]);
+    }
+    return pick([
+        `${defender.playerName}, 슛 동작 중인 ${actor.playerName}에게 슈팅 파울을 범합니다.`,
+        `${actor.playerName}의 슛을 막아서던 ${defender.playerName}, 파울.`,
+        `${defender.playerName}의 슈팅 파울이 선언됩니다.`,
     ]);
 }

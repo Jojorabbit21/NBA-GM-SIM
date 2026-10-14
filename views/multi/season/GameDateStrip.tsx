@@ -9,7 +9,8 @@ import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
 import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/multi/liveGameService';
 import { useServerClockBucket } from '../../../utils/serverClock';
-import { getTeamLogoUrl, getRealTeamLogoUrl } from '../../../utils/constants';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { IconButton } from '../../../components/common/IconButton';
 
 // [2026-08-28] views/multi/season/MultiGamePbpView.tsx에서 분리 — 원래 그 화면(경기 관람)
 // 최상단에만 있던 "오늘 경기 목록" 스트립을 모든 시즌 화면(MultiSeasonLayout, 헤더 바로
@@ -21,22 +22,9 @@ export interface TeamStripInfo { team_name: string; team_abbr: string; color_pri
 const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean; isFinal?: boolean; selected?: boolean }> = ({ team, teamId, score, won, isFinal, selected }) => {
     return (
     <div className="flex items-center justify-between gap-2">
-        {/* 팀 로고 + 약어 — 로고 폴백 체인은 일정/순위 화면과 동일(신규 로고 → 구버전 → 플레이스홀더) */}
+        {/* 팀 로고 + 약어 — 로고 폴백은 TeamLogo 공용(리그 로고 1회 폴백) */}
         <div className="flex items-center gap-1.5 min-w-0">
-            <img
-                src={getRealTeamLogoUrl(teamId)}
-                alt={team?.team_abbr ?? teamId}
-                className={`w-5 h-5 object-contain shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`}
-                onError={(e) => {
-                    const img = e.currentTarget;
-                    if (img.dataset.fallback !== 'old') {
-                        img.dataset.fallback = 'old';
-                        img.src = getTeamLogoUrl(teamId);
-                    } else {
-                        img.src = 'https://placehold.co/100x100?text=BPL';
-                    }
-                }}
-            />
+            <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className={`w-5 h-5 shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`} shadow={false} />
             <span className={`text-sm ${won && isFinal ? 'font-bold' : 'font-semibold'} truncate ${won || selected ? 'text-white' : 'text-slate-500'}`}>
                 {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
             </span>
@@ -142,7 +130,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
     const dateMenuRef = useRef<HTMLDivElement>(null);
     // [Fix 2026-08-04] "경기 카드 리스트가 화면 우측 끝을 넘어가도 스크롤할 방법이 없다는 피드백 —
-    // 가로 스크롤 컨테이너에 ref를 달고, 맨 우측에 ">" 버튼으로 scrollBy 이동.
+    // 가로 스크롤 컨테이너에 ref를 달고, 맨 우측에">" 버튼으로 scrollBy 이동.
     const gameStripRef = useRef<HTMLDivElement>(null);
     // [Fix 2026-08-05] "라이브/기록 화면 진입 시 상단 경기 리스트가 현재 선택한 경기로 포커스되게"
     // 요청 — 날짜는 이미 자동 선택되지만(위 useEffect), 그 날짜의 경기가 많으면 현재 보고 있는
@@ -259,13 +247,9 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     if (isCollapsed) {
         return (
             <div className="shrink-0 flex items-center gap-2 bg-slate-800 border-b border-slate-700 h-8 px-1.5">
-                <button
-                    onClick={toggleCollapsed}
-                    title="경기 스트립 펼치기"
-                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-                >
+                <IconButton label="경기 스트립 펼치기" tone="subtle" shape="md" onClick={toggleCollapsed}>
                     <ChevronDown size={16} />
-                </button>
+                </IconButton>
                 <span className="text-xs font-semibold text-slate-400 tabular-nums">
                     {activeYear}.{activeMonth}.{activeDay} · {activeGroup.games.length}경기
                 </span>
@@ -276,23 +260,28 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     return (
         <div className="shrink-0 flex items-stretch bg-slate-800 border-b border-slate-600 h-[75px]">
             {/* 접기 버튼 — 날짜 셀렉터 좌측 */}
-            <button
+            <IconButton
+                label="경기 스트립 접기"
+                tone="subtle"
+                shape="md"
                 onClick={toggleCollapsed}
-                title="경기 스트립 접기"
-                className="shrink-0 flex items-center justify-center px-3 bg-slate-800 border-r border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-[color,background-color] cursor-pointer"
+                className="h-auto w-auto self-stretch px-3 rounded-none bg-slate-800 border-r border-slate-700"
             >
                 <ChevronUp size={16} />
-            </button>
+            </IconButton>
             {/* 날짜 셀렉터 — 화살표 이동 + 클릭 시 전체 날짜 드롭다운.
                 [Fix 2026-08-29] 인디고 색상을 slate 계열로 변경. */}
             <div ref={dateMenuRef} className="relative shrink-0 flex items-center gap-0.5 px-1.5 bg-slate-800 border-r border-slate-700">
-                <button
+                <IconButton
+                    label="이전 날짜"
+                    size="sm"
+                    tone="subtle"
+                    shape="md"
                     onClick={() => activeIdx > 0 && setSelectedDateKey(dateKeys[activeIdx - 1])}
                     disabled={activeIdx <= 0}
-                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                     <ChevronLeft size={16} />
-                </button>
+                </IconButton>
                 <button
                     onClick={(e) => {
                         // [Fix 2026-08-04] 클릭 좌표(clientX/Y) 대신 날짜 버튼 자신의 위치를 써서
@@ -308,13 +297,16 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                         {activeMonth}.{activeDay}
                     </span>
                 </button>
-                <button
+                <IconButton
+                    label="다음 날짜"
+                    size="sm"
+                    tone="subtle"
+                    shape="md"
                     onClick={() => activeIdx >= 0 && activeIdx < dateKeys.length - 1 && setSelectedDateKey(dateKeys[activeIdx + 1])}
                     disabled={activeIdx < 0 || activeIdx >= dateKeys.length - 1}
-                    className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 >
                     <ChevronRight size={16} />
-                </button>
+                </IconButton>
 
                 {/* 월간 달력 — 경기가 있는 날짜만 선택 가능(없는 날짜는 비활성) */}
                 {isDateMenuOpen && viewYM && menuPos && (
@@ -333,13 +325,16 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 [2026-09-02] 스크롤할 내용 자체가 없으면(경기 수가 적어 카드가 넘치지 않으면)
                 canScrollLeft/Right 둘 다 false가 되므로, 그 경우 버튼을 아예 숨긴다. */}
             {(canScrollLeft || canScrollRight) && (
-                <button
+                <IconButton
+                    label="경기 스트립 왼쪽으로"
+                    tone="inherit"
+                    shape="md"
                     onClick={() => gameStripRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
                     disabled={!canScrollLeft}
-                    className="shrink-0 w-8 flex items-center justify-center bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:cursor-default transition-colors"
+                    className="h-auto w-8 self-stretch rounded-none bg-slate-800 text-white hover:bg-slate-700"
                 >
                     <ChevronLeft size={18} />
-                </button>
+                </IconButton>
             )}
 
             {/* 그 날짜의 경기 카드 — 가로 스크롤 */}
@@ -361,7 +356,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                     const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
                     const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
                     const statusLabel = state === 'final' ? '종료'
-                        : state === 'live' ? (live ? `${live.quarter ?? 1}Q ${live.clock ?? ''}` : 'LIVE')
+                        : state === 'live' ? (live ? `${live.quarter ?? 1}Q ${live.clock ?? ''}` : '진행 중')
                         : fmtTime(g, preferVirtual);
 
                     return (
@@ -370,12 +365,20 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                             ref={isCurrent ? currentCardRef : undefined}
                             onClick={() => !isCurrent && navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
                             className={`shrink-0 w-36 px-3 py-1.5 flex flex-col justify-center gap-1 border-r border-slate-700 transition-[color,background-color] text-left cursor-pointer ${
-                                isCurrent ? 'bg-slate-700' : state === 'live' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-900 hover:bg-slate-800'
+                                isCurrent ? 'bg-slate-700' : state === 'live' ? 'bg-red-900/30 hover:bg-red-900/50' : 'bg-slate-900 hover:bg-slate-800'
                             }`}
                         >
-                            <span className={`text-xs font-bold uppercase ${isCurrent ? 'text-white' : state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
-                                {statusLabel}
-                            </span>
+                            <div className="flex items-center justify-between gap-1">
+                                <span className={`text-xs font-bold ${isCurrent ? 'text-white' : state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
+                                    {statusLabel}
+                                </span>
+                                {state === 'live' && (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold leading-none text-red-400">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                        LIVE
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex flex-col gap-0.5">
                                 <StripTeamRow
                                     team={teamMap[g.awayTeamId]}
@@ -403,13 +406,16 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 고정 화살표 버튼 추가, 클릭 시 스트립을 오른쪽으로 스크롤. 좌측 버튼과 동일하게
                 스크롤이 필요 없을 땐 숨김. */}
             {(canScrollLeft || canScrollRight) && (
-                <button
+                <IconButton
+                    label="경기 스트립 오른쪽으로"
+                    tone="inherit"
+                    shape="md"
                     onClick={() => gameStripRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
                     disabled={!canScrollRight}
-                    className="shrink-0 w-8 flex items-center justify-center bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:cursor-default transition-colors"
+                    className="h-auto w-8 self-stretch rounded-none bg-slate-800 text-white hover:bg-slate-700"
                 >
                     <ChevronRight size={18} />
-                </button>
+                </IconButton>
             )}
         </div>
     );

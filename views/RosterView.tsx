@@ -13,15 +13,14 @@ import { RosterTabs, RosterTab } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
 import { TeamScheduleCalendar } from '../components/roster/TeamScheduleCalendar';
 import { TeamPayrollTable, type RosterCapSettings } from '../components/roster/TeamPayrollTable';
-import { TeamBadge } from '../components/common/TeamBadge';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getReadableTextColor } from '../utils/colorContrast';
+import { IconButton } from '../components/common/IconButton';
 import { TEAM_DATA } from '../data/teamData';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
 import type { TeamAdvancedStatsWithRank } from '../hooks/useTeamSeasonAdvancedStats';
 
 interface RosterViewProps {
@@ -92,6 +91,15 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const rteamParam = searchParams.get('rteam');
   const fallbackTeamId = initialTeamId || myTeamId;
   const selectedTeamId = (rteamParam && allTeams.some(t => t.id === rteamParam)) ? rteamParam : fallbackTeamId;
+  // 배너 로고 좌측 위/아래 버튼 — allTeams(드롭다운과 동일 순서)에서 ±1칸, 양 끝은 반대편으로 순환.
+  // selectedTeam(useMemo)은 아래에서 선언되므로 여기선 먼저 계산된 selectedTeamId를 쓴다.
+  const stepTeam = (delta: 1 | -1) => {
+    if (!selectedTeamId || allTeams.length === 0) return;
+    const idx = allTeams.findIndex(t => t.id === selectedTeamId);
+    const next = allTeams[(idx + delta + allTeams.length) % allTeams.length];
+    if (next && next.id !== selectedTeamId) handleTeamChange(next.id);
+  };
+
   const handleTeamChange = (teamId: string, opts?: { tab?: RosterTab }) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
@@ -120,6 +128,26 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const teamMenuRef = useRef<HTMLDivElement>(null);
+
+  // [2026-10-12] ↑/↓ 방향키로 이전/다음 팀 이동(사용자 요청). stepTeam은 렌더마다 새로 만들어지므로
+  // ref로 최신 함수를 들고 리스너는 한 번만 등록. 입력 요소에 포커스가 있거나(검색창 등) 팀 드롭다운이
+  // 열려 있을 땐 무시 — 그 외엔 preventDefault로 페이지/테이블 스크롤 대신 팀 전환을 우선한다.
+  const stepTeamRef = useRef(stepTeam);
+  stepTeamRef.current = stepTeam;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      if (teamMenuOpen) return;
+      e.preventDefault();
+      stepTeamRef.current(e.key === 'ArrowUp' ? -1 : 1);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [teamMenuOpen]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -242,64 +270,80 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
       {/* Header Bar — 좌: 팀 로고 / 우: 팀 정보(드롭다운+전적+순위+스탯) 2컬럼 */}
-      <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center gap-4" style={{ backgroundColor: theme.bg }}>
-          {selectedTeam.colorPrimary ? (
-              // 멀티플레이어(유저 커스텀 팀) — 신규 로고 세트(public/logos/real/), 실패 시 구버전 →
-              // 플레이스홀더 순차 폴백(views/PlayerDetailView.tsx 헤더와 동일 패턴).
-              <img
-                  src={getRealTeamLogoUrl(selectedTeam.id)}
-                  alt={selectedTeam.abbr ?? selectedTeam.id}
-                  className="w-24 h-24 object-contain drop-shadow-md shrink-0"
-                  onError={(e) => {
-                      const img = e.currentTarget;
-                      if (img.dataset.fallback !== 'old') {
-                          img.dataset.fallback = 'old';
-                          img.src = getTeamLogoUrl(selectedTeam.id);
-                      } else {
-                          img.src = 'https://placehold.co/100x100?text=BPL';
-                      }
-                  }}
-              />
-          ) : (
-              <TeamLogo teamId={selectedTeam.id} teamName={selectedTeam.name} size="xl" className="shrink-0" />
-          )}
+      {/* [2026-10-12] 배너의 팀 테마 배경/텍스트 색 제거 → slate-950 + 흰 텍스트(사용자 요청).
+          theme는 아래 RosterTabs(탭 바)에서는 계속 사용. */}
+      <div className="relative isolate flex-shrink-0 px-9 py-8 border-b border-white/10 flex items-center gap-4 bg-slate-950">
+          {/* [2026-10-12] 팀 테마 컬러 45% 틴트 — slate-950 위에 팀 색을 반투명으로 한 겹 얹는다.
+              컨테이너 isolate로 스태킹 컨텍스트를 만들어 -z-10 오버레이가 "컨테이너 배경 위, 콘텐츠 아래"에
+              정확히 깔리게 함(isolate 없으면 -z-10이 컨테이너 배경 뒤로 숨어 안 보임). */}
+          <div
+              aria-hidden
+              className="absolute inset-0 -z-10 pointer-events-none"
+              style={{ backgroundColor: selectedTeam.colorPrimary ?? theme.bg, opacity: 0.45 }}
+          />
+          {/* [2026-10-12] 로고 크기를 고정 96px(w-24)에서 "정보 섹션 높이"에 맞춰 늘림 — 래퍼를
+              self-stretch로 배너 콘텐츠 높이(=가장 큰 자식인 정보 섹션)만큼 세우고 aspect-square로
+              같은 폭을 잡는다. 정보 줄 수(싱글은 Off/Def Rtg 줄 없음)·폰트가 달라져도 자동 추종. */}
+          {/* 이미지는 absolute로 띄워 래퍼의 콘텐츠 높이에 안 잡히게 한다 — 안 그러면 img 원본 크기가
+              래퍼→배너 높이를 키우고 그걸 다시 래퍼가 따라가는 순환으로 로고가 과대해진다(2026-10-12 실측). */}
+          <div className="relative self-stretch aspect-square shrink-0">
+              {/* 멀티/싱글 구분 없이 TeamLogo 공용(public/logos/teams/, 리그 로고 1회 폴백) */}
+              <TeamLogo teamId={selectedTeam.id} teamName={selectedTeam.name} size="custom" className="absolute inset-0 w-full h-full" />
+          </div>
 
-          <div className="flex flex-col gap-1 min-w-0">
+          {/* [2026-10-12] 로고 우측 위/아래 Chevron(로고 | 화살표 | 정보 순서) — 드롭다운과 같은 allTeams 순서로 이전/다음 팀 이동(끝에서 순환). */}
+          <div className="flex flex-col items-center justify-center gap-1 shrink-0 -ml-2">
+              <IconButton label="이전 팀" tone="subtle" onClick={() => stepTeam(-1)}>
+                  <ChevronUp size={18} />
+              </IconButton>
+              <IconButton label="다음 팀" tone="subtle" onClick={() => stepTeam(1)}>
+                  <ChevronDown size={18} />
+              </IconButton>
+          </div>
+          {/* 로고↔화살표 간격: 컨테이너 gap-4(16)에서 -ml-2로 8px로 축소. */}
+
+          {/* [2026-10-12] 로고↔정보 간격만 16→24px: 컨테이너 gap-4(16)는 GM 닉네임 등 다른 자식에도
+              걸리므로 건드리지 않고, 정보 섹션에 ml-2(8)를 더해 이 한 곳만 24px로 맞춘다. */}
+          {/* [2026-10-12] 정보 섹션 타이포/구조는 당일 반복 수정(B안·테이블화·행 병합·문단화) 후 사용자
+              요청으로 원형 복원. 색(text-white)과 ml-2만 별도 요청 사항이라 유지. */}
+          <div className="flex flex-col gap-1 min-w-0 ml-2">
               {/* 1행 — 팀이름 드랍다운 */}
               <div className="relative w-fit" ref={teamMenuRef}>
                   <button
                       onClick={() => setTeamMenuOpen(o => !o)}
                       className="flex items-center gap-3 group"
                   >
-                      <span className="text-lg font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
+                      <span className="text-lg font-black tracking-wide text-white">{selectedTeam.city} {selectedTeam.name}</span>
                       {teamMenuOpen
-                          ? <ChevronUp size={16} className="shrink-0 opacity-70 group-hover:opacity-100" style={{ color: theme.text }} />
-                          : <ChevronDown size={16} className="shrink-0 opacity-70 group-hover:opacity-100" style={{ color: theme.text }} />
+                          ? <ChevronUp size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
+                          : <ChevronDown size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
                       }
                   </button>
                   {teamMenuOpen && (
                       <div className="absolute top-full left-0 mt-2 bg-black border border-zinc-700 rounded-lg p-2 flex flex-col gap-0.5 z-[200] min-w-[220px] max-h-80 overflow-y-auto custom-scrollbar">
-                          {allTeams.map(t => (
-                              <button
-                                  key={t.id}
-                                  onClick={() => { handleTeamChange(t.id); setTeamMenuOpen(false); }}
-                                  className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors ${
-                                      t.id === selectedTeam.id
-                                          ? 'bg-white/15 text-white font-semibold'
-                                          : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white'
-                                  }`}
-                              >
-                                  <TeamBadge
-                                      teamId={t.id}
-                                      abbr={t.abbr}
-                                      colorPrimary={t.colorPrimary}
-                                      colorSecondary={t.colorSecondary}
-                                      size="sm"
-                                  />
-                                  <span className="truncate">{t.city} {t.name}</span>
-                                  {t.id === myTeamId && <span className="ml-auto text-[10px] font-bold text-indigo-400 shrink-0">MY</span>}
-                              </button>
-                          ))}
+                          {allTeams.map(t => {
+                              const isSelected = t.id === selectedTeam.id;
+                              const isMine     = t.id === myTeamId;
+                              // [2026-10-12] 내 팀은 "MY" 칩 대신 희미한 노란 틴트로 구분, 호버 시 조금 더 밝게.
+                              // 선택 상태(bg-white/15)보다 내 팀 틴트를 우선해 두 상태가 겹쳐도 노란색이 유지된다.
+                              const rowClass = isMine
+                                  ? `bg-amber-400/10 hover:bg-amber-400/20 ${isSelected ? 'text-white font-semibold' : 'font-medium text-zinc-300 hover:text-white'}`
+                                  : isSelected
+                                      ? 'bg-white/15 text-white font-semibold'
+                                      : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white';
+                              return (
+                                  <button
+                                      key={t.id}
+                                      onClick={() => { handleTeamChange(t.id); setTeamMenuOpen(false); }}
+                                      className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors ${rowClass}`}
+                                  >
+                                      {/* [2026-10-12] 색상 배지 → 로고 이미지. 상단 배너와 동일한 public/logos/teams/
+                                          로고(TeamLogo 공용, 리그 로고 1회 폴백). */}
+                                      <TeamLogo teamId={t.id} teamName={t.abbr ?? t.id} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
+                                      <span className="truncate">{t.city} {t.name}</span>
+                                  </button>
+                              );
+                          })}
                       </div>
                   )}
               </div>
@@ -311,21 +355,21 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                       `${pctLabel} Win%`,
                       `GB ${(myStanding?.gb ?? 0).toFixed(1)}`,
                   ].map((label, i) => (
-                      <span key={i} className="text-sm font-bold whitespace-nowrap" style={{ color: theme.text }}>{label}</span>
+                      <span key={i} className="text-sm font-bold whitespace-nowrap text-white">{label}</span>
                   ))}
               </div>
 
               {/* 3행 — 컨퍼런스 순위 */}
-              <span className="text-sm font-bold whitespace-nowrap" style={{ color: theme.text }}>
+              <span className="text-sm font-bold whitespace-nowrap text-white">
                   {confLabel} 컨퍼런스 {myStanding?.rank ?? 0}위
               </span>
 
               {/* 4행 — Pts/g・Opp Pts/g (리그 순위) — 스케줄 최종 스코어만으로 계산, 싱글/멀티 공용 */}
               <div className="flex items-center gap-4">
-                  <span className="text-xs font-semibold whitespace-nowrap opacity-80" style={{ color: theme.text }}>
+                  <span className="text-xs font-semibold whitespace-nowrap opacity-80 text-white">
                       Pts/g : {(myScoring?.ppg ?? 0).toFixed(1)} (리그 {myScoring?.ppgRank ?? 0}위)
                   </span>
-                  <span className="text-xs font-semibold whitespace-nowrap opacity-80" style={{ color: theme.text }}>
+                  <span className="text-xs font-semibold whitespace-nowrap opacity-80 text-white">
                       Opp Pts/g : {(myScoring?.oppg ?? 0).toFixed(1)} (리그 {myScoring?.oppgRank ?? 0}위)
                   </span>
               </div>
@@ -334,13 +378,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   있을 때만(멀티플레이어) 표시. 싱글플레이어는 소스가 없어 줄 자체를 숨김. */}
               {myAdvanced && (
                   <div className="flex items-center gap-4">
-                      <span className="text-xs font-semibold whitespace-nowrap opacity-80" style={{ color: theme.text }}>
+                      <span className="text-xs font-semibold whitespace-nowrap opacity-80 text-white">
                           Off Rtg : {myAdvanced.offRtg.toFixed(1)} (리그 {myAdvanced.offRtgRank}위)
                       </span>
-                      <span className="text-xs font-semibold whitespace-nowrap opacity-80" style={{ color: theme.text }}>
+                      <span className="text-xs font-semibold whitespace-nowrap opacity-80 text-white">
                           Def Rtg : {myAdvanced.defRtg.toFixed(1)} (리그 {myAdvanced.defRtgRank}위)
                       </span>
-                      <span className="text-xs font-semibold whitespace-nowrap opacity-80" style={{ color: theme.text }}>
+                      <span className="text-xs font-semibold whitespace-nowrap opacity-80 text-white">
                           Pace : {myAdvanced.pace.toFixed(1)} (리그 {myAdvanced.paceRank}위)
                       </span>
                   </div>
@@ -348,7 +392,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
           </div>
 
           {gmNickname && (
-              <span className="ml-auto text-sm font-semibold self-start" style={{ color: theme.text }}>GM : {gmNickname}</span>
+              <span className="ml-auto text-sm font-semibold self-start text-white">GM : {gmNickname}</span>
           )}
       </div>
 
@@ -360,6 +404,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
           {tab === 'overview' && (
               <RosterOverviewGrid
                   team={selectedTeam}
+                  allTeams={allTeams}
                   onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
                   enableHoverCard={enableHoverCard}
                   onReleasePlayer={isMyTeam && onReleasePlayer ? (p) => onReleasePlayer(p, selectedTeam.id) : undefined}

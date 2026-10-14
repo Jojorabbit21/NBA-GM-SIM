@@ -1,11 +1,14 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, Search, Check, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { Calendar, X, ChevronDown, Table as TableIcon, Crosshair, Search, RefreshCw } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { SeasonType } from '../../hooks/useLeaderboardData';
 import { TeamBadge } from '../common/TeamBadge';
+import { IconButton } from '../common/IconButton';
+import { CheckboxFilterDropdown } from '../common/filters/CheckboxFilterDropdown';
+import { StatFilterBar, FilterChips, type StatFilterDraft } from '../common/filters/StatFilterBar';
 
 interface LeaderboardToolbarProps {
     mode: ViewMode;
@@ -51,73 +54,16 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     else if (statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
     else if (statCategory === 'Attributes') options = mode === 'Teams' ? TEAM_ATTRIBUTES_STAT_OPTIONS : ATTRIBUTES_STAT_OPTIONS;
 
-    const defaultOption = options[0]?.value || '';
-
-    // Local state for filter inputs
-    const [filterCat, setFilterCat] = useState(defaultOption);
-    const [filterOp, setFilterOp] = useState<Operator>('>=');
-    const [filterVal, setFilterVal] = useState('');
-    
-    // Dropdown states
-    const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
-    const [isPosDropdownOpen, setIsPosDropdownOpen] = useState(false);
-
-    // Refs & positions for fixed-positioned dropdowns (overflow-x-auto 컨테이너 클리핑 우회)
-    const teamBtnRef = useRef<HTMLButtonElement>(null);
-    const posBtnRef = useRef<HTMLButtonElement>(null);
-    const [teamDropdownPos, setTeamDropdownPos] = useState({ top: 0, right: 0 });
-    const [posDropdownPos, setPosDropdownPos] = useState({ top: 0, right: 0 });
-
-    const handleTeamDropdownToggle = () => {
-        if (!isTeamDropdownOpen && teamBtnRef.current) {
-            const rect = teamBtnRef.current.getBoundingClientRect();
-            setTeamDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-        }
-        setIsTeamDropdownOpen(v => !v);
+    const handleAddStatFilter = (draft: StatFilterDraft) => {
+        addFilter({ id: Date.now().toString(), type: 'stat', ...draft });
     };
 
-    const handlePosDropdownToggle = () => {
-        if (!isPosDropdownOpen && posBtnRef.current) {
-            const rect = posBtnRef.current.getBoundingClientRect();
-            setPosDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-        }
-        setIsPosDropdownOpen(v => !v);
-    };
-
-    // Reset filter cat when options change
-    useEffect(() => {
-        setFilterCat(defaultOption);
-    }, [statCategory, defaultOption]);
-
-    const handleAddStatFilter = () => {
-        if (!filterVal) return;
-        const catLabel = options.find(o => o.value === filterCat)?.label || filterCat;
-        addFilter({
-            id: Date.now().toString(),
-            type: 'stat',
-            category: filterCat,
-            operator: filterOp,
-            value: parseFloat(filterVal),
-            label: `${catLabel} ${filterOp} ${filterVal}`
-        });
-        setFilterVal('');
-    };
-
-    const toggleTeam = (teamId: string) => {
-        if (selectedTeams.includes(teamId)) {
-            setSelectedTeams(selectedTeams.filter(id => id !== teamId));
-        } else {
-            setSelectedTeams([...selectedTeams, teamId]);
-        }
-    };
-
-    const togglePosition = (pos: string) => {
-        if (selectedPositions.includes(pos)) {
-            setSelectedPositions(selectedPositions.filter(p => p !== pos));
-        } else {
-            setSelectedPositions([...selectedPositions, pos]);
-        }
-    };
+    // 팀 옵션 — 배지 + 팀명, id 오름차순
+    const teamOptions = [...teams].sort((a, b) => a.id.localeCompare(b.id)).map(team => ({
+        value: team.id,
+        label: team.name,
+        icon: <TeamBadge teamId={team.id} abbr={team.abbr} colorPrimary={team.colorPrimary} colorSecondary={team.colorSecondary} size="sm" />,
+    }));
 
     const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
@@ -141,12 +87,12 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     return (
         <div className="flex flex-col border-b border-slate-800 bg-slate-900">
             <div className="px-6 py-4 flex flex-col xl:flex-row items-center gap-6">
-                
+
                 {/* Left Group: Breadcrumb Style Selectors + Search */}
                 <div className="flex items-center gap-3">
                     <Dropdown
                         trigger={
-                           <button className="flex items-center gap-1 text-lg font-black text-white uppercase tracking-tight hover:text-indigo-400 transition-colors group">
+                           <button className="flex items-center gap-1 text-lg font-black text-white tracking-tight hover:text-indigo-400 transition-colors group">
                                <span>{MODE_LABELS[mode]}</span>
                                <ChevronDown size={14} className="text-slate-600 group-hover:text-indigo-400 mt-0.5" />
                            </button>
@@ -163,7 +109,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
                     <Dropdown
                         trigger={
-                           <button className="flex items-center gap-1 text-lg font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
+                           <button className="flex items-center gap-1 text-lg font-black text-slate-400 tracking-tight hover:text-white transition-colors group">
                                <span>{CATEGORY_LABELS[statCategory]}</span>
                                <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
                            </button>
@@ -191,188 +137,19 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                         {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
-                            >
+                            <IconButton label="검색어 지우기" size="xs" tone="ghost" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
                                 <X size={12} />
-                            </button>
+                            </IconButton>
                         )}
                     </div>
 
-                    {/* Team Filter Dropdown */}
-                    <div className="relative">
-                        <button
-                            ref={teamBtnRef}
-                            className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-sm font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'}`}
-                            onClick={handleTeamDropdownToggle}
-                        >
-                            <span>팀</span>
-                            {selectedTeams.length > 0 && (
-                                <span className="bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedTeams.length}</span>
-                            )}
-                            <ChevronDown size={12} />
-                        </button>
+                    <CheckboxFilterDropdown label="팀" options={teamOptions} selected={selectedTeams} onChange={setSelectedTeams} width="w-64" />
 
-                        {isTeamDropdownOpen && (
-                            <>
-                                <div className="fixed inset-0 z-[100]" onClick={() => setIsTeamDropdownOpen(false)} />
-                                <div
-                                    className="fixed w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
-                                    style={{ top: teamDropdownPos.top, right: teamDropdownPos.right }}
-                                >
-                                    <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
-                                        <div
-                                            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                            onClick={() => {
-                                                if (selectedTeams.length === teams.length) {
-                                                    setSelectedTeams([]);
-                                                } else {
-                                                    setSelectedTeams(teams.map(t => t.id));
-                                                }
-                                            }}
-                                        >
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.length === teams.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                {selectedTeams.length === teams.length && <Check size={10} className="text-white" />}
-                                            </div>
-                                            <span className={`text-sm font-bold ${selectedTeams.length === teams.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
-                                        </div>
-                                        <div className="h-px bg-slate-800 mx-2 my-1" />
-                                        {[...teams].sort((a, b) => a.id.localeCompare(b.id)).map(team => (
-                                            <div
-                                                key={team.id}
-                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                                onClick={() => toggleTeam(team.id)}
-                                            >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.includes(team.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                    {selectedTeams.includes(team.id) && <Check size={10} className="text-white" />}
-                                                </div>
-                                                <TeamBadge
-                                                    teamId={team.id}
-                                                    abbr={team.abbr}
-                                                    colorPrimary={team.colorPrimary}
-                                                    colorSecondary={team.colorSecondary}
-                                                    size="sm"
-                                                />
-                                                <span className={`text-sm font-bold ${selectedTeams.includes(team.id) ? 'text-white' : 'text-slate-400'}`}>{team.name}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Position Filter Dropdown (Only for Players mode) */}
                     {mode === 'Players' && (
-                        <div className="relative">
-                            <button
-                                ref={posBtnRef}
-                                className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-sm font-bold transition-colors ${selectedPositions.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'}`}
-                                onClick={handlePosDropdownToggle}
-                            >
-                                <span>포지션</span>
-                                {selectedPositions.length > 0 && (
-                                    <span className="bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded-full">{selectedPositions.length}</span>
-                                )}
-                                <ChevronDown size={12} />
-                            </button>
-
-                            {isPosDropdownOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-[100]" onClick={() => setIsPosDropdownOpen(false)} />
-                                    <div
-                                        className="fixed w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
-                                        style={{ top: posDropdownPos.top, right: posDropdownPos.right }}
-                                    >
-                                        <div className="p-2 space-y-1">
-                                            <div
-                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                                onClick={() => {
-                                                    if (selectedPositions.length === POSITIONS.length) {
-                                                        setSelectedPositions([]);
-                                                    } else {
-                                                        setSelectedPositions([...POSITIONS]);
-                                                    }
-                                                }}
-                                            >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedPositions.length === POSITIONS.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                    {selectedPositions.length === POSITIONS.length && <Check size={10} className="text-white" />}
-                                                </div>
-                                                <span className={`text-sm font-bold ${selectedPositions.length === POSITIONS.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
-                                            </div>
-                                            <div className="h-px bg-slate-800 mx-2 my-1" />
-                                            {POSITIONS.map(pos => (
-                                                <div
-                                                    key={pos}
-                                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
-                                                    onClick={() => togglePosition(pos)}
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedPositions.includes(pos) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
-                                                        {selectedPositions.includes(pos) && <Check size={10} className="text-white" />}
-                                                    </div>
-                                                    <span className={`text-sm font-bold ${selectedPositions.includes(pos) ? 'text-white' : 'text-slate-400'}`}>{pos}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        <CheckboxFilterDropdown label="포지션" options={POSITIONS} selected={selectedPositions} onChange={setSelectedPositions} />
                     )}
 
-                    {/* Stat Filter */}
-                    <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors shadow-sm shrink-0">
-                        <div className="px-3 flex items-center justify-center border-r border-slate-800 h-full text-slate-500">
-                            <Filter size={14} />
-                        </div>
-                        <div className="border-r border-slate-800">
-                            <Dropdown
-                                trigger={
-                                    <button className="h-[36px] px-3 flex items-center gap-1.5 text-sm font-bold text-white transition-colors whitespace-nowrap">
-                                        <span className="max-w-[96px] truncate">{options.find(o => o.value === filterCat)?.label ?? filterCat}</span>
-                                        <ChevronDown size={12} className="text-slate-600 shrink-0" />
-                                    </button>
-                                }
-                                items={options.map(opt => ({
-                                    id: opt.value,
-                                    label: <span className="text-sm">{opt.label}</span>,
-                                    onClick: () => setFilterCat(opt.value),
-                                    active: filterCat === opt.value,
-                                }))}
-                                width="w-48"
-                                align="left"
-                            />
-                        </div>
-                        <div className="border-r border-slate-800">
-                            <Dropdown
-                                trigger={
-                                    <button className="h-[36px] px-3 flex items-center text-sm font-bold text-indigo-400 transition-colors whitespace-nowrap">
-                                        {filterOp}
-                                    </button>
-                                }
-                                items={['>=', '<=', '>', '<', '='].map(op => ({
-                                    id: op,
-                                    label: <span className="text-sm">{op}</span>,
-                                    onClick: () => setFilterOp(op as Operator),
-                                    active: filterOp === op,
-                                }))}
-                                width="w-16"
-                                align="left"
-                            />
-                        </div>
-                        <input
-                            type="number"
-                            placeholder="값"
-                            className="h-full bg-transparent px-3 w-16 text-sm font-bold text-white outline-none placeholder:text-slate-700 [&::-webkit-inner-spin-button]:appearance-none"
-                            value={filterVal}
-                            onChange={(e) => setFilterVal(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddStatFilter()}
-                        />
-                        <button onClick={handleAddStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-800 text-slate-500 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-lg">
-                            <Plus size={14} />
-                        </button>
-                    </div>
+                    <StatFilterBar options={options} onAdd={handleAddStatFilter} />
 
                     {/* Heatmap Toggle (Container Style) */}
                     <div
@@ -422,21 +199,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                 </div>
             </div>
 
-            {/* Active Filter Chips */}
-            {activeFilters.length > 0 && (
-                <>
-                    <div className="h-px bg-slate-800/60 mx-6 mb-3"></div>
-                    <div className="px-6 pb-3 flex flex-wrap gap-2 animate-in slide-in-from-top-2">
-                        {activeFilters.map(filter => (
-                            <div key={filter.id} className="flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-sm font-bold text-indigo-300">
-                                <span>{filter.label}</span>
-                                <button onClick={() => removeFilter(filter.id)} className="hover:text-white transition-colors"><X size={12} /></button>
-                            </div>
-                        ))}
-                        <button onClick={clearFilters} className="text-sm font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">모두 제거</button>
-                    </div>
-                </>
-            )}
+            <FilterChips chips={activeFilters} onRemove={removeFilter} onClear={clearFilters} inset="px-6" />
         </div>
     );
 };

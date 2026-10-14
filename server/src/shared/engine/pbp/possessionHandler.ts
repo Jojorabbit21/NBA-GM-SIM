@@ -393,7 +393,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let selectedPlayType: PlayType = 'Iso';
     let isSecondChance = false;
 
-    if (state.shotClock === 14 && state.gameClock < 720) {
+    // [2026-10-07] shotClock===14는 플래그런트 후에도 설정되므로 "직전 진입이 오펜시브 리바운드"인 경우에만 풋백 후보
+    if (state.lastEntryWasOffReb === true && state.shotClock === 14 && state.gameClock < 720) {
         // High OffReb slider increases immediate putback chance
         // [Fix] Reduced: was 0.5+(offReb*0.03) → max 80%. Now realistic 25-35%.
         const putbackChance = 0.15 + (sliders.offReb * 0.02);

@@ -3,32 +3,14 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../../utils/constants';
-
-// public/logos/real/ 로고 세트 — 세션 내 다른 화면들(LeagueLobbyPanel.tsx 등)과 동일한
-// 폴백 체인(신규 로고 세트 실패 시 구버전 → 플레이스홀더).
-function handleLogoError(e: React.SyntheticEvent<HTMLImageElement>, teamId: string) {
-    const img = e.currentTarget;
-    if (img.dataset.fallback !== 'old') {
-        img.dataset.fallback = 'old';
-        img.src = getTeamLogoUrl(teamId);
-    } else {
-        img.src = 'https://placehold.co/100x100?text=BPL';
-    }
-}
+import { TeamLogo } from '../common/TeamLogo';
 
 // [2026-09-11] "배경에 로고를 크게 클리핑되게" 요청 — DraftHeader.tsx의 배경 워터마크
 // 패턴(overflow-hidden 컨테이너 + 확대된 저투명도 로고)을 팀 헤더 카드에도 적용. 부모(th)가
 // position:relative + overflow-hidden으로 카드 경계 밖으로 나간 부분을 잘라낸다.
 const TeamLogoWatermark: React.FC<{ teamId: string }> = ({ teamId }) => (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <img
-            src={getRealTeamLogoUrl(teamId)}
-            alt=""
-            aria-hidden="true"
-            className="w-full h-full object-contain opacity-20 scale-[2]"
-            onError={(e) => handleLogoError(e, teamId)}
-        />
+        <TeamLogo teamId={teamId} size="custom" shadow={false} className="w-full h-full opacity-20 scale-[2]" />
     </div>
 );
 
@@ -268,7 +250,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                                 </span>
                                                             )}
                                                             <span
-                                                                className="text-sm font-bold uppercase opacity-60"
+                                                                className="text-sm font-bold opacity-60"
                                                                 style={{ color: posColor }}
                                                             >
                                                                 {pick.position}

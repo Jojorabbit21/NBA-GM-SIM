@@ -320,7 +320,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                         key={c.key}
                                         align={c.align}
                                         width={c.width}
-                                        className={`border-r border-slate-800 bg-slate-950 ${c.key === 'team' ? 'pl-4' : ''}`}
+                                        className={`bg-slate-950 ${c.key === 'team' ? 'pl-4' : ''}`}
                                         sortable={c.sortable}
                                         onSort={c.sortable ? () => handleSort(c.key) : undefined}
                                         sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
@@ -369,12 +369,12 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
 
                                     <TableRow onClick={() => onTeamClick(t.id)} className="group cursor-pointer">
                                         {/* Rank */}
-                                        <TableCell align="center" className={`${dataTextBase} text-white border-r border-slate-800/30`}>
+                                        <TableCell align="center" className={`${dataTextBase} text-white`}>
                                             {rank}
                                         </TableCell>
 
                                         {/* Team */}
-                                        <TableCell className="pl-4 border-r border-slate-800/30">
+                                        <TableCell className="pl-4">
                                             <div className="flex items-center gap-2.5 group-hover:translate-x-0.5 transition-transform">
                                                 <TeamLogo teamId={t.id} size="sm" />
                                                 <span className={`text-xs truncate transition-colors ${nameColor} group-hover:text-indigo-400`}>
@@ -395,7 +395,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                                 <TableCell
                                                     key={c.key}
                                                     align="center"
-                                                    className={`${dataTextBase} ${colorClass} border-r border-slate-800/30`}
+                                                    className={`${dataTextBase} ${colorClass}`}
                                                 >
                                                     {val}
                                                 </TableCell>

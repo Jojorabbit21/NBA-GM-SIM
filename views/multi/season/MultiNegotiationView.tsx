@@ -1,14 +1,17 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, Minus, Plus } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+import { InlineNotice } from '../../../components/common/InlineNotice';
+import { Minus, Plus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
-import { OvrBadge } from '../../../components/common/OvrBadge';
+import { KeyValueRow } from '../../../components/common/KeyValueRow';
+import { SubPageBar, ContractThreePane, PlayerInfoSidePanel, SidePanelSection, CapStatusPanel, ChatBubble, ContractStepper } from './contractScreenParts';
+import { Button } from '../../../components/common/Button';
 import { gwa } from '../../../services/multi/newsBlurb';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
-import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerCareerHistory } from '../../../hooks/usePlayerCareerHistory';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
@@ -34,11 +37,9 @@ import { generateSaveTendencies } from '../../../utils/hiddenTendencies';
 import { signFreeAgentNegotiated } from '../../../services/multi/faService';
 import { SIGNING_TYPE_LABEL, CONTRACT_TYPE_LABEL, getAcceptLikelihoodLabel, getAllowedSigningTypes } from '../../../utils/contractLabels';
 import { calculatePlayerOvr, countYosFromCareerHistory, INITIAL_STATS, MIN_SALARY_YOS_TABLE, TWO_WAY_MAX_OVR, TWO_WAY_YOS_MAX } from '../../../utils/constants';
-import { formatMoney as formatMoneyAbbrev, formatMoneyFull } from '../../../utils/formatMoney';
+import { formatMoneyFull } from '../../../utils/formatMoney';
 import { generateScoutReport } from '../../../utils/scoutReport';
-import { assignArchetypes, getArchetypeDisplayInfo, getTraitTagDisplayInfo } from '../../../services/playerDevelopment/archetypeEvaluator';
-import { getLocalPopularityLabel, getNationalPopularityLabel } from '../../../services/playerPopularity';
-import { getMoraleLabel } from '../../../services/moraleService';
+import { assignArchetypes } from '../../../services/playerDevelopment/archetypeEvaluator';
 import type { Team } from '../../../types/team';
 import type { PlayerContract, PlayerStats, SaveTendencies } from '../../../types/player';
 import type { SigningType } from '../../../types/fa';
@@ -84,14 +85,6 @@ const MAX_CONTRACT_YEARS = 5;
 // [2026-09-17] utils/constants.ts로 승격 — MultiFreeAgentView.tsx의 "계약" 버튼 활성화
 // 조건도 동일 기준이 필요해져 로컬 상수로 두면 두 화면이 어긋날 위험이 있었음.
 
-// 이 화면 전용 — 100만 달러 미만이면 K 축약 없이 전체 자릿수를 그대로 보여준다(예:
-// $234,097). 투웨이 계약처럼 일할계산된 금액은 "$234K"보다 정확한 숫자가 더 유용하기
-// 때문 — 100만 달러 이상이면 기존 formatMoney와 동일하게 M 단위로 축약한다. 이 파일
-// 안에서는 기존 formatMoney(...) 호출부를 그대로 두고 이 지역 함수가 덮어쓴다.
-function formatMoney(dollars: number): string {
-    return Math.abs(dollars) < 1_000_000 ? formatMoneyFull(dollars) : formatMoneyAbbrev(dollars);
-}
-
 interface MoodTier { emoji: string; label: string }
 const MOOD_ANGRY: MoodTier = { emoji: '😡', label: '분노' };
 
@@ -105,9 +98,9 @@ function applyMoodSensitivity(probability: number, tendencies: SaveTendencies | 
     if (deviation >= 0) return probability;
 
     let sensitivity = 1;
-    if (tendencies.temperament > 0)    sensitivity += tendencies.temperament * 0.7;       // 다혈질 → 최대 +0.7
+    if (tendencies.temperament > 0) sensitivity += tendencies.temperament * 0.7;       // 다혈질 → 최대 +0.7
     if (tendencies.temperament < -0.4) sensitivity -= Math.abs(tendencies.temperament) * 0.4; // 침착 → 최대 -0.4
-    if (tendencies.ego > 0.35)         sensitivity += (tendencies.ego - 0.35) * 0.6;        // 자존심 강함 → 가중
+    if (tendencies.ego > 0.35) sensitivity += (tendencies.ego - 0.35) * 0.6;        // 자존심 강함 → 가중
     sensitivity -= ((tendencies.loyalty ?? 0.5) - 0.5) * 0.6;                                // 충성심 높으면 완화, 낮으면 가중
     sensitivity = Math.max(0.3, Math.min(2.2, sensitivity));
 
@@ -580,6 +573,8 @@ const MultiNegotiationView: React.FC = () => {
     const [result, setResult] = useState<{ accepted: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
+    // [2026-10-13] 연봉·연수·계약 유형을 바꾸면 직전 거절 사유는 더 이상 유효하지 않음 — 소거
+    useEffect(() => { setActionError(null); }, [raisePercentInput, years, contractType, signingType, optionType]);
     // 협상 세션(이 화면을 띄우고 있는 동안) 동안만 유지되는 "인내심 소진" 상태 — 말도 안 되는
     // 오퍼를 계속 넣으면 결국 선수가 그 자리에서 협상을 접는다.
     const [walkedAway, setWalkedAway] = useState(false);
@@ -787,7 +782,7 @@ const MultiNegotiationView: React.FC = () => {
         setRound(newRound);
         setActionError(null);
 
-        addMsg('gm', `우리의 제안은 다음과 같습니다. 연평균 ${formatMoney(avgSalary)}, ${years}년 계약을 제안합니다.`, undefined);
+        addMsg('gm', `우리의 제안은 다음과 같습니다. 연평균 ${formatMoneyFull(avgSalary)}, ${years}년 계약을 제안합니다.`, undefined);
 
         const accepted = isTwoWay
             ? evaluateTwoWayOffer(playerYos, demand.marketValueScore, seed)
@@ -925,23 +920,14 @@ const MultiNegotiationView: React.FC = () => {
 
     if (leagueLoading || teamsLoading) {
         return (
-            <div className="flex items-center justify-center h-full min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 
     if (!player) {
         return (
             <div className="flex flex-col h-full">
-                <div className="flex-shrink-0 h-12 px-5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
-                    <button
-                        onClick={() => navigate(`/multi/leagues/${leagueId}/season/free-agent`)}
-                        className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors"
-                    >
-                        <span>←</span><span>뒤로</span>
-                    </button>
-                </div>
+                <SubPageBar onBack={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)} />
                 <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
                     선수를 찾을 수 없습니다. 이미 계약됐거나 존재하지 않는 선수입니다.
                 </div>
@@ -951,173 +937,45 @@ const MultiNegotiationView: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200">
-            {/* ── Header ── */}
-            <div className="flex-shrink-0 h-12 px-5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
-                <button
-                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/free-agent`)}
-                    className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors"
-                >
-                    <span>←</span><span>뒤로</span>
-                </button>
-                <span className="text-sm font-bold text-white ko-tight">{gwa(player.name)} 협상</span>
-            </div>
+            <SubPageBar title={`${gwa(player.name)} 협상`} onBack={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)} />
 
             {!myTeamRow ? (
                 <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
                     소속 팀이 있어야 협상할 수 있습니다.
                 </div>
             ) : !demand ? (
-                <div className="flex-1 flex items-center justify-center">
-                    <Loader2 size={24} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="page" />
             ) : (
-                <div className="flex-1 flex divide-x divide-slate-800 bg-slate-950 overflow-hidden min-h-0">
-
-                    {/* ── 좌측: 선수 정보 ── */}
-                    <div className="flex-[2] min-w-0 bg-slate-900 flex flex-col overflow-hidden">
-                        <div className="flex-1 overflow-y-auto custom-scrollbar">
-                            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-                                <OvrBadge value={calculatePlayerOvr(player)} size="md" />
-                                <PlayerHoverCard player={player}>
-                                    <div
-                                        onClick={handleViewProfile}
-                                        className="text-base font-black text-white ko-tight leading-tight cursor-pointer hover:underline hover:text-indigo-400"
-                                    >
-                                        {player.name}
-                                    </div>
-                                </PlayerHoverCard>
-                            </div>
-                            <div className="px-4 pb-3 space-y-1">
-                                {[
-                                    { label: '포지션', value: player.position },
-                                    { label: '나이', value: `${player.age}세` },
-                                    { label: '키', value: `${player.height}cm` },
-                                    { label: '몸무게', value: `${player.weight}kg` },
-                                    { label: '연차', value: `${playerYos}년` },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">{label}</span>
-                                        <span className="text-slate-200">{value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="px-4 py-3 space-y-1">
-                                <div className="text-sm font-bold uppercase text-white mb-1.5">요구 조건</div>
-                                {expectedTeamRole && (
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">희망 역할</span>
-                                        <span className="text-slate-200">{expectedTeamRole.text}</span>
-                                    </div>
-                                )}
-                                {/* [2026-09-17] "최저 수락선"(walkAwaySalary)은 삭제 — 실제 GM은
-                                    선수의 진짜 마지노선을 알 수 없어야 한다는 사용자 지적. 화면에
-                                    안 보여줄 뿐 evaluateFAOffer/estimateAcceptProbability 등
-                                    협상 판정 로직 내부에서는 계속 히든 트레잇으로 그대로 쓰인다
-                                    (demand.walkAwaySalary 자체는 삭제 안 함 — 표시만 제거). */}
-                                {[
-                                    { label: '시작 요구가', value: formatMoney(demand.askingSalary) },
-                                    { label: '희망 연수', value: `${demand.askingYears}년` },
-                                    { label: '희망 변동률', value: `${(demand.askingRaisePercent ?? 0) >= 0 ? '+' : ''}${demand.askingRaisePercent ?? 0}%` },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">{label}</span>
-                                        <span className="text-slate-200">{value}</span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* 선수 유형 — PlayerDetailView.tsx 좌열과 동일 섹션 */}
-                            {playerArchetypeState && (
-                                <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                    <div className="text-sm font-bold uppercase text-white mb-1.5">선수 유형</div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">아키타입</span>
-                                        <span className="font-semibold text-slate-200">{getArchetypeDisplayInfo(playerArchetypeState.primary).label}</span>
-                                    </div>
-                                    {playerArchetypeState.secondary && (
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">보조 유형</span>
-                                            <span className="text-slate-300">{getArchetypeDisplayInfo(playerArchetypeState.secondary).label}</span>
-                                        </div>
+                <ContractThreePane
+                    rightClassName={`relative transition-opacity duration-300 ${isOfferPanelDisabled ? 'opacity-40 pointer-events-none select-none' : ''}`}
+                    left={(
+                        <PlayerInfoSidePanel
+                            player={player}
+                            playerYos={playerYos}
+                            onViewProfile={handleViewProfile}
+                            archetypeState={playerArchetypeState}
+                            tendencies={tendencies}
+                            moraleScore={moraleScore}
+                            scoutReport={scoutReport}
+                            extraSections={(
+                                <SidePanelSection title="요구 조건">
+                                    {expectedTeamRole && (
+                                        <KeyValueRow label="희망 역할">{expectedTeamRole.text}</KeyValueRow>
                                     )}
-                                    {playerArchetypeState.tags.slice(0, 4).map((tag, i) => (
-                                        <div key={tag} className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">{i === 0 ? '특성' : ''}</span>
-                                            <span className="text-slate-300">{getTraitTagDisplayInfo(tag).label}</span>
-                                        </div>
-                                    ))}
-                                </div>
+                                    {/* [2026-09-17] "최저 수락선"(walkAwaySalary)은 삭제 — 실제 GM은
+                                        선수의 진짜 마지노선을 알 수 없어야 한다는 사용자 지적. 화면에
+                                        안 보여줄 뿐 evaluateFAOffer/estimateAcceptProbability 등
+                                        협상 판정 로직 내부에서는 계속 히든 트레잇으로 그대로 쓰인다
+                                        (demand.walkAwaySalary 자체는 삭제 안 함 — 표시만 제거). */}
+                                    <KeyValueRow label="시작 요구가">{formatMoneyFull(demand.askingSalary)}</KeyValueRow>
+                                    <KeyValueRow label="희망 연수">{demand.askingYears}년</KeyValueRow>
+                                    <KeyValueRow label="희망 변동률">{(demand.askingRaisePercent ?? 0) >= 0 ? '+' : ''}{demand.askingRaisePercent ?? 0}%</KeyValueRow>
+                                </SidePanelSection>
                             )}
-
-                            {/* 인기도 — PlayerDetailView.tsx 좌열과 동일 섹션 */}
-                            <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                <div className="text-sm font-bold uppercase text-white mb-1.5">인기도</div>
-                                {[
-                                    { label: '지역적인 인기', value: getLocalPopularityLabel(player.popularity?.local ?? 0) },
-                                    { label: '전국적인 인기', value: getNationalPopularityLabel(player.popularity?.national ?? 0) },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">{label}</span>
-                                        <span className="text-slate-200">{value}</span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* 성격 & 기분 — PlayerDetailView.tsx와 동일한 라벨 기준(임계값/색상) */}
-                            {tendencies && (
-                                <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                    <div className="text-sm font-bold uppercase text-white mb-1.5">성격 &amp; 기분</div>
-                                    {(() => {
-                                        const t = tendencies;
-                                        const moraleColor = moraleScore >= 70 ? 'text-emerald-400' : moraleScore >= 40 ? 'text-amber-400' : 'text-red-400';
-                                        const egoLbl = t.ego > 0.35 ? { text: '오만', color: 'text-amber-400' } : t.ego < -0.35 ? { text: '겸손', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                        const finLbl = t.financialAmbition > 0.68 ? { text: '탐욕적', color: 'text-amber-400' } : t.financialAmbition < 0.32 ? { text: '검소', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                        const loyLbl = t.loyalty > 0.65 ? { text: '충성', color: 'text-emerald-400' } : t.loyalty < 0.35 ? { text: '이적욕 강함', color: 'text-red-400' } : { text: '보통', color: 'text-slate-400' };
-                                        const winLbl = t.winDesire > 0.65 ? { text: '우승 집착', color: 'text-emerald-400' } : t.winDesire < 0.35 ? { text: '역할 우선', color: 'text-slate-400' } : { text: '보통', color: 'text-slate-400' };
-                                        const tmpLbl = t.temperament > 0.45 ? { text: '다혈질', color: 'text-red-400' } : t.temperament < -0.40 ? { text: '냉정', color: 'text-sky-400' } : { text: '보통', color: 'text-slate-400' };
-                                        return [
-                                            { label: '현재 기분', text: getMoraleLabel(moraleScore), color: moraleColor },
-                                            { label: '자존심', ...egoLbl },
-                                            { label: '금전욕', ...finLbl },
-                                            { label: '팀 충성도', ...loyLbl },
-                                            { label: '우승욕', ...winLbl },
-                                            { label: '기질', ...tmpLbl },
-                                        ].map(({ label, text, color }) => (
-                                            <div key={label} className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">{label}</span>
-                                                <span className={`font-semibold ${color}`}>{text}</span>
-                                            </div>
-                                        ));
-                                    })()}
-                                </div>
-                            )}
-
-                            {/* 스카우팅 리포트 — PlayerDetailView.tsx와 동일하게 긍정→부정→중립 순 정렬(stable) */}
-                            {scoutReport.length > 0 && (
-                                <div className="px-4 py-3 border-t border-slate-800 space-y-1">
-                                    <div className="text-sm font-bold uppercase text-white mb-1.5">스카우팅 리포트</div>
-                                    {[...scoutReport].sort((a, b) => {
-                                        const order = { positive: 0, negative: 1, neutral: 2 } as const;
-                                        return order[a.sentiment] - order[b.sentiment];
-                                    }).map((s, i) => (
-                                        <div
-                                            key={i}
-                                            className={`text-sm ${
-                                                s.sentiment === 'positive' ? 'text-emerald-400'
-                                                    : s.sentiment === 'negative' ? 'text-rose-400'
-                                                    : 'text-slate-200'
-                                            }`}
-                                        >
-                                            {s.sentiment === 'positive' ? '+ ' : s.sentiment === 'negative' ? '- ' : ''}{s.text}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* ── 중앙: 채팅 ── */}
-                    <div className="flex-[3] min-w-0 bg-slate-900 flex flex-col overflow-hidden">
+                        />
+                    )}
+                    center={(
+                        <>
                         <div className="flex-shrink-0 p-4 border-b border-slate-800 bg-slate-800/50 flex items-center gap-4">
                             {acceptProbability !== null && (() => {
                                 const { text, color } = getAcceptLikelihoodLabel(acceptProbability);
@@ -1135,55 +993,20 @@ const MultiNegotiationView: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                            {chatMessages.map(msg => {
-                                if (msg.role === 'status') {
-                                    return (
-                                        <div key={msg.id} className="flex justify-center py-1">
-                                            <span className={`text-xs italic ${msg.isSuccess ? 'text-emerald-400' : 'text-slate-500'}`}>{msg.text}</span>
-                                        </div>
-                                    );
-                                }
-                                if (msg.role === 'gm') {
-                                    return (
-                                        <div key={msg.id} className="flex flex-col items-end gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                                            <span className="text-xs font-bold text-indigo-400 px-1">GM</span>
-                                            <div className="max-w-[85%] bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-br-sm px-4 py-3">
-                                                <p className="text-sm text-white leading-relaxed whitespace-pre-line">{msg.text}</p>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div key={msg.id} className="flex flex-col items-start gap-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
-                                        <span className="text-xs font-bold text-slate-400 px-1">{player.name}</span>
-                                        <div className="max-w-[85%] bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3">
-                                            <p className="text-sm text-slate-100 leading-relaxed">&ldquo;{msg.text}&rdquo;</p>
-                                            {msg.subText && (
-                                                <p className="text-sm text-slate-100 leading-relaxed mt-1">&ldquo;{msg.subText}&rdquo;</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} playerName={player.name} />)}
                             {(isOnCooldown || isRefusingNegotiation || isSigned) && (
                                 <div className="flex justify-center">
-                                    <button
-                                        onClick={() => navigate(`/multi/leagues/${leagueId}/season/free-agent`)}
-                                        className="text-sm text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-colors"
-                                    >
+                                    <Button variant="link" onClick={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)}>
                                         나가기
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                             <div ref={chatEndRef} />
                         </div>
-                    </div>
 
-                    {/* ── 우측: 오퍼 폼 ── [2026-09-17] 기존엔 이 영역 전체가 오퍼 폼 단일 컬럼
-                        이었는데, 영역 폭을 flex-[3]→flex-[5]로 키우면서 좌측 단(오퍼 폼)/
-                        우측 단(팀 샐러리 현황·도움말 — 추후 채울 예정, 지금은 자리만 마련)의
-                        두 단 구조로 분리. 두 단은 동일 비율(flex-1)로 나눔. */}
-                    <div className={`flex-[5] min-w-0 flex flex-col overflow-hidden bg-slate-900 relative transition-opacity duration-300 ${isOfferPanelDisabled ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                        </>
+                    )}
+                    right={(
                         <div className="flex-1 flex divide-x divide-slate-800 overflow-hidden min-h-0">
                             <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
 
@@ -1194,7 +1017,7 @@ const MultiNegotiationView: React.FC = () => {
                                 별개 드롭다운(signingType)으로 분리 — 캡 스페이스는 그 드롭다운의
                                 "없음"(signingType=undefined)으로 표현한다. */}
                             <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-sm font-bold uppercase tracking-wider text-slate-400">계약 유형</div>
+                                <div className="text-sm font-bold text-slate-400">계약 유형</div>
                                 {rookiePick !== null ? (
                                     <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-400">
                                         {CONTRACT_TYPE_LABEL.rookie_scale} (이번 시즌 1라운드 픽 — 자동 지정)
@@ -1217,7 +1040,7 @@ const MultiNegotiationView: React.FC = () => {
                                 비고, 그러면 드롭다운 자체를 숨긴다. */}
                             {getAllowedSigningTypes(contractType).length > 0 && (
                                 <div className="flex-shrink-0 space-y-1.5">
-                                    <div className="text-sm font-bold uppercase tracking-wider text-slate-400">예외 조항</div>
+                                    <div className="text-sm font-bold text-slate-400">예외 조항</div>
                                     <select
                                         value={signingType ?? ''}
                                         onChange={e => setSigningType((e.target.value || undefined) as SigningType | undefined)}
@@ -1237,41 +1060,25 @@ const MultiNegotiationView: React.FC = () => {
                             <div className="flex-shrink-0 space-y-1.5">
                                 {!isTwoWay && (
                                     <>
-                                        <div className="text-sm font-bold uppercase tracking-wider text-slate-400">계약 연수</div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => setYears(MIN_CONTRACT_YEARS)}
-                                                disabled={isOnCooldown || isRookieScale}
-                                                className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                            >최소</button>
-                                            <button
-                                                onClick={() => setYears(y => Math.max(MIN_CONTRACT_YEARS, y - 1))}
-                                                disabled={isOnCooldown || isRookieScale}
-                                                className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                            ><Minus size={14} /></button>
-                                            <div className="relative flex-[2]">
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    value={yearsInputText}
-                                                    onChange={handleYearsInputChange}
-                                                    onBlur={handleYearsBlur}
-                                                    disabled={isOnCooldown || isRookieScale}
-                                                    className="w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                                />
-                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">년</span>
-                                            </div>
-                                            <button
-                                                onClick={() => setYears(y => Math.min(effectiveMaxYears, y + 1))}
-                                                disabled={isOnCooldown || isRookieScale}
-                                                className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                            ><Plus size={14} /></button>
-                                            <button
-                                                onClick={() => setYears(effectiveMaxYears)}
-                                                disabled={isOnCooldown || isRookieScale}
-                                                className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                            >최대</button>
-                                        </div>
+                                        <ContractStepper
+                                            className="space-y-1.5"
+                                            gap="md"
+                                            label="계약 연수"
+                                            value={yearsInputText}
+                                            onChange={handleYearsInputChange}
+                                            onBlur={handleYearsBlur}
+                                            inputMode="numeric"
+                                            suffix="년"
+                                            disabled={isOnCooldown || isRookieScale}
+                                            leftSteps={[
+                                                { label: '최소', onClick: () => setYears(MIN_CONTRACT_YEARS) },
+                                                { label: <Minus size={14} />, onClick: () => setYears(y => Math.max(MIN_CONTRACT_YEARS, y - 1)) },
+                                            ]}
+                                            rightSteps={[
+                                                { label: <Plus size={14} />, onClick: () => setYears(y => Math.min(effectiveMaxYears, y + 1)) },
+                                                { label: '최대', onClick: () => setYears(effectiveMaxYears) },
+                                            ]}
+                                        />
                                         {isMinSalary && (
                                             <div className="text-sm text-slate-600">Minimum Salary Exception은 최대 2년까지만 계약할 수 있습니다.</div>
                                         )}
@@ -1281,87 +1088,45 @@ const MultiNegotiationView: React.FC = () => {
                                             Minimum Salary Exception/루키 스케일이면 이 두 입력은
                                             의미가 없어져 비활성화하고, 대신 각각의 자동 계산 안내를
                                             보여준다. */}
-                                        <div className="pt-1.5 space-y-1">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm font-bold uppercase tracking-wider text-slate-400">캡%</span>
-                                                {!isMinSalary && !isRookieScale && (
-                                                    <span className="text-sm text-green-500">최대 가능 캡% : {maxCapPct}%</span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <button
-                                                    onClick={() => adjustCapPercent('min')}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >최소</button>
-                                                <button
-                                                    onClick={() => adjustCapPercent(-1)}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >-1%</button>
-                                                <div className="relative flex-[2]">
-                                                    <input
-                                                        type="text"
-                                                        inputMode="decimal"
-                                                        value={capPercentInput}
-                                                        onChange={handlePercentInput(setCapPercentInput)}
-                                                        disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                        className="w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">%</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => adjustCapPercent(1)}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >+1%</button>
-                                                <button
-                                                    onClick={() => adjustCapPercent('max')}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >최대</button>
-                                            </div>
-                                            {maxCapResult.reason === 'rose_rule' && !isMinSalary && !isRookieScale && (
+                                        <ContractStepper
+                                            label="캡%"
+                                            hint={!isMinSalary && !isRookieScale && (
+                                                <span className="text-sm text-green-500">최대 가능 캡% : {maxCapPct}%</span>
+                                            )}
+                                            value={capPercentInput}
+                                            onChange={handlePercentInput(setCapPercentInput)}
+                                            inputMode="decimal"
+                                            suffix="%"
+                                            disabled={isOnCooldown || isMinSalary || isRookieScale}
+                                            leftSteps={[
+                                                { label: '최소', onClick: () => adjustCapPercent('min') },
+                                                { label: '-1%', onClick: () => adjustCapPercent(-1) },
+                                            ]}
+                                            rightSteps={[
+                                                { label: '+1%', onClick: () => adjustCapPercent(1) },
+                                                { label: '최대', onClick: () => adjustCapPercent('max') },
+                                            ]}
+                                            footer={maxCapResult.reason === 'rose_rule' && !isMinSalary && !isRookieScale && (
                                                 <div className="text-sm text-slate-600">데릭 로즈 룰 자격(YOS {playerYos}년, 루키 3시즌 내 수상)으로 최대 30%까지 가능합니다.</div>
                                             )}
-                                        </div>
+                                        />
 
-                                        <div className="pt-1.5 space-y-1">
-                                            <span className="text-sm font-bold uppercase tracking-wider text-slate-400">변동률 (최대 ±{maxRaisePercent}%)</span>
-                                            <div className="flex items-center gap-1.5">
-                                                <button
-                                                    onClick={() => adjustRaisePercent('min')}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >최소</button>
-                                                <button
-                                                    onClick={() => adjustRaisePercent(-1)}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >-1%</button>
-                                                <div className="relative flex-[2]">
-                                                    <input
-                                                        type="text"
-                                                        inputMode="decimal"
-                                                        value={raisePercentInput}
-                                                        onChange={handlePercentInput(setRaisePercentInput)}
-                                                        disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                        className="w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">%</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => adjustRaisePercent(1)}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >+1%</button>
-                                                <button
-                                                    onClick={() => adjustRaisePercent('max')}
-                                                    disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                                    className="flex-1 h-8 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                                                >최대</button>
-                                            </div>
-                                        </div>
+                                        <ContractStepper
+                                            label={`변동률 (최대 ±${maxRaisePercent}%)`}
+                                            value={raisePercentInput}
+                                            onChange={handlePercentInput(setRaisePercentInput)}
+                                            inputMode="decimal"
+                                            suffix="%"
+                                            disabled={isOnCooldown || isMinSalary || isRookieScale}
+                                            leftSteps={[
+                                                { label: '최소', onClick: () => adjustRaisePercent('min') },
+                                                { label: '-1%', onClick: () => adjustRaisePercent(-1) },
+                                            ]}
+                                            rightSteps={[
+                                                { label: '+1%', onClick: () => adjustRaisePercent(1) },
+                                                { label: '최대', onClick: () => adjustRaisePercent('max') },
+                                            ]}
+                                        />
                                     </>
                                 )}
 
@@ -1411,7 +1176,7 @@ const MultiNegotiationView: React.FC = () => {
                                                             {optionType === 'team' ? '(TO)' : '(PO)'}
                                                         </span>
                                                     )}
-                                                    <span className="font-bold text-white">{formatMoney(sal)}</span>
+                                                    <span className="font-bold text-white">{formatMoneyFull(sal)}</span>
                                                 </span>
                                             </div>
                                         );
@@ -1455,14 +1220,8 @@ const MultiNegotiationView: React.FC = () => {
 
                             {/* 총액 요약 — "체결 가능성"은 중앙 채팅 헤더와 중복이라 여기서는 뺌 */}
                             <div className="flex-shrink-0 space-y-1 pt-2 border-t border-slate-700/50">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400 font-semibold">총 계약액</span>
-                                    <span className="font-bold text-white">{formatMoney(totalSalary)}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400 font-semibold">AAV</span>
-                                    <span className="font-bold text-white">{formatMoney(avgSalary)}</span>
-                                </div>
+                                <KeyValueRow label="총 계약액" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(totalSalary)}</KeyValueRow>
+                                <KeyValueRow label="AAV" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(avgSalary)}</KeyValueRow>
                             </div>
 
                         </div>
@@ -1477,87 +1236,40 @@ const MultiNegotiationView: React.FC = () => {
                                 calcTeamPayroll()은 singleplayer FA 엔진(faMarketBuilder.ts)이
                                 이미 쓰는 함수 재사용(로스터 연봉 합 + 데드머니). "계약 후"는
                                 1년차 연봉만 이번 시즌 캡에 더해진다고 가정. */}
-                            {capInfo && (() => {
-                                const beforeOver = capInfo.beforePayroll > capInfo.capAmount;
-                                const afterOver = capInfo.afterPayroll > capInfo.capAmount;
-                                return (
-                                    <div className="flex-shrink-0 space-y-1">
-                                        <div className="text-sm font-bold text-slate-400 mb-1">팀 샐러리캡 현황</div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">캡 스페이스 여유</span>
-                                            <span className={`font-bold ${beforeOver ? 'text-red-400' : 'text-emerald-400'}`}>
-                                                {beforeOver ? '-' : '+'}{formatMoney(Math.abs(capInfo.capAmount - capInfo.beforePayroll))}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">현재 페이롤</span>
-                                            <span className="text-white">{formatMoney(capInfo.beforePayroll)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-400">샐러리캡</span>
-                                            <span className="text-white">{formatMoney(capInfo.capAmount)}</span>
-                                        </div>
-                                        {capInfo.luxuryTaxAmount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">럭셔리 택스 라인</span>
-                                                <span className="text-white">{formatMoney(capInfo.luxuryTaxAmount)}</span>
-                                            </div>
-                                        )}
-                                        {capInfo.apron1Amount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">1차 에이프런</span>
-                                                <span className="text-white">{formatMoney(capInfo.apron1Amount)}</span>
-                                            </div>
-                                        )}
-                                        {capInfo.apron2Amount !== null && (
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">2차 에이프런</span>
-                                                <span className="text-white">{formatMoney(capInfo.apron2Amount)}</span>
-                                            </div>
-                                        )}
+                            {capInfo && <CapStatusPanel capInfo={capInfo} afterLabel="계약 후 예상 페이롤" />}
 
-                                        <div className="pt-2 mt-1 border-t border-slate-800 space-y-1">
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400 font-semibold">계약 후 예상 페이롤</span>
-                                                <span className="font-bold text-white">{formatMoney(capInfo.afterPayroll)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-400">캡 대비</span>
-                                                <span className={`font-bold ${afterOver ? 'text-red-400' : 'text-emerald-400'}`}>
-                                                    {afterOver ? '-' : '+'}{formatMoney(Math.abs(capInfo.capAmount - capInfo.afterPayroll))}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
+                            {/* [2026-10-13] 사전 차단(warning)·서버 거절(danger)은 InlineNotice(에러 표시 정책 0-7).
+                                투웨이 정원도 같은 자리에서 설명 — 예전엔 버튼 라벨로만 알렸음. */}
                             {isRosterFull && !result?.accepted && !walkedAway && (
-                                <div className="flex-shrink-0 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-amber-400">
-                                    <ShieldAlert size={14} className="shrink-0" />
+                                <InlineNotice tone="warning" className="flex-shrink-0">
                                     로스터 정원({(league as any)?.max_roster_size ?? 15}명)이 가득 찼습니다. 선수를 방출한 뒤 다시 시도하세요.
-                                </div>
+                                </InlineNotice>
+                            )}
+                            {isTwoWaySlotsFull && !result?.accepted && !walkedAway && (
+                                <InlineNotice tone="warning" className="flex-shrink-0">
+                                    투웨이 슬롯({(league as any)?.two_way_slots ?? 3}개)이 가득 찼습니다. 투웨이 계약을 방출하거나 정규 계약으로 제안하세요.
+                                </InlineNotice>
                             )}
 
                             {actionError && (
-                                <div className="flex-shrink-0 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400">
-                                    <ShieldAlert size={14} className="shrink-0" /> {actionError}
-                                </div>
+                                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
                             )}
 
                             <div className="flex-shrink-0 mt-auto pt-2">
-                                <button
+                                <Button
+                                    size="xl"
+                                    shape="xl"
+                                    fullWidth
                                     onClick={handleSubmit}
                                     disabled={submitting || salaries.length === 0 || salaries.some(s => s <= 0) || isLocked}
-                                    className="w-full py-3 rounded-xl font-black uppercase tracking-wide text-sm transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                    {submitting ? '처리 중...' : isRosterFull ? '로스터 정원 초과' : isTwoWaySlotsFull ? '투웨이 정원 초과' : '오퍼 제출'}
-                                </button>
+                                    {submitting ? '처리 중...' : '오퍼 제출'}
+                                </Button>
                             </div>
                         </div>
                     </div>
-                    </div>
-                </div>
+                    )}
+                />
             )}
         </div>
     );

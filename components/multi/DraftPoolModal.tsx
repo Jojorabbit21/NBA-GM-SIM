@@ -1,11 +1,15 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
 import { applyMetaPlayerPoolFilter } from '../../services/multi/draftPoolQuery';
 import { OvrBadge } from '../common/OvrBadge';
 import type { Player } from '../../types';
+import { IconButton } from '../common/IconButton';
+import { Spinner } from '../common/Spinner';
+import { EmptyState } from '../common/EmptyState';
 
 interface Props {
     ovrMin:             number;
@@ -89,12 +93,12 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
         if (sortKey !== field) return null;
         return sortDir === 'desc'
             ? <ChevronDown size={11} className="inline ml-0.5" />
-            : <ChevronUp   size={11} className="inline ml-0.5" />;
+            : <ChevronUp size={11} className="inline ml-0.5" />;
     };
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            className="fixed inset-0 z-modal flex items-center justify-center bg-black/70 p-4"
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
@@ -107,12 +111,9 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
                             <span className="text-xs text-slate-500 ko-normal">총 {players.length}명</span>
                         )}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="text-slate-500 hover:text-white transition-colors"
-                    >
+                    <IconButton label="닫기" size="sm" onClick={onClose}>
                         <X size={16} />
-                    </button>
+                    </IconButton>
                 </div>
 
                 {/* 필터 바 */}
@@ -175,13 +176,9 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
                 {/* 리스트 */}
                 <div className="flex-1 overflow-y-auto">
                     {loading ? (
-                        <div className="flex items-center justify-center py-16">
-                            <Loader2 size={20} className="animate-spin text-indigo-400" />
-                        </div>
+                        <Spinner variant="section" />
                     ) : sorted.length === 0 ? (
-                        <div className="flex items-center justify-center py-16">
-                            <p className="text-sm text-slate-500 ko-normal">조건에 맞는 선수가 없습니다</p>
-                        </div>
+                        <EmptyState title="조건에 맞는 선수가 없습니다" />
                     ) : (
                         sorted.map(p => {
                             const archetypeLabel = p.secondaryArchetype ? `${p.archetype} / ${p.secondaryArchetype}` : p.archetype;
@@ -211,6 +208,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
                     )}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

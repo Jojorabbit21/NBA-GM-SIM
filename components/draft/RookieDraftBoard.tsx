@@ -106,7 +106,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                         return (
                                             <th
                                                 key={rp.pickNumber}
-                                                className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center font-bold uppercase"
+                                                className="w-[120px] min-w-[120px] max-w-[120px] px-1 py-1.5 text-center font-bold"
                                                 style={{
                                                     backgroundColor: teamColor,
                                                     color: teamTextColor,
@@ -183,7 +183,7 @@ export const RookieDraftBoard: React.FC<RookieDraftBoardProps> = ({
                                                     {bp ? (
                                                         <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
                                                             <span
-                                                                className="text-xs font-bold uppercase opacity-60"
+                                                                className="text-xs font-bold opacity-60"
                                                                 style={{ color: posColor }}
                                                             >
                                                                 {bp.position}

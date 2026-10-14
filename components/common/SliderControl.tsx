@@ -12,10 +12,10 @@ interface SliderStep {
 // Commits to parent (onChange) only on mouseup/keyup — preventing App-level re-renders at 60fps.
 //
 // steps 모드: steps prop이 제공되면 이산 단계로 동작.
-//   - value prop은 엔진 값 (예: 2, 5, 9)
-//   - 내부에서 가장 가까운 step index로 변환
-//   - onChange는 엔진 값을 emit (예: steps[stepIndex].value)
-//   - 티커: 각 step 레이블을 트랙 하단에 균등 배치
+// - value prop은 엔진 값 (예: 2, 5, 9)
+// - 내부에서 가장 가까운 step index로 변환
+// - onChange는 엔진 값을 emit (예: steps[stepIndex].value)
+// - 티커: 각 step 레이블을 트랙 하단에 균등 배치
 export const SliderControl: React.FC<{
     label: string,
     value: number,

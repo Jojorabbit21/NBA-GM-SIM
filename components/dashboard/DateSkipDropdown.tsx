@@ -173,7 +173,7 @@ export const DateSkipDropdown: React.FC<DateSkipDropdownProps> = ({
         >
             {/* 헤더 */}
             <div className="px-4 py-2 shrink-0 sticky top-0 z-10" style={{ background: '#1e293b', borderBottom: '1px solid #334155' }}>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                <span className="text-xs font-bold text-slate-400 whitespace-nowrap">
                     날짜 이동
                 </span>
             </div>

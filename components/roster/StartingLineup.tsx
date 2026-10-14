@@ -16,9 +16,9 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   if (!player) {
     return (
       <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-700 flex flex-col items-center justify-center gap-2 cursor-default`}>
-        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{positionLabel}</span>
+        <span className="text-[10px] font-black text-slate-600">{positionLabel}</span>
         <User size={32} className="text-slate-700" />
-        <span className="text-xs font-bold text-slate-600 uppercase">EMPTY</span>
+        <span className="text-xs font-bold text-slate-600">EMPTY</span>
       </div>
     );
   }
@@ -32,7 +32,7 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
                <User size={36} className="text-slate-400" />
            </div>
            <div className="px-2 text-center w-full">
-              <div className="text-xs font-black text-slate-300 uppercase tracking-tight leading-tight break-keep">
+              <div className="text-xs font-black text-slate-300 tracking-tight leading-tight break-keep">
                   {player.name}
               </div>
            </div>

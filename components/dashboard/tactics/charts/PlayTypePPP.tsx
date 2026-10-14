@@ -50,7 +50,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-base font-black text-white uppercase tracking-widest">플레이타입 분석</h5>
+            <h5 className="text-base font-black text-white">플레이타입 분석</h5>
 
             {/* 라벨(텍스트 길이만큼 auto 트랙) → 막대(minmax(0,1fr) — 남은 폭을 그대로 채움) →
                 퍼센트 순. w-full 블록 그리드라 배정된 컬럼 폭을 그대로 채운다. 예전엔 막대를

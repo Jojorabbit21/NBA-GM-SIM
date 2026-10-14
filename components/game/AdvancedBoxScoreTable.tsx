@@ -19,8 +19,8 @@ interface AdvancedBoxScoreTableProps {
 }
 
 const fmtPct = (v: number | null) => v == null ? '-' : v.toFixed(1);
-const statCellClass = "text-xs font-semibold text-white font-mono tabular-nums";
-const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
+const statCellClass = "text-xs font-semibold text-white tabular-nums";
+const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700";
 
 export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ team, box, oppBox, mvpId, badge, standalone, headerRight }) => {
     const teamTotals = useMemo(() => computeTeamBoxTotals(box), [box]);
@@ -48,8 +48,8 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
 
             <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
-                    <TeamMark teamId={team.id} teamName={team.name} className="w-8 h-8" badge={badge} />
-                    <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
+                    <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
+                    <span className="text-sm font-black text-white">{team.name}</span>
                 </div>
                 {headerRight}
             </div>
@@ -91,8 +91,8 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-700">
-                            <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
+                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-800">
+                            <span className="text-xs font-black text-white">TEAM TOTALS</span>
                         </td>
                         <td className={totalCellClass} colSpan={2}></td>
                         <td className={totalCellClass}>{Math.round(teamTotals.mp)}</td>

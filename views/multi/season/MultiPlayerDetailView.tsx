@@ -1,6 +1,7 @@
 
 import React, { useMemo, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../../components/common/Spinner';
+
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -15,6 +16,7 @@ import { usePlayerTendencies } from '../../../hooks/usePlayerTendencies';
 import { usePlayerAllStarAwards } from '../../../hooks/usePlayerAllStarAwards';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
+import { PlayerNewsTab } from './PlayerNewsTab';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { resolveRealAt, isFinal } from './multiGameReveal';
@@ -289,9 +291,7 @@ const MultiPlayerDetailView: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <Loader2 size={28} className="animate-spin text-indigo-400" />
-            </div>
+            <Spinner variant="page" />
         );
     }
 
@@ -325,6 +325,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalShotEvents={playerShotEvents}
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
+            newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} />}
         />
     );
 };

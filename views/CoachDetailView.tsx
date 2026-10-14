@@ -285,8 +285,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                             </div>
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">항목</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50" align="left">성향</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-32 py-2" align="left">항목</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-40 py-2" align="left">성향</TableHeaderCell>
                                     <TableHeaderCell className="text-xs py-2" align="left">설명</TableHeaderCell>
                                 </TableHead>
                                 <TableBody>
@@ -296,8 +296,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                                         const { tag, desc } = getAxisResult(axis, val);
                                         return (
                                             <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                <TableCell className="text-xs font-bold text-white py-2 ko-normal">{axis.label}</TableCell>
+                                                <TableCell className={`text-xs font-black py-2 ${axis.color}`}>{tag}</TableCell>
                                                 <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
                                             </TableRow>
                                         );
@@ -313,8 +313,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                             </div>
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">항목</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50" align="left">성향</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-32 py-2" align="left">항목</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-40 py-2" align="left">성향</TableHeaderCell>
                                     <TableHeaderCell className="text-xs py-2" align="left">설명</TableHeaderCell>
                                 </TableHead>
                                 <TableBody>
@@ -324,8 +324,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                                         const { tag, desc } = getAxisResult(axis, val);
                                         return (
                                             <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                                <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
-                                                <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                                <TableCell className="text-xs font-bold text-white py-2 ko-normal">{axis.label}</TableCell>
+                                                <TableCell className={`text-xs font-black py-2 ${axis.color}`}>{tag}</TableCell>
                                                 <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
                                             </TableRow>
                                         );
@@ -341,15 +341,15 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                             </div>
                             <Table className="border-0 !rounded-none shadow-none">
                                 <TableHead>
-                                    <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50" align="left">능력치</TableHeaderCell>
-                                    <TableHeaderCell className="text-xs w-20 py-2 border-r border-slate-800/50">등급</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-32 py-2" align="left">능력치</TableHeaderCell>
+                                    <TableHeaderCell className="text-xs w-20 py-2">등급</TableHeaderCell>
                                     <TableHeaderCell className="text-xs py-2" align="left">그래프</TableHeaderCell>
                                 </TableHead>
                                 <TableBody>
                                     {ABILITY_ORDER.map(key => (
                                         <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
-                                            <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{ABILITY_LABELS[key]}</TableCell>
-                                            <TableCell className="text-[10px] font-bold py-2 border-r border-slate-800/50 text-center">
+                                            <TableCell className="text-xs font-bold text-white py-2 ko-normal">{ABILITY_LABELS[key]}</TableCell>
+                                            <TableCell className="text-[10px] font-bold py-2 text-center">
                                                 <span className={coachAbilityColor(coach.abilities[key])}>
                                                     {coachAbilityLabel(coach.abilities[key])}
                                                 </span>

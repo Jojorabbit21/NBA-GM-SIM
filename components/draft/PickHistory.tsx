@@ -33,7 +33,7 @@ const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, 
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                <span className="text-sm font-black uppercase text-indigo-400">드래프트 기록</span>
+                <span className="text-sm font-black text-indigo-400">드래프트 기록</span>
                 {/* Round Filter Dropdown */}
                 <div className="relative">
                     <button
@@ -87,7 +87,7 @@ const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, 
                             }`}
                         >
                             {/* Pick number */}
-                            <span className="text-sm text-slate-500 font-bold font-mono w-10 shrink-0">
+                            <span className="text-sm text-slate-500 font-bold w-10 shrink-0">
                                 #{overallPick}
                             </span>
                             {/* Position */}

@@ -6,7 +6,8 @@
  * 실패 시 토스트 없이 admin_trade_failed 로그 + 패널 안 상태줄). 성공 후 reload()로 리그 컨텍스트(로스터)를 다시 읽는다.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Loader2 } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
+import { Spinner } from '../../../../components/common/Spinner';
 import { AdminTradePanel } from '../../../../components/dashboard/AdminTradePanel';
 import { fetchMetaPlayersByRosterIds } from '../../../../services/multi/instancePlayers';
 import { mapRawPlayerToRuntimePlayer } from '../../../../services/dataMapper';
@@ -74,7 +75,7 @@ export const AdminTradeBlock: React.FC = () => {
                         <option key={t.team_slug} value={t.team_slug}>{t.team_abbr} · {t.team_name}{t.is_ai ? ' (AI)' : ''}</option>
                     ))}
                 </select>
-                {loading && <Loader2 size={14} className="animate-spin text-slate-500" />}
+                {loading && <Spinner variant="inline" />}
             </div>
             {teamARow && (
                 <div className="bg-slate-900/40 border border-slate-700/40 rounded-xl -mx-2">

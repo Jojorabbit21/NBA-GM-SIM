@@ -124,7 +124,7 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
             {/* Around the League */}
             {otherGames && otherGames.length > 0 && (
                 <div className="mt-8 pt-8 border-t border-slate-800/50">
-                    <h3 className="text-sm font-black uppercase text-slate-500 tracking-widest mb-4 flex items-center gap-2">
+                    <h3 className="text-sm font-black text-slate-500 mb-4 flex items-center gap-2">
                         <Activity size={16} /> 타구장 경기 결과
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -146,14 +146,14 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
                                             <img src={a.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                            <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
+                                            <span className={`text-xs font-bold group-hover:text-white transition-colors ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
                                         </div>
                                         <span className={`text-sm font-black ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{aScore}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
                                             <img src={h.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                            <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
+                                            <span className={`text-xs font-bold group-hover:text-white transition-colors ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
                                         </div>
                                         <span className={`text-sm font-black ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{hScore}</span>
                                     </div>

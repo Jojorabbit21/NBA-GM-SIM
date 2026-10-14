@@ -82,7 +82,7 @@ export const InjuryStatusBadge: React.FC<InjuryStatusBadgeProps> = ({
             <Icon size={iconSize ?? Math.round(size * 0.65)} strokeWidth={strokeWidth} className="text-white" />
             {tooltipPos && title && createPortal(
                 <span
-                    className="pointer-events-none fixed -translate-x-1/2 -translate-y-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs font-normal text-slate-200 whitespace-nowrap shadow-xl z-[9999]"
+                    className="pointer-events-none fixed -translate-x-1/2 -translate-y-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs font-normal text-slate-200 whitespace-nowrap shadow-xl z-tooltip"
                     style={{ top: tooltipPos.top, left: tooltipPos.left }}
                 >
                     {title}

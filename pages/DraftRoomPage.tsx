@@ -17,7 +17,7 @@ const DraftRoomPage: React.FC = () => {
     if ((gameData.prospects?.length ?? 0) > 0) {
         const draftTeamOrder = gameData.lotteryResult?.finalOrder || gameData.teams.map(t => t.id);
         return (
-            <div className="fixed inset-0 z-[9999] bg-slate-950">
+            <div className="fixed inset-0 z-takeover bg-slate-950">
                 <RookieDraftView
                     teams={gameData.teams}
                     myTeamId={gameData.myTeamId!}
@@ -37,7 +37,7 @@ const DraftRoomPage: React.FC = () => {
 
     // 판타지 드래프트 (게임 시작 시 커스텀 모드)
     return (
-        <div className="fixed inset-0 z-[9999] bg-slate-950">
+        <div className="fixed inset-0 z-takeover bg-slate-950">
             <FantasyDraftView
                 teams={gameData.teams}
                 myTeamId={gameData.myTeamId!}

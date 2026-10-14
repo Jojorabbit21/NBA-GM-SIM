@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabaseClient';
+import { actionFailure } from '../notifications/actionErrorCatalog';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,8 @@ const mapTradeOfferError = (msg: string): string => {
     if (msg.includes('stale_offer'))         return '선수가 이미 트레이드 되었습니다.';
     if (msg.includes('salary_match_failed')) return '샐러리 규칙 위반으로 트레이드가 불가능합니다.';
     if (msg.includes('roster_overflow')) return '트레이드 성사 시 로스터 정원이 초과되어 트레이드 실행이 불가능합니다.';
-    return msg;
+    // [2026-10-13] 표에 없는 원문은 화면에 내보내지 않는다(에러 표시 정책 0-7)
+    return actionFailure(msg, '트레이드 요청 처리');
 };
 
 export const createTradeOffer = async (
@@ -218,6 +220,29 @@ export const setTradeBlock = async (
     const { error } = await supabase.from('league_trade_blocks')
         .delete().eq('team_id', teamId).eq('player_id', playerId);
     return { error: error?.message ?? null };
+};
+
+/**
+ * [2026-10-13] 트레이드 블록 + "원하는 대가"를 RPC 하나(set_trade_block_batch, 트랜잭션)로 저장.
+ * 예전엔 선수당 setTradeBlock 1요청 + updateTeamTradeRequest 1요청을 Promise.all로 보내 "부분 성공"이 생겼다
+ * (DB엔 일부 반영, 화면은 실패). 이제는 전부 성공 아니면 전부 롤백.
+ */
+export const setTradeBlockBatch = async (
+    roomId: string, teamId: string, addIds: string[], removeIds: string[], request: TeamTradeRequest,
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('set_trade_block_batch', {
+        p_room_id:    roomId,
+        p_team_id:    teamId,
+        p_add:        addIds,
+        p_remove:     removeIds,
+        p_note:       request.note,
+        p_positions:  request.desiredPositions,
+        p_player_ids: request.desiredPlayerIds,
+        p_archetypes: request.desiredArchetypes,
+    });
+    if (!error) return { error: null };
+    if ((error.message ?? '').includes('team_not_found')) return { error: '팀을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.' };
+    return { error: actionFailure(error, '트레이드 블록 저장') };
 };
 
 // ─── 팀 단위 트레이드 요청(원하는 대가) — 트레이드 블록(선수 리스트)과 별개 기능 ──────

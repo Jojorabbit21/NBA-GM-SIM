@@ -1,6 +1,9 @@
 
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { IconButton } from '../../../common/IconButton';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../common/Table';
+import { InsightCard } from './InsightCard';
 
 export interface StatRankRow {
     key: string;
@@ -36,13 +39,14 @@ export interface StatRankPage {
     rows: StatRankRow[];
 }
 
-/** 인사이트 탭 전용 — "스탯명 | 값 | 평균 | 리그 순위" 4열 컴팩트 위젯. 전부 좌측 정렬. 자체
+/** 인사이트 탭 전용 — "스탯명 | 값 | 평균 | 리그 순위" 4열 컴팩트 위젯. 자체
  *  최대폭 제한은 없음(w-full) — 여러 개를 가로로 나열할 때 부모가 flex-1 등으로 폭을 나눠주는
  *  용도(전체 리더보드 테이블과는 별개).
  *
  *  `pages`가 2개 이상이면(예: 공격/수비) 상/하로 나눠 보여주는 대신, 헤더 좌우에 쉐브론 버튼을
  *  둬서 같은 자리에서 데이터만 스왑하는 방식으로 전환한다("< 공격 >" → "< 수비 >"). pages가
- *  1개면 쉐브론 없이 예전처럼 고정 제목만 표시. */
+ *  1개면 쉐브론 없이 예전처럼 고정 제목만 표시.
+ *  [2026-10-13] flex-div 표 → 공용 Table(bare) + InsightCard. */
 export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages }) => {
     const [pageIndex, setPageIndex] = useState(0);
     const page = pages[pageIndex];
@@ -51,52 +55,36 @@ export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages })
     const goNext = () => setPageIndex(i => (i + 1) % pages.length);
 
     return (
-        <div className="w-full bg-slate-900/40 border border-slate-800 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800">
-                {hasMultiplePages ? (
-                    <>
-                        <button onClick={goPrev} className="text-slate-500 hover:text-white transition-colors" aria-label="이전">
-                            <ChevronLeft size={16} />
-                        </button>
-                        <h4 className="text-sm font-normal text-white uppercase tracking-widest">{page.title}</h4>
-                        <button onClick={goNext} className="text-slate-500 hover:text-white transition-colors" aria-label="다음">
-                            <ChevronRight size={16} />
-                        </button>
-                    </>
-                ) : (
-                    <h4 className="text-sm font-normal text-white uppercase tracking-widest">{page.title}</h4>
-                )}
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2 bg-slate-700/50 border-b border-slate-700">
-                <span className="text-sm font-normal text-slate-300 uppercase tracking-wider flex-1 text-left">스탯</span>
-                <span className="text-sm font-normal text-slate-300 uppercase tracking-wider flex-1 text-right">값</span>
-                <span className="text-sm font-normal text-slate-300 uppercase tracking-wider flex-[2] text-right">평균</span>
-                <span className="text-sm font-normal text-slate-300 uppercase tracking-wider flex-1 text-right">순위</span>
-            </div>
-            <div className="flex flex-col">
-                {page.rows.map((row, i) => (
-                    <div
-                        key={row.key}
-                        className={`flex items-center gap-3 px-3 py-2.5 ${i % 2 === 1 ? 'bg-slate-700/25' : ''} ${i < page.rows.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                    >
-                        <span className="text-sm font-normal text-slate-400 flex-1 text-left">{row.label}</span>
-                        <span className="text-sm font-normal text-white tabular-nums flex-1 text-right">
-                            {formatValue(row.value, row.format)}
-                        </span>
-                        <span className="text-sm font-normal text-slate-300 tabular-nums flex-[2] text-right">
-                            {formatValue(row.leagueAvg, row.format)}
-                            {(() => {
-                                const diff = row.value - row.leagueAvg;
-                                const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
-                                return <span className={`ml-1 font-normal ${diffColor}`}>({formatDiff(diff, row.format)})</span>;
-                            })()}
-                        </span>
-                        <span className={`text-sm font-normal tabular-nums flex-1 text-right ${rankColor(row.rank)}`}>
-                            {row.rank}위
-                        </span>
-                    </div>
-                ))}
-            </div>
-        </div>
+        <InsightCard
+            title={page.title}
+            headerLeft={hasMultiplePages ? <IconButton label="이전" size="sm" onClick={goPrev}><ChevronLeft size={16} /></IconButton> : undefined}
+            headerRight={hasMultiplePages ? <IconButton label="다음" size="sm" onClick={goNext}><ChevronRight size={16} /></IconButton> : undefined}
+        >
+            <Table variant="bare" dividers={false}>
+                <TableHead>
+                    <TableHeaderCell align="left">스탯</TableHeaderCell>
+                    <TableHeaderCell align="right">값</TableHeaderCell>
+                    <TableHeaderCell align="right">평균</TableHeaderCell>
+                    <TableHeaderCell align="right">순위</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {page.rows.map((row, i) => {
+                        const diff = row.value - row.leagueAvg;
+                        const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
+                        return (
+                            <TableRow key={row.key} className={i % 2 === 1 ? 'bg-slate-700/25' : ''}>
+                                <TableCell align="left" className="text-sm text-slate-400">{row.label}</TableCell>
+                                <TableCell align="right" className="text-sm text-white tabular-nums">{formatValue(row.value, row.format)}</TableCell>
+                                <TableCell align="right" className="text-sm text-slate-300 tabular-nums">
+                                    {formatValue(row.leagueAvg, row.format)}
+                                    <span className={`ml-1 ${diffColor}`}>({formatDiff(diff, row.format)})</span>
+                                </TableCell>
+                                <TableCell align="right" className={`text-sm tabular-nums ${rankColor(row.rank)}`}>{row.rank}위</TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
+        </InsightCard>
     );
 };

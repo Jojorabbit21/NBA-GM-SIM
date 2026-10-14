@@ -1,16 +1,14 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { OvrBadge } from '../common/OvrBadge';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot, TableGroupHeaderCell } from '../common/Table';
 import {
-    ATTR_NAME_MAP, ATTR_KR_LABEL,
+    ATTR_NAME_MAP,
     COMPACT_ATTR_GROUPS, COMPACT_ITEM_BY_KEY, getCompactAttrValue,
 } from '../../data/attributeConfig';
-import { PlayerHoverCard } from '../common/PlayerHoverCard';
-import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
-import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
+import { useTableSort, sortByConfig } from '../../hooks/useTableSort';
+import { PlayerInfoColGroup, PlayerInfoHeaderCells, PlayerInfoCells, PlayerInfoFooterCells } from './PlayerInfoColumns';
 
 interface RosterGridProps {
     team: Team;
@@ -22,92 +20,64 @@ interface RosterGridProps {
     enableHoverCard?: boolean;
 }
 
-type SortConfig = { key: string; direction: 'asc' | 'desc'; };
-
-// --- Styling Constants ---
-const WIDTHS = {
-    NAME: 180,
-    POS: 60,
-    AGE: 50,
-    OVR: 60,
-    ATTR: 64,
-    STAT: 60
-};
+// --- Styling Constants --- (이름|포지션|나이|OVR 4열은 PlayerInfoColumns.tsx)
+const WIDTHS = { ATTR: 64, STAT: 60, ACTION: 80 };
 
 // ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP → data/attributeConfig.ts에서 import
 
-const GROUP_LABEL_KR: Record<string, string> = {
-    INSIDE: '인사이드 스코어링', OUTSIDE: '아웃사이드 스코어링', PLAYMAKING: '플레이메이킹',
-    DEFENSE: '수비능력', REBOUND: '리바운드', ATHLETIC: '운동능력',
-};
-
-// [2026-08-11] 능력치 약어 범례 — 사용자 요청으로 숨김 처리(코드는 보존, 필요시 true로 복원)
-const SHOW_ATTR_LEGEND = false;
-
 const STATS_COLS = [
     { key: 'g', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' },
-    { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, 
-    { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, 
-    { key: 'pf', label: 'PF' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, 
+    { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' },
+    { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' },
+    { key: 'pf', label: 'PF' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' },
     { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' }
 ];
 
+const getSortValue = (p: Player, key: string): number | string => {
+    // 1. Basic Metadata
+    if (key === 'name') return p.name;
+    if (key === 'position') return p.position;
+    if (key === 'age') return p.age;
+    if (key === 'ovr') return calculatePlayerOvr(p);
+
+    // 2. Statistics Logic (p.stats)
+    const s = p.stats;
+    const g = s.g || 1;
+
+    // Season Totals/Averages - Prioritize p.stats over root property names (like 'reb', 'blk')
+    if (['pts','reb','ast','stl','blk','tov','pf'].includes(key)) {
+        return s[key as keyof typeof s] / g;
+    }
+    if (key === 'mp') return s.mp / g;
+    if (key === 'pm') return s.plusMinus / g;
+    if (key === 'g') return s.g;
+    if (key === 'gs') return s.gs;
+    if (key === 'fg%') return s.fga > 0 ? s.fgm / s.fga : 0;
+    if (key === '3p%') return s.p3m > 0 && s.p3a > 0 ? s.p3m / s.p3a : 0;
+    if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
+    if (key === 'ts%') {
+        const tsa = s.fga + 0.44 * s.fta;
+        return tsa > 0 ? p.stats.pts / (2 * tsa) : 0;
+    }
+
+    // 3. 압축 능력치 콤보(여러 raw 능력치 평균) — 단일 항목 키는 raw 프로퍼티명과 동일해
+    // 아래 fallback에서 자연히 처리되므로, 콤보(INS/3PT/SPD)만 여기서 특별 처리.
+    const compactItem = COMPACT_ITEM_BY_KEY[key];
+    if (compactItem) return getCompactAttrValue(p, compactItem);
+
+    // 4. Attribute Fallback (Root properties like 'speed', 'strength', etc.)
+    if (key in p) return (p as any)[key];
+
+    return 0;
+};
 
 export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick, showFooter = true, renderRowAction, enableHoverCard = false }) => {
-    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
+    const { sortConfig, sortProps } = useTableSort({ key: 'ovr', direction: 'desc' });
 
-    const handleSort = (key: string) => {
-        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
-    };
-
-    const getSortValue = (p: Player, key: string): number | string => {
-        // 1. Basic Metadata
-        if (key === 'name') return p.name;
-        if (key === 'position') return p.position;
-        if (key === 'age') return p.age;
-        if (key === 'ovr') return calculatePlayerOvr(p);
-
-        // 2. Statistics Logic (p.stats)
-        const s = p.stats;
-        const g = s.g || 1;
-        
-        // Season Totals/Averages - Prioritize p.stats over root property names (like 'reb', 'blk')
-        if (['pts','reb','ast','stl','blk','tov','pf'].includes(key)) {
-            return s[key as keyof typeof s] / g;
-        }
-        if (key === 'mp') return s.mp / g;
-        if (key === 'pm') return s.plusMinus / g;
-        if (key === 'g') return s.g;
-        if (key === 'gs') return s.gs;
-        if (key === 'fg%') return s.fga > 0 ? s.fgm / s.fga : 0;
-        if (key === '3p%') return s.p3m > 0 && s.p3a > 0 ? s.p3m / s.p3a : 0;
-        if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
-        if (key === 'ts%') { 
-            const tsa = s.fga + 0.44 * s.fta; 
-            return tsa > 0 ? p.stats.pts / (2 * tsa) : 0; 
-        }
-
-        // 3. 압축 능력치 콤보(여러 raw 능력치 평균) — 단일 항목 키는 raw 프로퍼티명과 동일해
-        // 아래 fallback에서 자연히 처리되므로, 콤보(INS/3PT/SPD)만 여기서 특별 처리.
-        const compactItem = COMPACT_ITEM_BY_KEY[key];
-        if (compactItem) return getCompactAttrValue(p, compactItem);
-
-        // 4. Attribute Fallback (Root properties like 'speed', 'strength', etc.)
-        if (key in p) return (p as any)[key];
-
-        return 0;
-    };
-
-    const sortedRoster = useMemo(() => {
-        return [...team.roster].sort((a, b) => {
-            const aVal = getSortValue(a, sortConfig.key);
-            const bVal = getSortValue(b, sortConfig.key);
-            if (typeof aVal === 'string' && typeof bVal === 'string') {
-                return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-            }
-            return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-        });
-    }, [team.roster, sortConfig, tab]); // Depend on tab to re-calc when switching views
+    const sortedRoster = useMemo(
+        () => sortByConfig(team.roster, sortConfig, getSortValue),
+        [team.roster, sortConfig, tab], // Depend on tab to re-calc when switching views
+    );
 
     const averages = useMemo(() => {
         const count = team.roster.length || 1;
@@ -118,7 +88,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         COMPACT_ATTR_GROUPS.flatMap(g => g.items).forEach(item => {
             attrAvg[item.key] = Math.round(team.roster.reduce((sum, p) => sum + getCompactAttrValue(p, item), 0) / count);
         });
-        
+
         const statAvg: any = {};
         STATS_COLS.forEach(c => {
             const k = c.key;
@@ -140,149 +110,71 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         return { attr: attrAvg, stat: statAvg };
     }, [team.roster]);
 
-    // Calculate left positions for sticky columns
-    const LEFT_POS = WIDTHS.NAME;
-    const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
-    const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
-
-    // Helper to enforce seamless sticky cells
-    const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
-        left: left,
-        width: width,
-        minWidth: width,
-        maxWidth: width,
-        position: 'sticky' as 'sticky',
-        zIndex: 30,
-        borderRight: isLast ? undefined : 'none',
-    });
-
     return (
         <div className={`h-full ${tab === 'stats' ? 'overflow-y-auto custom-scrollbar' : 'flex flex-col overflow-hidden'}`}>
             {/* Table 1: Main Stats / Attributes / Salary */}
             {(tab === 'roster' || tab === 'stats') && (
             <div className={tab === 'stats' ? '' : 'flex-1 min-h-0'}>
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={tab === 'roster'} className="!rounded-none !border-x-0 !border-t-0 !bg-slate-950">
+            <Table variant="flush" fullHeight={tab === 'roster'}>
                 <colgroup>
-                    <col style={{ width: WIDTHS.NAME }} />
-                    <col style={{ width: WIDTHS.POS }} />
-                    <col style={{ width: WIDTHS.AGE }} />
-                    <col style={{ width: WIDTHS.OVR }} />
+                    <PlayerInfoColGroup />
                     {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
                     {tab === 'stats' && STATS_COLS.map((_, i) => <col key={`stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
-                    {renderRowAction && <col style={{ width: 80 }} />}
+                    {renderRowAction && <col style={{ width: WIDTHS.ACTION }} />}
                 </colgroup>
-                <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                <TableHead noRow>
                     {/* Header Row 1: Groups — "능력치" 탭(tab==='roster')은 요청에 따라 삭제, "stats" 모드만 유지 */}
                     {tab === 'stats' && (
                         <tr className="h-10">
-                            <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
-                                <div className="h-full flex items-center justify-center">
-                                    <span className="text-sm font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
-                                </div>
-                            </th>
-                            <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
-                                <div className="h-full flex items-center justify-center">
-                                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
-                                </div>
-                            </th>
-                            {renderRowAction && <th className="bg-slate-950 border-b border-slate-800" />}
+                            <TableGroupHeaderCell colSpan={4} stickyLeft={0}>선수 정보</TableGroupHeaderCell>
+                            <TableGroupHeaderCell colSpan={STATS_COLS.length}>Season Averages (Per Game)</TableGroupHeaderCell>
+                            {renderRowAction && <TableGroupHeaderCell />}
                         </tr>
                     )}
                     {/* Header Row 2: Labels */}
-                    <tr className="h-10 text-slate-500 text-sm font-black uppercase tracking-widest">
-                        {/* Use inline styles to force border removal and width locking */}
-                        <TableHeaderCell 
-                            style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} 
-                            align="left" className="pl-4 bg-slate-950" 
-                            sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
-                        >이름</TableHeaderCell>
-                        <TableHeaderCell 
-                            style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }} 
-                            className="bg-slate-950" 
-                            sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
-                        >포지션</TableHeaderCell>
-                        <TableHeaderCell 
-                            style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }} 
-                            className="bg-slate-950" 
-                            sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
-                        >나이</TableHeaderCell>
-                        <TableHeaderCell 
-                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50}} 
-                            className="bg-slate-950 border-r border-slate-800" 
-                            sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
-                        >OVR</TableHeaderCell>
-                        
+                    <tr className="h-10 text-slate-400 text-sm font-bold">
+                        <PlayerInfoHeaderCells sortProps={sortProps} />
                         {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
                             <TableHeaderCell
                                 key={item.key}
                                 width={WIDTHS.ATTR}
-                                className="border-r border-slate-800"
-                                sortable
-                                onSort={() => handleSort(item.key)}
-                                sortDirection={sortConfig.key === item.key ? sortConfig.direction : null}
                                 title={item.sourceKeys.map(k => ATTR_NAME_MAP[k] || k).join(' + ')}
+                                {...sortProps(item.key)}
                             >
                                 {item.label}
                             </TableHeaderCell>
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
-                            <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
+                            <TableHeaderCell key={c.key} width={WIDTHS.STAT} {...sortProps(c.key)}>{c.label}</TableHeaderCell>
                         ))}
-                        {renderRowAction && <th className="bg-slate-950 border-b border-slate-800 w-20" />}
+                        {renderRowAction && <TableHeaderCell width={WIDTHS.ACTION} />}
                     </tr>
-                </thead>
+                </TableHead>
                 <TableBody>
                     {sortedRoster.map(p => (
-                        <TableRow key={p.id} className="group">
-                            {/* Use inline styles to force border removal and width locking */}
-                            <TableCell align="left" style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800">
-                                <div className="flex flex-col">
-                                    <span className="flex items-center gap-1.5 min-w-0">
-                                        <PlayerHoverCard player={p} teamAbbr={team.abbr} enabled={enableHoverCard}>
-                                            <span className="min-w-0 text-sm font-semibold text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer" onClick={() => onPlayerClick(p)}>{p.name}</span>
-                                        </PlayerHoverCard>
-                                        {p.contract?.type === 'two_way' && (
-                                            <span
-                                                title="Two-Way 계약"
-                                                className="shrink-0 px-1 py-0.5 rounded text-[10px] font-bold leading-none bg-amber-500/15 text-amber-400 border border-amber-500/40"
-                                            >TW</span>
-                                        )}
-                                        {p.activeInjurySeverity && (
-                                            <InjuryStatusBadge
-                                                severity={p.activeInjurySeverity}
-                                                title={formatPlayerActiveInjuryLabel(p) ?? undefined}
-                                                size={16}
-                                                iconSize={12}
-                                                strokeWidth={4}
-                                            />
-                                        )}
+                        <TableRow key={p.id}>
+                            <PlayerInfoCells
+                                player={p}
+                                teamAbbr={team.abbr}
+                                onClick={onPlayerClick}
+                                enableHoverCard={enableHoverCard}
+                                nameExtra={p.health !== 'Healthy' && (
+                                    <span
+                                        className={`text-[9px] font-black cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
+                                        title={`${p.injuryType || '부상'} | 예상 복귀: ${p.returnDate || '미정'}`}
+                                    >
+                                        {p.health}
                                     </span>
-                                    {p.health !== 'Healthy' && (
-                                        <span 
-                                            className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
-                                            title={`${p.injuryType || '부상'} | 예상 복귀: ${p.returnDate || '미정'}`}
-                                        >
-                                            {p.health}
-                                        </span>
-                                    )}
-                                </div>
-                            </TableCell>
-                            <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.position}</TableCell>
-                            <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-sm bg-slate-900 group-hover:bg-slate-800 text-center">{p.age}</TableCell>
-                            <TableCell 
-                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
-                                className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 text-center"
-                            >
-                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                            </TableCell>
+                                )}
+                            />
 
                             {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
-                                <TableCell key={item.key} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={getCompactAttrValue(p, item)} variant="attribute" colorScale mono={false} />
+                                <TableCell key={item.key} align="center" className="font-semibold text-sm" value={getCompactAttrValue(p, item)} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
                                 if (p.stats.mp === 0) {
-                                    return <TableCell key={c.key} align="center" className="border-r border-slate-800/30"><span className="font-medium text-sm text-slate-600">-</span></TableCell>;
+                                    return <TableCell key={c.key} align="center"><span className="font-medium text-sm text-slate-600">-</span></TableCell>;
                                 }
 
                                 const val = getSortValue(p, c.key);
@@ -301,9 +193,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                     else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
-                                
+
                                 return (
-                                    <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                    <TableCell key={c.key} align="center">
                                         <span className={`font-medium text-sm tabular-nums ${textColor}`}>
                                             {displayVal}
                                         </span>
@@ -316,26 +208,17 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableRow>
                     ))}
                 </TableBody>
-                {showFooter && <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
+                {showFooter && <TableFoot>
                     <tr className="h-10">
-                        {/* Use inline styles to force border removal and width locking */}
-                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-sm uppercase tracking-widest">팀 평균</TableCell>
-                        <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
-                        <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-sm">{averages.attr.age}</TableCell>
-                        <TableCell 
-                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
-                            className="border-r border-slate-800 bg-slate-950 text-center"
-                        >
-                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
-                        </TableCell>
+                        <PlayerInfoFooterCells label="팀 평균" age={averages.attr.age} ovr={averages.attr.ovr} />
 
                         {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map(item => (
-                            <TableCell key={item.key} align="center" className="font-semibold border-r border-slate-800/30 text-sm" value={averages.attr[item.key]} variant="attribute" colorScale mono={false} />
+                            <TableCell key={item.key} align="center" className="font-semibold text-sm" value={averages.attr[item.key]} variant="attribute" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             // G, GS, MIN은 팀 평균에서 제외 (빈칸 처리)
                             if (['g', 'gs', 'mp'].includes(c.key)) {
-                                return <TableCell key={c.key} className="border-r border-slate-800/30 bg-slate-950" />;
+                                return <TableCell key={c.key} />;
                             }
 
                             let val = averages.stat[c.key];
@@ -353,9 +236,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                 else displayVal = val.toFixed(1);
                             }
-                            
+
                             return (
-                                <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                <TableCell key={c.key} align="center">
                                     <span className={`font-medium text-sm tabular-nums ${textColor}`}>
                                         {displayVal}
                                     </span>
@@ -368,48 +251,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             </div>
             )}
 
-            {/* 능력치 약어 범례 — 컬럼 폭 때문에 이름을 다 못 보여주니 약어 뜻을 항상 보이는 곳에 정리.
-                본문 테이블의 그룹 순서(인사이드/아웃사이드/...)를 그대로 컬럼으로 삼은 표 형태 — 구분선 없이
-                간격만으로 열을 구분하고, 텍스트는 굵기/색상 전부 톤 하나로 통일해 은은하게 처리한다.
-                [2026-08-11] 사용자 요청으로 숨김 처리 — 코드는 그대로 보존. */}
-            {tab === 'roster' && SHOW_ATTR_LEGEND && (() => {
-                const legendCols = COMPACT_ATTR_GROUPS.map(g => ({
-                    id: g.id,
-                    label: GROUP_LABEL_KR[g.label] || g.label,
-                    items: g.items,
-                }));
-                const maxRows = Math.max(...legendCols.map(c => c.items.length));
-                return (
-                    <div className="shrink-0 bg-slate-950 px-4 py-3 overflow-x-auto custom-scrollbar">
-                        <table className="text-xs text-slate-500 font-normal border-separate" style={{ borderSpacing: '24px 4px' }}>
-                            <thead>
-                                <tr>
-                                    {legendCols.map(c => (
-                                        <th key={c.id} className="text-left font-normal text-slate-500 whitespace-nowrap pb-1">
-                                            {c.label}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {Array.from({ length: maxRows }).map((_, i) => (
-                                    <tr key={i}>
-                                        {legendCols.map(c => {
-                                            const item = c.items[i];
-                                            const krLabel = item?.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join('+');
-                                            return (
-                                                <td key={c.id} className="text-left text-slate-500 font-normal whitespace-nowrap">
-                                                    {item ? `${item.label} ${krLabel}` : ''}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                );
-            })()}
         </div>
     );
 };

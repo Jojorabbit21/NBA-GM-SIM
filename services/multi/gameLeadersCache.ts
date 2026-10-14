@@ -85,7 +85,24 @@ export function computeGameMvp(homeBox: PlayerBoxScore[] | null, awayBox: Player
     return bestFromBox([...(homeBox ?? []), ...(awayBox ?? [])]);
 }
 
-const keyFor = (roomId: string) => `nbagm:gameLeaders:${roomId}`;
+const KEY_PREFIX = 'nbagm:gameLeaders:';
+const keyFor = (roomId: string) => `${KEY_PREFIX}${roomId}`;
+
+/** [2026-10-14] 지금 들어와 있는 방 것만 남기고 다른 방의 리더 캐시 키를 전부 지운다.
+ *  방 하나가 1,300경기 × 약 0.75KB ≈ 1MB라, 방을 여러 개 오간 브라우저는 이 키들만으로 localStorage 5MB 한도의
+ *  대부분(실측 10개 방 3.98MB)을 차지해 react-query 영속 캐시(index.tsx, 선수 풀 2.2MB)가 들어갈 자리가 없었다.
+ *  리그 진입(useLeagueBootstrap)과 저장(mergeGameLeadersCache) 직전에 호출. 다른 방으로 옮기면 그 방은 다시 계산한다. */
+export function pruneGameLeadersCache(keepRoomId: string): void {
+    try {
+        const keep = keyFor(keepRoomId);
+        const stale: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(KEY_PREFIX) && k !== keep) stale.push(k);
+        }
+        stale.forEach(k => localStorage.removeItem(k));
+    } catch { /* ignore */ }
+}
 
 export function loadGameLeadersCache(roomId: string): Record<string, GameLeaders> {
     try {
@@ -101,6 +118,7 @@ export function mergeGameLeadersCache(
     updates: Record<string, GameLeaders>,
 ): Record<string, GameLeaders> {
     const merged = { ...loadGameLeadersCache(roomId), ...updates };
+    pruneGameLeadersCache(roomId);
     try { localStorage.setItem(keyFor(roomId), JSON.stringify(merged)); } catch { /* 용량 초과 등 무시 */ }
     return merged;
 }

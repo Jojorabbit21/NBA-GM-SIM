@@ -9,6 +9,8 @@ import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
 import { fetchPresets, savePreset, deletePreset } from '../../services/tacticsService';
 import { PresetRenameModal } from './tactics/PresetRenameModal';
 import { TabBar } from '../common/TabBar';
+import { Button } from '../common/Button';
+import { IconButton } from '../common/IconButton';
 import { supabase } from '../../services/supabaseClient';
 
 type TacticsTab = 'team' | 'player';
@@ -170,40 +172,40 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
 
                     {/* Action Buttons (Unified) */}
                     <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
-                        <button onClick={handleSave} className="p-1.5 hover:bg-indigo-600 hover:text-white text-slate-400 rounded-md transition-colors" title="저장">
+                        <IconButton label="저장" tone="inherit" shape="md" onClick={handleSave} className="text-slate-400 hover:bg-indigo-600">
                             <Save size={14} />
-                        </button>
-                        <button onClick={() => setIsRenameModalOpen(true)} className="p-1.5 hover:bg-amber-600 hover:text-white text-slate-400 rounded-md transition-colors" title="이름 변경">
+                        </IconButton>
+                        <IconButton label="이름 변경" tone="inherit" shape="md" onClick={() => setIsRenameModalOpen(true)} className="text-slate-400 hover:bg-amber-600">
                             <PenLine size={14} />
-                        </button>
-                        <button onClick={handleDelete} className="p-1.5 hover:bg-red-600 hover:text-white text-slate-400 rounded-md transition-colors" title="삭제">
+                        </IconButton>
+                        <IconButton label="삭제" tone="inherit" shape="md" onClick={handleDelete} className="text-slate-400 hover:bg-red-600">
                             <Trash2 size={14} />
-                        </button>
+                        </IconButton>
                         {/* Divider */}
                         <div className="w-px h-5 bg-slate-600 mx-0.5" />
-                        <button onClick={handleCopy} className="p-1.5 hover:bg-cyan-600 hover:text-white text-slate-400 rounded-md transition-colors" title="전술 복사 (JSON)">
+                        <IconButton label="전술 복사 (JSON)" tone="inherit" shape="md" onClick={handleCopy} className="text-slate-400 hover:bg-cyan-600">
                             <Copy size={14} />
-                        </button>
-                        <button onClick={() => { setShowPasteInput(!showPasteInput); setPasteValue(''); }} className={`p-1.5 rounded-md transition-colors ${showPasteInput ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-600 hover:text-white'}`} title="전술 붙여넣기 (JSON)">
+                        </IconButton>
+                        <IconButton
+                            label="전술 붙여넣기 (JSON)"
+                            tone="inherit"
+                            shape="md"
+                            onClick={() => { setShowPasteInput(!showPasteInput); setPasteValue(''); }}
+                            className={showPasteInput ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-600'}
+                        >
                             <ClipboardPaste size={14} />
-                        </button>
+                        </IconButton>
                     </div>
                 </div>
 
                 {/* Right: Delegation & Reset */}
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={onAutoSet}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-2 font-bold uppercase text-xs tracking-wider transition-all active:scale-95"
-                    >
+                    <Button variant="primary" onClick={onAutoSet}>
                         {coachName ? `${coachName}에게 위임` : '코치에게 위임'}
-                    </button>
-                    <button
-                        onClick={handleReset}
-                        className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg flex items-center gap-2 font-bold uppercase text-xs tracking-wider transition-all active:scale-95 shadow-sm"
-                    >
-                        <RotateCcw size={14} /> 초기화
-                    </button>
+                    </Button>
+                    <Button variant="secondary" onClick={handleReset} icon={<RotateCcw size={14} />}>
+                        초기화
+                    </Button>
                 </div>
             </div>
             )}
@@ -220,15 +222,15 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                                     onChange={e => setPasteValue(e.target.value)}
                                     placeholder='{"sliders": { "pace": 6, ... }}'
                                     rows={4}
-                                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500"
+                                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500"
                                 />
                                 <div className="flex flex-col gap-1.5">
-                                    <button onClick={handlePasteApply} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors">
+                                    <Button variant="primary" size="lg" onClick={handlePasteApply}>
                                         적용
-                                    </button>
-                                    <button onClick={() => { setShowPasteInput(false); setPasteValue(''); }} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-lg transition-colors">
+                                    </Button>
+                                    <Button variant="secondary" size="lg" onClick={() => { setShowPasteInput(false); setPasteValue(''); }}>
                                         취소
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         )}

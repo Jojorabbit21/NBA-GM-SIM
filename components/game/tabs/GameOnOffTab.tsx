@@ -178,24 +178,24 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
     const fmt = (v: number | null) => v == null ? '-' : v.toFixed(1);
     const fmtSigned = (v: number | null) => v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`;
     // 박스스코어(BoxScoreTable.tsx)의 stat 셀 톤과 동일 — 흰색/모노스페이스/세미볼드/tabular-nums
-    const sc = "text-xs font-semibold text-white font-mono tabular-nums";
+    const sc = "text-xs font-semibold text-white tabular-nums";
     const netColor = (v: number | null) => v == null ? 'text-slate-500' : v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-slate-500';
     const NetCell: React.FC<{ v: number | null }> = ({ v }) => (
         <TableCell align="center">
-            <span className={`font-mono font-semibold text-xs tabular-nums ${netColor(v)}`}>{fmtSigned(v)}</span>
+            <span className={`font-semibold text-xs tabular-nums ${netColor(v)}`}>{fmtSigned(v)}</span>
         </TableCell>
     );
 
     // 박스스코어 standalone(좌우 분할) 헤더와 동일한 톤: bg-slate-950/80 헤더 바 + 팀 로고 + 대문자 트래킹
     // [2026-09-07] 사각 색상 배지(약어 텍스트)를 실제 팀 로고 이미지로 교체(사용자 요청) —
-    // TeamMark가 teamId로 public/logos/real/ 로고를 조회하므로 teamId prop 추가.
-    const TeamHeader: React.FC<{ teamId: string; badge: { color: string; abbr: string }; name: string; label: string }> = ({ teamId, badge, name, label }) => (
+    // TeamMark가 teamId로 public/logos/teams/ 로고를 조회하므로 teamId prop 추가.
+    const TeamHeader: React.FC<{ teamId: string; badge: { color: string; abbr: string }; name: string; label: string }> = ({ teamId, name, label }) => (
         <div className="px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 border-l border-r border-slate-800">
             <div className="flex items-center gap-3">
-                <TeamMark teamId={teamId} teamName={name} className="w-8 h-8" badge={badge} />
-                <span className="text-sm font-black text-white uppercase tracking-wider">{name}</span>
+                <TeamMark teamId={teamId} teamName={name} size="custom" className="w-8 h-8" />
+                <span className="text-sm font-black text-white">{name}</span>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+            <span className="text-[10px] font-bold text-slate-500">{label}</span>
         </div>
     );
 
@@ -228,7 +228,7 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
                                 <NetCell v={on.net} />
                                 <NetCell v={off.net} />
                                 <TableCell align="center" className="pr-4">
-                                    <span className={`font-mono font-semibold text-xs tabular-nums ${netColor(diff)}`}>{fmtSigned(diff)}</span>
+                                    <span className={`font-semibold text-xs tabular-nums ${netColor(diff)}`}>{fmtSigned(diff)}</span>
                                 </TableCell>
                             </TableRow>
                         );
@@ -256,7 +256,7 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
                         <React.Fragment key={g.arity}>
                             <TableRow>
                                 <TableCell colSpan={5} className="!py-1.5 bg-slate-950/60">
-                                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">{ARITY_LABEL[g.arity]}</span>
+                                    <span className="text-xs font-black text-slate-500">{ARITY_LABEL[g.arity]}</span>
                                 </TableCell>
                             </TableRow>
                             {g.rows.length === 0 ? (
@@ -272,7 +272,7 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
                                         <TableCell align="center" className={sc}>{fmt(rt.off)}</TableCell>
                                         <TableCell align="center" className={sc}>{fmt(rt.def)}</TableCell>
                                         <TableCell align="center" className="pr-4">
-                                            <span className={`font-mono font-semibold text-xs tabular-nums ${netColor(rt.net)}`}>{fmtSigned(rt.net)}</span>
+                                            <span className={`font-semibold text-xs tabular-nums ${netColor(rt.net)}`}>{fmtSigned(rt.net)}</span>
                                         </TableCell>
                                     </TableRow>
                                 );

@@ -16,9 +16,11 @@
  * 표시 시각은 전부 KST 벽시계 기준. 가상 캘린더 날짜/시간(game_date/game_time)은 절대 수정하지 않는다.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-    CalendarDays, Clock, Loader2, Pencil, Check, X, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Save, Wand2, Play, FastForward,
-} from 'lucide-react';
+import { InlineNotice } from '../../../../components/common/InlineNotice';
+import { Button } from '../../../../components/common/Button';
+import { Spinner } from '../../../../components/common/Spinner';
+import { EmptyState } from '../../../../components/common/EmptyState';
+import { CalendarDays, Clock, Loader2, Pencil, Check, X, RefreshCw, ChevronDown, ChevronRight, Save, Wand2, Play, FastForward } from 'lucide-react';
 import type { Game } from '../../../../types';
 import type { LeagueRow, RoomRow, LeagueTeamRow } from '../../../../services/multi/roomQueries';
 import { loadSchedule } from '../../../../services/multi/gameQueries';
@@ -187,9 +189,9 @@ function buildReschedulePlan(
 
 // ── 강제 진행(시간 점프) 계획 ──────────────────────────────────────────────────
 // [2026-09-18 3단계] 대상 가상 날짜까지를 "지금" 끝난 것으로 만든다(docs/plan/fixed-day-schedule-plan.md §6).
-//  - 대상일 이하 행/경기: 서버 RPC가 Δ = 대상일 real_end_at − now 만큼 과거로 이동(여기선 개수만 센다).
-//  - 대상일 이후 행/경기: 균일 이동은 창 밖(심야)으로 밀리므로, 지금 + JUMP_GAP_MS 이후 슬롯부터 창 격자에 다시
-//    깐다. 모드 '앞당기기'는 하루당 가상 일수를 그대로(리그가 일찍 끝남), '종료일 유지'는 종료일에 맞춰 다시 계산.
+// - 대상일 이하 행/경기: 서버 RPC가 Δ = 대상일 real_end_at − now 만큼 과거로 이동(여기선 개수만 센다).
+// - 대상일 이후 행/경기: 균일 이동은 창 밖(심야)으로 밀리므로, 지금 + JUMP_GAP_MS 이후 슬롯부터 창 격자에 다시
+// 깐다. 모드 '앞당기기'는 하루당 가상 일수를 그대로(리그가 일찍 끝남), '종료일 유지'는 종료일에 맞춰 다시 계산.
 
 type JumpMode = 'shift' | 'keep_end';
 
@@ -386,18 +388,20 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
     };
 
     // ── 단건 편집 ─────────────────────────────────────────────────────────────
+    // [2026-10-13] 시각 수정 실패는 행(GameRow)이 입력 아래 sm으로 직접 보여준다 — 예전엔 표 위 editErr 슬롯에만 떠서
+    // 스크롤된 상태면 저장을 눌러도 아무 일도 안 일어난 것처럼 보였음. 반환값: 실패 문구 | null(성공) | 'cancel'(사용자 취소).
+    // editErr 슬롯은 행에 편집 UI가 없는 "지금 바로 시작" 실패 전용으로 남긴다.
     const [editErr, setEditErr] = useState<string | null>(null);
-    const handleEditOne = useCallback(async (gameId: string, local: string): Promise<boolean> => {
-        if (!room?.id || !local) return false;
+    const handleEditOne = useCallback(async (gameId: string, local: string): Promise<EditOneResult> => {
+        if (!room?.id || !local) return 'cancel';
         const iso = kstLocalToIso(local);
         if (new Date(iso).getTime() <= getServerNow()) {
-            if (!window.confirm('과거 시각입니다. 저장하면 이 경기는 곧바로 시뮬레이션됩니다. 진행할까요?')) return false;
+            if (!window.confirm('과거 시각입니다. 저장하면 이 경기는 곧바로 시뮬레이션됩니다. 진행할까요?')) return 'cancel';
         }
         const { error } = await updateGameScheduledAt(room.id, gameId, iso);
-        if (error) { setEditErr(error); return false; }
-        setEditErr(null);
+        if (error) return error;
         await refresh();
-        return true;
+        return null;
     }, [room?.id, refresh]);
 
     // ── 단건 즉시 시작 (기존 /sim-override — 지금 계산 + 지금부터 리플레이) ─────
@@ -547,9 +551,7 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                             타임라인 설정
                         </h2>
                         {!hasTimeline && (
-                            <p className="text-xs text-amber-400 ko-normal leading-relaxed">
-                                이 리그는 고정 길이 가상 하루 타임라인이 없는 구 구조라 재배치를 지원하지 않습니다. 아래 일정표에서 경기별 시각만 수정할 수 있습니다.
-                            </p>
+                            <InlineNotice tone="warning">이 리그는 고정 길이 가상 하루 타임라인이 없는 구 구조라 재배치를 지원하지 않습니다. 아래 일정표에서 경기별 시각만 수정할 수 있습니다.</InlineNotice>
                         )}
                         <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -575,8 +577,8 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                 </div>
                                 <p className="text-xs text-slate-600 ko-normal mt-1">
                                     한 경기가 재생되는 시간이자 결과가 숨겨지는 시간. 저장 즉시 모든 화면의 공개 시점에 반영됩니다.
-                                    {lateGameClamped && <span className="text-amber-400"> 이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다.</span>}
                                 </p>
+                                {lateGameClamped && <InlineNotice tone="warning" size="sm" className="mt-1">이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다.</InlineNotice>}
                             </div>
                             <div className="col-span-2">
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">실제 종료일 (KST)</label>
@@ -601,21 +603,23 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                         )}
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            <button onClick={handleSaveSettingsOnly} disabled={!hasTimeline || !settingsDirty || savingSettings}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors">
-                                {savingSettings ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}설정만 저장
-                            </button>
+                            <Button variant="secondary" size="sm" onClick={handleSaveSettingsOnly} disabled={!hasTimeline || !settingsDirty}
+                                isLoading={savingSettings} icon={<Save size={12} />}>
+                                설정만 저장
+                            </Button>
                             <button onClick={togglePreview} disabled={!hasTimeline || loading}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 ${previewOn ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}>
                                 <Wand2 size={12} />{previewOn ? '미리보기 끄기' : '재배치 미리보기'}
                             </button>
-                            <button onClick={handleApply} disabled={!hasTimeline || applying || loading}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors">
-                                {applying ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}설정 저장 + 남은 날짜 재배치
-                            </button>
+                            <Button variant="primary" size="sm" onClick={handleApply} disabled={!hasTimeline || loading}
+                                isLoading={applying} icon={<RefreshCw size={12} />}>
+                                설정 저장 + 남은 날짜 재배치
+                            </Button>
                         </div>
-                        {settingsMsg && <p className={`text-xs ko-normal ${settingsMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{settingsMsg.text}</p>}
-                        {applyMsg && <p className={`text-xs ko-normal ${applyMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{applyMsg.text}</p>}
+                        {/* [2026-10-13] 설정 저장/재배치 결과는 한 슬롯 — 둘 다 있으면 나중 동작(재배치)이 우선(동시 표시 금지) */}
+                        {(applyMsg ?? settingsMsg) && (
+                            <InlineNotice tone={(applyMsg ?? settingsMsg)!.ok ? 'info' : 'danger'}>{(applyMsg ?? settingsMsg)!.text}</InlineNotice>
+                        )}
                     </section>
 
                     <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
@@ -640,14 +644,10 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                 <Row label="첫 슬롯" value={fmtKstDateTime(plan.stats.firstAt)} />
                                 <Row label="마지막 종료" value={fmtKstDateTime(plan.stats.lastAt)} changed={plan.stats.overshootDays > 0} />
                                 {!plan.stats.feasible && (
-                                    <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal mt-1">
-                                        <AlertTriangle size={12} className="mt-0.5 shrink-0" />{plan.stats.reasons.join(' ')} 종료일을 늦추거나 하루 길이를 줄이거나 시작 시각을 앞당기세요.
-                                    </p>
+                                    <InlineNotice tone="danger" className="mt-1">{plan.stats.reasons.join(' ')} 종료일을 늦추거나 하루 길이를 줄이거나 시작 시각을 앞당기세요.</InlineNotice>
                                 )}
                                 {plan.stats.feasible && plan.stats.overshootDays > 0 && (
-                                    <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal mt-1">
-                                        <AlertTriangle size={12} className="mt-0.5 shrink-0" />오늘 이미 지난 슬롯을 건너뛰어 마지막 날이 종료일보다 {plan.stats.overshootDays}일 늦어집니다.
-                                    </p>
+                                    <InlineNotice tone="warning" className="mt-1">오늘 이미 지난 슬롯을 건너뛰어 마지막 날이 종료일보다 {plan.stats.overshootDays}일 늦어집니다.</InlineNotice>
                                 )}
                                 {plan.settings.allstar_schedule && (
                                     <p className="text-xs text-slate-500 ko-normal mt-1">올스타 이벤트 실제 시각도 함께 갱신 — 본경기 {fmtKstDateTime(plan.settings.allstar_schedule.mainGameAt)}</p>
@@ -698,19 +698,19 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                 <p className="text-xs text-slate-600 ko-normal mt-1">앞당기기: 하루당 가상 일수를 유지해 리그가 그만큼 일찍 끝납니다. 종료일 유지: 남은 날짜를 원래 종료일까지 다시 펼칩니다(하루가 여유로워짐).</p>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <button onClick={handleJump} disabled={!jumpPlanOk || jumping || processingSince != null}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors">
-                                    {jumping ? <Loader2 size={12} className="animate-spin" /> : <FastForward size={12} />}강제 진행 실행
-                                </button>
+                                <Button variant="warning" size="sm" onClick={handleJump} disabled={!jumpPlanOk || processingSince != null}
+                                    isLoading={jumping} icon={<FastForward size={12} />}>
+                                    강제 진행 실행
+                                </Button>
                                 {processingSince != null && (
-                                    <span className="flex items-center gap-1.5 text-xs text-amber-300 ko-normal"><Loader2 size={12} className="animate-spin" />스케줄러 처리 중 — 예정 시각이 지난 미실행 경기 {dueUnplayed}건</span>
+                                    <Spinner variant="inline" label={<>스케줄러 처리 중 — 예정 시각이 지난 미실행 경기 {dueUnplayed}건</>} />
                                 )}
                             </div>
-                            {jumpMsg && <p className={`text-xs ko-normal ${jumpMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{jumpMsg.text}</p>}
+                            {jumpMsg && <InlineNotice tone={jumpMsg.ok ? 'info' : 'danger'}>{jumpMsg.text}</InlineNotice>}
                         </div>
                         <div className="bg-slate-900/60 rounded-xl px-4 py-3 space-y-1.5">
                             {!jumpTargetDate && <p className="text-xs text-slate-500 ko-normal">대상 날짜를 고르면 영향 요약이 표시됩니다.</p>}
-                            {jumpPlan && 'error' in jumpPlan && <p className="text-xs text-red-400 ko-normal">{jumpPlan.error}</p>}
+                            {jumpPlan && 'error' in jumpPlan && <InlineNotice tone="danger">{jumpPlan.error}</InlineNotice>}
                             {jumpPlanOk && (
                                 <>
                                     <Row label="지나가는 가상 일수" value={`${jumpPlanOk.daysToPass}일 (${fmtVirtualShort(jumpPlanOk.targetDate)}까지)`} />
@@ -721,16 +721,16 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                     <Row label="이후 하루당 가상 일수" value={`${jumpPlanOk.perDay}일`} />
                                     <Row label="남은 일정 종료" value={`${fmtKstDateTime(jumpPlanOk.lastEndAt)}${jumpPlanOk.newEndDate ? ` (${jumpPlanOk.newEndDate})` : ''}`} changed={jumpMode === 'shift'} />
                                     {!jumpPlanOk.feasible && (
-                                        <p className="flex items-start gap-1.5 text-xs text-red-400 ko-normal mt-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />종료일 유지 불가: {jumpPlanOk.reasons.join(' ')}</p>
+                                        <InlineNotice tone="danger" className="mt-1">종료일 유지 불가: {jumpPlanOk.reasons.join(' ')}</InlineNotice>
                                     )}
                                     {jumpPlanOk.crossesAllStarVoteEnd && (
-                                        <p className="flex items-start gap-1.5 text-xs text-amber-400 ko-normal mt-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />올스타 투표 마감일을 건너뜁니다 — 하루 1회 집계되는 투표 스냅샷이 생략되어 올스타 본경기가 실행되지 않을 수 있습니다.</p>
+                                        <InlineNotice tone="warning" className="mt-1">올스타 투표 마감일을 건너뜁니다 — 하루 1회 집계되는 투표 스냅샷이 생략되어 올스타 본경기가 실행되지 않을 수 있습니다.</InlineNotice>
                                     )}
                                     {jumpPlanOk.crossesAllStar && !jumpPlanOk.crossesAllStarVoteEnd && (
-                                        <p className="flex items-start gap-1.5 text-xs text-slate-400 ko-normal mt-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />올스타 이벤트 4종이 스케줄러의 다음 tick부터 연달아 실행됩니다.</p>
+                                        <InlineNotice tone="info" size="sm" className="mt-1">올스타 이벤트 4종이 스케줄러의 다음 tick부터 연달아 실행됩니다.</InlineNotice>
                                     )}
                                     {jumpPlanOk.crossesRegularSeasonEnd && (
-                                        <p className="flex items-start gap-1.5 text-xs text-slate-400 ko-normal mt-1"><AlertTriangle size={12} className="mt-0.5 shrink-0" />정규시즌 종료 → 플레이오프 생성이 자동으로 이어집니다. 라운드마다 다음 라운드 생성이 필요해 30초 이상씩 더 걸립니다.</p>
+                                        <InlineNotice tone="info" size="sm" className="mt-1">정규시즌 종료 → 플레이오프 생성이 자동으로 이어집니다. 라운드마다 다음 라운드 생성이 필요해 30초 이상씩 더 걸립니다.</InlineNotice>
                                     )}
                                     <p className="text-xs text-slate-600 ko-normal mt-1">월초 파워랭킹처럼 하루 1회 실행되는 작업은 건너뛴 날짜만큼 생략됩니다. 실행 전 타임라인 스냅샷이 리그 기록(time_jump_log)에 남습니다.</p>
                                 </>
@@ -765,12 +765,12 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                         <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />새로고침
                     </button>
                 </div>
-                {editErr && <p className="px-5 py-2 text-xs text-red-400 ko-normal border-b border-slate-700/40">{editErr}</p>}
+                {editErr && <InlineNotice tone="danger" className="shrink-0">{editErr}</InlineNotice>}
 
                 {loading && !schedule.length ? (
-                    <div className="flex items-center justify-center py-16 text-slate-500 text-sm"><Loader2 size={16} className="animate-spin mr-2" />일정 불러오는 중…</div>
+                    <div className="flex items-center justify-center py-10"><Spinner variant="inline" label="일정 불러오는 중…" /></div>
                 ) : realDays.length === 0 ? (
-                    <div className="py-16 text-center text-slate-500 text-sm ko-normal">표시할 일정이 없습니다.</div>
+                    <EmptyState title="표시할 일정이 없습니다." />
                 ) : (
                     <div className="divide-y divide-slate-700/40">
                         {realDays.map(day => {
@@ -781,11 +781,11 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                     <button onClick={() => toggleReal(day.key)}
                                         className={`w-full flex items-center gap-3 px-5 py-2.5 text-left hover:bg-slate-800/80 transition-colors ${isToday ? 'bg-indigo-500/10' : ''}`}>
                                         {open ? <ChevronDown size={14} className="text-slate-500 shrink-0" /> : <ChevronRight size={14} className="text-slate-500 shrink-0" />}
-                                        <span className="text-sm font-bold text-white font-mono">{fmtDateLabel(day.key)}</span>
+                                        <span className="text-sm font-bold text-white">{fmtDateLabel(day.key)}</span>
                                         {isToday && <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">오늘</span>}
-                                        <span className="text-xs text-slate-400 font-mono">{fmtKstTime(day.firstAt)} ~ {fmtKstTime(day.lastAt)}</span>
+                                        <span className="text-xs text-slate-400">{fmtKstTime(day.firstAt)} ~ {fmtKstTime(day.lastAt)}</span>
                                         <span className="text-xs text-slate-500 ko-normal">가상 {day.days.length}일 · {day.gameCount}경기</span>
-                                        <span className="text-xs text-slate-500 font-mono ml-auto">{fmtVirtualShort(day.vFrom)}{day.vTo !== day.vFrom ? ` ~ ${fmtVirtualShort(day.vTo)}` : ''}</span>
+                                        <span className="text-xs text-slate-500 ml-auto">{fmtVirtualShort(day.vFrom)}{day.vTo !== day.vFrom ? ` ~ ${fmtVirtualShort(day.vTo)}` : ''}</span>
                                     </button>
                                     {open && (
                                         <div className="border-t border-slate-700/40">
@@ -801,17 +801,17 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                                     <div key={vd.row.date}>
                                                         <button onClick={() => toggleVirtual(vd.row.date)}
                                                             className={`w-full grid grid-cols-[110px_90px_1fr_1fr_1fr_80px_100px] gap-2 px-5 py-1.5 text-xs text-left hover:bg-slate-800/60 border-t border-slate-800/60 ${isCurrentVirtual ? 'bg-amber-500/5' : ''}`}>
-                                                            <span className="font-mono text-slate-200 flex items-center gap-1">
+                                                            <span className="text-slate-200 flex items-center gap-1">
                                                                 {vd.games.length > 0 ? (vOpen ? <ChevronDown size={11} className="text-slate-500" /> : <ChevronRight size={11} className="text-slate-500" />) : <span className="w-[11px]" />}
                                                                 {fmtVirtualShort(vd.row.date)}
                                                                 {isCurrentVirtual && <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1 rounded">현재</span>}
                                                             </span>
                                                             <span className={`ko-normal ${vd.row.kind.startsWith('allstar') ? 'text-amber-400' : vd.row.kind === 'playoff' ? 'text-indigo-300' : 'text-slate-400'}`}>{kindLabel}</span>
-                                                            <span className="font-mono text-slate-300">{fmtKstTime(vd.row.realStartAt)}</span>
-                                                            <span className="font-mono text-slate-500">{hasTimeline ? fmtKstTime(vd.row.realMidnightAt) : '—'}</span>
-                                                            <span className="font-mono text-slate-500">{hasTimeline ? fmtKstTime(vd.row.realEndAt) : '—'}</span>
+                                                            <span className="text-slate-300">{fmtKstTime(vd.row.realStartAt)}</span>
+                                                            <span className="text-slate-500">{hasTimeline ? fmtKstTime(vd.row.realMidnightAt) : '—'}</span>
+                                                            <span className="text-slate-500">{hasTimeline ? fmtKstTime(vd.row.realEndAt) : '—'}</span>
                                                             <span className="text-slate-400">{vd.games.length ? `${vd.games.length}경기` : '—'}</span>
-                                                            <span className={`font-mono ${vd.previewStart && vd.previewStart !== vd.row.realStartAt ? 'text-amber-300' : 'text-slate-600'}`}>{vd.previewStart ? fmtKstDateTime(vd.previewStart) : ''}</span>
+                                                            <span className={`${vd.previewStart && vd.previewStart !== vd.row.realStartAt ? 'text-amber-300' : 'text-slate-600'}`}>{vd.previewStart ? fmtKstDateTime(vd.previewStart) : ''}</span>
                                                         </button>
                                                         {vOpen && vd.games.length > 0 && (
                                                             <table className="w-full text-xs bg-slate-900/40">
@@ -842,9 +842,12 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
 const Row: React.FC<{ label: string; value: string; changed?: boolean }> = ({ label, value, changed }) => (
     <div className="flex justify-between gap-3 text-xs">
         <span className="text-slate-500 ko-normal shrink-0">{label}</span>
-        <span className={`font-mono text-right ${changed ? 'text-amber-300' : 'text-slate-300'}`}>{value}</span>
+        <span className={`text-right ${changed ? 'text-amber-300' : 'text-slate-300'}`}>{value}</span>
     </div>
 );
+
+/** 단건 시각 수정 결과 — null 성공 / 'cancel' 사용자 취소(편집 유지, 문구 없음) / string 실패 문구(입력 아래 sm). */
+type EditOneResult = string | null | 'cancel';
 
 interface GameRowProps {
     game: Game;
@@ -852,7 +855,7 @@ interface GameRowProps {
     nextAt?: string;
     serverNow: number;
     teamName: (slug: string) => string;
-    onEdit: (gameId: string, local: string) => Promise<boolean>;
+    onEdit: (gameId: string, local: string) => Promise<EditOneResult>;
     /** [3단계] 한 경기 즉시 시작(기존 /sim-override) — 예정 시각 무시, 지금 계산 + 지금부터 리플레이. */
     onStartNow?: (game: Game) => void;
 }
@@ -862,34 +865,45 @@ const GameRow: React.FC<GameRowProps> = ({ game, showPreview, nextAt, serverNow,
     const [editing, setEditing] = useState(false);
     const [draft, setDraft]     = useState('');
     const [saving, setSaving]   = useState(false);
+    const [rowErr, setRowErr]   = useState<string | null>(null);
     const changed = nextAt !== undefined && nextAt !== game.scheduledAt;
 
-    const startEdit = () => { setDraft(toInputValue(game.scheduledAt)); setEditing(true); };
-    const save = async () => { setSaving(true); const ok = await onEdit(game.id, draft); setSaving(false); if (ok) setEditing(false); };
+    const startEdit = () => { setDraft(toInputValue(game.scheduledAt)); setRowErr(null); setEditing(true); };
+    const cancelEdit = () => { setEditing(false); setRowErr(null); };
+    const save = async () => {
+        setSaving(true); setRowErr(null);
+        const res = await onEdit(game.id, draft);
+        setSaving(false);
+        if (res === null) setEditing(false);
+        else if (res !== 'cancel') setRowErr(res);
+    };
 
     const statusEl = state === 'final'
-        ? <span className="text-slate-400 font-mono">종료 {game.homeScore != null ? `${game.awayScore}-${game.homeScore}` : ''}</span>
+        ? <span className="text-slate-400">종료 {game.homeScore != null ? `${game.awayScore}-${game.homeScore}` : ''}</span>
         : state === 'live' ? <span className="text-red-400 font-bold">LIVE</span>
         : game.played ? <span className="text-amber-400">시뮬 완료·공개 대기</span>
         : <span className="text-slate-500">예정</span>;
 
     return (
-        <tr className={`border-t border-slate-800/60 ${game.played ? 'opacity-70' : ''}`}>
-            <td className="pl-10 pr-2 py-1.5 font-mono text-slate-300 w-40">
+        <tr className={`border-t border-slate-800 ${game.played ? 'opacity-70' : ''}`}>
+            <td className="pl-10 pr-2 py-1.5 text-slate-200 w-40">
                 {editing ? (
-                    <div className="flex items-center gap-1">
-                        <input type="datetime-local" step="60" value={draft} onChange={e => setDraft(e.target.value)}
-                            className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none focus:border-indigo-500" />
-                        <button onClick={save} disabled={saving || !draft} className="w-5 h-5 flex items-center justify-center rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 disabled:opacity-30">
-                            {saving ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
-                        </button>
-                        <button onClick={() => setEditing(false)} disabled={saving} className="w-5 h-5 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:bg-slate-700"><X size={10} /></button>
+                    <div>
+                        <div className="flex items-center gap-1">
+                            <input type="datetime-local" step="60" value={draft} onChange={e => { setDraft(e.target.value); setRowErr(null); }}
+                                className={`bg-slate-900 border rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none focus:border-indigo-500 ${rowErr ? 'border-red-500/60' : 'border-slate-700'}`} />
+                            <button onClick={save} disabled={saving || !draft} className="w-5 h-5 flex items-center justify-center rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 disabled:opacity-30">
+                                {saving ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                            </button>
+                            <button onClick={cancelEdit} disabled={saving} className="w-5 h-5 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:bg-slate-700"><X size={10} /></button>
+                        </div>
+                        {rowErr && <InlineNotice tone="danger" size="sm" className="mt-1">{rowErr}</InlineNotice>}
                     </div>
                 ) : (
                     <span>{game.scheduledAt ? fmtKstTime(game.scheduledAt) : <span className="text-slate-600">미정</span>}<span className="text-slate-600 ml-2">{game.time ?? ''}</span></span>
                 )}
             </td>
-            {showPreview && <td className={`px-2 py-1.5 font-mono w-36 ${changed ? 'text-amber-300' : 'text-slate-600'}`}>{nextAt ? fmtKstDateTime(nextAt) : '—'}</td>}
+            {showPreview && <td className={`px-2 py-1.5 w-36 ${changed ? 'text-amber-300' : 'text-slate-600'}`}>{nextAt ? fmtKstDateTime(nextAt) : '—'}</td>}
             <td className="px-2 py-1.5 text-slate-200 ko-normal">
                 {teamName(game.awayTeamId)} <span className="text-slate-600">@</span> {teamName(game.homeTeamId)}
                 {game.isPlayoff && <span className="ml-1 text-[10px] text-indigo-400">PO</span>}{game.isAllstar && <span className="ml-1 text-[10px] text-amber-400">AS</span>}

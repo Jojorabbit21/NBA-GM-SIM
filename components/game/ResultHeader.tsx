@@ -82,7 +82,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                     <div className="flex items-center gap-4 flex-1 justify-end group">
                         <div className="text-right">
                             <div 
-                                className="text-xl md:text-3xl font-black text-slate-300 uppercase tracking-tight leading-none group-hover:brightness-125 transition-all"
+                                className="text-xl md:text-3xl font-black text-slate-300 tracking-tight leading-none group-hover:brightness-125 transition-all"
                                 style={{ color: awayColor !== '#000000' ? awayColor : '#ffffff' }}
                             >
                                 {awayTeam.name}
@@ -94,38 +94,38 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
                     {/* Center Info */}
                     <div className="flex flex-col items-center justify-center min-w-[140px]">
-                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">FINAL SCORE</div>
+                        <div className="text-[10px] font-black text-slate-500 mb-2">FINAL SCORE</div>
                         {isWin ? (
-                            <div className="px-5 py-1 bg-emerald-600 text-white rounded-full font-black uppercase text-xs tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.4)] mb-3">Victory</div>
+                            <div className="px-5 py-1 bg-emerald-600 text-white rounded-full font-black text-xs shadow-[0_0_15px_rgba(16,185,129,0.4)] mb-3">Victory</div>
                         ) : (
-                            <div className="px-5 py-1 bg-red-600 text-white rounded-full font-black uppercase text-xs tracking-widest shadow-[0_0_15px_rgba(239,68,68,0.4)] mb-3">Defeat</div>
+                            <div className="px-5 py-1 bg-red-600 text-white rounded-full font-black text-xs shadow-[0_0_15px_rgba(239,68,68,0.4)] mb-3">Defeat</div>
                         )}
                         
                         {/* Quarter Score Table */}
                         <div className="bg-slate-900/80 border border-slate-700/50 rounded-lg overflow-hidden backdrop-blur-sm shadow-lg">
-                            <table className="text-[10px] md:text-xs font-mono tabular-nums">
+                            <table className="text-[10px] md:text-xs tabular-nums">
                                 <thead>
                                     <tr className="bg-slate-800/50 text-slate-400">
-                                        <th className="px-2 py-1 border-r border-slate-700/50 w-8"></th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">1</th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">2</th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">3</th>
+                                        <th className="px-2 py-1 border-r border-slate-800 w-8"></th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-800">1</th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-800">2</th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-800">3</th>
                                         <th className="px-2 py-1 text-center">4</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-slate-300">
-                                    <tr className="border-b border-slate-700/30">
-                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-700/50 text-center">{awayTeam.id.toUpperCase()}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[1]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[2]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[3]}</td>
+                                    <tr className="border-b border-slate-800">
+                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-800 text-center">{awayTeam.id.toUpperCase()}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[1]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[2]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[3]}</td>
                                         <td className="px-2 py-1 text-center">{quarterScores.away[4]}</td>
                                     </tr>
                                     <tr>
-                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-700/50 text-center">{homeTeam.id.toUpperCase()}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[1]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[2]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[3]}</td>
+                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-800 text-center">{homeTeam.id.toUpperCase()}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[1]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[2]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[3]}</td>
                                         <td className="px-2 py-1 text-center">{quarterScores.home[4]}</td>
                                     </tr>
                                 </tbody>
@@ -138,7 +138,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                         <TeamLogo teamId={homeTeam.id} size="custom" className="w-16 h-16 md:w-20 md:h-20 drop-shadow-2xl group-hover:scale-105 transition-transform" />
                         <div className="text-left">
                             <div 
-                                className="text-xl md:text-3xl font-black text-slate-300 uppercase tracking-tight leading-none group-hover:brightness-125 transition-all"
+                                className="text-xl md:text-3xl font-black text-slate-300 tracking-tight leading-none group-hover:brightness-125 transition-all"
                                 style={{ color: homeColor !== '#000000' ? homeColor : '#ffffff' }}
                             >
                                 {homeTeam.name}

@@ -197,13 +197,13 @@ const StaffFATab: React.FC<{
                     </tr>
                     {/* Row 2: column labels */}
                     <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
-                        <TableHeaderCell align="left" className="pl-4 bg-slate-950 border-r border-slate-800">이름</TableHeaderCell>
-                        <TableHeaderCell className="bg-slate-950 border-r border-slate-800">나이</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-4 bg-slate-950">이름</TableHeaderCell>
+                        <TableHeaderCell className="bg-slate-950">나이</TableHeaderCell>
                         {ALL_ABILITY_COLS.map(([, label]) => (
-                            <TableHeaderCell key={label} className="bg-slate-950 border-r border-slate-800">{label}</TableHeaderCell>
+                            <TableHeaderCell key={label} className="bg-slate-950">{label}</TableHeaderCell>
                         ))}
-                        <TableHeaderCell align="center" className="bg-slate-950 border-r border-slate-800">요구 연봉</TableHeaderCell>
-                        <TableHeaderCell className="bg-slate-950 border-r border-slate-800">계약</TableHeaderCell>
+                        <TableHeaderCell align="center" className="bg-slate-950">요구 연봉</TableHeaderCell>
+                        <TableHeaderCell className="bg-slate-950">계약</TableHeaderCell>
                         <th className="bg-slate-950 border-b border-slate-800" />
                     </tr>
                 </thead>
@@ -214,7 +214,7 @@ const StaffFATab: React.FC<{
                         </TableRow>
                     ) : coaches.map(coach => (
                         <TableRow key={coach.id} className="group">
-                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/40">
+                            <TableCell className="pl-4 bg-slate-900 group-hover:bg-slate-800">
                                 <span
                                     className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer"
                                     onClick={() => navigate(`/coach/${coach.id}`, { state: { coach, teamId: '' } })}
@@ -222,20 +222,20 @@ const StaffFATab: React.FC<{
                                     {coach.name}
                                 </span>
                             </TableCell>
-                            <TableCell align="center" className="font-mono text-slate-400 text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
+                            <TableCell align="center" className="font-mono text-slate-400 text-xs bg-slate-900 group-hover:bg-slate-800">
                                 {coach.age}
                             </TableCell>
                             {ALL_ABILITY_COLS.map(([key]) => (
-                                <TableCell key={key} align="center" className="font-semibold border-r border-slate-800/30 text-xs bg-slate-900 group-hover:bg-slate-800">
+                                <TableCell key={key} align="center" className="font-semibold text-xs bg-slate-900 group-hover:bg-slate-800">
                                     <span className={coachValColor(coach.abilities[key] ?? 0)}>
                                         {coachAbilityLabel(coach.abilities[key] ?? 0)}
                                     </span>
                                 </TableCell>
                             ))}
-                            <TableCell align="center" className="font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
+                            <TableCell align="center" className="font-mono text-emerald-400 tabular-nums text-xs bg-slate-900 group-hover:bg-slate-800">
                                 {formatFullSalary(coach.contractSalary)}
                             </TableCell>
-                            <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800/30">
+                            <TableCell align="center" className="text-slate-400 font-mono text-xs bg-slate-900 group-hover:bg-slate-800">
                                 {coach.contractYears}년
                             </TableCell>
                             <TableCell align="center" className="px-1 bg-slate-900 group-hover:bg-slate-800">

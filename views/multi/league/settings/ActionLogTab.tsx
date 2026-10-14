@@ -6,13 +6,15 @@
  * 읽기 전용이라 실시간 구독은 하지 않고 "새로고침" 버튼으로 다시 불러온다.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, ScrollText } from 'lucide-react';
+import { InlineNotice } from '../../../../components/common/InlineNotice';
+import { Button } from '../../../../components/common/Button';
+import { TableEmptyRow } from '../../../../components/common/EmptyState';
+import { ChevronDown, ChevronRight, RefreshCw, ScrollText } from 'lucide-react';
 import type { LeagueTeamRow, RoomRow } from '../../../../services/multi/roomQueries';
 import {
     listActionLogs, ACTION_LABELS, ACTION_CATEGORIES, ROLE_LABELS, ACTION_LOG_PAGE_SIZE,
     type ActionLogRow,
 } from '../../../../services/multi/actionLogService';
-import { notify } from '../../../../services/notifications/notify';
 
 interface Props {
     room: RoomRow | null;
@@ -52,6 +54,8 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
     const [rows, setRows]         = useState<ActionLogRow[]>([]);
     const [loading, setLoading]   = useState(false);
     const [hasMore, setHasMore]   = useState(false);
+    // [2026-10-13] 로드 실패 — 최초/필터는 표 자리 대체, 더 보기는 버튼 옆 sm(에러 표시 정책 0-7)
+    const [loadErr, setLoadErr]   = useState<{ more: boolean; text: string } | null>(null);
     const [category, setCategory] = useState<string>('all');
     const [teamId, setTeamId]     = useState<string>('');
     const [actor, setActor]       = useState<string>('');
@@ -80,12 +84,13 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
     const load = useCallback(async (beforeId: number | null) => {
         if (!room?.id) return;
         setLoading(true);
+        setLoadErr(null);
         const { rows: next, error } = await listActionLogs({
             roomId: room.id, actions, teamId: teamId || null, actorUserId: actor || null, beforeId,
         });
         setLoading(false);
         if (error) {
-            notify.error('세션 로그를 불러오지 못했습니다. 잠시 후 다시 시도하세요.', { source: 'actionLog.load' });
+            setLoadErr({ more: !!beforeId, text: beforeId ? '추가 로그를 불러오지 못했습니다. 잠시 후 다시 시도하세요.' : '세션 로그를 불러오지 못했습니다. 잠시 후 다시 시도하세요.' });
             console.error('[actionLog.load]', error);
             return;
         }
@@ -176,13 +181,16 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 <ScrollText size={16} className="text-indigo-300" />
                 <h3 className="text-sm font-bold text-white ko-tight">세션 로그</h3>
                 <span className="text-xs text-slate-500 ko-normal">영입·방출·트레이드·드래프트·설정 변경 등 이 세션에서 내려진 결정의 기록</span>
-                <button
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="ml-auto"
                     onClick={() => void load(null)}
-                    disabled={loading}
-                    className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 rounded-lg text-xs font-bold text-white transition-colors"
+                    isLoading={loading}
+                    icon={<RefreshCw size={12} />}
                 >
-                    {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}새로고침
-                </button>
+                    새로고침
+                </Button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -203,10 +211,16 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 <span className="text-xs text-slate-500 ko-normal ml-auto">{rows.length}건 표시</span>
             </div>
 
+            {loadErr && !loadErr.more ? (
+                <div className="flex flex-col items-start gap-3 py-4">
+                    <InlineNotice tone="danger">{loadErr.text}</InlineNotice>
+                    <Button variant="secondary" size="sm" onClick={() => void load(null)}>다시 불러오기</Button>
+                </div>
+            ) : (
             <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                     <thead>
-                        <tr className="text-slate-400 border-b border-slate-700/60">
+                        <tr className="text-slate-400 border-b border-slate-800">
                             <th className="text-left py-2 pr-2 w-6" />
                             <th className="text-left py-2 pr-3 whitespace-nowrap">시각</th>
                             <th className="text-left py-2 pr-3 whitespace-nowrap">게임 날짜</th>
@@ -218,7 +232,7 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                     </thead>
                     <tbody>
                         {rows.length === 0 && !loading && (
-                            <tr><td colSpan={7} className="py-8 text-center text-slate-500 ko-normal">기록이 없습니다.</td></tr>
+                            <TableEmptyRow colSpan={7}>기록이 없습니다.</TableEmptyRow>
                         )}
                         {rows.map(r => {
                             const open = expanded.has(r.id);
@@ -226,7 +240,7 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                                 <React.Fragment key={r.id}>
                                     <tr onClick={() => toggle(r.id)} className="border-b border-slate-800 hover:bg-slate-700/30 cursor-pointer align-top">
                                         <td className="py-2 pr-2 text-slate-500">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</td>
-                                        <td className="py-2 pr-3 whitespace-nowrap text-slate-300 tabular-nums">{fmtDateTime(r.created_at)}</td>
+                                        <td className="py-2 pr-3 whitespace-nowrap text-slate-200 tabular-nums">{fmtDateTime(r.created_at)}</td>
                                         <td className="py-2 pr-3 whitespace-nowrap text-slate-400 tabular-nums">{r.sim_date ? r.sim_date.replace(/-/g, '/') : '—'}</td>
                                         <td className="py-2 pr-3 whitespace-nowrap">
                                             <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold mr-1.5 ${ROLE_BADGE[r.actor_role] ?? ROLE_BADGE.user}`}>
@@ -241,7 +255,7 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                                     {open && (
                                         <tr className="border-b border-slate-800 bg-slate-900/60">
                                             <td colSpan={7} className="py-2 px-3">
-                                                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap break-all font-mono leading-snug">
+                                                <pre className="text-[11px] text-slate-300 whitespace-pre-wrap break-all leading-snug">
                                                     {JSON.stringify({ ...r.details, _players: r.target_player_ids, _teams: r.target_team_ids.map(teamLabel) }, null, 2)}
                                                 </pre>
                                             </td>
@@ -253,9 +267,11 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                     </tbody>
                 </table>
             </div>
+            )}
 
             {hasMore && (
-                <div className="flex justify-center">
+                <div className="flex justify-center items-center gap-3">
+                    {loadErr?.more && <InlineNotice tone="danger" size="sm">{loadErr.text}</InlineNotice>}
                     <button
                         onClick={() => void load(rows[rows.length - 1]?.id ?? null)}
                         disabled={loading}

@@ -21,7 +21,7 @@ import {
 import { buildCardBackground, buildCardBottomGradient, cardRadiusPx, resolveCardTeamGradient, teamImageLayer, teamImageLayerStyle } from '../utils/cardBackground';
 import { convertImageToWebp } from '../utils/imageToWebp';
 import { useCardTeamColors } from '../hooks/useCardTeamColors';
-import { getRealTeamLogoUrl } from '../utils/constants';
+import { TeamLogo } from '../components/common/TeamLogo';
 import {
     listCollections, listCollectionsForCard, addCardToCollection, removeCardFromCollection,
     type CardCollectionRow,
@@ -649,8 +649,8 @@ const PlayerCardEditorPage: React.FC = () => {
                                     <div className="relative flex-1 flex flex-col px-2 pt-2">
                                         <div className="self-start">{draftOvrPreview != null && <OvrBadge value={draftOvrPreview} size="md" />}</div>
                                         {draft.base_team_id && (editions.find(e => e.id === draft.edition_id)?.show_center_logo ?? true) && (
-                                            <img src={getRealTeamLogoUrl(draft.base_team_id)} alt="" draggable={false}
-                                                className="absolute inset-0 m-auto w-[40%] aspect-square object-contain pointer-events-none"
+                                            <TeamLogo teamId={draft.base_team_id} size="custom" shadow={false} draggable={false}
+                                                className="absolute inset-0 m-auto w-[40%] aspect-square pointer-events-none"
                                                 style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,.6))' }} />
                                         )}
                                         <div className="mt-auto -mx-2 px-2 pt-8 pb-2 text-center relative z-10"

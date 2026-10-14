@@ -65,7 +65,7 @@
 - 구버전 배치 방식에서 PBP 방식으로 이관됨
 
 ### 로테이션 시스템
-- RotationMatrix: 선수당 48개 컬럼 (분 단위) - 토글로 편집
+- RotationGanttChart(옛 RotationMatrix.tsx는 2026-10-13 데드코드로 삭제): 선수당 48개 컬럼 (분 단위) - 드래그/토글로 편집
 - 저장 형태: Boolean[48] (000111000... 형태)
 - PBP 엔진에서 현재 분에 따라 in/out 결정
 

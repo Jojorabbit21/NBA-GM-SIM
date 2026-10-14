@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
@@ -36,7 +36,6 @@ import MultiScheduleView from './views/multi/season/MultiScheduleView';
 import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
 import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
-import MultiFreeAgentView from './views/multi/season/MultiFreeAgentView';
 import MultiDraftPoolView from './views/multi/season/MultiDraftPoolView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
@@ -94,6 +93,12 @@ import AdminUserDetailPage from './pages/AdminUserDetailPage';
 const OFFSEASON_VIEW_TO_PATH: Record<string, string> = {
     DraftLottery: '/draft-lottery',
     DraftRoom:    '/draft/',
+};
+
+/** /season/free-agent → /season/transaction?tab=fa (2026-10-14 FA 화면이 트레이드 화면 하위 탭으로 이동) */
+const FreeAgentRedirect: React.FC = () => {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    return <Navigate to={`/multi/leagues/${leagueId}/season/transaction?tab=fa`} replace />;
 };
 
 const App: React.FC = () => {
@@ -415,7 +420,8 @@ const App: React.FC = () => {
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
                                 <Route path="transaction"  element={<MultiFrontOfficeView />} />
-                                <Route path="free-agent"   element={<MultiFreeAgentView />} />
+                                {/* [2026-10-14] 자유 계약은 트레이드 화면의 하위 탭으로 흡수 — 옛 링크(북마크·외부 참조)는 그 탭으로 */}
+                                <Route path="free-agent"   element={<FreeAgentRedirect />} />
                                 <Route path="pool"         element={<MultiDraftPoolView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />

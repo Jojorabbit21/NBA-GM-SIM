@@ -1,25 +1,28 @@
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Spinner } from '../components/common/Spinner';
+import { SegmentedControl } from '../components/common/SegmentedControl';
 import { useQuery } from '@tanstack/react-query';
 import { homeLeagueTransactionsQuery, HOME_TRANSACTIONS_LIMIT } from '../hooks/useHomeLeagueTransactions';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, ArrowLeftRight, Plus, Minus, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, Plus, Minus, type LucideIcon } from 'lucide-react';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
-import { useGameShortCodes } from '../hooks/useGameShortCodes';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../hooks/usePlayerSeasonStatsLeague';
 import { useLeagueNewsFeed, type LeagueEvent } from '../hooks/useLeagueHeadlines';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { useServerClockBucket } from '../utils/serverClock';
-import { getRealTeamLogoUrl, getTeamLogoUrl } from '../utils/constants';
+import { getLeagueLogoUrl } from '../utils/constants';
+import { TeamLogo } from '../components/common/TeamLogo';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { EmptyState } from '../components/common/EmptyState';
+import { ClickableText } from '../views/multi/season/newsFeedLetter';
+import { useActiveInjuryMap } from '../views/multi/season/useActiveInjuryMap';
 import { getReadableTextColor } from '../utils/colorContrast';
-import { supabase } from '../services/supabaseClient';
-import { findCurrentVirtualDate, fmtDateShort, fmtTime } from '../views/multi/season/multiScheduleUtils';
-import { getGameDisplayState, resolveRealAt } from '../views/multi/season/multiGameReveal';
-import { computeMultiStandingsStats, computeWL, type MultiStandingsRecord } from '../views/multi/season/multiSeasonUtils';
-import { buildActiveInjurySeverityMap, formatReturnDateSuffix, type ActiveInjuryStatus } from '../services/multi/activeInjuryStatus';
+import { computeMultiStandingsStats, fmtWinPct, type MultiStandingsRecord } from '../views/multi/season/multiSeasonUtils';
+import { formatReturnDateSuffix, type ActiveInjuryStatus } from '../services/multi/activeInjuryStatus';
 import { buildLeagueTeams } from '../services/multi/buildLeagueTeams';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
 import { TeamBadge } from '../components/common/TeamBadge';
@@ -29,19 +32,13 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 import { shouldUseCustomOverrides } from '../utils/leagueOverrides';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
-import type { Game, Player, PlayerStats } from '../types';
+import type { Player, PlayerStats } from '../types';
 
 // 좌측 리스트 우측 날짜 — "YYYY-MM-DD" 형태인 simDate를 "YY/MM/DD"로 축약 표시.
 // MultiNewsFeedView.tsx의 로컬 함수와 동일 규칙(그 파일이 export하지 않아 그대로 복제).
 function formatSimDateShort(simDate: string): string {
     const [y, m, d] = simDate.split('-');
     return y && m && d ? `${y.slice(2)}/${m}/${d}` : simDate;
-}
-
-// 승률 표기 — 농구 통계 관례대로 선행 0 없이 ".650"/"1.000" 형태(MultiStandingsView.tsx와 동일).
-function fmtPct(pct: number): string {
-    if (pct >= 1) return '1.000';
-    return pct.toFixed(3).replace(/^0/, '');
 }
 
 // [2026-09-04] 홈 화면 개편 3단계(사용자 요청) — 좌측 컬럼 ④"리그 순위"를 경기 카드 그리드
@@ -79,14 +76,65 @@ function applyActiveInjury<T extends Player | null | undefined>(player: T, statu
     };
 }
 
+// [2026-10-14] 홈 4밴드 레이아웃(시안 https://claude.ai/artifact/FmLLWQXjnwGFGmPs4LSGSg). 섹션은 "제목바(40px, 우측 더보기 링크) +
+// 표"가 한 패널(bg-slate-900, 1px 테두리, 8px 라운드)로 묶인다 — 예전엔 제목이 표 밖 여백에 떠 있고 표마다 섬처럼 떨어져 있었음.
+const HomePanel: React.FC<{ className?: string; children: React.ReactNode }> = ({ className = '', children }) => (
+    <section className={`bg-slate-900 border border-slate-800 rounded-lg overflow-hidden flex flex-col ${className}`}>{children}</section>
+);
+const HomeSection: React.FC<{
+    title: string;
+    /** 우측 "더보기 →" 링크의 목적지(앱 내 경로)와 라벨. 없으면 링크 없음. */
+    moreTo?: string;
+    moreLabel?: string;
+    /** 제목 우측·링크 좌측에 끼우는 컨트롤(세그먼트 탭 등) */
+    headerRight?: React.ReactNode;
+    className?: string;
+    children: React.ReactNode;
+}> = ({ title, moreTo, moreLabel = '더보기', headerRight, className, children }) => {
+    const navigate = useNavigate();
+    return (
+        <HomePanel className={className}>
+            <div className="h-10 shrink-0 flex items-center justify-between gap-3 px-3 border-b border-slate-800">
+                <span className="text-[15px] font-bold text-white truncate">{title}</span>
+                <div className="flex items-center gap-3 shrink-0">
+                    {headerRight}
+                    {moreTo && (
+                        <button type="button" onClick={() => navigate(moreTo)} className="text-xs text-indigo-400 hover:underline whitespace-nowrap">
+                            {moreLabel} →
+                        </button>
+                    )}
+                </div>
+            </div>
+            {/* 본문은 남은 높이를 전부 차지(빈 상태도 영역을 가득 채움, 사용자 지시). 행이 넘치면 안에서 스크롤. */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col">
+                {children}
+            </div>
+        </HomePanel>
+    );
+};
+/** 섹션 본문을 가득 채우며 가운데 정렬되는 빈 상태 — 데이터가 없어도 패널 높이가 줄지 않게. */
+const HomeEmpty: React.FC<{ title: string }> = ({ title }) => (
+    <div className="flex-1 flex items-center justify-center"><EmptyState padding="sm" title={title} /></div>
+);
+// 홈의 압축 표/리스트 공통: 공용 Table(bare·compact·세로선 없음). [2026-10-13] raw <table>·flex-div 리스트 7곳 치환.
+const HomeTable: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <Table variant="bare" density="compact" dividers={false}>{children}</Table>
+);
+const HOME_EMPTY_NO_TEAM = '참가 중인 팀이 없습니다.';
+/** 밴드 안 표의 행 수 — 같은 밴드의 좌/우 패널 하단선을 맞추기 위한 고정값(시안 기준: 순위 15 = 뉴스 10 + 트랜잭션 5). */
+// [2026-10-14] 밴드 2 우측은 뉴스/트랜잭션이 50:50(각 flex-1) — 순위 15행 높이의 절반에 들어가는 7행씩.
+const HOME_ROWS = { news: 7, transactions: 7, leaders: 10, injuries: 6 } as const;
+
 const HomeStandingsTable: React.FC<{
     teams: LeagueTeamRow[];
     statsMap: Record<string, MultiStandingsRecord>;
     playoffCutoff: number;
     playInEnabled: boolean;
     onOpenTeam: (slug: string) => void;
+    /** [2026-10-14] 행(표 아무 곳) 클릭 → 순위표 화면. 팀명(ClickableText)만 팀 로스터(사용자 지시). */
+    onOpenStandings: () => void;
     teamColumnLabel?: string;
-}> = ({ teams, statsMap, playoffCutoff, playInEnabled, onOpenTeam, teamColumnLabel = '팀' }) => {
+}> = ({ teams, statsMap, playoffCutoff, playInEnabled, onOpenTeam, onOpenStandings, teamColumnLabel = '팀' }) => {
     const sorted = [...teams].sort((a, b) => (statsMap[b.team_slug]?.pct ?? 0) - (statsMap[a.team_slug]?.pct ?? 0));
     const leader = statsMap[sorted[0]?.team_slug];
 
@@ -101,18 +149,16 @@ const HomeStandingsTable: React.FC<{
     const playInEndIdx = playInEnabled ? Math.min(autoClinchCount + 4, sorted.length) : autoClinchCount;
 
     return (
-        <table className="w-full text-left border-collapse bg-slate-900">
-            <thead>
-                <tr className="border-b border-slate-800 bg-slate-900">
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600 w-5">#</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600">{teamColumnLabel}</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">W</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">L</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">PCT</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">GB</th>
-                </tr>
-            </thead>
-            <tbody>
+        <HomeTable>
+            <TableHead>
+                <TableHeaderCell align="left" width={28}>#</TableHeaderCell>
+                <TableHeaderCell align="left">{teamColumnLabel}</TableHeaderCell>
+                <TableHeaderCell>W</TableHeaderCell>
+                <TableHeaderCell>L</TableHeaderCell>
+                <TableHeaderCell>PCT</TableHeaderCell>
+                <TableHeaderCell>GB</TableHeaderCell>
+            </TableHead>
+            <TableBody>
                 {sorted.map((t, i) => {
                     const rec = statsMap[t.team_slug];
                     const gb = i === 0 || !leader || !rec
@@ -127,32 +173,33 @@ const HomeStandingsTable: React.FC<{
                     // 컷라인 구분선 — 직행권 끝(항상)과 플레이인권 끝(플레이인 활성화 시만) 두 곳.
                     const isCutoffRow = i === autoClinchCount - 1 || (playInEnabled && i === playInEndIdx - 1);
                     return (
-                        <tr
+                        <TableRow
                             key={t.team_slug}
-                            onClick={() => onOpenTeam(t.team_slug)}
+                            onClick={onOpenStandings}
                             style={rowTint}
-                            className={`cursor-pointer hover:bg-white/5 transition-colors ${isCutoffRow ? 'border-b-2 border-slate-700' : 'border-b border-slate-800/60'}`}
+                            className={isCutoffRow ? '[&>td]:border-b-2' : ''}
                         >
-                            <td className="py-1 px-1 text-sm text-slate-500">{i + 1}</td>
-                            <td className="py-1 px-1">
+                            <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell>
+                            <TableCell align="left">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                     <TeamBadge
                                         teamId={t.team_slug} abbr={t.team_abbr}
                                         colorPrimary={t.color_primary} colorSecondary={t.color_secondary} colorText={t.color_text}
                                         size="xs"
                                     />
-                                    <span className="text-sm font-bold text-slate-300 truncate">{t.team_name}</span>
+                                    {/* 팀명 호버 시 밑줄(+인디고) — 앱 공통 이동 링크 규칙(ClickableText). 클릭 목적지는 행과 동일(팀 로스터). */}
+                                    <ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)}>{t.team_name}</ClickableText>
                                 </div>
-                            </td>
-                            <td className="py-1 px-1 text-sm text-center text-slate-300">{rec?.wins ?? 0}</td>
-                            <td className="py-1 px-1 text-sm text-center text-slate-300">{rec?.losses ?? 0}</td>
-                            <td className="py-1 px-1 text-sm text-center text-slate-400 tabular-nums">{fmtPct(rec?.pct ?? 0)}</td>
-                            <td className="py-1 px-1 text-sm text-center text-slate-500">{gb}</td>
-                        </tr>
+                            </TableCell>
+                            <TableCell className="text-sm text-slate-200">{rec?.wins ?? 0}</TableCell>
+                            <TableCell className="text-sm text-slate-200">{rec?.losses ?? 0}</TableCell>
+                            <TableCell className="text-sm text-slate-400 tabular-nums">{fmtWinPct(rec?.pct ?? 0)}</TableCell>
+                            <TableCell className="text-sm text-slate-500">{gb}</TableCell>
+                        </TableRow>
                     );
                 })}
-            </tbody>
-        </table>
+            </TableBody>
+        </HomeTable>
     );
 };
 
@@ -175,6 +222,7 @@ const HomeStandingsSection: React.FC = () => {
     const playoffCutoff = league?.playoff_team_count ?? 8;
     const playInEnabled = league?.play_in_enabled ?? true;
     const onOpenTeam = (slug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${slug}`);
+    const onOpenStandings = () => navigate(`/multi/leagues/${leagueId}/season/standings`);
 
     const eastTeams = leagueTeams.filter(t => t.conference === 'East');
     const westTeams = leagueTeams.filter(t => t.conference === 'West');
@@ -182,17 +230,16 @@ const HomeStandingsSection: React.FC = () => {
     const hasConferences = eastTeams.length > 0 && westTeams.length > 0;
 
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">리그 순위</h3>
+        <HomeSection title="리그 순위" moreTo={`/multi/leagues/${leagueId}/season/standings`} moreLabel="순위표 전체" className="h-full">
             {hasConferences ? (
-                <div className="grid grid-cols-2 gap-4">
-                    <HomeStandingsTable teams={eastTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} teamColumnLabel="동부" />
-                    <HomeStandingsTable teams={westTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} teamColumnLabel="서부" />
+                <div className="grid grid-cols-2 gap-x-4">
+                    <HomeStandingsTable teams={eastTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} onOpenStandings={onOpenStandings} teamColumnLabel="동부" />
+                    <HomeStandingsTable teams={westTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} onOpenStandings={onOpenStandings} teamColumnLabel="서부" />
                 </div>
             ) : (
-                <HomeStandingsTable teams={leagueTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} />
+                <HomeStandingsTable teams={leagueTeams} statsMap={statsMap} playoffCutoff={playoffCutoff} playInEnabled={playInEnabled} onOpenTeam={onOpenTeam} onOpenStandings={onOpenStandings} />
             )}
-        </section>
+        </HomeSection>
     );
 };
 
@@ -209,37 +256,34 @@ const HomeStandingsSection: React.FC = () => {
 // 시도 볼륨과 무관한 비율 스탯은 자격 기준(최소 시도 수) 없이 그대로 정렬 — 시도 1~2회로
 // 100%를 찍는 선수가 상위에 뜰 수 있는 건 알려진 한계(전체 리더보드처럼 별도 자격 기준을
 // 두려면 추후 확장).
-interface LeaderCategoryDef { key: string; label: string; compute: (s: PlayerStats) => number; format: (v: number) => string }
-const pctFmt = (v: number) => `${(v * 100).toFixed(1)}%`;
+interface LeaderCategoryDef { key: LeaderKey; label: string; compute: (s: PlayerStats) => number; format: (v: number) => string }
+type LeaderKey = 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'p3m';
 const avgFmt = (v: number) => v.toFixed(1);
-// 3행(득점/리바운드/어시스트 → 스틸/블락/야투율 → 3점시도/3점성공률/턴오버) × 3열 —
-// 평탄화한 배열을 grid-cols-3에 그대로 흘려보내면 요청한 배치와 동일하게 배치된다.
+// [2026-10-14] 4밴드 개편 — 9개 표(3×3, 각 3명) → 카테고리 세그먼트 탭 1개 × 상위 10명. 비율 스탯(야투율·3점성공률)은 시도
+// 1~2회로 100%가 상위에 뜨던 알려진 한계가 있어 홈에서 제외(리더보드 전체 화면은 자격 기준이 있음). 턴오버는 리더가
+// 아니라 제외. 3점은 "성공/경기"로.
 const LEADER_CATEGORIES: LeaderCategoryDef[] = [
     { key: 'pts', label: '득점', compute: s => s.pts / s.g, format: avgFmt },
     { key: 'reb', label: '리바운드', compute: s => s.reb / s.g, format: avgFmt },
     { key: 'ast', label: '어시스트', compute: s => s.ast / s.g, format: avgFmt },
     { key: 'stl', label: '스틸', compute: s => s.stl / s.g, format: avgFmt },
     { key: 'blk', label: '블락', compute: s => s.blk / s.g, format: avgFmt },
-    { key: 'fgpct', label: '야투율', compute: s => s.fga > 0 ? s.fgm / s.fga : 0, format: pctFmt },
-    { key: 'p3a', label: '3점시도', compute: s => s.p3a / s.g, format: avgFmt },
-    { key: 'p3pct', label: '3점성공률', compute: s => s.p3a > 0 ? s.p3m / s.p3a : 0, format: pctFmt },
-    { key: 'tov', label: '턴오버', compute: s => s.tov / s.g, format: avgFmt },
+    { key: 'p3m', label: '3점', compute: s => s.p3m / s.g, format: avgFmt },
 ];
-const LEADERS_PER_CATEGORY = 3;
+const LEADERS_PER_CATEGORY = HOME_ROWS.leaders;
 
 const HomeLeagueLeadersSection: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
-    const { schedule, currentSimDate } = useSeasonContext();
-    // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
-    // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
-    // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
-    const serverNow = useServerClockBucket();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
+    const [activeKey, setActiveKey] = useState<LeaderKey>('pts');
+    const { myTeamId } = useSeasonContext();
 
     const useCustomOverrides = shouldUseCustomOverrides(league);
-    const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
+    // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — buildLeagueTeams()가 만든
+    // Player엔 현재 활성 부상 상태가 없어(위 applyActiveInjury 주석 참고) 별도로 계산해 얹는다(useActiveInjuryMap).
+    const { activeInjuryByPlayer, allRosterIds } = useActiveInjuryMap();
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈 화면 최초 진입 병목 개선(buildLeagueTeams.ts 주석 참고).
     const { data: statsByPlayer } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
@@ -248,31 +292,6 @@ const HomeLeagueLeadersSection: React.FC = () => {
         [leagueTeams, useCustomOverrides, statsByPlayer],
     );
     const { data: teams = [] } = useLeagueRawStats(room?.id, allRosterIds, selectTeams, { includePbp: false });
-
-    // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — buildLeagueTeams()가 만든
-    // Player엔 현재 활성 부상 상태가 없어(위 applyActiveInjury 주석 참고) 별도로 계산해 얹는다.
-    // [2026-09-07] playerInjuryRows만 필요하고 game_pbp는 전혀 안 쓰므로 includePbp:false —
-    // 이걸 빼먹으면 이 훅이 기본값(includePbp:true)으로 room 전체 game_pbp(수 MB)를 또
-    // 따로 받아버린다(다른 홈 위젯들을 includePbp:false로 옮기면서 큐key가 갈라져 캐시
-    // 공유가 끊긴 것 — 실제로 홈 화면에서 이 누락 때문에 여전히 8초대 fetch가 남아있었음).
-    const selectInjuryRows = useCallback((raw: LeagueRawStatsData) => raw.playerInjuryRows, []);
-    const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectInjuryRows, { includePbp: false });
-    const isMainLeague = league?.type === 'main_league';
-    const todaySimDate = useMemo(() => {
-        if (!isMainLeague) return currentSimDate;
-        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
-    }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
-    const teamIdByPlayer = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const t of leagueTeams) for (const id of (t.roster ?? [])) m.set(id, t.team_slug);
-        return m;
-    }, [leagueTeams]);
-    const activeInjuryByPlayer = useMemo(
-        () => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, {
-            schedule, getTeamId: id => teamIdByPlayer.get(id),
-        }),
-        [injuryRows, todaySimDate, room?.season_number, schedule, teamIdByPlayer],
-    );
 
     const leaderGrid = useMemo(() => {
         const allPlayers = teams.flatMap(t => t.roster
@@ -291,51 +310,68 @@ const HomeLeagueLeadersSection: React.FC = () => {
         }));
     }, [teams, activeInjuryByPlayer]);
 
-    // 리그 시작 직후(경기를 뛴 선수가 아직 없는 경우) 카테고리마다 ranked가 전부 빈
-    // 배열이 되어 헤더+빈 리스트만 남는 걸 방지 — 데이터가 하나도 없으면 섹션 자체를 숨김.
-    if (leaderGrid.every(cat => cat.ranked.length === 0)) return null;
+    const cat = leaderGrid.find(c => c.key === activeKey) ?? leaderGrid[0];
+    const isEmpty = leaderGrid.every(c => c.ranked.length === 0);
 
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">리그 리더</h3>
-            {/* [2026-09-05 후속] "카드 컨테이너를 해체하고 순위표처럼 리스트로" 요청 —
-                HomeStandingsSection의 동/서부 블록(카드 박스 없이 헤더+얇은 행 구분선만
-                있는 순수 리스트)과 동일한 톤으로 맞춤. 카테고리별 rounded-lg border 박스를
-                제거하고 헤더 + border-b 구분선만 남긴 3열 그리드로 재구성. */}
-            <div className="grid grid-cols-3 gap-x-4 gap-y-3">
-                {leaderGrid.map(cat => (
-                    <div key={cat.key} className="space-y-1">
-                        <h4 className="text-sm font-black text-slate-500 uppercase px-1">{cat.label}</h4>
-                        <div className="bg-slate-900 px-2">
-                            <div className="flex items-center gap-1.5 py-1 border-b border-slate-800">
-                                <span className="text-sm font-bold text-slate-600 w-3 shrink-0">#</span>
-                                <span className="w-7 h-5 shrink-0" />
-                                <span className="text-sm font-bold text-slate-600 flex-1 min-w-0">선수</span>
-                                <span className="text-sm font-bold text-slate-600 shrink-0">{cat.label}</span>
-                            </div>
-                            {cat.ranked.map(({ entry, value }, i) => (
-                                <div
-                                    key={entry.player.id}
-                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(entry.player.id)}`)}
-                                    className={`flex items-center gap-1.5 py-1 cursor-pointer hover:bg-white/5 transition-colors ${i < cat.ranked.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                                >
-                                    <span className="text-sm font-bold text-slate-600 w-3 shrink-0">{i + 1}</span>
-                                    <TeamBadge
-                                        teamId={entry.teamId} abbr={entry.teamAbbr}
-                                        colorPrimary={entry.colorPrimary} colorSecondary={entry.colorSecondary}
-                                        size="xs"
-                                    />
-                                    <PlayerHoverCard player={entry.player} teamAbbr={entry.teamAbbr}>
-                                        <span className="text-sm font-bold text-slate-300 truncate flex-1 min-w-0">{entry.player.name}</span>
-                                    </PlayerHoverCard>
-                                    <span className="text-sm text-white tabular-nums shrink-0">{cat.format(value)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
+        <HomeSection
+            title="리그 리더"
+            moreTo={`/multi/leagues/${leagueId}/season/leaderboard`}
+            moreLabel="리더보드"
+            className="h-full"
+        >
+            <div className="px-3 py-2 border-b border-slate-800">
+                <SegmentedControl<LeaderKey>
+                    size="sm"
+                    aria-label="리더 카테고리"
+                    value={activeKey}
+                    onChange={setActiveKey}
+                    options={LEADER_CATEGORIES.map(c => ({ value: c.key, label: c.label }))}
+                />
             </div>
-        </section>
+            {/* 리그 시작 직후(경기를 뛴 선수가 아직 없는 경우) 빈 상태 */}
+            {isEmpty ? (
+                <HomeEmpty title="아직 경기 기록이 없습니다." />
+            ) : (
+                <HomeTable>
+                    <TableHead>
+                        {/* [2026-10-14] OVR·G·MP 열 추가(사용자 지시) — # | OVR | 선수 | G | MP | 카테고리 값 */}
+                        <TableHeaderCell align="left" width={28}>#</TableHeaderCell>
+                        <TableHeaderCell width={40}>OVR</TableHeaderCell>
+                        <TableHeaderCell align="left">선수</TableHeaderCell>
+                        <TableHeaderCell align="right" width={40}>G</TableHeaderCell>
+                        <TableHeaderCell align="right" width={48}>MP</TableHeaderCell>
+                        <TableHeaderCell align="right" width={64}>{cat.label}</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
+                        {cat.ranked.map(({ entry, value }, i) => (
+                            <TableRow
+                                key={entry.player.id}
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(entry.player.id)}`)}
+                            >
+                                <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell>
+                                <TableCell><div className="flex justify-center"><OvrBadge value={entry.player.ovr} size="table" /></div></TableCell>
+                                <TableCell align="left" className="max-w-0">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        <TeamBadge
+                                            teamId={entry.teamId} abbr={entry.teamAbbr}
+                                            colorPrimary={entry.colorPrimary} colorSecondary={entry.colorSecondary}
+                                            size="xs"
+                                        />
+                                        <PlayerHoverCard player={entry.player} teamAbbr={entry.teamAbbr}>
+                                            <span className={`text-sm font-bold truncate min-w-0 ${entry.teamId === myTeamId ? 'text-white' : 'text-slate-300'}`}>{entry.player.name}</span>
+                                        </PlayerHoverCard>
+                                    </div>
+                                </TableCell>
+                                <TableCell align="right" className="text-sm text-slate-400 tabular-nums">{entry.player.stats.g}</TableCell>
+                                <TableCell align="right" className="text-sm text-slate-400 tabular-nums">{(entry.player.stats.mp / Math.max(1, entry.player.stats.g)).toFixed(1)}</TableCell>
+                                <TableCell align="right" className="text-sm text-white tabular-nums">{cat.format(value)}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </HomeTable>
+            )}
+        </HomeSection>
     );
 };
 
@@ -359,42 +395,35 @@ const HomeLatestNewsSection: React.FC = () => {
     const { myTeamId } = useSeasonContext();
     const navigate = useNavigate();
     const { stories, isLoading } = useLeagueNewsFeed(room?.id, myTeamId);
-    const latest = stories.slice(0, 10);
-    const openNews = () => navigate(`/multi/leagues/${leagueId}/season/news`);
-    const columns = [latest.slice(0, 5), latest.slice(5, 10)];
+    const latest = stories.slice(0, HOME_ROWS.news);
+    const newsPath = `/multi/leagues/${leagueId}/season/news`;
+    // [2026-10-14] 행 클릭은 그 뉴스로(?story=<id> 딥링크 → MultiNewsFeedView가 선택·스크롤). 제목바 "뉴스피드 →"는 목록으로.
+    const openNews = (storyId: string) => navigate(`${newsPath}?story=${encodeURIComponent(storyId)}`);
 
+    // [2026-10-14] 2열 5행 → 1열 10행(우측 4열 패널 폭에서 제목이 잘리지 않고, 순위표 15행과 높이를 맞춤).
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">리그 최신 뉴스</h3>
+        <HomeSection title="리그 최신 뉴스" moreTo={newsPath} moreLabel="뉴스피드" className="flex-1 min-h-0">
             {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="section" />
             ) : latest.length === 0 ? (
-                <p className="text-sm text-slate-500 ko-normal py-6 text-center border border-dashed border-slate-800 rounded-lg">
-                    아직 소식이 없습니다.
-                </p>
+                <HomeEmpty title="아직 소식이 없습니다." />
             ) : (
-                <div className="grid grid-cols-2 gap-x-4 bg-slate-900">
-                    {columns.map((col, colIdx) => (
-                        <div key={colIdx}>
-                            {col.map((e: LeagueEvent, i) => (
-                                <div
-                                    key={e.id}
-                                    onClick={openNews}
-                                    className={`flex items-center justify-between gap-2 py-1.5 px-2 cursor-pointer hover:bg-white/5 transition-colors ${i < col.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                                >
-                                    <span className="text-sm text-slate-300 truncate ko-normal">{e.headline}</span>
-                                    <span className="text-sm text-slate-500 tabular-nums shrink-0">
-                                        {e.simDate ? formatSimDateShort(e.simDate) : formatRelativeTime(e.createdAt)}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
+                <HomeTable>
+                    <TableBody>
+                        {latest.map((e: LeagueEvent) => (
+                            <TableRow key={e.id} onClick={() => openNews(e.id)}>
+                                <TableCell align="left" className="max-w-0">
+                                    <span className="block text-sm text-slate-300 truncate ko-normal">{e.headline}</span>
+                                </TableCell>
+                                <TableCell align="right" width={80} className="text-sm text-slate-500 tabular-nums">
+                                    {e.simDate ? formatSimDateShort(e.simDate) : formatRelativeTime(e.createdAt)}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </HomeTable>
             )}
-        </section>
+        </HomeSection>
     );
 };
 
@@ -402,12 +431,12 @@ const HomeLatestNewsSection: React.FC = () => {
 // FA/웨이버)을 최신 뉴스 하단에 추가. league_events에는 'trade' 타입만 있고 FA서명/웨이버는
 // 별도 이벤트가 없어(league_transactions 테이블에만 기록 — services/multi/playerHistoryService.ts
 // 참고) 두 원본을 합쳐야 한다:
-//   - 트레이드: useLeagueNewsFeed({ types: ['trade'] })로 league_events에서 조회(이미 파싱된
-//     TradeDetail — teamA/teamB/aOut/bOut에 선수 이름까지 들어있어 별도 조회 불필요).
-//   - FA서명/웨이버: league_transactions를 room_id로 직접 조회(player_id만 있어 이름 조회
-//     필요 — 방출된 선수는 로스터에서 이미 빠져있어 useLeagueRawStats의 allRosterIds로는
-//     못 찾으므로, 로스터 여부와 무관하게 리그 전체 드래프트풀을 담고 있는
-//     useMultiSearchData().poolPlayers에서 이름을 찾는다).
+// - 트레이드: useLeagueNewsFeed({ types: ['trade'] })로 league_events에서 조회(이미 파싱된
+// TradeDetail — teamA/teamB/aOut/bOut에 선수 이름까지 들어있어 별도 조회 불필요).
+// - FA서명/웨이버: league_transactions를 room_id로 직접 조회(player_id만 있어 이름 조회
+// 필요 — 방출된 선수는 로스터에서 이미 빠져있어 useLeagueRawStats의 allRosterIds로는
+// 못 찾으므로, 로스터 여부와 무관하게 리그 전체 드래프트풀을 담고 있는
+// useMultiSearchData().poolPlayers에서 이름을 찾는다).
 // [2026-09-05 후속] "리스트로 변경, 선수 이름 | 이전팀→이후팀(또는 웨이버/자유 계약) | 날짜
 // 형식으로, 트레이드/웨이버/FA영입 전부 표시" 요청으로 재설계 — 트레이드 이벤트 하나가
 // 여러 선수를 옮길 수 있어(예: 3-for-2 트레이드) 기존처럼 "이벤트 1건=행 1개"가 아니라
@@ -451,11 +480,7 @@ const TXN_KIND_LABEL: Record<HomeTxnItem['kind'], string> = { trade: '트레이�
 const HomeTransactionsSection: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
-    const { myTeamId, schedule, currentSimDate } = useSeasonContext();
-    // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
-    // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
-    // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
-    const serverNow = useServerClockBucket();
+    const { myTeamId } = useSeasonContext();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
@@ -473,24 +498,9 @@ const HomeTransactionsSection: React.FC = () => {
         [poolPlayers, rosterMap, teamBySlug],
     );
     // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — poolPlayers(meta_players)엔
-    // 부상 컬럼이 없어 별도로 room_player_state를 조회해 병합해야 한다(HomeMyInjuriesSection과
-    // 동일 패턴). 방출된 지 오래된 선수는 allRosterIds(현재 로스터)에 없어 병합 대상에서
-    // 빠질 수 있음 — 알려진 한계.
-    const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
-    // [2026-09-07] playerInjuryRows만 필요, game_pbp 불필요 — includePbp:false.
-    const selectInjuryRows = useCallback((raw: LeagueRawStatsData) => raw.playerInjuryRows, []);
-    const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectInjuryRows, { includePbp: false });
-    const isMainLeague = league?.type === 'main_league';
-    const todaySimDate = useMemo(() => {
-        if (!isMainLeague) return currentSimDate;
-        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
-    }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
-    const activeInjuryByPlayer = useMemo(
-        () => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, {
-            schedule, getTeamId: id => rosterMap.get(id),
-        }),
-        [injuryRows, todaySimDate, room?.season_number, schedule, rosterMap],
-    );
+    // 부상 컬럼이 없어 별도로 room_player_state를 조회해 병합해야 한다(useActiveInjuryMap).
+    // 방출된 지 오래된 선수는 allRosterIds(현재 로스터)에 없어 병합 대상에서 빠질 수 있음 — 알려진 한계.
+    const { activeInjuryByPlayer } = useActiveInjuryMap();
     const playerCardMap = useMemo(
         () => mergeInjuryIntoPlayerCardMap(basePlayerCardMap, activeInjuryByPlayer),
         [basePlayerCardMap, activeInjuryByPlayer],
@@ -529,78 +539,59 @@ const HomeTransactionsSection: React.FC = () => {
             .sort((a, b) => TXN_KIND_ORDER[a.kind] - TXN_KIND_ORDER[b.kind] || b.atMs - a.atMs);
     }, [tradeStories, faRows, teamBySlug, playerNameById]);
 
-    const openTransactions = () => navigate(`/multi/leagues/${leagueId}/season/transaction`);
+    // [2026-10-14] 행 클릭·"더보기" 모두 트레이드 화면의 히스토리 탭으로(사용자 지시) — MultiFrontOfficeView는 ?tab= 으로 탭을 고른다.
+    const txnPath = `/multi/leagues/${leagueId}/season/transaction?tab=history`;
     const openPlayer = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);
     const openTeam = (slug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${slug}`);
 
-    // 리그 시작 직후엔 트랜잭션이 아예 없을 수 있음 — 빈 상태 문구 대신 섹션 자체를 숨김.
-    if (items.length === 0) return null;
+    // [2026-10-14] 우측 4열 패널(뉴스 아래)로 이동하며 10행 → 5행, "팀 이동" 열은 선수 이름 뒤에 작은 글자로 합침(폭 부족).
+    // 리그 시작 직후 비어 있어도 패널은 유지(밴드 하단선을 맞추기 위해) — 빈 상태 문구.
+    const shown = items.slice(0, HOME_ROWS.transactions);
 
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">트랜잭션 소식</h3>
-            <div className="bg-slate-900">
-                <div className="flex items-center gap-2 py-1 px-2 border-b border-slate-800">
-                    <span className="text-sm font-bold text-slate-600 w-24 shrink-0">종류</span>
-                    <span className="text-sm font-bold text-slate-600 flex-1 min-w-0">선수</span>
-                    <span className="text-sm font-bold text-slate-600 w-24 shrink-0">팀 이동</span>
-                    <span className="text-sm font-bold text-slate-600 shrink-0">날짜</span>
-                </div>
-                {items.map((item, i) => {
-                    const { Icon, bg } = TXN_ICON_BY_KIND[item.kind];
-                    return (
-                        <div
-                            key={item.id}
-                            onClick={openTransactions}
-                            className={`flex items-center gap-2 py-1.5 px-2 cursor-pointer hover:bg-white/5 transition-colors ${i < items.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                        >
-                            {/* 1열: 종류(트레이드/자유 계약/웨이버) */}
-                            <span className="flex items-center gap-1.5 w-24 shrink-0">
-                                <span className={`w-4 h-4 rounded-full inline-flex items-center justify-center text-white shrink-0 ${bg}`}>
-                                    <Icon size={10} />
-                                </span>
-                                <span className="text-sm text-slate-400 truncate">{TXN_KIND_LABEL[item.kind]}</span>
-                            </span>
-                            {/* 2열: 선수 이름 — 클릭 시 선수 상세로 이동(행 전체의 트랜잭션 목록
-                                이동과 별개 동작이라 stopPropagation), 호버 시 능력치/스탯 팝업. */}
-                            <span className="text-sm font-bold text-slate-200 truncate flex-1 min-w-0">
-                                <PlayerHoverCard player={playerCardMap.get(item.playerId)?.player} teamAbbr={playerCardMap.get(item.playerId)?.teamAbbr}>
-                                    <span
-                                        className="cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={(e) => { e.stopPropagation(); openPlayer(item.playerId); }}
-                                    >
-                                        {item.playerName}
-                                    </span>
-                                </PlayerHoverCard>
-                            </span>
-                            {/* 3열: 팀 이동 내역 — 트레이드일 때만 채워짐, 각 팀 약어를 클릭하면
-                                해당 팀 로스터로 이동. */}
-                            <span className="text-sm text-slate-400 truncate w-24 shrink-0">
-                                {item.fromTeam && item.toTeam ? (
-                                    <>
-                                        <span
-                                            className="cursor-pointer hover:text-indigo-400 hover:underline"
-                                            onClick={(e) => { e.stopPropagation(); openTeam(item.fromTeam!.slug); }}
-                                        >
-                                            {item.fromTeam.abbr}
+        <HomeSection title="트랜잭션" moreTo={txnPath} className="flex-1 min-h-0">
+            {shown.length === 0 ? (
+                <HomeEmpty title="아직 트랜잭션이 없습니다." />
+            ) : (
+                <HomeTable>
+                    <TableBody>
+                        {shown.map(item => {
+                            const { Icon, bg } = TXN_ICON_BY_KIND[item.kind];
+                            return (
+                                <TableRow key={item.id} onClick={() => navigate(`${txnPath}&kind=${item.kind}`)}>
+                                    {/* 1열: 종류(트레이드/자유 계약/웨이버) */}
+                                    <TableCell align="left" width={96}>
+                                        <span className="flex items-center gap-1.5">
+                                            <span className={`w-4 h-4 rounded-full inline-flex items-center justify-center text-white shrink-0 ${bg}`}>
+                                                <Icon size={10} />
+                                            </span>
+                                            <span className="text-sm text-slate-400 truncate">{TXN_KIND_LABEL[item.kind]}</span>
                                         </span>
-                                        {' → '}
-                                        <span
-                                            className="cursor-pointer hover:text-indigo-400 hover:underline"
-                                            onClick={(e) => { e.stopPropagation(); openTeam(item.toTeam!.slug); }}
-                                        >
-                                            {item.toTeam.abbr}
+                                    </TableCell>
+                                    {/* 2열: 선수 이름(클릭 시 선수 상세, 호버 시 팝업) + 트레이드면 "ABBR → ABBR"(각 팀 클릭 시 로스터) */}
+                                    <TableCell align="left" className="max-w-0">
+                                        <span className="flex items-center gap-2 min-w-0">
+                                            <PlayerHoverCard player={playerCardMap.get(item.playerId)?.player} teamAbbr={playerCardMap.get(item.playerId)?.teamAbbr}>
+                                                <ClickableText className="text-sm font-bold text-slate-200 truncate min-w-0" onClick={() => openPlayer(item.playerId)}>{item.playerName}</ClickableText>
+                                            </PlayerHoverCard>
+                                            {item.fromTeam && item.toTeam && (
+                                                <span className="text-xs text-slate-500 shrink-0">
+                                                    <ClickableText onClick={() => openTeam(item.fromTeam!.slug)}>{item.fromTeam.abbr}</ClickableText>
+                                                    {' → '}
+                                                    <ClickableText onClick={() => openTeam(item.toTeam!.slug)}>{item.toTeam.abbr}</ClickableText>
+                                                </span>
+                                            )}
                                         </span>
-                                    </>
-                                ) : ''}
-                            </span>
-                            {/* 4열: 날짜 */}
-                            <span className="text-sm text-slate-500 tabular-nums shrink-0">{item.dateLabel}</span>
-                        </div>
-                    );
-                })}
-            </div>
-        </section>
+                                    </TableCell>
+                                    {/* 3열: 날짜 */}
+                                    <TableCell align="right" width={80} className="text-sm text-slate-500 tabular-nums">{item.dateLabel}</TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </HomeTable>
+            )}
+        </HomeSection>
     );
 };
 
@@ -611,17 +602,17 @@ const HomeTransactionsSection: React.FC = () => {
 // 재사용해 등급별 색상이 화면마다 어긋나지 않게 한다.
 // [2026-09-05 후속] "부상/출장정지 소식도 동일하게 리스트로, 출장정지도 표기, 부상 정도별
 // 배지 색, 부상명+기간+예상복귀일을 함께" 요청으로 재설계.
-//   - 출장정지: 기존엔 types:['injury']만 조회해 league_events의 'suspension' 타입이
-//     아예 빠져 있었다. 싸움은 항상 두 선수 모두에게 동시에 발생(SuspensionDetail에
-//     fighter/opponent 둘 다 들어있음 — server/src/shared/leagueEvents.ts의
-//     detectSuspensionEvent 참고)하므로, 부상처럼 "이벤트 1건=선수 1명"이 아니라 이벤트
-//     하나를 두 행으로 펼친다(트랜잭션 섹션의 트레이드 다중 선수 평탄화와 동일 원리).
-//   - 배지 색: InjuryStatusBadge/SEVERITY_TEXT_COLOR(components/common/InjuryStatusBadge.tsx)
-//     가 이미 Grade3/4/5/Suspension별로 다른 색을 정의해두고 있어 그대로 재사용 — 부상
-//     타입만 조회하던 이전엔 이 컴포넌트의 색 분기가 사실상 Grade3~5 세 가지만 보였을 뿐,
-//     새 기능을 만들 필요는 없었다.
-//   - 부상명/기간/복귀일: 부상은 injuryType·duration·returnDate 그대로, 출장정지는
-//     injuryType이 없어 고정 라벨("출장정지")과 "N경기"(games) 기간을 대신 씀.
+// - 출장정지: 기존엔 types:['injury']만 조회해 league_events의 'suspension' 타입이
+// 아예 빠져 있었다. 싸움은 항상 두 선수 모두에게 동시에 발생(SuspensionDetail에
+// fighter/opponent 둘 다 들어있음 — server/src/shared/leagueEvents.ts의
+// detectSuspensionEvent 참고)하므로, 부상처럼 "이벤트 1건=선수 1명"이 아니라 이벤트
+// 하나를 두 행으로 펼친다(트랜잭션 섹션의 트레이드 다중 선수 평탄화와 동일 원리).
+// - 배지 색: InjuryStatusBadge/SEVERITY_TEXT_COLOR(components/common/InjuryStatusBadge.tsx)
+// 가 이미 Grade3/4/5/Suspension별로 다른 색을 정의해두고 있어 그대로 재사용 — 부상
+// 타입만 조회하던 이전엔 이 컴포넌트의 색 분기가 사실상 Grade3~5 세 가지만 보였을 뿐,
+// 새 기능을 만들 필요는 없었다.
+// - 부상명/기간/복귀일: 부상은 injuryType·duration·returnDate 그대로, 출장정지는
+// injuryType이 없어 고정 라벨("출장정지")과 "N경기"(games) 기간을 대신 씀.
 interface HomeInjuryItem {
     id: string;
     playerId: string;
@@ -647,7 +638,7 @@ const HomeInjurySection: React.FC = () => {
 
     const { stories, isLoading } = useLeagueNewsFeed(room?.id, myTeamId, { types: ['injury', 'suspension'] });
 
-    const items = useMemo((): HomeInjuryItem[] => stories.slice(0, 6).flatMap((e): HomeInjuryItem[] => {
+    const items = useMemo((): HomeInjuryItem[] => stories.slice(0, HOME_ROWS.injuries).flatMap((e): HomeInjuryItem[] => {
         if (e.detail.kind === 'injury') {
             const { player, teamSlug, severity, injuryType, duration, returnDate } = e.detail;
             return [{ id: e.id, playerId: player.id, playerName: player.name, teamSlug, severity, typeLabel: injuryType, durationLabel: duration, returnDate }];
@@ -665,210 +656,48 @@ const HomeInjurySection: React.FC = () => {
         return [];
     }), [stories]);
 
-    // 리그 시작 직후엔 부상/출장정지 소식이 아예 없을 수 있음 — 빈 상태 문구 대신 섹션
-    // 자체를 숨김(로딩 중엔 스피너를 보여줘야 하므로 로딩 완료 후에만 판단).
-    if (!isLoading && items.length === 0) return null;
-
+    // [2026-10-14] 밴드 4 좌측(6열). 비어 있어도 패널 유지(빈 상태 문구) — 우측 "내 팀 부상·징계"와 나란히.
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">리그 부상 소식</h3>
+        <HomeSection title="리그 부상·징계" moreTo={`/multi/leagues/${leagueId}/season/news`} moreLabel="뉴스피드" className="h-full">
             {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                    <Loader2 size={20} className="animate-spin text-indigo-400" />
-                </div>
+                <Spinner variant="section" />
+            ) : items.length === 0 ? (
+                <HomeEmpty title="최근 부상·징계 소식이 없습니다." />
             ) : (
-                <div className="bg-slate-900">
-                    <div className="flex items-center gap-2 py-1 px-2 border-b border-slate-800">
-                        <span className="w-4 h-4 shrink-0" />
-                        <span className="text-sm font-bold text-slate-600 w-24 shrink-0">이름</span>
-                        <span className="text-sm font-bold text-slate-600 flex-1 min-w-0">부상명</span>
-                        <span className="text-sm font-bold text-slate-600 shrink-0">기간</span>
-                    </div>
-                    {items.map((item, i) => {
-                        return (
-                            <div
+                <HomeTable>
+                    <TableHead>
+                        <TableHeaderCell width={32} />
+                        <TableHeaderCell align="left" width={160}>이름</TableHeaderCell>
+                        <TableHeaderCell align="left">부상명</TableHeaderCell>
+                        <TableHeaderCell align="right">기간</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
+                        {items.slice(0, HOME_ROWS.injuries).map(item => (
+                            <TableRow
                                 key={item.id}
                                 onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(item.playerId)}`)}
-                                className={`flex items-center gap-2 py-1.5 px-2 cursor-pointer hover:bg-white/5 transition-colors ${i < items.length - 1 ? 'border-b border-slate-800/60' : ''}`}
                             >
-                                <InjuryStatusBadge severity={item.severity} size={16} iconSize={10} strokeWidth={4} />
-                                <PlayerHoverCard
-                                    player={applyActiveInjury(playerById.get(item.playerId), {
-                                        severity: item.severity, injuryType: item.typeLabel, duration: item.durationLabel, returnDate: item.returnDate,
-                                    })}
-                                    teamAbbr={teamAbbrBySlug.get(item.teamSlug)}
-                                >
-                                    <span className="text-sm font-bold text-white truncate w-24 shrink-0">{item.playerName}</span>
-                                </PlayerHoverCard>
-                                <span className="text-sm text-slate-400 truncate flex-1 min-w-0">{item.typeLabel}</span>
-                                <span className={`text-sm truncate shrink-0 ${SEVERITY_TEXT_COLOR[item.severity]}`}>
-                                    {item.durationLabel}{formatReturnDateSuffix(item.returnDate)}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-        </section>
-    );
-};
-
-// [2026-09-04] 홈 화면 개편 8단계(사용자 요청) — 우측 컬럼 ⑤"내 팀 최근 경기(결과)"를
-// 첫 영역으로 추가했었고, [2026-09-05] 스코어보드형 전용 카드(HomeMyTeamGameCard)로
-// 재설계했었다. [2026-09-05 후속2] "그 카드 삭제, '다음 5경기'를 '내 팀 스케쥴'로 개편해
-// 상위 5줄=다음 5경기·하위 5줄=종료된 최근 5경기로" 요청으로 두 섹션(단일 경기 카드 +
-// 다음 5경기 리스트)을 이 섹션 하나로 통합. 종료된 경기 행은 시간 칸 대신 승패+스코어를
-// 보여주고, 그 외 컬럼(날짜/vs·@/팀뱃지/팀명+상대 기록)은 동일하게 유지해 하나의 리스트로
-// 자연스럽게 이어지도록 한다 — 위/아래 그룹 경계에만 구분선을 하나 더 넣어 시각적으로
-// 구간을 나눈다.
-const HomeMyScheduleSection: React.FC = () => {
-    const { leagueId } = useParams<{ leagueId: string }>();
-    const { league, room, leagueTeams } = useLeagueContext();
-    const { schedule, myTeamId } = useSeasonContext();
-    const { getGameUrlId } = useGameShortCodes(room?.id);
-    // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
-    // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
-    // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
-    const serverNow = useServerClockBucket();
-    const navigate = useNavigate();
-
-    const preferVirtual = league?.type === 'main_league';
-    const simStart = league?.sim_real_start_at ?? null;
-    const gprd = league?.games_per_real_day ?? 5;
-    const isTournament = league?.type === 'tournament';
-
-    const teamBySlug = useMemo(() => {
-        const m = new Map<string, LeagueTeamRow>();
-        for (const t of leagueTeams) m.set(t.team_slug, t);
-        return m;
-    }, [leagueTeams]);
-
-    const myGamesNormalized = useMemo(() => {
-        if (!myTeamId) return [];
-        return schedule
-            .filter(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
-            .map(g => ({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) ?? g.scheduledAt }));
-    }, [schedule, myTeamId, simStart, gprd]);
-
-    const upcomingGames = useMemo(
-        () => myGamesNormalized
-            .filter(g => getGameDisplayState(g, serverNow) === 'scheduled')
-            .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date))
-            .slice(0, 5),
-        [myGamesNormalized, serverNow],
-    );
-    // "종료된" 경기만 — live(진행 중)는 제외.
-    const recentGames = useMemo(
-        () => myGamesNormalized
-            .filter(g => getGameDisplayState(g, serverNow) === 'final')
-            .sort((a, b) => (b.scheduledAt ?? b.date).localeCompare(a.scheduledAt ?? a.date))
-            .slice(0, 5),
-        [myGamesNormalized, serverNow],
-    );
-
-    // 상대팀 승-패 레코드 — 다음 5경기/최근 5경기 상대팀 전부에 대해 한 번에 계산.
-    const opponentSlugs = useMemo(
-        () => [...upcomingGames, ...recentGames].map(g => g.homeTeamId === myTeamId ? g.awayTeamId : g.homeTeamId),
-        [upcomingGames, recentGames, myTeamId],
-    );
-    const opponentRecords = useMemo(
-        () => computeWL(schedule, opponentSlugs, serverNow, isTournament),
-        [schedule, opponentSlugs, serverNow, isTournament],
-    );
-
-    const openGame = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
-    const openTeam = (slug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${slug}`);
-
-    // [2026-09-05 후속3] "절반으로 나눠 좌측=최근 5경기, 우측=예정 5경기 테이블로" 요청 —
-    // 위/아래로 이어붙인 리스트 대신 HomeStandingsSection의 동/서부 분할과 동일한 패턴
-    // (2열 그리드 + 각 칸에 소제목("최근 5경기"/"예정 5경기") + 순수 테이블)으로 재구성.
-    // 마지막 열은 종료된 경기(좌측)는 승패+스코어, 예정 경기(우측)는 시간으로 갈린다.
-    const renderTable = (games: typeof myGamesNormalized, isRecent: boolean) => (
-        <table className="w-full text-left border-collapse bg-slate-900">
-            <thead>
-                <tr className="border-b border-slate-800">
-                    <th className="py-1 pl-2 pr-1 text-sm font-bold text-slate-600">날짜</th>
-                    <th className="py-1 px-1 text-sm font-bold text-slate-600">상대</th>
-                    <th className="py-1 pl-1 pr-2 text-sm font-bold text-slate-600">{isRecent ? '결과' : '시간'}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {games.map((g, i) => {
-                    const isHome = g.homeTeamId === myTeamId;
-                    const oppSlug = isHome ? g.awayTeamId : g.homeTeamId;
-                    const opp = teamBySlug.get(oppSlug);
-                    const oppRecord = opponentRecords[oppSlug];
-                    const isFinal = g.homeScore != null && g.awayScore != null && getGameDisplayState(g, serverNow) === 'final';
-                    const myScore = isHome ? g.homeScore : g.awayScore;
-                    const oppScore = isHome ? g.awayScore : g.homeScore;
-                    const won = isFinal && myScore! > oppScore!;
-
-                    return (
-                        <tr
-                            key={g.id}
-                            onClick={() => openGame(g.id)}
-                            className={`cursor-pointer hover:bg-white/5 transition-colors ${i < games.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                        >
-                            <td className="py-1 pl-2 pr-1 text-sm text-slate-500 tabular-nums">{fmtDateShort(g, preferVirtual)}</td>
-                            <td className="py-1 px-1">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="text-sm text-slate-600 shrink-0">{isHome ? 'vs' : '@'}</span>
-                                    <TeamBadge
-                                        teamId={oppSlug} abbr={opp?.team_abbr}
-                                        colorPrimary={opp?.color_primary} colorSecondary={opp?.color_secondary} colorText={opp?.color_text}
-                                        size="xs"
-                                    />
-                                    <span
-                                        className="text-sm font-bold text-slate-200 truncate cursor-pointer hover:text-indigo-400 hover:underline"
-                                        onClick={(e) => { e.stopPropagation(); openTeam(oppSlug); }}
+                                <TableCell><InjuryStatusBadge severity={item.severity} size={16} iconSize={10} strokeWidth={4} /></TableCell>
+                                <TableCell align="left" className="max-w-0">
+                                    <PlayerHoverCard
+                                        player={applyActiveInjury(playerById.get(item.playerId), {
+                                            severity: item.severity, injuryType: item.typeLabel, duration: item.durationLabel, returnDate: item.returnDate,
+                                        })}
+                                        teamAbbr={teamAbbrBySlug.get(item.teamSlug)}
                                     >
-                                        {opp?.team_abbr ?? oppSlug}
-                                    </span>
-                                    <span className="text-sm text-slate-500 tabular-nums shrink-0">{oppRecord ? `${oppRecord.wins}-${oppRecord.losses}` : ''}</span>
-                                </div>
-                            </td>
-                            <td className="py-1 pl-1 pr-2">
-                                {isFinal ? (
-                                    <span className={`text-sm font-bold tabular-nums ${won ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {won ? 'W' : 'L'} {myScore}-{oppScore}
-                                    </span>
-                                ) : (
-                                    <span className="text-sm text-slate-500 tabular-nums">{fmtTime(g, preferVirtual)}</span>
-                                )}
-                            </td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    );
-
-    return (
-        <section className="space-y-3">
-            {!myTeamId ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center border border-dashed border-slate-800 rounded-lg">
-                    참가 중인 팀이 없습니다.
-                </p>
-            ) : upcomingGames.length === 0 && recentGames.length === 0 ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center border border-dashed border-slate-800 rounded-lg">
-                    표시할 경기가 없습니다.
-                </p>
-            ) : (
-                <div className={`grid gap-4 ${recentGames.length > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    {/* 리그 시작 직후 등 종료된 경기가 아직 없으면 "최근 5경기" 칸 자체를 숨김. */}
-                    {recentGames.length > 0 && (
-                        <div className="space-y-3 overflow-x-auto">
-                            <h4 className="text-lg font-black text-white">최근 5경기</h4>
-                            {renderTable(recentGames, true)}
-                        </div>
-                    )}
-                    <div className="space-y-3 overflow-x-auto">
-                        <h4 className="text-lg font-black text-white">예정 5경기</h4>
-                        {renderTable(upcomingGames, false)}
-                    </div>
-                </div>
+                                        <span className="block text-sm font-bold text-white truncate">{item.playerName}</span>
+                                    </PlayerHoverCard>
+                                </TableCell>
+                                <TableCell align="left" className="text-sm text-slate-400 max-w-0 truncate">{item.typeLabel}</TableCell>
+                                <TableCell align="right" className={`text-sm ${SEVERITY_TEXT_COLOR[item.severity]}`}>
+                                    {item.durationLabel}{formatReturnDateSuffix(item.returnDate)}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </HomeTable>
             )}
-        </section>
+        </HomeSection>
     );
 };
 
@@ -880,16 +709,14 @@ const HomeMyScheduleSection: React.FC = () => {
 const HomeMyRosterSummarySection: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
-    const { myTeamId, schedule, currentSimDate } = useSeasonContext();
-    // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
-    // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
-    // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
-    const serverNow = useServerClockBucket();
+    const { myTeamId } = useSeasonContext();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
 
     const useCustomOverrides = shouldUseCustomOverrides(league);
-    const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
+    // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — HomeLeagueLeadersSection과
+    // 동일한 원인/해법(buildLeagueTeams()는 현재 활성 부상 상태를 채우지 않음 → useActiveInjuryMap).
+    const { activeInjuryByPlayer, allRosterIds } = useActiveInjuryMap();
     // [2026-09-07] game_pbp 원본 fetch(includePbp:false로 생략) 대신 서버 집계 RPC로 선수
     // 시즌 스탯을 받는다 — 홈 화면 최초 진입 병목 개선(buildLeagueTeams.ts 주석 참고).
     const { data: statsByPlayer } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
@@ -898,28 +725,6 @@ const HomeMyRosterSummarySection: React.FC = () => {
         [leagueTeams, useCustomOverrides, statsByPlayer],
     );
     const { data: teams = [] } = useLeagueRawStats(room?.id, allRosterIds, selectTeams, { includePbp: false });
-
-    // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — HomeLeagueLeadersSection과
-    // 동일한 원인/해법(buildLeagueTeams()는 현재 활성 부상 상태를 채우지 않음).
-    // [2026-09-07] playerInjuryRows만 필요, game_pbp 불필요 — includePbp:false.
-    const selectInjuryRows = useCallback((raw: LeagueRawStatsData) => raw.playerInjuryRows, []);
-    const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectInjuryRows, { includePbp: false });
-    const isMainLeague = league?.type === 'main_league';
-    const todaySimDate = useMemo(() => {
-        if (!isMainLeague) return currentSimDate;
-        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
-    }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
-    const teamIdByPlayer = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const t of leagueTeams) for (const id of (t.roster ?? [])) m.set(id, t.team_slug);
-        return m;
-    }, [leagueTeams]);
-    const activeInjuryByPlayer = useMemo(
-        () => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, {
-            schedule, getTeamId: id => teamIdByPlayer.get(id),
-        }),
-        [injuryRows, todaySimDate, room?.season_number, schedule, teamIdByPlayer],
-    );
 
     const myTeam = useMemo(() => teams.find(t => t.id === myTeamId), [teams, myTeamId]);
     // [2026-09-05 후속] "팀에 소속된 모든 선수가 보이도록" 요청 — 기존엔 OVR 상위 8명만
@@ -934,68 +739,71 @@ const HomeMyRosterSummarySection: React.FC = () => {
     );
 
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">내 로스터 요약</h3>
+        <HomeSection
+            title="내 로스터 요약"
+            moreTo={myTeamId ? `/multi/leagues/${leagueId}/season/roster?rteam=${myTeamId}` : undefined}
+            moreLabel="로스터"
+            className="h-full"
+        >
             {!myTeamId ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center border border-dashed border-slate-800 rounded-lg">
-                    참가 중인 팀이 없습니다.
-                </p>
+                <HomeEmpty title={HOME_EMPTY_NO_TEAM} />
             ) : rosterPlayers.length === 0 ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center border border-dashed border-slate-800 rounded-lg">
-                    로스터 정보를 불러오는 중입니다.
-                </p>
+                <Spinner variant="section" label="로스터 정보를 불러오는 중입니다." />
             ) : (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse bg-slate-900">
-                        <thead>
-                            <tr className="border-b border-slate-800">
-                                <th className="py-1 pl-2 pr-1 text-sm font-bold text-slate-600 w-8" />
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600">선수</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">POS</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">MPG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">PPG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">APG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">RPG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">SPG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">BPG</th>
-                                <th className="py-1 px-1 text-sm font-bold text-slate-600 text-center">FG%</th>
-                                <th className="py-1 pl-1 pr-2 text-sm font-bold text-slate-600 text-center">3P%</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rosterPlayers.map((p, i) => {
-                                const g = p.stats?.g || 0;
-                                const perGame = (v: number) => g > 0 ? (v / g).toFixed(1) : '-';
-                                const pct = (m: number, a: number) => a > 0 ? `${((m / a) * 100).toFixed(1)}%` : '-';
-                                return (
-                                    <tr
-                                        key={p.id}
-                                        onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(p.id)}`)}
-                                        className={`cursor-pointer hover:bg-white/5 transition-colors ${i < rosterPlayers.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                                    >
-                                        <td className="py-1 pl-2 pr-1"><OvrBadge value={p.ovr} size="sm" className="!text-xs" /></td>
-                                        <td className="py-1 px-1">
-                                            <PlayerHoverCard player={p} teamAbbr={myTeam?.abbr}>
-                                                <span className="text-sm font-bold text-slate-200 truncate">{p.name}</span>
-                                            </PlayerHoverCard>
-                                        </td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-500">{p.position}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.mp)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.pts)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.ast)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.reb)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.stl)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-300 tabular-nums">{perGame(p.stats.blk)}</td>
-                                        <td className="py-1 px-1 text-sm text-center text-slate-400 tabular-nums">{pct(p.stats.fgm, p.stats.fga)}</td>
-                                        <td className="py-1 pl-1 pr-2 text-sm text-center text-slate-400 tabular-nums">{pct(p.stats.p3m, p.stats.p3a)}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <HomeTable>
+                    <TableHead>
+                        {/* [2026-10-14] OVR을 이름 우측으로, TOPG·TS% 추가(사용자 지시) */}
+                        {/* 이름 열 최소 160px 확보 — 숫자 열에 폭을 지정해 남는 공간이 이름 칸으로 가게(이전엔 숫자 열이 늘어나 이름이 잘렸음) */}
+                        <TableHeaderCell align="left" className="min-w-[160px]">선수</TableHeaderCell>
+                        <TableHeaderCell width={44}>OVR</TableHeaderCell>
+                        <TableHeaderCell width={44}>POS</TableHeaderCell>
+                        {/* [2026-10-14] G·GS·FGM·3PM·FTM 추가(이름 칸이 과하게 넓어 데이터로 채움, 사용자 지시). 성공 수는 경기당. */}
+                        {['G', 'GS'].map(label => (
+                            <TableHeaderCell key={label} width={40}>{label}</TableHeaderCell>
+                        ))}
+                        {['MPG', 'PPG', 'APG', 'RPG', 'SPG', 'BPG', 'TOPG'].map(label => (
+                            <TableHeaderCell key={label} width={50}>{label}</TableHeaderCell>
+                        ))}
+                        {[['FGM', 50], ['FG%', 58], ['3PM', 50], ['3P%', 58], ['FTM', 50], ['TS%', 58]].map(([label, w]) => (
+                            <TableHeaderCell key={label} width={w as number}>{label}</TableHeaderCell>
+                        ))}
+                    </TableHead>
+                    <TableBody>
+                        {rosterPlayers.map(p => {
+                            const g = p.stats?.g || 0;
+                            const perGame = (v: number) => g > 0 ? (v / g).toFixed(1) : '-';
+                            const pct = (m: number, a: number) => a > 0 ? `${((m / a) * 100).toFixed(1)}%` : '-';
+                            return (
+                                <TableRow
+                                    key={p.id}
+                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(p.id)}`)}
+                                >
+                                    <TableCell align="left" className="max-w-0">
+                                        <PlayerHoverCard player={p} teamAbbr={myTeam?.abbr}>
+                                            <span className="block text-sm font-bold text-slate-200 truncate">{p.name}</span>
+                                        </PlayerHoverCard>
+                                    </TableCell>
+                                    <TableCell><div className="flex justify-center"><OvrBadge value={p.ovr} size="table" /></div></TableCell>
+                                    <TableCell className="text-sm text-slate-500">{p.position}</TableCell>
+                                    <TableCell className="text-sm text-slate-400 tabular-nums">{g > 0 ? g : '-'}</TableCell>
+                                    <TableCell className="text-sm text-slate-400 tabular-nums">{g > 0 ? (p.stats.gs ?? 0) : '-'}</TableCell>
+                                    {[p.stats.mp, p.stats.pts, p.stats.ast, p.stats.reb, p.stats.stl, p.stats.blk, p.stats.tov].map((v, i) => (
+                                        <TableCell key={i} className="text-sm text-slate-200 tabular-nums">{perGame(v)}</TableCell>
+                                    ))}
+                                    <TableCell className="text-sm text-slate-200 tabular-nums">{perGame(p.stats.fgm)}</TableCell>
+                                    <TableCell className="text-sm text-slate-400 tabular-nums">{pct(p.stats.fgm, p.stats.fga)}</TableCell>
+                                    <TableCell className="text-sm text-slate-200 tabular-nums">{perGame(p.stats.p3m)}</TableCell>
+                                    <TableCell className="text-sm text-slate-400 tabular-nums">{pct(p.stats.p3m, p.stats.p3a)}</TableCell>
+                                    <TableCell className="text-sm text-slate-200 tabular-nums">{perGame(p.stats.ftm)}</TableCell>
+                                    {/* TS% = PTS / (2 × (FGA + 0.44 × FTA)) */}
+                                    <TableCell className="text-sm text-slate-400 tabular-nums">{pct(p.stats.pts / 2, p.stats.fga + 0.44 * p.stats.fta)}</TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </HomeTable>
             )}
-        </section>
+        </HomeSection>
     );
 };
 
@@ -1019,45 +827,18 @@ const HomeMyRosterSummarySection: React.FC = () => {
 // 가상 날짜(메인리그가 아니면 currentSimDate 그대로)로 교체.
 const HomeMyInjuriesSection: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
-    const { league, leagueTeams, room } = useLeagueContext();
-    const { myTeamId, currentSimDate, schedule } = useSeasonContext();
-    // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
-    // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
-    // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
-    const serverNow = useServerClockBucket();
+    const { league, leagueTeams } = useLeagueContext();
+    const { myTeamId } = useSeasonContext();
     const navigate = useNavigate();
     const { getPlayerUrlId } = usePlayerShortCodes();
     const { poolPlayers } = useMultiSearchData(league, leagueTeams);
 
-    const isMainLeague = league?.type === 'main_league';
-    const todaySimDate = useMemo(() => {
-        if (!isMainLeague) return currentSimDate;
-        return findCurrentVirtualDate(schedule, league?.sim_real_start_at ?? null, league?.games_per_real_day ?? 5, serverNow) ?? currentSimDate;
-    }, [isMainLeague, schedule, league?.sim_real_start_at, league?.games_per_real_day, serverNow, currentSimDate]);
-
-    const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
     const myRosterIds = useMemo(
         () => new Set(leagueTeams.find(t => t.team_slug === myTeamId)?.roster ?? []),
         [leagueTeams, myTeamId],
     );
-    // [2026-09-07] playerInjuryRows만 필요, game_pbp 불필요 — includePbp:false.
-    const selectMyInjuryRows = useCallback(
-        (raw: LeagueRawStatsData) => raw.playerInjuryRows.filter(r => myRosterIds.has(r.player_id)),
-        [myRosterIds],
-    );
-    const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectMyInjuryRows, { includePbp: false });
-
-    const teamIdByPlayer = useMemo(() => {
-        const m = new Map<string, string>();
-        for (const t of leagueTeams) for (const id of (t.roster ?? [])) m.set(id, t.team_slug);
-        return m;
-    }, [leagueTeams]);
-    const activeInjuryByPlayer = useMemo(
-        () => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, {
-            schedule, getTeamId: id => teamIdByPlayer.get(id),
-        }),
-        [injuryRows, todaySimDate, room?.season_number, schedule, teamIdByPlayer],
-    );
+    // 내 팀 로스터 id로만 걸러 판정(useActiveInjuryMap) — fetch 자체는 리그 전체 queryKey라 다른 홈 위젯과 캐시 공유.
+    const { activeInjuryByPlayer, teamIdByPlayer } = useActiveInjuryMap({ playerIds: myRosterIds });
     const playerNameById = useMemo(() => new Map(poolPlayers.map(p => [p.id, p.name])), [poolPlayers]);
     // 선수 이름 호버 시 능력치/스탯 팝업.
     const playerById = useMemo(() => new Map(poolPlayers.map(p => [p.id, p])), [poolPlayers]);
@@ -1070,48 +851,53 @@ const HomeMyInjuriesSection: React.FC = () => {
         [activeInjuryByPlayer, playerNameById],
     );
 
-    // 부상자가 없으면(리그 시작 직후 등) 빈 상태 문구 대신 섹션 자체를 숨김.
-    if (myTeamId && injuredPlayers.length === 0) return null;
-
+    // [2026-10-14] 밴드 4 우측(6열). 부상자가 없어도 패널 유지(빈 상태 문구) — 좌측 리그 부상·징계와 나란히.
     return (
-        <section className="space-y-3">
-            <h3 className="text-lg font-black text-white">내 팀 부상자 현황</h3>
+        <HomeSection
+            title="내 팀 부상·징계"
+            moreTo={myTeamId ? `/multi/leagues/${leagueId}/season/roster?rteam=${myTeamId}` : undefined}
+            moreLabel="로스터"
+            className="h-full"
+        >
             {!myTeamId ? (
-                <p className="text-sm text-slate-500 ko-normal py-8 text-center border border-dashed border-slate-800 rounded-lg">
-                    참가 중인 팀이 없습니다.
-                </p>
+                <HomeEmpty title={HOME_EMPTY_NO_TEAM} />
+            ) : injuredPlayers.length === 0 ? (
+                <HomeEmpty title="현재 부상·징계 중인 선수가 없습니다." />
             ) : (
-                <div className="bg-slate-900">
-                    <div className="flex items-center gap-2 py-1 px-2 border-b border-slate-800">
-                        <span className="w-4 h-4 shrink-0" />
-                        <span className="text-sm font-bold text-slate-600 w-36 shrink-0">이름</span>
-                        <span className="text-sm font-bold text-slate-600 flex-1 min-w-0">부상명</span>
-                        <span className="text-sm font-bold text-slate-600 shrink-0">기간</span>
-                    </div>
-                    {injuredPlayers.map(({ playerId, status, name }, i) => (
-                        <div
-                            key={playerId}
-                            onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`)}
-                            className={`flex items-center gap-2 py-1.5 px-2 cursor-pointer hover:bg-white/5 transition-colors ${i < injuredPlayers.length - 1 ? 'border-b border-slate-800/60' : ''}`}
-                        >
-                            <InjuryStatusBadge severity={status.severity} size={16} iconSize={10} strokeWidth={4} />
-                            <PlayerHoverCard
-                                player={applyActiveInjury(playerById.get(playerId), status)}
-                                teamAbbr={teamAbbrBySlug.get(teamIdByPlayer.get(playerId) ?? '')}
+                <HomeTable>
+                    <TableHead>
+                        <TableHeaderCell width={32} />
+                        <TableHeaderCell align="left" width={160}>이름</TableHeaderCell>
+                        <TableHeaderCell align="left">부상명</TableHeaderCell>
+                        <TableHeaderCell align="right">기간</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
+                        {injuredPlayers.map(({ playerId, status, name }) => (
+                            <TableRow
+                                key={playerId}
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`)}
                             >
-                                <span className="text-sm font-bold text-white truncate w-36 shrink-0">{name}</span>
-                            </PlayerHoverCard>
-                            <span className="text-sm text-slate-400 truncate flex-1 min-w-0">
-                                {status.severity === 'Suspension' ? '출장정지' : status.injuryType}
-                            </span>
-                            <span className={`text-sm truncate shrink-0 ${SEVERITY_TEXT_COLOR[status.severity]}`}>
-                                {status.duration}{formatReturnDateSuffix(status.returnDate)}
-                            </span>
-                        </div>
-                    ))}
-                </div>
+                                <TableCell><InjuryStatusBadge severity={status.severity} size={16} iconSize={10} strokeWidth={4} /></TableCell>
+                                <TableCell align="left" className="max-w-0">
+                                    <PlayerHoverCard
+                                        player={applyActiveInjury(playerById.get(playerId), status)}
+                                        teamAbbr={teamAbbrBySlug.get(teamIdByPlayer.get(playerId) ?? '')}
+                                    >
+                                        <span className="block text-sm font-bold text-white truncate">{name}</span>
+                                    </PlayerHoverCard>
+                                </TableCell>
+                                <TableCell align="left" className="text-sm text-slate-400 max-w-0 truncate">
+                                    {status.severity === 'Suspension' ? '출장정지' : status.injuryType}
+                                </TableCell>
+                                <TableCell align="right" className={`text-sm ${SEVERITY_TEXT_COLOR[status.severity]}`}>
+                                    {status.duration}{formatReturnDateSuffix(status.returnDate)}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </HomeTable>
             )}
-        </section>
+        </HomeSection>
     );
 };
 
@@ -1139,13 +925,13 @@ const MultiSeasonPage: React.FC = () => {
                     style={{ backgroundColor: LEAGUE_NAVY_COLOR }}
                 >
                     <img
-                        src="/logos/real/PBL.svg"
+                        src={getLeagueLogoUrl('League')}
                         alt=""
                         aria-hidden="true"
                         className="absolute -right-8 -bottom-10 w-48 h-48 object-contain opacity-10 pointer-events-none select-none"
                     />
                     <img
-                        src="/logos/real/PBL.svg"
+                        src={getLeagueLogoUrl('League')}
                         alt="PRO BASKETBALL LEAGUE"
                         className="relative w-16 h-16 object-contain drop-shadow-md shrink-0"
                     />
@@ -1157,29 +943,19 @@ const MultiSeasonPage: React.FC = () => {
                 >
                     {myTeam && (
                         <>
-                            {/* 배경 워터마크용 — 로고 로드 실패 시 그냥 안 보이면 되므로 폴백 체인 없이 숨김만 처리 */}
-                            <img
-                                src={getRealTeamLogoUrl(myTeam.team_slug)}
-                                alt=""
-                                aria-hidden="true"
-                                className="absolute -right-8 -bottom-10 w-48 h-48 object-contain opacity-10 pointer-events-none select-none"
-                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            {/* 배경 워터마크용 */}
+                            <TeamLogo
+                                teamId={myTeam.team_slug}
+                                size="custom"
+                                className="absolute -right-8 -bottom-10 w-48 h-48 opacity-10 pointer-events-none select-none"
+                                shadow={false}
                             />
-                            {/* 실제 팀 로고 세트(public/logos/real/) — RosterView.tsx/PlayerDetailView.tsx
-                                헤더와 동일한 폴백 체인(신규 로고 실패 시 구버전 → 플레이스홀더). */}
-                            <img
-                                src={getRealTeamLogoUrl(myTeam.team_slug)}
-                                alt={myTeam.team_abbr}
-                                className="relative w-16 h-16 object-contain drop-shadow-md shrink-0"
-                                onError={(e) => {
-                                    const img = e.currentTarget;
-                                    if (img.dataset.fallback !== 'old') {
-                                        img.dataset.fallback = 'old';
-                                        img.src = getTeamLogoUrl(myTeam.team_slug);
-                                    } else {
-                                        img.src = 'https://placehold.co/100x100?text=BPL';
-                                    }
-                                }}
+                            {/* 팀 로고 — TeamLogo 공용(리그 로고 1회 폴백) */}
+                            <TeamLogo
+                                teamId={myTeam.team_slug}
+                                teamName={myTeam.team_abbr}
+                                size="custom"
+                                className="relative w-16 h-16 shrink-0"
                             />
                         </>
                     )}
@@ -1189,23 +965,29 @@ const MultiSeasonPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-6">
-                    <HomeLatestNewsSection />
-                    <HomeStandingsSection />
-                    <HomeLeagueLeadersSection />
-                    {/* [2026-09-05 후속] "트랜잭션 소식 영역을 반으로 나눠 좌측=트랜잭션,
-                        우측=리그 부상 소식" 요청 — 각 섹션은 자기 헤더("트랜잭션 소식"/"리그
-                        부상 소식")를 그대로 갖고 있어 내부 수정 없이 배치만 2열로 바꿨다. */}
-                    <div className="grid grid-cols-2 gap-4">
+            {/* [2026-10-14] 좌/우 독립 세로 스택(2열) → 가로 밴드(12열 그리드). 밴드 1(내 팀 상황 스트립)은 같은 날 사용자 지시로 삭제. 같은 밴드 안의 패널은 행 수를 맞춰
+                하단선이 일치하도록(HOME_ROWS). 밴드 간 24px, 밴드 안 16px. 시안: https://claude.ai/artifact/FmLLWQXjnwGFGmPs4LSGSg */}
+            <div className="flex flex-col gap-6">
+                {/* 밴드 2 · 순위(8) + 뉴스 10행·트랜잭션 5행(4) */}
+                <div className="grid grid-cols-12 gap-4 items-stretch">
+                    <div className="col-span-8 min-w-0"><HomeStandingsSection /></div>
+                    {/* 우측 두 패널은 순위표 높이를 50:50으로 나눔(각 HomeSection에 flex-1 min-h-0) */}
+                    <div className="col-span-4 min-w-0 min-h-0 flex flex-col gap-4">
+                        <HomeLatestNewsSection />
                         <HomeTransactionsSection />
-                        <HomeInjurySection />
                     </div>
                 </div>
-                <div className="space-y-6">
-                    <HomeMyScheduleSection />
-                    <HomeMyRosterSummarySection />
-                    <HomeMyInjuriesSection />
+
+                {/* 밴드 3 · 내 로스터(8) + 리그 리더 탭(4) */}
+                <div className="grid grid-cols-12 gap-4 items-stretch">
+                    <div className="col-span-8 min-w-0"><HomeMyRosterSummarySection /></div>
+                    <div className="col-span-4 min-w-0"><HomeLeagueLeadersSection /></div>
+                </div>
+
+                {/* 밴드 4 · 리그 부상·징계(6) + 내 팀 부상·징계(6) */}
+                <div className="grid grid-cols-12 gap-4 items-stretch">
+                    <div className="col-span-6 min-w-0"><HomeInjurySection /></div>
+                    <div className="col-span-6 min-w-0"><HomeMyInjuriesSection /></div>
                 </div>
             </div>
         </div>

@@ -25,7 +25,7 @@ const GaugeBar: React.FC<{
     return (
         <div className="space-y-1.5">
             <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+                <span className="text-[10px] font-black text-slate-400">{label}</span>
                 <span className="text-[10px] font-bold text-slate-500">{description}</span>
             </div>
             <svg viewBox="0 0 200 24" className="w-full">
@@ -90,7 +90,7 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ sliders, roster }) => {
 
     return (
         <div className="flex flex-col gap-4">
-            <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">수비 리스크</h5>
+            <h5 className="text-[11px] font-black text-slate-400">수비 리스크</h5>
             <GaugeBar label="파울 위험도" predicted={foulRisk} actual={actualFoulRate} description={foulDesc} />
             <GaugeBar label="턴오버 유발률" predicted={tovRate} actual={actualTovRate} description={tovDesc} />
         </div>

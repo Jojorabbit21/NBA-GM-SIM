@@ -136,13 +136,13 @@ export const DraftAdminPanel: React.FC<Props> = ({
                             </div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-400">현재 픽</span>
-                                <span className="text-white font-mono">
+                                <span className="text-white">
                                     {status === 'completed' ? '완료' : `${curIdx + 1} / ${totalPicks}`}
                                 </span>
                             </div>
                             <div className="flex justify-between text-xs">
                                 <span className="text-slate-400">완료 픽</span>
-                                <span className="text-white font-mono">{draftState.picks?.length ?? 0}</span>
+                                <span className="text-white">{draftState.picks?.length ?? 0}</span>
                             </div>
                         </div>
 
@@ -159,7 +159,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
 
                         {/* 기본 컨트롤 */}
                         <div className="space-y-2">
-                            <p className="text-[10px] text-slate-500 uppercase">빠른 제어</p>
+                            <p className="text-[10px] text-slate-500">빠른 제어</p>
 
                             {/* Pause / Resume */}
                             {status === 'active' ? (
@@ -210,7 +210,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                         {/* 유저별 오토픽 토글 */}
                         {uniqueHumanEntries.length > 0 && (
                             <div className="space-y-2">
-                                <p className="text-[10px] text-slate-500 uppercase">유저별 오토픽</p>
+                                <p className="text-[10px] text-slate-500">유저별 오토픽</p>
                                 <div className="space-y-1 max-h-48 overflow-y-auto">
                                     {uniqueHumanEntries.map(entry => {
                                         const isAutoPick = autoPickUserIds.includes(entry.userId);
@@ -221,7 +221,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                                             >
                                                 <div className="flex items-center gap-1.5 min-w-0">
                                                     <Bot size={12} className={isAutoPick ? 'text-indigo-400' : 'text-slate-600'} />
-                                                    <span className="text-xs text-slate-200 uppercase truncate">{entry.teamId}</span>
+                                                    <span className="text-xs text-slate-200 truncate">{entry.teamId}</span>
                                                 </div>
                                                 <button
                                                     onClick={() => call('toggle-autopick', { targetUserId: entry.userId, enabled: !isAutoPick })}
@@ -244,7 +244,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                         {/* 자동완성 */}
                         {(status === 'active' || status === 'paused') && (
                             <div className="space-y-2">
-                                <p className="text-[10px] text-slate-500 uppercase">고급</p>
+                                <p className="text-[10px] text-slate-500">고급</p>
                                 {confirmAction === 'autocomplete' ? (
                                     <div className="bg-red-900/30 border border-red-700/40 rounded-xl p-3 space-y-2">
                                         <div className="flex items-start gap-2">
@@ -287,7 +287,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                             <div className="space-y-2">
                                 <button
                                     onClick={() => setRollbackOpen(o => !o)}
-                                    className="w-full flex items-center justify-between text-[10px] text-slate-500 uppercase hover:text-slate-300 transition-colors"
+                                    className="w-full flex items-center justify-between text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
                                 >
                                     <span>픽 롤백</span>
                                     {rollbackOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -305,7 +305,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                                             >
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                                                        <span className="text-[10px] text-slate-500 shrink-0">
                                                             R{pick.round}-{pick.slot}
                                                         </span>
                                                         <span className="text-xs text-slate-200 truncate">
@@ -313,7 +313,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <span className="text-[10px] text-slate-500 uppercase">
+                                                        <span className="text-[10px] text-slate-500">
                                                             {pick.teamId}
                                                         </span>
                                                         <span className="text-[10px] text-slate-600">

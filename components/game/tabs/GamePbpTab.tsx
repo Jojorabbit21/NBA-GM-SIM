@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { PbpLog, Team, ShotEvent } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { ArrowRight, Clock } from 'lucide-react';
+import { SegmentedControl } from '../../common/SegmentedControl';
 import { PlayTypeStats } from '../PlayTypeStats';
 
 interface GamePbpTabProps {
@@ -151,31 +152,27 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
             <div className="flex-[5] min-w-0 min-h-0 flex flex-col border-b md:border-b-0 md:border-r border-slate-800">
                 {/* 헤더: 쿼터 필터 — 애니메이션 없이 클릭 즉시 상태 전환 */}
                 <div className="shrink-0 flex items-center gap-1 px-3 h-11 border-b border-slate-800 bg-slate-950/60 overflow-x-auto">
-                    {[0, 1, 2, 3, 4].map(q => (
-                        <button
-                            key={q}
-                            onClick={() => setSelectedQuarter(q)}
-                            className={`px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest whitespace-nowrap transition-colors
-                                ${selectedQuarter === q ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                            {q === 0 ? '전체' : `${q}쿼터`}
-                        </button>
-                    ))}
+                    <SegmentedControl
+                        size="sm"
+                        value={String(selectedQuarter)}
+                        onChange={(v) => setSelectedQuarter(Number(v))}
+                        options={[0, 1, 2, 3, 4].map(q => ({ value: String(q), label: q === 0 ? '전체' : `${q}쿼터` }))}
+                    />
                 </div>
 
                 <div
                     ref={scrollRef}
-                    className="flex-1 overflow-y-auto custom-scrollbar font-mono text-xs bg-slate-900"
+                    className="flex-1 overflow-y-auto custom-scrollbar text-xs bg-slate-900"
                 >
                 {/* 컬럼 헤더 — 우측 플레이타입 패널(PlayTypeStats.tsx)/박스스코어(Table.tsx)와 동일 톤:
-                    bg-slate-950 sticky + text-slate-500 font-black uppercase */}
+                    bg-slate-950 sticky + text-slate-500 font-black  */}
                 <div className="flex items-center gap-4 px-4 h-10 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                    <div className="flex-shrink-0 w-6 text-center text-xs font-black uppercase text-slate-500">Q</div>
-                    <div className="flex-shrink-0 w-12 text-center text-xs font-black uppercase text-slate-500">시간</div>
-                    <div className="flex-shrink-0 w-8 flex justify-center text-xs font-black uppercase text-slate-500">원정</div>
-                    <div className="flex-shrink-0 w-16 text-center text-xs font-black uppercase text-slate-500">스코어</div>
-                    <div className="flex-shrink-0 w-8 flex justify-center text-xs font-black uppercase text-slate-500">홈</div>
-                    <div className="flex-1 pl-2 text-xs font-black uppercase text-slate-500">기록</div>
+                    <div className="flex-shrink-0 w-6 text-center text-xs font-black text-slate-500">Q</div>
+                    <div className="flex-shrink-0 w-12 text-center text-xs font-black text-slate-500">시간</div>
+                    <div className="flex-shrink-0 w-8 flex justify-center text-xs font-black text-slate-500">원정</div>
+                    <div className="flex-shrink-0 w-16 text-center text-xs font-black text-slate-500">스코어</div>
+                    <div className="flex-shrink-0 w-8 flex justify-center text-xs font-black text-slate-500">홈</div>
+                    <div className="flex-1 pl-2 text-xs font-black text-slate-500">기록</div>
                 </div>
                 <div className="divide-y divide-slate-800/50">
                     {displayLogs.map((log, idx) => {
@@ -197,7 +194,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         if (isFlowEvent) {
                              return (
                                 <div key={idx} className="flex items-center justify-center py-3 bg-amber-500/10 border-y border-amber-500/20">
-                                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-widest">
+                                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
                                         <Clock size={14} />
                                         <span>{log.text}</span>
                                     </div>

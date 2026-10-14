@@ -110,6 +110,17 @@ export default {
           d:        '#52525B',            // zinc-600
         },
       },
+      // ── z-index 사다리 (docs/plan/ui-consolidation.md 7장 6번, 2026-10-12 확정) ───────
+      // 로컬 값(표 sticky 40 / 고정 열 50 / 카드 내부 10~30)은 사다리 대상이 아니다.
+      // 팝오버·툴팁은 모달 안에서도 떠야 하므로 모달 위, 토스트는 그 위, 전체 화면 점유는 전부 덮는다.
+      zIndex: {
+        header:   '100',   // 상단 sticky 헤더
+        modal:    '500',   // 모달(공용 Modal + 개별 모달 전부, document.body 포탈)
+        popover:  '600',   // Dropdown·필터 패널·사이드바 메뉴·캘린더 팝오버
+        tooltip:  '700',   // 선수 호버 카드·부상 툴팁·확률 툴팁
+        toast:    '800',   // NotificationCenter·UpdateToast
+        takeover: '1000',  // 전체 화면 점유(DB 오류·온보딩·라이브 경기·드래프트룸·시즌 일괄 시뮬)
+      },
       // ── Typography ──────────────────────────────────────────────
       fontSize: {
         '2xs': ['10px', { lineHeight: '14px' }],  // Caption / Label 10px

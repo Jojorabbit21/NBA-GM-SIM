@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { pruneGameLeadersCache } from '../services/multi/gameLeadersCache';
 import type { LeagueRow, RoomRow, LeagueTeamRow } from '../services/multi/roomQueries';
 import { multiSearchPoolQuery } from './useMultiSearchData';
 import { metaPlayerOrderQuery } from './usePlayerShortCodes';
@@ -125,6 +126,8 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
 
     useEffect(() => {
         if (!enabled || !league || !room) { setState({ status: 'idle', failKind: null }); return; }
+        // [2026-10-14] 다른 방의 경기 리더 localStorage 캐시 정리 — 방마다 ~1MB라 react-query 영속 캐시 자리를 잠식함.
+        pruneGameLeadersCache(room.id);
         const runId = ++runIdRef.current;
         const entries = buildEntries({ enabled, league, room, leagueTeams, myTeam });
         // 캐시에 데이터가 있는 쿼리는 대기 대상에서 제외
