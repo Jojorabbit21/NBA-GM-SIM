@@ -25,6 +25,8 @@ import { initializeTournamentBracket, type LeagueTeamRow } from './tournamentIni
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
 import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
+import { buildLedger, buildContext, rankConference, type TiebreakTeam } from './nbaTiebreak';
+import { TEAM_DATA } from './teamData';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
 import { DEFAULT_PLAYOFF_INTERVAL_DAYS } from './leagueTimeline';
 
@@ -42,7 +44,10 @@ export interface StandingRow {
     pointDiff: number;
 }
 
-/** 컨퍼런스별로 나뉜 정규시즌 스탠딩(승률 내림차순, 동률 시 득실차). is_playoff=false 경기만 집계. */
+/** 컨퍼런스별로 나뉜 정규시즌 스탠딩 — 승률 내림차순, 동률은 NBA 공식 타이브레이커(shared/nbaTiebreak.ts:
+ * 맞대결 → 디비전 우승 → 디비전/컨퍼런스 승률 → 진출권 팀 상대 승률 → 득실차 → 추첨)로 정렬.
+ * is_playoff=false 경기만 집계. 클라이언트 미러: utils/nbaTiebreak.ts(순위 경쟁 화면).
+ * [2026-10-15] 이전엔 (승−패) → 득실차 두 가지뿐이었다(맞대결/디비전 기준 없음). */
 export async function computeStandingsByConference(
     leagueId: string, roomId: string,
 ): Promise<{ East: StandingRow[]; West: StandingRow[] }> {
@@ -53,36 +58,29 @@ export async function computeStandingsByConference(
 
     const { data: teamRows } = await supabase
         .from('league_teams').select('team_slug, conference').eq('room_id', roomId);
-    const confBySlug = new Map((teamRows ?? []).map((t: any) => [t.team_slug as string, t.conference as string | null]));
 
-    const table = new Map<string, StandingRow>();
-    const row = (slug: string): StandingRow => {
-        let r = table.get(slug);
-        if (!r) {
-            r = { team_slug: slug, conference: confBySlug.get(slug) ?? null, wins: 0, losses: 0, pointDiff: 0 };
-            table.set(slug, r);
-        }
-        return r;
-    };
-    for (const g of games ?? []) {
-        const home = row(g.home_team_id);
-        const away = row(g.away_team_id);
-        const diff = (g.home_score ?? 0) - (g.away_score ?? 0);
-        home.pointDiff += diff;
-        away.pointDiff -= diff;
-        if (diff > 0) { home.wins++; away.losses++; }
-        else          { away.wins++; home.losses++; }
-    }
-    // 정규시즌 경기가 아직 하나도 없는(0승0패) 팀도 순위표엔 포함되도록 전체 팀을 미리 시드.
-    for (const slug of confBySlug.keys()) row(slug);
+    // 진출권 팀(타이브레이커 ⑤⑥에서 "상대 승률"을 셀 대상) = 플레이인 포함 진출권. 플레이인 off면 플레이오프 팀 수.
+    const { data: leagueRow } = await supabase
+        .from('leagues').select('playoff_team_count, play_in_enabled').eq('id', leagueId).maybeSingle();
+    const n = Math.max(2, (leagueRow as any)?.playoff_team_count ?? 8);
+    const eligibleCount = (leagueRow as any)?.play_in_enabled === false ? n : n + 2;
 
-    const sorter = (a: StandingRow, b: StandingRow) =>
-        (b.wins - b.losses) - (a.wins - a.losses) || b.pointDiff - a.pointDiff;
-    const all = [...table.values()];
-    return {
-        East: all.filter(r => r.conference === 'East').sort(sorter),
-        West: all.filter(r => r.conference === 'West').sort(sorter),
-    };
+    const teams: TiebreakTeam[] = (teamRows ?? []).map((t: any) => ({
+        slug: t.team_slug as string,
+        conference: (t.conference as string | null) ?? null,
+        division: TEAM_DATA[t.team_slug as string]?.division ?? null, // 가상 팀은 디비전 없음
+    }));
+    const ledger = buildLedger(teams, (games ?? []).map((g: any) => ({
+        homeSlug: g.home_team_id, awaySlug: g.away_team_id, homeScore: g.home_score ?? 0, awayScore: g.away_score ?? 0,
+    })));
+    const ctx = buildContext(ledger, { eligibleCount, drawSeed: leagueId });
+
+    const rows = (conf: 'East' | 'West'): StandingRow[] =>
+        rankConference(ledger, conf, ctx).order.map(slug => ({
+            team_slug: slug, conference: conf,
+            wins: ledger.wins.get(slug) ?? 0, losses: ledger.losses.get(slug) ?? 0, pointDiff: ledger.pd.get(slug) ?? 0,
+        }));
+    return { East: rows('East'), West: rows('West') };
 }
 
 /** 표준 브라켓 시드 순서(1-indexed, size는 2의 거듭제곱). 8강 예시: [1,8,4,5,2,7,3,6]. */

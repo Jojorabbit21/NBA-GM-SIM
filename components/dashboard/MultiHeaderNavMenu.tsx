@@ -20,6 +20,8 @@ interface MultiHeaderNavMenuProps {
     /** [2026-09-15] 올스타 투표 시작일~브레이크 종료일 전날까지만 true(isAllStarWindowActive) —
      *  이 기간 밖에서는 isTournament와 무관하게 "올스타" 항목 자체를 리스트에서 제외한다. */
     showAllStar?: boolean;
+    /** [2026-10-15] 정규시즌 종료 30일 전부터 true(브라켓 생성 후에도 유지) — "순위 경쟁" 항목 노출. */
+    showPlayoffRace?: boolean;
     /** 리그 샐러리캡 마스터 스위치 — 켜져 있을 때만 "내 팀" 드롭다운에 "재정" 항목 노출. */
     capEnabled?:   boolean;
     /** 드래프트 완료 여부(league.status가 in_progress/finished) — false면 "내 팀"/"전술"
@@ -57,6 +59,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     hasPlayoffs,
     isTournament,
     showAllStar,
+    showPlayoffRace,
     capEnabled,
     isDraftComplete,
     onViewPlayer,
@@ -110,7 +113,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     const isHomeActive    = pathname === base;
     const isTeamActive    = pathname.startsWith(`${base}/roster`);
     const isTacticsActive = pathname.startsWith(`${base}/tactics`);
-    const isLeagueActive  = pathname.startsWith(`${base}/standings`) || pathname.startsWith(`${base}/leaderboard`)
+    const isLeagueActive  = pathname.startsWith(`${base}/standings`) || pathname.startsWith(`${base}/race`) || pathname.startsWith(`${base}/leaderboard`)
         || pathname.startsWith(`${base}/schedule`) || pathname.startsWith(`${base}/transaction`)
         || pathname.startsWith(`${base}/playoffs`);
 
@@ -146,6 +149,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
 
     const leagueItems: DropdownItem[] = [
         { label: '순위표',    path: `${base}/standings` },
+        ...(showPlayoffRace ? [{ label: '순위 경쟁', path: `${base}/race` }] : []),
         ...(hasPlayoffs ? [{ label: '플레이오프', path: `${base}/playoffs` }] : []),
         // [2026-09-15 Fix] 올스타 투표 시작일에 나타나고 브레이크 종료일에 사라진다
         // (showAllStar = isAllStarWindowActive, MultiHeader.tsx가 계산해서 내려줌). 원래는

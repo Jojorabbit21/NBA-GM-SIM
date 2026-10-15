@@ -35,6 +35,142 @@
 
 ---
 
+## 2026-10-15 — 시딩 타이브레이커를 NBA 공식 규정으로 교체 (서버 시딩 + 순위 경쟁 화면)
+
+**배경**: 서버 시딩의 동률 처리가 (승−패) → 득실차 두 가지뿐이라 맞대결·디비전 등 NBA 기준이 전혀 없었다. 사용자가 "실제 NBA 타이브레이커 적용" 요청. 규정은 NBA.com 2025-26 Regular Season Standings(L.2.a/b/c)와 NBA 공식 Tiebreaker Procedures PDF(2017)를 직접 확인(두 문서 일치).
+
+**변경 파일** (⚠️ 미러 쌍 — 같이 롤백할 것):
+- `utils/nbaTiebreak.ts` (client, 신규) ↔ `server/src/shared/nbaTiebreak.ts` (server 미러, **내용 완전 동일** — `cmp`로 확인). 순수 엔진: `buildLedger/createLedger/recordResult/cloneLedger`(경기 결과 → 맞대결·득실차 기록부), `buildContext`(디비전 우승 · 진출권 팀 계산), `resolveTie`(동률 해소), `rankConference`, `compareTied`.
+- `server/src/shared/playoffSeeder.ts` — `computeStandingsByConference()` 정렬 교체(+ `leagues`에서 `playoff_team_count/play_in_enabled` 조회, `TEAM_DATA`로 디비전 매핑, import 2개 추가). 이 함수를 쓰는 `playInSeeder.ts`(3곳)·`startPlayoffs`는 호출부 무수정으로 새 순서를 받는다.
+- `views/multi/season/playoffRaceUtils.ts` — `evalConference`가 실제 상태에선 타이브레이커 순서(`ConfInput.order`)를, 가정 상태에선 마지막 경기 때만 `orderFn`으로 구한 순서를 사용. `computeConferenceRaces`(순위·동률 그룹), `computeKeyGames`(타이브레이커 보유 팀·가정 순서), `computeRaceOdds`(몬테카를로에 맞대결/디비전/컨퍼런스 전적을 시뮬레이션 경기마다 기록해 최종 동률을 실제 규정으로 가름) 전부 엔진 사용. `TieGroup`/`KeyGame.tiebreak` 형태 변경, `TIEBREAK_RULES` → `TIEBREAK_RULE_TABLE`, `buildRaceLedger` 신설.
+- `views/multi/season/MultiPlayoffRaceView.tsx` — 타이브레이커 패널을 규정 표(2팀/3팀 이상)·동률 표(컷 | 전적 | 동률 팀+결정 근거 | 순서 결정)로, 중요한 경기의 타이브레이커 열을 "보유 팀 · 근거 (상대 …)"로.
+- `views/dev/PlayoffRaceMock.tsx` — 목업이 경기 단위 결과(점수 포함)를 만들고 전적은 `computeMultiStandingsStats`로 집계.
+
+**Before** (`playoffSeeder.ts`):
+```ts
+const sorter = (a: StandingRow, b: StandingRow) =>
+    (b.wins - b.losses) - (a.wins - a.losses) || b.pointDiff - a.pointDiff;
+```
+**After**: 승률 내림차순 → 동률 그룹마다 NBA 규정(2팀: 맞대결→디비전 우승→디비전 승률→컨퍼런스 승률→진출권 팀 상대(자기/상대 컨퍼런스)→득실차 / 3팀 이상: 디비전 우승→동률 팀끼리 승률→디비전 승률(전원 같은 디비전)→컨퍼런스 승률→진출권 팀 상대→득실차, 일부만 갈리면 남은 팀끼리 처음부터 재적용, 모두 같으면 추첨). 디비전 우승 동률은 먼저 풀되 디비전 우승 판정에만 사용.
+
+**해석/가정 (규정에 명시되지 않은 부분)**:
+- "진출권 팀" = 컨퍼런스 승률 상위 `playoff_team_count(+2, 플레이인 on)`팀 + 경계 승률 동률 팀. **(정정)** 처음엔 "규정에 정의 없음 → 해석"으로 적었으나 NBA.com 2025-26 원문에 정의가 있음: "teams eligible for the postseason ... (including teams that finished the Regular Season tied for one of the best 10 records in their conference)" = 플레이인 포함 상위 10팀 + 10위 동률. 구현값(기본 8+2=10, 경계 동률 포함)과 일치하므로 로직 변경 없이 주석·화면 문구만 공식 정의로 수정. 리그 설정으로 진출 팀 수가 다르면 그 수로 일반화.
+- 추첨은 결정적 해시(서버 `leagueId`, 화면 `'live'`)로 대체 — 서버/화면 결과가 같지만 화면의 "추첨"은 실제 결과를 예측하지 못함.
+- 디비전이 없는 팀(가상 팀)은 디비전 관련 기준을 건너뜀.
+- 확정/탈락 매직·탈락넘버 판정은 원래 "동률=위협"(엄격 부등호)이라 타이브레이커와 무관 — 그대로 유효.
+
+**검증**: 엔진 단위 테스트 11건(맞대결, 디비전 우승, 디비전 승률, 공식 PDF의 3팀 동률 예시, 추첨 결정성, 득실차 순) 전부 통과. client `tsc` 51건 = 베이스라인(신규 0), server `tsc` 45건 = 베이스라인(신규 0, 기존은 bun 타입 등). 목업 화면 확인. 실제 리그/서버 DB 연동은 미검증.
+
+**⚠️ 배포**: 서버 변경이라 **Fly.io 재배포 전까지 실제 시딩은 옛 규칙**이다(화면은 이미 NBA 규정으로 표시 → 동률 시 불일치). 배포 후 플레이인/플레이오프 시딩부터 적용.
+
+**후속(같은 날) — 순위표 화면 적용**: `views/multi/season/MultiStandingsView.tsx` — 기본 정렬(PCT)일 때 **컨퍼런스·디비전 모드**의 동률을 NBA 타이브레이커로 정렬(`rankGroup`, 오름차순이면 그 역순). 리그 전체(동·서 혼합) 모드는 규정에 동률 처리가 없어 기존(승률 → 승수) 유지, 다른 열 정렬도 기존 유지. `computeClinchStatus`도 같은 순서를 받아(`orderOf` 인자) 동률 팀 중 컷 안쪽 판정을 시딩과 일치. 엔진에 `rankGroup(l, slugs, ctx)` 추가(미러 동일, `rankConference`가 이를 사용 — 동작 동일, 단위 테스트 재통과). Before: `sortTeams`가 정렬 키 → 승률 → 승수, `computeClinchStatus`가 승률 → 승수 정렬. 롤백: 두 곳의 `useTiebreak`/`orderOf` 분기 제거.
+
+**적용 안 함(사용자 결정)**: `leagueSeasonArchiver.ts`의 미진출 팀 최종 순위((승−패) → 득실차) — 유저 이력(`final_rank`)에만 쓰이는 동·서 혼합 순위라 NBA 규정을 그대로 적용할 수 없음. 홈 화면 미니 순위표(`MultiSeasonPage.tsx`)와 순위표 PO%(`computePlayoffOddsMap`, 동률 무작위)도 이번 범위 밖.
+
+**롤백 방법**: `playoffSeeder.ts`의 `computeStandingsByConference`를 Before의 sorter 버전으로 되돌리고(import 2개 제거), 클라이언트는 `playoffRaceUtils.ts`/`MultiPlayoffRaceView.tsx`를 git으로 이전 커밋에 복원. `nbaTiebreak.ts` 두 파일은 삭제.
+
+---
+
+## 2026-10-15 — 404 페이지 신설 (잘못된 URL 조용한 리다이렉트 제거)
+
+**배경**: 존재하지 않는 URL이 싱글 `/home`(또는 quickplay_only 모드는 `/quick`)으로 조용히 리다이렉트되어 사용자가 주소가 틀렸다는 걸 알 수 없었고, 멀티 시즌 하위 오타 경로는 본문이 빈 화면이었다.
+
+**변경 파일** (client only):
+- `components/NotFound.tsx` (신규) — `variant="page"`(전체 화면) / `"panel"`(시즌 레이아웃 본문). 리그 URL이면 "리그 홈으로", 아니면 "홈으로"(로그인) / "로그인으로"(미로그인), 히스토리가 있으면 "이전 페이지".
+- `App.tsx` — 시즌 라우트 마지막 자식에 `<Route path="*" element={<NotFound variant="panel" />} />`, 최상위 `Routes` 맨 아래에 `<Route path="*" element={<NotFound />} />`, 아래 2개 삭제.
+
+**Before**:
+```tsx
+{/* ProtectedLayout 안 */}
+<Route path="*" element={<Navigate to="/home" replace />} />
+...
+{shouldRestrictToQuickPlay && (
+    <Route path="*" element={<Navigate to="/quick" replace />} />
+)}
+```
+
+**After**: 위 두 `*` 삭제, 최상위 `*` → `NotFound`. 시즌 하위 `*` → 사이드바/헤더 유지한 채 본문만 404.
+
+**동작 변화**: quickplay_only 모드에서 `/home` 같은 싱글 경로로 들어오면 `/quick` 리다이렉트 대신 404. 미로그인 상태로 싱글 보호 경로(`/home` 등 등록된 경로)는 기존처럼 ProtectedLayout 가드가 처리.
+
+**후속(같은 날) — 404 직전 로딩 화면 제거**: `App.tsx`의 Router 진입 전 early return(`if (authLoading) return <Loader/>`, `if (gameData.isBaseDataError) return <DatabaseErrorView/>`)이 404도 막고 있었다. `guardElement`(authLoading→Loader / isBaseDataError→DatabaseErrorView / 아니면 `<Outlet/>`)를 만들어 `<Routes>` 안 pathless 레이아웃 라우트(`<Route element={guardElement}>`)로 기존 라우트 전체를 감싸고, 최종 `*`(NotFound)만 그 밖에 둠. 롤백: 래핑 Route 제거 + 두 early return 복원(`import Outlet` 제거).
+
+**후속 2(같은 날) — 리그 안 404가 리그 로딩을 기다리던 문제**: 사용자가 녹화한 Chrome 트레이스(`Trace-20261015T150324.json`, URL `/multi/leagues/7vqtgwbr/season/wrongpage`) 분석 결과, 시즌 레이아웃 안에 둔 `<Route path="*" element={<NotFound variant="panel"/>}>`가 매칭되면서 `LeagueLayout`이 리그 데이터 전체(leagues/rooms/league_teams/games/league_player_seasons/meta_players 등 약 30개 쿼리, 34.7s→38.3s ≈ 3.6초)를 로드한 뒤에야 404를 그렸다. 해결: 시즌 하위 `*` 삭제, 레이아웃 **바깥**(가드 밖, 최종 `*` 바로 위)에 `<Route path="/multi/leagues/:leagueId/season/*" element={<NotFound />} />` 추가 — react-router는 정적 경로가 splat보다 우선하므로 정상 화면 매칭은 그대로(`matchRoutes`로 검증). `NotFound`의 `variant` prop(panel)은 제거. 결과: 리그 안 오타 URL은 사이드바/헤더 없는 전체 화면 404를 즉시 표시. 롤백: 위 Route 삭제 + 시즌 하위 `*`(panel) 복원.
+참고(코드 문제 아님): 같은 트레이스의 앞 ~3초(31.4→34.3s)는 Vite dev 서버가 모듈 약 600개를 개별 요청하는 구간으로 운영 빌드에는 해당하지 않음.
+
+**검증**: `tsc --noEmit` 오류 52건 = 베이스라인 동일(신규 0). 브라우저 확인은 미실시.
+
+**롤백 방법**: 위 Before 두 블록 복원 + 시즌 `*` 라우트와 NotFound import 삭제, `components/NotFound.tsx` 삭제.
+
+---
+
+## 2026-10-15 — 멀티 "순위 경쟁(Playoff Race)" 페이지 신설
+
+**배경**: 정규시즌 종료 한 달 전부터 컨퍼런스별 플레이오프 진출 확률·경우의 수·매직넘버·타이브레이커를 보여주는 화면 요청. 리그 사이드바/헤더에서 "순위표" 바로 아래에 추가.
+
+**변경 파일** (전부 신규 추가 + 배선, 기존 로직 수정 없음 — 서버 미러 없음, 순수 클라이언트 계산):
+- `views/multi/season/playoffRaceUtils.ts` (신규) — 매직넘버/탈락넘버/상태/동률 그룹/경우의 수 문장(`computeConferenceRaces`, `buildScenarioLines`), 몬테카를로(`computeRaceOdds`), 노출 기간 판정(`getRegularSeasonEndDate`, `isPlayoffRaceOpen`, `PLAYOFF_RACE_WINDOW_DAYS=30`)
+- `views/multi/season/MultiPlayoffRaceView.tsx` (신규) — 화면(동부/서부 토글, 확률·M·N 표, 행 클릭 시 경우의 수/다음 경기/인접팀 맞대결, 타이브레이커 패널)
+- `hooks/usePlayoffRaceOpen.ts` (신규) — 사이드바/헤더/화면 공용 노출 조건(main_league && 가상 날짜 ≥ 정규시즌 종료일−30일). 초기엔 `bracket_data` 없을 때만 노출했으나 같은 날 요청으로 제거 — 브라켓 생성 후에도 유지(훅의 `hasBracket` 인자와 뷰의 `hasBracket` 분기 삭제; 롤백 시 복원)
+- `App.tsx` — `import MultiPlayoffRaceView` + `<Route path="race" .../>` (standings 라우트 바로 아래)
+- `components/MultiSidebar.tsx` — `showPlayoffRace` 계산 + 순위표 NavItem 아래 "순위 경쟁" NavItem
+- `components/MultiHeader.tsx` — `showPlayoffRace` 계산 후 `MultiHeaderNavMenu`에 prop 전달
+- `components/dashboard/MultiHeaderNavMenu.tsx` — `showPlayoffRace` prop, 리그 드롭다운에 "순위 경쟁" 항목, `isLeagueActive`에 `/race` 추가
+- `public/images/sidenav/race.svg`, `race-selected.svg` (신규 아이콘)
+
+**Before**: `/season/race` 라우트·메뉴 항목 없음. 순위표(`MultiStandingsView`)의 PO%는 동률을 무작위 처리.
+
+**After** (핵심 규칙):
+```ts
+// 타이브레이커 = 서버 playoffSeeder.computeStandingsByConference sorter와 동일: (W-L) → 정규시즌 득실차 합계
+// 상위 K 확정 매직넘버 M = (타팀 최대승수 중 K번째로 큰 값) - 내 승수 + 1   (≤0이면 확정)
+// 상위 K 탈락넘버   N = 내 최대승수 - (타팀 현재승수 중 K번째로 큰 값) + 1 (≤0이면 탈락)
+// autoK = playIn ? N-2 : N,  lastK = playIn ? N+2 : N   (기존 computeClinchStatus와 동일 정의)
+```
+- 동률은 위협으로 간주(보수적) → 확정/탈락 표시가 실제보다 한 박자 늦을 수 있음.
+- 확률은 log5 몬테카를로 1,000회, 동률은 서버와 같게 (마진 → 현재 득실차)로 처리. 공개된 경기 수가 바뀔 때만 재계산(숫자 흔들림 방지).
+- 순위표 PO%(`computePlayoffOddsMap`, 동률 무작위)와 소수점 단위로 다를 수 있음 — 기존 함수는 수정하지 않음.
+
+**후속(같은 날) — "주목 경기" 목록 추가**: 순위 경쟁 화면 하단(타이브레이커 위)에 시즌 막판 순위에 영향을 주는 남은 경기를 인라인 텍스트 리스트로 표시.
+- `playoffRaceUtils.ts`: ① 확정/탈락 판정을 `evalConference(slugs, {wins,losses,remaining,pd}, zones)`로 분리(기존 `computeConferenceRaces`도 이걸 사용 — 출력 동일함을 동일 테스트로 확인) ② `computeKeyGames()` 신설: 남은 경기마다 홈승/원정승 두 가정으로 `evalConference`를 다시 돌려 어떤 팀 상태가 탈락·직행 확정·플레이인 이상 확정으로 갈리면 `elimination`/`clinch`로 분류(제3팀 영향 포함, "A 승리 시 C 탈락"), 같은 컨퍼런스 두 팀이 모두 컷라인 경합(직행% 또는 진출%가 2~98%)이면 `clash`.
+- `MultiPlayoffRaceView.tsx`: `KeyGamesPanel` 추가(날짜 · [탈락 결정]/[확정 결정]/[직접 대결] 태그 · 원정 @ 홈 · 한 줄 설명, 날짜순).
+- 한계: 보수적 판정(동률=위협)이라 "탈락 가능"으로 잡혀도 확률상 0%일 수 있음. 가정 상태의 득실차는 고정값. 30팀·450경기에서 약 94ms(15초 버킷마다 1회).
+- 롤백: `KeyGamesPanel`/`computeKeyGames` 사용부와 함수 삭제(`evalConference` 분리는 동작 동일하므로 유지해도 무방).
+
+**후속(같은 날) — dev 전용 목업 `/dev/race-mock` 추가**: 플레이오프 진행 중인 리그에서 화면을 확인할 수 없어, 가상 데이터를 "실제" 계산 함수와 "실제" 화면 컴포넌트에 그대로 통과시키는 목업을 추가.
+- `views/dev/PlayoffRaceMock.tsx`(신규): 30팀 가상 시즌(시나리오 종료 30/7/4/2일 전, 플레이인 ON/OFF, seed 재생성, 쿼리 `?s=d4&pi=on&conf=West&seed=13`). 서버/DB 불필요.
+- `views/multi/season/MultiPlayoffRaceView.tsx`: 화면을 데이터/계산 컨테이너(`PlayoffRaceView`)와 표시 전용 `PlayoffRaceBody`(export)로 분리 — 동작 동일, 팀 클릭은 `onOpenTeam` 콜백.
+- `App.tsx`: `const PlayoffRaceMock = import.meta.env.DEV ? React.lazy(...) : null` + `/dev/race-mock` 라우트(가드 밖). 운영 빌드에서는 null이라 번들에서 제외됨(빌드 산출물 grep으로 확인).
+- `vite-env.d.ts`(신규, `/// <reference types="vite/client" />`): `import.meta.env` 타입 선언이 없어 추가. tsc 오류 52→51건(기존 1건 해소, 신규 0).
+- 목업으로 발견한 화면 버그 수정: 플레이인 구간이 있을 때 `clinched_entry`(플레이인 이상만 확정)가 "진출 확정"으로 표시돼 본선 진출로 오해됨 → "플레이인 이상"으로 표기, 상태 열 너비 88→96.
+- 롤백: `views/dev/` 삭제 + App.tsx의 lazy 선언/라우트 삭제(`vite-env.d.ts`·`PlayoffRaceBody` 분리는 유지해도 무방).
+
+**후속(같은 날) — 주목 경기 표시 수정(목업 확인 후 사용자 지시)**:
+- `[직접 대결]` 태그 텍스트 제거(`KIND_TAG`/`KIND_ORDER`에서 clash 제외 — 직접 대결 경기 자체와 설명 문구는 유지).
+- 날짜 텍스트 흰색(`text-white`) + 경기 링크(`/multi/leagues/:id/season/game/:shortCode`, `useGameShortCodes().getGameUrlId` — 다른 화면과 동일 방식). `PlayoffRaceBody`에 `onOpenGame` prop 추가(목업은 no-op).
+- 매치업 뒤에 타이브레이커 보유 팀 표시 `(타이브레이커 팀명 · 득실차 +122 vs +13)`: `KeyGame.tiebreak`(`computeKeyGames`) — 두 팀이 같은 컨퍼런스일 때만, 현재 시즌 득실차 합계가 큰 쪽이 보유(동일하면 "동일"). 서버 시딩 규칙(승패 마진 → 득실차)상 동률일 때만 의미가 있으며 득실차는 지금 시점 값이라 남은 경기에 따라 바뀔 수 있음. 다른 컨퍼런스 팀과의 경기는 표시 안 함.
+
+**후속(같은 날) — 주목 경기를 "확정/탈락을 가르는 경기"로만 한정(위 "주목 경기" 항목의 직접 대결 기준을 대체)**: "순위가 바뀔 수 있는 경기는 사실상 모든 경기"라는 지적으로 기준 변경.
+- `playoffRaceUtils.ts computeKeyGames`: `clash`(컷라인 직접 대결) 종류와 `odds` 인자 삭제. 사건 4종만 인정 — 플레이오프 직행 확정 / 플레이인 진출 확정(플레이인 없으면 플레이오프 진출 확정) / 플레이오프 직행 탈락(플레이인행 확정, 플레이인 구간이 있을 때만) / 플레이인 진출 탈락(없으면 플레이오프 진출 탈락). 홈승·원정승 두 가정으로 `evalConference`를 재계산해 한쪽에서만 새로 생기는 사건만 채택.
+- **가장 가까운 기회만 표시**: 한 승리로 확정되는 팀은 남은 경기 14개가 전부 "승리 시 확정"이 되어 노이즈가 됨 → (팀, 사건)별로 가장 이른 날짜의 경기만 남김(앞선 기회가 무산되면 다음 경기가 올라옴). 30팀 가상 시즌 기준 종료 30일 전 컨퍼런스 합산 0~6건, 7일 전 ~10건, 4일 전 ~5건, 2일 전 ~4건(전: 30일 전 최대 122건).
+- 화면: `KIND_TAG`는 탈락/확정 결정 두 가지, 안내 문구 갱신("같은 사건은 가장 가까운 기회만 표시").
+- 목업(`PlayoffRaceMock`): 팀 실력 분포를 0.68−0.026i → 0.64−0.02i로 좁힘(14경기 남은 시점에 이미 3위~11위 격차가 메울 수 없을 만큼 벌어져 비현실적이었음). 목업 데이터 변경일 뿐 운영 로직 무관.
+- 한계: 앞선 기회에 이미 확정 가능한 경기의 "다음 기회"는 앞 경기가 끝나야 보임. 롤백은 `computeKeyGames`를 직접 대결 포함 버전으로 되돌리면 됨(이전 항목 참고).
+
+**후속(같은 날) — 용어/색상**: "주목 경기" → "중요한 경기"로 명칭 변경(화면 제목·코드 주석; 위 항목들의 "주목 경기"는 같은 기능). 목록(`KeyGamesPanel` li)의 회색 글자(`text-slate-400/500/600/300/200`: 본문·타이브레이커·구분자 " — "·빈 상태 문구·팀명)를 전부 `text-white`로 통일. 제목 옆 개수와 상단 안내 문구는 기존 회색 유지.
+
+**후속(같은 날) — 가독성**: 서비스 보조 텍스트 표준(`text-slate-400`, 사용 빈도 slate-400 309 / 500 318 / 600 126건)에 맞춰 "중요한 경기"·"타이브레이커" 영역의 어두운 글자를 올림 — 안내/부가 문구·개수·순번·득실차·빈 상태·하단 M/N 설명 `slate-500/600`→`slate-400`, 규칙 목록·동률 팀 목록 `slate-400`→`slate-300`.
+
+**후속(같은 날) — 중요한 경기를 표 구조로**: 인라인 텍스트 나열 → 공용 `Table`(flush·compact). 열: 날짜(경기 링크) | 구분([탈락 결정]/[확정 결정]) | 매치업(원정 @ 홈) | 결과(경기 결과별 한 줄씩) | 타이브레이커(보유 팀 · 득실차 / 다른 컨퍼런스 경기는 "-"). 데이터/판정 로직 변경 없음(`KeyGamesPanel` 마크업만 교체).
+
+**후속(같은 날) — 타이브레이커도 표 구조로**: `TieBreakPanel`을 공용 `Table`(flush·compact) 2개로 교체 — ① 적용 순서 표(순서 | 기준 | 설명: 1 승패 마진 → "승패 마진이 큰 팀이 앞", 2 정규시즌 득실차 합계 → "승패 마진이 같으면 득실차가 큰 팀이 앞") ② 현재 컷라인에 걸친 동률 표(컷 | 승패 마진 | 동률 팀(시드 순·득실차) | 순서 결정). 판정/데이터 변경 없음. 글자색은 흰색 통일.
+
+**검증**: `tsc --noEmit` 오류 52건 = 변경 전 베이스라인과 동일(신규 0), `vite build` 통과. 6팀 가상 리그로 매직/탈락넘버 손계산 대조(esbuild 번들 후 node 실행) 일치. 실제 리그 화면 확인은 미실시.
+
+**롤백 방법**: 신규 5개 파일 삭제 + App.tsx/MultiSidebar/MultiHeader/MultiHeaderNavMenu의 위 diff 되돌리기(`git revert` 가능). 서버/DB 변경 없음.
+
+---
+
 ## 2026-10-14 — OVR 배지 디자인 교체: 6티어 색·크기별 글자·숫자 서체 (OVR 배지 조정 랩 확정값)
 
 **배경**: 사용자가 "OVR 배지 조정 랩"(https://claude.ai/artifact/9w7PVdoASaQM4yybo6tkcy)에서 조정 후 내보낸 값을 그대로 적용. 랩 개발 중 header(40px)에서 세 자리 숫자가 박스를 넘치는 문제를 확인해, 랩에 크기별 글자 조정·넘침 경고를 추가한 뒤 확정.

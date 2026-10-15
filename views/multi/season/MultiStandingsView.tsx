@@ -21,6 +21,8 @@ import { CONFERENCE_COLORS } from '../../../utils/constants';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { useTableSort } from '../../../hooks/useTableSort';
+import { buildRaceLedger } from './playoffRaceUtils';
+import { buildContext, rankGroup } from '../../../utils/nbaTiebreak';
 
 // ── 스탠딩 테이블 (main_league 전용) ─────────────────────────────────────────
 
@@ -150,6 +152,8 @@ function computeClinchStatus(
     schedule: ReturnType<typeof useMultiGameData>['schedule'],
     playoffTeamsPerConf: number,
     playInEnabled: boolean,
+    /** 컨퍼런스 순서(NBA 타이브레이커 적용) — 동률 팀 중 누가 컷 안쪽인지를 시딩과 같게 본다 */
+    orderOf: (slugs: string[]) => string[],
 ): Record<string, ClinchStatus> {
     const map: Record<string, ClinchStatus> = {};
     const autoClinchCount = playInEnabled ? Math.max(0, playoffTeamsPerConf - 2) : playoffTeamsPerConf;
@@ -174,12 +178,8 @@ function computeClinchStatus(
         const confTeams = leagueTeams.filter(t => t.conference === conf);
         if (confTeams.length === 0) continue;
 
-        const sorted = [...confTeams].sort((a, b) => {
-            const ra = statsMap[a.team_slug], rb = statsMap[b.team_slug];
-            if (!ra || !rb) return 0;
-            if (rb.pct !== ra.pct) return rb.pct - ra.pct;
-            return rb.wins - ra.wins;
-        });
+        const bySlug = new Map(confTeams.map(t => [t.team_slug, t]));
+        const sorted = orderOf(confTeams.map(t => t.team_slug)).map(s => bySlug.get(s)!);
 
         const maxWinsFromAutoPlus1 = sorted.length > autoClinchCount
             ? Math.max(...sorted.slice(autoClinchCount).map(t => maxPossibleWins(t.team_slug)))
@@ -503,9 +503,17 @@ const LeagueStandingsTable: React.FC<{
         [slugs, schedule, serverNowMs, teamMeta],
     );
 
+    // [2026-10-15] NBA 공식 타이브레이커(utils/nbaTiebreak.ts — 서버 시딩과 같은 엔진). 승률이 같은 팀의 순서를
+    // 컨퍼런스·디비전 화면에서 실제 시딩과 일치시킨다. 진출권 팀 = 플레이인 포함 진출 팀 수.
+    const tiebreak = useMemo(() => {
+        const ledger = buildRaceLedger(leagueTeams, schedule, serverNowMs);
+        const ctx = buildContext(ledger, { eligibleCount: playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf, drawSeed: 'live' });
+        return { orderOf: (slugs: string[]) => rankGroup(ledger, slugs, ctx) };
+    }, [leagueTeams, schedule, serverNowMs, playoffTeamsPerConf, playInEnabled]);
+
     const clinchMap = useMemo(
-        () => computeClinchStatus(leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled),
-        [leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled],
+        () => computeClinchStatus(leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled, tiebreak.orderOf),
+        [leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled, tiebreak],
     );
 
     const sosMap = useMemo(
@@ -543,7 +551,15 @@ const LeagueStandingsTable: React.FC<{
     );
 
     const rankedRows = useMemo((): RankedTeamRow[] => {
+        // 기본 정렬(PCT)일 때 컨퍼런스·디비전 화면은 동률을 NBA 타이브레이커로 가른다. 리그 전체(동·서 혼합)
+        // 순위는 규정에 동률 처리가 없어 기존 방식 유지. 다른 열로 정렬하면 그 값 기준 그대로.
+        const useTiebreak = sortConfig.key === 'pct' && mode !== 'League';
         const sortTeams = (list: LeagueTeam[]): LeagueTeam[] => {
+            if (useTiebreak) {
+                const idx = new Map(tiebreak.orderOf(list.map(t => t.team_slug)).map((s, i) => [s, i]));
+                const ordered = [...list].sort((a, b) => idx.get(a.team_slug)! - idx.get(b.team_slug)!);
+                return sortConfig.direction === 'desc' ? ordered : ordered.reverse();
+            }
             return [...list].sort((a, b) => {
                 const ra = statsMap[a.team_slug];
                 const rb = statsMap[b.team_slug];
@@ -591,7 +607,7 @@ const LeagueStandingsTable: React.FC<{
         const others = leagueTeams.filter(t => !teamMeta[t.team_slug]?.division);
         if (others.length > 0) rows.push(...buildGroup(others, '기타'));
         return rows;
-    }, [leagueTeams, statsMap, sosMap, playoffOddsMap, teamMeta, mode, sortConfig]);
+    }, [leagueTeams, statsMap, sosMap, playoffOddsMap, teamMeta, mode, sortConfig, tiebreak]);
 
     // 컨퍼런스 화면 전용 — 자동진출 컷(초록)과 마지막 진출권(플레이인 포함, 호박색) 컷라인.
     // 리그/디비전 화면은 정렬 기준이 컨퍼런스 순위가 아니라서 컷 위치가 의미가 없어 그리지 않는다.

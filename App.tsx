@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
@@ -30,6 +30,10 @@ import { LeagueLayout } from './views/multi/league/LeagueLayout';
 import MultiSeasonPage from './pages/MultiSeasonPage';
 import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
 import MultiStandingsView from './views/multi/season/MultiStandingsView';
+import NotFound from './components/NotFound';
+// dev 전용 목업 — 운영 빌드에서는 null이라 dynamic import 자체가 제거된다.
+const PlayoffRaceMock = import.meta.env.DEV ? React.lazy(() => import('./views/dev/PlayoffRaceMock')) : null;
+import MultiPlayoffRaceView from './views/multi/season/MultiPlayoffRaceView';
 import MultiPlayoffsView from './views/multi/season/MultiPlayoffsView';
 import MultiAllStarView from './views/multi/season/MultiAllStarView';
 import MultiScheduleView from './views/multi/season/MultiScheduleView';
@@ -357,17 +361,21 @@ const App: React.FC = () => {
 
     const shouldRestrictToQuickPlay = quickplayOnly && !isAdmin;
 
-    // ─── 전역 가드 (Router 진입 전) ───────────────────────────────────────────
-    if (authLoading) return <Loader message="잠시만 기다려주세요..." />;
-    if (gameData.isBaseDataError) {
-        return <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} onLogout={logout} />;
-    }
+    // ─── 전역 가드 ────────────────────────────────────────────────────────────
+    // 인증 확인/기초 데이터 오류 가드는 Routes 안의 pathless 레이아웃 라우트로 옮김 — 예전엔 Router 진입
+    // 전에 early return이라 존재하지 않는 URL(404)도 로딩 화면을 한 번 거쳤다. 404는 인증이 필요 없다.
+    const guardElement = authLoading
+        ? <Loader message="잠시만 기다려주세요..." />
+        : gameData.isBaseDataError
+            ? <DatabaseErrorView onRetry={() => queryClient.invalidateQueries({ queryKey: ['baseData'] })} onLogout={logout} />
+            : <Outlet />;
 
     // ─── 메인 렌더 ────────────────────────────────────────────────────────────
     return (
         <GameContext.Provider value={contextValue}>
             <>
                 <Routes>
+                    <Route element={guardElement}>
                     {/* ── Admin 라우트 (AdminGuard: 미로그인 → /auth?redirect=, 비관리자 → /) ── */}
                     <Route path="/admin/player-editor" element={<Navigate to="/admin/editor/player" replace />} />
                     <Route element={<AdminGuard />}>
@@ -414,6 +422,7 @@ const App: React.FC = () => {
                                 <Route path="news"         element={<MultiNewsFeedView />} />
                                 <Route path="roster"       element={<MultiRosterView />} />
                                 <Route path="standings"    element={<MultiStandingsView />} />
+                                <Route path="race"         element={<MultiPlayoffRaceView />} />
                                 <Route path="playoffs"     element={<MultiPlayoffsView />} />
                                 <Route path="allstar"      element={<MultiAllStarView />} />
                                 <Route path="schedule"     element={<MultiScheduleView />} />
@@ -459,14 +468,21 @@ const App: React.FC = () => {
                             <Route path="/draft-board" element={<DraftBoardPage />} />
                             <Route path="/draft-history" element={<DraftHistoryPage />} />
                             <Route path="/tactics" element={<TacticsPage />} />
-                            <Route path="*" element={<Navigate to="/home" replace />} />
                         </Route>
                     )}
 
-                    {/* quickplay_only 모드: 위(멀티 라우트 포함)에서 매칭되지 않은 나머지 경로 → /quick */}
-                    {shouldRestrictToQuickPlay && (
-                        <Route path="*" element={<Navigate to="/quick" replace />} />
+                    </Route>
+
+                    {/* 매칭되지 않은 모든 경로 → 404 (예전엔 싱글 /home, quickplay_only 모드는 /quick으로 조용히 리다이렉트) */}
+                    {PlayoffRaceMock && (
+                        <Route path="/dev/race-mock" element={<React.Suspense fallback={null}><PlayoffRaceMock /></React.Suspense>} />
                     )}
+
+                    {/* 리그 시즌 하위 잘못된 경로 — 시즌/리그 레이아웃 "바깥"에 둬야 한다. 안쪽에 두면 리그 데이터 전체를
+                        로드(수 초)한 뒤에야 404가 그려진다(트레이스로 확인). 정적 경로(standings 등)가 splat보다 우선하므로
+                        실제 화면 매칭에는 영향 없음. */}
+                    <Route path="/multi/leagues/:leagueId/season/*" element={<NotFound />} />
+                    <Route path="*" element={<NotFound />} />
                 </Routes>
 
                 {/* 시즌 전체 시뮬레이션 프로그레스 모달 — Routes 바깥에서 렌더링 */}

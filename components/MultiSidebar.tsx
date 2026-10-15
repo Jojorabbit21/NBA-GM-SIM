@@ -12,6 +12,7 @@ import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { usePlayoffRaceOpen } from '../hooks/usePlayoffRaceOpen';
 import { CountBadge } from './common/CountBadge';
 import { Dropdown } from './common/Dropdown';
 
@@ -97,6 +98,8 @@ export const MultiSidebar: React.FC = () => {
     const { schedule } = useSeasonContext();
     const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
     const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
+    // [2026-10-15] 정규시즌 종료 30일 전부터 시즌 끝까지(브라켓 생성 후에도) "순위 경쟁" 메뉴 노출.
+    const showPlayoffRace = usePlayoffRaceOpen(schedule, currentVirtualDate, league?.type);
 
     const base = `/multi/leagues/${leagueId}/season`;
     const isRosterActive = pathname.startsWith(`${base}/roster`);
@@ -217,6 +220,14 @@ export const MultiSidebar: React.FC = () => {
                             label="순위표"
                             onClick={() => navigate(`${base}/standings`)}
                         />
+                        {showPlayoffRace && (
+                            <NavItem
+                                active={pathname.startsWith(`${base}/race`)}
+                                icon={<NavIcon name="race" active={pathname.startsWith(`${base}/race`)} />}
+                                label="순위 경쟁"
+                                onClick={() => navigate(`${base}/race`)}
+                            />
+                        )}
                         <NavItem
                             active={pathname.startsWith(`${base}/leaderboard`)}
                             icon={<NavIcon name="leaderboard" active={pathname.startsWith(`${base}/leaderboard`)} />}
