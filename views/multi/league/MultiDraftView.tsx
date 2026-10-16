@@ -10,7 +10,7 @@ import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import { useDraftPresence } from '../../../hooks/useDraftPresence';
 import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft';
 import type { Player } from '../../../types';
-import { ATTR_GROUPS, ATTR_AVG_KEYS } from '../../../data/attributeConfig';
+import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { normalizeDraftSalaryScale, resolveDraftSalaryPct, draftSalaryAmount } from '../../../services/contracts/draftSalaryScale';
 import { formatMoney } from '../../../utils/formatMoney';
@@ -31,47 +31,15 @@ const POSITION_COLORS: Record<string, string> = {
 };
 
 /** DraftPoolPlayer(meta_players row) → Player 어댑터.
- *  custom_overrides가 있으면 base_attributes에 머지 후 반환 (싱글 custom mode와 동일 메커니즘).
+ *  드래프트풀 모달/로스터 등 다른 화면과 동일하게 mapRawPlayerToRuntimePlayer를 거쳐
+ *  custom_overrides 적용 + OVR 재계산이 일관되게 이뤄지도록 한다 (멀티: forceHealthy=true).
  */
 function toPlayer(p: DraftPoolPlayer, applyCustomOverrides = false): Player {
-    // DB는 런타임 키로 저장 (2026-04-21 마이그레이션 완료)
-    const base: Record<string, any> = { ...(p.base_attributes as any) };
-
-    // custom_overrides: alltime 풀이 포함된 세션에서만 적용
-    if (applyCustomOverrides) {
-        const overrides = base.custom_overrides;
-        if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
-            for (const [k, v] of Object.entries(overrides)) {
-                if (typeof v !== 'number') continue;
-                base[k] = v;
-            }
-        }
-    }
-
-    // 카테고리 평균(ins/out/plm/def/reb/ath)이 없으면 개별 능력치에서 계산
-    for (const group of ATTR_GROUPS) {
-        const avgKey = group.keys[0];
-        if (!ATTR_AVG_KEYS.has(avgKey)) continue;
-        if (base[avgKey] == null) {
-            const subKeys = group.keys.slice(1);
-            const vals = subKeys.map((k: string) => base[k] ?? 0).filter((v: number) => v > 0);
-            if (vals.length > 0) {
-                base[avgKey] = Math.round(vals.reduce((s: number, v: number) => s + v, 0) / vals.length);
-            }
-        }
-    }
-
-    return {
-        ...base,
-        id:       p.id,
-        name:     p.name,
-        position: p.position,
-        ovr:      base.ovr    ?? 70,
-        salary:   base.salary ?? p.salary ?? 0,
-        age:      base.age    ?? 25,
-        contract: base.contract ?? { salary: p.salary ?? 0, years: 1 },
-        team:     base.team   ?? '',
-    } as unknown as Player;
+    return mapRawPlayerToRuntimePlayer(
+        { id: p.id, name: p.name, position: p.position, salary: p.salary, base_attributes: p.base_attributes },
+        applyCustomOverrides,
+        true,
+    );
 }
 
 const MultiDraftView: React.FC = () => {
@@ -254,7 +222,7 @@ const MultiDraftView: React.FC = () => {
 
     const adaptedPlayers = useMemo(
         () => poolPlayers.filter(p => !draftedSet.has(p.id)).map(p => toPlayer(p, useCustomOverrides)),
-        [poolPlayers, draftedSet],
+        [poolPlayers, draftedSet, useCustomOverrides],
     );
 
     // myPicks(픽 순서 보존 배열) 순서 그대로 매핑 — poolPlayers.filter()를 쓰면 poolPlayers의
@@ -266,7 +234,7 @@ const MultiDraftView: React.FC = () => {
             .map(id => poolById.get(id))
             .filter((p): p is DraftPoolPlayer => !!p)
             .map(p => toPlayer(p, useCustomOverrides));
-    }, [poolPlayers, myPicks]);
+    }, [poolPlayers, myPicks, useCustomOverrides]);
 
     // ── DraftHeader 용 파생 값 ────────────────────────────────────────────────
     const currentRound      = draftState ? Math.floor(draftState.currentPickIndex / teamCount) + 1 : 1;

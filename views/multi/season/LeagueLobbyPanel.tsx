@@ -88,7 +88,9 @@ const LeagueLobbyPanel: React.FC = () => {
     // 차단 + 팀 변경 금지(값 갱신은 아래 useEffect, claim_team RPC도 서버에서 동일하게 거부).
     const [draftDeadlineCountdown, setDraftDeadlineCountdown] = useState<string | null>(null);
     const [draftDeadlinePassed,    setDraftDeadlinePassed]    = useState(false);
-    const canClaim      = isRecruiting && !(isPersonalDraft && draftDeadlinePassed); // 모집 중이면 언제든 빈 팀 선점 가능
+    // [2026-10-16] 로터리(순서 추첨) 이후에는 신규 참가·팀 선점 모두 불가 — DB도 같은 규칙을 강제한다(claim_team,
+    // room_members 트리거 block_join_after_lottery). 이전엔 모집 중(recruiting)이면 로터리 후에도 버튼이 보였다.
+    const canClaim      = isRecruiting && !lotteryDone && !(isPersonalDraft && draftDeadlinePassed);
     const canChangePre  = isRecruiting && !lotteryDone && !(isPersonalDraft && draftDeadlinePassed); // 팀 변경은 로터리 전까지만
 
     const { draftState, timeRemaining, currentPickEntry, isMyTurn } = useLeagueDraft(
@@ -296,6 +298,9 @@ const LeagueLobbyPanel: React.FC = () => {
                 </div>
 
                 {/* [2026-10-13] 참가/선점/탈퇴/강퇴 실패 — InlineNotice(에러 표시 정책 0-7). 마감·추첨 뒤 같은 타이밍 안내는 warning */}
+                {isRecruiting && lotteryDone && !isMember && !isPersonalDraft && (
+                    <InlineNotice tone="warning">드래프트 순서 추첨이 완료되어 더 이상 새로 참가할 수 없습니다.</InlineNotice>
+                )}
                 {actionErr && (
                     <InlineNotice tone={/마감|추첨 후/.test(actionErr) ? 'warning' : 'danger'}>{actionErr}</InlineNotice>
                 )}

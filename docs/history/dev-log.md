@@ -35,6 +35,40 @@
 
 ---
 
+
+## 2026-10-16 — 멀티 드래프트룸 OVR이 custom_overrides 미반영으로 표시되던 버그
+
+**배경**: 드래프트룸(MultiDraftView)의 OVR이 드래프트풀 모달과 달리 base_attributes 저장값만 표시. 자체 어댑터 `toPlayer()`가 오버라이드를 능력치 키에만 머지하고 `ovr: base.ovr ?? 70`(저장값)을 그대로 썼으며, OVR 재계산이 없었음. 추가로 두 `useMemo` 의존성에 `useCustomOverrides`가 빠져 있었음.
+
+**변경 파일**:
+- `views/multi/league/MultiDraftView.tsx` (client 전용, 서버 미러 없음)
+
+**Before**:
+```ts
+function toPlayer(p, applyCustomOverrides = false) {
+    const base = { ...p.base_attributes };
+    if (applyCustomOverrides) { /* custom_overrides 숫자 키를 base에 덮어쓰기 */ }
+    /* ATTR_GROUPS 카테고리 평균 보정 */
+    return { ...base, id, name, position, ovr: base.ovr ?? 70, salary: ..., age: base.age ?? 25, contract: ..., team: ... };
+}
+// useMemo deps: [poolPlayers, draftedSet] / [poolPlayers, myPicks]
+```
+
+**After**:
+```ts
+function toPlayer(p, applyCustomOverrides = false) {
+    return mapRawPlayerToRuntimePlayer({ id, name, position, salary, base_attributes }, applyCustomOverrides, true);
+}
+// useMemo deps: [poolPlayers, draftedSet, useCustomOverrides] / [poolPlayers, myPicks, useCustomOverrides]
+```
+(`ATTR_GROUPS, ATTR_AVG_KEYS` import 제거, `mapRawPlayerToRuntimePlayer` import 추가)
+
+**검증**: tsc에서 MultiDraftView 관련 오류 없음. 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 위 Before 형태의 `toPlayer`(git 이전 커밋 참조)로 복원하고 import 및 deps 되돌림.
+
+---
+
 ## 2026-10-16 — 남은 OVR 배지 크기·글자 덮어쓰기 23곳 전부 제거 → 표준 sm
 
 **배경**: 사용자 요청("덮어쓰기 모두 sm으로 규격화"). 앞선 화면별 작업 후에도 `OvrBadge`에 `!w-* !h-* !text-*`로 크기/글자를 강제하던 호출이 15개 파일 23곳 남아 있었음. 스크립트(`<OvrBadge …/>`를 줄바꿈 포함 전수 파싱)로 일괄 처리.
@@ -350,6 +384,28 @@ const grad3 = (c1, c2, c3) =>                                                   
 **검증**: `npx tsc --noEmit` — 51건 오류, 전부 기존 파일(`hooks/useGameData.ts` 19, `pages/PlayerEditorPage.tsx` 6 등), `OvrBadge`/`index.css` 관련 0건. `npx vite build --outDir /tmp/…` 통과, 산출 CSS에 `@font-face HerosBadge … url(/fonts/HerosBadge-digits.woff2)` 확인, `dist`에 폰트 파일 복사 확인. **브라우저에서 실제 렌더링은 미확인**(48개 사용처 화면 육안 확인 필요).
 
 **롤백 방법**: `git checkout -- components/common/OvrBadge.tsx index.css` 후 `rm public/fonts/HerosBadge-digits.woff2`(빈 디렉터리면 `rmdir public/fonts`). 커밋 후라면 해당 커밋을 revert. 수동 복구는 위 Before 블록의 `TIERS`·`DIGIT_FONT`·본문을 되돌리면 됨(`text-shadow-ovr`는 `index.css`에 그대로 남아 있음).
+
+---
+
+## 2026-10-16 — 드래프트 로터리 이후 세션 신규 참가 명시적 차단 (DB + 로비 UI)
+
+**배경**: 로터리(순서 추첨) 후 "팀 변경"만 `claim_team`이 막고 "신규 참가"는 막는 장치가 없었다. 로터리 직후 서버가 AI 슬롯으로 정원(30/30)을 채우면서 `room_members` 정원 트리거(`check_room_capacity`)에 우연히 걸릴 뿐이라, AI 채우기가 실패/지연되면 팀 없는 신규 참가자가 빈 팀을 선점할 수 있었고 에러 메시지도 부정확("방이 가득 참")했다. 로비 UI도 `canClaim = recruiting`만 봐서 로터리 후에도 AI 슬롯에 "참가" 버튼이 보였다(AI 슬롯은 `league_teams.user_id`가 NULL — FK 때문에 가짜 UUID 불가. `league_teams.is_ai` 기본값이 true라 `is_ai`로는 "빈 슬롯/AI 슬롯"을 구분할 수 없음 → 로터리 완료 여부로 판정).
+
+**변경 파일**:
+- `migrations/block_join_after_lottery.sql` (신규, **운영 DB `buummihpewiaeltywdff`에 `apply_migration`으로 적용 완료**)
+  - `claim_team` RPC: 로터리 완료 후 팀 없는 유저의 선점도 `lottery_already_done`으로 거부(이미 팀이 있으면 기존 `draft_already_ordered`). 개인 팩 드래프트 마감 분기는 그대로.
+  - `block_join_after_lottery()` + 트리거 `trg_block_join_after_lottery`(room_members BEFORE INSERT, SECURITY DEFINER): 로터리 완료 후 사람(is_ai=false)의 신규 멤버 추가 거부. AI 멤버·이미 멤버인 유저의 멱등 upsert는 허용. 트리거 이름이 `trg_room_capacity`보다 앞서 정원 에러보다 먼저 실행.
+- `services/multi/leagueService.ts` — `LOTTERY_DONE_JOIN_MESSAGE` 상수, `joinLeague`/`claimTeam`이 `lottery_already_done`을 "드래프트 추첨 후에는 새로 참가할 수 없습니다."로 매핑('추첨 후' 문구라 로비 InlineNotice가 warning 톤).
+- `views/multi/season/LeagueLobbyPanel.tsx` — `canClaim`에 `!lotteryDone` 추가(참가/선점 버튼 숨김), 로터리 후 비회원에게 안내 InlineNotice.
+
+**Before**: `canClaim = isRecruiting && !(isPersonalDraft && draftDeadlinePassed)`, `claim_team`은 로터리 후 팀 있는 유저만 거부.
+**After**: `canClaim = isRecruiting && !lotteryDone && !(...)`, DB가 로터리 후 신규 참가(insert)와 팀 선점을 모두 거부.
+
+**검증**: 실제 리그(Pro Basketball League, 로터리 완료·30/30)에서 롤백되는 DO 블록으로 5건 확인 — 신규 사람 insert 차단(`lottery_already_done`), AI insert는 로터리 트리거 통과(정원 트리거만 걸림), 기존 멤버 멱등 insert는 로터리 트리거 통과, 팀 없는 유저 claim 차단, 팀 있는 유저 변경 `draft_already_ordered`. 테스트 후 멤버 30명 그대로·테스트 행 0건 확인. client `tsc` 51건=베이스라인.
+
+**주의**: 개인 팩 드래프트/토너먼트는 `draft_order`를 쓰지 않아 영향 없음. 로터리 이후 사람을 추가하는 정상 경로가 새로 생기면(예: AI 팀 인수) 이 트리거가 막으므로 그때 예외 조건을 넣어야 한다.
+
+**롤백 방법**: `DROP TRIGGER trg_block_join_after_lottery ON public.room_members; DROP FUNCTION public.block_join_after_lottery();` + `claim_team`에서 `RAISE EXCEPTION 'lottery_already_done'` 한 줄 제거(이전 정의는 `migrations/add_personal_draft_deadline.sql`). 클라이언트는 위 3개 파일 git 복원.
 
 ---
 

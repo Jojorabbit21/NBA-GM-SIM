@@ -290,6 +290,9 @@ export const createRoom = async (
 
 // ─── 리그 참가 (유저가 방에 입장) ────────────────────────────────────────────
 
+/** 드래프트 순서 추첨(로터리) 이후 신규 참가 거부 안내 — LeagueLobbyPanel의 InlineNotice가 '추첨 후'로 warning 톤 판별 */
+export const LOTTERY_DONE_JOIN_MESSAGE = '드래프트 추첨 후에는 새로 참가할 수 없습니다.';
+
 export interface JoinLeagueResult {
     roomId: string;
     error: string | null;
@@ -319,7 +322,13 @@ export const joinLeague = async (
             { onConflict: 'room_id,user_id', ignoreDuplicates: true }
         );
 
-    if (upsertErr) return { roomId: '', error: actionFailure(upsertErr, '리그 참가') };
+    if (upsertErr) {
+        // [2026-10-16] 로터리 후 신규 참가는 DB 트리거(block_join_after_lottery)가 거부한다
+        if ((upsertErr.message ?? '').includes('lottery_already_done')) {
+            return { roomId: '', error: LOTTERY_DONE_JOIN_MESSAGE };
+        }
+        return { roomId: '', error: actionFailure(upsertErr, '리그 참가') };
+    }
     return { roomId: room.id, error: null };
 };
 
@@ -697,6 +706,7 @@ export const claimTeam = async (
         const msg = error.message ?? '';
         if (msg.includes('team_already_claimed'))   return { data: null, error: '이미 다른 유저가 선점한 팀입니다.' };
         if (msg.includes('draft_already_ordered'))  return { data: null, error: '드래프트 추첨 후에는 팀을 변경할 수 없습니다.' };
+        if (msg.includes('lottery_already_done'))   return { data: null, error: LOTTERY_DONE_JOIN_MESSAGE };
         if (msg.includes('draft_deadline_passed'))  return { data: null, error: '드래프트 마감 시각이 지나 더 이상 참가하거나 팀을 변경할 수 없습니다.' };
         return { data: null, error: actionFailure(error, '팀 선택') };
     }
