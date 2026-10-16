@@ -188,7 +188,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                     </div>
                                 </TableCell>
                                 <TableCell align="center" className="px-2 py-3">
-                                    <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
+                                    <OvrBadge value={ovr} size="sm" />
                                 </TableCell>
                                 <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
                                 <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-red-400">-{formatMoney(p.salary)}</TableCell>
@@ -227,7 +227,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                 <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{targetTeam.name}</TableCell>
                                 <TableCell className="px-2 py-3 text-sm font-black text-slate-200">{p.name}</TableCell>
                                 <TableCell align="center" className="px-2 py-3">
-                                    <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
+                                    <OvrBadge value={ovr} size="sm" />
                                 </TableCell>
                                 <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
                                 <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-emerald-400">+{formatMoney(p.salary)}</TableCell>

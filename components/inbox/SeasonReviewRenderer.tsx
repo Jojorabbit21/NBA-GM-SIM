@@ -123,7 +123,7 @@ export const SeasonReviewRenderer: React.FC<SeasonReviewRendererProps> = ({ sr, 
                                         <span className="text-[9px] font-black text-emerald-500 uppercase">영입</span>
                                         {t.acquired.map((p, i) => (
                                             <div key={i} className="flex items-center gap-2 mt-0.5">
-                                                <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0" />
+                                                <OvrBadge value={p.ovr} size="sm" className="!mx-0" />
                                                 <span className="text-xs font-bold text-emerald-300">{p.name}</span>
                                             </div>
                                         ))}
@@ -132,7 +132,7 @@ export const SeasonReviewRenderer: React.FC<SeasonReviewRendererProps> = ({ sr, 
                                         <span className="text-[9px] font-black text-red-500 uppercase">방출</span>
                                         {t.departed.map((p, i) => (
                                             <div key={i} className="flex items-center gap-2 mt-0.5">
-                                                <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0 grayscale opacity-50" />
+                                                <OvrBadge value={p.ovr} size="sm" className="!mx-0 grayscale opacity-50" />
                                                 <span className="text-xs font-bold text-slate-400">{p.name}</span>
                                             </div>
                                         ))}

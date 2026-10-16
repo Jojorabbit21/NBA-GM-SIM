@@ -286,7 +286,7 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                                         </select>
                                         {selectedPlayer && (
                                             <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                                                <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="sm" className="!text-xs" />
+                                                <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="sm" />
                                             </div>
                                         )}
                                         <div className={`absolute inset-0 flex items-center pl-9 pr-10 pointer-events-none text-xs font-semibold truncate ${selectedPlayer ? 'text-white' : 'text-slate-500'}`}>

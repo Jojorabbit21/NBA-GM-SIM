@@ -138,6 +138,7 @@ const PlayoffRaceMock: React.FC = () => {
                     daysLeft={data.daysLeft}
                     onOpenTeam={() => { /* 목업: 이동 없음 */ }}
                     onOpenGame={() => { /* 목업: 이동 없음 */ }}
+                    initialExpanded={q.get('open')}
                 />
             </div>
         </div>

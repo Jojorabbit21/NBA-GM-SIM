@@ -207,7 +207,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                     </TableCell>
                                     <TableCell align="center" className="">
                                         <div className="flex justify-center">
-                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                            <OvrBadge value={ovr} size="sm" />
                                         </div>
                                     </TableCell>
 
@@ -235,7 +235,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                 </td>
                                 <td className="text-center border-r border-slate-800">
                                     <div className="flex justify-center">
-                                        <OvrBadge value={teamAverages.ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                        <OvrBadge value={teamAverages.ovr} size="sm" />
                                     </div>
                                 </td>
                                 

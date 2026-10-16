@@ -218,7 +218,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                                             return (
                                                 <>
                                                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                        <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="!w-4 !h-4 !text-[10px] shrink-0" />
+                                                        <OvrBadge value={calculatePlayerOvr(result.player)} size="sm" className="shrink-0" />
                                                         <span className="text-xs font-semibold text-text-muted truncate">{result.player.name}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1 shrink-0">

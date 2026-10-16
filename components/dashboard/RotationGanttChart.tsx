@@ -507,7 +507,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                         {/* OVR */}
                                         <td className={`sticky left-[210px] z-30 ${SK} text-center ${SB} border-b border-slate-800`}>
                                             <div className="flex justify-center">
-                                                <OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" />
+                                                <OvrBadge value={ovr} size="sm" className="!shadow-none" />
                                             </div>
                                         </td>
 

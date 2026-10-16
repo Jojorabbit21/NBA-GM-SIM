@@ -32,7 +32,7 @@ const PlayerRow: React.FC<{ player: Player; selected: boolean; onToggle: () => v
             selected ? 'bg-indigo-600/30 ring-1 ring-indigo-500' : 'hover:bg-white/5'
         }`}
     >
-        <OvrBadge value={calculatePlayerOvr(player)} size="sm" className="!text-xs shrink-0" />
+        <OvrBadge value={calculatePlayerOvr(player)} size="sm" className="shrink-0" />
         <span className="text-xs font-semibold text-white truncate">{player.name}</span>
         <span className="text-[10px] text-slate-500 shrink-0">{player.position}</span>
     </button>

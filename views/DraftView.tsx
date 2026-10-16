@@ -445,7 +445,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, lotteryResult, 
                                             <TableCell style={getStickyStyle(LEFT_HT, WIDTHS.HT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.height}</TableCell>
                                             <TableCell style={getStickyStyle(LEFT_WT, WIDTHS.WT)} align="left" className="text-slate-500 font-semibold bg-slate-900 group-hover:bg-slate-800">{p.weight}</TableCell>
                                             <TableCell style={getStickyStyle(LEFT_OVR, WIDTHS.OVR)} align="center" className="bg-slate-900 group-hover:bg-slate-800">
-                                                <div className="flex justify-center items-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
+                                                <div className="flex justify-center items-center"><OvrBadge value={ovr} size="sm" className="!shadow-none" /></div>
                                             </TableCell>
                                             <TableCell style={getStickyStyle(LEFT_POT, WIDTHS.POT, true)} align="center" className="bg-slate-900 group-hover:bg-slate-800">
                                                 <span className="font-mono font-black tabular-nums text-amber-400/80">{p.potential}</span>

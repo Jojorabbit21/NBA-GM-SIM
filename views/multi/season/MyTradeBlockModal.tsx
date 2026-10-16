@@ -239,7 +239,7 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
             className={`flex items-center gap-2.5 px-4 h-9 bg-slate-900 border-b border-slate-800/50 hover:bg-white/[0.03] cursor-grab active:cursor-grabbing transition-opacity ${draggedPlayerId === p.id ? 'opacity-30' : ''}`}
         >
             <GripVertical size={14} className="text-slate-600 shrink-0" />
-            <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-sm !shadow-none shrink-0" />
+            <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none shrink-0" />
             <span className="text-sm font-semibold text-white flex-1 truncate">{p.name}</span>
             <span className="text-sm text-slate-500 shrink-0">{p.position}</span>
         </div>

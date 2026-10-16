@@ -73,8 +73,8 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
             <TableCell align="center">
                 <div className="flex justify-center">
                     {ovr === null
-                        ? <Skeleton className="!w-7 !h-7 rounded-full" />
-                        : <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />}
+                        ? <Skeleton className="!w-6 !h-6 rounded-full" />
+                        : <OvrBadge value={ovr} size="sm" className="!shadow-none" />}
                 </div>
             </TableCell>
         </>

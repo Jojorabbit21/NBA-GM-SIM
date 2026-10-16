@@ -350,7 +350,7 @@ const HomeLeagueLeadersSection: React.FC = () => {
                                 onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(entry.player.id)}`)}
                             >
                                 <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell>
-                                <TableCell><div className="flex justify-center"><OvrBadge value={entry.player.ovr} size="table" /></div></TableCell>
+                                <TableCell><div className="flex justify-center"><OvrBadge value={entry.player.ovr} size="sm" /></div></TableCell>
                                 <TableCell align="left" className="max-w-0">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                         <TeamBadge
@@ -783,7 +783,7 @@ const HomeMyRosterSummarySection: React.FC = () => {
                                             <span className="block text-sm font-bold text-slate-200 truncate">{p.name}</span>
                                         </PlayerHoverCard>
                                     </TableCell>
-                                    <TableCell><div className="flex justify-center"><OvrBadge value={p.ovr} size="table" /></div></TableCell>
+                                    <TableCell><div className="flex justify-center"><OvrBadge value={p.ovr} size="sm" /></div></TableCell>
                                     <TableCell className="text-sm text-slate-500">{p.position}</TableCell>
                                     <TableCell className="text-sm text-slate-400 tabular-nums">{g > 0 ? g : '-'}</TableCell>
                                     <TableCell className="text-sm text-slate-400 tabular-nums">{g > 0 ? (p.stats.gs ?? 0) : '-'}</TableCell>

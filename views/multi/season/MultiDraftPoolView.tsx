@@ -182,7 +182,7 @@ const MultiDraftPoolView: React.FC = () => {
                                     <TableCell align="center" className="text-sm text-slate-400">{p.height}</TableCell>
                                     <TableCell align="center" className="text-sm text-slate-400">{p.weight}</TableCell>
                                     <TableCell align="center" className="">
-                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
+                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none" /></div>
                                     </TableCell>
                                     {ATTR_ITEMS.map(item => (
                                         <TableCell

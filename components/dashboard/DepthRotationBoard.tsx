@@ -148,7 +148,7 @@ const PlayerSlotDropdown: React.FC<{
                             p.id === selectedPlayer?.id ? 'bg-indigo-600/10 text-indigo-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                         }`}
                     >
-                        <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none shrink-0" />
+                        <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none shrink-0" />
                         <span className="min-w-0 truncate">{p.name}</span>
                         {p.activeInjurySeverity && (
                             <InjuryStatusBadge severity={p.activeInjurySeverity} size={14} iconSize={10} strokeWidth={4} className="shrink-0" />
@@ -523,7 +523,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                     <td className={`border-r border-slate-800 sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>
                                         {selectedPlayer && (
                                             <div className="flex justify-center">
-                                                <OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" />
+                                                <OvrBadge value={ovr} size="sm" className="!shadow-none" />
                                             </div>
                                         )}
                                     </td>

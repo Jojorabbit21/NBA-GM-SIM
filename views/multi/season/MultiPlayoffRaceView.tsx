@@ -177,14 +177,16 @@ export interface PlayoffRaceBodyProps {
     daysLeft: number | null;
     onOpenTeam: (slug: string) => void;
     onOpenGame: (gameId: string) => void;
+    /** 처음부터 펼쳐 둘 팀(목업/스크린샷용) */
+    initialExpanded?: string | null;
 }
 
 /** 화면 본체(표시 전용) — 데이터 로딩/계산은 PlayoffRaceView, 목업(dev)도 이 컴포넌트를 그대로 쓴다. */
 export const PlayoffRaceBody: React.FC<PlayoffRaceBodyProps> = ({
-    conf, onConfChange, race, odds, keyGames, zones, playInEnabled, teamBySlug, daysLeft, onOpenTeam, onOpenGame,
+    conf, onConfChange, race, odds, keyGames, zones, playInEnabled, teamBySlug, daysLeft, onOpenTeam, onOpenGame, initialExpanded = null,
 }) => {
     const hasPlayInTier = playInEnabled && zones.autoK !== zones.lastK;
-    const [expanded, setExpanded] = useState<string | null>(null);
+    const [expanded, setExpanded] = useState<string | null>(initialExpanded);
     const colCount = hasPlayInTier ? 14 : 11;
     const maxRemaining = Math.max(0, ...race.rows.map(r => r.remaining));
 
@@ -201,8 +203,8 @@ export const PlayoffRaceBody: React.FC<PlayoffRaceBodyProps> = ({
 
             <div className="flex-1 min-h-0 overflow-auto custom-scrollbar bg-slate-950">
                 {/* 요약 띠 — 컷 정의 */}
-                <div className="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-400 border-b border-slate-800">
-                    <span style={{ color: CONFERENCE_COLORS[conf] }} className="font-bold">{conf === 'East' ? '동부 컨퍼런스' : '서부 컨퍼런스'}</span>
+                <div className="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-400 border-b border-slate-800">
+                    <span style={{ color: CONFERENCE_COLORS[conf] }} className="text-base font-bold">{conf === 'East' ? '동부 컨퍼런스' : '서부 컨퍼런스'}</span>
                     {daysLeft !== null && <span>정규시즌 종료까지 <b className="text-white tabular-nums">{daysLeft}</b>일</span>}
                     <span>팀당 남은 경기 최대 <b className="text-white tabular-nums">{maxRemaining}</b></span>
                     <span className="flex items-center gap-1.5"><i className="inline-block w-3 h-[2px] bg-emerald-500/60" />{hasPlayInTier ? `직행 ${zones.autoK}위` : `진출 ${zones.autoK}위`}</span>
@@ -282,7 +284,7 @@ export const PlayoffRaceBody: React.FC<PlayoffRaceBodyProps> = ({
 
                                     {isOpenRow && (
                                         <tr>
-                                            <td colSpan={colCount} className="bg-slate-900/60 border-b border-slate-800">
+                                            <td colSpan={colCount} className="bg-slate-800/60 border-b border-slate-800">
                                                 <TeamDetail row={row} zones={zones} playInEnabled={playInEnabled} teamBySlug={teamBySlug} />
                                             </td>
                                         </tr>
@@ -318,7 +320,7 @@ const TeamDetail: React.FC<{ row: RaceRow; zones: RaceZones; playInEnabled: bool
     const scenarios = buildScenarioLines(row, zones, playInEnabled);
     const nameOf = (s: string) => teamBySlug.get(s)?.team_name ?? s;
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 px-6 py-4 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 px-6 py-4 text-sm">
             <div>
                 <p className="font-bold text-slate-300 mb-1.5">경우의 수</p>
                 <ul className="space-y-1 text-slate-400 leading-relaxed list-disc pl-4">

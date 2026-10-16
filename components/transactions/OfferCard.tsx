@@ -75,7 +75,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, onAccept, onPlayerC
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-950/80 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
                        <div className="flex-shrink-0">
-                          <OvrBadge value={displayOvr} size="md" className="!mx-0 !w-10 !h-10 !text-xl" />
+                          <OvrBadge value={displayOvr} size="sm" className="!mx-0" />
                        </div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
                          <div className="flex items-center gap-2">

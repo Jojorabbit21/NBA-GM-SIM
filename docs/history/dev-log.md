@@ -35,6 +35,324 @@
 
 ---
 
+## 2026-10-16 — 남은 OVR 배지 크기·글자 덮어쓰기 23곳 전부 제거 → 표준 sm
+
+**배경**: 사용자 요청("덮어쓰기 모두 sm으로 규격화"). 앞선 화면별 작업 후에도 `OvrBadge`에 `!w-* !h-* !text-*`로 크기/글자를 강제하던 호출이 15개 파일 23곳 남아 있었음. 스크립트(`<OvrBadge …/>`를 줄바꿈 포함 전수 파싱)로 일괄 처리.
+
+**규칙**: 각 호출의 `className`에서 `!w-*`, `!h-*`, `!text-*` 토큰만 제거. `!mx-*`, `!shadow-none`, `shrink-0`, `grayscale`, `opacity-*` 등 레이아웃·스타일 토큰은 보존. className이 비면 속성 자체를 제거. `size`가 `sm`이 아니면 `sm`으로(해당은 md 3곳뿐).
+
+**변경 파일 / 위치 (Before → After의 className만 기재)**:
+| 파일 | 행 | Before | After |
+|---|---|---|---|
+| `components/dashboard/AdminTradePanel.tsx` | 35 | `!text-xs shrink-0` | `shrink-0` |
+| `components/dashboard/GlobalSearch.tsx` | 221 | `!w-4 !h-4 !text-[10px] shrink-0` | `shrink-0` |
+| `components/dashboard/MultiGlobalSearch.tsx` | 211 | `!w-5 !h-5 !text-xs shrink-0` | `shrink-0` |
+| `components/dashboard/OpponentScoutPanel.tsx` | 210, 238 | `!w-7 !h-7 !text-xs` | (속성 제거) |
+| `components/inbox/AwardsReportViewer.tsx` | 142, 204, 280, 354 | `!w-6 !h-6 !text-xs !mx-auto` | `!mx-auto` |
+| `components/inbox/MessageContentRenderer.tsx` | 157 / 171 | `!w-6 !h-6 !text-xs !mx-0` / `… grayscale opacity-70` | `!mx-0` / `!mx-0 grayscale opacity-70` |
+| `components/inbox/SeasonReviewRenderer.tsx` | 126 / 135 | `!w-5 !h-5 !text-[9px] !mx-0` / `… grayscale opacity-50` | `!mx-0` / `!mx-0 grayscale opacity-50` |
+| `components/transactions/OfferCard.tsx` | 78 | **size="md"** `!mx-0 !w-10 !h-10 !text-xl` | **size="sm"** `!mx-0` |
+| `components/transactions/RequirementCard.tsx` | 75 | **size="md"** `!mx-0 !w-10 !h-10 !text-xl` | **size="sm"** `!mx-0` |
+| `components/transactions/TradeRosterList.tsx` | 57 | **size="md"** `!mx-0 !w-10 !h-10 !text-xl` | **size="sm"** `!mx-0` |
+| `components/transactions/TradeConfirmModal.tsx` | 191, 230 | `!w-7 !h-7 !text-sm` | (속성 제거) |
+| `components/transactions/TradeHistoryTable.tsx` | 140, 155 | `!w-6 !h-6 !text-xs !mx-0` | `!mx-0` |
+| `views/DraftView.tsx` | 448 | `!w-7 !h-7 !text-xs !shadow-none` | `!shadow-none` |
+| `views/multi/season/MultiDraftPoolView.tsx` | 185 | `!w-7 !h-7 !text-xs !shadow-none` | `!shadow-none` |
+| `views/multi/season/MyTradeBlockModal.tsx` | 242 | `!w-6 !h-6 !text-sm !shadow-none shrink-0` | `!shadow-none shrink-0` |
+
+**크기 변화 (눈에 띄는 것)**: 모두 표준 sm = 24px / 글자 15px(세 자리 11px)로 수렴. 커지는 곳 — `GlobalSearch`(16px→24), `MultiGlobalSearch`·`SeasonReviewRenderer`(20px→24). 크게 줄어드는 곳 — 트레이드 `OfferCard`·`RequirementCard`·`TradeRosterList`(40px→24, 글자 20px→15). 나머지 28px였던 곳(`OpponentScoutPanel`·`TradeConfirmModal`·드래프트 표)은 28→24. 글자는 모든 곳에서 12/14/9/10px 등 제각각이던 것이 15px로.
+
+**남긴 것(의도)**: `!shadow-none`(글로우 끔)은 유지. `OvrBadge`에서 덮어쓰기 없이 `md`/`lg`/`xl`/`header`/`card`/`table`을 쓰는 정상 호출은 건드리지 않음 — 잔존: `PersonalDraftCard`(card), `MessageContentRenderer`(md 4곳), `PlayerDetailView`(header), `PersonalDraftView`(table), `contractScreenParts`(md), `PlayerCardEditorPage`(lg).
+
+**검증**: 처리 후 같은 스크립트를 재실행해 덮어쓰기 0건 확인. `npx tsc --noEmit` 오류 51건 — 처리 전과 **오류 목록 동일**(전부 기존 파일 오류). 화면 육안 확인은 안 함.
+
+**롤백 방법**: 이 항목의 15개 파일은 앞선 작업과 겹치지 않으므로 `git checkout -- <위 15개 파일>`로 이 변경만 되돌릴 수 있음(커밋 전 기준). 수동 복구는 표의 Before를 해당 행에 되돌리면 됨.
+
+---
+
+## 2026-10-16 — 경기 결과 화면(박스스코어 표)의 OVR 배지를 표준 sm으로 규격화
+
+**배경**: 사용자 요청. 경기 결과 화면의 배지를 sm 표준으로 통일.
+
+**변경 파일**:
+- `components/game/PlayerIdentityCells.tsx` (~75-77행) — 박스스코어의 선수 행(이름·포지션·OVR) 공용 셀. 소비처: `BoxScoreTable`, `AdvancedBoxScoreTable`, `DefenseBoxScoreTable`, `views/multi/season/MultiGamePbpView.tsx`. 경기 결과 계열에서 `OvrBadge`를 직접 그리는 곳은 이 파일뿐(`components/game/*`, `GameResultView`, `LiveGameView`, `MultiGamePbpView` grep 확인).
+
+**Before**:
+```tsx
+? <Skeleton className="!w-7 !h-7 rounded-full" />
+: <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+```
+**After**:
+```tsx
+? <Skeleton className="!w-6 !h-6 rounded-full" />
+: <OvrBadge value={ovr} size="sm" className="!shadow-none" />
+```
+크기·글자 변화: 이름은 `sm`이었으나 `!w-7 !h-7 !text-xs`로 실제 28px/글자 12px였던 것이 24px/글자 15px(세 자리 11px)로 바뀜. 로딩 스켈레톤도 28px → 24px로 맞춰 로딩→배지 전환 시 폭이 튀지 않게 함. `!shadow-none`(글로우 끔)은 의도로 보여 유지.
+
+**검증**: grep으로 변경 확인. 타입 검사·화면 육안 확인은 안 함.
+
+**롤백 방법**: 위 Before 두 줄로 되돌림.
+
+---
+
+## 2026-10-16 — 트레이드 화면 히스토리 탭의 OVR 배지 table → sm
+
+**배경**: 사용자 요청. 같은 화면의 트레이드 제안·자유 계약 탭에 이어 히스토리 탭도 sm으로 통일.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (~2009행) — 히스토리 탭의 "자유 계약 / 웨이버" 종류 표(`historyKind !== 'trade'`) 선수 셀.
+
+**Before**:
+```tsx
+{player && <OvrBadge value={calculatePlayerOvr(player)} size="table" />}
+```
+**After**: `size="table"` → `size="sm"`. 28px(글자 17px) → 24px(글자 15px), `sm`은 `table`과 달리 97+ 글로우를 켬.
+
+**범위 메모**: 히스토리 탭의 "트레이드" 종류 표는 배지를 쓰지 않음(grep으로 확인). `TradeHistoryTable.tsx`(sm + `!w-6 !h-6 !text-xs`)는 싱글 모드 `TransactionsView`에서만 쓰여 멀티 히스토리와 무관 — 건드리지 않음.
+
+**검증**: grep으로 호출부 변경 확인, `MultiFrontOfficeView.tsx`의 `size="table"` 잔존 0건 확인. 타입 검사·화면 육안 확인은 안 함.
+
+**롤백 방법**: `size="sm"`을 `size="table"`로 되돌림.
+
+---
+
+## 2026-10-16 — 트레이드 화면 "트레이드 제안"·"자유 계약" 탭의 OVR 배지를 표준 sm으로
+
+**배경**: 사용자 요청. 선수 이동(트레이드) 화면의 두 탭을 sm으로 통일.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (~299행, `PlayerChip`) — 트레이드 제안 탭(`activeTab==='new'`)의 선수 칩. `PlayerChip`은 1736·1777행(제안 탭)에서만 쓰임.
+- `views/multi/season/MultiFreeAgentView.tsx` (~369행) — 자유 계약 탭은 이 화면을 `<MultiFreeAgentView embedded />`로 그대로 품음(독립 라우트도 같은 컴포넌트).
+
+**Before / After**:
+```tsx
+// MultiFrontOfficeView.tsx PlayerChip
+<OvrBadge value={player ? calculatePlayerOvr(player) : 0} size="table" />
+<OvrBadge value={player ? calculatePlayerOvr(player) : 0} size="sm" />
+// MultiFreeAgentView.tsx
+<OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+<OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none" />
+```
+크기 변화: 제안 탭 28px(글자 17px) → 24px(15px). 자유 계약 탭은 sm 이름이었지만 `!w-7 !h-7 !text-xs`로 28px/글자 12px였던 것이 24px/15px(세 자리 11px)로 바뀜. 자유 계약 표의 `!shadow-none`(글로우 끔)은 의도로 보여 유지. 제안 탭 `PlayerChip`은 `table`→`sm`이라 97+ 글로우가 켜짐.
+
+**이번에 건드리지 않은 것**: 같은 화면의 히스토리 탭(`MultiFrontOfficeView.tsx` ~2009행 `size="table"`), 트레이드 제안 흐름의 확인 모달(`TradeConfirmModal.tsx` — `sm`에 `!w-7 !h-7 !text-sm` 덮어쓰기). `TradeProposalTab.tsx`·`TradeNegotiationBuilder.tsx`는 이미 표준 `sm`.
+
+**검증**: grep으로 `PlayerChip` 사용처가 제안 탭 안에 한정됨과 호출부 변경 확인. 타입 검사·화면 육안 확인은 안 함.
+
+**롤백 방법**: 위 Before 문자열로 두 곳 되돌림.
+
+---
+
+## 2026-10-16 — 리더보드 표의 OVR 배지 크기 table → sm
+
+**배경**: 사용자 요청. 홈 화면·내 팀 탭 표에 이어 리더보드 화면도 sm으로 통일.
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardTable.tsx` (~177행, OVR 컬럼 셀)
+
+**Before**:
+```tsx
+else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="table" /></div>;
+```
+**After**: 같은 줄에서 `size="table"` → `size="sm"`.
+
+영향 범위: `LeaderboardTable`을 쓰는 `views/LeaderboardView.tsx` 하나이고, 싱글 리더보드와 멀티(`MultiLeaderboardView`)가 둘 다 이 뷰를 공유하므로 두 화면 모두 24px로 바뀜. 28px(글자 17px) → 24px(글자 15px), `sm`은 `table`과 달리 97+ 등급 글로우를 켬.
+
+**검증**: grep으로 해당 컴포넌트의 OvrBadge 호출이 이 한 줄뿐임을 확인. 타입 검사·화면 육안 확인은 안 함.
+
+**롤백 방법**: `size="sm"`을 `size="table"`로 되돌림.
+
+---
+
+## 2026-10-16 — 뎁스차트 계열 OVR 배지의 글자 크기 덮어쓰기(!text-xs) 제거 → size별 표준 글자 크기 사용
+
+**배경**: 사용자 지적 — 뎁스차트의 OVR 배지 글자가 표준과 다름. 원인: `size="sm"`(표준 글자 15px, 세 자리 11px) 배지에 `className="!text-xs"`(12px)를 강제로 덮어쓰고 있었음. 이는 예전 6단계 배지 시절 `!w-6 !h-6 !text-xs`로 임의 축소하던 흔적. 세 자리(100+)도 `!text-xs`가 덮어써 항상 12px였음.
+
+**변경 파일**:
+- `components/dashboard/DepthChartEditor.tsx` (~289행, 선택 선수 OVR)
+- `components/dashboard/DepthRotationBoard.tsx` (~151행 선수 칩, ~526행 로테이션 행)
+- `components/dashboard/RotationGanttChart.tsx` (~510행)
+
+**Before / After**:
+```tsx
+// DepthChartEditor.tsx
+<OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="sm" className="!text-xs" />
+<OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="sm" />
+// DepthRotationBoard.tsx:151
+<OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none shrink-0" />
+<OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none shrink-0" />
+// DepthRotationBoard.tsx:526, RotationGanttChart.tsx:510
+<OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" />
+<OvrBadge value={ovr} size="sm" className="!shadow-none" />
+```
+`!w-6 !h-6`은 `sm`의 기본값(`w-6 h-6`)과 같아 제거해도 크기 변화 없음. 글자는 12px → 15px(세 자리 11px). `!shadow-none`(글로우 끔)은 의도된 것으로 보여 유지. `PlayerTacticsPanel.tsx:147`은 이미 덮어쓰기 없음(변경 없음).
+
+**검증**: grep으로 4개 호출부 변경 확인. 타입 검사·화면 육안 확인은 안 함. 24px 정사각형에 15px 글자가 들어가므로 두 자리까지는 충분하지만 실제 렌더 확인은 필요.
+
+**롤백 방법**: 위 Before 문자열로 4곳 되돌림.
+
+---
+
+## 2026-10-16 — 내 팀 화면 각 탭 표의 OVR 배지 크기 table → sm 통일
+
+**배경**: 사용자 요청. 홈 화면 두 표(내 로스터 요약·리그 리더)를 sm으로 바꾼 데 이어, 내 팀 화면(로스터 라우트의 탭들) 표도 같은 크기로 통일.
+
+**변경 파일**:
+- `components/roster/PlayerInfoColumns.tsx` — `OvrTableBadge` 한 곳(선수 행 `PlayerInfoCells`·합계 행 `PlayerInfoFooterCells` 둘 다 이 컴포넌트를 씀)
+
+**Before**:
+```tsx
+/** 표 셀 안 OVR 배지(28px, 가운데) */
+export const OvrTableBadge: React.FC<{ value: number }> = ({ value }) => (
+    <div className="flex justify-center"><OvrBadge value={value} size="table" /></div>
+);
+```
+**After**:
+```tsx
+/** 표 셀 안 OVR 배지(24px, 가운데). [2026-10-16] table(28px) → sm(24px)로 통일 ... */
+export const OvrTableBadge: React.FC<{ value: number }> = ({ value }) => (
+    <div className="flex justify-center"><OvrBadge value={value} size="sm" /></div>
+);
+```
+영향 범위: 이 셀을 쓰는 4개 표 — `RosterOverviewGrid`(로스터 탭), `RosterGrid`(능력치 탭), `RosterStatsStack`(선수 기록 탭), `TeamPayrollTable`(재정 탭). 경기 기록·일정·코칭 스태프·드래프트 픽·팀 설정 탭은 OVR 배지를 쓰지 않아 변화 없음. **이 컴포넌트들은 싱글 모드 `views/RosterView.tsx`도 공유하므로 싱글 로스터 화면도 함께 24px로 바뀜.** 크기 28px(글자 17px) → 24px(글자 15px), `sm`은 `table`과 달리 97+(갤럭시 오팔·임페리얼) 글로우를 켬.
+
+**검증**: grep으로 `OvrTableBadge` 호출 2곳(114·127행)이 이 컴포넌트를 거치는 것 확인. 타입 검사·화면 육안 확인은 안 함.
+
+**롤백 방법**: `size="sm"`을 `size="table"`로, 주석을 원래대로 되돌림.
+
+---
+
+## 2026-10-16 — 홈 화면 내 로스터 요약·리그 리더의 OVR 배지 크기 table → sm
+
+**배경**: 사용자 요청. 2K식 배지 교체 직후 홈 화면 두 표 위젯의 배지를 한 단계 작은 크기로 맞춤.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` — `OvrBadge` 호출 2곳(리그 리더 표 ~353행, 내 로스터 요약 표 ~786행)
+
+**Before**:
+```tsx
+<OvrBadge value={entry.player.ovr} size="table" />   // 리그 리더
+<OvrBadge value={p.ovr} size="table" />               // 내 로스터 요약
+```
+**After**:
+```tsx
+<OvrBadge value={entry.player.ovr} size="sm" />
+<OvrBadge value={p.ovr} size="sm" />
+```
+크기 변화: 28px(글자 17px, 세 자리 13px) → 24px(글자 15px, 세 자리 11px). **`size="table"`은 글로우를 끄지만 `sm`은 켜므로**, 97 이상(갤럭시 오팔·임페리얼) 선수는 이 두 표에서도 10px 글로우가 표시됨.
+
+**검증**: grep으로 호출부 2곳 변경 확인. 화면 육안 확인은 안 함.
+
+**롤백 방법**: 위 두 줄의 `size="sm"`을 `size="table"`로 되돌림.
+
+---
+
+## 2026-10-16 — OVR 배지를 2K식 12단계 체계 + TeX Gyre Heros 서체로 교체
+
+**배경**: 2kratings.com의 레이팅 배지를 분석한 뒤, 사용자가 "레이팅 배지 스튜디오" 아티팩트(https://claude.ai/artifact/AEs4fF5nfRYiCriSM2ZoAk, 설정은 아티팩트 db `config/badges`)에서 12단계 OVR 등급의 이름·구간·색을 직접 확정하고 "이대로 적용" 지시. Helvetica Neue는 유료라 대체 서체로 TeX Gyre Heros(GUST Font License, 무료·상업 사용 가능)를 선택. **능력치(attr) 스케일은 이번에 적용하지 않음** — 우리 서비스는 능력치를 배지가 아니라 텍스트 색으로만 쓴다(`utils/attrRatingColor.ts` 그대로).
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` — `TierStyle` 단순화(`background/textColor/glowColor`), `TIERS` 6단계 → 12단계, 보더·베벨·메탈릭 글자·`hexToRgb`·`BOX.px` 제거, 서체 교체, 글로우 규격 변경.
+- `index.css` — `@tailwind utilities;` 바로 아래에 `@font-face 'HerosBadge'` 추가.
+- `public/fonts/HerosBadge-digits.woff2` (신규, 8,120B) — TeX Gyre Heros Bold(`texgyreheros-bold.otf`, CTAN)에서 U+0020–007E + kern/tnum만 추린 서브셋. GUST 라이선스의 "수정본은 원본과 다른 이름" 조건에 맞춰 내부 name(ID 1,3,4,6,16)을 `HerosBadge`로 변경.
+- `index.html` — **무수정**(Schibsted Grotesk 700 로드는 `.schibsted-grotesk` 유틸용으로 남겨 둠, OvrBadge는 더 이상 안 씀).
+
+**Before** (`OvrBadge.tsx` 전체 티어·서체 — 롤백용으로 값 그대로 보존):
+```ts
+interface TierStyle {
+    background: string; border: string; borderWidth: number;
+    textMode: 'solid' | 'metallic'; textColor: string; textStops: [string, string, string, string];
+    glowSize: number; glowColor: string; glowAlpha: number; bevel: number;
+}
+const TIERS: { min: number; style: TierStyle }[] = [
+    { min: 100, style: { // 레전드
+        background: 'linear-gradient(0deg,#171717 0%,#050505 50%,#1c1c1c 100%)',
+        border: '#ffc400', borderWidth: 1,
+        textMode: 'metallic', textColor: '#f5d061', textStops: ['#ffe45c', '#ffcd38', '#ffbe1a', '#ffeeb8'],
+        glowSize: 4, glowColor: '#d4af37', glowAlpha: 0.3, bevel: 0 } },
+    { min: 90, style: { // 다이아몬드
+        background: 'linear-gradient(0deg,#a5f3fc 0%,#19b9e1 50%,#67e8f9 100%)',
+        border: '#cffafe', borderWidth: 0.5,
+        textMode: 'solid', textColor: '#ffffff', textStops: ['#ffffff', '#cffafe', '#67e8f9', '#ffffff'],
+        glowSize: 4, glowColor: '#22d3ee', glowAlpha: 0.55, bevel: 0 } },
+    { min: 80, style: { // 골드
+        background: 'linear-gradient(0deg,#e2b928 0%,#e9a435 50%,#ffc524 100%)',
+        border: '#fcd34d', borderWidth: 1,
+        textMode: 'solid', textColor: '#ffffff', textStops: ['#fff6c8', '#f5d061', '#b8860b', '#f9e08a'],
+        glowSize: 0, glowColor: '#f59e0b', glowAlpha: 0.45, bevel: 0 } },
+    { min: 70, style: { // 실버
+        background: 'linear-gradient(135deg,#b6bec9 0%,#9bacc5 55%,#8da0b9 100%)',
+        border: '#cbd5e1', borderWidth: 1,
+        textMode: 'solid', textColor: '#ffffff', textStops: ['#ffffff', '#e2e8f0', '#94a3b8', '#f8fafc'],
+        glowSize: 0, glowColor: '#cbd5e1', glowAlpha: 0.35, bevel: 0 } },
+    { min: 60, style: { // 브론즈
+        background: 'linear-gradient(135deg,#d09258 0%,#cc782e 55%,#bd5800 100%)',
+        border: '#c8823f', borderWidth: 1,
+        textMode: 'solid', textColor: '#ffffff', textStops: ['#fbe3c9', '#d99a5e', '#8a4d17', '#f0c294'],
+        glowSize: 0, glowColor: '#b4712f', glowAlpha: 0, bevel: 0 } },
+    { min: 0, style: { // 아이언
+        background: 'linear-gradient(135deg,#6b7280 0%,#5d646f 55%,#4e555f 100%)',
+        border: '#6b7280', borderWidth: 1,
+        textMode: 'solid', textColor: '#e5e7eb', textStops: ['#f3f4f6', '#9ca3af', '#4b5563', '#d1d5db'],
+        glowSize: 0, glowColor: '#6b7280', glowAlpha: 0.25, bevel: 0 } },
+];
+// 숫자 서체
+const DIGIT_FONT = { fontFamily: "'Schibsted Grotesk', 'Pretendard Variable', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' };
+// 컴포넌트 본문
+const shadows: string[] = ['inset 0 0 0 1px rgba(255,255,255,.1)'];
+if (tier.glowSize > 0) shadows.unshift(`0 0 ${tier.glowSize}px rgba(${hexToRgb(tier.glowColor)},${tier.glowAlpha})`);
+if (tier.bevel > 0) { /* 베벨 inset 2줄 — bevel이 전 티어 0이라 사실상 미사용 */ }
+const boxStyle = { background: tier.background, border: `${tier.borderWidth}px solid ${tier.border}`,
+                   boxShadow: size === 'table' ? undefined : shadows.join(', ') };
+// 글자: metallic이면 background-clip:text + drop-shadow, solid면 color + className 'text-shadow-ovr'
+// BOX 각 항목에 px(24/32/44/64/60/28/40) 필드가 있었음(베벨 두께 계산용)
+```
+
+**After** (`OvrBadge.tsx`):
+```ts
+interface TierStyle { background: string; textColor: string; glowColor: string | null; }
+const grad2 = (c1, c2) => `linear-gradient(${c1},${c2})`;                       // 위→아래 세로
+const grad3 = (c1, c2, c3) =>                                                    // 어두운 막 + 대각선(2K 오팔식)
+    `linear-gradient(rgba(75,168,255,.1),rgba(0,0,0,.7)),linear-gradient(to bottom left,${c1},${c2},${c3})`;
+```
+| min | 이름 | 채우기 | 색 | 글로우 |
+|---|---|---|---|---|
+| 99 | 임페리얼 | grad3 | `#00e1ff` `#0055ff` `#ee05ff` | `#dbc900` |
+| 97 | 갤럭시 오팔 | grad3 | `#ffee38` `#dd05e1` `#fa4f05` | `#05eafa` |
+| 95 | 핑크 다이아몬드 | grad2 | `#ffa8e5` → `#d11097` | 없음 |
+| 92 | 다이아몬드 | grad2 | `#5acbe2` → `#006f85` | 없음 |
+| 90 | 아메시스트 | grad2 | `#b647ff` → `#9f21b0` | 없음 |
+| 87 | 루비 | grad2 | `#ff0505` → `#7f0b0b` | 없음 |
+| 84 | 사파이어 | grad2 | `#1ad5b0` → `#006699` | 없음 |
+| 80 | 에메랄드 | grad2 | `#1cd431` → `#13a01e` | 없음 |
+| 75 | 골드 | grad2 | `#ffdb57` → `#b38d05` | 없음 |
+| 70 | 실버 | grad2 | `#bfbfbf` → `#6b6b6b` | 없음 |
+| 1 | 브론즈 | grad2 | `#e07015` → `#ae540f` | 없음 |
+| 0 | 오닉스 | grad2 | `#565656` → `#232323` | 없음 |
+
+글자색은 전 등급 `#ffffff`. 글로우는 `0 0 10px {glowColor}`(알파 없음), `size==='table'`이면 생략. 보더·inset 링 없음. 글자 그림자 `0 -1px 0 rgba(0,0,0,.25)`(인라인, `text-shadow-ovr` 클래스는 더 이상 안 씀). 서체 `'HerosBadge', 'Helvetica Neue', Helvetica, Arial, sans-serif` / 700 / 자간 기본. `index.css`:
+```css
+@font-face { font-family: 'HerosBadge'; font-weight: 700; font-style: normal; font-display: swap;
+  src: url('/fonts/HerosBadge-digits.woff2') format('woff2'); }
+```
+
+**의도적으로 스튜디오 값과 다르게 둔 것**:
+- 굵기: 스튜디오는 900이지만 TeX Gyre Heros는 Bold(700)가 최대 → 700 고정(900을 요청하면 브라우저가 가짜 볼드를 덧입힘).
+- 배지 크기·모서리·글자 크기는 스튜디오의 공통 설정(15px/패딩/radius 3px)이 아니라 기존 정사각형 7종(`sm~header`)을 유지. 스튜디오의 공통 설정은 2K식 인라인 박스 기준이라 우리 정사각형 배지와 맞지 않음.
+- 스튜디오의 `effect`(빛줄기·펄스)는 OVR 12등급 모두 `none`이라 구현하지 않음(능력치 "99 특수"에만 있던 효과).
+
+**동작 변화 (알아둘 것)**:
+- 구간이 10점 단위 → 최대 2점 단위로 촘촘해짐. 60~69는 이제 브론즈, **60 미만(예전 아이언)도 1~69는 전부 브론즈**, 0만 오닉스.
+- 100 이상(카드용 `manual_ovr`)은 99+ 임페리얼로 표시, 세 자리 글자 축소 규칙은 유지.
+- 핑크 다이아몬드(95–96)는 스튜디오 값대로 글로우 없음(색값 `#ff96df`가 있었지만 `glow:false`).
+- 배지 구간(70/75/80/84/87/90/92/95/97/99)과 의미 기준 `utils/ovrUtils.ts` `OVR_TIER_THRESHOLDS`(68/73/80/88/93)는 **여전히 서로 다름** — 이번 작업 범위 밖.
+
+**검증**: `npx tsc --noEmit` — 51건 오류, 전부 기존 파일(`hooks/useGameData.ts` 19, `pages/PlayerEditorPage.tsx` 6 등), `OvrBadge`/`index.css` 관련 0건. `npx vite build --outDir /tmp/…` 통과, 산출 CSS에 `@font-face HerosBadge … url(/fonts/HerosBadge-digits.woff2)` 확인, `dist`에 폰트 파일 복사 확인. **브라우저에서 실제 렌더링은 미확인**(48개 사용처 화면 육안 확인 필요).
+
+**롤백 방법**: `git checkout -- components/common/OvrBadge.tsx index.css` 후 `rm public/fonts/HerosBadge-digits.woff2`(빈 디렉터리면 `rmdir public/fonts`). 커밋 후라면 해당 커밋을 revert. 수동 복구는 위 Before 블록의 `TIERS`·`DIGIT_FONT`·본문을 되돌리면 됨(`text-shadow-ovr`는 `index.css`에 그대로 남아 있음).
+
+---
+
 ## 2026-10-15 — 시딩 타이브레이커를 NBA 공식 규정으로 교체 (서버 시딩 + 순위 경쟁 화면)
 
 **배경**: 서버 시딩의 동률 처리가 (승−패) → 득실차 두 가지뿐이라 맞대결·디비전 등 NBA 기준이 전혀 없었다. 사용자가 "실제 NBA 타이브레이커 적용" 요청. 규정은 NBA.com 2025-26 Regular Season Standings(L.2.a/b/c)와 NBA 공식 Tiebreaker Procedures PDF(2017)를 직접 확인(두 문서 일치).
@@ -61,7 +379,7 @@ const sorter = (a: StandingRow, b: StandingRow) =>
 
 **검증**: 엔진 단위 테스트 11건(맞대결, 디비전 우승, 디비전 승률, 공식 PDF의 3팀 동률 예시, 추첨 결정성, 득실차 순) 전부 통과. client `tsc` 51건 = 베이스라인(신규 0), server `tsc` 45건 = 베이스라인(신규 0, 기존은 bun 타입 등). 목업 화면 확인. 실제 리그/서버 DB 연동은 미검증.
 
-**⚠️ 배포**: 서버 변경이라 **Fly.io 재배포 전까지 실제 시딩은 옛 규칙**이다(화면은 이미 NBA 규정으로 표시 → 동률 시 불일치). 배포 후 플레이인/플레이오프 시딩부터 적용.
+**배포**: 2026-10-15 20:30 KST Fly.io **v167** 배포 완료(정상 기동 확인). 사용자 확인 하에 미배포였던 커밋 `40f47a8e`(10/14, PBP 엔진·해설·토너먼트 브라켓)도 함께 배포됨. 배포 시점 진행 중 메인 리그는 AS 2 하나였고 플레이인 6시리즈 모두 종료 상태라, 시드 재계산 경로(`resolveRoundOneFromPlayIn`)는 다시 타지 않음 — 새 규칙은 다음 시즌 시딩부터 실제로 적용된다.
 
 **후속(같은 날) — 순위표 화면 적용**: `views/multi/season/MultiStandingsView.tsx` — 기본 정렬(PCT)일 때 **컨퍼런스·디비전 모드**의 동률을 NBA 타이브레이커로 정렬(`rankGroup`, 오름차순이면 그 역순). 리그 전체(동·서 혼합) 모드는 규정에 동률 처리가 없어 기존(승률 → 승수) 유지, 다른 열 정렬도 기존 유지. `computeClinchStatus`도 같은 순서를 받아(`orderOf` 인자) 동률 팀 중 컷 안쪽 판정을 시딩과 일치. 엔진에 `rankGroup(l, slugs, ctx)` 추가(미러 동일, `rankConference`가 이를 사용 — 동작 동일, 단위 테스트 재통과). Before: `sortTeams`가 정렬 키 → 승률 → 승수, `computeClinchStatus`가 승률 → 승수 정렬. 롤백: 두 곳의 `useTiebreak`/`orderOf` 분기 제거.
 
@@ -164,6 +482,8 @@ const sorter = (a: StandingRow, b: StandingRow) =>
 **후속(같은 날) — 중요한 경기를 표 구조로**: 인라인 텍스트 나열 → 공용 `Table`(flush·compact). 열: 날짜(경기 링크) | 구분([탈락 결정]/[확정 결정]) | 매치업(원정 @ 홈) | 결과(경기 결과별 한 줄씩) | 타이브레이커(보유 팀 · 득실차 / 다른 컨퍼런스 경기는 "-"). 데이터/판정 로직 변경 없음(`KeyGamesPanel` 마크업만 교체).
 
 **후속(같은 날) — 타이브레이커도 표 구조로**: `TieBreakPanel`을 공용 `Table`(flush·compact) 2개로 교체 — ① 적용 순서 표(순서 | 기준 | 설명: 1 승패 마진 → "승패 마진이 큰 팀이 앞", 2 정규시즌 득실차 합계 → "승패 마진이 같으면 득실차가 큰 팀이 앞") ② 현재 컷라인에 걸친 동률 표(컷 | 승패 마진 | 동률 팀(시드 순·득실차) | 순서 결정). 판정/데이터 변경 없음. 글자색은 흰색 통일.
+
+**후속(2026-10-16) — 폰트/배경**: 순위 표 요약 띠(`PlayoffRaceBody`) 컨퍼런스 이름 `text-xs`→`text-base`, 우측 정보(남은 일수·남은 경기·컷 범례) `text-xs`→`text-sm`. 팀 상세(행 펼침) 배경 `bg-slate-900/60`→`bg-slate-800/60`(한 단계 밝게), 폰트 `text-xs`→`text-sm`. 목업 확인용으로 `PlayoffRaceBody`에 선택 prop `initialExpanded`(처음부터 펼칠 팀) 추가, 목업은 `?open=팀슬러그`로 사용. 롤백: 위 클래스 값 복원.
 
 **검증**: `tsc --noEmit` 오류 52건 = 변경 전 베이스라인과 동일(신규 0), `vite build` 통과. 6팀 가상 리그로 매직/탈락넘버 손계산 대조(esbuild 번들 후 node 실행) 일치. 실제 리그 화면 확인은 미실시.
 

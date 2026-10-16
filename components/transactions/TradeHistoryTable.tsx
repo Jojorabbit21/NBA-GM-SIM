@@ -137,7 +137,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
                                             return (
                                                 <div key={i} className="flex items-center gap-3">
-                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0" />
+                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!mx-0" />
                                                     <span className="text-sm font-bold text-emerald-300">{p.name}</span>
                                                     <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                 </div>
@@ -152,7 +152,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
                                             return (
                                                 <div key={i} className="flex items-center gap-3">
-                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0" />
+                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!mx-0" />
                                                     <span className="text-sm font-bold text-red-300/80">{p.name}</span>
                                                     <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                 </div>

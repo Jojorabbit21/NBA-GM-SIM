@@ -139,7 +139,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                                             onClick={() => onPlayerClick(r.playerId)}
                                         >
                                             <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}`}>{idx + 1}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!mx-auto" /></td>
                                             <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-200'} hover:text-white`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={r.teamId} size="xs" />
@@ -201,7 +201,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                                             onClick={() => onPlayerClick(r.playerId)}
                                         >
                                             <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}`}>{idx + 1}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!mx-auto" /></td>
                                             <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-200'} hover:text-white`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={r.teamId} size="xs" />
@@ -277,7 +277,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                                                     </td>
                                                 )}
                                                 <td className={`${rowTd} text-center text-slate-400`}>{p.pos}</td>
-                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!mx-auto" /></td>
                                                 <td className={`${rowTd} pl-3 text-slate-200 hover:text-white`}>
                                                     <div className="flex items-center gap-1.5">
                                                         <TeamLogo teamId={p.teamId} size="xs" />
@@ -351,7 +351,7 @@ export const AwardsReportViewer: React.FC<AwardsReportViewerProps> = ({ content,
                                                     </td>
                                                 )}
                                                 <td className={`${rowTd} text-center text-slate-400`}>{p.pos}</td>
-                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!mx-auto" /></td>
                                                 <td className={`${rowTd} pl-3 text-slate-200 hover:text-white`}>
                                                     <div className="flex items-center gap-1.5">
                                                         <TeamLogo teamId={p.teamId} size="xs" />

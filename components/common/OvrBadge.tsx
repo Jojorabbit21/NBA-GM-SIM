@@ -1,15 +1,15 @@
 // OvrBadge.tsx — OVR 배지.
 // [2026-09-20] 12구간 → 6단계 티어로 단순화 + "OVR 배지 티어 랩" 아티팩트에서 확정한 디자인 이식.
 // [2026-10-14] "OVR 배지 조정 랩"(https://claude.ai/artifact/9w7PVdoASaQM4yybo6tkcy) 확정값으로 전 티어·크기별 글자·서체 교체.
-//   아래 티어 설명(베벨·3스톱 등)은 2026-09-20 기준 — 현재 값은 TIERS가 정답.
-// 100+  레전드   : 흑금속 배경(0°) + 금색 메탈릭 그라디언트 글자 + 금색 보더 + 베벨 + 글로우
-// 90~99 다이아몬드: 아이스 시안 3스톱(0°)
-// 80~89 골드     : 3스톱 메탈릭 골드(0°, 다이아와 동일 구조)
-// 70~79 실버     : 매끈한 3스톱 은색(135°)
-// 60~69 브론즈   : 매끈한 3스톱 구리색(135°)
-// 0~59 아이언   : 매끈한 3스톱 철회색(135°)
+// [2026-10-16] 2K식 12단계 체계로 재설계 — "레이팅 배지 스튜디오"(https://claude.ai/artifact/AEs4fF5nfRYiCriSM2ZoAk)
+//   에서 확정한 값을 그대로 이식. 숫자 서체는 TeX Gyre Heros(HerosBadge, index.css의 @font-face).
+//   이전 6단계(레전드/다이아/골드/실버/브론즈/아이언)의 값은 docs/history/dev-log.md 2026-10-16 항목에 Before로 보존.
+//
+// 등급 (시작 값 이상 ~ 다음 등급 시작 값 미만, 위에서 아래 = 높은 등급 먼저):
+//   99+ 임페리얼 / 97 갤럭시 오팔 / 95 핑크 다이아몬드 / 92 다이아몬드 / 90 아메시스트 / 87 루비 /
+//   84 사파이어 / 80 에메랄드 / 75 골드 / 70 실버 / 1 브론즈 / 0 오닉스
 // 값이 100 이상(카드 전용 manual_ovr)이면 정사각형은 유지하고 글자만 한 단계 줄인다.
-// 색상값은 랩 JSON(docs/history/dev-log.md 2026-09-20 항목)과 1:1 — 바꿀 때는 랩에서 먼저 확인.
+// 색상값은 스튜디오 JSON과 1:1 — 바꿀 때는 스튜디오에서 먼저 확인.
 import React from 'react';
 
 interface OvrBadgeProps {
@@ -26,59 +26,32 @@ interface OvrBadgeProps {
 }
 
 interface TierStyle {
-    /** CSS linear-gradient 전체 문자열 */
+    /** CSS background 전체 문자열(그라디언트) */
     background: string;
-    border: string;
-    borderWidth: number;
-    /** 'solid'면 textColor, 'metallic'이면 textStops(180°, 0/30/55/100%)로 글자를 채운다 */
-    textMode: 'solid' | 'metallic';
     textColor: string;
-    textStops: [string, string, string, string];
-    /** 0이면 외곽 글로우 없음 */
-    glowSize: number;
-    glowColor: string;
-    glowAlpha: number;
-    /** 0~1. 안쪽 좌상단 하이라이트 + 우하단 음영 */
-    bevel: number;
+    /** null이면 외곽 글로우 없음 */
+    glowColor: string | null;
 }
 
+// 2K식 채우기: 2색은 위→아래 세로 그라디언트, 3색(오팔류)은 어두운 막을 한 겹 덮은 대각선 그라디언트.
+const grad2 = (c1: string, c2: string) => `linear-gradient(${c1},${c2})`;
+const grad3 = (c1: string, c2: string, c3: string) =>
+    `linear-gradient(rgba(75,168,255,.1),rgba(0,0,0,.7)),linear-gradient(to bottom left,${c1},${c2},${c3})`;
+
+// min 내림차순 — 위에서부터 value >= min 첫 항목이 해당 등급.
 const TIERS: { min: number; style: TierStyle }[] = [
-    { min: 100, style: {
-        background: 'linear-gradient(0deg,#171717 0%,#050505 50%,#1c1c1c 100%)',
-        border: '#ffc400', borderWidth: 1,
-        textMode: 'metallic', textColor: '#f5d061', textStops: ['#ffe45c', '#ffcd38', '#ffbe1a', '#ffeeb8'],
-        glowSize: 4, glowColor: '#d4af37', glowAlpha: 0.3, bevel: 0,
-    } },
-    { min: 90, style: {
-        background: 'linear-gradient(0deg,#a5f3fc 0%,#19b9e1 50%,#67e8f9 100%)',
-        border: '#cffafe', borderWidth: 0.5,
-        textMode: 'solid', textColor: '#ffffff', textStops: ['#ffffff', '#cffafe', '#67e8f9', '#ffffff'],
-        glowSize: 4, glowColor: '#22d3ee', glowAlpha: 0.55, bevel: 0,
-    } },
-    { min: 80, style: {
-        background: 'linear-gradient(0deg,#e2b928 0%,#e9a435 50%,#ffc524 100%)',
-        border: '#fcd34d', borderWidth: 1,
-        textMode: 'solid', textColor: '#ffffff', textStops: ['#fff6c8', '#f5d061', '#b8860b', '#f9e08a'],
-        glowSize: 0, glowColor: '#f59e0b', glowAlpha: 0.45, bevel: 0,
-    } },
-    { min: 70, style: {
-        background: 'linear-gradient(135deg,#b6bec9 0%,#9bacc5 55%,#8da0b9 100%)',
-        border: '#cbd5e1', borderWidth: 1,
-        textMode: 'solid', textColor: '#ffffff', textStops: ['#ffffff', '#e2e8f0', '#94a3b8', '#f8fafc'],
-        glowSize: 0, glowColor: '#cbd5e1', glowAlpha: 0.35, bevel: 0,
-    } },
-    { min: 60, style: {
-        background: 'linear-gradient(135deg,#d09258 0%,#cc782e 55%,#bd5800 100%)',
-        border: '#c8823f', borderWidth: 1,
-        textMode: 'solid', textColor: '#ffffff', textStops: ['#fbe3c9', '#d99a5e', '#8a4d17', '#f0c294'],
-        glowSize: 0, glowColor: '#b4712f', glowAlpha: 0, bevel: 0,
-    } },
-    { min: 0, style: {
-        background: 'linear-gradient(135deg,#6b7280 0%,#5d646f 55%,#4e555f 100%)',
-        border: '#6b7280', borderWidth: 1,
-        textMode: 'solid', textColor: '#e5e7eb', textStops: ['#f3f4f6', '#9ca3af', '#4b5563', '#d1d5db'],
-        glowSize: 0, glowColor: '#6b7280', glowAlpha: 0.25, bevel: 0,
-    } },
+    { min: 99, style: { background: grad3('#00e1ff', '#0055ff', '#ee05ff'), textColor: '#ffffff', glowColor: '#dbc900' } }, // 임페리얼
+    { min: 97, style: { background: grad3('#ffee38', '#dd05e1', '#fa4f05'), textColor: '#ffffff', glowColor: '#05eafa' } }, // 갤럭시 오팔
+    { min: 95, style: { background: grad2('#ffa8e5', '#d11097'), textColor: '#ffffff', glowColor: null } },               // 핑크 다이아몬드
+    { min: 92, style: { background: grad2('#5acbe2', '#006f85'), textColor: '#ffffff', glowColor: null } },               // 다이아몬드
+    { min: 90, style: { background: grad2('#b647ff', '#9f21b0'), textColor: '#ffffff', glowColor: null } },               // 아메시스트
+    { min: 87, style: { background: grad2('#ff0505', '#7f0b0b'), textColor: '#ffffff', glowColor: null } },               // 루비
+    { min: 84, style: { background: grad2('#1ad5b0', '#006699'), textColor: '#ffffff', glowColor: null } },               // 사파이어
+    { min: 80, style: { background: grad2('#1cd431', '#13a01e'), textColor: '#ffffff', glowColor: null } },               // 에메랄드
+    { min: 75, style: { background: grad2('#ffdb57', '#b38d05'), textColor: '#ffffff', glowColor: null } },               // 골드
+    { min: 70, style: { background: grad2('#bfbfbf', '#6b6b6b'), textColor: '#ffffff', glowColor: null } },               // 실버
+    { min: 1,  style: { background: grad2('#e07015', '#ae540f'), textColor: '#ffffff', glowColor: null } },               // 브론즈
+    { min: 0,  style: { background: grad2('#565656', '#232323'), textColor: '#ffffff', glowColor: null } },               // 오닉스
 ];
 
 export function getOvrTierStyle(value: number): TierStyle {
@@ -86,22 +59,15 @@ export function getOvrTierStyle(value: number): TierStyle {
     return TIERS[TIERS.length - 1].style;
 }
 
-function hexToRgb(hex: string): string {
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-    if (!m) return '255,255,255';
-    const n = parseInt(m[1], 16);
-    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
-}
-
-const BOX: Record<NonNullable<OvrBadgeProps['size']>, { cls: string; px: number }> = {
-    sm: { cls: 'w-6 h-6 rounded',      px: 24 },
-    md: { cls: 'w-8 h-8 rounded-md',   px: 32 },
-    lg: { cls: 'w-11 h-11 rounded-lg', px: 44 },
-    xl: { cls: 'w-16 h-16 rounded-xl', px: 64 },
-    card: { cls: 'w-[60px] h-[60px] rounded-xl', px: 60 },
-    table: { cls: 'w-7 h-7 rounded',   px: 28 },
+const BOX: Record<NonNullable<OvrBadgeProps['size']>, { cls: string }> = {
+    sm: { cls: 'w-6 h-6 rounded' },
+    md: { cls: 'w-8 h-8 rounded-md' },
+    lg: { cls: 'w-11 h-11 rounded-lg' },
+    xl: { cls: 'w-16 h-16 rounded-xl' },
+    card: { cls: 'w-[60px] h-[60px] rounded-xl' },
+    table: { cls: 'w-7 h-7 rounded' },
     // header[2026-10-13]: 선수 상세 프로필 헤더(이름 옆 40px) — 예전 `size="lg" className="!w-10 !h-10 !text-2xl"` 정식화
-    header: { cls: 'w-10 h-10 rounded-lg', px: 40 },
+    header: { cls: 'w-10 h-10 rounded-lg' },
 };
 const TEXT: Record<NonNullable<OvrBadgeProps['size']>, string> = {
     sm: 'text-[15px]', table: 'text-[17px]', md: 'text-[19px]', header: 'text-[23px]', lg: 'text-[25px]', card: 'text-[35px]', xl: 'text-[37px]',
@@ -110,8 +76,11 @@ const TEXT: Record<NonNullable<OvrBadgeProps['size']>, string> = {
 const TEXT_THREE_DIGIT: Record<NonNullable<OvrBadgeProps['size']>, string> = {
     sm: 'text-[11px]', table: 'text-[13px]', md: 'text-[15px]', header: 'text-[19px]', lg: 'text-[20px]', card: 'text-[28px]', xl: 'text-[30px]',
 };
-// [2026-10-14] 숫자 서체 — Schibsted Grotesk 700, 자간 -0.02em(랩 확정). index.html이 이미 이 서체 700을 로드한다.
-const DIGIT_FONT: React.CSSProperties = { fontFamily: "'Schibsted Grotesk', 'Pretendard Variable', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' };
+// [2026-10-16] 숫자 서체 — TeX Gyre Heros Bold(HerosBadge, index.css @font-face). 스튜디오 확정값은 굵기 900이지만
+// 이 서체는 700이 최대라 700으로 고정(900 요청 시 브라우저가 가짜 볼드를 덧입히는 것을 막기 위함). 자간은 기본값.
+const DIGIT_FONT: React.CSSProperties = { fontFamily: "'HerosBadge', 'Helvetica Neue', Helvetica, Arial, sans-serif", fontWeight: 700 };
+// 스튜디오 확정값: 글자 위쪽에만 옅게 깔리는 그림자(2K 원본과 동일)
+const TEXT_SHADOW = '0 -1px 0 rgba(0,0,0,.25)';
 
 export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', className = '', textClassName }) => {
     const tier = getOvrTierStyle(value);
@@ -119,37 +88,18 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
     const isThreeDigit = value >= 100;
     const textCls = textClassName ?? (isThreeDigit ? TEXT_THREE_DIGIT[size] : TEXT[size]);
 
-    const shadows: string[] = ['inset 0 0 0 1px rgba(255,255,255,.1)'];
-    if (tier.glowSize > 0) shadows.unshift(`0 0 ${tier.glowSize}px rgba(${hexToRgb(tier.glowColor)},${tier.glowAlpha})`);
-    if (tier.bevel > 0) {
-        // 베벨 두께는 배지 크기에 비례(44px일 때 2px)
-        const d = Math.max(1, Math.round(box.px / 22));
-        shadows.push(`inset ${d}px ${d}px ${d}px rgba(255,255,255,${(0.55 * tier.bevel).toFixed(2)})`);
-        shadows.push(`inset -${d}px -${d}px ${d}px rgba(0,0,0,${(0.85 * tier.bevel).toFixed(2)})`);
-    }
-
     const boxStyle: React.CSSProperties = {
         background: tier.background,
-        border: `${tier.borderWidth}px solid ${tier.border}`,
-        boxShadow: size === 'table' ? undefined : shadows.join(', '),
+        // 표 셀 안에서는 글로우를 쓰지 않는다(예전 `!shadow-none`과 동일 외형)
+        boxShadow: tier.glowColor && size !== 'table' ? `0 0 10px ${tier.glowColor}` : undefined,
     };
-
-    const textStyle: React.CSSProperties = tier.textMode === 'metallic'
-        ? {
-            background: `linear-gradient(180deg,${tier.textStops[0]} 0%,${tier.textStops[1]} 30%,${tier.textStops[2]} 55%,${tier.textStops[3]} 100%)`,
-            WebkitBackgroundClip: 'text', backgroundClip: 'text',
-            color: 'transparent', WebkitTextFillColor: 'transparent',
-            // 투명 글자 뒤로 비치는 text-shadow 대신 drop-shadow
-            textShadow: 'none', filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.8))',
-        }
-        : { color: tier.textColor };
 
     return (
         <div
-            className={`flex items-center justify-center leading-none ${box.cls} ${textCls} ${tier.textMode === 'solid' ? 'text-shadow-ovr' : ''} ${className}`}
+            className={`flex items-center justify-center leading-none ${box.cls} ${textCls} ${className}`}
             style={boxStyle}
         >
-            <span className="leading-none" style={{ ...DIGIT_FONT, ...textStyle }}>{value}</span>
+            <span className="leading-none" style={{ ...DIGIT_FONT, color: tier.textColor, textShadow: TEXT_SHADOW }}>{value}</span>
         </div>
     );
 };

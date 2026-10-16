@@ -57,9 +57,10 @@ export const TwoWayBadge: React.FC = () => (
     <Badge variant="warning" size="xs" shape="square" title="Two-Way 계약">TW</Badge>
 );
 
-/** 표 셀 안 OVR 배지(28px, 가운데) */
+/** 표 셀 안 OVR 배지(24px, 가운데). [2026-10-16] table(28px) → sm(24px)로 통일 — 홈 화면 표와 같은 크기.
+ *  주의: sm은 table과 달리 97+ 등급의 글로우를 켠다. */
 export const OvrTableBadge: React.FC<{ value: number }> = ({ value }) => (
-    <div className="flex justify-center"><OvrBadge value={value} size="table" /></div>
+    <div className="flex justify-center"><OvrBadge value={value} size="sm" /></div>
 );
 
 interface PlayerInfoCellsProps {

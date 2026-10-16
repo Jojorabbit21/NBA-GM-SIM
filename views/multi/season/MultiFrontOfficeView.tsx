@@ -296,7 +296,7 @@ const PlayerChip = React.memo(function PlayerChip({
             </TableCell>
             <TableCell>
                 <div className="flex justify-center">
-                    <OvrBadge value={player ? calculatePlayerOvr(player) : 0} size="table" />
+                    <OvrBadge value={player ? calculatePlayerOvr(player) : 0} size="sm" />
                 </div>
             </TableCell>
             {/* [2026-10-14] PlayerHoverCard는 cloneElement로 자식에 ref를 얹으므로 DOM 요소(span)를 감싸야 한다 —
@@ -2006,7 +2006,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                         <TableCell align="left" className="pl-4 text-sm text-slate-400 whitespace-nowrap">{r.sim_date ? formatSimDateShort(r.sim_date) : '-'}</TableCell>
                                         <TableCell align="left" className="pl-4">
                                             <span className="flex items-center gap-2 min-w-0">
-                                                {player && <OvrBadge value={calculatePlayerOvr(player)} size="table" />}
+                                                {player && <OvrBadge value={calculatePlayerOvr(player)} size="sm" />}
                                                 <PlayerNameLink player={player} fallbackName={r.player_id} teamAbbr={team?.team_abbr} onClick={p => openPlayer(p.id)} enableHoverCard tone="strong" />
                                             </span>
                                         </TableCell>

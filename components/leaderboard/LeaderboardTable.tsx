@@ -174,7 +174,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     }
                                     else if (col.key === 'team') cellContent = p.teamAbbr;
                                     else if (col.key === 'position') cellContent = p.position;
-                                    else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="table" /></div>;
+                                    else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" /></div>;
 
                                     // Handle Attribute Columns — 단일/콤보(압축) 능력치 공용 조회
                                     else if (col.category === 'Attributes') {

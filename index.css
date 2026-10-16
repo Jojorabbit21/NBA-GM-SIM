@@ -3,6 +3,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* [2026-10-16] OVR 배지 숫자 전용 서체 — TeX Gyre Heros Bold(GUST Font License, 상업 사용 가능)에서
+   숫자·ASCII만 추린 서브셋(약 8KB). 수정본은 원본과 다른 이름을 써야 하는 라이선스 조건에 맞춰
+   내부 이름을 HerosBadge로 바꿨다. 한글은 없으므로 숫자 외 용도로 쓰지 말 것. Bold(700)가 최대 굵기. */
+@font-face {
+  font-family: 'HerosBadge';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/HerosBadge-digits.woff2') format('woff2');
+}
+
 /* ── Design Token CSS Variables (Figma token 호환) ─────────────────── */
 :root {
   /* Surface */
