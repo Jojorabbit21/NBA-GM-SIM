@@ -127,8 +127,8 @@ export default {
       },
       // ── Font Family ─────────────────────────────────────────────
       fontFamily: {
-        'sans':    ['Pretendard Variable', 'Pretendard', 'sans-serif'],
-        'sport':   ['Pretendard Variable', 'Pretendard', 'sans-serif'], // legacy alias
+        'sans':    ['var(--font-sans)'],   // BGM Sans(Pretendard 윈도우 보정본) — index.css :root 참조
+        'sport':   ['var(--font-sans)'],   // legacy alias
         'display': ['Bebas Neue', 'sans-serif'],   // OVR badge 숫자
         'digital': ['"Seven Segment"', 'monospace'],
       },

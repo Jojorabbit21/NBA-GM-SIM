@@ -2,12 +2,31 @@
   "redirects": [
     {
       "source": "/(.*)",
-      "has": [{ "type": "host", "value": "(?!basketballgm\\.app).*\\.vercel\\.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "(?!basketballgm\\.app).*\\.vercel\\.app"
+        }
+      ],
       "destination": "https://basketballgm.app/$1",
       "permanent": true
     }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/fonts/bgm-sans-v1/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
   ]
 }

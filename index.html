@@ -8,14 +8,24 @@
     <link rel="icon" href="/favicon.ico" />
     <!-- Tailwind CDN Removed: Production build uses PostCSS via index.css -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&family=DM+Sans:wght@700&family=Schibsted+Grotesk:wght@700&display=swap" rel="stylesheet">
+    <!-- CDN Pretendard: 본문은 자체 호스팅 BGM Sans를 쓰고, 이 링크는 ?font=original 비교 테스트와 폴백용 -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+    <script>
+      // Font A/B toggle: ?font=original -> CDN Pretendard, ?font=new -> BGM Sans (default). Persisted per browser.
+      try {
+        var fq = new URLSearchParams(location.search).get('font');
+        if (fq === 'original') localStorage.setItem('fontTest', 'original');
+        else if (fq === 'new') localStorage.removeItem('fontTest');
+        if (localStorage.getItem('fontTest') === 'original') document.documentElement.classList.add('font-original');
+      } catch (e) {}
+    </script>
     <style>
         /* 폰트 설정은 유지하되, 나머지 스타일은 index.css로 이동되었습니다. */
         .bebas { font-family: 'Bebas Neue', cursive; }
 
         .dmsans { font-family: 'DM Sans', sans-serif; }
         .schibsted-grotesk { font-family: 'Schibsted Grotesk', sans-serif; }
-        .pretendard { font-family: 'Pretendard Variable', 'Pretendard', sans-serif; }
+        .pretendard { font-family: var(--font-sans); }
     </style>
     <script type="importmap">
 {

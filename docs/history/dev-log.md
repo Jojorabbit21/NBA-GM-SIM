@@ -36,6 +36,45 @@
 ---
 
 
+## 2026-10-16 — 본문 서체를 윈도우 보정 Pretendard(BGM Sans)로 교체 + 비교 토글
+
+**배경**: 윈도우에서 사이트 전체 글자가 다른 사이트보다 흐리게 보임. Pretendard 웹폰트 파일에 렌더링 지시 테이블(gasp/prep/fpgm/cvt)이 전혀 없음을 확인. Google Fonts는 윈도우 UA에 gasp{65535:15} + prep(SCANCTRL 511, SCANTYPE 4)이 들어간 파일을 따로 서빙함(Noto Sans KR·Inter로 확인). 같은 두 테이블을 Pretendard에 추가해 자체 호스팅. OFL 예약 이름 조건 때문에 내부 이름을 BGM Sans로 변경.
+
+**변경 파일**:
+- `public/fonts/bgm-sans-v1/BGMSans-{Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.woff2` + `OFL.txt` (신규)
+- `index.css` — BGM Sans @font-face 7개, `:root --font-sans`, `html.font-original` 오버라이드
+- `tailwind.config.js` — fontFamily sans/sport
+- `index.html` — `.pretendard` 클래스, 비교 토글 인라인 스크립트
+- `vercel.json` — `/fonts/bgm-sans-v1/(.*)` 1년 immutable 캐시 헤더(파일 내용 바꿀 땐 폴더명 v2로)
+
+**Before**:
+```js
+// tailwind.config.js
+'sans':  ['Pretendard Variable', 'Pretendard', 'sans-serif'],
+'sport': ['Pretendard Variable', 'Pretendard', 'sans-serif'], // legacy alias
+```
+```html
+<!-- index.html -->
+.pretendard { font-family: 'Pretendard Variable', 'Pretendard', sans-serif; }
+<!-- CDN link만 존재, 토글 스크립트 없음 / vercel.json에 headers 없음 -->
+```
+
+**After**:
+```js
+'sans':  ['var(--font-sans)'],
+'sport': ['var(--font-sans)'],
+```
+```css
+:root { --font-sans: 'BGM Sans', 'Pretendard Variable', 'Pretendard', sans-serif; }
+html.font-original { --font-sans: 'Pretendard Variable', 'Pretendard', sans-serif; }
+```
+- 토글: `?font=original` → localStorage `fontTest=original` 저장 + `html.font-original`(CDN 원본), `?font=new` → 해제.
+- 폰트 생성: fontTools로 원본 static woff2에 gasp/prep만 추가, name ID 1/3/4/6/16을 BGM Sans로, ID 5에 수정 사실 기재. ID 0/7/8/9/13/14(저작권·상표·저작자·라이선스)는 원본 유지. 글리프/메트릭/OpenType 테이블 무변경.
+
+**검증**: vite build 결과는 아래 작업 보고 참조. 윈도우 실기기 육안 확인은 미실시.
+
+**롤백 방법**: 위 5개 파일을 Before로 되돌리고 `public/fonts/bgm-sans-v1/` 삭제. 커밋 전이면 `git checkout -- index.css index.html tailwind.config.js vercel.json && rm -rf public/fonts/bgm-sans-v1`. 원본과 비교만 하려면 롤백 없이 `?font=original`.
+
 ## 2026-10-16 — 멀티 트레이드 "새 제안" 상대팀 선택을 공용 Dropdown으로 + AI 팀 제외
 
 **배경**: 상대팀 선택이 브라우저 기본 `<select>`라 윈도우에서 옵션이 흰 배경+흰 글씨로 보여 구분 불가. 또 2026-08-30 TEMP 예외(관리자는 AI 팀에도 제안 가능)를 제거해 사람이 운영하는 팀만 목록에 표시.
