@@ -76,7 +76,12 @@ export function computeRotationValidation(
 ): RotationValidation {
     const minuteCounts = Array<number>(48).fill(0);
     const over42: string[] = [];
+    // [2026-10-16] 로스터에 없는 선수(트레이드/방출로 나갔는데 상태에 ID가 남은 경우)의 분은
+    // 코트 인원으로 세지 않는다 — 안 그러면 실제론 비어있는 시간대가 5명으로 계산돼 경고가 안 뜬다.
+    // 로스터가 비어있는 순간(로딩 중)엔 전부 걸러지지 않도록 필터를 건너뛴다.
+    const rosterIds = roster.length > 0 ? new Set(roster.map(p => p.id)) : null;
     Object.entries(rotationMap || {}).forEach(([pid, map]) => {
+        if (rosterIds && !rosterIds.has(pid)) return;
         if (map.filter(Boolean).length > 42) over42.push(roster.find(p => p.id === pid)?.name || pid);
         map.forEach((active, i) => { if (active) minuteCounts[i]++; });
     });

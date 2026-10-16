@@ -35,6 +35,8 @@ import {
 } from '../../../services/fa/negotiationDialogue';
 import { generateSaveTendencies } from '../../../utils/hiddenTendencies';
 import { signFreeAgentNegotiated } from '../../../services/multi/faService';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateLeagueTransactions } from '../../../hooks/useLeagueTransactionsRealtime';
 import { SIGNING_TYPE_LABEL, CONTRACT_TYPE_LABEL, getAcceptLikelihoodLabel, getAllowedSigningTypes } from '../../../utils/contractLabels';
 import { calculatePlayerOvr, countYosFromCareerHistory, INITIAL_STATS, MIN_SALARY_YOS_TABLE, TWO_WAY_MAX_OVR, TWO_WAY_YOS_MAX } from '../../../utils/constants';
 import { formatMoneyFull } from '../../../utils/formatMoney';
@@ -119,6 +121,7 @@ function moodFromProbability(probability: number): MoodTier {
 
 const MultiNegotiationView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading, reload , timeline } = useLeagueContext();
+    const queryClient = useQueryClient();
     const { tendencySeed, currentSeason, schedule, currentSimDate } = useSeasonContext();
     const { session } = useGame();
     const navigate = useNavigate();
@@ -822,6 +825,7 @@ const MultiNegotiationView: React.FC = () => {
             }
             // reload()보다 먼저 — 갱신된 rosterMap이 이 선수를 로스터 소속으로 바꿔도 화면이 유지되게.
             setSignedPlayerId(player.id);
+            invalidateLeagueTransactions(queryClient, room?.id);   // 히스토리/홈 최근 거래 즉시 갱신
             setResult({ accepted: true });
             addMsg('gm', `${player.name}, 당신이 팀에 합류하게 되어 매우 기쁩니다. 환영합니다.`);
             addMsg('status', '계약 체결 완료', undefined, true);

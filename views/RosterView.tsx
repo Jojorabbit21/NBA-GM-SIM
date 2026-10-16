@@ -272,7 +272,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       {/* Header Bar — 좌: 팀 로고 / 우: 팀 정보(드롭다운+전적+순위+스탯) 2컬럼 */}
       {/* [2026-10-12] 배너의 팀 테마 배경/텍스트 색 제거 → slate-950 + 흰 텍스트(사용자 요청).
           theme는 아래 RosterTabs(탭 바)에서는 계속 사용. */}
-      <div className="relative isolate flex-shrink-0 px-9 py-8 border-b border-white/10 flex items-center gap-4 bg-slate-950">
+      {/* z-20: isolate가 만든 스태킹 컨텍스트 안의 z-[200]은 바깥 형제(탭 바·테이블)에 대해선 z-auto와 같아,
+          드롭다운이 아래 탭 바에 가려졌다. 헤더 자체를 형제보다 위 레이어로 올려 해결. */}
+      <div className="relative z-20 isolate flex-shrink-0 px-9 py-8 border-b border-white/10 flex items-center gap-4 bg-slate-950">
           {/* [2026-10-12] 팀 테마 컬러 45% 틴트 — slate-950 위에 팀 색을 반투명으로 한 겹 얹는다.
               컨테이너 isolate로 스태킹 컨텍스트를 만들어 -z-10 오버레이가 "컨테이너 배경 위, 콘텐츠 아래"에
               정확히 깔리게 함(isolate 없으면 -z-10이 컨테이너 배경 뒤로 숨어 안 보임). */}

@@ -3,6 +3,7 @@ import React, { createContext, useContext } from 'react';
 import { Outlet, useParams, useLocation } from 'react-router-dom';
 import { useCurrentLeague } from '../../../hooks/useCurrentLeague';
 import { useLeagueNotifications } from '../../../hooks/useLeagueNotifications';
+import { useLeagueTransactionsRealtime } from '../../../hooks/useLeagueTransactionsRealtime';
 import type { CurrentLeagueState } from '../../../hooks/useCurrentLeague';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiGameData } from '../../../hooks/useMultiGameData';
@@ -52,6 +53,8 @@ export function LeagueLayout() {
     // [2026-10-02] 리그 진행 알림(트레이드 제안 도착/결과, 리그 이벤트) → 전역 토스트. 리그 레이아웃에 한 번만.
     const myTeam = state.leagueTeams.find(t => t.user_id === session?.user?.id) ?? null;
     useLeagueNotifications({ roomId: state.room?.id ?? null, leagueId, leagueTeams: state.leagueTeams, myTeam });
+    // [2026-10-16] FA 서명/방출 기록 실시간 반영 — 조기 return(로딩 화면) 위에서 호출해야 훅 순서가 유지된다.
+    useLeagueTransactionsRealtime(state.room?.id ?? null);
 
     const isSeasonRoute = location.pathname.includes('/season');
     const isLoading = state.isLoading || (isSeasonRoute && gameData.isLoading);

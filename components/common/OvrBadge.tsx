@@ -40,8 +40,8 @@ const grad3 = (c1: string, c2: string, c3: string) =>
 
 // min 내림차순 — 위에서부터 value >= min 첫 항목이 해당 등급.
 const TIERS: { min: number; style: TierStyle }[] = [
-    { min: 99, style: { background: grad3('#00e1ff', '#0055ff', '#ee05ff'), textColor: '#ffffff', glowColor: '#dbc900' } }, // 임페리얼
-    { min: 97, style: { background: grad3('#ffee38', '#dd05e1', '#fa4f05'), textColor: '#ffffff', glowColor: '#05eafa' } }, // 갤럭시 오팔
+    { min: 99, style: { background: grad3('#ffdd00', '#ff004c', '#e205ff'), textColor: '#ffffff', glowColor: '#b3005f' } }, // 임페리얼
+    { min: 97, style: { background: grad3('#38ff6a', '#6805e1', '#05fa88'), textColor: '#ffffff', glowColor: '#2e03c9' } }, // 갤럭시 오팔
     { min: 95, style: { background: grad2('#ffa8e5', '#d11097'), textColor: '#ffffff', glowColor: null } },               // 핑크 다이아몬드
     { min: 92, style: { background: grad2('#5acbe2', '#006f85'), textColor: '#ffffff', glowColor: null } },               // 다이아몬드
     { min: 90, style: { background: grad2('#b647ff', '#9f21b0'), textColor: '#ffffff', glowColor: null } },               // 아메시스트

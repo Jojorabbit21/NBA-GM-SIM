@@ -38,6 +38,7 @@ import { Badge } from '../../../components/common/Badge';
 import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { Dropdown } from '../../../components/common/Dropdown';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { Money } from '../../../components/common/Money';
@@ -504,18 +505,13 @@ const MultiFrontOfficeView: React.FC = () => {
         return m;
     }, [rosterMap, teamAbbrBySlug]);
 
-    // [TEMP 테스트 기간 한정 2026-08-30] 지금은 리그에 인간 GM이 관리자 본인뿐이라 정상
-    // 조건(인간 팀만)으로는 "제안하기"가 항상 비활성화됨 — 관리자 계정에 한해 AI 팀도 대상에
-    // 포함시켜 트레이드 제안 플로우를 테스트할 수 있게 함. `create_trade_offer` RPC도 관리자
-    // 발신 건에 한해 AI 팀 수신을 허용하도록 같이 완화했고(마이그레이션 참고), 응답은 기존
-    // admin bypass(`respond_trade_offer`)로 이미 가능. 되돌릴 땐 `isAdmin ||` 조건과 아래
-    // deps의 `isAdmin`만 제거하면 원래 "인간 팀만" 동작으로 복원됨.
+    // [2026-10-16] 관리자 AI 팀 테스트 예외(2026-08-30 TEMP) 제거 — 사람이 운영하는 팀만 대상.
     // [2026-09-30] "새 제안" 탭 팀 드롭다운 정렬을 team_name → team_abbr(영문 약어) A→Z로 변경
     // (사용자 요청). 아래 sortedTeams와 같은 이유로 로케일 'en' 고정.
     const humanTargetTeams = useMemo(
-        () => leagueTeams.filter(t => t.id !== myTeamRow?.id && (isAdmin || (t.user_id && !t.is_ai)))
+        () => leagueTeams.filter(t => t.id !== myTeamRow?.id && (t.user_id && !t.is_ai))
             .sort((a, b) => a.team_abbr.localeCompare(b.team_abbr, 'en')),
-        [leagueTeams, myTeamRow, isAdmin],
+        [leagueTeams, myTeamRow],
     );
 
     // 탭 상태를 URL 쿼리스트링(?tab=)에 저장 — 새로고침/뒤로가기 후에도 탭이 유지되고,
@@ -826,7 +822,6 @@ const MultiFrontOfficeView: React.FC = () => {
             .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
         [targetTeamRow, poolById],
     );
-    const targetTradeableIds = tradeableByTeam.get(targetTeamId) ?? new Set<string>();
     const targetDeadMoney = useMemo(
         () => getTeamDeadMoney(room?.team_finances, targetTeamRow?.team_slug, currentSeason),
         [room?.team_finances, targetTeamRow, currentSeason],
@@ -868,11 +863,6 @@ const MultiFrontOfficeView: React.FC = () => {
         }
         return map;
     }, [statsRawData, myTeamRow, targetTeamRow, useCustomOverridesForStats, statsByPlayer]);
-    // [TEMP 테스트 기간 한정 2026-08-30] 관리자가 AI 팀을 상대로 테스트할 땐 트레이드 블록
-    // 등록 여부와 무관하게 로스터 전원을 선택 가능하게 함 — AI 팀은 보통 블록에 아무 선수도
-    // 안 올라가 있어 정상 조건으론 선택 자체가 불가능함. `create_trade_offer` RPC도 같은
-    // 조건(관리자+AI 팀 대상)으로 player_not_tradeable 체크를 완화해뒀음(마이그레이션 참고).
-    const isTestUnblockedTarget = isAdmin && !!targetTeamRow?.is_ai;
 
     // [2026-09-02] 이름 hover 카드(PlayerHoverCard)의 시즌 스탯용 — poolPlayers(meta_players만
     // 조회)는 stats가 항상 0이라 이 화면의 호버 카드는 전부 "시즌 기록 없음"만 떴다. 활성 탭에
@@ -1748,25 +1738,37 @@ const MultiFrontOfficeView: React.FC = () => {
                                     <div className="flex-[5] min-w-0 h-full overflow-hidden flex flex-col bg-slate-900">
                                         <div className="h-16 flex items-center gap-3 pl-4 shrink-0 bg-slate-800 text-white">
                                             {targetTeamRow && <TeamLogo teamId={targetTeamRow.team_slug} teamName={targetTeamRow.team_abbr ?? targetTeamRow.team_slug} size="custom" className="w-9 h-9 shrink-0" shadow={false} />}
-                                            <select
-                                                value={targetTeamId}
-                                                onChange={e => {
-                                                    // 이미 담긴 선수가 있는데 상대 팀을 바꾸면 targetTeamId 변경 시
-                                                    // 실행되는 useEffect가 cartMine/cartTheirs를 초기화하므로,
-                                                    // 사용자에게 먼저 확인받는다(취소 시 select는 controlled value로
-                                                    // 그대로 원복됨 — setTargetTeamId를 안 부르면 targetTeamId가
-                                                    // 안 바뀌어 React가 DOM 선택값을 원래대로 되돌려줌).
-                                                    if ((cartMine.size > 0 || cartTheirs.size > 0)
-                                                        && !window.confirm('팀을 변경하면 현재 작성 중인 제안 내용이 초기화됩니다. 계속하시겠습니까?')) {
-                                                        return;
-                                                    }
-                                                    setTargetTeamId(e.target.value);
-                                                }}
-                                                className="w-auto bg-transparent text-base font-bold ko-normal focus:outline-none cursor-pointer"
-                                                style={{ color: 'inherit' }}
-                                            >
-                                                {humanTargetTeams.map(t => <option key={t.id} value={t.id}>{t.team_name}</option>)}
-                                            </select>
+                                            {/* [2026-10-16] 브라우저 기본 <select> → 공용 Dropdown(팀 로고+이름). 윈도우에서 기본 옵션
+                                                목록이 흰 배경+흰 글씨로 보여 팀 구분이 안 되던 문제. */}
+                                            <Dropdown
+                                                align="left"
+                                                width="w-64"
+                                                trigger={
+                                                    <span className="flex items-center gap-2 text-base font-bold ko-normal text-white">
+                                                        {targetTeamRow?.team_name ?? ''}
+                                                        <ChevronDown size={16} className="shrink-0 opacity-70" />
+                                                    </span>
+                                                }
+                                                items={humanTargetTeams.map(t => ({
+                                                    id: t.id,
+                                                    active: t.id === targetTeamId,
+                                                    label: (
+                                                        <span className="flex items-center gap-2 min-w-0">
+                                                            <TeamLogo teamId={t.team_slug} teamName={t.team_abbr ?? t.team_slug} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
+                                                            <span className="truncate">{t.team_name}</span>
+                                                        </span>
+                                                    ),
+                                                    onClick: () => {
+                                                        if (t.id === targetTeamId) return;
+                                                        // 담긴 선수가 있으면 팀 변경 시 cartMine/cartTheirs가 초기화되므로 먼저 확인.
+                                                        if ((cartMine.size > 0 || cartTheirs.size > 0)
+                                                            && !window.confirm('팀을 변경하면 현재 작성 중인 제안 내용이 초기화됩니다. 계속하시겠습니까?')) {
+                                                            return;
+                                                        }
+                                                        setTargetTeamId(t.id);
+                                                    },
+                                                }))}
+                                            />
                                         </div>
                                         <div className="flex-1 min-h-0">
                                             <Table variant="flush" fullHeight density="compact" dividers={false} tableStyle={{ tableLayout: 'fixed' }}>
@@ -1775,7 +1777,6 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <TableBody>
                                                     {targetRosterListed.map(p => (
                                                         <PlayerChip key={p.id} player={poolByIdWithStats.get(p.id) ?? p} playerId={p.id}
-                                                            blocked={!targetTradeableIds.has(p.id) && !isTestUnblockedTarget}
                                                             showContract={capEnabled}
                                                             stats={statsByPlayerId.get(p.id)}
                                                             actionIcon={cartTheirs.has(p.id) ? 'remove' : 'add'}

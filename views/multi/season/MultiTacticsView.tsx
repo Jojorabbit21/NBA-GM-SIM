@@ -196,7 +196,9 @@ const MultiTacticsView: React.FC = () => {
     const handleSaveTactics = useCallback(async () => {
         setSaving(true);
         setSaveError(null);
-        const { error } = await saveTactics();
+        // 현재 로스터(league_teams 실시간 구독값) 기준으로 나간 선수 ID를 걸러서 저장 — 접속 중 트레이드/방출 후
+        // 메모리에 남은 stale 상태가 DB로 되돌아오는 걸 막는다. (rosterPlayers는 이 콜백보다 아래에서 선언돼 TDZ → myTeamRow 사용)
+        const { error } = await saveTactics(myTeamRow?.roster ?? []);
         setSaving(false);
         if (!error) {
             setSavedFlash(true);
@@ -205,7 +207,7 @@ const MultiTacticsView: React.FC = () => {
             console.error('[tactics.save]', error);
             setSaveError('전술 저장에 실패했습니다. 잠시 후 다시 시도하세요.');
         }
-    }, [saveTactics]);
+    }, [saveTactics, myTeamRow?.roster]);
 
     // 저장 안 된 변경사항이 있는 채로 브라우저를 나가려 하면(새로고침/탭 닫기/URL 이동)
     // 확인 프롬프트를 띄운다. 앱 내부 라우트 전환(사이드바 클릭 등)은 이 프로젝트가

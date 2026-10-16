@@ -36,6 +36,184 @@
 ---
 
 
+## 2026-10-16 — 멀티 트레이드 "새 제안" 상대팀 선택을 공용 Dropdown으로 + AI 팀 제외
+
+**배경**: 상대팀 선택이 브라우저 기본 `<select>`라 윈도우에서 옵션이 흰 배경+흰 글씨로 보여 구분 불가. 또 2026-08-30 TEMP 예외(관리자는 AI 팀에도 제안 가능)를 제거해 사람이 운영하는 팀만 목록에 표시.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (client)
+
+**Before**:
+```tsx
+const humanTargetTeams = useMemo(
+    () => leagueTeams.filter(t => t.id !== myTeamRow?.id && (isAdmin || (t.user_id && !t.is_ai))) ...,
+    [leagueTeams, myTeamRow, isAdmin]);
+<select value={targetTeamId} onChange={...confirm 후 setTargetTeamId}>{humanTargetTeams.map(t => <option .../>)}</select>
+```
+
+**After**:
+```tsx
+filter(t => t.id !== myTeamRow?.id && t.user_id && !t.is_ai)   // deps: [leagueTeams, myTeamRow]
+<Dropdown align="left" trigger={팀명+Chevron} items={humanTargetTeams.map(t => ({ 로고+팀명, active, onClick: confirm 후 setTargetTeamId }))} />
+```
+
+**검증**: tsc 해당 파일 오류 없음.
+
+**롤백 방법**: 위 Before로 복원. 참고: DB RPC `create_trade_offer`의 관리자→AI 팀 허용 완화는 그대로 남아 있음(클라에서만 막음).
+
+## 2026-10-16 — 팀 화면 팀 드롭다운이 탭 바 아래로 가려지는 z-index 버그
+
+**배경**: 로스터 화면 헤더의 팀 이름 드롭다운(`z-[200]`)이 바로 아래 탭 바("선수 기록/경기 기록" 등)에 가려짐. 헤더에 `isolate`가 있어 스태킹 컨텍스트가 헤더 안에 갇히고, 헤더 자체는 z-index가 auto라 뒤따르는 형제(탭 바)와 같은 레이어로 DOM 순서대로 그려졌기 때문.
+
+**변경 파일**:
+- `views/RosterView.tsx` (헤더 컨테이너 className)
+
+**Before**:
+```tsx
+<div className="relative isolate flex-shrink-0 px-9 py-8 ...">
+```
+
+**After**:
+```tsx
+<div className="relative z-20 isolate flex-shrink-0 px-9 py-8 ...">
+```
+
+**검증**: 코드 확인만(브라우저 육안 확인은 사용자 몫).
+
+**롤백 방법**: `z-20` 제거.
+
+## 2026-10-16 — FA 서명/방출 기록(league_transactions) 실시간 반영 (히스토리·홈 최근 거래)
+
+**배경**: FA 계약 직후 트레이드 화면 "히스토리" 탭으로 가도 기록이 안 보이고 새로고침해야 보였음. 계약 화면이 `MultiFrontOfficeView`의 하위 탭이라 화면이 계속 마운트된 채로, 전역 `staleTime: Infinity`(index.tsx) 때문에 `leagueTransactionsAll`이 재조회되지 않았음. 다른 유저의 거래도 마찬가지로 반영 경로가 없었음(테이블이 Realtime 발행 대상에 없었음).
+
+**변경 파일** (모두 client/DB 전용, 서버 미러 없음):
+- `migrations/add_league_transactions_realtime.sql` — `ALTER PUBLICATION supabase_realtime ADD TABLE public.league_transactions` (Supabase MCP로 적용 완료, 발행 확인)
+- `hooks/useLeagueTransactionsRealtime.ts` (신규) — `invalidateLeagueTransactions(queryClient, roomId)`(키 3종 무효화) + `useLeagueTransactionsRealtime(roomId)`(room_id 필터 postgres_changes, 400ms 디바운스, 재연결 SUBSCRIBED 시 재무효화·최초 구독 제외)
+- `views/multi/league/LeagueLayout.tsx` — 조기 return 위에서 `useLeagueTransactionsRealtime(state.room?.id ?? null)` 호출
+- `views/multi/season/MultiFreeAgentView.tsx` / `MultiNegotiationView.tsx` / `MultiReleaseView.tsx` — 서명·방출 성공 직후 `invalidateLeagueTransactions(queryClient, room?.id)` (즉시 반영, 실시간 이벤트 대기 없음)
+- `services/notifications/queryErrorCatalog.ts` — `leagueTransactionsAll: '리그 트랜잭션'` 라벨 추가(백그라운드 재조회 실패 토스트 문구가 "데이터"로 나오던 것)
+
+**Before**:
+- 거래 기록 쿼리 무효화 경로 없음, 테이블 Realtime 미발행.
+
+**After**:
+- 무효화 대상 키: `['leagueTransactionsAll', roomId]`, `['homeLeagueTransactions', roomId]`, `['playerTransactionHistory', roomId]`. 보고 있는 화면만 즉시 재조회, 나머지는 stale 표시 후 다음 진입 때 조회.
+
+**검증**: tsc에서 변경 파일 관련 오류 없음. 실제 두 계정 동시 접속 반영은 미확인(배포 후 확인 필요).
+
+**롤백 방법**: `ALTER PUBLICATION supabase_realtime DROP TABLE public.league_transactions;` + 위 파일들의 추가분 제거(신규 훅 파일 삭제, LeagueLayout/3개 뷰의 호출·import 제거, 카탈로그 라벨 한 줄 제거).
+
+---
+
+## 2026-10-16 — 접속 중 트레이드/방출 후 stale 전술이 DB로 되돌아오는 것 방지 (멀티 클라이언트)
+
+**배경**: 서버(SQL)가 나간 선수 ID를 전술에서 지워도, 전술 화면을 열어둔 클라이언트의 메모리엔 옛 ID가 남아 있다(전술은 접속 시 1회만 읽고 `room_members`는 구독하지 않음, `league_teams`만 실시간). 저장 버튼은 tactics/depth_chart를 통째로 덮어쓰므로 저장하면 나간 선수 ID가 DB에 되돌아오고, `computeRotationValidation`이 로스터 대조 없이 rotationMap 전체를 세서 "분당 5명 미만" 경고가 가려졌다.
+
+**변경 파일**:
+- `utils/rotationAllocation.ts` (client) — `computeRotationValidation`
+- `utils/tacticsPrune.ts` (client, 신규) — `pruneTacticsToRoster()`; SQL `strip_players_from_tactics`와 같은 규칙의 클라 미러(유지보수 시 같이 수정)
+- `hooks/useMultiGameData.ts` (client) — `saveTactics(rosterIds?)`
+- `views/multi/season/MultiTacticsView.tsx` (client) — `handleSaveTactics`
+
+**Before**:
+```ts
+// computeRotationValidation: rotationMap 전 항목을 로스터 대조 없이 카운트
+Object.entries(rotationMap || {}).forEach(([pid, map]) => { ... });
+// saveTactics: 메모리 상태 그대로 저장
+const { error } = await saveMemberTactics(s.roomId, s.userId, s.userTactics, s.depthChart);
+if (!error) { setLastSavedTactics(s.userTactics); setLastSavedDepthChart(s.depthChart); }
+// handleSaveTactics
+const { error } = await saveTactics();
+```
+
+**After**:
+```ts
+// computeRotationValidation: roster.length > 0 이면 로스터에 없는 pid는 skip (빈 로스터=로딩 중은 필터 생략)
+// saveTactics(rosterIds?): rosterIds 있으면 pruneTacticsToRoster로 정리한 값을 저장하고,
+//   화면 상태(setUserTactics/setDepthChart)와 lastSaved도 정리본으로 맞춤(안 맞추면 isTacticsDirty가 계속 true)
+// handleSaveTactics: saveTactics(myTeamRow?.roster ?? [])
+//   ※ rosterPlayers는 이 콜백보다 아래에서 선언돼 deps에 쓰면 TDZ → league_teams 구독값인 myTeamRow.roster 사용
+```
+- `pruneTacticsToRoster`: starters→'' / rotationMap·minutesLimits·playerTactics 키 삭제 / stopperId 삭제 / depthChart(전술 내부+별도 컬럼) 슬롯 null(순번 보존). 로스터 ids가 빈 배열이면 그대로 반환(전부 지우는 사고 방지).
+
+**검증**: tsc 오류 없음(해당 4파일). tsx로 합성 데이터 실행 — 정리 결과 SQL 헬퍼와 동일, 빈 로스터 passthrough, 검증 카운트 2→1(나간 선수 제외). 실제 화면에서 접속 중 트레이드 → 저장 시나리오는 미실행.
+
+**롤백 방법**: 위 Before로 4파일 복원, `utils/tacticsPrune.ts` 삭제. 서버 쪽 strip(SQL)은 별개라 그대로 둬도 무방.
+
+---
+
+## 2026-10-16 — 트레이드 성사/방출 시 전술 전체 초기화 → "나간 선수 ID만 제거"로 변경 (멀티)
+
+**배경**: "트레이드가 진행되면 제안 쪽 전술이 초기화된다"는 제보. 원인은 `respond_trade_offer`(accept)와 `release_player`가 양팀(방출은 해당팀)의 `room_members.tactics`/`depth_chart`를 통째로 NULL로 리셋하던 것(stale 선수 ID 방지 목적). 슬라이더·다른 선수 로테이션까지 전부 날아갔음. (제안만 보내거나 거절/취소 시에는 초기화 없음 — 성사 시에만.)
+
+**변경 파일**:
+- `migrations/strip_players_from_tactics_instead_of_reset.sql` (DB, 라이브에는 `strip_players_from_tactics_helpers` + `strip_players_from_tactics_rpc_patch` 2건으로 나눠 apply_migration)
+- 클라이언트/엔진 코드 변경 없음 (엔진은 유령 ID/빈 슬롯 폴백이 이미 존재: `initializer.ts:205-236`, `rotationLogic.ts:225-262`)
+
+**Before**:
+```sql
+-- respond_trade_offer (accept 분기)
+UPDATE room_members SET tactics = NULL, depth_chart = NULL
+WHERE room_id = v_o.room_id
+  AND team_id IN (v_a.team_slug, v_b.team_slug);
+-- release_player
+UPDATE room_members SET tactics = NULL, depth_chart = NULL
+WHERE room_id = v_team.room_id AND team_id = v_team.team_slug;
+```
+
+**After**:
+```sql
+-- 신규 순수 함수 2개 (외부 실행 권한 회수, SECURITY DEFINER RPC 내부에서만 호출)
+strip_players_from_tactics(t jsonb, ids text[])      -- starters→'' / rotationMap·minutesLimits·playerTactics 키 삭제 / stopperId 삭제 / 내부 depthChart null 처리. sliders 등은 그대로
+strip_players_from_depth_chart(d jsonb, ids text[])  -- 해당 선수 슬롯만 null (순번 인덱스 보존)
+-- respond_trade_offer: 팀A는 v_out, 팀B는 v_in만 제거 (각각 별도 UPDATE)
+-- release_player: ARRAY[p_player_id]만 제거
+```
+- 들어오는 선수는 전술 데이터에 아무것도 추가하지 않음(로스터에만 존재 → 간트차트 RES 그룹 0분). 빈 슬롯/시간대는 엔진 폴백이 OVR순으로 채움.
+- `sign_free_agent`는 라이브 정의에 원래 초기화가 없어 변경 없음(FA 영입 선수도 미배치 상태로 로스터에만 추가).
+
+**검증**: 합성 JSON으로 헬퍼 단위 테스트(슬라이더 보존/슬롯 인덱스 보존/키 삭제/NULL 입력 → NULL/전술 내부 depthChart 없는 최소 객체 OK). 라이브 함수 정의에 `tactics = NULL` 소멸, `strip_players_from_tactics` 존재, 기존 로직(블록 검사 제거, 샐러리 매칭, 로스터 정원, 스트레치) 유지 확인. 실제 트레이드/방출 E2E는 미실행.
+
+**롤백 방법**: 위 Before의 UPDATE로 두 함수를 복원(마이그레이션 파일 상단 주석 참고). 헬퍼 함수는 남겨둬도 무해, `DROP FUNCTION strip_players_from_tactics(jsonb, text[]), strip_players_from_depth_chart(jsonb, text[])`로 제거 가능.
+
+---
+
+## 2026-10-16 — 트레이드 블록 미등록 선수에게도 트레이드 제안 허용 (멀티)
+
+**배경**: 상대 팀 선수가 트레이드 블록에 올라와 있어야만 제안을 보낼 수 있던 제약 제거 요청.
+
+**변경 파일**:
+- `migrations/allow_trade_offer_for_non_block_players.sql` (DB RPC, 라이브 DB에 apply_migration으로 적용 완료)
+- `views/multi/season/MultiFrontOfficeView.tsx` (client)
+
+**Before**:
+```sql
+-- create_trade_offer, p_players_to 루프 안
+IF NOT EXISTS (SELECT 1 FROM league_trade_blocks WHERE team_id = p_to_team_id AND player_id = v_id) THEN
+    IF NOT (v_is_admin AND v_b.is_ai) THEN
+        RAISE EXCEPTION 'player_not_tradeable: %', v_id;
+    END IF;
+END IF;
+-- respond_trade_offer, accept 시 v_in 루프 안
+IF NOT v_admin AND NOT EXISTS (
+    SELECT 1 FROM league_trade_blocks WHERE team_id = v_b.id AND player_id = v_id
+) THEN
+    RAISE EXCEPTION 'player_not_tradeable: %', v_id;
+END IF;
+```
+```tsx
+blocked={!targetTradeableIds.has(p.id) && !isTestUnblockedTarget}   // 새 제안 탭 상대 로스터 PlayerChip
+const isTestUnblockedTarget = isAdmin && !!targetTeamRow?.is_ai;    // + targetTradeableIds 선언
+```
+
+**After**: 위 두 SQL 블록 삭제(로스터 소속 `player_not_on_team`/`stale_offer` 검사는 유지), PlayerChip의 `blocked` prop과 `isTestUnblockedTarget`/`targetTradeableIds` 선언 제거. 이로써 2026-08-30 TEMP 2단계(블록 미등록 선수 허용)도 흡수됨. (AI 팀 대상 허용은 별도 TEMP로 그대로 남아있음)
+
+**검증**: tsc 오류 없음, 라이브 DB 함수 정의에서 `player_not_tradeable` 문자열 소멸 확인(샐러리 매칭/로스터 정원 로직은 유지).
+
+**롤백 방법**: 마이그레이션 파일 상단 주석의 SQL 블록을 두 함수에 복원 + 클라이언트에 `blocked` prop 복원.
+
+---
+
 ## 2026-10-16 — 드래프트 픽마다 룸이 새로고침되고 풀 필터가 초기화되던 버그 (부트스트랩 게이트 재진입)
 
 **배경**: 다른 유저가 픽할 때마다 드래프트룸이 새로고침되고 선수 풀 검색/정렬 필터가 초기화된다는 제보. 원인: 픽마다 `league_teams.roster` 갱신 → `useCurrentLeague`의 league_teams 구독이 `leagueTeams` 갱신 → `useLeagueBootstrap`의 `rosterKey` 변경으로 effect 재실행 → roster ID가 queryKey에 들어가는 쿼리가 캐시 미스 → `status='loading'` → `LeagueLayout`이 `Outlet` 대신 로딩 화면 반환 → `MultiDraftView` 언마운트(필터 state 소실, WS 재연결, 스냅샷 재수신).
@@ -100,6 +278,27 @@ function toPlayer(p, applyCustomOverrides = false) {
 **롤백 방법**: 위 Before 형태의 `toPlayer`(git 이전 커밋 참조)로 복원하고 import 및 deps 되돌림.
 
 ---
+
+## 2026-10-16 — OVR 배지 임페리얼(99+)·갤럭시 오팔(97) 색 변경
+
+**배경**: 사용자가 배지 스튜디오에서 두 등급만 재디자인(나머지 등급·크기·폰트는 불변).
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` (TIERS 2줄)
+
+**Before**:
+```ts
+{ min: 99, ... grad3('#00e1ff', '#0055ff', '#ee05ff') ... glowColor: '#dbc900' } // 임페리얼
+{ min: 97, ... grad3('#ffee38', '#dd05e1', '#fa4f05') ... glowColor: '#05eafa' } // 갤럭시 오팔
+```
+
+**After**:
+```ts
+{ min: 99, ... grad3('#ffdd00', '#ff004c', '#e205ff') ... glowColor: '#b3005f' } // 임페리얼
+{ min: 97, ... grad3('#38ff6a', '#6805e1', '#05fa88') ... glowColor: '#2e03c9' } // 갤럭시 오팔
+```
+
+**롤백 방법**: Before 값으로 복원.
 
 ## 2026-10-16 — 남은 OVR 배지 크기·글자 덮어쓰기 23곳 전부 제거 → 표준 sm
 

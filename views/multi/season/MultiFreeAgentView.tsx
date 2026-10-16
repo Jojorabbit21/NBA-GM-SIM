@@ -13,6 +13,8 @@ import { usePrefetchFreeAgentCareerHistory } from '../../../hooks/usePrefetchFre
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { signFreeAgent } from '../../../services/multi/faService';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateLeagueTransactions } from '../../../hooks/useLeagueTransactionsRealtime';
 import { Table, TableHead, TableBody, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import { Button } from '../../../components/common/Button';
 import { OvrBadge } from '../../../components/common/OvrBadge';
@@ -74,6 +76,7 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
     }, []);
 
     const { league, leagueTeams, room, isLoading: leagueLoading, reload } = useLeagueContext();
+    const queryClient = useQueryClient();
     const { tendencySeed, currentSeason, schedule } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -163,6 +166,7 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
         const { error } = await signFreeAgent(myTeamRow.id, playerId);
         setSigningId(null);
         if (error) { setSignError(`${playerName} 계약 실패: ${error}`); return; }
+        invalidateLeagueTransactions(queryClient, room?.id);   // 히스토리/홈 최근 거래 즉시 갱신
         reload();
     };
 

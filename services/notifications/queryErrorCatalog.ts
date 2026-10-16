@@ -18,6 +18,7 @@ export const QUERY_LABELS: Record<string, string> = {
     leagueHeadlines: '리그 소식',
     leagueNewsStories: '뉴스피드',
     leagueRawPbp: '경기 기록',
+    leagueTransactionsAll: '리그 트랜잭션',
     leagueRawPlayers: '리그 선수 명단',
     leagueRawSeasonInjury: '시즌 부상 기록',
     metaPlayerOrder: '선수 링크 코드',

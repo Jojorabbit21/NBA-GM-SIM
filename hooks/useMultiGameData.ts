@@ -15,6 +15,7 @@ import type { LeagueTrainingConfigs } from '../types/training';
 import type { CoachFAPool, LeagueCoachingData } from '../types/coaching';
 import type { LotteryResult } from '../services/draft/lotteryEngine';
 import { loadRoom, saveRoom, saveMemberTactics } from '../services/multi/roomPersistence';
+import { pruneTacticsToRoster } from '../utils/tacticsPrune';
 import { loadRoomMember } from '../services/multi/roomQueries';
 import { loadSchedule, rowToGame } from '../services/multi/gameQueries';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
@@ -97,7 +98,8 @@ export interface MultiGameDataReturn {
     // 저장
     forceSave:           () => Promise<void>;
     isTacticsDirty:      boolean;
-    saveTactics:         () => Promise<{ error: string | null }>;
+    /** rosterIds를 넘기면 저장 전에 로스터에 없는 선수 ID를 전술/뎁스차트에서 제거(트레이드/방출 후 stale 상태 되돌림 방지). */
+    saveTactics:         (rosterIds?: string[]) => Promise<{ error: string | null }>;
 }
 
 // ─── 훅 본체 ─────────────────────────────────────────────────────────────────
@@ -388,13 +390,21 @@ export function useMultiGameData(
             || JSON.stringify(depthChart)  !== JSON.stringify(lastSavedDepthChart);
     }, [userTactics, depthChart, lastSavedTactics, lastSavedDepthChart]);
 
-    const saveTactics = useCallback(async (): Promise<{ error: string | null }> => {
+    const saveTactics = useCallback(async (rosterIds?: string[]): Promise<{ error: string | null }> => {
         const s = stateRef.current;
         if (!s.roomId || !s.userId) return { error: 'roomId/userId missing' };
-        const { error } = await saveMemberTactics(s.roomId, s.userId, s.userTactics, s.depthChart);
+        // [2026-10-16] 접속 중 트레이드/방출로 서버가 나간 선수 ID를 전술에서 지웠어도, 이 화면의 메모리 상태엔
+        // 남아 있어 통째로 덮어쓰면 되돌아온다 — 저장 직전에 현재 로스터 기준으로 정리하고 화면 상태도 같이 맞춘다
+        // (안 맞추면 저장 후에도 isTacticsDirty가 계속 true).
+        const pruned = rosterIds
+            ? pruneTacticsToRoster(s.userTactics, s.depthChart, rosterIds)
+            : { tactics: s.userTactics, depthChart: s.depthChart };
+        const { error } = await saveMemberTactics(s.roomId, s.userId, pruned.tactics, pruned.depthChart);
         if (!error) {
-            setLastSavedTactics(s.userTactics);
-            setLastSavedDepthChart(s.depthChart);
+            if (pruned.tactics !== s.userTactics)   setUserTactics(pruned.tactics);
+            if (pruned.depthChart !== s.depthChart) setDepthChart(pruned.depthChart);
+            setLastSavedTactics(pruned.tactics);
+            setLastSavedDepthChart(pruned.depthChart);
         }
         return { error };
     }, []);

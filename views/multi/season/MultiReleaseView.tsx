@@ -16,6 +16,8 @@ import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { calcTeamPayroll } from '../../../services/fa/faMarketBuilder';
 import { releasePlayer } from '../../../services/multi/faService';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateLeagueTransactions } from '../../../hooks/useLeagueTransactionsRealtime';
 import { generateSaveTendencies } from '../../../utils/hiddenTendencies';
 import { countYosFromCareerHistory } from '../../../utils/constants';
 import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
@@ -74,6 +76,7 @@ interface ChatMsg {
 
 const MultiReleaseView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading, reload, timeline } = useLeagueContext();
+    const queryClient = useQueryClient();
     const { tendencySeed, currentSeason, schedule, currentSimDate: roomSimDate } = useSeasonContext();
     const { session } = useGame();
     const navigate = useNavigate();
@@ -304,6 +307,7 @@ const MultiReleaseView: React.FC = () => {
         const { error } = await releasePlayer(myTeamRow.id, player.id, effectiveMode);
         setSubmitting(false);
         if (error) { setActionError(error); return; }
+        invalidateLeagueTransactions(queryClient, room?.id);   // 히스토리/홈 최근 거래 즉시 갱신
         // [2026-09-21] hooks/useCurrentLeague.ts의 league_teams 실시간 구독이 이 RPC가 커밋한
         // roster 변경을 ~300ms 안에 자동으로 반영한다(reload()를 우리가 부르든 안 부르든
         // 무관 — 드래프트/트레이드/FA서명/방출 전부 같은 채널이 감시). 그 순간 myTeam.roster에서
