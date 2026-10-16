@@ -116,6 +116,12 @@ export function usePlayerSeasonStatsLeague(
     const query = useQuery({
         ...playerSeasonStatsLeagueQuery(roomId, sortedIds, isPlayoff),
         enabled,
+        // [2026-10-16] 리그 어디서든 트레이드/FA/방출로 로스터가 바뀌면 키(선수 id 집합)가 바뀌어 data가 잠깐 비고
+        // isPending이 true로 돌아가 리더보드·선수 상세가 통째로 스피너로 깜빡였다(홈은 전원 스탯 0으로 깜빡임).
+        // 같은 리그(room) + 같은 정규/플레이오프 구분일 때만 이전 값을 유지 — 선수 id는 리그 간 공유라 다른 리그 값,
+        // 또는 정규시즌 값을 플레이오프 화면에 이어 쓰면 잘못된 숫자가 보인다. 새로 로스터에 들어온 선수만 재조회 완료 전까지 0.
+        placeholderData: (prev: PlayerSeasonStatsLeague | undefined, prevQuery: any) =>
+            prevQuery?.queryKey?.[1] === roomId && prevQuery?.queryKey?.[3] === isPlayoff ? prev : undefined,
     });
 
     // [2026-09-11 Fix] React Query는 enabled:false인 쿼리를 "아직 실행 안 됨"으로 취급해
