@@ -14,6 +14,7 @@ import { TeamGameLog } from '../components/roster/TeamGameLog';
 import { TeamScheduleCalendar } from '../components/roster/TeamScheduleCalendar';
 import { TeamPayrollTable, type RosterCapSettings } from '../components/roster/TeamPayrollTable';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { Dropdown } from '../components/common/Dropdown';
 import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { GMProfileCard } from '../components/dashboard/GMProfileCard';
 import { DraftPicksPanel } from '../components/frontoffice/DraftPicksPanel';
@@ -127,7 +128,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   }, [initialTeamId]);
 
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
-  const teamMenuRef = useRef<HTMLDivElement>(null);
 
   // [2026-10-12] ↑/↓ 방향키로 이전/다음 팀 이동(사용자 요청). stepTeam은 렌더마다 새로 만들어지므로
   // ref로 최신 함수를 들고 리스너는 한 번만 등록. 입력 요소에 포커스가 있거나(검색창 등) 팀 드롭다운이
@@ -148,14 +148,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [teamMenuOpen]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (teamMenuRef.current && !teamMenuRef.current.contains(e.target as Node)) setTeamMenuOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const selectedTeam = useMemo(() =>
       allTeams.find(t => t.id === selectedTeamId) || allTeams[0]
@@ -310,44 +302,39 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               요청으로 원형 복원. 색(text-white)과 ml-2만 별도 요청 사항이라 유지. */}
           <div className="flex flex-col gap-1 min-w-0 ml-2">
               {/* 1행 — 팀이름 드랍다운 */}
-              <div className="relative w-fit" ref={teamMenuRef}>
-                  <button
-                      onClick={() => setTeamMenuOpen(o => !o)}
-                      className="flex items-center gap-3 group"
-                  >
-                      <span className="text-lg font-black tracking-wide text-white">{selectedTeam.city} {selectedTeam.name}</span>
-                      {teamMenuOpen
-                          ? <ChevronUp size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
-                          : <ChevronDown size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
+              {/* [2026-10-16] 패널을 공용 Dropdown(포털, body 직속)으로 이관 — 기존 absolute 패널은 아래
+                  본문(스크롤 컨테이너)의 스태킹/overflow에 잘려 들어갔음. 내 팀은 노란 틴트로 구분. */}
+              <div className="w-fit">
+                  <Dropdown
+                      align="left"
+                      width="w-64"
+                      isOpen={teamMenuOpen}
+                      onOpenChange={setTeamMenuOpen}
+                      trigger={
+                          <span className="flex items-center gap-3 group">
+                              <span className="text-lg font-black tracking-wide text-white">{selectedTeam.city} {selectedTeam.name}</span>
+                              {teamMenuOpen
+                                  ? <ChevronUp size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
+                                  : <ChevronDown size={16} className="shrink-0 opacity-70 group-hover:opacity-100 text-white" />
+                              }
+                          </span>
                       }
-                  </button>
-                  {teamMenuOpen && (
-                      <div className="absolute top-full left-0 mt-2 bg-black border border-zinc-700 rounded-lg p-2 flex flex-col gap-0.5 z-[200] min-w-[220px] max-h-80 overflow-y-auto custom-scrollbar">
-                          {allTeams.map(t => {
-                              const isSelected = t.id === selectedTeam.id;
-                              const isMine     = t.id === myTeamId;
-                              // [2026-10-12] 내 팀은 "MY" 칩 대신 희미한 노란 틴트로 구분, 호버 시 조금 더 밝게.
-                              // 선택 상태(bg-white/15)보다 내 팀 틴트를 우선해 두 상태가 겹쳐도 노란색이 유지된다.
-                              const rowClass = isMine
-                                  ? `bg-amber-400/10 hover:bg-amber-400/20 ${isSelected ? 'text-white font-semibold' : 'font-medium text-zinc-300 hover:text-white'}`
-                                  : isSelected
-                                      ? 'bg-white/15 text-white font-semibold'
-                                      : 'font-medium text-zinc-400 hover:bg-white/10 hover:text-white';
-                              return (
-                                  <button
-                                      key={t.id}
-                                      onClick={() => { handleTeamChange(t.id); setTeamMenuOpen(false); }}
-                                      className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors ${rowClass}`}
-                                  >
-                                      {/* [2026-10-12] 색상 배지 → 로고 이미지. 상단 배너와 동일한 public/logos/teams/
-                                          로고(TeamLogo 공용, 리그 로고 1회 폴백). */}
+                      items={allTeams.map(t => {
+                          const isSelected = t.id === selectedTeam.id;
+                          const isMine     = t.id === myTeamId;
+                          return {
+                              id: t.id,
+                              active: isSelected,
+                              label: (
+                                  <span className={`flex items-center gap-2 min-w-0 w-full rounded ${isMine ? 'text-amber-200' : ''}`}>
                                       <TeamLogo teamId={t.id} teamName={t.abbr ?? t.id} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
                                       <span className="truncate">{t.city} {t.name}</span>
-                                  </button>
-                              );
-                          })}
-                      </div>
-                  )}
+                                  </span>
+                              ),
+                              onClick: () => handleTeamChange(t.id),
+                          };
+                      })}
+                  />
               </div>
 
               {/* 2행 — 전적 / 승률 / GB */}

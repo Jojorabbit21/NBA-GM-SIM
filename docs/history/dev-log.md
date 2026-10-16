@@ -279,6 +279,18 @@ function toPlayer(p, applyCustomOverrides = false) {
 
 ---
 
+## 2026-10-16 — 팀 화면 팀 드롭다운 2차 수정: 포털(공용 Dropdown)로 이관
+
+**배경**: 헤더 `z-20`만으로는 부족 — 드롭다운이 탭 바 위로는 올라왔지만 아래 본문 영역에 잘려 들어감. absolute 패널이 헤더 스태킹 컨텍스트(isolate)·본문 레이어 안에 갇혀 있어서.
+
+**변경 파일**:
+- `views/RosterView.tsx` — 팀 메뉴 패널을 `components/common/Dropdown`(body 포털, z-popover)으로 교체. 자체 outside-click 핸들러와 `teamMenuRef` 제거(포털 패널 클릭이 "바깥 클릭"으로 처리돼 항목 선택이 씹히므로). `teamMenuOpen`은 controlled(`isOpen/onOpenChange`)로 유지해 기존 키보드 핸들러와 호환. 헤더 `z-20`은 유지.
+
+**Before**: `<div className="relative w-fit" ref={teamMenuRef}>` 안에 `absolute top-full ... z-[200]` 패널 직접 렌더(내 팀 행 `bg-amber-400/10` 틴트).
+**After**: `<Dropdown align="left" width="w-64" isOpen onOpenChange trigger items />` (내 팀은 글자색 `text-amber-200`으로 구분, 선택 항목은 Dropdown 기본 active 스타일).
+
+**롤백 방법**: git으로 `views/RosterView.tsx`의 해당 블록을 이전 absolute 패널로 복원.
+
 ## 2026-10-16 — OVR 배지 임페리얼(99+)·갤럭시 오팔(97) 색 변경
 
 **배경**: 사용자가 배지 스튜디오에서 두 등급만 재디자인(나머지 등급·크기·폰트는 불변).
