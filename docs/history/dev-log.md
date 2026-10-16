@@ -36,6 +36,38 @@
 ---
 
 
+## 2026-10-16 — 드래프트 픽마다 룸이 새로고침되고 풀 필터가 초기화되던 버그 (부트스트랩 게이트 재진입)
+
+**배경**: 다른 유저가 픽할 때마다 드래프트룸이 새로고침되고 선수 풀 검색/정렬 필터가 초기화된다는 제보. 원인: 픽마다 `league_teams.roster` 갱신 → `useCurrentLeague`의 league_teams 구독이 `leagueTeams` 갱신 → `useLeagueBootstrap`의 `rosterKey` 변경으로 effect 재실행 → roster ID가 queryKey에 들어가는 쿼리가 캐시 미스 → `status='loading'` → `LeagueLayout`이 `Outlet` 대신 로딩 화면 반환 → `MultiDraftView` 언마운트(필터 state 소실, WS 재연결, 스냅샷 재수신).
+
+**변경 파일**:
+- `hooks/useLeagueBootstrap.ts` (client 전용)
+
+**Before**:
+```ts
+// effect: rosterKey 변경 시 항상
+setState({ status: 'loading', failKind: null });
+void runPending(runId, 1);
+// runPending(runId, attempt): 완료/실패 시 항상 setState
+```
+
+**After**:
+```ts
+const readyKeyRef = useRef<string | null>(null);   // ready 도달한 `${league.id}:${room.id}`
+// effect: 이미 같은 리그/룸에서 ready였으면 silent
+const silent = readyKeyRef.current === `${league.id}:${room.id}`;
+if (!silent) setState({ status: 'loading', failKind: null });
+void runPending(runId, 1, silent);   // silent면 setState/재시도/failed 전환 없음
+// !enabled||!league||!room 이면 readyKeyRef=null (게이트 복귀 시 최초 진입과 동일)
+// state.status==='ready' 도달 시 readyKeyRef 기록하는 별도 effect 추가
+```
+
+**검증**: tsc에서 해당 파일 관련 오류 없음. 실제 드래프트 중 픽 수신 시 비새로고침은 미확인(브라우저 확인 필요).
+
+**롤백 방법**: `readyKeyRef`/`silent` 관련 추가분 제거 후 Before 형태(항상 loading 전환)로 복원.
+
+---
+
 ## 2026-10-16 — 멀티 드래프트룸 OVR이 custom_overrides 미반영으로 표시되던 버그
 
 **배경**: 드래프트룸(MultiDraftView)의 OVR이 드래프트풀 모달과 달리 base_attributes 저장값만 표시. 자체 어댑터 `toPlayer()`가 오버라이드를 능력치 키에만 머지하고 `ovr: base.ovr ?? 70`(저장값)을 그대로 썼으며, OVR 재계산이 없었음. 추가로 두 `useMemo` 의존성에 `useCustomOverrides`가 빠져 있었음.

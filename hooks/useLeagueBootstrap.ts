@@ -92,6 +92,9 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
     const [state, setState] = useState<Omit<LeagueBootstrapState, 'retry'>>({ status: 'idle', failKind: null });
     const runIdRef = useRef(0);
     const pendingRef = useRef<Entry[]>([]);
+    // [2026-10-16] 이미 ready가 된 리그/룸 키 — 이후 rosterKey 변경(드래프트 픽·트레이드 등)으로 effect가 재평가돼도
+    // 게이트를 다시 띄우지 않고(=Outlet 언마운트 방지) 부족한 쿼리만 백그라운드로 프리패치한다.
+    const readyKeyRef = useRef<string | null>(null);
 
     const { enabled, league, room, leagueTeams, myTeam } = input;
     const roomId = room?.id ?? null;
@@ -100,9 +103,9 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
     const myTeamId = myTeam?.id ?? null;
 
     /** pending 목록을 병렬로 받고, 실패분만 모아 조용히 재시도. */
-    const runPending = useCallback(async (runId: number, attempt: number) => {
+    const runPending = useCallback(async (runId: number, attempt: number, silent = false) => {
         const targets = pendingRef.current;
-        if (targets.length === 0) { setState({ status: 'ready', failKind: null }); return; }
+        if (targets.length === 0) { if (!silent) setState({ status: 'ready', failKind: null }); return; }
         const results = await Promise.allSettled(targets.map(e => e.run(queryClient)));
         if (runIdRef.current !== runId) return;   // 리그/룸이 바뀌어 새 실행이 시작됨
         const failed: Entry[] = [];
@@ -115,7 +118,8 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
             }
         });
         pendingRef.current = failed;
-        if (failed.length === 0) { setState({ status: 'ready', failKind: null }); return; }
+        if (failed.length === 0) { if (!silent) setState({ status: 'ready', failKind: null }); return; }
+        if (silent) return;   // 백그라운드 프리패치 실패는 화면에 영향 없음 — 각 화면이 필요할 때 자체 쿼리로 받는다
         if (attempt < BOOTSTRAP_RETRY_MAX) {
             await new Promise(res => setTimeout(res, BOOTSTRAP_RETRY_DELAY_MS));
             if (runIdRef.current !== runId) return;
@@ -125,7 +129,7 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
     }, [queryClient]);
 
     useEffect(() => {
-        if (!enabled || !league || !room) { setState({ status: 'idle', failKind: null }); return; }
+        if (!enabled || !league || !room) { readyKeyRef.current = null; setState({ status: 'idle', failKind: null }); return; }
         // [2026-10-14] 다른 방의 경기 리더 localStorage 캐시 정리 — 방마다 ~1MB라 react-query 영속 캐시 자리를 잠식함.
         pruneGameLeadersCache(room.id);
         const runId = ++runIdRef.current;
@@ -133,14 +137,21 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
         // 캐시에 데이터가 있는 쿼리는 대기 대상에서 제외
         const missing = entries.filter(e => queryClient.getQueryState(e.key)?.data === undefined);
         pendingRef.current = missing;
-        if (missing.length === 0) { setState({ status: 'ready', failKind: null }); return; }
-        setState({ status: 'loading', failKind: null });
-        void runPending(runId, 1);
+        if (missing.length === 0) { readyKeyRef.current = `${league.id}:${room.id}`; setState({ status: 'ready', failKind: null }); return; }
+        // 같은 리그/룸에서 이미 ready였다면 조용히 프리패치만 (게이트 재진입 없음)
+        const silent = readyKeyRef.current === `${league.id}:${room.id}`;
+        if (!silent) setState({ status: 'loading', failKind: null });
+        void runPending(runId, 1, silent);
         return () => { runIdRef.current++; };
     // leagueTeams/myTeam 객체 자체가 아니라 키에 영향 주는 값만 의존 — 트레이드 등으로 roster가 바뀌면 재평가
-    // (그때는 대부분 캐시 미스 쿼리가 1~3개뿐이라 게이트가 잠깐 뜨거나 안 뜸).
+    // (이미 ready였던 리그/룸이면 게이트를 다시 띄우지 않고 백그라운드 프리패치만 — 드래프트 픽마다 룸이 언마운트되던 버그 수정).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [enabled, leagueId, roomId, rosterKey, myTeamId, queryClient, runPending]);
+
+    // ready 도달 시 키 기록 (최초 진입 로딩 완료 → 이후 재평가는 silent)
+    useEffect(() => {
+        if (state.status === 'ready' && leagueId && roomId) readyKeyRef.current = `${leagueId}:${roomId}`;
+    }, [state.status, leagueId, roomId]);
 
     const retry = useCallback(() => {
         if (state.status !== 'failed') return;
