@@ -46,19 +46,9 @@ function formatSimDateShort(simDate: string): string {
 // 기능)은 홈 화면 위젯으로 쓰기엔 과함 — 컨퍼런스별 W/L/PCT/GB만 보여주는 압축판을 새로
 // 만들고, 계산 로직(승패/승률)만 기존 공용 유틸(computeMultiStandingsStats)을 그대로
 // 재사용해 전체 순위표 화면과 숫자가 어긋나지 않게 한다.
-// [2026-09-04 후속] "플레이오프 직행권 초록/플레이인권 주황 틴트 스케일 + 플레이인 설정에
-// 따라 구분선도 달라지게" 요청 — 자동 클린치 인원 계산은 computePlayoffOddsMap
-// (multiSeasonUtils.ts)의 autoClinchCount 공식과 동일(playInEnabled면 playoffCutoff-2,
-// 아니면 playoffCutoff 그대로), 플레이인 풀은 그 다음 4자리 고정(같은 파일의 실제 시딩
-// 로직과 동일 — NBA 방식 7~10시드). "스케일"은 그룹 안에서 1위(가장 진하게)→마지막
-// (가장 옅게) 순으로 배경 불투명도를 선형 보간(rgba)해서 표현 — Tailwind bg-opacity
-// 유틸은 값이 몇 단계로 끊겨 있어 연속적인 스케일 표현이 안 돼 인라인 style로 계산.
-function tintStyle(rgb: string, indexInGroup: number, groupSize: number): React.CSSProperties {
-    if (groupSize <= 0) return {};
-    const t = groupSize > 1 ? indexInGroup / (groupSize - 1) : 0;
-    const alpha = 0.22 - t * 0.16; // 1위 0.22 → 그룹 마지막 0.06
-    return { backgroundColor: `rgba(${rgb}, ${alpha})` };
-}
+// [2026-09-04 후속] 플레이오프 직행권/플레이인권 컷라인 구분선이 플레이인 설정에 따라 달라지게 — 자동 클린치 인원은
+// computePlayoffOddsMap(multiSeasonUtils.ts)의 autoClinchCount 공식과 동일, 플레이인 풀은 그 다음 4자리 고정(7~10시드).
+// [2026-10-17] 행 배경 틴트(초록/주황 컬러 스케일, tintStyle) 제거(사용자 요청) — 구분선만 유지. Before는 dev-log 참고.
 
 // [2026-09-05 버그 수정] "홈 화면 호버 카드에 부상 정보가 안 뜬다" 리포트 — buildLeagueTeams()는
 // 의도적으로 현재 진행 중인 부상 상태(activeInjurySeverity 등)를 채우지 않음(이력만 채움,
@@ -164,19 +154,12 @@ const HomeStandingsTable: React.FC<{
                     const gb = i === 0 || !leader || !rec
                         ? '-'
                         : (((leader.wins - leader.losses) - (rec.wins - rec.losses)) / 2).toFixed(1);
-                    // 직행권(초록) → 플레이인권(주황, 활성화 시만) → 탈락권(무색) 순으로 판정.
-                    const rowTint = i < autoClinchCount
-                        ? tintStyle('16, 185, 129', i, autoClinchCount)
-                        : playInEnabled && i < playInEndIdx
-                            ? tintStyle('249, 115, 22', i - autoClinchCount, playInEndIdx - autoClinchCount)
-                            : undefined;
                     // 컷라인 구분선 — 직행권 끝(항상)과 플레이인권 끝(플레이인 활성화 시만) 두 곳.
                     const isCutoffRow = i === autoClinchCount - 1 || (playInEnabled && i === playInEndIdx - 1);
                     return (
                         <TableRow
                             key={t.team_slug}
                             onClick={onOpenStandings}
-                            style={rowTint}
                             className={isCutoffRow ? '[&>td]:border-b-2' : ''}
                         >
                             <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell>

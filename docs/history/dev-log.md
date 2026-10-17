@@ -36,6 +36,74 @@
 ---
 
 
+## 2026-10-17 — 멀티 리그 홈 "리그 순위" 행 컬러 스케일(틴트) 제거
+
+**배경**: 사용자 요청. 홈 순위표(`HomeStandingsTable`)의 직행권 초록/플레이인권 주황 배경 그라데이션 제거.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` (client) — `tintStyle()` 함수, `rowTint` 계산, `<TableRow style={rowTint}>` 삭제. 컷라인 구분선(`isCutoffRow`)은 유지.
+
+**Before**:
+```ts
+function tintStyle(rgb: string, indexInGroup: number, groupSize: number): React.CSSProperties {
+    if (groupSize <= 0) return {};
+    const t = groupSize > 1 ? indexInGroup / (groupSize - 1) : 0;
+    const alpha = 0.22 - t * 0.16; // 1위 0.22 → 그룹 마지막 0.06
+    return { backgroundColor: `rgba(${rgb}, ${alpha})` };
+}
+// 행 안:
+const rowTint = i < autoClinchCount
+    ? tintStyle('16, 185, 129', i, autoClinchCount)
+    : playInEnabled && i < playInEndIdx
+        ? tintStyle('249, 115, 22', i - autoClinchCount, playInEndIdx - autoClinchCount)
+        : undefined;
+<TableRow key=... onClick={onOpenStandings} style={rowTint} className={...}>
+```
+
+**After**: 위 세 가지 모두 삭제(`<TableRow>`에서 `style` prop 제거).
+
+**검증**: `tintStyle`/`rowTint` 잔존 참조 없음 확인.
+
+**롤백 방법**: Before 코드 복원.
+
+
+## 2026-10-17 — OVR 배지 색 재확정 (골드~갤럭시 오팔 8개 등급)
+
+**배경**: 레이팅 배지 스튜디오에서 사용자가 색을 다시 확정(JSON 전달). 구간(min)·크기·모서리·서체·텍스트 그림자는 현재 코드와 동일해 색만 교체. 등급 이름은 스튜디오 그대로(핑크 다이아몬드가 이제 파랑 등 이름과 색이 어긋남).
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` (client) — `TIERS` 색값
+
+**Before → After** (위→아래 c1,c2):
+- 골드 75: `#ffdb57,#b38d05` → `#cca000,#b37100`
+- 에메랄드 80: `#1cd431,#13a01e` → `#00a814,#006609`
+- 사파이어 84: `#1ad5b0,#006699` → `#01cb73,#0f6148`
+- 루비 87: `#ff0505,#7f0b0b` → `#0be0dc,#007d80`
+- 아메시스트 90: `#b647ff,#9f21b0` → `#ff0fd3,#a23a02`
+- 다이아몬드 92: `#5acbe2,#006f85` → `#e01a70,#b30024`
+- 핑크 다이아몬드 95: `#ffa8e5,#d11097` → `#1153ee,#0a33ae` (글로우 없음 유지)
+- 갤럭시 오팔 97(grad3): `#38ff6a,#6805e1,#05fa88` → `#0ab6ff,#7000fa,#05fa88` (글로우 `#2e03c9` 동일)
+- 오닉스/브론즈/실버/임페리얼은 변경 없음. 능력치(attr) 스케일은 기존 방침대로 미적용.
+
+**검증**: 8개 값 모두 치환 1회씩 확인(assert). 브라우저 육안 확인 안 함.
+
+**롤백 방법**: 위 Before 값으로 되돌림.
+
+
+## 2026-10-17 — 채팅: 전송 중 말풍선의 흐림(opacity-60) 제거
+
+**배경**: 메시지를 입력하면 말풍선이 흐리게 나타났다가 진해지는 현상 — 서버 응답 전까지 보여주는 임시(outbox) 말풍선의 `opacity-60` 때문. Supabase 리전이 ap-south-1이라 왕복 지연이 체감돼 눈에 띄었음. 사용자 결정: 흐림 효과를 없애 즉시 나타난 것처럼 보이게.
+
+**변경 파일**:
+- `components/multi/LeagueChatDock.tsx` — `OutboxRow` 전송 중 클래스 `bg-orange-600 opacity-60` → `bg-orange-600`
+
+**Before/After**: 전송 중 임시 버블이 60% 불투명 → 처음부터 100% 불투명 주황. 서버 응답이 오면 실제 메시지로 교체되는 동작은 그대로(같은 모양이라 교체가 눈에 띄지 않음). 실패 시 `bg-orange-600/35` + 빨간 테두리 + 새로고침/삭제 아이콘 + 빨간 문구도 그대로라, 저장되지 않았다는 사실은 실패했을 때 여전히 드러남.
+
+**검증**: tsc 오류 없음. 브라우저 체감은 직접 확인 필요.
+
+**롤백 방법**: 전송 중 클래스를 `bg-orange-600 opacity-60`으로 복구.
+
+
 ## 2026-10-17 — 채팅: 다른 사람 버블 색 slate-800 → slate-700 + 흰 글자
 
 **변경 파일**:

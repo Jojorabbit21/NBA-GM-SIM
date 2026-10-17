@@ -3,6 +3,7 @@
 // [2026-10-14] "OVR 배지 조정 랩"(https://claude.ai/artifact/9w7PVdoASaQM4yybo6tkcy) 확정값으로 전 티어·크기별 글자·서체 교체.
 // [2026-10-16] 2K식 12단계 체계로 재설계 — "레이팅 배지 스튜디오"(https://claude.ai/artifact/AEs4fF5nfRYiCriSM2ZoAk)
 //   에서 확정한 값을 그대로 이식. 숫자 서체는 TeX Gyre Heros(HerosBadge, index.css의 @font-face).
+// [2026-10-17] 스튜디오 재확정 — 골드~갤럭시 오팔 8개 등급 색 교체(구간·크기·서체는 불변). Before는 dev-log 2026-10-17 항목.
 //   이전 6단계(레전드/다이아/골드/실버/브론즈/아이언)의 값은 docs/history/dev-log.md 2026-10-16 항목에 Before로 보존.
 //
 // 등급 (시작 값 이상 ~ 다음 등급 시작 값 미만, 위에서 아래 = 높은 등급 먼저):
@@ -41,14 +42,14 @@ const grad3 = (c1: string, c2: string, c3: string) =>
 // min 내림차순 — 위에서부터 value >= min 첫 항목이 해당 등급.
 const TIERS: { min: number; style: TierStyle }[] = [
     { min: 99, style: { background: grad3('#ffdd00', '#ff004c', '#e205ff'), textColor: '#ffffff', glowColor: '#b3005f' } }, // 임페리얼
-    { min: 97, style: { background: grad3('#38ff6a', '#6805e1', '#05fa88'), textColor: '#ffffff', glowColor: '#2e03c9' } }, // 갤럭시 오팔
-    { min: 95, style: { background: grad2('#ffa8e5', '#d11097'), textColor: '#ffffff', glowColor: null } },               // 핑크 다이아몬드
-    { min: 92, style: { background: grad2('#5acbe2', '#006f85'), textColor: '#ffffff', glowColor: null } },               // 다이아몬드
-    { min: 90, style: { background: grad2('#b647ff', '#9f21b0'), textColor: '#ffffff', glowColor: null } },               // 아메시스트
-    { min: 87, style: { background: grad2('#ff0505', '#7f0b0b'), textColor: '#ffffff', glowColor: null } },               // 루비
-    { min: 84, style: { background: grad2('#1ad5b0', '#006699'), textColor: '#ffffff', glowColor: null } },               // 사파이어
-    { min: 80, style: { background: grad2('#1cd431', '#13a01e'), textColor: '#ffffff', glowColor: null } },               // 에메랄드
-    { min: 75, style: { background: grad2('#ffdb57', '#b38d05'), textColor: '#ffffff', glowColor: null } },               // 골드
+    { min: 97, style: { background: grad3('#0ab6ff', '#7000fa', '#05fa88'), textColor: '#ffffff', glowColor: '#2e03c9' } }, // 갤럭시 오팔
+    { min: 95, style: { background: grad2('#1153ee', '#0a33ae'), textColor: '#ffffff', glowColor: null } },               // 핑크 다이아몬드
+    { min: 92, style: { background: grad2('#e01a70', '#b30024'), textColor: '#ffffff', glowColor: null } },               // 다이아몬드
+    { min: 90, style: { background: grad2('#ff0fd3', '#a23a02'), textColor: '#ffffff', glowColor: null } },               // 아메시스트
+    { min: 87, style: { background: grad2('#0be0dc', '#007d80'), textColor: '#ffffff', glowColor: null } },               // 루비
+    { min: 84, style: { background: grad2('#01cb73', '#0f6148'), textColor: '#ffffff', glowColor: null } },               // 사파이어
+    { min: 80, style: { background: grad2('#00a814', '#006609'), textColor: '#ffffff', glowColor: null } },               // 에메랄드
+    { min: 75, style: { background: grad2('#cca000', '#b37100'), textColor: '#ffffff', glowColor: null } },               // 골드
     { min: 70, style: { background: grad2('#bfbfbf', '#6b6b6b'), textColor: '#ffffff', glowColor: null } },               // 실버
     { min: 1,  style: { background: grad2('#e07015', '#ae540f'), textColor: '#ffffff', glowColor: null } },               // 브론즈
     { min: 0,  style: { background: grad2('#565656', '#232323'), textColor: '#ffffff', glowColor: null } },               // 오닉스
