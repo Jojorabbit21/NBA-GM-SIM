@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React from 'react';
 
 interface OtpInputProps {
   length: number;
@@ -8,85 +8,25 @@ interface OtpInputProps {
 }
 
 export const OtpInput: React.FC<OtpInputProps> = ({ length, value, onChange, disabled }) => {
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = value.padEnd(length, '').split('').slice(0, length);
-
-  const focusInput = useCallback((index: number) => {
-    if (index >= 0 && index < length) {
-      inputRefs.current[index]?.focus();
-    }
-  }, [length]);
-
-  const handleKeyDown = useCallback((index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace') {
-      e.preventDefault();
-      if (digits[index]) {
-        const arr = digits.slice();
-        arr[index] = '';
-        onChange(arr.join(''));
-      } else if (index > 0) {
-        const arr = digits.slice();
-        arr[index - 1] = '';
-        onChange(arr.join(''));
-        focusInput(index - 1);
-      }
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      focusInput(index - 1);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      focusInput(index + 1);
-    }
-  }, [digits, onChange, focusInput]);
-
-  const handleInput = useCallback((index: number, e: React.FormEvent<HTMLInputElement>) => {
-    const inputValue = (e.target as HTMLInputElement).value;
-    const char = inputValue.replace(/[^0-9]/g, '').slice(-1);
-    if (!char) return;
-
-    const arr = digits.slice();
-    arr[index] = char;
-    onChange(arr.join('').replace(/[^0-9]/g, ''));
-    if (index < length - 1) {
-      focusInput(index + 1);
-    }
-  }, [digits, length, onChange, focusInput]);
-
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/[^0-9]/g, '').slice(0, length);
-    if (pasted) {
-      onChange(pasted);
-      focusInput(Math.min(pasted.length, length - 1));
-    }
-  }, [length, onChange, focusInput]);
-
   return (
-    <div className="flex items-center justify-center gap-2">
-      {Array.from({ length }).map((_, i) => (
-        <input
-          key={i}
-          ref={(el) => { inputRefs.current[i] = el; }}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          disabled={disabled}
-          value={digits[i] || ''}
-          onInput={(e) => handleInput(i, e)}
-          onKeyDown={(e) => handleKeyDown(i, e)}
-          onPaste={handlePaste}
-          onFocus={(e) => e.target.select()}
-          className={`
-            w-11 h-12 text-center text-lg font-bold text-white
-            bg-slate-900/60 border border-slate-700/50 rounded-xl
-            outline-none transition-all duration-200
-            hover:border-slate-500
-            focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]
-            disabled:bg-slate-800 disabled:border-transparent disabled:opacity-50 disabled:cursor-not-allowed
-          `}
-          autoComplete="one-time-code"
-        />
-      ))}
-    </div>
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      maxLength={length}
+      disabled={disabled}
+      value={value}
+      placeholder={`인증번호 ${length}자리`}
+      // Strip non-digits so pasted codes with spaces/dashes still work
+      onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, length))}
+      className="
+        w-full bg-slate-900/60 border border-slate-700/50 text-white text-lg font-bold text-center
+        tracking-[0.3em] rounded-xl py-4 px-5 outline-none transition-all duration-200
+        placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-500
+        hover:border-slate-500
+        focus:border-cta-default focus:shadow-[0px_0px_8px_0px_rgba(99,102,241,0.35)]
+        disabled:bg-slate-800 disabled:border-transparent disabled:opacity-50 disabled:cursor-not-allowed
+      "
+    />
   );
 };

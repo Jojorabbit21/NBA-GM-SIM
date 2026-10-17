@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { clearNotifications } from '../services/notifications/notificationStore';
 import { supabase } from '../services/supabaseClient';
+import { isRecoveryInProgress } from '../services/authRecoveryState';
 
 export const useAuth = () => {
     const [session, setSession] = useState<any | null>(null);
@@ -80,6 +81,8 @@ export const useAuth = () => {
             if (!mounted) return;
 
             if (event === 'SIGNED_IN' && session) {
+                // Password recovery OTP creates a temporary session; don't expose it as a login
+                if (isRecoveryInProgress()) return;
                 // access_token까지 동일할 때만 기존 참조 유지 — user.id만 비교하면
                 // TOKEN_REFRESHED로 새 토큰이 와도 옛 세션(만료된 access_token)을 계속
                 // 붙들고 있게 되어, 이 값을 직접 넘겨쓰는 API 호출(예: Bun 서버 /live-game)이

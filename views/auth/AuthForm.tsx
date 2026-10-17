@@ -5,6 +5,7 @@ import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { AuthInput } from '../../components/AuthInput';
 import { OtpInput } from '../../components/OtpInput';
 import { APP_NAME, APP_YEAR } from '../../utils/constants';
+import { setRecoveryInProgress } from '../../services/authRecoveryState';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
@@ -33,7 +34,8 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, variant = 'page' 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'signup' | 'verify'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'verify' | 'forgot' | 'recoverVerify' | 'newPassword'>('login');
+  const [recoverEmail, setRecoverEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [otpAttempts, setOtpAttempts] = useState(0);
@@ -152,6 +154,142 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, variant = 'page' 
     }
   };
 
+  // ── Password recovery (OTP flow, same style as signup verification) ──
+  // verifyOtp('recovery') creates a temporary session; authRecoveryState keeps useAuth from
+  // treating it as a login. Any exit path must call cancelRecovery() so the session is dropped.
+  const cancelRecovery = async () => {
+    setRecoveryInProgress(false);
+    await supabase.auth.signOut().catch(() => {});
+  };
+
+  // Unmount (e.g. modal closed mid-recovery) must not leave a half-authenticated session behind
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  useEffect(() => () => {
+    if (modeRef.current === 'newPassword' || modeRef.current === 'recoverVerify') {
+      setRecoveryInProgress(false);
+      supabase.auth.signOut().catch(() => {});
+    }
+  }, []);
+
+  const handleSendRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isSupabaseConfigured) {
+      setMessage({ type: 'error', text: 'Supabase 연결 설정이 되어있지 않습니다.' });
+      return;
+    }
+    if (!email || !EMAIL_REGEX.test(email)) {
+      setMessage({ type: 'error', text: '올바른 이메일 주소를 입력해주세요.' });
+      return;
+    }
+    setLoading(true);
+    setMessage(null);
+    try {
+      const { data: exists, error: existsError } = await supabase.rpc('email_exists', { p_email: email });
+      if (existsError) throw existsError;
+      if (!exists) {
+        setMessage({ type: 'error', text: '가입되지 않은 이메일입니다.' });
+        return;
+      }
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      setRecoverEmail(email);
+      setOtp('');
+      setOtpAttempts(0);
+      setResendCooldown(RESEND_COOLDOWN_SEC);
+      setMessage({ type: 'success', text: '인증번호가 이메일로 발송되었습니다.' });
+      setMode('recoverVerify');
+    } catch (error: any) {
+      const msg = String(error?.message || '');
+      setMessage({ type: 'error', text: /rate limit|seconds/i.test(msg) ? '요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.' : (msg || '인증번호 발송에 실패했습니다.') });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendRecovery = async () => {
+    if (resendCooldown > 0) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(recoverEmail);
+      if (error) throw error;
+      setOtp('');
+      setOtpAttempts(0);
+      setResendCooldown(RESEND_COOLDOWN_SEC);
+      setMessage({ type: 'success', text: '인증번호가 재발송되었습니다.' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || '재발송에 실패했습니다.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecoveryOtpChange = (val: string) => {
+    if (isOtpLocked) return;
+    setOtp(val);
+    if (val.length !== 8) return;
+    setTimeout(async () => {
+      setLoading(true);
+      setMessage(null);
+      setRecoveryInProgress(true);
+      try {
+        const { error } = await (supabase.auth as any).verifyOtp({ email: recoverEmail, token: val, type: 'recovery' });
+        if (error) throw error;
+        setPassword('');
+        setConfirmPassword('');
+        setMode('newPassword');
+      } catch (error: any) {
+        setRecoveryInProgress(false);
+        const nextAttempts = otpAttempts + 1;
+        setOtpAttempts(nextAttempts);
+        setOtp('');
+        if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+          setMessage({ type: 'error', text: `인증 시도 ${MAX_OTP_ATTEMPTS}회 초과. 인증번호를 재발송해주세요.` });
+        } else {
+          const raw = String(error?.message || '');
+          setMessage({ type: 'error', text: /expired|invalid/i.test(raw) ? `인증번호가 올바르지 않거나 만료되었습니다. (${nextAttempts}/${MAX_OTP_ATTEMPTS})` : (raw || '인증 처리 중 오류가 발생했습니다.') });
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 100);
+  };
+
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!PASSWORD_REGEX.test(password) || password !== confirmPassword) {
+      setMessage({ type: 'error', text: '입력 정보를 다시 확인해주세요.' });
+      return;
+    }
+    setLoading(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      await cancelRecovery(); // drop the temporary session; user logs in with the new password
+      setPassword('');
+      setConfirmPassword('');
+      setOtp('');
+      setMode('login');
+      setMessage({ type: 'success', text: '비밀번호가 변경되었습니다. 새 비밀번호로 로그인해주세요.' });
+    } catch (error: any) {
+      const raw = String(error?.message || '');
+      setMessage({ type: 'error', text: /different from the old/i.test(raw) ? '이전 비밀번호와 다른 비밀번호를 입력해주세요.' : (raw || '비밀번호 변경에 실패했습니다.') });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const backToLogin = async () => {
+    if (mode === 'newPassword' || mode === 'recoverVerify') await cancelRecovery();
+    setMode('login');
+    setMessage(null);
+    setOtp('');
+    setPassword('');
+    setConfirmPassword('');
+  };
+
   const handleResendOtp = async () => {
     if (resendCooldown > 0) return;
     setLoading(true);
@@ -216,14 +354,87 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, variant = 'page' 
   const cardContent = (
     <>
         {variant === 'page' && (
-          <div className={`text-center ${mode === 'verify' ? 'mb-6' : 'mb-10'}`}>
+          <div className={`text-center ${mode !== 'login' && mode !== 'signup' ? 'mb-6' : 'mb-10'}`}>
             <h1 className="text-2xl font-black text-text-primary leading-tight tracking-tighter uppercase">
               {APP_NAME}<br />{APP_YEAR}
             </h1>
           </div>
         )}
 
-        {mode === 'verify' ? (
+        {mode === 'forgot' ? (
+          <form onSubmit={handleSendRecovery} className="space-y-0">
+            <p className="text-sm text-text-muted font-medium mb-5 ko-normal">가입한 이메일로 비밀번호 재설정 인증번호를 보내드립니다.</p>
+            <AuthInput label="이메일" type="email" placeholder="이메일 주소" value={email} onChange={setEmail} isValid={isEmailValid} errorMsg="올바른 이메일 형식이 아닙니다." showError={email !== ''} />
+            {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+            <div className="space-y-3 pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 disabled:from-surface-disabled disabled:to-surface-disabled text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <span>인증번호 받기</span>}
+              </button>
+            </div>
+            <div className="mt-6 text-center">
+              <button type="button" onClick={backToLogin} className="flex items-center justify-center gap-2 mx-auto text-text-disabled hover:text-text-secondary font-medium text-sm transition-all">
+                <ArrowLeft size={14} />
+                로그인으로 돌아가기
+              </button>
+            </div>
+          </form>
+        ) : mode === 'recoverVerify' ? (
+          <div className="space-y-5">
+            <OtpInput length={8} value={otp} onChange={handleRecoveryOtpChange} disabled={loading || isOtpLocked} />
+            <div className="text-center space-y-1">
+              {message ? (
+                <p className={`text-sm font-medium ${message.type === 'error' ? 'text-status-danger-text' : 'text-status-success-text'}`}>{message.text}</p>
+              ) : (
+                <p className="text-sm text-text-muted font-medium"><span className="text-text-primary">{recoverEmail}</span> 으로 인증번호가 발송되었습니다.</p>
+              )}
+            </div>
+            {loading && (
+              <div className="flex justify-center"><Loader2 className="animate-spin text-cta-border" size={24} /></div>
+            )}
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={handleResendRecovery}
+                disabled={loading || resendCooldown > 0}
+                className="text-text-disabled hover:text-cta-default font-medium text-sm transition-all disabled:opacity-50"
+              >
+                {resendCooldown > 0 ? <span className="text-text-secondary">재발송 대기 ({resendCooldown}초)</span> : '인증번호 재발송'}
+              </button>
+            </div>
+            <div className="border-t border-border-dim pt-4">
+              <button type="button" onClick={backToLogin} className="w-full flex items-center justify-center gap-2 text-text-disabled hover:text-text-secondary font-medium text-sm transition-all">
+                <ArrowLeft size={14} />
+                로그인으로 돌아가기
+              </button>
+            </div>
+          </div>
+        ) : mode === 'newPassword' ? (
+          <form onSubmit={handleSetNewPassword} className="space-y-0">
+            <p className="text-sm text-text-muted font-medium mb-5 ko-normal">새 비밀번호를 입력해주세요.</p>
+            <AuthInput label="새 비밀번호" type="password" placeholder="새 비밀번호" value={password} onChange={setPassword} isValid={isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={password !== ''} />
+            <AuthInput label="새 비밀번호 확인" type="password" placeholder="새 비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
+            {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+            <div className="space-y-3 pt-2">
+              <button
+                type="submit"
+                disabled={loading || !PASSWORD_REGEX.test(password) || password !== confirmPassword}
+                className="w-full bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 disabled:from-surface-disabled disabled:to-surface-disabled text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <span>비밀번호 변경</span>}
+              </button>
+            </div>
+            <div className="mt-6 text-center">
+              <button type="button" onClick={backToLogin} className="flex items-center justify-center gap-2 mx-auto text-text-disabled hover:text-text-secondary font-medium text-sm transition-all">
+                <ArrowLeft size={14} />
+                취소
+              </button>
+            </div>
+          </form>
+        ) : mode === 'verify' ? (
           <div className="space-y-5">
             <OtpInput length={8} value={otp} onChange={handleOtpChange} disabled={loading || isOtpLocked} />
 
@@ -274,6 +485,14 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onSuccess, variant = 'page' 
               <AuthInput label="비밀번호" type="password" placeholder="비밀번호" value={password} onChange={setPassword} isValid={mode === 'login' ? true : isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={mode === 'signup' && password !== ''} />
               {mode === 'signup' && (
                 <AuthInput label="비밀번호 확인" type="password" placeholder="비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
+              )}
+
+              {mode === 'login' && (
+                <div className="text-right -mt-2 mb-4">
+                  <button type="button" onClick={() => { setMode('forgot'); setMessage(null); setPassword(''); }} className="text-text-disabled hover:text-cta-default font-medium text-xs transition-all">
+                    비밀번호를 잊으셨나요?
+                  </button>
+                </div>
               )}
 
               {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
