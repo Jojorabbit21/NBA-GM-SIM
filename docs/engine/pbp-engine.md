@@ -503,7 +503,7 @@ resolveFinish(actor, context, sliders) → { zone, shotType }
 context = 'drive' | 'post' | 'roll' | 'putback'
 
 후보 옵션 (weight = max(0, 능력치 - 60) × 가중치):
-  Dunk  (Rim)   → vertical≥70 && strength≥65일 때만, weight=(dunk-60)×1.5
+  Dunk  (Rim)   → reach(vertical + max(0, height-200)×1.0)≥70일 때만, weight=(dunk-60)×1.5 (strength 하드컷은 2026-10-18 제거)
   Layup (Rim)   → 항상 가능, weight=(layup-60)×1.0
   Floater(Paint)→ closeShot≥80, putback 제외, weight=(closeShot-60)×0.7
   Hook  (Paint) → height≥208 && closeShot≥80, post/roll만, weight=(postPlay-60)×0.8
@@ -1350,7 +1350,7 @@ GAME_ENV: {
 
 FINISH: {
   BASELINE: 60,
-  DUNK_VERT_MIN: 70, DUNK_STR_MIN: 65, DUNK_WEIGHT: 1.5,
+  DUNK_VERT_MIN: 70, DUNK_HEIGHT_BASE: 200, DUNK_HEIGHT_VERT_BONUS: 1.0, DUNK_WEIGHT: 1.5,
   LAYUP_WEIGHT: 1.0,
   FLOATER_CLOSESHOT_MIN: 80, FLOATER_WEIGHT: 0.7,
   HOOK_HEIGHT_MIN: 208, HOOK_CLOSESHOT_MIN: 80, HOOK_WEIGHT: 0.8,

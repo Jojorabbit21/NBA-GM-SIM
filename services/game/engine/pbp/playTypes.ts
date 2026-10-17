@@ -120,8 +120,12 @@ function resolveFinish(
 
     // ── Rim 옵션 (zone 미지정 또는 'Rim') ──
     if (!zone || zone === 'Rim') {
-        // Dunk (Rim) — vertical + strength 충족 시
-        if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
+        // Dunk (Rim) — reach(vertical + height bonus) 충족 시
+        // [2026-10-18] 키 보정 추가 + strength 하드컷 제거 — 키 큰 센터(엠비드/고베어)와 근력 낮은
+        // 엘리트 덩커(에드워즈/라빈/웸반야마)가 덩크 자체를 못 하던 문제. strength는 이미 결과
+        // 단계(DUNK_STR_RESIST 블락 저항, calculateMatchupGap 몸싸움)에서 반영됨(docs/history/dev-log.md).
+        const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
+        if (dunkReach >= F.DUNK_VERT_MIN) {
             options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
         }
         // Layup (Rim) — 항상 가능

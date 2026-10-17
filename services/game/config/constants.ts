@@ -594,8 +594,10 @@ export const SIM_CONFIG = {
     // Finish System: resolveFinish에서 마무리 타입 결정 (playTypes.ts)
     FINISH: {
         BASELINE: 60,
-        DUNK_VERT_MIN: 70,
-        DUNK_STR_MIN: 65,
+        DUNK_VERT_MIN: 70,          // reach(vertical + height bonus) threshold
+        // [2026-10-18] DUNK_STR_MIN(65) 제거 — strength는 덩크 결과 단계에서만 반영
+        DUNK_HEIGHT_BASE: 200,      // cm, 이 키를 넘는 만큼 reach 가산
+        DUNK_HEIGHT_VERT_BONUS: 1.0,
         DUNK_WEIGHT: 1.5,
         LAYUP_WEIGHT: 1.0,
         FLOATER_CLOSESHOT_MIN: 80,

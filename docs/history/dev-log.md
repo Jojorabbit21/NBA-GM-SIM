@@ -36,6 +36,80 @@
 ---
 
 
+## 2026-10-18 — 덩크 자격 판정: 키 보정 추가(S5) + 근력 하드컷 제거(A)
+
+**배경**: 사용자 요청 — Pro Basketball League에서 빅맨 득점이 OVR 대비 너무 낮은 원인 조사. 실측(180경기
+슛 이벤트) 결과 센터 골밑 레이업 FG 43.5%·블락 12.4%로 엔진 최저 효율 슛인데, 덩크 자격이
+`vertical ≥ 70 && strength ≥ 65` 절대값 컷이라 (1) 키 큰 센터(엠비드 vert58, 고베어 vert58·dunk86,
+케슬러, 하텐슈타인, 로페즈 등)가 골밑 슛 100% 레이업, (2) 근력 65 미만인 엘리트 덩커(에드워즈 dunk98,
+라빈 98, 모란트 94, 아멘 탐슨 94, 웸반야마, 홈그렌, 듀란트, 플래그 등)도 덩크를 한 번도 시도 못 하고
+있었음. 근력은 이미 결과 단계(`DUNK_STR_RESIST` 블락 저항, `calculateMatchupGap` 골밑 몸싸움 ±12%p)에서
+반영되고, 덩크 선택 빈도는 `(dunk-60)×1.5` 가중치가 이미 덩크 능력치로 걸러주므로 자격 단계의
+근력 컷은 중복 + 하드 절벽이라 제거. 대안 B(근력을 덩크 선택 가중치에 ×0.6~1.0 연속 반영)도
+같은 조건으로 시뮬했으나 결과가 사실상 동일(팀 PPG 109.4 동률)하고 근력 이중 반영이라 A 채택.
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/playTypes.ts` (client) — `resolveFinish()` Rim/Dunk 옵션 조건
+- `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — 동일
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG.FINISH`
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `docs/engine/pbp-engine.md` — 덩크 자격 설명/상수표 갱신
+
+**Before**:
+```ts
+// playTypes.ts — resolveFinish()
+if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
+    options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
+}
+
+// constants.ts — FINISH
+DUNK_VERT_MIN: 70,
+DUNK_STR_MIN: 65,
+DUNK_WEIGHT: 1.5,
+```
+
+**After**:
+```ts
+// playTypes.ts — resolveFinish()
+const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
+if (dunkReach >= F.DUNK_VERT_MIN) {
+    options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
+}
+
+// constants.ts — FINISH (DUNK_STR_MIN 삭제)
+DUNK_VERT_MIN: 70,          // reach threshold
+DUNK_HEIGHT_BASE: 200,      // cm
+DUNK_HEIGHT_VERT_BONUS: 1.0,
+DUNK_WEIGHT: 1.5,
+```
+
+**검증** (스크래치패드 하네스 — 서버 `simRunner` 경로 그대로: `mapRawPlayerToRuntimePlayer`(custom_overrides
+on) → `buildTeamForSim` → `resolveNormalizationContext` → `runFullGameSimulation`, PBL 실제 30팀 로스터·현재
+전술·뎁스차트, 정규시즌 1230경기 × 4회 = 엔진별 4920경기, 경기별 동일 시드. 체력 누적/부상/B2B 미반영):
+- 기준선 재현: 팀 PPG 108.2(실제 리그 108.0), C 골밑 레이업 FG 44.5%(실제 43.5%)
+- 팀 PPG: 108.2 → **109.4** (S5 단독 108.7)
+- 골밑 FG%: C 55.5→58.0, PF 59.0→59.9, SF 57.9→59.9, SG 56.8→58.8, PG 52.0→53.6
+- 골밑 중 덩크 비중: C 45.4→56.4, PF 51.0→55.2, SF 41.1→51.4, SG 26.8→37.0, PG 8.9→18.2
+- 36분당 득점: C 13.35→13.63, PF 16.10→16.14, SF 17.27→17.48, SG 18.34→18.50, PG 16.38→16.59
+- 빅맨(C+PF) vs 가드(PG+SG) 36분당 득점 격차: 2.62 → 2.65 (S5 단독은 2.49) — **근력 컷 제거 혜택이
+  가드/윙에 더 많이 가서 빅맨 상대 격차는 원위치.** 이 변경은 빅맨 대책이 아니라 덩크 판정 버그 수정으로
+  분류, 빅맨-가드 격차는 후속(골밑 수비 혼합 등)에서 다룰 것
+- 새로 덩크하게 된 선수 89명(20분+ 26명). 예: 웸반야마 PPG 14.2→16.1(TS 47.3→53.8), 엠비드 22.9→24.3,
+  고베어 TS 43.0→59.1, 어사르 톰슨 TS 45.6→54.6, 라빈 TS 52.5→57.3
+- 대조군(덩크 자격 불변 25분+ 119명) PPG 변화 평균 −0.01(±0.7, 난수 범위) — 의도 외 부작용 없음
+- 실제 저장소 `server/src/shared` 수정본으로 하네스 재실행 → S5+A 시뮬과 슛 이벤트 스트림 완전 동일 확인
+- `npx tsc --noEmit -p .`(client 51건) / `cd server && npx tsc --noEmit -p tsconfig.json`(server 45건) —
+  변경 파일(playTypes.ts/constants.ts) 관련 에러 0건(나머지는 무관 파일)
+- ⚠️ 미확인: PG 골밑 덩크 비중 8.9%→18.2%의 실제 NBA 대비 적정성. 과하면 근력 재도입이 아니라
+  `DUNK_WEIGHT`(1.5) 조정으로 대응할 것. Fly.io 서버 배포 전(멀티 리그는 배포 후 적용)
+
+**롤백 방법**: 위 Before 블록으로 client/server playTypes.ts·constants.ts 4개 파일을 모두 되돌림
+(`DUNK_STR_MIN: 65` 복원, `DUNK_HEIGHT_BASE`/`DUNK_HEIGHT_VERT_BONUS` 삭제). 키 보정만 남기고 근력 컷만
+되돌리려면 조건을 `dunkReach >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN`으로.
+
+---
+
+
 ## 2026-10-17 — 공격 리바운드(offReb) 슬라이더 라벨 방향 반전 수정
 
 **배경**: 멀티 세션 전술 설정의 "공격 리바운드" 슬라이더 라벨이 엔진 방향과 반대로 표시됨. 엔진(`reboundLogic.ts`)은 `offReb` 값이 높을수록 ORB%가 올라가는데(`(offReb-5) × SLIDER_IMPACT`), 라벨은 값 1을 "전원 크래시", 10을 "시도하지 않음"으로 매핑해 정반대로 보였음. 툴팁 설명문(`tacticsSliderConfig.ts`)과 `possessionHandler.ts`/`constants.ts`의 주석(상대 offReb≥7 = 크래시 하드)은 이미 올바른 방향이라 라벨만 틀린 상태. `defReb` 라벨은 방향 정상이라 건드리지 않음. 라벨(UI 문자열)만 바꾸고 엔진 수치는 변경 없음.

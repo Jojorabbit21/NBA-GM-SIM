@@ -85,7 +85,9 @@ function resolveFinish(
 
     // Rim 옵션
     if (!zone || zone === 'Rim') {
-        if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
+        // [2026-10-18] reach(vertical + height bonus) gate, strength hard cut removed (client mirror)
+        const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
+        if (dunkReach >= F.DUNK_VERT_MIN) {
             options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
         }
         options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
