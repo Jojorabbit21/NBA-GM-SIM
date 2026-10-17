@@ -36,6 +36,34 @@
 ---
 
 
+## 2026-10-17 — 홈 "리그 부상·징계" 섹션을 현재 활성 부상만 표시하도록 변경
+
+**배경**: 부상/징계를 끄고 선수를 회복(room_player_state 초기화)시켰는데도 섹션에 과거 부상 이벤트(league_events)가 계속 표시됨.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` (HomeInjurySection, client 전용)
+
+**Before**:
+```ts
+const { stories, isLoading } = useLeagueNewsFeed(room?.id, myTeamId, { types: ['injury', 'suspension'] });
+const items = useMemo((): HomeInjuryItem[] => stories.slice(0, HOME_ROWS.injuries).flatMap(...), [stories]);
+```
+
+**After**:
+```ts
+const { activeInjuryByPlayer } = useActiveInjuryMap();
+const items = useMemo((): HomeInjuryItem[] => stories.flatMap(...)
+    .filter(item => { const a = activeInjuryByPlayer.get(item.playerId); return !!a && a.returnDate === item.returnDate; })
+    .slice(0, HOME_ROWS.injuries), [stories, activeInjuryByPlayer]);
+```
+
+**추가 변경(같은 날)**: 같은 섹션의 PlayerHoverCard 부상 데이터 출처도 이벤트 → room_player_state로 통일.
+- Before: `applyActiveInjury(playerById.get(id), { severity: item.severity, injuryType: item.typeLabel, duration: item.durationLabel, returnDate: item.returnDate })`
+- After: `applyActiveInjury(playerById.get(id), activeInjuryByPlayer.get(item.playerId))`
+
+**검증**: tsc --noEmit — MultiSeasonPage 관련 오류 0.
+
+**롤백 방법**: Before 코드로 복원(useActiveInjuryMap 호출과 filter 제거, slice를 flatMap 앞으로, 호버 카드 인자를 item 기반 객체로).
+
 ## 2026-10-17 — 탈진/파울트러블 임시 벤치 선수 복귀 불가 버그 수정 (checkTemporaryReturns)
 
 **배경**: Pro Basketball League(room `aeb5794a`) 10-25 BKN@DET 경기에서 로테이션 차트와 무관하게 주전 11~23분, 벤치 35~41분 출전.
@@ -80,8 +108,9 @@
 - After: 탈진 50 / 복귀 50, DET 주전 25~28분·벤치 20분, BKN 주전 25~30분
 - 체력 100 시작(3회): 차트대로 DET 36/12분, BKN 38/10분, 파울트러블 복귀 4건 정상 발생
 - `tsc --noEmit` rotationLogic 관련 오류 없음
+- 서버: 커밋 635aca29 → **Fly v168 배포 완료**(2026-10-17, 0945f4e7 타이브레이커 변경도 같이 포함), 기동 로그 정상
 
-**롤백 방법**: 두 파일 모두 Before 블록으로 되돌림(미러 쌍 — 반드시 같이). 서버는 Fly 재배포 필요.
+**롤백 방법**: 두 파일 모두 Before 블록으로 되돌림(미러 쌍 — 반드시 같이). 서버는 Fly 재배포 필요(직전 릴리스 v167).
 
 
 ## 2026-10-17 — 멀티 팀 화면 경기 기록/일정/전적 스포일러 차단

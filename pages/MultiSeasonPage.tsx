@@ -637,8 +637,10 @@ const HomeInjurySection: React.FC = () => {
     const teamAbbrBySlug = useMemo(() => new Map(leagueTeams.map(t => [t.team_slug, t.team_abbr])), [leagueTeams]);
 
     const { stories, isLoading } = useLeagueNewsFeed(room?.id, myTeamId, { types: ['injury', 'suspension'] });
+    // [2026-10-17] 이벤트(과거 소식)가 아니라 "지금 활성인" 부상/징계만 노출 — room_player_state 기준 판정.
+    const { activeInjuryByPlayer } = useActiveInjuryMap();
 
-    const items = useMemo((): HomeInjuryItem[] => stories.slice(0, HOME_ROWS.injuries).flatMap((e): HomeInjuryItem[] => {
+    const items = useMemo((): HomeInjuryItem[] => stories.flatMap((e): HomeInjuryItem[] => {
         if (e.detail.kind === 'injury') {
             const { player, teamSlug, severity, injuryType, duration, returnDate } = e.detail;
             return [{ id: e.id, playerId: player.id, playerName: player.name, teamSlug, severity, typeLabel: injuryType, durationLabel: duration, returnDate }];
@@ -654,7 +656,11 @@ const HomeInjurySection: React.FC = () => {
             ];
         }
         return [];
-    }), [stories]);
+    }).filter(item => {
+        // 같은 선수의 옛 이벤트(이미 복귀 후 재부상 등)가 겹치지 않도록 returnDate까지 일치해야 활성으로 인정.
+        const active = activeInjuryByPlayer.get(item.playerId);
+        return !!active && active.returnDate === item.returnDate;
+    }).slice(0, HOME_ROWS.injuries), [stories, activeInjuryByPlayer]);
 
     // [2026-10-14] 밴드 4 좌측(6열). 비어 있어도 패널 유지(빈 상태 문구) — 우측 "내 팀 부상·징계"와 나란히.
     return (
@@ -680,9 +686,7 @@ const HomeInjurySection: React.FC = () => {
                                 <TableCell><InjuryStatusBadge severity={item.severity} size={16} iconSize={10} strokeWidth={4} /></TableCell>
                                 <TableCell align="left" className="max-w-0">
                                     <PlayerHoverCard
-                                        player={applyActiveInjury(playerById.get(item.playerId), {
-                                            severity: item.severity, injuryType: item.typeLabel, duration: item.durationLabel, returnDate: item.returnDate,
-                                        })}
+                                        player={applyActiveInjury(playerById.get(item.playerId), activeInjuryByPlayer.get(item.playerId))}
                                         teamAbbr={teamAbbrBySlug.get(item.teamSlug)}
                                     >
                                         <span className="block text-sm font-bold text-white truncate">{item.playerName}</span>
