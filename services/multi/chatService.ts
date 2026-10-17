@@ -92,6 +92,29 @@ export async function sendChatMessage(roomId: string, body: string): Promise<Cha
     return data as ChatMessage;
 }
 
+/**
+ * 전송 본문 정리 — 서버 `sanitize_chat_body`(migrations/league_chat_messages.sql)의 미러. 서버가 최종 판정이고,
+ * 이 함수는 보내기 전에 같은 결과를 미리 보여주려는 것(임시 말풍선이 서버 저장 결과와 같아지도록).
+ * 규칙: CRLF → LF / 보이지 않는 문자·텍스트 방향 제어 문자 제거 / 줄바꿈 연속은 하나로 / 앞뒤 공백·줄바꿈 제거 /
+ * **줄바꿈은 최대 1번**(두 번째부터는 공백으로 바꿈 → 최대 2줄).
+ */
+export function sanitizeChatBody(raw: string): string {
+    const t = raw
+        .replace(/\r\n?/g, '\n')
+        .replace(/[\u0001-\u0008\u000B-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, '')
+        .replace(/\s*\n\s*/g, '\n')
+        .replace(/^[ \n\t]+|[ \n\t]+$/g, '');
+    const i = t.indexOf('\n');
+    return i < 0 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\n/g, ' ');
+}
+
+/** 입력창에 타이핑·붙여넣는 도중용 — 줄바꿈이 둘 이상이 되지 않게만 막는다(앞뒤 공백은 건드리지 않음). */
+export function limitDraftNewlines(value: string): string {
+    const v = value.replace(/\r\n?/g, '\n');
+    const i = v.indexOf('\n');
+    return i < 0 ? v : v.slice(0, i + 1) + v.slice(i + 1).replace(/\n/g, ' ');
+}
+
 /** 클라이언트 도배 잠금 판정(순수 함수). 전송 시각(ms) 목록에 now를 더했을 때 잠가야 하면 true. */
 export function shouldFloodLock(sentAt: number[], now: number): boolean {
     const recent = sentAt.filter(t => now - t < CHAT_FLOOD_WINDOW_MS);

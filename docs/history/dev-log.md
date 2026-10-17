@@ -230,6 +230,28 @@ const rowTint = i < autoClinchCount
 **롤백 방법**: 위 Before 값으로 되돌림.
 
 
+## 2026-10-18 — 채팅 보안 점검 반영: 본문 정리(줄바꿈 최대 1번·보이지 않는 문자 제거) + 동시 전송 직렬화
+
+**배경**: "채팅 메시지에 인젝션 같은 공격 시나리오가 없나?" 점검. 막혀 있는 것(검증): XSS(React 텍스트 렌더, `dangerouslySetInnerHTML`/`innerHTML`/링크 없음, 서버엔 `<script>`가 그대로 저장되지만 화면에서 이스케이프), SQL 인젝션(RPC 파라미터, 동적 SQL 없음), 가짜 broadcast 발행(`realtime.messages` INSERT 거부), 다른 사람 명의·다른 방 전송/조회/입장 거부. 실제 약점: ① 개행 폭탄(줄바꿈 400개 메시지가 그대로 저장돼 수백 줄 말풍선) ② 텍스트 방향 제어 문자(U+202E)·폭 없는 문자가 그대로 저장 ③ 레이트 리밋 경합(세고→저장 비원자라 병렬 요청이 한도를 넘길 수 있음 — 코드 추론, 병렬 테스트는 못 함). 사용자 결정: **줄바꿈은 최대 1번(2줄까지)**.
+
+**변경 파일**:
+- DB(마이그레이션 `league_chat_sanitize_body_and_serialize_send`, Supabase 프로젝트 `buummihpewiaeltywdff`): 신규 `public.sanitize_chat_body(text)`(immutable), `public.send_chat_message` 교체(본문 정리를 길이 검사 앞에 적용 + `pg_advisory_xact_lock(hashtextextended(user||':'||room, 0))`로 같은 (유저, 방) 전송 직렬화)
+- `migrations/league_chat_messages.sql` — 최종 상태로 갱신(롤백 블록에 `sanitize_chat_body` 추가)
+- `services/multi/chatService.ts` — `sanitizeChatBody`(서버 미러), `limitDraftNewlines`(입력 중 제한) 추가
+- `hooks/useLeagueChat.ts` — `send`가 `raw.trim()` 대신 `sanitizeChatBody(raw)` 사용(임시 말풍선이 서버 저장 결과와 같아지도록)
+- `components/multi/LeagueChatDock.tsx` — 입력창 `onChange`에서 `limitDraftNewlines`, Shift+Enter는 이미 줄바꿈이 있으면 막음, 전송 버튼 활성 조건을 `sanitizeChatBody(draft).length > 0`으로
+
+**Before**: 본문은 앞뒤 공백만 제거(`btrim`)하고 그대로 저장(개행·제어 문자 무제한, 500자 상한만). 전송 RPC는 같은 사용자의 병렬 호출을 직렬화하지 않음.
+
+**After**: 서버가 CRLF→LF, `U+0001-0008/000B-001F/007F/200B-200F/202A-202E/2060/2066-2069/FEFF` 제거, 줄바꿈 연속→하나, 앞뒤 공백·줄바꿈 제거, **첫 줄바꿈만 유지하고 이후 줄바꿈은 공백으로** 바꾼 뒤 1~500자 검사. 정리 후 비면 `invalid_body`. HTML·이모지·한글은 그대로(렌더에서 이스케이프). 클라이언트 입력창도 둘째 줄바꿈을 입력 단계에서 막고(붙여넣기는 공백으로 변환), 보내기 전에 같은 정리를 적용.
+
+**검증**: 롤백 트랜잭션으로 정리 함수 9케이스(줄바꿈 1개 유지, 연속 개행→1, 4줄→`a↵b c d`, CRLF, 가장자리 개행 제거, 방향 제어/폭 없는 문자 제거, 보이지 않는 문자만이면 빈 문자열, 이모지·한글 유지, HTML 그대로) 통과, RPC로 개행 400개 메시지가 `a↵b`(3자)로 저장, 보이지 않는 문자만 있는 본문 `invalid_body`, 제어 문자 DB에서 제거, 10건 허용·11번째 `rate_limited`(wait=10). 클라이언트 `sanitizeChatBody`/`limitDraftNewlines`를 `tsx`로 실행해 서버와 같은 10케이스 + 입력 중 제한 2케이스 통과. tsc 오류 없음, vite build 통과. **advisory lock이 실제 병렬 호출을 막는지는 직접 동시 호출로 재현하지 못함**(MCP SQL이 단일 연결) — 코드상 직렬화.
+
+**롤백 방법**: `send_chat_message`를 직전 버전(`migrations/league_chat_messages.sql`의 2차 적용본: `v_body := btrim(coalesce(p_body,''))`, advisory lock 줄 없음)으로 되돌리고 `drop function public.sanitize_chat_body(text)`. 클라이언트는 `hook.send`를 `raw.trim()`으로, 입력창 `onChange`/`onKeyDown`/`canSend`를 이전 식으로 복구하고 `chatService`의 두 함수를 삭제.
+
+**남은 위험(수용/보류)**: Presence key 위조(접속 링·인원 수 위조, 표시용), 닉네임 사칭(8자 제한·중복 방지 확인 못함, 로고+팀명 병기로 완화), 어드민 삭제/신고 수단 없음·보존 정책 없음(무제한 누적), 다계정으로 레이트 리밋 우회.
+
+
 ## 2026-10-17 — 채팅: 전송 중 말풍선 → 실제 메시지 교체 시 높이 튐 제거
 
 **배경**: 흐림 제거 후에도 말풍선이 먼저 뜨고 잠시 뒤 아래에 시간이 생겨 "뚝 끊겨" 보임. 원인: 임시(outbox) 말풍선은 "나" 머리줄·시간 줄이 없는 단순 버블이라, 서버 응답으로 실제 메시지(머리줄 + 시간 줄 포함)로 바뀌는 순간 위·아래에 줄이 생기며 높이가 늘어남.

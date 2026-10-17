@@ -40,7 +40,8 @@ create index on league_chat_messages (room_id, id desc);   -- 최근 N건 조회
 ## RPC `send_chat_message(p_room_id uuid, p_body text)`
 1. `auth.uid()`가 room 멤버인지 검증(아니면 예외)
 2. 본문 trim, 1~500자 검증
-3. 레이트 리밋: 유저당 **10초에 10건** 초과 시 예외(`rate_limited`, 남은 대기 초를 함께 반환)
+3. 본문 정리(`sanitize_chat_body`, 2026-10-18): 보이지 않는 문자·텍스트 방향 제어 문자 제거, 줄바꿈 **최대 1번**(2줄까지, 연속 개행은 하나로·둘째부터는 공백), 앞뒤 공백 제거 후 1~500자 검사(정리 후 비면 `invalid_body`). 클라이언트 미러 `chatService.sanitizeChatBody`
+4. 레이트 리밋: 유저당 **10초에 10건** 초과 시 예외(`rate_limited`, 남은 대기 초를 함께 반환). 같은 (유저, 방)의 동시 호출은 `pg_advisory_xact_lock`으로 직렬화(병렬 요청으로 한도를 넘기는 경합 방지)
 4. INSERT → 반환 행
 5. `realtime.send(payload, 'message', 'league-chat:' || room_id, true)` 로 채널에 전달
 6. 시간 표시는 `created_at`(실시간). 인게임 날짜가 필요하면 `current_virtual_date(room_id)` — `rooms.sim_date` 직접 읽기 금지.

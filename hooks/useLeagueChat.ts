@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import {
     CHAT_COOLDOWN_MS, CHAT_FLOOD_LOCK_MS, CHAT_MAX_BODY, CHAT_PAGE_SIZE,
-    ChatSendError, chatErrorMessage, chatTopic, fetchChatMessages, sendChatMessage, shouldFloodLock,
+    ChatSendError, chatErrorMessage, chatTopic, fetchChatMessages, sanitizeChatBody, sendChatMessage, shouldFloodLock,
     type ChatMessage,
 } from '../services/multi/chatService';
 
@@ -303,7 +303,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     }, [lockFor]);
 
     const send = useCallback((raw: string): boolean => {
-        const body = raw.trim();
+        const body = sanitizeChatBody(raw);
         if (!roomId || !body || body.length > CHAT_MAX_BODY) return false;
         if (!admit()) return false;
         const tempId = `tmp-${++seqRef.current}`;

@@ -2,8 +2,8 @@
 -- league_chat_messages + send_chat_message RPC + Realtime Authorization
 --
 -- 계획: docs/plan/league-chat-plan.md (리그 세션 채팅, 우측 하단 FAB → 위젯)
--- 적용: 2026-10-17, Supabase MCP apply_migration 2건
---   (1) league_chat_messages_and_send_rpc  (2) league_chat_send_rpc_team_from_league_teams
+-- 적용: 2026-10-17, Supabase MCP apply_migration 2건 + 2026-10-18 보안 점검 반영 1건(league_chat_sanitize_body_and_serialize_send)
+--   (1) league_chat_messages_and_send_rpc  (2) league_chat_send_rpc_team_from_league_teams  (3) league_chat_sanitize_body_and_serialize_send
 --   이 파일은 두 건을 합친 "최종 상태"다. 새 DB에 재적용할 때 이 파일 하나만 실행하면 된다.
 --
 -- 구조:
@@ -58,13 +58,42 @@ create policy lcm_member_select on public.league_chat_messages
   for select to authenticated
   using (public.is_chat_member(room_id) or public.is_global_admin());
 
+-- [2026-10-18 보안 점검 반영] 본문 정리: 보이지 않는 문자·텍스트 방향 제어 문자 제거, CRLF 정규화, 줄바꿈 연속은 하나로,
+-- 앞뒤 공백·줄바꿈 제거, **줄바꿈은 최대 1번**(두 번째부터는 공백 → 최대 2줄). 클라이언트 미러: services/multi/chatService.ts sanitizeChatBody
+create or replace function public.sanitize_chat_body(p_body text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  with s as (
+    select btrim(
+      regexp_replace(
+        regexp_replace(
+          replace(replace(coalesce(p_body, ''), E'\r\n', E'\n'), E'\r', E'\n'),
+          '[\u0001-\u0008\u000B-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]', '', 'g'),
+        '\s*\n\s*', E'\n', 'g'),
+      E' \n\t') as t
+  )
+  select case
+           when position(E'\n' in t) > 0
+             then substr(t, 1, position(E'\n' in t)) || replace(substr(t, position(E'\n' in t) + 1), E'\n', ' ')
+           else t
+         end
+  from s
+$$;
+
+revoke execute on function public.sanitize_chat_body(text) from public, anon;
+grant execute on function public.sanitize_chat_body(text) to authenticated;
+
 -- room_members.team_name/team_abbr 는 실데이터에서 null이다. 실제 팀 표시(방 안에서 바꾼 팀명 포함)는 league_teams.
+-- [2026-10-18] 본문 정리를 길이 검사 앞에 적용, 같은 (유저, 방)의 동시 전송을 advisory lock으로 직렬화(세고-저장하기 경합 방지)
 create or replace function public.send_chat_message(p_room_id uuid, p_body text, p_recipient_id uuid default null)
 returns public.league_chat_messages
 language plpgsql security definer set search_path = public as $$
 declare
   v_uid       uuid := auth.uid();
-  v_body      text := btrim(coalesce(p_body, ''));
+  v_body      text := public.sanitize_chat_body(p_body);
   v_team_id   text;
   v_team_abbr text;
   v_team_name text;
@@ -80,6 +109,8 @@ begin
 
   select rm.team_id into v_team_id from room_members rm where rm.room_id = p_room_id and rm.user_id = v_uid;
   if not found then raise exception 'not_a_member'; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_uid::text || ':' || p_room_id::text, 0));
 
   select lt.team_slug, lt.team_abbr, lt.team_name into v_team_id, v_team_abbr, v_team_name
     from league_teams lt where lt.room_id = p_room_id and lt.user_id = v_uid limit 1;
@@ -146,6 +177,7 @@ create policy league_chat_presence_track on realtime.messages
 --   drop policy league_chat_presence_track on realtime.messages;
 --   drop policy league_chat_receive on realtime.messages;
 --   drop function public.send_chat_message(uuid, text, uuid);
+--   drop function public.sanitize_chat_body(text);
 --   drop table public.league_chat_messages;   -- 정책·인덱스 함께 삭제됨
 --   drop function public.is_chat_topic_member(text);
 --   drop function public.is_chat_member(uuid);

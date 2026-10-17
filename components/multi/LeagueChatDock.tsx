@@ -16,7 +16,7 @@ import { useLeagueChat, type ChatOutboxItem } from '../../hooks/useLeagueChat';
 import { useNotificationList } from '../../hooks/useNotificationList';
 import { setToastsSuppressed } from '../../services/notifications/notificationStore';
 import { LeagueNotificationList } from './LeagueNotificationList';
-import { CHAT_MAX_BODY, type ChatMessage } from '../../services/multi/chatService';
+import { CHAT_MAX_BODY, limitDraftNewlines, sanitizeChatBody, type ChatMessage } from '../../services/multi/chatService';
 import { TeamLogo } from '../common/TeamLogo';
 import { CountBadge } from '../common/CountBadge';
 import { IconButton } from '../common/IconButton';
@@ -234,7 +234,7 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
     const locked = chat.lockRemainingSec > 0;
     const disconnected = chat.connection === 'disconnected';
     const inputDisabled = locked || disconnected;
-    const canSend = !inputDisabled && !chat.cooling && draft.trim().length > 0;
+    const canSend = !inputDisabled && !chat.cooling && sanitizeChatBody(draft).length > 0;
 
     const submit = () => {
         if (!canSend) return;
@@ -245,6 +245,8 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
+        } else if (e.key === 'Enter' && e.shiftKey && draft.includes('\n')) {
+            e.preventDefault();   // 줄바꿈은 최대 1번 — 이미 한 번 넣었으면 더 못 넣는다
         }
     };
 
@@ -348,7 +350,7 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
                     <textarea
                         ref={inputRef}
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
+                        onChange={(e) => setDraft(limitDraftNewlines(e.target.value))}
                         onKeyDown={onKeyDown}
                         rows={1}
                         maxLength={CHAT_MAX_BODY}
