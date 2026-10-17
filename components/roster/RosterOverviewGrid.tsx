@@ -34,6 +34,9 @@ interface RosterOverviewGridProps {
      * 계약이라는 경로 자체가 없어 슬롯이 남아 있어도 쓸 수 없다 — "3자리 남았는데 계약이 막힌다"는
      * 혼란을 없애기 위해 그런 리그에선 아예 숨긴다. */
     showTwoWaySlots?: boolean;
+    /** [2026-10-17] 멀티 전용 — 지정되면 이름 오른쪽에 "체력" 열(바 + 수치). 값 null = 진행 중 경기라 비공개("경기 중"),
+     * 맵에 없는 선수는 "—". 싱글은 전달하지 않아 열 자체가 없다. */
+    playerConditions?: Map<string, number | null>;
 }
 
 const DEFAULT_MAX_ROSTER_SIZE = 15;
@@ -55,7 +58,8 @@ const getSortValue = (p: Player, key: string): number | string => {
     return 0;
 };
 
-export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, allTeams, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS, showTwoWaySlots = true }) => {
+export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, allTeams, onPlayerClick, enableHoverCard = false, onReleasePlayer, releasingId, maxRosterSize = DEFAULT_MAX_ROSTER_SIZE, twoWaySlots = DEFAULT_TWO_WAY_SLOTS, showTwoWaySlots = true, playerConditions }) => {
+    const withCondition = !!playerConditions;
     const { sortConfig, sortProps } = useTableSort({ key: 'ovr', direction: 'desc' });
 
     // "정규 계약" = 투웨이(two-way)가 아닌 모든 계약. 실제 NBA도 투웨이 2명은 15명 정원과
@@ -71,7 +75,12 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
         [team.roster],
     );
 
-    const sortedRoster = useMemo(() => sortByConfig(team.roster, sortConfig, getSortValue), [team.roster, sortConfig]);
+    // 체력 정렬: 비공개(null)·미조회 선수는 맨 뒤(-1)
+    const sortedRoster = useMemo(
+        () => sortByConfig(team.roster, sortConfig, (p, key) =>
+            key === 'condition' ? (playerConditions?.get(p.id) ?? -1) : getSortValue(p, key)),
+        [team.roster, sortConfig, playerConditions],
+    );
 
     // 포지션 레이팅 — 리그 전체 선수 풀을 한 번만 평탄화하고 선수별 별점을 맵으로(행마다 리그 전체를 다시 훑지 않도록).
     const positionStarsById = useMemo(() => {
@@ -85,7 +94,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
             <div className="flex-1 min-h-0">
                 <Table variant="flush" fullHeight>
                     <colgroup>
-                        <PlayerInfoColGroup />
+                        <PlayerInfoColGroup withCondition={withCondition} />
                         <col style={{ width: WIDTHS.RATING }} />
                         <col style={{ width: WIDTHS.POS_RATING }} />
                         <col style={{ width: WIDTHS.HEIGHT }} />
@@ -96,7 +105,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
                         {onReleasePlayer && <col style={{ width: WIDTHS.RELEASE }} />}
                     </colgroup>
                     <TableHead>
-                        <PlayerInfoHeaderCells sortProps={sortProps} />
+                        <PlayerInfoHeaderCells sortProps={sortProps} withCondition={withCondition} />
                         <TableHeaderCell width={WIDTHS.RATING}>리그 레이팅</TableHeaderCell>
                         <TableHeaderCell width={WIDTHS.POS_RATING}>포지션 레이팅</TableHeaderCell>
                         <TableHeaderCell width={WIDTHS.HEIGHT} {...sortProps('height')}>키</TableHeaderCell>
@@ -109,7 +118,11 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
                     <TableBody>
                         {sortedRoster.map(p => (
                             <TableRow key={p.id}>
-                                <PlayerInfoCells player={p} teamAbbr={team.abbr} onClick={onPlayerClick} enableHoverCard={enableHoverCard} />
+                                <PlayerInfoCells
+                                    player={p} teamAbbr={team.abbr} onClick={onPlayerClick} enableHoverCard={enableHoverCard}
+                                    withCondition={withCondition}
+                                    condition={playerConditions?.has(p.id) ? (playerConditions.get(p.id) as number | null) : undefined}
+                                />
                                 <TableCell align="center">
                                     <div className="flex justify-center"><StarRating ovr={calculatePlayerOvr(p)} size="lg" /></div>
                                 </TableCell>
@@ -144,7 +157,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
                         이어지고, 로스터가 길어 표가 스크롤될 때도 body와 함께 움직인다. */}
                     <TableFoot>
                         <tr>
-                            <td colSpan={onReleasePlayer ? 12 : 11} className="px-4">
+                            <td colSpan={(onReleasePlayer ? 12 : 11) + (withCondition ? 1 : 0)} className="px-4">
                                 <div className="h-40 flex items-start justify-end gap-4 pt-3">
                                     <span className="text-sm font-semibold text-slate-400">
                                         정규 계약 슬롯{' '}

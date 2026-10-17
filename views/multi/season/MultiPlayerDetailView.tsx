@@ -17,6 +17,7 @@ import { usePlayerAllStarAwards } from '../../../hooks/usePlayerAllStarAwards';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { PlayerNewsTab } from './PlayerNewsTab';
+import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { resolveRealAt, isFinal } from './multiGameReveal';
@@ -73,6 +74,10 @@ const MultiPlayerDetailView: React.FC = () => {
     const playerId = playerUrlId ? resolvePlayerId(playerUrlId) : undefined;
     const navigate = useNavigate();
     const { getGameUrlId } = useGameShortCodes(room?.id);
+
+    // 선수 정보 "체력" 행 — 로스터 탭과 같은 규칙(공개 전 경기 선수는 null → "경기 중"). 로딩 전 undefined면 행 미표시.
+    const conditionIds = useMemo(() => (playerId ? [playerId] : []), [playerId]);
+    const playerCondition = useMultiPlayerConditions(conditionIds)?.get(playerId ?? '');
 
     // [2026-09-03] "자유 계약 페이지의 선수들도 개인 프로필 페이지가 필요해" 요청 — 이 화면은
     // 원래 로스터에 있는 선수만 찾았음(아래 found). 드래프트풀 전체(로스터에 없는 FA 포함)는
@@ -326,6 +331,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
             newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} />}
+            condition={playerCondition}
         />
     );
 };

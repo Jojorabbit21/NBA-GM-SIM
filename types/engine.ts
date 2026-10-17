@@ -142,6 +142,7 @@ export interface BoxTick {
     mp: number;                    // 이 포세션이 소비한 분 (timeTaken/60)
     d:  Record<string, BoxDelta>;  // playerId → 변화분 (변한 선수만)
     shot?: { p: string; m: boolean }; // 이 포세션 FG 시도 결과 (있었던 경우만): p=playerId, m=성공여부 — 핫/콜드 스트릭 재구성용
+    c?: Record<string, number>;    // [2026-10-17] 체력(5 단위 양자화) — 첫 틱은 양 팀 전원, 이후엔 값이 바뀐 선수만. 라이브 중계 체력 배지 재구성용(이전 저장 데이터엔 없음)
 }
 
 export interface SimulationResult {

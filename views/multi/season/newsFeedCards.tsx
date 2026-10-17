@@ -5,7 +5,7 @@ import { Flame, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, T
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { OvrBadge } from '../../../components/common/OvrBadge';
-import { TeamBadge } from '../../../components/common/TeamBadge';
+import { TeamMark } from '../../../components/common/TeamMark';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { getLeagueLogoUrl, CONFERENCE_COLORS, RISING_STARS_COLORS } from '../../../utils/constants';
 import { BasketLines as ShotChartBasketLines } from '../../../components/game/tabs/GameShotChartTab';
@@ -987,15 +987,7 @@ export const PowerRankingCard: React.FC<{
                             <LetterRankCell rank={entry.rank} />
                             <TableCell align="left">
                                 <div className="flex items-center gap-2">
-                                    <TeamBadge
-                                        teamId={entry.teamSlug}
-                                        teamName={entry.teamName}
-                                        abbr={teamBySlug.get(entry.teamSlug)?.team_abbr}
-                                        colorPrimary={teamBySlug.get(entry.teamSlug)?.color_primary}
-                                        colorSecondary={teamBySlug.get(entry.teamSlug)?.color_secondary}
-                                        colorText={teamBySlug.get(entry.teamSlug)?.color_text}
-                                        size="xs"
-                                    />
+                                    <TeamMark variant="logo" teamId={entry.teamSlug} teamName={entry.teamName} size="xs" />
                                     <span className="text-sm font-semibold text-slate-100 truncate">{teamSpan(entry.teamSlug, entry.teamName)}</span>
                                 </div>
                             </TableCell>
@@ -1047,15 +1039,7 @@ export const DraftLotteryResultCard: React.FC<{
                             <LetterRankCell rank={pick.rank} />
                             <TableCell align="left">
                                 <div className="flex items-center gap-2">
-                                    <TeamBadge
-                                        teamId={pick.teamSlug}
-                                        teamName={pick.teamName}
-                                        abbr={teamBySlug.get(pick.teamSlug)?.team_abbr}
-                                        colorPrimary={teamBySlug.get(pick.teamSlug)?.color_primary}
-                                        colorSecondary={teamBySlug.get(pick.teamSlug)?.color_secondary}
-                                        colorText={teamBySlug.get(pick.teamSlug)?.color_text}
-                                        size="xs"
-                                    />
+                                    <TeamMark variant="logo" teamId={pick.teamSlug} teamName={pick.teamName} size="xs" />
                                     <span
                                         className={`text-sm font-semibold text-slate-100 truncate ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
                                         onClick={onOpenTeam ? () => onOpenTeam(pick.teamSlug) : undefined}
@@ -2443,14 +2427,14 @@ export const PlayInBracketCard: React.FC<{
             {matchups.filter(m => m.conference === conf).map(m => (
                 <div key={`${m.conference}-${m.tag}`} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-slate-800/60 text-sm">
                     <div className="flex items-center gap-2 min-w-0">
-                        <TeamBadge teamId={m.higherSeedSlug} teamName={teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName} abbr={teamBySlug.get(m.higherSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.higherSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.higherSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.higherSeedSlug)?.color_text} size="xs" />
+                        <TeamMark variant="logo" teamId={m.higherSeedSlug} teamName={teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName} size="xs" />
                         <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.higherSeedSlug)}>
                             {m.higherSeedRank}. {teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName}
                         </ClickableText>
                     </div>
                     <span className="text-slate-500 shrink-0 text-xs font-bold">VS</span>
                     <div className="flex items-center gap-2 min-w-0 flex-row-reverse text-right">
-                        <TeamBadge teamId={m.lowerSeedSlug} teamName={teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName} abbr={teamBySlug.get(m.lowerSeedSlug)?.team_abbr} colorPrimary={teamBySlug.get(m.lowerSeedSlug)?.color_primary} colorSecondary={teamBySlug.get(m.lowerSeedSlug)?.color_secondary} colorText={teamBySlug.get(m.lowerSeedSlug)?.color_text} size="xs" />
+                        <TeamMark variant="logo" teamId={m.lowerSeedSlug} teamName={teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName} size="xs" />
                         <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.lowerSeedSlug)}>
                             {m.lowerSeedRank}. {teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName}
                         </ClickableText>
@@ -2522,7 +2506,7 @@ export const PlayoffBracketConfirmedCard: React.FC<{
             {seeds.map(s => (
                 <div key={s.seed} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800/60 text-sm">
                     <span className="text-slate-500 font-black w-5 text-center shrink-0">{s.seed}</span>
-                    <TeamBadge teamId={s.teamSlug} teamName={teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName} abbr={teamBySlug.get(s.teamSlug)?.team_abbr} colorPrimary={teamBySlug.get(s.teamSlug)?.color_primary} colorSecondary={teamBySlug.get(s.teamSlug)?.color_secondary} colorText={teamBySlug.get(s.teamSlug)?.color_text} size="xs" />
+                    <TeamMark variant="logo" teamId={s.teamSlug} teamName={teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName} size="xs" />
                     <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(s.teamSlug)}>
                         {teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName}
                     </ClickableText>
@@ -2617,7 +2601,7 @@ export const PlayoffSeriesResultCard: React.FC<{
             date={event.simDate ?? formatRelativeTime(event.createdAt)}
             beforeHeader={
                 <div className="flex items-center gap-4 py-2">
-                    <TeamBadge teamId={winnerSlug} teamName={winnerDisplay} abbr={teamBySlug.get(winnerSlug)?.team_abbr} colorPrimary={teamBySlug.get(winnerSlug)?.color_primary} colorSecondary={teamBySlug.get(winnerSlug)?.color_secondary} colorText={teamBySlug.get(winnerSlug)?.color_text} size="md" />
+                    <TeamMark variant="logo" teamId={winnerSlug} teamName={winnerDisplay} size="md" />
                     <TrendingUp size={20} className="text-emerald-400 shrink-0" />
                 </div>
             }

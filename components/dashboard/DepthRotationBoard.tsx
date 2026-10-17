@@ -6,6 +6,7 @@ import { Button } from '../common/Button';
 import { SplitButton } from '../common/SplitButton';
 import { IconButton } from '../common/IconButton';
 import { OvrBadge } from '../common/OvrBadge';
+import { ConditionBar } from '../common/ConditionBar';
 import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
 import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
 import { Dropdown } from '../common/Dropdown';
@@ -168,11 +169,18 @@ interface DepthRotationBoardProps {
     onUpdateDepthChart: (dc: DepthChart) => void;
     onUpdateTactics: (t: GameTactics) => void;
     coachName?: string;
+    /** [2026-10-17] 멀티 전용 — 지정되면 OVR 오른쪽에 "체력" 열(로스터 탭과 같은 ConditionBar). 값 null = "경기 중",
+     * 맵에 없는 선수는 "—". 미지정이면 열 없음(기존 레이아웃 그대로). */
+    playerConditions?: Map<string, number | null>;
 }
 
+// 체력 열(OVR 오른쪽, sticky) — 막대만 표시(수치는 툴팁)라 OVR 열과 같은 40px
+const CONDITION_COL_WIDTH = 40;
+
 const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
-    team, tactics, depthChart, onUpdateDepthChart, onUpdateTactics, coachName,
+    team, tactics, depthChart, onUpdateDepthChart, onUpdateTactics, coachName, playerConditions,
 }) => {
+    const withCondition = !!playerConditions;
     const [dragging, setDragging] = useState<DragState | null>(null);
     type SlotRef = { pos: keyof DepthChart; idx: number };
     const [draggedSlot, setDraggedSlot] = useState<SlotRef | null>(null);
@@ -427,13 +435,14 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
 
             {/* ── 통합 표 ── */}
             <div className="flex-1 min-h-0 overflow-auto">
-                <table className="border-separate border-spacing-0 w-full" style={{ minWidth: '960px', tableLayout: 'fixed' }}>
+                <table className="border-separate border-spacing-0 w-full" style={{ minWidth: withCondition ? `${960 + CONDITION_COL_WIDTH}px` : '960px', tableLayout: 'fixed' }}>
                     <colgroup>
                         <col style={{ width: 56 }} />
                         <col style={{ width: 40 }} />
                         <col style={{ width: 28 }} />
                         <col style={{ width: 200 }} />
                         <col style={{ width: 40 }} />
+                        {withCondition && <col style={{ width: CONDITION_COL_WIDTH }} />}
                         <col />
                         <col style={{ width: 40 }} />
                         <col style={{ width: 54 }} />
@@ -442,7 +451,10 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                         <tr className="text-sm font-bold text-slate-400">
                             <th className={`sticky left-0 z-50 ${SH} ${SB} border-b border-slate-800 py-3 w-[96px] min-w-[96px] text-center`} colSpan={2}>슬롯</th>
                             <th className={`sticky left-[96px] z-50 ${SH} ${SB} border-b border-slate-800 py-3 w-[228px] min-w-[228px] text-left px-3`} colSpan={2}>선수</th>
-                            <th className={`border-r border-slate-800 sticky left-[324px] z-50 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            <th className={`${withCondition ? '' : 'border-r border-slate-800'} sticky left-[324px] z-50 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            {withCondition && (
+                                <th className={`border-r border-slate-800 sticky left-[364px] z-50 ${SH} border-b border-slate-800 py-3 w-[40px] min-w-[40px] text-center`}>체력</th>
+                            )}
                             <th className={`${SH} border-l border-r border-t border-b border-slate-800 py-3 px-2`}>
                                 <div className="flex text-sm font-black">
                                     {['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map(q => (
@@ -520,13 +532,25 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                                         />
                                     </td>
 
-                                    <td className={`border-r border-slate-800 sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>
+                                    <td className={`${withCondition ? '' : 'border-r border-slate-800'} sticky left-[324px] z-30 ${SK} text-center ${groupEndBorder}`}>
                                         {selectedPlayer && (
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className="!shadow-none" />
                                             </div>
                                         )}
                                     </td>
+                                    {withCondition && (
+                                        <td className={`border-r border-slate-800 sticky left-[364px] z-30 ${SK} text-center !px-1 ${groupEndBorder}`}>
+                                            {selectedPlayer && (
+                                                <ConditionBar
+                                                    value={playerConditions!.has(selectedPlayer.id) ? (playerConditions!.get(selectedPlayer.id) as number | null) : null}
+                                                    hiddenLabel={playerConditions!.has(selectedPlayer.id) ? '경기 중' : '—'}
+                                                    hiddenTitle={playerConditions!.has(selectedPlayer.id) ? '경기가 끝나면 체력이 표시됩니다' : undefined}
+                                                    showValue={false}
+                                                />
+                                            )}
+                                        </td>
+                                    )}
 
                                     <td className={`border-r border-slate-800 p-0 h-9 ${groupEndBorder}`}>
                                         {/* 선수 미배정 슬롯도 GanttBar를 readOnly로 그려서 배경 격자/쿼터
@@ -610,5 +634,6 @@ export const DepthRotationBoard = React.memo(
         prev.tactics === next.tactics &&
         prev.depthChart === next.depthChart &&
         prev.onUpdateDepthChart === next.onUpdateDepthChart &&
-        prev.onUpdateTactics === next.onUpdateTactics,
+        prev.onUpdateTactics === next.onUpdateTactics &&
+        prev.playerConditions === next.playerConditions,
 );

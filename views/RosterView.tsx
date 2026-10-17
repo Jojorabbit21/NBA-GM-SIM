@@ -74,11 +74,13 @@ interface RosterViewProps {
   /** "투웨이 슬롯" 푸터 표시 여부(기본 true). 멀티플레이어는 CBA 규정이 꺼진 리그에서 false를
    * 넘겨 숨긴다(RosterOverviewGrid.tsx의 동명 prop 참고). */
   showTwoWaySlots?: boolean;
+  /** [2026-10-17] 멀티 전용 — 로스터 탭 "체력" 열 데이터(RosterOverviewGrid.playerConditions). 미전달 시 열 없음(싱글). */
+  playerConditions?: Map<string, number | null>;
 }
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks', 'settings'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots, playerConditions }) => {
   // 탭 상태를 URL 쿼리 파라미터(?tab=)로 관리 — 새로고침/북마크/공유 링크에서도 마지막으로
   // 보던 탭이 유지된다. 탭 전환은 히스토리를 계속 쌓지 않고 현재 항목만 갱신(replace) —
   // MultiLeaderboardView의 필터 상태 URL 동기화와 동일한 방침.
@@ -401,6 +403,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   maxRosterSize={maxRosterSize}
                   twoWaySlots={twoWaySlots}
                   showTwoWaySlots={showTwoWaySlots}
+                  playerConditions={playerConditions}
               />
           )}
           {tab === 'attributes' && (

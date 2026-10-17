@@ -25,7 +25,7 @@ import { computeMultiStandingsStats, fmtWinPct, type MultiStandingsRecord } from
 import { formatReturnDateSuffix, type ActiveInjuryStatus } from '../services/multi/activeInjuryStatus';
 import { buildLeagueTeams } from '../services/multi/buildLeagueTeams';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
-import { TeamBadge } from '../components/common/TeamBadge';
+import { TeamMark } from '../components/common/TeamMark';
 import { PlayerHoverCard, buildPlayerCardMap, mergeInjuryIntoPlayerCardMap } from '../components/common/PlayerHoverCard';
 import { InjuryStatusBadge, SEVERITY_TEXT_COLOR } from '../components/common/InjuryStatusBadge';
 import { OvrBadge } from '../components/common/OvrBadge';
@@ -182,11 +182,7 @@ const HomeStandingsTable: React.FC<{
                             <TableCell align="left" className="text-sm text-slate-500">{i + 1}</TableCell>
                             <TableCell align="left">
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                    <TeamBadge
-                                        teamId={t.team_slug} abbr={t.team_abbr}
-                                        colorPrimary={t.color_primary} colorSecondary={t.color_secondary} colorText={t.color_text}
-                                        size="xs"
-                                    />
+                                    <TeamMark variant="logo" teamId={t.team_slug} teamName={t.team_abbr} size="xs" />
                                     {/* 팀명 호버 시 밑줄(+인디고) — 앱 공통 이동 링크 규칙(ClickableText). 클릭 목적지는 행과 동일(팀 로스터). */}
                                     <ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)}>{t.team_name}</ClickableText>
                                 </div>
@@ -353,11 +349,7 @@ const HomeLeagueLeadersSection: React.FC = () => {
                                 <TableCell><div className="flex justify-center"><OvrBadge value={entry.player.ovr} size="sm" /></div></TableCell>
                                 <TableCell align="left" className="max-w-0">
                                     <div className="flex items-center gap-1.5 min-w-0">
-                                        <TeamBadge
-                                            teamId={entry.teamId} abbr={entry.teamAbbr}
-                                            colorPrimary={entry.colorPrimary} colorSecondary={entry.colorSecondary}
-                                            size="xs"
-                                        />
+                                        <TeamMark variant="logo" teamId={entry.teamId} teamName={entry.teamAbbr} size="xs" />
                                         <PlayerHoverCard player={entry.player} teamAbbr={entry.teamAbbr}>
                                             <span className={`text-sm font-bold truncate min-w-0 ${entry.teamId === myTeamId ? 'text-white' : 'text-slate-300'}`}>{entry.player.name}</span>
                                         </PlayerHoverCard>

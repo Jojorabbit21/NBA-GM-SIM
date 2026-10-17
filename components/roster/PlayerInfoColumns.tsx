@@ -11,6 +11,7 @@ import { Badge } from '../common/Badge';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
 import { InjuryStatusBadge } from '../common/InjuryStatusBadge';
 import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjuryStatus';
+import { ConditionBar } from '../common/ConditionBar';
 import type { HeaderSortProps } from '../../hooks/useTableSort';
 
 export const PLAYER_INFO_WIDTHS = { NAME: 180, POS: 60, AGE: 50, OVR: 60 } as const;
@@ -24,12 +25,25 @@ export const PLAYER_INFO_LEFT = {
 /** 4열 합계 — 재정 탭처럼 뒤에 sticky 열을 더 붙일 때 다음 오프셋으로 쓴다 */
 export const PLAYER_INFO_TOTAL_WIDTH = PLAYER_INFO_LEFT.OVR + PLAYER_INFO_WIDTHS.OVR;
 
-export type PlayerInfoSortKey = 'name' | 'position' | 'age' | 'ovr';
+// [2026-10-17] 선택형 "체력" 열 — 이름 바로 오른쪽(멀티 로스터 탭 전용, withCondition). 켜면 포지션/나이/OVR의
+// sticky 오프셋이 이 폭만큼 밀린다. 켜지 않은 표는 위 PLAYER_INFO_LEFT 그대로(기존 동작 불변).
+export const PLAYER_INFO_CONDITION_WIDTH = 72;
+const conditionShift = (withCondition: boolean) => (withCondition ? PLAYER_INFO_CONDITION_WIDTH : 0);
+const leftOf = (withCondition: boolean) => ({
+    NAME: PLAYER_INFO_LEFT.NAME,
+    COND: PLAYER_INFO_WIDTHS.NAME,
+    POS: PLAYER_INFO_LEFT.POS + conditionShift(withCondition),
+    AGE: PLAYER_INFO_LEFT.AGE + conditionShift(withCondition),
+    OVR: PLAYER_INFO_LEFT.OVR + conditionShift(withCondition),
+});
 
-/** `<colgroup>` 안의 앞 4개 `<col>` */
-export const PlayerInfoColGroup: React.FC = () => (
+export type PlayerInfoSortKey = 'name' | 'condition' | 'position' | 'age' | 'ovr';
+
+/** `<colgroup>` 안의 앞 4개 `<col>` (withCondition이면 이름 뒤에 체력 열 포함 5개) */
+export const PlayerInfoColGroup: React.FC<{ withCondition?: boolean }> = ({ withCondition = false }) => (
     <>
         <col style={{ width: PLAYER_INFO_WIDTHS.NAME }} />
+        {withCondition && <col style={{ width: PLAYER_INFO_CONDITION_WIDTH }} />}
         <col style={{ width: PLAYER_INFO_WIDTHS.POS }} />
         <col style={{ width: PLAYER_INFO_WIDTHS.AGE }} />
         <col style={{ width: PLAYER_INFO_WIDTHS.OVR }} />
@@ -40,14 +54,19 @@ export const PlayerInfoColGroup: React.FC = () => (
 export const PlayerInfoHeaderCells: React.FC<{
     sortProps?: (key: PlayerInfoSortKey) => HeaderSortProps;
     ovrLabel?: string;
-}> = ({ sortProps, ovrLabel = 'OVR' }) => {
+    withCondition?: boolean;
+}> = ({ sortProps, ovrLabel = 'OVR', withCondition = false }) => {
     const s = (key: PlayerInfoSortKey) => (sortProps ? sortProps(key) : {});
+    const left = leftOf(withCondition);
     return (
         <>
-            <TableHeaderCell stickyLeft={PLAYER_INFO_LEFT.NAME} width={PLAYER_INFO_WIDTHS.NAME} align="left" className="pl-4" {...s('name')}>이름</TableHeaderCell>
-            <TableHeaderCell stickyLeft={PLAYER_INFO_LEFT.POS} width={PLAYER_INFO_WIDTHS.POS} {...s('position')}>포지션</TableHeaderCell>
-            <TableHeaderCell stickyLeft={PLAYER_INFO_LEFT.AGE} width={PLAYER_INFO_WIDTHS.AGE} {...s('age')}>나이</TableHeaderCell>
-            <TableHeaderCell stickyLeft={PLAYER_INFO_LEFT.OVR} width={PLAYER_INFO_WIDTHS.OVR} {...s('ovr')}>{ovrLabel}</TableHeaderCell>
+            <TableHeaderCell stickyLeft={left.NAME} width={PLAYER_INFO_WIDTHS.NAME} align="left" className="pl-4" {...s('name')}>이름</TableHeaderCell>
+            {withCondition && (
+                <TableHeaderCell stickyLeft={left.COND} width={PLAYER_INFO_CONDITION_WIDTH} {...s('condition')}>체력</TableHeaderCell>
+            )}
+            <TableHeaderCell stickyLeft={left.POS} width={PLAYER_INFO_WIDTHS.POS} {...s('position')}>포지션</TableHeaderCell>
+            <TableHeaderCell stickyLeft={left.AGE} width={PLAYER_INFO_WIDTHS.AGE} {...s('age')}>나이</TableHeaderCell>
+            <TableHeaderCell stickyLeft={left.OVR} width={PLAYER_INFO_WIDTHS.OVR} {...s('ovr')}>{ovrLabel}</TableHeaderCell>
         </>
     );
 };
@@ -76,16 +95,22 @@ interface PlayerInfoCellsProps {
     showInjury?: boolean;
     /** 이름 아래 줄(능력치 탭의 health 텍스트 등) */
     nameExtra?: React.ReactNode;
+    /** 이름 오른쪽 "체력" 열 표시(헤더/colgroup도 같은 값으로 켤 것) */
+    withCondition?: boolean;
+    /** 체력 0~100. null = 아직 공개하면 안 됨(진행 중 경기) → "경기 중", undefined = 데이터 없음 → "—" */
+    condition?: number | null;
 }
 
 /** 바디 4칸: 이름(호버카드·TW·부상) | 포지션 | 나이 | OVR */
 export const PlayerInfoCells: React.FC<PlayerInfoCellsProps> = ({
     player, fallbackName, teamAbbr, onClick, clickable = !!onClick, enableHoverCard = false, showInjury = true, nameExtra,
+    withCondition = false, condition,
 }) => {
+    const left = leftOf(withCondition);
     const nameClass = `min-w-0 text-sm font-semibold text-slate-200 truncate ${clickable ? 'hover:text-indigo-400 hover:underline cursor-pointer' : ''}`;
     return (
         <>
-            <TableCell align="left" stickyLeft={PLAYER_INFO_LEFT.NAME} width={PLAYER_INFO_WIDTHS.NAME} className="pl-4">
+            <TableCell align="left" stickyLeft={left.NAME} width={PLAYER_INFO_WIDTHS.NAME} className="pl-4">
                 <div className="flex flex-col">
                     <span className="flex items-center gap-1.5 min-w-0">
                         {player ? (
@@ -109,9 +134,16 @@ export const PlayerInfoCells: React.FC<PlayerInfoCellsProps> = ({
                     {nameExtra}
                 </div>
             </TableCell>
-            <TableCell stickyLeft={PLAYER_INFO_LEFT.POS} width={PLAYER_INFO_WIDTHS.POS} className="text-slate-400 font-medium text-sm">{player?.position ?? '-'}</TableCell>
-            <TableCell stickyLeft={PLAYER_INFO_LEFT.AGE} width={PLAYER_INFO_WIDTHS.AGE} className="text-slate-400 font-medium text-sm">{player?.age ?? '-'}</TableCell>
-            <TableCell stickyLeft={PLAYER_INFO_LEFT.OVR} width={PLAYER_INFO_WIDTHS.OVR}>
+            {withCondition && (
+                <TableCell stickyLeft={left.COND} width={PLAYER_INFO_CONDITION_WIDTH} className="!px-1">
+                    {condition === undefined
+                        ? <ConditionBar value={null} />
+                        : <ConditionBar value={condition} hiddenLabel="경기 중" hiddenTitle="경기가 끝나면 체력이 표시됩니다" />}
+                </TableCell>
+            )}
+            <TableCell stickyLeft={left.POS} width={PLAYER_INFO_WIDTHS.POS} className="text-slate-400 font-medium text-sm">{player?.position ?? '-'}</TableCell>
+            <TableCell stickyLeft={left.AGE} width={PLAYER_INFO_WIDTHS.AGE} className="text-slate-400 font-medium text-sm">{player?.age ?? '-'}</TableCell>
+            <TableCell stickyLeft={left.OVR} width={PLAYER_INFO_WIDTHS.OVR}>
                 {player ? <OvrTableBadge value={calculatePlayerOvr(player)} /> : <span className="text-slate-600 text-sm">-</span>}
             </TableCell>
         </>

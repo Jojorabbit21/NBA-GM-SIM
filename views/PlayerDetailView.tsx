@@ -20,6 +20,7 @@ import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, Tabl
 import { TabBar } from '../components/common/TabBar';
 import { Dropdown } from '../components/common/Dropdown';
 import { KeyValueRow } from '../components/common/KeyValueRow';
+import { ConditionBar } from '../components/common/ConditionBar';
 import { EmptyState } from '../components/common/EmptyState';
 import { Spinner } from '../components/common/Spinner';
 import { SegmentedControl } from '../components/common/SegmentedControl';
@@ -84,6 +85,9 @@ interface PlayerDetailViewProps {
     // [2026-10-07] "뉴스" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯.
     // 뉴스 데이터(league_events)가 멀티 전용이라 뷰는 렌더만 하고 조회는 호출부가 한다.
     newsSlot?: React.ReactNode;
+    /** [2026-10-17] 멀티 전용 — 선수 정보 "포지션 평점" 아래 "체력" 행. number = 표시, null = 공개 전 경기라 "경기 중",
+     * undefined = 행 자체를 그리지 않음(싱글·데이터 로딩 전). */
+    condition?: number | null;
 }
 
 // ── Career History Columns ──
@@ -720,7 +724,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick, newsSlot }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick, newsSlot, condition }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -1545,6 +1549,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         { label: '계약', value: player.contractYears > 0 ? `${player.contractYears}년` : '-' },
                                         { label: '리그 레벨', value: <StarRating ovr={calculatedOvr} size="md" /> },
                                         { label: '포지션 평점', value: positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-' },
+                                        ...(condition !== undefined
+                                            ? [{ label: '체력', value: <ConditionBar value={condition} showBars={false} hiddenLabel="경기 중" hiddenTitle="경기가 끝나면 체력이 표시됩니다" /> }]
+                                            : []),
                                     ].map(({ label, value, numeric }) => (
                                         <KeyValueRow key={label} label={label} numeric={numeric}>{value}</KeyValueRow>
                                     ))}

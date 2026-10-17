@@ -268,6 +268,7 @@ export interface GameState {
     // [New] 박스스코어 점진 공개용 포세션 단위 델타 타임라인
     boxTimeline: BoxTick[];
     prevBoxSnap: Record<string, BoxDelta>; // 직전 포세션 종료 시점의 누적 스냅샷 (diff 기준점)
+    prevCondSnap?: Record<string, number>; // [2026-10-17] 직전 틱에 기록한 체력 정수값 (BoxTick.c diff 기준점, 처음 쓸 때 생성)
 
     // [New 2026-07] 직전 포제션이 "우리 팀의 수비 리바운드"로 끝났는지 (defReb 속공 트레이드오프용)
     lastEntryWasDefReb: boolean;

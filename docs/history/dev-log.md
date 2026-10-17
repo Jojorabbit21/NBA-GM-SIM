@@ -36,6 +36,91 @@
 ---
 
 
+## 2026-10-17 — 비밀번호 찾기/재설정 (OTP 방식) 추가
+
+**배경**: 로그인 화면에 비밀번호 재설정 수단이 없어 비밀번호 분실 시 Supabase 대시보드에서 수동 처리해야 했음.
+
+**변경 파일**:
+- `services/authRecoveryState.ts` (신규) — 복구 진행 중 플래그 (`setRecoveryInProgress`/`isRecoveryInProgress`)
+- `hooks/useAuth.ts` — `onAuthStateChange`의 SIGNED_IN 처리 맨 앞에 `if (isRecoveryInProgress()) return;` 추가 + import
+- `views/auth/AuthForm.tsx` — mode에 `forgot`/`recoverVerify`/`newPassword` 추가, 로그인 폼에 "비밀번호를 잊으셨나요?" 링크, 핸들러 5종 추가
+
+**Before**: mode = 'login' | 'signup' | 'verify', 비밀번호 재설정 코드 없음, useAuth는 모든 SIGNED_IN을 세션으로 반영.
+
+**After**: 이메일 입력 → `resetPasswordForEmail(email)` → 8자리 OTP 입력 `verifyOtp({type:'recovery'})` → 새 비밀번호 `updateUser({password})` → `signOut()` 후 로그인 화면으로 복귀(성공 메시지). 복구용 임시 세션이 로그인으로 오인되지 않도록 플래그로 useAuth 차단. 취소/모달 닫힘(unmount) 시 플래그 해제 + signOut.
+
+**추가 변경 (같은 날)**: 미가입 이메일에는 발송하지 않도록 변경. `migrations/add_email_exists_rpc.sql`(신규, `email_exists(p_email)` SECURITY DEFINER, anon 실행 허용, auth.users 기준) + AuthForm `handleSendRecovery`가 발송 전 RPC 호출, 없으면 "가입되지 않은 이메일입니다." 표시. 롤백: `DROP FUNCTION public.email_exists(text);` + AuthForm RPC 호출 블록 제거.
+
+**검증**: tsc 해당 파일 오류 없음. 실제 메일 발송은 Supabase 템플릿 설정 필요(아래).
+
+**롤백 방법**: AuthForm.tsx/useAuth.ts를 git으로 되돌리고 `services/authRecoveryState.ts` 삭제. Supabase 대시보드 설정은 그대로 둬도 무해.
+
+
+## 2026-10-17 — 뉴스피드 카드/리더보드 툴바 팀 표시를 배지 → 로고로 전환
+
+**배경**: 사용자 요청(홈 위젯 전환의 후속).
+
+**변경 파일**:
+- `views/multi/season/newsFeedCards.tsx` (6곳: 파워랭킹, 드래프트 로터리, 플레이인 대진 2, 대진 확정, 시리즈 결과)
+- `views/multi/season/MultiNewsFeedView.tsx` (팀 필터 icon)
+- `components/leaderboard/LeaderboardToolbar.tsx` (팀 필터 icon)
+
+**Before**: `<TeamBadge teamId=… abbr=… colorPrimary=… colorSecondary=… colorText=… size="xs|sm|md" />`
+**After**: `<TeamMark variant="logo" teamId=… [teamName=…] size="xs|sm|md" />` (import도 TeamMark로)
+
+**롤백 방법**: 위 Before 형태로 복원하고 import를 TeamBadge로 되돌림(색상 값은 teamBySlug/team 객체에서 가져오던 그대로).
+
+## 2026-10-17 — 멀티 홈 "리그 순위"/"리그 리더" 팀 표시를 배지 → 로고 이미지로 전환
+
+**배경**: 사용자 요청. 홈 화면 두 위젯이 팀 컬러 배지(TeamBadge)를 쓰고 있어 로고 이미지로 교체.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` (순위 표 행 ~185, 리그 리더 행 ~352, import)
+
+**Before**:
+```tsx
+<TeamBadge teamId={t.team_slug} abbr={t.team_abbr} colorPrimary={t.color_primary} colorSecondary={t.color_secondary} colorText={t.color_text} size="xs" />
+<TeamBadge teamId={entry.teamId} abbr={entry.teamAbbr} colorPrimary={entry.colorPrimary} colorSecondary={entry.colorSecondary} size="xs" />
+```
+
+**After**:
+```tsx
+<TeamMark variant="logo" teamId={t.team_slug} teamName={t.team_abbr} size="xs" />
+<TeamMark variant="logo" teamId={entry.teamId} teamName={entry.teamAbbr} size="xs" />
+```
+
+**롤백 방법**: 위 Before로 되돌리고 import를 `TeamBadge`로 복원.
+
+## 2026-10-17 — 라이브 중계 박스 이름 옆 체력 배지 + 엔진 box_timeline에 체력 기록(BoxTick.c) (체력 UI 4차, 엔진 Fly v174 배포 / 클라이언트 미배포)
+
+**배경**: 사용자 요청 — 라이브 게임(MultiGamePbpView) 선수 이름 오른쪽에 체력 배지, 크기는 글자 크기에 맞춤. 중계 데이터(box_timeline)에 체력이 없어
+경기 중 변화를 보여줄 수 없었음 → 사용자 선택 "실시간 변화": 엔진이 틱마다 체력 변화를 기록.
+
+**변경 파일**:
+- 엔진 미러 쌍 — `types/engine.ts` ↔ `server/src/shared/types/engine.ts`: `BoxTick.c?: Record<string, number>`
+- 엔진 미러 쌍 — `services/game/engine/pbp/pbpTypes.ts` ↔ `server/src/shared/engine/pbp/pbpTypes.ts`: `GameState.prevCondSnap?: Record<string, number>`(처음 쓸 때 생성)
+- 엔진 미러 쌍 — `services/game/engine/pbp/liveEngine.ts` ↔ `server/src/shared/engine/pbp/liveEngine.ts` `recordBoxTick()`:
+  `CONDITION_TICK_STEP = 5`, 선수별 `round(currentCondition / 5) * 5`가 직전 기록과 다르면 `c[pid]`에 기록(첫 틱은 전원), `c`가 비면 필드 생략
+  - Before: `state.boxTimeline.push({ t, on, off, mp, d, ...(shot ? { shot } : {}) })`
+  - After: 루프에서 c 수집 + `...(Object.keys(c).length ? { c } : {})` 추가
+  - 5 단위 근거(실측, 한 경기): 정수 단위면 box_timeline +87KB(+61%, 시즌 1,230경기 ≈ 103MB), 5 단위 +19KB(+13.7%, ≈ 23MB). 배지는 단계(경계 60/80 = 5의 배수)·불투명도만 표시해 5 단위로 충분
+- `components/common/ConditionBar.tsx` — `size?: 'md' | 'xs'`(기본 md). xs = 막대 3×10px, 간격 1px(text-xs 줄 높이에 맞춤)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `liveConditionsAt(timeline, elapsed)`: tick.c를 리플레이 시점까지 누적, c가 하나도 없는 경기면 null
+  - 컴포넌트: `useMultiPlayerConditions(home+away 로스터)`(조기 반환 앞), 단계별 맵 선택 — 종료: 최종 박스 `condition` / 라이브: `liveConditionsAt` (null이면 훅 = 경기 전 체력) / 예정: 훅
+  - `PlayerBoxPanel`에 `conditions` prop → 이름 뒤 `<ConditionBar showValue={false} size="xs" />`(값 null/없음이면 미표시), `renderBoxPanel` 3분기 모두 전달
+
+**검증**:
+- 서버 엔진으로 한 경기 시뮬: 첫 틱 25명 전원, 이후 변경분만. 백투백 BKN 주전 트레이스 100 → 65/70 → 65/70 → 30 → 20(최종 박스 21.1과 일치)
+- 클라이언트 tsc 관련 파일 오류 없음, vite build 성공, 서버 tsc 오류 수 45 = 기존과 동일
+- Fly **v174** 배포(06:50:59~06:51:52 UTC, 다음 경기 07:01:15 전 틈). ⚠️ v172(05:09, 이 세션)와 v174 사이 **v173(약 05:17)은 다른 세션/사용자 배포**
+- 배포 후 첫 경기(07:00 시뮬, g_phi_det/g_orl_chi 2026-11-11): 틱 237/217개 중 c 포함 134/127개, 첫 틱 24/20명(양 팀 로스터 전원) — 정상 기록
+- 실제 저장 용량(pg_column_size, TOAST 압축 후) 경기당 평균 12,635B(배포 전 30경기) → 19,191B(배포 후) = +6.6KB, 시즌 1,230경기 ≈ +8MB
+
+**롤백 방법**: 엔진 3쌍에서 c/prevCondSnap/CONDITION_TICK_STEP 제거(미러 쌍 — 같이) 후 Fly 재배포. 클라이언트는 MultiGamePbpView의 체력 관련 블록·PlayerBoxPanel conditions·liveConditionsAt 제거, ConditionBar size 제거.
+이미 저장된 box_timeline의 c 필드는 남아도 무해(클라이언트가 안 읽으면 무시).
+
+
 ## 2026-10-17 — 켈렐 웨어 중복 박스스코어 행 병합 (DB 데이터 정리, 코드 변경 없음)
 
 **배경**: 바로 아래 항목(드래프트 롤백 중복)으로 NYK가 켈렐 웨어를 2명으로 시뮬한 8경기의 `game_pbp.home_box/away_box`에 같은 `playerId` 행이 2개씩 남아 있었음. 시즌 스탯 RPC(`get_player_season_stats_full`)는 `game_pbp` 박스를 그 자리에서 합산하므로 G가 2배로 잡히는 등 집계가 오염됨.
@@ -98,6 +183,22 @@ if (rbErr) { /* 에러 전송 + scheduleNext() 후 break */ }
 ---
 
 
+## 2026-10-17 — 멀티 전술 > 뎁스차트 표에 "체력" 열 추가 (체력 UI 3차, 미배포)
+
+**배경**: 사용자 요청 — 뎁스차트 테이블 OVR 오른쪽에 체력 배지 열.
+
+**변경 파일** (클라이언트만):
+- `components/dashboard/DepthRotationBoard.tsx` — `playerConditions?: Map<string, number | null>` prop. 지정 시 OVR 다음에 40px sticky 열(`left-[364px]`, 헤더 "체력"),
+  셀은 `ConditionBar`의 **막대 3개만**(`showValue={false}`, 사용자 피드백 — 수치는 호버 title "체력 NN.N%"). OVR 열의 오른쪽 구분선(border-r)은 체력 열로 이동, 표 minWidth 960 → 1000.
+- `components/common/ConditionBar.tsx` — `showValue?: boolean`(기본 true) 추가: false면 수치(%) 없이 막대만
+  `React.memo` 비교 함수에 `playerConditions` 추가(빠뜨리면 체력 갱신이 화면에 안 반영됨). 미지정이면 기존 레이아웃 그대로
+- `views/multi/season/MultiTacticsView.tsx` — `useMultiPlayerConditions(myTeamRow.roster)`(isReady 조기 반환 앞) → `playerConditions` 전달
+
+**검증**: 클라이언트 tsc 관련 오류 없음, vite build 성공(순환 의존 없음). 브라우저 확인 미실시.
+
+**롤백 방법**: DepthRotationBoard의 prop·열·memo 비교 줄 제거(OVR border-r 복원), MultiTacticsView의 훅 호출·prop 제거.
+
+
 ## 2026-10-17 — 경기 전 체력 스냅샷(pregame_condition): 결과 공개 전까지 이전 체력 표시 (DB + Fly v172 + 클라이언트 미배포)
 
 **배경**: 서버는 경기를 시뮬하는 즉시(리플레이 공개 ~10분 전) `condition`을 경기 후 값으로 덮어써서, 공개 전에 보여주면 스포일러.
@@ -114,7 +215,8 @@ if (rbErr) { /* 에러 전송 + scheduleNext() 후 break */ }
 
 **배포 순서**: 마이그레이션(05:05) → Fly v172(05:08:12~05:09:02, 05:07:30 경기 기록 후·05:21:15 경기 전 틈). 클라이언트는 미배포(칼럼이 먼저 있어야 조회 실패가 없으므로 이 순서 필수).
 
-**검증**: 서버 tsc — simRunner 기존 SupabaseClient 오류 6건 외 신규 없음. 클라이언트 tsc 관련 파일 오류 없음. (배포 후 첫 경기 검증은 아래 추가)
+**검증**: 서버 tsc — simRunner 기존 SupabaseClient 오류 6건 외 신규 없음. 클라이언트 tsc 관련 파일 오류 없음.
+배포 후 첫 경기(05:21:15 3경기 — g_bkn_mem/g_tor_cha/g_atl_mil 2026-11-06): 양 팀 로스터 75행 전원 `pregame_condition` 기록, `condition_recovered_through = 11-05`(D−1). 예: MEM 선수 경기 전 95 → 경기 후 75.3, BKN 98.7 → 77.9 — 공개 전 화면에는 95/98.7이 보여야 함
 
 **롤백 방법**: 클라이언트 두 훅을 Before(경기 중 null)로, simRunner의 pregameConditionById·pregame_condition 두 줄 제거 후 Fly 재배포(직전 v171). 칼럼은 남겨도 무해(`ALTER TABLE ... DROP COLUMN pregame_condition`은 클라이언트가 조회를 멈춘 뒤에만).
 

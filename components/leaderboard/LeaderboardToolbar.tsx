@@ -5,7 +5,7 @@ import { Dropdown } from '../common/Dropdown';
 import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { SeasonType } from '../../hooks/useLeaderboardData';
-import { TeamBadge } from '../common/TeamBadge';
+import { TeamMark } from '../common/TeamMark';
 import { IconButton } from '../common/IconButton';
 import { CheckboxFilterDropdown } from '../common/filters/CheckboxFilterDropdown';
 import { StatFilterBar, FilterChips, type StatFilterDraft } from '../common/filters/StatFilterBar';
@@ -62,7 +62,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     const teamOptions = [...teams].sort((a, b) => a.id.localeCompare(b.id)).map(team => ({
         value: team.id,
         label: team.name,
-        icon: <TeamBadge teamId={team.id} abbr={team.abbr} colorPrimary={team.colorPrimary} colorSecondary={team.colorSecondary} size="sm" />,
+        icon: <TeamMark variant="logo" teamId={team.id} size="sm" />,
     }));
 
     const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];

@@ -19,7 +19,7 @@ import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { useServerClockBucket } from '../../../utils/serverClock';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
-import { TeamBadge } from '../../../components/common/TeamBadge';
+import { TeamMark } from '../../../components/common/TeamMark';
 import { CheckboxFilterDropdown } from '../../../components/common/filters/CheckboxFilterDropdown';
 import { StoryCard, extractEventPlayerIds } from './newsFeedCards';
 import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap, mergeInjuryIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
@@ -378,7 +378,7 @@ const MultiNewsFeedView: React.FC = () => {
                             options={sortedTeams.map(team => ({
                                 value: team.team_slug,
                                 label: team.team_name,
-                                icon: <TeamBadge teamId={team.team_slug} abbr={team.team_abbr} colorPrimary={team.color_primary} colorSecondary={team.color_secondary} colorText={team.color_text} size="sm" />,
+                                icon: <TeamMark variant="logo" teamId={team.team_slug} size="sm" />,
                             }))}
                             selected={selectedTeams}
                             onChange={setSelectedTeams}

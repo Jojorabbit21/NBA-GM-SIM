@@ -32,6 +32,8 @@ import { kstDateKey, fmtFullDate } from './multiScheduleUtils';
 import { TabBar } from '../../../components/common/TabBar';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
+import { ConditionBar } from '../../../components/common/ConditionBar';
+import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -416,6 +418,19 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
     return Array.from(rows.values());
 }
 
+// [2026-10-17] 라이브 체력 배지 — box_timeline의 tick.c(체력 5단위, 첫 틱 전원 + 이후 변경분)를 elapsed 시점까지 누적.
+// tick.c가 하나도 없는 경기(엔진에 기록이 추가되기 전 시뮬된 경기)는 null → 호출부가 경기 전 체력으로 폴백.
+function liveConditionsAt(timeline: BoxTick[], elapsed: number): Map<string, number> | null {
+    if (!timeline.some(t => t.c)) return null;
+    const cond = new Map<string, number>();
+    for (const tick of timeline) {
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
+        if (replayMs > elapsed) break;
+        if (tick.c) for (const [pid, v] of Object.entries(tick.c)) cond.set(pid, v);
+    }
+    return cond;
+}
+
 // elapsed 시점 이하 마지막 tick의 tick.on(양 팀 합산 코트 위 playerId)을 반환한다.
 // "지금 코트에 누가 있는지"는 이미 공개된 시점까지의 정보라 스포일러가 아니다.
 function getOnCourtIds(timeline: BoxTick[], elapsed: number): Set<string> {
@@ -559,7 +574,9 @@ const PlayerBoxPanel: React.FC<{
     players: PlayerBoxScore[];
     label:   string;
     onCourtIds?: Set<string>;
-}> = ({ players, label, onCourtIds }) => {
+    /** [2026-10-17] 이름 오른쪽 체력 배지(막대만, 수치는 호버). 없거나 맵에 없는 선수는 배지 미표시 */
+    conditions?: Map<string, number | null>;
+}> = ({ players, label, onCourtIds, conditions }) => {
     const sorted = useMemo(
         () => [...players].sort((a, b) => (b.mp ?? 0) - (a.mp ?? 0)),
         [players],
@@ -639,6 +656,9 @@ const PlayerBoxPanel: React.FC<{
                                     {p.playerName
                                         ? <span className="truncate">{p.playerName}</span>
                                         : <Skeleton className="h-3 w-20" />}
+                                    {conditions?.get(p.playerId) != null && (
+                                        <ConditionBar value={conditions.get(p.playerId)!} showValue={false} size="xs" />
+                                    )}
                                     {(() => {
                                         const s = p.recentShots;
                                         if (s && s.length >= 3 && s.slice(-3).every(Boolean)) return <span className="shrink-0">🔥</span>;
@@ -1833,6 +1853,29 @@ const MultiGamePbpView: React.FC = () => {
         return buildLiveBox(gameData?.box_timeline ?? [], serverNow - startMs, gameData?.away_box ?? []);
     }, [gameData, serverNow, displayState, hasBoxTimeline]);
 
+    // ── 체력 배지 (docs/plan/multiplayer-fatigue.md 5장) ───────────────────────────
+    // 예정: 현재 체력(공용 훅) / 라이브: box_timeline tick.c를 리플레이 시점까지 누적(없는 옛 경기는 훅 = 경기 전 체력) /
+    // 종료: 최종 박스스코어의 condition(경기 종료 시점). 리플레이 시점 값이라 스포일러 아님.
+    const rosterIdsKey = `${homeRosterIds.join(',')}|${awayRosterIds.join(',')}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const conditionIds = useMemo(() => [...homeRosterIds, ...awayRosterIds], [rosterIdsKey]);
+    const dbConditions = useMultiPlayerConditions(conditionIds);
+    const liveConditions = useMemo(() => {
+        if (!gameData || displayState !== 'live' || !hasBoxTimeline) return null;
+        const startMs = new Date(gameData.game_start_time).getTime();
+        return liveConditionsAt(gameData.box_timeline ?? [], serverNow - startMs);
+    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+    const finalConditions = useMemo(() => {
+        if (displayState !== 'final' || !gameData) return null;
+        return new Map<string, number | null>(
+            [...(gameData.home_box ?? []), ...(gameData.away_box ?? [])]
+                .filter(p => p.condition != null)
+                .map(p => [p.playerId, p.condition]),
+        );
+    }, [displayState, gameData]);
+    const boxConditions: Map<string, number | null> | undefined =
+        finalConditions ?? liveConditions ?? dbConditions;
+
     // [2026-08-03] 라이브 화면에서도 인사이트 패널(GameInsightsPanel)을 실시간으로 보여주기 위한
     // 스포일러 세이프 값들 — homeOreb/awayOreb/maxQuarter는 항상 gameData 전체(최종 데이터)
     // 기준이라 그대로 넘기면 스포일러가 됨. liveHomeBox/liveAwayBox(box_timeline을 elapsed까지만
@@ -2108,10 +2151,10 @@ const MultiGamePbpView: React.FC = () => {
     // BoxScorePlaceholder로 튀지 않게 — isScheduled 대신 "0스탯 로스터를 실제로 만들었는가"로 판단.
     const renderBoxPanel = (side: 'away' | 'home') => {
         const abbr = side === 'away' ? awayAbbr : homeAbbr;
-        if (showBox) return <PlayerBoxPanel players={(side === 'away' ? gameData?.away_box : gameData?.home_box) ?? []} label={abbr} />;
-        if (hasBoxTimeline) return <PlayerBoxPanel players={side === 'away' ? liveAwayBox : liveHomeBox} label={abbr} onCourtIds={onCourtIds} />;
+        if (showBox) return <PlayerBoxPanel players={(side === 'away' ? gameData?.away_box : gameData?.home_box) ?? []} label={abbr} conditions={boxConditions} />;
+        if (hasBoxTimeline) return <PlayerBoxPanel players={side === 'away' ? liveAwayBox : liveHomeBox} label={abbr} onCourtIds={onCourtIds} conditions={boxConditions} />;
         const scheduledBox = side === 'away' ? scheduledAwayBox : scheduledHomeBox;
-        if (scheduledBox.length > 0) return <PlayerBoxPanel players={scheduledBox} label={abbr} />;
+        if (scheduledBox.length > 0) return <PlayerBoxPanel players={scheduledBox} label={abbr} conditions={boxConditions} />;
         return <BoxScorePlaceholder label={abbr} />;
     };
 

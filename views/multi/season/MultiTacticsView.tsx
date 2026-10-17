@@ -8,6 +8,7 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { getSeriesRoundLabel } from '../../../utils/playoffLogic';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonContext } from './seasonContext';
+import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { TabBar } from '../../../components/common/TabBar';
 import { Button } from '../../../components/common/Button';
 import { DepthRotationBoard } from '../../../components/dashboard/DepthRotationBoard';
@@ -493,6 +494,10 @@ const MultiTacticsView: React.FC = () => {
 
     const coachName = coachingData?.[myTeamId ?? '']?.headCoach?.name;
 
+    // 뎁스차트 "체력" 열 — 로스터 탭·선수 프로필과 같은 공용 훅(결과 공개 전 경기는 경기 전 체력)
+    const myRosterIds = useMemo(() => [...(myTeamRow?.roster ?? [])], [myTeamRow?.roster]);
+    const playerConditions = useMultiPlayerConditions(myRosterIds);
+
     // tactics가 없는 신규 유저: 로스터 로드 완료 후 자동 생성
     // preserveDraftOrder=true — 드래프트에서 먼저 뽑은 선수가 선발을 유지하고,
     // 같은 포지션을 나중에 뽑은 선수(OVR이 더 높아도)는 벤치로 배정되도록 한다.
@@ -552,6 +557,7 @@ const MultiTacticsView: React.FC = () => {
                         onUpdateDepthChart={setDepthChart}
                         onUpdateTactics={setUserTactics}
                         coachName={coachName}
+                        playerConditions={playerConditions}
                     />
                 )}
                 {activeTab === 'team' && (

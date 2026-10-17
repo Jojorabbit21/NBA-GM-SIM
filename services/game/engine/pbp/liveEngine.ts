@@ -99,6 +99,8 @@ function diffBoxStats(cur: BoxDelta, prev: BoxDelta | undefined): BoxDelta | nul
  * 포세션 1회 종료 시점의 박스스코어 변화분을 타임라인에 기록.
  * prevBoxSnap과의 diff이므로 and-1/보너스FT/테크니컬 등 모든 코드 경로의 누적을 자동 포착.
  */
+const CONDITION_TICK_STEP = 5;
+
 function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: number, result: PossessionResult): void {
     const onIds = [...state.home.onCourt, ...state.away.onCourt].map(p => p.playerId);
     const allPlayers = [
@@ -107,11 +109,17 @@ function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: num
     ];
 
     const d: Record<string, BoxDelta> = {};
+    // [2026-10-17] 체력 변화 — 라이브 중계 체력 배지용. 5 단위로 양자화(배지는 단계·불투명도만 표시, 단계 경계 60/80이 5의 배수)해
+    // 첫 틱엔 전원, 이후 값이 바뀐 선수만 기록한다. 정수 단위 대비 box_timeline 증가분 약 1/4.5(경기당 +19KB 수준).
+    const prevCond = (state.prevCondSnap ??= {});
+    const c: Record<string, number> = {};
     for (const p of allPlayers) {
         const cur = snapshotBoxStats(p);
         const delta = diffBoxStats(cur, state.prevBoxSnap[p.playerId]);
         if (delta) d[p.playerId] = delta;
         state.prevBoxSnap[p.playerId] = cur;
+        const cond = Math.round(p.currentCondition / CONDITION_TICK_STEP) * CONDITION_TICK_STEP;
+        if (prevCond[p.playerId] !== cond) { c[p.playerId] = cond; prevCond[p.playerId] = cond; }
     }
 
     // FG 시도 결과 (핫/콜드 스트릭 재구성용) — score/miss일 때만 기록
@@ -120,7 +128,7 @@ function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: num
         shot = { p: result.actor.playerId, m: result.type === 'score' };
     }
 
-    state.boxTimeline.push({ t: currentTotalSec, on: onIds, off: state.possession, mp: timeTaken / 60, d, ...(shot ? { shot } : {}) });
+    state.boxTimeline.push({ t: currentTotalSec, on: onIds, off: state.possession, mp: timeTaken / 60, d, ...(shot ? { shot } : {}), ...(Object.keys(c).length ? { c } : {}) });
 }
 
 /**

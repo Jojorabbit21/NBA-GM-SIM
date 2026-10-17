@@ -11,6 +11,7 @@ import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats, useRoomGamePbp, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
+import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { RosterView } from '../../RosterView';
 import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
 import { shouldUseCustomOverrides, isTwoWayContractEnabled } from '../../../utils/leagueOverrides';
@@ -246,6 +247,11 @@ const MultiRosterView: React.FC = () => {
         [schedule, gameTeamStatsMap, gameLeadersMap, simStart, gprd, serverNow],
     );
 
+    // 로스터 탭 "체력" 열 (docs/plan/multiplayer-fatigue.md 5장) — 공개 전 경기 선수 가리기 포함, 선수 프로필과 공용 훅.
+    // 방출 후 데드캡만 남은 선수(deadPlayerIds)는 로스터 행이 아니므로 조회하지 않는다.
+    const activeRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
+    const playerConditions = useMultiPlayerConditions(activeRosterIds);
+
     const onScoreClick = useCallback((gameId: string) => {
         navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
     }, [navigate, leagueId, getGameUrlId]);
@@ -315,6 +321,7 @@ const MultiRosterView: React.FC = () => {
                     twoWaySlots={(league as any)?.two_way_slots}
                     // CBA 규정이 꺼졌거나(즉시계약 RPC만 사용) 리그 설정에서 Two-Way 계약을 끈 리그는 슬롯 표시를 숨긴다.
                     showTwoWaySlots={isTwoWayContractEnabled(league)}
+                    playerConditions={playerConditions}
                 />
             </div>
         </div>
