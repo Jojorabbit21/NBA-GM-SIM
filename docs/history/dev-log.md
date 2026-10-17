@@ -36,6 +36,47 @@
 ---
 
 
+## 2026-10-17 — SliderControl 커밋 이벤트를 mouseup/keyup → 네이티브 change로 교체 (패드 터치 미반영 버그)
+
+**배경**: 멀티 전술 "팀 전술" 탭에서 슬라이더를 움직여도 저장 버튼이 켜지지 않는다는 제보(사용자는 패드 사용). `SliderControl`이 드래그 중엔 로컬 상태만 바꾸고 부모 `onChange` 커밋을 `onMouseUp`/`onKeyUp`에서만 했는데, 터치 드래그는 `mouseup`을 발생시키지 않아 커밋이 아예 안 됨 → `userTactics` 불변 → `isTacticsDirty`(JSON 비교) false → 저장 버튼 비활성. 핸들은 움직인 위치로 보이므로 사용자는 바뀐 줄 앎. 데스크톱에서도 트랙 밖에서 버튼을 놓으면 같은 증상이 날 수 있음(브라우저별 상이).
+
+**변경 파일**:
+- `components/common/SliderControl.tsx` (client, 공용) — 멀티 전술/어드민 팀 전술 탭/싱글 전술 등 이 컴포넌트를 쓰는 모든 슬라이더에 적용
+
+**Before**:
+```tsx
+// Commits to parent (onChange) only on mouseup/keyup — preventing App-level re-renders at 60fps.
+...
+<input type="range" ... value={localValue}
+  onChange={handleChange}
+  onMouseUp={handleCommit}
+  onKeyUp={handleCommit}
+  ... />
+```
+
+**After**:
+```tsx
+// Commits to parent (onChange) only on the native 'change' event (drag/key end) — preventing App-level re-renders at 60fps.
+...
+const inputRef = useRef<HTMLInputElement>(null);
+useEffect(() => {
+  const el = inputRef.current;
+  if (!el) return;
+  el.addEventListener('change', handleCommit);
+  return () => el.removeEventListener('change', handleCommit);
+}, [handleCommit]);
+...
+<input type="range" ... value={localValue}
+  ref={inputRef}
+  onChange={handleChange}
+  ... />
+```
+(훅은 `readOnly` 조기 return보다 위에 선언 — hooks 규칙)
+
+**검증**: `tsc --noEmit`에서 SliderControl 관련 오류 없음. 실기기(패드) 확인은 미완.
+
+**롤백 방법**: Before 블록대로 `onMouseUp`/`onKeyUp` 복구하고 `inputRef`/`useEffect`/`ref={inputRef}` 삭제.
+
 ## 2026-10-17 — 멀티 리그 홈 "리그 순위" 행 컬러 스케일(틴트) 제거
 
 **배경**: 사용자 요청. 홈 순위표(`HomeStandingsTable`)의 직행권 초록/플레이인권 주황 배경 그라데이션 제거.
@@ -88,6 +129,23 @@ const rowTint = i < autoClinchCount
 **검증**: 8개 값 모두 치환 1회씩 확인(assert). 브라우저 육안 확인 안 함.
 
 **롤백 방법**: 위 Before 값으로 되돌림.
+
+
+## 2026-10-17 — 채팅: 전송 중 말풍선 → 실제 메시지 교체 시 높이 튐 제거
+
+**배경**: 흐림 제거 후에도 말풍선이 먼저 뜨고 잠시 뒤 아래에 시간이 생겨 "뚝 끊겨" 보임. 원인: 임시(outbox) 말풍선은 "나" 머리줄·시간 줄이 없는 단순 버블이라, 서버 응답으로 실제 메시지(머리줄 + 시간 줄 포함)로 바뀌는 순간 위·아래에 줄이 생기며 높이가 늘어남.
+
+**변경 파일**:
+- `components/multi/LeagueChatDock.tsx` — `buildRows`가 outbox 항목을 임시 메시지(id -1, 보낸 순간의 클라이언트 시각)로 만들어 실제 메시지와 **같은 규칙**(묶음 머리줄 "나", 같은 분 시간 숨김)으로 한 목록에 넣음. `ListRow`(msg)에 `outbox?` 추가. `MessageRow`의 내 메시지 분기가 전송 중(실제와 동일한 모양 + 시간)·실패(새로고침/삭제 아이콘 + 빨간 문구, 시간 대신 문구)를 모두 그림. 별도 `OutboxRow` 컴포넌트와 목록 끝 `outbox.map` 렌더 삭제
+- `hooks/useLeagueChat.ts` — `ChatOutboxItem.createdAt` 추가(전송 시각), 내 메시지의 broadcast가 RPC 응답보다 먼저 도착하면 같은 내용의 가장 오래된 전송 중 항목을 즉시 제거(임시·실제 버블이 잠깐 겹쳐 보이는 것 방지; 응답 때의 제거는 그대로라 중복 제거는 무해)
+
+**Before**: 전송 중 = 머리줄·시간 없는 버블(목록 맨 아래에 따로 그림) → 응답 후 실제 메시지로 교체되며 높이 증가. broadcast가 먼저 오면 임시+실제 버블이 잠깐 동시에 표시.
+
+**After**: 전송 중에도 실제 메시지와 같은 구조라 교체돼도 높이가 같음(시간은 클라이언트 시계 → 서버 시각, 같은 분이 대부분이라 글자도 그대로). broadcast 선도착 시 임시 버블이 즉시 교체. 실패 표시는 기존과 같음.
+
+**검증**: tsc 오류 없음, vite build 통과. 브라우저에서 "끊김" 해소 여부는 직접 확인 필요. 시계 차이(클라이언트 vs 서버)로 분 경계에서 시간이 1분 어긋날 수 있음.
+
+**롤백 방법**: `buildRows`의 outbox 인자/임시 메시지 생성 제거, `MessageRow`를 이전 구조(내 메시지에 outbox 없음)로 되돌리고 `OutboxRow`와 `chat.outbox.map` 렌더를 복구, 훅의 `createdAt`·broadcast 선도착 처리 제거.
 
 
 ## 2026-10-17 — 채팅: 전송 중 말풍선의 흐림(opacity-60) 제거

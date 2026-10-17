@@ -52,21 +52,31 @@ function dayLabel(iso: string): string {
 type ListRow =
     | { kind: 'day'; key: string; label: string }
     | { kind: 'unread'; key: string; count: number }
-    | { kind: 'msg'; key: string; msg: ChatMessage; mine: boolean; showHeader: boolean; showTime: boolean };
+    | { kind: 'msg'; key: string; msg: ChatMessage; mine: boolean; showHeader: boolean; showTime: boolean; outbox?: ChatOutboxItem };
 
-function buildRows(messages: ChatMessage[], userId: string, anchorId: number | null): ListRow[] {
+function buildRows(messages: ChatMessage[], userId: string, anchorId: number | null, outbox: ChatOutboxItem[]): ListRow[] {
     const rows: ListRow[] = [];
     let prev: ChatMessage | null = null;
     let prevWasDivider = true;
     let unreadShown = false;
     const unreadCount = anchorId == null ? 0 : messages.filter(m => m.id > anchorId && m.user_id !== userId).length;
 
-    for (const m of messages) {
+    // 전송 중/실패 메시지도 실제 메시지와 같은 규칙(묶음 머리줄·시간)으로 그린다 — 서버 응답으로 실제 메시지로 바뀔 때
+    // "나" 머리줄·시간 줄이 뒤늦게 생기면서 높이가 튀는 것을 막는다(임시 메시지의 시각은 보낸 순간의 클라이언트 시계).
+    const items: Array<{ m: ChatMessage; ob?: ChatOutboxItem }> = [
+        ...messages.map(m => ({ m })),
+        ...outbox.map(ob => ({
+            m: { id: -1, room_id: '', user_id: userId, team_id: null, team_abbr: null, team_name: null, author: '나', body: ob.body, created_at: new Date(ob.createdAt).toISOString() } as ChatMessage,
+            ob,
+        })),
+    ];
+
+    for (const { m, ob } of items) {
         if (!prev || dayKey(prev.created_at) !== dayKey(m.created_at)) {
-            rows.push({ kind: 'day', key: `day-${m.id}`, label: dayLabel(m.created_at) });
+            rows.push({ kind: 'day', key: `day-${ob ? ob.tempId : m.id}`, label: dayLabel(m.created_at) });
             prevWasDivider = true;
         }
-        if (!unreadShown && anchorId != null && m.id > anchorId && m.user_id !== userId && unreadCount > 0) {
+        if (!ob && !unreadShown && anchorId != null && m.id > anchorId && m.user_id !== userId && unreadCount > 0) {
             rows.push({ kind: 'unread', key: `unread-${m.id}`, count: unreadCount });
             unreadShown = true;
             prevWasDivider = true;
@@ -75,7 +85,7 @@ function buildRows(messages: ChatMessage[], userId: string, anchorId: number | n
             || !prev
             || prev.user_id !== m.user_id
             || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_GAP_MS;
-        rows.push({ kind: 'msg', key: `m-${m.id}`, msg: m, mine: m.user_id === userId, showHeader, showTime: true });
+        rows.push({ kind: 'msg', key: ob ? `o-${ob.tempId}` : `m-${m.id}`, msg: m, mine: m.user_id === userId, showHeader, showTime: true, outbox: ob });
         prev = m;
         prevWasDivider = false;
     }
@@ -108,16 +118,33 @@ const Avatar: React.FC<{ msg: ChatMessage; online: boolean }> = ({ msg, online }
     </div>
 );
 
-const MessageRow: React.FC<{ row: Extract<ListRow, { kind: 'msg' }>; online: boolean }> = ({ row, online }) => {
-    const { msg, mine, showHeader, showTime } = row;
+const MessageRow: React.FC<{
+    row: Extract<ListRow, { kind: 'msg' }>;
+    online: boolean;
+    onRetry: () => void;
+    onDiscard: () => void;
+}> = ({ row, online, onRetry, onDiscard }) => {
+    const { msg, mine, showHeader, showTime, outbox } = row;
     if (mine) {
+        // outbox가 있으면 전송 중(실제 메시지와 똑같이 그림) 또는 실패(새로고침/삭제 아이콘 + 빨간 문구)
+        const failed = outbox?.status === 'failed';
         return (
             <div className={`flex flex-col items-end gap-1 ${showHeader ? 'mt-2' : ''}`}>
                 {showHeader && <span className="text-xs font-bold text-slate-100">나</span>}
-                <div className="max-w-[260px] bg-orange-600 text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    {msg.body}
+                <div className="flex items-center gap-1">
+                    {failed && (
+                        <>
+                            <IconButton label="다시 보내기" size="md" tone="subtle" onClick={onRetry}><RotateCw size={16} /></IconButton>
+                            <IconButton label="삭제" size="md" tone="subtle" onClick={onDiscard}><Trash2 size={16} /></IconButton>
+                        </>
+                    )}
+                    <div className={`${failed ? 'max-w-[220px]' : 'max-w-[260px]'} text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere] ${failed ? 'bg-orange-600/35 border border-red-400' : 'bg-orange-600'}`}>
+                        {msg.body}
+                    </div>
                 </div>
-                {showTime && <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>}
+                {failed
+                    ? <InlineNotice tone="danger" size="sm">{outbox?.error ?? '전송하지 못했어요'}</InlineNotice>
+                    : showTime && <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>}
             </div>
         );
     }
@@ -140,26 +167,6 @@ const MessageRow: React.FC<{ row: Extract<ListRow, { kind: 'msg' }>; online: boo
     );
 };
 
-const OutboxRow: React.FC<{ item: ChatOutboxItem; onRetry: () => void; onDiscard: () => void }> = ({ item, onRetry, onDiscard }) => {
-    const failed = item.status === 'failed';
-    return (
-        <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1">
-                {failed && (
-                    <>
-                        <IconButton label="다시 보내기" size="md" tone="subtle" onClick={onRetry}><RotateCw size={16} /></IconButton>
-                        <IconButton label="삭제" size="md" tone="subtle" onClick={onDiscard}><Trash2 size={16} /></IconButton>
-                    </>
-                )}
-                <div className={`max-w-[220px] text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere] ${failed ? 'bg-orange-600/35 border border-red-400' : 'bg-orange-600'}`}>
-                    {item.body}
-                </div>
-            </div>
-            {failed && <InlineNotice tone="danger" size="sm">{item.error ?? '전송하지 못했어요'}</InlineNotice>}
-        </div>
-    );
-};
-
 // ── 채팅 탭 본문 ───────────────────────────────────────────────────────────────
 
 interface ChatBodyProps {
@@ -176,7 +183,7 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
     const lastSeenIdRef = useRef(0);
     const [newBelow, setNewBelow] = useState(false);
 
-    const rows = useMemo(() => buildRows(chat.messages, userId, chat.unreadAnchorId), [chat.messages, userId, chat.unreadAnchorId]);
+    const rows = useMemo(() => buildRows(chat.messages, userId, chat.unreadAnchorId, chat.outbox), [chat.messages, userId, chat.unreadAnchorId, chat.outbox]);
 
     const scrollToBottom = useCallback(() => {
         const el = listRef.current;
@@ -311,12 +318,17 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
                                 </div>
                             );
                         }
-                        return <MessageRow key={row.key} row={row} online={chat.onlineUserIds.has(row.msg.user_id)} />;
+                        return (
+                            <MessageRow
+                                key={row.key}
+                                row={row}
+                                online={chat.onlineUserIds.has(row.msg.user_id)}
+                                onRetry={() => row.outbox && chat.retry(row.outbox.tempId)}
+                                onDiscard={() => row.outbox && chat.discard(row.outbox.tempId)}
+                            />
+                        );
                     })}
 
-                    {chat.outbox.map(item => (
-                        <OutboxRow key={item.tempId} item={item} onRetry={() => chat.retry(item.tempId)} onDiscard={() => chat.discard(item.tempId)} />
-                    ))}
                 </div>
 
                 {newBelow && (

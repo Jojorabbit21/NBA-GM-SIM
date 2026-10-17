@@ -26,6 +26,8 @@ export interface ChatOutboxItem {
     body: string;
     status: 'sending' | 'failed';
     error?: string;
+    /** 보낸 순간의 클라이언트 시각(ms) — 전송 중 말풍선의 시간 표시용 */
+    createdAt: number;
 }
 
 export type ChatConnection = 'connecting' | 'connected' | 'disconnected';
@@ -179,7 +181,17 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         channel
             .on('broadcast', { event: 'message' }, ({ payload }) => {
                 const m = payload as ChatMessage | null;
-                if (m && typeof m.id === 'number' && typeof m.body === 'string') addMessages([m]);
+                if (m && typeof m.id === 'number' && typeof m.body === 'string') {
+                    addMessages([m]);
+                    // 내 메시지의 broadcast가 RPC 응답보다 먼저 도착하면 임시(전송 중) 말풍선과 실제 메시지가 잠깐 겹쳐 보인다 —
+                    // 같은 내용의 가장 오래된 전송 중 항목을 바로 걷어 교체를 즉시 끝낸다(응답이 오면 어차피 걷는 항목이라 중복 제거는 무해).
+                    if (m.user_id === userId) {
+                        setOutbox(o => {
+                            const i = o.findIndex(x => x.status === 'sending' && x.body === m.body);
+                            return i < 0 ? o : [...o.slice(0, i), ...o.slice(i + 1)];
+                        });
+                    }
+                }
             })
             .on('presence', { event: 'sync' }, () => {
                 const keys = Object.keys(channel.presenceState());
@@ -295,7 +307,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         if (!roomId || !body || body.length > CHAT_MAX_BODY) return false;
         if (!admit()) return false;
         const tempId = `tmp-${++seqRef.current}`;
-        setOutbox(o => [...o, { tempId, body, status: 'sending' }]);
+        setOutbox(o => [...o, { tempId, body, status: 'sending', createdAt: Date.now() }]);
         void dispatch(body, tempId);
         return true;
     }, [roomId, admit, dispatch]);

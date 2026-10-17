@@ -9,7 +9,7 @@ interface SliderStep {
 
 // Reusable Slider Component
 // Uses local state during drag so only this component re-renders while dragging.
-// Commits to parent (onChange) only on mouseup/keyup — preventing App-level re-renders at 60fps.
+// Commits to parent (onChange) only on the native 'change' event (drag/key end) — preventing App-level re-renders at 60fps.
 //
 // steps 모드: steps prop이 제공되면 이산 단계로 동작.
 // - value prop은 엔진 값 (예: 2, 5, 9)
@@ -77,6 +77,17 @@ export const SliderControl: React.FC<{
       onChange(raw);
     }
   }, [onChange, steps]);
+
+  // 커밋은 네이티브 'change' 이벤트로 — 마우스/터치/펜/키보드 모두 조작이 끝날 때 한 번 발생하고, 놓는 위치(트랙 밖)와도
+  // 무관하다. 예전엔 onMouseUp/onKeyUp만 달려 있어 패드 터치 드래그에선 커밋이 아예 안 됐다(핸들만 움직이고 부모 상태·
+  // 저장 버튼 dirty는 그대로). React onChange는 'input' 이벤트라 ref에 직접 리스너를 단다.
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.addEventListener('change', handleCommit);
+    return () => el.removeEventListener('change', handleCommit);
+  }, [handleCommit]);
 
   const percentage = ((localValue - min) / (max - min)) * 100;
 
@@ -152,9 +163,8 @@ export const SliderControl: React.FC<{
           min={min}
           max={max}
           value={localValue}
+          ref={inputRef}
           onChange={handleChange}
-          onMouseUp={handleCommit}
-          onKeyUp={handleCommit}
           className="w-full h-8 rounded-[7px] appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-8 [&::-webkit-slider-thumb]:rounded-[7px] [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-8 [&::-moz-range-thumb]:rounded-[7px] [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:cursor-pointer"
           style={{ background: trackBackground }}
         />
