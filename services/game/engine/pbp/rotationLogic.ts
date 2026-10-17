@@ -736,7 +736,8 @@ export function executeGarbageSubstitution(
 
     // 벤치에서 투입 가능한 선수: 건강 + 파울아웃 아님
     const available = team.bench
-        .filter(p => p.health === 'Healthy' && p.pf < 6)
+        .filter(p => p.health === 'Healthy' && p.pf < 6
+            && team.tactics.playerTactics?.[p.playerId]?.garbagePolicy !== 'bench')
         .sort((a, b) => a.ovr - b.ovr); // OVR 낮은 순 (가비지 멤버 우선)
 
     const usedIds = new Set<string>();
@@ -762,6 +763,19 @@ export function executeGarbageSubstitution(
         team.onCourt.push(inP);
         // 나가는 선수의 슬롯 포지션 계승
         inP.position = outP.position;
+
+        // [Fix 2026-10-17] Sync rotationMap with the swap. Without this, checkAndApplyRotation (same step)
+        // rebuilds the lineup from the map and puts outP straight back, and the garbage request repeats
+        // every possession (visible as constant in/out flicker in the rotation chart).
+        const map = team.tactics.rotationMap;
+        if (map) {
+            if (!map[outP.playerId]) map[outP.playerId] = Array(48).fill(false);
+            if (!map[inP.playerId]) map[inP.playerId] = Array(48).fill(false);
+            for (let i = currentMinute; i < 48; i++) {
+                map[outP.playerId][i] = false;
+                map[inP.playerId][i] = true;
+            }
+        }
 
         // 로테이션 기록
         const histOut = state.rotationHistory[outP.playerId];

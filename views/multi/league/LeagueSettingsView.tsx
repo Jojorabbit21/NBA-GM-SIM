@@ -18,7 +18,14 @@ import { DraftSalaryScaleSettings } from '../../../components/multi/DraftSalaryS
 import {
     type ContractMode, type DraftSalaryScale, normalizeDraftSalaryScale, validateDraftSalaryScale,
 } from '../../../services/contracts/draftSalaryScale';
-import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../../types/simSettings';
+import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, MULTI_FATIGUE_DEFAULTS, MULTI_FATIGUE_RANGES, resolveMultiFatigueSettings } from '../../../types/simSettings';
+
+// 체력 회복 설정은 "남는 부족분 비율(keep)"로 저장하지만 화면에는 "회복률(%) = (1 − keep) × 100"으로 보여준다.
+const keepToRecoveryPct = (keep: number) => Math.round((1 - keep) * 100);
+const recoveryPctToKeep = (pct: number) => Math.round((1 - pct / 100) * 100) / 100;
+const OVERNIGHT_PCT_RANGE = { min: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueOvernightKeep.max), max: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueOvernightKeep.min) };
+const REST_DAY_PCT_RANGE  = { min: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueRestDayKeep.max),   max: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueRestDayKeep.min) };
+const B2B_RANGE = MULTI_FATIGUE_RANGES.fatigueB2BMultiplier;
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { MIN_SALARY_YOS_TABLE } from '../../../utils/constants';
@@ -186,6 +193,10 @@ const LeagueSettingsView: React.FC = () => {
     const [suspensionFrequency, setSuspensionFrequency] = useState(DEFAULT_SIM_SETTINGS.suspensionFrequency);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
+    // 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) — 회복률은 % 정수로 편집
+    const [overnightRecoveryPct, setOvernightRecoveryPct] = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep));
+    const [restDayRecoveryPct,   setRestDayRecoveryPct]   = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep));
+    const [b2bMultiplier,        setB2bMultiplier]        = useState<number>(MULTI_FATIGUE_DEFAULTS.fatigueB2BMultiplier);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
@@ -337,6 +348,10 @@ const LeagueSettingsView: React.FC = () => {
         setSuspensionFrequency(room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
+        const fatigueSettings = resolveMultiFatigueSettings(room?.sim_settings);
+        setOvernightRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueOvernightKeep));
+        setRestDayRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueRestDayKeep));
+        setB2bMultiplier(fatigueSettings.fatigueB2BMultiplier);
         setTradeMinValueRatio(room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
         setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
         setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
@@ -496,6 +511,12 @@ const LeagueSettingsView: React.FC = () => {
                     enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
                     k: NORMALIZATION_LEVELS[normalizationLevel].k,
                 },
+                // resolveMultiFatigueSettings가 범위 밖 값을 경계값으로 맞춰준다(입력 중 blur 전 저장 대비)
+                ...resolveMultiFatigueSettings({
+                    fatigueOvernightKeep: recoveryPctToKeep(overnightRecoveryPct),
+                    fatigueRestDayKeep: recoveryPctToKeep(restDayRecoveryPct),
+                    fatigueB2BMultiplier: b2bMultiplier,
+                }),
             },
         });
         setSavingSim(false);
@@ -848,7 +869,10 @@ const LeagueSettingsView: React.FC = () => {
         suspensionsEnabled !== (room?.sim_settings?.suspensionsEnabled ?? DEFAULT_SIM_SETTINGS.suspensionsEnabled) ||
         suspensionFrequency !== (room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency) ||
         garbageTimeEnabled !== (room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled) ||
-        normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization);
+        normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
+        overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
+        restDayRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueRestDayKeep) ||
+        b2bMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueB2BMultiplier;
 
     type TabSaveInfo = { dirty: boolean; saving: boolean; ok: boolean; err: string | null; onSave: () => void };
     const TAB_SAVE_MAP: Partial<Record<SettingsTabId, TabSaveInfo>> = {
@@ -1428,6 +1452,55 @@ const LeagueSettingsView: React.FC = () => {
                         </div>
                         <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
                             0이면 정규화가 완전히 꺼집니다. 올타임 등 고OVR 드래프트 풀에서 득점이 비현실적으로 치솟는 걸 억제하는 기능이며, 1~5로 갈수록 표준 NBA 수준으로 강하게 압축됩니다.
+                        </p>
+                    </div>
+
+                    {/* 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) */}
+                    <div className="pl-1 space-y-2">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">경기 후 하룻밤 회복률 (%)</span>
+                            <input
+                                type="number"
+                                min={OVERNIGHT_PCT_RANGE.min}
+                                max={OVERNIGHT_PCT_RANGE.max}
+                                step={5}
+                                value={overnightRecoveryPct}
+                                onChange={e => setOvernightRecoveryPct(Math.round(Number(e.target.value) || 0))}
+                                onBlur={() => setOvernightRecoveryPct(v => Math.min(OVERNIGHT_PCT_RANGE.max, Math.max(OVERNIGHT_PCT_RANGE.min, v)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">휴식일 회복률 (%)</span>
+                            <input
+                                type="number"
+                                min={REST_DAY_PCT_RANGE.min}
+                                max={REST_DAY_PCT_RANGE.max}
+                                step={5}
+                                value={restDayRecoveryPct}
+                                onChange={e => setRestDayRecoveryPct(Math.round(Number(e.target.value) || 0))}
+                                onBlur={() => setRestDayRecoveryPct(v => Math.min(REST_DAY_PCT_RANGE.max, Math.max(REST_DAY_PCT_RANGE.min, v)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">백투백 체력 소모 배율</span>
+                            <input
+                                type="number"
+                                min={B2B_RANGE.min}
+                                max={B2B_RANGE.max}
+                                step={B2B_RANGE.step}
+                                value={b2bMultiplier}
+                                onChange={e => setB2bMultiplier(Math.round((Number(e.target.value) || 0) * 100) / 100)}
+                                onBlur={() => setB2bMultiplier(v => Math.min(B2B_RANGE.max, Math.max(B2B_RANGE.min, v)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[11px] text-slate-600 ko-normal px-1">
+                            경기 사이 체력 회복 속도를 조절합니다. 가상 날짜가 바뀔 때마다, 그날 뛴 선수는 부족한 체력의 하룻밤 회복률만큼,
+                            쉰 선수는 휴식일 회복률만큼 회복합니다(지구력·내구도가 높을수록 더 회복). 백투백 배율은 전날에도 경기한 팀의
+                            경기 중 체력 소모를 늘립니다(1.0 = 페널티 없음). 기본값 {keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep)}% /
+                            {' '}{keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep)}% / ×{MULTI_FATIGUE_DEFAULTS.fatigueB2BMultiplier}.
                         </p>
                     </div>
                 </div>

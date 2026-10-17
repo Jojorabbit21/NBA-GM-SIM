@@ -18,7 +18,8 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
             const isStopper = team.tactics.stopperId === p.playerId;
             const fatigueRes = calculateIncrementalFatigue(
                 p, timeTaken, team.tactics.sliders, isB2B, isStopper,
-                state.simSettings.injuryFrequency
+                state.simSettings.injuryFrequency,
+                state.simSettings.fatigueB2BMultiplier ?? 1.5
             );
 
             p.currentCondition = Math.max(0, p.currentCondition - fatigueRes.drain);

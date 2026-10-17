@@ -36,6 +36,43 @@ export interface SimSettings {
     // 읽는 { enabled, k } 오버라이드. enabled=false면 정규화 자체를 끔.
     normalization?: { enabled?: boolean; k?: number; muRef?: number };
     leagueContext?: LeagueContext;    // computed at sim start, injected here
+
+    // 체력 회복/백투백 (멀티플레이어 전용 — docs/plan/multiplayer-fatigue.md)
+    // 싱글은 이 키를 쓰지 않는다. 기본값은 DEFAULT_SIM_SETTINGS가 아니라 MULTI_FATIGUE_DEFAULTS에 있다
+    // (DEFAULT_SIM_SETTINGS는 싱글도 병합해 쓰므로 여기 넣으면 싱글 백투백 배율이 바뀜).
+    fatigueOvernightKeep?: number;   // 경기를 뛴 날 자정에 남는 체력 부족분 비율 (0.3~0.7)
+    fatigueRestDayKeep?: number;     // 경기 없는 날 자정에 남는 체력 부족분 비율 (0.1~0.5)
+    fatigueB2BMultiplier?: number;   // 백투백 경기 체력 소모 배율 (1.0~1.5, 엔진 폴백 1.5 = 싱글 값)
+}
+
+// ── 멀티플레이어 체력 설정 기본값/범위 (server/src/shared/types/simSettings.ts 미러) ──
+// 근거: 정규시즌 1,230경기 시뮬(docs/plan/multiplayer-fatigue.md 3-8).
+export const MULTI_FATIGUE_DEFAULTS = {
+    fatigueOvernightKeep: 0.5,
+    fatigueRestDayKeep: 0.25,
+    fatigueB2BMultiplier: 1.3,
+} as const;
+
+export const MULTI_FATIGUE_RANGES = {
+    fatigueOvernightKeep: { min: 0.3, max: 0.7, step: 0.05 },
+    fatigueRestDayKeep:   { min: 0.1, max: 0.5, step: 0.05 },
+    fatigueB2BMultiplier: { min: 1.0, max: 1.5, step: 0.05 },
+} as const;
+
+export type MultiFatigueSettings = { -readonly [K in keyof typeof MULTI_FATIGUE_DEFAULTS]: number };
+
+/** 멀티 리그 sim_settings에서 체력 설정을 해석 — 키가 없거나 범위 밖이면 기본값/경계값. */
+export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | undefined): MultiFatigueSettings {
+    const pick = (key: keyof typeof MULTI_FATIGUE_DEFAULTS): number => {
+        const v = s?.[key];
+        const { min, max } = MULTI_FATIGUE_RANGES[key];
+        return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : MULTI_FATIGUE_DEFAULTS[key];
+    };
+    return {
+        fatigueOvernightKeep: pick('fatigueOvernightKeep'),
+        fatigueRestDayKeep: pick('fatigueRestDayKeep'),
+        fatigueB2BMultiplier: pick('fatigueB2BMultiplier'),
+    };
 }
 
 export const DEFAULT_SIM_SETTINGS: SimSettings = {

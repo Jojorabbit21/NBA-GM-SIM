@@ -7,10 +7,13 @@ import { supabase } from './supabaseAdmin.ts';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineStore';
 import { postseasonIntervalDays } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
-import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { buildTeamForSim } from './shared/dataMapper.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculateOvr } from './shared/utils/ovrUtils.ts';
-import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
+import { loadRoomPlayers } from './playerLoader.ts';
+import { recoverPlayersThrough } from './fatigueRecovery.ts';
+import { addDays } from './shared/multi/fatigueRecovery.ts';
+import { DEFAULT_SIM_SETTINGS, resolveMultiFatigueSettings } from './shared/types/simSettings.ts';
 import {
     advanceTournamentState,
     targetWinsFromFormat,
@@ -54,14 +57,12 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         // custom_overrides 적용 여부 + 시간 압축 파라미터
         // personal_draft_format: 토너먼트 개인 팩 드래프트 룸인지(docs/plan/tournament-personal-pack-draft-plan.md
         // Phase 4) — NULL이 아니면 league_teams.roster에 meta_players.id 대신 room_player_instances.instance_id가
-        // 들어있으므로 아래 선수 하이드레이션 단계에서 한 번 더 resolve해야 한다.
+        // 들어있으므로 선수 하이드레이션(playerLoader.loadRoomPlayers)에서 한 번 더 resolve한다.
         const { data: leagueData } = await supabase
             .from('leagues')
             .select('use_custom_overrides, sim_real_start_at, games_per_real_day, personal_draft_format')
             .eq('id', room.league_id)
             .maybeSingle();
-        const useCustomOverrides = shouldUseCustomOverrides(leagueData);
-        const isInstanceRoom = (leagueData as any)?.personal_draft_format != null;
 
         // [migration 2026-08-06] rooms.schedule 전체 스캔 대신 games 테이블에서 해당 경기 1행만 조회.
         const { data: game } = await supabase
@@ -109,57 +110,29 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 ...(awayTeamRow.roster ?? []),
             ];
 
-            const playerMap = new Map<string, any>();
-
-            if (isInstanceRoom) {
-                // 개인 팩 드래프트 룸 — allPlayerIds는 meta_players.id가 아니라
-                // room_player_instances.instance_id다. instance_id → source_player_id로
-                // 먼저 resolve한 뒤 meta_players는 원본(source) id로 조회하고, 하이드레이트된
-                // Player 객체의 id는 다시 instance_id로 덮어써서 playerMap에 넣는다 — 이렇게
-                // 하면 이후 buildTeamForSim/PBP 엔진/room_player_state 오버레이/박스스코어
-                // 기록까지 전부 instance_id를 "선수 id"로 그대로 취급해 팀별로 자동 분리된다
-                // (같은 실제 선수를 두 팀이 가진 경우에도 서로 다른 instance_id라 충돌 없음).
-                const { data: instances } = await supabase
-                    .from('room_player_instances')
-                    .select('instance_id, source_player_id')
-                    .eq('room_id', roomId)
-                    .in('instance_id', allPlayerIds);
-
-                const sourceIds = [...new Set((instances ?? []).map((i: any) => i.source_player_id))];
-                // [2026-09-20 안 A 배선] source_player_id는 meta_player_cards.id — 카드는 meta_players와
-                // 같은 shape라 그대로 매핑하고, manual_ovr은 dataMapper가 카드 고정 OVR로 쓴다.
-                // 옛 포맷(meta_players id) 인스턴스는 카드에 없으면 meta_players로 폴백.
-                const { data: cardRows } = await supabase
-                    .from('meta_player_cards')
-                    .select('id, name, position, base_attributes, tendencies, manual_ovr')
-                    .in('id', sourceIds);
-                const rawById = new Map((cardRows ?? []).map((r: any) => [r.id, r]));
-                const missing = sourceIds.filter(id => !rawById.has(id));
-                if (missing.length > 0) {
-                    const { data: rawPlayers } = await supabase
-                        .from('meta_players')
-                        .select('id, name, position, base_attributes, tendencies')
-                        .in('id', missing);
-                    for (const r of (rawPlayers ?? []) as any[]) rawById.set(r.id, r);
-                }
-                for (const { instance_id, source_player_id } of (instances ?? []) as any[]) {
-                    const raw = rawById.get(source_player_id);
-                    if (!raw) continue;
-                    const player = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides);
-                    playerMap.set(instance_id, { ...player, id: instance_id });
-                }
-            } else {
-                const { data: rawPlayers } = await supabase
-                    .from('meta_players')
-                    .select('id, name, position, base_attributes, tendencies')
-                    .in('id', allPlayerIds);
-
-                for (const raw of rawPlayers ?? []) {
-                    playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
-                }
-            }
+            // [2026-10-17] 하이드레이션 로직을 playerLoader.ts로 이동(체력 회복 모듈과 공용) — 동작 동일.
+            // 개인 팩 드래프트 룸은 instance_id → source(카드, 옛 포맷은 meta_players)로 resolve 후 id를
+            // instance_id로 덮어쓴다 — 이후 buildTeamForSim/PBP 엔진/room_player_state 오버레이/박스스코어
+            // 기록까지 전부 instance_id를 "선수 id"로 취급해 팀별로 자동 분리된다.
+            // 기존과 달리 조회 오류는 예외로 올라가 경기를 기록하지 않고 다음 tick에 재시도된다
+            // (예전엔 오류를 무시하고 선수가 빠진 로스터로 시뮬했음).
+            const playerMap = await loadRoomPlayers(roomId, allPlayerIds, leagueData as any);
 
             const rosterState: Record<string, any> = (room.roster_state as any) ?? {};
+
+            // ── 2.4. 경기 간 체력 회복 따라잡기 (docs/plan/multiplayer-fatigue.md 3-4) ─────
+            // 이번 경기 양 팀 선수의 체력에 전날(game_date − 1) 자정까지의 회복을 반영한다.
+            // 스케줄러 자정 처리(processRoomMidnights)가 제때 돌았으면 대상이 없어 no-op이고,
+            // 타임라인이 없는 방(토너먼트·구 리그)은 이 경로가 유일한 회복 경로다(D7).
+            // 실패해도 경기는 진행한다(최악의 경우 회복 전 체력으로 시뮬) — 로그만 남긴다.
+            try {
+                await recoverPlayersThrough(roomId, addDays(game.game_date, -1), {
+                    playerIds: allPlayerIds,
+                    context: { leagueId: room.league_id ?? null, simSettings: room.sim_settings ?? null, league: leagueData as any },
+                });
+            } catch (e) {
+                console.error(`[simRunner] fatigue catch-up 실패 room=${roomId} game=${gameId}:`, e);
+            }
 
             // ── 2.5. 선수 상태 오버레이 (부상/체력) ───────────────────────────────
             // rooms.roster_state는 드래프트 확정 시점 초기 스냅샷일 뿐 이후 갱신되지 않는다.
@@ -211,6 +184,36 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             // ── 3.5 League-relative normalization context ──────────────────────
             resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculateOvr);
 
+            // ── 3.6 백투백 판정 + 체력 설정 (docs/plan/multiplayer-fatigue.md 3-5, D6) ─────
+            // 팀 일정 기준: 이 팀이 치른 가장 최근 경기(올스타 제외)가 전날이면 백투백.
+            // 엔진에는 정규화가 반영된 simSettings의 사본에 멀티 백투백 배율(기본 1.3)을 얹어 넘긴다 —
+            // sim_settings가 NULL인 방은 기존처럼 DEFAULT_SIM_SETTINGS 기준(정규화 없음)을 유지.
+            const yesterday = addDays(game.game_date, -1);
+            const isBackToBack = async (teamId: string): Promise<boolean> => {
+                const { data: last, error } = await supabase
+                    .from('games')
+                    .select('game_date')
+                    .eq('room_id', roomId)
+                    .eq('played', true)
+                    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+                    .not('is_allstar', 'is', true)
+                    .lt('game_date', game.game_date)
+                    .order('game_date', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (error) {
+                    console.error(`[simRunner] B2B 조회 실패 room=${roomId} team=${teamId}: ${error.message}`);
+                    return false;
+                }
+                return (last as any)?.game_date === yesterday;
+            };
+            const [isHomeB2B, isAwayB2B] = await Promise.all([isBackToBack(homeTeamId), isBackToBack(awayTeamId)]);
+            const fatigueSettings = resolveMultiFatigueSettings(simSettings);
+            const engineSimSettings = {
+                ...(simSettings ?? DEFAULT_SIM_SETTINGS),
+                fatigueB2BMultiplier: fatigueSettings.fatigueB2BMultiplier,
+            };
+
             // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────
             const { data: existingPbp } = await supabase
                 .from('game_pbp')
@@ -247,12 +250,12 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 awayTeam,
                 homeTeamId,
                 homeTactics ?? undefined,
-                false,
-                false,
+                isHomeB2B,
+                isAwayB2B,
                 homeDepth,
                 awayDepth,
                 tendencySeed + ':' + gameId,
-                simSettings,
+                engineSimSettings,
                 coachingData,
                 awayTactics ?? undefined,
                 // [Fix 2026-07-26] 저장된 tactics/depthChart가 없어 엔진의 generateAutoTactics()
@@ -334,11 +337,29 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const suspensionNewsEvents: DetectedEvent[] = [];
             try {
                 // (a) 체력 이월 — 이번 경기에 참가한 양 팀 전원(rosterUpdates에 항상 담김).
-                const conditionUpserts = Object.entries(result.rosterUpdates ?? {})
+                // [2026-10-17] condition_recovered_through = game_date − 1: 경기는 그날 자정 전에 열리므로
+                // 그날 자정 회복은 아직 반영 전(§2.4 따라잡기로 전날까지는 반영된 상태). last_game_date는
+                // 실제 출전(mp > 0)한 선수만 — 자정 회복이 "그날 뛰었나"를 이 값으로 판정한다(3-1/3-2).
+                // 출전자/DNP는 칼럼 구성이 달라 위 원칙대로 upsert를 나눈다(DNP의 기존 last_game_date 보존).
+                const playedIds = new Set(
+                    [...(result.homeBox ?? []), ...(result.awayBox ?? [])]
+                        .filter((b: any) => (b?.mp ?? 0) > 0)
+                        .map((b: any) => String(b.playerId)),
+                );
+                const conditionRows = Object.entries(result.rosterUpdates ?? {})
                     .filter(([, upd]: [string, any]) => upd?.condition !== undefined)
-                    .map(([pid, upd]: [string, any]) => ({ room_id: roomId, player_id: pid, condition: upd.condition }));
-                if (conditionUpserts.length > 0) {
-                    await supabase.from('room_player_state').upsert(conditionUpserts, { onConflict: 'room_id,player_id' });
+                    .map(([pid, upd]: [string, any]) => ({
+                        room_id: roomId, player_id: pid, condition: upd.condition,
+                        condition_recovered_through: yesterday,
+                    }));
+                const playedUpserts = conditionRows
+                    .filter(r => playedIds.has(r.player_id))
+                    .map(r => ({ ...r, last_game_date: game.game_date }));
+                const dnpUpserts = conditionRows.filter(r => !playedIds.has(r.player_id));
+                for (const rows of [playedUpserts, dnpUpserts]) {
+                    if (rows.length === 0) continue;
+                    const { error: condErr } = await supabase.from('room_player_state').upsert(rows, { onConflict: 'room_id,player_id' });
+                    if (condErr) console.error(`[simRunner] 체력 이월 upsert 실패 room=${roomId} game=${gameId}: ${condErr.message}`);
                 }
 
                 // (b) 부상/출장정지 이력 — 이번 경기에서 새로 발생한 것만.

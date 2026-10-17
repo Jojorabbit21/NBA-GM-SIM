@@ -28,6 +28,7 @@ import { computeAndRunAllStarGame } from './postAllStarGame';
 import { computeAndRunThreePointContest } from './postThreePointContest';
 import { computeAndRunDunkContest } from './postDunkContest';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection.ts';
+import { processRoomMidnights } from './fatigueRecovery.ts';
 
 // 정규시즌 종료 후 어워드를 발표하기까지의 지연 — "종료 즉시"가 아니라 하루 뒤 발표되도록
 // leagues.regular_season_ended_at + 이 값을 기준으로 runScheduledSeasonAwards()가 트리거한다.
@@ -200,7 +201,46 @@ async function tick(): Promise<void> {
         runPersonalDraftTournamentPreps(now),
         runPersonalDraftTournamentStarts(now),
         sweepPersonalDraftDeadlines(now),
+        runFatigueMidnights(),
     ]);
+}
+
+// ── 멀티 경기 간 체력 회복: 가상 자정 처리 (docs/plan/multiplayer-fatigue.md 3-3, 7단계) ──────
+// 진행 중 리그의 방마다 real_midnight_at이 지난 가상 날짜까지 체력 회복을 적용한다.
+// 타임라인(league_virtual_days)이 없는 방은 processRoomMidnights가 no-op — 그런 방은 simRunner의
+// 경기 직전 따라잡기만 쓴다(D7). 이미 처리한 날짜는 rooms.fatigue_recovered_through로 바로 건너뛰므로
+// 매 tick 호출해도 방당 조회 2회 수준. 같은 tick의 runSimGames와 겹쳐도 행 단위 조건부 RPC가 경기 결과를 보호한다.
+async function runFatigueMidnights(): Promise<void> {
+    const { data: leagues, error } = await supabase
+        .from('leagues')
+        .select('id')
+        .eq('status', 'in_progress');
+    if (error) {
+        console.error('[scheduler] fatigue midnight leagues query error:', error.message);
+        return;
+    }
+    if (!leagues?.length) return;
+
+    const { data: rooms, error: roomErr } = await supabase
+        .from('rooms')
+        .select('id')
+        .in('league_id', leagues.map((l: any) => l.id));
+    if (roomErr) {
+        console.error('[scheduler] fatigue midnight rooms query error:', roomErr.message);
+        return;
+    }
+
+    for (const room of rooms ?? []) {
+        try {
+            const res = await processRoomMidnights(room.id);
+            if (res.updated > 0 || res.pending > 0) {
+                console.log(`[scheduler] fatigue midnight room=${room.id} through=${res.throughDate} pending=${res.pending} updated=${res.updated}`);
+            }
+        } catch (e) {
+            // 실패해도 rooms.fatigue_recovered_through가 전진하지 않으므로 다음 tick에 같은 날짜를 재시도
+            console.error(`[scheduler] fatigue midnight error room=${room.id}:`, e);
+        }
+    }
 }
 
 // ── F. 메인리그 정규시즌 완료 감지 → 플레이오프 자동 생성 ─────────────────────

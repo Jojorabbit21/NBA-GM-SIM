@@ -144,7 +144,8 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
         { label: '뎁스 차트', path: `${base}/tactics`, navTo: `${base}/tactics?tab=depth`,    tabValue: 'depth' },
         { label: '팀 전술',   path: `${base}/tactics`, navTo: `${base}/tactics?tab=team`,     tabValue: 'team' },
         { label: '인사이트',  path: `${base}/tactics`, navTo: `${base}/tactics?tab=insights`, tabValue: 'insights' },
-        { label: '개인 전술', path: `${base}/tactics`, navTo: `${base}/tactics?tab=player`,   tabValue: 'player' },
+        // 개인 전술 메뉴 숨김(2026-10-17) — 기능 비활성화. 복구 시 이 줄 복원:
+        // { label: '개인 전술', path: `${base}/tactics`, navTo: `${base}/tactics?tab=player`, tabValue: 'player' },
     ];
 
     const leagueItems: DropdownItem[] = [

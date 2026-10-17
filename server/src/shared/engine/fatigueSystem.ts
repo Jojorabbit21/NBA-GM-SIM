@@ -11,7 +11,10 @@ export function calculateIncrementalFatigue(
     sliders: TacticalSliders,
     isB2B: boolean,
     isStopper: boolean,
-    injuryFrequency: number = 1.0
+    injuryFrequency: number = 1.0,
+    // [2026-10-17] B2B drain multiplier — multiplayer passes sim_settings.fatigueB2BMultiplier (resolved, default 1.3).
+    // Fallback 1.5 = previous hardcoded value (single keeps it).
+    b2bMultiplier: number = 1.5
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -19,7 +22,7 @@ export function calculateIncrementalFatigue(
     const staminaMitigation = (player.attr.stamina - 50) / 100;
     drain *= (1 - staminaMitigation * 0.30);
 
-    if (isB2B) drain *= 1.5;
+    if (isB2B) drain *= b2bMultiplier;
     if (isStopper) drain *= 1.3;
 
     // [Fix 2026-07-26] Level 1 (0%) -> Level 10 (15%, 기존 45%에서 하향) — 스틸/TOV유발/샷클락

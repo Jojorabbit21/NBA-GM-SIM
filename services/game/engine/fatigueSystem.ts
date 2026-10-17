@@ -14,7 +14,10 @@ export function calculateIncrementalFatigue(
     sliders: TacticalSliders,
     isB2B: boolean,
     isStopper: boolean,
-    injuryFrequency: number = 1.0
+    injuryFrequency: number = 1.0,
+    // [2026-10-17] 백투백 소모 배율 — 멀티는 sim_settings.fatigueB2BMultiplier(해석값, 기본 1.3)를 넘김.
+    // 폴백 1.5 = 기존 하드코딩 값(싱글은 이 값 유지).
+    b2bMultiplier: number = 1.5
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -24,7 +27,7 @@ export function calculateIncrementalFatigue(
     const staminaMitigation = (player.attr.stamina - 50) / 100;
     drain *= (1 - staminaMitigation * 0.30);
 
-    if (isB2B) drain *= 1.5;
+    if (isB2B) drain *= b2bMultiplier;
     if (isStopper) drain *= 1.3;
 
     // [Fix 2026-07-26] Full Court Press Fatigue Impact

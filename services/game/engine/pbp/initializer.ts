@@ -76,6 +76,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         // Ensure all slider keys exist even if user tactics are missing them
         safeTactics = {
             ...tactics,
+            // [2026-10-17] Per-player tactics disabled (garbagePolicy='bench' flicker bug) — ignore any stale data.
+            playerTactics: {},
             sliders: {
                 ...DEFAULT_SLIDERS,
                 ...tactics.sliders

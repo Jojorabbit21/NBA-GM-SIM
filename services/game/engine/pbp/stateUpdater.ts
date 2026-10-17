@@ -31,7 +31,8 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                 team.tactics.sliders,
                 isB2B,
                 isStopper,
-                state.simSettings.injuryFrequency
+                state.simSettings.injuryFrequency,
+                state.simSettings.fatigueB2BMultiplier ?? 1.5
             );
 
             // Apply Drain

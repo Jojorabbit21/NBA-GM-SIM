@@ -36,6 +36,286 @@
 ---
 
 
+## 2026-10-17 — 스케줄러 가상 자정 체력 회복 + 세션 설정 체력 항목 3개 (계획 7·8단계, 미배포)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 7·8단계. v169(6단계)는 경기 직전 따라잡기로만 회복 — 7단계는 가상 자정마다 DB 체력을
+"현재 값"으로 유지(추후 체력 UI 전제), 8단계는 리그 관리자가 회복률·백투백 배율을 조정하게 함(D2/D6).
+
+**변경 파일**:
+- `server/src/scheduler.ts` (server) — `tick()`의 `Promise.allSettled` 목록에 `runFatigueMidnights()` 추가 + 함수 신설
+- `views/multi/league/LeagueSettingsView.tsx` (client) — 엔진 탭에 입력 3개
+
+**Before**: 스케줄러에 체력 처리 없음. 엔진 탭에 체력 설정 없음(sim_settings 키 없음 → 서버가 `MULTI_FATIGUE_DEFAULTS` 사용).
+
+**After**:
+```ts
+// scheduler.ts
+async function runFatigueMidnights(): Promise<void> {
+    // leagues.status = 'in_progress' → rooms(league_id in …) → 방마다 processRoomMidnights(room.id)
+    // 처리분이 있을 때만 로그, 방별 예외는 로그 후 계속(fatigue_recovered_through 미전진 → 다음 tick 재시도)
+}
+```
+- `LeagueSettingsView.tsx`: 상태 `overnightRecoveryPct`/`restDayRecoveryPct`(정수 %)/`b2bMultiplier`, 로드 시 `resolveMultiFatigueSettings(room.sim_settings)`로 초기화,
+  `isEngineTabDirty`에 3항 추가, `handleSaveSimSettings`가 `resolveMultiFatigueSettings({...})` 결과(클램프된 keep/배율)를 sim_settings에 병합 저장.
+  화면은 회복률 % = (1 − keep) × 100 — 하룻밤 30~70%(기본 50), 휴식일 50~90%(기본 75), 백투백 ×1.0~1.5(기본 1.3).
+  기존 엔진 탭 입력칸과 같은 숫자 input(계획엔 "슬라이더"였으나 화면 일관성 우선). 최소값이 30/50이라 onChange 즉시 클램프하면 타이핑이 불가 →
+  **onChange는 그대로, onBlur에서 클램프**(기존 입력칸들은 onChange 클램프 유지).
+
+**검증**:
+- 서버 `tsc`: scheduler 오류 2건(`claimAndPrepareRoom` 결과 `.error` 좁히기) — HEAD 원본에도 동일(원본으로 되돌려 확인), 신규 오류 없음. 클라이언트 `tsc` 관련 오류 없음
+- 자정 처리 dry-run(운영 DB 읽기 전용, `processRoomMidnights`와 동일 조회·계산·RPC만 생략): 04:12:30 Pro Basketball League 11-02 자정 직후
+  → 처리 대상 90행(11-02 출전자, rt 11-01) 계산 정상(예: 르브론 제임스 sta96/dur99 77.2 → 91.3, 하룻밤 회복). 자정 전/AS 2는 NO-OP 확인
+- 엣지(문서화): 자정이 지난 뒤에야 시뮬되는 지연 경기는 그 선수들이 그날 자정 회복을 먼저 받은 상태로 뛴다(경기 후 rt=D−1로 되돌아가 다음 자정에 정상 재계산). 정시 시뮬에서는 발생 안 함
+
+**롤백 방법**: scheduler.ts에서 `runFatigueMidnights()` 호출·함수 삭제(Fly 재배포). LeagueSettingsView.tsx의 상태 3개·로드·dirty·저장·입력 블록과 상단 헬퍼 상수 삭제(Vercel).
+저장된 sim_settings 키는 남아도 무해(서버가 그대로 해석). 둘은 독립 — 하나만 롤백해도 됨.
+
+
+## 2026-10-17 — [배포] 멀티 체력 리셋(5b) + Fly v169 (계획 10단계 — 6단계 선배포)
+
+**배경**: 멀티 체력 계획(`docs/plan/multiplayer-fatigue.md`) 6단계(simRunner 체력 회복 따라잡기/백투백) 선배포. 사용자 결정대로 진행 중 리그 2곳(Pro Basketball League `aeb5794a`, AS 2 `895d10da`)에 시즌 도중 적용.
+
+**실행 순서/시각 (UTC)**:
+1. 03:52:30 Pro Basketball League 가상 자정(11-01) — 다음 경기 04:01:15, AS 2 다음 경기 04:30 → 틈 확인
+2. 03:52:35 마이그레이션 `reset_multiplayer_fatigue_condition` 적용(원본 `migrations/reset_multiplayer_fatigue_condition.sql`)
+   - `room_player_state` 820행 condition/condition_recovered_through/last_game_date → NULL (부상 6건·계약·이력 보존)
+   - `rooms.fatigue_recovered_through` = 현재 가상 날짜 − 1 (aeb5794a → 2026-11-01, 895d10da → 2027-05-30)
+3. 03:52:43~03:53:36 `flyctl deploy` → **v169** (v168 → v169)
+
+**v169에 포함된 서버 변경** — 체력 계획 2·3·4·6단계뿐:
+`server/src/simRunner.ts`, 신규 `server/src/playerLoader.ts`·`server/src/fatigueRecovery.ts`·`server/src/shared/multi/fatigueRecovery.ts`,
+`server/src/shared/engine/fatigueSystem.ts`·`pbp/stateUpdater.ts`(백투백 배율 인자), `server/src/shared/types/simSettings.ts`.
+⚠️ 바로 아래 "개인 전술 전면 비활성화" 항목의 서버 미러(`server/src/shared/engine/pbp/initializer.ts`, 03:56:07 UTC 수정)는 **v169 이후 수정이라 포함 안 됨** — 별도 Fly 배포 필요.
+
+**배포 후 첫 경기 검증** (`g_atl_ind_2026-11-02`, 04:02 시뮬, 1.9초):
+- 오류 로그 없음. 양 팀 25명 전원 `condition_recovered_through = 2026-11-01`(D−1), `last_game_date = 2026-11-02`는 출전자만(DNP 5명 NULL) — §6.5 규칙대로
+- IND 백투백(직전 11-01), ATL 이틀 휴식(직전 10-31). 둘 다 리셋으로 100 시작 → 주전 경기 종료 체력 IND 53~77 vs ATL ~92 — 백투백 ×1.3 적용 확인
+- 탈진 교체 0건, 주전 35.9분(차트대로)
+
+**롤백 방법**: Fly를 v168로 되돌림. 리셋(5b)은 되돌릴 수 없음(이전 값이 버그 산물 — 계획 D1). 5a 칼럼/RPC는 v168에 무해.
+
+
+## 2026-10-17 — 가비지 교체(executeGarbageSubstitution)가 rotationMap을 갱신하지 않아 매 포세션 되돌려지던 버그 수정
+
+**배경**: 개인 전술 가비지 정책 '미출전(bench)' 주전이 Q4 15점차↑에서 매 포세션 들어왔다 나가는 현상(위 개인 전술 비활성화 항목 참조).
+`checkSubstitutionsV2` 'bench' 분기 → `executeGarbageSubstitution`이 onCourt/bench 배열만 교체 → 같은 step의 `checkAndApplyRotation`이
+맵 기준으로 라인업을 재구성해 주전을 복귀시킴 → 다음 포세션에 다시 교체 요청. 클러치 'must-bench'·일괄 가비지도 같은 경로라 동일 결함.
+
+**변경 파일** (클라/서버 미러 동일):
+- `services/game/engine/pbp/rotationLogic.ts`, `server/src/shared/engine/pbp/rotationLogic.ts` — `executeGarbageSubstitution`
+
+**Before**: 교체 시 `rotationMap` 미변경. 대체 후보(`available`)에 garbagePolicy='bench' 선수도 포함.
+**After**:
+- 교체 직후 나가는 선수는 `rotationMap[out][currentMinute..47] = false`, 들어오는 선수는 `rotationMap[in][currentMinute..47] = true`
+  (맵 없으면 Array(48).fill(false) 생성). → 정기 로테이션이 교체를 되돌리지 않음(영구 교체 의도 복원).
+- 대체 후보에서 `playerTactics[id].garbagePolicy === 'bench'` 선수 제외(올라온 직후 다시 내려가는 연쇄 방지).
+
+**검증**: tsc 오류 없음. 실제 시뮬 재현 테스트는 미실시(개인 전술이 현재 비활성화라 경로 재현에는 playerTactics 주입이 필요).
+
+**롤백 방법**: 위 두 파일에서 `[Fix 2026-10-17] Sync rotationMap` 블록과 `available` 필터의 garbagePolicy 조건을 삭제(클라/서버 둘 다).
+
+## 2026-10-17 — 개인 전술(playerTactics) 전면 비활성화 + DB 초기화
+
+**배경**: 멀티 경기 mgbqrpsk 홈팀 Q4 로테이션 차트에서 가비지타임 정책이 '미출전(bench)'인 주전들이 매 포세션 들어왔다 나가는 버그.
+원인: `substitutionSystem.ts` 'bench' 분기(Q4 + 15점차↑)가 재실행 방지/benchReason 없이 매 포세션 교체 요청을 만들고,
+`executeGarbageSubstitution`(rotationLogic.ts)은 `rotationMap`을 안 건드려서 같은 포세션의 `checkAndApplyRotation`이 주전을 되돌림.
+(클러치 'must-bench'도 같은 경로.) 근본 수정 전까지 개인 전술 기능 자체를 막기로 결정.
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` — `MultiTacticsTab`/`MULTI_TACTICS_TABS`에서 'player' 제거(?tab=player 딥링크는 'depth'로 폴백), PlayerTacticsPanel 렌더·import 삭제
+- `components/dashboard/TacticsBoard.tsx` — 싱글 전술 화면 '개인 전술' 탭 제거(TabBar 자체 제거, `activeTab`은 상수 'team'), PlayerTacticsPanel 렌더·import 삭제
+- `views/multi/league/settings/TeamTacticsTab.tsx` — 어드민 편집 탭에서 'player' 제거, 렌더·import 삭제
+- `services/game/engine/pbp/initializer.ts` + `server/src/shared/engine/pbp/initializer.ts`(미러) — `initTeamState` 사용자 전술 분기에서 `playerTactics: {}` 강제(저장 데이터/구버전 클라가 값을 들고 와도 엔진은 무시)
+- `components/dashboard/MultiHeaderNavMenu.tsx` — 상단 헤더 전술 드롭다운의 '개인 전술' 항목 주석 처리(복구는 주석 해제)
+- `migrations/reset_player_tactics.sql` — DB 초기화 SQL
+
+**Before**: 전술 화면에 개인 전술 탭 존재, 엔진이 `tactics.playerTactics`를 읽어 restThreshold/foulPolicy/garbagePolicy/clutchPolicy 적용.
+**After**: 탭 없음, 엔진은 항상 빈 맵(= 전부 'auto' 기본 동작). `PlayerTacticsPanel.tsx` 파일과 substitutionSystem/rotationLogic의 playerTactics 참조 코드는 그대로 둠.
+
+**DB 초기화(2026-10-17 실행)**: `room_members.tactics`/`saves.tactics`/`user_tactics.tactics_data`에서 `playerTactics` 키 제거.
+영향 행: room_members 3, saves 3, user_tactics 0. `*_game_results` 계열(과거 기록)은 미변경.
+백업(롤백용)은 작업 세션 스크래치패드 `player_tactics_backup_2026-10-17.json`에만 있음(저장소에는 없음).
+
+**검증**: 초기화 후 세 테이블 모두 playerTactics 잔존 0행 확인.
+
+**롤백 방법**: 위 3개 뷰 파일의 탭/렌더/import 복원, initializer 두 곳의 `playerTactics: {},` 줄 삭제(클라/서버 둘 다), 필요 시 백업 JSON으로 행별 `jsonb_set(tactics,'{playerTactics}', ...)`. 서버는 재배포(Fly) 필요.
+
+## 2026-10-17 — simRunner: 경기 간 체력 회복 따라잡기 + 백투백 판정/배율 + 회복 날짜 기록 (계획 6단계, Fly v169 배포)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 6단계. 멀티 서버는 경기 종료 체력만 이월하고 경기 사이 회복이 없어
+체력이 누적 하락(주전 시작 체력 ~60, 경기당 탈진 7.5회 — 계획 3-8). 사용자 결정으로 **6단계만 먼저 배포**(스케줄러 자정 회복 7단계는 이후) —
+6단계만으로도 경기 직전 따라잡기가 같은 회복을 적용하므로 진행 중 리그의 문제는 해결된다.
+
+**변경 파일**: `server/src/simRunner.ts` (`runSimulation()`) — 서버 전용(클라이언트 미러 없음)
+
+**Before**:
+```ts
+import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
+const useCustomOverrides = shouldUseCustomOverrides(leagueData);
+const isInstanceRoom = (leagueData as any)?.personal_draft_format != null;
+// §2: 인라인 하이드레이션 (isInstanceRoom 분기: instances → meta_player_cards → meta_players 폴백 / meta_players) — 조회 오류는 무시
+// §2.5: room_player_state 오버레이 (회복 없음)
+// §4:
+runFullGameSimulation(homeTeam, awayTeam, homeTeamId, homeTactics ?? undefined, false, false, homeDepth, awayDepth, seed, simSettings, ...);
+// §6.5 (a):
+upsert(rosterUpdates → { room_id, player_id, condition })   // 1회
+```
+
+**After**:
+```ts
+import { buildTeamForSim } from './shared/dataMapper.ts';
+import { loadRoomPlayers } from './playerLoader.ts';
+import { recoverPlayersThrough } from './fatigueRecovery.ts';
+import { addDays } from './shared/multi/fatigueRecovery.ts';
+import { DEFAULT_SIM_SETTINGS, resolveMultiFatigueSettings } from './shared/types/simSettings.ts';
+// §2: const playerMap = await loadRoomPlayers(roomId, allPlayerIds, leagueData)  — 동일 로직, 조회 오류는 예외 → 경기 미기록·클레임 해제·다음 tick 재시도
+// §2.4 (신규): try { await recoverPlayersThrough(roomId, game_date − 1, { playerIds: allPlayerIds, context }) } catch { 로그만 }
+// §3.6 (신규): isBackToBack(team) = 그 팀의 played && !is_allstar && game_date < 이번 경기 중 최신 game_date === game_date − 1
+//              engineSimSettings = { ...(simSettings ?? DEFAULT_SIM_SETTINGS), fatigueB2BMultiplier: resolveMultiFatigueSettings(simSettings).fatigueB2BMultiplier }
+//              (정규화 resolveNormalizationContext 이후 사본 — NULL 설정 방은 기존처럼 DEFAULT 기준·정규화 없음 유지)
+// §4: runFullGameSimulation(..., isHomeB2B, isAwayB2B, ..., engineSimSettings, ...)
+// §6.5 (a): 출전자(mp>0) upsert { condition, condition_recovered_through: game_date − 1, last_game_date: game_date }
+//           DNP upsert         { condition, condition_recovered_through: game_date − 1 }   (칼럼 구성별 분리 — DNP의 기존 last_game_date 보존)
+//           upsert 오류를 이제 로그로 남김(예전엔 결과 미확인)
+```
+
+**검증**:
+- 서버 `tsc --noEmit`: simRunner 오류 6건(`resolveReturnDate` 등에 supabase 클라이언트를 넘길 때의 `SupabaseClient` 제네릭 불일치) — **HEAD 원본에도 동일 6건**(원본으로 되돌려 확인), 이번 변경과 무관. 신규 오류 없음
+- 운영 DB 읽기 전용: §3.6과 동일 쿼리로 BOS 10-23 → B2B true(직전 10-22), DET/BKN 10-25 → false(직전 10-23), 개막전 → false
+- supabase-js 경로로 `apply_fatigue_recovery` 호출(기대값 불일치로 보장된 no-op) → 0행, 대상 행 무변경
+- **배포 상태 그대로 시즌 재현**(스케줄러 없이 경기 직전 따라잡기만, 실제 `recoverThrough`/`resolveMultiFatigueSettings`/§6.5 저장 규칙, 정규시즌 1,230경기):
+  경기당 탈진 0.21 / 팀 경기당 일반 0.04·백투백 0.58 / 주전 시작 체력 일반 98.7·백투백 94.2·최저 72.3 / 주별 97~99 평탄 — 계획 3-8(0.22 / 0.61 / 94.3)과 일치
+- end-to-end(실제 simRunner가 운영 DB에 쓰는 경로)는 테스트 방을 만들 수 없어(스케줄러가 전체 방을 스캔) **배포 후 첫 경기로 확인 예정**
+
+**롤백 방법**: `server/src/simRunner.ts`를 Before로 되돌리고 Fly 재배포(직전 릴리스 v168). DB(5a 칼럼/RPC)는 남겨둬도 구버전 서버에 무해.
+
+
+## 2026-10-17 — [DB] 멀티 체력 회복 칼럼 + apply_fatigue_recovery RPC 적용 (계획 5a단계)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 5단계를 5a(구조 추가, 즉시 적용)/5b(D1 체력 리셋, 배포 직전 실행)로 분리.
+5a는 순수 추가라 구버전 서버(Fly v168)는 새 칼럼을 모르고 기존 칼럼만 upsert → **동작 변화 없음**.
+
+**변경**: 운영 DB(`buummihpewiaeltywdff`)에 마이그레이션 `add_multiplayer_fatigue_recovery` 적용. 원본 `migrations/add_multiplayer_fatigue_recovery.sql`
+- `room_player_state.condition_recovered_through date`, `room_player_state.last_game_date date`, `rooms.fatigue_recovered_through date` (모두 NULL 허용, 기본값 없음)
+- `public.apply_fatigue_recovery(p_room_id uuid, p_rows jsonb) returns integer` — `condition`/`condition_recovered_through`가 기대값과 같을 때만 갱신(`IS NOT DISTINCT FROM`), 갱신 행 수 반환. LANGUAGE sql, SECURITY INVOKER
+- 권한: `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` / `GRANT ... TO service_role`
+
+**Before**: 위 칼럼/함수 없음.
+
+**검증**:
+- 적용 전 사전 검증: DO 블록에서 동일 DDL + RPC 4케이스 실행 후 예외로 강제 롤백 — 기대값 일치 갱신 1행 / 오래된 기대값 0행 / 연속 갱신 1행 / 다른 room_id 0행, ACL `postgres,service_role`만. 롤백 후 칼럼·함수 없음, 테스트 행 condition 89 원복 확인
+- 적용 후: 칼럼 3개 존재, 새 칼럼 값이 있는 행 0(기존 데이터 무변경, 820행), anon 키 RPC 호출 → `permission denied`(42501), `fatigueRecovery.ts`의 PostgREST `or=(condition_recovered_through.is.null,...lt.D)` 필터 정상(aeb5794a 대상 199행)
+
+**롤백 방법** (6단계 서버 배포 전이라면 앱 영향 없음):
+```sql
+DROP FUNCTION IF EXISTS public.apply_fatigue_recovery(uuid, jsonb);
+ALTER TABLE public.room_player_state DROP COLUMN IF EXISTS condition_recovered_through, DROP COLUMN IF EXISTS last_game_date;
+ALTER TABLE public.rooms DROP COLUMN IF EXISTS fatigue_recovered_through;
+```
+새 서버(6·7단계) 배포 후에는 서버를 먼저 v168 이하로 되돌린 다음 실행할 것(새 서버는 이 칼럼/RPC 없으면 upsert·회복 실패).
+
+
+## 2026-10-17 — 멀티 자정 체력 회복 모듈 신규 (계획 4단계, 아직 호출처 없음)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 4단계. 가상 자정 회복(3-3)과 경기 직전 따라잡기(3-4, D7)가 함께 쓸 계산·DB 처리 모듈.
+**동작 변화 없음** — 신규 파일 3개뿐이고 아무 데서도 import하지 않는다. DB 경로(`recoverPlayersThrough`/`processRoomMidnights`)는
+5단계 마이그레이션(칼럼 3개 + `apply_fatigue_recovery` RPC) 전에는 호출하면 실패한다 — 6·7단계에서 연결.
+
+**계획 수정 (3-1)**: 칼럼 `condition_date`(경기 종료 시 = D) → `condition_recovered_through`(자정 회복이 반영된 마지막 날짜, 경기 종료 시 = D−1).
+원안대로면 "자정 D는 condition_date < D인 행만"이라는 규칙에서 그날 출전한 선수가 그날 자정 회복에서 빠지는 결함이 있었음.
+
+**변경 파일** (모두 신규, 서버 전용 — 클라이언트 미러 없음):
+- `server/src/shared/multi/fatigueRecovery.ts` — 순수 계산
+  - `recoveryKeepModifier(sta, dur)` = 1 − (sta−50)/100×`RECOVERY_STAMINA_FACTOR` − (dur−50)/100×`RECOVERY_DURABILITY_FACTOR`
+  - `applyMidnightRecovery(cond, playedThatDay, sta, dur, settings)` = 100 − (100−cond) × (played ? overnightKeep : restDayKeep) × modifier
+  - `recoverThrough(state, throughDate, ...)` — recovered_through+1 ~ throughDate 하루씩 적용. condition NULL → 날짜만 전진, recovered_through NULL+condition 있음 → 100으로 정리, 99.95 이상이면 조기 종료, 결과 소수 1자리
+  - 클라이언트 미러가 있는 `fatigueSystem.ts`에 넣지 않은 이유: 서버에만 추가하면 미러 쌍이 어긋남(D3로 싱글은 안 씀)
+- `server/src/playerLoader.ts` — `loadRoomPlayers(roomId, ids, league)`: simRunner §2 선수 하이드레이션(일반 방 meta_players / 개인 팩 방 instances→cards→meta_players, custom_overrides)을 그대로 옮김 + `.in()` 100개 단위 분할. simRunner 교체는 6단계
+- `server/src/fatigueRecovery.ts` — 방 단위 DB 처리
+  - `recoverPlayersThrough(roomId, throughDate, { playerIds? })`: `condition < 100` && `condition_recovered_through`가 NULL 또는 < throughDate인 행만 읽어 계산 → `apply_fatigue_recovery` RPC로 조건부 반영(읽은 condition/recovered_through가 그대로일 때만 — 그 사이 경기 종료 기록이 끼면 건너뜀)
+  - `processRoomMidnights(roomId, now)`: `real_midnight_at <= now`인 최신 가상 날짜까지 방 전체 회복 후 `rooms.fatigue_recovered_through` 조건부 전진. 타임라인 없는 방은 no-op(D7 — 따라잡기만 사용)
+
+**검증**:
+- 서버 `tsc --noEmit` 신규 3파일 오류 없음, 순환 import 없음(신규 파일을 import하는 기존 파일 없음)
+- 순수 함수 12케이스 PASS: 계획 3-3 예상표와 일치(85→백투백 92.5/하루 휴식 98.1/이틀 99.5, 70→85, 50→93.8), 멱등, 하루씩 처리 == 한 번에 따라잡기(±0.1), NULL/레거시/오프시즌 120일, stamina 반영, 설정값 반영(overnightKeep 0.7 → 89.5)
+- `loadRoomPlayers` 실DB 읽기 전용: Pro Basketball League 368명 전원 로드, simRunner 방식 매핑과 stamina/durability 불일치 0
+
+**롤백 방법**: 신규 3파일 삭제(호출처가 생긴 6·7단계 이후라면 그 호출도 함께 제거).
+
+
+## 2026-10-17 — 엔진 백투백 체력 소모 배율 인자화 (계획 3단계)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 3단계(D6). 백투백 소모 배율이 엔진에 1.5로 하드코딩돼 있어 멀티 세션 설정(기본 1.3)으로 조정할 수 없었음.
+싱글은 1.5 유지(D3) — 폴백을 기존 값 1.5로 둬서 싱글 동작 불변.
+**현재 멀티 동작도 아직 불변**: simRunner가 `isHomeB2B/isAwayB2B`를 `false`로 하드코딩해 넘기고 있어 배율이 적용될 일이 없음. 6단계(simRunner B2B 판정 + `resolveMultiFatigueSettings`로 1.3 주입)부터 실제 적용.
+
+**변경 파일**:
+- `services/game/engine/fatigueSystem.ts` (client) — `calculateIncrementalFatigue()`
+- `server/src/shared/engine/fatigueSystem.ts` (server 미러) — `calculateIncrementalFatigue()`
+- `services/game/engine/pbp/stateUpdater.ts` (client) — `updateOnCourtStates()`
+- `server/src/shared/engine/pbp/stateUpdater.ts` (server 미러) — `updateOnCourtStates()`
+
+**Before**:
+```ts
+// fatigueSystem.ts
+export function calculateIncrementalFatigue(player, timeTakenSeconds, sliders, isB2B, isStopper, injuryFrequency = 1.0) {
+    ...
+    if (isB2B) drain *= 1.5;
+// stateUpdater.ts
+calculateIncrementalFatigue(p, timeTaken, team.tactics.sliders, isB2B, isStopper, state.simSettings.injuryFrequency);
+```
+
+**After**:
+```ts
+// fatigueSystem.ts
+export function calculateIncrementalFatigue(player, timeTakenSeconds, sliders, isB2B, isStopper, injuryFrequency = 1.0,
+    b2bMultiplier: number = 1.5) {
+    ...
+    if (isB2B) drain *= b2bMultiplier;
+// stateUpdater.ts
+calculateIncrementalFatigue(p, timeTaken, team.tactics.sliders, isB2B, isStopper, state.simSettings.injuryFrequency,
+    state.simSettings.fatigueB2BMultiplier ?? 1.5);
+```
+
+**검증**:
+- client/server `tsc --noEmit`에 관련 오류 없음. `fatigueB2BMultiplier`를 설정하는 싱글 경로 없음(grep — 사용처는 위 4파일 + simSettings 타입뿐).
+- 저장소 서버 엔진으로 정규시즌 1,230경기 시뮬(회복 0.5/0.25, 백투백 플래그 on): 설정 1.3 → 백투백 팀 경기당 탈진 0.58 / 미설정(1.5) → 1.54. 계획 3-8 스크래치 측정(0.61 / 1.52)과 일치.
+
+**롤백 방법**: 4파일 모두 Before로 되돌림(fatigueSystem·stateUpdater 각각 미러 쌍 — 같이). 6단계 이후라면 simRunner의 설정 주입도 함께.
+
+
+## 2026-10-17 — 멀티 체력 설정 키/기본값 추가 (계획 2단계, 아직 사용처 없음)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` 7장 2단계. 멀티 경기 간 체력 회복(가상 자정 회복)과 백투백 배율 설정화의 설정 토대.
+이번 변경만으로는 동작 변화 없음 — 새 키/상수/함수를 읽는 곳이 아직 없다(3단계 이후 엔진·simRunner·스케줄러·설정 화면이 사용).
+
+**변경 파일**:
+- `types/simSettings.ts` (client)
+- `server/src/shared/types/simSettings.ts` (server 미러)
+
+**Before**: `SimSettings`에 체력 관련 키 없음. 멀티 체력 기본값 상수 없음.
+
+**After** (두 파일 동일, 주석 언어만 다름):
+```ts
+// SimSettings에 optional 키 3개
+fatigueOvernightKeep?: number;   // 0.3~0.7
+fatigueRestDayKeep?: number;     // 0.1~0.5
+fatigueB2BMultiplier?: number;   // 1.0~1.5 (엔진 폴백 1.5 = 싱글 값)
+
+export const MULTI_FATIGUE_DEFAULTS = { fatigueOvernightKeep: 0.5, fatigueRestDayKeep: 0.25, fatigueB2BMultiplier: 1.3 } as const;
+export const MULTI_FATIGUE_RANGES = { /* min/max/step: 0.3~0.7/0.05, 0.1~0.5/0.05, 1.0~1.5/0.05 */ } as const;
+export type MultiFatigueSettings = ...;
+export function resolveMultiFatigueSettings(s): MultiFatigueSettings  // 키 없음/비숫자 → 기본값, 범위 밖 → 경계값으로 clamp
+```
+- **`DEFAULT_SIM_SETTINGS`에는 넣지 않음**: 싱글도 이 객체를 병합해 쓰므로 여기 1.3을 넣으면 싱글 백투백 배율이 바뀜(계획 D3 위반). 멀티 기본값은 `MULTI_FATIGUE_DEFAULTS`에만.
+- **`SIM_SETTINGS_META`에도 넣지 않음**: 싱글 `SimSettingsModal.tsx`만 이 메타를 렌더링하므로 넣으면 싱글 설정 화면에 노출됨. 멀티 설정 UI는 8단계에서 `LeagueSettingsView.tsx`에 직접 추가.
+
+**검증**: client/server `tsc --noEmit`에 simSettings 관련 오류 없음. `resolveMultiFatigueSettings` 5케이스(null/{}/일부 지정/범위 밖/비숫자) client·server 결과 일치 확인. 양쪽 `DEFAULT_SIM_SETTINGS`에 fatigue 키 없음 확인.
+
+**롤백 방법**: 두 파일에서 위 3개 키와 `MULTI_FATIGUE_DEFAULTS`/`MULTI_FATIGUE_RANGES`/`MultiFatigueSettings`/`resolveMultiFatigueSettings` 삭제(미러 쌍 — 같이). 사용처가 생긴 뒤라면 사용처도 함께.
+
+
 ## 2026-10-17 — 홈 "리그 부상·징계" 섹션을 현재 활성 부상만 표시하도록 변경
 
 **배경**: 부상/징계를 끄고 선수를 회복(room_player_state 초기화)시켰는데도 섹션에 과거 부상 이벤트(league_events)가 계속 표시됨.

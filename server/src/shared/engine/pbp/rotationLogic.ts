@@ -610,7 +610,8 @@ export function executeGarbageSubstitution(
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
     const available = team.bench
-        .filter(p => p.health === 'Healthy' && p.pf < 6)
+        .filter(p => p.health === 'Healthy' && p.pf < 6
+            && team.tactics.playerTactics?.[p.playerId]?.garbagePolicy !== 'bench')
         .sort((a, b) => a.ovr - b.ovr);
 
     const usedIds = new Set<string>();
@@ -631,6 +632,19 @@ export function executeGarbageSubstitution(
         team.bench.splice(team.bench.indexOf(inP), 1);
         team.onCourt.push(inP);
         inP.position = outP.position;
+
+        // [Fix 2026-10-17] Sync rotationMap with the swap. Without this, checkAndApplyRotation (same step)
+        // rebuilds the lineup from the map and puts outP straight back, and the garbage request repeats
+        // every possession (visible as constant in/out flicker in the rotation chart).
+        const map = team.tactics.rotationMap;
+        if (map) {
+            if (!map[outP.playerId]) map[outP.playerId] = Array(48).fill(false);
+            if (!map[inP.playerId]) map[inP.playerId] = Array(48).fill(false);
+            for (let i = currentMinute; i < 48; i++) {
+                map[outP.playerId][i] = false;
+                map[inP.playerId][i] = true;
+            }
+        }
 
         const histOut = state.rotationHistory[outP.playerId];
         if (histOut && histOut.length > 0) {

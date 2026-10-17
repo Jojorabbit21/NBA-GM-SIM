@@ -31,7 +31,6 @@ import { TabBar } from '../../../../components/common/TabBar';
 import { DepthChartEditor } from '../../../../components/dashboard/DepthChartEditor';
 import { RotationGanttChart } from '../../../../components/dashboard/RotationGanttChart';
 import { TacticsSlidersPanel } from '../../../../components/dashboard/tactics/TacticsSlidersPanel';
-import { PlayerTacticsPanel } from '../../../../components/dashboard/tactics/PlayerTacticsPanel';
 import type { Team, Player } from '../../../../types';
 import type { GameTactics, DepthChart, TacticalSliders, PlayerTacticConfig } from '../../../../types/tactics';
 import { useLeagueContext } from '../LeagueLayout';
@@ -42,11 +41,11 @@ interface Props {
 }
 
 type PlayerLite = { id: string; name: string; position: string | null };
-type EditTab = 'depth' | 'rotation' | 'team' | 'player';
+type EditTab = 'depth' | 'rotation' | 'team';
 
 const POSITIONS: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
 const EDIT_TABS: { id: EditTab; label: string }[] = [
-    { id: 'depth', label: '뎁스 차트' }, { id: 'rotation', label: '로테이션' }, { id: 'team', label: '팀 전술' }, { id: 'player', label: '개인 전술' },
+    { id: 'depth', label: '뎁스 차트' }, { id: 'rotation', label: '로테이션' }, { id: 'team', label: '팀 전술' },
 ];
 /** mapRawPlayerToRuntimePlayer가 읽는 컬럼(useLeagueRawStats.RAW_PLAYER_COLS + tendencies). */
 const ROSTER_COLS = 'id, name, position, draft_year, base_attributes, tendencies';
@@ -403,9 +402,6 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                             )}
                             {editTab === 'team' && (
                                 <div className="p-8 pb-16"><TacticsSlidersPanel tactics={draftTactics!} onUpdateTactics={handleUpdateTactics} roster={rosterPlayers} /></div>
-                            )}
-                            {editTab === 'player' && (
-                                <div className="pb-16"><PlayerTacticsPanel tactics={draftTactics!} roster={rosterPlayers} onUpdateTactics={handleUpdateTactics} /></div>
                             )}
                         </div>
                     </div>

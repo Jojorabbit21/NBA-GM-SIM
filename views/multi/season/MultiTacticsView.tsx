@@ -12,7 +12,6 @@ import { TabBar } from '../../../components/common/TabBar';
 import { Button } from '../../../components/common/Button';
 import { DepthRotationBoard } from '../../../components/dashboard/DepthRotationBoard';
 import { TacticsSlidersPanel } from '../../../components/dashboard/tactics/TacticsSlidersPanel';
-import { PlayerTacticsPanel } from '../../../components/dashboard/tactics/PlayerTacticsPanel';
 import { TeamStatRankList, type StatRankRow } from '../../../components/dashboard/tactics/insights/TeamStatRankList';
 import { TeamGameLogChart, type GameLogEntry } from '../../../components/dashboard/tactics/insights/TeamGameLogChart';
 import { PlayerStatsTable } from '../../../components/dashboard/tactics/insights/PlayerStatsTable';
@@ -36,8 +35,9 @@ import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import type { Team, Game, Player } from '../../../types';
 
-type MultiTacticsTab = 'depth' | 'team' | 'insights' | 'player';
-const MULTI_TACTICS_TABS: MultiTacticsTab[] = ['depth', 'team', 'insights', 'player'];
+type MultiTacticsTab = 'depth' | 'team' | 'insights';
+// [2026-10-17] 'player' removed: per-player tactics disabled (deep link ?tab=player now falls back to 'depth').
+const MULTI_TACTICS_TABS: MultiTacticsTab[] = ['depth', 'team', 'insights'];
 
 // 팀 전술 탭의 슈팅 존 히트맵(TeamZoneChart)은 roster[].stats.zone_rim_m 등을 합산해서
 // 그리는데, 드래프트 직후 새로 매핑한 Player는 stats가 전부 0(defaultStats)이라 항상
@@ -517,8 +517,7 @@ const MultiTacticsView: React.FC = () => {
                     { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
                     { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
                     { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
-                    // 개인 전술 탭 숨김(2026-09-03) — MULTI_TACTICS_TABS/PlayerTacticsPanel 렌더
-                    // 블록은 그대로 둬서 ?tab=player 딥링크는 계속 동작, 재노출 시 이 줄만 복구.
+                    // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
                 ]}
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
@@ -621,15 +620,6 @@ const MultiTacticsView: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                    </div>
-                )}
-                {activeTab === 'player' && (
-                    <div className="pb-20">
-                        <PlayerTacticsPanel
-                            tactics={userTactics!}
-                            roster={rosterPlayers}
-                            onUpdateTactics={setUserTactics}
-                        />
                     </div>
                 )}
             </div>

@@ -4,16 +4,14 @@ import { RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-r
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
 import { DefensiveStats } from '../../utils/defensiveStats';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
-import { PlayerTacticsPanel } from './tactics/PlayerTacticsPanel';
 import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
 import { fetchPresets, savePreset, deletePreset } from '../../services/tacticsService';
 import { PresetRenameModal } from './tactics/PresetRenameModal';
-import { TabBar } from '../common/TabBar';
 import { Button } from '../common/Button';
 import { IconButton } from '../common/IconButton';
 import { supabase } from '../../services/supabaseClient';
 
-type TacticsTab = 'team' | 'player';
+type TacticsTab = 'team';
 
 interface TacticsBoardProps {
   team: Team;
@@ -29,7 +27,7 @@ interface TacticsBoardProps {
 }
 
 const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName, hidePresets, teamTacticsOnly }) => {
-    const [activeTab, setActiveTab] = useState<TacticsTab>('team');
+    const activeTab: TacticsTab = 'team';
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -139,17 +137,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
 
     return (
         <div className="flex flex-col h-full bg-slate-900 relative">
-            {/* Tab Bar — teamTacticsOnly 모드에서는 숨김 */}
-            {!teamTacticsOnly && (
-            <TabBar
-                tabs={[
-                    { id: 'team' as TacticsTab, label: '팀 전술' },
-                    { id: 'player' as TacticsTab, label: '개인 전술' },
-                ]}
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab as TacticsTab)}
-            />
-            )}
+            {/* [2026-10-17] 개인 전술 탭 비활성화 — 탭이 '팀 전술' 하나만 남아 TabBar 제거 */}
 
             {/* Header Controls */}
             {!hidePresets && (
@@ -244,15 +232,6 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                             />
                         </div>
                     </>
-                )}
-                {!teamTacticsOnly && activeTab === 'player' && (
-                    <div className="pb-20">
-                        <PlayerTacticsPanel
-                            tactics={tactics}
-                            roster={roster}
-                            onUpdateTactics={onUpdateTactics}
-                        />
-                    </div>
                 )}
             </div>
 

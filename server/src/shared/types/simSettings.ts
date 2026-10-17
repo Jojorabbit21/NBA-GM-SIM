@@ -25,6 +25,41 @@ export interface SimSettings {
     // League-relative normalization
     normalizationStrength?: number;   // 0~1, UI slider override for k
     leagueContext?: LeagueContext;    // computed at sim start, injected here
+
+    // Fatigue recovery / back-to-back (multiplayer only — docs/plan/multiplayer-fatigue.md).
+    // Defaults live in MULTI_FATIGUE_DEFAULTS, NOT DEFAULT_SIM_SETTINGS (single merges that and must keep B2B ×1.5).
+    fatigueOvernightKeep?: number;   // deficit fraction kept at midnight after a game day (0.3~0.7)
+    fatigueRestDayKeep?: number;     // deficit fraction kept at midnight of a rest day (0.1~0.5)
+    fatigueB2BMultiplier?: number;   // B2B drain multiplier (1.0~1.5, engine fallback 1.5)
+}
+
+// ── Multiplayer fatigue defaults/ranges (mirror of types/simSettings.ts) ──
+export const MULTI_FATIGUE_DEFAULTS = {
+    fatigueOvernightKeep: 0.5,
+    fatigueRestDayKeep: 0.25,
+    fatigueB2BMultiplier: 1.3,
+} as const;
+
+export const MULTI_FATIGUE_RANGES = {
+    fatigueOvernightKeep: { min: 0.3, max: 0.7, step: 0.05 },
+    fatigueRestDayKeep:   { min: 0.1, max: 0.5, step: 0.05 },
+    fatigueB2BMultiplier: { min: 1.0, max: 1.5, step: 0.05 },
+} as const;
+
+export type MultiFatigueSettings = { -readonly [K in keyof typeof MULTI_FATIGUE_DEFAULTS]: number };
+
+/** Resolve multiplayer fatigue settings from room sim_settings — missing/out-of-range → default/clamped. */
+export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | undefined): MultiFatigueSettings {
+    const pick = (key: keyof typeof MULTI_FATIGUE_DEFAULTS): number => {
+        const v = s?.[key];
+        const { min, max } = MULTI_FATIGUE_RANGES[key];
+        return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : MULTI_FATIGUE_DEFAULTS[key];
+    };
+    return {
+        fatigueOvernightKeep: pick('fatigueOvernightKeep'),
+        fatigueRestDayKeep: pick('fatigueRestDayKeep'),
+        fatigueB2BMultiplier: pick('fatigueB2BMultiplier'),
+    };
 }
 
 export const DEFAULT_SIM_SETTINGS: SimSettings = {
