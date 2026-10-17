@@ -36,6 +36,46 @@
 ---
 
 
+## 2026-10-17 — 멀티 팀 화면 경기 기록/일정/전적 스포일러 차단
+
+**배경**: 멀티 팀(로스터) 화면의 "경기 기록" 탭에 현재 중계 중(live)인 경기의 최종 결과가 표시됨. 서버는 시뮬 직후 `played=true` + 스코어를 기록하고, 결과 공개는 정시+리플레이 길이 이후(`isFinal`)인데, MultiRosterView는 `played`만 보고 그대로 RosterView/TeamGameLog에 넘겼음. 같은 입력을 쓰는 상단 전적·일정 달력도 동일하게 노출되던 상태.
+
+**변경 파일**:
+- `views/multi/season/MultiRosterView.tsx` (client) — `scheduleWithStats` useMemo
+
+**Before**:
+```ts
+const scheduleWithStats = useMemo(
+    () => schedule.map(g => {
+        const st = gameTeamStatsMap.get(g.id);
+        const leaders = gameLeadersMap.get(g.id);
+        return (st || leaders) ? ({ ...g, homeStats: st?.homeStats, awayStats: st?.awayStats, leaders } as Game) : g;
+    }),
+    [schedule, gameTeamStatsMap, gameLeadersMap],
+);
+```
+
+**After**:
+```ts
+const serverNow = useServerClockBucket();
+const scheduleWithStats = useMemo(
+    () => schedule.map(g => {
+        const scheduledAt = resolveRealAt(g, simStart, gprd) ?? g.scheduledAt;
+        const gated = scheduledAt && scheduledAt !== g.scheduledAt ? { ...g, scheduledAt } : g;
+        if (gated.played && !isFinal(gated, serverNow)) {
+            return { ...gated, played: false, homeScore: undefined, awayScore: undefined } as Game;
+        }
+        // ...기존 homeStats/awayStats/leaders 병합 (gated 기준)
+    }),
+    [schedule, gameTeamStatsMap, gameLeadersMap, simStart, gprd, serverNow],
+);
+```
+
+**검증**: tsc 에서 MultiRosterView 관련 오류 없음. 실제 live 경기 화면 육안 확인은 미실시.
+
+**롤백 방법**: Before 블록으로 되돌리고 `useServerClockBucket`/`isFinal`/`resolveRealAt` import 제거.
+
+
 ## 2026-10-16 — 본문 서체를 윈도우 보정 Pretendard(BGM Sans)로 교체 + 비교 토글
 
 **배경**: 윈도우에서 사이트 전체 글자가 다른 사이트보다 흐리게 보임. Pretendard 웹폰트 파일에 렌더링 지시 테이블(gasp/prep/fpgm/cvt)이 전혀 없음을 확인. Google Fonts는 윈도우 UA에 gasp{65535:15} + prep(SCANCTRL 511, SCANTYPE 4)이 들어간 파일을 따로 서빙함(Noto Sans KR·Inter로 확인). 같은 두 테이블을 Pretendard에 추가해 자체 호스팅. OFL 예약 이름 조건 때문에 내부 이름을 BGM Sans로 변경.

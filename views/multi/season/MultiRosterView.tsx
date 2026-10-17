@@ -19,7 +19,8 @@ import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
-import { getServerNow } from '../../../utils/serverClock';
+import { getServerNow, useServerClockBucket } from '../../../utils/serverClock';
+import { isFinal, resolveRealAt } from './multiGameReveal';
 import { computeGameLeaders, type GameLeaders } from '../../../services/multi/gameLeadersCache';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerStats } from '../../../types/player';
@@ -225,15 +226,24 @@ const MultiRosterView: React.FC = () => {
 
     // TeamGameLog(경기 기록 탭)용 — schedule에 game_pbp 기반 팀 단위 박스스코어(homeStats/awayStats) 병합.
     // leaders(PTS/REB/AST 리더)도 같이 병합 — TeamScheduleCalendar(일정 탭) "최우수선수" 컬럼용.
+    // Spoiler guard: the server marks a game played as soon as it is simulated, but the result
+    // may only be shown once the replay ends (isFinal). Live/not-yet-final games are downgraded
+    // to unplayed with scores and stats stripped, so game log, record and calendar stay consistent.
+    const serverNow = useServerClockBucket();
     const scheduleWithStats = useMemo(
         () => schedule.map(g => {
+            const scheduledAt = resolveRealAt(g, simStart, gprd) ?? g.scheduledAt;
+            const gated = scheduledAt && scheduledAt !== g.scheduledAt ? { ...g, scheduledAt } : g;
+            if (gated.played && !isFinal(gated, serverNow)) {
+                return { ...gated, played: false, homeScore: undefined, awayScore: undefined } as Game;
+            }
             const st = gameTeamStatsMap.get(g.id);
             const leaders = gameLeadersMap.get(g.id);
             return (st || leaders)
-                ? ({ ...g, homeStats: st?.homeStats, awayStats: st?.awayStats, leaders } as Game)
-                : g;
+                ? ({ ...gated, homeStats: st?.homeStats, awayStats: st?.awayStats, leaders } as Game)
+                : gated;
         }),
-        [schedule, gameTeamStatsMap, gameLeadersMap],
+        [schedule, gameTeamStatsMap, gameLeadersMap, simStart, gprd, serverNow],
     );
 
     const onScoreClick = useCallback((gameId: string) => {
