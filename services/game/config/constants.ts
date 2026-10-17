@@ -113,6 +113,20 @@ export const SIM_CONFIG = {
         DEF_INTENSITY_MATCHUP_CURVE_INTERIOR: [    // Rim/Paint — 수비자 intDef 기준
             [-50, 0.0], [-25, 0.20], [-15, 0.45], [5, 0.75], [15, 1.0],
         ] as [number, number][],
+
+        // [2026-10-18] Rim/Paint 슈터 체격 보너스 — 빅맨이 골밑에서 크기 이점을 전혀 못 받던 문제(C 레이업 45%,
+        // C 덩크 68%로 가드보다 낮음). 수비수와 비교하지 않는 절대값(C vs C 매치업에서도 작동).
+        // 덩크 외 슛: 키, 덩크: 근력+키. 하네스 4920경기 검증값(1배) — docs/history/dev-log.md 참고.
+        FINISHER_SIZE: {
+            HEIGHT_BASE: 200,            // cm
+            NON_DUNK_HEIGHT_COEFF: 0.002, // 213cm → +2.6%p
+            NON_DUNK_CAP: 0.05,
+            DUNK_STR_BASE: 70,
+            DUNK_STR_COEFF: 0.0015,       // str 99 → +4.35%p
+            DUNK_STR_CAP: 0.045,
+            DUNK_HEIGHT_COEFF: 0.0015,    // 216cm → +2.4%p
+            DUNK_HEIGHT_CAP: 0.035,
+        },
     },
     // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
     FOUL_EVENTS: {

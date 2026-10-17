@@ -230,6 +230,18 @@ export function calculateHitRate(
         const offMod = interpolateCurve(offRating, shotCurve);
         const defMod = defRating * contestFactor * defCoeff;
         hitRate += offMod - defMod;
+
+        // [2026-10-18] Rim/Paint 슈터 체격 보너스 (SIM_CONFIG.SHOOTING.FINISHER_SIZE) — 덩크는 근력+키, 그 외는 키.
+        if (preferredZone === 'Rim' || preferredZone === 'Paint') {
+            const fs = S.FINISHER_SIZE;
+            const overHeight = Math.max(0, actor.attr.height - fs.HEIGHT_BASE);
+            if (st === 'Dunk') {
+                hitRate += Math.min(fs.DUNK_STR_CAP, Math.max(0, actor.attr.strength - fs.DUNK_STR_BASE) * fs.DUNK_STR_COEFF)
+                         + Math.min(fs.DUNK_HEIGHT_CAP, overHeight * fs.DUNK_HEIGHT_COEFF);
+            } else {
+                hitRate += Math.min(fs.NON_DUNK_CAP, overHeight * fs.NON_DUNK_HEIGHT_COEFF);
+            }
+        }
     }
 
     // shotIq + offConsist 일관성 시스템 (모든 존)

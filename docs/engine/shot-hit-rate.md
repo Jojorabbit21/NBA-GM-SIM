@@ -272,6 +272,18 @@ Cut(+3%) 시: attr 80→47%, attr 90→51%
 
 PostUp(+1%) 시: attr 80→49%, attr 90→53%
 
+### 6-9. Rim/Paint 슈터 체격 보너스 (SHOOTING.FINISHER_SIZE, 2026-10-18)
+
+`calculateHitRate()`에서 offMod − defMod 직후 가산. 수비수 키와 비교하지 않는 **절대값** — C vs C 매치업
+(수비 쪽도 항상 리그 최상위 intDef)에서도 빅맨의 크기 이점이 남도록 하기 위함.
+
+| 슛 | 보너스 | 예시 |
+|---|---|---|
+| Dunk | `min(0.045, max(0, str−70)×0.0015)` + `min(0.035, max(0, height−200)×0.0015)` | 샤크(216, str99) +6.75%p, 엠비드(213, str82) +3.75%p, 가드(193, str62) 0 |
+| Layup/Floater/Hook/Paint Jumper | `min(0.05, max(0, height−200)×0.002)` | 213cm +2.6%p, 221cm +4.2%p, 200cm 이하 0 |
+
+Botched switch(와이드 오픈) 경로는 early return이라 미적용. 하네스 검증치는 `docs/history/dev-log.md` 2026-10-18 참고.
+
 ---
 
 ## 7. 아키타입 보너스

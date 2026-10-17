@@ -36,6 +36,79 @@
 ---
 
 
+## 2026-10-18 — Rim/Paint 슈터 체격 보너스(FINISHER_SIZE): 덩크는 근력+키, 그 외 골밑 슛은 키
+
+**배경**: 빅맨 득점 저하 조사 후속. 덩크 자격 수정(아래 항목, v175) 후에도 C 골밑 레이업 45.1%·덩크 67.9%로
+가드(레이업 50~52%, 덩크 69~70%)보다 낮았음 — 빅맨은 같은 슬롯 매치업상 항상 리그 최상위 intDef/blk를
+상대하는데, 슈터 쪽의 크기 이점을 반영하는 항목이 엔진에 없었음(키는 블락 회피에만 소량 사용). 대안으로
+시험한 "골밑 수비 혼합(매치업 수비수 + 코트 최고 intDef 블렌드, W=0.25/0.40)"은 C 상대 수비수가 대부분
+이미 최고 intDef 본인이라 C에겐 무변화, 가드만 소폭 하락(격차 2.65→2.58)이라 보류. 수비수와 비교하지 않는
+절대값 보너스로 결정 — 1배/1.5배/2배 비교 후 사용자가 1배 확정(1.5배 이상은 레전드 센터 TS% 69~71%로 과함).
+참고 기준(웹 확인): 리그 전체 at-rim FG 66.2%(NBA.com), 엘리트 빅맨 덩크 ~92%(DeAndre Jordan 91.9%).
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/flowEngine.ts` (client) — `calculateHitRate()` Non-3PT 블록, offMod−defMod 직후
+- `server/src/shared/engine/pbp/flowEngine.ts` (server 미러) — 동일
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG.SHOOTING.FINISHER_SIZE` 신설
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `docs/engine/shot-hit-rate.md` — §6-9 추가
+
+**Before** (`flowEngine.ts`, client/server 동일):
+```ts
+        const offMod = interpolateCurve(offRating, shotCurve);
+        const defMod = defRating * contestFactor * defCoeff;
+        hitRate += offMod - defMod;
+    }
+```
+(`constants.ts`: `FINISHER_SIZE` 없음)
+
+**After**:
+```ts
+        const offMod = interpolateCurve(offRating, shotCurve);
+        const defMod = defRating * contestFactor * defCoeff;
+        hitRate += offMod - defMod;
+
+        // [2026-10-18] Rim/Paint 슈터 체격 보너스 (SIM_CONFIG.SHOOTING.FINISHER_SIZE) — 덩크는 근력+키, 그 외는 키.
+        if (preferredZone === 'Rim' || preferredZone === 'Paint') {
+            const fs = S.FINISHER_SIZE;
+            const overHeight = Math.max(0, actor.attr.height - fs.HEIGHT_BASE);
+            if (st === 'Dunk') {
+                hitRate += Math.min(fs.DUNK_STR_CAP, Math.max(0, actor.attr.strength - fs.DUNK_STR_BASE) * fs.DUNK_STR_COEFF)
+                         + Math.min(fs.DUNK_HEIGHT_CAP, overHeight * fs.DUNK_HEIGHT_COEFF);
+            } else {
+                hitRate += Math.min(fs.NON_DUNK_CAP, overHeight * fs.NON_DUNK_HEIGHT_COEFF);
+            }
+        }
+    }
+```
+```ts
+// constants.ts — SHOOTING 안, DEF_INTENSITY_MATCHUP_CURVE_INTERIOR 다음
+FINISHER_SIZE: {
+    HEIGHT_BASE: 200,
+    NON_DUNK_HEIGHT_COEFF: 0.002, NON_DUNK_CAP: 0.05,
+    DUNK_STR_BASE: 70, DUNK_STR_COEFF: 0.0015, DUNK_STR_CAP: 0.045,
+    DUNK_HEIGHT_COEFF: 0.0015, DUNK_HEIGHT_CAP: 0.035,
+},
+```
+
+**검증** (스크래치패드 하네스, 서버 simRunner 경로 그대로, PBL 30팀·현재 전술, 엔진별 4920경기·동일 시드,
+기준 = v175 배포본. 체력 누적/부상/B2B 미반영):
+- 팀 PPG 109.4 → 110.6
+- 빅맨(C+PF) vs 가드(PG+SG) 36분당 득점 격차 **2.65 → 2.36**
+- C: 골밑 FG 58.0→61.2, 레이업 45.1→47.3, 덩크 67.9→72.0, 페인트 53.5→55.7, TS 56.5→58.5, 30분+ 평균 PPG 13.77→14.29
+- PG/SG 골밑 FG 53.6/58.8 → 53.6/58.9 (가드 무영향), 25분+ PG PPG 변화 평균 −0.02
+- 예: 샤크 23.4→24.8(TS 63.6→67.6), 카림 20.7→21.8, 체임벌린 TS 64.2→68.8, 엠비드 24.3→24.8, 웸반야마 16.1→16.7
+- 저장소 `server/src/shared` 수정본으로 재실행 → 테스트(환경변수 주입) 결과와 슛 이벤트 스트림 완전 동일
+- tsc: client 51 / server 45 (변경 파일 관련 0건, 직전과 동일 개수)
+- 한계: 빅맨 슛 볼륨(36분당 약 11개)이 그대로라 득점 증가 폭은 제한적 — 남은 격차는 슛 선택/볼륨(픽앤팝
+  강제 3점 등) 쪽. 현역 로스터 리그에서의 효과 크기는 미측정. Fly.io 배포 전
+
+**롤백 방법**: client/server `flowEngine.ts`에서 `// [2026-10-18] Rim/Paint 슈터 체격 보너스` 블록(if 블록 전체)
+삭제 + client/server `constants.ts`에서 `FINISHER_SIZE` 객체 삭제. 4개 파일 모두 함께.
+
+---
+
+
 ## 2026-10-18 — 덩크 자격 판정: 키 보정 추가(S5) + 근력 하드컷 제거(A)
 
 **배경**: 사용자 요청 — Pro Basketball League에서 빅맨 득점이 OVR 대비 너무 낮은 원인 조사. 실측(180경기
