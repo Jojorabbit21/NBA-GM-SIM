@@ -600,11 +600,18 @@ export class DraftRoom {
                 if (target < 0 || target >= this.currentPickIndex) break;
                 this.clearTimers();
 
-                // DB에서 해당 픽 이후 삭제
-                await supabase.from('draft_picks')
-                    .delete()
-                    .eq('room_id', this.roomId)
-                    .gte('pick_index', target);
+                // DB에서 해당 픽 이후 삭제 + 각 팀 league_teams.roster에서도 해당 선수 제거 (원자적 RPC).
+                // 예전엔 picks만 지워서 롤백 후 같은 선수를 다시 뽑으면 roster에 중복 추가됐다.
+                const { error: rbErr } = await supabase.rpc('rollback_draft_picks', {
+                    p_room_id: this.roomId,
+                    p_target:  target,
+                });
+                if (rbErr) {
+                    console.error(`[DraftRoom:${this.roomId}] rollback RPC error:`, rbErr.message);
+                    ws.send(encode({ type: 'error', code: 'internal', message: 'rollback failed' }));
+                    this.scheduleNext();
+                    break;
+                }
 
                 // 메모리 롤백
                 this.picks = this.picks.filter(p => p.pickIndex < target);

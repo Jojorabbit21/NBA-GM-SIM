@@ -163,6 +163,12 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const homeTeam = buildTeamForSim(homeTeamRow, playerMap, rosterState);
             const awayTeam = buildTeamForSim(awayTeamRow, playerMap, rosterState);
 
+            // 경기 전 체력 스냅샷 — 엔진이 이 경기를 시작하는 값(initializer: condition ?? 100, §2.4 따라잡기 반영 후).
+            // §6.5에서 경기 후 condition과 함께 pregame_condition으로 기록 → 클라이언트가 결과 공개 전까지 이 값을 표시.
+            const pregameConditionById = new Map<string, number>(
+                [...homeTeam.roster, ...awayTeam.roster].map((p: any) => [String(p.id), parseFloat(Number(p.condition ?? 100).toFixed(1))]),
+            );
+
             // ── 3. 전술/뎁스차트 로드 ─────────────────────────────────────────
             const { data: members } = await supabase
                 .from('room_members')
@@ -351,6 +357,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                     .map(([pid, upd]: [string, any]) => ({
                         room_id: roomId, player_id: pid, condition: upd.condition,
                         condition_recovered_through: yesterday,
+                        pregame_condition: pregameConditionById.get(pid) ?? null,
                     }));
                 const playedUpserts = conditionRows
                     .filter(r => playedIds.has(r.player_id))

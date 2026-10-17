@@ -36,7 +36,160 @@
 ---
 
 
-## 2026-10-17 — 스케줄러 가상 자정 체력 회복 + 세션 설정 체력 항목 3개 (계획 7·8단계, 미배포)
+## 2026-10-17 — 켈렐 웨어 중복 박스스코어 행 병합 (DB 데이터 정리, 코드 변경 없음)
+
+**배경**: 바로 아래 항목(드래프트 롤백 중복)으로 NYK가 켈렐 웨어를 2명으로 시뮬한 8경기의 `game_pbp.home_box/away_box`에 같은 `playerId` 행이 2개씩 남아 있었음. 시즌 스탯 RPC(`get_player_season_stats_full`)는 `game_pbp` 박스를 그 자리에서 합산하므로 G가 2배로 잡히는 등 집계가 오염됨.
+
+**변경 범위**: `game_pbp` 8행(room `aeb5794a-2a52-46c6-b5cc-aa7f0ab4194e`, NYK 경기 전부: 10-21 MIA, 10-24 OKC, 10-26 PHI, 10-27 LAW, 10-29 CLE, 10-31 SAC, 11-02 BKN, 11-05 WAS)의 NYK 쪽 박스 배열.
+
+**Before**: NYK 박스 11행, 켈렐 웨어 행 2개(예: OKC전 mp 42.9 + 36, pts 6 + 0).
+**After**: 10행, 켈렐 웨어 1행으로 병합.
+- 합산: 모든 누적 수치(pts/reb/ast/mp/fga/… `zoneData` 각 키 포함), `plusMinus`
+- 최댓값: `g`, `gs` (→ 경기당 1)
+- 첫 행 값 유지: `condition`, `matchupEffect`, `recentShots`, 문자열/식별 필드
+- 불리언은 OR. 행 위치는 첫 번째 행 자리.
+- 건드리지 않음: `events`, `shot_events`, `box_timeline`, `rotation_data` (전부 playerId 단일 키라 중복 행 없음, 이미 합쳐진 상태)
+
+**검증**: 8경기 모두 병합 전후 양 팀 `pts` 합계가 `home_score/away_score`와 동일. 방 전체에서 박스 내 중복 playerId 0건. 켈렐 웨어 경기별 G=1.
+**한계**: OKC전(10-24) 병합 mp = 78.9 (두 복제본이 각각 42.9/36분 소화 — 48분 초과). 보정하지 않음.
+
+**롤백 방법**: 백업 테이블 `public.backup_game_pbp_nyk_ware_dup_20261017`(id, home_box, away_box 포함)에서 복원:
+```sql
+update game_pbp g set home_box = b.home_box, away_box = b.away_box
+from backup_game_pbp_nyk_ware_dup_20261017 b where g.id = b.id;
+```
+(확인 후 불필요하면 `drop table backup_game_pbp_nyk_ware_dup_20261017;`)
+
+---
+
+
+## 2026-10-17 — 드래프트 롤백 후 재지명 시 league_teams.roster 중복(켈렐 웨어 ×2) 수정 (DB + server/src/DraftRoom.ts, Fly 배포 필요)
+
+**배경**: Pro Basketball League(room `aeb5794a-…`)에서 NYK 로스터에 켈렐 웨어가 2번 들어가 서버가 별개 선수 2명으로 시뮬(경기당 박스스코어 행 2개), 화면에선 다른 팀에도 행이 남고 707득점으로 표시. 원인: 어드민 `rollback`(DraftRoom.ts)이 `draft_picks`만 삭제하고 `league_teams.roster`에서 선수를 빼지 않았고, 이후 AI가 같은 선수를 재지명하자 `submit_draft_pick_v2`가 roster에 또 append(중복 검사는 draft_picks만 봄). 289번 픽이 12:15/12:23(UTC)에 두 번 기록된 것으로 확인.
+
+**변경 파일**:
+- `migrations/fix_draft_rollback_roster_dup.sql` (DB, 적용 완료) — 신규 RPC `rollback_draft_picks(p_room_id, p_target)` (service_role 전용), `submit_draft_pick_v2` 두 오버로드 모두 roster append에 중복 가드
+- `server/src/DraftRoom.ts` (server) — `rollback` 케이스
+
+**Before**:
+```ts
+await supabase.from('draft_picks').delete().eq('room_id', this.roomId).gte('pick_index', target);
+```
+```sql
+UPDATE league_teams SET roster = COALESCE(roster, '[]'::jsonb) || to_jsonb(p_player_id::text) WHERE room_id = p_room_id AND team_slug = v_team_id;
+```
+
+**After**:
+```ts
+const { error: rbErr } = await supabase.rpc('rollback_draft_picks', { p_room_id: this.roomId, p_target: target });
+if (rbErr) { /* 에러 전송 + scheduleNext() 후 break */ }
+```
+```sql
+-- rollback_draft_picks: target 이상 픽의 선수를 해당 팀 roster에서 제거 후 draft_picks 삭제 (한 트랜잭션)
+-- submit_draft_pick_v2: roster @> to_jsonb(player_id) 이면 append 생략
+```
+
+**데이터 정리**: `league_teams` id `5650c88a-bebe-4717-ac97-1fa426f220cf`(NYK) roster를 순서 유지 중복 제거(11→10명). 이 방에서 중복 선수는 이 1건뿐이었음.
+
+**검증**: DB 함수 3개 존재/가드 확인. server tsc는 bun 타입·scheduler.ts 기존 오류만 있고 변경 부분 오류 없음. 실제 롤백 동작은 미실행.
+
+**롤백 방법**: `DROP FUNCTION rollback_draft_picks(uuid, integer)`, `submit_draft_pick_v2` 두 오버로드를 Before(가드 없는 append)로 재생성, DraftRoom.ts `rollback`을 Before로 복원. (NYK roster 데이터 정리는 되돌릴 필요 없음)
+
+---
+
+
+## 2026-10-17 — 경기 전 체력 스냅샷(pregame_condition): 결과 공개 전까지 이전 체력 표시 (DB + Fly v172 + 클라이언트 미배포)
+
+**배경**: 서버는 경기를 시뮬하는 즉시(리플레이 공개 ~10분 전) `condition`을 경기 후 값으로 덮어써서, 공개 전에 보여주면 스포일러.
+1차 UI는 그 구간을 "경기 중"으로 가렸으나, 사용자 요청: 숨기지 말고 **업데이트(결과 공개) 전까지 이전 체력을 그대로** 보여줄 것 → 경기 전 값을 저장.
+
+**변경**:
+- DB(운영 적용 05:05 UTC): 마이그레이션 `add_room_player_state_pregame_condition` — `room_player_state.pregame_condition numeric` 추가(순수 추가). 원본 `migrations/add_room_player_state_pregame_condition.sql`
+- `server/src/simRunner.ts` — §2.5 직후 `pregameConditionById`(buildTeamForSim 결과 양 팀 로스터의 `condition ?? 100`, 소수 1자리 = 엔진 initializer 입력값, §2.4 따라잡기 반영 후),
+  §6.5 체력 upsert 두 호출(출전자/DNP) 모두 `pregame_condition` 추가(칼럼 구성 동일성 유지). 자정 회복 RPC는 이 칼럼을 건드리지 않음
+- `hooks/useRoomPlayerConditions.ts` — `pregame_condition`도 조회, 맵 값을 `{ condition, pregame }`로 변경(행의 condition NULL → 100). `.not('condition','is',null)` 필터 제거(pregame만 있는 경우 대비)
+- `views/multi/season/useMultiPlayerConditions.ts` — 공개 전 경기 양 팀 선수: `null`("경기 중") → **`pregame ?? null`**. pregame이 없는 행(칼럼 도입 전 서버가 쓴 행)만 "경기 중" 폴백
+
+**Before**: 공개 전 경기 선수 = "경기 중". **After**: 공개 전 = 그 경기 시작 시 체력, 공개 순간(isFinal) 경기 후 값으로 전환(60초 폴링 + serverNow 버킷).
+
+**배포 순서**: 마이그레이션(05:05) → Fly v172(05:08:12~05:09:02, 05:07:30 경기 기록 후·05:21:15 경기 전 틈). 클라이언트는 미배포(칼럼이 먼저 있어야 조회 실패가 없으므로 이 순서 필수).
+
+**검증**: 서버 tsc — simRunner 기존 SupabaseClient 오류 6건 외 신규 없음. 클라이언트 tsc 관련 파일 오류 없음. (배포 후 첫 경기 검증은 아래 추가)
+
+**롤백 방법**: 클라이언트 두 훅을 Before(경기 중 null)로, simRunner의 pregameConditionById·pregame_condition 두 줄 제거 후 Fly 재배포(직전 v171). 칼럼은 남겨도 무해(`ALTER TABLE ... DROP COLUMN pregame_condition`은 클라이언트가 조회를 멈춘 뒤에만).
+
+
+## 2026-10-17 — 멀티 선수 프로필 "선수 정보"에 체력 행 추가 + 체력 표시 훅 공용화 (체력 UI 2차, 미배포)
+
+**배경**: 체력 UI 2차 — 사용자 요청: 선수 프로필 선수 정보의 "포지션 평점" 아래에 체력 표시. 로스터 탭과 같은 표시·같은 비공개 규칙이 필요해 로직을 훅으로 공용화.
+
+**변경 파일** (클라이언트만):
+- `views/multi/season/useMultiPlayerConditions.ts` (신규) — `useMultiPlayerConditions(playerIds)`: `useRoomPlayerConditions` 조회 + 공개 전 경기(`played && !isFinal`) 양 팀 현 로스터 선수 null 처리.
+  반환 Map 값: number(행 없음/NULL → 100) / null(비공개) / 로딩 전엔 Map 자체가 undefined. 로스터에 없는 선수(FA)는 가리지 않음. `playerIds`는 호출부에서 memo된 배열을 넘길 것
+- `views/multi/season/MultiRosterView.tsx` — 로스터 탭에 인라인으로 있던 같은 로직(1차 항목)을 이 훅 호출로 교체(동작 동일)
+- `views/PlayerDetailView.tsx` — `condition?: number | null` prop. 선수 정보 목록의 "포지션 평점" 다음에 `{ label: '체력', value: <ConditionBar …/> }`를 조건부로 추가
+  (undefined면 행 없음 → 싱글·로딩 전 불변, null이면 "경기 중"). 값 칸은 KeyValueRow 기본대로 오른쪽 정렬.
+  사용자 피드백으로 프로필에서는 막대 없이 수치만: `ConditionBar`에 `showBars?: boolean`(기본 true) 추가, 프로필은 `showBars={false}` → 단계 색(emerald/amber/red) `NN%`만
+- `views/multi/season/MultiPlayerDetailView.tsx` — `useMultiPlayerConditions([playerId])`(조기 반환보다 앞) → `condition` prop 전달
+
+**Before**: 선수 프로필에 체력 없음. 로스터 탭 체력 판정 로직은 MultiRosterView 인라인.
+**After**: 멀티 선수 프로필 선수 정보에 "체력" 행(로스터 탭과 같은 막대 3개 + %), 싱글 선수 프로필은 그대로.
+
+**검증**: 클라이언트 `tsc` 관련 파일 오류 없음, `vite build` 성공(순환 의존 오류 없음 — 새 훅의 LeagueLayout/seasonContext import는 MultiRosterView가 이미 갖던 의존). 브라우저 확인 미실시.
+
+**롤백 방법**: 신규 훅 삭제, MultiRosterView는 1차 항목의 인라인 로직으로 복원(또는 체력 열 자체 롤백), PlayerDetailView의 condition prop·ConditionBar import·체력 행 제거, MultiPlayerDetailView의 훅 호출·prop 제거.
+
+
+## 2026-10-17 — 멀티 팀 > 로스터 탭 "체력" 열(바 + 수치) 추가 (체력 UI 1차, 미배포)
+
+**배경**: `docs/plan/multiplayer-fatigue.md` D4(체력 UI) 착수. 멀티 유저가 선수 체력을 볼 방법이 없었음. 사용자 지정: 로스터 탭 이름 열 오른쪽에 바 + 값.
+배치는 "이름 옆 새 열"(사용자 선택, 이름 칸 안에 넣는 안 대신).
+
+**변경 파일** (클라이언트만):
+- `hooks/useRoomPlayerConditions.ts` (신규) — `room_player_state.condition`만 별도 조회(200개 단위 `.in()`), 행 없음/NULL → 100. `refetchInterval` 60초·`staleTime` 30초·포커스 시 재조회.
+  기존 로스터 identity 쿼리(`leagueRawSeasonInjury`, `staleTime: Infinity`, 부트스트랩 게이트 대상)에 얹지 않은 이유: 체력은 경기마다·가상 자정마다(가상 하루 = 실제 20분) 바뀌는데 그 쿼리는 세션 중 재조회가 없음. 영속 캐시 화이트리스트 밖이라 localStorage에도 안 남음
+- `components/common/ConditionBar.tsx` (신규) — ~~바 + 정수 수치~~ → ~~배터리 모양 SVG~~ → **(같은 날 사용자 피드백으로 2회 교체) 같은 높이 세로 막대 3개를 가로로 붙인 3단계 표시
+  (각 `w-1.5 h-3.5`, 모서리 둥글림 없음, `gap-0.5`, 테두리/단자 없음) + 정수 수치 `NN%`(text-sm, 좌측 정렬, 막대와 간격 `gap-1`)**.
+  체력 열 폭 최종 72px(`PLAYER_INFO_CONDITION_WIDTH`, 130 → 90 → 80 → 72), 셀 좌우 여백 `!px-1`(TableCell 기본 `px-3`을 덮어씀), 내용 가운데 정렬(`justify-center`). 72 = 4 + 막대 22 + 4 + "100%"(≈38) + 4.
+  단계/색: 80↑ 3칸 emerald / 60~79 2칸 amber / 60↓ 1칸 red(BoxScoreTable 피로도 색 계열), 빈 칸 slate-700.
+  **마지막으로 채워진 막대의 불투명도** = 단계 구간(3칸 80~100, 2칸 60~80, 1칸 0~60) 안 위치에 비례해 0.35 → 1.0 선형(`lastBarOpacity()`, 하한 0.35는 빈 칸과 구분되는 최소치).
+  예: 80 → 0.35, 90 → 0.675, 100 → 1.0 (같은 3칸이라도 80과 100이 구분됨). 앞쪽 채워진 막대는 항상 1.0.
+  `value=null` → 문구만(hiddenLabel)
+- `components/roster/PlayerInfoColumns.tsx` — 공용 4열(이름|포지션|나이|OVR)에 **선택형** 체력 열: `PlayerInfoColGroup`/`PlayerInfoHeaderCells`/`PlayerInfoCells`에 `withCondition` prop,
+  `PLAYER_INFO_CONDITION_WIDTH = 130`, 켜면 포지션/나이/OVR의 sticky left가 130px 밀림(내부 `leftOf()`). `PlayerInfoSortKey`에 `'condition'` 추가.
+  Cells의 `condition`: number=바, null="경기 중"(title: 경기가 끝나면 표시), undefined="—". **withCondition 미지정 표(능력치/선수 기록/재정/싱글)는 Before와 동일**(`PLAYER_INFO_LEFT`/`PLAYER_INFO_TOTAL_WIDTH` 불변)
+- `components/roster/RosterOverviewGrid.tsx` — `playerConditions?: Map<string, number | null>` prop, 있으면 체력 열 + 체력 정렬(null/미조회는 -1로 맨 뒤), 푸터 colSpan +1
+- `views/RosterView.tsx` — `playerConditions` prop 통과(RosterOverviewGrid로)
+- `views/multi/season/MultiRosterView.tsx` — 현 로스터 선수(데드캡 선수 제외) 체력 조회 → `playerConditions` 생성.
+  **스포일러 차단**: 서버가 시뮬 즉시(리플레이 공개 전) 경기 후 체력을 기록하므로, `played && !isFinal`(기존 `scheduleWithStats`와 같은 `resolveRealAt`+`isFinal` 판정)인 경기의 양 팀 선수는 null("경기 중")
+
+**Before**: 로스터 탭에 체력 표시 없음. **After**: 멀티 로스터 탭에만 이름 다음 "체력" 열(정렬 가능), 싱글 로스터 탭은 그대로.
+
+**검증**: 클라이언트 `tsc` 관련 파일 오류 없음, `vite build` 성공(모듈 순환 없음 — "Circular chunk: vendor…" 경고는 vendor 청크 분할 설정 관련). 브라우저 육안 확인은 미실시(로그인 필요).
+
+**롤백 방법**: 신규 2파일 삭제, `PlayerInfoColumns.tsx`의 withCondition/condition/leftOf/PLAYER_INFO_CONDITION_WIDTH/'condition' 키 제거(sticky left를 PLAYER_INFO_LEFT로 복원),
+RosterOverviewGrid·RosterView·MultiRosterView의 playerConditions 관련 줄 제거. 서버/DB 무관.
+
+
+## 2026-10-17 — [배포] Fly v171 — 스케줄러 자정 체력 회복(7단계) + 개인 전술 비활성화/가비지 교체 맵 동기화 서버분
+
+**배경**: 커밋 19aa4441("fixing health issue", origin/main 푸시됨)의 서버 변경 배포. 커밋에는 체력 계획 7·8단계와 별도 작업
+"개인 전술(playerTactics) 전면 비활성화"(아래 항목)의 서버 미러(`initializer.ts` playerTactics 무시, `rotationLogic.ts` 가비지 교체 시 rotationMap 동기화)가 함께 들어 있음.
+
+**실행**: 04:16:16~04:16:54 UTC `flyctl deploy` → **v171**. 다음 경기(04:21:15)·자정 전 틈에 실행.
+⚠️ 직전 04:15:54경 **v170이 별도로 배포됨**(다른 세션/사용자, 같은 커밋 — 작업 트리 clean 확인). 두 배포가 겹쳐 04:16:06~04:16:40 사이
+프록시에 "lease currently held"/"rate limit exceeded" 오류 로그가 찍혔으나 재시작 중 일시 현상, 이후 정상 기동.
+8단계(설정 화면)는 클라이언트라 Vercel 쪽 — 푸시로 배포되는 구성인지는 미확인.
+
+**배포 후 검증**:
+- 04:17:14 첫 tick 로그 `fatigue midnight room=aeb5794a through=2026-11-02 pending=90 updated=90` — 배포 전 dry-run과 대상 수 일치
+- DB: aeb5794a `fatigue_recovered_through` 11-01 → 11-02, 90행 `condition_recovered_through = 11-02`, 잔여 대상 0. 르브론 제임스 77.2 → 91.3(dry-run 계산값과 동일), 빌 워튼 53.4 → 78
+- 04:18:45 AS 2 자정 → `fatigue_recovered_through` 2027-05-30 → 05-31 전진(리셋 후 경기 없어 회복 대상 0행 — 로그 없음이 정상)
+
+**롤백 방법**: Fly v169로 되돌리면 7단계와 개인 전술/가비지 서버분이 함께 빠짐(v169 = 6단계까지). 7단계만 빼려면 scheduler.ts의 `runFatigueMidnights()` 제거 후 재배포 — 6단계 경기 직전 따라잡기가 그대로 회복을 담당.
+
+
+## 2026-10-17 — 스케줄러 가상 자정 체력 회복 + 세션 설정 체력 항목 3개 (계획 7·8단계, 7단계 Fly v171 배포)
 
 **배경**: `docs/plan/multiplayer-fatigue.md` 7장 7·8단계. v169(6단계)는 경기 직전 따라잡기로만 회복 — 7단계는 가상 자정마다 DB 체력을
 "현재 값"으로 유지(추후 체력 UI 전제), 8단계는 리그 관리자가 회복률·백투백 배율을 조정하게 함(D2/D6).
