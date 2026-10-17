@@ -528,8 +528,16 @@ export function checkTemporaryReturns(
 
         const player = team.bench.find(p => p.playerId === override.outPlayerId);
         if (!player) {
-            // 선수가 벤치에 없음 (이미 다른 경로로 처리됨)
+            // [Fix 2026-10-17] activeOverrides는 양 팀 공용 배열 — 상대 팀 선수의 override는 건드리지 않고 건너뜀.
+            // (기존엔 여기서 상대 팀 override까지 비활성화해 탈진/파울트러블 임시 벤치 선수가 영영 복귀 못 했음)
+            const onCourtPlayer = team.onCourt.find(p => p.playerId === override.outPlayerId);
+            if (!onCourtPlayer) continue;
+            // 이미 다른 경로(필러 등)로 코트 복귀 → override 종료 + 잔여 benchReason 정리
             override.active = false;
+            onCourtPlayer.benchReason = null;
+            onCourtPlayer.benchedAtMinute = undefined;
+            onCourtPlayer.benchedAtQuarter = undefined;
+            onCourtPlayer.scheduledReturnMinute = undefined;
             continue;
         }
 

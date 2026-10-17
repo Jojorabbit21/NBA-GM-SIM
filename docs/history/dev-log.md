@@ -36,6 +36,54 @@
 ---
 
 
+## 2026-10-17 — 탈진/파울트러블 임시 벤치 선수 복귀 불가 버그 수정 (checkTemporaryReturns)
+
+**배경**: Pro Basketball League(room `aeb5794a`) 10-25 BKN@DET 경기에서 로테이션 차트와 무관하게 주전 11~23분, 벤치 35~41분 출전.
+조사 결과 `state.activeOverrides`(임시 벤치 override 목록)는 **양 팀 공용 배열**(teamId 필드 없음)인데, `checkTemporaryReturns(state, team)`가
+"이 팀 벤치에 없는 선수 = 이미 처리됨"으로 간주해 **상대 팀 override까지 `active=false`로 꺼버림**. 매 포세션 home→away 순으로 호출되므로
+모든 override가 생성 직후 비활성화 → `benchWithOverride()`가 이미 지운 원래 선수의 잔여 맵이 복원되지 않아 그 경기 내내 복귀 불가, 필러가 남은 시간을 전부 소화.
+최근 30일 멀티 PBP 1,363경기: 탈진 교체 4,396건 / 파울트러블 교체 1,831건 / "복귀 준비" 로그 **0건**. 2026-02-26(87e075f6)부터 존재, 싱글도 동일 코드.
+(이 경기에서 탈진이 대량 발생한 1차 원인은 별개 이슈 — 서버에 비경기일 체력 회복(`applyRestDayRecovery`) 미호출, 미수정·멀티용 재설계 예정)
+
+**변경 파일**:
+- `services/game/engine/pbp/rotationLogic.ts` (client) — `checkTemporaryReturns()`
+- `server/src/shared/engine/pbp/rotationLogic.ts` (server 미러) — `checkTemporaryReturns()`
+
+**Before** (client, server는 주석만 없고 동일):
+```ts
+        const player = team.bench.find(p => p.playerId === override.outPlayerId);
+        if (!player) {
+            // 선수가 벤치에 없음 (이미 다른 경로로 처리됨)
+            override.active = false;
+            continue;
+        }
+```
+
+**After**:
+```ts
+        const player = team.bench.find(p => p.playerId === override.outPlayerId);
+        if (!player) {
+            const onCourtPlayer = team.onCourt.find(p => p.playerId === override.outPlayerId);
+            if (!onCourtPlayer) continue;   // 상대 팀 선수의 override → 건드리지 않음
+            override.active = false;        // 다른 경로(필러 등)로 이미 코트 복귀 → 종료
+            onCourtPlayer.benchReason = null;
+            onCourtPlayer.benchedAtMinute = undefined;
+            onCourtPlayer.benchedAtQuarter = undefined;
+            onCourtPlayer.scheduledReturnMinute = undefined;
+            continue;
+        }
+```
+- 코트 복귀 케이스에서 `benchReason` 정리를 추가한 이유: 남아 있으면 `checkSubstitutionsV2`의 `if (p.benchReason) return;`에 걸려 그 선수가 이후 탈진/파울 체크에서 제외됨(기존 동작에선 필러로 재투입된 원래 선수가 이 상태였음).
+
+**검증**: 서버 엔진으로 실제 경기 재현(실 로스터/전술, 경기 시작 체력 = 10-23 경기 종료 체력, 5회)
+- Before: 탈진 72 / 복귀 0, 써몬드 11분·고베어 37분·AD 2~9분 — 실제 경기 박스스코어와 일치(재현 정확)
+- After: 탈진 50 / 복귀 50, DET 주전 25~28분·벤치 20분, BKN 주전 25~30분
+- 체력 100 시작(3회): 차트대로 DET 36/12분, BKN 38/10분, 파울트러블 복귀 4건 정상 발생
+- `tsc --noEmit` rotationLogic 관련 오류 없음
+
+**롤백 방법**: 두 파일 모두 Before 블록으로 되돌림(미러 쌍 — 반드시 같이). 서버는 Fly 재배포 필요.
+
+
 ## 2026-10-17 — 멀티 팀 화면 경기 기록/일정/전적 스포일러 차단
 
 **배경**: 멀티 팀(로스터) 화면의 "경기 기록" 탭에 현재 중계 중(live)인 경기의 최종 결과가 표시됨. 서버는 시뮬 직후 `played=true` + 스코어를 기록하고, 결과 공개는 정시+리플레이 길이 이후(`isFinal`)인데, MultiRosterView는 `played`만 보고 그대로 RosterView/TeamGameLog에 넘겼음. 같은 입력을 쓰는 상단 전적·일정 달력도 동일하게 노출되던 상태.

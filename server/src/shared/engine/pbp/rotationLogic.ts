@@ -438,7 +438,14 @@ export function checkTemporaryReturns(
 
         const player = team.bench.find(p => p.playerId === override.outPlayerId);
         if (!player) {
+            // [Fix 2026-10-17] activeOverrides is shared by both teams — skip the other team's overrides.
+            const onCourtPlayer = team.onCourt.find(p => p.playerId === override.outPlayerId);
+            if (!onCourtPlayer) continue;
             override.active = false;
+            onCourtPlayer.benchReason = null;
+            onCourtPlayer.benchedAtMinute = undefined;
+            onCourtPlayer.benchedAtQuarter = undefined;
+            onCourtPlayer.scheduledReturnMinute = undefined;
             continue;
         }
 
