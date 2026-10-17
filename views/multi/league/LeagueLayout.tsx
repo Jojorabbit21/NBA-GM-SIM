@@ -11,6 +11,7 @@ import { SeasonCtx } from '../season/seasonContext';
 import { useLeagueBootstrap } from '../../../hooks/useLeagueBootstrap';
 import { LeagueBootstrapErrorScreen } from '../../../components/multi/LeagueBootstrapErrorScreen';
 import { LeagueLoadingScreen } from '../../../components/multi/LeagueLoadingScreen';
+import { LeagueChatDock } from '../../../components/multi/LeagueChatDock';
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,8 @@ export function LeagueLayout() {
     const gameData = useMultiGameData(session, state.room?.id ?? null);
     // [2026-10-02] 리그 진행 알림(트레이드 제안 도착/결과, 리그 이벤트) → 전역 토스트. 리그 레이아웃에 한 번만.
     const myTeam = state.leagueTeams.find(t => t.user_id === session?.user?.id) ?? null;
+    const myUserId = session?.user?.id ?? null;
+    const isChatMember = !!myUserId && state.members.some(m => m.user_id === myUserId);
     useLeagueNotifications({ roomId: state.room?.id ?? null, leagueId, leagueTeams: state.leagueTeams, myTeam });
     // [2026-10-16] FA 서명/방출 기록 실시간 반영 — 조기 return(로딩 화면) 위에서 호출해야 훅 순서가 유지된다.
     useLeagueTransactionsRealtime(state.room?.id ?? null);
@@ -79,6 +82,8 @@ export function LeagueLayout() {
         <LeagueCtx.Provider value={state}>
             <SeasonCtx.Provider value={gameData}>
                 <Outlet />
+                {/* [2026-10-17] 리그 채팅 FAB + 위젯 — 리그 참가자만. 한 번만 마운트해 화면 이동에도 구독·열림·초안이 유지된다. */}
+                {isChatMember && state.room && myUserId && <LeagueChatDock roomId={state.room.id} userId={myUserId} />}
             </SeasonCtx.Provider>
         </LeagueCtx.Provider>
     );

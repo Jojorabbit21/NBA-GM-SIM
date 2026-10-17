@@ -36,6 +36,100 @@
 ---
 
 
+## 2026-10-17 — 채팅: 접속자 로고 초록 발광 + FAB 주황색/배지 확대 (+ 알림 탭 하단 문구 삭제)
+
+**배경**: 2계정 로컬 테스트(채팅 수신·접속 인원·안 읽은 수·한글 입력·도배 방지 정상) 후 사용자 추가 요청 — ① 채팅에 접속 중인 사람의 팀 로고 테두리를 초록색으로 빛나게 ② FAB 색을 인디고→주황, 배지 크기·글자 확대. 같은 날 알림 탭 하단의 "최근 알림 50건까지 보여요…" 안내 문구도 삭제.
+
+**변경 파일**:
+- `hooks/useLeagueChat.ts` — `onlineUserIds: ReadonlySet<string>` 추가(Presence `presenceState()`의 key = user_id). 룸 전환 시 초기화
+- `components/multi/LeagueChatDock.tsx` — `Avatar`가 `online` prop을 받아 32px 원형 래퍼(`ring-2 ring-emerald-400`) 안에 24px 로고를 둠 — **글로우(`shadow-[0_0_8px_2px_rgba(52,211,153,0.55)]`)는 사용자 요청으로 제거, 초록 링만 유지**(로고 자체는 비원형이라 래퍼에 링을 건다). 접속 표시는 색만으로 전달하지 않도록 `title="접속 중"` + `sr-only` 문구. 묶음 표시의 아바타 자리 폭 `w-7`→`w-8`. FAB: `bg-indigo-600` → `bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500`(`Button`의 `cta`와 동일), 배지 `size="lg"` + `ring-2 ring-slate-950`(주황 위 빨강 배지 분리용 어두운 테두리)
+- `components/common/CountBadge.tsx` — `size="lg"`(`w-5 h-5 text-[11px]`) 추가. 기존 sm/md는 그대로
+- `components/multi/LeagueNotificationList.tsx` — 목록 하단 안내 문구 `div` 삭제(빈 상태 문구는 유지)
+
+**Before**: 로고는 28px 맨 이미지(접속 여부 표시 없음). FAB `bg-indigo-600 hover:bg-indigo-500`, 배지 `size="md"`(16px, 9px 글자) `-top-1 -right-1`. 알림 목록 하단에 안내 문구 `div`.
+
+**After**: 위 변경. 접속 중인 사용자의 메시지 아바타만 초록 링(글로우 없음), 오프라인은 링 없음(크기는 동일해 정렬 유지). 배지는 20px/11px 글자. 위젯 내부의 인디고(탭 밑줄, 내 말풍선, "새 메시지" 구분선, 보내기 버튼)와 탭 안의 작은 배지(md)는 요청 범위 밖이라 그대로.
+
+**검증**: `tsc --noEmit` 관련 파일 오류 0건(기존 73줄 동일), `vite build` 통과. 시각 확인(링 발광 정도, 주황 FAB과 빨간 배지의 가독성)은 브라우저 육안 확인 필요.
+
+**롤백 방법**: 위 Before 클래스로 되돌리고 `useLeagueChat.ts`의 `onlineUserIds` 관련 4줄(상태·초기화·sync·반환)과 `CountBadge`의 `lg` 항목을 제거하면 됨.
+
+
+## 2026-10-17 — 채팅·알림 통합 위젯: 토스트를 위젯 알림 탭으로 통합 (리그 안)
+
+**배경**: 채팅 FAB/위젯 구현 직후, 우측 하단에서 토스트 스택이 위젯(특히 입력창)을 가리는 문제가 확인됐다. 사용자 결정: 토스트를 위젯에 **통합** — FAB은 채팅·알림 통합 하나(배지는 합계 하나), 위젯 상단 탭으로 채팅/알림 전환, 알림은 목록으로. 리그 알림은 새로고침 후 유지 불필요(원본은 뉴스피드·트레이드 기록).
+
+**변경 파일**:
+- `services/notifications/notificationStore.ts` — `StoreState.readUpTo` 추가, `markAllRead()` / `removeFromHistory(id)` / `setToastsSuppressed(on)` 신설, `pushNotification`의 억제 규칙 변경(아래), 상태 생성부를 `{...state, ...}` 스프레드로 통일
+- `hooks/useNotificationList.ts` (신규) — history를 알림 목록으로 읽는 훅(items/unread/readUpTo/markAllRead/remove/clear)
+- `components/multi/LeagueNotificationList.tsx` (신규) — 알림 탭 본문(새 알림/이전 알림 구분, 종류 아이콘, 상대 시간, "이동 →", × 삭제, 빈 상태, 안내 문구)
+- `components/multi/LeagueChatDock.tsx` — 단일 위젯 → `DockWidget`(탭 껍데기) + `ChatBody`(기존 채팅 본문) + `LeagueNotificationList`. FAB 배지 = 채팅+알림 안 읽음 합계. 열림/탭 상태를 이 컴포넌트가 가짐(열림은 룸별, 탭은 전역 localStorage). 마운트 동안 `setToastsSuppressed(true)`
+- `hooks/useLeagueChat.ts` — `open`/`setOpen`/열림 localStorage 제거, 3번째 인자 `viewing`(= 열림 && 채팅 탭)으로 읽음·구분선 기준 판단
+- `components/common/NotificationCenter.tsx` — `KIND_STYLE`을 export(목록이 같은 아이콘 재사용). **직전에 넣었던 리그 경로 토스트 오프셋(88px)은 제거**(리그 안 토스트가 억제되므로 불필요) — `style={{ bottom: bottomOffset }}`로 복구
+
+**Before**:
+- `pushNotification`: `suppressed = (!persistent && document.hidden) || (!persistent && kind==='league' && 라이브중계경로)` → 억제되면 **토스트(visible)만** 안 띄우고 history에는 항상 기록. 읽음 개념 없음. 개별 삭제는 토스트에서만(`removeNotification`).
+- 채팅 위젯 열림 = 채팅 읽음. FAB 배지 = 채팅 안 읽음만. 리그 안에서도 토스트가 우측 하단에 뜨고 위젯과 겹침.
+
+**After**:
+- `suppressed = (!persistent && document.hidden) || toastsSuppressed` (위젯 마운트 동안 토스트 전부 억제, history에는 계속 기록). **라이브 중계 중 league transient는 history에도 남기지 않고 폐기(`return null`)** — 알림 목록으로 스포일러가 새지 않게. persistent는 유지.
+- `readUpTo`: `markAllRead()`가 `Date.now()`로 설정. 안 읽음 = `history.filter(createdAt > readUpTo)`. 메모리 전용(에러 미러 복원분은 새로고침 후 안 읽음으로 보임).
+- 채팅 읽음 = 위젯 열림 **그리고 채팅 탭**일 때만. 알림 탭 중 도착한 채팅은 안 읽음 → 탭 배지/FAB 합계에 반영.
+- FAB 열림 시 시작 탭: 채팅 안 읽음 0 && 알림 안 읽음 > 0이면 알림 탭, 아니면 마지막 탭.
+
+**검증**: `tsc --noEmit` 채팅·알림 관련 파일 오류 0건(저장소 기존 오류 73줄은 변경 전후 동일), `vite build` 통과(순환 임포트 없음). 저장소 로직은 `tsx`로 직접 실행해 13개 시나리오 통과(push→visible/history, 억제 켜면 기존 토스트 걷힘·history 유지, 억제 중 push는 history만, 읽음 전/후 unread, 읽음 후 새 알림만 unread, `removeFromHistory`, dedupeKey 교체, 라이브 경로 league transient 폐기/persistent 유지, 억제 해제 후 토스트 복귀, 전체 삭제 후에도 readUpTo 유지). **브라우저 실사용(탭 전환·배지·"이동 →"·FAB/토스트 동작, 채팅 E2E)은 미검증.**
+
+**롤백 방법**: `LeagueNotificationList.tsx`·`useNotificationList.ts` 삭제 → `LeagueChatDock.tsx`를 직전 커밋/이 항목 아래 "클라이언트 2단계" 구조(단일 위젯, 헤더에 접속 인원)로 복구하고 `useLeagueChat.ts`의 `viewing` 인자를 `open`/`setOpen` 상태로 되돌림 → `notificationStore.ts`에서 `readUpTo`·`markAllRead`·`removeFromHistory`·`setToastsSuppressed`·`toastsSuppressed`를 제거하고 `suppressed`를 Before 식으로, 라이브 중계 조기 `return null` 제거(아래 "스포일러" 줄) → `NotificationCenter.tsx`에서 `export` 제거 및 필요 시 리그 경로 오프셋 복구. 저장소 상태 객체 스프레드 변경은 동작 동일하므로 되돌리지 않아도 됨.
+
+
+## 2026-10-17 — 리그 채팅 클라이언트 2단계: FAB + 위젯 + 구독 훅
+
+**배경**: DB 1단계(아래 항목) 위에 클라이언트를 얹는다. 우측 하단 FAB → 채팅 위젯, 전체 채팅만(DM·입력 중 표시·참가자 목록·5분 정지는 1차 제외). 계획: `docs/plan/league-chat-plan.md`.
+
+**변경 파일**:
+- `services/multi/chatService.ts` (신규) — 상수(쿨다운 0.5초 / 3초 5건 → 5초 잠금 / 500자 / 페이지 50), `fetchChatMessages`(오래된 순 반환, `recipient_id is null`만), `sendChatMessage`(RPC, 서버 예외 메시지가 곧 코드 → `ChatSendError`+남은 초), `chatErrorMessage`, `shouldFloodLock`
+- `hooks/useLeagueChat.ts` (신규) — 입장 시 최근 50건 조회, 비공개 Broadcast+Presence 구독, 재연결 시 최근 페이지 재조회, 안 읽은 수(룸별 localStorage 마지막 읽은 id), 열림 상태 localStorage, 전송 outbox(sending/failed/retry/discard), 도배 잠금·쿨다운
+- `components/multi/LeagueChatDock.tsx` (신규) — FAB(닫힘=말풍선+배지, 열림=X로 변환) + 위젯(헤더 접속 인원, 날짜/새 메시지 구분선, 묶음 표시, 위로 이전 페이지, 새 메시지 ↓, 연결 끊김 배너, 로딩/빈/오류 상태, 입력창 IME 안전 Enter 전송)
+- `views/multi/league/LeagueLayout.tsx` — 리그 참가자(`state.members`에 내가 있을 때)에게만 `<LeagueChatDock>`을 Outlet 옆에 1회 마운트
+- `components/common/NotificationCenter.tsx` — 리그 경로(`/multi/leagues/:id`)에서는 토스트 `bottom`을 16→88px로 올려 FAB(24+48+16)과 겹치지 않게 함
+- `tailwind.config.js` — zIndex에 `widget: '300'` 추가(header 100 < widget 300 < modal 500)
+
+**Before**: 채팅 UI·훅·서비스 없음. `NotificationCenter`는 모든 화면에서 `bottom: 16px`(`bottomOffset` prop 기본값). zIndex 사다리에 `widget` 없음.
+
+**After**: 위 파일들. 핵심 동작 규칙:
+- 도배 방지 3겹 — 클라이언트 쿨다운 0.5초(전송 버튼만 비활성), 3초 5건이면 5초 입력 잠금(남은 초 안내, 메모리에만), 서버 거절(`rate_limited`+detail 초)도 같은 잠금. 값은 `chatService.ts` 상수 한 곳.
+- 위젯이 닫혀도 채널은 상시 구독 → FAB 배지 증가. 열면 "새 메시지 N개" 구분선(열 때의 읽은 id 기준).
+- 연결 끊김(`CHANNEL_ERROR`/`TIMED_OUT`/`CLOSED`) 동안 입력창 비활성(목업 승인안), SUBSCRIBED 재수신 시 재조회·재 track.
+- 전송 성공 응답과 곧 도착하는 broadcast는 메시지 id로 중복 제거. 실패 메시지는 버블 왼쪽 새로고침/삭제 아이콘.
+
+**검증**: `tsc --noEmit` 채팅 관련 파일 오류 0건(저장소 기존 오류 73줄은 변경 전후 동일), `vite build` 통과(순환 임포트 감지 설정 포함, 에러 없음). **브라우저 실제 구독·수신·presence·IME 입력·FAB/토스트 겹침은 아직 미검증**(로그인 계정이 필요해 이 세션에서 실행 못 함).
+
+**롤백 방법**: 신규 3파일 삭제 → `LeagueLayout.tsx`에서 import 1줄·`isChatMember`/`myUserId` 2줄·`<LeagueChatDock .../>` 1줄 제거 → `NotificationCenter.tsx`의 `LEAGUE_ROUTE_RE`/`LEAGUE_CHAT_FAB_OFFSET`/`offset` 3줄을 `style={{ bottom: bottomOffset }}`로 복구 → `tailwind.config.js`의 `widget: '300'` 줄 삭제. DB는 아래 1단계 항목의 롤백 블록 참고(클라이언트 롤백만으로는 DB에 영향 없음).
+
+
+## 2026-10-17 — 리그 채팅 DB 1단계: 테이블 + 전송 RPC + Realtime 권한
+
+**배경**: 멀티 세션 채팅(우측 하단 FAB → 위젯) 구현의 첫 단계. 계획: `docs/plan/league-chat-plan.md`. 저장은 Postgres 테이블, 실시간 전달은 `postgres_changes`가 아니라 **비공개 Broadcast**(RPC 안의 `realtime.send()`)로 하고, 쓰기는 RPC 단일 경로로 강제한다. 프로젝트 `buummihpewiaeltywdff`에 Supabase MCP `apply_migration` 2건으로 적용(모두 추가형 — 기존 객체 변경 없음).
+
+**변경 파일**:
+- `migrations/league_chat_messages.sql` (신규) — 두 마이그레이션을 합친 최종 상태. 새 DB 재적용은 이 파일 하나로 충분
+- DB 객체(신규): `public.league_chat_messages`, `public.is_chat_member(uuid)`, `public.is_chat_topic_member(text)`, `public.send_chat_message(uuid,text,uuid)`, 정책 `lcm_member_select`(테이블), `league_chat_receive`·`league_chat_presence_track`(`realtime.messages`)
+- 클라이언트/서버 코드 변경 없음(이 단계는 DB만)
+
+**Before**: 채팅 테이블·RPC·`realtime.messages` 정책 없음(기존 `room_messages`는 인박스용이라 무관). 기존 Realtime 채널은 전부 공개 채널.
+
+**After** (핵심만, 전문은 `migrations/league_chat_messages.sql`):
+- `league_chat_messages(id bigint identity, room_id→rooms cascade, user_id, team_id/team_abbr/team_name(기록 시점 스냅샷), author, body 1~500자 check, recipient_id/conv_key(DM 예약, 현재 항상 null), created_at)`. 인덱스 `(room_id, id desc)`, `(room_id, user_id, created_at desc)`(레이트 리밋 COUNT용). RLS on, `authenticated`는 SELECT만(INSERT/UPDATE/DELETE 권한 없음)
+- 열람 정책: `is_chat_member(room_id) or is_global_admin()`. **`accessible_room_ids()`는 recruiting/drafting 방을 전원에게 열어 주므로 채팅엔 쓰지 않고** `room_members` 직접 조회 함수를 새로 둠
+- `send_chat_message(p_room_id, p_body, p_recipient_id default null)`: 로그인 확인 → DM 지정 거부(`dm_not_supported`) → trim 후 1~500자(`invalid_body`) → 멤버 아님(`not_a_member`) → **10초 구간 10건 초과 시 `rate_limited`(detail=남은 초)** → INSERT → `realtime.send(payload,'message','league-chat:'||room_id, true)`(예외는 삼키고 WARNING만, 저장된 메시지는 유지)
+- 팀 표시는 `league_teams`(room_id+user_id)에서 읽음. **`room_members.team_name/team_abbr`는 실데이터에서 null**이라 쓰면 안 됨(1차 적용에서 이 문제가 테스트로 드러나 2차 마이그레이션으로 수정). author는 `profiles.nickname`
+- Realtime 정책: 토픽 `league-chat:{room_id}`의 멤버만 broadcast+presence **수신**, **presence 발행만 INSERT 허용**(broadcast INSERT 정책 없음 → 클라이언트가 메시지를 위조해 뿌릴 수 없음)
+
+**검증**: 실데이터 멤버로 롤백 트랜잭션(DO 블록 끝에서 예외로 롤백) 테스트 — 정상 전송(trim, author, team=UTA/유타 재즈), 빈 문자열·501자 → `invalid_body`, DM 지정 → `dm_not_supported`, 타 방 → `not_a_member`, 11번째 → `rate_limited`(wait=10), 직접 INSERT → `permission denied`, 멤버 SELECT 가능, 토픽 판정(멤버 true / 타 방 false / 쓰레기 문자열 false), 전송 시 `realtime.messages`에 private 'message' 행 1건 생성 확인. 어드바이저: 신규 객체에 대한 anon 노출 경고 없음(authenticated 실행 가능 경고 3건은 RPC·정책 함수 특성상 의도됨). **브라우저에서 실제 구독·수신(E2E)은 아직 미검증** — 클라이언트 훅 구현 후 확인 필요. 실리그 데이터에는 테스트 행이 남지 않음(전부 롤백).
+
+**롤백 방법**: `migrations/league_chat_messages.sql` 맨 아래 롤백 블록을 역순으로 실행(정책 2개 → RPC → 테이블 → 헬퍼 함수 2개). 기존 기능과 의존 관계 없음.
+
+
 ## 2026-10-17 — 비밀번호 찾기/재설정 (OTP 방식) 추가
 
 **배경**: 로그인 화면에 비밀번호 재설정 수단이 없어 비밀번호 분실 시 Supabase 대시보드에서 수동 처리해야 했음.

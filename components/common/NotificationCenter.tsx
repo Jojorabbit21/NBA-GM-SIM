@@ -16,7 +16,7 @@ import {
     TRANSIENT_TIMEOUT_MS, type AppNotification, type NotificationKind,
 } from '../../services/notifications/notificationStore';
 
-const KIND_STYLE: Record<NotificationKind, { box: string; icon: React.ReactNode; defaultTitle?: string }> = {
+export const KIND_STYLE: Record<NotificationKind, { box: string; icon: React.ReactNode; defaultTitle?: string }> = {
     error:   { box: 'bg-red-950/95 border-red-800/70 text-red-100',           icon: <ShieldAlert size={16} className="text-red-400 shrink-0" />,     defaultTitle: '오류' },
     warning: { box: 'bg-amber-950/95 border-amber-800/70 text-amber-100',     icon: <AlertTriangle size={16} className="text-amber-400 shrink-0" /> },
     success: { box: 'bg-emerald-950/95 border-emerald-800/70 text-emerald-100', icon: <CheckCircle2 size={16} className="text-emerald-400 shrink-0" /> },
@@ -84,6 +84,8 @@ const Toast: React.FC<{ n: AppNotification; onRemove: () => void }> = ({ n, onRe
     );
 };
 
+// [2026-10-17] 리그 안에서는 채팅·알림 통합 위젯(LeagueChatDock)이 알림을 대신 보여주고 이 토스트 스택은 억제된다
+// (notificationStore.setToastsSuppressed). 리그 밖(로비·싱글플레이 등)에서만 토스트가 뜬다.
 export const NotificationCenter: React.FC<{ bottomOffset?: number }> = ({ bottomOffset = 16 }) => {
     const { visible } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 

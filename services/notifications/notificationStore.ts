@@ -14,6 +14,10 @@
 // 표시 상한과 별개로 최근 MAX_HISTORY(50)건을 history에 보관(추후 "전체 보기" 확장용).
 // 영속화(5단계): kind 'error'이고 persistent인 알림만 localStorage(STORAGE_KEY)에 미러. 최근 MAX_PERSISTED건·7일.
 // 리그 알림은 원본이 DB(뉴스피드/메시지함)라 저장하지 않는다. 다른 탭과 동기화하지 않는다(마지막에 쓴 탭이 이김).
+// [2026-10-17] 리그 채팅 위젯(LeagueChatDock)에 알림 탭이 통합되면서 history가 "알림 목록"의 데이터가 된다.
+//   - readUpTo: 알림 탭을 본 시점. history 중 createdAt > readUpTo 가 "안 읽음"(FAB 배지·탭 배지). 메모리 전용.
+//   - setToastsSuppressed(true): 위젯이 마운트된 동안 토스트 팝업을 띄우지 않는다(알림은 history에만 쌓여 위젯 알림 탭에 보인다).
+//   - 라이브 중계 화면의 league transient는 스포일러 방지로 폐기 — 토스트뿐 아니라 history에도 남기지 않는다(목록으로 새어 나가면 안 됨).
 // 모든 읽기/쓰기는 try/catch(사생활 모드·용량 초과·차단) — 실패하면 메모리 전용으로 동작한다.
 // React Query 캐시 키(nba-gm-sim-query-cache)와 분리된 키라 용량 초과 사고가 서로 번지지 않는다.
 
@@ -62,6 +66,8 @@ const LIVE_GAME_PATH_FRAGMENT = '/season/game/';
 interface StoreState {
     visible: AppNotification[];   // 오래된 것 → 새것 순(아래에서 위로 쌓이는 표시와 일치)
     history: AppNotification[];   // 새것 → 오래된 것 순
+    /** 알림 탭을 마지막으로 본 시각(ms). history 중 createdAt이 이보다 크면 안 읽음. */
+    readUpTo: number;
 }
 
 // vite/client 타입 선언이 tsconfig에 없어 import.meta.env를 직접 참조하면 tsc가 실패한다 — 안전 접근.
@@ -72,7 +78,8 @@ const STORAGE_VERSION = 1;
 const MAX_PERSISTED = 50;
 const PERSIST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-let state: StoreState = { visible: [], history: [] };
+let state: StoreState = { visible: [], history: [], readUpTo: 0 };
+let toastsSuppressed = false;
 const listeners = new Set<() => void>();
 let seq = 0;
 
@@ -113,7 +120,7 @@ function loadMirror(): void {
             .map(n => ({ ...n, kind: 'error' as const, persistent: true, message: String(n.message), link: n.link && n.link.to ? n.link : undefined }));
         const history = items.map(({ visible: _v, ...n }) => n as AppNotification).slice(0, MAX_HISTORY);
         const visible = applyVisibleLimit(items.filter(n => n.visible).map(({ visible: _v, ...n }) => n as AppNotification).reverse());
-        state = { visible, history };
+        state = { ...state, visible, history };
     } catch {
         try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     }
@@ -223,19 +230,20 @@ export function pushNotification(input: NotificationInput): AppNotification | nu
             leagueEvent: input.leagueEvent,
         };
 
-        // history는 표시 여부와 무관하게 항상 기록(요약/전체 보기용)
+        // [계획 §5-3] 라이브 중계 중 league transient는 폐기 — history(알림 목록)에도 남기지 않는다(스포일러)
+        if (!n.persistent && n.kind === 'league' && isLiveGameRoute()) return null;
+
+        // history는 표시 여부와 무관하게 항상 기록(알림 탭 목록·전체 보기용)
         const history = [n, ...state.history.filter(h => !n.dedupeKey || h.dedupeKey !== n.dedupeKey)].slice(0, MAX_HISTORY);
 
         let visible = state.visible;
         const hiddenTab = typeof document !== 'undefined' && document.hidden;
-        const suppressed =
-            (!n.persistent && hiddenTab) ||
-            (!n.persistent && n.kind === 'league' && isLiveGameRoute());
+        const suppressed = (!n.persistent && hiddenTab) || toastsSuppressed;
         if (!suppressed) {
             if (n.dedupeKey) visible = visible.filter(v => v.dedupeKey !== n.dedupeKey);
             visible = applyVisibleLimit([...visible, n]);
         }
-        state = { visible, history };
+        state = { ...state, visible, history };
         emit();
         return n;
     } catch (e) {
@@ -252,7 +260,7 @@ export function removeNotification(id: string): void {
 
 export function clearNotifications(): void {
     if (state.visible.length === 0 && state.history.length === 0) return;
-    state = { visible: [], history: [] };
+    state = { ...state, visible: [], history: [] };
     emit();
 }
 
@@ -262,14 +270,40 @@ export function clearLeagueNotifications(roomId?: string): void {
     const visible = state.visible.filter(keep);
     const history = state.history.filter(keep);
     if (visible.length === state.visible.length && history.length === state.history.length) return;
-    state = { visible, history };
+    state = { ...state, visible, history };
     emit();
 }
 
 /** 테스트/디버그용 — 저장소를 초기 상태로. */
 export function __resetNotificationStore(): void {
-    state = { visible: [], history: [] };
+    state = { visible: [], history: [], readUpTo: 0 };
     emit();
+}
+
+/** [2026-10-17] 알림 탭을 본 것으로 처리 — 이 시각 이전의 history는 모두 읽음. */
+export function markAllRead(): void {
+    state = { ...state, readUpTo: Date.now() };
+    emit();
+}
+
+/** [2026-10-17] 알림 목록에서 한 건 삭제(토스트 스택과 history 모두에서). */
+export function removeFromHistory(id: string): void {
+    if (!state.history.some(n => n.id === id) && !state.visible.some(n => n.id === id)) return;
+    state = { ...state, visible: state.visible.filter(n => n.id !== id), history: state.history.filter(n => n.id !== id) };
+    emit();
+}
+
+/**
+ * [2026-10-17] 토스트 팝업 억제 — 리그 채팅/알림 위젯이 떠 있는 동안 true. 알림은 history에만 쌓이고 위젯 알림 탭이 보여준다.
+ * 켜는 순간 이미 떠 있던 토스트는 걷는다(history에는 남아 있음). 위젯이 언마운트되면 false로 되돌린다.
+ */
+export function setToastsSuppressed(on: boolean): void {
+    if (toastsSuppressed === on) return;
+    toastsSuppressed = on;
+    if (on && state.visible.length > 0) {
+        state = { ...state, visible: [] };
+        emit();
+    }
 }
 
 // 모듈 로드 시 1회 복원 — 모든 함수 선언 뒤(호이스팅되지만 상수 초기화 순서 때문에 끝에 둔다).

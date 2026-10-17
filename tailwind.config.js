@@ -115,7 +115,8 @@ export default {
       // 팝오버·툴팁은 모달 안에서도 떠야 하므로 모달 위, 토스트는 그 위, 전체 화면 점유는 전부 덮는다.
       zIndex: {
         header:   '100',   // 상단 sticky 헤더
-        modal:    '500',   // 모달(공용 Modal + 개별 모달 전부, document.body 포탈)
+        widget:   '300',   // 리그 채팅 FAB·위젯(헤더 위, 모달 아래 — 모달이 열리면 가려지고 토스트는 위젯 위에 뜬다)
+        modal:    '500',  // 모달(공용 Modal + 개별 모달 전부, document.body 포탈)
         popover:  '600',   // Dropdown·필터 패널·사이드바 메뉴·캘린더 팝오버
         tooltip:  '700',   // 선수 호버 카드·부상 툴팁·확률 툴팁
         toast:    '800',   // NotificationCenter·UpdateToast

@@ -24,3 +24,4 @@
 | [league-action-log-plan.md](league-action-log-plan.md) | 리그 세션 감사 로그 — 어드민 전용 `league_action_logs` 표 + DB 트리거 자동 기록(영입/방출/트레이드/블록/드래프트/설정/어드민) + 세션 설정 "로그" 탭 | 구현 완료 (2026-10-05) |
 | [league-bootstrap-gate-plan.md](league-bootstrap-gate-plan.md) | 리그 진입 부트스트랩 게이트 — 공통 쿼리 9종 프리패치 후 홈 표시, 로딩 중엔 기존 스피너 유지(진행률 화면은 시도 후 폐기), 조용한 재시도 3초×3회, 확정 실패만 노출, 게이트 쿼리는 토스트 제외 | 구현 완료 (2026-10-06) |
 | [tournament-personal-pack-draft-plan.md](tournament-personal-pack-draft-plan.md) | 토너먼트 전용 개인 팩 드래프트 — 참가 즉시 비동기 라운드제 드래프트, 룸 스코프 player instance로 meta_players 변경 없이 로스터 중복 허용 | 코드 완료 — Phase 1~8 + 3.5 전부 구현(시작 트리거·아카이브 후 정리·참가/드래프트 마감 자동 강퇴까지). DB 롤백 테스트 통과, 남은 건 fly.io 배포 후 브라우저 E2E(실제 경기 시뮬이 인스턴스 로스터로 도는지, 마감 강퇴 스윕 실동작) (2026-09-18) |
+| [league-chat-plan.md](league-chat-plan.md) | 리그 세션 채팅 — `league_chat_messages` 테이블 + RPC `send_chat_message`(레이트 리밋) + Supabase Realtime Broadcast 비공개 채널(`realtime.send`), Fly 서버 미관여 | 계획 (2026-10-17) |
