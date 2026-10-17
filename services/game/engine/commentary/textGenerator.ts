@@ -426,7 +426,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(dropRollScore, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 드랍 수비가 완전히 처지며 활짝 열린 3점! 적중!${scoreTag}`,
                     `${actor.playerName}, 빅맨이 골밑을 지키느라 비워둔 공간에서 팝아웃 3점 성공!${scoreTag}`,
@@ -504,7 +504,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(hedgeRollScore, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 헷지 수비 사이 빅맨이 완전히 빠진 틈에 3점 적중!${scoreTag}`,
                     `${actor.playerName}, 빅맨이 회수하기 전에 팝아웃 3점을 꽂습니다!${scoreTag}`,
@@ -582,7 +582,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(blitzRollScore, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 블리츠 수비 사이로 와이드 오픈 3점! 적중!${scoreTag}`,
                     `${actor.playerName}, 더블팀이 풀리며 열린 3점 라인에서 슛! 꽂힙니다!${scoreTag}`,
@@ -983,7 +983,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(dropRollMiss, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 드랍 수비가 열어준 공간에서 쐈지만 3점이 빗나갑니다.`,
                     `${actor.playerName}, 완전히 열린 팝아웃 찬스였지만 3점이 아쉽게 벗어납니다.`,
@@ -1061,7 +1061,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(hedgeRollMiss, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 헷지로 생긴 틈에서 쐈지만 3점이 빗나갑니다.`,
                     `${actor.playerName}, 팝아웃 3점 찬스였지만 아쉽게 벗어납니다.`,
@@ -1139,7 +1139,7 @@ export function generateCommentary(
                 };
                 return pickCoverageRollText(blitzRollMiss, zone, shotType);
             }
-            if (playType === 'PnR_Pop') {
+            if (playType === 'PnR_Pop' && zone === '3PT') { // [2026-10-18] pop can be Mid now — 3PT-only text
                 return pick([
                     `${actor.playerName}, 블리츠 수비가 만들어준 오픈 찬스였지만 3점이 빗나갑니다.`,
                     `${actor.playerName}, 더블팀이 풀리며 열렸지만 3점이 아쉽게 벗어납니다.`,

@@ -367,7 +367,9 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 p => (popEligible[p.position] ?? 0) > 0
             );
             const handler = pickPasser(p => p.archetypes.handler, popper.playerId);
-            return { playType, actor: popper, secondaryActor: handler, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.01 };
+            // [2026-10-18] pop zone by popper's own tendency (3PT vs Mid) + team sliders (client mirror)
+            const popZone = selectZone(['3PT', 'Mid'], popper, sliders) as '3PT' | 'Mid';
+            return { playType, actor: popper, secondaryActor: handler, preferredZone: popZone, shotType: popZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 };
         }
         case 'PostUp': {
             // [2026-09-15] 포지션 가중치 제거 — postScorer 순수 실력 경쟁 (client 미러 참고)
@@ -414,7 +416,9 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'CatchShoot': {
             // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)
-            const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
+            // [2026-10-18] binary x0.2 -> proportional (min x0.05), same as PnR_Pop (client mirror)
+            const actor = pickWeightedActor(p => p.archetypes.spacer * Math.max(0.05, Math.min(1.0,
+                p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD)));
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [2026-07] 캐치앤슛 3점 전용 고정 — 원래 로직(펌프페이크→드라이브 전환)은 주석 처리로 보존

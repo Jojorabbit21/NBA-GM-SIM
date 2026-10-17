@@ -467,6 +467,11 @@ selectZone 흐름 (Soft Threshold — 제거 아님):
 
   [2026-07] CatchShoot는 이 표에서 제외됨 — 존 후보를 3PT 하나로 고정해서 리다이렉트 자체가
   발생하지 않음(`playTypes.ts`의 `case 'CatchShoot':`, 원래 로직은 주석 처리로 보존).
+  CatchShoot 슈터 선정 가중치: spacer × max(0.05, min(1, zonePref.three / 0.15)) — 2026-10-18 이진(×0.2)에서 비례식으로.
+
+  [2026-10-18] PnR_Pop은 3PT 고정 → selectZone([3PT, Mid], popper) — 팝퍼 본인 성향 + 팀 shot_3pt/shot_mid
+  슬라이더로 3점 또는 엘보 점퍼(Mid/Jumper). 플레이 빈도는 그대로, 마무리 슛만 선수 성향을 따름.
+  커멘터리의 커버리지별 PnR_Pop 전용 문구(드랍/헷지/블리츠 × 성공/실패)는 zone==='3PT'일 때만 사용.
 
 DriveKick Rim 특이사항:
   기존: driver 침투 → actor(슈터)에게 킥아웃 → actor가 슛

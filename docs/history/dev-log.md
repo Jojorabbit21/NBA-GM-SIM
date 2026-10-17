@@ -36,6 +36,74 @@
 ---
 
 
+## 2026-10-18 — PnR_Pop 팝아웃 구역을 팝퍼 성향으로(S3) + CatchShoot 슈터 페널티 비례식(S4)
+
+**배경**: 빅맨 득점 저하 조사 후속. 3점 텐던시가 낮은 빅맨의 3점 대부분이 PnR_Pop에서 나왔는데(실리그 실측:
+드부셰어 3PA 50개 중 47개), PnR_Pop은 슛 구역이 3PT로 고정이라 텐던시는 "누가 쏠지"에만 영향을 주고 일단
+뽑히면 무조건 3점이었음. CatchShoot 슈터 선정은 zonePref.three < 0.15면 ×0.2, 이상이면 ×1.0인 계단(0.15에서
+5배 점프)이라 텐던시 0인 선수도 ×0.2로 남아 있었음(언셀드 CS 3점 8개 0성공). 전술 책임 원칙(플레이 빈도는
+유저 몫, 엔진이 몰래 보정 금지)에 맞춰 **빈도는 그대로 두고 실행 층(마무리 슛/슈터 선정)만** 수정. 같이
+검토한 S2(팝퍼 선정 기준 0.15→0.25)는 빅맨 쪽 추가 효과 없이 팝을 SF로 넘겨(SF 팝 비중 5.8→6.4%) PF 슬롯
+편법 방향이라 사용자 결정으로 제외.
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/playTypes.ts` (client) — `case 'PnR_Pop'` return, `case 'CatchShoot'` actor 선정
+- `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — 동일
+- `services/game/engine/commentary/textGenerator.ts` (client) — 커버리지별 PnR_Pop 전용 문구 6곳 가드
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — 동일 6곳
+- `docs/engine/pbp-engine.md`, `docs/engine/shot-hit-rate.md` — 설명 갱신
+
+**Before**:
+```ts
+// playTypes.ts — PnR_Pop (server는 한 줄 형태)
+return { playType, actor: popper, secondaryActor: handler,
+         preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.01 };
+
+// playTypes.ts — CatchShoot
+const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
+
+// textGenerator.ts — drop/hedge/blitz × score/miss, 6곳
+if (playType === 'PnR_Pop') {
+```
+
+**After**:
+```ts
+// playTypes.ts — PnR_Pop
+const popZone = selectZone(['3PT', 'Mid'], popper, sliders) as '3PT' | 'Mid';
+return { playType, actor: popper, secondaryActor: handler,
+         preferredZone: popZone, shotType: popZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 };
+
+// playTypes.ts — CatchShoot
+const actor = pickWeightedActor(p => p.archetypes.spacer * Math.max(0.05, Math.min(1.0,
+    p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD)));
+
+// textGenerator.ts — 6곳 (Mid 팝은 일반 미드 점퍼 문구로 fall-through)
+if (playType === 'PnR_Pop' && zone === '3PT') {
+```
+
+**검증** (스크래치패드 하네스, 서버 simRunner 경로, PBL 30팀·현재 전술, 엔진별 4920경기·동일 시드, 기준 v176.
+체력 누적/부상/B2B 미반영):
+- 팀 PPG 110.6 → 110.6 (득점 중립 — 3점 25%≈0.75점/슛 vs 미드 40%≈0.8점/슛으로 가치가 비슷)
+- 빅맨–가드 36분당 득점 격차 2.36 → 2.28
+- 야투 중 3점 비중: C 20.2→17.0%, PF 32.5→27.7% / C 3P% 33.7→34.8 / C 미드 비중 8.3→11.1%
+- PnR_Pop 중 3점 비율: C 100→64%, PF 100→54%. SF 팝 비중 5.7→5.8%(S2 넣었을 땐 6.4%)
+- C CatchShoot 비중 6.4→5.8%, PPS 1.03→1.05
+- 3점 텐던시 구간별 C/PF(15분+) "3점 비중 − 텐던시" 초과분: <15% +3.6→+0.7, 15~25% +8.0→+1.9,
+  25~40% +6.5→+1.7, 40%+ +11.0→+8.2(%p)
+- 예: 드부셰어 3PA/g 4.2→1.9(팝 3PA 3.8→0.3, 팝 미드 0→3.3), 스타더마이어 3.2→1.5, 켐프 2.3→1.7
+- 부작용: 3점은 잘 쏘는데 텐던시가 20%대로 잡힌 빅맨(노비츠키·엠비드·AD)은 팝 일부가 미드로 바뀌어
+  PPG −0.3~0.6, TS −0.6~1.6%p — 엔진은 텐던시를 따른 것이고 텐던시 값의 적정성은 데이터 쪽 이슈
+- 저장소 `server/src/shared` 수정본(커멘터리 가드 포함)으로 재실행 → S3+S4 테스트와 슛 이벤트 스트림 완전 동일
+- 커멘터리 샘플 체크(200경기): 미드 팝 성공 292건 중 '3점' 문구 0건(슛 이벤트–로그 매칭은 선수·점수·쿼터
+  기준 근사라 엄밀 검증은 아님)
+- tsc: client 51 / server 45 (변경 파일 관련 0건, 직전과 동일). Fly.io 배포 전
+
+**롤백 방법**: 위 Before 블록으로 client/server `playTypes.ts` 2곳씩, `textGenerator.ts` 6곳씩(가드 제거) 되돌림.
+4개 파일 모두 함께. S3만 되돌리려면 PnR_Pop return만, S4만 되돌리려면 CatchShoot actor 줄만.
+
+---
+
+
 ## 2026-10-18 — Rim/Paint 슈터 체격 보너스(FINISHER_SIZE): 덩크는 근력+키, 그 외 골밑 슛은 키
 
 **배경**: 빅맨 득점 저하 조사 후속. 덩크 자격 수정(아래 항목, v175) 후에도 C 골밑 레이업 45.1%·덩크 67.9%로
@@ -301,6 +369,48 @@ const rowTint = i < autoClinchCount
 **검증**: 8개 값 모두 치환 1회씩 확인(assert). 브라우저 육안 확인 안 함.
 
 **롤백 방법**: 위 Before 값으로 되돌림.
+
+
+## 2026-10-18 — game_short_codes 고아 행 정리 + rooms FK(CASCADE) 추가
+
+**배경**: RLS 작업 중 발견 — `game_short_codes`는 `rooms` FK가 없어 방/리그가 삭제돼도 행이 남았다(`deleteLeague`는 CASCADE에 의존). 15,158행 중 12,602행(83%, 이미 없는 17개 방분)이 고아였다. room_id 컬럼이 있는 테이블 중 FK가 없는 것은 `game_short_codes`·`game_sim_claims`·백업 테이블 3개뿐이고 나머지 26개는 모두 `ON DELETE CASCADE`.
+
+**변경 파일**:
+- DB(마이그레이션 `game_short_codes_cleanup_orphans_add_room_fk`, 한 트랜잭션, 프로젝트 `buummihpewiaeltywdff`): 백업 테이블 `backup_game_short_codes_orphans_20261018` 생성 → 고아 행 삭제 → `game_short_codes_room_id_fkey`(rooms, ON DELETE CASCADE) 추가
+- `migrations/game_short_codes_cleanup_orphans_add_room_fk.sql` (신규) — 전문 + 롤백
+- 클라이언트·서버 코드 변경 없음
+
+**Before**: rooms FK 없음, 고아 12,602행(17개 방), 살아 있는 행 2,556.
+
+**After**: 고아 0행, 살아 있는 두 방(`895d10da…`=1,326 / `aeb5794a…`=1,230)의 2,556행 그대로. 방이 삭제되면 이 테이블의 해당 행도 자동 삭제. 삭제된 12,602행은 백업 테이블에 보관(RLS on, anon/authenticated 권한 없음).
+
+**검증**: 적용 후 total 2,556 / orphan 0 / 백업 12,602행(17개 방) / 백업+살아 있는 행 = 15,158(원래 총합)과 일치, FK `validated=true`·`ON DELETE CASCADE`, 직전 RLS 정책 2개(`gsc_admin_delete`·`gsc_member_select`) 유지 확인. 롤백 트랜잭션으로 서버(`service_role`) 경로 확인 — 없는 방에 insert는 FK 위반으로 차단, 존재하는 방에 insert·delete는 정상(서버 `finalize.ts` insert·`simRunner.ts` prune delete와 같은 경로). **방을 실제로 삭제해 CASCADE가 동작하는지는 실데이터라 시험하지 않음**(카탈로그에서 `ON DELETE CASCADE` 확인으로 갈음).
+
+**롤백 방법**: FK drop → 백업 테이블에서 `insert … select *`로 복원(`migrations/game_short_codes_cleanup_orphans_add_room_fk.sql` 하단). 고아 데이터는 경기 URL 라우팅에 쓰이지 않는 죽은 행이라 복원할 실익은 없음. 안정화되면 백업 테이블 drop.
+
+**남은 것**: `game_sim_claims`도 room_id가 있고 FK가 없으나 현재 0행이라 이번엔 건드리지 않음(서버 시뮬 락 용도라 별도 점검 후 결정). 백업 테이블 `backup_game_pbp_nyk_ware_dup_20261017`은 의도적 백업이라 대상 아님.
+
+
+## 2026-10-18 — game_short_codes RLS 활성화 + 권한 최소화
+
+**배경**: 채팅 작업 중 Supabase 보안 어드바이저가 `public.game_short_codes`를 `rls_disabled_in_public`(ERROR)로 표시. RLS가 꺼져 있고 `anon`/`authenticated`에 TRUNCATE 포함 전체 권한이 열려 있어, anon 키만 있으면 전 행을 읽고 수정·삭제할 수 있었다(경기 URL용 짧은 코드 매핑이라 민감 정보는 아니지만 위조·삭제로 URL 라우팅을 깨뜨릴 수 있음).
+
+**변경 파일**:
+- DB(마이그레이션 `game_short_codes_enable_rls`, 프로젝트 `buummihpewiaeltywdff`): RLS 활성화, anon/authenticated 권한 전부 회수 후 authenticated에 SELECT·DELETE만 부여, 정책 `gsc_member_select`(방 멤버 + 전역 어드민 조회)·`gsc_admin_delete`(리그 어드민 + 전역 어드민 삭제)
+- `migrations/game_short_codes_enable_rls.sql` (신규) — 전문 + 롤백
+- 클라이언트·서버 코드 변경 없음
+
+**Before**: RLS off, anon/authenticated에 SELECT/INSERT/UPDATE/DELETE/TRUNCATE/TRIGGER/REFERENCES 전부, 정책 없음.
+
+**After**: RLS on. authenticated = SELECT·DELETE만(정책 범위 내), anon = 접근 불가, service_role = RLS 우회(서버 finalize insert·simRunner prune delete 영향 없음). INSERT/UPDATE 정책 없음(서버 전용).
+
+**영향 지점(적용 전 코드 확인)**: ① `hooks/useGameShortCodes.ts` select(리그 진입 공통 쿼리, 부트스트랩 게이트에 포함) ② `MultiGamePbpView.tsx` 짧은 코드 → game_id 역조회 ③ `leagueService.resetTournament` delete. 정책 없이 켜면 세 곳 모두 오류 없이 빈 결과/0행이 되어 짧은 코드 URL이 깨지고 토너먼트 재드래프트 때 UNIQUE 충돌로 숏코드 insert가 조용히 실패한다 — 그래서 정책과 함께 적용. DB 안의 함수·트리거·뷰·다른 정책은 이 테이블을 참조하지 않음(확인).
+
+**검증**: 적용 전 롤백 트랜잭션으로 정책 시뮬레이션 — 멤버 조회 1,230/1,230건, 멤버 단건 조회(경기 페이지 패턴) 1건, 멤버 삭제 0건, 방 밖 사용자 조회 0건, 리그 어드민 삭제 1,230/1,230건, anon 조회 0건, service_role insert 성공. 적용 후 `pg_class`/`pg_policies`/grant 조회로 rls=true, 정책 2개, authenticated=DELETE,SELECT 확인. **브라우저에서 짧은 코드 URL 진입·토너먼트 초기화는 직접 확인 필요**(이 세션에서 실행 불가). 로그인 없이 경기 페이지를 보는 경로가 있다면 anon 조회 정책이 추가로 필요(없다고 판단했지만 확인하지 못함).
+
+**롤백 방법**: `migrations/game_short_codes_enable_rls.sql` 맨 아래 롤백 블록(정책 2개 삭제 → RLS 비활성화 → 권한 복구, 권장하지 않음).
+
+**함께 발견한 별건**: `game_short_codes`는 `rooms`로의 FK가 없어 방이 삭제돼도 행이 남았다(15,158행 중 12,602행이 고아) → 같은 날 정리 + FK 추가함(바로 위 항목). room_id 컬럼이 있는데 FK가 없는 테이블은 `game_short_codes`·`game_sim_claims`·백업 테이블(`backup_game_pbp_nyk_ware_dup_20261017`) 3개뿐이고 나머지 26개는 모두 `ON DELETE CASCADE` FK가 있다.
 
 
 ## 2026-10-18 — 채팅 보안 점검 반영: 본문 정리(줄바꿈 최대 1번·보이지 않는 문자 제거) + 동시 전송 직렬화

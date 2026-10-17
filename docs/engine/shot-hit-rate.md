@@ -100,7 +100,7 @@ hitRate += shotIqNoise + consistNoise
 | Iso | +0.00 | 순수 개인기 |
 | PnR_Handler | +0.01 | 스크린 활용 |
 | PnR_Roll | +0.03 | 롤러 림 어택 |
-| PnR_Pop | +0.01 | 팝아웃 3점 |
+| PnR_Pop | +0.01 | 팝아웃 슛 — 2026-10-18부터 3PT 고정 아님: 팝퍼 본인 성향으로 3PT/Mid(엘보 점퍼) 선택 |
 | PostUp | +0.01 | 포스트업 포지션 |
 | CatchShoot | +0.02 | 스팟업 |
 | Cut | +0.03 | 컷팅 타이밍 |

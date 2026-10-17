@@ -517,13 +517,17 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 p => (popEligible[p.position] ?? 0) > 0
             );
             const handler = pickPasser(p => p.archetypes.handler, popper.playerId);
+            // [2026-10-18] 팝아웃 구역을 3점 고정 → 팝퍼 본인 구역 성향(3PT vs Mid) + 팀 shot_3pt/shot_mid
+            // 슬라이더로 결정. 3점 텐던시가 낮은 빅맨이 팝을 받으면 무조건 3점을 쏘던 문제 — 실제로는
+            // 엘보(미드레인지)로 팝. 플레이 빈도(전술)는 그대로, 마무리 슛만 선수 성향을 따름(docs/history/dev-log.md).
+            const popZone = selectZone(['3PT', 'Mid'], popper, sliders) as '3PT' | 'Mid';
             return {
                 playType,
                 actor: popper,
                 secondaryActor: handler,
-                preferredZone: '3PT', // 고정: 팝아웃은 항상 3점
-                shotType: 'CatchShoot',
-                bonusHitRate: 0.01 // PnR_Pop: 팝아웃 오픈 3점 소폭
+                preferredZone: popZone,
+                shotType: popZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                bonusHitRate: 0.01 // PnR_Pop: 팝아웃 오픈 슛 소폭
             };
         }
         case 'PostUp': {
@@ -597,7 +601,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'CatchShoot': {
             // Best Spacer
             // [2026-07-31] spacer도 PnR_Pop의 popper와 동일한 문제 — zonePref.three 페널티 적용
-            const actor = pickWeightedActor(p => p.archetypes.spacer * (p.zonePref.three < SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD ? 0.2 : 1.0));
+            // [2026-10-18] 이진(임계값 미만 ×0.2) → PnR_Pop과 같은 비례식(최저 ×0.05) — 0.15에서 5배 뛰던 계단 제거,
+            // 3점 텐던시 0인 선수의 캐치앤슛 3점 정리.
+            const actor = pickWeightedActor(p => p.archetypes.spacer * Math.max(0.05, Math.min(1.0,
+                p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD)));
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [2026-07] 캐치앤슛은 3점 전용으로 고정 — 미드/페인트/림까지 포함하면 실제 현대
