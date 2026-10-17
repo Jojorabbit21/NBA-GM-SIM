@@ -52,7 +52,7 @@ function dayLabel(iso: string): string {
 type ListRow =
     | { kind: 'day'; key: string; label: string }
     | { kind: 'unread'; key: string; count: number }
-    | { kind: 'msg'; key: string; msg: ChatMessage; mine: boolean; showHeader: boolean };
+    | { kind: 'msg'; key: string; msg: ChatMessage; mine: boolean; showHeader: boolean; showTime: boolean };
 
 function buildRows(messages: ChatMessage[], userId: string, anchorId: number | null): ListRow[] {
     const rows: ListRow[] = [];
@@ -75,9 +75,20 @@ function buildRows(messages: ChatMessage[], userId: string, anchorId: number | n
             || !prev
             || prev.user_id !== m.user_id
             || new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_GAP_MS;
-        rows.push({ kind: 'msg', key: `m-${m.id}`, msg: m, mine: m.user_id === userId, showHeader });
+        rows.push({ kind: 'msg', key: `m-${m.id}`, msg: m, mine: m.user_id === userId, showHeader, showTime: true });
         prev = m;
         prevWasDivider = false;
+    }
+
+    // 시간은 버블 아래에 표시한다. 같은 사람이 같은 시각(표시 단위 = 분)에 연달아 보낸 메시지는 맨 아래(최신) 것에만 보여준다.
+    // 다음 행이 날짜/새 메시지 구분선이거나 다른 사람·다른 시각의 메시지면 이 메시지가 그 묶음의 마지막이다.
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.kind !== 'msg') continue;
+        const next = rows[i + 1];
+        row.showTime = !(next && next.kind === 'msg'
+            && next.msg.user_id === row.msg.user_id
+            && formatTime(next.msg.created_at) === formatTime(row.msg.created_at));
     }
     return rows;
 }
@@ -98,19 +109,15 @@ const Avatar: React.FC<{ msg: ChatMessage; online: boolean }> = ({ msg, online }
 );
 
 const MessageRow: React.FC<{ row: Extract<ListRow, { kind: 'msg' }>; online: boolean }> = ({ row, online }) => {
-    const { msg, mine, showHeader } = row;
+    const { msg, mine, showHeader, showTime } = row;
     if (mine) {
         return (
             <div className={`flex flex-col items-end gap-1 ${showHeader ? 'mt-2' : ''}`}>
-                {showHeader && (
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>
-                        <span className="text-xs font-bold text-slate-100">나</span>
-                    </div>
-                )}
-                <div className="max-w-[260px] bg-indigo-600 text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {showHeader && <span className="text-xs font-bold text-slate-100">나</span>}
+                <div className="max-w-[260px] bg-orange-600 text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere]">
                     {msg.body}
                 </div>
+                {showTime && <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>}
             </div>
         );
     }
@@ -122,12 +129,12 @@ const MessageRow: React.FC<{ row: Extract<ListRow, { kind: 'msg' }>; online: boo
                     <div className="flex items-baseline flex-wrap gap-x-1.5">
                         <span className="text-xs font-bold text-slate-100 ko-normal">{msg.author}</span>
                         {msg.team_name && <span className="text-xs text-slate-400 ko-normal">{msg.team_name}</span>}
-                        <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>
                     </div>
                 )}
-                <div className="max-w-[260px] w-fit bg-slate-800 text-slate-100 rounded-xl rounded-tl-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere]">
+                <div className="max-w-[260px] w-fit bg-slate-700 text-white rounded-xl rounded-tl-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere]">
                     {msg.body}
                 </div>
+                {showTime && <span className="text-xs text-slate-400">{formatTime(msg.created_at)}</span>}
             </div>
         </div>
     );
@@ -144,7 +151,7 @@ const OutboxRow: React.FC<{ item: ChatOutboxItem; onRetry: () => void; onDiscard
                         <IconButton label="삭제" size="md" tone="subtle" onClick={onDiscard}><Trash2 size={16} /></IconButton>
                     </>
                 )}
-                <div className={`max-w-[220px] text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere] ${failed ? 'bg-indigo-600/35 border border-red-400' : 'bg-indigo-600 opacity-60'}`}>
+                <div className={`max-w-[220px] text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere] ${failed ? 'bg-orange-600/35 border border-red-400' : 'bg-orange-600 opacity-60'}`}>
                     {item.body}
                 </div>
             </div>
