@@ -17,7 +17,7 @@ export const SLIDER_STEPS: Record<string, SliderStep[]> = {
     // ── 공격 슬라이더 ──
     pace: buildTieredSteps('정돈된 공격', '지공 위주', '보통', '속공 위주', '런앤건'),
     ballMovement: buildTieredSteps('히어로볼', '아이솔레이션', '보통', '패스 위주', '시스템 농구'),
-    offReb: buildTieredSteps('전원 크래시', '적극 가담', '보통', '빠른 백코트', '시도하지 않음'),
+    offReb: buildTieredSteps('시도하지 않음', '빠른 백코트', '보통', '적극 가담', '전원 크래시'),
 
     // ── 코칭 철학 ──
     insideOut: buildTieredSteps('페인트존 공략', '인사이드', '균형', '아웃사이드', '3점 선호'),

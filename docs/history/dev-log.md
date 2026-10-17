@@ -36,6 +36,31 @@
 ---
 
 
+## 2026-10-17 — 공격 리바운드(offReb) 슬라이더 라벨 방향 반전 수정
+
+**배경**: 멀티 세션 전술 설정의 "공격 리바운드" 슬라이더 라벨이 엔진 방향과 반대로 표시됨. 엔진(`reboundLogic.ts`)은 `offReb` 값이 높을수록 ORB%가 올라가는데(`(offReb-5) × SLIDER_IMPACT`), 라벨은 값 1을 "전원 크래시", 10을 "시도하지 않음"으로 매핑해 정반대로 보였음. 툴팁 설명문(`tacticsSliderConfig.ts`)과 `possessionHandler.ts`/`constants.ts`의 주석(상대 offReb≥7 = 크래시 하드)은 이미 올바른 방향이라 라벨만 틀린 상태. `defReb` 라벨은 방향 정상이라 건드리지 않음. 라벨(UI 문자열)만 바꾸고 엔진 수치는 변경 없음.
+
+**변경 파일**:
+- `services/game/config/sliderSteps.ts` (client)
+- `server/src/shared/game/config/sliderSteps.ts` (server 미러)
+
+**Before**:
+```ts
+offReb: buildTieredSteps('전원 크래시', '적극 가담', '보통', '빠른 백코트', '시도하지 않음'),
+```
+
+**After**:
+```ts
+offReb: buildTieredSteps('시도하지 않음', '빠른 백코트', '보통', '적극 가담', '전원 크래시'),
+```
+
+**검증**: 엔진 수치 미변경. 값 1(백코트 전념)=시도하지 않음, 값 10(전원 크래시)=전원 크래시로 `reboundLogic.ts` 방향과 일치하는지 코드 대조. 빌드/브라우저 육안 확인은 미실행.
+
+**롤백 방법**: 위 Before 라인으로 client/server 두 파일 모두 되돌리면 됨 (또는 해당 커밋 revert).
+
+---
+
+
 ## 2026-10-17 — SliderControl 커밋 이벤트를 mouseup/keyup → 네이티브 change로 교체 (패드 터치 미반영 버그)
 
 **배경**: 멀티 전술 "팀 전술" 탭에서 슬라이더를 움직여도 저장 버튼이 켜지지 않는다는 제보(사용자는 패드 사용). `SliderControl`이 드래그 중엔 로컬 상태만 바꾸고 부모 `onChange` 커밋을 `onMouseUp`/`onKeyUp`에서만 했는데, 터치 드래그는 `mouseup`을 발생시키지 않아 커밋이 아예 안 됨 → `userTactics` 불변 → `isTacticsDirty`(JSON 비교) false → 저장 버튼 비활성. 핸들은 움직인 위치로 보이므로 사용자는 바뀐 줄 앎. 데스크톱에서도 트랙 밖에서 버튼을 놓으면 같은 증상이 날 수 있음(브라우저별 상이).
