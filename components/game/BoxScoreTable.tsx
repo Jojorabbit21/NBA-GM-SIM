@@ -5,6 +5,7 @@ import { TeamMark } from '../common/TeamMark';
 import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
+import { BlankBoxRows, DnpCell } from './boxScoreRows';
 
 export interface GameStatLeaders {
     pts: number;
@@ -28,11 +29,15 @@ interface BoxScoreTableProps {
     standalone?: boolean;
     /** 헤더 바 우측에 렌더링할 커스텀 요소(예: Traditional/Advanced/Defense 셀렉터) */
     headerRight?: React.ReactNode;
+    /** 선수 id → 프로필 경로. 주어지면 이름이 링크가 된다(멀티플레이어 종료 화면 전용) */
+    getProfileHref?: (playerId: string) => string | undefined;
+    /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
+    padRows?: number;
 }
 
 type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
-export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight }) => {
+export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
     // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
@@ -71,20 +76,24 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     // Sort players
     const sortedBox = useMemo(() => {
         const data = [...box];
-        
+        // Did Not Play(mp 0) 선수는 정렬 기준과 무관하게 항상 맨 아래 — 출전 선수만 정렬한다
+        const played = data.filter(p => p.mp > 0);
+        const dnp = data.filter(p => !(p.mp > 0));
+
         if (sortConfig.key === 'default') {
             // Original Default: Starters (GS=1) first, then by MP desc
-            return data.sort((a, b) => {
+            played.sort((a, b) => {
                 if (a.gs !== b.gs) return b.gs - a.gs;
                 return b.mp - a.mp;
             });
+        } else {
+            played.sort((a, b) => {
+                const valA = getSortValue(a, sortConfig.key);
+                const valB = getSortValue(b, sortConfig.key);
+                return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+            });
         }
-
-        return data.sort((a, b) => {
-            const valA = getSortValue(a, sortConfig.key);
-            const valB = getSortValue(b, sortConfig.key);
-            return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
-        });
+        return [...played, ...dnp];
     }, [box, sortConfig]);
 
     // Calculate Team Totals
@@ -115,8 +124,12 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     }, [box]);
 
     // Updated: Central Alignment for Stats
-    const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700";
-    const sc = "text-xs font-semibold text-white tabular-nums";
+    // 푸터 셀은 py-2 + leading-6(24px)으로 본문 행(OVR 배지 h-6 + py-2)과 같은 높이를 맞춘다
+    const textSize = standalone ? 'text-sm' : 'text-xs';
+    const totalCellClass = `py-2 px-2 leading-6 text-center ${textSize} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
+    const sc = `${textSize} font-semibold text-white tabular-nums`;
+    // DNP 행이 덮을 스탯 열 수(숨김 열 제외) — standalone: MIN~PF 8 + FG/3P/FT 3 + +/- 1, 기본: FAT 1 + MIN~FF 10 + 6 + 1
+    const statCols = standalone ? 12 : 18;
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
@@ -216,9 +229,10 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
                         return (
                             <TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
-                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} />
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={statCols} standalone={standalone} /> : (<>
                                 <TableCell align="center" className={hideCls}>
-                                    <span className={`text-xs font-semibold ${fatColor}`}>{Math.round(fatigueUsed)}</span>
+                                    <span className={`${textSize} font-semibold ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
                                 <TableCell align="center" className={sc}>{Math.round(p.mp)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.pts}</TableCell>
@@ -237,18 +251,20 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                 <TableCell align="center" className={sc}>{p.ftm}/{p.fta}</TableCell>
                                 <TableCell align="center" className={`${sc} ${hideCls}`}>{formatPct(p.ftm, p.fta)}</TableCell>
                                 <TableCell align="center" className="pr-4">
-                                    <span className={`font-semibold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <span className={`font-semibold ${textSize} tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
                                     </span>
                                 </TableCell>
+                                </>)}
                             </TableRow>
                         );
                     })}
+                    <BlankBoxRows count={padRows} totalCols={3 + statCols} />
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-800">
-                            <span className="text-xs font-black text-white">TEAM TOTALS</span>
+                        <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
+                            <span className={`${textSize} font-black text-white`}>TEAM TOTALS</span>
                         </td>
                         {/* standalone: FAT 컬럼이 숨겨져서 POS+OVR 2칸만 span(원래 POS+OVR+FAT 3칸) */}
                         <td className={totalCellClass} colSpan={standalone ? 2 : 3}></td>

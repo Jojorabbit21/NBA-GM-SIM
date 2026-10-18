@@ -1,7 +1,7 @@
 import React from 'react';
 
 export type IconButtonSize = 'xs' | 'sm' | 'md' | 'lg';
-export type IconButtonTone = 'ghost' | 'subtle' | 'solid' | 'inherit';
+export type IconButtonTone = 'ghost' | 'subtle' | 'solid' | 'inherit' | 'success' | 'danger';
 export type IconButtonShape = 'md' | 'lg' | 'full';
 
 interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
@@ -14,6 +14,8 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
      * subtle  = hover 시 옅은 배경(스트립·캘린더 chevron)
      * solid   = 항상 배경(툴바)
      * inherit = 색을 부모에서 상속(칩 안의 X처럼 칩 색을 따라야 할 때)
+     * success = 추가(+) 같은 생성 동작 — 초록 아이콘, hover 옅은 초록 배경 [2026-10-18 전술 프리셋]
+     * danger  = 삭제·제거 — 평소 subtle과 같고 hover만 빨강(서비스 관례: 슬롯 초기화·카드 삭제) [2026-10-18]
      */
     tone?: IconButtonTone;
     shape?: IconButtonShape;
@@ -27,6 +29,8 @@ const TONE: Record<IconButtonTone, string> = {
     subtle:  'text-slate-400 hover:text-white hover:bg-slate-700',
     solid:   'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700',
     inherit: 'hover:text-white',
+    success: 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10',
+    danger:  'text-slate-400 hover:text-red-400 hover:bg-red-500/10',
 };
 
 /** 아이콘 전용 정사각 버튼 — 2026-10-12 신설(docs/plan/ui-buttons.md 3-2). */

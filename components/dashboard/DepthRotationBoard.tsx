@@ -172,13 +172,15 @@ interface DepthRotationBoardProps {
     /** [2026-10-17] 멀티 전용 — 지정되면 OVR 오른쪽에 "체력" 열(로스터 탭과 같은 ConditionBar). 값 null = "경기 중",
      * 맵에 없는 선수는 "—". 미지정이면 열 없음(기존 레이아웃 그대로). */
     playerConditions?: Map<string, number | null>;
+    /** [2026-10-18] 멀티 전용 — 툴바 제목 오른쪽에 붙는 요소(전술 프리셋 바). memo 비교 대상이므로 호출부에서 useMemo로 고정할 것 */
+    toolbarExtra?: React.ReactNode;
 }
 
 // 체력 열(OVR 오른쪽, sticky) — 막대만 표시(수치는 툴팁)라 OVR 열과 같은 40px
 const CONDITION_COL_WIDTH = 40;
 
 const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
-    team, tactics, depthChart, onUpdateDepthChart, onUpdateTactics, coachName, playerConditions,
+    team, tactics, depthChart, onUpdateDepthChart, onUpdateTactics, coachName, playerConditions, toolbarExtra,
 }) => {
     const withCondition = !!playerConditions;
     const [dragging, setDragging] = useState<DragState | null>(null);
@@ -406,8 +408,11 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
             <div className="px-6 py-3 bg-slate-800 border-b border-slate-600 flex items-center justify-between flex-shrink-0 gap-4">
-                <span className="text-base font-black text-white">뎁스 차트 · 로테이션</span>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-4 min-w-0">
+                    <span className="text-base font-black text-white shrink-0">뎁스 차트 · 로테이션</span>
+                    {toolbarExtra}
+                </div>
+                <div className="flex gap-2 shrink-0">
                     <SplitButton
                         width="w-36"
                         onClick={() => handleAutoFillDepth('Ability')}
@@ -635,5 +640,6 @@ export const DepthRotationBoard = React.memo(
         prev.depthChart === next.depthChart &&
         prev.onUpdateDepthChart === next.onUpdateDepthChart &&
         prev.onUpdateTactics === next.onUpdateTactics &&
-        prev.playerConditions === next.playerConditions,
+        prev.playerConditions === next.playerConditions &&
+        prev.toolbarExtra === next.toolbarExtra,
 );

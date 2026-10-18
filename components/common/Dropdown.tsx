@@ -28,9 +28,27 @@ interface DropdownProps {
     onOpenChange?: (isOpen: boolean) => void;
 }
 
+// 'bottom' 패널은 처음엔 트리거 아래(top)로 그리고, 실제 높이를 잰 뒤(fitted) 화면 아래가 모자라면 위로 뒤집거나(bottom)
+// 남은 공간만큼 maxHeight로 줄인다. [2026-10-18] 뎁스차트 마지막 줄 선수 드롭다운이 화면 아래로 잘려 선택 불가였던 문제.
 type PanelPos =
-    | { kind: 'bottom'; top: number; left: number }
+    | { kind: 'bottom'; top?: number; bottom?: number; left: number; maxHeight?: number; fitted: boolean }
     | { kind: 'right'; bottom: number; left: number };
+
+const PANEL_GAP = 8;        // 트리거와 패널 사이
+const VIEWPORT_MARGIN = 8;  // 패널과 화면 끝 사이 최소 여백
+const MIN_PANEL_HEIGHT = 120; // 공간이 극단적으로 좁아도 이 높이는 확보(스크롤)
+
+/** 패널 높이 h와 트리거 위치로 열 방향·최대 높이를 정한다(순수 함수 — 테스트용으로 export). */
+export function fitDropdownPanel(h: number, triggerTop: number, triggerBottom: number, viewportH: number):
+    { placement: 'below' | 'above'; maxHeight?: number } {
+    const spaceBelow = viewportH - triggerBottom - PANEL_GAP - VIEWPORT_MARGIN;
+    const spaceAbove = triggerTop - PANEL_GAP - VIEWPORT_MARGIN;
+    if (h <= spaceBelow) return { placement: 'below' };
+    if (h <= spaceAbove) return { placement: 'above' };
+    return spaceAbove > spaceBelow
+        ? { placement: 'above', maxHeight: Math.max(spaceAbove, MIN_PANEL_HEIGHT) }
+        : { placement: 'below', maxHeight: Math.max(spaceBelow, MIN_PANEL_HEIGHT) };
+}
 
 export const Dropdown: React.FC<DropdownProps> = ({
     trigger,
@@ -56,7 +74,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
         if (side === 'right') {
             return { kind: 'right', bottom: window.innerHeight - rect.bottom + 8, left: rect.right + 8 };
         }
-        return { kind: 'bottom', top: rect.bottom + 8, left: align === 'right' ? rect.right : rect.left };
+        return { kind: 'bottom', top: rect.bottom + PANEL_GAP, left: align === 'right' ? rect.right : rect.left, fitted: false };
     }, [align, side]);
 
     const toggle = () => {
@@ -76,6 +94,20 @@ export const Dropdown: React.FC<DropdownProps> = ({
     useLayoutEffect(() => {
         if (isExpanded && !pos) setPos(calcPos());
     }, [isExpanded, pos, calcPos]);
+
+    // 화면 안에 맞추기 — 패널이 그려진 직후(페인트 전) 실제 높이를 재서 1회 보정한다. 아래에 들어가면 그대로,
+    // 아래가 모자라고 위에 들어가면 위로 뒤집고, 양쪽 다 모자라면 더 넓은 쪽에 열고 maxHeight + 패널 스크롤.
+    useLayoutEffect(() => {
+        if (!isExpanded || !pos || pos.kind !== 'bottom' || pos.fitted) return;
+        const panel = panelRef.current;
+        const trig = triggerRef.current;
+        if (!panel || !trig) return;
+        const rect = trig.getBoundingClientRect();
+        const fit = fitDropdownPanel(panel.offsetHeight, rect.top, rect.bottom, window.innerHeight);
+        setPos(fit.placement === 'below'
+            ? { kind: 'bottom', left: pos.left, fitted: true, top: rect.bottom + PANEL_GAP, maxHeight: fit.maxHeight }
+            : { kind: 'bottom', left: pos.left, fitted: true, bottom: window.innerHeight - rect.top + PANEL_GAP, maxHeight: fit.maxHeight });
+    }, [isExpanded, pos]);
 
     // Click outside to close
     useEffect(() => {
@@ -102,12 +134,13 @@ export const Dropdown: React.FC<DropdownProps> = ({
             {isExpanded && pos && createPortal(
                 <div
                     ref={panelRef}
-                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-popover animate-in fade-in duration-100`}
+                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl ${pos.kind === 'bottom' && pos.maxHeight !== undefined ? 'overflow-y-auto custom-scrollbar' : 'overflow-hidden'} z-popover animate-in fade-in duration-100`}
                     style={
                         pos.kind === 'right'
                             ? { bottom: pos.bottom, left: pos.left }
                             : {
-                                top: pos.top,
+                                ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
+                                ...(pos.maxHeight !== undefined ? { maxHeight: pos.maxHeight } : {}),
                                 ...(align === 'right' ? { right: window.innerWidth - pos.left } : { left: pos.left }),
                             }
                     }

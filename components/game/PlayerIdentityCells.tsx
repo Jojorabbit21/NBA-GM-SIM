@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { Player, PlayerBoxScore } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
@@ -28,16 +29,21 @@ interface PlayerIdentityCellsProps {
     mvpId?: string;
     /** standalone(좌우 분할)일 땐 MVP 크라운 아이콘을 숨긴다(BoxScoreTable의 기존 동작과 동일) */
     standalone?: boolean;
+    /** 주어지면 선수 이름이 이 경로로 가는 프로필 링크가 된다(멀티플레이어 종료 화면 전용, 호버카드 없음) */
+    profileHref?: string;
 }
 
-export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone }) => {
+export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone, profileHref }) => {
+    // standalone(멀티 좌우 분할)에선 표 본문 글자를 text-sm으로 키운다(2026-10-18)
+    const textSize = standalone ? 'text-sm' : 'text-xs';
+    const isMvp = p.playerId === mvpId;
+    const nameClass = `${textSize} font-semibold truncate ${standalone ? 'max-w-[140px]' : 'max-w-[100px]'} ${isMvp ? 'text-amber-200' : 'text-white'}`;
     // [Fix 2026-08-05] "경기 전환 시 OVR이 70으로 잠깐 보였다가 정정된다" 버그 — 멀티플레이어는
     // 실제 능력치(rosterCache) 로딩 전에 {id,name,position}만 있는 스텁을 team.roster에 채워
     // 넣는데, 이 스텁도 playerInfo 존재 자체는 truthy라 위 삼항연산자로는 못 걸러진다. 스텁엔
     // Player의 필수 필드인 age가 없으므로 그걸로 "진짜 로딩된 데이터인지"를 판별한다.
     const isStub = playerInfo != null && (playerInfo as { age?: number }).age === undefined;
     const ovr = !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
-    const isMvp = p.playerId === mvpId;
     const effect = p.matchupEffect || 0;
     const isBuff = effect > 0;
     const isDebuff = effect < 0;
@@ -46,7 +52,9 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
         <>
             <TableCell className="px-4">
                 <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-white'}`}>{p.playerName}</span>
+                    {profileHref
+                        ? <Link to={profileHref} className={`${nameClass} hover:text-indigo-400 hover:underline`}>{p.playerName}</Link>
+                        : <span className={nameClass}>{p.playerName}</span>}
                     <div className="flex items-center gap-1 flex-shrink-0">
                         {isMvp && !standalone && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
                         {p.isStopper && (
@@ -69,7 +77,7 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
                     </div>
                 </div>
             </TableCell>
-            <TableCell align="center" className="text-xs font-semibold text-slate-200">{playerInfo?.position || '-'}</TableCell>
+            <TableCell align="center" className={`${textSize} font-semibold text-slate-200`}>{playerInfo?.position || '-'}</TableCell>
             <TableCell align="center">
                 <div className="flex justify-center">
                     {ovr === null

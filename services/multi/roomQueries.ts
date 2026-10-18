@@ -311,6 +311,9 @@ export interface RoomMemberRow {
     team_color_text: string | null;
     tactics: unknown | null;
     depth_chart: unknown | null;
+    /** [2026-10-18] 활성 전술 프리셋 슬롯(1~3), null = 선택된 프리셋 없음 */
+    depth_preset_slot: number | null;
+    team_preset_slot: number | null;
     is_ai: boolean;
     ai_gm_personality: string | null;
     ai_gm_sliders: unknown | null;

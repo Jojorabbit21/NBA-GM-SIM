@@ -1,8 +1,8 @@
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { InlineNotice } from '../../../components/common/InlineNotice';
-import { Save, Check } from 'lucide-react';
+import { Save, Check, RotateCcw } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { getSeriesRoundLabel } from '../../../utils/playoffLogic';
@@ -30,11 +30,22 @@ import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { TEAM_DATA } from '../../../data/teamData';
 import { generateAutoTactics } from '../../../services/gameEngine';
+import { generateSlidersForStarters } from '../../../services/game/tactics/tacticGenerator';
+import { getCoachPreferences } from '../../../services/coachingStaff/coachGenerator';
+import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
+import { jsonEqual } from '../../../utils/jsonEqual';
 import { getServerNow } from '../../../utils/serverClock';
 import { isFinal, resolveRealAt } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
-import type { Team, Game, Player } from '../../../types';
+import { TacticPresetSelector } from '../../../components/multi/TacticPresetSelector';
+import { useMultiTacticPresets } from '../../../hooks/useMultiTacticPresets';
+import { buildDepthPresetData, buildTeamPresetData, applyDepthPreset, applyTeamPreset } from '../../../utils/tacticPresetData';
+import type { DepthPresetData, TeamPresetData, TacticPresetKind, TacticPresetSlot, MultiTacticPreset } from '../../../services/multi/tacticPresets';
+
+type PresetNotice = { tone: 'info' | 'danger'; text: string };
+const PRESET_KINDS: TacticPresetKind[] = ['depth', 'team'];
+import type { Team, Game, Player, GameTactics, DepthChart } from '../../../types';
 
 type MultiTacticsTab = 'depth' | 'team' | 'insights';
 // [2026-10-17] 'player' removed: per-player tactics disabled (deep link ?tab=player now falls back to 'depth').
@@ -185,8 +196,25 @@ const MultiTacticsView: React.FC = () => {
         coachingData,
         isLoading: gameLoading,
         isTacticsDirty, saveTactics,
+        lastSavedTactics, lastSavedDepthChart,
+        presetSlots, setPresetSlot, commitPresetSlot,
         schedule,
     } = useSeasonContext();
+
+    // [2026-10-18] 전술 프리셋(뎁스·로테이션 / 팀 전술, 각 최대 3개) — 사용자가 [프리셋 +]로 추가,
+    // 상단 저장 버튼이 종류별 활성 프리셋(presetSlots)에 덮어쓴다. handleSaveTactics가 쓰므로 그보다 먼저 선언(CLAUDE.md 규칙2).
+    const myUserId = session?.user?.id ?? null;
+    const { presets: allPresets, save: savePreset, rename: renamePreset, remove: removePreset, isLoading: presetsLoading } =
+        useMultiTacticPresets(room?.id, myUserId);
+    const presetsByKind = useMemo<Record<TacticPresetKind, MultiTacticPreset[]>>(() => ({
+        depth: allPresets.filter(p => p.kind === 'depth'),
+        team:  allPresets.filter(p => p.kind === 'team'),
+    }), [allPresets]);
+    // 프리셋 선택기 옆 안내(제외된 선수 수·추가/삭제/이름 변경 실패) — 탭별
+    const [presetNotices, setPresetNotices] = useState<Record<TacticPresetKind, PresetNotice | null>>({ depth: null, team: null });
+    const setPresetNotice = useCallback((kind: TacticPresetKind, notice: PresetNotice | null) => {
+        setPresetNotices(prev => (prev[kind] === notice ? prev : { ...prev, [kind]: notice }));
+    }, []);
 
     // ── 전술 저장 ──────────────────────────────────────────────────────────────
     const [saving, setSaving] = useState(false);
@@ -199,16 +227,35 @@ const MultiTacticsView: React.FC = () => {
         setSaveError(null);
         // 현재 로스터(league_teams 실시간 구독값) 기준으로 나간 선수 ID를 걸러서 저장 — 접속 중 트레이드/방출 후
         // 메모리에 남은 stale 상태가 DB로 되돌아오는 걸 막는다. (rosterPlayers는 이 콜백보다 아래에서 선언돼 TDZ → myTeamRow 사용)
-        const { error } = await saveTactics(myTeamRow?.roster ?? []);
-        setSaving(false);
-        if (!error) {
-            setSavedFlash(true);
-            setTimeout(() => setSavedFlash(false), 1500);
-        } else {
-            console.error('[tactics.save]', error);
+        const res = await saveTactics(myTeamRow?.roster ?? []);
+        if (res.error) {
+            setSaving(false);
+            console.error('[tactics.save]', res.error);
             setSaveError('전술 저장에 실패했습니다. 잠시 후 다시 시도하세요.');
+            return;
         }
-    }, [saveTactics, myTeamRow?.roster]);
+        // 종류별 활성 프리셋이 있으면 저장된(로스터 정리 후) 값으로 덮어쓴다. 활성 프리셋이 없는 종류는 건드리지 않음.
+        let presetFailed = false;
+        for (const kind of PRESET_KINDS) {
+            const slot = res.presetSlots[kind];
+            const activePreset = slot !== null ? presetsByKind[kind].find(p => p.slot === slot) : undefined;
+            if (!res.tactics || !activePreset) continue;
+            const data = kind === 'depth' ? buildDepthPresetData(res.tactics, res.depthChart) : buildTeamPresetData(res.tactics);
+            const presetRes = await savePreset(kind, activePreset.slot, activePreset.name, data);
+            if (presetRes.error) {
+                presetFailed = true;
+                console.error(`[tactics.save.preset:${kind}]`, presetRes.error);
+            }
+        }
+        setSaving(false);
+        if (presetFailed) {
+            setSaveError('전술은 저장됐지만 프리셋 저장에 실패했습니다. 다시 저장해 주세요.');
+            return;
+        }
+        setPresetNotices({ depth: null, team: null });
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+    }, [saveTactics, myTeamRow?.roster, presetsByKind, savePreset]);
 
     // 저장 안 된 변경사항이 있는 채로 브라우저를 나가려 하면(새로고침/탭 닫기/URL 이동)
     // 확인 프롬프트를 띄운다. 앱 내부 라우트 전환(사이드바 클릭 등)은 이 프로젝트가
@@ -494,9 +541,178 @@ const MultiTacticsView: React.FC = () => {
 
     const coachName = coachingData?.[myTeamId ?? '']?.headCoach?.name;
 
+    // ── 팀 전술 탭 헤더 버튼 [2026-10-18] ─────────────────────────────────────────
+    // 자동 설정: 지금 뎁스차트의 주전 5명(슬롯 1번째, 없으면 tactics.starters)으로 generateSlidersForStarters
+    // (generateAutoTactics와 같은 슬라이더 계산 + 감독 성향 블렌드). 뎁스·로테이션은 건드리지 않음.
+    // 주전 5명이 다 안 차 있으면 바꾸지 않고 안내. 초기화: DEFAULT_SLIDERS(싱글 TacticsBoard.handleReset과 동일, confirm).
+    const [autoSetNotice, setAutoSetNotice] = useState<string | null>(null);
+    const handleAutoSetSliders = useCallback(() => {
+        if (!userTactics) return;
+        const ids = (['PG', 'SG', 'SF', 'PF', 'C'] as const).map(pos => depthChart?.[pos]?.[0] || userTactics.starters?.[pos] || '');
+        const starters = [...new Set(ids.filter(Boolean))]
+            .map(id => team.roster.find(p => p.id === id))
+            .filter((p): p is Player => !!p);
+        if (starters.length < 5) {
+            setAutoSetNotice('뎁스 차트에서 주전 5명을 모두 지정해야 자동 설정할 수 있습니다');
+            return;
+        }
+        setAutoSetNotice(null);
+        const sliders = generateSlidersForStarters(starters, getCoachPreferences(coachingData, myTeamId ?? ''));
+        setUserTactics({ ...userTactics, sliders });
+    }, [userTactics, depthChart, team.roster, coachingData, myTeamId, setUserTactics]);
+
+    const handleResetSliders = useCallback(() => {
+        if (!userTactics || !window.confirm('팀 전술 슬라이더를 전부 기본값으로 초기화하시겠습니까?')) return;
+        setUserTactics({ ...userTactics, sliders: { ...DEFAULT_SLIDERS } });
+    }, [userTactics, setUserTactics]);
+
     // 뎁스차트 "체력" 열 — 로스터 탭·선수 프로필과 같은 공용 훅(결과 공개 전 경기는 경기 전 체력)
     const myRosterIds = useMemo(() => [...(myTeamRow?.roster ?? [])], [myTeamRow?.roster]);
     const playerConditions = useMultiPlayerConditions(myRosterIds);
+
+    // ── 전술 프리셋 핸들러(뎁스·팀 공용) [2026-10-18] ───────────────────────────────
+    // 핸들러는 ref로 최신 편집기 상태·프리셋 목록을 읽어 identity를 고정한다 — DepthRotationBoard가 memo라
+    // toolbarExtra 요소가 매 렌더 바뀌면 드래그 중 보드 전체가 다시 그려진다.
+    const presetStateRef = useRef({ userTactics, depthChart, lastSavedTactics, lastSavedDepthChart, myRosterIds, presetsByKind, presetSlots });
+    presetStateRef.current = { userTactics, depthChart, lastSavedTactics, lastSavedDepthChart, myRosterIds, presetsByKind, presetSlots };
+    // [2026-10-18] 프리셋 전환 시 confirm은 "덮어쓰면 어디에도 남지 않는 편집"이 있을 때만 — 해당 종류(뎁스/팀)의 화면 값이
+    // 마지막 저장값과도, 지금 활성 프리셋과도 다를 때. 프리셋끼리 왔다 갔다 하는 건(전부 프리셋/저장값에 남아 있음) 묻지 않는다.
+    // 예전엔 전체 isTacticsDirty 기준이라 슬롯 번호만 바뀌어도(=프리셋 하나 고른 직후) 다음 전환마다 confirm이 떴다.
+    const confirmOverwriteDirty = (kind: TacticPresetKind) => {
+        const { userTactics: t, depthChart: d, lastSavedTactics: st, lastSavedDepthChart: sd, presetsByKind: byKind, presetSlots: slots } = presetStateRef.current;
+        if (!t) return true;
+        const part = (tac: GameTactics, dc: DepthChart | null) => (kind === 'depth' ? buildDepthPresetData(tac, dc) : buildTeamPresetData(tac));
+        const current = part(t, d);
+        if (st && jsonEqual(current, part(st, sd))) return true;
+        const active = slots[kind] !== null ? byKind[kind].find(p => p.slot === slots[kind]) : undefined;
+        if (active && jsonEqual(current, active.data)) return true;
+        const label = kind === 'depth' ? '뎁스·로테이션' : '팀 전술';
+        return window.confirm(`저장하지 않은 ${label} 변경사항이 있습니다. 프리셋을 불러오면 사라집니다. 계속할까요?`);
+    };
+    const findActivePreset = (kind: TacticPresetKind) => {
+        const { presetsByKind: byKind, presetSlots: slots } = presetStateRef.current;
+        return slots[kind] !== null ? byKind[kind].find(p => p.slot === slots[kind]) : undefined;
+    };
+
+    // 드롭다운에서 프리셋 선택 → 즉시 편집기에 적용(뎁스=뎁스차트·주전·로테이션·출전제한, 팀=슬라이더). 경기 반영은 상단 저장 버튼.
+    const handleSelectPreset = useCallback((kind: TacticPresetKind, slot: TacticPresetSlot) => {
+        const { userTactics: t, myRosterIds: ids, presetsByKind: byKind } = presetStateRef.current;
+        const preset = byKind[kind].find(p => p.slot === slot);
+        if (!preset || !t || !confirmOverwriteDirty(kind)) return;
+        if (kind === 'depth') {
+            const res = applyDepthPreset(t, preset.data as DepthPresetData, ids);
+            setUserTactics(res.tactics);
+            setDepthChart(res.depthChart);
+            setPresetNotice(kind, res.removedCount > 0 ? { tone: 'info', text: `로스터에 없는 선수 ${res.removedCount}명 제외` } : null);
+        } else {
+            setUserTactics(applyTeamPreset(t, preset.data as TeamPresetData));
+            setPresetNotice(kind, null);
+        }
+        setPresetSlot(kind, slot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [setUserTactics, setDepthChart, setPresetSlot, setPresetNotice]);
+
+    // [프리셋 +] → 이름 확인 시 생성. 내용 = 지금 편집기 값, 생성된 프리셋이 곧바로 활성(슬롯 번호 즉시 저장).
+    const handleCreatePreset = useCallback(async (kind: TacticPresetKind, slot: TacticPresetSlot, name: string): Promise<string | null> => {
+        const { userTactics: t, depthChart: d } = presetStateRef.current;
+        if (!t) return 'tactics not ready';
+        const data = kind === 'depth' ? buildDepthPresetData(t, d) : buildTeamPresetData(t);
+        const { error } = await savePreset(kind, slot, name, data);
+        if (error) {
+            setPresetNotice(kind, { tone: 'danger', text: '프리셋 추가에 실패했습니다' });
+            return error;
+        }
+        const slotRes = await commitPresetSlot(kind, slot);
+        setPresetNotice(kind, slotRes.error ? { tone: 'danger', text: '프리셋 선택 저장에 실패했습니다' } : null);
+        return null;
+    }, [savePreset, commitPresetSlot, setPresetNotice]);
+
+    const handleRenamePreset = useCallback(async (kind: TacticPresetKind, name: string): Promise<string | null> => {
+        const active = findActivePreset(kind);
+        if (!active) return 'no active preset';
+        const { error } = await renamePreset(kind, active.slot, name);
+        setPresetNotice(kind, error ? { tone: 'danger', text: '이름 변경에 실패했습니다' } : null);
+        return error;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [renamePreset, setPresetNotice]);
+
+    const handleDeletePreset = useCallback(async (kind: TacticPresetKind) => {
+        const preset = findActivePreset(kind);
+        const keepText = kind === 'depth' ? '뎁스·로테이션' : '팀 전술';
+        if (!preset || !window.confirm(`'${preset.name}' 프리셋을 삭제할까요? 현재 화면의 ${keepText}은 그대로 유지됩니다.`)) return;
+        const { error } = await removePreset(kind, preset.slot);
+        if (error) { setPresetNotice(kind, { tone: 'danger', text: '프리셋 삭제에 실패했습니다' }); return; }
+        // 활성 프리셋이 사라졌으므로 슬롯 선택도 즉시 비운다(안 비우면 다음 저장이 지운 프리셋을 되살림)
+        const slotRes = await commitPresetSlot(kind, null);
+        setPresetNotice(kind, slotRes.error ? { tone: 'danger', text: '프리셋 선택 저장에 실패했습니다' } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [removePreset, commitPresetSlot, setPresetNotice]);
+
+    // ── 되돌리기(활성 프리셋에 저장된 값으로) ─────────────────────────────────────
+    // 대상 = 활성 프리셋을 지금 로스터 기준으로 적용한 결과(나간 선수 정리 후). 화면 값과 같으면 버튼 비활성 —
+    // 정리 전 원본과 비교하면 선수가 빠진 프리셋은 되돌린 뒤에도 영원히 "다름"이라 버튼이 안 꺼진다.
+    const revertTargets = useMemo(() => {
+        const out: Record<TacticPresetKind, { tactics: GameTactics; depthChart: DepthChart | null; removedCount: number } | null> = { depth: null, team: null };
+        if (!userTactics) return out;
+        for (const kind of PRESET_KINDS) {
+            const slot = presetSlots[kind];
+            const active = slot !== null ? presetsByKind[kind].find(p => p.slot === slot) : undefined;
+            if (!active) continue;
+            out[kind] = kind === 'depth'
+                ? applyDepthPreset(userTactics, active.data as DepthPresetData, myRosterIds)
+                : { tactics: applyTeamPreset(userTactics, active.data as TeamPresetData), depthChart, removedCount: 0 };
+        }
+        return out;
+    }, [userTactics, depthChart, presetSlots, presetsByKind, myRosterIds]);
+    const canRevert = useMemo<Record<TacticPresetKind, boolean>>(() => {
+        const differs = (kind: TacticPresetKind) => {
+            const target = revertTargets[kind];
+            if (!target || !userTactics) return false;
+            return kind === 'depth'
+                ? !jsonEqual(buildDepthPresetData(userTactics, depthChart), buildDepthPresetData(target.tactics, target.depthChart))
+                : !jsonEqual(buildTeamPresetData(userTactics), buildTeamPresetData(target.tactics));
+        };
+        return { depth: differs('depth'), team: differs('team') };
+    }, [revertTargets, userTactics, depthChart]);
+    const revertTargetsRef = useRef(revertTargets);
+    revertTargetsRef.current = revertTargets;
+
+    // 명시적 되돌리기라 confirm 없음. 해당 종류만 덮어씀(뎁스 되돌리기는 팀 슬라이더 유지, 반대도 동일), 슬롯은 그대로.
+    const handleRevertPreset = useCallback((kind: TacticPresetKind) => {
+        const target = revertTargetsRef.current[kind];
+        if (!target) return;
+        if (kind === 'depth') {
+            setUserTactics(target.tactics);
+            setDepthChart(target.depthChart);
+            setPresetNotice(kind, target.removedCount > 0 ? { tone: 'info', text: `로스터에 없는 선수 ${target.removedCount}명 제외` } : null);
+        } else {
+            setUserTactics(target.tactics);
+            setPresetNotice(kind, null);
+        }
+    }, [setUserTactics, setDepthChart, setPresetNotice]);
+
+    const renderPresetSelector = (kind: TacticPresetKind) => (
+        <div className="flex items-center gap-2 min-w-0">
+            <TacticPresetSelector
+                presets={presetsByKind[kind]}
+                activeSlot={presetSlots[kind] as TacticPresetSlot | null}
+                disabled={presetsLoading || saving}
+                onSelect={slot => handleSelectPreset(kind, slot)}
+                onCreate={(slot, name) => handleCreatePreset(kind, slot, name)}
+                onRename={name => handleRenamePreset(kind, name)}
+                onDelete={() => handleDeletePreset(kind)}
+                onRevert={() => handleRevertPreset(kind)}
+                canRevert={canRevert[kind]}
+            />
+            {presetNotices[kind] && <InlineNotice tone={presetNotices[kind]!.tone} size="sm">{presetNotices[kind]!.text}</InlineNotice>}
+        </div>
+    );
+    // DepthRotationBoard는 memo라 toolbarExtra를 useMemo로 고정 — 드래그 중엔 deps가 안 바뀐다.
+    const depthPresetBar = useMemo(
+        () => renderPresetSelector('depth'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+        [presetsByKind.depth, presetSlots.depth, presetsLoading, saving, presetNotices.depth, canRevert.depth, handleSelectPreset, handleCreatePreset, handleRenamePreset, handleDeletePreset, handleRevertPreset],
+    );
 
     // tactics가 없는 신규 유저: 로스터 로드 완료 후 자동 생성
     // preserveDraftOrder=true — 드래프트에서 먼저 뽑은 선수가 선발을 유지하고,
@@ -558,16 +774,35 @@ const MultiTacticsView: React.FC = () => {
                         onUpdateTactics={setUserTactics}
                         coachName={coachName}
                         playerConditions={playerConditions}
+                        toolbarExtra={depthPresetBar}
                     />
                 )}
                 {activeTab === 'team' && (
-                    <div className="p-8 pb-20 bg-slate-900">
-                        <TacticsSlidersPanel
-                            tactics={userTactics!}
-                            onUpdateTactics={setUserTactics}
-                            roster={rosterWithZoneStats}
-                            offenseDefenseSplit
-                        />
+                    <div className="flex flex-col h-full overflow-hidden">
+                        {/* ── Toolbar — DepthRotationBoard 툴바와 같은 구성(제목+프리셋 좌측, 자동/초기화 우측) ── */}
+                        <div className="px-6 py-3 bg-slate-800 border-b border-slate-600 flex items-center justify-between flex-shrink-0 gap-4">
+                            <div className="flex items-center gap-4 min-w-0">
+                                <span className="text-base font-black text-white shrink-0">팀 전술</span>
+                                {renderPresetSelector('team')}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                {autoSetNotice && <InlineNotice tone="warning" size="sm">{autoSetNotice}</InlineNotice>}
+                                <Button variant="primary" shape="md" onClick={handleAutoSetSliders}>
+                                    전술 자동 설정
+                                </Button>
+                                <Button variant="secondary" onClick={handleResetSliders} icon={<RotateCcw size={14} />}>
+                                    초기화
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-8 pb-20 bg-slate-900">
+                            <TacticsSlidersPanel
+                                tactics={userTactics!}
+                                onUpdateTactics={setUserTactics}
+                                roster={rosterWithZoneStats}
+                                offenseDefenseSplit
+                            />
+                        </div>
                     </div>
                 )}
                 {activeTab === 'insights' && (

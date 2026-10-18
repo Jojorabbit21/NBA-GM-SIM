@@ -117,11 +117,18 @@ export const GanttBar: React.FC<GanttBarProps> = React.memo(
                 {/* Grid lines: minor every 6min, major at quarters.
                     flatGridLines(DepthRotationBoard 전용)일 땐 6분 단위 보조선/쿼터 경계선을 전부
                     안 그리고, 대신 맨 왼쪽(1쿼터 좌측)·맨 오른쪽(4쿼터 우측) 바깥쪽 경계에만
-                    slate-800 구분선을 그린다. */}
+                    slate-800 구분선을 그린다. [2026-10-18] 쿼터 경계(12/24/36분)에도 같은 1px slate-800 세로선 추가. */}
                 {flatGridLines ? (
                     <>
                         <div className="absolute top-0 bottom-0 left-0 w-px bg-slate-800 pointer-events-none" />
                         <div className="absolute top-0 bottom-0 right-0 w-px bg-slate-800 pointer-events-none" />
+                        {[12, 24, 36].map(m => (
+                            <div
+                                key={m}
+                                className="absolute top-0 bottom-0 w-px bg-slate-800 pointer-events-none"
+                                style={{ left: `${m / 48 * 100}%` }}
+                            />
+                        ))}
                     </>
                 ) : (
                     [6, 12, 18, 24, 30, 36, 42].map(m => (

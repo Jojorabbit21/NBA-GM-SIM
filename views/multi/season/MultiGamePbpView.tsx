@@ -34,6 +34,7 @@ import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { ConditionBar } from '../../../components/common/ConditionBar';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
+import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -1399,6 +1400,9 @@ const MultiGamePbpView: React.FC = () => {
     const { leagueId, gameId } = useParams<{ leagueId: string; gameId: string }>();
     const navigate = useNavigate();
     // 종료 헤더 팀 이름 클릭 → 로스터 화면(일정/순위 화면의 팀 이름 링크와 동일 경로).
+    // 박스스코어 선수 이름 → 선수 프로필 라우트(로스터 화면과 동일 경로)
+    const { getPlayerUrlId } = usePlayerShortCodes();
+    const getPlayerHref = (playerId: string) => leagueId ? `/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}` : undefined;
     const goTeamRoster = (teamSlug: string | undefined) => {
         if (teamSlug) navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
     };
@@ -2670,6 +2674,7 @@ const MultiGamePbpView: React.FC = () => {
                             homeBadge={{ color: homeColor, abbr: homeAbbr }}
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                             splitLayout
+                            getPlayerHref={getPlayerHref}
                         />
                     </ResultSection>
 

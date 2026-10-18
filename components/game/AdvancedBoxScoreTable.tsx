@@ -6,6 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import { TEAM_DATA } from '../../data/teamData';
 import { computeTeamBoxTotals, computeAdvancedStats, computePieRaw } from '../../utils/advancedBoxStats';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
+import { BlankBoxRows, DnpCell } from './boxScoreRows';
 
 interface AdvancedBoxScoreTableProps {
     team: Team;
@@ -16,13 +17,18 @@ interface AdvancedBoxScoreTableProps {
     standalone?: boolean;
     /** 헤더 바 우측에 렌더링할 커스텀 요소(예: Traditional/Advanced/Defense 셀렉터) */
     headerRight?: React.ReactNode;
+    /** 선수 id → 프로필 경로. 주어지면 이름이 링크가 된다(멀티플레이어 종료 화면 전용) */
+    getProfileHref?: (playerId: string) => string | undefined;
+    /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
+    padRows?: number;
 }
 
 const fmtPct = (v: number | null) => v == null ? '-' : v.toFixed(1);
-const statCellClass = "text-xs font-semibold text-white tabular-nums";
-const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700";
+// 푸터 셀은 py-2 + leading-6(24px)으로 본문 행(OVR 배지 h-6 + py-2)과 같은 높이를 맞춘다. 멀티(standalone)는 text-sm.
+const statCellClass = (standalone?: boolean) => `${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums`;
+const totalCellClass = (standalone?: boolean) => `py-2 px-2 leading-6 text-center ${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
 
-export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ team, box, oppBox, mvpId, badge, standalone, headerRight }) => {
+export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ team, box, oppBox, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
     const teamTotals = useMemo(() => computeTeamBoxTotals(box), [box]);
     const oppTotals = useMemo(() => computeTeamBoxTotals(oppBox), [oppBox]);
 
@@ -33,6 +39,8 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
     }, [box, oppBox]);
 
     const sortedBox = useMemo(() => [...box].sort((a, b) => {
+        // Did Not Play(mp 0)는 항상 맨 아래
+        if ((a.mp > 0) !== (b.mp > 0)) return a.mp > 0 ? -1 : 1;
         if (a.gs !== b.gs) return b.gs - a.gs;
         return b.mp - a.mp;
     }), [box]);
@@ -40,6 +48,8 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
     // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
     const rosterMap = useMemo(() => new Map(team.roster.map(rp => [rp.id, rp])), [team.roster]);
 
+    const statCell = statCellClass(standalone);
+    const totalCell = totalCellClass(standalone);
     const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
 
     return (
@@ -74,40 +84,43 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                         const pie = totalPieRaw > 0 ? (computePieRaw(p) / totalPieRaw) * 100 : null;
                         return (
                             <TableRow key={p.playerId}>
-                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} />
-                                <TableCell align="center" className={statCellClass}>{Math.round(p.mp)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.tsPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.efgPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.usgPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.astPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.tovPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.orebPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.drebPct)}</TableCell>
-                                <TableCell align="center" className={statCellClass}>{fmtPct(adv.trbPct)}</TableCell>
-                                <TableCell align="center" className={`pr-4 ${statCellClass}`}>{fmtPct(pie)}</TableCell>
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={10} standalone={standalone} /> : (<>
+                                <TableCell align="center" className={statCell}>{Math.round(p.mp)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.tsPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.efgPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.usgPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.astPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.tovPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.orebPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.drebPct)}</TableCell>
+                                <TableCell align="center" className={statCell}>{fmtPct(adv.trbPct)}</TableCell>
+                                <TableCell align="center" className={`pr-4 ${statCell}`}>{fmtPct(pie)}</TableCell>
+                            </>)}
                             </TableRow>
                         );
                     })}
+                    <BlankBoxRows count={padRows} totalCols={13} />
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-800">
-                            <span className="text-xs font-black text-white">TEAM TOTALS</span>
+                        <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
+                            <span className={`${standalone ? 'text-sm' : 'text-xs'} font-black text-white`}>TEAM TOTALS</span>
                         </td>
-                        <td className={totalCellClass} colSpan={2}></td>
-                        <td className={totalCellClass}>{Math.round(teamTotals.mp)}</td>
+                        <td className={totalCell} colSpan={2}></td>
+                        <td className={totalCell}>{Math.round(teamTotals.mp)}</td>
                         {/* TS%~PIE는 선수 개인의 팀 대비 점유율 지표라 "팀 합계"라는 개념 자체가
                             성립하지 않아 빈 칸으로 둔다 — Traditional/Defense와 동일한 TEAM TOTALS
                             행 구조(디자인/행 높이)만 맞추는 목적. */}
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={totalCellClass}>-</td>
-                        <td className={`${totalCellClass} pr-4`}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={totalCell}>-</td>
+                        <td className={`${totalCell} pr-4`}>-</td>
                     </tr>
                 </tfoot>
             </Table>

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, X } from 'lucide-react';
+import { IconButton } from './IconButton';
 
 interface SliderStep {
     value: number;
@@ -43,6 +44,19 @@ export const SliderControl: React.FC<{
       return closest;
     };
   }, [steps]);
+
+  // [2026-10-18] 설명 툴팁 — hover 방식 → 라벨 옆 ? 아이콘 클릭으로 열고, X 버튼 또는 바깥 클릭으로 닫는다.
+  // (readOnly 분기보다 먼저 선언 — 훅 순서 고정)
+  const [tipOpen, setTipOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!tipOpen) return;
+    const handleDown = (e: MouseEvent) => {
+      if (tipRef.current && !tipRef.current.contains(e.target as Node)) setTipOpen(false);
+    };
+    document.addEventListener('mousedown', handleDown);
+    return () => document.removeEventListener('mousedown', handleDown);
+  }, [tipOpen]);
 
   const min = steps ? 0 : (propMin ?? 1);
   const max = steps ? steps.length - 1 : (propMax ?? 10);
@@ -141,14 +155,34 @@ export const SliderControl: React.FC<{
     <div className="space-y-1.5 w-full py-1">
       {/* 레이블 행 */}
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-1.5 relative group/tooltip">
+        <div className="flex items-center gap-1 relative" ref={tipRef}>
           <span className="text-sm font-semibold text-white">{label}</span>
           {tooltip && (
             <>
-              <HelpCircle size={12} className="text-[#71717A] hover:text-[#6366f1] transition-colors cursor-help" />
-              <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#27272A] border border-[#3F3F46] text-[#A1A1AA] text-xs p-2 rounded-lg shadow-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 font-medium break-keep leading-relaxed">
-                {tooltip}
-              </div>
+              <IconButton
+                label={`${label} 설명`}
+                size="xs"
+                tone="ghost"
+                shape="full"
+                onClick={() => setTipOpen(o => !o)}
+                aria-expanded={tipOpen}
+                className={tipOpen ? '!text-indigo-400' : ''}
+              >
+                <HelpCircle size={14} />
+              </IconButton>
+              {/* 라벨 아래로 연다 — 위로 열면 첫 슬라이더에서 스크롤 컨테이너 위쪽에 잘린다. 배경은 팀 전술 본문(slate-900)보다 한 단계 밝은 slate-800 */}
+              {tipOpen && (
+                <div
+                  role="dialog"
+                  aria-label={`${label} 설명`}
+                  className="absolute top-full left-0 mt-2 w-72 z-popover bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-3 pr-9 text-sm text-slate-200 leading-relaxed break-keep"
+                >
+                  {tooltip}
+                  <IconButton label="닫기" size="xs" tone="ghost" onClick={() => setTipOpen(false)} className="absolute top-2.5 right-2.5">
+                    <X size={12} />
+                  </IconButton>
+                </div>
+              )}
             </>
           )}
         </div>

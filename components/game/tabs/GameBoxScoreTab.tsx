@@ -29,6 +29,8 @@ interface GameBoxScoreTabProps {
     awayBadge?: { color: string; abbr: string };
     /** true면 두 팀 테이블을 상하 대신 좌우로 분할 배치(멀티플레이어 전용, 기본값 false=기존 상하 배치 유지) */
     splitLayout?: boolean;
+    /** 선수 id → 프로필 경로(멀티플레이어 전용). 주어지면 박스스코어 선수 이름이 링크가 된다 */
+    getPlayerHref?: (playerId: string) => string | undefined;
 }
 
 // 팀별 헤더 우측에 들어가는 Traditional/Advanced/Defense 드롭다운 — 팀마다 독립적으로 전환 가능.
@@ -62,14 +64,16 @@ const StatModeSelector: React.FC<{ value: StatMode; onChange: (m: StatMode) => v
 };
 
 export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge, splitLayout
+    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge, splitLayout, getPlayerHref
 }) => {
 
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
 
-    // Filter out players who didn't play (DNP)
-    const activeHomeBox = useMemo(() => homeBox.filter(p => p.mp > 0), [homeBox]);
-    const activeAwayBox = useMemo(() => awayBox.filter(p => p.mp > 0), [awayBox]);
+    // 싱글: 출전하지 않은 선수(DNP)는 제외. 멀티(splitLayout): 로스터 전원을 보여주고 DNP는 표에서 "Did Not Play"로 표기한다.
+    const activeHomeBox = useMemo(() => splitLayout ? homeBox : homeBox.filter(p => p.mp > 0), [homeBox, splitLayout]);
+    const activeAwayBox = useMemo(() => splitLayout ? awayBox : awayBox.filter(p => p.mp > 0), [awayBox, splitLayout]);
+    // 좌우 표 높이를 맞추려고 인원이 적은 팀에 덧붙일 빈 행 수(멀티 전용)
+    const maxRows = Math.max(activeHomeBox.length, activeAwayBox.length);
 
     // 팀별로 독립적으로 전환 — 원정/홈 각자 다른 스탯 모드를 볼 수 있음
     const [awayStatMode, setAwayStatMode] = useState<StatMode>('traditional');
@@ -83,12 +87,13 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
         const oppBox = side === 'away' ? activeHomeBox : activeAwayBox;
         const badge = side === 'away' ? awayBadge : homeBadge;
         const headerRight = <StatModeSelector value={mode} onChange={setMode} />;
+        const padRows = splitLayout ? maxRows - box.length : 0;
 
         if (mode === 'advanced') {
-            return <AdvancedBoxScoreTable team={team} box={box} oppBox={oppBox} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} />;
+            return <AdvancedBoxScoreTable team={team} box={box} oppBox={oppBox} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} />;
         }
         if (mode === 'defense') {
-            return <DefenseBoxScoreTable team={team} box={box} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} />;
+            return <DefenseBoxScoreTable team={team} box={box} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} />;
         }
         return (
             <BoxScoreTable
@@ -100,6 +105,8 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                 badge={badge}
                 standalone={splitLayout}
                 headerRight={headerRight}
+                getProfileHref={getPlayerHref}
+                padRows={padRows}
             />
         );
     };

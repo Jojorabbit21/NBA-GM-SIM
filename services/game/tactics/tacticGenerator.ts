@@ -236,16 +236,23 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
         return team.roster.find(p => p.id === pid);
     }).filter((p): p is Player => p !== undefined);
 
-    // 주전 5명 미만이면 디폴트 슬라이더 반환
-    if (starters.length < 5) {
-        return {
-            sliders: { ...DEFAULT_SLIDERS },
-            starters: startersMap,
-            minutesLimits: {},
-            rotationMap,
-            depthChart
-        };
-    }
+    return {
+        sliders: generateSlidersForStarters(starters, coachPrefs),
+        starters: startersMap,
+        minutesLimits: {},
+        rotationMap,
+        depthChart
+    };
+};
+
+/**
+ * [2026-10-18] 주전 5명 → 팀 전술 슬라이더(로스터 아키타입 계산 + coachPrefs 있으면 감독 성향 블렌드).
+ * generateAutoTactics의 슬라이더 계산부를 그대로 분리한 것 — 동작 동일(5명 미만이면 블렌드 없이 DEFAULT_SLIDERS).
+ * 멀티 팀 전술 탭 "전술 자동 설정"이 유저가 지정한 현재 주전으로 호출한다(generateAutoTactics는 OVR순 주전을 새로 뽑음).
+ * 서버 미러(server/src/shared/game/tactics/tacticGenerator.ts)는 분리 안 함 — 서버는 이 함수를 안 쓰고 계산 로직은 동일.
+ */
+export const generateSlidersForStarters = (starters: Player[], coachPrefs?: HeadCoachPreferences): GameTactics['sliders'] => {
+    if (starters.length < 5) return { ...DEFAULT_SLIDERS };
 
     // ─────────────────────────────────────────────
     // 4. 아키타입 집계 헬퍼
@@ -349,11 +356,5 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
         pnrDefense: DEFAULT_SLIDERS.pnrDefense,
     };
 
-    return {
-        sliders: coachPrefs ? blendWithCoach(rosterSliders, coachPrefs) : rosterSliders,
-        starters: startersMap,
-        minutesLimits: {},
-        rotationMap,
-        depthChart
-    };
+    return coachPrefs ? blendWithCoach(rosterSliders, coachPrefs) : rosterSliders;
 };

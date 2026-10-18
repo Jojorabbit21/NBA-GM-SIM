@@ -45,6 +45,7 @@ const SliderColumn: React.FC<{
                         value={sliders[item.key]}
                         onChange={v => onChange(item, v)}
                         steps={item.steps}
+                        tooltip={item.note}
                     />
                 ))}
             </React.Fragment>
@@ -77,8 +78,8 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                     <SliderColumn groups={DEFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
                     <PlayTypePPP sliders={sliders} />
                 </div>
-
-                <SliderGroupNotes notes={TACTICS_SLIDER_NOTES} />
+                {/* [2026-10-18] 멀티 전술 화면은 슬라이더별 설명을 라벨 옆 ? 클릭 툴팁(SliderControl tooltip)으로 옮겨
+                    하단 설명 표(SliderGroupNotes)를 뺐다. 싱글/어드민(비-split) 레이아웃은 표 유지. */}
             </div>
         );
     }

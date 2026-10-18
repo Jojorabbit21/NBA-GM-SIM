@@ -115,12 +115,16 @@ export const loadRoom = async (roomId: string) => {
 export const saveMemberTactics = async (
     roomId: string,
     userId: string,
-    tactics: GameTactics | null,
-    depthChart?: DepthChart | null
+    tactics: GameTactics | null | undefined,   // undefined = 컬럼 안 건드림(슬롯만 저장할 때)
+    depthChart?: DepthChart | null,
+    /** 지정된 키만 저장 — depth → depth_preset_slot, team → team_preset_slot */
+    presetSlots?: Partial<Record<'depth' | 'team', number | null>>,
 ): Promise<{ error: string | null }> => {
     const payload: Record<string, unknown> = {};
     if (tactics    !== undefined) payload.tactics     = tactics;
     if (depthChart !== undefined) payload.depth_chart = depthChart;
+    if (presetSlots?.depth !== undefined) payload.depth_preset_slot = presetSlots.depth;
+    if (presetSlots?.team  !== undefined) payload.team_preset_slot  = presetSlots.team;
 
     const { error } = await supabase
         .from('room_members')

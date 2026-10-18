@@ -16,6 +16,8 @@ import type { CoachFAPool, LeagueCoachingData } from '../types/coaching';
 import type { LotteryResult } from '../services/draft/lotteryEngine';
 import { loadRoom, saveRoom, saveMemberTactics } from '../services/multi/roomPersistence';
 import { pruneTacticsToRoster } from '../utils/tacticsPrune';
+import type { TacticPresetKind } from '../services/multi/tacticPresets';
+import { jsonEqual } from '../utils/jsonEqual';
 import { loadRoomMember } from '../services/multi/roomQueries';
 import { loadSchedule, rowToGame } from '../services/multi/gameQueries';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
@@ -64,6 +66,11 @@ export interface MultiGameDataReturn {
     setUserTactics:      (t: GameTactics | null) => void;
     depthChart:          DepthChart | null;
     setDepthChart:       (d: DepthChart | null) => void;
+    /** [2026-10-18] 활성 전술 프리셋 슬롯(1~3, null=없음) — 드롭다운 선택은 저장 버튼과 함께 room_members.{depth,team}_preset_slot에 저장(dirty 판정 포함) */
+    presetSlots:         PresetSlots;
+    setPresetSlot:       (kind: TacticPresetKind, slot: number | null) => void;
+    /** 프리셋 생성/삭제처럼 즉시 확정되는 슬롯 변경 — 해당 컬럼만 바로 저장하고 기준선도 맞춘다(전술 dirty와 무관) */
+    commitPresetSlot:    (kind: TacticPresetKind, slot: number | null) => Promise<{ error: string | null }>;
     tendencySeed:        string | null;
 
     // 설정
@@ -98,9 +105,23 @@ export interface MultiGameDataReturn {
     // 저장
     forceSave:           () => Promise<void>;
     isTacticsDirty:      boolean;
+    /** 마지막으로 DB에 저장된 전술/뎁스차트(미저장 판정 기준선) — 프리셋 전환 시 "잃을 편집이 있는지" 판단용 */
+    lastSavedTactics:    GameTactics | null;
+    lastSavedDepthChart: DepthChart | null;
     /** rosterIds를 넘기면 저장 전에 로스터에 없는 선수 ID를 전술/뎁스차트에서 제거(트레이드/방출 후 stale 상태 되돌림 방지). */
-    saveTactics:         (rosterIds?: string[]) => Promise<{ error: string | null }>;
+    saveTactics:         (rosterIds?: string[]) => Promise<SaveTacticsResult>;
 }
+
+/** 저장 성공 시 실제로 저장된(로스터 정리 후) 전술/뎁스차트 — 호출부가 프리셋 덮어쓰기에 그대로 사용 */
+export interface SaveTacticsResult {
+    error: string | null;
+    tactics: GameTactics | null;
+    depthChart: DepthChart | null;
+    presetSlots: PresetSlots;
+}
+
+export type PresetSlots = Record<TacticPresetKind, number | null>;
+const NO_PRESET_SLOTS: PresetSlots = { depth: null, team: null };
 
 // ─── 훅 본체 ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +166,11 @@ export function useMultiGameData(
     // 현재 편집 중인 값과 비교해 "저장되지 않은 변경사항 있음" 상태를 계산하는 기준선.
     const [lastSavedTactics,   setLastSavedTactics]   = useState<GameTactics | null>(null);
     const [lastSavedDepthChart, setLastSavedDepthChart] = useState<DepthChart | null>(null);
+    const [presetSlots,          setPresetSlots]          = useState<PresetSlots>(NO_PRESET_SLOTS);
+    const [lastSavedPresetSlots, setLastSavedPresetSlots] = useState<PresetSlots>(NO_PRESET_SLOTS);
+    const setPresetSlot = useCallback((kind: TacticPresetKind, slot: number | null) => {
+        setPresetSlots(prev => ({ ...prev, [kind]: slot }));
+    }, []);
 
     // ── 식별 ────────────────────────────────────────────────────────────────
     const [myTeamId,         setMyTeamId]         = useState<string | null>(null);
@@ -173,7 +199,7 @@ export function useMultiGameData(
 
     // stale closure 방지: forceSave가 항상 최신 상태를 읽도록 렌더마다 갱신
     const stateRef = useRef({
-        roomId, userId, simSettings, userTactics, depthChart,
+        roomId, userId, simSettings, userTactics, depthChart, presetSlots,
         currentSimDate, offseasonPhase, seasonNumber, currentSeason,
         tendencySeed, teamFinances, leaguePickAssets, leagueTradeBlocks,
         leagueTradeOffers, leagueGMProfiles, leagueFAPool, leagueFAMarket,
@@ -181,7 +207,7 @@ export function useMultiGameData(
         lotteryResult, retiredPlayerIds, schedule, teams,
     });
     stateRef.current = {
-        roomId, userId, simSettings, userTactics, depthChart,
+        roomId, userId, simSettings, userTactics, depthChart, presetSlots,
         currentSimDate, offseasonPhase, seasonNumber, currentSeason,
         tendencySeed, teamFinances, leaguePickAssets, leagueTradeBlocks,
         leagueTradeOffers, leagueGMProfiles, leagueFAPool, leagueFAMarket,
@@ -268,6 +294,9 @@ export function useMultiGameData(
                         setDepthChart(member.depth_chart as DepthChart);
                         setLastSavedDepthChart(member.depth_chart as DepthChart);
                     }
+                    const slots: PresetSlots = { depth: member.depth_preset_slot ?? null, team: member.team_preset_slot ?? null };
+                    setPresetSlots(slots);
+                    setLastSavedPresetSlots(slots);
                 }
 
                 setLoadingProgress(100);
@@ -386,25 +415,40 @@ export function useMultiGameData(
     // 서버에 올라가는 문제가 있어 명시적 저장 버튼 방식으로 변경)
 
     const isTacticsDirty = useMemo(() => {
-        return JSON.stringify(userTactics) !== JSON.stringify(lastSavedTactics)
-            || JSON.stringify(depthChart)  !== JSON.stringify(lastSavedDepthChart);
-    }, [userTactics, depthChart, lastSavedTactics, lastSavedDepthChart]);
+        // [2026-10-18] JSON.stringify → jsonEqual: jsonb가 키를 재정렬해서(프리셋 불러오기 값 등) 내용이 같아도 dirty로 오탐되던 문제
+        return !jsonEqual(userTactics, lastSavedTactics)
+            || !jsonEqual(depthChart, lastSavedDepthChart)
+            || presetSlots.depth !== lastSavedPresetSlots.depth
+            || presetSlots.team  !== lastSavedPresetSlots.team;
+    }, [userTactics, depthChart, lastSavedTactics, lastSavedDepthChart, presetSlots, lastSavedPresetSlots]);
 
-    const saveTactics = useCallback(async (rosterIds?: string[]): Promise<{ error: string | null }> => {
+    const saveTactics = useCallback(async (rosterIds?: string[]): Promise<SaveTacticsResult> => {
         const s = stateRef.current;
-        if (!s.roomId || !s.userId) return { error: 'roomId/userId missing' };
+        if (!s.roomId || !s.userId) return { error: 'roomId/userId missing', tactics: null, depthChart: null, presetSlots: s.presetSlots };
         // [2026-10-16] 접속 중 트레이드/방출로 서버가 나간 선수 ID를 전술에서 지웠어도, 이 화면의 메모리 상태엔
         // 남아 있어 통째로 덮어쓰면 되돌아온다 — 저장 직전에 현재 로스터 기준으로 정리하고 화면 상태도 같이 맞춘다
         // (안 맞추면 저장 후에도 isTacticsDirty가 계속 true).
         const pruned = rosterIds
             ? pruneTacticsToRoster(s.userTactics, s.depthChart, rosterIds)
             : { tactics: s.userTactics, depthChart: s.depthChart };
-        const { error } = await saveMemberTactics(s.roomId, s.userId, pruned.tactics, pruned.depthChart);
+        const { error } = await saveMemberTactics(s.roomId, s.userId, pruned.tactics, pruned.depthChart, s.presetSlots);
         if (!error) {
             if (pruned.tactics !== s.userTactics)   setUserTactics(pruned.tactics);
             if (pruned.depthChart !== s.depthChart) setDepthChart(pruned.depthChart);
             setLastSavedTactics(pruned.tactics);
             setLastSavedDepthChart(pruned.depthChart);
+            setLastSavedPresetSlots(s.presetSlots);
+        }
+        return { error, tactics: pruned.tactics, depthChart: pruned.depthChart, presetSlots: s.presetSlots };
+    }, []);
+
+    const commitPresetSlot = useCallback(async (kind: TacticPresetKind, slot: number | null): Promise<{ error: string | null }> => {
+        const s = stateRef.current;
+        if (!s.roomId || !s.userId) return { error: 'roomId/userId missing' };
+        const { error } = await saveMemberTactics(s.roomId, s.userId, undefined, undefined, { [kind]: slot });
+        if (!error) {
+            setPresetSlots(prev => ({ ...prev, [kind]: slot }));
+            setLastSavedPresetSlots(prev => ({ ...prev, [kind]: slot }));
         }
         return { error };
     }, []);
@@ -457,6 +501,7 @@ export function useMultiGameData(
         seasonConfig,
         userTactics, setUserTactics,
         depthChart, setDepthChart,
+        presetSlots, setPresetSlot, commitPresetSlot,
         tendencySeed,
         simSettings, setSimSettings,
         teamFinances,
@@ -473,6 +518,7 @@ export function useMultiGameData(
         retiredPlayerIds, setRetiredPlayerIds,
         forceSave,
         isTacticsDirty,
+        lastSavedTactics, lastSavedDepthChart,
         saveTactics,
     };
 }

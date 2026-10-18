@@ -5,6 +5,7 @@ import { TeamMark } from '../common/TeamMark';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { TEAM_DATA } from '../../data/teamData';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
+import { BlankBoxRows, DnpCell } from './boxScoreRows';
 
 interface DefenseBoxScoreTableProps {
     team: Team;
@@ -14,16 +15,23 @@ interface DefenseBoxScoreTableProps {
     standalone?: boolean;
     /** 헤더 바 우측에 렌더링할 커스텀 요소(예: Traditional/Advanced/Defense 셀렉터) */
     headerRight?: React.ReactNode;
+    /** 선수 id → 프로필 경로. 주어지면 이름이 링크가 된다(멀티플레이어 종료 화면 전용) */
+    getProfileHref?: (playerId: string) => string | undefined;
+    /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
+    padRows?: number;
 }
 
 const fmtPct = (m: number, a: number) => a > 0 ? ((m / a) * 100).toFixed(1) : '-';
-const statCellClass = "text-xs font-semibold text-white tabular-nums";
-const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700";
+// 푸터 셀은 py-2 + leading-6(24px)으로 본문 행(OVR 배지 h-6 + py-2)과 같은 높이를 맞춘다. 멀티(standalone)는 text-sm.
+const statCellClass = (standalone?: boolean) => `${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums`;
+const totalCellClass = (standalone?: boolean) => `py-2 px-2 leading-6 text-center ${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
 
 // DFGA/DFGM/DFG% — 이 선수가 컨테스트(contest)한 상대 슛 시도/성공/피FG%.
 // 존별 세분화(림/미드/3점 등)는 컬럼이 너무 많아져 컨테스트 전체 합산만 노출한다.
-export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team, box, mvpId, badge, standalone, headerRight }) => {
+export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team, box, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
     const sortedBox = useMemo(() => [...box].sort((a, b) => {
+        // Did Not Play(mp 0)는 항상 맨 아래
+        if ((a.mp > 0) !== (b.mp > 0)) return a.mp > 0 ? -1 : 1;
         if (a.gs !== b.gs) return b.gs - a.gs;
         return b.mp - a.mp;
     }), [box]);
@@ -41,6 +49,8 @@ export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team
     // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
     const rosterMap = useMemo(() => new Map(team.roster.map(rp => [rp.id, rp])), [team.roster]);
 
+    const statCell = statCellClass(standalone);
+    const totalCell = totalCellClass(standalone);
     const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
 
     return (
@@ -70,32 +80,35 @@ export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team
                 <TableBody>
                     {sortedBox.map(p => (
                         <TableRow key={p.playerId}>
-                            <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} />
-                            <TableCell align="center" className={statCellClass}>{Math.round(p.mp)}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.stl}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.blk}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.defReb}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.pf}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.contestedAttempted}</TableCell>
-                            <TableCell align="center" className={statCellClass}>{p.contestedMade}</TableCell>
-                            <TableCell align="center" className={`pr-4 ${statCellClass}`}>{fmtPct(p.contestedMade, p.contestedAttempted)}</TableCell>
-                        </TableRow>
+                            <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={8} standalone={standalone} /> : (<>
+                            <TableCell align="center" className={statCell}>{Math.round(p.mp)}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.stl}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.blk}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.defReb}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.pf}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.contestedAttempted}</TableCell>
+                            <TableCell align="center" className={statCell}>{p.contestedMade}</TableCell>
+                            <TableCell align="center" className={`pr-4 ${statCell}`}>{fmtPct(p.contestedMade, p.contestedAttempted)}</TableCell>
+                        </>)}
+                            </TableRow>
                     ))}
+                    <BlankBoxRows count={padRows} totalCols={11} />
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-3 px-4 bg-slate-800/50 border-t border-slate-800">
-                            <span className="text-xs font-black text-white">TEAM TOTALS</span>
+                        <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
+                            <span className={`${standalone ? 'text-sm' : 'text-xs'} font-black text-white`}>TEAM TOTALS</span>
                         </td>
-                        <td className={totalCellClass} colSpan={2}></td>
-                        <td className={totalCellClass}>{Math.round(totals.mp)}</td>
-                        <td className={totalCellClass}>{totals.stl}</td>
-                        <td className={totalCellClass}>{totals.blk}</td>
-                        <td className={totalCellClass}>{totals.dreb}</td>
-                        <td className={totalCellClass}>{totals.pf}</td>
-                        <td className={totalCellClass}>{totals.dfga}</td>
-                        <td className={totalCellClass}>{totals.dfgm}</td>
-                        <td className={`${totalCellClass} pr-4`}>{fmtPct(totals.dfgm, totals.dfga)}</td>
+                        <td className={totalCell} colSpan={2}></td>
+                        <td className={totalCell}>{Math.round(totals.mp)}</td>
+                        <td className={totalCell}>{totals.stl}</td>
+                        <td className={totalCell}>{totals.blk}</td>
+                        <td className={totalCell}>{totals.dreb}</td>
+                        <td className={totalCell}>{totals.pf}</td>
+                        <td className={totalCell}>{totals.dfga}</td>
+                        <td className={totalCell}>{totals.dfgm}</td>
+                        <td className={`${totalCell} pr-4`}>{fmtPct(totals.dfgm, totals.dfga)}</td>
                     </tr>
                 </tfoot>
             </Table>
