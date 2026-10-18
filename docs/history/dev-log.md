@@ -35,6 +35,114 @@
 
 ---
 
+## 2026-10-18 — 멀티 세션 중 강퇴(AI 전환) + 초대 링크로 AI 팀 인계
+
+**배경**: 사용자 요청 — 세션 시작 후에도 유저를 강퇴하고 새 유저를 초대할 수 있어야 함. 기존엔 `leaveLeague`의 클라이언트 가드
+(`leagueStatus !== 'recruiting'`)로 세션 시작 후 강퇴/탈퇴가 전부 막혀 있었고, 신규 참가도 로터리 후 트리거(`block_join_after_lottery`)가 차단.
+팀을 삭제하면 일정이 깨지므로 **강퇴 = 팀을 AI로 전환**, **초대 = AI 팀 1개를 지정한 1회용 링크(7일)**로 설계(사용자 결정).
+
+**변경 파일**:
+- `migrations/league_midseason_kick_invite.sql` (DB, 2026-10-18 Supabase MCP로 적용) — `kick_member_to_ai`, `league_invites` 테이블(+RLS 방장/전역어드민 SELECT),
+  `create_league_invite` / `revoke_league_invite` / `get_league_invite` / `accept_league_invite`
+- `services/multi/leagueService.ts` — `kickMemberToAi`, `createLeagueInvite`, `revokeLeagueInvite`, `listPendingInvites`, `getLeagueInvite`, `acceptLeagueInvite`, `buildInviteUrl`
+- `views/multi/league/LeagueSettingsView.tsx` — 팀 목록: `sessionLive`(모집/드래프트/종료 제외)일 때 버튼이 "강퇴"(confirm 후 `kickMemberToAi`),
+  AI 팀 행에 "초대 링크"(생성/복사/취소) 추가. 모집 중 동작(`leaveLeague`)은 불변
+- `pages/LeagueInvitePage.tsx` (신규), `App.tsx` — 라우트 `/multi/invite/:token`(MultiProtectedLayout 밖, 미로그인 시 `/auth?redirect=`로 왕복)
+
+**Before**: 세션 시작 후 `handleKick` → `leaveLeague` → "세션이 시작된 후에는 탈퇴할 수 없습니다." 에러. 초대 수단 없음.
+
+**After**:
+- `kick_member_to_ai`: room_members 행을 `user_id=가짜UUID(00000000-…-{n:12}, 방 내 미사용 최소 n)`, `is_ai=true`, `ai_gm_personality='balanced'`로 UPDATE
+  (전술/뎁스차트 보존) + `league_teams.user_id=NULL,is_ai=true,nickname=NULL` + 보류 트레이드 제안 취소. 모집/드래프트/종료 상태·본인 강퇴·이미 AI는 거부.
+- `accept_league_invite`: room_members **UPDATE**(가짜→수락자, is_ai=false)라 INSERT 트리거(정원·로터리 차단)를 타지 않음. 이미 멤버인 유저 거부.
+  `league_teams.user_id` 변경은 기존 트리거 `lal_teams_au`가 `team_reassign` 감사 로그로 자동 기록(강퇴·인계 양쪽).
+- 초대는 팀당 pending 1개(부분 유니크 인덱스), 재발급 시 이전 링크 revoke.
+
+**검증**: 운영 DB의 진행 중 리그로 트랜잭션 내 시뮬(강퇴→초대→미리보기→수락)을 돌리고 예외로 롤백 — 전 단계 정상, 정원 30 유지. tsc: 변경 파일 오류 없음(App.tsx:115 RosterMode 오류는 기존). 브라우저 E2E는 미실시.
+
+**후속(같은 날)**: 사용자 결정으로 초대 링크 기본 무기한 — `league_invites.expires_at` NULL 허용(`league_invites_optional_expiry` 적용), `create_league_invite(p_expires_hours DEFAULT NULL)`. 만료 판정은 `expires_at IS NOT NULL AND <= now()`. 링크는 팀이 인계되면(`team_taken`/`accepted`) 자동 소멸. 클라이언트 `expires_at: string|null`, 목록 쿼리 `or(is.null, gt.now)`.
+
+**롤백 방법**: 마이그레이션 상단 롤백 주석의 DROP 6건 실행 + 위 클라이언트 파일 git revert. 이미 인계/전환된 팀은 그대로 남음(수동 SQL로 복구).
+
+## 2026-10-18 — PBL 기존 360경기 플레이타입 PPP 백필(추정치 포함) + is_estimated 표시
+
+**배경**: 사용자 요청 — Pro Basketball League(room `aeb5794a-…`, 1시즌)의 이미 치른 경기도 PPP로 채우기. 기존 데이터엔 슛에만 playType이
+있어(턴오버 9,173·오펜시브 파울 포함 10,918, 자유투 기회 5,221 = 플레이의 약 19%는 playType 없음) 정확 복원 불가 → 사용자 선택: 추정치로 채우되 표시 구분.
+
+**방법** (스크립트: `scripts/ppp_backfill/`, README에 실행 순서):
+- 정확: 플레이타입별 FGA/FGM/야투 득점(shot_events), 앤드원(팀별 n번째 score 로그 ↔ n번째 성공 슛 순서 대응 — 720팀-경기 중 719 일치,
+  ORL g_orl_atl_2026-11-04 1건은 슛 기록 없는 1점 득점 로그 1개 → 최다 시도 플레이타입에 득점만 가산)
+- 추정: 팀-경기 실제 총수(턴오버+오펜시브 파울, 자유투 기회, 그 FTA, 자유투 득점)를 largest remainder로 정수 배분.
+  가중치 = 슛 수 × 엔진 플레이타입별 비율(`ppp_rates.json` — 실제 선수 6팀 240경기 시뮬: TOV/FGA 0.12~0.19, 자유투기회/FGA 0.04~0.12, FTA/기회 2.1~3.0)
+- 저장: 8,369행, `is_estimated = true`, season 1, 정규시즌. REST(서비스 키)로 1000행씩 insert
+
+**변경 파일**:
+- DB `team_playtype_stats.is_estimated boolean default false` 추가, RPC `get_team_playtype_stats` 반환에 `estimated_games`(추정 행이 있는 경기 수) 추가
+  (drop + recreate, `migrations/add_team_playtype_stats.sql` v2, Supabase 적용 완료)
+- `hooks/useTeamPlayTypeStats.ts` — 반환형 `TeamPlayTypeTotals` → `{ totals, estimatedGames }`
+- `components/dashboard/tactics/charts/PlayTypePPP.tsx` — `PlayTypeActual.estimatedGames?`, 0보다 크면 부제 아래 amber 안내
+  "N경기는 기능 도입 전 기록이라 턴오버·자유투 배분이 추정치입니다"
+- `views/multi/season/MultiTacticsView.tsx` — 우리 팀 estimatedGames 전달
+- `scripts/ppp_backfill/` (신규) — extract SQL / allocate.py / insert.mjs / rates json / README
+
+**검증**: 백필 후 DB 대조 — 720/720 팀-경기 Σpts + 테크니컬·플래그런트 자유투 = 실제 점수, 배분 턴오버 합 = 실제 10,918.
+리그 PPP 0.86(PnR_Pop)~1.13(Putback). tsc 오류 0, vite build 성공.
+
+**주의**: 서버 배포 전까지 새로 치러지는 경기는 행이 안 생김 → 배포 후 `scripts/ppp_backfill` 재실행(행 없는 경기만 대상)으로 메울 것.
+재시뮬 시 simRunner가 그 경기 행을 지우고 정확값(is_estimated=false)으로 다시 넣으므로 추정치가 자연히 대체됨.
+
+**롤백 방법**: `delete from team_playtype_stats where room_id = 'aeb5794a-2a52-46c6-b5cc-aa7f0ab4194e' and is_estimated;`
+(컬럼/RPC 원복은 v1 정의로 drop+create, 클라이언트 3파일 git 원복)
+
+---
+
+## 2026-10-18 — 멀티 전술 화면 플레이타입별 PPP(엔진 집계 → 경기별 요약 저장 → 시즌 합산 RPC → 팀 전술 탭)
+
+**배경**: 사용자 요청 — 팀 전술 탭 "플레이타입 분석"(슬라이더 기준 예상 비중) 아래에 실제 경기 기반 플레이타입별 PPP. 지표는 진짜 PPP
+(득점 ÷ 플레이, 자유투·앤드원·턴오버 포함). 속공 표시(위 차트에도 추가, 구분선 없이 같은 목록), 풋백 제외. 기존 데이터엔 포제션별
+플레이타입이 없어(shot_events는 슛만) 엔진 집계를 새로 추가 — **배포 이후 경기부터 쌓임**.
+
+**변경 파일** (⚠️ 미러 쌍 — 반드시 같이 롤백):
+- `types/engine.ts` (client) / `server/src/shared/types/engine.ts` (server) — `PlayTypeStatLine{poss,pts,fga,fgm,fta,tov}`, `TeamPlayTypeStats`,
+  `SimulationResult.playTypeStats?` 추가
+- `services/game/engine/pbp/pbpTypes.ts` (client) / `server/src/shared/engine/pbp/pbpTypes.ts` (server) — `GameState.playTypeStats` 추가
+- `services/game/engine/pbp/statsMappers.ts` (client) / `server/src/shared/engine/pbp/statsMappers.ts` (server):
+  - `recordPlayTypeStat()` + `PLAY_TYPE_COUNTED_RESULTS` 신규(applyPossessionResult 바로 위)
+  - `applyPossessionResult` 진입부에 `ptScoreBefore = offTeam.score`, `ptFtaBefore = actor.fta`, 함수 끝에
+    `recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore)` — 각 결과 분기는 손대지 않음
+  - 규칙(Synergy식, 플레이 단위): score/miss/turnover/offensiveFoul/shotClockViolation/freethrow(슈팅파울)/foul(보너스 자유투일 때만) = 1플레이.
+    비보너스 foul·technicalFoul·flagrantFoul·fight 제외. 공격 리바운드 후 공격은 다음 호출에서 별도 플레이(풋백 등)
+- `services/game/engine/pbp/liveEngine.ts` (client) / `server/src/shared/engine/pbp/liveEngine.ts` (server) — createGameState `playTypeStats: {}`,
+  extractSimResult `playTypeStats: state.playTypeStats`
+- `server/src/simRunner.ts` — game_pbp upsert 직후 "5-1" 블록: 이 경기 team_playtype_stats 행 delete → 팀×플레이타입 insert
+  (season_number = rooms.season_number, is_playoff = !!game.series_id). 실패해도 경기 진행 계속(로그만)
+- DB `migrations/add_team_playtype_stats.sql` (Supabase 적용 완료): 테이블 `team_playtype_stats` PK(room_id,game_id,team_id,play_type) + 인덱스
+  (room_id,season_number,team_id), RLS 읽기 = 같은 경기 game_pbp가 보일 때만(→ 방 멤버 + 리플레이 공개 시각 이후, 스포일러 방지), 쓰기 service_role만.
+  RPC `get_team_playtype_stats(p_room_id, p_season_number=현재 시즌, p_include_playoffs=true)` SECURITY INVOKER 합산
+- `hooks/useTeamPlayTypeStats.ts` (신규) — RPC → `teamId → playType → 합계`
+- `components/dashboard/tactics/charts/playTypeConstants.ts` — `TRANSITION_PLAY_TYPE`, `PLAY_TYPES_WITH_TRANSITION`, `getFullPlayTypeDistribution`
+  (속공 = pace×3%, 나머지 = 하프코트 비중×(1−속공)). 기존 `getPlayTypeDistribution`(ShotDistribution 사용)은 그대로
+- `components/dashboard/tactics/charts/PlayTypePPP.tsx` — 차트를 11종(속공 포함)으로 + "슬라이더 기준 예상 비중" 부제, `actual` prop 있을 때
+  하단 "PPP" 섹션(PlayTypeActualSection): 우리 팀 PPP vs 리그 평균(같은 플레이타입 전 팀 pts/poss), ±0.03 초록/빨강, 20 포제션 미만 흐리게+"표본 적음",
+  막대 스케일 0.6~1.4 + 리그 평균 눈금, 실제 비중(표시 11종 기준)·포제션 수, 빈 상태/로딩/에러, "풋백 제외" 주석
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — `playTypeActual?` prop → split 레이아웃의 PlayTypePPP에 전달
+- `views/multi/season/MultiTacticsView.tsx` — `useTeamPlayTypeStats(room.id)` → `playTypeActual` 전달
+
+**Before**: 플레이타입 분석 = 하프코트 10종 예상 비중만, 실제 PPP 없음. 엔진은 playType을 슛 이벤트에만 남김.
+**After**: 위 전부. 싱글(비-split) 화면의 PlayTypePPP도 11종(속공 포함)으로 보임(PPP 섹션은 actual 미전달이라 없음).
+
+**검증**: 실제 선수(BOS 13 vs OKC 13) 클라이언트 엔진 30경기 — 플레이타입별 pts 합 + 테크니컬·플래그런트 자유투 = 팀 최종 점수 **60/60 일치**,
+팀당 경기당 112.5점·플레이 114.5회·PPP 0.977. RLS 롤백 테스트 — 멤버는 공개 경기 행만(미공개 가짜 경기 제외, RPC 합 10), 멤버 insert 차단.
+client tsc(변경 파일 오류 0)·vite build 성공, server tsc는 변경 파일 신규 오류 0(기존 bun 타입·supabase never 오류는 무관).
+
+**배포**: 서버 Fly 배포 필요(배포 전엔 테이블이 비어 화면은 "아직 집계된 경기가 없습니다").
+
+**롤백 방법**: 미러 4쌍(types/engine, pbpTypes, statsMappers, liveEngine)에서 위 추가분 제거 + simRunner "5-1" 블록 제거(서버 재배포),
+클라이언트 PlayTypePPP/playTypeConstants/TacticsSlidersPanel/MultiTacticsView 원복·useTeamPlayTypeStats 삭제,
+`drop function get_team_playtype_stats(uuid,int,boolean); drop table team_playtype_stats;`
+
+---
+
 ## 2026-10-18 — 로테이션 비상 보충(폴백) 규칙 교체: "코트 위 우선 > OVR" → 체력 점수 + 히스테리시스·최소 출전/휴식 보호
 
 **배경**: 마이칸 출전 과다(NYK 평균 38.7분, 하네스 기준 43.8분)의 엔진 측 근본 원인. `checkAndApplyRotation`은 포세션마다
@@ -332,6 +440,118 @@ const activeHomeBox = useMemo(() => splitLayout ? homeBox : homeBox.filter(p => 
 **검증**: `tsc --noEmit`에서 수정 파일 관련 오류 없음(기존 `LiveTacticsTab.tsx(72,73)` 오류는 무관). 브라우저 육안 확인은 미실시.
 
 **롤백 방법**: 위 파일들 `git checkout`, `boxScoreRows.tsx` 삭제. 푸터 높이 보정(py-2 leading-6)은 싱글 화면에도 적용되므로 같이 되돌릴 것.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁: 아래 공간 부족 시 위로 펼침(아이콘 아랫변 정렬)
+
+**배경**: 사용자 제보 — 지역 방어 툴팁(9줄)이 길어서 열면 스크롤 컨테이너 높이가 늘어남(absolute 패널이 스크롤 영역 overflow에 포함).
+아래 여백이 모자라면 아이콘 좌상단이 아니라 좌하단 기준 정렬 요청.
+
+**변경 파일**: `components/common/SliderControl.tsx`
+- `fitTooltipVertical(h, anchorTop, anchorBottom, boundTop, boundBottom)` 신규 export: 아래(패널 윗변=아이콘 윗변)에 들어가면 'top', 아니고 위(패널 아랫변=아이콘 아랫변)에
+  들어가면 'bottom', 둘 다 안 되면 넓은 쪽. 여백 8px
+- `visibleVerticalBounds(el)`: 가장 가까운 `overflow-y: auto|scroll` 조상 rect ∩ 뷰포트 → 보이는 세로 범위(뷰포트만 쓰면 스크롤 영역 아래쪽 UI를 침범)
+- 배치 state `{side, maxWidth?, fitted}` → `{side, maxWidth?, vAlign, phase 0|1|2}`: phase0 폭 측정→좌우·maxWidth, phase1 (줄바꿈 반영된) 높이 측정→위아래, phase2 완료.
+  모두 useLayoutEffect 안이라 페인트 전 확정(깜빡임 없음). 가로를 먼저 정하는 이유: maxWidth 축소 시 높이 증가
+- 패널 클래스 `top-0` 고정 → `vAlign === 'top' ? 'top-0' : 'bottom-0'`
+- `tipRef` 선언을 사용하는 effect보다 위로 이동(CLAUDE.md 규칙2 — 동작은 같았지만 선언 순서 정리)
+
+**검증**: fitTooltipVertical 테스트 6/6(위쪽 슬라이더=아래로, 하단 근처=위로, 딱 맞음/1px 초과, 양쪽 부족 시 넓은 쪽) + 가로 회귀 1, tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**한계**: 양쪽 다 부족하면(툴팁이 보이는 영역보다 큼) 여전히 넘칠 수 있음. 열 때 1회 계산(열린 채 스크롤/리사이즈 재계산 없음).
+
+**롤백 방법**: fitTooltipVertical·visibleVerticalBounds 제거, tipPlace를 `{side, maxWidth?, fitted}` 1단계로, 패널 `top-0` 고정.
+
+---
+
+
+## 2026-10-18 — 지역 방어 슬라이더 설명 문구 교체(+/− 목록)
+
+**배경**: 사용자 제공 문구(앞선 11개 교체에서 누락분). **변경 파일**: `components/dashboard/tactics/tacticsSliderConfig.ts` — `zoneFreq` note를 9줄 배열로 교체.
+사용자 원문 대비 1곳 수정: 마지막 줄 "- 낮을수록 체력 소모 감소" → "- 낮을수록 체력 소모 증가"(본문 "맨투맨 사용시 더 많은 체력 소모"·단점 기호 − 와 일치하도록, 사용자에게 보고).
+**롤백 방법**: 기존 1줄 문장(git) 복원.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁: 좌우 공간 계산해 방향 자동 전환
+
+**배경**: 사용자 요청 — 오른쪽 공간이 부족하면 방향 전환(직전 항목의 한계: 싱글/어드민 레이아웃 오른쪽 슬라이더의 툴팁이 화면 밖으로 나감).
+
+**변경 파일**: `components/common/SliderControl.tsx`
+- `fitTooltipSide(w, anchorLeft, anchorRight, viewportW)` 신규 export(순수 함수): 오른쪽 공간(뷰포트 − 아이콘 오른쪽 − 간격 8 − 여백 8)에 들어가면 right /
+  아니고 왼쪽 공간에 들어가면 left / 둘 다 안 되면 넓은 쪽 + `maxWidth = max(그 공간, 160)`
+- `tipPlace` state + `tipPanelRef`, 새 `useLayoutEffect`: 열 때마다(? 클릭 시 `{side:'right', fitted:false}`로 리셋) 오른쪽으로 한 번 그린 뒤
+  페인트 전 `offsetWidth` 측정 → 판정(fitted=true). 깜빡임 없음. 훅은 readOnly 분기 전
+- 패널 위치 클래스: `left-full ml-2` 고정 → side에 따라 `left-full ml-2` / `right-full mr-2`, maxWidth 있으면 inline style로 덮음(줄바꿈)
+
+**검증**: fitTooltipSide 테스트 8/8(왼쪽 슬라이더=right, 화면 오른쪽 끝=left로 뒤집기, 딱 맞음/1px 초과 경계, 양쪽 부족 시 넓은 쪽+축소, 최소 160),
+tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**한계**: 열 때 1회만 맞춤(열린 채 창 크기 변경 시 재계산 없음). 세로 방향(아래로 넘침)은 처리 안 함 — 스크롤 컨테이너 안이라 스크롤로 볼 수 있음.
+
+**롤백 방법**: fitTooltipSide·상수·tipPlace/tipPanelRef/보정 effect 제거, 패널 클래스를 `absolute left-full top-0 ml-2 ...`로, onClick을 `setTipOpen(o => !o)`로.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁 배경 slate-900 + 흰 글자
+
+**배경**: 사용자 요청.
+**변경 파일**: `components/common/SliderControl.tsx` — 패널 `bg-slate-800 text-slate-200` → `bg-slate-900 text-white` (테두리 slate-600·8px·z-tooltip 유지).
++/− 기호 색(emerald-400/red-400)은 SliderNoteContent 그대로.
+**롤백 방법**: 클래스 원복.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁을 아이콘 오른쪽에 표시
+
+**배경**: 사용자 요청 — 툴팁을 ? 아이콘의 우측에.
+**변경 파일**: `components/common/SliderControl.tsx` — 패널 위치 `absolute top-full left-0 mt-2`(아이콘 아래·좌측 정렬) → `absolute left-full top-0 ml-2`(아이콘 오른쪽 8px, 윗변 정렬)
+**한계**: 오른쪽 공간 부족 시 자동 뒤집기 없음 — 비-split 레이아웃(싱글/어드민, 슬라이더가 화면 오른쪽 5/12 열)의 오른쪽 슬라이더는 넓은 툴팁이 화면 오른쪽 밖으로 나갈 수 있음.
+**롤백 방법**: 클래스 원복.
+
+---
+
+
+## 2026-10-18 — 전술 슬라이더 설명 문구 교체(+/− 장단점 목록) + 툴팁 폭 가변
+
+**배경**: 사용자 제공 문구로 11개 슬라이더 설명 교체(페이스·볼 회전·공격 리바운드·공격 포인트·픽앤롤 빈도·수비 압박 강도·스위치 수비·
+픽앤롤 수비·풀코트 프레스·헬프 수비·수비 리바운드). "+ "/"- " 줄로 어떤 점이 좋아지고 나빠지는지 표시. 툴팁 폭 고정 → 가변.
+미제공 4개(3점 슛 빈도·골밑 공격 빈도·미드레인지 빈도·지역 방어)는 기존 문구 유지.
+
+**변경 파일**:
+- `components/dashboard/tactics/tacticsSliderConfig.ts` — `SliderItemConfig.note: string` → `string[]`(줄 단위, `\n` 이스케이프 회피). 11개 새 문구, 4개는 기존 문장 1줄 배열.
+  사용자 원문 대비 오타 2건만 수정: "높에 설정해도"→"높게 설정해도"(수비 리바운드), "높을 수록"→"높을수록"(스위치 수비), 끝 공백 제거
+- `components/dashboard/tactics/SliderNoteContent.tsx` (신규) — 줄 배열 렌더: "+"줄 초록 +, "-"줄 빨강 −(U+2212), 그 외 문단. 설명→첫 +/− 줄 사이 mt-1.5,
+  기호는 aria-hidden + sr-only "장점:/단점:"
+- `components/common/SliderControl.tsx` — `tooltip?: string` → `React.ReactNode`, 패널 폭 `w-72`(288 고정) → `w-max max-w-[min(24rem,calc(100vw-2rem))]`
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — `tooltip={<SliderNoteContent lines={item.note} />}`
+- `components/common/SliderGroupNotes.tsx` — `text: string | string[]`, 배열이면 줄마다 `<div>`(싱글/어드민 설명 표용; LiveTacticsTab·MotionSandbox는 문자열 그대로)
+
+**검증**: tsc — 변경 파일 오류 0(별개: `components/game/tabs/LiveTacticsTab.tsx(72)` `as const` 튜플에 string `.includes` 타입 오류는 HEAD와 동일 파일·이번 변경 무관),
+vite build 성공, 빌드 CSS에 `w-max`·`max-w-[min(24rem,...)]`·`sr-only` 생성 확인. 브라우저 미확인. 문구의 엔진 동작 사실 여부는 검증 안 함(사용자 작성 카피).
+
+**롤백 방법**: git으로 tacticsSliderConfig.ts(문자열 note)·SliderControl(tooltip string, w-72)·TacticsSlidersPanel(tooltip={item.note})·SliderGroupNotes 복원, SliderNoteContent.tsx 삭제.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁: 아이콘 기준 좌측 정렬 + 서비스 툴팁 톤(수상 배지)에 맞춤
+
+**배경**: 사용자 지시 — 툴팁 위치를 ? 아이콘과 좌측 정렬, 모서리 8px, z-tooltip, 테두리 slate-600, 배경 slate-800(수상 배지 툴팁과 동일).
+
+**변경 파일**: `components/common/SliderControl.tsx`
+- 위치: 패널의 기준(relative)이 "라벨+아이콘 묶음 div"(→ 라벨 왼쪽 정렬)였던 것을 아이콘만 감싼 `<span className="relative inline-flex">`로 옮겨
+  `left-0` = 아이콘 왼쪽 끝. 바깥 클릭 판정 ref(`tipRef`)도 이 span으로(HTMLDivElement → HTMLSpanElement)
+- 패널: `z-popover border-slate-700 rounded-xl shadow-2xl` → `z-tooltip border-slate-600 rounded-lg shadow-xl`(배경 slate-800 유지, 그림자는 수상 배지 툴팁과 동일하게 xl)
+
+**검증**: tsc 오류 0, vite build 성공, 빌드 CSS에 `.z-tooltip{z-index:700}` 확인. 브라우저 미확인.
+
+**롤백 방법**: relative/ref를 라벨 묶음 div로 되돌리고 패널 클래스 원복.
 
 ---
 
