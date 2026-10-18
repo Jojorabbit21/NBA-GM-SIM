@@ -874,6 +874,115 @@ export const leaveLeague = async (
     return releaseTeam(roomId, userId);
 };
 
+// ─── 세션 중 강퇴(AI 전환) / 초대 링크 (migrations/league_midseason_kick_invite.sql) ─────
+
+const midseasonErrorMessage = (msg: string): string | null => {
+    if (msg.includes('not_league_admin'))      return '이 리그의 방장 또는 관리자만 사용할 수 있습니다.';
+    if (msg.includes('session_not_started'))   return '모집 중에는 일반 추방을 사용하세요.';
+    if (msg.includes('draft_in_progress'))     return '드래프트 진행 중에는 사용할 수 없습니다.';
+    if (msg.includes('league_finished'))       return '종료된 리그입니다.';
+    if (msg.includes('cannot_kick_self'))      return '본인은 강퇴할 수 없습니다.';
+    if (msg.includes('member_not_found'))      return '이미 리그에서 나간 참가자입니다. 새로고침 후 확인하세요.';
+    if (msg.includes('already_ai'))            return '이미 AI가 운영 중인 팀입니다.';
+    if (msg.includes('team_not_found'))        return '팀을 찾을 수 없습니다.';
+    if (msg.includes('team_not_ai'))           return 'AI가 운영하는 팀에만 초대를 만들 수 있습니다.';
+    if (msg.includes('invite_not_available'))  return '진행 중인 세션에서만 초대할 수 있습니다.';
+    if (msg.includes('invite_not_found'))      return '존재하지 않는 초대입니다.';
+    if (msg.includes('invite_used'))           return '이미 사용된 초대 링크입니다.';
+    if (msg.includes('invite_revoked'))        return '취소된 초대 링크입니다.';
+    if (msg.includes('invite_expired'))        return '만료된 초대 링크입니다.';
+    if (msg.includes('already_member'))        return '이미 이 리그에 참가 중입니다.';
+    if (msg.includes('team_taken'))            return '다른 유저가 이미 인계받은 팀입니다.';
+    return null;
+};
+
+/** 진행 중인 세션에서 사람 GM을 내보내고 그 팀을 AI로 전환한다(로스터·전술은 그대로). 모집 중에는 leaveLeague 사용. */
+export const kickMemberToAi = async (
+    roomId: string,
+    userId: string,
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('kick_member_to_ai', { p_room_id: roomId, p_user_id: userId });
+    if (error) return { error: midseasonErrorMessage(error.message ?? '') ?? actionFailure(error, '강퇴') };
+    return { error: null };
+};
+
+export interface LeagueInviteRow {
+    id:          string;
+    room_id:     string;
+    team_id:     string;
+    token:       string;
+    status:      'pending' | 'accepted' | 'revoked';
+    created_by:  string;
+    created_at:  string;
+    expires_at:  string | null;   // null = 무기한
+    accepted_by: string | null;
+    accepted_at: string | null;
+}
+
+export const buildInviteUrl = (token: string): string => `${window.location.origin}/multi/invite/${token}`;
+
+export const createLeagueInvite = async (
+    roomId: string,
+    teamId: string,
+    expiresHours: number | null = null,   // null = 무기한
+): Promise<{ data: { id: string; token: string; expires_at: string | null } | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('create_league_invite', {
+        p_room_id: roomId, p_team_id: teamId, p_expires_hours: expiresHours,
+    });
+    if (error) return { data: null, error: midseasonErrorMessage(error.message ?? '') ?? actionFailure(error, '초대 링크 생성') };
+    return { data: data as { id: string; token: string; expires_at: string | null }, error: null };
+};
+
+export const revokeLeagueInvite = async (inviteId: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('revoke_league_invite', { p_invite_id: inviteId });
+    if (error) return { error: midseasonErrorMessage(error.message ?? '') ?? actionFailure(error, '초대 취소') };
+    return { error: null };
+};
+
+/** 방장/전역 어드민용 — 이 방의 유효(pending) 초대 목록. RLS가 그 외 사용자에겐 빈 배열을 돌려준다. */
+export const listPendingInvites = async (
+    roomId: string,
+): Promise<{ data: LeagueInviteRow[]; error: string | null }> => {
+    const { data, error } = await supabase
+        .from('league_invites')
+        .select('*')
+        .eq('room_id', roomId)
+        .eq('status', 'pending')
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+    if (error) return { data: [], error: actionFailure(error, '초대 목록 조회') };
+    return { data: (data ?? []) as LeagueInviteRow[], error: null };
+};
+
+export interface LeagueInvitePreview {
+    state:           'valid' | 'accepted' | 'revoked' | 'expired' | 'team_taken';
+    league_id:       string;
+    league_name:     string;
+    team_name:       string;
+    team_abbr:       string;
+    team_slug:       string;
+    color_primary:   string | null;
+    color_secondary: string | null;
+    color_text:      string | null;
+    expires_at:      string | null;
+    already_member:  boolean;
+}
+
+export const getLeagueInvite = async (
+    token: string,
+): Promise<{ data: LeagueInvitePreview | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('get_league_invite', { p_token: token });
+    if (error) return { data: null, error: midseasonErrorMessage(error.message ?? '') ?? actionFailure(error, '초대 확인') };
+    return { data: data as LeagueInvitePreview, error: null };
+};
+
+export const acceptLeagueInvite = async (
+    token: string,
+): Promise<{ data: { league_id: string; team_id: string } | null; error: string | null }> => {
+    const { data, error } = await supabase.rpc('accept_league_invite', { p_token: token });
+    if (error) return { data: null, error: midseasonErrorMessage(error.message ?? '') ?? actionFailure(error, '초대 수락') };
+    return { data: data as { league_id: string; team_id: string }, error: null };
+};
+
 // ─── 리그 삭제 (어드민 전용) ──────────────────────────────────────────────────
 // leagues 삭제 → rooms / room_members / league_teams 등 CASCADE 자동 정리.
 // 완주된 리그(games/league_events 등 수천 행)는 CASCADE 삭제량이 많아 authenticated

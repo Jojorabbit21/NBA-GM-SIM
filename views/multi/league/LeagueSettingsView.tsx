@@ -5,10 +5,10 @@ import { Button } from '../../../components/common/Button';
 import { Spinner } from '../../../components/common/Spinner';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp } from 'lucide-react';
+import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp, Link2, Copy, Check, UserPlus } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
-import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague } from '../../../services/multi/leagueService';
+import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague, kickMemberToAi, createLeagueInvite, revokeLeagueInvite, listPendingInvites, buildInviteUrl, type LeagueInviteRow } from '../../../services/multi/leagueService';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
@@ -289,6 +289,12 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── kick state ────────────────────────────────────────────────────────────
     const [kickingId, setKickingId] = useState<string | null>(null);
+
+    // ── 세션 중 초대 링크 (AI 팀 인계) — team_id(league_teams.id) 기준 ───────────
+    const [invites,     setInvites]     = useState<Record<string, LeagueInviteRow>>({});
+    const [invitingId,  setInvitingId]  = useState<string | null>(null);
+    const [inviteErrs,  setInviteErrs]  = useState<Record<string, string>>({});
+    const [copiedTeamId, setCopiedTeamId] = useState<string | null>(null);
 
     // ── 팀 이름 편집 상태(어드민 전용, 팀 목록 인라인) ──────────────────────────
     const [teamNameDrafts,   setTeamNameDrafts]   = useState<Record<string, string>>({});
@@ -671,16 +677,56 @@ const LeagueSettingsView: React.FC = () => {
         navigate('/', { replace: true });
     };
 
+    // 세션이 실제로 돌아가는 중(모집/드래프트/종료 제외) — 이때만 강퇴=AI 전환, 초대 링크 사용 가능
+    const sessionLive = !!league && league.status !== 'recruiting' && league.status !== 'drafting' && league.status !== 'finished';
     // [2026-10-13] 추방 실패를 버리지 않는다(예전엔 반환값 무시 + leagueStatus 미전달로 사전 차단 문구가 죽은 코드).
     const [kickErrs, setKickErrs] = useState<Record<string, string>>({});
     const handleKick = async (kickUserId: string) => {
         if (!room) return;
         setKickingId(kickUserId);
         setKickErrs(prev => { if (!(kickUserId in prev)) return prev; const n = { ...prev }; delete n[kickUserId]; return n; });
-        const { error: kickErr } = await leaveLeague(room.id, kickUserId, league?.status);
+        // 모집 중엔 팀을 비우고 멤버를 삭제(기존), 세션 시작 후엔 팀을 AI로 전환 — 일정이 깨지지 않게 팀은 남긴다.
+        const { error: kickErr } = sessionLive
+            ? await kickMemberToAi(room.id, kickUserId)
+            : await leaveLeague(room.id, kickUserId, league?.status);
         setKickingId(null);
         if (kickErr) { setKickErrs(prev => ({ ...prev, [kickUserId]: kickErr })); return; }
         reload();
+    };
+
+    const refreshInvites = React.useCallback(async () => {
+        if (!room?.id) return;
+        const { data } = await listPendingInvites(room.id);
+        setInvites(Object.fromEntries(data.map(i => [i.team_id, i])));
+    }, [room?.id]);
+    useEffect(() => { if (sessionLive) refreshInvites(); }, [sessionLive, refreshInvites, leagueTeams]);
+
+    const handleCreateInvite = async (teamId: string) => {
+        if (!room) return;
+        setInvitingId(teamId);
+        setInviteErrs(prev => { const n = { ...prev }; delete n[teamId]; return n; });
+        const { error: invErr } = await createLeagueInvite(room.id, teamId);
+        setInvitingId(null);
+        if (invErr) { setInviteErrs(prev => ({ ...prev, [teamId]: invErr })); return; }
+        await refreshInvites();
+    };
+
+    const handleRevokeInvite = async (teamId: string, inviteId: string) => {
+        setInvitingId(teamId);
+        const { error: revErr } = await revokeLeagueInvite(inviteId);
+        setInvitingId(null);
+        if (revErr) { setInviteErrs(prev => ({ ...prev, [teamId]: revErr })); return; }
+        await refreshInvites();
+    };
+
+    const handleCopyInvite = async (teamId: string, token: string) => {
+        try {
+            await navigator.clipboard.writeText(buildInviteUrl(token));
+            setCopiedTeamId(teamId);
+            setTimeout(() => setCopiedTeamId(cur => (cur === teamId ? null : cur)), 1500);
+        } catch {
+            setInviteErrs(prev => ({ ...prev, [teamId]: '복사에 실패했습니다. 링크를 직접 선택해 복사하세요.' }));
+        }
     };
 
     const handleSaveTeamName = async (teamId: string) => {
@@ -1007,13 +1053,50 @@ const LeagueSettingsView: React.FC = () => {
                                                     variant="dangerSoft"
                                                     size="xs"
                                                     className="ml-auto"
-                                                    onClick={() => canKick && handleKick(t.user_id!)}
+                                                    onClick={() => {
+                                                        if (!canKick) return;
+                                                        if (sessionLive && !window.confirm(`${t.team_name}의 GM을 강퇴하고 팀을 AI로 전환할까요? 로스터와 전술은 유지되며, 이후 초대 링크로 새 유저가 이어받을 수 있습니다.`)) return;
+                                                        handleKick(t.user_id!);
+                                                    }}
                                                     disabled={!canKick}
                                                     isLoading={isKickingThis}
                                                     icon={<Trash2 size={11} />}
                                                 >
-                                                    추방
+                                                    {sessionLive ? '강퇴' : '추방'}
                                                 </Button>
+                                            );
+                                        })()}
+                                        {sessionLive && t.is_ai && !t.user_id && (() => {
+                                            const inv = invites[t.id];
+                                            const busy = invitingId === t.id;
+                                            return (
+                                                <div className="mt-1 flex flex-col items-end gap-1">
+                                                    {inv ? (
+                                                        <div className="flex items-center gap-1 max-w-full">
+                                                            <input
+                                                                readOnly
+                                                                value={buildInviteUrl(inv.token)}
+                                                                onFocus={e => e.currentTarget.select()}
+                                                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 w-52 min-w-0"
+                                                            />
+                                                            <Button variant="secondary" size="xs" onClick={() => handleCopyInvite(t.id, inv.token)}
+                                                                icon={copiedTeamId === t.id ? <Check size={11} /> : <Copy size={11} />}>
+                                                                {copiedTeamId === t.id ? '복사됨' : '복사'}
+                                                            </Button>
+                                                            <Button variant="dangerSoft" size="xs" isLoading={busy} onClick={() => handleRevokeInvite(t.id, inv.id)}>취소</Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button variant="secondary" size="xs" isLoading={busy} onClick={() => handleCreateInvite(t.id)} icon={<UserPlus size={11} />}>
+                                                            초대 링크
+                                                        </Button>
+                                                    )}
+                                                    {inv && (
+                                                        <span className="text-xs text-slate-500">
+                                                            <Link2 size={10} className="inline mr-1" />{inv.expires_at ? `${new Date(inv.expires_at).toLocaleDateString('ko-KR')}까지 유효` : '기간 제한 없음'} · 팀이 인계되면 자동 소멸
+                                                        </span>
+                                                    )}
+                                                    {inviteErrs[t.id] && <InlineNotice tone="danger" size="sm" className="text-right">{inviteErrs[t.id]}</InlineNotice>}
+                                                </div>
                                             );
                                         })()}
                                         {t.user_id && kickErrs[t.user_id] && (

@@ -51,6 +51,7 @@ import AdminSimView from './views/multi/league/AdminSimView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
+import LeagueInvitePage from './pages/LeagueInvitePage';
 import QuickPlayPage from './pages/QuickPlayPage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
@@ -399,6 +400,7 @@ const App: React.FC = () => {
                     <Route path="/" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/auth" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/quick" element={<QuickPlayPage />} />
+                    <Route path="/multi/invite/:token" element={<LeagueInvitePage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />
                     <Route path="/select-team" element={<TeamSelectPage />} />
