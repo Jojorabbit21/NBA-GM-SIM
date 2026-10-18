@@ -490,7 +490,7 @@ const LABEL_CELL = 'self-stretch flex items-center justify-center border-x borde
 
 // 체격–능력치 사이 여백 행(14px) — 라벨 칸 구분선만 그린다
 const GroupSpacer: React.FC = () => (
-    <div className={`${ROW} h-3.5`} aria-hidden="true">
+    <div className={`${ROW} h-3.5 border-b border-slate-800`} aria-hidden="true">
         <div /><div /><div /><div className={LABEL_CELL} /><div /><div /><div />
     </div>
 );
@@ -516,7 +516,7 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
         </div>
     );
     const physRow = (label: string, key: 'height' | 'weight', unit: string) => (
-        <div className={`${ROW} h-8`}>
+        <div className={`${ROW} h-8 border-b border-slate-800`}>
             <div />
             <div className="text-center text-base font-semibold text-slate-300 tabular-nums whitespace-nowrap">{left ? `${left[key]}${unit}` : '–'}</div>
             <div />
@@ -530,15 +530,15 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
     return (
         <section className="order-2 flex flex-col min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
             {/* 그룹 사이 여백을 flex gap 대신 GroupSpacer 행으로 둔다 — 라벨 칸 좌우 구분선이 신장부터 마지막 능력치까지 끊김 없이 이어지게. */}
-            {/* 헤더(선수 이름) — 배경을 영역 전체 폭으로 깔고(slate-900), 이름 격자만 차트와 같은 760px 폭에 맞춘다 */}
+            {/* 헤더(선수 이름) — 배경을 영역 전체 폭으로 깔고(slate-900), 이름 격자는 아래 표와 같은 열 폭 */}
             <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 shrink-0">
-                <div className="w-full max-w-[760px] mx-auto px-6 py-3 grid grid-cols-[1fr_128px_1fr] items-center">
+                <div className="w-full py-3 grid grid-cols-[1fr_128px_1fr] items-center">
                     {nameCell(left, false)}
                     <div />
                     {nameCell(right, true)}
                 </div>
             </div>
-            <div className="w-full max-w-[760px] mx-auto px-6 pt-1.5 pb-6 flex flex-col">
+            <div className="w-full flex flex-col">
                 {physRow('신장', 'height', 'cm')}
                 {physRow('체중', 'weight', 'kg')}
                 {/* 체격과 능력치 사이에만 여백 — 능력치 그룹끼리는 붙여서 이어 표시 */}
@@ -551,7 +551,7 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
                             const lTone = both ? (a! > b! ? 'win' : a! < b! ? 'lose' : '') : '';
                             const rTone = both ? (b! > a! ? 'win' : b! < a! ? 'lose' : '') : '';
                             return (
-                                <div key={item.key} className={`${ROW} h-8 hover:bg-slate-400/5`}>
+                                <div key={item.key} className={`${ROW} h-8 border-b border-slate-800 hover:bg-slate-400/5`}>
                                     <Bar value={a} dir="left" />
                                     <div
                                         className={`text-center text-base tabular-nums ${lTone === 'win' ? 'font-extrabold' : 'font-semibold'}`}
@@ -580,14 +580,16 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
 };
 
 const Bar: React.FC<{ value: number | null; dir: 'left' | 'right' }> = ({ value, dir }) => (
-    // 트랙(배경) = slate-800 둥근 바, 그 위에 값만큼 등급 색 막대
-    <div className="h-4 relative rounded-full bg-slate-800">
-        {value != null && (
-            <div
-                className={`absolute inset-y-0 rounded-full ${dir === 'left' ? 'right-0' : 'left-0'} transition-[width] duration-300 ease-out motion-reduce:transition-none`}
-                style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: getAttrBarColor(value) }}
-            />
-        )}
+    // 바깥쪽(영역 가장자리) 24px 여백 — 트랙(배경) = slate-800 둥근 바, 그 위에 값만큼 등급 색 막대
+    <div className={dir === 'left' ? 'pl-6' : 'pr-6'}>
+        <div className="h-4 relative rounded-full bg-slate-800">
+            {value != null && (
+                <div
+                    className={`absolute inset-y-0 rounded-full ${dir === 'left' ? 'right-0' : 'left-0'} transition-[width] duration-300 ease-out motion-reduce:transition-none`}
+                    style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: getAttrBarColor(value) }}
+                />
+            )}
+        </div>
     </div>
 );
 

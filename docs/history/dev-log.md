@@ -35,6 +35,43 @@
 
 ---
 
+## 2026-10-19 — 능력치 색상 9단계 → 15단계 교체
+
+**배경**: 사용자가 능력치 색상 스튜디오 아티팩트(https://claude.ai/artifact/DfnYaJPZdW4Lpa7tPtbBwm)에서 만든 TS 코드를 그대로 적용 요청.
+막대 배경(#1e293b)·델타 배지(#ef4444→#b91c1c)는 기존 값과 같아 변경 없음.
+
+**변경 파일**:
+- `utils/attrRatingColor.ts` — `getAttrColor`(Tailwind `text-[#hex]` 리터럴), `getAttrBarColor` 두 함수 + 상단 주석 1줄
+
+**영향 범위**: 이 파일을 import하는 곳만 — `views/PlayerDetailView.tsx`(능력치 위젯 숫자·막대), `components/common/PlayerHoverCard.tsx`, `components/draft/PlayerPool.tsx`(포텐셜 칸),
+`views/multi/season/MultiPlayerCompareView.tsx`(막대·숫자). `components/common/Table.tsx`·`ContractManagementTab.tsx`는 자체 `getAttrColor`(3단계)를 써서 **영향 없음**.
+
+**Before** (두 함수 같은 구간, getAttrColor는 `text-[...]`로 감쌈):
+```
+>=96 #0afffb / >=90 #1bff0a / >=85 #34f000 / >=80 #38d100 / >=75 #ffc800 / >=70 #f0bc00 / >=60 #c1731a / >=50 #8f8f8f / 그 외 #5c5c5c
+```
+
+**After**:
+```
+>=99 #fb00ff / >=97 #a600ff / >=95 #7300ff / >=93 #0033ff / >=90 #00ccff / >=87 #00ffd5 / >=83 #00a81c / >=80 #7ff91a /
+>=77 #9cc700 / >=75 #e6bf00 / >=73 #d18f00 / >=70 #bd6500 / >=66 #db4200 / >=60 #e60000 / 그 외 #9e0000
+```
+
+**검증**: `tsc --noEmit` 오류 73건(변경 전과 동일), `vite build` 성공. 브라우저 육안 확인 미실시.
+
+**롤백 방법**: Before 구간표대로 두 함수를 9개 분기로 되돌림(getAttrColor는 각 분기 `'text-[#hex]'` 리터럴 유지 — 템플릿 조립 금지).
+
+**후속(같은 날)**: 사용자 요청으로 로스터 능력치 표에도 15단계 적용 — `components/common/Table.tsx`의 자체 `getAttrColor` 삭제 후 `utils/attrRatingColor`의 것을 import.
+`TableCell variant="attribute" colorScale`를 쓰는 **모든 표**가 바뀜: `RosterGrid`(로스터 능력치 탭·팀 평균 행), `MultiFreeAgentView`, `MultiDraftPoolView`, `views/DraftView`.
+- Before(Table.tsx 로컬): `>=90 text-fuchsia-400 / >=80 text-emerald-400 / >=70 text-amber-400 / 그 외 text-slate-500`
+- 롤백: Table.tsx에 위 4줄 함수 복원 + import 줄 삭제. `utils/attrRatingColor.ts` 상단 주석도 함께 갱신함.
+- 검증: tsc 73건 동일, vite build 성공(순환 경고 없음).
+
+**후속 ②(같은 날)**: 선수 프로필 능력치 위젯 막대 둥글게 — `views/PlayerDetailView.tsx` 능력치 위젯의 트랙 `h-[14px] bg-slate-800 overflow-hidden` + `rounded-full`, 채움 `h-full` + `rounded-full`.
+롤백: 두 `rounded-full` 삭제. 사용자 요청.
+
+---
+
 ## 2026-10-18 — 멀티 "도구 › 선수 비교" 화면 신설 + 커리어 집계 헬퍼 공용화
 
 **배경**: 사용자 요청 — 두 선수를 나란히 비교하는 화면. 목업(아티팩트 https://claude.ai/artifact/8CtTmL6KknzUjoE4ueKDLK, v7)을 확정한 뒤 그대로 구현.
@@ -45,6 +82,10 @@
 - `App.tsx` — import + `<Route path="compare" element={<MultiPlayerCompareView />} />`
 - `components/MultiSidebar.tsx` — "자유 계약" NavItem 아래 `<Divider />` + "선수 비교" NavItem(`NavIcon name="compare"`)
 - `public/images/sidenav/compare.svg`, `compare-selected.svg` (신규) — 두 선수가 세로선 사이로 마주 보는 투톤 아이콘
+  (2026-10-19 후속 수정 ㉓: `Bar`를 바깥 래퍼(left=`pl-6`, right=`pr-6`)로 감싸 막대 바깥쪽 24px 여백. 사용자 스크린샷 피드백)
+  (2026-10-19 후속 수정 ㉒: 표·헤더 격자의 `max-w-[760px] mx-auto` 제거 — 가운데 영역 전체 폭 사용(막대가 영역 끝까지). 사용자 스크린샷 피드백)
+  (2026-10-19 후속 수정 ㉑: 가운데 차트 본문 컨테이너 패딩 `px-6 pt-1.5 pb-6` 제거(표가 좌우 24px씩 넓어짐), 헤더 이름 격자도 `px-6` 제거해 정렬 유지(`py-3`은 유지). max-w 760px는 그대로. 사용자 요청)
+  (2026-10-19 후속 수정 ⑳: 가운데 차트 행마다 가로 구분선 — 체격 행·능력치 행·GroupSpacer에 `border-b border-slate-800`. 사용자 요청)
   (2026-10-19 후속 수정 ⑲: `LABEL_CELL`에 `font-semibold` 추가(체격·능력치 라벨). 사용자 요청)
   (2026-10-19 후속 수정 ⑱: 능력치 그룹 사이 `GroupSpacer` 제거 — 체격 행과 첫 능력치 그룹 사이 1개만 남김. 사용자 요청)
   (2026-10-19 후속 수정 ⑰: `DeltaCell` 정렬 left=`justify-start`, right=`justify-end`(패딩 제거), 델타 칸 52px 유지. 사용자 요청)

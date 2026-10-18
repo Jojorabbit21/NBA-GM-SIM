@@ -1768,8 +1768,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                             <div key={item.key} className="flex items-center gap-4 px-4 py-4">
                                                                 <div className="flex-1 min-w-0 flex flex-col justify-center gap-2.5">
                                                                     <span className="text-sm font-bold text-white truncate">{compactLabel(item)}</span>
-                                                                    <div className="h-[14px] bg-slate-800 overflow-hidden">
-                                                                        <div className="h-full" style={{ width: `${Math.min(100, Math.max(0, val))}%`, backgroundImage: getAttrBarGradient(val) }} />
+                                                                    <div className="h-[14px] bg-slate-800 overflow-hidden rounded-full">
+                                                                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, val))}%`, backgroundImage: getAttrBarGradient(val) }} />
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-3 shrink-0">

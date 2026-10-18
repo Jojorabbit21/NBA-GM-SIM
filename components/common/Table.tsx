@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { OvrBadge } from './OvrBadge';
+// [2026-10-19] colorScale 능력치 셀도 공용 15단계 스케일 사용(예전 자체 4단계: 90 fuchsia / 80 emerald / 70 amber / 그 외 slate-500)
+import { getAttrColor } from '../../utils/attrRatingColor';
 
 // --- Types ---
 export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'rank' | 'badge';
@@ -142,13 +144,6 @@ interface TableGroupHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCell
     stickyLeft?: number;
     className?: string;
 }
-
-const getAttrColor = (val: number) => {
-    if (val >= 90) return 'text-fuchsia-400';
-    if (val >= 80) return 'text-emerald-400';
-    if (val >= 70) return 'text-amber-400';
-    return 'text-slate-500';
-};
 
 export const Table = ({
     children, className = '', fullHeight, style, tableStyle,
