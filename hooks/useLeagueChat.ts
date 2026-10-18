@@ -59,6 +59,9 @@ export interface LeagueChatState {
     lockRemainingSec: number;
 }
 
+/** CLOSED 후 채널 재구독 대기(ms) — 연속 실패 시 단계적으로 늘리고 마지막 값에서 고정 */
+const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
+
 const readKey = (roomId: string) => `nba-gm-sim-chat-read:${roomId}`;
 
 function readStorage(key: string): string | null {
@@ -92,6 +95,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     const [lockUntil, setLockUntil] = useState(0);
     const [now, setNow] = useState(() => Date.now());
     const [historyTick, setHistoryTick] = useState(0);
+    const [reconnectTick, setReconnectTick] = useState(0);
 
     const messagesRef = useRef<ChatMessage[]>([]);
     messagesRef.current = messages;
@@ -102,6 +106,9 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     const lockUntilRef = useRef(0);
     const seqRef = useRef(0);
     const loadingOlderRef = useRef(false);
+    const connectionRef = useRef<ChatConnection>('connecting');
+    connectionRef.current = connection;
+    const reconnectAttemptRef = useRef(0);
 
     const addMessages = useCallback((incoming: ChatMessage[]) => {
         setMessages(prev => mergeMessages(prev, incoming));
@@ -173,6 +180,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         if (!roomId || !userId) return;
         let cancelled = false;
         let firstSubscribe = true;
+        let retryTimer: number | undefined;
 
         const channel = supabase.channel(chatTopic(roomId), {
             config: { private: true, presence: { key: userId } },
@@ -201,6 +209,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
             .subscribe((status) => {
                 if (cancelled) return;
                 if (status === 'SUBSCRIBED') {
+                    reconnectAttemptRef.current = 0;
                     setConnection('connected');
                     void channel.track({ user_id: userId, at: new Date().toISOString() });
                     if (!firstSubscribe) {
@@ -210,14 +219,46 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
                     firstSubscribe = false;
                 } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
                     setConnection('disconnected');
+                    // 서버가 채널을 닫은 경우(CLOSED — 토큰 만료 등)는 realtime-js가 재접속하지 않는다(에러·타임아웃은 자체 재시도).
+                    // 채널을 새로 만들어 구독하되, 그 전에 세션 갱신 + 토큰 콜백 모드 복귀(setAuth())로 만료 토큰 재사용을 막는다.
+                    if (status === 'CLOSED' && retryTimer === undefined) {
+                        const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttemptRef.current++, RECONNECT_DELAYS_MS.length - 1)];
+                        retryTimer = window.setTimeout(() => {
+                            retryTimer = undefined;
+                            void supabase.auth.getSession()
+                                .then(() => supabase.realtime.setAuth())
+                                .catch(() => { /* 다음 시도에서 재확인 */ })
+                                .finally(() => { if (!cancelled) setReconnectTick(t => t + 1); });
+                        }, delay);
+                    }
                 }
             });
 
         return () => {
             cancelled = true;
+            if (retryTimer !== undefined) window.clearTimeout(retryTimer);
             supabase.removeChannel(channel);
         };
-    }, [roomId, userId, addMessages]);
+    }, [roomId, userId, addMessages, reconnectTick]);
+
+    // 탭이 다시 보이거나 네트워크가 돌아왔을 때 끊긴 상태면 대기 없이 바로 재구독
+    useEffect(() => {
+        const kick = () => {
+            if (document.visibilityState === 'visible' && connectionRef.current === 'disconnected') {
+                reconnectAttemptRef.current = 0;
+                void supabase.auth.getSession()
+                    .then(() => supabase.realtime.setAuth())
+                    .catch(() => { /* 무시 */ })
+                    .finally(() => setReconnectTick(t => t + 1));
+            }
+        };
+        document.addEventListener('visibilitychange', kick);
+        window.addEventListener('online', kick);
+        return () => {
+            document.removeEventListener('visibilitychange', kick);
+            window.removeEventListener('online', kick);
+        };
+    }, []);
 
     // ── 읽음 ─────────────────────────────────────────────────────────────────────
     // 채팅 탭을 보는 동안 도착한 메시지는 바로 읽음 처리
