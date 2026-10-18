@@ -135,7 +135,7 @@
 팀당 경기당 112.5점·플레이 114.5회·PPP 0.977. RLS 롤백 테스트 — 멤버는 공개 경기 행만(미공개 가짜 경기 제외, RPC 합 10), 멤버 insert 차단.
 client tsc(변경 파일 오류 0)·vite build 성공, server tsc는 변경 파일 신규 오류 0(기존 bun 타입·supabase never 오류는 무관).
 
-**배포**: 서버 Fly 배포 필요(배포 전엔 테이블이 비어 화면은 "아직 집계된 경기가 없습니다").
+**배포**: 2026-10-18 서버 Fly **v179** 배포 완료(커밋 af1becd8), 클라이언트 Vercel 프로덕션 자동 배포 완료. PBL 기존 360경기는 추정 백필, 배포 후 첫 실경기(2026-10-19 09:01 KST)부터 정확값 저장 — 그 경기 행 생성 여부 확인 필요.
 
 **롤백 방법**: 미러 4쌍(types/engine, pbpTypes, statsMappers, liveEngine)에서 위 추가분 제거 + simRunner "5-1" 블록 제거(서버 재배포),
 클라이언트 PlayTypePPP/playTypeConstants/TacticsSlidersPanel/MultiTacticsView 원복·useTeamPlayTypeStats 삭제,
