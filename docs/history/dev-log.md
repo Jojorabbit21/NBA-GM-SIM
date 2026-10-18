@@ -35,6 +35,679 @@
 
 ---
 
+## 2026-10-18 — 로테이션 비상 보충(폴백) 규칙 교체: "코트 위 우선 > OVR" → 체력 점수 + 히스테리시스·최소 출전/휴식 보호
+
+**배경**: 마이칸 출전 과다(NYK 평균 38.7분, 하네스 기준 43.8분)의 엔진 측 근본 원인. `checkAndApplyRotation`은 포세션마다
+맵에서 분당 출전 예정 5명을 뽑고, 모자라면(맵 구멍/파울아웃 등) 비상 보충을 한다. 이 보충이 "코트 위 선수 우선 > OVR > 체력"이라
+쉬어야 할 구간에도 코트 위 최고 OVR 선수가 계속 남는다. 데이터 쪽 구멍은 같은 날 `repairAiTactics`(위 항목)로 막았고, 이 항목은
+구멍이 다시 생겨도 에이스가 몰리지 않게 하는 엔진 안전망. 구현 전 시뮬 하네스로 검증(아래), 사용자 승인 후 적용.
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/rotationLogic.ts` (client) — 상수 3개 + `checkAndApplyRotation` 폴백 1단계 필터·정렬
+- `server/src/shared/engine/pbp/rotationLogic.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+// 폴백 1단계
+let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
+    p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId));
+// ... (2단계 탈진 포함 / 3단계 부상 포함 동일)
+allAvailable.sort((a, b) => {
+    const aOnCourt = teamState.onCourt.includes(a) ? 1 : 0;
+    const bOnCourt = teamState.onCourt.includes(b) ? 1 : 0;
+    if (aOnCourt !== bOnCourt) return bOnCourt - aOnCourt;
+    if (b.ovr !== a.ovr) return b.ovr - a.ovr;
+    return b.currentCondition - a.currentCondition;
+});
+```
+
+**After**:
+```ts
+const FALLBACK_ONCOURT_BONUS = 8;  const FALLBACK_MIN_STINT_SEC = 120;  const FALLBACK_MIN_REST_SEC = 120;
+// 1단계 필터: 위 조건 + !p.benchReason + !justRested(p)   (후보가 모자라면 benchReason/휴식 제약 없는 목록으로 완화)
+//   justRested = 벤치에 있고, 마지막 구간이 닫혀 있고(out>=0, out!==in), 나간 지 120초 미만
+// 정렬: score = currentCondition + (코트 위 ? 8 : 0) + (코트 위 && 마지막 구간 열림(out<0) && 투입 120초 미만 ? 1000 : 0) 내림차순, 동률 OVR
+```
+맵으로 5명이 채워지는 정상 상황에서는 폴백 자체가 실행되지 않음 → 동작 불변. 5명 초과 시 OVR 컷, 부상/퇴장/가비지/클러치 로직은 미변경.
+
+**검증**: 시뮬 하네스(실제 Pro Basketball League 1,230경기 일정 + 보정 전 NYK 맵, 경기별 시드 고정 쌍체 비교, 경기 간 체력 이월·백투백 미반영).
+- NYK 820경기(10패스): 마이칸 43.8→35.5분, 40분+ 경기 728→0, 2분 미만 출전 비율 4.03→1.19%, 교체 간격 하위5% 122→211초, 가비지 후 재투입 179→1건.
+- 보너스 4는 진동 악화(2분 미만 6.70%, 하위5% 30초) → 8 이상 필수. benchReason 제외 장치: 90초 내 복귀 166→2건(전 팀 구멍 스트레스).
+- 스트레스: 가비지 구간 구멍(184→1건), 전 30팀 구멍1(팀 최다 출전 42.2→35.1분), 구멍2(진동 현행 이하). 정상 데이터에서 NYK 외 결과 변화 27/1148경기(전부 sa/hou/min, 맵에 없는 선수·파울아웃으로 폴백이 일부 작동하던 팀).
+- 서버 미러 실코드를 번들해 같은 하네스로 재측정 → 시험 사본과 수치 일치. 클라이언트 esbuild 구문 OK, `tsc --noEmit` 오류 73줄은 전부 기존 다른 파일(rotationLogic 관련 0건).
+- 실서버 배포·실경기 확인 미실시. 하네스 한계: 체력 이월 없음(절대값은 실서버와 다름, 상대 비교용). 구멍2 시나리오에서 `pickWeightedActor: empty candidates` 경고 1건씩(기존 안전장치, `players[0]` 반환, 비현실적 편성에서만).
+- "가비지 이후 기존 규칙 유지" 장치는 효과가 측정되지 않아 넣지 않음.
+
+**롤백 방법**: 두 파일에서 상수 3개 삭제, 폴백 1단계 필터를 Before로, 정렬 블록을 Before의 comparator로 복원(서버 재배포 필요). `git log -- services/game/engine/pbp/rotationLogic.ts`로도 추적 가능.
+
+---
+
+## 2026-10-18 — AI 팀 경기 직전 전술 점검·최소 보정 (마이칸 출전 과다 대응) + NYK 호나섹 맵 수동 보정
+
+**배경**: Pro Basketball League(room `aeb5794a`) NYK 조지 마이칸이 22경기 평균 38.7분(14경기 40분+, 최대 45.6분).
+원인 = 데이터+엔진 복합. NYK `room_members.tactics.rotationMap`에서 벤치 SG 제프 호나섹이 48칸 전부 false →
+12~17분/36~41분에 출전 예정 4명뿐 → `rotationLogic.ts checkAndApplyRotation` 비상 보충("코트 위 선수 우선 > OVR")이
+코트 위 최고 OVR인 마이칸을 계속 남김. 전 30팀 점검 결과 이 구멍은 NYK뿐. AI 팀 전술은 드래프트 종료 시
+`finalize.ts initializeTeamTactics`에서 1회만 생성되고 이후 검증 경로가 없었음(트레이드/방출은 나간 선수 ID만 strip).
+사용자 결정: 경기 직전 점검은 "깨진 부분만 최소 보정"(전체 재생성 X, 어드민 수정 보호 판별 불필요), 엔진 폴백 수정은 별도 논의.
+
+**변경 파일** (서버 전용 — 클라이언트 미러 없음):
+- `server/src/shared/game/tactics/tacticRepair.ts` (신규) — `repairAiTactics(roster, tactics, depthChart)`
+- `server/src/simRunner.ts` — import 추가, `room_members` select에 `is_ai`, 3.1 블록(`repairAi`) 추가
+- 운영 DB 수동 UPDATE 1건 (아래)
+
+**Before**:
+```ts
+// simRunner.ts
+.select('team_id, tactics, depth_chart')
+const homeTactics = (homeMember?.tactics ?? null) as any;   // const, awayTactics/homeDepth/awayDepth 동일
+```
+DB: `room_members(room aeb5794a, team nyk).tactics.rotationMap["4aeb7fbd-fece-45e1-95fc-a09272fc766d"]` = false × 48
+
+**After**:
+```ts
+.select('team_id, tactics, depth_chart, is_ai')
+let homeTactics = ...;  // let 4개
+// 3.1: member.is_ai && tactics 있을 때만 repairAiTactics() 호출, changed면 room_members UPDATE 후 보정본 사용
+```
+`repairAiTactics` 규칙: ①로스터 밖 ID 제거(뎁스→null, starters→'', 맵 키 삭제) ②맵 길이≠48 정규화
+③분당 예정 인원<5 구간 채움 — 그 분에 빠진 주전의 같은 포지션 백업(뎁스 1→2번) 우선, 그다음 건강한 선수 중
+예정 분 적은 순·OVR 높은 순. 5명 초과(과다)는 엔진 OVR 컷이 의도라 미보정. 입력 비변경, 정상이면 changed=false, 슬라이더/프리셋 불변.
+DB: 호나섹 맵 = 12~17분, 36~41분 true (다른 벤치와 동일 패턴). 이 UPDATE는 "맵에 true가 없을 때만" 조건.
+
+**검증**: esbuild로 simRunner 번들 통과. 합성 단위테스트(NYK 상태 재현: 호나섹 빈 맵+유령 ID) — 호나섹 맵이 벤치 패턴으로
+채워지고 유령 키 제거, 48분 전부 5명, 입력 객체 비변경, 2회 호출 시 changed=false(멱등). 운영 DB 전 팀 재조회로 NYK 분당 5명 확인.
+Fly 배포·실경기 후 마이칸 구간(12~18, 36~42분 휴식) 확인은 미실시.
+
+**롤백 방법**: simRunner.ts의 3.1 블록·import·`is_ai` select 제거 후 `let`→`const` 복원, tacticRepair.ts 삭제(서버 재배포).
+DB 보정은 위 키를 `Array(48).fill(false)`로 되돌리면 원상(다만 되돌리면 원인이 재발).
+
+---
+
+## 2026-10-18 — 훅슛 선택 규칙: 208cm 커트라인·포스트/롤 한정 폐지 → 연속 키 배율(제곱형) + 클로즈샷 80 유지
+
+**배경**: 빅맨 득점 저하 조사 중 하킴 올라주원 정밀 분석 — 213cm·포스트업 98인데 실경기 페인트 슛 21%가 플로터(41개 32%,
+롤 플로터 9%). 원인은 `resolveFinish()` 페인트 옵션: 플로터(클로즈샷 80+)는 전 상황 후보인데 훅은 `키 ≥ 208 && 클로즈샷 ≥ 80
+&& context ∈ {post, roll}`이라, 속공·컷·돌파에선 키 큰 센터도 페인트 슛이 플로터 위주(올라주원 drive 상황 약 75%가 플로터).
+`HOOK_HEIGHT_MIN: 208`은 2026-03-02 커밋 65e0b43e에서 근거 기록 없이 들어간 값. 검토 경과(전부 하네스 4920경기 × 3리그):
+FH-b(플로터 키 감소 200cm부터) → 201~207cm 윙 플로터까지 깎는 문제 / FH-c(208cm부터) → 키 축 일관이나 커트라인 유지 /
+안2(키 209 + 포스트업 85 기술 기준) → 208cm 포스트 빅맨 훅 소멸·현역 리그 무효과 / 직선형 키 배율 → 윙 훅 과다 /
+제곱형 ×1.2 → 센터 플로터 잔존 → **제곱형 ×1.6 채택(사용자 확정)**. 클로즈샷 80 조건을 빼면 플로터·점퍼 자격 없는 선수
+(아담스·노아·패리쉬·스토야코비치)가 작은 훅 가중치로 페인트 슛을 100% 독점하는 예외 확인 → 조건 유지로 해소.
+플로터 가중치는 변경 없음(직접 깎지 않고 훅 선호를 키움).
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/playTypes.ts` (client) — `resolveFinish()` Paint/Hook 옵션
+- `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — 동일
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG.FINISH`
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `docs/engine/pbp-engine.md` — 훅 설명·상수표
+- (선행) 속공 훅 중계 문구 — 아래 별도 항목
+
+**Before**:
+```ts
+// playTypes.ts — resolveFinish() Paint
+if ((context === 'post' || context === 'roll') &&
+    actor.attr.height >= F.HOOK_HEIGHT_MIN && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
+    options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT });
+}
+// constants.ts — FINISH
+HOOK_HEIGHT_MIN: 208,
+HOOK_CLOSESHOT_MIN: 80,
+HOOK_WEIGHT: 0.8,
+```
+
+**After**:
+```ts
+const hookHeightMult = Math.pow(Math.max(0, Math.min(F.HOOK_HEIGHT_CAP,
+    (actor.attr.height - F.HOOK_HEIGHT_BASE) / F.HOOK_HEIGHT_SPAN)), F.HOOK_HEIGHT_POW);
+if (context !== 'putback' && hookHeightMult > 0 && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
+    options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT * hookHeightMult });
+}
+// constants.ts — FINISH (HOOK_HEIGHT_MIN 삭제)
+HOOK_CLOSESHOT_MIN: 80,
+HOOK_WEIGHT: 1.6,
+HOOK_HEIGHT_BASE: 200, HOOK_HEIGHT_SPAN: 15, HOOK_HEIGHT_CAP: 1.5, HOOK_HEIGHT_POW: 2,
+// 키 배율: 203cm 0.04, 206cm 0.16, 208cm 0.28, 211cm 0.54, 213cm 0.75, 216cm 1.14, 218cm 1.44
+```
+
+**검증** (스크래치패드 하네스, 서버 simRunner 경로, 기준 v177, 엔진별 4920경기·동일 시드. 체력 누적/부상/B2B 미반영):
+- PBL 키 구간별 페인트 플로터/훅/점퍼(%): 201~204 58/0/42 → 57/2/41, 205~207 62/0/38 → 54/11/34,
+  208 42/16/43 → 38/21/41, 209~213 45/18/37 → 34/38/28, 214+ 51/23/26 → 27/59/14
+- 센터 페인트 F/H/J: PBL 50/18/32 → 37/38/25, 1946~ 47/15/39 → 37/33/30, 2003~ 50/11/39 → 43/25/33
+- 득점·밸런스 무변화: 센터 페인트 FG 55.8→56.1(PBL), 센터 36분당 14.08→14.11, 빅맨–가드 격차 2.28→2.29, 팀 PPG 110.6→110.7
+- 예: 올라주원 경기당 F/H/J 2.1/1.5/0.7 → 1.1/2.7/0.4, 카림 3.1/1.9/0.5 → 1.3/4.0/0.2. 가드·포워드(출전 15분+) 108명 중
+  훅 사용 15명, 경기당 0.3개 이상은 르브론(0.67)·매직(0.66)뿐
+- 예외 점검: 클로즈샷 80 미만 39명(10분+) 훅 0%
+- 저장소 `server/src/shared` 수정 파일 3개(playTypes·constants·textGenerator)를 v177 사본에 덮어 재실행 → 검증 시뮬과
+  슛 이벤트 스트림 완전 동일(다른 세션의 미커밋 liveEngine/possessionHandler 변경은 비교에서 제외)
+- tsc client 51 / server 45(변경 파일 관련 0건, 직전과 동일). Fly.io 배포 전
+- 의도된 효과는 슛 구성 현실화(득점 대책 아님). 클로즈샷 80 미만 포스트 빅맨(패리쉬 PP92 CS74, 자렌 잭슨 주니어 CS78)은 훅 불가
+
+**롤백 방법**: 위 Before로 client/server playTypes.ts·constants.ts 4개 파일 되돌림(`HOOK_HEIGHT_MIN: 208` 복원,
+`HOOK_WEIGHT: 0.8`, BASE/SPAN/CAP/POW 삭제). 속공 훅 문구(아래 항목)는 남겨도 무해(속공 훅이 안 나오면 안 쓰임).
+
+---
+
+
+## 2026-10-18 — 속공(Transition) 중계 문구에 훅슛 항목 추가
+
+**배경**: 훅슛 선택 규칙 개편(포스트·롤 한정 → 풋백 제외 전체 상황, 키 연속 배율) 적용 준비. 속공 문구 세트
+`TransitionTextSet`에는 페인트 항목이 `floater`/`jumper`뿐이라, 속공 중 훅이 나오면 `pickTransitionText()`가
+플로터 문구로 잘못 중계함(현행 규칙에선 속공 훅이 불가능해 드러나지 않았음). 엔진 판정 로직 변경 없음 — 문구만.
+
+**변경 파일** (미러 쌍):
+- `services/game/engine/commentary/textGenerator.ts` (client)
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러)
+
+**Before**:
+```ts
+type TransitionTextSet = { threept: string[]; rim: { layup: string[]; dunk: string[] }; paint: { floater: string[]; jumper: string[] } };
+// pickTransitionText
+if (zone === 'Paint') return pick(shotType === 'Jumper' ? set.paint.jumper : set.paint.floater);
+// transitionScore / transitionMiss: paint = { floater, jumper }
+```
+
+**After**:
+```ts
+type TransitionTextSet = { ...; paint: { floater: string[]; hook: string[]; jumper: string[] } };
+if (zone === 'Paint') return pick(shotType === 'Hook' ? set.paint.hook : shotType === 'Jumper' ? set.paint.jumper : set.paint.floater);
+// transitionScore.paint.hook: "{assister}, 속공 상황에서 패스 — {actor}의 훅슛이 그물을 가릅니다!" / "{actor}, 속공으로 페인트까지 밀고 들어가 훅슛으로 마무리!"
+// transitionMiss.paint.hook: "{actor}, 속공 중 훅슛을 올렸지만 림을 돌아 나옵니다." / "{actor}, 빠른 전개 끝에 던진 훅슛이 빗나갑니다."
+```
+
+**검증**: tsc client 51 / server 45(변경 파일 관련 0건, 직전과 동일). 개편 예정 훅 규칙 엔진 사본 + 이 문구 파일로
+PBL 400경기 시뮬 → 속공 훅 137건 전부 '훅' 문구, 전 플레이타입에서 훅 슛이 '플로터' 문구로 나간 사례 0건(슛 이벤트–로그
+매칭은 선수·쿼터·시각 기준 근사). 일반(돌파/컷 등) 문구 세트의 훅 문구 중 "수비를 등지고 훅슛" 표현은 포스트업 뉘앙스라
+돌파 상황에서 다소 어색할 수 있으나 그대로 둠(사용자 결정 대기). Fly.io 배포 전.
+
+**롤백 방법**: 위 Before로 client/server 두 파일 모두 되돌림(타입의 `hook` 필드, `pickTransitionText` 분기, 두 세트의 `hook` 배열 삭제).
+
+---
+
+
+## 2026-10-18 — 샷클락 바이올레이션 확률 계수 5종 ×0.4 비례 축소
+
+**배경**: Pro Basketball League 오늘 180경기 실측 결과 바이올레이션이 팀당 경기당 1.51회.
+실제 NBA는 2006-07 시즌 1,159회/1,013경기(82games.com), 2018-19 시즌 791회/734경기(squared2020.com)로
+양 팀 합계 경기당 약 1.1회, 즉 **팀당 약 0.55회**라 약 2.8배 과다. 슬라이더가 모두 5인 중간 전술의 포세션당 확률은
+약 1.35%였고 그중 BASE는 0.3%뿐이어서 BASE만 낮추면 부족(BASE=0이어도 약 1.1회).
+리그 상관분석: 유도 바이올레이션 vs 수비 슬라이더 기여분 r=+0.69, vs 스틸/블록/상대 eFG/상대 득점은 |r|≤0.37.
+AI 11팀(슬라이더 동일)의 편차 0.18은 포아송 잡음 0.34 이내 → 로스터 수비력 무관, 설계대로 슬라이더 전용으로 확인.
+사용자 결정: 슬라이더 전용 구조 유지 + 전체 비례 축소(1안). 수비 능력치 반영(2안)은 채택 안 함.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG` 오펜시브 파울 블록
+- `server/src/shared/game/config/constants.ts` (server 미러)
+- `services/game/engine/pbp/possessionHandler.ts`, `server/src/shared/engine/pbp/possessionHandler.ts` — 주석만(+1.0%p → +0.4%p)
+
+**Before** (양쪽 동일):
+```ts
+SHOT_CLOCK_BASE: 0.003,
+SHOT_CLOCK_HELP_DEF_FACTOR: 0.0006,
+SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
+SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
+PRESS_SHOT_CLOCK_FACTOR: 0.01 / 9,
+```
+
+**After**:
+```ts
+SHOT_CLOCK_BASE: 0.0012,
+SHOT_CLOCK_HELP_DEF_FACTOR: 0.00024,
+SHOT_CLOCK_LOW_PACE_FACTOR: 0.0004,
+SHOT_CLOCK_HIGH_BM_FACTOR: 0.00032,
+PRESS_SHOT_CLOCK_FACTOR: 0.004 / 9,
+```
+- 중간 전술 포세션당 약 1.35% → 0.54%. 예상치는 팀당 경기당 약 0.6회(선형식이라 실측 1.51 × 0.4로 산출, 시뮬레이션 검증은 안 함).
+- 극단 전술(헬프수비·볼무브·프레스 10, 페이스 1)은 약 1.2회, 최소 전술은 약 0.2회.
+
+**검증**: client/server `tsc --noEmit` 해당 파일 오류 없음. 서버는 Fly 재배포 필요(같은 날 바이올레이션 소요 시간 수정과 함께).
+
+**롤백 방법**: 두 constants.ts를 Before 값으로 되돌리면 됨 (client/server 쌍 함께).
+
+## 2026-10-18 — 샷클락 바이올레이션 소요 시간 = 남은 샷클락 전부
+
+**배경**: 멀티 PBP에서 수비 리바운드(2Q 4:40) 8초 뒤(4:32) "24초 샷클락 바이올레이션"이 찍히는 버그 제보.
+바이올레이션은 `possessionHandler`에서 확률 롤로만 결정되고, 그 포세션의 경과 시간은 일반 포세션 공식
+(`calculatePossessionTime`, 8~23초)을 그대로 써서 발생. 덤으로 게임클락 < 샷클락(샷클락 꺼짐) 상황에서도 바이올레이션 가능했음.
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` (client)
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러)
+- `services/game/engine/pbp/possessionHandler.ts` (client)
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러)
+
+**Before** (liveEngine, 양쪽 동일):
+```ts
+const timeTaken = isTechnical ? 0 : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+```
+(possessionHandler, 양쪽 동일):
+```ts
+if (Math.random() < shotClockChance) {
+```
+
+**After** (liveEngine):
+```ts
+const timeTaken = isTechnical ? 0
+    : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
+    : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+```
+(possessionHandler):
+```ts
+if (state.gameClock > state.shotClock && Math.random() < shotClockChance) {
+```
+- `state.shotClock`은 포세션 시작 시점 값(24, 오펜시브 리바운드/플래그런트 후 14)이므로 그대로 소요 시간이 됨.
+- 바이올레이션 포세션이 평균 ~14초 → 24초(또는 14초)로 길어지므로 경기당 포세션 수는 극미하게 감소(발생률 ~0.3~1%).
+
+**검증**: client/server `tsc --noEmit` 해당 파일 오류 없음. 서버는 Fly 재배포 필요.
+
+**롤백 방법**: 네 파일 모두 Before 블록으로 되돌리면 됨 (client/server 쌍 함께).
+
+## 2026-10-18 — 멀티 경기 종료 화면 박스스코어: text-sm·프로필 링크·DNP 전원 표시·높이 맞춤
+
+**배경**: 멀티 종료 화면(`MultiGamePbpView` → `GameBoxScoreTab splitLayout`) 박스스코어 개선 요청. 글자 키우기, 선수 이름 프로필 링크(호버카드 없음), TEAM TOTALS 행 높이를 본문 행과 일치, 로스터 전원 표시(미출전은 "Did Not Play"), 인원이 적은 팀에 빈 행을 붙여 좌우 높이 일치.
+
+**변경 파일** (전부 client, 서버 미러 없음):
+- `components/game/boxScoreRows.tsx` (신규) — `DnpCell`(스탯 열 전체 colSpan "Did Not Play"), `BlankBoxRows`(h-6 스페이서 빈 행)
+- `components/game/PlayerIdentityCells.tsx` — `profileHref` prop(있으면 이름이 `<Link>`, hover:text-indigo-400+underline), standalone일 때 이름/POS `text-sm`, 이름 max-w 100→140px
+- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `getProfileHref`·`padRows` prop, standalone일 때 본문·푸터 `text-sm`, mp 0 선수는 DnpCell 행 + 정렬과 무관하게 항상 맨 아래, 푸터 셀 `py-3`→`py-2 leading-6`
+- `components/game/tabs/GameBoxScoreTab.tsx` — `getPlayerHref` prop, splitLayout이면 `mp>0` 필터 제거 + `padRows = max(두 팀 행 수) - 해당 팀 행 수`
+- `views/multi/season/MultiGamePbpView.tsx` — `usePlayerShortCodes().getPlayerUrlId`로 `/multi/leagues/:id/season/player/:urlId` 링크 생성해 전달
+
+**Before**:
+```ts
+// GameBoxScoreTab
+const activeHomeBox = useMemo(() => homeBox.filter(p => p.mp > 0), [homeBox]);
+// 푸터 셀: "py-3 px-2 text-center text-xs ..." / TEAM TOTALS td: "py-3 px-4"
+// 본문/푸터 글자: text-xs
+```
+
+**After**:
+```ts
+const activeHomeBox = useMemo(() => splitLayout ? homeBox : homeBox.filter(p => p.mp > 0), [homeBox, splitLayout]);
+// 푸터 셀: "py-2 px-2 leading-6 ..." (본문 행 = OVR 배지 h-6 + py-2 와 동일 40px+border)
+// 글자: standalone ? 'text-sm' : 'text-xs'
+```
+
+**검증**: `tsc --noEmit`에서 수정 파일 관련 오류 없음(기존 `LiveTacticsTab.tsx(72,73)` 오류는 무관). 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 위 파일들 `git checkout`, `boxScoreRows.tsx` 삭제. 푸터 높이 보정(py-2 leading-6)은 싱글 화면에도 적용되므로 같이 되돌릴 것.
+
+---
+
+
+## 2026-10-18 — 슬라이더 설명 툴팁 배경 한 단계 밝게
+
+**배경**: 사용자 요청 — 툴팁 배경을 약간 밝게(팀 전술 본문 배경 slate-900과 같은 색이라 묻혔음).
+**변경 파일**: `components/common/SliderControl.tsx` — 툴팁 패널 `bg-slate-900 border-slate-800` → `bg-slate-800 border-slate-700`
+**롤백 방법**: 클래스 원복.
+
+---
+
+
+## 2026-10-18 — 전술 슬라이더 설명: 라벨 옆 ? 클릭 툴팁(X·바깥 클릭으로 닫기), 멀티 화면 하단 설명 표 제거
+
+**배경**: 사용자 요청 — 슬라이더별 설명글을 라벨 우측 물음표 아이콘 클릭 시 툴팁으로, X 버튼이나 바깥 클릭으로 닫힘.
+
+**변경 파일**:
+- `components/common/SliderControl.tsx` — `tooltip` 표시 방식: hover(`group-hover` opacity, `pointer-events-none`, 위쪽 `bottom-full`, zinc 헥스 색) →
+  클릭 팝오버. `tipOpen` state + document `mousedown` 바깥 클릭 닫기(훅은 readOnly 분기 전에 선언),
+  ? = `IconButton xs ghost full`(label "{라벨} 설명", 열림 시 인디고), 패널 = `absolute top-full left-0 mt-2 w-72 z-popover bg-slate-900 border-slate-800 rounded-xl shadow-2xl`
+  (공용 Dropdown 패널 톤, 첫 슬라이더가 스크롤 영역 위로 잘리지 않게 아래로 연다) + 우상단 X `IconButton`. `tooltip` prop을 넘기던 곳은 기존에 0곳 → 다른 화면 영향 없음
+- `components/dashboard/tactics/TacticsSlidersPanel.tsx` — SliderColumn이 `tooltip={item.note}` 전달(설명 원문은 tacticsSliderConfig.ts 그대로),
+  `offenseDefenseSplit`(멀티 전술 화면) 레이아웃의 `<SliderGroupNotes notes={TACTICS_SLIDER_NOTES} />` 제거. 비-split(싱글 TacticsBoard·어드민 TeamTacticsTab)은 표 유지
+
+**Before**: 멀티 전술 화면 = 슬라이더 3열 + 하단 "각 슬라이더의 역할 설명" 표, 슬라이더 라벨에 아이콘 없음.
+**After**: 라벨 옆 ? → 클릭 시 설명 팝오버(한 번에 하나 — 다른 ? 클릭 시 바깥 클릭으로 기존 것 닫힘), 하단 표 없음.
+
+**검증**: tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: SliderControl 레이블 행을 Before(hover) 마크업으로, tipOpen/tipRef/effect·IconButton/X import 제거, TacticsSlidersPanel의 tooltip prop 제거 + split 레이아웃에 SliderGroupNotes 복구.
+
+---
+
+
+## 2026-10-18 — 공용 Dropdown: 화면 아래가 모자라면 위로 뒤집기 / 양쪽 다 모자라면 높이 축소+스크롤
+
+**배경**: 사용자 제보 — 뎁스차트 마지막 줄의 선수 선택 드롭다운을 열면 패널 아래가 화면 밖으로 잘려 아래쪽 선수가 안 보이고 선택 불가.
+원인: `Dropdown` 패널이 `position: fixed` 포털인데 위치를 항상 `top = 트리거 아래 + 8px`로만 계산(화면 공간 미고려), 페이지 스크롤로도 못 내림.
+
+**변경 파일**: `components/common/Dropdown.tsx` (서비스 내 사용처 28곳 공통)
+- `PanelPos`의 bottom 종류: `{ top, left }` → `{ top?, bottom?, left, maxHeight?, fitted }`
+- `fitDropdownPanel(h, triggerTop, triggerBottom, viewportH)` 신규 export(순수 함수):
+  아래 공간(뷰포트 − 트리거 아래 − 간격 8 − 여백 8)에 들어가면 below / 아니고 위 공간에 들어가면 above /
+  둘 다 안 되면 더 넓은 쪽 + `maxHeight = max(그 공간, 120)`
+- 새 `useLayoutEffect`: 패널이 처음 그려진 직후·페인트 전에 `offsetHeight` 1회 측정 → 위 판정으로 pos 보정(fitted=true). 깜빡임 없음
+- 패널 style: `top` 또는 `bottom`(위로 열 때 `innerHeight − 트리거 top + 8`), maxHeight 있으면 `overflow-y-auto custom-scrollbar`(없으면 기존 overflow-hidden)
+- `side="right"`(사이드바 프로필) 경로는 변경 없음
+
+**Before**: `return { kind: 'bottom', top: rect.bottom + 8, left: ... }` 고정, style `{ top, left|right }`.
+**After**: 위 보정. 아래 공간이 충분한 경우는 결과적으로 Before와 동일(top = 트리거 아래 + 8).
+
+**검증**: fitDropdownPanel 단독 테스트 8/8(윗줄=아래 그대로, 마지막 줄=위로 뒤집기, 딱 맞음/1px 초과 경계, 양쪽 부족 시 넓은 쪽+축소, 극소 화면 최소 120).
+tsc 오류 0, vite build 성공. 브라우저 실화면 미확인.
+
+**한계**: 열 때 1회만 맞춤 — 열린 상태에서 창 크기 변경·스크롤·내용 높이 변화(비동기 로드)는 재보정 안 함(Before도 위치 재계산 없었음).
+
+**롤백 방법**: PanelPos/calcPos/style을 Before로, fitDropdownPanel·상수 3개·보정 useLayoutEffect 제거.
+
+---
+
+
+## 2026-10-18 — 전술 프리셋 선택기 버튼 규격을 서비스 기준에 맞춤(목업 승인안 적용)
+
+**배경**: 사용자 요청으로 프리셋 버튼 디자인 일관성 점검 → 6건 불일치(높이 28 vs 툴바 32, 직접 짠 드롭다운 트리거, 6px 모서리, 비표준 입력창,
+삭제 hover 관례 미적용, `!text-emerald` 강제 덮어쓰기). 목업(아티팩트 "전술 프리셋 버튼 목업" 현재 vs 수정안)으로 확인 후 "이대로 적용" 승인.
+
+**변경 파일**:
+- `components/common/IconButton.tsx` — tone 2종 추가: `success`(`text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10`),
+  `danger`(`text-slate-400 hover:text-red-400 hover:bg-red-500/10`). 기존 tone·사용처 변경 없음
+- `components/multi/TacticPresetSelector.tsx`:
+  - 드롭다운 트리거: 직접 짠 div(`h-7 w-40 bg-slate-800 border-slate-700 rounded-md text-xs`, 비활성 opacity-50) → 공용 `DropdownButton`
+    + `className="h-8 w-[168px] !px-3 !py-0"`(비활성 시 `opacity-40 cursor-not-allowed`), 미선택 라벨은 slate-400 span
+  - IconButton 4개 `size="md"`(28) → `"lg"`(32), 아이콘 14 → 16. [+] `tone="subtle" className="!text-emerald-400 hover:!text-emerald-300"` → `tone="success"`,
+    [삭제] `tone="subtle"` → `tone="danger"`
+  - [프리셋 +] `Button success sm` + Plus 12 → `md` + Plus 14, [확인] `primary sm` → `md`
+  - 이름 입력창 `h-7 w-40 px-2.5 bg-slate-900 border-indigo-500 rounded-md text-xs font-semibold` →
+    `h-8 w-[168px] px-3 bg-slate-800 border-slate-700 rounded-lg text-sm focus:border-indigo-500`(서비스 다수 패턴)
+  - 그룹 간격 `gap-1.5` → `gap-2`(툴바 오른쪽 그룹과 동일), 미사용 ChevronDown import 제거
+
+**검증**: tsc 오류 0, vite build 성공, 빌드 CSS에 `w-[168px]`·`!px-3`·`!py-0`·`hover:bg-emerald-500/10`·`hover:text-red-400`·`hover:bg-red-500/10` 생성 확인.
+브라우저 실화면 미확인(⚠️ 이 영역은 2026-08 세부 스타일 누적 롤백 이력 — 실화면 캡처로 전체 확인 권장).
+
+**롤백 방법**: TacticPresetSelector.tsx를 Before 클래스로(위 → 왼쪽 값), IconButton tone 2종 제거(사용처는 이 파일뿐).
+
+---
+
+
+## 2026-10-18 — 프리셋 "되돌리기"(Undo) 버튼 — 활성 프리셋에 저장된 값으로 복귀
+
+**배경**: 사용자 요청 — 프리셋을 불러온 뒤 편집했을 때 그 프리셋의 원래 값으로 돌아가는 버튼(툴바 우측 "초기화"=기본값과는 별개). 이름 변경 버튼 좌측, Undo 아이콘.
+
+**변경 파일**:
+- `components/multi/TacticPresetSelector.tsx` — props `onRevert`, `canRevert` 추가, [이름 변경] 왼쪽에 `Undo2` IconButton(label "프리셋 값으로 되돌리기"),
+  비활성 조건 `disabled || !active || !canRevert`
+- `views/multi/season/MultiTacticsView.tsx` — `revertTargets`(useMemo: 활성 프리셋을 현재 로스터 기준으로 applyDepthPreset/applyTeamPreset한 결과),
+  `canRevert`(화면 값 build*PresetData vs 대상 build*PresetData를 jsonEqual로 비교), `handleRevertPreset(kind)`(confirm 없음, 해당 종류만 덮어씀, 슬롯 유지,
+  뎁스는 빠진 선수 수 안내), 뎁스 toolbarExtra memo deps에 `canRevert.depth`/`handleRevertPreset` 추가
+
+**Before**: 선택기 [드롭다운][+][이름 변경][삭제].
+**After**: [드롭다운][+][되돌리기][이름 변경][삭제]. 되돌리기는 편집기만 바꿈(경기 반영은 상단 저장).
+
+**검증**: tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: 선택기의 Undo2 버튼·props 제거, MultiTacticsView의 revertTargets/canRevert/revertTargetsRef/handleRevertPreset와 전달 props·deps 제거.
+
+---
+
+
+## 2026-10-18 — 프리셋 전환 시 불필요한 확인 창 제거 + 미저장 판정 jsonb 키 순서 오탐 수정
+
+**배경**: 사용자 제보 — 뎁스/팀 프리셋을 번갈아 고를 때 변경한 값이 없어도 확인 창이 뜸. 원인 2개:
+① `confirmOverwriteDirty`가 전체 `isTacticsDirty` 기준 → 프리셋을 하나 고르면 슬롯 번호가 바뀌어 dirty가 되고, 이후 모든 전환마다 confirm
+② `isTacticsDirty`가 `JSON.stringify` 비교 → Postgres jsonb가 키를 재정렬해서 DB에서 읽은 프리셋을 적용하면 내용이 같아도 dirty(테스트로 재현 확인)
+
+**변경 파일**:
+- `utils/jsonEqual.ts` (신규) — 키 정렬 canonical 비교, undefined 속성 = 없음, 배열 순서는 유지
+- `hooks/useMultiGameData.ts` — isTacticsDirty의 `JSON.stringify(a) !== JSON.stringify(b)` 2곳 → `!jsonEqual(a, b)`, 반환값에 `lastSavedTactics`/`lastSavedDepthChart` 노출
+- `views/multi/season/MultiTacticsView.tsx` — `confirmOverwriteDirty()` → `confirmOverwriteDirty(kind)`: 해당 종류의 화면 값(build*PresetData)이
+  마지막 저장값과도, 활성 프리셋 data와도 다를 때만 confirm(문구에 "뎁스·로테이션"/"팀 전술" 명시). 프리셋끼리 전환은 묻지 않음
+
+**Before**: `const confirmOverwriteDirty = () => !isTacticsDirty || window.confirm('저장하지 않은 변경사항이 있습니다. 프리셋을 불러오면 해당 항목이 덮어써집니다. 계속할까요?');`
+**After**: 위 kind별 판정. 수동 편집을 저장 안 한 채 다른 프리셋을 고를 때만 confirm.
+
+**검증**: jsonEqual/시나리오 테스트 9/9(키 순서 무시·배열 순서·jsonb 재정렬 프리셋 재적용 == 저장값, 구 stringify는 dirty 오판 재현), tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: isTacticsDirty를 JSON.stringify 비교로, confirmOverwriteDirty를 Before로, lastSaved* 노출 제거, jsonEqual.ts 삭제.
+
+---
+
+
+## 2026-10-18 — 팀 전술 "전술 자동 설정"을 현재 주전 기준으로 + generateSlidersForStarters 분리
+
+**배경**: 사용자 지시 — 자동 설정은 유저가 뎁스차트에 지정한 현재 주전 기준이어야 함. 기존 `generateAutoTactics`는 내부에서 OVR순으로
+주전을 새로 뽑아 계산하므로 뎁스를 직접 바꾼 경우 실제 주전과 어긋났음.
+
+**변경 파일**:
+- `services/game/tactics/tacticGenerator.ts` (client) — `generateAutoTactics`의 "주전 5명 미만이면 DEFAULT_SLIDERS" + 4~5단계(아키타입 집계·슬라이더 계산·감독 블렌드)를
+  `export const generateSlidersForStarters(starters: Player[], coachPrefs?)`로 그대로 이동, generateAutoTactics는 `sliders: generateSlidersForStarters(starters, coachPrefs)` 호출
+- `server/src/shared/game/tactics/tacticGenerator.ts` (server 미러) — **의도적으로 변경 안 함**. 서버는 새 함수를 안 쓰고 계산 로직은 동일(구조만 다름).
+  이후 슬라이더 계산식을 고칠 때는 client의 generateSlidersForStarters ↔ server의 generateAutoTactics 4~5단계를 같이 고칠 것
+- `views/multi/season/MultiTacticsView.tsx` — `handleAutoSetSliders`: 주전 = 포지션별 `depthChart[pos][0] || tactics.starters[pos]`(중복 제거, 로스터에 있는 선수만),
+  5명 미만이면 슬라이더 안 바꾸고 툴바에 warning 안내, 5명이면 `generateSlidersForStarters(starters, getCoachPreferences(...))`
+
+**Before**:
+```ts
+// tacticGenerator.ts generateAutoTactics 3단계 이후
+if (starters.length < 5) { return { sliders: { ...DEFAULT_SLIDERS }, starters: startersMap, minutesLimits: {}, rotationMap, depthChart }; }
+// ...4~5단계 계산... const rosterSliders = {...};
+return { sliders: coachPrefs ? blendWithCoach(rosterSliders, coachPrefs) : rosterSliders, starters: startersMap, minutesLimits: {}, rotationMap, depthChart };
+// MultiTacticsView: generateAutoTactics(team, coachPrefs).sliders
+```
+**After**: 위 계산이 `generateSlidersForStarters` 본문(5명 미만 → `{ ...DEFAULT_SLIDERS }` 블렌드 없음 — 기존과 동일), generateAutoTactics는 그 결과만 사용.
+
+**검증**: 분리 전 파일과 무작위 로스터 300팀 × (감독 성향 없음/있음) = 600케이스 `generateAutoTactics` 결과 JSON 완전 일치(diff 0).
+같은 주전 → auto 슬라이더와 동일, 다른 5명 → 값 변화, 4명 → DEFAULT. tsc 오류 0, vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: tacticGenerator.ts에서 generateSlidersForStarters 본문을 generateAutoTactics 3단계 뒤로 되돌리고 Before의 return 2개 복구,
+MultiTacticsView handleAutoSetSliders를 `generateAutoTactics(team, coachPrefs).sliders`로, autoSetNotice 제거.
+
+---
+
+
+## 2026-10-18 — 멀티 팀 전술 탭 헤더(툴바) + 전술 자동 설정/초기화 버튼
+
+**배경**: 사용자 요청 — 팀 전술 탭에도 뎁스차트·로테이션처럼 헤더를 두고, 전술 자동 설정·초기화 버튼 추가.
+
+**변경 파일**: `views/multi/season/MultiTacticsView.tsx`
+- 팀 탭 레이아웃: `<div p-8 pb-20>[프리셋 mb-6][TacticsSlidersPanel]</div>` →
+  `flex-col h-full` + 툴바(`px-6 py-3 bg-slate-800 border-b border-slate-600`, DepthRotationBoard 툴바와 동일 클래스:
+  좌 "팀 전술" 제목 + 프리셋 선택기 / 우 [전술 자동 설정](primary md) [초기화](secondary + RotateCcw)) + 스크롤 본문(`flex-1 min-h-0 overflow-y-auto p-8 pb-20`)
+- `handleAutoSetSliders`: `generateAutoTactics(team, getCoachPreferences(coachingData, myTeamId)).sliders`만 반영(싱글 TacticsPage.handleAutoSet과 같은 함수·감독 성향 블렌드, 뎁스·로테이션 유지), confirm 없음(뎁스 자동 배정과 동일)
+- `handleResetSliders`: confirm 후 `sliders = DEFAULT_SLIDERS`(싱글 TacticsBoard.handleReset과 동일)
+- 둘 다 편집기만 변경 → 상단 저장 버튼으로 경기·활성 프리셋에 반영
+
+**검증**: tsc 오류 0, vite build 성공(순환 임포트 없음). 브라우저 미확인.
+
+**롤백 방법**: 팀 탭 블록을 Before 구조로, 두 핸들러와 import(RotateCcw, getCoachPreferences, DEFAULT_SLIDERS) 제거.
+
+---
+
+
+## 2026-10-18 — 전술 프리셋 이름 최대 20자 → 12자, 줄바꿈은 공백으로 정규화
+
+**배경**: 사용자 결정 — 이름 줄바꿈 불허, 최대 12글자.
+
+**변경 파일**:
+- DB `room_member_tactic_presets_name_check` (Supabase 적용 완료, `migrations/add_room_member_tactic_presets.sql` v6) — 라이브 제약 정의를
+  `pg_get_constraintdef`로 읽어 `'<= 20'` → `'<= 12'`만 치환해 재생성(금지 문자 정규식을 재타이핑하지 않으려고)
+- `services/multi/tacticPresets.ts` — `TACTIC_PRESET_NAME_MAX` 20 → 12 (입력창 maxLength도 이 상수 사용),
+  `PRESET_NAME_SPACES`에 CR/LF/NEL(U+0085)/U+2028/U+2029 추가 → 붙여넣은 줄바꿈이 글자를 붙이지 않고 공백 1칸이 됨
+
+**Before**: DB `char_length(name) between 1 and 20`, 클라 MAX 20, 줄바꿈은 FORBIDDEN에서 제거("스몰볼\n라인업" → "스몰볼라인업").
+**After**: DB `between 1 and 12`, 클라 MAX 12, 줄바꿈 → 공백("스몰볼 라인업"). DB는 v5부터 줄바꿈 전 종류를 이미 거부(재확인: LF/CR/LS/PS/NEL 전부 blocked).
+
+**검증**: 롤백 트랜잭션 — 12자 ok / 13자 blocked / 줄바꿈 5종 blocked, 제약에 정규식 유지 확인. 정규화 단독 테스트 18/18, tsc 오류 0. 기존 이름 5건 최대 6자(위반 없음).
+
+**롤백 방법**: 같은 DO 블록으로 `'<= 12'` → `'<= 20'` 치환, 클라 상수 20 복구, SPACES 정규식에서 CR/LF/NEL/2028/2029 제거.
+
+---
+
+
+## 2026-10-18 — 전술 프리셋 이름/데이터 입력 정책 강화 (DB 제약 + 클라이언트 정규화)
+
+**배경**: 사용자 요청 — 프리셋 이름 입력의 DB 장애·보안 예외 케이스 점검. 롤백 트랜잭션으로 재현한 결과 4건 모두 통과돼 있었음:
+① 기존 check가 `char_length(btrim(name))`만 검사하고 원본을 저장 → `'a' + 공백 100만 개`(1MB) 저장 가능(API 직접 호출 시 DB 부풀리기)
+② 제로폭 공백(U+200B)만으로 된 보이지 않는 이름 ③ 줄바꿈·방향 제어 문자(U+202E) — 표시 깨짐/스푸핑 ④ data jsonb 크기 무제한(5MB 통과)
+
+**변경 파일**:
+- DB `room_member_tactic_presets` (`migrations/add_room_member_tactic_presets.sql` v5, Supabase 적용 완료):
+  - `name_check`: `char_length(name) between 1 and 20 and name = btrim(name) and name !~ '[제어문자 x01-x1F, x7F-x9F, U+00A0, U+00AD, U+2000-200F, U+2028-202E, U+2060-2064, U+3000, U+FEFF]'`
+  - `data_check`(신규): `jsonb_typeof(data) = 'object' and octet_length(data::text) <= 65536` (실데이터 최대 6.4KB → 10배 여유)
+- `services/multi/tacticPresets.ts` — `normalizePresetName()` 신규(유니코드 공백→' ', 금지 문자 제거, 연속 공백 1칸, trim, 20 code point 절단),
+  `upsertTacticPreset`/`renameTacticPreset`이 저장 직전 정규화, 결과가 빈 문자열이면 요청 안 보냄
+- `hooks/useMultiTacticPresets.ts` — 캐시에도 정규화된 이름 반영
+- `components/multi/TacticPresetSelector.tsx` — 확인 시·확인 버튼 활성 판정에 normalizePresetName 사용
+
+**Before**: `CHECK (char_length(btrim(name)) >= 1 AND char_length(btrim(name)) <= 20)`, data 제약 없음, 클라이언트는 `draft.trim()`만.
+
+**After**: 위 제약 + 정규화. 재검증(롤백 트랜잭션): 1MB 공백·앞공백·제로폭·줄바꿈·RTL·전각공백 단독·21자·5MB data·배열 data 전부 차단,
+한글 20자·이모지+공백 이름은 통과. 정규화 함수 단독 실행 테스트 14/14(15번째는 기댓값 오기).
+
+**⚠️ 함정**: 이 세션의 도구 입력에서 `\uXXXX` 텍스트가 실제 문자로 디코딩돼 소스 정규식에 U+2028 등 원문자가 박히는 문제가 있었음(JS에선 U+2028이
+줄 끝이라 문법 오류). 파이썬 `chr(92)`로 조합해 이스케이프 형태로 재기록, 원문자 0개 확인. DB에 적용된 제약은 원문자 형태로 저장됐으나 의미 동일(재검증 통과).
+
+**보안 메모**: 이름은 RLS로 본인만 조회, React 텍스트/`title`/`window.confirm`으로만 출력(HTML 주입 경로 없음), 쿼리는 supabase-js 파라미터 바인딩.
+행 수는 PK+slot 1~3+kind 2종으로 유저·방당 최대 6행 × 64KB.
+
+**롤백 방법**: `alter table room_member_tactic_presets drop constraint room_member_tactic_presets_data_check;` + name_check를 Before 정의로 재생성,
+클라이언트 3파일은 normalizePresetName 호출 제거(또는 git).
+
+---
+
+
+## 2026-10-18 — 팀 전술 탭 프리셋도 뎁스와 동일 로직(v3)으로 통일
+
+**배경**: 사용자 요청 — 팀 전술 탭에도 [프리셋 +] 추가 / 드롭다운 선택 즉시 적용 / 상단 저장 버튼이 활성 프리셋 덮어쓰기 / 이름 변경(입력+확인)·삭제 적용.
+
+**변경 파일**:
+- DB: `room_members.team_preset_slot smallint check 1~3` 추가 (`migrations/add_room_member_tactic_presets.sql` 하단, Supabase 적용 완료)
+- `services/multi/roomQueries.ts` — `RoomMemberRow.team_preset_slot`
+- `services/multi/roomPersistence.ts` — `saveMemberTactics` 5번째 인자 `depthPresetSlot?: number|null` → `presetSlots?: Partial<Record<'depth'|'team', number|null>>`(지정 키만 저장)
+- `hooks/useMultiGameData.ts` — `depthPresetSlot/setDepthPresetSlot/commitDepthPresetSlot` → `presetSlots/setPresetSlot(kind,slot)/commitPresetSlot(kind,slot)`,
+  `PresetSlots` 타입, dirty 판정 depth·team 둘 다, `SaveTacticsResult.depthPresetSlot` → `presetSlots`
+- `components/multi/DepthPresetSelector.tsx` → `components/multi/TacticPresetSelector.tsx`로 이름 변경(내용 동일, 공용)
+- `components/multi/TacticPresetBar.tsx` 삭제(구 팀 탭 바 — 더 이상 사용처 없음)
+- `views/multi/season/MultiTacticsView.tsx` — 핸들러를 kind 인자 공용으로(handleSelectPreset/handleCreatePreset/handleRenamePreset/handleDeletePreset),
+  ref(presetStateRef)로 최신 프리셋·슬롯을 읽어 identity 고정, `renderPresetSelector(kind)`, 뎁스는 useMemo로 toolbarExtra, 팀은 슬라이더 패널 위 `mb-6` 영역.
+  handleSaveTactics는 kind별 활성 프리셋이 있으면 각각 덮어씀(depth=buildDepthPresetData, team=buildTeamPresetData), 하나라도 실패하면 안내
+
+**Before**: 팀 탭 = TacticPresetBar(세그먼트 3슬롯 + 불러오기/현재 설정 저장/이름 변경 모달/삭제, 슬롯 선택 비영속).
+
+**After**: 팀 탭도 뎁스와 완전히 같은 동작. 팀 프리셋 선택은 sliders만 덮어씀(뎁스 편집은 유지). 미저장 변경 시 confirm 문구 "해당 항목이 덮어써집니다".
+
+**검증**: tsc(변경 파일 오류 0), vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: git으로 위 파일들 복원(TacticPresetBar.tsx 복구, TacticPresetSelector → DepthPresetSelector), `alter table room_members drop column team_preset_slot;`
+
+---
+
+
+## 2026-10-18 — 뎁스 프리셋 추가 버튼 초록색
+
+**변경 파일**: `components/multi/DepthPresetSelector.tsx`
+**Before**: [프리셋 +] `variant="secondary"`, [+] IconButton `tone="subtle"`(slate)
+**After**: [프리셋 +] `variant="success"`(emerald-600), [+] IconButton에 `className="!text-emerald-400 hover:!text-emerald-300"`
+**롤백 방법**: variant를 secondary로, IconButton className 제거.
+
+---
+
+
+## 2026-10-18 — 뎁스 프리셋 v3: 사용자가 원할 때 [프리셋 +]로 추가
+
+**배경**: 사용자 결정 — 슬롯을 미리 부여(드래프트 시점 시드 등)하지 않고 필요할 때 추가. 프리셋이 없으면 뎁스 헤더 좌측(제목 옆)에
+[프리셋 +] 버튼만, 누르면 이름 입력창(포커스) + [확인] 버튼으로 이름 확정 시 생성.
+
+**변경 파일**:
+- `components/multi/DepthPresetSelector.tsx` — 3모드(idle/create/rename). 0개=[프리셋 +], 1개 이상=[드롭다운(있는 프리셋만)][+ (3개 미만)][이름 변경][삭제],
+  입력 모드=input(autoFocus+전체 선택, Enter 확정/Esc 취소)+[확인]. v2의 "빈 슬롯 N" 항목·OK 라벨 제거
+- `hooks/useMultiGameData.ts` — depthPresetSlot `number`(기본 1) → `number | null`(기본 null), `commitDepthPresetSlot(slot)` 추가(컬럼만 즉시 저장+기준선 갱신)
+- `services/multi/roomPersistence.ts` — `saveMemberTactics` tactics 인자 `undefined` 허용(=컬럼 미변경)
+- `views/multi/season/MultiTacticsView.tsx` — handleCreateDepthPreset(현재 편집기 스냅샷으로 upsert → commitDepthPresetSlot), 삭제 시 commitDepthPresetSlot(null),
+  handleSaveTactics는 활성 프리셋이 실제로 있을 때만 덮어씀
+
+**Before (v2)**: 슬롯 3개 항상 드롭다운에 노출("빈 슬롯 N"), 활성 슬롯 null이면 1로 취급, 저장 시 빈 슬롯이면 "프리셋 N" 자동 생성.
+
+**After (v3)**: 프리셋 0개면 저장해도 프리셋 생성 안 함. 생성은 [프리셋 +]/[+] → 이름 확인으로만, 생성 프리셋이 즉시 활성(DB 슬롯 번호 즉시 저장).
+드롭다운 선택은 v2와 동일(즉시 적용 + 저장 버튼으로 슬롯 번호 확정). 삭제 시 활성 슬롯 즉시 null.
+
+**검증**: tsc(변경 파일 오류 0), vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: git으로 위 4파일을 v2 커밋 상태로(또는 v2 항목 After 참조). DB 변경 없음.
+
+---
+
+
+## 2026-10-18 — 뎁스 프리셋 UI 개편: 드롭다운 선택 즉시 적용 + 상단 저장 버튼이 활성 슬롯 덮어쓰기
+
+**배경**: 사용자 요청 — 뎁스차트 프리셋 버튼 그룹을 [슬롯 드롭다운][이름 변경][삭제]로 축소. 드롭다운 선택 시 자동 적용(불러오기 버튼 삭제),
+"현재 설정 저장" 버튼 삭제 → 상단 저장 버튼이 현재 활성 슬롯 프리셋에 덮어씀. 이름 변경은 드롭다운 자리가 입력창+OK로 전환.
+팀 전술 탭 프리셋 바(TacticPresetBar)는 이번 요청 범위 밖이라 그대로.
+
+**변경 파일**:
+- DB: `room_members.depth_preset_slot smallint check 1~3` 추가 (`migrations/add_room_member_tactic_presets.sql` 하단, Supabase 적용 완료)
+- `services/multi/roomQueries.ts` — `RoomMemberRow.depth_preset_slot`
+- `services/multi/roomPersistence.ts` — `saveMemberTactics` 5번째 인자 `depthPresetSlot?` (undefined면 컬럼 안 건드림)
+- `hooks/useMultiGameData.ts` — `depthPresetSlot`/`lastSavedDepthPresetSlot` state, 멤버 로드 시 `?? 1`, isTacticsDirty에 슬롯 비교 추가,
+  `saveTactics` 반환형 `{error}` → `SaveTacticsResult {error, tactics, depthChart, depthPresetSlot}`(정리 후 저장된 값)
+- `components/multi/DepthPresetSelector.tsx` (신규) — 드롭다운/입력창+OK/이름변경/삭제
+- `views/multi/season/MultiTacticsView.tsx` — handleSaveTactics가 room_members 저장 성공 후 활성 슬롯에 `buildDepthPresetData(res.tactics, res.depthChart)` upsert
+  (빈 슬롯이면 이름 "프리셋 N"), 뎁스 툴바를 TacticPresetBar → DepthPresetSelector로 교체
+
+**Before**: 뎁스 툴바 = TacticPresetBar(kind=depth) [세그먼트 3슬롯][불러오기][현재 설정 저장][이름][삭제], 슬롯 선택은 로컬 state(비영속), saveTactics는 `{error}`만 반환.
+
+**After**:
+- 슬롯 선택: 데이터 있으면 (미저장 변경 시 confirm) applyDepthPreset으로 즉시 편집기 적용 + 슬롯 전환 / 빈 슬롯이면 편집 상태 유지하고 슬롯만 전환
+- 슬롯 전환 자체도 dirty → 저장 버튼 활성. 저장 = room_members(tactics, depth_chart, depth_preset_slot) → 성공 시 해당 슬롯 프리셋 upsert.
+  프리셋 upsert만 실패하면 "전술은 저장됐지만 프리셋 저장에 실패" 안내
+- 이름 변경/삭제는 활성 슬롯 대상, 프리셋이 없는 빈 슬롯에선 비활성. 삭제해도 화면의 뎁스·로테이션은 유지
+
+**검증**: tsc(변경 파일 오류 0), vite build 성공. 브라우저 미확인.
+
+**롤백 방법**: MultiTacticsView의 DepthPresetSelector 블록/handleSaveTactics 프리셋 upsert 제거 후 toolbarExtra를 이전
+`<TacticPresetBar kind="depth" ...>`로 복구(또는 git), useMultiGameData의 depthPresetSlot 관련 state·dirty·반환형 원복,
+saveMemberTactics 5번째 인자 제거, `alter table room_members drop column depth_preset_slot;`, DepthPresetSelector.tsx 삭제.
+
+---
+
+
+## 2026-10-18 — 뎁스차트 로테이션 쿼터 경계 세로 구분선
+
+**배경**: 사용자 요청 — 뎁스차트(DepthRotationBoard) 로테이션 바에 쿼터 사이 세로 구분선.
+⚠️ 2026-08 이 영역 쿼터 배경/여백/구분선을 여러 단계로 덧댔다가 사용자가 전부 롤백시킨 이력 있음 — 이번엔 선 1종만 추가.
+
+**변경 파일**: `components/dashboard/RotationGanttChart.tsx` — `GanttBar`의 `flatGridLines` 분기(DepthRotationBoard 전용, 싱글/RotationManager 룩 영향 없음)
+
+**Before**: flatGridLines일 때 좌/우 바깥 경계 `w-px bg-slate-800` 2개만.
+
+**After**: 같은 스타일(`absolute top-0 bottom-0 w-px bg-slate-800`)로 12/24/36분 위치(`left: m/48*100%`)에 3개 추가. stint 블록보다 먼저 렌더되어 블록 아래에 깔림. 헤더(1쿼터~4쿼터 라벨 행)는 변경 없음.
+
+**롤백 방법**: flatGridLines 분기의 `[12, 24, 36].map(...)` 블록 삭제.
+
+---
+
+
+## 2026-10-18 — 멀티 전술 프리셋(뎁스차트·로테이션 3슬롯 / 팀 전술 3슬롯, 이름 지정)
+
+**배경**: 사용자 요청 — 멀티 리그에서 유저별로 뎁스차트와 전술 프리셋을 각 3개씩 저장하고 이름을 붙이는 기능.
+싱글의 `user_tactics`/`tacticsService.ts`(슬라이더만, team_id 단위)는 멀티 방과 무관해 재사용하지 않음.
+
+**변경 파일**:
+- DB: `room_member_tactic_presets` 신규 테이블 (`migrations/add_room_member_tactic_presets.sql`, Supabase 적용 완료)
+  — PK(room_id,user_id,kind,slot), kind∈{depth,team}, slot 1~3, name 1~20자, data jsonb, RLS 본인 행만(쓰기는 방 멤버일 때만)
+- `services/multi/tacticPresets.ts` (신규) — fetch/upsert/rename/delete
+- `utils/tacticPresetData.ts` (신규) — 스냅샷 생성(`buildDepthPresetData`/`buildTeamPresetData`)·적용(`applyDepthPreset`/`applyTeamPreset`)
+- `hooks/useMultiTacticPresets.ts` (신규) — react-query `['multiTacticPresets', roomId, userId]`, 쓰기 성공 시 캐시 직접 갱신
+- `components/multi/TacticPresetBar.tsx` (신규) — 슬롯 선택 + 불러오기/현재 설정 저장/이름 변경/삭제
+- `components/dashboard/DepthRotationBoard.tsx` — `toolbarExtra?: ReactNode` prop 추가(제목 옆 렌더) + memo 비교에 포함
+- `components/dashboard/tactics/PresetRenameModal.tsx` — `title?`/`maxLength?` prop, Enter 확정 추가(기본값으로 기존 동작 동일)
+- `views/multi/season/MultiTacticsView.tsx` — 뎁스 탭 툴바·팀 전술 탭 상단에 프리셋 바 연결
+
+**Before**: 멀티 전술 화면에 프리셋 없음. `DepthRotationBoard` 툴바 = `<span>제목</span>` + 버튼 그룹.
+
+**After**:
+- 뎁스 프리셋 data = `{ depthChart, starters, rotationMap, minutesLimits }`, 팀 프리셋 data = `{ sliders }`
+- 슬롯 클릭은 선택만, "불러오기"는 편집기 상태(userTactics/depthChart)만 바꿈 → 기존 저장 버튼을 눌러야 room_members에 반영(시뮬 서버는 프리셋 테이블을 읽지 않음, 서버 미러 없음)
+- 불러올 때 미저장 변경이 있으면 confirm, 현재 로스터에 없는 선수는 `pruneTacticsToRoster`로 제거하고 제외 인원수 안내
+- 프리셋 바 콜백은 ref로 최신 상태를 읽어 identity 고정 → `toolbarExtra` 요소를 useMemo로 고정해 보드 memo 유지
+
+**검증**: tsc(변경 파일 오류 0), vite build 성공, RLS 롤백 트랜잭션 테스트(본인 insert OK / 타인 user_id insert 차단 / slot 4 차단)
+
+**롤백 방법**: MultiTacticsView의 프리셋 블록·`toolbarExtra` 전달 제거 → DepthRotationBoard toolbarExtra 제거(툴바를 Before 구조로) →
+신규 4파일 삭제 → `drop table public.room_member_tactic_presets;` (PresetRenameModal 변경은 하위호환이라 그대로 둬도 됨)
+
+---
+
 
 ## 2026-10-18 — PnR_Pop 팝아웃 구역을 팝퍼 성향으로(S3) + CatchShoot 슈터 페널티 비례식(S4)
 

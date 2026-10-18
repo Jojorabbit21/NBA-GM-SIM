@@ -511,7 +511,7 @@ context = 'drive' | 'post' | 'roll' | 'putback'
   Dunk  (Rim)   → reach(vertical + max(0, height-200)×1.0)≥70일 때만, weight=(dunk-60)×1.5 (strength 하드컷은 2026-10-18 제거)
   Layup (Rim)   → 항상 가능, weight=(layup-60)×1.0
   Floater(Paint)→ closeShot≥80, putback 제외, weight=(closeShot-60)×0.7
-  Hook  (Paint) → height≥208 && closeShot≥80, post/roll만, weight=(postPlay-60)×0.8
+  Hook  (Paint) → closeShot≥80, putback 제외 전 상황, weight=(postPlay-60)×1.6×clamp((height-200)/15, 0, 1.5)² (2026-10-18: 208cm 커트라인·post/roll 한정 폐지)
   Pullup (Mid)  → mid≥72, drive만, weight=(mid-60)×0.5×(shot_mid/5)
   Jumper (Mid)  → mid≥72, post/roll만, weight=(mid-60)×0.7×(shot_mid/5)
   Fadeaway(Mid) → postPlay≥80 && mid≥85 && closeShot≥85, post만,
@@ -1358,7 +1358,7 @@ FINISH: {
   DUNK_VERT_MIN: 70, DUNK_HEIGHT_BASE: 200, DUNK_HEIGHT_VERT_BONUS: 1.0, DUNK_WEIGHT: 1.5,
   LAYUP_WEIGHT: 1.0,
   FLOATER_CLOSESHOT_MIN: 80, FLOATER_WEIGHT: 0.7,
-  HOOK_HEIGHT_MIN: 208, HOOK_CLOSESHOT_MIN: 80, HOOK_WEIGHT: 0.8,
+  HOOK_CLOSESHOT_MIN: 80, HOOK_WEIGHT: 1.6, HOOK_HEIGHT_BASE: 200, HOOK_HEIGHT_SPAN: 15, HOOK_HEIGHT_CAP: 1.5, HOOK_HEIGHT_POW: 2,
   MID_MIN: 72, MID_DRIVE_WEIGHT: 0.5, MID_POST_WEIGHT: 0.7,
   FADEAWAY_POSTPLAY_MIN: 80, FADEAWAY_MID_MIN: 85, FADEAWAY_CLOSESHOT_MIN: 85, FADEAWAY_WEIGHT: 0.6,
 }
