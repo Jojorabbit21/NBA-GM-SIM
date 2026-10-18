@@ -35,6 +35,63 @@
 
 ---
 
+## 2026-10-18 — 멀티 "도구 › 선수 비교" 화면 신설 + 커리어 집계 헬퍼 공용화
+
+**배경**: 사용자 요청 — 두 선수를 나란히 비교하는 화면. 목업(아티팩트 https://claude.ai/artifact/8CtTmL6KknzUjoE4ueKDLK, v7)을 확정한 뒤 그대로 구현.
+좌/우 패널(검색 또는 팀→선수 드롭다운, 선수 정보·시즌 기록 2열 그리드) + 가운데(이름, 신장·체중 텍스트, 능력치 21개 양방향 막대).
+
+**변경 파일**:
+- `views/multi/season/MultiPlayerCompareView.tsx` (신규) — 라우트 `season/compare`. 선택 상태는 URL `?p1=&p2=`(선수 short code)
+- `App.tsx` — import + `<Route path="compare" element={<MultiPlayerCompareView />} />`
+- `components/MultiSidebar.tsx` — "자유 계약" NavItem 아래 `<Divider />` + "선수 비교" NavItem(`NavIcon name="compare"`)
+- `public/images/sidenav/compare.svg`, `compare-selected.svg` (신규) — 두 선수가 세로선 사이로 마주 보는 투톤 아이콘
+  (2026-10-19 후속 수정 ⑲: `LABEL_CELL`에 `font-semibold` 추가(체격·능력치 라벨). 사용자 요청)
+  (2026-10-19 후속 수정 ⑱: 능력치 그룹 사이 `GroupSpacer` 제거 — 체격 행과 첫 능력치 그룹 사이 1개만 남김. 사용자 요청)
+  (2026-10-19 후속 수정 ⑰: `DeltaCell` 정렬 left=`justify-start`, right=`justify-end`(패딩 제거), 델타 칸 52px 유지. 사용자 요청)
+  (2026-10-19 후속 수정 ⑯: 가운데 헤더 하단 구분선 `border-b border-slate-700`(좌우 패널 헤더 구분선과 같은 색). 사용자 요청)
+  (2026-10-19 후속 수정 ⑮: 가운데 헤더(선수 이름 줄) 배경 slate-950 → slate-900. 배경이 영역 전체 폭에 깔리도록 sticky 래퍼를 760px 컨테이너 밖으로 분리,
+  이름 격자는 안쪽 `max-w-[760px] px-6 py-3`로 정렬 유지. 본문 컨테이너는 `pt-1.5` 추가. 사용자 요청)
+  (2026-10-19 후속 수정 ⑭: 배지–구분선 간격 14px 고정 — `DeltaCell` 라벨 쪽 정렬 + 패딩(left=`justify-end pr-3.5`, right=`justify-start pl-3.5`), 델타 칸 64px → 52px. 사용자 요청)
+  (같은 날 후속 수정 ⑬: `DeltaCell`에 `side` prop — 가운데 정렬 → 값 쪽 정렬(left=justify-start, right=justify-end)로 값–배지 간격 축소, 구분선과는 멀어짐. 사용자 요청)
+  (같은 날 후속 수정 ⑫: 델타 배지가 라벨 구분선에 붙어 보여 델타 칸 48px → 64px(ROW `1fr_56px_64px_128px_64px_56px_1fr`). 사용자 스크린샷 피드백)
+  (같은 날 후속 수정 ⑪: 그룹 사이 구분선 끊김 해결 — 차트 컨테이너 `flex-col gap-3.5` 제거, 그룹 래퍼 div → `React.Fragment`, 각 그룹 앞에 `GroupSpacer`
+  (7칸 ROW h-3.5, 라벨 칸만 LABEL_CELL) 행 삽입. 이름 줄 `pb-2` + 체격 래퍼 `-mt-2` → 이름 줄 `pb-1.5`, 체격 래퍼 제거. 사용자 요청)
+  (같은 날 후속 수정 ⑩: 체격·능력치 라벨 칸에 좌우 구분선 — `LABEL_CELL` 상수(self-stretch + `border-x border-slate-800`). 사용자 요청)
+  (같은 날 후속 수정 ⑨: 델타 배지를 공용 Badge(danger 틴트) → 전용 span(`bg-gradient-to-b from-red-500 to-red-700`, 12px 흰색 bold, rounded-full)으로 교체,
+  열 순서를 [막대][값][델타][라벨][델타][값][막대]로 바꿈(ROW `1fr_56px_48px_128px_48px_56px_1fr`, 값은 칸 안 가운데 정렬). 체격 행도 같은 열 배치. 사용자 요청)
+  (같은 날 후속 수정 ⑧: 차트 컨테이너 `max-w-[760px] mx-auto`로 막대 길이 축소, ROW `1fr_60px_128px_60px_1fr` → `1fr_52px_48px_128px_48px_52px_1fr`
+  (막대와 값 사이 52px 칸 = 여백 겸 델타 배지 자리), 우위 쪽에 `DeltaCell`(공용 Badge variant="danger", "+차이") 추가, 체격 행도 빈 칸 2개씩 추가해 열 정렬 유지. 사용자 요청)
+  (같은 날 후속 수정 ⑦: 막대 트랙(`Bar` 바깥 div)에 `rounded-full bg-slate-800` 배경 추가. 사용자 요청)
+  (같은 날 후속 수정 ⑥: 선택 해제 X → 공용 `IconButton`(md·subtle, X 14px — 알림 삭제 등 제거 버튼 관례). 막대 `rounded-full`, 높이 h-3→h-4, 행 26px→32px(h-8),
+  체격·능력치 라벨/값 text-xs·text-sm·13px → text-base, 열 폭 값 56→60px·라벨 112→128px(이름 줄 동일). 시즌 기록 11개 → 24개(선발, 공/수 리바운드, 턴오버, 파울,
+  성공/시도, eFG%, 3점 시도 비율 추가), 항목별 `cmp`(high/low/none — 턴오버·파울은 낮을수록 우위, 출전·시도·비율은 비교 안 함), 열세 값 흐림(text-slate-400) 제거. 사용자 요청)
+  (같은 날 후속 수정 ⑤: 열세 쪽 막대의 opacity 0.55 제거(`Bar`의 `tone` prop 삭제), 이어서 열세 쪽 능력치 숫자의 opacity 0.55도 제거 — 우위 표시는 숫자 굵기(win=font-extrabold)만 남음. 사용자 요청)
+  (같은 날 후속 수정 ④: 팀 드롭다운의 "자유 계약 선수" → "FA"(트리거·목록), 능력치 막대 트랙의 25/50/75 세로 기준선(`TRACK_GRID` 상수, backgroundImage 그라디언트) 삭제. 사용자 요청)
+  (같은 날 후속 수정 ③: 팀 드롭다운 트리거·목록을 팀 이름 → 약어(`team.abbr`, 없으면 name)로 표시, 정렬도 이름(ko) → 약어 알파벳순. 사용자 요청)
+  (같은 날 후속 수정 ②: MultiPlayerCompareView — 미선택 패널의 compare.svg 아이콘 삭제, 검색 인풋을 FA 화면과 같은 36px rounded-lg 인풋+검색어 지우기 IconButton으로,
+  팀/선수/시즌·커리어 드롭다운 트리거를 공용 `FilterTrigger`(36px, 값 선택 시 active 인디고)로, 검색 결과 패널을 공용 Dropdown 패널 스타일(rounded-xl, p-1, rounded-lg 행)로 통일. 사용자 요청)
+  (같은 날 후속 수정 ①: 머리를 네모 `<rect x=4/15 y=5 w=5 h=5>` → 원 `<circle cx=6.5/17.5 cy=7.5 r=2.5>`로 교체, 사용자 요청)
+- `components/dashboard/MultiHeaderNavMenu.tsx` — `DropdownId`에 `'tools'`, `isToolsActive`, `toolsItems`(선수 비교 1개), 리그 탭 뒤에 "도구" 드롭다운(isDraftComplete 조건)
+- `utils/careerStats.ts` (신규) — `computeCareerAvg`, `TeamAdvCtx`, `statsToCareerRow`를 **views/PlayerDetailView.tsx에서 내용 변경 없이 이동**(export만 추가)
+- `views/PlayerDetailView.tsx` — 위 3개 로컬 정의 삭제, `import { computeCareerAvg, statsToCareerRow, type TeamAdvCtx } from '../utils/careerStats'` 추가
+
+**Before**: 선수 비교 화면 없음. `computeCareerAvg`/`statsToCareerRow`는 PlayerDetailView.tsx 파일 내부 전용 함수.
+
+**After**:
+- 데이터: 로스터 선수는 리더보드와 같은 `useLeagueRawStats` + `buildLeagueTeams`(queryKey 공유), FA는 `useMultiSearchData().poolPlayers` 중 `rosterMap`에 없는 선수.
+  FA로 선택된 선수만 `usePlayerSeasonStatsLeague(room, [faIds])`로 이번 시즌 스탯을 별도 조회(시즌 중 방출 선수 대응). 커리어는 선택 선수별 `usePlayerCareerHistory`.
+- 시즌 기록: `statsToCareerRow(player.stats)`(g>0일 때), 커리어: `computeCareerAvg([시즌행, ...career_history(정규시즌, 현재 시즌 제외)])` — PlayerDetailView 헤더 커리어 라인과 같은 계산.
+  좌우 패널 공통 드롭다운(시즌/커리어), 상대보다 높은 값 흰색 굵게(경기 수 제외).
+- 막대 색 `getAttrBarColor`(9단계), 열세 쪽 막대·숫자 opacity 0.55. OVR은 `calculatePlayerOvr`.
+- 팀 드롭다운 맨 아래 구분선 + "자유 계약 선수". 선수 목록은 OVR 내림차순, 동점 ID 오름차순.
+
+**검증**: `tsc --noEmit` 오류 73건 = 변경 전과 동일(신규 0), `vite build` 성공. 실제 리그 화면 브라우저 확인은 미실시.
+
+**롤백 방법**: 신규 파일 4개 삭제(MultiPlayerCompareView.tsx, careerStats.ts, compare*.svg) 후 App.tsx/MultiSidebar.tsx/MultiHeaderNavMenu.tsx의 추가 블록 제거,
+PlayerDetailView.tsx는 careerStats.ts 내용(3개 정의, `export` 제거, `stats: PlayerStats` → `stats: import('../types/player').PlayerStats`)을 `// ── Zone stat key mapping` 주석 바로 위에 되돌려 넣고 import 줄 삭제.
+
+---
+
 ## 2026-10-18 — 멀티 세션 중 강퇴(AI 전환) + 초대 링크로 AI 팀 인계
 
 **배경**: 사용자 요청 — 세션 시작 후에도 유저를 강퇴하고 새 유저를 초대할 수 있어야 함. 기존엔 `leaveLeague`의 클라이언트 가드

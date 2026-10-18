@@ -44,6 +44,7 @@ import MultiDraftPoolView from './views/multi/season/MultiDraftPoolView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
+import MultiPlayerCompareView from './views/multi/season/MultiPlayerCompareView';
 import MultiPlayerDetailView from './views/multi/season/MultiPlayerDetailView';
 import MultiNegotiationView from './views/multi/season/MultiNegotiationView';
 import MultiReleaseView from './views/multi/season/MultiReleaseView';
@@ -429,6 +430,7 @@ const App: React.FC = () => {
                                 <Route path="allstar"      element={<MultiAllStarView />} />
                                 <Route path="schedule"     element={<MultiScheduleView />} />
                                 <Route path="leaderboard"  element={<MultiLeaderboardView />} />
+                                <Route path="compare"      element={<MultiPlayerCompareView />} />
                                 <Route path="tactics"      element={<MultiTacticsView />} />
                                 <Route path="transaction"  element={<MultiFrontOfficeView />} />
                                 {/* [2026-10-14] 자유 계약은 트레이드 화면의 하위 탭으로 흡수 — 옛 링크(북마크·외부 참조)는 그 탭으로 */}

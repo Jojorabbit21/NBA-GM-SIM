@@ -31,7 +31,7 @@ interface MultiHeaderNavMenuProps {
     onViewTeam:    (teamSlug: string) => void;
 }
 
-type DropdownId = 'team' | 'tactics' | 'league' | null;
+type DropdownId = 'team' | 'tactics' | 'league' | 'tools' | null;
 
 interface DropdownItem {
     label: string;
@@ -116,6 +116,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     const isLeagueActive  = pathname.startsWith(`${base}/standings`) || pathname.startsWith(`${base}/race`) || pathname.startsWith(`${base}/leaderboard`)
         || pathname.startsWith(`${base}/schedule`) || pathname.startsWith(`${base}/transaction`)
         || pathname.startsWith(`${base}/playoffs`);
+    const isToolsActive   = pathname.startsWith(`${base}/compare`);
 
     // tabValue가 있으면 같은 경로 안에서 ?tab= 값까지 맞아야 활성 처리(로스터/전술처럼
     // 한 페이지가 여러 하위 화면을 쿼리파라미터로 나누는 경우).
@@ -159,6 +160,11 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
         { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },
+    ];
+
+    // [2026-10-18] "도구" 그룹 — 사이드바 맨 아래(자유 계약 다음 구분선 아래) 아이콘과 같은 항목.
+    const toolsItems: DropdownItem[] = [
+        { label: '선수 비교', path: `${base}/compare` },
     ];
 
     // 각진 플랫 드롭다운 — 버튼 바로 아래 틈 없이 붙고(mt-0), 항목은 알약형 칩이 아니라
@@ -265,6 +271,23 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                             <CountBadge count={pendingTradeCount} size="md" className="absolute -top-1.5 -right-2.5" />
                         </button>
                         {openDropdown === 'league' && <DropdownPanel items={leagueItems} />}
+                    </div>
+                )}
+
+                {/* 도구 — 리그와 같은 노출 조건(드래프트 완료 후) */}
+                {isDraftComplete && (
+                    <div className="relative">
+                        <button
+                            onClick={() => toggle('tools')}
+                            className={`${tabBase} ${openDropdown === 'tools' ? tabOpen : isToolsActive ? tabActivePage : tabDefault}`}
+                        >
+                            도구
+                            {openDropdown === 'tools'
+                                ? <ChevronUp size={16} className="shrink-0" />
+                                : <ChevronDown size={16} className="shrink-0" />
+                            }
+                        </button>
+                        {openDropdown === 'tools' && <DropdownPanel items={toolsItems} minWidth="140px" />}
                     </div>
                 )}
             </div>{/* end Nav 탭 묶음 */}
