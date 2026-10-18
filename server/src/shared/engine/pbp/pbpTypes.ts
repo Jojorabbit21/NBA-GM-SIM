@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta } from '../../types.ts';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats } from '../../types.ts';
 import { SimSettings } from '../../types/simSettings.ts';
 import type { ArchetypeRatings } from './archetypeSystem.ts';
 import type { PlayContext } from './playTypes.ts';
@@ -227,6 +227,9 @@ export interface GameState {
     rotationHistory: RotationData;
 
     shotEvents: ShotEvent[];
+
+    // [2026-10-18] 팀별 플레이타입 실적(statsMappers.recordPlayTypeStat이 누적) — 멀티 PPP 집계용
+    playTypeStats: TeamPlayTypeStats;
 
     injuries: InjuryEvent[];
 

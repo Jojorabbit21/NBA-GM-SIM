@@ -156,7 +156,17 @@ export interface SimulationResult {
         quarter: number; timeRemaining: string;
     }[];
     boxTimeline?: BoxTick[];
+    /** [2026-10-18] 팀별 플레이타입 실적 — 멀티 PPP 집계용(TeamPlayTypeStats) */
+    playTypeStats?: TeamPlayTypeStats;
 }
+
+/** [2026-10-18] 플레이타입별 실적(팀 단위, 한 경기) — 플레이 1회 = 그 플레이타입으로 끝난 슛/턴오버/슈팅·보너스 자유투 1건.
+ *  공격 리바운드 후 이어진 공격은 별도 플레이. 비보너스 파울·테크니컬·플래그런트·싸움은 집계 안 함(statsMappers.recordPlayTypeStat).
+ *  pts = 그 플레이로 난 득점(앤드원·자유투 포함) → PPP = pts / poss. client(types/engine.ts) ↔ server(server/src/shared/types/engine.ts) 미러 */
+export interface PlayTypeStatLine { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number; }
+/** teamId → playType → 집계 */
+export type TeamPlayTypeStats = Record<string, Record<string, PlayTypeStatLine>>;
+
 
 export type PlayType =
     | 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp'

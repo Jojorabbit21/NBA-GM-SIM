@@ -85,9 +85,38 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
     });
 }
 
+// ── [2026-10-18] 플레이타입별 실적 집계(멀티 PPP) ─────────────────────────────────
+// 플레이 1회 = 그 playType으로 끝난 슛(성공/실패)·턴오버·오펜시브 파울·샷클락 위반·슈팅 파울 자유투·보너스 자유투.
+// 비보너스 파울(자유투 없음 → 공격 계속)·테크니컬·플래그런트(플레이와 무관한 자유투)·싸움은 제외.
+// 공격 리바운드로 이어진 공격은 다음 applyPossessionResult 호출에서 별도 플레이로 잡힌다.
+// pts/fta는 applyPossessionResult 진입~종료 사이 공격팀 점수·슈터 자유투 시도 증가분(앤드원·자유투 포함).
+// client(services/game/engine/pbp/statsMappers.ts) ↔ server(server/src/shared/engine/pbp/statsMappers.ts) 미러.
+const PLAY_TYPE_COUNTED_RESULTS = new Set<PossessionResult['type']>([
+    'score', 'miss', 'turnover', 'offensiveFoul', 'shotClockViolation', 'freethrow', 'foul',
+]);
+function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: number, fta: number): void {
+    const { type, playType, offTeam } = result;
+    if (!playType || !PLAY_TYPE_COUNTED_RESULTS.has(type)) return;
+    if (type === 'foul' && fta <= 0) return; // 비보너스 파울 — 공격이 이어지므로 플레이 미종료
+    if (!state.playTypeStats) state.playTypeStats = {};
+    let byTeam = state.playTypeStats[offTeam.id];
+    if (!byTeam) { byTeam = {}; state.playTypeStats[offTeam.id] = byTeam; }
+    let line = byTeam[playType];
+    if (!line) { line = { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 }; byTeam[playType] = line; }
+    line.poss += 1;
+    line.pts += pts;
+    line.fta += fta;
+    if (type === 'score') { line.fga += 1; line.fgm += 1; }
+    else if (type === 'miss') { line.fga += 1; }
+    else if (type === 'turnover' || type === 'offensiveFoul' || type === 'shotClockViolation') { line.tov += 1; }
+}
+
 export function applyPossessionResult(state: GameState, result: PossessionResult) {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal,
             offTeam, defTeam, isAndOne, playType, isSwitch, isMismatch, isBotchedSwitch, pnrCoverage } = result;
+    // [2026-10-18] 플레이타입 실적 — 이 플레이로 난 득점/자유투를 진입·종료 차이로 계산(recordPlayTypeStat)
+    const ptScoreBefore = offTeam.score;
+    const ptFtaBefore = actor.fta;
 
     if (result.isAceTarget && typeof result.matchupEffect === 'number') {
         actor.matchupEffectSum += result.matchupEffect;
@@ -369,4 +398,6 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             opponent.health = 'Injured'; opponent.injuryType = '출장정지 (싸움)'; opponent.returnDate = `${oppSusp}경기`;  opponent.injuredThisGame = true;
         }
     }
+
+    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
 }

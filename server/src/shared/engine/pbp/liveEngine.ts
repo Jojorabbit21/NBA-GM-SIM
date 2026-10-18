@@ -256,6 +256,7 @@ export function createGameState(
         isAwayB2B,
         rotationHistory: {},
         shotEvents: [],
+        playTypeStats: {},  // [2026-10-18] 멀티 PPP — statsMappers.recordPlayTypeStat
         injuries: [],
         suspensions: [],
         momentum: {
@@ -723,6 +724,7 @@ export function extractSimResult(state: GameState): SimulationResult {
         pbpLogs: state.logs,
         rotationData: state.rotationHistory,
         pbpShotEvents: state.shotEvents,
+        playTypeStats: state.playTypeStats,
         injuries: state.injuries,
         suspensions: state.suspensions,
         boxTimeline: state.boxTimeline,

@@ -22,6 +22,7 @@ import { TeamZoneChartInsight } from '../../../components/dashboard/tactics/insi
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { useTeamOpponentZoneStats } from '../../../hooks/useTeamOpponentZoneStats';
+import { useTeamPlayTypeStats } from '../../../hooks/useTeamPlayTypeStats';
 import { useLeaderboardData } from '../../../hooks/useLeaderboardData';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -382,6 +383,16 @@ const MultiTacticsView: React.FC = () => {
     // 셋 다 기다렸다 한 번에 표시 — 신원만 먼저 뜨고 스탯/oppZone이 한 박자 늦게 팝인되는
     // 문제 방지(팀 화면 Off/Def Rtg 게이트 통합과 동일한 이유).
     const leagueTeamsLoading = leagueTeamsFetchPending || leagueStatsPending || oppZonePending;
+
+    // [2026-10-18] 팀 전술 탭 "PPP" — 서버가 경기마다 저장한 팀×플레이타입 요약을 시즌 합산(공개된 경기만)
+    const { data: playTypeData, isPending: playTypePending, isError: playTypeError } = useTeamPlayTypeStats(room?.id);
+    const playTypeActual = useMemo(
+        () => ({
+            totals: playTypeData?.totals, myTeamId, isLoading: playTypePending, isError: playTypeError,
+            estimatedGames: myTeamId ? (playTypeData?.estimatedGames[myTeamId] ?? 0) : 0,
+        }),
+        [playTypeData, myTeamId, playTypePending, playTypeError],
+    );
 
     // 인사이트 탭 "선수 스탯" 테이블(PlayerStatsTable)용 — 30팀 중 우리 팀만 추출(로스터+시즌 누적 스탯 포함).
     const myTeamWithFullStats = useMemo(
@@ -801,6 +812,7 @@ const MultiTacticsView: React.FC = () => {
                                 onUpdateTactics={setUserTactics}
                                 roster={rosterWithZoneStats}
                                 offenseDefenseSplit
+                                playTypeActual={playTypeActual}
                             />
                         </div>
                     </div>

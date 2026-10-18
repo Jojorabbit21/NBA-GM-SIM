@@ -2,9 +2,10 @@
 import React from 'react';
 import { GameTactics, TacticalSliders, Player } from '../../../types';
 import { TacticsDataPanel } from './TacticsDataPanel';
-import { PlayTypePPP } from './charts/PlayTypePPP';
+import { PlayTypePPP, type PlayTypeActual } from './charts/PlayTypePPP';
 import { SliderControl } from '../../common/SliderControl';
 import { SliderGroupNotes } from '../../common/SliderGroupNotes';
+import { SliderNoteContent } from './SliderNoteContent';
 import { DefensiveStats } from '../../../utils/defensiveStats';
 import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
 import {
@@ -24,6 +25,8 @@ interface TacticsSlidersPanelProps {
      *  그래프" 3열(4:4:2) 레이아웃으로 렌더. MultiTacticsView.tsx 전용 — 기본 false로
      *  싱글플레이어/관리자 에디터는 기존 7:5 그리드 그대로. */
     offenseDefenseSplit?: boolean;
+    /** [2026-10-18] split 레이아웃 전용 — 실제 경기 기반 플레이타입 PPP(멀티). 지정 시 "플레이타입 분석" 아래 PPP 섹션 */
+    playTypeActual?: PlayTypeActual;
 }
 
 /** 슬라이더 그룹 묶음 한 열(그룹 사이 구분선). split 레이아웃은 열 오른쪽에 경계선. */
@@ -45,7 +48,7 @@ const SliderColumn: React.FC<{
                         value={sliders[item.key]}
                         onChange={v => onChange(item, v)}
                         steps={item.steps}
-                        tooltip={item.note}
+                        tooltip={<SliderNoteContent lines={item.note} />}
                     />
                 ))}
             </React.Fragment>
@@ -53,7 +56,7 @@ const SliderColumn: React.FC<{
     </div>
 );
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly, hideRadar, hideZoneChart, offenseDefenseSplit }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly, hideRadar, hideZoneChart, offenseDefenseSplit, playTypeActual }) => {
 
     const sliders = { ...DEFAULT_SLIDERS, ...tactics.sliders };
 
@@ -76,7 +79,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,4fr)_minmax(0,4fr)_minmax(0,2fr)] gap-8">
                     <SliderColumn groups={OFFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
                     <SliderColumn groups={DEFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
-                    <PlayTypePPP sliders={sliders} />
+                    <PlayTypePPP sliders={sliders} actual={playTypeActual} />
                 </div>
                 {/* [2026-10-18] 멀티 전술 화면은 슬라이더별 설명을 라벨 옆 ? 클릭 툴팁(SliderControl tooltip)으로 옮겨
                     하단 설명 표(SliderGroupNotes)를 뺐다. 싱글/어드민(비-split) 레이아웃은 표 유지. */}

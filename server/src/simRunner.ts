@@ -316,6 +316,27 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 quarter_scores:  computeQuarterScoresFromEvents(result.pbpLogs ?? []),
             }, { onConflict: 'room_id,game_id' });
 
+            // ── 5-1. 팀별 플레이타입 실적(멀티 전술 화면 PPP) [2026-10-18] ─────────────
+            // 엔진 statsMappers.recordPlayTypeStat 집계 → team_playtype_stats(migrations/add_team_playtype_stats.sql).
+            // 재시뮬(forceStartNow 등)에서 이전 실행에만 있던 플레이타입 행이 남지 않도록 이 경기 행을 지우고 다시 넣는다.
+            // 실패해도 경기 진행은 막지 않는다(부가 통계) — 로그만 남김.
+            {
+                const ptRows = Object.entries(result.playTypeStats ?? {}).flatMap(([teamId, byPt]) =>
+                    Object.entries(byPt).map(([playType, line]) => ({
+                        room_id: roomId, game_id: gameId, team_id: teamId, play_type: playType,
+                        season_number: (room as any).season_number ?? null,
+                        is_playoff: !!game.series_id,
+                        poss: line.poss, pts: line.pts, fga: line.fga, fgm: line.fgm, fta: line.fta, tov: line.tov,
+                    })),
+                );
+                const { error: ptDelErr } = await supabase.from('team_playtype_stats').delete().eq('room_id', roomId).eq('game_id', gameId);
+                if (ptDelErr) console.error(`[simRunner] team_playtype_stats 정리 실패 room=${roomId} game=${gameId}: ${ptDelErr.message}`);
+                if (ptRows.length > 0) {
+                    const { error: ptErr } = await supabase.from('team_playtype_stats').insert(ptRows);
+                    if (ptErr) console.error(`[simRunner] team_playtype_stats 저장 실패 room=${roomId} game=${gameId}: ${ptErr.message}`);
+                }
+            }
+
             // ── 6. games 테이블 업데이트 ───────────────────────────────────────
             // forceStartNow면 scheduled_at도 game_start_time과 맞춰줘야 일정/브라켓 화면이
             // 같은 시각 기준으로 LIVE 상태를 판정한다 (game_pbp.game_start_time만 바뀌고

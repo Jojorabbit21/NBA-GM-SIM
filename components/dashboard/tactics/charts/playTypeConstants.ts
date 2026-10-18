@@ -37,3 +37,17 @@ export const getPlayTypeDistribution = (sliders: TacticalSliders): number[] => {
     const total = ordered.reduce((s, v) => s + v, 0);
     return ordered.map(w => total > 0 ? (w / total) * 100 : 10);
 };
+
+// ── [2026-10-18] 속공 포함 11종 (멀티 전술 화면 "플레이타입 분석" + "PPP") ──────────────
+// 엔진은 매 공격마다 먼저 속공 여부를 pace × 3% 확률로 정하고(possessionHandler.ts "Add Transition chance
+// based on Pace"), 아니면 하프코트 10종을 가중치로 고른다. 화면에선 이 2단계 구조를 드러내지 않고 11종을
+// 한 목록으로 보여준다. 수비 리바운드 직후 공격의 defReb 보너스는 그 공격 비율에 따라 달라 예상치에선 생략.
+export const TRANSITION_PLAY_TYPE = { key: 'Transition', label: '속공', color: '#22d3ee' } as const;
+export const PLAY_TYPES_WITH_TRANSITION = [TRANSITION_PLAY_TYPE, ...PLAY_TYPES];
+
+/** 슬라이더 → 11종 예상 비중(%) — 속공 = pace × 3%, 나머지 10종 = 하프코트 비중 × (1 − 속공) */
+export const getFullPlayTypeDistribution = (sliders: TacticalSliders): number[] => {
+    const transition = Math.max(0, Math.min(1, sliders.pace * 0.03));
+    const halfCourt = getPlayTypeDistribution(sliders);
+    return [transition * 100, ...halfCourt.map(p => p * (1 - transition))];
+};
