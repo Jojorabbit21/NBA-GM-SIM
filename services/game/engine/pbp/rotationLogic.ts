@@ -11,6 +11,13 @@ export interface SubRequest {
 }
 
 /** 포지션 인접성 맵: 해당 포지션을 대체할 수 있는 인접 포지션 */
+// [2026-10-18] 로테이션 맵에 구멍(분당 출전 예정 5명 미만)이 있을 때의 비상 보충 파라미터.
+// 이전 규칙("코트 위 우선 > OVR")은 쉬어야 할 구간에도 코트 위 최고 OVR 선수를 계속 남겨 에이스 출전이 과다해졌다.
+// 시뮬 검증(docs/history/dev-log.md 2026-10-18): 보너스 4는 교체 진동이 현행보다 악화, 8 이상부터 안정.
+const FALLBACK_ONCOURT_BONUS = 8;       // 체력 점수에 더하는 코트 위 가산점 (진동 방지 히스테리시스 폭)
+const FALLBACK_MIN_STINT_SEC = 120;     // 투입 후 이 시간 안에는 폴백이 내보내지 않음
+const FALLBACK_MIN_REST_SEC = 120;      // 교체 아웃 후 이 시간 안에는 폴백이 다시 투입하지 않음
+
 const POSITION_ADJACENCY: Record<string, string[]> = {
     PG: ['SG'],
     SG: ['PG', 'SF'],
@@ -225,9 +232,23 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
     // 2. [Fallback] 5명이 안 채워졌을 때 (비상 상황)
     if (validSelectedIds.size < 5) {
         // 1단계: 건강하고 탈진하지 않은 선수 우선
-        let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p => 
+        //  - benchReason(파울 트러블/탈진 임시 벤치) 보유자와 방금 내려온 선수는 제외 (모자라면 아래에서 완화)
+        const lastSeg = (pid: string) => { const h = state.rotationHistory[pid]; return h && h.length ? h[h.length - 1] : null; };
+        const justRested = (p: LivePlayer) => {
+            if (teamState.onCourt.includes(p)) return false;
+            const l = lastSeg(p.playerId);
+            return !!l && l.out >= 0 && l.out !== l.in && currentTotalSec - l.out < FALLBACK_MIN_REST_SEC;
+        };
+        const needCount = 5 - validSelectedIds.size;
+        let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
             p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+            && !p.benchReason && !justRested(p)
         );
+        if (allAvailable.length < needCount) {
+            allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
+                p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+            );
+        }
 
         // 2단계(비상): 인원이 부족하면 탈진한 선수라도 포함 (기권패 방지)
         if (validSelectedIds.size + allAvailable.length < 5) {
@@ -245,14 +266,20 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
             allAvailable.push(...injuredPlayers);
         }
 
-        // 안정성 정렬: 코트 위 선수 우선 > OVR > 체력
+        // 정렬: 체력 점수(현재 체력 + 코트 위 가산점) > OVR. 투입 직후 선수는 최소 출전 시간 동안 보호.
+        const fallbackScore = (p: LivePlayer) => {
+            const onCourt = teamState.onCourt.includes(p);
+            let score = p.currentCondition + (onCourt ? FALLBACK_ONCOURT_BONUS : 0);
+            if (onCourt) {
+                const l = lastSeg(p.playerId);
+                if (l && l.out < 0 && currentTotalSec - l.in < FALLBACK_MIN_STINT_SEC) score += 1000;
+            }
+            return score;
+        };
         allAvailable.sort((a, b) => {
-            const aOnCourt = teamState.onCourt.includes(a) ? 1 : 0;
-            const bOnCourt = teamState.onCourt.includes(b) ? 1 : 0;
-            if (aOnCourt !== bOnCourt) return bOnCourt - aOnCourt;
-            
-            if (b.ovr !== a.ovr) return b.ovr - a.ovr;
-            return b.currentCondition - a.currentCondition;
+            const d = fallbackScore(b) - fallbackScore(a);
+            if (Math.abs(d) > 1e-9) return d;
+            return b.ovr - a.ovr;
         });
 
         for (const p of allAvailable) {

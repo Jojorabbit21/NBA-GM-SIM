@@ -8,6 +8,7 @@ import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineSt
 import { postseasonIntervalDays } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
+import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculateOvr } from './shared/utils/ovrUtils.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
@@ -172,16 +173,33 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             // ── 3. 전술/뎁스차트 로드 ─────────────────────────────────────────
             const { data: members } = await supabase
                 .from('room_members')
-                .select('team_id, tactics, depth_chart')
+                .select('team_id, tactics, depth_chart, is_ai')
                 .eq('room_id', roomId)
                 .in('team_id', [homeTeamId, awayTeamId]);
 
             const homeMember  = members?.find((m: any) => m.team_id === homeTeamId);
             const awayMember  = members?.find((m: any) => m.team_id === awayTeamId);
-            const homeTactics = (homeMember?.tactics    ?? null) as any;
-            const awayTactics = (awayMember?.tactics    ?? null) as any;
-            const homeDepth   = (homeMember?.depth_chart ?? null) as any;
-            const awayDepth   = (awayMember?.depth_chart ?? null) as any;
+            let homeTactics = (homeMember?.tactics    ?? null) as any;
+            let awayTactics = (awayMember?.tactics    ?? null) as any;
+            let homeDepth   = (homeMember?.depth_chart ?? null) as any;
+            let awayDepth   = (awayMember?.depth_chart ?? null) as any;
+
+            // ── 3.1 AI 팀 전술 사전 점검 (깨진 부분만 최소 보정) ────────────────────
+            // 저장된 로테이션 맵에 분당 5명 미만 구간이 있으면 엔진 폴백이 코트 위 최고 OVR 선수를 계속
+            // 남겨 에이스 출전이 과다해진다. 사람 팀은 건드리지 않는다(의도적 편성일 수 있음).
+            const repairAi = async (member: any, team: any, tactics: any, depth: any) => {
+                if (!member?.is_ai || !tactics) return { tactics, depth };
+                const r = repairAiTactics(team.roster, tactics, depth);
+                if (!r.changed) return { tactics, depth };
+                console.log(`[simRunner] AI 전술 보정 room=${roomId} team=${member.team_id}: ${r.notes.length}건 (${r.notes.slice(0, 6).join(', ')})`);
+                const { error: repErr } = await supabase.from('room_members')
+                    .update({ tactics: r.tactics, depth_chart: r.depthChart })
+                    .eq('room_id', roomId).eq('team_id', member.team_id);
+                if (repErr) console.error(`[simRunner] AI 전술 보정 저장 실패 room=${roomId} team=${member.team_id}: ${repErr.message}`);
+                return { tactics: r.tactics, depth: r.depthChart };
+            };
+            ({ tactics: homeTactics, depth: homeDepth } = await repairAi(homeMember, homeTeam, homeTactics, homeDepth));
+            ({ tactics: awayTactics, depth: awayDepth } = await repairAi(awayMember, awayTeam, awayTactics, awayDepth));
 
             const coachingData = (room.coaching_staff ?? null) as any;
             const simSettings  = (room.sim_settings   ?? null) as any;

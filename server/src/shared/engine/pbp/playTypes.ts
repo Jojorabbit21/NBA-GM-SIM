@@ -98,9 +98,13 @@ function resolveFinish(
         if (context !== 'putback' && actor.attr.closeShot >= F.FLOATER_CLOSESHOT_MIN) {
             options.push({ zone: 'Paint', shotType: 'Floater', weight: Math.max(0, actor.attr.closeShot - B) * F.FLOATER_WEIGHT });
         }
-        if ((context === 'post' || context === 'roll') &&
-            actor.attr.height >= F.HOOK_HEIGHT_MIN && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
-            options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT });
+        // [2026-10-18] 키 커트라인(208cm)·포스트/롤 한정 제거 → 풋백 제외 전 상황 + 연속 키 배율(제곱형).
+        // 키 = 훅 선호도(배율), 클로즈샷 = 근거리 기본기 자격, 포스트업 = 가중치. 클로즈샷 80 미만은 기존 대체(플로터) 유지 —
+        // 이 조건이 없으면 플로터/점퍼 자격 없는 선수가 작은 훅 가중치로 페인트 슛을 독점함(docs/history/dev-log.md).
+        const hookHeightMult = Math.pow(Math.max(0, Math.min(F.HOOK_HEIGHT_CAP,
+            (actor.attr.height - F.HOOK_HEIGHT_BASE) / F.HOOK_HEIGHT_SPAN)), F.HOOK_HEIGHT_POW);
+        if (context !== 'putback' && hookHeightMult > 0 && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
+            options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT * hookHeightMult });
         }
         if (context !== 'putback' && actor.attr.closeShot >= F.PAINT_JUMPER_CLOSESHOT_MIN) {
             const w = Math.max(0, actor.attr.closeShot - B) * F.PAINT_JUMPER_WEIGHT * (sliders.shot_mid / 5);

@@ -162,13 +162,16 @@ export const SIM_CONFIG = {
 
         // 샷클락 바이올레이션 (공격 볼무브 트레이드-오프) — defIntensity 연동 제거됨(2026-07)
         // [2026-07-26] zoneUsage 항목 제거 — 인과관계 없음(존은 개인압박이 약해 오히려 셋업시간을 늘려주는 쪽)
-        SHOT_CLOCK_BASE: 0.003,
-        SHOT_CLOCK_HELP_DEF_FACTOR: 0.0006,
-        SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
-        SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
+        // [2026-10-18] 5개 계수 전부 ×0.4 비례 축소 — 실리그(180경기) 팀당 경기당 1.51회로 실제 NBA
+        // (~0.55회, 2006-07/2018-19 집계)의 약 2.8배였음. 슬라이더 간 비율은 유지.
+        // 이전 값: BASE 0.003 / HELP 0.0006 / LOW_PACE 0.001 / HIGH_BM 0.0008 / PRESS 0.01/9
+        SHOT_CLOCK_BASE: 0.0012,
+        SHOT_CLOCK_HELP_DEF_FACTOR: 0.00024,
+        SHOT_CLOCK_LOW_PACE_FACTOR: 0.0004,
+        SHOT_CLOCK_HIGH_BM_FACTOR: 0.00032,
         // [2026-07-26] fullCourtPress 트레이드오프 — defIntensity에서 이전
-        // (fullCourtPress-1) × 계수, 10단계 기준 +1.0%p
-        PRESS_SHOT_CLOCK_FACTOR: 0.01 / 9,
+        // (fullCourtPress-1) × 계수, 10단계 기준 +0.4%p
+        PRESS_SHOT_CLOCK_FACTOR: 0.004 / 9,
 
     },
     // Shooting Foul (존별 단일 게이트 + drawFoul 커브)
@@ -545,9 +548,13 @@ export const SIM_CONFIG = {
         LAYUP_WEIGHT: 1.0,
         FLOATER_CLOSESHOT_MIN: 80,
         FLOATER_WEIGHT: 0.7,
-        HOOK_HEIGHT_MIN: 208,
+        // [2026-10-18] HOOK_HEIGHT_MIN(208) 삭제 → 연속 키 배율 clamp((h-BASE)/SPAN, 0, CAP)^POW, HOOK_WEIGHT 0.8 → 1.6
         HOOK_CLOSESHOT_MIN: 80,
-        HOOK_WEIGHT: 0.8,
+        HOOK_WEIGHT: 1.6,
+        HOOK_HEIGHT_BASE: 200,      // cm, 이하는 훅 배율 0
+        HOOK_HEIGHT_SPAN: 15,       // 215cm에서 배율 1.0
+        HOOK_HEIGHT_CAP: 1.5,       // (h-BASE)/SPAN 상한 → 최대 배율 2.25
+        HOOK_HEIGHT_POW: 2,         // 제곱형: 206cm 0.16, 211cm 0.54, 216cm 1.14
         MID_MIN: 72,
         MID_DRIVE_WEIGHT: 0.5,    // Pullup (drive)
         MID_POST_WEIGHT: 0.7,     // Jumper (post/roll)

@@ -831,7 +831,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const offSliders = offTeam.tactics.sliders;
     const defSliders = defTeam.tactics.sliders;
     // [Fix 2026-07-26] defIntensity 연동 제거 — defIntensity는 FG%/파울/체력에만 관여.
-    // fullCourtPress로 이전: 1단계 0%p ~ 10단계 +1.0%p (예전 defIntensity 최대치 이전)
+    // fullCourtPress로 이전: 1단계 0%p ~ 10단계 +0.4%p (2026-10-18 ×0.4 축소, 이전 +1.0%p)
     // [2026-07-26] 존 디펜스와 풀코트 프레스 상충 — zoneFreq 높을수록 press 효과 감쇠(최대 50%)
     const pressEffectivenessSC = 1 - (defSliders.zoneFreq - 1) * SIM_CONFIG.ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL;
     const pressShotClockBonus = Math.max(0, defSliders.fullCourtPress - 1) * offFoulConfig.PRESS_SHOT_CLOCK_FACTOR * pressEffectivenessSC;
@@ -842,7 +842,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         + offSliders.ballMovement * offFoulConfig.SHOT_CLOCK_HIGH_BM_FACTOR
         + pressShotClockBonus;
 
-    if (Math.random() < shotClockChance) {
+    // [2026-10-18] 게임클락이 샷클락보다 적게 남으면 샷클락이 꺼지므로 바이올레이션 불가
+    if (state.gameClock > state.shotClock && Math.random() < shotClockChance) {
         return {
             type: 'shotClockViolation' as const,
             offTeam, defTeam, actor,

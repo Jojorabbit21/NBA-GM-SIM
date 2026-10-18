@@ -403,7 +403,11 @@ export function stepPossession(state: GameState): StepResult {
     // 처리하고 같은 팀 공격을 재개한다. 평균 샷클락 소모 통계에서도 제외. 플래그런트는 플레이 중 발생하므로
     // 시간은 정상 소모(아래 retainPossession에서 샷클락만 14초로).
     const isTechnical = result.type === 'technicalFoul';
-    const timeTaken = isTechnical ? 0 : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+    // [2026-10-18] 샷클락 바이올레이션은 남은 샷클락을 전부 소모해야 함 — 일반 포세션 공식(8~23초)을 쓰면
+    // 수비 리바운드 8초 뒤 "24초 바이올레이션" 같은 모순 로그가 찍혔음.
+    const timeTaken = isTechnical ? 0
+        : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
+        : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
 
     // 포세션 시간 누적 (평균 샷클락 소모 추적)
     if (!isTechnical) {

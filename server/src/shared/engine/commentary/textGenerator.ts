@@ -78,7 +78,7 @@ function pickCoverageHandlerText(
 type TransitionTextSet = {
     threept: string[];
     rim: { layup: string[]; dunk: string[] };
-    paint: { floater: string[]; jumper: string[] };
+    paint: { floater: string[]; hook: string[]; jumper: string[] };
 };
 
 function pickTransitionText(
@@ -87,7 +87,8 @@ function pickTransitionText(
     shotType: PlayContext['shotType'] | undefined,
 ): string {
     if (zone === 'Rim') return pick(shotType === 'Dunk' ? set.rim.dunk : set.rim.layup);
-    if (zone === 'Paint') return pick(shotType === 'Jumper' ? set.paint.jumper : set.paint.floater);
+    // [2026-10-18] 훅 허용 상황이 속공까지 넓어져 속공 훅 문구 추가(없으면 플로터 문구로 잘못 중계됨)
+    if (zone === 'Paint') return pick(shotType === 'Hook' ? set.paint.hook : shotType === 'Jumper' ? set.paint.jumper : set.paint.floater);
     return pick(set.threept);
 }
 
@@ -588,6 +589,10 @@ export function generateCommentary(
                     floater: [
                         `${assister.playerName}, 속공 상황에서 패스 — ${actor.playerName}의 부드러운 플로터!${scoreTag}`,
                         `${actor.playerName}, 혼자 질주하다 수비를 피해 플로터로 마무리!${scoreTag}`,
+                    ],
+                    hook: [
+                        `${assister.playerName}, 속공 상황에서 패스 — ${actor.playerName}의 훅슛이 그물을 가릅니다!${scoreTag}`,
+                        `${actor.playerName}, 속공으로 페인트까지 밀고 들어가 훅슛으로 마무리!${scoreTag}`,
                     ],
                     jumper: [
                         `${assister.playerName}, 속공 상황에서 패스 — ${actor.playerName}의 짧은 페인트 점퍼 성공!${scoreTag}`,
@@ -1154,6 +1159,10 @@ export function generateCommentary(
                     floater: [
                         `${actor.playerName}, 속공 중 플로터를 시도했지만 짧습니다.`,
                         `${actor.playerName}, 빠른 전개 끝에 플로터가 빗나갑니다.`,
+                    ],
+                    hook: [
+                        `${actor.playerName}, 속공 중 훅슛을 올렸지만 림을 돌아 나옵니다.`,
+                        `${actor.playerName}, 빠른 전개 끝에 던진 훅슛이 빗나갑니다.`,
                     ],
                     jumper: [
                         `${actor.playerName}, 속공 중 페인트 점퍼가 짧습니다.`,
