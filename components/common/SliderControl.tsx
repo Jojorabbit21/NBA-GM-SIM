@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { HelpCircle, X } from 'lucide-react';
 import { IconButton } from './IconButton';
 
@@ -17,6 +17,52 @@ interface SliderStep {
 // - 내부에서 가장 가까운 step index로 변환
 // - onChange는 엔진 값을 emit (예: steps[stepIndex].value)
 // - 티커: 각 step 레이블을 트랙 하단에 균등 배치
+// ── 설명 툴팁 배치(좌우 + 위아래) ───────────────────────────────────────────────
+const TIP_GAP = 8;          // 아이콘과 패널 사이
+const TIP_VIEWPORT_MARGIN = 8; // 패널과 화면 좌우 끝 사이 최소 여백
+const TIP_MIN_WIDTH = 160;  // 양쪽 다 좁아도 이 폭은 확보(줄바꿈)
+
+/** 패널 폭 w와 아이콘 좌우 위치로 열 방향·최대 폭을 정한다(순수 함수 — 테스트용 export). [2026-10-18]
+ *  오른쪽에 들어가면 right, 아니고 왼쪽에 들어가면 left, 둘 다 안 되면 넓은 쪽 + maxWidth(그 공간, 최소 160). */
+export function fitTooltipSide(w: number, anchorLeft: number, anchorRight: number, viewportW: number):
+    { side: 'right' | 'left'; maxWidth?: number } {
+  const spaceRight = viewportW - anchorRight - TIP_GAP - TIP_VIEWPORT_MARGIN;
+  const spaceLeft = anchorLeft - TIP_GAP - TIP_VIEWPORT_MARGIN;
+  if (w <= spaceRight) return { side: 'right' };
+  if (w <= spaceLeft) return { side: 'left' };
+  return spaceRight >= spaceLeft
+    ? { side: 'right', maxWidth: Math.max(spaceRight, TIP_MIN_WIDTH) }
+    : { side: 'left', maxWidth: Math.max(spaceLeft, TIP_MIN_WIDTH) };
+}
+
+/** 패널 높이 h와 아이콘 위아래 위치, 보이는 영역(가장 가까운 스크롤 컨테이너 ∩ 뷰포트)으로 세로 정렬을 정한다. [2026-10-18]
+ *  'top' = 패널 윗변을 아이콘 윗변에(아래로 펼침, 기본), 'bottom' = 패널 아랫변을 아이콘 아랫변에(위로 펼침).
+ *  아래로 펼쳐 보이는 영역을 넘으면 스크롤 컨테이너 높이가 늘어나므로, 아래가 모자라고 위에 들어가면 bottom. 둘 다 모자라면 넓은 쪽. */
+export function fitTooltipVertical(h: number, anchorTop: number, anchorBottom: number, boundTop: number, boundBottom: number):
+    'top' | 'bottom' {
+  const spaceDown = boundBottom - anchorTop - TIP_VIEWPORT_MARGIN;
+  const spaceUp = anchorBottom - boundTop - TIP_VIEWPORT_MARGIN;
+  if (h <= spaceDown) return 'top';
+  if (h <= spaceUp) return 'bottom';
+  return spaceDown >= spaceUp ? 'top' : 'bottom';
+}
+
+/** el의 가장 가까운 세로 스크롤 컨테이너와 뷰포트가 겹치는 세로 범위 */
+function visibleVerticalBounds(el: HTMLElement): { top: number; bottom: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if (oy === 'auto' || oy === 'scroll') {
+      const r = p.getBoundingClientRect();
+      top = Math.max(top, r.top);
+      bottom = Math.min(bottom, r.bottom);
+      break;
+    }
+  }
+  return { top, bottom };
+}
+
 export const SliderControl: React.FC<{
     label: string,
     value: number,
@@ -24,7 +70,7 @@ export const SliderControl: React.FC<{
     min?: number,
     max?: number,
     subLabel?: string,       // 보조 레이블 (우측). 미지정 시 현재 값/단계 레이블 자동 표시
-    tooltip?: string,
+    tooltip?: React.ReactNode,   // 라벨 옆 ? 클릭 시 팝오버 내용(문자열 또는 노드)
     steps?: SliderStep[],
     readOnly?: boolean,      // Read-only Bar 타입 (코치 성향 등)
     leftLabel?: string,      // Read-only 타입의 좌측 끝 레이블
@@ -48,7 +94,27 @@ export const SliderControl: React.FC<{
   // [2026-10-18] 설명 툴팁 — hover 방식 → 라벨 옆 ? 아이콘 클릭으로 열고, X 버튼 또는 바깥 클릭으로 닫는다.
   // (readOnly 분기보다 먼저 선언 — 훅 순서 고정)
   const [tipOpen, setTipOpen] = useState(false);
-  const tipRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);      // 아이콘+패널 래퍼(= 아이콘 박스, 바깥 클릭 판정 기준)
+  const tipPanelRef = useRef<HTMLDivElement>(null);
+  // 열 때마다 기본 배치(오른쪽·윗변 정렬)로 그린 뒤 페인트 전에 2단계로 맞춘다 — 깜빡임 없음.
+  // phase 0: 폭 측정 → 좌우(+필요 시 maxWidth) 결정 / phase 1: 그 폭으로 줄바꿈된 높이 측정 → 위아래 결정 / phase 2: 완료.
+  // 가로를 먼저 정하는 이유: maxWidth로 좁아지면 높이가 늘어나 세로 판정이 달라진다.
+  type TipPlace = { side: 'right' | 'left'; maxWidth?: number; vAlign: 'top' | 'bottom'; phase: 0 | 1 | 2 };
+  const TIP_PLACE_INITIAL: TipPlace = { side: 'right', vAlign: 'top', phase: 0 };
+  const [tipPlace, setTipPlace] = useState<TipPlace>(TIP_PLACE_INITIAL);
+  useLayoutEffect(() => {
+    if (!tipOpen || tipPlace.phase === 2) return;
+    const panel = tipPanelRef.current;
+    const anchor = tipRef.current;
+    if (!panel || !anchor) return;
+    const r = anchor.getBoundingClientRect(); // 래퍼 span = 아이콘 박스(absolute 패널은 크기에 안 들어감)
+    if (tipPlace.phase === 0) {
+      setTipPlace({ ...fitTooltipSide(panel.offsetWidth, r.left, r.right, window.innerWidth), vAlign: 'top', phase: 1 });
+    } else {
+      const b = visibleVerticalBounds(anchor);
+      setTipPlace(prev => ({ ...prev, vAlign: fitTooltipVertical(panel.offsetHeight, r.top, r.bottom, b.top, b.bottom), phase: 2 }));
+    }
+  }, [tipOpen, tipPlace.phase]);
   useEffect(() => {
     if (!tipOpen) return;
     const handleDown = (e: MouseEvent) => {
@@ -155,27 +221,32 @@ export const SliderControl: React.FC<{
     <div className="space-y-1.5 w-full py-1">
       {/* 레이블 행 */}
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-1 relative" ref={tipRef}>
+        <div className="flex items-center gap-1">
           <span className="text-sm font-semibold text-white">{label}</span>
           {tooltip && (
-            <>
+            // 아이콘 + 패널을 한 래퍼(relative)에 묶어 패널을 아이콘 기준으로 배치. 바깥 클릭 판정도 이 래퍼 기준
+            <span className="relative inline-flex" ref={tipRef}>
               <IconButton
                 label={`${label} 설명`}
                 size="xs"
                 tone="ghost"
                 shape="full"
-                onClick={() => setTipOpen(o => !o)}
+                onClick={() => { setTipPlace(TIP_PLACE_INITIAL); setTipOpen(o => !o); }}
                 aria-expanded={tipOpen}
                 className={tipOpen ? '!text-indigo-400' : ''}
               >
                 <HelpCircle size={14} />
               </IconButton>
-              {/* 라벨 아래로 연다 — 위로 열면 첫 슬라이더에서 스크롤 컨테이너 위쪽에 잘린다. 배경은 팀 전술 본문(slate-900)보다 한 단계 밝은 slate-800 */}
+              {/* [2026-10-18] 아이콘 오른쪽에 연다(패널 윗변 = 아이콘 윗변, 간격 8px). 오른쪽 공간이 모자라면 왼쪽으로(fitTooltipSide),
+                  아래 공간이 모자라면 아랫변을 아이콘 아랫변에(fitTooltipVertical) — 위로 열면 첫 슬라이더에서 스크롤 컨테이너 위쪽에 잘린다.
+                  배경 slate-900 + 흰 글자, 테두리 slate-600 / 8px, 레이어는 툴팁 전용 z-tooltip */}
               {tipOpen && (
                 <div
+                  ref={tipPanelRef}
                   role="dialog"
                   aria-label={`${label} 설명`}
-                  className="absolute top-full left-0 mt-2 w-72 z-popover bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-3 pr-9 text-sm text-slate-200 leading-relaxed break-keep"
+                  className={`absolute ${tipPlace.vAlign === 'top' ? 'top-0' : 'bottom-0'} ${tipPlace.side === 'right' ? 'left-full ml-2' : 'right-full mr-2'} w-max max-w-[min(24rem,calc(100vw-2rem))] z-tooltip bg-slate-900 border border-slate-600 rounded-lg shadow-xl p-3 pr-9 text-sm text-white leading-relaxed break-keep`}
+                  style={tipPlace.maxWidth !== undefined ? { maxWidth: tipPlace.maxWidth } : undefined}
                 >
                   {tooltip}
                   <IconButton label="닫기" size="xs" tone="ghost" onClick={() => setTipOpen(false)} className="absolute top-2.5 right-2.5">
@@ -183,7 +254,7 @@ export const SliderControl: React.FC<{
                   </IconButton>
                 </div>
               )}
-            </>
+            </span>
           )}
         </div>
         <span className="text-sm font-semibold text-[#A1A1AA]">{displaySubLabel}</span>

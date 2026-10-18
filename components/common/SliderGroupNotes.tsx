@@ -3,7 +3,8 @@ import React from 'react';
 
 interface SliderNote {
     label: string;
-    text: string;
+    /** 문자열 또는 줄 배열(전술 슬라이더 설명은 [2026-10-18]부터 줄 배열 — 줄마다 한 줄로 표시) */
+    text: string | string[];
     category?: string;
 }
 
@@ -42,7 +43,9 @@ export const SliderGroupNotes: React.FC<{ notes: SliderNote[] }> = ({ notes }) =
                     {note.label}
                 </td>
                 <td className={`align-top px-2 py-1.5 text-slate-200 break-keep ${showBorderB ? 'border-b border-slate-800' : ''}`}>
-                    {note.text}
+                    {Array.isArray(note.text)
+                        ? note.text.map((line, li) => <div key={li}>{line}</div>)
+                        : note.text}
                 </td>
             </tr>
         );
