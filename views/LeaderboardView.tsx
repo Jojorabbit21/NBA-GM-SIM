@@ -7,6 +7,7 @@ import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
 import { Pagination } from '../components/common/Pagination';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
+import type { TeamAdvancedStatsMap } from '../hooks/useTeamSeasonAdvancedStats';
 
 export interface LeaderboardFilterState {
   mode: ViewMode;
@@ -38,9 +39,12 @@ interface LeaderboardViewProps {
   enableHoverCard?: boolean;
   /** 0경기 선수도 표시(경기가 하나도 진행되지 않은 멀티리그 리더보드용). 기본 false(기존 동작 유지). */
   includeZeroGamePlayers?: boolean;
+  /** 멀티 전용 — 팀 어드밴스드 스탯 RPC 결과(시즌 구분별). useLeaderboardData의 teamAdvanced 참고. */
+  teamAdvancedRegular?: TeamAdvancedStatsMap;
+  teamAdvancedPlayoff?: TeamAdvancedStatsMap;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false, includeZeroGamePlayers = false }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false, includeZeroGamePlayers = false, teamAdvancedRegular, teamAdvancedPlayoff }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -96,7 +100,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       searchQuery,
       statCategory,
       seasonType,
-      includeZeroGamePlayers
+      includeZeroGamePlayers,
+      seasonType === 'playoff' ? teamAdvancedPlayoff : teamAdvancedRegular,
   );
 
   // --- Pagination ---

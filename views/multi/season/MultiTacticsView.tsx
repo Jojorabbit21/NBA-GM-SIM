@@ -24,6 +24,7 @@ import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsL
 import { useTeamOpponentZoneStats } from '../../../hooks/useTeamOpponentZoneStats';
 import { useTeamPlayTypeStats } from '../../../hooks/useTeamPlayTypeStats';
 import { useLeaderboardData } from '../../../hooks/useLeaderboardData';
+import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
@@ -457,8 +458,11 @@ const MultiTacticsView: React.FC = () => {
     // (useLeaderboardData의 sortedData는 sortConfig 하나로만 정렬되므로 스탯 12개 순위를 한 번에
     // 못 얻는다 — 대신 이미 계산된 값만 재사용하고 정렬/랭크만 별도로 계산).
     const teamSortConfig = useMemo(() => ({ key: 'pts', direction: 'desc' as const }), []);
+    // [2026-10-19] ORTG/POSS/PACE/PTS/TOV%/DRTG/OPP PTS/STL%는 팀 화면 헤더·리더보드와 같은 서버 RPC 기준.
+    const { data: teamAdvanced } = useTeamSeasonAdvancedStats(room?.id);
     const { sortedData: allTeamStats } = useLeaderboardData(
         leagueTeamsWithStats, normalizedSchedule, [], teamSortConfig, 'Teams', [], [], '', 'Traditional', 'regular',
+        false, teamAdvanced,
     );
 
     const offenseRows  = useMemo(() => computeStatRankRows(allTeamStats, myTeamId, OFFENSE_STATS),  [allTeamStats, myTeamId]);

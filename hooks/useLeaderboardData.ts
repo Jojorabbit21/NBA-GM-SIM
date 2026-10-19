@@ -5,6 +5,7 @@ import { calculatePlayerOvr, INITIAL_STATS } from '../utils/constants';
 import { FilterItem, ViewMode, ATTRIBUTE_KEYS, getAttrValue as getAttrVal } from '../data/leaderboardConfig';
 import { isFinal } from '../views/multi/season/multiGameReveal';
 import { useServerClockBucket } from '../utils/serverClock';
+import type { TeamAdvancedStatsMap } from './useTeamSeasonAdvancedStats';
 
 export type SeasonType = 'regular' | 'playoff';
 
@@ -30,6 +31,10 @@ export const useLeaderboardData = (
     // 동일하게 0경기 선수를 계속 제외한다(랭킹에 의미 없는 표본이라 의도된 필터). 로스터
     // "선수 기록" 탭(RosterStatsStack.tsx)만 true로 넘겨 로스터 전원이 보이게 한다.
     includeZeroGamePlayers: boolean = false,
+    // [2026-10-19] 멀티 전용 — get_team_season_advanced_stats RPC 결과(seasonType과 같은 시즌 구분으로
+    // 조회한 것). 주어지면 팀 PPG/OPPG/POSS/PACE/ORTG/DRTG/NRTG/TOV%/STL%와 선수 STL%/USG%의 팀 분모를
+    // 이 값(BBRef 공통 포제션)으로 덮어써 팀 화면 헤더와 같은 기준이 된다. 싱글은 넘기지 않아 기존 계산 유지.
+    teamAdvanced?: TeamAdvancedStatsMap,
 ) => {
     // [2026-09-07] isFinal() 게이팅(경기 공개 10분 딜레이)에만 쓰여 초 단위 정밀도가
     // 필요 없다 — 이 훅을 쓰는 모든 화면(홈 위젯/리더보드/전술 인사이트)에서 teamStats
@@ -277,6 +282,21 @@ export const useLeaderboardData = (
                 'opp_pf':   oppPf   / playedCount,
             };
 
+            // 멀티: 서버 RPC(BBRef 공통 포제션)를 유일한 기준으로 덮어씀 — 팀 화면 헤더와 동일 값.
+            const adv = teamAdvanced?.[t.id];
+            if (adv) {
+                stats.pts       = adv.ppg;
+                stats.pa        = adv.oppg;
+                stats.opp_pts   = adv.oppg;
+                stats.poss      = adv.poss;
+                stats.pace      = adv.pace;
+                stats.ortg      = adv.offRtg;
+                stats.drtg      = adv.defRtg;
+                stats.nrtg      = adv.netRtg;
+                stats['tov%']   = adv.tovPct;
+                stats['stl%']   = adv.stlPct;
+            }
+
             // Calculate per-zone Percentages and Per-Game averages
             ZONE_KEYS.forEach(z => {
                 const m = totals[`${z}_m`] || 0;
@@ -337,7 +357,7 @@ export const useLeaderboardData = (
                 rawOppTotals: { oppFgm, oppFga, opp3pm, opp3pa, oppFtm, oppFta, oppReb, oppOreb, oppDreb, oppAst, oppStl, oppBlk, oppTov, oppPoss }
             };
         });
-    }, [teams, schedule, seasonType, serverNow]);
+    }, [teams, schedule, seasonType, serverNow, teamAdvanced]);
 
     // 1. Flatten Players & Pre-calculate Zone % AND Advanced Stats
     const allPlayers = useMemo(() => {
@@ -361,6 +381,13 @@ export const useLeaderboardData = (
             const oppPoss = tStat?.rawOppTotals.oppPoss || 0;
             const opp2pa = (tStat?.rawOppTotals.oppFga || 0) - (tStat?.rawOppTotals.opp3pa || 0);
 
+            // 멀티: STL%/USG%의 팀 분모(Tm MP, 상대 포제션, Tm 플레이 수)는 서버 RPC의 경기 박스 합계로
+            // 교체 — 팀 STL%/TOV%와 같은 기준. 공식 자체(BBRef)는 동일. AST%/ORB%/DRB%/TRB%/BLK%는 기존 유지.
+            const adv = teamAdvanced?.[t.id];
+            const usgTeamMin  = adv ? adv.mpTotal : teamMin;
+            const usgTeamPlay = adv ? adv.fga + 0.44 * adv.fta + adv.tov : teamUsage;
+            const stlOppPoss  = adv ? adv.possTotal : oppPoss;
+
             return t.roster.map(p => {
                 const s = { ...getPlayerStats(p) } as any;
                 const g = s.g || 1;
@@ -382,8 +409,8 @@ export const useLeaderboardData = (
                 // USG% — Basketball-Reference 표준 공식
                 // USG% = (FGA + 0.44×FTA + TOV) × (Tm MP / 5) / (MP × (Tm FGA + 0.44×Tm FTA + Tm TOV))
                 const playerPossCount = s.fga + 0.44 * s.fta + s.tov;
-                if (mp > 0 && teamUsage > 0) {
-                    s['usg%'] = (playerPossCount * (teamMin / 5)) / (mp * teamUsage);
+                if (mp > 0 && usgTeamPlay > 0) {
+                    s['usg%'] = (playerPossCount * (usgTeamMin / 5)) / (mp * usgTeamPlay);
                 } else {
                     s['usg%'] = 0;
                 }
@@ -417,8 +444,8 @@ export const useLeaderboardData = (
                 } else s['trb%'] = 0;
 
                 // STL%
-                if (mp > 0 && oppPoss > 0) {
-                    s['stl%'] = (s.stl * (teamMin / 5)) / (mp * oppPoss);
+                if (mp > 0 && stlOppPoss > 0) {
+                    s['stl%'] = (s.stl * (usgTeamMin / 5)) / (mp * stlOppPoss);
                 } else s['stl%'] = 0;
 
                 // BLK%
@@ -470,7 +497,7 @@ export const useLeaderboardData = (
                 };
             });
         });
-    }, [teams, teamStats, seasonType]);
+    }, [teams, teamStats, seasonType, teamAdvanced]);
 
     // 3. Calculate Global Min/Max for Color Scale (Heatmap)
     const statRanges = useMemo(() => {

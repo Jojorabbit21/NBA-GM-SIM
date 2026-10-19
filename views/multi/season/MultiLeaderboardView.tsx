@@ -7,6 +7,7 @@ import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
+import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
 import { LeaderboardView, type LeaderboardFilterState } from '../../LeaderboardView';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { resolveRealAt } from './multiGameReveal';
@@ -92,6 +93,10 @@ const MultiLeaderboardView: React.FC = () => {
         data: playoffStatsByPlayer,
         refetch: refetchPlayoffStats,
     } = usePlayerSeasonStatsLeague(room?.id, allRosterIds, true, isPlayoffMode);
+    // [2026-10-19] 팀 PPG/OPPG/POSS/PACE/ORTG/DRTG/NRTG/TOV%/STL% + 선수 STL%/USG% 팀 분모는
+    // 팀 화면 헤더와 같은 서버 RPC(BBRef 공통 포제션)를 기준으로 쓴다(useLeaderboardData teamAdvanced).
+    const { data: teamAdvancedRegular, isPending: advLoading, refetch: refetchAdvRegular } = useTeamSeasonAdvancedStats(room?.id);
+    const { data: teamAdvancedPlayoff, refetch: refetchAdvPlayoff } = useTeamSeasonAdvancedStats(room?.id, true, isPlayoffMode);
     const selectLeaderboardTeams = useCallback(
         (raw: LeagueRawStatsData): Team[] =>
             buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer, undefined, playoffStatsByPlayer),
@@ -123,7 +128,8 @@ const MultiLeaderboardView: React.FC = () => {
         [schedule, simStart, gprd],
     );
 
-    const isLoading = leagueLoading || gameLoading || fetchLoading || statsLoading;
+    // advLoading도 포함 — 안 기다리면 클라이언트 근사값이 먼저 보였다가 RPC 값으로 바뀌며 숫자가 튄다.
+    const isLoading = leagueLoading || gameLoading || fetchLoading || statsLoading || advLoading;
 
     if (isLoading) {
         return (
@@ -142,10 +148,15 @@ const MultiLeaderboardView: React.FC = () => {
             hideSeasonType={isTournament}
             savedState={savedFilterState}
             onStateChange={handleFilterStateChange}
-            onRefresh={() => { refetchTeams(); refetchStats(); if (isPlayoffMode) refetchPlayoffStats(); }}
+            onRefresh={() => {
+                refetchTeams(); refetchStats(); refetchAdvRegular();
+                if (isPlayoffMode) { refetchPlayoffStats(); refetchAdvPlayoff(); }
+            }}
             refreshing={fetchRefreshing}
             enableHoverCard
             includeZeroGamePlayers
+            teamAdvancedRegular={teamAdvancedRegular}
+            teamAdvancedPlayoff={teamAdvancedPlayoff}
         />
     );
 };

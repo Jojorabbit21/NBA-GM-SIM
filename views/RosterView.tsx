@@ -420,6 +420,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   schedule={schedule}
                   onPlayerClick={onViewPlayer}
                   enableHoverCard={enableHoverCard}
+                  teamAdvanced={advancedStatsByTeam}
               />
           )}
           {tab === 'records' && (onViewGameResult || onScoreClick) && (

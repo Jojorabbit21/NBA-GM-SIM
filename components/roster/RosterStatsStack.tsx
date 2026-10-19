@@ -5,6 +5,7 @@ import type { Team, Player, Game } from '../../types';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot, TableGroupHeaderCell } from '../common/Table';
 import { Dropdown } from '../common/Dropdown';
 import { useLeaderboardData } from '../../hooks/useLeaderboardData';
+import type { TeamAdvancedStatsMap } from '../../hooks/useTeamSeasonAdvancedStats';
 import { useTableSort } from '../../hooks/useTableSort';
 import { PLAYER_COLUMNS, ColumnDef, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
@@ -16,6 +17,8 @@ interface RosterStatsStackProps {
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
     /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
     enableHoverCard?: boolean;
+    /** 멀티 전용 — 선수 STL%/USG% 팀 분모를 서버 RPC 기준으로 맞춤(useLeaderboardData teamAdvanced 참고). */
+    teamAdvanced?: TeamAdvancedStatsMap;
 }
 
 // [2026-08-11] 4개를 세로로 붙여놓으니 산만하다는 피드백으로, 테이블 하나 + 드롭다운으로 카테고리
@@ -124,12 +127,13 @@ const CategoryTable: React.FC<{
     defaultSort: string;
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
     enableHoverCard?: boolean;
-}> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard }) => {
+    teamAdvanced?: TeamAdvancedStatsMap;
+}> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard, teamAdvanced }) => {
     const { sortConfig, sortProps } = useTableSort({ key: defaultSort, direction: 'desc' });
     // includeZeroGamePlayers: true — 리더보드와 달리 "선수 기록" 탭은 아직 한 경기도
     // 못 뛴 로스터 선수도 그대로 보여줘야 한다(사용자 요청). 스탯 값은 전부 0으로 나온다.
     const { sortedData, statRanges } = useLeaderboardData(
-        [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true,
+        [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true, teamAdvanced,
     );
 
     const cols = PLAYER_COLUMNS.filter(c => c.category === category);
@@ -221,7 +225,7 @@ const CategoryTable: React.FC<{
     );
 };
 
-export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false }) => {
+export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false, teamAdvanced }) => {
     const [category, setCategory] = useState<StatCategory>('Traditional');
     const current = CATEGORIES.find(c => c.key === category) ?? CATEGORIES[0];
 
@@ -253,6 +257,7 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                 defaultSort={current.defaultSort}
                 onPlayerClick={onPlayerClick}
                 enableHoverCard={enableHoverCard}
+                teamAdvanced={teamAdvanced}
             />
         </div>
     );

@@ -35,6 +35,61 @@
 
 ---
 
+## 2026-10-19 — 멀티 팀 어드밴스드 스탯 기준 통일 (BBRef 공통 포제션, 서버 RPC 일원화)
+
+**배경**: 멀티 팀 화면 헤더 Pace(RPC, BBRef 포제션)와 리더보드 팀 > 어드밴스드 PACE(useLeaderboardData, 단순식 `FGA+0.44FTA+TOV-ORB`)가 약 +1 어긋남(실측 ATL 96.2 vs 97.1). ORTG/DRTG도 동일 원인으로 약 1 차이. 추가로 RPC는 (1) 플레이오프 혼합(ATL 100경기 = 82+18), (2) 올스타/라이징스타 4팀이 팀 행으로 섞여 헤더 "리그 N위" 순위 오염. 사용자 결정: BBRef 공통 포제션 + TOV%도 BBRef + 서버 RPC 일원화 + 이번엔 멀티만 + 선수 STL%/USG%도 맞춤. 플레이오프 플래그는 `game_pbp`에 복제하지 않고 형제 RPC처럼 `games` 조인 사용(실측: game_pbp 1,328행 전부 games에 짝 있음).
+
+**변경 파일**:
+- `migrations/unify_team_season_advanced_stats_rpc.sql` (신규, Supabase 적용 완료) — `get_team_season_advanced_stats`
+- `hooks/useTeamSeasonAdvancedStats.ts` — 인자 `(roomId, isPlayoff=false, enabled=true)`, queryKey에 isPlayoff, 반환 필드 확장
+- `hooks/useLeaderboardData.ts` — 12번째 인자 `teamAdvanced?: TeamAdvancedStatsMap`
+- `views/LeaderboardView.tsx` — `teamAdvancedRegular`/`teamAdvancedPlayoff` prop → seasonType에 맞는 쪽을 훅에 전달
+- `views/multi/season/MultiLeaderboardView.tsx` — RPC 정규(로딩 게이트 포함)/플레이오프(토글 시만) 조회, 새로고침에 포함
+- `views/multi/season/MultiTacticsView.tsx` — 인사이트 팀 지표 `useLeaderboardData(..., false, teamAdvanced)`
+- `components/roster/RosterStatsStack.tsx`, `views/RosterView.tsx` — `advancedStatsByTeam`을 선수 기록 탭까지 전달
+
+**Before (DB)**: `get_team_season_advanced_stats(p_room_id uuid)` → `(team_id, g, ppg, oppg, off_rtg, def_rtg, pace)`. games 조인 없음(정규+플레이오프+올스타 전부), 공개 조건 `game_start_time + room_replay_interval(p_room_id) <= now()`. 포제션/Pace 공식은 After와 동일. (주의: 저장소의 `add_team_season_advanced_stats_rpc.sql`은 공개 조건이 `interval '10 minutes'`로 배포본보다 구버전이었음)
+
+**After (DB)**: `get_team_season_advanced_stats(p_room_id uuid, p_is_playoff boolean DEFAULT false)` → `(team_id, g, ppg, oppg, poss, pace, off_rtg, def_rtg, net_rtg, tov_pct, stl_pct, poss_total, mp_total, fga, fta, tov)`.
+```sql
+JOIN games gm ON gm.room_id = gp.room_id AND gm.game_id = gp.game_id
+ AND gm.is_allstar = false AND gm.is_playoff = p_is_playoff
+-- poss    = ΣPoss/G (경기별 공통 포제션), net_rtg = 100*(ΣPTS-ΣOppPTS)/ΣPoss
+-- tov_pct = ΣTOV/(ΣFGA+0.44ΣFTA+ΣTOV), stl_pct = ΣSTL/ΣPoss  (0~1 분수)
+```
+
+**Before (useLeaderboardData 팀)**:
+```ts
+const teamPoss = totals.fga + 0.44 * totals.fta + totals.tov - totals.offReb;
+const oppPoss  = oppFga + 0.44 * oppFta + oppTov - oppOreb;
+'tov%': teamPoss > 0 ? totals.tov / teamPoss : 0,
+'stl%': oppPoss > 0 ? totals.stl / oppPoss : 0,
+'poss': teamPoss / playedCount,
+'pace': oppPoss > 0 ? (teamPoss + oppPoss) / (2 * playedCount) : teamPoss / playedCount,
+'ortg': (totalPts / teamPoss) * 100, 'drtg': (totalPa / oppPoss) * 100, ...
+```
+**After**: 위 계산은 그대로 두고(싱글/폴백), stats 객체 생성 직후 `teamAdvanced?.[t.id]`가 있으면 `pts/pa/opp_pts/poss/pace/ortg/drtg/nrtg/tov%/stl%`를 RPC 값으로 덮어씀.
+
+**Before (useLeaderboardData 선수)**:
+```ts
+s['usg%'] = (playerPossCount * (teamMin / 5)) / (mp * teamUsage);
+s['stl%'] = (s.stl * (teamMin / 5)) / (mp * oppPoss);
+```
+**After**: 공식 동일, 팀 분모만 RPC 합계로 교체(없으면 기존 값).
+```ts
+const usgTeamMin  = adv ? adv.mpTotal : teamMin;
+const usgTeamPlay = adv ? adv.fga + 0.44 * adv.fta + adv.tov : teamUsage;
+const stlOppPoss  = adv ? adv.possTotal : oppPoss;
+s['usg%'] = (playerPossCount * (usgTeamMin / 5)) / (mp * usgTeamPlay);
+s['stl%'] = (s.stl * (usgTeamMin / 5)) / (mp * stlOppPoss);
+```
+
+**검증**: 적용 전 동일 쿼리 SELECT 실측(정규 30팀×82경기, mp_total≈19,676 ≈ 82×240), 적용 후 오버로드 1개·정규 30행·플레이오프 20행·authenticated execute 권한 확인. `tsc --noEmit`(변경 파일 오류 0), `vite build` 통과(순환 임포트 없음). 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 클라이언트는 위 Before로 원복(teamAdvanced 인자/prop 제거). DB는 `DROP FUNCTION public.get_team_season_advanced_stats(uuid, boolean);` 후 `add_team_season_advanced_stats_rpc.sql`을 공개 조건만 `public.room_replay_interval(p_room_id)`로 고쳐 재적용. **DB만 롤백하면** 새 클라이언트가 `p_is_playoff`를 넘겨 RPC 호출이 실패하므로 반드시 클라이언트와 같이 되돌릴 것(클라만 롤백하는 건 안전 — 새 RPC는 하위 호환).
+
+---
+
 ## 2026-10-19 — 멀티 서버 시뮬: 홈/원정 모두 자동 타임아웃 허용 (autoTimeoutAllTeams)
 
 **배경**: simRunner가 `runFullGameSimulation`에 `userTeamId = homeTeamId`를 넘기는데(전술 해석 앵커 용도), `checkAITimeout`이 `userTeamId` 팀의 자동 타임아웃을 스킵(라이브 모드에서 유저가 직접 쓰는 용도)해서 서버 시뮬에서 홈팀만 자동 타임아웃이 안 쓰였음. `isUserDelegated=true`면 스킵이 풀리는 점을 이용해 서버에서만 켜는 플래그 추가.
