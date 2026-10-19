@@ -33,6 +33,42 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-19 — 보안 점검 2차: 직접 쓰기 정책·서버 엔드포인트·id 위조 6종 수정
+
+**배경**: RPC 7종 수정 후 전체 점검(Supabase 어드바이저 + 정책/함수 전수 + Fly 엔드포인트). 아래 항목을 롤백되는 트랜잭션에서 실제로 재현해 확인했다.
+- `league_teams_update_owner_or_admin`이 소유자에게 전체 컬럼 UPDATE 허용 → 자기 팀 `roster`/`is_ai`/`draft_order` 직접 수정 가능(1행 성공 재현)
+- `league_teams_insert_all`(WITH CHECK true) → 로그인 유저·anon 모두 임의 방에 팀 INSERT 가능(재현)
+- `meta_schedule` ALL true 정책 → anon 포함 누구나 수정/삭제
+- `tournament_*` 4개 "Service role can insert" 정책이 실제로는 public INSERT true
+- `league_action_log_write`를 anon이 호출해 감사 로그 위조(재현)
+- `COALESCE(p_user_id, auth.uid())` 6종 — 호출자가 넘긴 id가 로그인 정보보다 우선 → anon도 남의 id로 `start_personal_draft` 가드 통과(재현)
+- `room_members` 본인 행 `is_ai` 직접 변경 가능(재현)
+- Fly `/finalize-room`·`/sim-speed`가 "유효한 로그인 토큰이면 누구나" 통과 → 남의 리그 스케줄 초기화·시뮬 속도 변경 가능
+
+**변경 파일**:
+- `migrations/fix_security_audit_20261019.sql` (DB — Supabase에 `fix_security_audit_20261019`로 적용 완료)
+- `server/src/index.ts` (Fly **v184** 배포) — `canManageLeague()` 신설, `handleFinalizeRoom`/`handleSimSpeed`에 적용
+
+**Before → After**:
+```
+league_teams UPDATE  : 소유자 전체 컬럼 → BEFORE UPDATE 트리거(trg_league_teams_protect_columns)가 직접 요청(current_user=authenticated/anon)에서
+                       id/room_id/team_slug/conference/user_id/is_ai/draft_order/roster 변경을 42501로 차단. 리그·전역 어드민·service_role·definer 함수 내부는 통과
+league_teams INSERT  : WITH CHECK true → league_teams_insert_admin (caller_is_room_admin(room_id))
+room_members         : 본인 행 is_ai/ai_gm_*/user_id/room_id 변경, is_ai 행 직접 INSERT → trg_room_members_protect_columns 로 차단 (tactics/depth_chart/preset slot/team_* 는 그대로 허용)
+meta_schedule        : "Enable insert/update for all users"(ALL true) 삭제 (읽기 정책 2개 유지)
+tournament_*         : INSERT true 정책 4개 삭제 (서버는 service_role 이라 RLS 우회)
+league_action_log_write : REVOKE EXECUTE FROM PUBLIC, anon, authenticated (내부 definer 호출은 소유자 권한이라 무영향, 비-definer 호출자 없음 확인)
+COALESCE 6종         : get_or_generate_round_pack / start_personal_draft / submit_draft_pick_v2(3·4인자) / submit_personal_draft_pick / submit_personal_draft_picks
+                       → 첫 BEGIN 바로 뒤에 PERFORM public.assert_caller_is(v_user_id) 삽입 (pg_get_functiondef 기반 DO 블록으로 패치, 6개 모두 적용 확인)
+Fly 서버             : /finalize-room, /sim-speed → service key 또는 해당 리그 admin_user_id 또는 전역 어드민만 (그 외 403)
+```
+
+**검증**: 롤백 트랜잭션 — 일반 소유자의 roster/is_ai/draft_order/user_id/room_members.is_ai 직접 수정과 league_teams INSERT 전부 42501 차단. 정상 경로 확인: 소유자 nickname/team_name/trade_request_* 수정 OK, 본인 tactics/depth_chart 저장 OK, definer 함수(release_team)가 보호 컬럼 user_id 변경 OK, 리그 어드민 보호 컬럼 UPDATE(resetTournament 경로) 30행 OK, service_role OK. anon의 league_teams INSERT·meta_schedule UPDATE(0행)·tournament INSERT·log_write·남의 id 호출 5종(start_personal_draft 등) 전부 차단. Fly: 헬스 200, 토큰 없는 두 엔드포인트 401. **일반 로그인 유저 토큰으로 두 엔드포인트가 403을 반환하는지는 미확인(토큰 없음), 브라우저 실사용 미확인.**
+
+**미해결/참고**: `email_exists` anon 호출(가입 여부 확인, 로그인 UX라 의도 가능), Auth "유출 비밀번호 보호" 꺼짐(대시보드 설정), 함수 18개 search_path 미고정, `hall_of_fame` 본인 점수 임의 INSERT, `room_members.team_id` 본인 변경(형식 제약만 있음, 서버 권한 판정은 league_teams.user_id 기준이라 영향 제한적), anon에게 SECURITY DEFINER RPC EXECUTE가 넓게 열려 있음(각 함수 내부 검증으로 방어 중).
+
+**롤백 방법**: `migrations/fix_security_audit_20261019.sql` 맨 아래 ROLLBACK 블록 참고(트리거·정책 복구는 비권장 — 보안 구멍 재개방). 서버는 git revert 후 `flyctl deploy`.
+
 ## 2026-10-19 — RPC 7종 호출자 신원 검증 추가 (user_id 위조 차단)
 
 **배경**: `claim_team`·`release_team`·`update_team_profile`·`submit_draft_pick`(v1)·`run_draft_lottery`·`execute_admin_trade`·`initialize_league_teams`가 SECURITY DEFINER + authenticated EXECUTE인데 `auth.uid()`를 보지 않고 호출자가 넘긴 `p_user_id`/`p_admin_user_id`를 그대로 신뢰했다. `league_teams.user_id`·`leagues.admin_user_id`가 공개 조회 가능해서 로그인한 누구든 남의 id로 팀 반납·프로필 변조·어드민 트레이드(어드민 UUID는 고정값)·로터리 실행·팀 초기화(`DELETE FROM league_teams`)를 호출할 수 있었다. 관전 모드 검증 중 발견.

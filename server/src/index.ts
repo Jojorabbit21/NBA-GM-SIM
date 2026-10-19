@@ -297,6 +297,22 @@ async function handleSimOverride(req: Request): Promise<Response> {
     return json(result, result.ok ? 200 : 500);
 }
 
+/** [2026-10-19] 리그 관리 권한 — service_role 키, 해당 리그의 admin_user_id, 전역 어드민만 true.
+ *  /finalize-room·/sim-speed 는 예전에 "유효한 로그인 토큰이면 누구나" 통과해서 아무 유저가 남의 리그를 조작할 수 있었다. */
+async function canManageLeague(userId: string, target: { roomId?: string; leagueId?: string }): Promise<boolean> {
+    if (userId === 'service_role') return true;
+    let leagueId = target.leagueId;
+    if (!leagueId && target.roomId) {
+        const { data: room } = await supabase.from('rooms').select('league_id').eq('id', target.roomId).maybeSingle();
+        leagueId = room?.league_id;
+    }
+    if (leagueId) {
+        const { data: league } = await supabase.from('leagues').select('admin_user_id').eq('id', leagueId).maybeSingle();
+        if (league?.admin_user_id === userId) return true;
+    }
+    return await isGlobalAdmin(userId);
+}
+
 // ── 브라켓/스케줄 강제 초기화 ────────────────────────────────────────────────
 
 async function handleFinalizeRoom(req: Request): Promise<Response> {
@@ -323,6 +339,8 @@ async function handleFinalizeRoom(req: Request): Promise<Response> {
 
     const { roomId } = body;
     if (!roomId) return json({ error: 'roomId required' }, 400);
+
+    if (!(await canManageLeague(userId, { roomId }))) return json({ error: 'Forbidden' }, 403);
 
     const result = await forceInitSchedule(roomId);
     return json(result, result.ok ? 200 : 500);
@@ -355,6 +373,8 @@ async function handleSimSpeed(req: Request): Promise<Response> {
     if (!leagueId || typeof gamesPerDay !== 'number' || gamesPerDay <= 0) {
         return json({ error: 'leagueId and gamesPerDay (> 0) required' }, 400);
     }
+
+    if (!(await canManageLeague(userId, { leagueId }))) return json({ error: 'Forbidden' }, 403);
 
     const { error } = await supabase
         .from('leagues')
