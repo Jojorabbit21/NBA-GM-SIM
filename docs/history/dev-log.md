@@ -33,6 +33,29 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-19 — 보안 점검 3차: 함수 18개 search_path 고정 + room_members.team_id 직접 변경 차단
+
+**배경**: 2차 점검 후 남긴 낮은 위험 항목 중 사용자가 진행을 지시한 2건. (이메일 존재 확인 RPC `email_exists`는 보류, 유출 비밀번호 보호는 사용자가 대시보드에서 직접 적용 완료, `hall_of_fame` 점수 조작은 싱글플레이 기능이라 진행하지 않기로 함)
+
+**변경 파일**: `migrations/fix_search_path_and_team_id_guard.sql` (DB — Supabase에 `fix_search_path_and_team_id_guard`로 적용 완료, 클라이언트/서버 코드 변경 없음)
+
+**Before → After**:
+```
+A) search_path : assert_caller_is, check_room_capacity, check_trade_salary_match, claim_team, games_touch_updated_at, handle_new_session,
+                 handle_new_user, initialize_league_teams, log_user_login, personal_draft_pos_group, personal_draft_progress_touch_updated_at,
+                 player_stat_streaks_touch_updated_at, release_team, room_player_state_touch_updated_at, run_draft_lottery, server_now,
+                 submit_draft_pick, update_team_profile  →  ALTER FUNCTION ... SET search_path = public (18/18, DO 블록이 개수 검증)
+                 사전 확인: 18개 모두 extensions 함수(uuid_generate/crypt/digest 등) 참조 없음
+B) room_members.team_id : 본인이 형식 제약만 맞으면 아무 slug 로 직접 UPDATE 가능 → trg_room_members_protect_columns 에
+                 UPDATE 시 team_id 변경, INSERT 시 team_id 지정을 직접 요청(authenticated/anon, 비-어드민)에서 42501 차단
+                 (정상 변경은 claim_team / accept_league_invite / release_player / respond_trade_offer 등 SECURITY DEFINER 내부라 통과)
+```
+클라이언트 직접 쓰기 경로 확인: `roomPersistence.assignMemberTeam`(호출처 없음, 죽은 코드), `leagueService.setMemberTeam`(유일한 호출 화면 TeamSetupModal이 항상 `saveOverride`=`updateTeamProfile` RPC를 넘겨 실행되지 않음).
+
+**검증**: 롤백 트랜잭션 — search_path 고정 18/18. 신규 가입 트리거(`handle_new_user`) 정상(auth.users 삽입 → profiles 1행 생성). 본인의 team_id 직접 변경·team_id 포함 INSERT 42501 차단. 본인 전술/뎁스차트/팀명 저장 OK. `update_team_profile`·`release_team`(definer가 team_id/user_id 변경)·`server_now()` 정상. `claim_team`은 기존 비즈니스 규칙(`draft_already_ordered`)까지 도달. 리그 어드민 직접 UPDATE 29행 OK. 테스트 계정 잔여 0, profiles 152/room_members 60/소유 팀 18 불변. **브라우저 실사용(신규 가입, 팀 선택, 팀 설정 저장) 확인은 미실시.**
+
+**롤백 방법**: 함수별 `ALTER FUNCTION <시그니처> RESET search_path;` / `trg_room_members_protect_columns`를 `migrations/fix_security_audit_20261019.sql` 정의로 재정의.
+
 ## 2026-10-19 — 보안 점검 2차: 직접 쓰기 정책·서버 엔드포인트·id 위조 6종 수정
 
 **배경**: RPC 7종 수정 후 전체 점검(Supabase 어드바이저 + 정책/함수 전수 + Fly 엔드포인트). 아래 항목을 롤백되는 트랜잭션에서 실제로 재현해 확인했다.
