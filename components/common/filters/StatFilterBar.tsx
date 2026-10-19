@@ -4,6 +4,7 @@ import { Dropdown } from '../Dropdown';
 import { Button } from '../Button';
 import { IconButton } from '../IconButton';
 import { OPERATORS, type Operator } from '../../../utils/statFilter';
+import { isImeComposing } from '../../../utils/ime';
 
 export interface StatFilterOption {
     value: string;
@@ -91,7 +92,7 @@ export const StatFilterBar: React.FC<StatFilterBarProps> = ({ options, onAdd }) 
                 className="h-full bg-transparent px-3 w-16 text-sm font-semibold text-white outline-none placeholder:text-slate-700 [&::-webkit-inner-spin-button]:appearance-none"
                 value={value}
                 onChange={e => setValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                onKeyDown={e => e.key === 'Enter' && !isImeComposing(e) && handleAdd()}
             />
             <button
                 type="button"

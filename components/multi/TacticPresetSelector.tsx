@@ -4,6 +4,7 @@ import { Dropdown, DropdownButton } from '../common/Dropdown';
 import { Button } from '../common/Button';
 import { IconButton } from '../common/IconButton';
 import { TACTIC_PRESET_SLOTS, TACTIC_PRESET_NAME_MAX, normalizePresetName, type MultiTacticPreset, type TacticPresetSlot } from '../../services/multi/tacticPresets';
+import { isImeComposing } from '../../utils/ime';
 
 interface TacticPresetSelectorProps {
     /** 한 종류(depth 또는 team) 프리셋만 (있는 슬롯만, 최대 3개) */
@@ -68,6 +69,7 @@ export const TacticPresetSelector: React.FC<TacticPresetSelectorProps> = ({ pres
                     onChange={e => setDraft(e.target.value)}
                     onFocus={e => e.currentTarget.select()}
                     onKeyDown={e => {
+                        if (isImeComposing(e)) return;
                         if (e.key === 'Enter') confirm();
                         if (e.key === 'Escape') setMode('idle');
                     }}

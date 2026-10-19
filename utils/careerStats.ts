@@ -1,6 +1,7 @@
 // Career/season stat-line helpers shared by the player profile (PlayerDetailView) and the
 // multiplayer player compare screen. Moved verbatim from views/PlayerDetailView.tsx (2026-10-18).
 import type { PlayerStats } from '../types/player';
+import type { Player, Team, Game } from '../types';
 
 export function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
     // 2TM 합산 행 제외, gp>0인 행만
@@ -136,12 +137,81 @@ export function statsToCareerRow(
         ft_pct:  pct(stats.ftm, fta),
         ts_pct:  tsD > 0 ? pts / tsD : null,
         efg_pct: fga > 0 ? (stats.fgm + 0.5 * stats.p3m) / fga : null,
-        tov_pct: (fga + 0.44 * fta + tov) > 0 ? tov / (fga + 0.44 * fta + tov) : null,
+        // [2026-10-19] career_history(scripts/fetch_*.py)와 같은 0~100 단위 — 예전엔 0~1 비율이라 프로필 TOV%가 "0.1"로 보이고 커리어 평균에서 단위가 섞였다
+        tov_pct: (fga + 0.44 * fta + tov) > 0 ? tov / (fga + 0.44 * fta + tov) * 100 : null,
         fg3a_rate: fga > 0 ? p3a / fga : null,
         fta_rate:  fga > 0 ? fta / fga : null,
         usg_pct, ast_pct, orb_pct, drb_pct, trb_pct, stl_pct, blk_pct,
         cont_pg: g > 0 ? (stats.contestedAttempted ?? 0) / g : null,
         dfg_pct: (stats.contestedAttempted ?? 0) > 0 ? (stats.contestedMade ?? 0) / (stats.contestedAttempted ?? 0) : null,
         playoff,
+    };
+}
+
+/**
+ * USG%/AST%/리바운드%/STL%/BLK% 계산용 팀·상대 합계(statsToCareerRow의 ctx).
+ * PlayerDetailView 내부 useMemo에서 그대로 옮김(2026-10-19) — 선수 비교 화면도 같은 값을 쓴다.
+ * 상대 경기별 박스가 없는 경기는 상대 팀 시즌 평균으로 보정한다.
+ */
+export function buildTeamAdvCtx(allTeams: Team[] | undefined, teamId: string | undefined, schedule: Game[] | undefined): TeamAdvCtx | undefined {
+    if (!allTeams || !teamId || !schedule) return undefined;
+    const myTeam = allTeams.find(t => t.id === teamId);
+    if (!myTeam) return undefined;
+
+    const rs = (p: Player) => p.stats;
+    const tmFga  = myTeam.roster.reduce((s, p) => s + (rs(p).fga    || 0), 0);
+    const tmFta  = myTeam.roster.reduce((s, p) => s + (rs(p).fta    || 0), 0);
+    const tmTov  = myTeam.roster.reduce((s, p) => s + (rs(p).tov    || 0), 0);
+    const tmFgm  = myTeam.roster.reduce((s, p) => s + (rs(p).fgm    || 0), 0);
+    const tmMp   = myTeam.roster.reduce((s, p) => s + (rs(p).mp     || 0), 0);
+    const tmOreb = myTeam.roster.reduce((s, p) => s + (rs(p).offReb || 0), 0);
+    const tmDreb = myTeam.roster.reduce((s, p) => s + (rs(p).defReb || 0), 0);
+    const tmReb  = myTeam.roster.reduce((s, p) => s + (rs(p).reb    || 0), 0);
+
+    const tmGames = schedule.filter(g => !g.isPlayoff && g.played &&
+        (g.homeTeamId === teamId || g.awayTeamId === teamId));
+
+    let oppOreb = 0, oppDreb = 0, oppReb = 0;
+    let oppFga = 0, oppFta = 0, oppTov = 0, oppP3a = 0;
+    const oppFallback = new Map<string, number>();
+
+    tmGames.forEach(g => {
+        const isHome = g.homeTeamId === teamId;
+        const oppId  = isHome ? g.awayTeamId : g.homeTeamId;
+        const oppBox = isHome ? (g as any).awayStats : (g as any).homeStats;
+        if (oppBox) {
+            oppOreb += oppBox.offReb || 0;
+            oppDreb += oppBox.defReb || 0;
+            oppReb  += oppBox.reb    || 0;
+            oppFga  += oppBox.fga    || 0;
+            oppFta  += oppBox.fta    || 0;
+            oppTov  += oppBox.tov    || 0;
+            oppP3a  += oppBox.p3a    || 0;
+        } else {
+            oppFallback.set(oppId, (oppFallback.get(oppId) || 0) + 1);
+        }
+    });
+
+    // 게임 레벨 데이터 없는 경기 → 상대팀 시즌 평균으로 보정
+    oppFallback.forEach((count, oppId) => {
+        const oTeam = allTeams.find(t => t.id === oppId);
+        if (!oTeam) return;
+        const oG = Math.max(oTeam.roster.reduce((mx, p) => Math.max(mx, p.stats.g || 0), 0), 1);
+        const sc = count / oG;
+        oppOreb += oTeam.roster.reduce((s, p) => s + (p.stats.offReb || 0), 0) * sc;
+        oppDreb += oTeam.roster.reduce((s, p) => s + (p.stats.defReb || 0), 0) * sc;
+        oppReb  += oTeam.roster.reduce((s, p) => s + (p.stats.reb    || 0), 0) * sc;
+        oppFga  += oTeam.roster.reduce((s, p) => s + (p.stats.fga    || 0), 0) * sc;
+        oppFta  += oTeam.roster.reduce((s, p) => s + (p.stats.fta    || 0), 0) * sc;
+        oppTov  += oTeam.roster.reduce((s, p) => s + (p.stats.tov    || 0), 0) * sc;
+        oppP3a  += oTeam.roster.reduce((s, p) => s + (p.stats.p3a    || 0), 0) * sc;
+    });
+
+    return {
+        tmFga, tmFta, tmTov, tmFgm, tmMp,
+        tmOreb, tmDreb, tmReb,
+        oppOreb, oppDreb, oppReb,
+        oppPoss: oppFga + 0.44 * oppFta + oppTov - oppOreb,
+        opp2pa:  oppFga - oppP3a,
     };
 }

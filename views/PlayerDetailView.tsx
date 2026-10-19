@@ -6,7 +6,7 @@ import { Player, PlayerStats, Team, Game } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 import { getPositionStars } from '../utils/positionRating';
 import { formatMoney } from '../utils/formatMoney';
-import { computeCareerAvg, statsToCareerRow, type TeamAdvCtx } from '../utils/careerStats';
+import { computeCareerAvg, statsToCareerRow, buildTeamAdvCtx, type TeamAdvCtx } from '../utils/careerStats';
 import { getContractAav } from '../utils/contract';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
@@ -1023,68 +1023,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const simTeamAbbr = (teamId ?? '').toUpperCase() || '—';
 
     // schedule에서 팀 컨텍스트 계산 (advanced rate stats용)
-    const teamAdvCtx = useMemo((): TeamAdvCtx | undefined => {
-        if (!allTeams || !teamId || !schedule) return undefined;
-        const myTeam = allTeams.find(t => t.id === teamId);
-        if (!myTeam) return undefined;
-
-        const rs = (p: Player) => p.stats;
-        const tmFga  = myTeam.roster.reduce((s, p) => s + (rs(p).fga    || 0), 0);
-        const tmFta  = myTeam.roster.reduce((s, p) => s + (rs(p).fta    || 0), 0);
-        const tmTov  = myTeam.roster.reduce((s, p) => s + (rs(p).tov    || 0), 0);
-        const tmFgm  = myTeam.roster.reduce((s, p) => s + (rs(p).fgm    || 0), 0);
-        const tmMp   = myTeam.roster.reduce((s, p) => s + (rs(p).mp     || 0), 0);
-        const tmOreb = myTeam.roster.reduce((s, p) => s + (rs(p).offReb || 0), 0);
-        const tmDreb = myTeam.roster.reduce((s, p) => s + (rs(p).defReb || 0), 0);
-        const tmReb  = myTeam.roster.reduce((s, p) => s + (rs(p).reb    || 0), 0);
-
-        const tmGames = schedule.filter(g => !g.isPlayoff && g.played &&
-            (g.homeTeamId === teamId || g.awayTeamId === teamId));
-
-        let oppOreb = 0, oppDreb = 0, oppReb = 0;
-        let oppFga = 0, oppFta = 0, oppTov = 0, oppP3a = 0;
-        const oppFallback = new Map<string, number>();
-
-        tmGames.forEach(g => {
-            const isHome = g.homeTeamId === teamId;
-            const oppId  = isHome ? g.awayTeamId : g.homeTeamId;
-            const oppBox = isHome ? (g as any).awayStats : (g as any).homeStats;
-            if (oppBox) {
-                oppOreb += oppBox.offReb || 0;
-                oppDreb += oppBox.defReb || 0;
-                oppReb  += oppBox.reb    || 0;
-                oppFga  += oppBox.fga    || 0;
-                oppFta  += oppBox.fta    || 0;
-                oppTov  += oppBox.tov    || 0;
-                oppP3a  += oppBox.p3a    || 0;
-            } else {
-                oppFallback.set(oppId, (oppFallback.get(oppId) || 0) + 1);
-            }
-        });
-
-        // 게임 레벨 데이터 없는 경기 → 상대팀 시즌 평균으로 보정
-        oppFallback.forEach((count, oppId) => {
-            const oTeam = allTeams.find(t => t.id === oppId);
-            if (!oTeam) return;
-            const oG = Math.max(oTeam.roster.reduce((mx, p) => Math.max(mx, p.stats.g || 0), 0), 1);
-            const sc = count / oG;
-            oppOreb += oTeam.roster.reduce((s, p) => s + (p.stats.offReb || 0), 0) * sc;
-            oppDreb += oTeam.roster.reduce((s, p) => s + (p.stats.defReb || 0), 0) * sc;
-            oppReb  += oTeam.roster.reduce((s, p) => s + (p.stats.reb    || 0), 0) * sc;
-            oppFga  += oTeam.roster.reduce((s, p) => s + (p.stats.fga    || 0), 0) * sc;
-            oppFta  += oTeam.roster.reduce((s, p) => s + (p.stats.fta    || 0), 0) * sc;
-            oppTov  += oTeam.roster.reduce((s, p) => s + (p.stats.tov    || 0), 0) * sc;
-            oppP3a  += oTeam.roster.reduce((s, p) => s + (p.stats.p3a    || 0), 0) * sc;
-        });
-
-        return {
-            tmFga, tmFta, tmTov, tmFgm, tmMp,
-            tmOreb, tmDreb, tmReb,
-            oppOreb, oppDreb, oppReb,
-            oppPoss: oppFga + 0.44 * oppFta + oppTov - oppOreb,
-            opp2pa:  oppFga - oppP3a,
-        };
-    }, [allTeams, teamId, schedule]);
+    const teamAdvCtx = useMemo(
+        (): TeamAdvCtx | undefined => buildTeamAdvCtx(allTeams, teamId, schedule),
+        [allTeams, teamId, schedule],
+    );
 
     // 시뮬 정규시즌 행: player.stats.g > 0 일 때만 생성
     const simRegularRow = useMemo(() => {

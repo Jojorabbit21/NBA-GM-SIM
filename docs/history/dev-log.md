@@ -35,6 +35,49 @@
 
 ---
 
+## 2026-10-19 — 능력치 숫자 색 / 막대 색 분리 (15단계 값 재조정)
+
+**배경**: 스튜디오에 구간별 "숫자 색 따로" 기능을 추가하고, 사용자가 확정한 TS 코드를 적용. 일부 구간은 숫자와 막대 색이 다름(97/95/93/66/60 구간 및 최하위).
+비교 화면(`MultiPlayerCompareView`)의 숫자가 `getAttrBarColor`를 쓰고 있어 숫자 색 분리가 먹히지 않으므로 `getAttrColor` 클래스로 교체.
+
+**변경 파일**:
+- `utils/attrRatingColor.ts` — 두 함수 값 교체 + 상단 주석
+- `views/multi/season/MultiPlayerCompareView.tsx` — import에 `getAttrColor` 추가, 좌/우 숫자 셀 `style={{color: getAttrBarColor(..)}}` → className `getAttrColor(..)`. 막대(`Bar`)는 `getAttrBarColor` 유지.
+
+**Before** (getAttrColor / getAttrBarColor 동일 값; 구간별 hex):
+```
+99 #fb00ff / 97 #a600ff / 95 #7300ff / 93 #0033ff / 90 #00ccff / 87 #00ffd5 / 83 #00a81c / 80 #7ff91a /
+77 #9cc700 / 75 #e6bf00 / 73 #d18f00 / 70 #bd6500 / 66 #db4200 / 60 #e60000 / 그 외 #9e0000
+```
+
+**After** (숫자 getAttrColor / 막대 getAttrBarColor):
+```
+구간  숫자      막대
+99    #fb00ff   #fb00ff
+97    #bf47ff   #a600ff
+95    #a55cff   #7300ff
+93    #4775ff   #0f5fff
+90    #00ccff   #00ccff
+87    #00ffd5   #00ffd5
+83    #00ff59   #00ff59
+80    #80ff00   #80ff00
+77    #acdb00   #acdb00
+75    #ffd500   #ffd500
+73    #ffae00   #ffae00
+70    #ff8800   #ff8800
+66    #ff6d2e   #ff5005
+60    #ff4747   #ff0000
+그외  #ff5252   #9e0000
+```
+
+**영향 범위**: 이전 항목과 동일(PlayerDetailView, PlayerHoverCard, PlayerPool, Table colorScale, MultiPlayerCompareView). 숫자는 `getAttrColor`, 막대는 `getAttrBarColor`.
+
+**검증**: 아래 빌드/타입 확인 결과 참조.
+
+**롤백 방법**: Before 값으로 두 함수 복원, 비교 화면 숫자 셀을 `style={{ color: getAttrBarColor(v) }}`로 되돌림(git diff 참조).
+
+---
+
 ## 2026-10-19 — 능력치 색상 9단계 → 15단계 교체
 
 **배경**: 사용자가 능력치 색상 스튜디오 아티팩트(https://claude.ai/artifact/DfnYaJPZdW4Lpa7tPtbBwm)에서 만든 TS 코드를 그대로 적용 요청.
@@ -82,6 +125,38 @@
 - `App.tsx` — import + `<Route path="compare" element={<MultiPlayerCompareView />} />`
 - `components/MultiSidebar.tsx` — "자유 계약" NavItem 아래 `<Divider />` + "선수 비교" NavItem(`NavIcon name="compare"`)
 - `public/images/sidenav/compare.svg`, `compare-selected.svg` (신규) — 두 선수가 세로선 사이로 마주 보는 투톤 아이콘
+  (2026-10-19 후속 수정 ㉝: IME 조합 중 Enter 방어를 공용화 — `utils/ime.ts` `isImeComposing(e)` 신설(비교 화면도 이걸로 교체). 같은 방어가 없던 Enter 입력창에 적용:
+  `components/multi/TacticPresetSelector.tsx`(프리셋 이름), `components/dashboard/tactics/PresetRenameModal.tsx`, `views/lobby/NicknameModal.tsx`,
+  `components/common/filters/StatFilterBar.tsx`(숫자), `views/NegotiationScreen.tsx` 연봉 % 입력 2곳(숫자). `PersonalDraftCard`는 텍스트 입력이 아닌 카드 키보드 선택이라 제외.
+  롤백: 각 파일의 `isImeComposing` import·조건 삭제. 사용자 요청)
+  (2026-10-19 후속 수정 ㉜: 검색창 Enter 오선택 버그 — 한글 IME 조합 중 Enter keydown(isComposing / keyCode 229)이 먼저 pick()해 검색창을 비우고, 조합 종료 글자가 다시 입력된 뒤
+  두 번째 Enter가 그 한 글자 검색 1위를 선택하던 문제. `onKeyDown` 첫 줄에 `if (ev.nativeEvent.isComposing || ev.keyCode === 229) return;` 추가. 사용자 버그 리포트)
+  (2026-10-19 후속 수정 ㉛: 기록 값 우위 굵게(font-extrabold) 제거 — 가운데 기록 표 값 칸과 좌우 패널 시즌 기록 그리드 모두 font-semibold 고정. 패널 `InfoGrid`의 `tone`·`ComparePane`의 `otherStatLine` prop 삭제.
+  우위 표시는 가운데 표의 델타 배지만 남음. 능력치 숫자의 우위 굵게는 유지. 사용자 요청)
+  (2026-10-19 후속 수정 ㉚: Shooting·Defense를 이번 시즌 외에서 볼 때 띄우던 안내 문구 제거 → 표는 그대로, 값만 "–"(`SEASON_ONLY_CATS`·`seasonOnlyBlocked`·`currentSeason` prop 삭제).
+  **TOV% 단위 버그 수정**: career_history의 `tov_pct`는 0~100 단위(scripts/fetch_*.py가 ×100 저장, 예 11.2)인데 `utils/careerStats.ts` `statsToCareerRow`는 0~1 비율을 내고 있었음
+  → 비교 화면에서 pct(×100)로 표기해 1140.0%로 보임, 선수 상세 프로필(RATE_COLS로 원값 표기)의 시뮬 시즌 TOV%는 "0.1"로 보이던 기존 버그.
+  Before `tov_pct: denom > 0 ? tov / denom : null` → After `tov / denom * 100`(커리어 평균에서 단위가 섞이던 것도 해소). 비교 화면 TOV% 항목 `pct` → `rate`.
+  `services/draft/rookieGenerator.ts`가 만든 가상 이력은 여전히 0~1(`Math.round(... * 1000) / 1000`) — 비교 화면 `historyOf`에서 0<v≤1이면 ×100 보정(생성기 자체는 미수정, 선수 상세 프로필 과거 행에는 보정 없음).
+  롤백: careerStats.ts `* 100` 삭제, 비교 화면 tov_pct `rate`→`pct`·historyOf map 제거. 사용자 요청)
+  (2026-10-19 후속 수정 ㉙: 기록 모드 카테고리 드롭다운(Traditional/Advanced/Shooting/Defense) — 두 번째 줄을 grid → `flex justify-center gap-2`로 바꿔 시즌 옆에 배치.
+  `CHART_CATS` 정의: Traditional=기존 24개에서 eFG%/TS%/3PAr 제외 21개, Advanced=TS%/eFG%/TOV%/USG%/AST%/ORB%/DRB%/TRB%/STL%/BLK%/3PAr/FTr(USG%는 비교 안 함),
+  Shooting=10구역×(경기당 성공·시도·성공률), Defense=스틸/블록/유도 턴오버/수비 리바운드/슛 견제(cont_pg)/상대 야투율 + 6구역×(경기당 상대 성공·시도·%).
+  Shooting·Defense는 `seasonOnlyKeys(player.stats)`로 이번 시즌 행에만 붙음 → 다른 시즌·커리어 선택 시 "이번 시즌만 있습니다" 안내(`SEASON_ONLY_CATS`, `currentSeason` prop).
+  이번 시즌 행은 `statsToCareerRow(..., ctx)`로 팀 기준 Advanced까지 계산(FA는 ctx 없음 → 해당 항목 –). `StatItem.rate`(0~100 단위 지표 표기) 추가.
+  라벨 칸 128px → 144px(ROW·헤더 격자 동일). 사용자 요청)
+  (2026-10-19 — 같은 작업의 공용화: `utils/careerStats.ts`에 `buildTeamAdvCtx(allTeams, teamId, schedule)` 신설 — `views/PlayerDetailView.tsx`의 `teamAdvCtx` useMemo 본문을
+  **내용 변경 없이** 함수로 이동, PlayerDetailView는 `useMemo(() => buildTeamAdvCtx(allTeams, teamId, schedule), [...])`로 호출. 롤백: 함수 본문을 useMemo 안으로 되돌리고 import에서 buildTeamAdvCtx 제거)
+  (2026-10-19 후속 수정 ㉘: 시즌 드롭다운 "커리어"를 맨 위로, 구분선은 커리어와 첫 시즌 사이로 이동. 사용자 요청)
+  (2026-10-19 후속 수정 ㉗: 기록 모드 시즌 선택 — 헤더 sticky 영역에 기록 모드일 때만 두 번째 줄(border-t) + 가운데 칸 시즌 드롭다운(시즌 라벨 내림차순 + 구분선 + 커리어).
+  부모에 `lineFor(i, seasonKey)` 신설(이번 시즌=statsToCareerRow, 과거 시즌=career_history 정규시즌 행 — 이적 시즌은 `\d+TM|TOT` 합산 행 우선, 없으면 computeCareerAvg, 커리어=기존 계산),
+  패널 `statLines`도 이 함수로 재구성(동작 동일). 가운데 선택은 `chartSeasonPick`(null=이번 시즌) — 패널 시즌/커리어 드롭다운과 독립. 사용자 요청)
+  (2026-10-19 후속 수정 ㉖: 기록 모드 막대 제거(막대 칸은 빈 div) — `STAT_BAR_COLOR`·비율 계산·`Bar`의 `color` prop 삭제. 사용자 요청)
+  (2026-10-19 후속 수정 ㉕: 가운데 헤더 이름 사이에 "능력치/기록" 드롭다운(공용 Dropdown + FilterTrigger, `CompareChart` 로컬 state `view`, 헤더 py-3→py-2).
+  기록 모드 = `STAT_ITEMS` 24행, 데이터는 부모 `statLines`(좌우 패널의 시즌/커리어 선택을 따름)를 prop으로 전달. 막대 길이 = 두 값 중 큰 값 대비 비율, 색은 양쪽 `#64748b` 고정,
+  우위 판정은 항목 `cmp`(턴오버·파울은 낮을수록, 출전·시도·비율은 비교 없음), 델타 배지는 `formatStatDelta`(비율=%p 소수1, 정수, 그 외 소수1). 체격 행은 능력치 모드에만.
+  `DeltaCell.delta`를 number → 미리 포맷한 string으로, `Bar`에 `color` prop 추가. 사용자 요청)
+  (2026-10-19 후속 수정 ㉔: 체중 아래 빈 행(`GroupSpacer`, 14px) 삭제 — 컴포넌트 정의와 사용처 모두 제거. 체격·능력치 행이 여백 없이 이어짐. 사용자 요청)
   (2026-10-19 후속 수정 ㉓: `Bar`를 바깥 래퍼(left=`pl-6`, right=`pr-6`)로 감싸 막대 바깥쪽 24px 여백. 사용자 스크린샷 피드백)
   (2026-10-19 후속 수정 ㉒: 표·헤더 격자의 `max-w-[760px] mx-auto` 제거 — 가운데 영역 전체 폭 사용(막대가 영역 끝까지). 사용자 스크린샷 피드백)
   (2026-10-19 후속 수정 ㉑: 가운데 차트 본문 컨테이너 패딩 `px-6 pt-1.5 pb-6` 제거(표가 좌우 24px씩 넓어짐), 헤더 이름 격자도 `px-6` 제거해 정렬 유지(`py-3`은 유지). max-w 760px는 그대로. 사용자 요청)

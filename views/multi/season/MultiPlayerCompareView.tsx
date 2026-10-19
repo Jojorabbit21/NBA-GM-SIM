@@ -18,10 +18,12 @@ import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { calculatePlayerOvr, INITIAL_STATS } from '../../../utils/constants';
 import { formatMoney } from '../../../utils/formatMoney';
-import { getAttrBarColor } from '../../../utils/attrRatingColor';
-import { computeCareerAvg, statsToCareerRow } from '../../../utils/careerStats';
+import { getAttrBarColor, getAttrColor } from '../../../utils/attrRatingColor';
+import { isImeComposing } from '../../../utils/ime';
+import { computeCareerAvg, statsToCareerRow, buildTeamAdvCtx } from '../../../utils/careerStats';
 import { COMPACT_ATTR_GROUPS, ATTR_KR_LABEL, getCompactAttrValue, type CompactAttrItem } from '../../../data/attributeConfig';
 import type { Team } from '../../../types/team';
+import type { Game } from '../../../types';
 import type { Player, PlayerStats, CareerSeasonStat } from '../../../types/player';
 
 // [2026-10-18] 멀티 "도구 › 선수 비교" 화면(/multi/leagues/:leagueId/season/compare).
@@ -32,11 +34,14 @@ import type { Player, PlayerStats, CareerSeasonStat } from '../../../types/playe
 type Side = 0 | 1;
 const PARAM: Record<Side, string> = { 0: 'p1', 1: 'p2' };
 const FA_KEY = 'FA';
+const CAREER_KEY = 'career';
 
 interface Entry { player: Player; team: Team | null }
 
 // cmp: 'high' = 높을수록 우위, 'low' = 낮을수록 우위(턴오버·파울), 'none' = 우열 비교 안 함(출전 수·시도 수·비율)
-const STAT_ITEMS: { key: string; label: string; pct?: boolean; int?: boolean; cmp: 'high' | 'low' | 'none' }[] = [
+// pct = 0~1 비율(×100 해서 % 표기), rate = 이미 0~100 단위인 팀 기준 지표(USG%·AST% 등)
+interface StatItem { key: string; label: string; pct?: boolean; rate?: boolean; int?: boolean; cmp: 'high' | 'low' | 'none' }
+const STAT_ITEMS: StatItem[] = [
     { key: 'gp', label: '경기', int: true, cmp: 'none' },
     { key: 'gs', label: '선발', int: true, cmp: 'none' },
     { key: 'min', label: '출전 시간', cmp: 'none' },
@@ -63,9 +68,79 @@ const STAT_ITEMS: { key: string; label: string; pct?: boolean; int?: boolean; cm
     { key: 'fg3a_rate', label: '3점 시도 비율', pct: true, cmp: 'none' },
 ];
 
-const formatStat = (item: typeof STAT_ITEMS[number], v: number | null | undefined) => {
+// ── 가운데 "기록" 비교의 4개 카테고리(리더보드 Traditional/Advanced/Shooting/Defense와 같은 구분) ──
+// Shooting·Defense는 시뮬 누적 기록(player.stats)에만 있는 값 — 다른 시즌·커리어에서는 표가 비어(–) 보인다.
+type StatCat = 'traditional' | 'advanced' | 'shooting' | 'defense';
+const SHOT_ZONES: [string, string][] = [
+    ['zone_rim', '림'], ['zone_paint', '페인트'], ['zone_mid_l', '좌 미드'], ['zone_mid_c', '중 미드'], ['zone_mid_r', '우 미드'],
+    ['zone_c3_l', '좌 코너'], ['zone_c3_r', '우 코너'], ['zone_atb3_l', '좌 45도'], ['zone_atb3_c', '정면'], ['zone_atb3_r', '우 45도'],
+];
+const DEF_ZONES: [string, string][] = [['RA', '림'], ['ITP', '페인트'], ['MID', '미드'], ['CNR', '코너'], ['WING', '윙'], ['ATB', '정면']];
+const CHART_CATS: Record<StatCat, { label: string; items: StatItem[] }> = {
+    traditional: { label: 'Traditional', items: STAT_ITEMS.filter(i => !['efg_pct', 'ts_pct', 'fg3a_rate'].includes(i.key)) },
+    advanced: { label: 'Advanced', items: [
+        { key: 'gp', label: '경기', int: true, cmp: 'none' },
+        { key: 'ts_pct', label: 'TS%', pct: true, cmp: 'high' },
+        { key: 'efg_pct', label: 'eFG%', pct: true, cmp: 'high' },
+        { key: 'tov_pct', label: 'TOV%', rate: true, cmp: 'low' },
+        { key: 'usg_pct', label: 'USG%', rate: true, cmp: 'none' },
+        { key: 'ast_pct', label: 'AST%', rate: true, cmp: 'high' },
+        { key: 'orb_pct', label: 'ORB%', rate: true, cmp: 'high' },
+        { key: 'drb_pct', label: 'DRB%', rate: true, cmp: 'high' },
+        { key: 'trb_pct', label: 'TRB%', rate: true, cmp: 'high' },
+        { key: 'stl_pct', label: 'STL%', rate: true, cmp: 'high' },
+        { key: 'blk_pct', label: 'BLK%', rate: true, cmp: 'high' },
+        { key: 'fg3a_rate', label: '3PAr', pct: true, cmp: 'none' },
+        { key: 'fta_rate', label: 'FTr', pct: true, cmp: 'none' },
+    ] },
+    shooting: { label: 'Shooting', items: [
+        { key: 'gp', label: '경기', int: true, cmp: 'none' },
+        ...SHOT_ZONES.flatMap(([k, l]): StatItem[] => [
+            { key: `${k}_m`, label: `${l} 성공`, cmp: 'high' },
+            { key: `${k}_a`, label: `${l} 시도`, cmp: 'none' },
+            { key: `${k}_pct`, label: `${l} %`, pct: true, cmp: 'high' },
+        ]),
+    ] },
+    defense: { label: 'Defense', items: [
+        { key: 'gp', label: '경기', int: true, cmp: 'none' },
+        { key: 'stl', label: '스틸', cmp: 'high' },
+        { key: 'blk', label: '블록', cmp: 'high' },
+        { key: 'tovf', label: '유도 턴오버', cmp: 'high' },
+        { key: 'dreb', label: '수비 리바운드', cmp: 'high' },
+        { key: 'cont_pg', label: '슛 견제', cmp: 'high' },
+        { key: 'dfg_pct', label: '상대 야투율', pct: true, cmp: 'low' },
+        ...DEF_ZONES.flatMap(([z, l]): StatItem[] => [
+            { key: `dfg${z}_m`, label: `${l} 상대 성공`, cmp: 'low' },
+            { key: `dfg${z}_a`, label: `${l} 상대 시도`, cmp: 'none' },
+            { key: `dfg${z}_pct`, label: `${l} 상대 %`, pct: true, cmp: 'low' },
+        ]),
+    ] },
+};
+
+/** 이번 시즌 행에만 붙는 Shooting·Defense 값(경기당). 과거 시즌 이력(career_history)에는 없는 항목들. */
+function seasonOnlyKeys(st: PlayerStats): Record<string, number | null> {
+    const g = st.g || 0;
+    const per = (v: number | undefined) => (g > 0 ? (v || 0) / g : null);
+    const pct = (m: number | undefined, a: number | undefined) => ((a || 0) > 0 ? (m || 0) / (a || 0) : null);
+    const out: Record<string, number | null> = { tovf: per(st.tovForced) };
+    for (const [k] of SHOT_ZONES) {
+        out[`${k}_m`] = per(st[`${k}_m`]);
+        out[`${k}_a`] = per(st[`${k}_a`]);
+        out[`${k}_pct`] = pct(st[`${k}_m`], st[`${k}_a`]);
+    }
+    for (const [z] of DEF_ZONES) {
+        const m = (st as any)[`def${z}Made`], a = (st as any)[`def${z}Attempted`];
+        out[`dfg${z}_m`] = per(m);
+        out[`dfg${z}_a`] = per(a);
+        out[`dfg${z}_pct`] = pct(m, a);
+    }
+    return out;
+}
+
+const formatStat = (item: StatItem, v: number | null | undefined) => {
     if (v == null) return '-';
     if (item.pct) return `${(v * 100).toFixed(1)}%`;
+    if (item.rate) return `${v.toFixed(1)}%`;
     if (item.int) return String(Math.round(v));
     return v.toFixed(1);
 };
@@ -76,7 +151,7 @@ const attrLabel = (item: CompactAttrItem) =>
 const MultiPlayerCompareView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
-    const { isLoading: gameLoading } = useSeasonContext();
+    const { isLoading: gameLoading, schedule } = useSeasonContext();
     const [searchParams, setSearchParams] = useSearchParams();
     const { getPlayerUrlId, resolvePlayerId, isLoading: shortCodesLoading } = usePlayerShortCodes();
     const seasonShort = room?.season ?? '2025-26';
@@ -159,17 +234,46 @@ const MultiPlayerCompareView: React.FC = () => {
     // 시즌/커리어 스탯 라인
     const [statMode, setStatMode] = useState<'season' | 'career'>('season');
     const careers = [career0, career1];
-    const statLines = selected.map((e, i) => {
+    // 정규시즌 과거 이력(현재 시즌과 같은 라벨의 행은 시뮬 기록으로 대체되므로 제외)
+    // TOV%는 0~100 단위로 통일 — 신인 생성기(services/draft/rookieGenerator.ts)가 만든 가상 이력은 0~1 비율로 저장돼 있어 1 이하 값은 ×100
+    const historyOf = (i: number) =>
+        ((careers[i] as CareerSeasonStat[] | undefined) ?? [])
+            .filter(r => !r.playoff && r.season !== seasonShort)
+            .map(r => (r.tov_pct != null && r.tov_pct > 0 && r.tov_pct <= 1 ? { ...r, tov_pct: r.tov_pct * 100 } : r));
+    // seasonKey: 시즌 라벨("2023-24") 또는 CAREER_KEY. 시즌 중 이적한 해는 합산 행(2TM/3TM/TOT)을 우선 쓰고,
+    // 없으면 팀별 행을 경기 수 가중 평균(computeCareerAvg)으로 합친다.
+    const lineFor = (i: number, seasonKey: string): Record<string, any> | null => {
+        const e = selected[i];
         if (!e) return null;
         const p = e.player;
+        // 팀 기준 Advanced(USG%·AST% 등)는 소속 팀 합계가 있어야 계산됨 — FA는 ctx 없음(해당 항목 –)
+        const ctx = e.team ? buildTeamAdvCtx(teams, e.team.id, schedule as Game[]) : undefined;
         const seasonRow = p.stats && (p.stats.g ?? 0) > 0
-            ? statsToCareerRow(p.stats, seasonShort, e.team?.abbr ?? FA_KEY, p.age, false)
+            ? { ...statsToCareerRow(p.stats, seasonShort, e.team?.abbr ?? FA_KEY, p.age, false, ctx), ...seasonOnlyKeys(p.stats) }
             : null;
-        if (statMode === 'season') return seasonRow;
-        const history = ((careers[i] as CareerSeasonStat[] | undefined) ?? []).filter(r => !r.playoff && r.season !== seasonShort);
-        const avg = computeCareerAvg(seasonRow ? [seasonRow, ...history] : history, '커리어');
+        if (seasonKey === seasonShort) return seasonRow;
+        const history = historyOf(i);
+        if (seasonKey === CAREER_KEY) {
+            const avg = computeCareerAvg(seasonRow ? [seasonRow, ...history] : history, '커리어');
+            return avg.gp ? avg : null;
+        }
+        const rows = history.filter(r => r.season === seasonKey);
+        if (rows.length === 0) return null;
+        const total = rows.find(r => /^(\d+TM|TOT)$/.test(r.team));
+        if (total) return total;
+        if (rows.length === 1) return rows[0];
+        const avg = computeCareerAvg(rows, seasonKey);
         return avg.gp ? avg : null;
-    });
+    };
+    const statLines = [0, 1].map(i => lineFor(i, statMode === 'season' ? seasonShort : CAREER_KEY));
+
+    // 가운데 "기록" 표의 시즌 선택 — 두 선수 중 한 명이라도 기록이 있는 시즌 + 이번 시즌 + 커리어
+    // null = 이번 시즌(room 로드 전 초기 렌더에서 기본값이 잘못 고정되지 않도록 선택 전엔 값을 두지 않는다)
+    const [chartSeasonPick, setChartSeason] = useState<string | null>(null);
+    const chartSeason = chartSeasonPick ?? seasonShort;
+    const chartSeasonOptions = [...new Set([seasonShort, ...historyOf(0).map(r => r.season), ...historyOf(1).map(r => r.season)])]
+        .sort((a, b) => b.localeCompare(a));
+    const chartLines: [Record<string, any> | null, Record<string, any> | null] = [lineFor(0, chartSeason), lineFor(1, chartSeason)];
 
     const isLoading = leagueLoading || gameLoading || teamsLoading || statsLoading || shortCodesLoading;
     if (isLoading) return <Spinner variant="page" />;
@@ -185,7 +289,6 @@ const MultiPlayerCompareView: React.FC = () => {
                     teams={sortedTeams}
                     entryById={entryById}
                     statLine={statLines[side]}
-                    otherStatLine={statLines[1 - side]}
                     statMode={statMode}
                     seasonShort={seasonShort}
                     onStatMode={setStatMode}
@@ -193,7 +296,7 @@ const MultiPlayerCompareView: React.FC = () => {
                     onPickPlayer={id => setPlayer(side, id)}
                 />
             ))}
-            <CompareChart left={selected[0]?.player ?? null} right={selected[1]?.player ?? null} />
+            <CompareChart left={selected[0]?.player ?? null} right={selected[1]?.player ?? null} statLines={chartLines} seasonKey={chartSeason} seasonOptions={chartSeasonOptions} onSeason={setChartSeason} />
         </div>
     );
 };
@@ -207,7 +310,6 @@ interface PaneProps {
     teams: Team[];
     entryById: Map<string, Entry>;
     statLine: Record<string, any> | null;
-    otherStatLine: Record<string, any> | null;
     statMode: 'season' | 'career';
     seasonShort: string;
     onStatMode: (m: 'season' | 'career') => void;
@@ -219,7 +321,7 @@ interface PaneProps {
 const triggerFill = 'w-full justify-between overflow-hidden';
 
 const ComparePane: React.FC<PaneProps> = ({
-    side, entry, teamKey, teams, entryById, statLine, otherStatLine, statMode, seasonShort, onStatMode, onPickTeam, onPickPlayer,
+    side, entry, teamKey, teams, entryById, statLine, statMode, seasonShort, onStatMode, onPickTeam, onPickPlayer,
 }) => {
     const [query, setQuery] = useState('');
     const [hl, setHl] = useState(0);
@@ -251,6 +353,9 @@ const ComparePane: React.FC<PaneProps> = ({
 
     const pick = (id: string) => { onPickPlayer(id); setQuery(''); setResultsOpen(false); };
     const onKeyDown = (ev: React.KeyboardEvent<HTMLInputElement>) => {
+        // 한글 IME 조합 중 Enter는 keydown이 두 번 온다(조합 중 1회 + 조합 종료 후 1회). 조합 중 것을 처리하면
+        // 선택 후 검색창을 비운 자리에 조합 끝 글자가 다시 들어가 두 번째 Enter가 그 한 글자로 엉뚱한 선수를 고른다.
+        if (isImeComposing(ev)) return;
         if (!results.length) return;
         if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
             ev.preventDefault();
@@ -437,14 +542,7 @@ const ComparePane: React.FC<PaneProps> = ({
                     </div>
                     {statLine ? (
                         <InfoGrid
-                            rows={STAT_ITEMS.map(item => {
-                                const v = statLine[item.key];
-                                const o = otherStatLine?.[item.key];
-                                const better = item.cmp !== 'none' && v != null && o != null && v !== o
-                                    && (item.cmp === 'high' ? v > o : v < o);
-                                const tone = better ? 'better' as const : undefined;
-                                return { label: item.label, value: formatStat(item, v), tone };
-                            })}
+                            rows={STAT_ITEMS.map(item => ({ label: item.label, value: formatStat(item, statLine[item.key]) }))}
                         />
                     ) : (
                         <div className="py-3.5 text-center text-sm text-slate-500 border-y border-slate-800">
@@ -457,7 +555,7 @@ const ComparePane: React.FC<PaneProps> = ({
     );
 };
 
-const InfoGrid: React.FC<{ rows: { label: string; value: React.ReactNode; tone?: 'better' }[] }> = ({ rows }) => {
+const InfoGrid: React.FC<{ rows: { label: string; value: React.ReactNode }[] }> = ({ rows }) => {
     // 홀수 개면 빈 칸 하나로 2열 격자를 채운다
     const cells = rows.length % 2 ? [...rows, null] : rows;
     return (
@@ -470,7 +568,7 @@ const InfoGrid: React.FC<{ rows: { label: string; value: React.ReactNode; tone?:
                     {r && (
                         <>
                             <dt className="text-slate-500 shrink-0">{r.label}</dt>
-                            <dd className={`m-0 tabular-nums truncate text-white ${r.tone === 'better' ? 'font-extrabold' : 'font-semibold'}`}>
+                            <dd className="m-0 tabular-nums truncate text-white font-semibold">
                                 {r.value}
                             </dd>
                         </>
@@ -484,23 +582,16 @@ const InfoGrid: React.FC<{ rows: { label: string; value: React.ReactNode; tone?:
 // ── 가운데 비교 차트 ─────────────────────────────────────────
 
 // [막대][값][델타 배지 칸][라벨][델타 배지 칸][값][막대] — 값 칸은 가운데 정렬로 막대와 여백을 둔다
-const ROW = 'grid grid-cols-[1fr_56px_52px_128px_52px_56px_1fr] items-center';
+const ROW = 'grid grid-cols-[1fr_56px_52px_144px_52px_56px_1fr] items-center';
 // 라벨 칸 — 좌우 구분선이 행 높이 전체에 이어지도록 self-stretch
 const LABEL_CELL = 'self-stretch flex items-center justify-center border-x border-slate-800 text-base font-semibold text-slate-300 whitespace-nowrap';
-
-// 체격–능력치 사이 여백 행(14px) — 라벨 칸 구분선만 그린다
-const GroupSpacer: React.FC = () => (
-    <div className={`${ROW} h-3.5 border-b border-slate-800`} aria-hidden="true">
-        <div /><div /><div /><div className={LABEL_CELL} /><div /><div /><div />
-    </div>
-);
 
 // 우위 쪽 값과 라벨 사이에 붙는 차이(+n) 배지 — 빨강 100%, 아래로 갈수록 어두워지는 그라디언트. 우위가 아니면 빈 칸
 // 배지는 값 쪽 정렬(왼쪽 선수 = 칸 왼쪽, 오른쪽 선수 = 칸 오른쪽). 칸 폭 52px라 두 자리 배지(~36px)도
 // 라벨 구분선과 14px 이상 떨어진다.
-const DeltaCell: React.FC<{ delta: number | null; side: 'left' | 'right' }> = ({ delta, side }) => (
+const DeltaCell: React.FC<{ delta: string | null; side: 'left' | 'right' }> = ({ delta, side }) => (
     <div className={`flex ${side === 'left' ? 'justify-start' : 'justify-end'}`}>
-        {delta != null && delta > 0 && (
+        {delta && (
             <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-[12px] leading-none font-bold text-white tabular-nums">
                 +{delta}
             </span>
@@ -508,8 +599,26 @@ const DeltaCell: React.FC<{ delta: number | null; side: 'left' | 'right' }> = ({
     </div>
 );
 
-const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({ left, right }) => {
+// 기록 비교의 차이 표기 — 비율 항목은 %p 단위 숫자(소수 1자리), 정수 항목은 정수, 나머지는 소수 1자리
+const formatStatDelta = (item: StatItem, d: number) =>
+    item.pct ? (d * 100).toFixed(1) : item.int ? String(Math.round(d)) : d.toFixed(1);
+
+type ChartView = 'attr' | 'stats';
+const CHART_VIEW_LABEL: Record<ChartView, string> = { attr: '능력치', stats: '기록' };
+
+const CompareChart: React.FC<{
+    left: Player | null;
+    right: Player | null;
+    /** 기록 모드에서 보여줄 좌/우 기록 라인(아래 seasonKey 기준) — 없으면 null */
+    statLines: [Record<string, any> | null, Record<string, any> | null];
+    /** 기록 모드 시즌 선택: 시즌 라벨 또는 CAREER_KEY */
+    seasonKey: string;
+    seasonOptions: string[];
+    onSeason: (key: string) => void;
+}> = ({ left, right, statLines, seasonKey, seasonOptions, onSeason }) => {
     const both = !!left && !!right;
+    const [view, setView] = useState<ChartView>('attr');
+    const [cat, setCat] = useState<StatCat>('traditional');
     const nameCell = (p: Player | null, r: boolean) => (
         <div className={`min-w-0 truncate ${r ? 'text-left pl-2.5' : 'text-right pr-2.5'} ${p ? 'text-[15px] font-bold text-white' : 'text-[13px] font-medium text-slate-600'}`}>
             {p ? p.name : `${r ? '두 번째' : '첫 번째'} 선수를 선택하세요`}
@@ -529,20 +638,87 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
 
     return (
         <section className="order-2 flex flex-col min-h-0 overflow-y-auto custom-scrollbar bg-slate-950">
-            {/* 그룹 사이 여백을 flex gap 대신 GroupSpacer 행으로 둔다 — 라벨 칸 좌우 구분선이 신장부터 마지막 능력치까지 끊김 없이 이어지게. */}
+            {/* 체격·능력치 행을 여백 없이 한 열로 이어 붙인다 — 라벨 칸 좌우 구분선이 신장부터 마지막 능력치까지 끊김 없이 이어지게. */}
             {/* 헤더(선수 이름) — 배경을 영역 전체 폭으로 깔고(slate-900), 이름 격자는 아래 표와 같은 열 폭 */}
             <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 shrink-0">
-                <div className="w-full py-3 grid grid-cols-[1fr_128px_1fr] items-center">
+                <div className="w-full py-2 grid grid-cols-[1fr_144px_1fr] items-center">
                     {nameCell(left, false)}
-                    <div />
+                    <Dropdown
+                        align="left"
+                        width="w-32"
+                        trigger={<FilterTrigger className="w-full justify-between" label={CHART_VIEW_LABEL[view]} />}
+                        items={(['attr', 'stats'] as ChartView[]).map(v => ({
+                            id: v,
+                            active: v === view,
+                            label: <span className="text-sm">{CHART_VIEW_LABEL[v]}</span>,
+                            onClick: () => setView(v),
+                        }))}
+                    />
                     {nameCell(right, true)}
                 </div>
+                {/* 기록 모드 전용 두 번째 줄 — 시즌 + 카테고리 선택 */}
+                {view === 'stats' && (
+                    <div className="w-full py-2 flex items-center justify-center gap-2 border-t border-slate-800">
+                        <Dropdown
+                            align="left"
+                            width="w-36"
+                            trigger={<FilterTrigger className="min-w-[112px] justify-between" label={seasonKey === CAREER_KEY ? '커리어' : seasonKey} />}
+                            items={[
+                                { id: CAREER_KEY, active: seasonKey === CAREER_KEY, label: <span className="text-sm">커리어</span>, onClick: () => onSeason(CAREER_KEY) },
+                                ...seasonOptions.map((sk, idx) => ({
+                                    id: sk,
+                                    active: sk === seasonKey,
+                                    dividerBefore: idx === 0,
+                                    label: <span className="text-sm tabular-nums">{sk}</span>,
+                                    onClick: () => onSeason(sk),
+                                })),
+                            ]}
+                        />
+                        <Dropdown
+                            align="left"
+                            width="w-40"
+                            trigger={<FilterTrigger className="min-w-[128px] justify-between" label={CHART_CATS[cat].label} />}
+                            items={(Object.keys(CHART_CATS) as StatCat[]).map(c => ({
+                                id: c,
+                                active: c === cat,
+                                label: <span className="text-sm">{CHART_CATS[c].label}</span>,
+                                onClick: () => setCat(c),
+                            }))}
+                        />
+                    </div>
+                )}
             </div>
+            {view === 'stats' ? (
+                <div className="w-full flex flex-col">
+                    {CHART_CATS[cat].items.map(item => {
+                        const [la, lb] = statLines;
+                        const a: number | null = left && la?.[item.key] != null ? la[item.key] : null;
+                        const b: number | null = right && lb?.[item.key] != null ? lb[item.key] : null;
+                        const comparable = item.cmp !== 'none' && a != null && b != null && a !== b;
+                        const aBetter = comparable && (item.cmp === 'high' ? a! > b! : a! < b!);
+                        const bBetter = comparable && !aBetter;
+                        return (
+                            <div key={item.key} className={`${ROW} h-8 border-b border-slate-800 hover:bg-slate-400/5`}>
+                                {/* 기록 비교는 막대 없이 숫자만 */}
+                                <div />
+                                <div className="text-center text-base font-semibold tabular-nums text-white whitespace-nowrap">
+                                    {a != null ? formatStat(item, a) : <span className="text-slate-500">–</span>}
+                                </div>
+                                <DeltaCell side="left" delta={aBetter ? formatStatDelta(item, Math.abs(a! - b!)) : null} />
+                                <div className={LABEL_CELL}>{item.label}</div>
+                                <DeltaCell side="right" delta={bBetter ? formatStatDelta(item, Math.abs(b! - a!)) : null} />
+                                <div className="text-center text-base font-semibold tabular-nums text-white whitespace-nowrap">
+                                    {b != null ? formatStat(item, b) : <span className="text-slate-500">–</span>}
+                                </div>
+                                <div />
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
             <div className="w-full flex flex-col">
                 {physRow('신장', 'height', 'cm')}
                 {physRow('체중', 'weight', 'kg')}
-                {/* 체격과 능력치 사이에만 여백 — 능력치 그룹끼리는 붙여서 이어 표시 */}
-                <GroupSpacer />
                 {COMPACT_ATTR_GROUPS.map(g => (
                     <React.Fragment key={g.id}>
                         {g.items.map(item => {
@@ -554,17 +730,15 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
                                 <div key={item.key} className={`${ROW} h-8 border-b border-slate-800 hover:bg-slate-400/5`}>
                                     <Bar value={a} dir="left" />
                                     <div
-                                        className={`text-center text-base tabular-nums ${lTone === 'win' ? 'font-extrabold' : 'font-semibold'}`}
-                                        style={a != null ? { color: getAttrBarColor(a) } : undefined}
+                                        className={`text-center text-base tabular-nums ${lTone === 'win' ? 'font-extrabold' : 'font-semibold'} ${a != null ? getAttrColor(a) : ''}`}
                                     >
                                         {a ?? <span className="text-slate-500">–</span>}
                                     </div>
-                                    <DeltaCell side="left" delta={lTone === 'win' ? a! - b! : null} />
+                                    <DeltaCell side="left" delta={lTone === 'win' ? String(a! - b!) : null} />
                                     <div className={LABEL_CELL}>{attrLabel(item)}</div>
-                                    <DeltaCell side="right" delta={rTone === 'win' ? b! - a! : null} />
+                                    <DeltaCell side="right" delta={rTone === 'win' ? String(b! - a!) : null} />
                                     <div
-                                        className={`text-center text-base tabular-nums ${rTone === 'win' ? 'font-extrabold' : 'font-semibold'}`}
-                                        style={b != null ? { color: getAttrBarColor(b) } : undefined}
+                                        className={`text-center text-base tabular-nums ${rTone === 'win' ? 'font-extrabold' : 'font-semibold'} ${b != null ? getAttrColor(b) : ''}`}
                                     >
                                         {b ?? <span className="text-slate-500">–</span>}
                                     </div>
@@ -575,6 +749,7 @@ const CompareChart: React.FC<{ left: Player | null; right: Player | null }> = ({
                     </React.Fragment>
                 ))}
             </div>
+            )}
         </section>
     );
 };

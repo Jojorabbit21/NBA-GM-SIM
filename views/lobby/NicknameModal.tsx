@@ -5,6 +5,7 @@ import { InlineNotice } from '../../components/common/InlineNotice';
 import { createPortal } from 'react-dom';
 import { Loader2, UserCircle2 } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
+import { isImeComposing } from '../../utils/ime';
 
 const MAX_NICKNAME_LENGTH = 8;
 
@@ -66,7 +67,7 @@ export const NicknameModal: React.FC<NicknameModalProps> = ({
                         autoFocus
                         value={value}
                         onChange={e => setValue(e.target.value.slice(0, MAX_NICKNAME_LENGTH))}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+                        onKeyDown={e => { if (e.key === 'Enter' && !isImeComposing(e)) handleSave(); }}
                         maxLength={MAX_NICKNAME_LENGTH}
                         placeholder="닉네임 입력"
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 ko-normal"

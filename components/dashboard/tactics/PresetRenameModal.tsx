@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../../common/Modal';
 import { Button } from '../../common/Button';
+import { isImeComposing } from '../../../utils/ime';
 
 interface RenameModalProps {
     isOpen: boolean;
@@ -39,7 +40,7 @@ export const PresetRenameModal: React.FC<RenameModalProps> = ({ isOpen, onClose,
                     type="text" 
                     value={name} 
                     onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) { onConfirm(name.trim()); onClose(); } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !isImeComposing(e) && name.trim()) { onConfirm(name.trim()); onClose(); } }}
                     maxLength={maxLength}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors"
                     placeholder="전술 이름을 입력하세요"

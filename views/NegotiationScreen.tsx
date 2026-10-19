@@ -36,6 +36,7 @@ import { coachAbilityLabel, coachAbilityColor } from '../utils/coachAbility';
 import { calcCoachOVR } from '../services/coachingStaff/coachGenerator';
 import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services/playerPopularity';
 import { CONTRACT_TYPE_LABEL } from '../utils/contractLabels';
+import { isImeComposing } from '../utils/ime';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -1507,7 +1508,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                         }
                                                     }}
                                                     onKeyDown={e => {
-                                                        if (e.key === 'Enter') {
+                                                        if (e.key === 'Enter' && !isImeComposing(e)) {
                                                             const pct = parseFloat((e.target as HTMLInputElement).value);
                                                             if (!isNaN(pct) && pct > 0) {
                                                                 const raw = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
@@ -1776,7 +1777,7 @@ export const NegotiationScreen: React.FC<NegotiationScreenProps> = ({
                                                     }
                                                 }}
                                                 onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
+                                                    if (e.key === 'Enter' && !isImeComposing(e)) {
                                                         const pct = parseFloat((e.target as HTMLInputElement).value);
                                                         if (!isNaN(pct) && pct > 0) {
                                                             const newSal = Math.round(LEAGUE_FINANCIALS.SALARY_CAP * pct / 100);
