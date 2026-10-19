@@ -353,12 +353,15 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         return true;
     }, [roomId, admit, dispatch]);
 
+    // retry 정체성을 고정(메시지 행 memo가 깨지지 않게) — 최신 outbox는 ref로 읽는다
+    const outboxRef = useRef<ChatOutboxItem[]>([]);
+    outboxRef.current = outbox;
     const retry = useCallback((tempId: string) => {
-        const item = outbox.find(x => x.tempId === tempId);
+        const item = outboxRef.current.find(x => x.tempId === tempId);
         if (!item || item.status !== 'failed' || !admit()) return;
         setOutbox(o => o.map(x => x.tempId === tempId ? { ...x, status: 'sending', error: undefined } : x));
         void dispatch(item.body, tempId);
-    }, [outbox, admit, dispatch]);
+    }, [admit, dispatch]);
 
     const discard = useCallback((tempId: string) => {
         setOutbox(o => o.filter(x => x.tempId !== tempId));

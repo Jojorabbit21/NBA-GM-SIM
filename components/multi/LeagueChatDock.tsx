@@ -31,8 +31,12 @@ const NEAR_BOTTOM_PX = 80;
 
 // ── 표시용 유틸 ───────────────────────────────────────────────────────────────
 
+// Intl.DateTimeFormat 생성이 비싸서(toLocale*String은 호출마다 새로 만든다) 모듈 레벨에서 한 번만 만든다.
+const TIME_FMT = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' });
+const DATE_FMT = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' });
+
 function formatTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+    return TIME_FMT.format(new Date(iso));
 }
 
 function dayKey(iso: string): string {
@@ -46,7 +50,7 @@ function dayLabel(iso: string): string {
     const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
     if (dayKey(iso) === dayKey(today.toISOString())) return '오늘';
     if (dayKey(iso) === dayKey(yesterday.toISOString())) return '어제';
-    return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+    return DATE_FMT.format(d);
 }
 
 type ListRow =
@@ -106,7 +110,7 @@ function buildRows(messages: ChatMessage[], userId: string, anchorId: number | n
 // ── 하위 표시 컴포넌트 ─────────────────────────────────────────────────────────
 
 // 채팅에 접속 중인 사람은 로고 둘레가 초록색으로 빛난다(색만으로 전달하지 않도록 title + 스크린리더 문구도 함께)
-const Avatar: React.FC<{ msg: ChatMessage; online: boolean }> = ({ msg, online }) => (
+const Avatar = React.memo<{ msg: ChatMessage; online: boolean }>(({ msg, online }) => (
     <div
         title={online ? '접속 중' : undefined}
         className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${online ? 'ring-2 ring-emerald-400' : ''}`}
@@ -116,14 +120,16 @@ const Avatar: React.FC<{ msg: ChatMessage; online: boolean }> = ({ msg, online }
             : <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700" aria-hidden="true" />}
         {online && <span className="sr-only">접속 중</span>}
     </div>
-);
+));
+Avatar.displayName = 'Avatar';
 
-const MessageRow: React.FC<{
+// memo: 입력창 타이핑(draft 변경)으로 부모가 다시 렌더돼도 행은 props가 같으면 건너뛴다. onRetry/onDiscard는 안정된 함수(tempId를 받음)여야 한다.
+const MessageRow = React.memo<{
     row: Extract<ListRow, { kind: 'msg' }>;
     online: boolean;
-    onRetry: () => void;
-    onDiscard: () => void;
-}> = ({ row, online, onRetry, onDiscard }) => {
+    onRetry: (tempId: string) => void;
+    onDiscard: (tempId: string) => void;
+}>(({ row, online, onRetry, onDiscard }) => {
     const { msg, mine, showHeader, showTime, outbox } = row;
     if (mine) {
         // outbox가 있으면 전송 중(실제 메시지와 똑같이 그림) 또는 실패(새로고침/삭제 아이콘 + 빨간 문구)
@@ -134,8 +140,8 @@ const MessageRow: React.FC<{
                 <div className="flex items-center gap-1">
                     {failed && (
                         <>
-                            <IconButton label="다시 보내기" size="md" tone="subtle" onClick={onRetry}><RotateCw size={16} /></IconButton>
-                            <IconButton label="삭제" size="md" tone="subtle" onClick={onDiscard}><Trash2 size={16} /></IconButton>
+                            <IconButton label="다시 보내기" size="md" tone="subtle" onClick={() => outbox && onRetry(outbox.tempId)}><RotateCw size={16} /></IconButton>
+                            <IconButton label="삭제" size="md" tone="subtle" onClick={() => outbox && onDiscard(outbox.tempId)}><Trash2 size={16} /></IconButton>
                         </>
                     )}
                     <div className={`${failed ? 'max-w-[220px]' : 'max-w-[260px]'} text-white rounded-xl rounded-tr-sm px-3 py-2 text-sm leading-[21px] ko-normal whitespace-pre-wrap [overflow-wrap:anywhere] ${failed ? 'bg-orange-600/35 border border-red-400' : 'bg-orange-600'}`}>
@@ -165,7 +171,8 @@ const MessageRow: React.FC<{
             </div>
         </div>
     );
-};
+});
+MessageRow.displayName = 'MessageRow';
 
 // ── 채팅 탭 본문 ───────────────────────────────────────────────────────────────
 
@@ -325,8 +332,8 @@ const ChatBody: React.FC<ChatBodyProps> = ({ chat, userId, draft, setDraft }) =>
                                 key={row.key}
                                 row={row}
                                 online={chat.onlineUserIds.has(row.msg.user_id)}
-                                onRetry={() => row.outbox && chat.retry(row.outbox.tempId)}
-                                onDiscard={() => row.outbox && chat.discard(row.outbox.tempId)}
+                                onRetry={chat.retry}
+                                onDiscard={chat.discard}
                             />
                         );
                     })}

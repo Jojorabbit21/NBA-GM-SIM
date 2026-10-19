@@ -35,6 +35,42 @@
 
 ---
 
+## 2026-10-19 — 리그 채팅 입력 렉 수정 (formatTime 캐시 + 메시지 행 memo)
+
+**배경**: 멀티 채팅창 타이핑 렉. Chrome 트레이스(Trace-20261019T110858.json) 분석 결과 `input` 이벤트 58회 평균 32.5ms, 그중 `formatTime` self time이 ~1,078ms(절반 이상). `toLocaleTimeString`이 호출마다 Intl.DateTimeFormat을 새로 만드는 데다, `draft`가 최상위 `LeagueChatDock`에 있어 키 입력마다 모든 `MessageRow`/`Avatar`/`TeamLogo`가 재렌더되며 행마다 `formatTime`을 호출.
+
+**변경 파일**:
+- `components/multi/LeagueChatDock.tsx` (client) — `formatTime`/`dayLabel`을 모듈 레벨 `Intl.DateTimeFormat`(TIME_FMT/DATE_FMT) 재사용으로 변경, `Avatar`·`MessageRow`를 `React.memo`로 감쌈, `onRetry`/`onDiscard` prop 시그니처를 `(tempId) => void`로 변경(행에서 `outbox.tempId`를 넘김)
+- `hooks/useLeagueChat.ts` (client) — `retry`가 `outbox` state 대신 `outboxRef.current`를 읽도록 해 함수 정체성 고정(의존성 배열에서 `outbox` 제거)
+
+**Before**:
+```ts
+function formatTime(iso: string): string {
+    return new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+}
+// dayLabel 끝: return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+const Avatar: React.FC<{ msg; online }> = ({ msg, online }) => (...);
+const MessageRow: React.FC<{ row; online; onRetry: () => void; onDiscard: () => void }> = ...;
+// 호출부: onRetry={() => row.outbox && chat.retry(row.outbox.tempId)}  (렌더마다 새 함수)
+// 훅: const retry = useCallback((tempId) => { const item = outbox.find(...); ... }, [outbox, admit, dispatch]);
+```
+
+**After**:
+```ts
+const TIME_FMT = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' });
+const DATE_FMT = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' });
+function formatTime(iso) { return TIME_FMT.format(new Date(iso)); }
+const Avatar = React.memo<...>(...);  const MessageRow = React.memo<{ ...; onRetry: (tempId) => void; onDiscard: (tempId) => void }>(...);
+// 호출부: onRetry={chat.retry} onDiscard={chat.discard}
+// 훅: outboxRef.current = outbox; retry는 outboxRef.current.find(...), deps [admit, dispatch]
+```
+
+**검증**: tsc에서 두 파일 관련 오류 없음. 효과 수치는 수정 후 동일 방식으로 트레이스 재측정 필요(미측정).
+
+**롤백 방법**: 위 Before 내용으로 되돌리면 됨(두 파일 함께). `draft` 상태는 여전히 Dock에 있음(이번엔 이동하지 않음).
+
+---
+
 ## 2026-10-19 — 능력치 숫자 색 / 막대 색 분리 (15단계 값 재조정)
 
 **배경**: 스튜디오에 구간별 "숫자 색 따로" 기능을 추가하고, 사용자가 확정한 TS 코드를 적용. 일부 구간은 숫자와 막대 색이 다름(97/95/93/66/60 구간 및 최하위).
