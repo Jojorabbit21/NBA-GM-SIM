@@ -33,6 +33,37 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+---
+
+## 2026-10-19 — 공격 리바운드 후 샷클락 바이올레이션 문구 분기
+
+**배경**: 공격 리바운드로 샷클락이 14초로 리셋된 뒤 바이올레이션이 나면 시간은 14초만 소진되는데 로그는 "24초 샷클락 바이올레이션"으로 표기됨.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client, `applyPossessionResult`의 shotClockViolation 분기)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+
+**Before**:
+```ts
+addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+```
+
+**After**:
+```ts
+const clockStart = Math.round(state.shotClock);
+const vioLabel = clockStart < 24
+    ? `공격 리바운드 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+    : '24초 샷클락 바이올레이션';
+addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+```
+(applyPossessionResult 시점엔 state.shotClock이 아직 포세션 시작값 — liveEngine에서 포세션 전환 블록이 이후에 갱신)
+
+**추가(같은 날) — 플래그런트 분기**: `lastEntryWasFlagrant` 상태 필드 신설(pbpTypes.ts, liveEngine.ts 양쪽 client/server 미러), 문구는 24초 / 공격 리바운드 후 / 플래그런트 파울 후 / 그 외(테크니컬 등) "남은 N초"로 4분기. 롤백: 필드·세팅 2줄 제거 + 3항 연산을 단일 분기로 복원.
+
+**검증**: 타입 검사/실경기 미실행 (코드 리뷰만)
+
+**롤백 방법**: After 블록을 Before 한 줄로 되돌림 (두 파일 모두)
+
 ## 2026-10-19 — 멀티 헤더에 가상 하루 바(VirtualDayArc) 적용
 
 **배경**: 22:00/22:30 슬롯 경기는 가상 자정(D×5/8) 이후에 끝나는 게 설계(fixed-day-schedule-plan §2)인데, 헤더에는 날짜만 있어 "26일인데 25일 경기가 진행 중"으로 보였음. 정확한 시각 없이 하루 중 위치만 보여주는 위젯을 아티팩트 목업(호 → 직선 막대 → 8지점 막대)으로 시안 반복 후 확정해 적용. 서버/DB 변경 없음.

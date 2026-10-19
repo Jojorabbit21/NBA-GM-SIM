@@ -553,7 +553,13 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const teamName = offTeam.id === state.home.id
             ? state.home.name
             : state.away.name;
-        addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+        // [2026-10-19] 공격 리바운드 후엔 샷클락이 14초로 리셋됨 — 시작 시점 샷클락(state.shotClock)에 맞춰 문구 분기
+        const clockStart = Math.round(state.shotClock);
+        const vioLabel = clockStart >= 24 ? '24초 샷클락 바이올레이션'
+            : state.lastEntryWasOffReb ? `공격 리바운드 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+            : state.lastEntryWasFlagrant ? `플래그런트 파울 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+            : `남은 ${clockStart}초 샷클락 바이올레이션`;
+        addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
 
     } else if (type === 'fight') {
         // 싸움: 양측 퇴장 + 출장정지

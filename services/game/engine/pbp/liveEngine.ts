@@ -501,8 +501,10 @@ export function stepPossession(state: GameState): StepResult {
         // technicalFoul: state.shotClock 그대로
         state.lastEntryWasDefReb = false;
         state.lastEntryWasOffReb = isOffReb;
+        state.lastEntryWasFlagrant = result.type === 'flagrantFoul';
     } else {
         state.lastEntryWasOffReb = false;
+        state.lastEntryWasFlagrant = false;
         // [New 2026-07] 수비 리바운드로 공격권이 넘어간 경우만 true — defReb 속공 트레이드오프용
         state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
         state.possession = state.possession === 'home' ? 'away' : 'home';

@@ -217,6 +217,7 @@ export interface GameState {
     // [2026-10-07] 직전 포제션 진입이 오펜시브 리바운드였는지 — 풋백 플레이 선택 조건(possessionHandler)을
     // shotClock===14 대신 이 플래그로 판정(플래그런트 후 샷클락 14초가 풋백을 유발하지 않도록). optional: 미설정=false.
     lastEntryWasOffReb?: boolean;
+    lastEntryWasFlagrant?: boolean; // 플래그런트 후 공격권 유지(샷클락 14) — 샷클락 바이올레이션 문구 분기용
     home: TeamState;
     away: TeamState;
 
