@@ -236,6 +236,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const engineSimSettings = {
                 ...(simSettings ?? DEFAULT_SIM_SETTINGS),
                 fatigueB2BMultiplier: fatigueSettings.fatigueB2BMultiplier,
+                // userTeamId is only a tactics anchor here (homeTeamId) — let both teams auto-call timeouts
+                autoTimeoutAllTeams: true,
             };
 
             // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────

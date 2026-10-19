@@ -31,6 +31,9 @@ export interface SimSettings {
     fatigueOvernightKeep?: number;   // deficit fraction kept at midnight after a game day (0.3~0.7)
     fatigueRestDayKeep?: number;     // deficit fraction kept at midnight of a rest day (0.1~0.5)
     fatigueB2BMultiplier?: number;   // B2B drain multiplier (1.0~1.5, engine fallback 1.5)
+
+    // Server batch sim only: allow AI auto-timeouts for both home/away (unset=false; single/live keep skipping the user team)
+    autoTimeoutAllTeams?: boolean;
 }
 
 // ── Multiplayer fatigue defaults/ranges (mirror of types/simSettings.ts) ──

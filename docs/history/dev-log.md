@@ -35,6 +35,46 @@
 
 ---
 
+## 2026-10-19 — 멀티 서버 시뮬: 홈/원정 모두 자동 타임아웃 허용 (autoTimeoutAllTeams)
+
+**배경**: simRunner가 `runFullGameSimulation`에 `userTeamId = homeTeamId`를 넘기는데(전술 해석 앵커 용도), `checkAITimeout`이 `userTeamId` 팀의 자동 타임아웃을 스킵(라이브 모드에서 유저가 직접 쓰는 용도)해서 서버 시뮬에서 홈팀만 자동 타임아웃이 안 쓰였음. `isUserDelegated=true`면 스킵이 풀리는 점을 이용해 서버에서만 켜는 플래그 추가.
+
+**변경 파일**:
+- `types/simSettings.ts` (client) — `autoTimeoutAllTeams?: boolean` 추가
+- `server/src/shared/types/simSettings.ts` (server 미러) — 동일
+- `services/game/engine/pbp/liveEngine.ts` (client) — createGameState의 `isUserDelegated` 초기값
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — 동일
+- `server/src/simRunner.ts` — `engineSimSettings`에 `autoTimeoutAllTeams: true`
+
+**Before**:
+```ts
+isUserDelegated: false,
+```
+```ts
+const engineSimSettings = {
+    ...(simSettings ?? DEFAULT_SIM_SETTINGS),
+    fatigueB2BMultiplier: fatigueSettings.fatigueB2BMultiplier,
+};
+```
+
+**After**:
+```ts
+isUserDelegated: simSettings?.autoTimeoutAllTeams ?? false,
+```
+```ts
+const engineSimSettings = {
+    ...(simSettings ?? DEFAULT_SIM_SETTINGS),
+    fatigueB2BMultiplier: fatigueSettings.fatigueB2BMultiplier,
+    autoTimeoutAllTeams: true,
+};
+```
+
+**검증**: tsc — 변경 파일 관련 신규 오류 없음(기존 오류는 별개). 실경기 확인은 Fly 배포 후 game_pbp의 홈/원정별 `timeout` 로그 수로.
+
+**롤백 방법**: 위 Before 값으로 되돌리고 SimSettings의 `autoTimeoutAllTeams` 필드 삭제 (client/server 4파일 + simRunner 모두).
+
+---
+
 ## 2026-10-19 — 리그 채팅 입력 렉 수정 (formatTime 캐시 + 메시지 행 memo)
 
 **배경**: 멀티 채팅창 타이핑 렉. Chrome 트레이스(Trace-20261019T110858.json) 분석 결과 `input` 이벤트 58회 평균 32.5ms, 그중 `formatTime` self time이 ~1,078ms(절반 이상). `toLocaleTimeString`이 호출마다 Intl.DateTimeFormat을 새로 만드는 데다, `draft`가 최상위 `LeagueChatDock`에 있어 키 입력마다 모든 `MessageRow`/`Avatar`/`TeamLogo`가 재렌더되며 행마다 `formatTime`을 호출.

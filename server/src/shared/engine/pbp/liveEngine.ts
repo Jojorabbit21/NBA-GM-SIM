@@ -266,7 +266,8 @@ export function createGameState(
             activeRun: null,
         },
         userTeamId,
-        isUserDelegated: false,
+        // Server batch sim has no human calling timeouts, so treat both teams as AI-controlled.
+        isUserDelegated: simSettings?.autoTimeoutAllTeams ?? false,
         originalRotationMap: {},
         activeOverrides: [],
         possessionTimeAccum: {

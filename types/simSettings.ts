@@ -43,6 +43,9 @@ export interface SimSettings {
     fatigueOvernightKeep?: number;   // 경기를 뛴 날 자정에 남는 체력 부족분 비율 (0.3~0.7)
     fatigueRestDayKeep?: number;     // 경기 없는 날 자정에 남는 체력 부족분 비율 (0.1~0.5)
     fatigueB2BMultiplier?: number;   // 백투백 경기 체력 소모 배율 (1.0~1.5, 엔진 폴백 1.5 = 싱글 값)
+
+    // 서버 배치 시뮬 전용: 홈/원정 모두 AI 자동 타임아웃 허용 (미지정=false, 싱글/라이브는 유저 팀 스킵 유지)
+    autoTimeoutAllTeams?: boolean;
 }
 
 // ── 멀티플레이어 체력 설정 기본값/범위 (server/src/shared/types/simSettings.ts 미러) ──
