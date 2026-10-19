@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { Loader2, LogIn, Plus } from 'lucide-react';
+import { Eye, Loader2, LogIn, Plus } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { listLeaguesWithStats } from '../../services/multi/roomQueries';
 import type { LeagueListEntry } from '../../services/multi/roomQueries';
@@ -10,6 +10,7 @@ import CreateLeagueModal from '../../components/multi/CreateLeagueModal';
 import { TeamSelectModal } from '../../components/multi/TeamSelectModal';
 import { STATUS_LABEL } from '../multi/league/leagueConstants';
 import { useGame } from '../../hooks/useGameContext';
+import { isLeagueSpectatable } from '../../utils/spectatorAccess';
 
 type Tab = 'tournament' | 'main_league';
 
@@ -161,16 +162,21 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
                                 const { league, roomId, memberCount, maxPlayers, isJoined } = entry;
                                 const memberDisplay = (!userId && roomId === null) ? '—' : `${memberCount}/${maxPlayers}`;
                                 const virtualDate = roomId ? (virtualDates[roomId] ?? null) : null;
+                                // [2026-10-19] 비참가자는 어드민이 관전을 켠 진행/종료 리그만 "둘러보기"로 입장 가능(읽기 전용).
+                                const canSpectate = !isJoined && isLeagueSpectatable(league);
+                                const canEnter = isJoined || canSpectate || !!isAdmin;
 
                                 return (
                                     <tr key={league.id} className="bg-slate-900/30 hover:bg-slate-900/60 transition-colors">
                                         <td className="pl-4 pr-2 py-2.5 max-w-[140px]">
                                             <button
+                                                disabled={!canEnter}
                                                 onClick={() => {
+                                                    if (!canEnter) return;
                                                     if (!userId) { onRequireLogin({ reason: '리그 입장에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
                                                     enterLeague(league.id, league.short_code);
                                                 }}
-                                                className="font-bold text-white hover:text-orange-300 transition-colors text-left truncate block w-full"
+                                                className="font-bold text-white hover:text-orange-300 disabled:hover:text-white disabled:cursor-default transition-colors text-left truncate block w-full"
                                             >
                                                 {league.name}
                                             </button>
@@ -198,6 +204,17 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
                                                 >
                                                     <LogIn size={11} />
                                                     들어가기
+                                                </button>
+                                            ) : canSpectate ? (
+                                                <button
+                                                    onClick={() => {
+                                                        if (!userId) { onRequireLogin({ reason: '리그 둘러보기에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
+                                                        enterLeague(league.id, league.short_code);
+                                                    }}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-transparent border border-white/20 hover:bg-white/5 hover:border-white/40 rounded-lg text-xs font-bold text-white transition-colors"
+                                                >
+                                                    <Eye size={11} />
+                                                    둘러보기
                                                 </button>
                                             ) : (
                                                 <button

@@ -27,6 +27,8 @@ interface MultiHeaderNavMenuProps {
     /** 드래프트 완료 여부(league.status가 in_progress/finished) — false면 "내 팀"/"전술"
      * 탭 자체를 숨긴다(드래프트 전엔 로스터가 비어있어 두 메뉴가 빈 화면으로 이어짐). */
     isDraftComplete?: boolean;
+    /** [2026-10-19] 관전 모드 — 전술 드롭다운·트레이드·올스타(투표)·재정 항목을 숨기고 "내 팀"을 "팀"으로 표기. */
+    isSpectator?: boolean;
     onViewPlayer:  (player: Player, teamSlug: string | null) => void;
     onViewTeam:    (teamSlug: string) => void;
 }
@@ -62,6 +64,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     showPlayoffRace,
     capEnabled,
     isDraftComplete,
+    isSpectator,
     onViewPlayer,
     onViewTeam,
 }) => {
@@ -138,7 +141,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
         { label: '경기 기록', path: `${base}/roster`, navTo: rosterNavTo('records'),    tabValue: 'records' },
         { label: '일정',      path: `${base}/roster`, navTo: rosterNavTo('schedule'),   tabValue: 'schedule' },
         // 리그 샐러리캡이 켜져 있을 때만 노출 — RosterView도 capSettings 미전달 시 동일하게 숨김.
-        ...(capEnabled ? [{ label: '재정', path: `${base}/roster`, navTo: rosterNavTo('finance'), tabValue: 'finance' }] : []),
+        ...(capEnabled && !isSpectator ? [{ label: '재정', path: `${base}/roster`, navTo: rosterNavTo('finance'), tabValue: 'finance' }] : []),
     ];
 
     const tacticsItems: DropdownItem[] = [
@@ -156,10 +159,10 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
         // [2026-09-15 Fix] 올스타 투표 시작일에 나타나고 브레이크 종료일에 사라진다
         // (showAllStar = isAllStarWindowActive, MultiHeader.tsx가 계산해서 내려줌). 원래는
         // isTournament만 체크하고 기간 종료 조건이 아예 없어 끝나도 안 사라지던 버그.
-        ...(isTournament || !showAllStar ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
+        ...(isTournament || !showAllStar || isSpectator ? [] : [{ label: '올스타', path: `${base}/allstar` }]),
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
-        { label: '트레이드',  path: `${base}/transaction`, badge: pendingTradeCount },
+        ...(isSpectator ? [] : [{ label: '트레이드', path: `${base}/transaction`, badge: pendingTradeCount }]),
     ];
 
     // [2026-10-18] "도구" 그룹 — 사이드바 맨 아래(자유 계약 다음 구분선 아래) 아이콘과 같은 항목.
@@ -231,7 +234,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                                 onClick={() => toggle('team')}
                                 className={`${tabBase} ${openDropdown === 'team' ? tabOpen : isTeamActive ? tabActivePage : tabDefault}`}
                             >
-                                내 팀
+                                {isSpectator ? '팀' : '내 팀'}
                                 {openDropdown === 'team'
                                     ? <ChevronUp size={16} className="shrink-0" />
                                     : <ChevronDown size={16} className="shrink-0" />
@@ -240,6 +243,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                             {openDropdown === 'team' && <DropdownPanel items={teamItems} minWidth="140px" />}
                         </div>
 
+                        {!isSpectator && (
                         <div className="relative">
                             <button
                                 onClick={() => toggle('tactics')}
@@ -253,6 +257,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                             </button>
                             {openDropdown === 'tactics' && <DropdownPanel items={tacticsItems} minWidth="140px" />}
                         </div>
+                        )}
                     </>
                 )}
 

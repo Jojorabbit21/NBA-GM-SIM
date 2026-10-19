@@ -378,6 +378,21 @@ async function verifyRoomMember(userId: string, roomId: string): Promise<boolean
     return (count ?? 0) > 0;
 }
 
+/** [2026-10-19] 경기 상세/라이브 목록 읽기 권한 — 방 멤버 또는 관전 허용 리그(leagues.spectate_enabled && 진행/종료).
+ *  DB의 spectatable_room_ids()와 같은 기준(클라 utils/spectatorAccess.ts의 SPECTATABLE_STATUSES와도 동일, Docker가
+ *  server/src만 복사해 import 불가라 인라인). 읽기 전용 엔드포인트에서만 사용할 것. */
+async function verifyRoomReadAccess(userId: string, roomId: string): Promise<boolean> {
+    if (await verifyRoomMember(userId, roomId)) return true;
+    const { data } = await supabase
+        .from('rooms')
+        .select('leagues!inner(spectate_enabled,status)')
+        .eq('id', roomId)
+        .maybeSingle();
+    const lg = (data as { leagues?: { spectate_enabled: boolean; status: string } | { spectate_enabled: boolean; status: string }[] } | null)?.leagues;
+    const league = Array.isArray(lg) ? lg[0] : lg;
+    return !!league && league.spectate_enabled === true && (league.status === 'in_progress' || league.status === 'finished');
+}
+
 async function handleLiveGame(req: Request, url: URL): Promise<Response> {
     const cors = {
         'Access-Control-Allow-Origin':  '*',
@@ -395,7 +410,7 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
     const gameId = url.searchParams.get('gameId');
     if (!roomId || !gameId) return json({ error: 'roomId and gameId required' }, 400);
 
-    if (!(await verifyRoomMember(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+    if (!(await verifyRoomReadAccess(userId, roomId))) return json({ error: 'Forbidden' }, 403);
 
     const { data: row } = await supabase
         .from('game_pbp')
@@ -438,7 +453,7 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
     const roomId = url.searchParams.get('roomId');
     if (!roomId) return json({ error: 'roomId required' }, 400);
 
-    if (!(await verifyRoomMember(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+    if (!(await verifyRoomReadAccess(userId, roomId))) return json({ error: 'Forbidden' }, 403);
 
     const replayMs  = await getRoomReplayMs(roomId);
     const nowIso    = new Date().toISOString();

@@ -79,7 +79,7 @@ export const MultiSidebar: React.FC = () => {
     const { pathname, search } = useLocation();
     const { leagueId } = useParams<{ leagueId: string }>();
     const { handleLogout } = useAuth();
-    const { league, room, leagueTeams , timeline } = useLeagueContext();
+    const { league, room, leagueTeams , timeline, isSpectator } = useLeagueContext();
     const { session } = useGame();
     const isAdmin = !!(league && session?.user?.id && league.admin_user_id === session.user.id);
     const myTeam = leagueTeams.find(t => t.user_id === session?.user?.id);
@@ -121,7 +121,8 @@ export const MultiSidebar: React.FC = () => {
     const isPersonalDraft = !!league?.personal_draft_format;
     const personalDraftStatus = usePersonalDraftStatus(roomId, myTeamDbId, isPersonalDraft);
     const myPersonalDraftDone = personalDraftStatus === 'completed';
-    const showPoolMenu  = !isDraftComplete && !myPersonalDraftDone;
+    // [2026-10-19] 관전자는 드래프트 풀·전술·트레이드/자유 계약·올스타(투표) 메뉴가 없다 — 읽기 전용 메뉴만.
+    const showPoolMenu  = !isSpectator && !isDraftComplete && !myPersonalDraftDone;
     const showTeamMenus = isDraftComplete || myPersonalDraftDone;
 
     // 프로필 메뉴 — [2026-10-13] 직접 구현하던 body 포탈·바깥클릭 닫기·좌표 계산을 공용 Dropdown
@@ -178,12 +179,14 @@ export const MultiSidebar: React.FC = () => {
                             label="로스터"
                             onClick={() => navigate(myTeam ? `${base}/roster?rteam=${myTeam.team_slug}` : `${base}/roster`)}
                         />
-                        <NavItem
-                            active={pathname.startsWith(`${base}/tactics`)}
-                            icon={<NavIcon name="tactics" active={pathname.startsWith(`${base}/tactics`)} />}
-                            label="전술"
-                            onClick={() => navigate(`${base}/tactics`)}
-                        />
+                        {!isSpectator && (
+                            <NavItem
+                                active={pathname.startsWith(`${base}/tactics`)}
+                                icon={<NavIcon name="tactics" active={pathname.startsWith(`${base}/tactics`)} />}
+                                label="전술"
+                                onClick={() => navigate(`${base}/tactics`)}
+                            />
+                        )}
                     </>
                 )}
                 {isDraftComplete && (
@@ -206,7 +209,7 @@ export const MultiSidebar: React.FC = () => {
                             종료일(allStarEnd)에 사라지도록 가상 캘린더 날짜를 실제로 비교한다
                             (showAllStar, isAllStarWindowActive) — 원래는 tournament 여부만
                             체크하고 기간 조건이 아예 없어 끝나도 안 사라지던 버그. */}
-                        {league?.type !== 'tournament' && showAllStar && (
+                        {!isSpectator && league?.type !== 'tournament' && showAllStar && (
                             <NavItem
                                 active={pathname.startsWith(`${base}/allstar`)}
                                 icon={<NavIcon name="allstar" active={pathname.startsWith(`${base}/allstar`)} />}
@@ -241,6 +244,7 @@ export const MultiSidebar: React.FC = () => {
                             onClick={() => navigate(`${base}/schedule`)}
                         />
                         {/* [2026-10-14] 리그 메뉴(순위~일정)와 선수 이동 메뉴(트레이드·자유 계약) 사이 구분선 */}
+                        {!isSpectator && (<>
                         <Divider />
                         {/* [2026-10-14] 자유 계약은 트레이드 화면의 ?tab=fa 하위 탭 — 아이콘은 둘 다 두고 활성 판정만 탭으로 가른다. */}
                         <NavItem
@@ -256,6 +260,7 @@ export const MultiSidebar: React.FC = () => {
                             label="자유 계약"
                             onClick={() => navigate(`${base}/transaction?tab=fa`)}
                         />
+                        </>)}
                         {/* [2026-10-18] 도구 메뉴(헤더 "도구" 드롭다운과 동일 항목) */}
                         <Divider />
                         <NavItem

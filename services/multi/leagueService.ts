@@ -454,6 +454,8 @@ export interface UpdateLeagueSettingsParams {
     tradeDeadlineDate?:   string | null;
     /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 위 날짜가 있어도 무시. */
     tradeDeadlineEnabled?: boolean;
+    /** [2026-10-19] 비참가 로그인 유저의 읽기 전용 관전 허용(in_progress/finished에서만 유효). */
+    spectateEnabled?: boolean;
     /** [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 강제 여부. cap_enabled와
      *  별개 축 — respond_trade_offer(accept)가 cap_enabled && 이 값일 때만 강제한다. */
     tradeSalaryMatchingEnabled?: boolean;
@@ -524,6 +526,7 @@ export const updateLeagueSettings = async (
     if (p.capGrowthRate        !== undefined) payload.cap_growth_rate         = p.capGrowthRate;
     if (p.tradeDeadlineDate    !== undefined) payload.trade_deadline_date     = p.tradeDeadlineDate;
     if (p.tradeDeadlineEnabled !== undefined) payload.trade_deadline_enabled  = p.tradeDeadlineEnabled;
+    if (p.spectateEnabled      !== undefined) payload.spectate_enabled        = p.spectateEnabled;
     if (p.tradeSalaryMatchingEnabled !== undefined) payload.trade_salary_matching_enabled = p.tradeSalaryMatchingEnabled;
     if (p.maxRosterSize        !== undefined) payload.max_roster_size         = p.maxRosterSize;
     if (p.twoWayDeadlineDate   !== undefined) payload.two_way_deadline_date   = p.twoWayDeadlineDate;

@@ -5,7 +5,7 @@ import { Button } from '../../../components/common/Button';
 import { Spinner } from '../../../components/common/Spinner';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp, Link2, Copy, Check, UserPlus } from 'lucide-react';
+import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp, Link2, Copy, Check, UserPlus, Eye } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
 import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague, kickMemberToAi, createLeagueInvite, revokeLeagueInvite, listPendingInvites, buildInviteUrl, type LeagueInviteRow } from '../../../services/multi/leagueService';
@@ -168,6 +168,7 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── form state ────────────────────────────────────────────────────────────
     const [nameInput,    setNameInput]    = useState('');
+    const [spectateEnabled, setSpectateEnabled] = useState(false);
     const [lotteryAt,         setLotteryAt]         = useState('');
     const [draftAt,           setDraftAt]           = useState('');
     const [tournamentStartAt, setTournamentStartAt] = useState('');
@@ -325,6 +326,7 @@ const LeagueSettingsView: React.FC = () => {
         if (initializedLeagueIdRef.current === league.id) return;
         initializedLeagueIdRef.current = league.id;
         setNameInput(league.name);
+        setSpectateEnabled(!!league.spectate_enabled);
         setLotteryAt(toInputValue(league.lottery_scheduled_at));
         setDraftAt(toInputValue(league.draft_scheduled_at));
         setTournamentStartAt(toInputValue((league as any).tournament_start_at));
@@ -435,6 +437,7 @@ const LeagueSettingsView: React.FC = () => {
             ...(trimmedName && trimmedName !== league.name ? { name: trimmedName } : {}),
             maxTeams,
             ...(playoffEditable ? { playoffTeamCount: playoffTeamsPerConf, playInEnabled } : {}),
+            spectateEnabled,
         });
         setSavingLeague(false);
         if (err) { setSaveLeagueErr(err); return; }
@@ -785,7 +788,8 @@ const LeagueSettingsView: React.FC = () => {
         playoffTeamsPerConf !== (league.playoff_team_count ?? 8) ||
         playInEnabled !== (league.play_in_enabled ?? true)
     );
-    const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isPlayoffDirty;
+    const isSpectateDirty = spectateEnabled !== !!league.spectate_enabled;
+    const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isPlayoffDirty || isSpectateDirty;
 
     const isDraftTabDirty = !isInProgress && (
         lotteryAt !== toInputValue(league.lottery_scheduled_at) ||
@@ -1206,6 +1210,28 @@ const LeagueSettingsView: React.FC = () => {
                                 <InfoRow label="샐러리캡" value={capEnabled ? '켜짐' : '꺼짐'} />
                                 <InfoRow label="CBA 규정(버드권한/RFA-QO/협상)" value={cbaRulesEnabled ? '켜짐' : '꺼짐'} />
                             </div>
+                        </section>
+
+                        <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-3">
+                            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                                <Eye size={14} className="text-indigo-400" />
+                                관전 허용
+                            </h2>
+                            <div className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                                spectateEnabled ? 'bg-amber-600/20 border border-amber-600/50' : 'bg-slate-900/60 border border-transparent'
+                            }`}>
+                                <input
+                                    type="checkbox"
+                                    checked={spectateEnabled}
+                                    onChange={e => setSpectateEnabled(e.target.checked)}
+                                    className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                                />
+                                <span className={`text-xs font-bold flex-1 ${spectateEnabled ? 'text-white' : 'text-slate-400'}`}>참가하지 않은 유저의 관전 허용</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 ko-normal px-1">
+                                켜면 로그인한 비참가자가 홈·뉴스·팀(로스터)·순위·리더보드·일정·선수 비교를 읽기 전용으로 볼 수 있습니다.
+                                전술·트레이드·자유 계약 등 모든 행동은 막히며, 드래프트 단계(모집·드래프트 중)에는 관전할 수 없습니다.
+                            </p>
                         </section>
 
                         {!isInProgress && (

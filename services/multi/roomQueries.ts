@@ -138,6 +138,9 @@ export interface LeagueRow {
     /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 trade_deadline_date
      *  값이 있어도 무시(무제한) — cap_enabled/luxury_tax_enabled와 동일한 on/off + 값 패턴. */
     trade_deadline_enabled: boolean;
+    /** [2026-10-19] 참가하지 않은 로그인 유저의 읽기 전용 관전 허용 여부. in_progress/finished 상태에서만 유효
+     *  (recruiting/drafting은 항상 불가). 실제 접근 통제는 DB의 spectatable_room_ids() RLS가 담당. 기본 false. */
+    spectate_enabled: boolean;
     /** [2026-09-29] CBA 샐러리 매칭(캡/에이프런 구간별 트레이드 제약) 강제 여부. cap_enabled와는
      *  별개 축 — 캡 금액은 추적하되 트레이드 매칭까진 원치 않는 캐주얼 리그를 지원. 기본 true.
      *  respond_trade_offer(accept)가 cap_enabled && trade_salary_matching_enabled일 때만 강제. */

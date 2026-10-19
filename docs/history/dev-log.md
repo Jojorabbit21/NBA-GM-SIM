@@ -33,36 +33,85 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
----
+## 2026-10-19 — 멀티 리그 관전(Spectate) 모드: 비참가 로그인 유저의 읽기 전용 열람
 
-## 2026-10-19 — 공격 리바운드 후 샷클락 바이올레이션 문구 분기
-
-**배경**: 공격 리바운드로 샷클락이 14초로 리셋된 뒤 바이올레이션이 나면 시간은 14초만 소진되는데 로그는 "24초 샷클락 바이올레이션"으로 표기됨.
+**배경**: 리그에 가입하지 않은 사람이 리그를 둘러볼 수 있게, 단 모든 행동은 막기. 결정사항: ①로그인한 유저만 ②보이는 메뉴는 홈/뉴스/팀(로스터)/순위/리더보드/일정/선수비교(+순위경쟁·플레이오프 읽기 전용), 전술·트레이드·자유계약은 숨김 ③리그별 관전 허용 토글 ④모집(recruiting)/드래프트(drafting) 단계는 관전 불가. 기존 RLS는 진행 중 리그를 멤버에게만 열어 두어(`my_room_ids()`) 화면만 풀어서는 데이터가 비어 오므로 DB 정책부터 확장.
 
 **변경 파일**:
-- `services/game/engine/pbp/statsMappers.ts` (client, `applyPossessionResult`의 shotClockViolation 분기)
-- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
+- `migrations/add_league_spectate.sql` (DB — Supabase에 `add_league_spectate`로 적용 완료)
+- `services/multi/roomQueries.ts` — `LeagueRow.spectate_enabled`
+- `services/multi/leagueService.ts` — `updateLeagueSettings`에 `spectateEnabled` → `spectate_enabled`
+- `utils/spectatorAccess.ts` (신규) — `isLeagueSpectatable()`, `isSpectatorPathAllowed()`(허용 경로 화이트리스트)
+- `components/multi/LeagueAccessBlockedScreen.tsx` (신규) — 관전 불가 안내 화면
+- `views/multi/league/LeagueLayout.tsx` — 참가자/관전자/차단 판정, 컨텍스트에 `isSpectator`
+- `components/MultiSidebar.tsx`, `components/dashboard/MultiHeaderNavMenu.tsx`, `components/MultiHeader.tsx` — 관전자용 메뉴/헤더 축소
+- `views/multi/season/MultiSeasonLayout.tsx` — (배너 추가했다가 같은 날 사용자 요청으로 삭제, 현재 변경 없음. 헤더 우측 "관전 중" 텍스트만 유지)
+- `views/multi/season/MultiRosterView.tsx` — 방출·팀 설정·재정 탭 제거
+- `server/src/index.ts` (Fly 서버, **배포 필요**) — `verifyRoomReadAccess()` 신설, `/live-game`·`/live-games`의 `verifyRoomMember` 호출 2곳을 교체 (멤버 OR 관전 허용 리그). 이게 없으면 경기 상세/라이브 목록이 관전자에게 403
+- `views/home/InlineLeagueList.tsx` — "둘러보기" 버튼
+- `views/multi/league/LeagueSettingsView.tsx` — 리그 탭 "관전 허용" 체크박스(기존 리그 탭 저장 버튼에 통합)
+
+**Before**: 비참가자는 recruiting/drafting 리그만 일부 조회 가능, in_progress/finished 리그는 `rooms`/`games`/`room_members` 등이 RLS로 전부 빈 결과. 프런트에 관전 개념 없음.
+
+**After**:
+```sql
+-- leagues.spectate_enabled boolean NOT NULL DEFAULT false
+-- spectatable_room_ids(): auth.uid() IS NOT NULL AND spectate_enabled AND status IN ('in_progress','finished')
+-- 아래 13개 테이블에 SELECT 전용 *_spectator_select 정책 "추가"(기존 정책/쓰기 정책 무변경)
+rooms, room_members, games, game_pbp(리플레이 지연 동일 적용), league_events(동일), league_player_seasons,
+league_player_awards, league_virtual_days, player_stat_streaks, room_player_state, room_player_instances,
+league_transactions, game_short_codes
+-- 열지 않음: 채팅, league_trade_offers/blocks, personal_draft_progress, league_allstar_votes, draft_picks, 전술 프리셋, 액션 로그
+```
+```ts
+// LeagueLayout: 참가자 = room_members ∪ league_teams.user_id ∪ 리그 어드민 ∪ 전역 어드민
+// 비참가 && 관전 가능 → isSpectator (허용 경로 밖 URL은 /season 홈으로 Navigate)
+// 비참가 && 관전 불가 → LeagueAccessBlockedScreen (모집/드래프트 단계 또는 토글 off)
+// 허용 경로: /season, news, roster, standings, race, playoffs, leaderboard, schedule, compare, game/*, player/*
+```
+
+**검증**: tsc — 수정 파일 오류 0(기존 `DraftView.tsx`·`NegotiationScreen.tsx` 오류는 이전부터 있던 것). DB: 롤백 트랜잭션에서 무작위 uid(비참가자)로 확인 — 토글 OFF 시 rooms/games/members/pbp/events/state 전부 0행, ON 시 rooms=1·members=60·games=2558·pbp=1868·events=6878·state=837·transactions=86 조회, 채팅/트레이드 오퍼·블록/개인드래프트/올스타투표/드래프트픽/프리셋은 0행, rooms·room_members·league_teams·games UPDATE, room_members DELETE, leagues UPDATE 전부 0행. 롤백 후 `spectate_enabled=true` 행 0건 확인. **브라우저 E2E 미실시**.
+
+**주의**: 기본값 false라 적용만으로 노출되는 리그는 없음. `rooms`/`room_members` 행 전체가 읽히므로 API 레벨에서는 전술(`room_members.tactics`)·`rooms.league_trade_*` JSON도 읽을 수 있음(같은 방 멤버에게는 원래 열려 있던 컬럼) — 숨김은 UI 단.
+
+**롤백 방법**: `migrations/add_league_spectate.sql` 맨 아래 ROLLBACK 블록 실행(정책 13개 DROP → 함수 DROP → 컬럼 DROP) 후, 위 클라이언트 파일을 git으로 되돌림. 클라만 되돌리면 정책은 남지만 `spectate_enabled=false`면 무해.
+
+## 2026-10-19 — 멀티 헤더: 시즌 이름을 팀 영역(리그명 앞)으로 이동
+
+**배경**: 헤더 날짜 옆에 따로 있던 "2026-27 시즌" 라벨을 맨 왼쪽 팀 영역으로 옮겨 "0W-0L 1st in 2026-27 Pro Basketball League" 형태로 표시. 기존엔 "1st in"과 리그명 사이 공백이 없어 "1st inPro Basketball League"로 붙어 보이던 것도 같이 수정.
+
+**변경 파일**: `components/MultiHeader.tsx` (client 전용)
 
 **Before**:
-```ts
-addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+```tsx
+{rank > 0 ? `${ordinal(rank)} in` : ''}{league.name}
+...
+{seasonYearLabel && (<span className="text-sm text-text-muted ...">{seasonYearLabel} 시즌</span>)}
 ```
 
 **After**:
-```ts
-const clockStart = Math.round(state.shotClock);
-const vioLabel = clockStart < 24
-    ? `공격 리바운드 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
-    : '24초 샷클락 바이올레이션';
-addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+```tsx
+{rank > 0 ? `${ordinal(rank)} in ` : ''}{seasonYearLabel ? `${seasonYearLabel} ` : ''}{league.name}
+// 날짜 옆 "시즌" 라벨 span 삭제
 ```
-(applyPossessionResult 시점엔 state.shotClock이 아직 포세션 시작값 — liveEngine에서 포세션 전환 블록이 이후에 갱신)
+`seasonYearLabel`이 없으면(가상 날짜/다음 경기 없음) 시즌 문구 없이 리그명만. 순위가 없으면 "2026-27 {리그명}".
 
-**추가(같은 날) — 플래그런트 분기**: `lastEntryWasFlagrant` 상태 필드 신설(pbpTypes.ts, liveEngine.ts 양쪽 client/server 미러), 문구는 24초 / 공격 리바운드 후 / 플래그런트 파울 후 / 그 외(테크니컬 등) "남은 N초"로 4분기. 롤백: 필드·세팅 2줄 제거 + 3항 연산을 단일 분기로 복원.
+**추가(같은 날)**: 사용자 요청으로 순위 표기("1st in")도 제거 — 최종 표시는 `{시즌} {리그명}`. 순위 계산(`sorted`/`pct`/`rank` 반환)과 `ordinal()` 함수도 같이 삭제(다른 사용처 없음), 메모 deps에서 `leagueTeams` 제거.
+```tsx
+// 삭제된 순위 계산
+const pct = (t) => t.w + t.l === 0 ? 0 : t.w / (t.w + t.l);
+const sorted = leagueTeams.map(t => ({ id: t.team_slug, ...(wlMap[t.team_slug] ?? { w: 0, l: 0 }) })).sort((a, b) => pct(b) - pct(a) || b.w - a.w);
+return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
+```
 
-**검증**: 타입 검사/실경기 미실행 (코드 리뷰만)
+**추가(같은 날)**: 팀 영역 순서를 `[시즌] [리그명] [로고] [팀이름] [성적]`으로 재배치. 시즌+리그명은 로고 앞의 별도 span(`font-medium opacity-80 whitespace-nowrap shrink-0 mr-2.5`), 팀이름+성적은 기존 truncate span에 유지. 팀이름이 길면 팀이름 쪽만 잘리고 시즌/리그명은 안 잘린다.
+```tsx
+// 이전: [로고] [팀이름 성적 시즌 리그명](한 span, truncate)
+```
 
-**롤백 방법**: After 블록을 Before 한 줄로 되돌림 (두 파일 모두)
+**검증**: tsc 해당 파일 오류 없음. 브라우저 육안 확인 미실시.
+
+**롤백 방법**: 위 Before 블록과 삭제된 순위 계산으로 복원(git 이전 커밋 `516ac371`의 MultiHeader.tsx 기준).
 
 ## 2026-10-19 — 리그 홈: 리그/팀 배경 배너 제거, 리그 로고+리그 이름+리그 상태 큰 텍스트로 교체
 
@@ -115,44 +164,34 @@ Before: `getSeriesRoundLabel({ round: minRound }, allSeries)` / "플레이오프
 
 ---
 
-## 2026-10-19 — 멀티 헤더: 시즌 이름을 팀 영역(리그명 앞)으로 이동
+## 2026-10-19 — 공격 리바운드 후 샷클락 바이올레이션 문구 분기
 
-**배경**: 헤더 날짜 옆에 따로 있던 "2026-27 시즌" 라벨을 맨 왼쪽 팀 영역으로 옮겨 "0W-0L 1st in 2026-27 Pro Basketball League" 형태로 표시. 기존엔 "1st in"과 리그명 사이 공백이 없어 "1st inPro Basketball League"로 붙어 보이던 것도 같이 수정.
+**배경**: 공격 리바운드로 샷클락이 14초로 리셋된 뒤 바이올레이션이 나면 시간은 14초만 소진되는데 로그는 "24초 샷클락 바이올레이션"으로 표기됨.
 
-**변경 파일**: `components/MultiHeader.tsx` (client 전용)
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client, `applyPossessionResult`의 shotClockViolation 분기)
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러)
 
 **Before**:
-```tsx
-{rank > 0 ? `${ordinal(rank)} in` : ''}{league.name}
-...
-{seasonYearLabel && (<span className="text-sm text-text-muted ...">{seasonYearLabel} 시즌</span>)}
+```ts
+addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
 ```
 
 **After**:
-```tsx
-{rank > 0 ? `${ordinal(rank)} in ` : ''}{seasonYearLabel ? `${seasonYearLabel} ` : ''}{league.name}
-// 날짜 옆 "시즌" 라벨 span 삭제
+```ts
+const clockStart = Math.round(state.shotClock);
+const vioLabel = clockStart < 24
+    ? `공격 리바운드 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+    : '24초 샷클락 바이올레이션';
+addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
 ```
-`seasonYearLabel`이 없으면(가상 날짜/다음 경기 없음) 시즌 문구 없이 리그명만. 순위가 없으면 "2026-27 {리그명}".
+(applyPossessionResult 시점엔 state.shotClock이 아직 포세션 시작값 — liveEngine에서 포세션 전환 블록이 이후에 갱신)
 
-**추가(같은 날)**: 사용자 요청으로 순위 표기("1st in")도 제거 — 최종 표시는 `{시즌} {리그명}`. 순위 계산(`sorted`/`pct`/`rank` 반환)과 `ordinal()` 함수도 같이 삭제(다른 사용처 없음), 메모 deps에서 `leagueTeams` 제거.
-```tsx
-// 삭제된 순위 계산
-const pct = (t) => t.w + t.l === 0 ? 0 : t.w / (t.w + t.l);
-const sorted = leagueTeams.map(t => ({ id: t.team_slug, ...(wlMap[t.team_slug] ?? { w: 0, l: 0 }) })).sort((a, b) => pct(b) - pct(a) || b.w - a.w);
-return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
-```
+**추가(같은 날) — 플래그런트 분기**: `lastEntryWasFlagrant` 상태 필드 신설(pbpTypes.ts, liveEngine.ts 양쪽 client/server 미러), 문구는 24초 / 공격 리바운드 후 / 플래그런트 파울 후 / 그 외(테크니컬 등) "남은 N초"로 4분기. 롤백: 필드·세팅 2줄 제거 + 3항 연산을 단일 분기로 복원.
 
-**추가(같은 날)**: 팀 영역 순서를 `[시즌] [리그명] [로고] [팀이름] [성적]`으로 재배치. 시즌+리그명은 로고 앞의 별도 span(`font-medium opacity-80 whitespace-nowrap shrink-0 mr-2.5`), 팀이름+성적은 기존 truncate span에 유지. 팀이름이 길면 팀이름 쪽만 잘리고 시즌/리그명은 안 잘린다.
-```tsx
-// 이전: [로고] [팀이름 성적 시즌 리그명](한 span, truncate)
-```
+**검증**: 타입 검사/실경기 미실행 (코드 리뷰만)
 
-**검증**: tsc 해당 파일 오류 없음. 브라우저 육안 확인 미실시.
-
-**롤백 방법**: 위 Before 블록과 삭제된 순위 계산으로 복원(git 이전 커밋 `516ac371`의 MultiHeader.tsx 기준).
-
----
+**롤백 방법**: After 블록을 Before 한 줄로 되돌림 (두 파일 모두)
 
 ## 2026-10-19 — 멀티 헤더에 가상 하루 바(VirtualDayArc) 적용
 

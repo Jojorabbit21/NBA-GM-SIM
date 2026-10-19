@@ -35,7 +35,7 @@ function fmtVirtualDate(dateKey: string): string {
 }
 
 export const MultiHeader: React.FC = () => {
-    const { league, leagueTeams, members , timeline } = useLeagueContext();
+    const { league, leagueTeams, members , timeline, isSpectator } = useLeagueContext();
     const { session } = useGame();
     const { schedule, roomId } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
@@ -347,8 +347,8 @@ export const MultiHeader: React.FC = () => {
                         <TeamLogo teamId={myTeam.team_slug} teamName={myTeam.team_abbr} size="custom" className="relative w-5 h-5 shrink-0 mr-1.5" shadow={false} />
                     )}
                     <span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
-                        {myTeam?.team_name ?? '내 팀'}
-                        <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>
+                        {isSpectator ? '관전 중' : (myTeam?.team_name ?? '내 팀')}
+                        {!isSpectator && <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>}
                     </span>
                 </div>
 
@@ -456,6 +456,7 @@ export const MultiHeader: React.FC = () => {
                     showPlayoffRace={showPlayoffRace}
                     capEnabled={!!league?.cap_enabled}
                     isDraftComplete={isDraftComplete}
+                    isSpectator={isSpectator}
                     onViewPlayer={handleViewPlayer}
                     onViewTeam={handleViewTeam}
                 />

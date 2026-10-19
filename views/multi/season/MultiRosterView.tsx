@@ -61,7 +61,7 @@ function buildGameLeadersMap(pbpRows: any[]): Map<string, GameLeaders> {
 }
 
 const MultiRosterView: React.FC = () => {
-    const { league, room, leagueTeams, members, isLoading: leagueLoading, reload , timeline } = useLeagueContext();
+    const { league, room, leagueTeams, members, isLoading: leagueLoading, reload , timeline, isSpectator } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
     const { session } = useGame();
     const { schedule, currentSimDate: roomSimDate } = useSeasonContext();
@@ -311,10 +311,11 @@ const MultiRosterView: React.FC = () => {
                     enableHoverCard
                     hideTabs={['coaching', 'draftPicks']}
                     teamNicknames={teamNicknames}
-                    capSettings={capSettings}
+                    capSettings={isSpectator ? undefined : capSettings}
                     baseSeasonYear={baseSeasonYear}
-                    onReleasePlayer={handleReleasePlayer}
-                    enableTeamSettingsTab
+                    // [2026-10-19] 관전자는 방출·팀 설정 없음, 재정 탭도 숨김(capSettings 미전달 시 RosterView가 자동으로 숨김)
+                    onReleasePlayer={isSpectator ? undefined : handleReleasePlayer}
+                    enableTeamSettingsTab={!isSpectator}
                     renderTeamSettingsPanel={() => <TeamSettingsPanel />}
                     advancedStatsByTeam={advancedStatsByTeam}
                     maxRosterSize={(league as any)?.max_roster_size}
