@@ -35,6 +35,44 @@
 
 ---
 
+## 2026-10-19 — 퇴장 판정을 pf=6 마커에서 ejectionReason 기반으로 분리 + 플래그런트 1 두 번 퇴장
+
+**배경**: 플래그런트 2로 들어오자마자 퇴장당한 선수가 박스스코어에 PF 6(파울아웃)으로 찍힘. 원인은 테크니컬 2회/플래그런트 2/싸움 퇴장 시 `pf = 6`을 퇴장 마커로 덮어쓰고, 코트 복귀 차단이 `pf >= 6 / pf < 6`에 의존했기 때문. NBA에서는 플래그런트 2도 PF 1개, 테크니컬은 PF 미포함(TF 별도)이며 퇴장은 개수와 무관. 추가로 NBA 규정(한 경기 플래그런트 1 두 번 = 퇴장)이 미구현이던 것도 같이 반영.
+
+**변경 파일** (client / server 미러 모두 동일 변경):
+- `services/game/engine/pbp/pbpTypes.ts` ↔ `server/src/shared/engine/pbp/pbpTypes.ts` — `isOut(p)` 헬퍼 추가
+- `services/game/engine/pbp/statsMappers.ts` ↔ `server/src/shared/engine/pbp/statsMappers.ts` — `pf = 6` 덮어쓰기 제거(테크니컬 퇴장/플래그런트 2/싸움), 플래그런트 1 두 번째 시 퇴장 추가
+- `services/game/engine/pbp/rotationLogic.ts` ↔ `server/src/shared/engine/pbp/rotationLogic.ts` — `pf < 6`/`pf >= 6` 12곳 → `isOut()`
+- `services/game/engine/pbp/substitutionSystem.ts` ↔ `server/src/shared/engine/pbp/substitutionSystem.ts` — `pf >= 6` 3곳 → `isOut()`
+
+**Before**:
+```ts
+// statsMappers: 테크니컬 2회 / 플래그런트 2 / 싸움
+defender.pf = 6;
+defender.ejectionReason = 'technical' | 'flagrant';
+fighter.pf = 6;  opponent.pf = 6;   // + ejectionReason = 'fight'
+// rotationLogic / substitutionSystem
+p.pf < 6 ... / p.pf >= 6 ...
+// 플래그런트 1 두 번째: 퇴장 없음
+```
+
+**After**:
+```ts
+// pbpTypes
+export function isOut(p) { return p.pf >= 6 || p.ejectionReason !== undefined; }
+// statsMappers: pf는 건드리지 않고 ejectionReason만 설정 (commitFoul의 +1만 반영)
+defender.ejectionReason = 'technical' | 'flagrant';
+// 플래그런트 1: defender.flagrantFouls >= 2 && !isFlagrant2 && 미퇴장 → ejectionReason='flagrant' + 로그 문구
+// rotationLogic / substitutionSystem: !isOut(p) / isOut(p)
+```
+
+**검증**: tsc(client, server) engine/pbp 오류 없음. 실제 시뮬 경기 확인은 별도.
+
+**롤백 방법**: 위 8개 파일을 `git checkout <커밋 이전>`으로 되돌리거나, `isOut(x)`를 `x.pf >= 6`, `!isOut(x)`를 `x.pf < 6`으로 되돌리고 statsMappers에 `pf = 6` 덮어쓰기 4곳(테크니컬/플래그런트 2/싸움 2명) 복원, 플래그런트 1 두 번 퇴장 블록 삭제. 반드시 client/server 같이.
+**주의**: 이미 저장된 과거 경기의 박스스코어는 `pf=6`으로 남아 있고 소급 복원 불가. 서버는 Fly 배포 전까진 구버전이 돌아감.
+
+---
+
 ## 2026-10-19 — 멀티 팀 어드밴스드 스탯 기준 통일 (BBRef 공통 포제션, 서버 RPC 일원화)
 
 **배경**: 멀티 팀 화면 헤더 Pace(RPC, BBRef 포제션)와 리더보드 팀 > 어드밴스드 PACE(useLeaderboardData, 단순식 `FGA+0.44FTA+TOV-ORB`)가 약 +1 어긋남(실측 ATL 96.2 vs 97.1). ORTG/DRTG도 동일 원인으로 약 1 차이. 추가로 RPC는 (1) 플레이오프 혼합(ATL 100경기 = 82+18), (2) 올스타/라이징스타 4팀이 팀 행으로 섞여 헤더 "리그 N위" 순위 오염. 사용자 결정: BBRef 공통 포제션 + TOV%도 BBRef + 서버 RPC 일원화 + 이번엔 멀티만 + 선수 STL%/USG%도 맞춤. 플레이오프 플래그는 `game_pbp`에 복제하지 않고 형제 RPC처럼 `games` 조인 사용(실측: game_pbp 1,328행 전부 games에 짝 있음).

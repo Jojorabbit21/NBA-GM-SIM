@@ -336,7 +336,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         let ftMade = 0;
         if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
         const isEjected = defender && (defender.techFouls || 0) >= 2;
-        if (isEjected && defender) { defender.pf = 6; defender.ejectionReason = 'technical'; }
+        if (isEjected && defender) { defender.ejectionReason = 'technical'; }
         const commentaryBase = defender ? getTechnicalFoulCommentary(defender) : `테크니컬 파울이 선언됩니다!`;
         const ejectionSuffix = isEjected ? ' 2번째 테크니컬 파울로 퇴장당합니다.' : '';
         // [2026-10-07] 파울 로그 → 자유투 로그(freethrow 타입, 팀 PTS 집계 포함) 분리 (client 미러 참조)
@@ -363,11 +363,15 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // [2026-10-07] 파울 로그 → 자유투 로그 분리, 구조 "내용. [6반칙으로 파울 아웃됩니다.] (N반칙, 팀 N반칙)" (client 미러 참조)
         let foulLog = commentary;
         if (fouledOut && defender && !isFlagrant2) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+        // [2026-10-19] NBA 규정: 한 경기에서 플래그런트 1을 두 번째로 받으면 자동 퇴장(PF는 그대로 +1만)
+        if (defender && !isFlagrant2 && (defender.flagrantFouls || 0) >= 2 && !defender.ejectionReason) {
+            defender.ejectionReason = 'flagrant';
+            foulLog += ' 플래그런트 1을 두 번째로 받아 퇴장당합니다.';
+        }
         foulLog += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
         addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
         addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공. ${regionOf(offTeam)}의 공격권이 유지됩니다.`, 'freethrow', ftMade);  // [2026-10-08] client 미러
         if (isFlagrant2 && defender) {
-            defender.pf = 6;  // [2026-10-07] 🚨 전용 로그 삭제 — F2 커멘터리가 퇴장 언급(client 미러)
             defender.ejectionReason = 'flagrant';
         }
 
@@ -381,8 +385,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const opponent = result.fightOpponent;
         const fighterSusp = result.fighterSuspension ?? 1;
         const oppSusp     = result.opponentSuspension ?? 1;
-        if (fighter)  { fighter.pf = 6;  fighter.ejectionReason = 'fight';  fighter.techFouls  = (fighter.techFouls  || 0) + 2; }
-        if (opponent) { opponent.pf = 6; opponent.ejectionReason = 'fight'; opponent.techFouls = (opponent.techFouls || 0) + 1; }
+        if (fighter)  { fighter.ejectionReason = 'fight';  fighter.techFouls  = (fighter.techFouls  || 0) + 2; }
+        if (opponent) { opponent.ejectionReason = 'fight'; opponent.techFouls = (opponent.techFouls || 0) + 1; }
         const timeStr = formatTime(state.gameClock);
         if (fighter && opponent) {
             // [2026-10-07] 출장정지 줄 제거(경기 후 뉴스피드가 전달) — 클라이언트 statsMappers.ts 미러

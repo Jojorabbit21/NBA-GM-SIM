@@ -1,5 +1,5 @@
 
-import { GameState, TeamState, LivePlayer, RotationOverride } from './pbpTypes';
+import { GameState, TeamState, LivePlayer, RotationOverride, isOut } from './pbpTypes';
 import { DepthChart, RotationOutReason } from '../../../../types';
 import { formatTime } from './timeEngine';
 import { evaluateFoulTroubleAction } from './substitutionSystem';
@@ -83,7 +83,7 @@ function getDepthChartCandidates(
 function findResCandidate(team: TeamState, targetPosition: string, excludeIds: Set<string>, allowShutdown: boolean = false): LivePlayer | null {
     const candidates = team.bench.filter(p =>
         p.health === 'Healthy' &&
-        p.pf < 6 &&
+        !isOut(p) &&
         !excludeIds.has(p.playerId) &&
         (allowShutdown || !p.isShutdown)
     );
@@ -222,7 +222,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
              if (m[currentMinute]) {
                  const p = [...teamState.onCourt, ...teamState.bench].find(lp => lp.playerId === pid);
                  // 출전 가능 상태: 건강함 + 파울 6개 미만 + (사용자가 명시한 경우 Shutdown 무시하고 뜀)
-                 if (p && p.health === 'Healthy' && p.pf < 6) {
+                 if (p && p.health === 'Healthy' && !isOut(p)) {
                      validSelectedIds.add(pid);
                  }
              }
@@ -241,19 +241,19 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
         };
         const needCount = 5 - validSelectedIds.size;
         let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
-            p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+            p.health === 'Healthy' && !isOut(p) && !p.isShutdown && !validSelectedIds.has(p.playerId)
             && !p.benchReason && !justRested(p)
         );
         if (allAvailable.length < needCount) {
             allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+                p.health === 'Healthy' && !isOut(p) && !p.isShutdown && !validSelectedIds.has(p.playerId)
             );
         }
 
         // 2단계(비상): 인원이 부족하면 탈진한 선수라도 포함 (기권패 방지)
         if (validSelectedIds.size + allAvailable.length < 5) {
             const tiredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Healthy' && p.pf < 6 && p.isShutdown && !validSelectedIds.has(p.playerId)
+                p.health === 'Healthy' && !isOut(p) && p.isShutdown && !validSelectedIds.has(p.playerId)
             );
             allAvailable = [...allAvailable, ...tiredPlayers];
         }
@@ -261,7 +261,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
         // 3단계(최후): 건강한 선수가 5명이 안 될 때 부상 선수라도 포함
         if (validSelectedIds.size + allAvailable.length < 5) {
             const injuredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Injured' && p.pf < 6 && !validSelectedIds.has(p.playerId)
+                p.health === 'Injured' && !isOut(p) && !validSelectedIds.has(p.playerId)
             );
             allAvailable.push(...injuredPlayers);
         }
@@ -360,14 +360,14 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
 
     // 2. 즉시 교체 대상 찾기
     // 건강하고 파울 아웃되지 않은 선수 중, 셧다운되지 않은 선수 우선
-    let available = team.bench.filter(p => p.health === 'Healthy' && p.pf < 6 && !p.isShutdown);
+    let available = team.bench.filter(p => p.health === 'Healthy' && !isOut(p) && !p.isShutdown);
     // 비상시: 셧다운된 선수라도 데려옴
     if (available.length === 0) {
-        available = team.bench.filter(p => p.health === 'Healthy' && p.pf < 6);
+        available = team.bench.filter(p => p.health === 'Healthy' && !isOut(p));
     }
     // 3차 비상: 건강한 선수가 없으면 부상 선수라도 투입
     if (available.length === 0) {
-        available = team.bench.filter(p => p.pf < 6);
+        available = team.bench.filter(p => !isOut(p));
     }
     
     let inPlayer: LivePlayer | undefined;
@@ -569,7 +569,7 @@ export function checkTemporaryReturns(
         }
 
         // 영구 퇴장 사유 발생 시 즉시 비활성화
-        if (player.health === 'Injured' || player.pf >= 6) {
+        if (player.health === 'Injured' || isOut(player)) {
             override.active = false;
             player.benchReason = null;
             continue;
@@ -698,7 +698,7 @@ export function handleFillerExit(
     );
 
     // 원래 선수가 복귀 가능한지 체크
-    if (originalPlayer && originalPlayer.health === 'Healthy' && originalPlayer.pf < 6) {
+    if (originalPlayer && originalPlayer.health === 'Healthy' && !isOut(originalPlayer)) {
         if (override.reason === 'shutdown' && !originalPlayer.isShutdown && originalPlayer.currentCondition > 70) {
             restorePlayerMap(state, team, originalPlayer, currentMinute);
             override.active = false;
@@ -763,7 +763,7 @@ export function executeGarbageSubstitution(
 
     // 벤치에서 투입 가능한 선수: 건강 + 파울아웃 아님
     const available = team.bench
-        .filter(p => p.health === 'Healthy' && p.pf < 6
+        .filter(p => p.health === 'Healthy' && !isOut(p)
             && team.tactics.playerTactics?.[p.playerId]?.garbagePolicy !== 'bench')
         .sort((a, b) => a.ovr - b.ovr); // OVR 낮은 순 (가비지 멤버 우선)
 

@@ -484,8 +484,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // 2 테크니컬 = 자동 퇴장
         const isEjected = defender && (defender.techFouls || 0) >= 2;
         if (isEjected && defender) {
-            defender.pf = 6;
-            defender.ejectionReason = 'technical';
+            defender.ejectionReason = 'technical'; // pf는 건드리지 않음 — 퇴장은 isOut()이 ejectionReason으로 판정
         }
 
         // 해설 텍스트
@@ -532,6 +531,11 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // 6반칙 문장은 F1에서 6번째 파울이 된 경우에만 붙임. 자유투는 freethrow 타입(팀 PTS 집계 포함).
         let foulLog = commentary;
         if (fouledOut && defender && !isFlagrant2) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+        // [2026-10-19] NBA 규정: 한 경기에서 플래그런트 1을 두 번째로 받으면 자동 퇴장(PF는 그대로 +1만)
+        if (defender && !isFlagrant2 && (defender.flagrantFouls || 0) >= 2 && !defender.ejectionReason) {
+            defender.ejectionReason = 'flagrant';
+            foulLog += ' 플래그런트 1을 두 번째로 받아 퇴장당합니다.';
+        }
         foulLog += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
         addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
         // [2026-10-08] 플래그런트는 파울당한 팀(offTeam)이 자유투 후 공격권 유지 — 로그에 명시
@@ -539,7 +543,6 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
         // F2 = 즉시 퇴장. [2026-10-07] getFlagrant2Commentary 문장 풀이 전부 퇴장을 언급하므로 🚨 전용 로그 삭제
         if (isFlagrant2 && defender) {
-            defender.pf = 6;
             defender.ejectionReason = 'flagrant';
         }
 
@@ -560,12 +563,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const oppSusp = result.opponentSuspension ?? 1;
 
         if (fighter) {
-            fighter.pf = 6; // 퇴장
             fighter.ejectionReason = 'fight';
             fighter.techFouls = (fighter.techFouls || 0) + 2; // 자동 2 테크니컬
         }
         if (opponent) {
-            opponent.pf = 6; // 퇴장
             opponent.ejectionReason = 'fight';
             opponent.techFouls = (opponent.techFouls || 0) + 1;
         }

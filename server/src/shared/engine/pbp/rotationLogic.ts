@@ -1,5 +1,5 @@
 
-import { GameState, TeamState, LivePlayer, RotationOverride } from './pbpTypes.ts';
+import { GameState, TeamState, LivePlayer, RotationOverride, isOut } from './pbpTypes.ts';
 import { DepthChart, RotationOutReason } from '../../types.ts';
 import { formatTime } from './timeEngine.ts';
 import { evaluateFoulTroubleAction } from './substitutionSystem.ts';
@@ -69,7 +69,7 @@ function getDepthChartCandidates(
 function findResCandidate(team: TeamState, targetPosition: string, excludeIds: Set<string>, allowShutdown: boolean = false): LivePlayer | null {
     const candidates = team.bench.filter(p =>
         p.health === 'Healthy' &&
-        p.pf < 6 &&
+        !isOut(p) &&
         !excludeIds.has(p.playerId) &&
         (allowShutdown || !p.isShutdown)
     );
@@ -180,7 +180,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
          Object.entries(map).forEach(([pid, m]) => {
              if (m[currentMinute]) {
                  const p = [...teamState.onCourt, ...teamState.bench].find(lp => lp.playerId === pid);
-                 if (p && p.health === 'Healthy' && p.pf < 6) {
+                 if (p && p.health === 'Healthy' && !isOut(p)) {
                      validSelectedIds.add(pid);
                  }
              }
@@ -198,25 +198,25 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
         };
         const needCount = 5 - validSelectedIds.size;
         let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
-            p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+            p.health === 'Healthy' && !isOut(p) && !p.isShutdown && !validSelectedIds.has(p.playerId)
             && !p.benchReason && !justRested(p)
         );
         if (allAvailable.length < needCount) {
             allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Healthy' && p.pf < 6 && !p.isShutdown && !validSelectedIds.has(p.playerId)
+                p.health === 'Healthy' && !isOut(p) && !p.isShutdown && !validSelectedIds.has(p.playerId)
             );
         }
 
         if (validSelectedIds.size + allAvailable.length < 5) {
             const tiredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Healthy' && p.pf < 6 && p.isShutdown && !validSelectedIds.has(p.playerId)
+                p.health === 'Healthy' && !isOut(p) && p.isShutdown && !validSelectedIds.has(p.playerId)
             );
             allAvailable = [...allAvailable, ...tiredPlayers];
         }
 
         if (validSelectedIds.size + allAvailable.length < 5) {
             const injuredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
-                p.health === 'Injured' && p.pf < 6 && !validSelectedIds.has(p.playerId)
+                p.health === 'Injured' && !isOut(p) && !validSelectedIds.has(p.playerId)
             );
             allAvailable.push(...injuredPlayers);
         }
@@ -306,12 +306,12 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
 
     applyRotationSuccession(team, outPlayer, currentMinute);
 
-    let available = team.bench.filter(p => p.health === 'Healthy' && p.pf < 6 && !p.isShutdown);
+    let available = team.bench.filter(p => p.health === 'Healthy' && !isOut(p) && !p.isShutdown);
     if (available.length === 0) {
-        available = team.bench.filter(p => p.health === 'Healthy' && p.pf < 6);
+        available = team.bench.filter(p => p.health === 'Healthy' && !isOut(p));
     }
     if (available.length === 0) {
-        available = team.bench.filter(p => p.pf < 6);
+        available = team.bench.filter(p => !isOut(p));
     }
 
     let inPlayer: LivePlayer | undefined;
@@ -478,7 +478,7 @@ export function checkTemporaryReturns(
             continue;
         }
 
-        if (player.health === 'Injured' || player.pf >= 6) {
+        if (player.health === 'Injured' || isOut(player)) {
             override.active = false;
             player.benchReason = null;
             continue;
@@ -584,7 +584,7 @@ export function handleFillerExit(
         p => p.playerId === override.outPlayerId
     );
 
-    if (originalPlayer && originalPlayer.health === 'Healthy' && originalPlayer.pf < 6) {
+    if (originalPlayer && originalPlayer.health === 'Healthy' && !isOut(originalPlayer)) {
         if (override.reason === 'shutdown' && !originalPlayer.isShutdown && originalPlayer.currentCondition > 70) {
             restorePlayerMap(state, team, originalPlayer, currentMinute);
             override.active = false;
@@ -639,7 +639,7 @@ export function executeGarbageSubstitution(
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
     const available = team.bench
-        .filter(p => p.health === 'Healthy' && p.pf < 6
+        .filter(p => p.health === 'Healthy' && !isOut(p)
             && team.tactics.playerTactics?.[p.playerId]?.garbagePolicy !== 'bench')
         .sort((a, b) => a.ovr - b.ovr);
 

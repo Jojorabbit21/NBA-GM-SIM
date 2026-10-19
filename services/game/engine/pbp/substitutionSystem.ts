@@ -1,5 +1,5 @@
 
-import { GameState, TeamState, LivePlayer, EjectionReason } from './pbpTypes';
+import { GameState, TeamState, LivePlayer, EjectionReason, isOut } from './pbpTypes';
 
 
 // [2026-10-07] 퇴장 사유별 교체 로그 문구 (`교체: IN [..] OUT [..] (사유)`)
@@ -178,7 +178,7 @@ export function checkSubstitutionsV2(
 
         // must-play: 벤치에 있는 필수 투입 선수 → rotationMap 강제 활성화 (다음 포세션 투입)
         team.bench.forEach(p => {
-            if (p.health === 'Injured' || p.pf >= 6) return;
+            if (p.health === 'Injured' || isOut(p)) return;
             const cfg = tactics.playerTactics?.[p.playerId];
             if (cfg?.clutchPolicy === 'must-play') {
                 if (!tactics.rotationMap![p.playerId]) {
@@ -212,7 +212,7 @@ export function checkSubstitutionsV2(
         team.garbageApplied = true;
         return team.onCourt
             .filter(p => {
-                if (p.health === 'Injured' || p.pf >= 6) return false;
+                if (p.health === 'Injured' || isOut(p)) return false;
                 const cfg = tactics.playerTactics?.[p.playerId];
                 // 'play'(출전) → 가비지타임 멤버, 일괄 교체 대상에서 제외
                 return cfg?.garbagePolicy !== 'play';
@@ -256,7 +256,7 @@ export function checkSubstitutionsV2(
             requests.push({ outPlayer: p, reason: '부상', exitType: 'permanent', benchReason: 'injury' });
             return;
         }
-        if (p.pf >= 6) {
+        if (isOut(p)) {
             // [2026-10-07] pf=6은 테크니컬 2회/플래그런트 2/싸움 퇴장의 마커로도 쓰이므로 사유 문구를 ejectionReason으로 분기
             requests.push({ outPlayer: p, reason: EJECTION_REASON_TEXT[p.ejectionReason ?? 'foul_out'], exitType: 'permanent', benchReason: 'foul_out' });
             return;

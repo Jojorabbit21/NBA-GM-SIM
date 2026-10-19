@@ -4,9 +4,15 @@ import { SimSettings } from '../../types/simSettings.ts';
 import type { ArchetypeRatings } from './archetypeSystem.ts';
 import type { PlayContext } from './playTypes.ts';
 
-// [2026-10-07] 퇴장 사유 — pf=6은 6반칙 외에 테크니컬 2회/플래그런트 2/싸움 퇴장의 마커로도 쓰이므로
-// 교체 로그 사유 문구를 여기로 분기한다(substitutionSystem). 미설정이면 'foul_out'으로 간주.
+// [2026-10-19] 퇴장 사유 — 퇴장 여부는 pf가 아니라 ejectionReason으로 판정한다(isOut).
+// 예전엔 테크니컬 2회/플래그런트 2/싸움 퇴장 시 pf=6을 마커로 덮어써 박스스코어 PF가 오염됐음.
+// 교체 로그 사유 문구도 여기로 분기한다(substitutionSystem). 미설정이면 'foul_out'으로 간주.
 export type EjectionReason = 'foul_out' | 'technical' | 'flagrant' | 'fight';
+
+/** 코트 복귀 불가(6반칙 파울아웃 또는 퇴장) 여부. pf 값은 실제 개인파울 수 그대로 둔다. */
+export function isOut(p: { pf: number; ejectionReason?: EjectionReason }): boolean {
+    return p.pf >= 6 || p.ejectionReason !== undefined;
+}
 
 export interface LivePlayer extends PlayerBoxScore {
     ejectionReason?: EjectionReason;
