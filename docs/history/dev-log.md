@@ -33,6 +33,36 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-19 — 멀티 헤더에 가상 하루 바(VirtualDayArc) 적용
+
+**배경**: 22:00/22:30 슬롯 경기는 가상 자정(D×5/8) 이후에 끝나는 게 설계(fixed-day-schedule-plan §2)인데, 헤더에는 날짜만 있어 "26일인데 25일 경기가 진행 중"으로 보였음. 정확한 시각 없이 하루 중 위치만 보여주는 위젯을 아티팩트 목업(호 → 직선 막대 → 8지점 막대)으로 시안 반복 후 확정해 적용. 서버/DB 변경 없음.
+
+**변경 파일** (client 전용, 서버 미러 없음):
+- `components/VirtualDayArc.tsx` (신규) — `virtualDayBarPosition(timeline, nowMs)`, `VirtualDayArc({timeline, nowMs})`
+- `components/MultiHeader.tsx` — import 1줄 + 날짜 라벨 뒤에 렌더 3줄
+- 목업용 `views/dev/DayArcMock.tsx` + `App.tsx` 라우트는 추가했다가 삭제(최종 diff 없음)
+
+**Before**:
+```tsx
+{dateLabel && (<span ...>{dateLabel}</span>)}
+{seasonYearLabel && (<span ...>{seasonYearLabel} 시즌</span>)}
+```
+
+**After**:
+```tsx
+{dateLabel && (<span ...>{dateLabel}</span>)}
+{currentVirtualDate && timeline?.length ? (
+    <VirtualDayArc timeline={timeline} nowMs={dateBucket * 15000} />
+) : null}
+{seasonYearLabel && ...}
+```
+- 막대 84×16px, 지점 8개 등간격(0 AM, 3 AM, 7 PM, 8 PM, 9 PM, 10 PM, 11 PM, 12 AM), 지점마다 색 1개(`POINT_COLORS`)를 이은 그라디언트. 흰 선 1개(지점 위치 세로 구분선은 적용 직후 제거). 이후 막대 높이 16→8px, 흰 선을 막대 바깥 위의 작은 삼각형 마커(9×6px)로 변경(위젯 전체 84×15px). 막대에 안쪽 1px 가장자리선(`inset 0 0 0 1px rgba(255,255,255,0.28)`) 추가. 마커를 삼각형에서 막대 위에 겹친 흰 세로선(2×14px)으로 되돌리고, 선 위에 가상 시각을 10px 글씨("9 PM", 시 단위 내림, 처음 9px로 넣었다가 10px로 확대)로 표기 — `virtualDayBarPosition` → `virtualDayMark`(pos+clockMin), 위젯 전체 84×26px. 세로선 높이 14→12px, 헤더 날짜 라벨 `font-medium`→`font-semibold`(MultiHeader). 시각 텍스트는 이후 시 단위("9 PM")로 변경.
+- 선 위치: 가상 시작→가상 자정은 7 PM 지점→12 AM 지점, 가상 자정→가상 종료는 0 AM 지점→3 AM 지점(선형), 종료 이후~다음 저녁은 3 AM 지점 유지, 시즌 시작 전은 7 PM 지점. 경계는 타임라인 행의 `realStartAt`/`realMidnightAt`/`realEndAt` 그대로 사용(날짜 전환 판정 `resolveVirtualDate`와 같은 기준). 애니메이션 없음, 15초 버킷 시각으로만 갱신.
+
+**검증**: tsc 해당 파일 오류 없음. 위치 계산 샘플(D=30): 0분 0.286, 18.7분 0.998, 18.75분 0.000, 30분 이후 0.143. 브라우저 육안 확인 미실시.
+
+**롤백 방법**: MultiHeader의 렌더 3줄과 import 제거, `components/VirtualDayArc.tsx` 삭제.
+
 ---
 
 ## 2026-10-19 — 퇴장 판정을 pf=6 마커에서 ejectionReason 기반으로 분리 + 플래그런트 1 두 번 퇴장

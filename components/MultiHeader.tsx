@@ -19,6 +19,7 @@ import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { useLeagueDraft } from '../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../utils/colorContrast';
 import { TeamLogo } from './common/TeamLogo';
+import { VirtualDayArc } from './VirtualDayArc';
 import { Button } from './common/Button';
 import { getSeriesRoundLabel } from '../utils/playoffLogic';
 import type { Player } from '../types';
@@ -373,8 +374,12 @@ export const MultiHeader: React.FC = () => {
                 </div>
 
                 {dateLabel && (
-                    <span className="text-sm text-white font-medium shrink-0 whitespace-nowrap pl-3">{dateLabel}</span>
+                    <span className="text-sm text-white font-semibold shrink-0 whitespace-nowrap pl-3">{dateLabel}</span>
                 )}
+
+                {currentVirtualDate && timeline?.length ? (
+                    <VirtualDayArc timeline={timeline} nowMs={dateBucket * 15000} />
+                ) : null}
 
                 {seasonYearLabel && (
                     <span className="text-sm text-text-muted shrink-0 whitespace-nowrap pl-3">{seasonYearLabel} 시즌</span>
