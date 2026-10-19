@@ -161,8 +161,7 @@ const App: React.FC = () => {
         else      localStorage.removeItem('nbagm:draftPoolType');
     }, []);
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
-    const updateAvailable = useUpdateChecker();
-    const [updateDismissed, setUpdateDismissed] = useState(false);
+    useUpdateChecker();
     const [isSimSettingsOpen, setIsSimSettingsOpen] = useState(false);
 
     // ─── Callbacks ───────────────────────────────────────────────────────────
@@ -493,12 +492,7 @@ const App: React.FC = () => {
                 {batchProgress && (
                     <FullSeasonSimModal progress={batchProgress} onCancel={() => handleCancelBatch()} />
                 )}
-                {updateAvailable && !updateDismissed && (
-                    <UpdateToast
-                        onRefresh={() => window.location.reload()}
-                        onDismiss={() => setUpdateDismissed(true)}
-                    />
-                )}
+                <UpdateToast />
             </>
         </GameContext.Provider>
     );

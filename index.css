@@ -262,6 +262,14 @@ body {
 .toast-enter { animation: toast-enter 0.2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .toast-enter { animation: none; } }
 
+/* [2026-10-19] 업데이트 토스트 아이콘 — 등장 직후 1회 회전 */
+@keyframes update-icon-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.update-icon-spin { animation: update-icon-spin 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.5s 1 both; }
+@media (prefers-reduced-motion: reduce) { .update-icon-spin { animation: none; } }
+
 /* [2026-09-18] 개인 팩 드래프트(PersonalDraftView) — 좌측 라운드 구성 패널의 현재 라운드 행 펄스.
    시안(v49) 그대로: 에메랄드 8%↔26% 왕복, 모션 축소 환경에선 정지된 16% 틴트로 대체. */
 @keyframes roundPulse {

@@ -33,6 +33,45 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-19 — 업데이트 토스트: 채팅 FAB 위로 이동 + 위젯 열림 시 패널 배너 + emerald 톤
+
+**배경**: 업데이트 토스트(`UpdateToast`)가 채팅 FAB과 같은 위치(`fixed bottom-6 right-6`)에 따로 떠서, 리그 화면에서는 FAB과 겹치고 디자인 톤도 달랐다. 채팅·알림 통합 위젯과 같은 톤으로 FAB 위에 쌓고, 위젯이 열려 있으면 패널 안 배너로 보여주도록 변경. 알림은 이벤트가 아니라 상태(새로고침 전까지 유지)로 다룬다.
+
+**변경 파일**:
+- `services/notifications/updateNoticeStore.ts` (신규) — `{available, toastDismissed, dockMounted}` 모듈 저장소 + `useUpdateNotice()`
+- `hooks/useUpdateChecker.ts` — boolean 반환 → `setUpdateAvailable(true)`로 store에 기록, 반환 `void`
+- `components/UpdateToast.tsx` — `UpdateToastCard`(꼬리 옵션)·`UpdateToast`(단독, 위젯 없는 화면용)·`UpdateBanner`(패널 배너) 3종으로 재작성, emerald 톤
+- `components/multi/LeagueChatDock.tsx` — dockMounted 등록, 닫힘 시 FAB 위 토스트(`withTail`), 열림 시 탭 아래 배너(`DockWidget`에 `updateAvailable` prop 추가)
+- `App.tsx` — `updateAvailable`/`updateDismissed` 로컬 상태 제거, `<UpdateToast />` props 없이 마운트
+- `index.css` — `.update-icon-spin` 키프레임 추가(`toast-enter`는 기존 재사용)
+
+**Before**:
+```tsx
+// App.tsx
+const updateAvailable = useUpdateChecker();
+const [updateDismissed, setUpdateDismissed] = useState(false);
+...
+{updateAvailable && !updateDismissed && (
+    <UpdateToast onRefresh={() => window.location.reload()} onDismiss={() => setUpdateDismissed(true)} />
+)}
+// UpdateToast: fixed bottom-6 right-6 z-toast w-[360px], 하늘색 Info 아이콘 + indigo 새로고침 버튼
+```
+
+**After**:
+```tsx
+// App.tsx
+useUpdateChecker();
+...
+<UpdateToast />   // available && !toastDismissed && !dockMounted 일 때만 단독 표시
+// LeagueChatDock: !open && available && !toastDismissed → <UpdateToastCard withTail /> (FAB 위 gap-3)
+//                 available → 위젯 탭 아래 <UpdateBanner /> (높이 42px, "나중에"와 무관하게 새로고침 전까지 유지)
+```
+표시 규칙: 위젯 닫힘=토스트 / 위젯 열림=배너(토스트 숨김) / "나중에"·✕=토스트만 숨김 / 위젯은 강제로 닫지 않음(초안 보존).
+
+**검증**: `tsc --noEmit` 오류 51건 → 51건(기존 오류, 신규 0). `vite build` 성공(순환 임포트 에러 없음). 브라우저 육안 확인은 미실시. 목업: 세션 아티팩트 "업데이트 토스트 목업".
+
+**롤백 방법**: `git checkout HEAD -- App.tsx hooks/useUpdateChecker.ts components/UpdateToast.tsx components/multi/LeagueChatDock.tsx index.css` 후 `services/notifications/updateNoticeStore.ts` 삭제. 다섯 파일은 함께 되돌릴 것(일부만 되돌리면 props/훅 시그니처가 어긋남).
+
 ## 2026-10-19 — 보안 점검 3차: 함수 18개 search_path 고정 + room_members.team_id 직접 변경 차단
 
 **배경**: 2차 점검 후 남긴 낮은 위험 항목 중 사용자가 진행을 지시한 2건. (이메일 존재 확인 RPC `email_exists`는 보류, 유출 비밀번호 보호는 사용자가 대시보드에서 직접 적용 완료, `hall_of_fame` 점수 조작은 싱글플레이 기능이라 진행하지 않기로 함)

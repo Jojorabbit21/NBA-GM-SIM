@@ -6,6 +6,8 @@
 // - 위젯(380×560): 상단 탭 [채팅 | 알림]. 채팅 탭 = 메시지 목록 + 입력창, 알림 탭 = 알림 목록(LeagueNotificationList)
 // - [2026-10-17] 토스트 팝업은 이 위젯으로 통합됐다 — 마운트되는 동안 notificationStore.setToastsSuppressed(true)로 팝업을 끄고
 //   알림은 알림 탭 목록 + 배지로만 알린다(리그 밖에서는 기존 토스트). 참가자 목록·입력 중 표시·DM은 1차 범위 밖
+// - [2026-10-19] 업데이트 알림 통합: 새 버전 감지 시 위젯이 닫혀 있으면 FAB 위에 UpdateToastCard(꼬리 포함), 열려 있으면 탭 아래 UpdateBanner.
+//   "나중에"는 토스트만 숨기고 배너는 새로고침 전까지 유지. 위젯을 강제로 닫지 않는다(초안 보존). 상태는 updateNoticeStore.
 // - z-widget(300): 헤더 위, 모달(500) 아래
 // - 비모달 위젯이라 role="dialog"가 아니다. Esc로 닫고 포커스를 FAB으로 돌려준다.
 // - 한국어 IME 조합 중 Enter(nativeEvent.isComposing)는 전송하지 않는다.
@@ -15,6 +17,8 @@ import { Loader2, MessageCircle, RotateCw, Send, Trash2, X } from 'lucide-react'
 import { useLeagueChat, type ChatOutboxItem } from '../../hooks/useLeagueChat';
 import { useNotificationList } from '../../hooks/useNotificationList';
 import { setToastsSuppressed } from '../../services/notifications/notificationStore';
+import { setUpdateDockMounted, useUpdateNotice } from '../../services/notifications/updateNoticeStore';
+import { UpdateBanner, UpdateToastCard } from '../UpdateToast';
 import { LeagueNotificationList } from './LeagueNotificationList';
 import { CHAT_MAX_BODY, limitDraftNewlines, sanitizeChatBody, type ChatMessage } from '../../services/multi/chatService';
 import { TeamLogo } from '../common/TeamLogo';
@@ -406,9 +410,10 @@ interface DockWidgetProps {
     draft: string;
     setDraft: (v: string) => void;
     onClose: () => void;
+    updateAvailable: boolean;
 }
 
-const DockWidget: React.FC<DockWidgetProps> = ({ chat, notif, userId, tab, setTab, draft, setDraft, onClose }) => {
+const DockWidget: React.FC<DockWidgetProps> = ({ chat, notif, userId, tab, setTab, draft, setDraft, onClose, updateAvailable }) => {
     const tabBtn = (id: DockTab, label: string, badge: number) => {
         const active = tab === id;
         return (
@@ -450,6 +455,8 @@ const DockWidget: React.FC<DockWidgetProps> = ({ chat, notif, userId, tab, setTa
                     <Button variant="ghost" size="sm" onClick={notif.clear}>전체 삭제</Button>
                 )}
             </div>
+
+            {updateAvailable && <UpdateBanner />}
 
             <div id={`${WIDGET_ID}-panel`} role="tabpanel" aria-labelledby={`${WIDGET_ID}-tab-${tab}`} className="flex flex-col flex-1 min-h-0">
                 {tab === 'chat'
@@ -496,6 +503,13 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
         return () => setToastsSuppressed(false);
     }, []);
 
+    // 업데이트 알림은 단독 토스트 대신 이 위젯이 보여준다(App의 UpdateToast는 dockMounted면 숨는다)
+    const update = useUpdateNotice();
+    useEffect(() => {
+        setUpdateDockMounted(true);
+        return () => setUpdateDockMounted(false);
+    }, []);
+
     // 룸이 바뀌면 열림 상태를 복원하고 초안을 비운다
     useEffect(() => {
         setOpenState(readOpen(roomId));
@@ -534,7 +548,8 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
 
     return (
         <div className="fixed bottom-6 right-6 z-widget flex flex-col items-end gap-3 pointer-events-none">
-            {open && <DockWidget chat={chat} notif={notif} userId={userId} tab={tab} setTab={setTab} draft={draft} setDraft={setDraft} onClose={close} />}
+            {open && <DockWidget chat={chat} notif={notif} userId={userId} tab={tab} setTab={setTab} draft={draft} setDraft={setDraft} onClose={close} updateAvailable={update.available} />}
+            {!open && update.available && !update.toastDismissed && <UpdateToastCard withTail />}
             <div className="relative pointer-events-auto">
                 <button
                     ref={fabRef}

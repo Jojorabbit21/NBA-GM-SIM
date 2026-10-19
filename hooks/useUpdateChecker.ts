@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
+import { setUpdateAvailable } from '../services/notifications/updateNoticeStore';
 
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5분
 
 declare const __BUILD_VERSION__: string;
 
-export function useUpdateChecker() {
-    const [updateAvailable, setUpdateAvailable] = useState(false);
-
+// 새 버전이 감지되면 updateNoticeStore에 기록한다. 표시는 UpdateToast(단독)·LeagueChatDock(리그 안)이 store를 구독해 결정.
+export function useUpdateChecker(): void {
     const checkForUpdate = useCallback(async () => {
         if (import.meta.env.DEV) return;
 
@@ -45,5 +45,4 @@ export function useUpdateChecker() {
         };
     }, [checkForUpdate]);
 
-    return updateAvailable;
 }
