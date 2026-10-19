@@ -33,6 +33,31 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-19 — RPC 7종 호출자 신원 검증 추가 (user_id 위조 차단)
+
+**배경**: `claim_team`·`release_team`·`update_team_profile`·`submit_draft_pick`(v1)·`run_draft_lottery`·`execute_admin_trade`·`initialize_league_teams`가 SECURITY DEFINER + authenticated EXECUTE인데 `auth.uid()`를 보지 않고 호출자가 넘긴 `p_user_id`/`p_admin_user_id`를 그대로 신뢰했다. `league_teams.user_id`·`leagues.admin_user_id`가 공개 조회 가능해서 로그인한 누구든 남의 id로 팀 반납·프로필 변조·어드민 트레이드(어드민 UUID는 고정값)·로터리 실행·팀 초기화(`DELETE FROM league_teams`)를 호출할 수 있었다. 관전 모드 검증 중 발견.
+
+**변경 파일**:
+- `migrations/fix_rpc_caller_identity_checks.sql` (DB — Supabase에 `fix_rpc_caller_identity_checks`로 적용 완료)
+- 클라이언트/서버 코드 변경 없음 (정상 호출은 원래 본인 id를 보냄)
+
+**Before**: 7개 함수 모두 본문에 호출자 검증 없음 (`execute_admin_trade`/`update_team_profile`은 "인자 id가 어드민/소유자인가"만 확인, `release_team`/`run_draft_lottery`/`initialize_league_teams`/`submit_draft_pick`/`claim_team`은 검증 전무).
+
+**After**: 각 함수 본문 맨 앞에 헬퍼 호출 1줄만 추가 (나머지 본문·시그니처 불변).
+```sql
+assert_caller_is(p_claimed)          -- service_role OR is_global_admin() OR auth.uid()=p_claimed, 아니면 42501 'forbidden'
+assert_caller_is_room_admin(p_room)  -- service_role OR is_global_admin() OR 그 방 리그의 admin_user_id=auth.uid()
+-- claim_team / update_team_profile / submit_draft_pick : assert_caller_is(p_user_id)
+-- execute_admin_trade                                  : assert_caller_is(p_admin_user_id)  (이후 기존 'not_admin' 검사 유지)
+-- release_team : auth.uid() IS DISTINCT FROM p_user_id 일 때만 assert_caller_is_room_admin(p_room_id)  (본인 탈퇴 or 어드민 강퇴)
+-- run_draft_lottery / initialize_league_teams          : assert_caller_is_room_admin(p_room_id)
+```
+Fly 서버가 service_role로 `release_team`(개인 드래프트 마감 정리, 계정 삭제)·`run_draft_lottery`(스케줄러·startDraft)를 호출하므로 service_role 예외 필수.
+
+**검증**: 롤백 트랜잭션에서 무작위 로그인 유저로 7개 전부 남의 id 호출 → 42501 차단. 본인 호출·리그 어드민 강퇴·service_role 호출은 가드 통과(이후 비즈니스 검사에서 정상 응답: not_owned/not_admin/lottery_already_done 등). 검증 직후 `league_teams` 60 / 소유 18 / `room_members` 60 / draft_order 보유 60 확인(멤버 수는 이전 조회와 동일, 롤백 정상). **브라우저에서 팀 선택·팀 설정·탈퇴/강퇴·어드민 트레이드·리그 생성 실사용 확인은 미실시.**
+
+**롤백 방법**: 7개 함수에서 `PERFORM/perform public.assert_caller_*` 줄(release_team은 IF 블록 3줄)을 빼고 재정의 — 직전 정의는 각 함수의 이전 migrations 파일(`add_personal_draft_prepared_at.sql`의 claim_team, `add_court_three.sql`의 update_team_profile, `add_league_action_logs.sql`의 execute_admin_trade 등) 참고. 헬퍼 2개는 남겨둬도 무해.
+
 ## 2026-10-19 — 멀티 리그 관전(Spectate) 모드: 비참가 로그인 유저의 읽기 전용 열람
 
 **배경**: 리그에 가입하지 않은 사람이 리그를 둘러볼 수 있게, 단 모든 행동은 막기. 결정사항: ①로그인한 유저만 ②보이는 메뉴는 홈/뉴스/팀(로스터)/순위/리더보드/일정/선수비교(+순위경쟁·플레이오프 읽기 전용), 전술·트레이드·자유계약은 숨김 ③리그별 관전 허용 토글 ④모집(recruiting)/드래프트(drafting) 단계는 관전 불가. 기존 RLS는 진행 중 리그를 멤버에게만 열어 두어(`my_room_ids()`) 화면만 풀어서는 데이터가 비어 오므로 DB 정책부터 확장.
