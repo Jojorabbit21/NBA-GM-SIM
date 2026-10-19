@@ -64,6 +64,57 @@ addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover
 
 **롤백 방법**: After 블록을 Before 한 줄로 되돌림 (두 파일 모두)
 
+## 2026-10-19 — 리그 홈: 리그/팀 배경 배너 제거, 리그 로고+리그 이름+리그 상태 큰 텍스트로 교체
+
+**배경**: 홈 상단에 리그(네이비)/내 팀(팀 컬러) 배경 마스트헤드가 나란히 걸려 있었는데, 팀 정보는 헤더로 옮겨 더 이상 필요 없어짐. 그 자리에 리그 로고, 리그 이름, 현재 리그 상태를 큰 텍스트로 표시.
+
+**변경 파일**: `pages/MultiSeasonPage.tsx` (client 전용)
+
+**Before**:
+```tsx
+const LEAGUE_NAVY_COLOR = '#1D4487';
+const MultiSeasonPage = () => {
+    const { myTeamId } = useSeasonContext();
+    const { leagueTeams } = useLeagueContext();
+    const myTeam = ...; const teamPrimaryColor = ...; const teamTextColor = ...;
+    return (<div className="p-4 min-h-full">
+        <div className="relative grid grid-cols-2 overflow-hidden rounded-xl border border-white/10 mb-4">
+            {/* 좌: 네이비 배경 + 리그 로고 워터마크 + 로고 + "PRO BASKETBALL LEAGUE" */}
+            {/* 우: 팀 테마컬러 배경 + 팀 로고 워터마크 + 팀 로고 + 팀명 */}
+        </div> ...
+```
+
+**After**:
+```tsx
+function resolveLeagueStatusText(league, currentVirtualDate, regularSeasonEnd) { ... }
+const MultiSeasonPage = () => {
+    const { league, timeline } = useLeagueContext();
+    const { schedule } = useSeasonContext();
+    const currentVirtualDate = useCurrentVirtualDate(...);
+    const regularSeasonEnd = getRegularSeasonEndDate(schedule);
+    const statusText = resolveLeagueStatusText(league, currentVirtualDate, regularSeasonEnd);
+    // 배경 없는 한 줄: [리그 로고 64px] [리그 이름 text-3xl font-black] | [상태 text-3xl font-black text-slate-400]
+```
+상태 문구: league.status≠in_progress → `STATUS_LABEL`(모집 중/드래프트 중/종료), 토너먼트 진행 중 → "토너먼트 진행", 메인리그 진행 중 → 올스타 윈도우면 "올스타 브레이크", 가상 오늘 > 정규시즌 마지막 경기일이면 "포스트시즌", 그 외 "정규시즌". 가상 오늘을 못 구하면 "시즌 진행". 삭제: `LEAGUE_NAVY_COLOR`, 팀 컬러 계산, `TeamLogo`/`getReadableTextColor` import. 리그 이름은 하드코딩 "PRO BASKETBALL LEAGUE" 대신 `league.name`(없으면 폴백).
+
+**추가(같은 날)**: 상태 문구 아래에 보조 줄 추가(`text-xl font-bold text-slate-500 tabular-nums`). `resolveLeagueStatusText` → `resolveLeagueStatus`(text+phase 반환).
+- 정규시즌: `Day N (PP%)` — N = (첫 정규시즌 경기일 → 가상 오늘) 달력 일수 + 1(휴식일 포함, 최소 1), PP = 공개 완료(`isFinal`)된 정규시즌 경기 수 / 전체 정규시즌 경기 수(내림, 2자리 0패딩, 100% 도달 시 `100%`). 플레이오프·올스타 경기 제외. `formatRegularSeasonProgress()`.
+- 포스트시즌: 현재 스테이지 — 공개된 경기 승수로 아직 안 끝난 시리즈 중 가장 낮은 라운드를 `getSeriesRoundLabel`(플레이인/N라운드/준결승/결승)로 표시, 대진 미생성이면 "대진 확정 대기", 전부 끝났으면 "플레이오프 종료". `resolvePlayoffStage()`.
+- 올스타 브레이크/그 외 상태는 보조 줄 없음. 갱신은 15초 서버 보정 시계 버킷.
+
+**배치 변경(같은 날)**: 리그 이름 단독 줄 → 그 아래 줄에 `[상태 문구(text-2xl font-black slate-300)] | [Day N / 스테이지(text-xl font-bold slate-500)]`를 나란히(기준선 정렬, 세로 구분선).
+
+**표기/색 변경(같은 날)**: 상태 문구 크기 `text-2xl`→`text-xl`, "포스트시즌"→"플레이오프"(이 화면의 상태 문구/주석 한정), 단계별 색 `PHASE_COLOR` — 정규시즌 `text-emerald-400` / 올스타 브레이크 `text-sky-400`(phase 'allstar' 신설) / 플레이오프 `text-amber-400`(phase 'postseason'→'playoffs' 개명) / 그 외 `text-slate-300`. MultiHeader의 "포스트시즌 대기" 등 다른 화면 문구는 미변경.
+**플레이오프 스테이지 라벨 변경(같은 날)**: 이 화면 전용 라벨 — 플레이인(round 0) / 마지막 라운드에서 거꾸로 `파이널`·`컨퍼런스 파이널`·`컨퍼런스 세미파이널`, 그 앞 라운드는 `N라운드`(16팀 4라운드 기준: 1라운드/컨퍼런스 세미파이널/컨퍼런스 파이널/파이널; "준결승" 폐지) / 전부 종료 시 `{시즌} {리그명} Champion is {팀명}`(우승팀은 결승 시리즈 공개 승수 기준, 못 구하면 "플레이오프 종료"). 공용 `getSeriesRoundLabel`은 미변경(다른 화면은 기존 "준결승/결승" 유지). `seasonShortFromDate`를 MultiHeader 로컬 함수에서 `utils/seasonShortFromDate.ts`로 이동(MultiHeader도 import로 교체, 동작 동일).
+Before: `getSeriesRoundLabel({ round: minRound }, allSeries)` / "플레이오프 종료".
+진행 정보(Day N / 스테이지) 색은 `text-slate-500` → `text-orange-400`.
+
+**검증**: tsc 해당 파일 오류 없음, vite build 통과. 브라우저 육안 확인 미실시.
+
+**롤백 방법**: 위 Before 구조(두 컬럼 배너)로 복원 — git 이전 커밋의 `pages/MultiSeasonPage.tsx` 기준.
+
+---
+
 ## 2026-10-19 — 멀티 헤더: 시즌 이름을 팀 영역(리그명 앞)으로 이동
 
 **배경**: 헤더 날짜 옆에 따로 있던 "2026-27 시즌" 라벨을 맨 왼쪽 팀 영역으로 옮겨 "0W-0L 1st in 2026-27 Pro Basketball League" 형태로 표시. 기존엔 "1st in"과 리그명 사이 공백이 없어 "1st inPro Basketball League"로 붙어 보이던 것도 같이 수정.

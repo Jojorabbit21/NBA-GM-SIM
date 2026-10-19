@@ -11,6 +11,7 @@ import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { computeSeriesWins, seriesWinsFor } from '../views/multi/season/seasonPhase';
 import { fmtRemaining } from '../utils/formatRemaining';
+import { seasonShortFromDate } from '../utils/seasonShortFromDate';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { useServerClock } from '../utils/serverClock';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
@@ -31,16 +32,6 @@ import type { Player } from '../types';
 function fmtVirtualDate(dateKey: string): string {
     const d = new Date(dateKey + 'T00:00:00');
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-}
-
-// NBA 시즌은 10월에 시작해 이듬해 6월에 끝나므로, 7월 이전(1~6월)이면 시즌 시작 연도가
-// 작년이다 — "2026-27" 형태로 표기(단일플레이어 utils/seasonConfig.ts의 seasonShort와 동일 포맷).
-function seasonShortFromDate(dateKey: string): string {
-    const d = new Date(dateKey + 'T00:00:00');
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const startYear = m >= 7 ? y : y - 1;
-    return `${startYear}-${String(startYear + 1).slice(2)}`;
 }
 
 export const MultiHeader: React.FC = () => {

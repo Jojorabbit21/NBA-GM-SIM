@@ -15,12 +15,19 @@ import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { useServerClockBucket } from '../utils/serverClock';
 import { getLeagueLogoUrl } from '../utils/constants';
-import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { EmptyState } from '../components/common/EmptyState';
 import { ClickableText } from '../views/multi/season/newsFeedLetter';
 import { useActiveInjuryMap } from '../views/multi/season/useActiveInjuryMap';
-import { getReadableTextColor } from '../utils/colorContrast';
+import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
+import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { getRegularSeasonEndDate } from '../views/multi/season/playoffRaceUtils';
+import { STATUS_LABEL } from '../views/multi/league/leagueConstants';
+import { isFinal, resolveRealAt } from '../views/multi/season/multiGameReveal';
+import { computeSeriesWins } from '../views/multi/season/seasonPhase';
+import { seasonShortFromDate } from '../utils/seasonShortFromDate';
+import { daysBetweenDateStr } from '../utils/leagueTimeline';
+import type { Game } from '../types';
 import { computeMultiStandingsStats, fmtWinPct, type MultiStandingsRecord } from '../views/multi/season/multiSeasonUtils';
 import { formatReturnDateSuffix, type ActiveInjuryStatus } from '../services/multi/activeInjuryStatus';
 import { buildLeagueTeams } from '../services/multi/buildLeagueTeams';
@@ -880,67 +887,130 @@ const HomeMyInjuriesSection: React.FC = () => {
     );
 };
 
-// 리그 브랜드 네이비 — PBL.svg 로고 자체에 쓰인 감색(#1D4487)을 그대로 가져와 별도 팔레트를
-// 만들지 않고 로고와 항상 일치하도록 함.
-const LEAGUE_NAVY_COLOR = '#1D4487';
+type LeaguePhase = 'regular' | 'allstar' | 'playoffs' | 'other';
+
+// 리그 상태 문구 색 — 정규시즌/올스타/플레이오프만 구분, 그 외(모집 중·드래프트 중·종료 등)는 기본 회색.
+const PHASE_COLOR: Record<LeaguePhase, string> = {
+    regular: 'text-emerald-400',
+    allstar: 'text-sky-400',
+    playoffs: 'text-amber-400',
+    other: 'text-slate-300',
+};
+
+// 리그 현황 문구 — 메인리그 진행 중이면 정규시즌/올스타/플레이오프로 세분화, 그 외는 리그 상태 라벨(모집 중/드래프트 중/종료).
+function resolveLeagueStatus(
+    league: { status?: string; type?: string; virtual_season_year?: number | null } | null | undefined,
+    currentVirtualDate: string | null,
+    regularSeasonEnd: string | null,
+): { text: string | null; phase: LeaguePhase } {
+    if (!league?.status) return { text: null, phase: 'other' };
+    if (league.status !== 'in_progress') return { text: STATUS_LABEL[league.status] ?? league.status, phase: 'other' };
+    if (league.type !== 'main_league') return { text: '토너먼트 진행', phase: 'other' };
+    if (!currentVirtualDate) return { text: STATUS_LABEL.in_progress, phase: 'other' };
+    if (isAllStarWindowActive(currentVirtualDate, league.virtual_season_year ?? new Date().getFullYear())) return { text: '올스타 브레이크', phase: 'allstar' };
+    if (regularSeasonEnd && currentVirtualDate > regularSeasonEnd) return { text: '플레이오프', phase: 'playoffs' };
+    return { text: '정규시즌', phase: 'regular' };
+}
+
+/** 정규시즌 "Day N (PP%)" — 일차는 첫 정규시즌 경기일부터 가상 오늘까지의 달력 일수(휴식일 포함), 퍼센트는 공개 완료된 정규시즌 경기 수 / 전체 정규시즌 경기 수. */
+function formatRegularSeasonProgress(
+    schedule: Game[], simStart: string | null, gprd: number, nowMs: number, currentVirtualDate: string | null,
+): string | null {
+    let total = 0, done = 0;
+    let first: string | null = null;
+    for (const g of schedule) {
+        if (g.isPlayoff || g.isAllstar) continue;
+        total++;
+        const d = g.date.slice(0, 10);
+        if (first === null || d < first) first = d;
+        if (g.played && isFinal({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) }, nowMs)) done++;
+    }
+    if (!total || !first) return null;
+    const day = currentVirtualDate ? Math.max(1, daysBetweenDateStr(first, currentVirtualDate) + 1) : 1;
+    const pct = Math.min(100, Math.floor((done / total) * 100));
+    return `Day ${day} (${String(pct).padStart(2, '0')}%)`;
+}
+
+/**
+ * 플레이오프 현재 스테이지 — 아직 안 끝난 시리즈 중 가장 낮은 라운드(플레이인 → 1라운드 → … → 파이널). 시리즈 종료는 공개된 경기 승수로만 판정.
+ * 라벨은 이 화면 전용(다른 화면의 getSeriesRoundLabel과 의도적으로 다름): 마지막 라운드부터 거꾸로 파이널 / 컨퍼런스 파이널 / 컨퍼런스 세미파이널, 그 앞은 "N라운드".
+ * 모든 시리즈가 끝나면 "{시즌} {리그명} Champion is {팀명}".
+ */
+function resolvePlayoffStage(
+    league: { bracket_data?: unknown; name?: string } | null | undefined,
+    schedule: Game[], simStart: string | null, gprd: number, nowMs: number,
+    leagueTeams: Array<{ team_slug: string; team_name: string }>,
+    currentVirtualDate: string | null,
+): string | null {
+    const allSeries: any[] = (league?.bracket_data as any)?.series ?? [];
+    if (!allSeries.length) return '대진 확정 대기';
+    const wins = computeSeriesWins(schedule, simStart, gprd, nowMs);
+    const finalRound = allSeries.reduce((max, x) => Math.max(max, x.round ?? 1), 1);
+    const winnerOf = (x: any): string | null => {
+        const target = x.targetWins ?? 1;
+        const byTeam = wins.get(x.id);
+        if ((byTeam?.get(x.higherSeedId) ?? 0) >= target) return x.higherSeedId;
+        if ((byTeam?.get(x.lowerSeedId) ?? 0) >= target) return x.lowerSeedId;
+        return null;
+    };
+    let minRound: number | null = null;
+    for (const x of allSeries) {
+        if (winnerOf(x)) continue;
+        const r = x.round ?? 1;
+        if (minRound === null || r < minRound) minRound = r;
+    }
+    if (minRound === null) {
+        const finalSeries = allSeries.find(x => (x.round ?? 1) === finalRound);
+        const championId = finalSeries ? winnerOf(finalSeries) : null;
+        const championName = leagueTeams.find(t => t.team_slug === championId)?.team_name;
+        if (!championName) return '플레이오프 종료';
+        const prefix = [currentVirtualDate ? seasonShortFromDate(currentVirtualDate) : null, league?.name].filter(Boolean).join(' ');
+        return `${prefix ? prefix + ' ' : ''}Champion is ${championName}`;
+    }
+    if (minRound === 0) return '플레이인';
+    // 마지막 라운드에서 거꾸로 센다: 파이널 → 컨퍼런스 파이널 → 컨퍼런스 세미파이널 → 그 앞은 "N라운드"(16팀 4라운드 기준 1라운드).
+    const fromFinal = finalRound - minRound;
+    if (fromFinal === 0) return '파이널';
+    if (fromFinal === 1) return '컨퍼런스 파이널';
+    if (fromFinal === 2) return '컨퍼런스 세미파이널';
+    return `${minRound}라운드`;
+}
 
 const MultiSeasonPage: React.FC = () => {
-    const { myTeamId } = useSeasonContext();
-    const { leagueTeams } = useLeagueContext();
-    const myTeam = useMemo(() => leagueTeams.find(t => t.team_slug === myTeamId), [leagueTeams, myTeamId]);
-
-    // 팀 테마 컬러 — MultiHeader.tsx 상단 바와 동일한 팔레트/폴백 규칙(color_primary 없으면
-    // 인디고 + WCAG 기준 자동 대비색).
-    const teamPrimaryColor = myTeam?.color_primary ?? '#4338ca';
-    const teamTextColor = myTeam?.color_text ?? getReadableTextColor(teamPrimaryColor);
+    const { league, leagueTeams, timeline } = useLeagueContext();
+    const { schedule } = useSeasonContext();
+    const nowMs = useServerClockBucket();
+    const simStart = league?.sim_real_start_at ?? null;
+    const gprd = league?.games_per_real_day ?? 5;
+    const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
+    const regularSeasonEnd = useMemo(() => getRegularSeasonEndDate(schedule), [schedule]);
+    const { text: statusText, phase } = resolveLeagueStatus(league, currentVirtualDate, regularSeasonEnd);
+    // 상태 문구 옆 보조 정보: 정규시즌은 "Day N (PP%)", 플레이오프는 현재 스테이지.
+    const subLine = useMemo(() => {
+        if (phase === 'regular') return formatRegularSeasonProgress(schedule, simStart, gprd, nowMs, currentVirtualDate);
+        if (phase === 'playoffs') return resolvePlayoffStage(league, schedule, simStart, gprd, nowMs, leagueTeams, currentVirtualDate);
+        return null;
+    }, [phase, schedule, simStart, gprd, nowMs, currentVirtualDate, league, leagueTeams]);
 
     return (
         <div className="p-4 min-h-full">
-            {/* 리그(좌, 네이비) / 내 팀(우, 팀 테마컬러) 배경 마스트헤드 — 각 절반 배경에 해당
-                로고를 큼직하게 흐리게 깔아 배경화면이 있는 섹션처럼 보이게 한다. */}
-            <div className="relative grid grid-cols-2 overflow-hidden rounded-xl border border-white/10 mb-4">
-                <div
-                    className="relative flex items-center gap-3 px-6 py-6 overflow-hidden"
-                    style={{ backgroundColor: LEAGUE_NAVY_COLOR }}
-                >
-                    <img
-                        src={getLeagueLogoUrl('League')}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute -right-8 -bottom-10 w-48 h-48 object-contain opacity-10 pointer-events-none select-none"
-                    />
-                    <img
-                        src={getLeagueLogoUrl('League')}
-                        alt="PRO BASKETBALL LEAGUE"
-                        className="relative w-16 h-16 object-contain drop-shadow-md shrink-0"
-                    />
-                    <span className="relative text-2xl font-black text-white">PRO BASKETBALL LEAGUE</span>
-                </div>
-                <div
-                    className="relative flex items-center gap-3 px-6 py-6 overflow-hidden"
-                    style={{ backgroundColor: teamPrimaryColor }}
-                >
-                    {myTeam && (
-                        <>
-                            {/* 배경 워터마크용 */}
-                            <TeamLogo
-                                teamId={myTeam.team_slug}
-                                size="custom"
-                                className="absolute -right-8 -bottom-10 w-48 h-48 opacity-10 pointer-events-none select-none"
-                                shadow={false}
-                            />
-                            {/* 팀 로고 — TeamLogo 공용(리그 로고 1회 폴백) */}
-                            <TeamLogo
-                                teamId={myTeam.team_slug}
-                                teamName={myTeam.team_abbr}
-                                size="custom"
-                                className="relative w-16 h-16 shrink-0"
-                            />
-                        </>
+            {/* 리그 로고 + 리그 이름 + 현재 리그 상태(큰 텍스트). 예전 리그/내 팀 배경 배너(마스트헤드)는 제거. */}
+            <div className="flex items-center gap-4 mb-6 px-2 min-w-0">
+                <img
+                    src={getLeagueLogoUrl('League')}
+                    alt={league?.name ?? 'League'}
+                    className="w-16 h-16 object-contain shrink-0"
+                />
+                <div className="flex flex-col gap-1 min-w-0">
+                    <h1 className="text-3xl font-black text-white truncate">{league?.name ?? 'PRO BASKETBALL LEAGUE'}</h1>
+                    {/* 리그 이름 아래: 리그 상태(정규시즌/플레이오프 등) + 진행 정보(Day N / 현재 스테이지)를 한 줄에 나란히 */}
+                    {(statusText || subLine) && (
+                        <div className="flex items-baseline gap-3 min-w-0 flex-wrap">
+                            {statusText && <span className={`text-xl font-black whitespace-nowrap ${PHASE_COLOR[phase]}`}>{statusText}</span>}
+                            {statusText && subLine && <span className="w-px h-5 bg-slate-700 shrink-0 self-center" aria-hidden="true" />}
+                            {subLine && <span className="text-xl font-bold text-orange-400 tabular-nums whitespace-nowrap">{subLine}</span>}
+                        </div>
                     )}
-                    <span className="relative text-2xl font-black truncate" style={{ color: teamTextColor }}>
-                        {myTeam?.team_name ?? '내 팀'}
-                    </span>
                 </div>
             </div>
 
