@@ -26,13 +26,6 @@ import type { Player } from '../types';
 
 // 남은 시간 포맷은 utils/formatRemaining.ts(홈 밴드 1 타이머와 공유). [2026-10-14 이동]
 
-function ordinal(n: number): string {
-    if (n === 1) return '1st';
-    if (n === 2) return '2nd';
-    if (n === 3) return '3rd';
-    return `${n}th`;
-}
-
 // 메인리그 정규시즌 경기의 date는 가상 NBA 캘린더 값(예: 2027년 10월 24일)이라 실제 연도와
 // 다를 수 있다 — 연도를 함께 보여줘야 "가상 시즌"임이 명확해진다.
 function fmtVirtualDate(dateKey: string): string {
@@ -81,8 +74,8 @@ export const MultiHeader: React.FC = () => {
     // 쓰이던 패턴을 나머지 스케줄-스캔 메모에도 동일 적용).
     const dateBucket = Math.floor(nowMs / 15000);
 
-    // W/L + 순위 (정시+10분 경과 — final 상태인 경기만 집계, 스포일러 방지)
-    const { wins, losses, rank } = useMemo(() => {
+    // W/L (정시+10분 경과 — final 상태인 경기만 집계, 스포일러 방지)
+    const { wins, losses } = useMemo(() => {
         const wlMap: Record<string, { w: number; l: number }> = {};
         for (const g of schedule) {
             if (!g.played || g.homeScore == null || g.awayScore == null) continue;
@@ -97,18 +90,12 @@ export const MultiHeader: React.FC = () => {
             wlMap[g.homeTeamId][homeWon ? 'w' : 'l']++;
             wlMap[g.awayTeamId][homeWon ? 'l' : 'w']++;
         }
-        if (!myTeamId) return { wins: 0, losses: 0, rank: 0 };
+        if (!myTeamId) return { wins: 0, losses: 0 };
 
         const myWL = wlMap[myTeamId] ?? { w: 0, l: 0 };
-        const pct  = (t: { w: number; l: number }) =>
-            t.w + t.l === 0 ? 0 : t.w / (t.w + t.l);
 
-        const sorted = leagueTeams
-            .map(t => ({ id: t.team_slug, ...(wlMap[t.team_slug] ?? { w: 0, l: 0 }) }))
-            .sort((a, b) => pct(b) - pct(a) || b.w - a.w);
-
-        return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
-    }, [schedule, myTeamId, leagueTeams, league, simStart, gprd, dateBucket]);
+        return { wins: myWL.w, losses: myWL.l };
+    }, [schedule, myTeamId, league, simStart, gprd, dateBucket]);
 
     // 내 팀 다음 경기
     const nextGame = useMemo(() => {
@@ -356,6 +343,12 @@ export const MultiHeader: React.FC = () => {
                         className="absolute inset-0"
                         style={{ backgroundColor: primaryColor, clipPath: 'polygon(0 0, 100% 0, calc(100% - 24px) 100%, 0 100%)' }}
                     />
+                    {/* 표시 순서: [시즌] [리그명] [로고] [팀이름] [성적] */}
+                    {(seasonYearLabel || league?.name) && (
+                        <span className="relative text-sm font-medium opacity-80 whitespace-nowrap shrink-0 mr-2.5" style={{ color: textColor }}>
+                            {seasonYearLabel ? `${seasonYearLabel} ` : ''}{league?.name ?? ''}
+                        </span>
+                    )}
                     {/* [2026-09-07] 팀명 좌측에 로고 추가(사용자 요청) — 다른 화면들과 동일한
                         TeamLogo 공용(리그 로고 1회 폴백), 순수 장식용(클릭 불가, 이 영역
                         자체가 원래 클릭 불가였음). */}
@@ -365,11 +358,6 @@ export const MultiHeader: React.FC = () => {
                     <span className="relative text-sm font-bold truncate" style={{ color: textColor }}>
                         {myTeam?.team_name ?? '내 팀'}
                         <span className="font-medium ml-1.5 opacity-80">{wins}W-{losses}L</span>
-                        {league?.name && (
-                            <span className="font-medium ml-1.5 opacity-80">
-                                {rank > 0 ? `${ordinal(rank)} in` : ''}{league.name}
-                            </span>
-                        )}
                     </span>
                 </div>
 
@@ -380,10 +368,6 @@ export const MultiHeader: React.FC = () => {
                 {currentVirtualDate && timeline?.length ? (
                     <VirtualDayArc timeline={timeline} nowMs={dateBucket * 15000} />
                 ) : null}
-
-                {seasonYearLabel && (
-                    <span className="text-sm text-text-muted shrink-0 whitespace-nowrap pl-3">{seasonYearLabel} 시즌</span>
-                )}
 
                 <div className="flex items-center gap-1.5 text-sm text-text-muted min-w-0 truncate pl-3">
                     {isDrafting ? (

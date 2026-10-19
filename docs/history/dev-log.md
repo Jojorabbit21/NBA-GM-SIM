@@ -64,6 +64,45 @@ addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover
 
 **롤백 방법**: After 블록을 Before 한 줄로 되돌림 (두 파일 모두)
 
+## 2026-10-19 — 멀티 헤더: 시즌 이름을 팀 영역(리그명 앞)으로 이동
+
+**배경**: 헤더 날짜 옆에 따로 있던 "2026-27 시즌" 라벨을 맨 왼쪽 팀 영역으로 옮겨 "0W-0L 1st in 2026-27 Pro Basketball League" 형태로 표시. 기존엔 "1st in"과 리그명 사이 공백이 없어 "1st inPro Basketball League"로 붙어 보이던 것도 같이 수정.
+
+**변경 파일**: `components/MultiHeader.tsx` (client 전용)
+
+**Before**:
+```tsx
+{rank > 0 ? `${ordinal(rank)} in` : ''}{league.name}
+...
+{seasonYearLabel && (<span className="text-sm text-text-muted ...">{seasonYearLabel} 시즌</span>)}
+```
+
+**After**:
+```tsx
+{rank > 0 ? `${ordinal(rank)} in ` : ''}{seasonYearLabel ? `${seasonYearLabel} ` : ''}{league.name}
+// 날짜 옆 "시즌" 라벨 span 삭제
+```
+`seasonYearLabel`이 없으면(가상 날짜/다음 경기 없음) 시즌 문구 없이 리그명만. 순위가 없으면 "2026-27 {리그명}".
+
+**추가(같은 날)**: 사용자 요청으로 순위 표기("1st in")도 제거 — 최종 표시는 `{시즌} {리그명}`. 순위 계산(`sorted`/`pct`/`rank` 반환)과 `ordinal()` 함수도 같이 삭제(다른 사용처 없음), 메모 deps에서 `leagueTeams` 제거.
+```tsx
+// 삭제된 순위 계산
+const pct = (t) => t.w + t.l === 0 ? 0 : t.w / (t.w + t.l);
+const sorted = leagueTeams.map(t => ({ id: t.team_slug, ...(wlMap[t.team_slug] ?? { w: 0, l: 0 }) })).sort((a, b) => pct(b) - pct(a) || b.w - a.w);
+return { wins: myWL.w, losses: myWL.l, rank: sorted.findIndex(t => t.id === myTeamId) + 1 };
+```
+
+**추가(같은 날)**: 팀 영역 순서를 `[시즌] [리그명] [로고] [팀이름] [성적]`으로 재배치. 시즌+리그명은 로고 앞의 별도 span(`font-medium opacity-80 whitespace-nowrap shrink-0 mr-2.5`), 팀이름+성적은 기존 truncate span에 유지. 팀이름이 길면 팀이름 쪽만 잘리고 시즌/리그명은 안 잘린다.
+```tsx
+// 이전: [로고] [팀이름 성적 시즌 리그명](한 span, truncate)
+```
+
+**검증**: tsc 해당 파일 오류 없음. 브라우저 육안 확인 미실시.
+
+**롤백 방법**: 위 Before 블록과 삭제된 순위 계산으로 복원(git 이전 커밋 `516ac371`의 MultiHeader.tsx 기준).
+
+---
+
 ## 2026-10-19 — 멀티 헤더에 가상 하루 바(VirtualDayArc) 적용
 
 **배경**: 22:00/22:30 슬롯 경기는 가상 자정(D×5/8) 이후에 끝나는 게 설계(fixed-day-schedule-plan §2)인데, 헤더에는 날짜만 있어 "26일인데 25일 경기가 진행 중"으로 보였음. 정확한 시각 없이 하루 중 위치만 보여주는 위젯을 아티팩트 목업(호 → 직선 막대 → 8지점 막대)으로 시안 반복 후 확정해 적용. 서버/DB 변경 없음.
