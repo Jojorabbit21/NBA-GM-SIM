@@ -1,99 +1,53 @@
 
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { supabase } from '../services/supabaseClient';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { PlayerStats } from '../types/player';
+import {
+    playerSeasonStatsLeagueQuery,
+    pickPlayerSeasonStats,
+    type PlayerSeasonStatsLeague,
+} from './usePlayerSeasonStatsLeague';
 
-// get_player_season_stats_full RPC(migrations/add_player_season_stats_full_rpc.sql) —
-// MultiRosterView.tsx가 예전엔 room 전체 game_pbp(수 MB, 게임당 home_box/away_box JSONB)를
-// 통째로 받아 클라이언트(buildStatsMap)에서 존 슛차트/수비존까지 전부 직접 집계했다 —
-// 이게 팀 화면 최초 진입 시 최대 병목(실측 7초+)이었다. usePlayerSeasonStatsBatch(뉴스피드용,
-// 기본 스탯만)와 같은 패턴이되 buildStatsMap이 만들던 필드 전체(존 슛차트 20개, 수비존 12개,
-// gs/offReb/defReb/pf/plusMinus/contested* 포함)를 서버에서 집계해 선수당 한 줄만 받는다.
-interface StatsFullRow {
-    player_id: string;
-    g: number; gs: string | number; mp: string | number;
-    pts: string | number; reb: string | number; off_reb: string | number; def_reb: string | number;
-    ast: string | number; stl: string | number; blk: string | number; tov: string | number; pf: string | number;
-    fgm: string | number; fga: string | number; p3m: string | number; p3a: string | number;
-    ftm: string | number; fta: string | number;
-    rim_m: string | number; rim_a: string | number; mid_m: string | number; mid_a: string | number;
-    plus_minus: string | number;
-    contested_attempted: string | number; contested_made: string | number;
-    def_ra_attempted: string | number; def_ra_made: string | number;
-    def_itp_attempted: string | number; def_itp_made: string | number;
-    def_mid_attempted: string | number; def_mid_made: string | number;
-    def_cnr_attempted: string | number; def_cnr_made: string | number;
-    def_wing_attempted: string | number; def_wing_made: string | number;
-    def_atb_attempted: string | number; def_atb_made: string | number;
-    zone_rim_m: string | number; zone_rim_a: string | number;
-    zone_paint_m: string | number; zone_paint_a: string | number;
-    zone_mid_l_m: string | number; zone_mid_l_a: string | number;
-    zone_mid_c_m: string | number; zone_mid_c_a: string | number;
-    zone_mid_r_m: string | number; zone_mid_r_a: string | number;
-    zone_c3_l_m: string | number; zone_c3_l_a: string | number;
-    zone_c3_r_m: string | number; zone_c3_r_a: string | number;
-    zone_atb3_l_m: string | number; zone_atb3_l_a: string | number;
-    zone_atb3_c_m: string | number; zone_atb3_c_a: string | number;
-    zone_atb3_r_m: string | number; zone_atb3_r_a: string | number;
-}
+// 팀(로스터) 화면/뉴스 피드 선수 탭/올스타 화면의 선수 시즌 스탯(존 슛차트·수비존·gs/offReb/defReb/pf/plusMinus/contested* 포함).
+// MultiRosterView.tsx가 예전엔 room 전체 game_pbp(수 MB)를 받아 클라이언트에서 직접 집계해 최초 진입에 7초+ 걸렸고
+// (2026-09-07), 그걸 get_player_season_stats_full RPC로 옮겼었다.
+//
+// [2026-10-20] 이 훅은 이제 자체 RPC를 호출하지 않는다. get_player_season_stats_full/league/batch 3종이 같은 game_pbp 전
+// 경기 스캔을 각자 반복해 임시 파일을 약 5GB/100분 쓰고 있었다(DB 컴퓨트 압박 조사, docs/history/dev-log.md). 그래서
+// usePlayerSeasonStatsLeague의 방 단위 쿼리(p_player_ids=null)를 isPlayoff=null(정규+플레이오프 합산, 올스타 제외 — 예전
+// full RPC와 같은 의미)로 공유하고, 요청한 선수·예전 Full이 내려주던 항목만 골라 쓴다. get_player_season_stats_full RPC는
+// DB에 그대로 남아 있다(롤백용, 현재 호출 없음).
 
 export type PlayerSeasonStatsFull = Record<string, Partial<PlayerStats>>;
 
+/** 예전 get_player_season_stats_full이 내려주던 항목 그대로 — League에만 있던 항목이 섞이면 다른 곳의 값을 덮어쓸 수 있다. */
+const FULL_FIELDS = [
+    'g', 'gs', 'mp', 'pts', 'reb', 'offReb', 'defReb', 'ast', 'stl', 'blk', 'tov', 'pf',
+    'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta', 'rimM', 'rimA', 'midM', 'midA', 'plusMinus',
+    'contestedAttempted', 'contestedMade',
+    'defRAAttempted', 'defRAMade', 'defITPAttempted', 'defITPMade', 'defMIDAttempted', 'defMIDMade',
+    'defCNRAttempted', 'defCNRMade', 'defWINGAttempted', 'defWINGMade', 'defATBAttempted', 'defATBMade',
+    'zone_rim_m', 'zone_rim_a', 'zone_paint_m', 'zone_paint_a',
+    'zone_mid_l_m', 'zone_mid_l_a', 'zone_mid_c_m', 'zone_mid_c_a', 'zone_mid_r_m', 'zone_mid_r_a',
+    'zone_c3_l_m', 'zone_c3_l_a', 'zone_c3_r_m', 'zone_c3_r_a',
+    'zone_atb3_l_m', 'zone_atb3_l_a', 'zone_atb3_c_m', 'zone_atb3_c_a', 'zone_atb3_r_m', 'zone_atb3_r_a',
+] as const satisfies readonly (keyof PlayerStats)[];
+
 export function usePlayerSeasonStatsFull(roomId: string | undefined | null, playerIds: string[]) {
-    // 배열 순서가 바뀌어도 동일 queryKey를 쓰도록 정렬(usePlayerSeasonStatsBatch와 동일 패턴).
+    // 배열 순서가 바뀌어도 같은 select 결과를 쓰도록 정렬.
     const sortedIds = [...new Set(playerIds)].sort();
+    const idsKey = sortedIds.join(',');
+
+    // 키에 선수 목록이 없어(방 단위) 로스터가 바뀌어도 isPending이 되돌아가지 않는다 — 예전 keepPreviousData 우회가 필요 없다.
+    const select = useCallback(
+        (all: PlayerSeasonStatsLeague): PlayerSeasonStatsFull => pickPlayerSeasonStats(all, sortedIds, FULL_FIELDS),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [idsKey],
+    );
 
     return useQuery({
-        queryKey: ['playerSeasonStatsFull', roomId, sortedIds.join(',')],
+        ...playerSeasonStatsLeagueQuery(roomId, null),
         enabled: !!roomId && sortedIds.length > 0,
-        // [2026-09-16] 방출/계약 등으로 allRosterIds가 바뀔 때마다(선수 한 명 빠짐/추가됨)
-        // queryKey가 바뀌어 새 쿼리로 취급되는데, 이게 없으면 isPending이 다시 true가 되어
-        // MultiRosterView.tsx의 전체 화면 로딩 게이트가 걸려 화면이 깜빡인다 — 옆의
-        // useLeagueRawStats.ts와 동일한 패턴으로 이전 데이터를 유지한 채 백그라운드로만 갱신.
-        placeholderData: keepPreviousData,
-        queryFn: async (): Promise<PlayerSeasonStatsFull> => {
-            const { data, error } = await supabase.rpc('get_player_season_stats_full', {
-                p_room_id: roomId,
-                p_player_ids: sortedIds,
-            });
-            if (error) throw error;
-
-            const m: PlayerSeasonStatsFull = {};
-            // numeric 컬럼은 정밀도 보존을 위해 supabase-js가 문자열로 내려주므로 Number() 변환 필요.
-            for (const row of (data ?? []) as StatsFullRow[]) {
-                m[row.player_id] = {
-                    g: row.g, gs: Number(row.gs), mp: Number(row.mp),
-                    pts: Number(row.pts), reb: Number(row.reb),
-                    offReb: Number(row.off_reb), defReb: Number(row.def_reb),
-                    ast: Number(row.ast), stl: Number(row.stl), blk: Number(row.blk), tov: Number(row.tov),
-                    pf: Number(row.pf),
-                    fgm: Number(row.fgm), fga: Number(row.fga),
-                    p3m: Number(row.p3m), p3a: Number(row.p3a),
-                    ftm: Number(row.ftm), fta: Number(row.fta),
-                    rimM: Number(row.rim_m), rimA: Number(row.rim_a),
-                    midM: Number(row.mid_m), midA: Number(row.mid_a),
-                    plusMinus: Number(row.plus_minus),
-                    contestedAttempted: Number(row.contested_attempted),
-                    contestedMade: Number(row.contested_made),
-                    defRAAttempted: Number(row.def_ra_attempted), defRAMade: Number(row.def_ra_made),
-                    defITPAttempted: Number(row.def_itp_attempted), defITPMade: Number(row.def_itp_made),
-                    defMIDAttempted: Number(row.def_mid_attempted), defMIDMade: Number(row.def_mid_made),
-                    defCNRAttempted: Number(row.def_cnr_attempted), defCNRMade: Number(row.def_cnr_made),
-                    defWINGAttempted: Number(row.def_wing_attempted), defWINGMade: Number(row.def_wing_made),
-                    defATBAttempted: Number(row.def_atb_attempted), defATBMade: Number(row.def_atb_made),
-                    zone_rim_m: Number(row.zone_rim_m), zone_rim_a: Number(row.zone_rim_a),
-                    zone_paint_m: Number(row.zone_paint_m), zone_paint_a: Number(row.zone_paint_a),
-                    zone_mid_l_m: Number(row.zone_mid_l_m), zone_mid_l_a: Number(row.zone_mid_l_a),
-                    zone_mid_c_m: Number(row.zone_mid_c_m), zone_mid_c_a: Number(row.zone_mid_c_a),
-                    zone_mid_r_m: Number(row.zone_mid_r_m), zone_mid_r_a: Number(row.zone_mid_r_a),
-                    zone_c3_l_m: Number(row.zone_c3_l_m), zone_c3_l_a: Number(row.zone_c3_l_a),
-                    zone_c3_r_m: Number(row.zone_c3_r_m), zone_c3_r_a: Number(row.zone_c3_r_a),
-                    zone_atb3_l_m: Number(row.zone_atb3_l_m), zone_atb3_l_a: Number(row.zone_atb3_l_a),
-                    zone_atb3_c_m: Number(row.zone_atb3_c_m), zone_atb3_c_a: Number(row.zone_atb3_c_a),
-                    zone_atb3_r_m: Number(row.zone_atb3_r_m), zone_atb3_r_a: Number(row.zone_atb3_r_a),
-                } as Partial<PlayerStats>;
-            }
-            return m;
-        },
+        select,
     });
 }

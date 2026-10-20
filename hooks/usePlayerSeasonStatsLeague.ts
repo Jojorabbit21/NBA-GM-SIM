@@ -46,6 +46,25 @@ interface StatsLeagueRow {
 
 export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
 
+/** 방 전체 결과에서 요청한 선수만 골라 반환한다. fields를 주면 그 항목만 남긴다 — Full/Batch가 예전 RPC가 내려주던
+ *  항목 목록 그대로를 유지하기 위한 것(League에만 있던 항목이 섞여 다른 곳의 값을 덮어쓰지 않게). 요청 안 한 선수/값 없는 선수는 키가 없다. */
+export function pickPlayerSeasonStats(
+    all: PlayerSeasonStatsLeague,
+    sortedIds: string[],
+    fields?: readonly (keyof PlayerStats)[],
+): PlayerSeasonStatsLeague {
+    const picked: PlayerSeasonStatsLeague = {};
+    for (const id of sortedIds) {
+        const stats = all[id];
+        if (!stats) continue;
+        if (!fields) { picked[id] = stats; continue; }
+        const row: Partial<PlayerStats> = {};
+        for (const f of fields) if (stats[f] !== undefined) (row as any)[f] = stats[f];
+        picked[id] = row;
+    }
+    return picked;
+}
+
 // [2026-09-15 Fix] isPlayoff(기본 false) — 리더보드의 "플레이오프" 토글이 이 값을 true로
 // 넘겨 별도로 한 번 더 호출한다(MultiLeaderboardView.tsx). RPC에 p_is_playoff 파라미터가
 // 생기기 전엔 정규시즌/플레이오프 구분 없이 전부 합산돼서, buildLeagueTeams.ts가
@@ -62,7 +81,9 @@ export const PLAYER_SEASON_STATS_LEAGUE_STALE_MS = 5 * 60 * 1000;
  * game_pbp 전체 스캔(RPC 1회 약 1초, 임시 파일 8MB)을 화면·로스터 변경마다 반복했다. 이제 방 전체 선수를
  * 한 번만 받고(p_player_ids=null) 각 화면은 select로 필요한 선수만 골라 쓴다. 부트스트랩 게이트도 같은 팩토리를 쓴다.
  */
-export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, isPlayoff: boolean = false) {
+/** [2026-10-20] isPlayoff: false=정규시즌, true=플레이오프, null=정규+플레이오프 합산(올스타 제외) —
+ *  usePlayerSeasonStatsFull/Batch가 이 쿼리를 공유한다(두 RPC는 원래 is_playoff 구분 없는 전 경기 누적이었다). */
+export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, isPlayoff: boolean | null = false) {
     return {
         queryKey: ['playerSeasonStatsLeague', roomId, isPlayoff] as const,
         staleTime: PLAYER_SEASON_STATS_LEAGUE_STALE_MS,
@@ -127,15 +148,11 @@ export function usePlayerSeasonStatsLeague(
     // 방 전체 결과에서 요청한 선수만 골라 돌려준다(예전 RPC 결과와 같은 모양 — 요청 안 한 선수는 키가 없다).
     // [2026-10-16 계승] 키에 선수 목록이 없으므로 로스터가 바뀌어도(트레이드/FA/방출) 데이터가 비거나 isPending이
     // 되돌아가지 않아 리더보드·선수 상세·홈이 깜빡이지 않는다 — 예전 placeholderData 우회가 필요 없어졌다.
-    const select = useCallback((all: PlayerSeasonStatsLeague): PlayerSeasonStatsLeague => {
-        const picked: PlayerSeasonStatsLeague = {};
-        for (const id of sortedIds) {
-            const stats = all[id];
-            if (stats) picked[id] = stats;
-        }
-        return picked;
+    const select = useCallback(
+        (all: PlayerSeasonStatsLeague): PlayerSeasonStatsLeague => pickPlayerSeasonStats(all, sortedIds),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [idsKey]);
+        [idsKey],
+    );
 
     const query = useQuery({
         ...playerSeasonStatsLeagueQuery(roomId, isPlayoff),

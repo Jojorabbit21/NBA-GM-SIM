@@ -35,6 +35,56 @@
 
 
 
+## 2026-10-20 — 시즌 스탯 RPC Full/Batch를 League 방 단위 쿼리로 통합
+
+**배경**: 앞선 항목(League 방 단위 통합)의 후속. `get_player_season_stats_full`(170회/1.8GB)과 `_batch`(469회/0.4GB)도 같은 game_pbp 전 경기 스캔을 각자 반복해 임시 파일을 쓰고 있었다. 세 RPC는 항목 이름이 Batch(15) ⊂ Full(58) ⊂ League(67)로 포함 관계이고 공유 항목은 같은 JSON 키를 같은 방식으로 합산한다. 유일한 의미 차이는 Full/Batch에 `is_playoff` 구분이 없다는 것(올스타 제외 전 경기 누적, League는 `p_is_playoff`로 정규/플레이오프 분리). 그래서 League RPC에 `p_is_playoff = NULL` → "정규+플레이오프 합산"을 추가하고 Full/Batch 훅이 그 방 단위 쿼리를 공유하도록 바꿨다.
+
+**변경 파일**:
+- `migrations/player_season_stats_league_null_playoff.sql` (DB — 운영 DB에 2026-10-20 적용 완료, 마이그레이션명 `player_season_stats_league_null_playoff`)
+- `hooks/usePlayerSeasonStatsLeague.ts` (client) — 팩토리 `isPlayoff: boolean | null`, `pickPlayerSeasonStats()` 추가
+- `hooks/usePlayerSeasonStatsFull.ts` (client) — 자체 RPC 호출 제거, 래퍼화
+- `hooks/usePlayerSeasonStatsBatch.ts` (client) — 자체 RPC 호출 제거, 래퍼화
+
+**Before**:
+```sql
+-- get_player_season_stats_league의 games JOIN
+AND g.is_allstar = false AND g.is_playoff = p_is_playoff
+```
+```ts
+// usePlayerSeasonStatsFull.ts — 키: ['playerSeasonStatsFull', roomId, 선수목록], placeholderData: keepPreviousData,
+//   supabase.rpc('get_player_season_stats_full', { p_room_id, p_player_ids: sortedIds }) 후 행→PlayerStats 매핑(57개 항목)
+// usePlayerSeasonStatsBatch.ts — 키: ['playerSeasonStatsBatch', roomId, 선수목록],
+//   supabase.rpc('get_player_season_stats_batch', { p_room_id, p_player_ids: sortedIds }) 후 행→PlayerStats 매핑(14개 항목)
+// 둘 다 전역 기본값 staleTime: Infinity (새 경기가 와도 키가 바뀌기 전까지 갱신 없음)
+```
+
+**After**:
+```sql
+AND g.is_allstar = false AND (p_is_playoff IS NULL OR g.is_playoff = p_is_playoff)   -- 현재 정의에서 이 한 곳만 치환(DO 블록, 멱등)
+```
+```ts
+// usePlayerSeasonStatsLeague.ts
+export function playerSeasonStatsLeagueQuery(roomId, isPlayoff: boolean | null = false)   // null → p_is_playoff: null (정규+플레이오프 합산)
+export function pickPlayerSeasonStats(all, sortedIds, fields?)   // 요청 선수만, fields 지정 시 그 항목만
+// usePlayerSeasonStatsFull.ts
+useQuery({ ...playerSeasonStatsLeagueQuery(roomId, null), enabled: !!roomId && ids.length > 0,
+           select: ids → pickPlayerSeasonStats(all, ids, FULL_FIELDS) })   // FULL_FIELDS: 예전 Full이 내리던 57개 그대로
+// usePlayerSeasonStatsBatch.ts — 동일 패턴, BATCH_FIELDS 14개
+// → 키 ['playerSeasonStatsLeague', roomId, null], staleTime 5분(League와 동일), placeholderData 우회 삭제(키에 선수 목록 없음)
+```
+- `get_player_season_stats_full` / `_batch` RPC는 DB에 그대로 둠(롤백용, 현재 호출 없음).
+- 값 의미 유지를 위해 항목 목록을 예전 훅 출력 그대로 제한(League 전용 항목이 섞여 다른 곳의 값을 덮어쓰지 않게). 예전 Full의 `def_mid_*`는 League의 `def_mid6_*`(둘 다 JSON `defMID*`)와 같은 값.
+
+**검증**:
+- DB: 함수 시그니처 1개 유지, NULL 조건 반영. 정규시즌만 있는 방(393→397행)과 플레이오프 96경기가 있는 방(401행) 둘 다에서 `Full`(58개 컬럼)·`Batch`(15개 컬럼)와 `League(NULL ids, NULL playoff)`의 결과가 선수별로 md5 완전 일치. `(ids, false)` 호출 == NULL ids에서 거른 `false` 결과(기존 동작 불변). 합산 검증: 전체 pts 283,126 = 정규 262,768 + 플레이오프 20,358.
+- 항목 목록(FULL_FIELDS 57개/BATCH_FIELDS 14개)을 `git show HEAD`의 예전 훅 매핑과 기계 대조 — 집합 동일, 중복 없음.
+- `tsc --noEmit`: 변경 전후 동일(73건), 이 훅을 쓰는 화면 포함 관련 파일 오류 없음.
+- 브라우저 육안 확인과 호출 감소 효과(`pg_stat_statements`의 league/full/batch calls, `temp_bytes`)는 배포 후 확인 필요. 05:10 UTC DB 재시작으로 통계가 리셋돼 이후 값을 새 기준으로 삼을 것.
+
+**롤백 방법**:
+- client: 세 훅 파일을 이전 커밋(`6884ae3c`)으로 되돌림. Full/Batch RPC가 DB에 남아 있어 별도 DB 작업 불필요.
+- DB(선택): 마이그레이션 파일 헤더의 from/to를 뒤집은 DO 블록을 실행하면 이전 조건으로 복원. 하위호환이라 그대로 두어도 기존 호출은 정상 동작.
+
 ## 2026-10-20 — /live-games·/live-game 502(CORS처럼 보이는 에러) 완화: 서버 공유 캐시 + 클라이언트 폴링 보호
 
 **배경**: DB 정지(12:24~12:33, 13:08~13:13 KST) 때 Fly 프록시 `connection closed before message completed` → 502 → 브라우저에는 `No 'Access-Control-Allow-Origin'` CORS 에러로 보임(502는 프록시가 만든 응답이라 앱의 CORS 헤더가 없음). 원인은 `/live-games`가 접속자×화면당 5초마다 (1) Supabase Auth getUser (2) room_members 조회 (3) game_pbp 큰 JSONB 5컬럼 조회를 매번 했고(재시작 후 75분간 이 `game_pbp` 폴링이 DB 실행 시간의 31.6%), DB가 느려지면 요청이 쌓여 Bun 기본 idleTimeout(10초)에 연결이 끊긴 것. 클라이언트는 한 탭에서 GameDateStrip·MultiScheduleView가 같은 요청을 각자 보내고, 응답 전에 다음 요청을 또 보냈다.
