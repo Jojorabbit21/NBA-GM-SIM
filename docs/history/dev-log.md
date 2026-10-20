@@ -35,6 +35,46 @@
 
 
 
+## 2026-10-20 — meta_gms 2026-27 프런트 갱신 준비: 사장/단장 분리 + 싱글 표시 이름 "사장 우선"
+
+**배경**: `meta_gms` 30팀 중 10팀은 이미 수장이 바뀌었고(ATL 이름은 실존 확인 불가), 팀마다 GM/사장 기준이 섞여 있었다.
+사용자 결정: 사장·단장을 함께 저장·표시하되 성향은 프런트 단위로 하나, 근거 약한 이름은 저장하지 않음, LAC는 대행 체제,
+싱글 대표 이름은 사장 우선. 설계: `docs/plan/multi-ai-gm-profile-plan.md` 0장 P6~P9, 6장.
+
+**변경 파일**:
+- `services/tradeEngine/gmProfiler.ts` (client, 싱글) — `populateGMData()`
+- `services/multi/aiGmProfile.ts` (client 원본) ↔ `server/src/shared/multi/aiGmProfile.ts` (server 미러) — 같은 날 신설 모듈 확장
+- `migrations/meta_gms_front_office_2026_27.sql` (신규, **아직 미적용** — 클라 배포 후 적용)
+
+**Before** (`gmProfiler.populateGMData`):
+```ts
+export function populateGMData(rows: { team_id: string; gm_name: string; personality_type: string; sliders: GMSliders | string }[]): void {
+    ...
+        newData[row.team_id] = { name: row.gm_name, ... };
+```
+**After**:
+```ts
+export function populateGMData(rows: { team_id: string; gm_name?: string | null; president_name?: string | null; ... }[]): void {
+    ...
+        const name = row.president_name || row.gm_name;
+        if (!name) continue;          // falls back to the seeded generateGMProfile path
+        newData[row.team_id] = { name, ... };
+```
+- `aiGmProfile.ts`: `MetaGmRow`에 `president_name/title`, `gm_title` 추가(전부 optional), `AiGmProfile.name` → `president`/`gm`(`{name,title}|null`) + `displayName`(사장 우선), `formatFrontOffice()` 추가("사장 팻 라일리 · 단장 앤디 엘리스버그").
+
+**마이그레이션 내용**: 컬럼 추가(`president_name`, `president_title`, `gm_title`, `profile_basis`, `verified_at`), `gm_name` NOT NULL 해제,
+30팀 값 UPDATE, `CHECK (president_name IS NOT NULL OR gm_name IS NOT NULL)`. `personality_type`/`sliders`는 변경 없음 —
+수장이 바뀐 11팀(atl chi dal den det law no phi phx sac uta)은 `profile_basis='재평가 필요'`.
+
+**적용 순서 주의**: 현재 배포된 클라이언트는 `gm_name`만 읽으므로, 마이그레이션을 먼저 적용하면 gm_name이 null이 되는 17팀의
+싱글 단장 이름이 배포 전까지 비어 보인다. **클라 배포 → 마이그레이션** 순서. 새 코드는 옛 DB에서도 gm_name으로 동작.
+
+**검증**: 옛 행(gm_name만)/새 행(사장만·사장+단장·겸직·단장만·대행) 6케이스 표시 확인, `populateGMData`에 이름 없는 행 → 예외 없이 건너뜀,
+`tsc --noEmit` client/server 오류 0, 미러 diff 헤더 3줄뿐.
+
+**롤백**: 코드는 Before로 복원(미러 쌍 둘 다). 마이그레이션을 적용했다면 파일 상단 주석의 원래 gm_name 30개로 복원 → 추가 컬럼·CHECK drop → `gm_name SET NOT NULL`.
+
+
 ## 2026-10-20 — 시즌 스탯 RPC Full/Batch를 League 방 단위 쿼리로 통합
 
 **배경**: 앞선 항목(League 방 단위 통합)의 후속. `get_player_season_stats_full`(170회/1.8GB)과 `_batch`(469회/0.4GB)도 같은 game_pbp 전 경기 스캔을 각자 반복해 임시 파일을 쓰고 있었다. 세 RPC는 항목 이름이 Batch(15) ⊂ Full(58) ⊂ League(67)로 포함 관계이고 공유 항목은 같은 JSON 키를 같은 방식으로 합산한다. 유일한 의미 차이는 Full/Batch에 `is_playoff` 구분이 없다는 것(올스타 제외 전 경기 누적, League는 `p_is_playoff`로 정규/플레이오프 분리). 그래서 League RPC에 `p_is_playoff = NULL` → "정규+플레이오프 합산"을 추가하고 Full/Batch 훅이 그 방 단위 쿼리를 공유하도록 바꿨다.
@@ -132,6 +172,50 @@ const loadLiveGameRow  = createSharedLoader<any | null>(2_000, 60_000); // /live
 - `tsc`: 서버 설정 변경 전후 동일(45건, 기존 Bun 타입 미설치), 클라이언트 변경 전후 동일(73건), 변경 파일 오류 없음. 서버는 Fly 배포 후 로그 확인 필요(bun 미설치로 로컬 서버 기동은 못 함).
 
 **롤백 방법**: client는 `services/multi/liveGameService.ts`를 Before로. 서버는 `server/src/index.ts`를 이전 커밋으로 되돌리고(라우트의 `safeLive`, `verifyTokenCached`/`canReadRoomCached`/`loadLiveGameRow(s)` 사용 제거) `server/src/liveCache.ts`는 남겨도 무해. 서버는 Fly 재배포 필요(`flyctl releases`의 직전 버전).
+
+## 2026-10-20 — 멀티 AI 단장 프로필(G1) + 시즌 상황/기조 판정(G2) 순수 모듈 신설
+
+**배경**: 멀티 AI↔유저 트레이드(`docs/plan/multi-ai-trade-plan.md`)의 선행 작업. AI 팀마다 실제 단장
+(`meta_gms`, 슬러그 고정)을 붙이고, 그 성향과 순위 상황으로 "현재 기조"를 판정한다. 설계와 사용자 결정(P1~P5)은
+`docs/plan/multi-ai-gm-profile-plan.md`. 이번엔 순수 모듈만 추가 — 아직 어떤 화면/서버 경로도 import하지 않음(동작 변화 없음).
+
+**변경 파일** (전부 신규):
+- `services/multi/aiGmProfile.ts` (client 원본) ↔ `server/src/shared/multi/aiGmProfile.ts` (server 미러)
+- `services/multi/aiTeamSituation.ts` (client 원본) ↔ `server/src/shared/multi/aiTeamSituation.ts` (server 미러)
+- 미러 쌍은 외부 import가 없어 헤더 주석 3줄만 다름 (`diff`로 확인)
+
+**Before**: 없음 (신규 파일)
+
+**After** — 핵심 공식/상수:
+```ts
+// aiGmProfile.ts — meta_gms row → traits
+competitiveness     = clamp(BASE[type].competitiveness + 0.05 * (aggressiveness - 5), 0.1, 0.9)
+strictness          = clamp(BASE[type].strictness - 0.004 * (aggressiveness - 5), -0.03, 0.03)
+rosterStyle         = clamp(0.2 + 0.6 * (starWillingness - 1) / 9, 0.2, 0.8)   // <0.4 뎁스 중심 / >0.6 스타 중심
+injuryRiskTolerance = clamp(riskTolerance / 10, 0.1, 0.9)
+// BASE: winNow .75/-.01, starHunter .70/-.01, balanced .50/0, defenseFocused .50/0,
+//       valueTrader .45/+.02, rebuilder .30/+.01, youthMovement .25/+.01  (unknown → balanced, missing slider → 5)
+
+// aiTeamSituation.ts — deterministic (no Math.random)
+pStr    = 0.30 + 0.40 * powerScore / 100
+pFuture = (wins + 20 * pStr) / (played + 20)
+projPct = (wins + remaining * pFuture) / (played + remaining)
+lineRank = playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf          // = getRaceZones().lastK
+gapGames = (projPct - avg(pct[lineRank], pct[lineRank+1])) * totalGames
+sigma = max(1, sqrt((0.5*sqrt(remaining))^2 + (remaining * 0.08 * 20/(played+20))^2)),  z = gapGames / sigma
+situation: z >= 1.0 → (league top 4 ? contender : middle); z >= -(0.4 + 1.6*competitiveness) → bubble; else out
+stance: competitiveness >=0.65 high / <0.35 low — contender: 우승 올인|우승 도전, bubble: 총력전|순위 경쟁|관망,
+        middle: 보강 모색|관망, out: 반등 시도|관망|정리 중
+```
+
+**검증**:
+- 실제 `meta_gms` 30명 변환: 승부욕 0.25~0.90 (winNow/starHunter 11명 ≥0.80, rebuilder/youthMovement 0.25~0.40),
+  로스터 성향 라벨 스타 중심 11 / 균형 13 / 뎁스 중심 6, 깐깐함 −0.03~+0.02
+- 가상 순위(전력 비례 승수)로 개막 전/41경기/75경기 판정 → 상황·기조 분포 정상, 같은 입력 2회 → 같은 결과
+- `tsc --noEmit` client/server 모두 새 파일 오류 0
+
+**롤백 방법**: 4개 파일 삭제 (import하는 곳이 아직 없음). 미러 쌍이므로 반드시 client/server 둘 다.
+
 
 ## 2026-10-20 — 시즌 스탯 RPC 호출 줄이기: 방 단위 단일 쿼리 + 5분 staleTime
 

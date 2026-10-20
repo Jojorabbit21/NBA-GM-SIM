@@ -15,13 +15,20 @@ let GM_DATA: Record<string, { name: string; personalityType: GMPersonalityType; 
 /**
  * meta_gms DB 데이터로 싱글턴 교체
  * queries.ts의 useBaseData()에서 앱 시작 시 호출
+ *
+ * [2026-10-20] meta_gms에 president_name(농구 운영 최고 책임자)이 생기고 gm_name은 단장 공석이면 null —
+ * 표시 이름은 사장 우선, 없으면 단장(migrations/meta_gms_front_office_2026_27.sql). 컬럼이 없던
+ * 이전 DB에서도 그대로 gm_name을 쓰도록 둘 다 optional로 받는다. 둘 다 없으면 DB 미등록 팀처럼
+ * generateGMProfile의 시드 fallback으로 넘어가도록 GM_DATA에서 뺀다.
  */
-export function populateGMData(rows: { team_id: string; gm_name: string; personality_type: string; sliders: GMSliders | string }[]): void {
+export function populateGMData(rows: { team_id: string; gm_name?: string | null; president_name?: string | null; personality_type: string; sliders: GMSliders | string }[]): void {
     const newData: Record<string, { name: string; personalityType: GMPersonalityType; sliders: GMSliders }> = {};
     for (const row of rows) {
+        const name = row.president_name || row.gm_name;
+        if (!name) continue;
         const sliders = typeof row.sliders === 'string' ? JSON.parse(row.sliders) : row.sliders;
         newData[row.team_id] = {
-            name: row.gm_name,
+            name,
             personalityType: row.personality_type as GMPersonalityType,
             sliders,
         };
