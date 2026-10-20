@@ -35,6 +35,54 @@
 
 
 
+## 2026-10-20 — /live-games·/live-game 502(CORS처럼 보이는 에러) 완화: 서버 공유 캐시 + 클라이언트 폴링 보호
+
+**배경**: DB 정지(12:24~12:33, 13:08~13:13 KST) 때 Fly 프록시 `connection closed before message completed` → 502 → 브라우저에는 `No 'Access-Control-Allow-Origin'` CORS 에러로 보임(502는 프록시가 만든 응답이라 앱의 CORS 헤더가 없음). 원인은 `/live-games`가 접속자×화면당 5초마다 (1) Supabase Auth getUser (2) room_members 조회 (3) game_pbp 큰 JSONB 5컬럼 조회를 매번 했고(재시작 후 75분간 이 `game_pbp` 폴링이 DB 실행 시간의 31.6%), DB가 느려지면 요청이 쌓여 Bun 기본 idleTimeout(10초)에 연결이 끊긴 것. 클라이언트는 한 탭에서 GameDateStrip·MultiScheduleView가 같은 요청을 각자 보내고, 응답 전에 다음 요청을 또 보냈다.
+
+**변경 파일**:
+- `server/src/liveCache.ts` (신규) — `verifyTokenCached`, `canReadRoomCached`, `createSharedLoader`, `LIVE_QUERY_TIMEOUT_MS`
+- `server/src/index.ts` — `/live-game`, `/live-games` 핸들러
+- `services/multi/liveGameService.ts` — `fetchLiveGamesSummary`
+
+**Before**:
+```ts
+// server/src/index.ts — handleLiveGames (handleLiveGame도 같은 패턴)
+const userId = token ? await verifyToken(token) : null;            // 요청마다 Supabase Auth 호출
+if (!(await verifyRoomReadAccess(userId, roomId))) return json({ error: 'Forbidden' }, 403); // 요청마다 DB 조회, DB 오류는 false로 삼켜 403
+const { data: rows } = await supabase.from('game_pbp').select('...events,shot_events,home_box,away_box,box_timeline')
+    .eq('room_id', roomId).lte('game_start_time', nowIso).gt('game_start_time', cutoffIso);   // 요청마다, 타임아웃 없음
+// 라우트: return handleLiveGames(req, url);   (예외/지연 시 연결이 끊겨 502)
+// services/multi/liveGameService.ts
+export const fetchLiveGamesSummary = async (roomId, accessToken) => {
+    try { const res = await fetch(`${FLY_SERVER}/live-games?roomId=${roomId}`, { headers });
+          if (!res.ok) { handlePossibleDeadSession(res.status); return []; } ... } catch { return []; }
+};
+```
+
+**After**:
+```ts
+// server/src/liveCache.ts
+verifyTokenCached(token)       // 성공 min(60초, JWT exp)까지, 실패 5초 캐시. 읽기 전용 라이브 엔드포인트에서만 사용(쓰기/어드민은 verifyToken 유지)
+canReadRoomCached(u, room, fn) // 허용 60초 / 거부 10초 캐시, fn의 DB 오류는 throw
+createSharedLoader(ttl, stale) // 같은 key 동시 요청은 load 1회로 합침, ttl 재사용, 실패 시 staleMs 이내 직전 값 반환
+LIVE_QUERY_TIMEOUT_MS = 7000   // supabase 쿼리 .abortSignal(AbortSignal.timeout(...))
+// server/src/index.ts
+const loadLiveGameRows = createSharedLoader<any[]>(3_000, 60_000);   // /live-games: 방당 3초 1회, 장애 시 60초까지 직전 행
+const loadLiveGameRow  = createSharedLoader<any | null>(2_000, 60_000); // /live-game: 경기당 2초
+// verifyRoomMember/verifyRoomReadAccess: error면 throw (false로 삼키지 않음)
+// 라우트: return safeLive(() => handleLiveGames(req, url));  // 예외 → CORS 헤더 포함 503 JSON(Retry-After: 5)
+// buildLiveSummary는 (행, 현재시각) 순수 함수라 응답 시각마다 새로 계산 — 행 캐시로 값이 낡지 않음
+// services/multi/liveGameService.ts fetchLiveGamesSummary
+//   방별 상태 공유: 진행 중 요청 합치기, 3초 최소 간격, 숨김 탭 스킵, 실패 시 5→10→20→30초 백오프,
+//   실패/대기 중엔 마지막 성공 값을 30초까지 반환(전엔 즉시 []), fetch 10초 AbortSignal.timeout
+```
+
+**검증**:
+- liveCache를 Node로 변환해 9개 시나리오 통과: 50동시 요청→load 1회, TTL 재사용/만료 갱신, 실패 시 stale 폴백·stale 만료 시 오류 전파·실패 후 재시도, 토큰 1회 검증/무효 토큰 단기 캐시/이미 만료된 토큰 미캐시, 권한 캐시·DB 오류 전파(false 403 아님).
+- `tsc`: 서버 설정 변경 전후 동일(45건, 기존 Bun 타입 미설치), 클라이언트 변경 전후 동일(73건), 변경 파일 오류 없음. 서버는 Fly 배포 후 로그 확인 필요(bun 미설치로 로컬 서버 기동은 못 함).
+
+**롤백 방법**: client는 `services/multi/liveGameService.ts`를 Before로. 서버는 `server/src/index.ts`를 이전 커밋으로 되돌리고(라우트의 `safeLive`, `verifyTokenCached`/`canReadRoomCached`/`loadLiveGameRow(s)` 사용 제거) `server/src/liveCache.ts`는 남겨도 무해. 서버는 Fly 재배포 필요(`flyctl releases`의 직전 버전).
+
 ## 2026-10-20 — 시즌 스탯 RPC 호출 줄이기: 방 단위 단일 쿼리 + 5분 staleTime
 
 **배경**: 12:02/12:24~12:33/13:08~13:13 KST DB 정지(t4g.micro, 메모리 압박·IOwait) 조사에서 `get_player_season_stats_league`가 재시작 후 75분간 임시 파일 약 3GB(호출당 ~8MB 스필, 평균 0.96초)로 DB 컴퓨트를 가장 많이 썼다. RPC는 방의 `game_pbp` 전 경기 박스를 펼쳐 집계하므로 비용이 경기 수에 비례하는데, 클라이언트가 화면마다 다른 선수 목록(리그 전체/내 팀/FA 풀/비교 선택 등)을 넘겨 캐시 키가 8종 넘게 갈라져 같은 스캔을 반복했다. 앱 전역 `staleTime: Infinity`라 같은 키는 새 경기가 끝나도 갱신되지 않았다.

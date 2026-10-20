@@ -24,6 +24,7 @@ import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
 import { buildWindowedViewSince, buildLiveSummary, type GamePbpSource } from './liveGameView';
 import { getRoomReplayMs } from './replayConfig';
+import { verifyTokenCached, canReadRoomCached, createSharedLoader, LIVE_QUERY_TIMEOUT_MS } from './liveCache';
 import { preloadGameConfig } from './shared/services/admin/gameConfigService';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
@@ -207,12 +208,12 @@ const server = Bun.serve<WsData>({
 
         // 경기 상세 PBP — live 구간이면 서버가 elapsed까지만 잘라서 반환 (스포일러 방지)
         if (url.pathname === '/live-game' && req.method === 'GET') {
-            return handleLiveGame(req, url);
+            return safeLive(() => handleLiveGame(req, url));
         }
 
         // 방 전체의 "지금 진행 중"인 경기 요약 (일정 리스트 라이브 스코어용)
         if (url.pathname === '/live-games' && req.method === 'GET') {
-            return handleLiveGames(req, url);
+            return safeLive(() => handleLiveGames(req, url));
         }
 
         // 어드민 사용자 관리 — 전체 유저 목록/수정/삭제 (고정 어드민 계정 전용)
@@ -389,12 +390,38 @@ async function handleSimSpeed(req: Request): Promise<Response> {
 
 // ── 경기 상세 라이브뷰 ───────────────────────────────────────────────────────
 
+// 같은 방/경기를 보는 접속자들의 폴링을 한 번의 조회로 합치는 공유 로더(liveCache.ts). 값은 [키, TTL, 장애 시 낡은 값 허용 시간].
+const loadLiveGameRows = createSharedLoader<any[]>(3_000, 60_000);
+const loadLiveGameRow  = createSharedLoader<any | null>(2_000, 60_000);
+
+/** [2026-10-20] 읽기 전용 라이브 엔드포인트의 예기치 않은 실패(DB 지연/중단 등)를 CORS 헤더가 붙은 503 JSON으로 돌려준다.
+ *  전엔 핸들러가 throw하거나 10초(Bun idleTimeout)를 넘기면 연결이 끊겨 Fly 프록시 502 → 브라우저엔 CORS 에러로 보였다. */
+async function safeLive(run: () => Promise<Response>): Promise<Response> {
+    try {
+        return await run();
+    } catch (err) {
+        console.warn('[live] request failed:', (err as Error)?.message ?? err);
+        return new Response(JSON.stringify({ error: 'temporarily unavailable' }), {
+            status: 503,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin':  '*',
+                'Access-Control-Allow-Headers': 'authorization, content-type',
+                'Retry-After': '5',
+            },
+        });
+    }
+}
+
+/** DB 오류는 false로 삼키지 않고 throw — 지연 중인 DB 때문에 정상 유저가 403을 받지 않게 한다(safeLive가 503으로 변환). */
 async function verifyRoomMember(userId: string, roomId: string): Promise<boolean> {
-    const { count } = await supabase
+    const { count, error } = await supabase
         .from('room_members')
         .select('user_id', { count: 'exact', head: true })
         .eq('room_id', roomId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS));
+    if (error) throw new Error(`room_members: ${error.message}`);
     return (count ?? 0) > 0;
 }
 
@@ -403,11 +430,13 @@ async function verifyRoomMember(userId: string, roomId: string): Promise<boolean
  *  server/src만 복사해 import 불가라 인라인). 읽기 전용 엔드포인트에서만 사용할 것. */
 async function verifyRoomReadAccess(userId: string, roomId: string): Promise<boolean> {
     if (await verifyRoomMember(userId, roomId)) return true;
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('rooms')
         .select('leagues!inner(spectate_enabled,status)')
         .eq('id', roomId)
+        .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS))
         .maybeSingle();
+    if (error) throw new Error(`rooms/leagues: ${error.message}`);
     const lg = (data as { leagues?: { spectate_enabled: boolean; status: string } | { spectate_enabled: boolean; status: string }[] } | null)?.leagues;
     const league = Array.isArray(lg) ? lg[0] : lg;
     return !!league && league.spectate_enabled === true && (league.status === 'in_progress' || league.status === 'finished');
@@ -423,21 +452,28 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
 
     const authHeader = req.headers.get('Authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const userId = token ? await verifyToken(token) : null;
+    const userId = token ? await verifyTokenCached(token) : null;
     if (!userId) return json({ error: 'Unauthorized' }, 401);
 
     const roomId = url.searchParams.get('roomId');
     const gameId = url.searchParams.get('gameId');
     if (!roomId || !gameId) return json({ error: 'roomId and gameId required' }, 400);
 
-    if (!(await verifyRoomReadAccess(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+    if (!(await canReadRoomCached(userId, roomId, () => verifyRoomReadAccess(userId, roomId)))) return json({ error: 'Forbidden' }, 403);
 
-    const { data: row } = await supabase
-        .from('game_pbp')
-        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data')
-        .eq('room_id', roomId)
-        .eq('game_id', gameId)
-        .maybeSingle();
+    // [2026-10-20] 같은 경기를 보는 여러 접속자의 폴링을 2초 단위로 한 번의 조회로 합친다(DB 장애 시 60초까지 직전 값으로 버팀).
+    // row의 공개 구간은 아래 buildWindowedViewSince가 요청 시각 기준으로 자르므로 행 자체는 캐시해도 스포일러 위험이 없다.
+    const row = await loadLiveGameRow(`${roomId}:${gameId}`, async () => {
+        const { data, error } = await supabase
+            .from('game_pbp')
+            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data')
+            .eq('room_id', roomId)
+            .eq('game_id', gameId)
+            .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS))
+            .maybeSingle();
+        if (error) throw new Error(`game_pbp: ${error.message}`);
+        return data;
+    });
 
     if (!row) return json({ ok: false, error: 'not found' }, 404);
 
@@ -467,26 +503,34 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
 
     const authHeader = req.headers.get('Authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    const userId = token ? await verifyToken(token) : null;
+    const userId = token ? await verifyTokenCached(token) : null;
     if (!userId) return json({ error: 'Unauthorized' }, 401);
 
     const roomId = url.searchParams.get('roomId');
     if (!roomId) return json({ error: 'roomId required' }, 400);
 
-    if (!(await verifyRoomReadAccess(userId, roomId))) return json({ error: 'Forbidden' }, 403);
+    if (!(await canReadRoomCached(userId, roomId, () => verifyRoomReadAccess(userId, roomId)))) return json({ error: 'Forbidden' }, 403);
 
-    const replayMs  = await getRoomReplayMs(roomId);
-    const nowIso    = new Date().toISOString();
-    const cutoffIso = new Date(Date.now() - replayMs).toISOString();
+    const replayMs = await getRoomReplayMs(roomId);
 
-    const { data: rows } = await supabase
-        .from('game_pbp')
-        .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
-        .eq('room_id', roomId)
-        .lte('game_start_time', nowIso)
-        .gt('game_start_time', cutoffIso);
+    // [2026-10-20] 방당 3초에 한 번만 DB 조회 — 접속자·화면 수와 무관(전엔 접속자×화면×5초마다 큰 JSONB 5컬럼 조회).
+    // 요약(buildLiveSummary)은 (행, 현재시각)만으로 계산되는 순수 함수라, 행을 캐시해도 응답 시각마다 새로 계산해 값이 낡지 않는다.
+    // DB가 막히면 loader가 60초까지 직전 행으로 대신한다.
+    const rows = await loadLiveGameRows(roomId, async () => {
+        const nowIso    = new Date().toISOString();
+        const cutoffIso = new Date(Date.now() - replayMs).toISOString();
+        const { data, error } = await supabase
+            .from('game_pbp')
+            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
+            .eq('room_id', roomId)
+            .lte('game_start_time', nowIso)
+            .gt('game_start_time', cutoffIso)
+            .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS));
+        if (error) throw new Error(`game_pbp: ${error.message}`);
+        return data ?? [];
+    });
 
-    const summaries = (rows ?? []).map(r => buildLiveSummary(r as GamePbpSource, Date.now(), replayMs));
+    const summaries = rows.map(r => buildLiveSummary(r as GamePbpSource, Date.now(), replayMs));
     return json({ ok: true, games: summaries });
 }
 

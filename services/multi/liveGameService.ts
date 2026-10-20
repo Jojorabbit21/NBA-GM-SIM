@@ -93,21 +93,71 @@ export const fetchLiveGameView = async (
     }
 };
 
+// [2026-10-20] 라이브 요약 폴링 보호. 한 탭에서 GameDateStrip·MultiScheduleView가 각자 5초마다 같은 요청을 보내고,
+// 서버가 느리면 응답 전에 다음 요청이 쌓여(setInterval은 이전 요청 완료를 기다리지 않음) DB 지연을 증폭했다.
+//  - 같은 방의 요청은 하나로 합친다(진행 중이거나 3초 이내면 그 결과 재사용).
+//  - 백그라운드 탭에서는 요청하지 않는다(마지막 값 유지).
+//  - 실패하면 5→10→20→30초로 물러서고, 그동안엔 마지막 성공 값을 최대 30초 보여준다(전엔 바로 빈 배열 → 라이브 스코어가 깜빡임).
+//  - 요청은 10초에서 끊는다(서버가 연결을 끊기 전에 클라이언트가 먼저 정리).
+const LIVE_SUMMARY_MIN_GAP_MS = 3000;
+const LIVE_SUMMARY_TIMEOUT_MS = 10_000;
+const LIVE_SUMMARY_BACKOFF_MS = [5000, 10_000, 20_000, 30_000];
+const LIVE_SUMMARY_STALE_MS = 30_000;
+
+interface LiveSummaryState {
+    inflight: Promise<LiveGameSummary[]> | null;
+    last: LiveGameSummary[];
+    lastOkAt: number;
+    lastAttemptAt: number;
+    failures: number;
+    blockedUntil: number;
+}
+const liveSummaryState = new Map<string, LiveSummaryState>();
+
 /** 방 전체의 "지금 진행 중"인 경기 요약 — 일정 리스트 라이브 스코어 표시용. */
 export const fetchLiveGamesSummary = async (
     roomId: string,
     accessToken?: string,
 ): Promise<LiveGameSummary[]> => {
-    try {
-        const headers = await authHeader(accessToken);
-        const res = await fetch(`${FLY_SERVER}/live-games?roomId=${roomId}`, { headers });
-        if (!res.ok) {
-            handlePossibleDeadSession(res.status);
-            return [];
-        }
-        const data = await res.json().catch(() => ({}));
-        return (data?.games as LiveGameSummary[]) ?? [];
-    } catch {
-        return [];
+    let st = liveSummaryState.get(roomId);
+    if (!st) {
+        st = { inflight: null, last: [], lastOkAt: 0, lastAttemptAt: 0, failures: 0, blockedUntil: 0 };
+        liveSummaryState.set(roomId, st);
     }
+    const state = st;
+    const now = Date.now();
+    const staleSafe = () => (now - state.lastOkAt <= LIVE_SUMMARY_STALE_MS ? state.last : []);
+
+    if (state.inflight) return state.inflight;
+    if (typeof document !== 'undefined' && document.hidden) return staleSafe();
+    if (now < state.blockedUntil) return staleSafe();
+    if (now - state.lastAttemptAt < LIVE_SUMMARY_MIN_GAP_MS) return staleSafe();
+
+    state.lastAttemptAt = now;
+    state.inflight = (async () => {
+        try {
+            const headers = await authHeader(accessToken);
+            const res = await fetch(`${FLY_SERVER}/live-games?roomId=${roomId}`, {
+                headers,
+                signal: AbortSignal.timeout(LIVE_SUMMARY_TIMEOUT_MS),
+            });
+            if (!res.ok) {
+                handlePossibleDeadSession(res.status);
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const data = await res.json().catch(() => ({}));
+            state.last = (data?.games as LiveGameSummary[]) ?? [];
+            state.lastOkAt = Date.now();
+            state.failures = 0;
+            state.blockedUntil = 0;
+            return state.last;
+        } catch {
+            state.failures += 1;
+            state.blockedUntil = Date.now() + LIVE_SUMMARY_BACKOFF_MS[Math.min(state.failures - 1, LIVE_SUMMARY_BACKOFF_MS.length - 1)];
+            return Date.now() - state.lastOkAt <= LIVE_SUMMARY_STALE_MS ? state.last : [];
+        } finally {
+            state.inflight = null;
+        }
+    })();
+    return state.inflight;
 };
