@@ -62,7 +62,6 @@ function buildEntries(input: BootstrapInput): Entry[] {
     if (!league || !room) return [];
     const roomId = room.id;
     const allRosterIds = [...new Set(leagueTeams.flatMap(t => t.roster ?? []))];
-    const sortedIds = [...allRosterIds].sort();
     const mySlug = myTeam?.team_slug ?? null;
     const entries: Entry[] = [];
     const add = (opts: { queryKey: readonly unknown[]; queryFn: (ctx: any) => Promise<any>; staleTime?: number; gcTime?: number }) =>
@@ -76,7 +75,7 @@ function buildEntries(input: BootstrapInput): Entry[] {
     if (allRosterIds.length > 0) {
         add(leagueRawPlayersQuery(roomId, allRosterIds));
         add(leagueRawSeasonInjuryQuery(roomId, allRosterIds));
-        add(playerSeasonStatsLeagueQuery(roomId, sortedIds, false));
+        add(playerSeasonStatsLeagueQuery(roomId, false));
     }
     add(homeLeagueTransactionsQuery(roomId));
     // 홈이 쓰는 뉴스피드 필터 3종(pages/MultiSeasonPage.tsx: 최신 뉴스 / 거래 / 부상·결장)

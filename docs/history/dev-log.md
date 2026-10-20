@@ -35,6 +35,66 @@
 
 
 
+## 2026-10-20 — 시즌 스탯 RPC 호출 줄이기: 방 단위 단일 쿼리 + 5분 staleTime
+
+**배경**: 12:02/12:24~12:33/13:08~13:13 KST DB 정지(t4g.micro, 메모리 압박·IOwait) 조사에서 `get_player_season_stats_league`가 재시작 후 75분간 임시 파일 약 3GB(호출당 ~8MB 스필, 평균 0.96초)로 DB 컴퓨트를 가장 많이 썼다. RPC는 방의 `game_pbp` 전 경기 박스를 펼쳐 집계하므로 비용이 경기 수에 비례하는데, 클라이언트가 화면마다 다른 선수 목록(리그 전체/내 팀/FA 풀/비교 선택 등)을 넘겨 캐시 키가 8종 넘게 갈라져 같은 스캔을 반복했다. 앱 전역 `staleTime: Infinity`라 같은 키는 새 경기가 끝나도 갱신되지 않았다.
+
+**변경 파일**:
+- `migrations/player_season_stats_league_null_ids.sql` (DB — 운영 DB에 2026-10-20 적용 완료, 마이그레이션명 `player_season_stats_league_null_ids`)
+- `hooks/usePlayerSeasonStatsLeague.ts` (client)
+- `hooks/useLeagueBootstrap.ts` (client)
+
+**Before**:
+```sql
+-- DB
+CREATE OR REPLACE FUNCTION public.get_player_season_stats_league(p_room_id uuid, p_player_ids uuid[], p_is_playoff boolean DEFAULT false) ...
+  AND (elem->>'playerId')::uuid = ANY(p_player_ids)
+```
+```ts
+// hooks/usePlayerSeasonStatsLeague.ts
+export function playerSeasonStatsLeagueQuery(roomId, sortedIds: string[], isPlayoff = false) {
+    return {
+        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(','), isPlayoff] as const,
+        queryFn: ... rpc('get_player_season_stats_league', { p_room_id: roomId, p_player_ids: sortedIds, p_is_playoff: isPlayoff })
+    };
+}
+// 훅: useQuery({ ...playerSeasonStatsLeagueQuery(roomId, sortedIds, isPlayoff), enabled, placeholderData: (prev, prevQuery) => 같은 room·isPlayoff면 prev })
+// hooks/useLeagueBootstrap.ts
+const sortedIds = [...allRosterIds].sort();
+add(playerSeasonStatsLeagueQuery(roomId, sortedIds, false));
+```
+
+**After**:
+```sql
+-- DB: 시그니처(인자 개수·타입) 동일, p_player_ids에 DEFAULT NULL 추가 — NULL이면 선수 필터 생략(방 전체)
+CREATE OR REPLACE FUNCTION public.get_player_season_stats_league(p_room_id uuid, p_player_ids uuid[] DEFAULT NULL, p_is_playoff boolean DEFAULT false) ...
+  AND (p_player_ids IS NULL OR (elem->>'playerId')::uuid = ANY(p_player_ids))
+```
+```ts
+// hooks/usePlayerSeasonStatsLeague.ts
+export const PLAYER_SEASON_STATS_LEAGUE_STALE_MS = 5 * 60 * 1000;
+export function playerSeasonStatsLeagueQuery(roomId, isPlayoff = false) {
+    return {
+        queryKey: ['playerSeasonStatsLeague', roomId, isPlayoff] as const,   // 선수 목록 제거
+        staleTime: PLAYER_SEASON_STATS_LEAGUE_STALE_MS,
+        queryFn: ... rpc(..., { p_room_id: roomId, p_player_ids: null, p_is_playoff: isPlayoff })
+    };
+}
+// 훅: useQuery({ ...playerSeasonStatsLeagueQuery(roomId, isPlayoff), enabled, select })
+//   select = 요청한 선수(sortedIds)만 골라 반환(useCallback, 의존성 idsKey). placeholderData 우회는 삭제(키에 선수 목록이 없어 불필요).
+// hooks/useLeagueBootstrap.ts
+add(playerSeasonStatsLeagueQuery(roomId, false));   // sortedIds 변수 삭제
+```
+
+**검증**:
+- DB: 함수가 `(uuid,uuid[],boolean)` 하나뿐인지 확인(오버로드 없음). 같은 스냅샷에서 선수 ID 배열 호출 vs NULL 호출을 그 선수들로 거른 결과가 393행/md5 완전 일치(방 `aeb5794a…`, 정규시즌).
+- `tsc --noEmit`: 변경 전후 모두 기존 오류 73줄로 동일, 이번 변경 파일·이 훅을 쓰는 화면 10곳에는 오류 없음.
+- 브라우저 육안 확인과 호출 감소 효과(pg_stat_statements `get_player_season_stats_league` calls)는 배포 후 확인 필요.
+
+**롤백 방법**:
+- client: `hooks/usePlayerSeasonStatsLeague.ts`, `hooks/useLeagueBootstrap.ts`를 이전 커밋으로 되돌림(Before 블록).
+- DB: 클라이언트를 먼저 되돌린 뒤, 함수를 `DROP FUNCTION public.get_player_season_stats_league(uuid, uuid[], boolean);`로 지우고 `p_player_ids uuid[]`(DEFAULT 없음) + `AND (elem->>'playerId')::uuid = ANY(p_player_ids)`로 재생성(CREATE OR REPLACE로는 기본값을 제거할 수 없음). 다만 DB 확장은 하위호환이라 그대로 두어도 기존 클라이언트는 정상 동작.
+
 ## 2026-10-20 — 올스타 후보 최소 출전 경기 수 완화 (41경기 → 팀 경기의 50%)
 
 **배경**: 투표 시작일(1/9, 팀당 ~40경기)에 `buildCandidates`의 MIN_GAMES=41 필터 때문에 후보가 6명(서부 프론트코트 0명)뿐이었음. 올스타는 수상이 아닌 인기투표라 어워드용 기준을 그대로 쓸 이유가 없음. 어워드(`runAwardVoting`)는 41경기 그대로 유지.

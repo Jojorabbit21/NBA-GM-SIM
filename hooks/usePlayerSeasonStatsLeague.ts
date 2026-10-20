@@ -1,4 +1,5 @@
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import type { PlayerStats } from '../types/player';
@@ -52,14 +53,23 @@ export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
 // 토글이 매번 0으로만 나오던 버그).
 // enabledOverride — 호출부가 "지금은 이 쿼리가 필요 없다"고 판단할 때(리더보드가 정규시즌
 // 모드일 때 플레이오프 쿼리를 안 돌리는 등) false로 넘겨 아예 fetch를 막는다. 기본 true.
-/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리. playerIds는 중복 제거·정렬된 상태로 넘길 것. */
-export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, sortedIds: string[], isPlayoff: boolean = false) {
+/** 시즌 스탯은 방 단위로 5분간 신선한 것으로 본다 — 앱 전역 staleTime: Infinity면 새 경기가 반영되지 않는다. */
+export const PLAYER_SEASON_STATS_LEAGUE_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * [2026-10-20] 방(room) 단위 쿼리 — 키에서 선수 목록을 뺐다.
+ * 전엔 화면마다 넘기는 선수 목록(리그 전체/내 팀/FA 풀/비교 선택…)이 키에 들어가 8종 넘는 키로 갈라져, 같은
+ * game_pbp 전체 스캔(RPC 1회 약 1초, 임시 파일 8MB)을 화면·로스터 변경마다 반복했다. 이제 방 전체 선수를
+ * 한 번만 받고(p_player_ids=null) 각 화면은 select로 필요한 선수만 골라 쓴다. 부트스트랩 게이트도 같은 팩토리를 쓴다.
+ */
+export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, isPlayoff: boolean = false) {
     return {
-        queryKey: ['playerSeasonStatsLeague', roomId, sortedIds.join(','), isPlayoff] as const,
+        queryKey: ['playerSeasonStatsLeague', roomId, isPlayoff] as const,
+        staleTime: PLAYER_SEASON_STATS_LEAGUE_STALE_MS,
         queryFn: async (): Promise<PlayerSeasonStatsLeague> => {
             const { data, error } = await supabase.rpc('get_player_season_stats_league', {
                 p_room_id: roomId,
-                p_player_ids: sortedIds,
+                p_player_ids: null,
                 p_is_playoff: isPlayoff,
             });
             if (error) throw error;
@@ -111,17 +121,26 @@ export function usePlayerSeasonStatsLeague(
     roomId: string | undefined | null, playerIds: string[], isPlayoff: boolean = false, enabledOverride: boolean = true,
 ) {
     const sortedIds = [...new Set(playerIds)].sort();
+    const idsKey = sortedIds.join(',');
     const enabled = !!roomId && sortedIds.length > 0 && enabledOverride;
 
+    // 방 전체 결과에서 요청한 선수만 골라 돌려준다(예전 RPC 결과와 같은 모양 — 요청 안 한 선수는 키가 없다).
+    // [2026-10-16 계승] 키에 선수 목록이 없으므로 로스터가 바뀌어도(트레이드/FA/방출) 데이터가 비거나 isPending이
+    // 되돌아가지 않아 리더보드·선수 상세·홈이 깜빡이지 않는다 — 예전 placeholderData 우회가 필요 없어졌다.
+    const select = useCallback((all: PlayerSeasonStatsLeague): PlayerSeasonStatsLeague => {
+        const picked: PlayerSeasonStatsLeague = {};
+        for (const id of sortedIds) {
+            const stats = all[id];
+            if (stats) picked[id] = stats;
+        }
+        return picked;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [idsKey]);
+
     const query = useQuery({
-        ...playerSeasonStatsLeagueQuery(roomId, sortedIds, isPlayoff),
+        ...playerSeasonStatsLeagueQuery(roomId, isPlayoff),
         enabled,
-        // [2026-10-16] 리그 어디서든 트레이드/FA/방출로 로스터가 바뀌면 키(선수 id 집합)가 바뀌어 data가 잠깐 비고
-        // isPending이 true로 돌아가 리더보드·선수 상세가 통째로 스피너로 깜빡였다(홈은 전원 스탯 0으로 깜빡임).
-        // 같은 리그(room) + 같은 정규/플레이오프 구분일 때만 이전 값을 유지 — 선수 id는 리그 간 공유라 다른 리그 값,
-        // 또는 정규시즌 값을 플레이오프 화면에 이어 쓰면 잘못된 숫자가 보인다. 새로 로스터에 들어온 선수만 재조회 완료 전까지 0.
-        placeholderData: (prev: PlayerSeasonStatsLeague | undefined, prevQuery: any) =>
-            prevQuery?.queryKey?.[1] === roomId && prevQuery?.queryKey?.[3] === isPlayoff ? prev : undefined,
+        select,
     });
 
     // [2026-09-11 Fix] React Query는 enabled:false인 쿼리를 "아직 실행 안 됨"으로 취급해
