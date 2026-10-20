@@ -444,8 +444,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.tov += 1;
 
         const isCharge = result.foulSubtype === 'charge';
-        // [2026-10-07] 구조: "이름, 차징/일리걸 스크린 오펜시브 파울. [6반칙으로 파울 아웃됩니다.] (N반칙, 팀 N반칙)"
-        // 오펜시브 파울은 팀 파울(보너스)에 합산되지 않으므로 팀 반칙 수는 그대로(offTeam.fouls) 표기.
+        // [2026-10-07] 구조: "이름, 차징/일리걸 스크린 오펜시브 파울. [6반칙으로 파울 아웃됩니다.] (N반칙)"
+        // [2026-10-20] 오펜시브 파울은 팀 파울(보너스)에 합산되지 않으므로 팀 반칙 수 표기 제거
+        // ("팀 N반칙"이 붙으면 이 파울이 팀파울로 쌓인 것처럼 읽혀 혼동됨).
         const foulDesc = isCharge ? '차징' : '일리걸 스크린';
         const ejectionText = actor.pf >= 6 ? ' 6반칙으로 파울 아웃됩니다.' : '';
         if (actor.pf >= 6) actor.ejectionReason = 'foul_out';
@@ -456,7 +457,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             defender.tovForced += 1;
         }
 
-        addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙, 팀 ${offTeam.fouls}반칙)`, 'foul', undefined, undefined, 'turnover');
+        addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙)`, 'foul', undefined, undefined, 'turnover');
 
     } else if (type === 'technicalFoul') {
         // 테크니컬 파울: PF 미합산, 별도 techFouls 카운트, FT 1개(베스트 슈터), 공격권 유지

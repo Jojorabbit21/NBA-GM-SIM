@@ -33,6 +33,28 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-20 — 오펜시브 파울 PBP 로그에서 팀 반칙 수 표기 제거
+
+**배경**: 경기 c2cpfje6(MIL vs UTA)에서 "존 하블리첵, 차징 오펜시브 파울. (1반칙, 팀 1반칙)" 같은 로그 때문에 팀파울 누적 버그로 오인됨. 실제 누적은 정상(오펜시브 파울은 NBA 규정상 팀파울 미합산, `commitFoul`만 `defTeam.fouls` 증가) — 표기만 혼동을 유발. Q2에는 "(1반칙, 팀 0반칙)" 같은 어색한 표기도 있었음.
+
+**변경 파일**:
+- `services/game/engine/pbp/statsMappers.ts` (client) — `applyPossessionResult` offensiveFoul 분기 addLog + 주석
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 동일 분기 addLog + 주석
+
+**Before** (양쪽 동일):
+```ts
+addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙, 팀 ${offTeam.fouls}반칙)`, 'foul', undefined, undefined, 'turnover');
+```
+
+**After** (양쪽 동일):
+```ts
+addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙)`, 'foul', undefined, undefined, 'turnover');
+```
+
+**검증**: client/server tsc에서 statsMappers 관련 오류 없음. 로그 텍스트의 "팀 N반칙"을 파싱하는 UI 코드 없음 확인. 서버는 Fly 배포 전까지 멀티 경기에 미반영. 이미 저장된 game_pbp 로그는 옛 표기 그대로.
+
+**롤백 방법**: 두 파일의 addLog 문자열을 Before로 되돌림(미러 쌍이므로 둘 다).
+
 ## 2026-10-19 — 업데이트 토스트: 채팅 FAB 위로 이동 + 위젯 열림 시 패널 배너 + emerald 톤
 
 **배경**: 업데이트 토스트(`UpdateToast`)가 채팅 FAB과 같은 위치(`fixed bottom-6 right-6`)에 따로 떠서, 리그 화면에서는 FAB과 겹치고 디자인 톤도 달랐다. 채팅·알림 통합 위젯과 같은 톤으로 FAB 위에 쌓고, 위젯이 열려 있으면 패널 안 배너로 보여주도록 변경. 알림은 이벤트가 아니라 상태(새로고침 전까지 유지)로 다룬다.

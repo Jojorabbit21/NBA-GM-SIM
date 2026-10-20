@@ -322,7 +322,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const ejectionText = actor.pf >= 6 ? ' 6반칙으로 파울 아웃됩니다.' : '';
         if (actor.pf >= 6) actor.ejectionReason = 'foul_out';
         if (isCharge && defender) { defender.tovForced += 1; }
-        addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙, 팀 ${offTeam.fouls}반칙)`, 'foul', undefined, undefined, 'turnover');
+        // [2026-10-20] 오펜시브 파울은 팀파울 미합산 → 팀 반칙 수 표기 제거 (client 미러)
+        addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙)`, 'foul', undefined, undefined, 'turnover');
 
     } else if (type === 'technicalFoul') {
         if (defender) { defender.techFouls = (defender.techFouls || 0) + 1; }
