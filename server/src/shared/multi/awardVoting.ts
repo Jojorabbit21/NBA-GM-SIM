@@ -120,14 +120,17 @@ export function positionGroup(position: string): PosGroup {
 
 // ── 후보 빌드 ──
 
-export function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerMap: Map<string, Player> } {
+export function buildCandidates(
+    teams: Team[], minGamesFor: (team: Team) => number = () => MIN_GAMES,
+): { candidates: AwardCandidate[]; playerMap: Map<string, Player> } {
     const candidates: AwardCandidate[] = [];
     const playerMap = new Map<string, Player>();
 
     for (const team of teams) {
         const winPct = (team.wins + team.losses) > 0 ? team.wins / (team.wins + team.losses) : 0;
+        const minGames = minGamesFor(team);
         for (const p of team.roster) {
-            if (p.stats.g < MIN_GAMES) continue;
+            if (p.stats.g < minGames || p.stats.g < 1) continue;
             const g = p.stats.g;
             const fga = p.stats.fga;
             const fta = p.stats.fta;

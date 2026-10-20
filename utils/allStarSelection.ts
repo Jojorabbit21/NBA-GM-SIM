@@ -25,7 +25,7 @@
 import type { Team, Player } from '../types';
 import type { PlayerPopularity } from '../types/player';
 import {
-    buildCandidates, positionGroup, voterNoise, scoreAllNBA,
+    buildCandidates, MIN_GAMES, positionGroup, voterNoise, scoreAllNBA,
     type AwardCandidate, type AwardStatLine,
 } from './awardVoting';
 
@@ -201,10 +201,16 @@ function computeGroupVotes(
         .sort((a, b) => b.votes - a.votes);
 }
 
+/** 올스타 후보 최소 출전 경기 수 — 어워드(41경기 고정)와 달리 인기투표라 팀이 치른 경기의
+ *  50%(최소 1경기, 최대 MIN_GAMES)만 요구한다. 투표 시작일(~40경기 시점)에도 후보가 충분히 나온다. */
+function allStarMinGames(team: Team): number {
+    return Math.max(1, Math.min(MIN_GAMES, Math.ceil((team.wins + team.losses) * 0.5)));
+}
+
 function computeConferenceVotes(
     confTeams: Team[], conference: 'East' | 'West', seed: string, voteProgress: number,
 ): ConferenceVoteLeaderboard {
-    const { candidates } = buildCandidates(confTeams);
+    const { candidates } = buildCandidates(confTeams, allStarMinGames);
     const popMap = buildPopularityMap(confTeams);
     const guards = candidates.filter(c => positionGroup(c.position) === 'Guard');
     const frontcourt = candidates.filter(c => positionGroup(c.position) !== 'Guard');
@@ -310,7 +316,7 @@ function pickTop(
 function selectConferenceReserves(
     confTeams: Team[], conference: 'East' | 'West', seed: string, starterIds: Set<string>,
 ): AllStarPlayer[] {
-    const { candidates } = buildCandidates(confTeams);
+    const { candidates } = buildCandidates(confTeams, allStarMinGames);
     const candidateMap = new Map(candidates.map(c => [c.playerId, c]));
     const guards = candidates.filter(c => positionGroup(c.position) === 'Guard' && !starterIds.has(c.playerId));
     const frontcourt = candidates.filter(c => positionGroup(c.position) !== 'Guard' && !starterIds.has(c.playerId));
@@ -427,7 +433,7 @@ const RISING_STARS_MAX_YOS_CEILING = 4;
  */
 export function runRisingStarsSelection(teams: Team[], virtualSeasonYear: number, seed?: string): RisingStarsResult {
     const effectiveSeed = seed || String(Date.now());
-    const { candidates, playerMap } = buildCandidates(teams);
+    const { candidates, playerMap } = buildCandidates(teams, () => 1);
 
     const eligibleUpToYos = (maxYos: number) => candidates.filter(c => {
         const draftYear = playerMap.get(c.playerId)?.draftYear;
@@ -480,8 +486,8 @@ export function runRisingStarsSelection(teams: Team[], virtualSeasonYear: number
 // voterNoise)과 동일한 패턴을 재사용 — 3점 점수에 seed 기반 노이즈(±20%, voterNoise() 그대로)를
 // 얹어 정렬한다. 매 시즌 100% 동일한 8명이 나오지 않으면서도 상위권일수록 뽑힐 확률이 높은
 // "가중 랜덤" 효과를 별도 RNG 유틸(utils/rng.ts 등) 없이 이 파일이 이미 쓰던 인프라만으로 구현.
-// buildCandidates()의 MIN_GAMES(41경기) 필터를 그대로 적용 — 시즌 초반 콜업된 벤치 선수가
-// 3점 능력치만 높다고 뽑히는 걸 방지(본올스타/라이징스타와 동일한 최소 출전 기준).
+// [2026-10-20] 후보 풀은 출전 1경기 이상이면 모두 허용(buildCandidates의 minGamesFor = () => 1) —
+// 부대 이벤트라 어워드용 41경기 필터를 쓰지 않는다.
 //
 // [2026-09-08 추가] "아키타입을 고려하는 게 어떨까? 돈치치/테이텀/어빙/조지 같은 이 정도
 // 사이즈의 선수들은 보통 3점 챌린지에 잘 안 나간다"는 사용자 피드백 — 순수 3점 능력치
@@ -518,7 +524,7 @@ const THREE_POINT_CONTEST_SIZE = 8; // 참가 인원(사용자 확인 — 실제
  */
 export function runThreePointContestSelection(teams: Team[], seed?: string): ThreePointContestParticipant[] {
     const effectiveSeed = seed || String(Date.now());
-    const { candidates, playerMap } = buildCandidates(teams);
+    const { candidates, playerMap } = buildCandidates(teams, () => 1);
 
     const ranked = candidates
         .map(c => {
@@ -556,9 +562,8 @@ export function runThreePointContestSelection(teams: Team[], seed?: string): Thr
 // 사용자가 이 방식을 선택했으므로 일관성 유지). player.archetype/secondaryArchetype은
 // 해석된 라벨 문자열이라는 점, DB 라벨 오버라이드 시 매칭이 깨질 수 있다는 한계도 3점
 // 챌린지와 동일(utils/allStarSelection.ts의 THREE_POINT_SHOOTER_ARCHETYPES 주석 참고).
-// 후보 풀은 buildCandidates()의 MIN_GAMES(41경기) 필터 그대로 적용 — 계획서(§6)는 "올스타
-// 선발 여부와 무관하게 리그 전체"라고 명시했으나, 실전 경기 경험이 거의 없는 선수가 뽑히는
-// 걸 막기 위해 다른 부대 이벤트와 동일한 최소 출전 기준은 유지한다.
+// [2026-10-20] 후보 풀은 출전 1경기 이상이면 모두 허용(buildCandidates의 minGamesFor = () => 1) —
+// 계획서(§6)대로 올스타 선발 여부와 무관하게 리그 전체, 어워드용 41경기 필터는 쓰지 않는다.
 const DUNK_CONTEST_ARCHETYPES = new Set([
     'Aerial Wing',   // AERIAL_WING — 공중 마무리 특화, 가장 직접적인 덩크 컨테스트 적합군
     'Rim Runner',    // RIM_RUNNER_BIG — 로브·앨리웁 마무리형 빅맨
@@ -580,7 +585,7 @@ const DUNK_CONTEST_SIZE = 4; // 참가 인원(사용자 확인 — 실제 NBA �
  */
 export function runDunkContestSelection(teams: Team[], seed?: string): DunkContestParticipant[] {
     const effectiveSeed = seed || String(Date.now());
-    const { candidates, playerMap } = buildCandidates(teams);
+    const { candidates, playerMap } = buildCandidates(teams, () => 1);
 
     const ranked = candidates
         .map(c => {

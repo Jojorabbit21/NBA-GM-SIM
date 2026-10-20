@@ -34,6 +34,45 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+
+## 2026-10-20 — 올스타 후보 최소 출전 경기 수 완화 (41경기 → 팀 경기의 50%)
+
+**배경**: 투표 시작일(1/9, 팀당 ~40경기)에 `buildCandidates`의 MIN_GAMES=41 필터 때문에 후보가 6명(서부 프론트코트 0명)뿐이었음. 올스타는 수상이 아닌 인기투표라 어워드용 기준을 그대로 쓸 이유가 없음. 어워드(`runAwardVoting`)는 41경기 그대로 유지.
+
+**변경 파일**:
+- `utils/awardVoting.ts` (client) — `buildCandidates(teams, minGamesFor?)`
+- `server/src/shared/multi/awardVoting.ts` (server 미러)
+- `utils/allStarSelection.ts` (client) — `allStarMinGames()` 추가, 팬투표/리저브 2곳 적용
+- `server/src/shared/multi/allStarSelection.ts` (server 미러)
+- `server/src/postAllStarVoteNews.ts` — 로그 문구만 수정(집계/3점/덩크)
+
+**Before**:
+```ts
+export function buildCandidates(teams: Team[]): {...} {
+    ...
+    for (const p of team.roster) {
+        if (p.stats.g < MIN_GAMES) continue;
+// allStarSelection: buildCandidates(confTeams)  (2곳: computeConferenceVotes, selectConferenceReserves)
+```
+
+**After**:
+```ts
+export function buildCandidates(teams: Team[], minGamesFor: (team: Team) => number = () => MIN_GAMES) {
+    const minGames = minGamesFor(team);
+    for (const p of team.roster) {
+        if (p.stats.g < minGames || p.stats.g < 1) continue;
+// allStarSelection.ts
+function allStarMinGames(team) { return Math.max(1, Math.min(MIN_GAMES, Math.ceil((team.wins + team.losses) * 0.5))); }
+buildCandidates(confTeams, allStarMinGames)
+```
+어워드 호출부는 기본값(41) 유지.
+
+**추가 변경 (같은 날, 사용자 요청)**: 라이징스타/3점 챌린지/덩크 콘테스트도 41경기 필터 제거 → `buildCandidates(teams, () => 1)` (출전 1경기 이상이면 후보). 각 함수(`runRisingStarsSelection`, `runThreePointContestSelection`, `runDunkContestSelection`)의 `buildCandidates(teams)` 호출 3곳 × client/server 미러. `postAllStarVoteNews.ts`의 3점/덩크 로그 문구에서 "(41경기 이상)" 제거. 롤백: 해당 호출을 `buildCandidates(teams)`로 되돌리면 41경기 필터 복구.
+
+**검증**: tsc 기준 변경 파일 관련 신규 에러 없음(기존 무관 에러는 다수 존재). 실리그 확인은 서버 배포 후.
+
+**롤백 방법**: 위 Before로 복원(buildCandidates 시그니처, allStarSelection의 호출 2곳과 helper/MIN_GAMES import 제거). client/server 미러 둘 다 되돌릴 것.
+
 ## 2026-10-20 — 멀티 순위표 순위 변동(▲▼) 표시
 
 **배경**: 리그/컨퍼런스 순위표에 직전 시뮬레이션 일자 대비 순위 변동을 보여달라는 요청. 저장 스냅샷 없이 일정만으로 재계산.

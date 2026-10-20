@@ -219,7 +219,7 @@ export async function computeAndStoreAllStarVotes(
 
     const result = runAllStarVote(teams, seed, voteProgress);
     if (result.east.guards.length === 0 && result.west.guards.length === 0) {
-        console.log(`[allstarVote] room=${roomId} — 후보(41경기 이상)가 없어 집계 생략`);
+        console.log(`[allstarVote] room=${roomId} — 후보가 없어 집계 생략`);
         return;
     }
 
@@ -482,7 +482,7 @@ export async function computeAndPostThreePointContestNews(
 
     const participants = runThreePointContestSelection(teams, seed);
     if (participants.length === 0) {
-        console.log(`[allstarVote] room=${roomId} — 3점 챌린지 후보(41경기 이상)가 없어 발표 생략`);
+        console.log(`[allstarVote] room=${roomId} — 3점 챌린지 후보가 없어 발표 생략`);
         return;
     }
 
@@ -541,7 +541,7 @@ export async function computeAndPostDunkContestNews(
 
     const participants = runDunkContestSelection(teams, seed);
     if (participants.length === 0) {
-        console.log(`[allstarVote] room=${roomId} — 덩크 컨테스트 후보(41경기 이상)가 없어 발표 생략`);
+        console.log(`[allstarVote] room=${roomId} — 덩크 컨테스트 후보가 없어 발표 생략`);
         return;
     }
 
