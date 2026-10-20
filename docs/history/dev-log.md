@@ -33,6 +33,31 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+
+## 2026-10-20 — 멀티 순위표 순위 변동(▲▼) 표시
+
+**배경**: 리그/컨퍼런스 순위표에 직전 시뮬레이션 일자 대비 순위 변동을 보여달라는 요청. 저장 스냅샷 없이 일정만으로 재계산.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` (client 전용, 서버 미러 없음)
+
+**Before**:
+```tsx
+{ key: 'rank', label: '#', width: 44, ... }
+<TableCell align="center" className="text-sm tabular-nums text-white">{rank}</TableCell>
+```
+
+**After**:
+- `computeRankDelta()` 신설: 공개된 정규시즌 경기 중 가장 늦은 가상 날짜 D(`Game.date`) 기준, D 이전 경기만 집계한 순위(prev)와 현재 순위(cur)를 같은 로직으로 계산해 `prev - cur`(양수=상승).
+- 리그 순위 = pct→wins 내림차순, 컨퍼런스 순위 = `buildRaceLedger`+`rankGroup`(NBA 타이브레이커). 디비전은 계산/표시 안 함. 표시 정렬(열 클릭)과 무관.
+- D 이전에 집계 경기가 없으면(첫 경기일) null → 표시 없음. 순위 셀에 `<RankDelta>`(▲emerald/▼rose/0은 `-`), 컬럼 폭 44→68.
+
+**후속(같은 날)**: 델타 위치를 `#` 셀 → 팀 이름 우측으로 이동(컬럼 폭 68→44 원복), 정규시즌 전 경기 공개 시 `computeRankDelta`가 null 반환(표시 안 함).
+
+**검증**: tsc 해당 파일 오류 없음.
+
+**롤백 방법**: 위 3가지(헬퍼 블록 + rankDelta useMemo + 순위 셀 JSX, 컬럼 폭 68→44, 추가한 import 2줄) 제거. 또는 해당 파일 git checkout.
+
 ## 2026-10-20 — 멀티 홈 "리그 순위" 섹션 팀 이름에 팀 호버 카드 적용
 
 **배경**: 팀 호버 카드를 팀 링크 전반에 붙이는 작업(위 항목들) 중 홈(`MultiSeasonPage`)의 "리그 순위" 섹션(`HomeStandingsTable`)만 빠져 있었음.

@@ -24,6 +24,8 @@ import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { useTableSort } from '../../../hooks/useTableSort';
 import { buildRaceLedger } from './playoffRaceUtils';
 import { buildContext, rankGroup } from '../../../utils/nbaTiebreak';
+import type { Game } from '../../../types/game';
+import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 
 // ── 스탠딩 테이블 (main_league 전용) ─────────────────────────────────────────
 
@@ -137,6 +139,79 @@ interface RankedTeamRow {
 const DIVISION_CONFERENCE: Record<string, 'East' | 'West'> = {
     Atlantic: 'East', Central: 'East', Southeast: 'East',
     Northwest: 'West', Pacific: 'West', Southwest: 'West',
+};
+
+// ── 순위 변동(▲▼) ────────────────────────────────────────────────────────────
+// 저장된 스냅샷 없이 일정(schedule)만으로 "직전 시뮬레이션 일자 마감 시점"의 순위를 재계산한다.
+// 기준일 D = 공개된(isFinal) 정규시즌 경기 중 가장 늦은 가상 날짜(Game.date). 이전 순위 = D 이전 날짜 경기만 집계.
+// 리그/컨퍼런스 순위만 대상(디비전은 계산하지 않음). 표시 정렬(열 클릭)과 무관하게 항상 PCT 기준 순위끼리 비교한다.
+interface RankSnapshot { league: Record<string, number>; conf: Record<string, number> }
+
+function computeRankSnapshot(
+    leagueTeams: LeagueTeamRow[],
+    schedule: Game[],
+    nowMs: number,
+    playoffTeamsPerConf: number,
+    playInEnabled: boolean,
+): RankSnapshot {
+    const slugs = leagueTeams.map(t => t.team_slug);
+    const stats = computeMultiStandingsStats(slugs, schedule, nowMs);
+    const league: Record<string, number> = {};
+    [...slugs]
+        .sort((a, b) => (stats[b].pct - stats[a].pct) || (stats[b].wins - stats[a].wins))
+        .forEach((slug, i) => { league[slug] = i + 1; });
+
+    const ledger = buildRaceLedger(leagueTeams, schedule, nowMs);
+    const ctx = buildContext(ledger, { eligibleCount: playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf, drawSeed: 'live' });
+    const conf: Record<string, number> = {};
+    for (const c of ['East', 'West']) {
+        rankGroup(ledger, leagueTeams.filter(t => t.conference === c).map(t => t.team_slug), ctx)
+            .forEach((slug, i) => { conf[slug] = i + 1; });
+    }
+    return { league, conf };
+}
+
+const isCountedGame = (g: Game, nowMs: number): boolean =>
+    !g.isPlayoff && !g.isAllstar && g.played && g.homeScore != null && g.awayScore != null && isFinal(g, nowMs);
+
+function computeRankDelta(
+    leagueTeams: LeagueTeamRow[],
+    schedule: Game[],
+    nowMs: number,
+    playoffTeamsPerConf: number,
+    playInEnabled: boolean,
+): RankSnapshot | null {
+    // 정규시즌 종료(전 경기 공개) 후에는 변동값을 보여주지 않는다.
+    const regular = schedule.filter(g => !g.isPlayoff && !g.isAllstar);
+    if (regular.length > 0 && regular.every(g => isCountedGame(g, nowMs))) return null;
+    let latest: string | null = null;
+    for (const g of schedule) {
+        if (!isCountedGame(g, nowMs)) continue;
+        const d = g.date.slice(0, 10);
+        if (latest === null || d > latest) latest = d;
+    }
+    if (latest === null) return null;
+    const prevSchedule = schedule.filter(g => g.date.slice(0, 10) < latest!);
+    if (!prevSchedule.some(g => isCountedGame(g, nowMs))) return null; // 첫 경기일 — 비교 대상 없음
+    const cur = computeRankSnapshot(leagueTeams, schedule, nowMs, playoffTeamsPerConf, playInEnabled);
+    const prev = computeRankSnapshot(leagueTeams, prevSchedule, nowMs, playoffTeamsPerConf, playInEnabled);
+    const diff = (a: Record<string, number>, b: Record<string, number>) => {
+        const out: Record<string, number> = {};
+        for (const k of Object.keys(a)) out[k] = (b[k] ?? a[k]) - a[k]; // 양수 = 순위 상승
+        return out;
+    };
+    return { league: diff(cur.league, prev.league), conf: diff(cur.conf, prev.conf) };
+}
+
+const RankDelta: React.FC<{ delta: number | undefined }> = ({ delta }) => {
+    if (delta === undefined) return null;
+    if (delta === 0) return <span className="text-sm text-slate-600">-</span>;
+    const up = delta > 0;
+    return (
+        <span className={`text-sm font-semibold tabular-nums ${up ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {up ? '▲' : '▼'}{Math.abs(delta)}
+        </span>
+    );
 };
 
 // ── 플레이오프 클린치(진출확정/탈락) 계산 ────────────────────────────────────
@@ -517,6 +592,11 @@ const LeagueStandingsTable: React.FC<{
         [leagueTeams, statsMap, schedule, playoffTeamsPerConf, playInEnabled, tiebreak],
     );
 
+    const rankDelta = useMemo(
+        () => computeRankDelta(leagueTeams, schedule, serverNowMs, playoffTeamsPerConf, playInEnabled),
+        [leagueTeams, schedule, serverNowMs, playoffTeamsPerConf, playInEnabled],
+    );
+
     const sosMap = useMemo(
         () => computeSosMap(leagueTeams, statsMap, schedule, serverNowMs),
         [leagueTeams, statsMap, schedule, serverNowMs],
@@ -707,6 +787,11 @@ const LeagueStandingsTable: React.FC<{
                                                         {t.team_name}
                                                     </span>
                                                 </TeamHover>
+                                                {rankDelta && mode !== 'Division' && (
+                                                    <span className="shrink-0">
+                                                        <RankDelta delta={(mode === 'League' ? rankDelta.league : rankDelta.conf)[t.team_slug]} />
+                                                    </span>
+                                                )}
                                             </span>
                                         </TableCell>
 
