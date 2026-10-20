@@ -21,6 +21,8 @@ export interface TradeOfferRow {
     to_team_id:   string;
     created_by:   string;
     message:      string | null;
+    // [2026-10-20] 거절 사유 — rejected일 때만 값이 있을 수 있음(AI 거절·미입력은 null, 관리자 개입은 고정 문구)
+    reject_reason: string | null;
     status:       TradeOfferStatus;
     expires_at:   string;
     resolved_at:  string | null;
@@ -72,6 +74,7 @@ const mapTradeOfferError = (msg: string): string => {
     if (msg.includes('same_team'))           return '같은 팀끼리는 트레이드할 수 없습니다.';
     if (msg.includes('empty_offer'))         return '최소 한 명 이상의 선수를 선택하세요.';
     if (msg.includes('message_too_long'))    return '메시지는 300자를 넘을 수 없습니다.';
+    if (msg.includes('reason_too_long'))     return '거절 사유는 100자를 넘을 수 없습니다.';
     if (msg.includes('room_not_found'))      return '방을 찾을 수 없습니다.';
     if (msg.includes('trade_disabled'))      return '리그의 트레이드가 비활성화 상태입니다.';
     if (msg.includes('trade_deadline_passed')) return '트레이드 데드라인이 경과했습니다.';
@@ -112,10 +115,12 @@ export type TradeOfferAction = 'accept' | 'reject' | 'cancel';
 export const respondTradeOffer = async (
     offerId: string,
     action:  TradeOfferAction,
+    reason?: string,
 ): Promise<{ error: string | null }> => {
     const { error } = await supabase.rpc('respond_trade_offer', {
         p_offer_id: offerId,
         p_action:   action,
+        p_reason:   action === 'reject' ? (reason ?? null) : null,
     });
     if (error) return { error: mapTradeOfferError(error.message ?? '') };
     return { error: null };

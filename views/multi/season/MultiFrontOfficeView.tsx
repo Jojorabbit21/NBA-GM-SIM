@@ -793,10 +793,18 @@ const MultiFrontOfficeView: React.FC = () => {
 
     // [2026-10-02] 수락/거절/취소가 서버에서 거부된 사유 — 제안 id별. 제안서 본문 하단에 표시.
     const [respondFailures, setRespondFailures] = useState<Record<string, string>>({});
-    const handleRespond = useCallback(async (offerId: string, action: TradeOfferAction) => {
+    // [2026-10-20] 수락/거절/취소 이중 확인 — 버튼 클릭 시 바로 실행하지 않고 확인 단계로 전환. 제안 id당 하나.
+    // 거절 사유 입력은 UI만(스키마 미정) — 서버로 전송하지 않음.
+    const [pendingConfirm, setPendingConfirm] = useState<{ offerId: string; action: TradeOfferAction } | null>(null);
+    const [rejectReason, setRejectReason] = useState('');
+    const askConfirm = useCallback((offerId: string, action: TradeOfferAction) => {
+        setRejectReason('');
+        setPendingConfirm({ offerId, action });
+    }, []);
+    const handleRespond = useCallback(async (offerId: string, action: TradeOfferAction, reason?: string) => {
         setRespondingId(offerId);
         setRespondFailures(prev => { if (!(offerId in prev)) return prev; const next = { ...prev }; delete next[offerId]; return next; });
-        const { error } = await respondTradeOffer(offerId, action);
+        const { error } = await respondTradeOffer(offerId, action, reason);
         setRespondingId(null);
         if (error) {
             // [2026-10-13] 토스트 제거 — 제안서 본문 하단 InlineNotice만(제안별로 보관, 재시도 성공 시 제거). 에러 표시 정책 0-7.
@@ -963,7 +971,14 @@ const MultiFrontOfficeView: React.FC = () => {
     const [cartMine, setCartMine] = useState<Set<string>>(new Set());
     const [cartTheirs, setCartTheirs] = useState<Set<string>>(new Set());
     // 계산된 targetTeamId 기준 — 상대 팀이 목록에서 빠져 자동 전환될 때도 카트가 비워진다.
-    useEffect(() => { setCartMine(new Set()); setCartTheirs(new Set()); }, [targetTeamId]);
+    // [2026-10-20] 역제안 프리필 — 상대 팀 변경 effect가 카트를 비우므로, 역제안은 ref에 담아 두고 이 effect가 소비한다.
+    const pendingCounterRef = useRef<{ teamId: string; mine: string[]; theirs: string[] } | null>(null);
+    useEffect(() => {
+        const p = pendingCounterRef.current;
+        pendingCounterRef.current = null;
+        if (p && p.teamId === targetTeamId) { setCartMine(new Set(p.mine)); setCartTheirs(new Set(p.theirs)); return; }
+        setCartMine(new Set()); setCartTheirs(new Set());
+    }, [targetTeamId]);
     // [2026-09-30] "트레이드 이후 재정 변동 사항" 아코디언 펼침 상태 — 기본 펼침(기존 항상
     // 보이던 동작과 동일), 타이틀 클릭으로 토글.
     const [financeSectionExpanded, setFinanceSectionExpanded] = useState(true);
@@ -1138,6 +1153,20 @@ const MultiFrontOfficeView: React.FC = () => {
         const fromTeam = teamById.get(offer.from_team_id);
         const toTeam = teamById.get(offer.to_team_id);
         const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
+    // [2026-10-20] 역제안 — 받은 제안의 선수 구성을 반대 입장(내 팀=수신)으로 "새 제안" 카트에 미리 채워 이동.
+    // 원래 제안은 건드리지 않는다(자동 거절 없음).
+    const handleCounter = useCallback((offer: TradeOfferRow) => {
+        const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
+        const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
+        if (offer.from_team_id === targetTeamId) {
+            setCartMine(new Set(mine)); setCartTheirs(new Set(theirs));
+        } else {
+            pendingCounterRef.current = { teamId: offer.from_team_id, mine, theirs };
+            setTargetTeamId(offer.from_team_id);
+        }
+        setActiveTab('new');
+    }, [targetTeamId, setActiveTab]);
+
         const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
         const mineTotal = mine.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
         const theirsTotal = theirs.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
@@ -1266,6 +1295,13 @@ const MultiFrontOfficeView: React.FC = () => {
                                 <Money value={row.value} signed className="font-semibold" />
                             </div>
                         ))}
+                            {/* [2026-10-20] 역제안 — 받은 대기 제안에서만, 수신 팀명 줄 우측 끝. */}
+                            {opts.direction === 'incoming' && offer.status === 'pending' && (
+                                <button type="button" onClick={() => handleCounter(offer)}
+                                    className="ml-auto text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline">
+                                    역제안하기
+                                </button>
+                            )}
                     </div>
                 )}
 
@@ -1287,19 +1323,19 @@ const MultiFrontOfficeView: React.FC = () => {
                 {offer.status === 'pending' ? (
                     <div className="flex items-center gap-2">
                         {opts.showAccept && (
-                            <Button variant="success" size="lg" onClick={() => handleRespond(offer.id, 'accept')} disabled={busy}
+                            <Button variant="success" size="lg" onClick={() => askConfirm(offer.id, 'accept')} disabled={busy}
                                 isLoading={busy} icon={<Check size={14} />}>
                                 수락하기
                             </Button>
                         )}
                         {opts.showReject && (
-                            <Button variant="danger" size="lg" onClick={() => handleRespond(offer.id, 'reject')} disabled={busy}
+                            <Button variant="danger" size="lg" onClick={() => askConfirm(offer.id, 'reject')} disabled={busy}
                                 icon={<X size={14} />}>
                                 거절하기
                             </Button>
                         )}
                         {opts.showCancel && (
-                            <Button variant="secondary" size="lg" onClick={() => handleRespond(offer.id, 'cancel')} disabled={busy}
+                            <Button variant="secondary" size="lg" onClick={() => askConfirm(offer.id, 'cancel')} disabled={busy}
                                 icon={<X size={14} />}>
                                 취소하기
                             </Button>
@@ -1308,7 +1344,12 @@ const MultiFrontOfficeView: React.FC = () => {
                 ) : offer.status === 'invalidated' ? (
                     <InlineNotice tone="warning">{OFFER_STATUS.invalidated.message}</InlineNotice>
                 ) : OFFER_STATUS[offer.status] ? (
-                    <p className={`text-sm font-bold ${OFFER_STATUS[offer.status].tone}`}>{OFFER_STATUS[offer.status].message}</p>
+                    <div className="space-y-1">
+                        <p className={`text-sm font-bold ${OFFER_STATUS[offer.status].tone}`}>{OFFER_STATUS[offer.status].message}</p>
+                        {offer.status === 'rejected' && offer.reject_reason && (
+                            <p className="text-sm text-slate-300 ko-normal">거절 사유: {offer.reject_reason}</p>
+                        )}
+                    </div>
                 ) : null}
             </div>
         );
@@ -1316,6 +1357,35 @@ const MultiFrontOfficeView: React.FC = () => {
 
     // "인박스" 탭 좌측 리스트 — [안읽음점]/발신/수신/날짜/남은시간 5열 표. 헤더와 행이 같은
     // grid-cols를 써야 칸이 어긋나지 않으므로 클래스를 상수로 공유.
+                    pendingConfirm?.offerId === offer.id ? (
+                        <div className="space-y-2">
+                            <p className="text-sm font-bold text-white">
+                                {pendingConfirm.action === 'accept' ? '트레이드를 수락하시겠습니까?'
+                                    : pendingConfirm.action === 'reject' ? '트레이드를 거절하시겠습니까?'
+                                    : '트레이드 제안을 취소하시겠습니까?'}
+                            </p>
+                            {pendingConfirm.action === 'reject' && (
+                                <input
+                                    type="text" value={rejectReason} maxLength={100}
+                                    onChange={e => setRejectReason(e.target.value)}
+                                    placeholder="거절 사유 (선택, 100자 이내)"
+                                    className="w-full max-w-xs bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 ko-normal"
+                                />
+                            )}
+                            <div className="flex items-center gap-2">
+                                <Button variant={pendingConfirm.action === 'accept' ? 'success' : pendingConfirm.action === 'reject' ? 'danger' : 'secondary'}
+                                    size="lg" disabled={busy} isLoading={busy}
+                                    icon={<Check size={14} />}
+                                    onClick={async () => { await handleRespond(offer.id, pendingConfirm.action, rejectReason); setPendingConfirm(null); }}>
+                                    {pendingConfirm.action === 'accept' ? '실행하기' : pendingConfirm.action === 'reject' ? '거절하기' : '취소하기'}
+                                </Button>
+                                <Button variant="secondary" size="lg" disabled={busy} icon={<X size={14} />}
+                                    onClick={() => setPendingConfirm(null)}>
+                                    돌아가기
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
     // [2026-09-02] 발신/수신/날짜/남은시간 4개 컬럼 너비를 균일하게(1fr씩) — 이전엔
     // 마지막 "남은시간" 컬럼만 1fr라 상태 라벨(짧은 텍스트)이 좌측 리스트 우측에 큰
     // 여백을 남겼음. 안읽음 점 컬럼(14px)만 고정폭 유지.
@@ -1336,6 +1406,7 @@ const MultiFrontOfficeView: React.FC = () => {
         const dateLabel = offer.sim_date_at_creation ? offer.sim_date_at_creation.slice(5).replace('-', '/') : '-';
         // 표 칸이 좁아 "N일 N시간 남음"의 "남음" 접미사는 생략. 처리된 오퍼는 상태 배지(OFFER_STATUS).
         const statusMeta = OFFER_STATUS[offer.status];
+                    )
         const remainingLabel = offer.status === 'pending'
             ? <span className="truncate">{formatRemaining(offer.expires_at).replace(' 남음', '')}</span>
             : statusMeta

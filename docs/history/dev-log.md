@@ -35,6 +35,49 @@
 
 
 
+## 2026-10-20 — 트레이드 제안서 "역제안하기" 텍스트 버튼
+
+**배경**: 받은 제안을 수정해서 되돌려 보내는 카운터 오퍼 진입점 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `pendingCounterRef`, 팀 변경 effect(카트 초기화) 수정, `handleCounter`, 제안서 수신 팀명 줄 우측 버튼
+
+**Before**: 팀 변경 시 카트 무조건 초기화, 역제안 없음. **After**: 받은(incoming)+pending 제안서의 수신 팀명 우측 "역제안하기" → 상대=발신팀 선택, 카트에 원래 선수 구성(내 팀=수신 입장) 프리필, "새 제안" 탭 이동. 원래 제안은 그대로(자동 거절 없음), DB 변경 없음.
+
+**검증**: tsc.
+
+**롤백 방법**: 버튼·handleCounter 제거, effect를 `setCartMine(new Set()); setCartTheirs(new Set());`만 남기기.
+
+## 2026-10-20 — 트레이드 거절 사유 저장·표시
+
+**배경**: 거절 확인 UI에 사유 입력창을 넣었고(이전 항목), 이를 저장해 보낸 사람 제안서에 표시.
+
+**변경 파일**:
+- `migrations/add_trade_reject_reason.sql` (DB) — `league_trade_offers.reject_reason text` 추가, `respond_trade_offer(uuid,text,text DEFAULT NULL)`로 교체(2인자 버전 DROP)
+- `services/multi/tradeService.ts` (client) — `TradeOfferRow.reject_reason`, `respondTradeOffer(..., reason?)`, `reason_too_long` 에러 매핑
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `handleRespond`에 reason 전달, 거절됨 문구 아래 "거절 사유:" 표시
+
+**Before**: RPC 2인자, 사유 저장 없음. **After**: reject 시에만 trim 후 저장(빈값 NULL, 100자 초과 예외). 관리자가 수신팀 대신 거절하면 고정 문구 '관리자에 의해 트레이드가 거절되었습니다.'. AI 거절·만료·무효화·수락·취소는 NULL. 알림에는 미포함.
+
+**검증**: tsc. 마이그레이션 적용 여부는 승인 대기.
+
+**롤백 방법**: `DROP FUNCTION respond_trade_offer(uuid,text,text)` 후 `add_trade_roster_limit_check.sql`의 2인자 정의 재실행, 컬럼 DROP, 클라이언트 3파일 되돌리기.
+
+## 2026-10-20 — 멀티 트레이드 수락/거절/취소 이중 확인 UI
+
+**배경**: 수락/거절/취소 버튼이 클릭 즉시 실행되어 오조작 위험. 확인 단계 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `pendingConfirm`/`rejectReason` state, `askConfirm`, 제안서 하단 버튼 영역
+
+**Before**: 버튼 `onClick={() => handleRespond(offer.id, 'accept'|'reject'|'cancel')}` 즉시 실행.
+
+**After**: 버튼 클릭 → `askConfirm`으로 확인 모드 전환(기존 3버튼 숨김) → 문구("트레이드를 수락/거절하시겠습니까?" / 취소는 "트레이드 제안을 취소하시겠습니까?") + [확인][돌아가기]. 거절 시 문구 아래 사유 input(UI만, 서버 전송 없음, 스키마 추후 논의).
+
+**검증**: 코드 리뷰만(빌드 미실행).
+
+**롤백 방법**: 버튼 onClick을 handleRespond 직접 호출로 되돌리고 확인 블록 및 state 제거.
+
 ## 2026-10-20 — meta_gms 30팀 프런트 성향 재평가 (데이터 변경, 싱글·멀티 공유)
 
 **배경**: 기존 `personality_type`/`sliders`는 2024년 전후 이미지라 2025~26 판도 변화(야니스 MIA, 카와이 TOR, 제일런 브라운 PHI,
