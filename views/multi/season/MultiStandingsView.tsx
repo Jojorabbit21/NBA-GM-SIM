@@ -145,6 +145,16 @@ const DIVISION_CONFERENCE: Record<string, 'East' | 'West'> = {
 // 저장된 스냅샷 없이 일정(schedule)만으로 "직전 시뮬레이션 일자 마감 시점"의 순위를 재계산한다.
 // 기준일 D = 공개된(isFinal) 정규시즌 경기 중 가장 늦은 가상 날짜(Game.date). 이전 순위 = D 이전 날짜 경기만 집계.
 // 리그/컨퍼런스 순위만 대상(디비전은 계산하지 않음). 표시 정렬(열 클릭)과 무관하게 항상 PCT 기준 순위끼리 비교한다.
+// 리그 전체(동·서 혼합) 순위: NBA 공식 순위표도 리그 전체 동률에 별도 규정 없이 시딩과 같은 목록(L.2.a/L.2.b)을
+// 그대로 적용한다(디비전 우승 기준은 "같은 디비전이 아니어도 적용"). 엔진(rankGroup)이 그 목록 그대로라 전체를 넘긴다.
+function rankLeagueByTiebreak(
+    ledger: Parameters<typeof rankGroup>[0],
+    ctx: Parameters<typeof rankGroup>[2],
+    teams: { team_slug: string }[],
+): string[] {
+    return rankGroup(ledger, teams.map(t => t.team_slug), ctx);
+}
+
 interface RankSnapshot { league: Record<string, number>; conf: Record<string, number> }
 
 function computeRankSnapshot(
@@ -156,13 +166,10 @@ function computeRankSnapshot(
 ): RankSnapshot {
     const slugs = leagueTeams.map(t => t.team_slug);
     const stats = computeMultiStandingsStats(slugs, schedule, nowMs);
-    const league: Record<string, number> = {};
-    [...slugs]
-        .sort((a, b) => (stats[b].pct - stats[a].pct) || (stats[b].wins - stats[a].wins))
-        .forEach((slug, i) => { league[slug] = i + 1; });
-
     const ledger = buildRaceLedger(leagueTeams, schedule, nowMs);
     const ctx = buildContext(ledger, { eligibleCount: playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf, drawSeed: 'live' });
+    const league: Record<string, number> = {};
+    rankLeagueByTiebreak(ledger, ctx, leagueTeams).forEach((slug, i) => { league[slug] = i + 1; });
     const conf: Record<string, number> = {};
     for (const c of ['East', 'West']) {
         rankGroup(ledger, leagueTeams.filter(t => t.conference === c).map(t => t.team_slug), ctx)
@@ -584,7 +591,10 @@ const LeagueStandingsTable: React.FC<{
     const tiebreak = useMemo(() => {
         const ledger = buildRaceLedger(leagueTeams, schedule, serverNowMs);
         const ctx = buildContext(ledger, { eligibleCount: playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf, drawSeed: 'live' });
-        return { orderOf: (slugs: string[]) => rankGroup(ledger, slugs, ctx) };
+        return {
+            orderOf: (slugs: string[]) => rankGroup(ledger, slugs, ctx),
+            leagueOrder: () => rankLeagueByTiebreak(ledger, ctx, leagueTeams),
+        };
     }, [leagueTeams, schedule, serverNowMs, playoffTeamsPerConf, playInEnabled]);
 
     const clinchMap = useMemo(
@@ -632,12 +642,13 @@ const LeagueStandingsTable: React.FC<{
     );
 
     const rankedRows = useMemo((): RankedTeamRow[] => {
-        // 기본 정렬(PCT)일 때 컨퍼런스·디비전 화면은 동률을 NBA 타이브레이커로 가른다. 리그 전체(동·서 혼합)
-        // 순위는 규정에 동률 처리가 없어 기존 방식 유지. 다른 열로 정렬하면 그 값 기준 그대로.
-        const useTiebreak = sortConfig.key === 'pct' && mode !== 'League';
+        // 기본 정렬(PCT)일 때는 모든 화면에서 동률을 NBA 타이브레이커로 가른다. 리그 전체(동·서 혼합)는
+        // rankLeagueByTiebreak(같은 컨퍼런스 팀끼리는 컨퍼런스 순위와 일치). 다른 열로 정렬하면 그 값 기준 그대로.
+        const useTiebreak = sortConfig.key === 'pct';
         const sortTeams = (list: LeagueTeam[]): LeagueTeam[] => {
             if (useTiebreak) {
-                const idx = new Map(tiebreak.orderOf(list.map(t => t.team_slug)).map((s, i) => [s, i]));
+                const order = mode === 'League' ? tiebreak.leagueOrder() : tiebreak.orderOf(list.map(t => t.team_slug));
+                const idx = new Map(order.map((s, i) => [s, i]));
                 const ordered = [...list].sort((a, b) => idx.get(a.team_slug)! - idx.get(b.team_slug)!);
                 return sortConfig.direction === 'desc' ? ordered : ordered.reverse();
             }
