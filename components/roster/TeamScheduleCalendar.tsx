@@ -7,6 +7,7 @@ import { getReadableTextColor } from '../../utils/colorContrast';
 import type { GameMvp } from '../../services/multi/gameLeadersCache';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { TeamHover } from '../common/TeamHover';
 import { IconButton } from '../common/IconButton';
 import { Spinner } from '../common/Spinner';
 import { EmptyState } from '../common/EmptyState';
@@ -180,12 +181,14 @@ export const TeamScheduleCalendar: React.FC<TeamScheduleCalendarProps> = ({ team
                                         <TableCell className="pl-4">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium text-slate-400 shrink-0">{isHome ? 'vs' : '@'}</span>
-                                                <span
-                                                    className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
-                                                    onClick={onTeamClick ? () => onTeamClick(oppId) : undefined}
-                                                >
-                                                    {oppTeam?.name ?? oppId}
-                                                </span>
+                                                <TeamHover teamId={onTeamClick ? oppId : null}>
+                                                    <span
+                                                        className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                                        onClick={onTeamClick ? () => onTeamClick(oppId) : undefined}
+                                                    >
+                                                        {oppTeam?.name ?? oppId}
+                                                    </span>
+                                                </TeamHover>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center align-middle text-sm">

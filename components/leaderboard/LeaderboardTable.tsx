@@ -7,6 +7,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, Tabl
 import { PLAYER_COLUMNS, TEAM_COLUMNS, ColumnDef, ViewMode, StatCategory, getAttrValue } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
+import { TeamHover } from '../common/TeamHover';
 import { TableEmptyRow } from '../common/EmptyState';
 
 interface LeaderboardTableProps {
@@ -251,7 +252,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     if (col.key === 'rank') cellContent = rank;
                                     else if (col.key === 'name') {
                                         cellContent = (
-                                            <span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
+                                            <TeamHover teamId={t.id}><span onClick={() => onRowClick(item)} className="text-sm font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer">{t.name}</span></TeamHover>
                                         );
                                     }
                                     else if (col.key === 'wins') cellContent = t.wins;

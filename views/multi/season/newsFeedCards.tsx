@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { Flame, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
@@ -120,7 +121,7 @@ const BoxScoreHeadline: React.FC<{
     const awayTeam = teamBySlug.get(game.awaySlug);
     const homeTeam = teamBySlug.get(game.homeSlug);
     const teamSpan = (slug: string, team: LeagueTeamRow | undefined) => (
-        <ClickableText className="text-lg font-black text-white" onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
+        <ClickableText className="text-lg font-black text-white" onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} teamHoverId={slug}>
             {team?.team_abbr ?? slug}
         </ClickableText>
     );
@@ -288,7 +289,7 @@ const TeamBoxTable: React.FC<{
                             style={{ color: headerFg }}
                             onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
                         >
-                            <span className={onOpenTeam ? 'cursor-pointer hover:underline' : ''}>{team?.team_name ?? teamSlug}</span>
+                            <TeamHover teamId={onOpenTeam ? teamSlug : null}><span className={onOpenTeam ? 'cursor-pointer hover:underline' : ''}>{team?.team_name ?? teamSlug}</span></TeamHover>
                         </TableHeaderCell>
                         <TableHeaderCell style={{ color: headerFg }}>POS</TableHeaderCell>
                         <TableHeaderCell style={{ color: headerFg }}>MIN</TableHeaderCell>
@@ -423,7 +424,7 @@ export const GameResultCard: React.FC<{
     return (
         <LetterShell
             title={<>
-                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(winnerSlug) : undefined}>
+                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(winnerSlug) : undefined} teamHoverId={winnerSlug}>
                     {titleNamePart}
                 </ClickableText>
                 {titleRest}
@@ -574,12 +575,12 @@ export const StreakCard: React.FC<{
                                     <TableRow key={g.gameId}>
                                         <TableCell align="left">{g.gameDate}</TableCell>
                                         <TableCell align="left">
-                                            <span
+                                            <TeamHover teamId={onOpenTeam ? g.awaySlug : null}><span
                                                 className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
                                                 onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}
                                             >
                                                 {awayTeam?.team_abbr ?? g.awaySlug}
-                                            </span>
+                                            </span></TeamHover>
                                             {' '}
                                             <span
                                                 className={onOpenGame ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
@@ -588,12 +589,12 @@ export const StreakCard: React.FC<{
                                                 {g.awayScore}-{g.homeScore}
                                             </span>
                                             {' '}
-                                            <span
+                                            <TeamHover teamId={onOpenTeam ? g.homeSlug : null}><span
                                                 className={`font-bold text-slate-300 ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
                                                 onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}
                                             >
                                                 {homeTeam?.team_abbr ?? g.homeSlug}
-                                            </span>
+                                            </span></TeamHover>
                                         </TableCell>
                                         <TableCell className="font-bold text-white">{g.pts}</TableCell>
                                         <TableCell>{g.reb}</TableCell>
@@ -642,7 +643,7 @@ export const WinStreakCard: React.FC<{
     return (
         <LetterShell
             title={<>
-                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}>
+                <ClickableText onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined} teamHoverId={teamSlug}>
                     {teamNameText}
                 </ClickableText>
                 {titleRest}
@@ -661,11 +662,11 @@ export const WinStreakCard: React.FC<{
                             return (
                                 <div key={g.gameId} className="flex items-center gap-2 py-2 text-sm">
                                     <span className="text-slate-500 shrink-0">{g.gameDate}</span>
-                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined}>
+                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.awaySlug) : undefined} teamHoverId={g.awaySlug}>
                                         {awayTeam?.team_abbr ?? g.awaySlug}
                                     </ClickableText>
                                     <span className="text-slate-300">{g.awayScore}-{g.homeScore}</span>
-                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined}>
+                                    <ClickableText className="font-bold text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(g.homeSlug) : undefined} teamHoverId={g.homeSlug}>
                                         {homeTeam?.team_abbr ?? g.homeSlug}
                                     </ClickableText>
                                     {g.mvp && (
@@ -713,7 +714,7 @@ const TradePlayerTable: React.FC<{
 
     return (
         <div className="space-y-2">
-            <ClickableText className="text-sm font-black text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}>
+            <ClickableText className="text-sm font-black text-slate-300" onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined} teamHoverId={teamSlug}>
                 {team?.team_name ?? teamSlug}
                 <span className="text-slate-500"> 방출 선수</span>
             </ClickableText>
@@ -785,7 +786,7 @@ export const TradeCard: React.FC<{
     const blurb = buildNewsBlurb(event, teamBySlug);
 
     const teamSpan = (slug: string, team: LeagueTeamRow | undefined) => (
-        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
+        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} teamHoverId={slug}>
             {team?.team_name ?? slug}
         </ClickableText>
     );
@@ -851,12 +852,12 @@ export const InjuryCard: React.FC<{
                     <TableRow>
                         <LetterPlayerCell name={player.name} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(player.id) : undefined} />
                         <TableCell>
-                            <span
+                            <TeamHover teamId={onOpenTeam ? teamSlug : null}><span
                                 className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
                                 onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
                             >
                                 {team?.team_name ?? teamSlug}
-                            </span>
+                            </span></TeamHover>
                         </TableCell>
                         <TableCell>{injuryType}</TableCell>
                         <TableCell>{duration}</TableCell>
@@ -911,12 +912,12 @@ export const SuspensionCard: React.FC<{
                             <TableRow key={row.player.id}>
                                 <LetterPlayerCell name={row.player.name} entry={entry} onClick={onPlayerClick ? () => onPlayerClick(row.player.id) : undefined} />
                                 <TableCell>
-                                    <span
+                                    <TeamHover teamId={onOpenTeam ? row.teamSlug : null}><span
                                         className={onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}
                                         onClick={onOpenTeam ? () => onOpenTeam(row.teamSlug) : undefined}
                                     >
                                         {team?.team_name ?? row.teamSlug}
-                                    </span>
+                                    </span></TeamHover>
                                 </TableCell>
                                 <TableCell>{row.games}경기</TableCell>
                                 <TableCell>{formatFullDateCell(row.returnDate)}</TableCell>
@@ -942,7 +943,7 @@ export const PowerRankingCard: React.FC<{
     const blurb = buildNewsBlurb(event, teamBySlug);
 
     const teamSpan = (slug: string, name: string) => (
-        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined}>
+        <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} teamHoverId={slug}>
             {teamBySlug.get(slug)?.team_name ?? name}
         </ClickableText>
     );
@@ -1021,7 +1022,7 @@ export const DraftLotteryResultCard: React.FC<{
             {firstPick && (
                 <p className="text-sm text-slate-300 leading-relaxed">
                     전체 1순위 지명권은{' '}
-                    <ClickableText className="font-bold text-white" onClick={onOpenTeam ? () => onOpenTeam(firstPick.teamSlug) : undefined}>
+                    <ClickableText className="font-bold text-white" onClick={onOpenTeam ? () => onOpenTeam(firstPick.teamSlug) : undefined} teamHoverId={firstPick.teamSlug}>
                         {teamBySlug.get(firstPick.teamSlug)?.team_name ?? firstPick.teamName}
                     </ClickableText>
                     {' '}팀에게 돌아갔습니다.
@@ -1040,12 +1041,12 @@ export const DraftLotteryResultCard: React.FC<{
                             <TableCell align="left">
                                 <div className="flex items-center gap-2">
                                     <TeamMark variant="logo" teamId={pick.teamSlug} teamName={pick.teamName} size="xs" />
-                                    <span
+                                    <TeamHover teamId={onOpenTeam ? pick.teamSlug : null}><span
                                         className={`text-sm font-semibold text-slate-100 truncate ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
                                         onClick={onOpenTeam ? () => onOpenTeam(pick.teamSlug) : undefined}
                                     >
                                         {teamBySlug.get(pick.teamSlug)?.team_name ?? pick.teamName}
-                                    </span>
+                                    </span></TeamHover>
                                 </div>
                             </TableCell>
                         </TableRow>
@@ -1090,7 +1091,7 @@ const AwardHero: React.FC<{
                 <span className="ml-2 text-sm text-slate-500">{winner.position}</span>
             </div>
             <div>
-                <ClickableText className="text-sm font-bold text-slate-400" onClick={onOpenTeam ? () => onOpenTeam(winner.teamSlug) : undefined}>
+                <ClickableText className="text-sm font-bold text-slate-400" onClick={onOpenTeam ? () => onOpenTeam(winner.teamSlug) : undefined} teamHoverId={winner.teamSlug}>
                     {winnerTeam?.team_name ?? winner.teamSlug}
                 </ClickableText>
             </div>
@@ -2428,14 +2429,14 @@ export const PlayInBracketCard: React.FC<{
                 <div key={`${m.conference}-${m.tag}`} className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-slate-800/60 text-sm">
                     <div className="flex items-center gap-2 min-w-0">
                         <TeamMark variant="logo" teamId={m.higherSeedSlug} teamName={teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName} size="xs" />
-                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.higherSeedSlug)}>
+                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.higherSeedSlug)} teamHoverId={m.higherSeedSlug}>
                             {m.higherSeedRank}. {teamBySlug.get(m.higherSeedSlug)?.team_name ?? m.higherSeedName}
                         </ClickableText>
                     </div>
                     <span className="text-slate-500 shrink-0 text-xs font-bold">VS</span>
                     <div className="flex items-center gap-2 min-w-0 flex-row-reverse text-right">
                         <TeamMark variant="logo" teamId={m.lowerSeedSlug} teamName={teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName} size="xs" />
-                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.lowerSeedSlug)}>
+                        <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(m.lowerSeedSlug)} teamHoverId={m.lowerSeedSlug}>
                             {m.lowerSeedRank}. {teamBySlug.get(m.lowerSeedSlug)?.team_name ?? m.lowerSeedName}
                         </ClickableText>
                     </div>
@@ -2475,7 +2476,7 @@ export const PlayInResultCard: React.FC<{
         <LetterShell
             width="3xl"
             title={<>
-                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>
                     {winnerDisplay}
                 </ClickableText>
                 , {confLabel} {tagLabel} 승리
@@ -2483,9 +2484,9 @@ export const PlayInResultCard: React.FC<{
             date={event.simDate ?? formatRelativeTime(event.createdAt)}
         >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>{winnerDisplay}</ClickableText>
                 이(가) {confLabel} {tagLabel}에서{' '}
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)} teamHoverId={loserSlug}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾었습니다.{' '}
                 {seedClinched
                     ? `이로써 ${winnerDisplay}이(가) ${confLabel} ${seedClinched}시드를 확정 지었습니다.`
@@ -2507,7 +2508,7 @@ export const PlayoffBracketConfirmedCard: React.FC<{
                 <div key={s.seed} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-800/60 text-sm">
                     <span className="text-slate-500 font-black w-5 text-center shrink-0">{s.seed}</span>
                     <TeamMark variant="logo" teamId={s.teamSlug} teamName={teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName} size="xs" />
-                    <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(s.teamSlug)}>
+                    <ClickableText className="text-slate-200 font-semibold truncate" noUnderline onClick={() => onOpenTeam?.(s.teamSlug)} teamHoverId={s.teamSlug}>
                         {teamBySlug.get(s.teamSlug)?.team_name ?? s.teamName}
                     </ClickableText>
                 </div>
@@ -2553,7 +2554,7 @@ export const PlayoffGameResultCard: React.FC<{
         <LetterShell
             width="3xl"
             title={<>
-                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>
                     {winnerDisplay}
                 </ClickableText>
                 , {roundName} {gameNum}차전 승리
@@ -2561,14 +2562,14 @@ export const PlayoffGameResultCard: React.FC<{
             date={event.simDate ?? formatRelativeTime(event.createdAt)}
         >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>{winnerDisplay}</ClickableText>
                 이(가){' '}
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)} teamHoverId={loserSlug}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerScore} - {loserScore}</b>로 꺾고 {roundName} {gameNum}차전을 가져갔습니다.{' '}
                 {isTied
                     ? '시리즈 전적은 원점으로 돌아갔습니다.'
                     : <>시리즈 전적은{' '}
-                        <ClickableText noUnderline onClick={() => onOpenTeam?.(leaderSlug)}>{teamBySlug.get(leaderSlug)?.team_name ?? leaderSlug}</ClickableText>
+                        <ClickableText noUnderline onClick={() => onOpenTeam?.(leaderSlug)} teamHoverId={leaderSlug}>{teamBySlug.get(leaderSlug)?.team_name ?? leaderSlug}</ClickableText>
                         의 {leaderWins}승 {trailWins}패로 앞서갑니다.
                     </>}
             </p>
@@ -2593,7 +2594,7 @@ export const PlayoffSeriesResultCard: React.FC<{
         <LetterShell
             width="3xl"
             title={<>
-                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)}>
+                <ClickableText onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>
                     {winnerDisplay}
                 </ClickableText>
                 , {roundName} 시리즈 승리
@@ -2607,9 +2608,9 @@ export const PlayoffSeriesResultCard: React.FC<{
             }
         >
             <p className="text-sm text-slate-300 leading-relaxed">
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)}>{winnerDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(winnerSlug)} teamHoverId={winnerSlug}>{winnerDisplay}</ClickableText>
                 이(가){' '}
-                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)}>{loserDisplay}</ClickableText>
+                <ClickableText noUnderline onClick={() => onOpenTeam?.(loserSlug)} teamHoverId={loserSlug}>{loserDisplay}</ClickableText>
                 을(를) <b className="text-white">{winnerWins}승 {loserWins}패</b>로{isSweep ? ' 스윕하며' : ' 꺾고'} {roundName} 관문을 통과했습니다.
             </p>
         </LetterShell>
@@ -2631,12 +2632,14 @@ export const PlayoffChampionCard: React.FC<{
             <LetterHero>
                 <img src="/images/final.webp" alt="Playoff Champion" className="h-36 w-auto object-contain drop-shadow-[0_0_20px_rgba(251,191,36,0.35)]" />
                 <p className="text-xs font-black tracking-[0.3em] text-amber-400">{seasonLabel} CHAMPIONS</p>
-                <h1
-                    className="text-3xl font-black text-white cursor-pointer hover:text-amber-300 transition-colors"
-                    onClick={() => onOpenTeam?.(championSlug)}
-                >
-                    {displayName}
-                </h1>
+                <TeamHover teamId={onOpenTeam ? championSlug : null}>
+                    <h1
+                        className="text-3xl font-black text-white cursor-pointer hover:text-amber-300 transition-colors"
+                        onClick={() => onOpenTeam?.(championSlug)}
+                    >
+                        {displayName}
+                    </h1>
+                </TeamHover>
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-300">
                     <span className="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300">플레이오프 {playoffWins}승 {playoffLosses}패</span>
                 </div>
@@ -2644,7 +2647,7 @@ export const PlayoffChampionCard: React.FC<{
             <p className="text-sm text-slate-500 -mt-4">{event.simDate ?? formatRelativeTime(event.createdAt)}</p>
             <p className="text-sm text-slate-300 leading-relaxed">
                 플레이인부터 파이널까지 이어진 길고 치열했던 여정 끝에,{' '}
-                <span className="cursor-pointer text-white font-bold hover:text-amber-300" onClick={() => onOpenTeam?.(championSlug)}>{displayName}</span>
+                <TeamHover teamId={onOpenTeam ? championSlug : null}><span className="cursor-pointer text-white font-bold hover:text-amber-300" onClick={() => onOpenTeam?.(championSlug)}>{displayName}</span></TeamHover>
                 {' '}이(가) {seasonLabel}시즌 정상에 올랐습니다. 플레이오프 전적 <b className="text-white">{playoffWins}승 {playoffLosses}패</b>로
                 시즌을 마무리하며 우승 트로피를 들어 올렸습니다.
             </p>
@@ -2674,7 +2677,7 @@ export const FinalsMvpCard: React.FC<{
                         {playerName}
                     </span>
                 </h1>
-                <ClickableText className="text-sm font-bold text-slate-400" noUnderline onClick={() => onOpenTeam?.(teamSlug)}>
+                <ClickableText className="text-sm font-bold text-slate-400" noUnderline onClick={() => onOpenTeam?.(teamSlug)} teamHoverId={teamSlug}>
                     {displayTeamName}
                 </ClickableText>
                 <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm text-slate-300 mt-1">

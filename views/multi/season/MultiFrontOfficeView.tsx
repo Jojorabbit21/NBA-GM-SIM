@@ -38,6 +38,7 @@ import { Badge } from '../../../components/common/Badge';
 import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { Dropdown } from '../../../components/common/Dropdown';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { getReadableTextColor } from '../../../utils/colorContrast';
@@ -1187,12 +1188,14 @@ const MultiFrontOfficeView: React.FC = () => {
         // 팀 이름을 로스터 화면 링크로 — 이 파일의 "트레이드 블록" 탭(1134번째 줄 부근)에서
         // 쓰는 team_slug 기반 네비게이션과 동일한 패턴 재사용.
         const renderTeamLink = (team: LeagueTeamRow | null | undefined, extraClassName = '') => (
-            <span
-                onClick={() => team && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${team.team_slug}`)}
-                className={`${extraClassName} ${team ? 'cursor-pointer hover:underline hover:text-indigo-400' : ''}`}
-            >
-                {team?.team_name ?? '?'}
-            </span>
+            <TeamHover teamId={team?.team_slug}>
+                <span
+                    onClick={() => team && navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${team.team_slug}`)}
+                    className={`${extraClassName} ${team ? 'cursor-pointer hover:underline hover:text-indigo-400' : ''}`}
+                >
+                    {team?.team_name ?? '?'}
+                </span>
+            </TeamHover>
         );
 
         // [2026-09-30] 버그 수정: statsByPlayerId는 "새 제안" 탭의 내 팀/상대 팀(targetTeamRow) 로스터만
@@ -1617,7 +1620,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                         <TableCell align="left" className="pl-4 align-top py-2.5">
                                             <span className="flex items-center gap-2">
                                                 <TeamLogo teamId={t.team_slug} teamName={t.team_abbr ?? t.team_slug} size="custom" className="w-5 h-5 shrink-0" shadow={false} />
-                                                <ClickableText className="font-bold text-white ko-normal text-sm" onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}>
+                                                <ClickableText className="font-bold text-white ko-normal text-sm" teamHoverId={t.team_slug} onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}>
                                                     {t.team_abbr}
                                                 </ClickableText>
                                             </span>
@@ -2081,7 +2084,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <TableCell rowSpan={rowCount} align="left" className="pl-4 align-top py-2.5">
                                                     <span className="flex items-center gap-2">
                                                         {fromTeam && <TeamLogo teamId={fromTeam.team_slug} teamName={fromTeam.team_abbr ?? fromTeam.team_slug} size="custom" className="w-5 h-5 shrink-0" shadow={false} />}
-                                                        <ClickableText className="font-bold text-white ko-normal text-sm whitespace-nowrap" onClick={fromTeam ? () => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${fromTeam.team_slug}`) : undefined}>
+                                                        <ClickableText className="font-bold text-white ko-normal text-sm whitespace-nowrap" teamHoverId={fromTeam?.team_slug} onClick={fromTeam ? () => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${fromTeam.team_slug}`) : undefined}>
                                                             {fromTeam?.team_name ?? '?'}
                                                         </ClickableText>
                                                     </span>
@@ -2097,7 +2100,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 <TableCell rowSpan={rowCount} align="left" className="pl-4 align-top py-2.5">
                                                     <span className="flex items-center gap-2">
                                                         {toTeam && <TeamLogo teamId={toTeam.team_slug} teamName={toTeam.team_abbr ?? toTeam.team_slug} size="custom" className="w-5 h-5 shrink-0" shadow={false} />}
-                                                        <ClickableText className="font-bold text-white ko-normal text-sm whitespace-nowrap" onClick={toTeam ? () => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${toTeam.team_slug}`) : undefined}>
+                                                        <ClickableText className="font-bold text-white ko-normal text-sm whitespace-nowrap" teamHoverId={toTeam?.team_slug} onClick={toTeam ? () => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${toTeam.team_slug}`) : undefined}>
                                                             {toTeam?.team_name ?? '?'}
                                                         </ClickableText>
                                                     </span>

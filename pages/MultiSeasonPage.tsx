@@ -174,7 +174,7 @@ const HomeStandingsTable: React.FC<{
                                 <div className="flex items-center gap-1.5 min-w-0">
                                     <TeamMark variant="logo" teamId={t.team_slug} teamName={t.team_abbr} size="xs" />
                                     {/* 팀명 호버 시 밑줄(+인디고) — 앱 공통 이동 링크 규칙(ClickableText). 클릭 목적지는 행과 동일(팀 로스터). */}
-                                    <ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)}>{t.team_name}</ClickableText>
+                                    <ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)} teamHoverId={t.team_slug}>{t.team_name}</ClickableText>
                                 </div>
                             </TableCell>
                             <TableCell className="text-sm text-slate-200">{rec?.wins ?? 0}</TableCell>

@@ -310,10 +310,17 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible]);
 
-    // 팝업이 열려있는 동안 스크롤되면 앵커 기준 좌표가 무의미해지므로 즉시 닫는다.
+    // 팝업이 열려있는 동안 앵커가 스크롤로 움직이면 기준 좌표가 무의미해지므로 즉시 닫는다.
+    // 캡처 리스너라 화면 안 모든 요소의 스크롤이 들어온다 — 앵커를 포함하지 않는 영역(예: 새 메시지가 오면
+    // 자동 스크롤되는 채팅 패널)의 스크롤은 앵커 위치와 무관하므로 무시한다.
     useEffect(() => {
         if (!visible) return;
-        const handleScroll = () => setVisible(false);
+        const handleScroll = (e: Event) => {
+            const target = e.target;
+            const anchor = anchorRef.current;
+            if (target instanceof Node && anchor && target !== document && !target.contains(anchor)) return;
+            setVisible(false);
+        };
         window.addEventListener('scroll', handleScroll, true);
         return () => window.removeEventListener('scroll', handleScroll, true);
     }, [visible]);

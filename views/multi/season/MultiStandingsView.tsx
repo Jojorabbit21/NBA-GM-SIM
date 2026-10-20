@@ -19,6 +19,7 @@ import { TEAM_DATA } from '../../../data/teamData';
 import { DIVISION_KOREAN } from '../../../data/mappings';
 import { CONFERENCE_COLORS } from '../../../utils/constants';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { useTableSort } from '../../../hooks/useTableSort';
 import { buildRaceLedger } from './playoffRaceUtils';
@@ -694,16 +695,18 @@ const LeagueStandingsTable: React.FC<{
                                         <TableCell align="left" className="pl-4">
                                             <span className="flex items-center gap-2 min-w-0">
                                                 <TeamLogo teamId={t.team_slug} teamName={t.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
-                                                <span
-                                                    onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
-                                                    className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
-                                                        clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
-                                                            : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
-                                                            : 'text-slate-200'
-                                                    }`}
-                                                >
-                                                    {t.team_name}
-                                                </span>
+                                                <TeamHover teamId={t.team_slug}>
+                                                    <span
+                                                        onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}
+                                                        className={`text-sm font-semibold truncate cursor-pointer hover:underline ${
+                                                            clinchMap[t.team_slug] === 'clinched_playoff' ? 'text-emerald-400'
+                                                                : clinchMap[t.team_slug] === 'eliminated' ? 'text-slate-600'
+                                                                : 'text-slate-200'
+                                                        }`}
+                                                    >
+                                                        {t.team_name}
+                                                    </span>
+                                                </TeamHover>
                                             </span>
                                         </TableCell>
 

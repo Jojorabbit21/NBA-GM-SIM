@@ -33,6 +33,27 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-20 — 멀티 홈 "리그 순위" 섹션 팀 이름에 팀 호버 카드 적용
+
+**배경**: 팀 호버 카드를 팀 링크 전반에 붙이는 작업(위 항목들) 중 홈(`MultiSeasonPage`)의 "리그 순위" 섹션(`HomeStandingsTable`)만 빠져 있었음.
+
+**변경 파일**:
+- `pages/MultiSeasonPage.tsx` (client) — `HomeStandingsTable` 팀명 `ClickableText`에 `teamHoverId={t.team_slug}` 추가
+
+**Before**:
+```tsx
+<ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)}>{t.team_name}</ClickableText>
+```
+
+**After**:
+```tsx
+<ClickableText className="text-sm font-bold text-slate-300 truncate" onClick={() => onOpenTeam(t.team_slug)} teamHoverId={t.team_slug}>{t.team_name}</ClickableText>
+```
+
+**검증**: `ClickableText`가 `<TeamHover>`로 감싸며 `MultiSeasonLayout`의 제공자 안에서 렌더되므로 추가 배선 없음. 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: Before 내용으로 되돌리기(`teamHoverId` prop 제거).
+
 ## 2026-10-20 — 오펜시브 파울 PBP 로그에서 팀 반칙 수 표기 제거
 
 **배경**: 경기 c2cpfje6(MIL vs UTA)에서 "존 하블리첵, 차징 오펜시브 파울. (1반칙, 팀 1반칙)" 같은 로그 때문에 팀파울 누적 버그로 오인됨. 실제 누적은 정상(오펜시브 파울은 NBA 규정상 팀파울 미합산, `commitFoul`만 `defTeam.fouls` 증가) — 표기만 혼동을 유발. Q2에는 "(1반칙, 팀 0반칙)" 같은 어색한 표기도 있었음.
@@ -54,6 +75,91 @@ addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.
 **검증**: client/server tsc에서 statsMappers 관련 오류 없음. 로그 텍스트의 "팀 N반칙"을 파싱하는 UI 코드 없음 확인. 서버는 Fly 배포 전까지 멀티 경기에 미반영. 이미 저장된 game_pbp 로그는 옛 표기 그대로.
 
 **롤백 방법**: 두 파일의 addLog 문자열을 Before로 되돌림(미러 쌍이므로 둘 다).
+
+## 2026-10-20 — 팀 호버 카드를 팀 바로가기 링크 전반으로 확대 (`<TeamHover>` + 컨텍스트 게이트)
+
+**배경**: 팀 호버 카드가 순위표에만 붙어 있었다. 플레이어 호버 카드처럼 팀 이름 링크가 걸린 모든 멀티 화면에 붙이되, 싱글/멀티가 공유하는 화면(일정·리더보드·로스터)에 `enableHoverCard` 같은 prop을 내려보내지 않도록 했다.
+
+**설계**: `components/common/TeamHover.tsx`가 `TeamHoverRendererContext`를 읽어, 제공자가 있을 때만 `TeamHoverCard`로 감싼다(없으면 children 그대로 → 싱글은 동작 불변). 제공자는 `MultiSeasonLayout`이 `MultiTeamHoverProvider`로 감싸 제공(`views/multi/season/MultiTeamHoverCard.tsx`). 카드 내용을 컨텍스트로 주입하는 이유는 components/common이 views를 import하면 순환 임포트가 생기기 때문.
+
+**변경 파일** (client만):
+- `components/common/TeamHover.tsx` (신규) — 컨텍스트 + `<TeamHover teamId>` 래퍼.
+- `views/multi/season/MultiTeamHoverCard.tsx` — 기존 `MultiTeamHoverCard` 래퍼 제거, `MultiTeamHoverProvider`로 교체.
+- `views/multi/season/MultiSeasonLayout.tsx` — 반환 JSX 전체를 `MultiTeamHoverProvider`로 감쌈.
+- `views/multi/season/MultiStandingsView.tsx` — `MultiTeamHoverCard` → `TeamHover`.
+- `views/ScheduleView.tsx` — 팀명 줄(원정/홈) 2곳, `onTeamClick`이 있을 때만.
+- `components/leaderboard/LeaderboardTable.tsx` — 팀 모드 팀 이름.
+- `components/roster/TeamGameLog.tsx`, `components/roster/TeamScheduleCalendar.tsx` — 상대팀 이름(`onTeamClick`이 있을 때만).
+- `views/multi/season/newsFeedLetter.tsx` — `ClickableText`에 `teamHoverId` prop 추가(내부에서 `TeamHover`로 감쌈, 미지정 시 기존과 동일), `LetterTeamCell`에 적용.
+- `views/multi/season/newsFeedCards.tsx` — `ClickableText` 10곳에 `teamHoverId`, 순수 span 6곳(박스스코어 헤더, 선수 경기기록 팀 칸, 부상/출전정지 표 팀 칸 등)을 `TeamHover`로 감쌈.
+- `views/multi/season/MultiPlayoffRaceView.tsx` — 순위 행 팀 이름.
+- `views/multi/season/MultiFrontOfficeView.tsx` — `renderTeamLink`, 트레이드 이력의 보낸/받은 팀 `ClickableText` 3곳.
+- `views/multi/season/MultiGamePbpView.tsx` — 종료 헤더 `FinalTeamBlock`에 `teamId` prop(올스타는 생략).
+
+**후속(같은 날, "시즌 일정 뷰에서 팀 카드가 안 뜸" 지적)**: 처음 조사에서 누락했던 두 곳을 추가. ① `views/multi/season/MultiScheduleView.tsx` — `TeamNameCell`의 `ClickableText`에 `teamHoverId={team ? teamId : null}`(올스타 등 `teamMap`에 없는 팀은 제외). ② `views/multi/season/newsFeedCards.tsx` — `onOpenTeam?.(…)`(옵셔널 호출) 형태 14곳(`ClickableText`)과 우승 레터 챔피언 이름 2곳(`<h1>`, 본문 `<span>`)을 `TeamHover`로. 앞선 일괄 패치가 `onOpenTeam ? () => …` 형태만 찾아서 놓친 것.
+
+**후속 2(같은 날, "새로고침 후 첫 카드는 스탯 영역이 늦게 나타나 매끄럽지 않음" 지적)**: 원인 — 선수 시즌 스탯(`playerSeasonStatsLeague`)은 리그 부트스트랩이 미리 받아 두지만 팀 득점/실점 RPC(`useTeamSeasonAdvancedStats`)는 첫 호버에서 처음 요청되어, 카드가 "불러오는 중" 한 줄로 뜬 뒤 높이가 커졌다. ① `views/multi/season/MultiTeamHoverCard.tsx` — 렌더 없는 `TeamHoverPrefetch`를 제공자 안에 추가해 시즌 화면이 열릴 때 두 쿼리를 백그라운드로 미리 받음(같은 쿼리 키라 부트스트랩 캐시와 중복 요청 없음, 게이트는 건드리지 않아 홈 표시 시점 불변). ② `components/common/TeamHoverCard.tsx` — 로딩 중 순위 영역을 "불러오는 중" 문구 대신 완성 상태와 같은 높이의 8칸 스켈레톤(`h-4`, 2열 4행)으로 바꿔 데이터가 늦게 와도 카드 크기가 변하지 않게 함. 롤백: `TeamHoverPrefetch` 및 JSX 한 줄 제거, 스켈레톤 분기를 `<div className="text-xs text-slate-500 text-center py-1">불러오는 중</div>`로 복원.
+
+**후속 3(같은 날, 선수 스탯 의존 제거)**: 어시/리바/3점/스틸/블락/야투%는 `usePlayerSeasonStatsLeague`(스탯 `staleTime: Infinity`, 현재 로스터 합산)를 팀 경기 수(팀 RPC, 5분 stale)로 나눠 오래 켜 둔 세션에서 두 데이터의 시점이 어긋나고(경기당 값이 낮게 나옴) 트레이드 선수 기록이 현재 팀으로 잡히는 한계가 있어, 선수 스탯 캐시를 건드리지 않기로 하고 해당 지표를 제거했다.
+- Before: 8칸 2열 4행 — 득점/실점(팀 RPC) + 어시/리바/3점/스틸/블락/야투%(선수 합산 ÷ 팀 경기 수). 순위 영역 한 줄 `라벨 | 값 | 순위`.
+- After: 6칸 3열 2행 — `Pts/g`(ppg↑), `OPts/g`(oppg↓), `ORTG`(offRtg↑), `DRTG`(defRtg↓), `PACE`(pace↑), `TOV%`(tovPct↓, 낮을수록 좋음). 전부 `get_team_season_advanced_stats` RPC 한 건이라 같은 시점. 셀은 라벨 위 / 값+순위 아래 두 줄(위쪽 전적 영역과 같은 형태), 로딩 스켈레톤은 6칸 `h-[33px]`.
+- 변경 파일: `views/multi/season/teamHoverData.ts`(`statsByPlayer` 인자·합산 로직 삭제, 지표 6개로 교체), `views/multi/season/MultiTeamHoverCard.tsx`(`usePlayerSeasonStatsLeague` 제거, 미리 받기도 팀 RPC 한 건), `components/common/TeamHoverCard.tsx`(레이아웃).
+- 롤백: 위 세 파일을 후속 2 시점 상태로 복원(8칸 지표 정의 + `statsByPlayer` 합산 + 2열 레이아웃).
+
+**적용하지 않은 곳**: 헤더 글로벌 검색 결과, 사이드바/내비 메뉴(내 팀 바로가기), 싱글 전용 화면, 개발용 목업(`views/dev`).
+
+**검증**: `tsc --noEmit` — 변경 파일 오류 0(전체 73줄은 기존 오류와 동일). 브라우저 확인은 미실시.
+
+**롤백 방법**: 각 파일에서 `<TeamHover ...>` 래퍼를 벗기고 `teamHoverId` prop을 제거, `MultiSeasonLayout`의 제공자 래퍼를 제거, `TeamHover.tsx` 삭제. 순위표만 남기려면 `MultiStandingsView`에서 `TeamHover`만 유지하면 된다(제공자 필요).
+
+## 2026-10-20 — 호버 카드가 채팅 새 메시지 자동 스크롤에 닫히던 문제 (플레이어/팀 카드)
+
+**배경**: 플레이어·팀 호버 카드를 띄워 둔 상태에서 채팅 패널에 새 메시지가 오면 두 카드가 같이 사라졌다. 원인: 카드의 "스크롤하면 닫기" 리스너가 `window.addEventListener('scroll', handler, true)`(캡처)라 화면 안 모든 요소의 스크롤에 반응하는데, 채팅 패널(`LeagueChatDock.tsx`의 `scrollToBottom`)이 새 메시지마다 목록을 자동 스크롤한다.
+
+**변경 파일** (client만):
+- `components/common/PlayerHoverCard.tsx`
+- `components/common/TeamHoverCard.tsx`
+
+**Before**:
+```ts
+const handleScroll = () => setVisible(false);
+```
+
+**After**:
+```ts
+const handleScroll = (e: Event) => {
+    const target = e.target;
+    const anchor = anchorRef.current;
+    if (target instanceof Node && anchor && target !== document && !target.contains(anchor)) return;
+    setVisible(false);
+};
+```
+앵커를 포함하는 스크롤 영역(또는 document)이 스크롤될 때만 닫는다. 앵커와 무관한 영역의 스크롤은 무시.
+
+**검증**: `tsc --noEmit` — 두 파일 오류 0. 브라우저 확인은 미실시.
+
+**롤백 방법**: 두 파일 모두 `handleScroll`을 Before 한 줄로 되돌린다(미러가 아니지만 두 카드 동작을 맞추려면 같이 되돌릴 것).
+
+## 2026-10-20 — 멀티 팀 호버 카드 신설 (순위표 팀 이름)
+
+**배경**: PlayerHoverCard처럼 팀 이름에 마우스를 올리면 팀 요약과 분야별 리그 순위를 보여달라는 요청. 목업(아티팩트) 확정 후 구현. 신규 기능이라 Before는 "호버 카드 없음".
+
+**변경 파일** (client만, 서버 미러 없음):
+- `components/common/TeamHoverCard.tsx` (신규) — 프레젠테이션 계층. `TeamHoverCard`(500ms 지연·포털·뷰포트 뒤집힘 보정, PlayerHoverCard와 동일 규격) + `TeamHoverCardBody`(300px 카드: 로고/팀명/컨퍼런스, 전적·컨퍼런스 순위·리그 순위, 단장, 8개 분야 순위). 컨텍스트 훅을 import하지 않는다(순환 임포트 방지).
+- `views/multi/season/teamHoverData.ts` (신규) — 순수 함수 `buildTeamHoverData()`. 전적/순위/분야별 순위 계산.
+- `views/multi/season/MultiTeamHoverCard.tsx` (신규) — 멀티 래퍼. 팝업 내용 컴포넌트가 호버로 열릴 때만 마운트되어 쿼리·계산이 그때 시작된다.
+- `views/multi/season/MultiStandingsView.tsx` — 순위표 팀 이름 `<span>`을 `<MultiTeamHoverCard teamSlug>`로 감쌈(클릭 이동 동작 그대로).
+
+**After (계산 기준)**:
+- 전적: `computeMultiStandingsStats`(순위표와 같은 함수). 리그 순위: 승률→승수(순위표 "리그" 모드와 동일). 컨퍼런스 순위: `buildRaceLedger`+`buildContext`+`rankGroup`(순위표 "컨퍼런스" 모드와 동일, NBA 타이브레이커).
+- 득점/실점: `useTeamSeasonAdvancedStats`의 ppg/oppg(리더보드·팀 헤더와 같은 RPC). 실점은 낮을수록 1위.
+- 어시/리바/3점/스틸/블락/야투%: `usePlayerSeasonStatsLeague`(현재 로스터 선수 합계) ÷ 팀 경기 수. 리더보드 "팀" 모드와 같은 방식. 쿼리 키가 다른 화면과 같아 캐시 공유.
+- 단장: 유저 팀 `league_teams.nickname`, AI·미배정은 "없음"(AI 팀은 단장 이름 데이터가 멀티에 없음).
+- 순위 색: 순위/팀수 비율로 1/6, 1/3, 2/3, 5/6 경계(30팀이면 5/10/20/25위).
+
+**검증**: `tsc --noEmit` — 신규/수정 파일 오류 0. 전체 73줄 오류는 변경 전(stash)에도 동일한 기존 오류(useGameData.ts, PlayerEditorPage.tsx 등). 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 신규 3파일 삭제 + `MultiStandingsView.tsx`에서 `import { MultiTeamHoverCard }` 줄 제거, `<MultiTeamHoverCard ...>` 래퍼를 벗겨 안쪽 `<span>`만 남기면 원상복구.
 
 ## 2026-10-19 — 업데이트 토스트: 채팅 FAB 위로 이동 + 위젯 열림 시 패널 배너 + emerald 톤
 

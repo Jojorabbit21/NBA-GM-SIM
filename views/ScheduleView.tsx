@@ -5,6 +5,7 @@ import { Team, Game, PlayoffSeries } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { TeamHover } from '../components/common/TeamHover';
 
 interface ScheduleViewProps {
   schedule: Game[];
@@ -555,11 +556,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               className={`flex-1 min-w-0 ${onTeamClick ? 'cursor-pointer' : ''}`}
                               onClick={onTeamClick ? (e) => { e.stopPropagation(); onTeamClick(awayTeam.id); } : undefined}
                             >
-                              <div className={`text-xs font-black uppercase truncate ${
-                                isMyGame && game.awayTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
-                              } ${onTeamClick ? 'hover:underline' : ''}`}>
-                                {awayTeam.city} {awayTeam.name}
-                              </div>
+                              <TeamHover teamId={onTeamClick ? awayTeam.id : null}>
+                                <div className={`text-xs font-black uppercase truncate ${
+                                  isMyGame && game.awayTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
+                                } ${onTeamClick ? 'hover:underline' : ''}`}>
+                                  {awayTeam.city} {awayTeam.name}
+                                </div>
+                              </TeamHover>
                               <div className="text-xs text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
                             </div>
                             {game.played ? (
@@ -581,11 +584,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               className={`flex-1 min-w-0 ${onTeamClick ? 'cursor-pointer' : ''}`}
                               onClick={onTeamClick ? (e) => { e.stopPropagation(); onTeamClick(homeTeam.id); } : undefined}
                             >
-                              <div className={`text-xs font-black uppercase truncate ${
-                                isMyGame && game.homeTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
-                              } ${onTeamClick ? 'hover:underline' : ''}`}>
-                                {homeTeam.city} {homeTeam.name}
-                              </div>
+                              <TeamHover teamId={onTeamClick ? homeTeam.id : null}>
+                                <div className={`text-xs font-black uppercase truncate ${
+                                  isMyGame && game.homeTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
+                                } ${onTeamClick ? 'hover:underline' : ''}`}>
+                                  {homeTeam.city} {homeTeam.name}
+                                </div>
+                              </TeamHover>
                               <div className="text-xs text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>
                             </div>
                             {game.played ? (

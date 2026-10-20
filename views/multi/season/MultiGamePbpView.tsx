@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { InlineNotice } from '../../../components/common/InlineNotice';
 import { Button } from '../../../components/common/Button';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
@@ -729,11 +730,13 @@ const FinalTeamBlock: React.FC<{
     score: number;
     won: boolean;
     onClick: () => void;
-}> = ({ side, name, wl, score, won, onClick }) => {
+    /** 팀 호버 카드를 붙일 팀 slug — 올스타처럼 리그 팀이 아니면 생략 */
+    teamId?: string;
+}> = ({ side, name, wl, score, won, onClick, teamId }) => {
     const isAway = side === 'away';
     const nameBlock = (
         <div className={`flex flex-col min-w-0 gap-0.5 ${isAway ? 'items-end' : 'items-start'}`}>
-            <span className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline" onClick={onClick}>{name}</span>
+            <TeamHover teamId={teamId}><span className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline" onClick={onClick}>{name}</span></TeamHover>
             {wl && <span className="text-sm text-slate-400 tabular-nums">{`${wl.wins}W ${wl.losses}L`}</span>}
         </div>
     );
@@ -2358,7 +2361,7 @@ const MultiGamePbpView: React.FC = () => {
                             <FinalHeaderLogo teamSlug={awayTeamId ?? ''} abbr={awayAbbr} />
 
                             {/* 원정: 이름·전적(우측 정렬) → 점수 → (승리 시) ◂ 마커 */}
-                            <FinalTeamBlock side="away" name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={awayWon} onClick={() => goTeamRoster(awayTeamId)} />
+                            <FinalTeamBlock side="away" name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={awayWon} onClick={() => goTeamRoster(awayTeamId)} teamId={isAllstar ? undefined : awayTeamId} />
 
                             {/* 가운데: 종료 라벨 + 미니멀 쿼터별 득점 표 */}
                             <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -2382,7 +2385,7 @@ const MultiGamePbpView: React.FC = () => {
                             </div>
 
                             {/* 홈: (승리 시) ▸ 마커 → 점수 → 이름·전적(좌측 정렬) */}
-                            <FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} />
+                            <FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} teamId={isAllstar ? undefined : homeTeamId} />
 
                             <FinalHeaderLogo teamSlug={homeTeamId ?? ''} abbr={homeAbbr} />
                         </div>

@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Spinner } from '../../../components/common/Spinner';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { CONFERENCE_COLORS } from '../../../utils/constants';
 import { useServerClockBucket } from '../../../utils/serverClock';
@@ -250,12 +251,12 @@ export const PlayoffRaceBody: React.FC<PlayoffRaceBodyProps> = ({
                                             <span className="flex items-center gap-2 min-w-0">
                                                 {isOpenRow ? <ChevronDown size={14} className="text-slate-500 shrink-0" /> : <ChevronRight size={14} className="text-slate-600 shrink-0" />}
                                                 <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
-                                                <span
+                                                <TeamHover teamId={team.team_slug}><span
                                                     onClick={e => { e.stopPropagation(); onOpenTeam(team.team_slug); }}
                                                     className={`text-sm font-semibold truncate cursor-pointer hover:underline ${dead ? 'text-slate-600' : st.cls === 'text-emerald-400' ? 'text-emerald-400' : 'text-slate-200'}`}
                                                 >
                                                     {team.team_name}
-                                                </span>
+                                                </span></TeamHover>
                                             </span>
                                         </TableCell>
                                         <TableCell align="center" className="text-sm tabular-nums text-white">{row.wins}</TableCell>

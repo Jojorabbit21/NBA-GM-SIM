@@ -13,6 +13,7 @@ import { Button } from '../../../components/common/Button';
 import { EmptyState } from '../../../components/common/EmptyState';
 import { TableCell } from '../../../components/common/Table';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { TeamHover } from '../../../components/common/TeamHover';
 import { PlayerHoverCard, type PlayerCardEntry } from '../../../components/common/PlayerHoverCard';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 
@@ -36,16 +37,21 @@ export const ClickableText = React.forwardRef<HTMLSpanElement, {
     className?: string;
     /** 본문 문장 속 링크처럼 밑줄 없이 색만 바뀌게 */
     noUnderline?: boolean;
+    /** 팀 slug를 주면 이 텍스트에 팀 호버 카드를 붙인다(멀티 시즌 화면에서만 동작 — TeamHover 참고).
+     *  선수 호버 카드(PlayerHoverCard)와 함께 쓰지 않는다: 둘 다 cloneElement로 ref를 덮어쓴다. */
+    teamHoverId?: string | null;
 } & Omit<React.HTMLAttributes<HTMLSpanElement>, 'onClick' | 'className' | 'children'>>(
-    ({ onClick, children, className = '', noUnderline = false, ...rest }, ref) => (
-        <span
-            ref={ref}
-            {...rest}
-            className={`${className} ${onClick ? `cursor-pointer hover:text-indigo-400 ${noUnderline ? '' : 'hover:underline'}` : ''}`.trim()}
-            onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
-        >
-            {children}
-        </span>
+    ({ onClick, children, className = '', noUnderline = false, teamHoverId, ...rest }, ref) => (
+        <TeamHover teamId={onClick ? teamHoverId : null}>
+            <span
+                ref={ref}
+                {...rest}
+                className={`${className} ${onClick ? `cursor-pointer hover:text-indigo-400 ${noUnderline ? '' : 'hover:underline'}` : ''}`.trim()}
+                onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
+            >
+                {children}
+            </span>
+        </TeamHover>
     ),
 );
 ClickableText.displayName = 'ClickableText';
@@ -137,7 +143,7 @@ export const LetterTeamCell: React.FC<{
     <TableCell align="left" className={className}>
         <span className="flex items-center gap-1.5 min-w-0">
             {logo && <TeamLogo teamId={slug} teamName={team?.team_abbr ?? slug} size="custom" className="w-5 h-5 shrink-0" shadow={false} />}
-            <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} className="text-sm text-slate-300">
+            <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} teamHoverId={slug} className="text-sm text-slate-300">
                 {team?.team_abbr ?? slug}
             </ClickableText>
         </span>

@@ -125,7 +125,7 @@ const EMPTY_CELL = '-';
 const TeamNameCell: React.FC<{ teamId: string; team?: { team_abbr?: string; team_name?: string }; fallbackName: string; onClick: () => void }> = ({ teamId, team, fallbackName, onClick }) => (
     <div className="flex items-center gap-2 min-w-0">
         <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className="w-5 h-5 shrink-0" shadow={false} />
-        <ClickableText className="font-semibold text-slate-200 truncate ko-normal" onClick={onClick}>
+        <ClickableText className="font-semibold text-slate-200 truncate ko-normal" teamHoverId={team ? teamId : null} onClick={onClick}>
             {team?.team_name ?? fallbackName}
         </ClickableText>
     </div>

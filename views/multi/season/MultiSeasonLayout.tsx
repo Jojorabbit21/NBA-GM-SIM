@@ -12,6 +12,7 @@ import { useGame } from '../../../hooks/useGameContext';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { GameDateStrip, type TeamStripInfo } from './GameDateStrip';
 import LeagueLobbyPanel from './LeagueLobbyPanel';
+import { MultiTeamHoverProvider } from './MultiTeamHoverCard';
 import type { Game } from '../../../types';
 
 /**
@@ -74,6 +75,7 @@ export function MultiSeasonLayout() {
     const showLobbyPanel = !isActive && isSeasonIndexRoute;
 
     return (
+        <MultiTeamHoverProvider>
         <div className="flex h-screen overflow-hidden bg-slate-950">
             <MultiSidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -98,5 +100,6 @@ export function MultiSeasonLayout() {
             </div>
             <TournamentChampionModal />
         </div>
+        </MultiTeamHoverProvider>
     );
 }

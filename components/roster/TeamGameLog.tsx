@@ -6,6 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, Tabl
 import { fetchFullGameResult } from '../../services/queries';
 import { Spinner } from '../common/Spinner';
 import { EmptyState } from '../common/EmptyState';
+import { TeamHover } from '../common/TeamHover';
 
 interface TeamGameLogProps {
     team: Team;
@@ -237,9 +238,11 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                         className={`flex items-center gap-2 ${onTeamClick ? 'cursor-pointer group/opp' : ''}`}
                         onClick={onTeamClick ? () => onTeamClick(row.oppId) : undefined}
                     >
-                        <span className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
-                            {oppTeam?.name || row.oppId}
-                        </span>
+                        <TeamHover teamId={onTeamClick ? row.oppId : null}>
+                            <span className={`text-sm font-semibold text-slate-300 truncate ${onTeamClick ? 'group-hover/opp:text-indigo-400 group-hover/opp:underline' : 'group-hover:text-white'}`}>
+                                {oppTeam?.name || row.oppId}
+                            </span>
+                        </TeamHover>
                     </div>
                 </TableCell>
                 {/* 결과 */}
