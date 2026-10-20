@@ -35,6 +35,32 @@
 
 
 
+## 2026-10-20 — meta_gms 30팀 프런트 성향 재평가 (데이터 변경, 싱글·멀티 공유)
+
+**배경**: 기존 `personality_type`/`sliders`는 2024년 전후 이미지라 2025~26 판도 변화(야니스 MIA, 카와이 TOR, 제일런 브라운 PHI,
+멤피스·밀워키 리빌딩 등)와 어긋남. 성향은 구단 프런트 단위, 근거는 최근 1~2년 실제 결정. 사용자 확정: 승부욕 0.90 상한 쏠림
+6팀(CLE·IND·MIA·MIN·PHI·TOR) 그대로, CHI rebuilder 유지. 상세 근거표: `docs/plan/multi-ai-gm-profile-plan.md` 8장.
+
+**변경 파일**:
+- `migrations/meta_gms_front_office_profiles_2026_27.sql` (신규, **2026-10-20 적용 완료**) — 데이터만, 코드 변경 없음
+
+**Before → After** (유형만, 슬라이더 전체 이전값은 마이그레이션 상단 주석):
+21팀 유형 변경 — atl rebuilder→valueTrader, cha youthMovement→valueTrader, chi balanced→rebuilder, cle balanced→winNow,
+dal starHunter→rebuilder, den balanced→valueTrader, det youthMovement→valueTrader, hou youthMovement→balanced,
+ind valueTrader→winNow, law starHunter→balanced, mem balanced→youthMovement, mia winNow→starHunter, mil winNow→rebuilder,
+no starHunter→balanced, nyk starHunter→winNow, phx winNow→balanced, por rebuilder→winNow, sac balanced→rebuilder,
+sa valueTrader→balanced, tor youthMovement→winNow, uta rebuilder→youthMovement, was rebuilder→balanced.
+유지 9팀(bos bkn gs lam min okc orl phi + 슬라이더는 전부 재설정). `profile_basis`에 `[신뢰도] 근거` 저장.
+분포: balanced 7 / winNow 7 / valueTrader 6 / rebuilder 5 / starHunter 3 / youthMovement 2.
+
+**영향**: 싱글 CPU 트레이드(`gmProfiler` → `GM_DATA`)가 앱 시작 시 새 성향을 읽음 — 새 게임은 즉시 반영. 기존 싱글 세이브가
+`league_gm_profiles`에 프로필을 저장해 두었다면 그 세이브는 이전 성향 유지. 멀티는 아직 소비처 없음.
+
+**검증**: 30행 갱신, 30행 모두 슬라이더 5키 보유, 변환식(`aiGmProfile`) 결과 범위 정상(승부욕 0.30~0.90, 깐깐함 −0.026~+0.020).
+
+**롤백**: 마이그레이션 상단 주석의 30팀 이전 유형·슬라이더로 UPDATE, `profile_basis`는 '기존 유지'/'재평가 필요'로.
+
+
 ## 2026-10-20 — meta_gms 2026-27 프런트 갱신 준비: 사장/단장 분리 + 싱글 표시 이름 "사장 우선"
 
 **배경**: `meta_gms` 30팀 중 10팀은 이미 수장이 바뀌었고(ATL 이름은 실존 확인 불가), 팀마다 GM/사장 기준이 섞여 있었다.
