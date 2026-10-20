@@ -35,6 +35,22 @@
 
 
 
+## 2026-10-20 — 트레이드 역제안(카운터 오퍼) 서버 연동 + 스레드 표시 (B안)
+
+**배경**: 역제안 시 원래 제안을 '거절'과 섞지 않고 `countered`로 닫고, 역제안 제안서에서 이전 제안을 메일 답장처럼 엮어 보기 위함.
+
+**변경 파일**:
+- `migrations/add_trade_counter_offer.sql` (DB, **적용 승인 대기**) — `counter_of_offer_id` 컬럼+인덱스, status 체크에 `countered`, `create_trade_offer(..., p_counter_of uuid DEFAULT NULL)`(6인자 DROP), `trg_lal_offer_status`에 `trade_offer_counter`, `get_trade_offer_thread(uuid)` RPC
+- `services/multi/tradeService.ts` (client) — 상태 `countered`, `counter_of_offer_id`, `counterOfOfferId` 파라미터, `counter_original_invalid` 에러, `getTradeOfferThread`/`TradeThreadItem`, 처리된 오퍼 목록에 countered 포함
+- `services/multi/actionLogService.ts`, `views/multi/league/settings/ActionLogTab.tsx` (client) — `trade_offer_counter` 라벨/색/요약/카테고리
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `OfferThread`(이전 제안 스레드, 수락/거절 버튼·결과 문구 하단에 기본 펼침으로 배치, 미래 제안은 미표시), `OFFER_STATUS.countered`, 인박스 필터 '역제안', `counterOf` state, 역제안 안내 배너, handleSend가 원본 id 전달
+
+**Before**: 역제안은 장바구니 프리필만, 원본은 대기 상태로 남음. **After**: 역제안 전송 성공 시 서버가 한 트랜잭션에서 새 제안 생성 + 원본을 `countered`로 닫음(원본이 pending·같은 방·만료 전·내 팀=수신/상대=발신이 아니면 `counter_original_invalid`). 제안서에는 `counter_of_offer_id` 체인을 "이전 제안 N건"으로 접어서 표시.
+
+**검증**: tsc. 마이그레이션 적용·실동작 확인은 승인 대기.
+
+**롤백 방법**: 마이그레이션 헤더의 롤백 절차 + 클라이언트 4파일 되돌리기.
+
 ## 2026-10-20 — 트레이드 제안서 "역제안하기" 텍스트 버튼
 
 **배경**: 받은 제안을 수정해서 되돌려 보내는 카운터 오퍼 진입점 요청.

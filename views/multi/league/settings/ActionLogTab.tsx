@@ -39,7 +39,7 @@ const ROLE_BADGE: Record<string, string> = {
 const ACTION_TONE: Record<string, string> = {
     fa_sign: 'text-emerald-300', waive: 'text-red-300',
     trade_offer_accept: 'text-emerald-300', admin_trade: 'text-emerald-300',
-    trade_offer_reject: 'text-amber-300', trade_offer_cancel: 'text-amber-300',
+    trade_offer_reject: 'text-amber-300', trade_offer_cancel: 'text-amber-300', trade_offer_counter: 'text-sky-300',
     trade_offer_expire: 'text-slate-400', trade_offer_invalidate: 'text-slate-400',
     admin_trade_failed: 'text-red-300',
     league_settings_update: 'text-fuchsia-300', admin_time_jump: 'text-fuchsia-300', team_reassign: 'text-fuchsia-300',
@@ -122,7 +122,7 @@ export const ActionLogTab: React.FC<Props> = ({ room, leagueTeams }) => {
                 return name;
             }
             case 'trade_offer_create': case 'trade_offer_accept': case 'trade_offer_reject':
-            case 'trade_offer_cancel': case 'trade_offer_expire': case 'trade_offer_invalidate': {
+            case 'trade_offer_cancel': case 'trade_offer_counter': case 'trade_offer_expire': case 'trade_offer_invalidate': {
                 const from = (d.from_team as NamedRef)?.slug?.toUpperCase() ?? teamLabel(r.target_team_ids[0] ?? null);
                 const to   = (d.to_team as NamedRef)?.slug?.toUpperCase() ?? teamLabel(r.target_team_ids[1] ?? null);
                 const pf = names(d.players_from), pt = names(d.players_to);

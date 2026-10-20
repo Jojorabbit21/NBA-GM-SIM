@@ -35,6 +35,7 @@ export const ACTION_LABELS: Record<string, string> = {
     trade_offer_accept:     '트레이드 수락',
     trade_offer_reject:     '트레이드 거절',
     trade_offer_cancel:     '트레이드 제안 취소',
+    trade_offer_counter:    '트레이드 역제안',
     trade_offer_expire:     '트레이드 제안 만료',
     trade_offer_invalidate: '트레이드 제안 무효화',
     trade_block_set:        '트레이드 블록 등록',
@@ -52,7 +53,7 @@ export const ACTION_LABELS: Record<string, string> = {
 /** 필터 UI용 카테고리 묶음. */
 export const ACTION_CATEGORIES: { id: string; label: string; actions: string[] }[] = [
     { id: 'roster',   label: '영입/방출',   actions: ['fa_sign', 'waive'] },
-    { id: 'trade',    label: '트레이드',    actions: ['trade_offer_create', 'trade_offer_accept', 'trade_offer_reject', 'trade_offer_cancel', 'trade_offer_expire', 'trade_offer_invalidate', 'admin_trade', 'admin_trade_failed'] },
+    { id: 'trade',    label: '트레이드',    actions: ['trade_offer_create', 'trade_offer_accept', 'trade_offer_reject', 'trade_offer_cancel', 'trade_offer_counter', 'trade_offer_expire', 'trade_offer_invalidate', 'admin_trade', 'admin_trade_failed'] },
     { id: 'block',    label: '블록/요청',   actions: ['trade_block_set', 'trade_block_unset', 'trade_request_update'] },
     { id: 'draft',    label: '드래프트',    actions: ['draft_pick'] },
     { id: 'settings', label: '설정/운영',   actions: ['league_settings_update', 'team_reassign', 'admin_time_jump', 'admin_tactics_update'] },

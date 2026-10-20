@@ -4,7 +4,7 @@ import { actionFailure } from '../notifications/actionErrorCatalog';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
-export type TradeOfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated';
+export type TradeOfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated' | 'countered';
 
 export interface TradeOfferPlayerRow {
     offer_id:     string;
@@ -23,6 +23,8 @@ export interface TradeOfferRow {
     message:      string | null;
     // [2026-10-20] 거절 사유 — rejected일 때만 값이 있을 수 있음(AI 거절·미입력은 null, 관리자 개입은 고정 문구)
     reject_reason: string | null;
+    // [2026-10-20] 이 제안이 응답한 이전 제안(역제안 체인) — 원본은 null
+    counter_of_offer_id: string | null;
     status:       TradeOfferStatus;
     expires_at:   string;
     resolved_at:  string | null;
@@ -67,6 +69,7 @@ export interface CreateTradeOfferParams {
     playersFrom:  string[]; // 내가 내놓는 선수
     playersTo:    string[]; // 상대에게 요구하는 선수
     message?:     string;
+    counterOfOfferId?: string; // 역제안일 때 원본 제안 id — 성공 시 원본은 'countered'로 닫힘
 }
 
 const mapTradeOfferError = (msg: string): string => {
@@ -74,6 +77,7 @@ const mapTradeOfferError = (msg: string): string => {
     if (msg.includes('same_team'))           return '같은 팀끼리는 트레이드할 수 없습니다.';
     if (msg.includes('empty_offer'))         return '최소 한 명 이상의 선수를 선택하세요.';
     if (msg.includes('message_too_long'))    return '메시지는 300자를 넘을 수 없습니다.';
+    if (msg.includes('counter_original_invalid')) return '원래 제안이 이미 처리되었거나 만료되어 역제안을 보낼 수 없습니다.';
     if (msg.includes('reason_too_long'))     return '거절 사유는 100자를 넘을 수 없습니다.';
     if (msg.includes('room_not_found'))      return '방을 찾을 수 없습니다.';
     if (msg.includes('trade_disabled'))      return '리그의 트레이드가 비활성화 상태입니다.';
@@ -105,6 +109,7 @@ export const createTradeOffer = async (
         p_players_from: p.playersFrom,
         p_players_to:   p.playersTo,
         p_message:      p.message ?? null,
+        p_counter_of:   p.counterOfOfferId ?? null,
     });
     if (error) return { offerId: null, error: mapTradeOfferError(error.message ?? '') };
     return { offerId: data as string, error: null };
@@ -175,7 +180,7 @@ export const listTradeHistory = async (roomId: string): Promise<TradeOfferRow[]>
 // [2026-09-02] "메세지함" 탭에 수락/거절/취소된 오퍼도 히스토리로 남기기 위한 조회.
 // listPendingTradeOffers/listAllPendingTradeOffers(사이드바 안읽음 배지 등에서도 재사용 중)는
 // status='pending' 고정 동작을 그대로 유지해야 해서 건드리지 않고 별도 함수로 뺐다.
-const RESOLVED_OFFER_STATUSES: TradeOfferStatus[] = ['accepted', 'rejected', 'cancelled', 'expired'];
+const RESOLVED_OFFER_STATUSES: TradeOfferStatus[] = ['accepted', 'rejected', 'cancelled', 'expired', 'countered'];
 
 /** 내 팀이 관련된(받았거나 보낸) 최근 처리된 오퍼 — 메세지함 인박스 리스트에 병합용. */
 export const listMyResolvedTradeOffers = async (
@@ -265,4 +270,25 @@ export const updateTeamTradeRequest = async (
         })
         .eq('id', teamId);
     return { error: error?.message ?? null };
+};
+
+// ─── 역제안 스레드 ─────────────────────────────────────────────────────────
+
+export interface TradeThreadItem {
+    id: string;
+    from_team_id: string;
+    to_team_id: string;
+    message: string | null;
+    status: TradeOfferStatus;
+    reject_reason: string | null;
+    sim_date_at_creation: string | null;
+    created_at: string;
+    players: { player_id: string; from_team_id: string }[];
+}
+
+/** 이 제안의 이전 제안 체인(루트 → 직전 순, 자기 자신 제외). */
+export const getTradeOfferThread = async (offerId: string): Promise<TradeThreadItem[]> => {
+    const { data, error } = await supabase.rpc('get_trade_offer_thread', { p_offer_id: offerId });
+    if (error) return [];
+    return (data ?? []) as TradeThreadItem[];
 };

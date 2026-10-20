@@ -49,7 +49,7 @@ import {
     createTradeOffer, respondTradeOffer, markTradeOfferRead, listPendingTradeOffers, listAllPendingTradeOffers,
     listTradeHistory, listTradeBlocks,
     listMyResolvedTradeOffers, listAllResolvedTradeOffers,
-    type TradeOfferRow, type TradeOfferAction,
+    getTradeOfferThread, type TradeOfferRow, type TradeOfferAction, type TradeThreadItem,
 } from '../../../services/multi/tradeService';
 import type { Player } from '../../../types';
 import type { DeadMoneyEntry } from '../../../types/team';
@@ -105,6 +105,54 @@ function formatRemaining(expiresAt: string): string {
     return `${minutes}분 남음`;
 }
 
+// [2026-10-20] 역제안 스레드 — 메일 답장의 인용처럼, 이 제안이 응답한 이전 제안들을 접어서 보여준다(루트 → 직전 순).
+const OfferThread: React.FC<{
+    offerId: string;
+    teamName: (id: string) => string;
+    playerName: (id: string) => string;
+}> = ({ offerId, teamName, playerName }) => {
+    const [open, setOpen] = useState(true);
+    const { data: thread = [] } = useQuery<TradeThreadItem[]>({
+        queryKey: ['tradeOfferThread', offerId],
+        queryFn: () => getTradeOfferThread(offerId),
+        staleTime: 60_000,
+    });
+    if (thread.length === 0) return null;
+    return (
+        <div className="rounded-lg border border-slate-800 bg-slate-900/40">
+            <button type="button" onClick={() => setOpen(o => !o)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-bold text-slate-300 hover:text-white">
+                <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
+                이전 제안 {thread.length}건
+            </button>
+            {open && (
+                <div className="space-y-3 border-t border-slate-800 px-3 py-3">
+                    {thread.map(t => {
+                        const give = t.players.filter(p => p.from_team_id === t.from_team_id).map(p => playerName(p.player_id));
+                        const take = t.players.filter(p => p.from_team_id === t.to_team_id).map(p => playerName(p.player_id));
+                        const meta = OFFER_STATUS[t.status];
+                        return (
+                            <div key={t.id} className="border-l-2 border-slate-700 pl-3 text-sm">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                    <span>{t.sim_date_at_creation ? t.sim_date_at_creation.replace(/-/g, '/') : '-'}</span>
+                                    <span className="font-bold text-white">{teamName(t.from_team_id)} → {teamName(t.to_team_id)}</span>
+                                    {meta && <span className={meta.tone}>{meta.label}</span>}
+                                </div>
+                                <div className="mt-1 text-slate-300">
+                                    <div>{teamName(t.from_team_id)}: {give.length ? give.join(', ') : '없음'}</div>
+                                    <div>{teamName(t.to_team_id)}: {take.length ? take.join(', ') : '없음'}</div>
+                                </div>
+                                {t.message && <p className="mt-1 italic text-slate-400">{`"${t.message}"`}</p>}
+                                {t.status === 'rejected' && t.reject_reason && <p className="mt-1 text-slate-400">거절 사유: {t.reject_reason}</p>}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // 오퍼 상태 → 목록 배지(label/variant) + 제안서 하단 결과 문장(message/tone) 한 곳에서. [2026-10-13]
 // 예전엔 라벨 맵과 제안서의 상태별 문단 4개가 따로 있었고 invalidated 문단이 빠져 있었다.
 const OFFER_STATUS: Record<string, { label: string; variant: 'neutral' | 'success' | 'danger' | 'warning' | 'info'; message: string; tone: string }> = {
@@ -114,6 +162,8 @@ const OFFER_STATUS: Record<string, { label: string; variant: 'neutral' | 'succes
     cancelled:   { label: '취소됨',  variant: 'neutral', message: '트레이드 제안을 취소하였습니다.',      tone: 'text-slate-300' },
     expired:     { label: '만료됨',  variant: 'neutral', message: '제안이 만료되었습니다.',              tone: 'text-slate-300' },
     invalidated: { label: '무효화됨', variant: 'warning', message: '선수 구성이 바뀌어 제안이 무효화되었습니다.', tone: 'text-amber-400' },
+    // [2026-10-20] 역제안 — 제안서 하단 문구는 보는 쪽(받은/보낸)에 따라 renderOfferLetter에서 따로 정한다.
+    countered:   { label: '역제안됨', variant: 'info',    message: '역제안으로 대체된 제안입니다.',        tone: 'text-sky-400' },
 };
 
 // 팀 컬러 배경 + 대비 글자색 라벨 — 제안서 자산 열·카트 팀 헤더 3곳이 같은 style 블록을 복붙하던 것.
@@ -189,15 +239,16 @@ const AccordionHeader: React.FC<{ open: boolean; onToggle: () => void; children:
 // 동시에 선택한 타입 중 하나여야 함 — hooks/useLeagueHeadlines.ts의 .in()/.eq() 체이닝
 // 참고). 여기서도 방향(받은/보낸)과 처리상태(수락/거절/취소)를 별개 그룹으로 취급 —
 // 한 화면에 5개를 평평하게 나열하지만 실제로는 그룹별로 걸러진다.
-type InboxFilterKey = 'incoming' | 'outgoing' | 'accepted' | 'rejected' | 'cancelled';
+type InboxFilterKey = 'incoming' | 'outgoing' | 'accepted' | 'rejected' | 'cancelled' | 'countered';
 const INBOX_DIRECTION_FILTERS: InboxFilterKey[] = ['incoming', 'outgoing'];
-const INBOX_STATUS_FILTERS: InboxFilterKey[] = ['accepted', 'rejected', 'cancelled'];
+const INBOX_STATUS_FILTERS: InboxFilterKey[] = ['accepted', 'rejected', 'cancelled', 'countered'];
 const INBOX_FILTERS: { key: InboxFilterKey; label: string }[] = [
     { key: 'incoming',  label: '받은 제안' },
     { key: 'outgoing',  label: '보낸 제안' },
     { key: 'accepted',  label: '수락' },
     { key: 'rejected',  label: '거절' },
     { key: 'cancelled', label: '취소' },
+    { key: 'countered', label: '역제안' },
 ];
 // [2026-09-02] "취소" 필터는 만료(expired)도 함께 묶어서 매칭 — 사용자 요청. 편지
 // 하단 메시지는 여전히 취소/만료를 구분해서 보여주므로(renderOfferLetter), 필터 버킷만
@@ -206,6 +257,7 @@ const INBOX_STATUS_MATCH: Record<string, string[]> = {
     accepted: ['accepted'],
     rejected: ['rejected'],
     cancelled: ['cancelled', 'expired'],
+    countered: ['countered'],
 };
 
 // [2026-08-31] "새 제안" 화면 로스터/제공 리스트 전용 정보 구조 — [+/-버튼] | 오버롤배지 |
@@ -973,11 +1025,14 @@ const MultiFrontOfficeView: React.FC = () => {
     // 계산된 targetTeamId 기준 — 상대 팀이 목록에서 빠져 자동 전환될 때도 카트가 비워진다.
     // [2026-10-20] 역제안 프리필 — 상대 팀 변경 effect가 카트를 비우므로, 역제안은 ref에 담아 두고 이 effect가 소비한다.
     const pendingCounterRef = useRef<{ teamId: string; mine: string[]; theirs: string[] } | null>(null);
+    // 지금 작성 중인 제안이 응답하는 원본 제안(역제안일 때만). 보내기 성공 시 서버가 원본을 'countered'로 닫는다.
+    const [counterOf, setCounterOf] = useState<{ id: string; teamId: string } | null>(null);
     useEffect(() => {
         const p = pendingCounterRef.current;
         pendingCounterRef.current = null;
         if (p && p.teamId === targetTeamId) { setCartMine(new Set(p.mine)); setCartTheirs(new Set(p.theirs)); return; }
         setCartMine(new Set()); setCartTheirs(new Set());
+        setCounterOf(null);
     }, [targetTeamId]);
     // [2026-09-30] "트레이드 이후 재정 변동 사항" 아코디언 펼침 상태 — 기본 펼침(기존 항상
     // 보이던 동작과 동일), 타이틀 클릭으로 토글.
@@ -1111,16 +1166,33 @@ const MultiFrontOfficeView: React.FC = () => {
             roomId, fromTeamId: myTeamRow.id, toTeamId: targetTeamRow.id,
             playersFrom: [...cartMine], playersTo: [...cartTheirs],
             message: messageRef.current?.value.slice(0, 300) ?? '',
+            counterOfOfferId: counterOf && counterOf.teamId === targetTeamRow.id ? counterOf.id : undefined,
         });
         setSending(false);
         if (error) { setSendError(error); return; }
         setCartMine(new Set());
         setCartTheirs(new Set());
         if (messageRef.current) messageRef.current.value = '';
+        setCounterOf(null);
         setSendSuccess(true);
         setTimeout(() => setSendSuccess(false), 2500);
         refreshTradeData();
-    }, [roomId, myTeamRow, targetTeamRow, cartMine, cartTheirs, refreshTradeData]);
+    }, [roomId, myTeamRow, targetTeamRow, cartMine, cartTheirs, counterOf, refreshTradeData]);
+
+    // [2026-10-20] 역제안 — 받은 제안의 선수 구성을 반대 입장(내 팀=수신)으로 "새 제안" 카트에 미리 채워 이동.
+    // 원래 제안은 건드리지 않는다(자동 거절 없음).
+    const handleCounter = useCallback((offer: TradeOfferRow) => {
+        const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
+        const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
+        if (offer.from_team_id === targetTeamId) {
+            setCartMine(new Set(mine)); setCartTheirs(new Set(theirs));
+        } else {
+            pendingCounterRef.current = { teamId: offer.from_team_id, mine, theirs };
+            setTargetTeamId(offer.from_team_id);
+        }
+        setCounterOf({ id: offer.id, teamId: offer.from_team_id });
+        setActiveTab('new');
+    }, [targetTeamId, setActiveTab]);
 
     // ── 트레이드 블록 모달 ─────────────────────────────────────────────
     // [2026-09-30] 편집 상태(트레이드 가능 선택/위시리스트 폼)와 저장 로직은 전부
@@ -1153,20 +1225,6 @@ const MultiFrontOfficeView: React.FC = () => {
         const fromTeam = teamById.get(offer.from_team_id);
         const toTeam = teamById.get(offer.to_team_id);
         const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
-    // [2026-10-20] 역제안 — 받은 제안의 선수 구성을 반대 입장(내 팀=수신)으로 "새 제안" 카트에 미리 채워 이동.
-    // 원래 제안은 건드리지 않는다(자동 거절 없음).
-    const handleCounter = useCallback((offer: TradeOfferRow) => {
-        const mine = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
-        const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.from_team_id).map(p => p.player_id);
-        if (offer.from_team_id === targetTeamId) {
-            setCartMine(new Set(mine)); setCartTheirs(new Set(theirs));
-        } else {
-            pendingCounterRef.current = { teamId: offer.from_team_id, mine, theirs };
-            setTargetTeamId(offer.from_team_id);
-        }
-        setActiveTab('new');
-    }, [targetTeamId, setActiveTab]);
-
         const theirs = offer.league_trade_offer_players.filter(p => p.from_team_id === offer.to_team_id).map(p => p.player_id);
         const mineTotal = mine.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
         const theirsTotal = theirs.reduce((sum, id) => sum + (poolById.get(id)?.salary ?? 0), 0);
@@ -1264,6 +1322,13 @@ const MultiFrontOfficeView: React.FC = () => {
                         <div className="text-white font-bold flex items-center gap-2">
                             {toTeam && <TeamLogo teamId={toTeam.team_slug} teamName={toTeam.team_abbr ?? toTeam.team_slug} size="custom" className="w-10 h-10 shrink-0" shadow={false} />}
                             {renderTeamLink(toTeam)}
+                            {/* [2026-10-20] 역제안 — 받은 대기 제안에서만, 수신 팀명 줄 우측 끝. */}
+                            {opts.direction === 'incoming' && offer.status === 'pending' && (
+                                <button type="button" onClick={() => handleCounter(offer)}
+                                    className="ml-auto text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline">
+                                    역제안하기
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1295,13 +1360,6 @@ const MultiFrontOfficeView: React.FC = () => {
                                 <Money value={row.value} signed className="font-semibold" />
                             </div>
                         ))}
-                            {/* [2026-10-20] 역제안 — 받은 대기 제안에서만, 수신 팀명 줄 우측 끝. */}
-                            {opts.direction === 'incoming' && offer.status === 'pending' && (
-                                <button type="button" onClick={() => handleCounter(offer)}
-                                    className="ml-auto text-sm font-bold text-indigo-400 hover:text-indigo-300 hover:underline">
-                                    역제안하기
-                                </button>
-                            )}
                     </div>
                 )}
 
@@ -1321,42 +1379,6 @@ const MultiFrontOfficeView: React.FC = () => {
                 {/* [2026-09-02] 처리된 오퍼는 버튼 대신 결과 메시지를 남겨 "메세지함"에서
                     히스토리로 확인할 수 있게 함 — 색상/문구는 사용자 지정. */}
                 {offer.status === 'pending' ? (
-                    <div className="flex items-center gap-2">
-                        {opts.showAccept && (
-                            <Button variant="success" size="lg" onClick={() => askConfirm(offer.id, 'accept')} disabled={busy}
-                                isLoading={busy} icon={<Check size={14} />}>
-                                수락하기
-                            </Button>
-                        )}
-                        {opts.showReject && (
-                            <Button variant="danger" size="lg" onClick={() => askConfirm(offer.id, 'reject')} disabled={busy}
-                                icon={<X size={14} />}>
-                                거절하기
-                            </Button>
-                        )}
-                        {opts.showCancel && (
-                            <Button variant="secondary" size="lg" onClick={() => askConfirm(offer.id, 'cancel')} disabled={busy}
-                                icon={<X size={14} />}>
-                                취소하기
-                            </Button>
-                        )}
-                    </div>
-                ) : offer.status === 'invalidated' ? (
-                    <InlineNotice tone="warning">{OFFER_STATUS.invalidated.message}</InlineNotice>
-                ) : OFFER_STATUS[offer.status] ? (
-                    <div className="space-y-1">
-                        <p className={`text-sm font-bold ${OFFER_STATUS[offer.status].tone}`}>{OFFER_STATUS[offer.status].message}</p>
-                        {offer.status === 'rejected' && offer.reject_reason && (
-                            <p className="text-sm text-slate-300 ko-normal">거절 사유: {offer.reject_reason}</p>
-                        )}
-                    </div>
-                ) : null}
-            </div>
-        );
-    };
-
-    // "인박스" 탭 좌측 리스트 — [안읽음점]/발신/수신/날짜/남은시간 5열 표. 헤더와 행이 같은
-    // grid-cols를 써야 칸이 어긋나지 않으므로 클래스를 상수로 공유.
                     pendingConfirm?.offerId === offer.id ? (
                         <div className="space-y-2">
                             <p className="text-sm font-bold text-white">
@@ -1386,6 +1408,58 @@ const MultiFrontOfficeView: React.FC = () => {
                             </div>
                         </div>
                     ) : (
+                    <div className="flex items-center gap-2">
+                        {opts.showAccept && (
+                            <Button variant="success" size="lg" onClick={() => askConfirm(offer.id, 'accept')} disabled={busy}
+                                isLoading={busy} icon={<Check size={14} />}>
+                                수락하기
+                            </Button>
+                        )}
+                        {opts.showReject && (
+                            <Button variant="danger" size="lg" onClick={() => askConfirm(offer.id, 'reject')} disabled={busy}
+                                icon={<X size={14} />}>
+                                거절하기
+                            </Button>
+                        )}
+                        {opts.showCancel && (
+                            <Button variant="secondary" size="lg" onClick={() => askConfirm(offer.id, 'cancel')} disabled={busy}
+                                icon={<X size={14} />}>
+                                취소하기
+                            </Button>
+                        )}
+                    </div>
+                    )
+                ) : offer.status === 'invalidated' ? (
+                    <InlineNotice tone="warning">{OFFER_STATUS.invalidated.message}</InlineNotice>
+                ) : OFFER_STATUS[offer.status] ? (
+                    <div className="space-y-1">
+                        <p className={`text-sm font-bold ${OFFER_STATUS[offer.status].tone}`}>
+                            {offer.status === 'countered'
+                                ? (opts.direction === 'incoming' ? '역제안을 보냈습니다.'
+                                    : opts.direction === 'outgoing' ? '상대 팀이 역제안했습니다. 새 제안을 확인하세요.'
+                                    : OFFER_STATUS.countered.message)
+                                : OFFER_STATUS[offer.status].message}
+                        </p>
+                        {offer.status === 'rejected' && offer.reject_reason && (
+                            <p className="text-sm text-slate-300 ko-normal">거절 사유: {offer.reject_reason}</p>
+                        )}
+                    </div>
+                ) : null}
+
+                {/* [2026-10-20] 이전 제안 스레드 — 버튼/결과 문구 아래에 메일 답장처럼 과거 제안만 이어 붙인다(미래 제안은 표시 안 함). */}
+                {offer.counter_of_offer_id && (
+                    <OfferThread
+                        offerId={offer.id}
+                        teamName={id => teamById.get(id)?.team_name ?? '?'}
+                        playerName={id => poolById.get(id)?.name ?? id}
+                    />
+                )}
+            </div>
+        );
+    };
+
+    // "인박스" 탭 좌측 리스트 — [안읽음점]/발신/수신/날짜/남은시간 5열 표. 헤더와 행이 같은
+    // grid-cols를 써야 칸이 어긋나지 않으므로 클래스를 상수로 공유.
     // [2026-09-02] 발신/수신/날짜/남은시간 4개 컬럼 너비를 균일하게(1fr씩) — 이전엔
     // 마지막 "남은시간" 컬럼만 1fr라 상태 라벨(짧은 텍스트)이 좌측 리스트 우측에 큰
     // 여백을 남겼음. 안읽음 점 컬럼(14px)만 고정폭 유지.
@@ -1406,7 +1480,6 @@ const MultiFrontOfficeView: React.FC = () => {
         const dateLabel = offer.sim_date_at_creation ? offer.sim_date_at_creation.slice(5).replace('-', '/') : '-';
         // 표 칸이 좁아 "N일 N시간 남음"의 "남음" 접미사는 생략. 처리된 오퍼는 상태 배지(OFFER_STATUS).
         const statusMeta = OFFER_STATUS[offer.status];
-                    )
         const remainingLabel = offer.status === 'pending'
             ? <span className="truncate">{formatRemaining(offer.expires_at).replace(' 남음', '')}</span>
             : statusMeta
@@ -1981,6 +2054,16 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 rows={2}
                                                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal"
                                             />
+
+                                            {counterOf && counterOf.teamId === targetTeamId && (
+                                                <InlineNotice tone="info">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span>받은 제안에 대한 역제안입니다. 보내면 원래 제안은 '역제안됨'으로 닫힙니다.</span>
+                                                        <button type="button" onClick={() => setCounterOf(null)}
+                                                            className="shrink-0 text-xs font-bold hover:underline">역제안 해제</button>
+                                                    </div>
+                                                </InlineNotice>
+                                            )}
 
                                             {sendError && <InlineNotice tone="danger">{sendError}</InlineNotice>}
 
