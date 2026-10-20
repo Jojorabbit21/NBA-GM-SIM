@@ -35,6 +35,16 @@
 
 
 
+## 2026-10-20 — 역제안 UI 정리 (배너 제거 · 전송 버튼 · 탭 이탈 시 초기화)
+
+**변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` (client)
+
+- "새 제안" 탭의 역제안 안내 배너(InlineNotice) 제거.
+- 전송 버튼: 역제안(`isCounterSend` = counterOf.teamId === 선택 상대팀)이면 초록(success) "역제안 보내기", 아니면 파랑 "제안 보내기".
+- `activeTab !== 'new'`가 되면 `counterOf`와 카트(cartMine/cartTheirs)를 비움. Before: 탭을 오가도 역제안 상태·카트 유지(같은 상대 팀이면 계속 역제안으로 전송됨).
+
+**롤백 방법**: 탭 이탈 effect 삭제, 버튼 variant/문구를 `sendSuccess ? 'success' : 'primary'` / '제안 보내기'로 복원.
+
 ## 2026-10-20 — 트레이드 역제안(카운터 오퍼) 서버 연동 + 스레드 표시 (B안)
 
 **배경**: 역제안 시 원래 제안을 '거절'과 섞지 않고 `countered`로 닫고, 역제안 제안서에서 이전 제안을 메일 답장처럼 엮어 보기 위함.

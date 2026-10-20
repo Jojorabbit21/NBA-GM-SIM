@@ -1034,6 +1034,14 @@ const MultiFrontOfficeView: React.FC = () => {
         setCartMine(new Set()); setCartTheirs(new Set());
         setCounterOf(null);
     }, [targetTeamId]);
+    // 역제안은 "역제안하기 → 곧바로 보내기" 흐름에서만 유효 — "새 제안" 탭을 벗어나면 역제안 상태와 프리필 카트를 함께 지운다.
+    // (activeTab이 'new'로 바뀌는 시점에는 지우지 않으므로 handleCounter의 setActiveTab('new')와 충돌하지 않는다.)
+    useEffect(() => {
+        if (activeTab === 'new') return;
+        setCounterOf(null);
+        setCartMine(prev => (prev.size ? new Set<string>() : prev));
+        setCartTheirs(prev => (prev.size ? new Set<string>() : prev));
+    }, [activeTab]);
     // [2026-09-30] "트레이드 이후 재정 변동 사항" 아코디언 펼침 상태 — 기본 펼침(기존 항상
     // 보이던 동작과 동일), 타이틀 클릭으로 토글.
     const [financeSectionExpanded, setFinanceSectionExpanded] = useState(true);
@@ -1157,6 +1165,9 @@ const MultiFrontOfficeView: React.FC = () => {
     // [2026-10-13] 제안 전송 거절 사유 — "제안 보내기" 버튼 위 InlineNotice. 전송 시작·카트 변경 시 소거.
     const [sendError, setSendError] = useState<string | null>(null);
     useEffect(() => { setSendError(null); }, [cartMine, cartTheirs]);
+
+    // 지금 작성 중인 제안이 역제안인지 — 보내기 버튼 문구/색에 사용. handleSend의 원본 id 전달 조건과 동일.
+    const isCounterSend = !!counterOf && !!targetTeamRow && counterOf.teamId === targetTeamRow.id;
 
     const handleSend = useCallback(async () => {
         if (!roomId || !myTeamRow || !targetTeamRow) return;
@@ -2055,26 +2066,16 @@ const MultiFrontOfficeView: React.FC = () => {
                                                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal"
                                             />
 
-                                            {counterOf && counterOf.teamId === targetTeamId && (
-                                                <InlineNotice tone="info">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <span>받은 제안에 대한 역제안입니다. 보내면 원래 제안은 '역제안됨'으로 닫힙니다.</span>
-                                                        <button type="button" onClick={() => setCounterOf(null)}
-                                                            className="shrink-0 text-xs font-bold hover:underline">역제안 해제</button>
-                                                    </div>
-                                                </InlineNotice>
-                                            )}
-
                                             {sendError && <InlineNotice tone="danger">{sendError}</InlineNotice>}
 
                                             <Button
-                                                variant={sendSuccess ? 'success' : 'primary'}
+                                                variant={sendSuccess || isCounterSend ? 'success' : 'primary'}
                                                 size="xl"
                                                 fullWidth
                                                 onClick={handleSend}
                                                 disabled={sending || isTradeDeadlinePassed || tradeSendErrors.length > 0 || (cartMine.size === 0 && cartTheirs.size === 0)}
                                             >
-                                                {sendSuccess ? '트레이드 제안을 보냈습니다' : '제안 보내기'}
+                                                {sendSuccess ? '트레이드 제안을 보냈습니다' : isCounterSend ? '역제안 보내기' : '제안 보내기'}
                                             </Button>
                                         </div>
                                     </div>
