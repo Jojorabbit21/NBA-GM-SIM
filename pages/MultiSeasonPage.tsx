@@ -20,7 +20,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ClickableText } from '../views/multi/season/newsFeedLetter';
 import { useActiveInjuryMap } from '../views/multi/season/useActiveInjuryMap';
 import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
-import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { getAllStarKeyDates } from '../utils/allStarSelection';
 import { getRegularSeasonEndDate } from '../views/multi/season/playoffRaceUtils';
 import { STATUS_LABEL } from '../views/multi/league/leagueConstants';
 import { isFinal, resolveRealAt } from '../views/multi/season/multiGameReveal';
@@ -907,7 +907,9 @@ function resolveLeagueStatus(
     if (league.status !== 'in_progress') return { text: STATUS_LABEL[league.status] ?? league.status, phase: 'other' };
     if (league.type !== 'main_league') return { text: '토너먼트 진행', phase: 'other' };
     if (!currentVirtualDate) return { text: STATUS_LABEL.in_progress, phase: 'other' };
-    if (isAllStarWindowActive(currentVirtualDate, league.virtual_season_year ?? new Date().getFullYear())) return { text: '올스타 브레이크', phase: 'allstar' };
+    // 올스타 브레이크는 allStarStart~allStarEnd 전날까지만(투표 기간은 정규시즌 진행 중이므로 해당 없음).
+    const { allStarStart, allStarEnd } = getAllStarKeyDates(league.virtual_season_year ?? new Date().getFullYear());
+    if (currentVirtualDate >= allStarStart && currentVirtualDate < allStarEnd) return { text: '올스타 브레이크', phase: 'allstar' };
     if (regularSeasonEnd && currentVirtualDate > regularSeasonEnd) return { text: '플레이오프', phase: 'playoffs' };
     return { text: '정규시즌', phase: 'regular' };
 }
