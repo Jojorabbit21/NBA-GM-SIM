@@ -1,6 +1,6 @@
 # 멀티플레이어 AI 단장 프로필 계획
 
-작성: 2026-10-20 · 상태: **G1·G2 순수 모듈 완료(미사용), 프런트 데이터 마이그레이션 준비(미적용), 성향 재평가·G3 표시 위치 대기**
+작성: 2026-10-20 · 상태: **G1·G2 순수 모듈 완료(미사용), 프런트 데이터 마이그레이션 적용 완료(2026-10-20), 성향 재평가·G3 표시 위치 대기**
 관련: `docs/plan/multi-ai-trade-plan.md`(AI 트레이드 — 이 프로필을 판단 입력으로 사용), `services/tradeEngine/gmProfiler.ts`·`types/gm.ts`(싱글 단장 모델, 수정하지 않음)
 
 ---
@@ -120,7 +120,7 @@ projPct  = (wins + remaining × pFuture) / (played + remaining)
 
 - 컬럼: `president_name/title`(농구 운영 최고 책임자, 겸직이면 여기에 '사장 겸 단장' 등), `gm_name/title`(최고 책임자와 다른 단장일 때만), `profile_basis`, `verified_at`. `gm_name` NOT NULL 해제 + "둘 중 하나는 있어야 함" CHECK.
 - 저장하지 않은 단장(근거가 위키백과 목록뿐): MIA 엘리스버그, IND 뷰캐넌, ORL 파커, UTA 재닉, DET 블랙스톤, WAS 도킨스. 공석·미확인: ATL, BOS, CHI, NO, NYK, PHI.
-- **적용 순서: 클라 배포(사장 우선 코드) → 마이그레이션.** 반대로 하면 배포 전까지 싱글 단장 이름이 17팀에서 비어 보임.
+- **적용 순서: 클라 배포(사장 우선 코드) → 마이그레이션.** 2026-10-20 이 순서로 적용 완료 (커밋 c07990dd 배포 확인 후).
 - 성향 재평가 대상(수장 교체): ATL, CHI, DAL, DEN, DET, LAC, NO, PHI, PHX, SAC, UTA — 구단 최근 거래 이력을 웹으로 확인해 근거와 함께 정하고, 근거가 부족하면 balanced.
 
 ## 7. 검증

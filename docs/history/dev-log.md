@@ -44,7 +44,7 @@
 **변경 파일**:
 - `services/tradeEngine/gmProfiler.ts` (client, 싱글) — `populateGMData()`
 - `services/multi/aiGmProfile.ts` (client 원본) ↔ `server/src/shared/multi/aiGmProfile.ts` (server 미러) — 같은 날 신설 모듈 확장
-- `migrations/meta_gms_front_office_2026_27.sql` (신규, **아직 미적용** — 클라 배포 후 적용)
+- `migrations/meta_gms_front_office_2026_27.sql` (신규) — **2026-10-20 적용 완료**: 커밋 c07990dd 프로덕션 배포(basketballgm.app 번들에 `president_name` 포함 확인) 후 적용. 30행 갱신, 표시 이름 없는 팀 0
 
 **Before** (`gmProfiler.populateGMData`):
 ```ts
