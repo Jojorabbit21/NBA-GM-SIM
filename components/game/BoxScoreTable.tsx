@@ -35,7 +35,7 @@ interface BoxScoreTableProps {
     padRows?: number;
 }
 
-type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
+type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'oreb' | 'dreb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
 export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
@@ -55,6 +55,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             case 'mp': return p.mp;
             case 'pts': return p.pts;
             case 'reb': return p.reb;
+            case 'oreb': return p.offReb || 0;
+            case 'dreb': return p.defReb || 0;
             case 'ast': return p.ast;
             case 'stl': return p.stl;
             case 'blk': return p.blk;
@@ -128,8 +130,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     const textSize = standalone ? 'text-sm' : 'text-xs';
     const totalCellClass = `py-2 px-2 leading-6 text-center ${textSize} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
     const sc = `${textSize} font-semibold text-white tabular-nums`;
-    // DNP 행이 덮을 스탯 열 수(숨김 열 제외) — standalone: MIN~PF 8 + FG/3P/FT 3 + +/- 1, 기본: FAT 1 + MIN~FF 10 + 6 + 1
-    const statCols = standalone ? 12 : 18;
+    // DNP 행이 덮을 스탯 열 수(숨김 열 제외) — standalone: MIN~PF 10(OREB/DREB 포함) + FG/3P/FT 3 + +/- 1, 기본: FAT 1 + MIN~FF 12 + 6 + 1
+    const statCols = standalone ? 14 : 20;
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
@@ -188,7 +190,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
                     <SortableHeader label="MIN" sKey="mp" />
                     <SortableHeader label="PTS" sKey="pts" />
-                    <SortableHeader label="REB" sKey="reb" />
+                    <SortableHeader label="OREB" sKey="oreb" width="14" />
+                    <SortableHeader label="DREB" sKey="dreb" width="14" />
                     <SortableHeader label="AST" sKey="ast" />
                     <SortableHeader label="STL" sKey="stl" />
                     <SortableHeader label="BLK" sKey="blk" />
@@ -236,7 +239,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                 </TableCell>
                                 <TableCell align="center" className={sc}>{Math.round(p.mp)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.pts}</TableCell>
-                                <TableCell align="center" className={sc}>{p.reb}</TableCell>
+                                <TableCell align="center" className={sc}>{p.offReb || 0}</TableCell>
+                                <TableCell align="center" className={sc}>{p.defReb || 0}</TableCell>
                                 <TableCell align="center" className={sc}>{p.ast}</TableCell>
                                 <TableCell align="center" className={sc}>{p.stl}</TableCell>
                                 <TableCell align="center" className={sc}>{p.blk}</TableCell>
@@ -270,7 +274,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={totalCellClass} colSpan={standalone ? 2 : 3}></td>
                         <td className={totalCellClass}>{Math.round(totals.mp)}</td>
                         <td className={totalCellClass}>{totals.pts}</td>
-                        <td className={totalCellClass}>{totals.reb}</td>
+                        <td className={totalCellClass}>{totals.offReb}</td>
+                        <td className={totalCellClass}>{totals.defReb}</td>
                         <td className={totalCellClass}>{totals.ast}</td>
                         <td className={totalCellClass}>{totals.stl}</td>
                         <td className={totalCellClass}>{totals.blk}</td>

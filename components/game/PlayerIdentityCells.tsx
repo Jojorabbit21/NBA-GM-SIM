@@ -44,6 +44,7 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
     // Player의 필수 필드인 age가 없으므로 그걸로 "진짜 로딩된 데이터인지"를 판별한다.
     const isStub = playerInfo != null && (playerInfo as { age?: number }).age === undefined;
     const ovr = !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
+    // 라이브와 동일하게 경기에서 실제로 뛴 슬롯 포지션(p.position)을 우선 — 없으면(구버전 저장분) 로스터 고유 포지션
     const effect = p.matchupEffect || 0;
     const isBuff = effect > 0;
     const isDebuff = effect < 0;
@@ -77,7 +78,7 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
                     </div>
                 </div>
             </TableCell>
-            <TableCell align="center" className={`${textSize} font-semibold text-slate-200`}>{playerInfo?.position || '-'}</TableCell>
+            <TableCell align="center" className={`${textSize} font-semibold text-slate-200`}>{p.position || playerInfo?.position || '-'}</TableCell>
             <TableCell align="center">
                 <div className="flex justify-center">
                     {ovr === null

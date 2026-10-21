@@ -35,6 +35,35 @@
 
 
 
+## 2026-10-21 — 종료 박스스코어: OREB 열 추가 + POS를 슬롯 포지션으로 표시
+
+**배경**: 라이브 게임에선 PG를 SG 슬롯에 쓰면 SG로 표시되는데, 종료 박스스코어(POS 열)는 로스터 고유 포지션(PG)을 읽어 괴리가 있었음. 또 종료 박스스코어에 공격 리바운드 열이 없었음.
+
+**변경 파일**:
+- `components/game/PlayerIdentityCells.tsx` — POS 셀 값
+- `components/game/BoxScoreTable.tsx` — OREB 열(헤더/본문/합계), SortKey `oreb`, DNP `statCols` 12→14 / 18→20
+
+**Before**:
+```tsx
+{playerInfo?.position || '-'}
+// REB 다음 바로 AST 열
+const statCols = standalone ? 12 : 18;
+```
+
+**After**:
+```tsx
+{p.position || playerInfo?.position || '-'}   // PlayerBoxScore.position = 경기 중 슬롯 포지션
+// REB 다음 OREB(p.offReb, 정렬 가능, 합계 포함)
+const statCols = standalone ? 13 : 19;
+```
+
+**추가 변경(같은 날)**: 기존 REB(합계) 열을 DREB(`p.defReb`)로 교체하고 OREB, DREB 순으로 배치. 총 REB 합계 열은 이 표에서 사라짐(Advanced 등 다른 표는 무변경).
+
+**검증**: tsc 해당 파일 오류 없음. 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 위 Before 값으로 되돌리고 OREB 헤더/셀/합계 3곳과 SortKey/getSortValue의 `oreb` 제거.
+
+
 ## 2026-10-21 — 무효화(invalidated) 제안이 메세지함에서 사라지는 버그 수정
 
 **배경**: 역제안(CLE→PHO) 전송 후 CLE가 역제안에 포함된 선수를 다른 팀에 트레이드하면 서버가 그 역제안을 `invalidated`로 닫는다. 그런데 메세지함 조회(`RESOLVED_OFFER_STATUSES`)에 `invalidated`가 없어 어디에도 표시되지 않았고, 원본엔 "역제안됨" 칩만 남았다.
