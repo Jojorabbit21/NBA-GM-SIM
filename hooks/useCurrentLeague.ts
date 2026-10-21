@@ -166,25 +166,63 @@ export function useCurrentLeague(): CurrentLeagueState {
     }, [room?.id]);
 
     // ── room_members Realtime 구독 ─────────────────────────────────────────────
-    // start-draft EF가 AI 멤버를 삽입할 때, 또는 유저가 팀 설정을 변경할 때
-    // members를 자동으로 다시 불러온다.
+    // start-draft EF가 AI 멤버를 삽입할 때, 또는 유저가 팀 설정을 변경할 때 members를 갱신한다.
+    // [2026-10-21] 변경마다 전체 재조회(select *, 30행 ≈ 200KB) → payload로 해당 1행만 반영.
+    // 전술 저장 1번이 접속자 수만큼 재조회를 일으켜(저장 수 × 접속자 수) 실측 시간당 742회·약 150MB였다.
+    // room_members는 REPLICA IDENTITY FULL이라 UPDATE의 new는 전체 행, DELETE의 old는 최소 PK(room_id, user_id)를 담는다.
+    // payload가 불완전하면(대용량 필드 생략 시 errors 동반) 예전처럼 전체 재조회로 폴백.
     useEffect(() => {
         if (!room?.id) return;
         const roomId = room.id;
+        let cancelled = false;
+        let subscribedOnce = false;
+
+        const refetchMembers = async () => {
+            const updated = await listRoomMembers(roomId);
+            if (!cancelled) setMembers(updated);
+        };
+
+        const isCompleteRow = (r: unknown): r is RoomMemberRow =>
+            !!r && typeof r === 'object'
+            && typeof (r as RoomMemberRow).user_id === 'string'
+            && (r as RoomMemberRow).room_id === roomId
+            && 'tactics' in (r as object) && 'joined_at' in (r as object);
 
         const channel = supabase
             .channel(`room-members-${roomId}`)
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'room_members', filter: `room_id=eq.${roomId}` },
-                async () => {
-                    const updated = await listRoomMembers(roomId);
-                    setMembers(updated);
-                }
+                (payload: any) => {
+                    if (payload.errors) { void refetchMembers(); return; }
+                    if (payload.eventType === 'DELETE') {
+                        const oldUserId = payload.old?.user_id;
+                        if (typeof oldUserId !== 'string') { void refetchMembers(); return; }
+                        setMembers(prev => prev.filter(m => m.user_id !== oldUserId));
+                        return;
+                    }
+                    const row = payload.new;
+                    if (!isCompleteRow(row)) { void refetchMembers(); return; }
+                    setMembers(prev => {
+                        const idx = prev.findIndex(m => m.user_id === row.user_id);
+                        if (idx < 0) return [...prev, row];
+                        const next = prev.slice();
+                        next[idx] = row;
+                        return next;
+                    });
+                },
             )
-            .subscribe();
+            .subscribe((status) => {
+                // 재연결 시 끊긴 동안의 변경 흡수. 최초 SUBSCRIBED는 초기 로드 직후라 건너뛴다.
+                if (status !== 'SUBSCRIBED') return;
+                if (subscribedOnce) void refetchMembers();
+                subscribedOnce = true;
+            });
 
-        return () => { supabase.removeChannel(channel); };
+        return () => {
+            cancelled = true;
+            supabase.removeChannel(channel);
+        };
     }, [room?.id]);
 
     return { league, room, members, leagueTeams, timeline, isLoading, error, reload };

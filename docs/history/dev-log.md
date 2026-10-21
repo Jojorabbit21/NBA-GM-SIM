@@ -35,6 +35,33 @@
 
 
 
+## 2026-10-21 — room_members Realtime: 변경마다 전체 재조회 → payload 1행 반영
+
+**배경**: 실측(DB 재시작 후 57분, 접속 12명) 전술/뎁스차트 저장 60회에 `room_members select *`(30행 ≈ 200KB) 재조회 742회 — 저장 1번이 접속자 전원의 전체 재조회를 일으키는 N²(저장 수 × 접속자 수) 구조. 시간당 약 150MB 응답, 서버 AI 전술 보정(simRunner)도 같은 연쇄 유발. context `members` 소비처는 user_id/team_id/is_ai/joined_at만 읽음(타인 전술은 어드민 전술 탭이 자체 조회).
+
+**변경 파일**:
+- `hooks/useCurrentLeague.ts` (client 전용, 서버 미러 없음) — room_members 구독 콜백
+
+**Before**:
+```ts
+.on('postgres_changes', { event: '*', ..., table: 'room_members', filter: `room_id=eq.${roomId}` },
+    async () => { const updated = await listRoomMembers(roomId); setMembers(updated); })
+.subscribe();
+```
+
+**After**:
+```ts
+// INSERT/UPDATE: payload.new(전체 행, REPLICA IDENTITY FULL)로 user_id 기준 교체/추가
+// DELETE: payload.old.user_id 제거
+// payload.errors 또는 행 불완전 → refetchMembers() 폴백
+// 재연결(두 번째 이후 SUBSCRIBED) 시 1회 refetchMembers() — 끊긴 동안 변경 흡수
+```
+
+**검증**: `tsc --noEmit` — useCurrentLeague.ts 오류 0 (저장소 기존 오류 60건은 타 파일). 브라우저 실검증 미실시.
+
+**롤백 방법**: Before 블록으로 콜백 교체 + `.subscribe()` 인자 제거 (또는 해당 커밋 revert). DB 변경 없음.
+
+
 ## 2026-10-21 — 시즌 일정: 올스타 이벤트(라이징스타/3점/덩크/본경기/발표)를 경기 표 행으로 통일
 
 **배경**: 올스타 브레이크 날짜엔 games 행이 없어 인라인 카드(`AllStarScheduleRow`, 중앙 max-w-md 버튼 목록)로 따로 보였음. 다른 경기 일정처럼 표 행으로 보이길 요청.
