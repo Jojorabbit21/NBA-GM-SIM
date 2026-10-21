@@ -180,7 +180,7 @@ export const listTradeHistory = async (roomId: string): Promise<TradeOfferRow[]>
 // [2026-09-02] "메세지함" 탭에 수락/거절/취소된 오퍼도 히스토리로 남기기 위한 조회.
 // listPendingTradeOffers/listAllPendingTradeOffers(사이드바 안읽음 배지 등에서도 재사용 중)는
 // status='pending' 고정 동작을 그대로 유지해야 해서 건드리지 않고 별도 함수로 뺐다.
-const RESOLVED_OFFER_STATUSES: TradeOfferStatus[] = ['accepted', 'rejected', 'cancelled', 'expired', 'countered'];
+const RESOLVED_OFFER_STATUSES: TradeOfferStatus[] = ['accepted', 'rejected', 'cancelled', 'expired', 'invalidated', 'countered'];
 
 /** 내 팀이 관련된(받았거나 보낸) 최근 처리된 오퍼 — 메세지함 인박스 리스트에 병합용. */
 export const listMyResolvedTradeOffers = async (

@@ -35,6 +35,27 @@
 
 
 
+## 2026-10-21 — 무효화(invalidated) 제안이 메세지함에서 사라지는 버그 수정
+
+**배경**: 역제안(CLE→PHO) 전송 후 CLE가 역제안에 포함된 선수를 다른 팀에 트레이드하면 서버가 그 역제안을 `invalidated`로 닫는다. 그런데 메세지함 조회(`RESOLVED_OFFER_STATUSES`)에 `invalidated`가 없어 어디에도 표시되지 않았고, 원본엔 "역제안됨" 칩만 남았다.
+
+**변경 파일**:
+- `services/multi/tradeService.ts` (client) — `RESOLVED_OFFER_STATUSES`
+- `views/multi/season/MultiFrontOfficeView.tsx` (client) — `INBOX_STATUS_MATCH.cancelled`
+
+**Before**: `['accepted','rejected','cancelled','expired','countered']` / `cancelled: ['cancelled','expired']`
+**After**: `[..., 'expired','invalidated','countered']` / `cancelled: ['cancelled','expired','invalidated']`
+
+**추가(같은 날)**: 화면 표시만 변경 — `OFFER_STATUS.invalidated`를 라벨 '무효화됨'/warning/"선수 구성이 바뀌어 제안이 무효화되었습니다." → 라벨 '취소됨'/neutral/"제안에 포함된 선수가 이미 트레이드되었습니다."로, 제안서 하단은 InlineNotice 전용 분기를 제거해 수락/거절/취소와 같은 `OFFER_STATUS` 문장(`<p>`)으로 통일, 목록 StatusDot 툴팁도 같은 문구로. DB 상태값은 invalidated 유지.
+
+**추가(같은 날, 메세지함 목록)**: `renderOfferListRow` 상태 칸 — 헤더 "남은시간"→"상태", 대기 중은 `formatRemainingDaysHours()`(신규, 항상 "N일 N시간 남음", 만료 직전 "0일 0시간 남음"), 처리된 오퍼는 `<Badge>` 칩 → `OFFER_STATUS[status].tone` 색의 일반 텍스트. 미사용이 된 `Badge` import 제거. 롤백: 이전 `formatRemaining(...).replace(' 남음','')` + `<Badge size="xs" shape="square" variant={statusMeta.variant}>` 복원.
+
+**추가(같은 날, 역제안됨 → 거절됨 표시)**: `OFFER_STATUS.countered`를 라벨 '거절됨'/danger/text-red-400/"트레이드가 거절되었습니다."로, `INBOX_STATUS_MATCH.rejected`에 'countered' 포함, 메세지함 "역제안" 필터 칩과 `InboxFilterKey`/`INBOX_STATUS_FILTERS`의 'countered' 제거. 제안서 하단의 방향별 안내("역제안을 보냈습니다."/"상대 팀이 역제안했습니다…")는 유지. DB 상태는 countered 그대로. 롤백: 라벨 '역제안됨'/info/'역제안으로 대체된 제안입니다.'/text-sky-400, 필터 칩·매핑 복원.
+
+**검증**: 코드 수정만(서버/DB 변경 없음). 기존 invalidated 행은 데이터 손실 없이 다시 보임.
+
+**롤백 방법**: Before 값으로 복원.
+
 ## 2026-10-20 — 역제안 UI 정리 (배너 제거 · 전송 버튼 · 탭 이탈 시 초기화)
 
 **변경 파일**: `views/multi/season/MultiFrontOfficeView.tsx` (client)

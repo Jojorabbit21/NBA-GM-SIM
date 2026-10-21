@@ -34,7 +34,6 @@ import { ClickableText } from './newsFeedLetter';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { leagueTransactionsQuery } from '../../../hooks/useHomeLeagueTransactions';
 import MultiFreeAgentView from './MultiFreeAgentView';
-import { Badge } from '../../../components/common/Badge';
 import { InjuryStatusBadge } from '../../../components/common/InjuryStatusBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { TeamLogo } from '../../../components/common/TeamLogo';
@@ -109,6 +108,14 @@ function formatRemaining(expiresAt: string): string {
 const OfferThread: React.FC<{
     offerId: string;
     teamName: (id: string) => string;
+// 메세지함 목록용 — 항상 "N일 N시간 남음"(만료 직전엔 0일 0시간 남음)
+function formatRemainingDaysHours(expiresAt: string): string {
+    const totalMinutes = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 60_000));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+    return `${days}일 ${hours}시간 남음`;
+}
+
     playerName: (id: string) => string;
 }> = ({ offerId, teamName, playerName }) => {
     const [open, setOpen] = useState(true);
@@ -161,9 +168,11 @@ const OFFER_STATUS: Record<string, { label: string; variant: 'neutral' | 'succes
     rejected:    { label: '거절됨',  variant: 'danger',  message: '트레이드가 거절되었습니다.',          tone: 'text-red-400' },
     cancelled:   { label: '취소됨',  variant: 'neutral', message: '트레이드 제안을 취소하였습니다.',      tone: 'text-slate-300' },
     expired:     { label: '만료됨',  variant: 'neutral', message: '제안이 만료되었습니다.',              tone: 'text-slate-300' },
-    invalidated: { label: '무효화됨', variant: 'warning', message: '선수 구성이 바뀌어 제안이 무효화되었습니다.', tone: 'text-amber-400' },
+    // [2026-10-21] DB 상태는 invalidated 그대로(감사 로그 구분용), 화면에서는 "취소됨"으로 표시
+    invalidated: { label: '취소됨',  variant: 'neutral', message: '제안에 포함된 선수가 이미 트레이드되었습니다.', tone: 'text-slate-300' },
     // [2026-10-20] 역제안 — 제안서 하단 문구는 보는 쪽(받은/보낸)에 따라 renderOfferLetter에서 따로 정한다.
-    countered:   { label: '역제안됨', variant: 'info',    message: '역제안으로 대체된 제안입니다.',        tone: 'text-sky-400' },
+    // [2026-10-21] 화면에서는 거절됨과 동일하게 표시(DB 상태는 countered 유지, 제안서 안내 문구만 방향별로 따로)
+    countered:   { label: '거절됨',  variant: 'danger',  message: '트레이드가 거절되었습니다.',          tone: 'text-red-400' },
 };
 
 // 팀 컬러 배경 + 대비 글자색 라벨 — 제안서 자산 열·카트 팀 헤더 3곳이 같은 style 블록을 복붙하던 것.
@@ -239,25 +248,23 @@ const AccordionHeader: React.FC<{ open: boolean; onToggle: () => void; children:
 // 동시에 선택한 타입 중 하나여야 함 — hooks/useLeagueHeadlines.ts의 .in()/.eq() 체이닝
 // 참고). 여기서도 방향(받은/보낸)과 처리상태(수락/거절/취소)를 별개 그룹으로 취급 —
 // 한 화면에 5개를 평평하게 나열하지만 실제로는 그룹별로 걸러진다.
-type InboxFilterKey = 'incoming' | 'outgoing' | 'accepted' | 'rejected' | 'cancelled' | 'countered';
+type InboxFilterKey = 'incoming' | 'outgoing' | 'accepted' | 'rejected' | 'cancelled';
 const INBOX_DIRECTION_FILTERS: InboxFilterKey[] = ['incoming', 'outgoing'];
-const INBOX_STATUS_FILTERS: InboxFilterKey[] = ['accepted', 'rejected', 'cancelled', 'countered'];
+const INBOX_STATUS_FILTERS: InboxFilterKey[] = ['accepted', 'rejected', 'cancelled'];
 const INBOX_FILTERS: { key: InboxFilterKey; label: string }[] = [
     { key: 'incoming',  label: '받은 제안' },
     { key: 'outgoing',  label: '보낸 제안' },
     { key: 'accepted',  label: '수락' },
     { key: 'rejected',  label: '거절' },
     { key: 'cancelled', label: '취소' },
-    { key: 'countered', label: '역제안' },
 ];
 // [2026-09-02] "취소" 필터는 만료(expired)도 함께 묶어서 매칭 — 사용자 요청. 편지
 // 하단 메시지는 여전히 취소/만료를 구분해서 보여주므로(renderOfferLetter), 필터 버킷만
 // 합치고 실제 표시 문구는 그대로 다름.
 const INBOX_STATUS_MATCH: Record<string, string[]> = {
     accepted: ['accepted'],
-    rejected: ['rejected'],
-    cancelled: ['cancelled', 'expired'],
-    countered: ['countered'],
+    rejected: ['rejected', 'countered'],
+    cancelled: ['cancelled', 'expired', 'invalidated'],
 };
 
 // [2026-08-31] "새 제안" 화면 로스터/제공 리스트 전용 정보 구조 — [+/-버튼] | 오버롤배지 |
@@ -1440,8 +1447,6 @@ const MultiFrontOfficeView: React.FC = () => {
                         )}
                     </div>
                     )
-                ) : offer.status === 'invalidated' ? (
-                    <InlineNotice tone="warning">{OFFER_STATUS.invalidated.message}</InlineNotice>
                 ) : OFFER_STATUS[offer.status] ? (
                     <div className="space-y-1">
                         <p className={`text-sm font-bold ${OFFER_STATUS[offer.status].tone}`}>
@@ -1489,12 +1494,12 @@ const MultiFrontOfficeView: React.FC = () => {
         // "YYYY-MM-DD") 표시 — Date() 변환 없이 문자열만 잘라써서 타임존 이슈 자체를 차단.
         // 2026-08-31 이전 생성된 오퍼는 컬럼이 없어 null → "-".
         const dateLabel = offer.sim_date_at_creation ? offer.sim_date_at_creation.slice(5).replace('-', '/') : '-';
-        // 표 칸이 좁아 "N일 N시간 남음"의 "남음" 접미사는 생략. 처리된 오퍼는 상태 배지(OFFER_STATUS).
+        // 대기 중은 "N일 N시간 남음"(0일 0시간도 그대로), 처리된 오퍼는 상태 색 텍스트(OFFER_STATUS.tone).
         const statusMeta = OFFER_STATUS[offer.status];
         const remainingLabel = offer.status === 'pending'
-            ? <span className="truncate">{formatRemaining(offer.expires_at).replace(' 남음', '')}</span>
+            ? <span className="truncate">{formatRemainingDaysHours(offer.expires_at)}</span>
             : statusMeta
-                ? <Badge size="xs" shape="square" variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                ? <span className={`truncate ${statusMeta.tone}`}>{statusMeta.label}</span>
                 : <span className="truncate">{offer.status}</span>;
         return (
             <div
@@ -1523,7 +1528,7 @@ const MultiFrontOfficeView: React.FC = () => {
                 <span className="text-slate-400">{dateLabel}</span>
                 {/* [2026-10-13] 항목별 상태는 StatusDot(호버 툴팁) — 무효화/만료는 목록에서 한눈에 */}
                 <span className="text-slate-400 truncate flex items-center gap-1.5 min-w-0">
-                    {offer.status === 'invalidated' && <StatusDot tone="warning" size="sm" label="선수 구성이 바뀌어 무효화된 제안입니다" />}
+                    {offer.status === 'invalidated' && <StatusDot tone="warning" size="sm" label="제안에 포함된 선수가 이미 트레이드되었습니다" />}
                     {offer.status === 'expired' && <StatusDot tone="danger" size="sm" label="유효 기간이 지난 제안입니다" />}
                     {remainingLabel}
                 </span>
@@ -2117,7 +2122,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                         <span>발신</span>
                                         <span>수신</span>
                                         <span>날짜</span>
-                                        <span>남은시간</span>
+                                        <span>상태</span>
                                     </div>
                                 </div>
                                 {!isAdmin && !myTeamRow ? (
