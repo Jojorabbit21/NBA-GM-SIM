@@ -8,7 +8,7 @@
 //   같은 채널의 Presence로 접속 인원을 센다(key = user_id).
 // - 재연결(SUBSCRIBED 재수신) 시 최근 페이지를 다시 받아 끊긴 동안 놓친 메시지를 채운다.
 // - 도배 방지(값은 chatService 상수): 전송 후 0.5초 쿨다운 / 3초 안에 5건이면 5초 잠금 / 서버가 rate_limited를
-//   돌려주면 남은 초만큼 같은 잠금. 잠금은 메모리에만(새로고침하면 풀림 — 서버 한도가 최후 방어선).
+//   돌려주면 남은 초만큼 같은 잠금. [2026-10-21] DM과 합산하도록 useChatSendGate로 분리 — 호출부가 같은 gate를 DM 훅에도 넘긴다.
 // - 마지막으로 읽은 id는 룸별 localStorage(편의 기능 — 실패해도 안 읽음 0으로 정상 동작).
 // - [2026-10-17] 위젯이 채팅·알림 탭으로 통합되면서 열림/탭 상태는 LeagueChatDock이 갖는다. 이 훅은 "채팅 탭을 보고 있는지"
 //   (viewing)만 받아 읽음 처리·"새 메시지 N개" 구분선 기준(unreadAnchorId)에 쓴다 — 위젯이 열려 있어도 알림 탭이면 채팅은 안 읽음.
@@ -16,10 +16,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import {
-    CHAT_COOLDOWN_MS, CHAT_FLOOD_LOCK_MS, CHAT_MAX_BODY, CHAT_PAGE_SIZE,
-    ChatSendError, chatErrorMessage, chatTopic, fetchChatMessages, sanitizeChatBody, sendChatMessage, shouldFloodLock,
+    CHAT_MAX_BODY, CHAT_PAGE_SIZE,
+    ChatSendError, chatErrorMessage, chatTopic, fetchChatMessages, sanitizeChatBody, sendChatMessage,
     type ChatMessage,
 } from '../services/multi/chatService';
+import type { ChatSendGate } from './useChatSendGate';
 
 export interface ChatOutboxItem {
     tempId: string;
@@ -57,6 +58,8 @@ export interface LeagueChatState {
     cooling: boolean;
     /** 도배 잠금 남은 초(0이면 잠금 아님) */
     lockRemainingSec: number;
+    /** 신고된 메시지를 로컬에서 표시(신고 버튼 비활성) — [2026-10-21] */
+    markReported: (id: number) => void;
 }
 
 /** CLOSED 후 채널 재구독 대기(ms) — 연속 실패 시 단계적으로 늘리고 마지막 값에서 고정 */
@@ -71,8 +74,8 @@ function writeStorage(key: string, value: string): void {
     try { window.localStorage.setItem(key, value); } catch { /* 사생활 모드 등 — 무시 */ }
 }
 
-/** id 기준 중복 제거 + 오름차순 정렬 */
-function mergeMessages(prev: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+/** id 기준 중복 제거 + 오름차순 정렬 (DM 훅도 사용) */
+export function mergeMessages(prev: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
     if (incoming.length === 0) return prev;
     const byId = new Map<number, ChatMessage>();
     for (const m of prev) byId.set(m.id, m);
@@ -80,7 +83,9 @@ function mergeMessages(prev: ChatMessage[], incoming: ChatMessage[]): ChatMessag
     return Array.from(byId.values()).sort((a, b) => a.id - b.id);
 }
 
-export function useLeagueChat(roomId: string | null | undefined, userId: string | null | undefined, viewing: boolean): LeagueChatState {
+export function useLeagueChat(
+    roomId: string | null | undefined, userId: string | null | undefined, viewing: boolean, gate: ChatSendGate,
+): LeagueChatState {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [outbox, setOutbox] = useState<ChatOutboxItem[]>([]);
     const [historyStatus, setHistoryStatus] = useState<ChatHistoryStatus>('loading');
@@ -91,9 +96,6 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     const [onlineUserIds, setOnlineUserIds] = useState<ReadonlySet<string>>(() => new Set());
     const [lastReadId, setLastReadId] = useState(0);
     const [unreadAnchorId, setUnreadAnchorId] = useState<number | null>(null);
-    const [cooling, setCooling] = useState(false);
-    const [lockUntil, setLockUntil] = useState(0);
-    const [now, setNow] = useState(() => Date.now());
     const [historyTick, setHistoryTick] = useState(0);
     const [reconnectTick, setReconnectTick] = useState(0);
 
@@ -101,9 +103,6 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     messagesRef.current = messages;
     const lastReadRef = useRef(0);
     const readInitializedRef = useRef(false);
-    const sentAtRef = useRef<number[]>([]);
-    const cooldownUntilRef = useRef(0);
-    const lockUntilRef = useRef(0);
     const seqRef = useRef(0);
     const loadingOlderRef = useRef(false);
     const connectionRef = useRef<ChatConnection>('connecting');
@@ -130,10 +129,6 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         setOnlineCount(0);
         setOnlineUserIds(new Set());
         setConnection('connecting');
-        setLockUntil(0);
-        lockUntilRef.current = 0;
-        cooldownUntilRef.current = 0;
-        sentAtRef.current = [];
         readInitializedRef.current = false;
         lastReadRef.current = 0;
         setLastReadId(0);
@@ -296,24 +291,7 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
     const reloadHistory = useCallback(() => setHistoryTick(t => t + 1), []);
 
     // ── 전송 ────────────────────────────────────────────────────────────────────
-    const lockFor = useCallback((ms: number) => {
-        const until = Date.now() + ms;
-        if (until <= lockUntilRef.current) return;
-        lockUntilRef.current = until;
-        setLockUntil(until);
-        setNow(Date.now());
-    }, []);
-
-    // 잠금 중에만 0.25초 간격으로 남은 초를 갱신
-    useEffect(() => {
-        if (lockUntil <= Date.now()) return;
-        const id = window.setInterval(() => {
-            const t = Date.now();
-            setNow(t);
-            if (t >= lockUntil) window.clearInterval(id);
-        }, 250);
-        return () => window.clearInterval(id);
-    }, [lockUntil]);
+    const { admit, lockFor } = gate;
 
     const dispatch = useCallback(async (body: string, tempId: string) => {
         if (!roomId) return;
@@ -326,22 +304,6 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
             setOutbox(o => o.map(x => x.tempId === tempId ? { ...x, status: 'failed', error: chatErrorMessage(e) } : x));
         }
     }, [roomId, addMessages, lockFor]);
-
-    /** 쿨다운·잠금·도배 판정을 통과하면 전송 시각을 기록한다. 통과 못 하면 false. */
-    const admit = useCallback((): boolean => {
-        const t = Date.now();
-        if (t < lockUntilRef.current || t < cooldownUntilRef.current) return false;
-        const next = [...sentAtRef.current.filter(s => t - s < 60_000), t];
-        sentAtRef.current = next;
-        cooldownUntilRef.current = t + CHAT_COOLDOWN_MS;
-        setCooling(true);
-        window.setTimeout(() => setCooling(false), CHAT_COOLDOWN_MS);
-        if (shouldFloodLock(next, t)) {
-            lockFor(CHAT_FLOOD_LOCK_MS);
-            sentAtRef.current = [];
-        }
-        return true;
-    }, [lockFor]);
 
     const send = useCallback((raw: string): boolean => {
         const body = sanitizeChatBody(raw);
@@ -367,11 +329,13 @@ export function useLeagueChat(roomId: string | null | undefined, userId: string 
         setOutbox(o => o.filter(x => x.tempId !== tempId));
     }, []);
 
-    const lockRemainingSec = lockUntil > now ? Math.ceil((lockUntil - now) / 1000) : 0;
+    const markReported = useCallback((id: number) => {
+        setMessages(prev => prev.map(m => (m.id === id && !m.reported ? { ...m, reported: true } : m)));
+    }, []);
 
     return {
         messages, outbox, historyStatus, hasMore, loadingOlder, connection, onlineCount, onlineUserIds,
         unread, unreadAnchorId, loadOlder, reloadHistory,
-        send, retry, discard, cooling, lockRemainingSec,
+        send, retry, discard, cooling: gate.cooling, lockRemainingSec: gate.lockRemainingSec, markReported,
     };
 }

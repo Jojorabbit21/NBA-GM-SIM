@@ -35,6 +35,51 @@
 
 
 
+## 2026-10-21 — 리그 채팅 DM(다이렉트 메시지) + 메시지 신고 + 위젯 2단 레이아웃
+
+**배경**: 전체 채팅만 있고 1:1 DM이 없었음. 30명이 서로 DM하면 대화방이 N²으로 생긴다는 우려 → 대화방 테이블 없이 `conv_key`로 묶고 실시간은 유저별 받은편지함 채널 1개(리그당 N개)로 설계. 결정·목업은 `docs/plan/league-chat-plan.md` "DM 2차 확정안"·"신고 UI"·"대화 삭제", 목업 claude.ai/artifact/RQ3FA5zvPgE7zJtbArjZfK.
+
+**변경 파일**:
+- DB(Supabase MCP `apply_migration` `league_chat_dm_and_reports`) — SQL 전문 `migrations/league_chat_dm.sql`(롤백 절차 파일 끝)
+- `services/multi/chatService.ts` (client) — ChatMessage에 recipient_id/conv_key/reported, `dmTopic`/`dmConvKey`, `sendChatMessage(roomId, body, recipientId?)`, DM 조회·목록·후보·읽음·삭제·신고 함수, 신고 사유 7종 상수, 에러 코드 추가
+- `hooks/useChatSendGate.ts` (신규) — 쿨다운·도배 잠금을 useLeagueChat에서 분리, 퍼블릭+DM 공유
+- `hooks/useLeagueChat.ts` — gate 인자 받음(로컬 잠금 상태 제거), `markReported`, `mergeMessages` export
+- `hooks/useLeagueDm.ts` (신규) — DM 목록·대화·받은편지함 구독·전송·읽음·삭제
+- `components/multi/chat/ChatThread.tsx` (신규, Dock의 ChatBody/MessageRow 이동·일반화 + "신고" 버튼), `ChatSidebar.tsx`, `DmNewConversation.tsx`, `ReportPopover.tsx` (신규)
+- `components/multi/LeagueChatDock.tsx` — 위젯 셸로 재작성(380 → 600폭, 좌측 목록 + 우측 대화, 탭 `채팅 | 알림`)
+
+**Before** (DB):
+```sql
+-- league_chat_messages 읽기: 방 멤버면 전부
+create policy lcm_member_select ... using (public.is_chat_member(room_id) or public.is_global_admin());
+-- send_chat_message: if p_recipient_id is not null then raise exception 'dm_not_supported';
+-- is_chat_topic_member: p_topic = 'league-chat:' || room_id 만 허용
+```
+
+**After** (DB):
+```sql
+-- 읽기: 전체 채팅은 방 멤버, DM은 보낸·받는 사람만(+ 전역 어드민)
+using ((recipient_id is null and is_chat_member(room_id)) or user_id = auth.uid() or recipient_id = auth.uid() or is_global_admin())
+-- league_chat_messages: + reported boolean, check((recipient_id is null) = (conv_key is null)), 인덱스 (room_id, conv_key, id desc) where conv_key is not null
+-- send_chat_message(p_recipient_id): 같은 방 사람 참가자만(AI·자기 자신 → invalid_recipient), conv_key = dm_conv_key(),
+--   브로드캐스트 'dm' → 'league-dm:{room}:{받는사람}' (보낸 사람은 RPC 반환값으로 갱신). 레이트 리밋 10초 10건은 퍼블릭+DM 합산(쿼리 변경 없음)
+-- is_chat_topic_member: + 'league-dm:{room}:{auth.uid()}' (내 받은편지함만)
+-- 신규 테이블: league_dm_state(읽음 위치·삭제 기준, 본인 행만 SELECT), league_chat_reports(message_id unique, reasons text[] 7종, 어드민·세션 오너만 SELECT)
+-- 신규 RPC: list_dm_conversations, list_dm_candidates, mark_dm_read, clear_dm_conversation(나에게서만), report_chat_message(메시지당 1회 → already_reported)
+```
+
+**After** (client):
+- 위젯 600×560(`max-w-[calc(100vw-32px)]`), 좌측 220px "# 퍼블릭" + "다이렉트 메시지"(+ 새 대화, 로고·이름·배지만), 640px 미만은 목록 → 대화 한 화면씩
+- 다른 사람 말풍선 옆 "신고"(`Button danger xs`, 알약, hover/포커스/탭 시 노출, 신고된 메시지는 비활성) → 대화 영역 어둡게(`bg-slate-950/60`, 블러 없음) + 사유 체크박스 팝오버 → 성공 시 `InlineNotice success sm` 3초
+- DM 헤더 "대화 삭제"(`Button dangerSoft sm`) → 헤더가 확인 단계로("이 대화를 삭제할까요?" [삭제][돌아가기])
+- 새 대화 목록은 이미 대화 중인 상대 제외, AI·관전자 제외
+- FAB 배지 = 퍼블릭 + DM + 알림, 채팅 탭 배지 = 퍼블릭 + DM
+
+**검증**: DB — 실제 유저 3명으로 권한 시험(트랜잭션 롤백): 제3자는 DM 행 0건·신고 not_found·읽음 invalid_conversation, 본인 메시지 신고 own_message, 두 번째 신고 already_reported, 잘못된 사유 invalid_reasons, 자기 자신에게 DM invalid_recipient, 삭제 후 목록에서 빠지고 새 메시지 오면 다시 나타남(삭제 이후 1건만 안 읽음), 받은편지함 토픽은 본인 것만 true. 보안 어드바이저: 새 SECURITY DEFINER 함수에 기존 RPC와 같은 일반 경고만(새 테이블 RLS 경고 없음). client — `tsc --noEmit` 신규 오류 0(기존 60건 타 파일), `vite build` 통과. **브라우저 E2E 미실시**(2계정 동시 송수신·팝오버 위치·모바일 폭).
+
+**롤백 방법**: DB는 `migrations/league_chat_dm.sql` 끝의 롤백 절차(역순). **클라이언트를 먼저 되돌리고 DB를 되돌릴 것** — 반대로 하면 구 클라이언트는 문제없지만 새 클라이언트가 없는 RPC를 부른다. 클라이언트는 위 파일들 git revert(신규 파일 삭제, LeagueChatDock·useLeagueChat·chatService 복원). 읽기 정책만 되돌리면 DM 행이 방 멤버 전원에게 노출되므로 DM 행이 있으면 정책보다 먼저 지울 것.
+
+
 ## 2026-10-21 — room_members Realtime: 변경마다 전체 재조회 → payload 1행 반영
 
 **배경**: 실측(DB 재시작 후 57분, 접속 12명) 전술/뎁스차트 저장 60회에 `room_members select *`(30행 ≈ 200KB) 재조회 742회 — 저장 1번이 접속자 전원의 전체 재조회를 일으키는 N²(저장 수 × 접속자 수) 구조. 시간당 약 150MB 응답, 서버 AI 전술 보정(simRunner)도 같은 연쇄 유발. context `members` 소비처는 user_id/team_id/is_ai/joined_at만 읽음(타인 전술은 어드민 전술 탭이 자체 조회).
