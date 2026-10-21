@@ -35,6 +35,35 @@
 
 
 
+## 2026-10-21 — 시즌 일정: 올스타 이벤트(라이징스타/3점/덩크/본경기/발표)를 경기 표 행으로 통일
+
+**배경**: 올스타 브레이크 날짜엔 games 행이 없어 인라인 카드(`AllStarScheduleRow`, 중앙 max-w-md 버튼 목록)로 따로 보였음. 다른 경기 일정처럼 표 행으로 보이길 요청.
+
+**변경 파일**:
+- `views/multi/season/MultiScheduleView.tsx` (client) — `AllStarScheduleRow` 제거 → `AllStarEventRow`(TableRow, 팀/최우수선수 3칸 colSpan), `activeDayAllStarEntries` memo 추가, 본문 분기 변경
+
+**Before**:
+```tsx
+activeDayGames.length === 0 ? (
+  allStarEntriesByDate.get(activeDate)?.length ? <div>...<AllStarScheduleRow/>...</div> : <EmptyState/>
+) : (<Table>...GameRow...</Table>)
+```
+
+**After**:
+```tsx
+activeDayGames.length === 0 && activeDayAllStarEntries.length === 0 ? <EmptyState/>
+: (<Table> {AllStarEventRow...} {GameRow...} </Table>)
+// rising_stars/main은 해당 game_id(`${kind}-...`) 행이 있으면 이벤트 행 생략(GameRow가 대신)
+```
+
+**추가 변경(같은 날)**: ① '올스타 참가자 발표' 항목은 일정에서 제거(`allStarEntriesByDate`의 announce push 삭제). ② `GameDateStrip.tsx`에 `eventDates` prop 추가 — 경기 행이 아직 없는 라이징스타/본경기 날짜를 빈 그룹으로 `groupedByDay`에 끼워 넣고 "예정" 플레이스홀더 카드 표시. `MultiSeasonLayout.tsx`가 `getAllStarKeyDates()`로 날짜를 계산해 전달하고, `stripTeamMap`에 올스타 가상 팀(`useAllStarTeamDisplay`) 이름/약어/색 보강. 롤백: 세 파일 git 복원.
+
+**추가 변경 2(같은 날)**: 라이징스타/본경기 이벤트 행·스트립 카드를 "올스타 본경기" 라벨 대신 실제 경기처럼 원정/홈 팀(서부 올스타 vs 동부 올스타, 라이징스타 B vs A, 가상 팀 ID)으로 표시. `AllStarEventRow`에 `ALLSTAR_MATCHUP`+`allstarDisplay`, `GameDateStrip`의 `eventDates`에 `time/awayId/homeId` 추가. 롤백: 세 파일 git 복원.
+
+**검증**: tsc 오류 없음(해당 파일). 브라우저 육안 확인 전.
+
+**롤백 방법**: git으로 해당 파일 되돌리기.
+
 ## 2026-10-21 — 종료 박스스코어: OREB 열 추가 + POS를 슬롯 포지션으로 표시
 
 **배경**: 라이브 게임에선 PG를 SG 슬롯에 쓰면 SG로 표시되는데, 종료 박스스코어(POS 열)는 로스터 고유 포지션(PG)을 읽어 괴리가 있었음. 또 종료 박스스코어에 공격 리바운드 열이 없었음.

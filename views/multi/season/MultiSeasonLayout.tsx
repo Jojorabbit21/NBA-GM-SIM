@@ -14,6 +14,8 @@ import { GameDateStrip, type TeamStripInfo } from './GameDateStrip';
 import LeagueLobbyPanel from './LeagueLobbyPanel';
 import { MultiTeamHoverProvider } from './MultiTeamHoverCard';
 import type { Game } from '../../../types';
+import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
+import { getAllStarKeyDates } from '../../../utils/allStarSelection';
 
 /**
  * 시즌 서브라우트(로스터/순위/일정/리더보드/전술/경기) 공유 레이아웃.
@@ -52,13 +54,30 @@ export function MultiSeasonLayout() {
     const { room, league, leagueTeams , timeline } = useLeagueContext();
     const { session } = useGame();
     const { getGameUrlId, resolveGameId } = useGameShortCodes(room?.id);
+    const allstarDisplay = useAllStarTeamDisplay(room?.id, room?.season_number);
 
     // GameDateStrip용 — team_slug → 팀 표시정보 맵 (MultiGamePbpView.tsx가 쓰던 것과 동일).
     const stripTeamMap = useMemo(() => {
         const m: Record<string, TeamStripInfo> = {};
         for (const t of leagueTeams) m[t.team_slug] = t;
+        // 올스타/라이징스타 가상 팀(league_teams에 없음) 표시 정보 보강
+        for (const [id, info] of Object.entries(allstarDisplay)) {
+            if (!m[id]) m[id] = { team_name: info.name, team_abbr: info.abbr, color_primary: info.colorPrimary, color_text: info.colorText };
+        }
         return m;
-    }, [leagueTeams]);
+    }, [leagueTeams, allstarDisplay]);
+
+    // 스트립 날짜 목록에 추가로 표시할 올스타 경기일(경기 행이 생기기 전에도 보이도록).
+    const virtualSeasonYear = league?.virtual_season_year;
+    const isMainLeague = league?.type === 'main_league';
+    const stripEventDates = useMemo(() => {
+        if (!isMainLeague) return [];
+        const kd = getAllStarKeyDates(virtualSeasonYear ?? new Date().getFullYear());
+        return [
+            { dateKey: kd.allStarRisingStarsDate, label: '라이징스타 챌린지', time: '19:00', awayId: 'RISINGSTARS-B', homeId: 'RISINGSTARS-A' },
+            { dateKey: kd.allStarMainGameDate, label: '올스타 본경기', time: '20:30', awayId: 'WEST-ALLSTAR', homeId: 'EAST-ALLSTAR' },
+        ];
+    }, [isMainLeague, virtualSeasonYear]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
 
@@ -93,6 +112,7 @@ export function MultiSeasonLayout() {
                     getGameUrlId={getGameUrlId}
                     preferVirtual={league?.type === 'main_league'}
                     timeline={timeline}
+                    eventDates={stripEventDates}
                 />
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {showLobbyPanel ? <LeagueLobbyPanel /> : <Outlet />}

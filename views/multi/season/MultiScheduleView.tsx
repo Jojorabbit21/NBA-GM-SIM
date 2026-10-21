@@ -70,21 +70,74 @@ const ALLSTAR_VIEW_BY_KIND: Record<AllStarScheduleKind, 'main' | 'risingstars' |
 // 사용자 확정 스펙: 올스타 투표 시작일 이전엔 클릭 불가(아직 아무 것도 없음), 그 이후로는
 // 브레이크가 끝나 메뉴가 숨겨진 뒤에도 계속 클릭 가능(지난 결과를 시즌 일정에서 다시 볼 수
 // 있어야 함 — MultiAllStarView.tsx의 라우트 가드도 동일 기준으로 맞춰둠).
-const AllStarScheduleRow: React.FC<{ entry: AllStarScheduleEntry; clickable: boolean; onClick: () => void }> = ({ entry, clickable, onClick }) => (
-    <button
-        onClick={clickable ? onClick : undefined}
-        disabled={!clickable}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-md border transition-colors text-left ${
-            clickable
-                ? 'border-indigo-700 bg-indigo-950/40 hover:bg-indigo-900/50 cursor-pointer'
-                : 'border-slate-800 bg-slate-900/50 cursor-default opacity-60'
-        }`}
-    >
-        <Star size={18} className={clickable ? 'text-indigo-300' : 'text-slate-600'} />
-        <span className="flex-1 text-sm font-bold text-slate-100 ko-normal">{entry.label}</span>
-        <span className="text-xs text-slate-400 ko-normal">{clickable ? '보러가기 →' : '예정'}</span>
-    </button>
-);
+// 일정 표의 한 행으로 렌더링 — 경기 행(GameRow)과 같은 컬럼 구성. 팀/최우수선수 3칸은 colSpan으로
+// 합쳐 이벤트명을 보여준다. rising_stars/main은 실제 경기 행이 생기면 GameRow가 대신 그려진다.
+const ALLSTAR_VIRTUAL_TIME: Partial<Record<AllStarScheduleKind, string>> = { rising_stars: '19:00', main: '20:30' };
+// 라이징스타/본경기는 경기 행 생성 전에도 실제 경기처럼 원정/홈 팀(가상 팀 ID)을 표시한다.
+const ALLSTAR_MATCHUP: Partial<Record<AllStarScheduleKind, { away: string; home: string }>> = {
+    main: { away: 'WEST-ALLSTAR', home: 'EAST-ALLSTAR' },
+    rising_stars: { away: 'RISINGSTARS-B', home: 'RISINGSTARS-A' },
+};
+const AllStarEventRow: React.FC<{
+    entry: AllStarScheduleEntry; dateKey: string; todayKey: string | null; showRound: boolean;
+    clickable: boolean; onClick: () => void; allstarDisplay: Record<string, AllStarTeamDisplayInfo>;
+}> = ({ entry, dateKey, todayKey, showRound, clickable, onClick, allstarDisplay }) => {
+    const matchup = ALLSTAR_MATCHUP[entry.kind];
+    const teamCell = (id: string) => (
+        <div className="flex items-center gap-2 min-w-0">
+            <TeamLogo teamId={id} teamName={allstarDisplay[id]?.abbr ?? id} size="custom" className="w-5 h-5 shrink-0" shadow={false} />
+            <span className="font-semibold text-slate-200 truncate ko-normal">{allstarDisplay[id]?.name ?? id}</span>
+        </div>
+    );
+    const dt = new Date(dateKey + 'T00:00:00');
+    const past = !!todayKey && dateKey < todayKey;
+    return (
+        <TableRow className="h-10">
+            <TableCell className="align-middle text-sm">
+                <span className="font-medium text-slate-400 tabular-nums ko-normal">{dt.getMonth() + 1}/{dt.getDate()}</span>
+            </TableCell>
+            <TableCell className="align-middle text-sm">
+                <span className="font-medium text-slate-400 tabular-nums ko-normal">{ALLSTAR_VIRTUAL_TIME[entry.kind] ?? EMPTY_CELL}</span>
+            </TableCell>
+            {showRound && (
+                <TableCell className="align-middle text-sm">
+                    <span className="font-medium text-slate-400 ko-normal">{EMPTY_CELL}</span>
+                </TableCell>
+            )}
+            {matchup ? (
+                <>
+                    <TableCell align="left" className="pl-4 align-middle text-sm">{teamCell(matchup.away)}</TableCell>
+                    <TableCell align="left" className="pl-4 align-middle text-sm">{teamCell(matchup.home)}</TableCell>
+                    <TableCell align="left" className="pl-4 align-middle text-sm">
+                        <span className="text-slate-600">{EMPTY_CELL}</span>
+                    </TableCell>
+                </>
+            ) : (
+                <TableCell align="left" colSpan={3} className="pl-4 align-middle text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Star size={14} className="text-indigo-300 shrink-0" />
+                        <span className="font-semibold text-slate-200 truncate ko-normal">{entry.label}</span>
+                    </div>
+                </TableCell>
+            )}
+            <TableCell className="align-middle text-sm">
+                <span className="font-medium text-slate-400">{EMPTY_CELL}</span>
+            </TableCell>
+            <TableCell className="align-middle text-sm">
+                <span className="font-medium text-slate-400 ko-normal">{past ? '종료' : EMPTY_CELL}</span>
+            </TableCell>
+            <TableCell className="align-middle text-sm">
+                <Button
+                    variant={past ? 'primary' : 'secondary'} size="xs" shape="md" fullWidth className="ko-normal"
+                    disabled={!clickable} onClick={onClick}
+                    icon={past ? undefined : <Tv size={12} />}
+                >
+                    {past ? '리뷰' : '보기'}
+                </Button>
+            </TableCell>
+        </TableRow>
+    );
+};
 
 // ── 서브 컴포넌트 ──────────────────────────────────────────────────────────────
 
@@ -570,7 +623,6 @@ const MultiScheduleView: React.FC = () => {
             arr.push(entry);
             map.set(dateKey, arr);
         };
-        push(allStarKeyDates.allStarStart, { kind: 'announce', label: '올스타 참가자 발표' });
         push(allStarKeyDates.allStarRisingStarsDate, { kind: 'rising_stars', label: '라이징스타 챌린지' });
         push(allStarKeyDates.allStarThreePointContestDate, { kind: 'three_point', label: '3점 챌린지' });
         push(allStarKeyDates.allStarDunkContestDate, { kind: 'dunk', label: '덩크 컨테스트' });
@@ -651,6 +703,14 @@ const MultiScheduleView: React.FC = () => {
         return [...activeDayGames].sort((a, b) =>
             order[getGameDisplayState(a, serverNow)] - order[getGameDisplayState(b, serverNow)]);
     }, [activeDayGames, serverNow]);
+    // 선택 날짜의 올스타 이벤트 행 — 라이징스타/본경기는 실제 경기 행이 이미 있으면 GameRow가 대신하므로 제외.
+    const activeDayAllStarEntries = useMemo(() => {
+        if (!activeDate) return [] as AllStarScheduleEntry[];
+        return (allStarEntriesByDate.get(activeDate) ?? []).filter(e => {
+            if (e.kind !== 'rising_stars' && e.kind !== 'main') return true;
+            return !activeDayGames.some(g => g.isAllstar && g.id.startsWith(`${e.kind}-`));
+        });
+    }, [activeDate, allStarEntriesByDate, activeDayGames]);
     // 라운드 컬럼 — 지금 보고 있는 날짜에 플레이오프 경기가 하나도 없으면(정규시즌 날짜는
     // 전부 그렇다) 리스트 뷰에서 컬럼 자체를 숨긴다.
     const showRoundColumn = useMemo(() => activeDayGamesByState.some(g => g.isPlayoff), [activeDayGamesByState]);
@@ -768,21 +828,8 @@ const MultiScheduleView: React.FC = () => {
 
             {/* 본문 — 컨테이너 없이 페이지 가장자리에 바로 붙는다 */}
             {activeDate && (
-                activeDayGames.length === 0 ? (
-                    allStarEntriesByDate.get(activeDate)?.length ? (
-                        <div className="flex flex-col gap-2 max-w-md mx-auto px-4 py-10">
-                            {allStarEntriesByDate.get(activeDate)!.map(entry => (
-                                <AllStarScheduleRow
-                                    key={entry.kind}
-                                    entry={entry}
-                                    clickable={allStarClickable}
-                                    onClick={() => handleAllStarEntryClick(entry)}
-                                />
-                            ))}
-                        </div>
-                    ) : (
-                        <EmptyState title="이 날짜엔 예정된 경기가 없습니다." />
-                    )
+                activeDayGames.length === 0 && activeDayAllStarEntries.length === 0 ? (
+                    <EmptyState title="이 날짜엔 예정된 경기가 없습니다." />
                 ) : (
                     <Table className="!rounded-none !shadow-none" fullHeight={false} tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                         <colgroup>
@@ -794,6 +841,18 @@ const MultiScheduleView: React.FC = () => {
                             {renderColumnHeader(showRoundColumn)}
                         </TableHead>
                         <TableBody>
+                            {activeDayAllStarEntries.map(entry => (
+                                <AllStarEventRow
+                                    key={entry.kind}
+                                    entry={entry}
+                                    dateKey={activeDate}
+                                    todayKey={todayKey}
+                                    showRound={showRoundColumn}
+                                    clickable={allStarClickable}
+                                    onClick={() => handleAllStarEntryClick(entry)}
+                                    allstarDisplay={allstarDisplay}
+                                />
+                            ))}
                             {activeDayGamesByState.map(g => (
                                 <GameRow
                                     key={g.id}

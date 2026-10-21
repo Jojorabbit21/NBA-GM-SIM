@@ -50,10 +50,12 @@ export interface GameDateStripProps {
     preferVirtual: boolean;
     /** [2026-09-18] 고정 길이 가상 하루 타임라인(useLeagueContext().timeline) — "오늘" 판정용. 구 리그는 빈 배열. */
     timeline?: VirtualDayRow[];
+    /** 경기 행이 없어도 날짜 목록에 끼워 넣을 이벤트일(올스타 브레이크의 라이징스타/본경기 등). */
+    eventDates?: { dateKey: string; label: string; time?: string; awayId?: string; homeId?: string }[];
 }
 
 export const GameDateStrip: React.FC<GameDateStripProps> = ({
-    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual, timeline,
+    leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual, timeline, eventDates,
 }) => {
     const navigate = useNavigate();
     // [2026-09-07] serverNow(1초 틱)를 MultiSeasonLayout에서 prop으로 받던 걸 여기서 직접
@@ -90,7 +92,20 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
             .sort((a, b) => (a.scheduledAt ?? a.date).localeCompare(b.scheduledAt ?? b.date)),
     [schedule, simStart, gprd, revealedSeriesById]);
 
-    const groupedByDay = useMemo(() => groupByDay(allGames, preferVirtual), [allGames, preferVirtual]);
+    // 경기 행이 없는 이벤트일(games 행은 시뮬 시각 이후에야 생김)도 빈 그룹으로 끼워 넣는다.
+    const groupedByDay = useMemo(() => {
+        const groups = groupByDay(allGames, preferVirtual);
+        const have = new Set(groups.map(g => g.dateKey));
+        const extra = (eventDates ?? []).filter(e => !have.has(e.dateKey));
+        if (!extra.length) return groups;
+        const seen = new Set<string>();
+        for (const e of extra) {
+            if (seen.has(e.dateKey)) continue;
+            seen.add(e.dateKey);
+            groups.push({ dateKey: e.dateKey, label: e.dateKey, games: [] });
+        }
+        return groups.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    }, [allGames, preferVirtual, eventDates]);
 
     const currentGame = useMemo(() => allGames.find(g => g.id === currentGameId), [allGames, currentGameId]);
     const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
@@ -243,6 +258,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     }, [roomId, accessToken]);
 
     if (!activeGroup) return null;
+    const activeEvents = (eventDates ?? []).filter(e => e.dateKey === activeGroup.dateKey);
 
     if (isCollapsed) {
         return (
@@ -251,7 +267,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                     <ChevronDown size={16} />
                 </IconButton>
                 <span className="text-xs font-semibold text-slate-400 tabular-nums">
-                    {activeYear}.{activeMonth}.{activeDay} · {activeGroup.games.length}경기
+                    {activeYear}.{activeMonth}.{activeDay} · {activeGroup.games.length > 0 ? `${activeGroup.games.length}경기` : (activeEvents[0]?.label ?? '이벤트')}
                 </span>
             </div>
         );
@@ -349,6 +365,19 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 className="flex-1 min-w-0 overflow-x-auto flex select-none cursor-grab active:cursor-grabbing"
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
             >
+                {activeGroup.games.length === 0 && activeEvents.map(e => (
+                    <div key={e.label} className="shrink-0 w-36 px-3 py-1.5 flex flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900">
+                        <span className="text-xs font-bold text-slate-500">{e.time ?? '예정'}</span>
+                        {e.awayId && e.homeId ? (
+                            <div className="flex flex-col gap-0.5">
+                                <StripTeamRow team={teamMap[e.awayId]} teamId={e.awayId} />
+                                <StripTeamRow team={teamMap[e.homeId]} teamId={e.homeId} />
+                            </div>
+                        ) : (
+                            <span className="text-sm font-semibold text-slate-200 truncate ko-normal">{e.label}</span>
+                        )}
+                    </div>
+                ))}
                 {activeGroup.games.map(g => {
                     const state = getGameDisplayState(g, serverNow);
                     const live = liveSummaries[g.id];
