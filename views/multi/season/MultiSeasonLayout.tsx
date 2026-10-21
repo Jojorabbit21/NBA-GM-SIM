@@ -17,6 +17,11 @@ import type { Game } from '../../../types';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
 
+// 스트립 전용 고정 약어 — 라이징스타 약어(주장 성)는 로스터 로딩 후 바뀌므로 쓰지 않는다.
+const STRIP_ALLSTAR_ABBR: Record<string, string> = {
+    'EAST-ALLSTAR': 'EAST', 'WEST-ALLSTAR': 'WEST', 'RISINGSTARS-A': 'RS-A', 'RISINGSTARS-B': 'RS-B',
+};
+
 /**
  * 시즌 서브라우트(로스터/순위/일정/리더보드/전술/경기) 공유 레이아웃.
  * 시즌 데이터(useMultiGameData) 자체는 이제 LeagueLayout에서 리그 진입 시 1회만 로드하고
@@ -62,7 +67,8 @@ export function MultiSeasonLayout() {
         for (const t of leagueTeams) m[t.team_slug] = t;
         // 올스타/라이징스타 가상 팀(league_teams에 없음) 표시 정보 보강
         for (const [id, info] of Object.entries(allstarDisplay)) {
-            if (!m[id]) m[id] = { team_name: info.name, team_abbr: info.abbr, color_primary: info.colorPrimary, color_text: info.colorText };
+            // 스트립 약어는 고정값 — 로스터 로딩 전후로 값이 바뀌지 않게 한다(라이징스타 info.abbr는 주장 성이라 가변).
+            if (!m[id]) m[id] = { team_name: info.name, team_abbr: STRIP_ALLSTAR_ABBR[id] ?? info.abbr, color_primary: info.colorPrimary, color_text: info.colorText };
         }
         return m;
     }, [leagueTeams, allstarDisplay]);

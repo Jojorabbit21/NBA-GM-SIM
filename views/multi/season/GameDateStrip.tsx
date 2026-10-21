@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { kstDateKey, fmtTime, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
-import type { VirtualDayRow } from '../../../utils/leagueTimeline';
+import { resolveVirtualDate, type VirtualDayRow } from '../../../utils/leagueTimeline';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
 import type { Game } from '../../../types';
 import { getGameDisplayState, resolveRealAt, computeRevealedSeries } from './multiGameReveal';
@@ -26,7 +26,7 @@ const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; 
         <div className="flex items-center gap-1.5 min-w-0">
             <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className={`w-5 h-5 shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`} shadow={false} />
             <span className={`text-sm ${won && isFinal ? 'font-bold' : 'font-semibold'} truncate ${won || selected ? 'text-white' : 'text-slate-500'}`}>
-                {(team?.team_abbr ?? teamId).slice(0, 3).toUpperCase()}
+                {(team?.team_abbr ?? teamId).slice(0, 4).toUpperCase()}
             </span>
         </div>
         {score != null && (
@@ -126,9 +126,15 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     // 이름에 맞게, 아직 아무 날짜도 직접 고르지 않았을 때는 "오늘"(서버 시각 기준 가장 가까운
     // 경기의 날짜 — MultiScheduleView/MultiHeader의 "오늘" 배지 판정과 동일 로직)로 폴백한다.
     const todayDateKey = useMemo(() => {
+        // 타임라인이 있으면 가상 "오늘" 이후 첫 표시 날짜(경기가 없는 올스타 이벤트일 포함)로 맞춘다 —
+        // 경기 기준(findCurrentVirtualGame)만 쓰면 오늘이 이벤트 전날일 때 이벤트일을 건너뛰고 다음 정규 경기일로 간다.
+        if (preferVirtual && timeline?.length) {
+            const today = resolveVirtualDate(timeline, serverNow);
+            if (today) return dateKeys.find(k => k >= today) ?? dateKeys[dateKeys.length - 1] ?? null;
+        }
         const g = findCurrentVirtualGame(allGames, simStart, gprd, serverNow, timeline);
         return g ? kstDateKey(g, preferVirtual) : null;
-    }, [allGames, simStart, gprd, serverNow, preferVirtual, timeline]);
+    }, [allGames, simStart, gprd, serverNow, preferVirtual, timeline, dateKeys]);
     const activeDateKey = selectedDateKey ?? todayDateKey ?? dateKeys[dateKeys.length - 1] ?? null;
     const activeIdx = activeDateKey ? dateKeys.indexOf(activeDateKey) : -1;
     const activeGroup = activeIdx >= 0 ? groupedByDay[activeIdx] : null;

@@ -62,6 +62,18 @@
 **롤백 방법**: Before 블록으로 콜백 교체 + `.subscribe()` 인자 제거 (또는 해당 커밋 revert). DB 변경 없음.
 
 
+## 2026-10-21 — 날짜 스트립: 올스타/라이징스타 약어 고정
+
+**배경**: 새로고침 시 라이징스타 팀 약어가 로스터 조회 완료 후 주장 성으로 바뀌어 깜빡임.
+
+**변경 파일**:
+- `views/multi/season/MultiSeasonLayout.tsx` — `STRIP_ALLSTAR_ABBR`(EAST/WEST/RS-A/RS-B)를 stripTeamMap의 team_abbr로 사용
+- `views/multi/season/GameDateStrip.tsx` — `StripTeamRow` 약어 `slice(0, 3)` → `slice(0, 4)` ("RS-A" 4글자, 실제 팀 약어는 ≤3이라 무영향)
+
+**추가(같은 날)**: `GameDateStrip.tsx` todayDateKey — 메인리그+타임라인이면 `resolveVirtualDate()` 이후 첫 표시 날짜(`dateKeys.find(k >= today)`)로 선택. 기존엔 `findCurrentVirtualGame`(경기 기준)이라 오늘(2/15)에 경기가 없으면 올스타 이벤트일(2/16)을 건너뛰고 다음 정규 경기일(2/19)로 맞춰졌음.
+
+**롤백 방법**: 위 두 변경을 되돌리거나 git 복원.
+
 ## 2026-10-21 — 시즌 일정: 올스타 이벤트(라이징스타/3점/덩크/본경기/발표)를 경기 표 행으로 통일
 
 **배경**: 올스타 브레이크 날짜엔 games 행이 없어 인라인 카드(`AllStarScheduleRow`, 중앙 max-w-md 버튼 목록)로 따로 보였음. 다른 경기 일정처럼 표 행으로 보이길 요청.
