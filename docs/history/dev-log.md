@@ -35,6 +35,53 @@
 
 
 
+## 2026-10-21 — 세션 설정 "채팅 검수" 탭 (신고 내역·메시지 검색·앞뒤 보기)
+
+**배경**: DM·신고(같은 날) 이후 신고를 볼 화면이 없었음. 결정 3-a/3-b/3-e — 신고에 맥락 스냅샷을 붙이지 않고 검수 화면에서 검색으로 맥락 파악, 열람자 = 전역 어드민 + 세션 오너, DM 전체 검색은 전역 어드민만(오너는 신고된 대화만 — 오너가 참가자라 이해충돌).
+
+**변경 파일**:
+- DB(Supabase MCP `apply_migration` `league_chat_review_rpcs`) — SQL 전문 `migrations/league_chat_review.sql`(롤백 절차 파일 끝)
+- `services/multi/chatReviewService.ts` (client, 신규)
+- `views/multi/league/settings/ChatReviewTab.tsx` (client, 신규)
+- `views/multi/league/LeagueSettingsView.tsx` — `SettingsTabId`에 `'chat'`, `SETTINGS_TABS`에 "채팅 검수", 렌더 블록
+
+**Before**: 신고는 `league_chat_reports`에 쌓이기만 하고 조회 화면·RPC 없음(테이블 SELECT 정책은 어드민·오너).
+
+**After**:
+```sql
+can_review_chat(room)  = is_global_admin() or is_room_owner(room)
+chat_team_label(room, uid)  -- league_teams 우선 팀 이름
+list_chat_reports(room, before_id, limit)  -- 신고 최신순 + 메시지·작성자·받는 사람·신고자
+search_chat_messages(room, query, channel, user_id, conv_key, before_id, around_id, limit)
+  -- 퍼블릭 전부 / DM: 전역 어드민 전부, 오너는 신고가 있는 conv_key만. query는 ILIKE 부분 일치(\ % _ 이스케이프, chr(92))
+  -- around_id: 같은 채널 앞 31 + 뒤 30(오너가 신고 없는 DM 요청 → not_found)
+```
+- 탭: 세그먼트 [신고 내역 | 메시지 검색], 행마다 "앞뒤 보기" → 같은 채널 앞뒤 대화(선택 메시지 강조, 신고됨 배지). 오너(비전역 어드민)에게 DM 범위 안내 `InlineNotice info`. 실시간 없음(새로고침).
+
+**검증**: DB — 롤백 트랜잭션에서 임시로 일반 참가자 D를 오너로 바꿔 시험: 일반 유저 → forbidden, D(오너) → 신고 1건·신고된 DM만 검색·신고 없는 DM 앞뒤 보기 not_found, 전역 어드민 → 두 DM 모두·앞뒤 보기 가능, 참가자 필터 동작. 롤백 후 오너·테스트 행 원상 확인. client — `tsc --noEmit` 신규 오류 0, `vite build` 통과. 브라우저 확인 미실시.
+
+**롤백 방법**: 클라이언트 3파일 git 복원 후 `migrations/league_chat_review.sql` 끝의 drop 4줄.
+
+**추가 변경(같은 날)**: ① 탭 이름 "채팅 검수" → **"신고"**(`SETTINGS_TABS`, 탭 제목). ② 메시지 검색을 id 커서 "더 보기" → **공용 `Pagination`**(50건/페이지): DB `apply_migration` `league_chat_review_search_pagination` — `search_chat_messages`의 `p_before_id` 제거, `p_offset` 추가, 반환에 `total_count`(count(*) over()) 추가(이전 시그니처 drop 후 재생성, 배포된 클라이언트가 쓰기 전이라 안전). 시험: 퍼블릭 1·2페이지 id 연속(12860→12859), total 12,651. ③ 세그먼트 "신고 내역 N" → "신고 내역"(건수 제거). ④ 사유 빨간 배지 → 일반 텍스트("홍보, 금전 요구", `reportReasonsText`). 신고 내역 목록은 "더 보기" 유지. 롤백: 클라이언트 git 복원, DB는 파일 최종 상태 기준 drop.
+
+
+## 2026-10-21 — 채팅 위젯 좌측 목록 접기/펼치기
+
+**배경**: 좌측 채팅 목록을 접었다 펼 수 있는 버튼 요청. 600px 위젯이 노트북 화면을 많이 가리는 문제도 함께 완화.
+
+**변경 파일**:
+- `components/multi/chat/ChatSidebar.tsx` (client) — `collapsed`/`onToggleCollapsed` prop, 접힘 레이아웃(56px 띠: # 퍼블릭·+ 새 대화·대화 로고, 배지 모서리), 맨 아래 접기 버튼
+- `components/multi/LeagueChatDock.tsx` (client) — `sidebarCollapsed` 상태(localStorage `nba-gm-sim-chat-sidebar-collapsed`), 위젯 폭 `collapsed ? 436 : 600`
+
+**Before**: 목록 220px 고정, 위젯 `w-[600px]` 고정.
+
+**After**: 목록 맨 아래 `IconButton lg subtle`(PanelLeftClose "채팅 목록 접기" / PanelLeftOpen "채팅 목록 펼치기") → 접힘 시 `w-14` 띠 + 위젯 `w-[436px]`. 640px 미만에서는 버튼 없음(목록이 전체 폭).
+
+**검증**: `tsc --noEmit` 신규 오류 0. 브라우저 확인 미실시.
+
+**롤백 방법**: 두 파일 git 복원(서버·DB 변경 없음).
+
+
 ## 2026-10-21 — 리그 채팅 DM(다이렉트 메시지) + 메시지 신고 + 위젯 2단 레이아웃
 
 **배경**: 전체 채팅만 있고 1:1 DM이 없었음. 30명이 서로 DM하면 대화방이 N²으로 생긴다는 우려 → 대화방 테이블 없이 `conv_key`로 묶고 실시간은 유저별 받은편지함 채널 1개(리그당 N개)로 설계. 결정·목업은 `docs/plan/league-chat-plan.md` "DM 2차 확정안"·"신고 UI"·"대화 삭제", 목업 claude.ai/artifact/RQ3FA5zvPgE7zJtbArjZfK.

@@ -4,6 +4,7 @@
 // 구독하므로 FAB 배지가 올라가고, 리그 화면을 이동해도 열림 상태·탭·대화·입력 중이던 초안이 유지된다(초안은 대화별로 이 컴포넌트 상태).
 // - FAB(48px 원형, 주황 그라디언트): 닫힘 = 말풍선 아이콘 + 안 읽은 수 배지(퍼블릭 + DM + 알림 합계 하나), 열림 = 같은 자리에서 X 닫기 버튼
 // - 위젯 [2026-10-21 DM] 600×560, 탭 [채팅 | 알림]. 채팅 탭 = 좌측 220px 채팅 목록(# 퍼블릭 + 다이렉트 메시지, ChatSidebar) 상시 표시
+//   (목록 맨 아래 버튼으로 56px 아이콘 띠로 접기 → 위젯 436px, 기기별 기억)
 //   + 우측 대화 영역(퍼블릭 대화 / DM 대화 / 새 대화 상대 고르기). 화면 폭이 좁으면(640px 미만) 목록 → 대화 한 화면씩.
 // - 신고: 말풍선 "신고" → 대화 영역을 어둡게 덮고(블러 금지 — 2026-09-30 실측 렉) 사유 팝오버(ReportPopover)
 // - DM 대화 삭제: 헤더 "대화 삭제" → 헤더가 확인 단계로 바뀜(트레이드 수락/거절 확인 단계와 같은 방식, 모달 아님). 나에게서만 삭제
@@ -61,12 +62,16 @@ interface DockProps {
 
 const openKey = (roomId: string) => `nba-gm-sim-chat-open:${roomId}`;
 const TAB_KEY = 'nba-gm-sim-dock-tab';
+const SIDEBAR_COLLAPSED_KEY = 'nba-gm-sim-chat-sidebar-collapsed';
 
 function readOpen(roomId: string): boolean {
     try { return window.localStorage.getItem(openKey(roomId)) === '1'; } catch { return false; }
 }
 function readTab(): DockTab {
     try { return window.localStorage.getItem(TAB_KEY) === 'notifications' ? 'notifications' : 'chat'; } catch { return 'chat'; }
+}
+function readCollapsed(): boolean {
+    try { return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch { return false; }
 }
 function writeStorage(key: string, value: string): void {
     try { window.localStorage.setItem(key, value); } catch { /* 사생활 모드 등 — 무시 */ }
@@ -84,6 +89,8 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
     const [view, setView] = useState<ChatView>('public');
     /** 좁은 화면에서 대화 영역을 보고 있는지(false면 목록) */
     const [paneOpen, setPaneOpen] = useState(false);
+    /** [2026-10-21] 좌측 채팅 목록 접기(56px 아이콘 띠) — 위젯 폭 600 → 436px. 기기별 기억(localStorage) */
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(readCollapsed);
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const [report, setReport] = useState<ReportTarget | null>(null);
     const [noticeId, setNoticeId] = useState<number | null>(null);
@@ -184,6 +191,13 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
         setView('dm');
     }, [dm.openWith]);   // eslint-disable-line react-hooks/exhaustive-deps
     const backToList = useCallback(() => setPaneOpen(false), []);
+    const toggleSidebar = useCallback(() => {
+        setSidebarCollapsed(c => {
+            writeStorage(SIDEBAR_COLLAPSED_KEY, c ? '0' : '1');
+            return !c;
+        });
+    }, []);
+    const collapsed = sidebarCollapsed && !narrow;
 
     const activeId = view === 'public' ? 'public' : view === 'new' ? 'new' : (dm.active?.convKey ?? null);
     const excludeUserIds = useMemo(() => new Set(dm.conversations.map(c => c.peer_id)), [dm.conversations]);
@@ -385,7 +399,7 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                     id={WIDGET_ID}
                     aria-label="채팅과 알림"
                     onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}
-                    className="pointer-events-auto flex flex-col w-[600px] max-w-[calc(100vw-32px)] h-[min(560px,calc(100dvh-112px))] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
+                    className={`pointer-events-auto flex flex-col ${collapsed ? 'w-[436px]' : 'w-[600px]'} max-w-[calc(100vw-32px)] h-[min(560px,calc(100dvh-112px))] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
                 >
                     {/* 탭 + 우측 보조 동작 */}
                     <div className="flex items-center justify-between gap-2 pl-2 pr-3 border-b border-slate-800 shrink-0">
@@ -413,6 +427,8 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                                         onSelectConversation={selectConversation}
                                         onNew={startNew}
                                         fullWidth={narrow}
+                                        collapsed={collapsed}
+                                        onToggleCollapsed={narrow ? undefined : toggleSidebar}
                                     />
                                 )}
                                 {showingPane && (

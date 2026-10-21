@@ -37,6 +37,7 @@ import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
 import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
 import { ActionLogTab } from './settings/ActionLogTab';
 import { TeamTacticsTab } from './settings/TeamTacticsTab';
+import { ChatReviewTab } from './settings/ChatReviewTab';
 import { AdminTradeBlock } from './settings/AdminTradeBlock';
 
 function normalizationOverrideToLevel(normOverride: { enabled?: boolean; k?: number } | undefined): number {
@@ -105,7 +106,7 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics';
+type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics' | 'chat';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'league',   label: '리그' },
@@ -122,6 +123,8 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'log',     label: '로그' },
     // [2026-10-05] 참가자 뎁스차트/전술값 읽기 전용 탭(room_members.tactics/depth_chart) — 저장 버튼 없음.
     { id: 'tactics', label: '팀 전술' },
+    // [2026-10-21] 채팅 신고 내역·메시지 검색(ChatReviewTab) — 읽기 전용. DM 전체는 전역 어드민만, 오너는 신고된 대화만(서버 RPC가 판정).
+    { id: 'chat',    label: '신고' },
 ];
 const UNSAVED_TAB_DOT = { tone: 'warning', label: '저장하지 않은 변경사항' } as const;
 
@@ -1158,6 +1161,11 @@ const LeagueSettingsView: React.FC = () => {
             {/* ── 로그 (세션 감사 로그, 읽기 전용) ────────────────────────────── */}
             {activeTab === 'log' && (
                 <ActionLogTab room={room} leagueTeams={leagueTeams} />
+            )}
+
+            {/* ── 신고 (채팅 신고 내역·메시지 검색, 읽기 전용) ─────────────────── */}
+            {activeTab === 'chat' && (
+                <ChatReviewTab room={room} leagueTeams={leagueTeams} isGlobalAdmin={!!isGlobalAdmin} />
             )}
 
             {/* ── 팀 전술 (참가자 뎁스차트/전술값, 읽기 전용) ─────────────────── */}

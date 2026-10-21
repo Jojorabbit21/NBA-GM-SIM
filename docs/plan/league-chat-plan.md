@@ -1,6 +1,6 @@
 # 리그 세션 채팅 (league_chat)
 
-> 상태(2026-10-21): **DM + 메시지 신고 + 위젯 2단 레이아웃 구현 완료** — `migrations/league_chat_dm.sql` 적용, `useLeagueDm`·`useChatSendGate`·`components/multi/chat/*`, tsc/vite build 통과, DB 권한 시험 통과, **브라우저 E2E 미실시**. 남은 것: 세션 설정 "채팅 검수" 탭(3-e), 보존 정책, 모바일·알림 탭 폭 확인. (이전 상태) **DB 1단계 + 클라이언트 2단계 구현 완료 (2026-10-17)** — 테이블·RPC·Realtime 권한(`migrations/league_chat_messages.sql`), `chatService.ts`·`useLeagueChat.ts`·`LeagueChatDock.tsx`·`LeagueLayout` 마운트·토스트 오프셋·`z-widget`. tsc/vite build 통과. **브라우저 E2E(구독·수신·presence·IME·FAB/토스트 겹침)는 미검증**, 보존 정책(오래된 메시지 삭제)은 미구현. 상세 Before/After는 dev-log 2026-10-17 두 항목. UI는 우측 하단 FAB → 위젯으로 확정, DM은 1차 제외(스키마만 대비). 결정 대기 항목은 맨 아래.
+> 상태(2026-10-21): **DM + 메시지 신고 + 위젯 2단 레이아웃 구현 완료** — `migrations/league_chat_dm.sql` 적용, `useLeagueDm`·`useChatSendGate`·`components/multi/chat/*`, tsc/vite build 통과, DB 권한 시험 통과, **브라우저 E2E 미실시**. "신고" 탭(3-e, 처음 이름은 "채팅 검수")도 같은 날 구현(`migrations/league_chat_review.sql`, `ChatReviewTab.tsx`). 남은 것: 보존 정책, 모바일·알림 탭 폭 확인, 브라우저 E2E. (이전 상태) **DB 1단계 + 클라이언트 2단계 구현 완료 (2026-10-17)** — 테이블·RPC·Realtime 권한(`migrations/league_chat_messages.sql`), `chatService.ts`·`useLeagueChat.ts`·`LeagueChatDock.tsx`·`LeagueLayout` 마운트·토스트 오프셋·`z-widget`. tsc/vite build 통과. **브라우저 E2E(구독·수신·presence·IME·FAB/토스트 겹침)는 미검증**, 보존 정책(오래된 메시지 삭제)은 미구현. 상세 Before/After는 dev-log 2026-10-17 두 항목. UI는 우측 하단 FAB → 위젯으로 확정, DM은 1차 제외(스키마만 대비). 결정 대기 항목은 맨 아래.
 
 ## 목적
 세션(room) 참가자끼리 쓰는 텍스트 채팅. 세션당 최대 30명, 세션 전체 채팅 1방.
@@ -88,7 +88,7 @@ create index on league_chat_messages (room_id, id desc);   -- 최근 N건 조회
 
 ### 형태
 - **메일형이 아니라 대화(스레드)형** — 제목·참조·폴더 없음. 단 비동기 필수(실측 동시 접속 14~18 / 참가 23): 오프라인 중 받은 메시지는 쌓이고 접속 시 안 읽은 수로 표시
-- UI (2026-10-21 갱신): 위젯 600×560, 탭 `채팅 | 알림`. 채팅 탭 = **좌측 220px 목록 상시 표시**(맨 위 **"퍼블릭"** 채널(= 리그 전체 채팅, 로고 없이 **"# 퍼블릭"** — `#`은 slate-500 장식 기호(`aria-hidden`) + 이름 + 배지, 우측 대화창 제목도 같은 표기) + "다이렉트 메시지" 구역: 각 DM 행은 **로고·이름·안 읽은 수 배지만**, 최근 메시지 미리보기 없음 — 행 높이 44px) + 우측 380px 대화창(기존 채팅 UI 재사용). 새 대화는 구역 제목 옆 **+ 아이콘 버튼**(`aria-label="새 대화"`) → 우측에 참가자 검색·목록 — **이미 대화 중인 상대(좌측 DM 목록에 있는 사람)는 목록에서 제외**, AI 팀·관전자도 제외(다른 화면 진입점은 별도 결정). DM이 하나도 없을 때 목록에 빈 상태 안내는 **두지 않음**(구역 제목 + 버튼만)
+- UI (2026-10-21 갱신): 위젯 600×560, 탭 `채팅 | 알림`. 채팅 탭 = **좌측 220px 목록 상시 표시**(맨 위 **"퍼블릭"** 채널(= 리그 전체 채팅, 로고 없이 **"# 퍼블릭"** — `#`은 slate-500 장식 기호(`aria-hidden`) + 이름 + 배지, 우측 대화창 제목도 같은 표기) + "다이렉트 메시지" 구역: 각 DM 행은 **로고·이름·안 읽은 수 배지만**, 최근 메시지 미리보기 없음 — 행 높이 44px) + 우측 380px 대화창(기존 채팅 UI 재사용). 새 대화는 구역 제목 옆 **+ 아이콘 버튼**(`aria-label="새 대화"`) → 우측에 참가자 검색·목록 — **이미 대화 중인 상대(좌측 DM 목록에 있는 사람)는 목록에서 제외**, AI 팀·관전자도 제외(다른 화면 진입점은 별도 결정). DM이 하나도 없을 때 목록에 빈 상태 안내는 **두지 않음**(구역 제목 + 버튼만). **목록 접기(2026-10-21)**: 목록 맨 아래 접기/펼치기 버튼(`IconButton lg`, PanelLeftClose/Open) → 접으면 56px 아이콘 띠(# / + / 로고, 안 읽은 수는 `CountBadge sm` 모서리, 이름은 title·aria-label)로 바뀌고 위젯 폭 600 → 436px. 기기별 localStorage(`nba-gm-sim-chat-sidebar-collapsed`). 640px 미만(목록 전체 폭)에서는 버튼 없음
 - 저장: 기존 `league_chat_messages`에 `recipient_id`·`conv_key` 채움, 인덱스 `(room_id, conv_key, id desc)` 추가. 대화 테이블 없음(행 수는 메시지 수에만 비례)
 - 전달: 유저별 받은편지함 비공개 채널 `league-dm:{room_id}:{user_id}` 1개. 받는 사람 토픽으로만 `realtime.send`, 보낸 사람 화면은 RPC 반환값으로 갱신(1건당 Realtime 약 2)
 - 안 읽음: 대화별 읽음 위치 `(room_id, user_id, conv_key, last_read_id)` — 연 적 있는 대화만 행 생성
