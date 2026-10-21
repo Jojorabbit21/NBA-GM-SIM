@@ -104,10 +104,6 @@ function formatRemaining(expiresAt: string): string {
     return `${minutes}분 남음`;
 }
 
-// [2026-10-20] 역제안 스레드 — 메일 답장의 인용처럼, 이 제안이 응답한 이전 제안들을 접어서 보여준다(루트 → 직전 순).
-const OfferThread: React.FC<{
-    offerId: string;
-    teamName: (id: string) => string;
 // 메세지함 목록용 — 항상 "N일 N시간 남음"(만료 직전엔 0일 0시간 남음)
 function formatRemainingDaysHours(expiresAt: string): string {
     const totalMinutes = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 60_000));
@@ -116,6 +112,10 @@ function formatRemainingDaysHours(expiresAt: string): string {
     return `${days}일 ${hours}시간 남음`;
 }
 
+// [2026-10-20] 역제안 스레드 — 메일 답장의 인용처럼, 이 제안이 응답한 이전 제안들을 접어서 보여준다(루트 → 직전 순).
+const OfferThread: React.FC<{
+    offerId: string;
+    teamName: (id: string) => string;
     playerName: (id: string) => string;
 }> = ({ offerId, teamName, playerName }) => {
     const [open, setOpen] = useState(true);
