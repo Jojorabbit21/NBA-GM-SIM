@@ -2,7 +2,9 @@
 import { GameState, TeamState, LivePlayer, RotationOverride, isOut } from './pbpTypes';
 import { DepthChart, RotationOutReason } from '../../../../types';
 import { formatTime } from './timeEngine';
-import { evaluateFoulTroubleAction } from './substitutionSystem';
+import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN } from './substitutionSystem';
+import { assignCourtSlots, snapshotSlots, pickBestFive, vacancyFit } from './slotAssignment';
+import { planSuccession } from './rotationSuccession';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -17,6 +19,9 @@ export interface SubRequest {
 const FALLBACK_ONCOURT_BONUS = 8;       // 체력 점수에 더하는 코트 위 가산점 (진동 방지 히스테리시스 폭)
 const FALLBACK_MIN_STINT_SEC = 120;     // 투입 후 이 시간 안에는 폴백이 내보내지 않음
 const FALLBACK_MIN_REST_SEC = 120;      // 교체 아웃 후 이 시간 안에는 폴백이 다시 투입하지 않음
+// [2026-10-22] 빈 시간 보충 시 비어 있는 슬롯에 맞는 선수를 우선 — 슬롯 어색함 1점당 체력 점수 이만큼 감점
+// (인접 포지션 = −10, 두 칸 = −30, 세 칸 = −100). 이전엔 슬롯을 전혀 보지 않아 보충 선수가 SF 2명·SG 0명 등을 만들었다.
+const FALLBACK_SLOT_FIT_WEIGHT = 10;
 
 const POSITION_ADJACENCY: Record<string, string[]> = {
     PG: ['SG'],
@@ -25,15 +30,6 @@ const POSITION_ADJACENCY: Record<string, string[]> = {
     PF: ['SF', 'C'],
     C:  ['PF'],
 };
-
-/** 뎁스차트에서 선수의 슬롯 포지션 조회 */
-function getSlotPosition(playerId: string, depthChart?: DepthChart): string | null {
-    if (!depthChart) return null;
-    for (const pos of ['PG', 'SG', 'SF', 'PF', 'C'] as const) {
-        if (depthChart[pos]?.includes(playerId)) return pos;
-    }
-    return null;
-}
 
 /**
  * 뎁스차트에서 특정 포지션의 대체자 후보를 순서대로 반환
@@ -140,76 +136,32 @@ export function transferSchedule(team: TeamState, sourceId: string | null, targe
 /**
  * 2. 승계 로직 (Succession Logic) - 지시 사항 엄수
  */
+/**
+ * 영구 이탈(부상·퇴장 등)한 선수의 남은 출전 시간을 이어받을 사람을 정한다.
+ * [2026-10-22] 경기 전 부상 처리와 같은 함수(rotationSuccession.planSuccession)를 쓴다 — 이전에는 이 함수가 따로 한 칸씩
+ * 올리기만 하고 후임의 건강·그 분의 중복 출전을 확인하지 않았다(transferSchedule로 OR 병합 → 겹치는 분에 인원 감소).
+ */
 function applyRotationSuccession(team: TeamState, outPlayer: LivePlayer, currentMinute: number) {
-    if (!team.depthChart || !team.tactics.rotationMap) return;
+    if (!team.tactics.rotationMap) return;
 
-    // 포지션 및 뎁스 파악
-    const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-    let rolePos: keyof DepthChart | null = null;
-    let depthIndex: number = -1;
+    const players = [...team.onCourt, ...team.bench].map(p => {
+        let tier: 0 | 1 | 2 | 3;
+        if (p.playerId === outPlayer.playerId || isOut(p)) tier = 3;
+        else if (p.health === 'Injured') tier = 2;
+        else if (p.health !== 'Healthy' || p.isShutdown || p.benchReason) tier = 1;
+        else tier = 0;
+        return { id: p.playerId, ovr: p.ovr, nativePosition: p.nativePosition ?? p.position, tier, returnDate: p.returnDate };
+    });
 
-    for (const pos of positions) {
-        const chart = team.depthChart[pos];
-        const idx = chart.indexOf(outPlayer.playerId);
-        if (idx !== -1) {
-            rolePos = pos;
-            depthIndex = idx;
-            break;
-        }
-    }
-
-    // 뎁스차트에 없는 선수(RES)가 아웃된 경우 -> 승계 로직 불필요
-    if (!rolePos) return; 
-
-    const chart = team.depthChart[rolePos];
-    const starterId = chart[0];
-    const benchId = chart[1];
-    const thirdId = chart[2];
-
-    const excludeIds = new Set<string>([outPlayer.playerId]);
-    team.onCourt.forEach(p => excludeIds.add(p.playerId));
-
-    // --- CASE 1: 주전(Starter) 아웃 ---
-    if (depthIndex === 0) {
-        if (benchId && thirdId) {
-            transferSchedule(team, benchId, thirdId, currentMinute);
-        }
-        if (benchId) {
-            transferSchedule(team, starterId, benchId, currentMinute);
-        } else if (thirdId) {
-            transferSchedule(team, starterId, thirdId, currentMinute);
-        } else {
-            const res = findResCandidate(team, rolePos, excludeIds);
-            if (res) transferSchedule(team, starterId, res.playerId, currentMinute);
-        }
-    }
-    // --- CASE 2: 벤치(Bench) 아웃 ---
-    else if (depthIndex === 1) {
-        if (thirdId) {
-            transferSchedule(team, benchId, thirdId, currentMinute);
-        } else {
-            const res = findResCandidate(team, rolePos, excludeIds);
-            if (res) transferSchedule(team, benchId, res.playerId, currentMinute);
-        }
-    }
-    // --- CASE 3: 써드(Third) 아웃 ---
-    else if (depthIndex === 2) {
-        const res = findResCandidate(team, rolePos, excludeIds);
-        if (res) transferSchedule(team, thirdId, res.playerId, currentMinute);
-    }
-    
-    // 아웃된 선수의 잔여 시간 비움
-    if (team.tactics.rotationMap[outPlayer.playerId]) {
-        for (let i = currentMinute; i < 48; i++) {
-            team.tactics.rotationMap[outPlayer.playerId][i] = false;
-        }
-    }
+    planSuccession({
+        outIds: [outPlayer.playerId],
+        fromMinute: currentMinute,
+        rotationMap: team.tactics.rotationMap,
+        depthChart: team.depthChart,
+        players,
+    });
 }
 
-
-/**
- * 3. 정기 로테이션 체크 및 적용
- */
 export function checkAndApplyRotation(state: GameState, teamState: TeamState, currentTotalSec: number) {
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
     
@@ -282,19 +234,29 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
             return b.ovr - a.ovr;
         });
 
-        for (const p of allAvailable) {
-            if (validSelectedIds.size >= 5) break;
-            validSelectedIds.add(p.playerId);
+        // [2026-10-22] 한 명씩 고르며 매번 "남은 빈 슬롯에 맞는가"를 반영(위 정렬은 동점 정리·초기 순서용)
+        const everyone = [...teamState.onCourt, ...teamState.bench];
+        const remaining = [...allAvailable];
+        while (validSelectedIds.size < 5 && remaining.length > 0) {
+            const selectedPlayers = everyone.filter(p => validSelectedIds.has(p.playerId));
+            let bestIdx = 0, bestScore = -Infinity;
+            remaining.forEach((p, i) => {
+                const score = fallbackScore(p) - FALLBACK_SLOT_FIT_WEIGHT * vacancyFit(p, selectedPlayers, teamState.depthChart);
+                if (score > bestScore + 1e-9) { bestScore = score; bestIdx = i; }
+            });
+            validSelectedIds.add(remaining[bestIdx].playerId);
+            remaining.splice(bestIdx, 1);
         }
     }
 
-    // 3. 실제 교체 실행 (OVR 순 5명 컷)
+    // 3. 실제 교체 실행 (5명 컷)
     let finalRequiredIds: string[] = Array.from(validSelectedIds);
     if (finalRequiredIds.length > 5) {
-        const sorted = finalRequiredIds.map(id => 
-            [...teamState.onCourt, ...teamState.bench].find(p => p.playerId === id)
-        ).filter(p => p).sort((a, b) => b!.ovr - a!.ovr);
-        finalRequiredIds = sorted.slice(0, 5).map(p => p!.playerId);
+        // [2026-10-22] OVR 상위 5명만 남기던 방식 → 슬롯을 가장 잘 채우는 5명(동점이면 OVR 합). 하나뿐인 C가 잘리는 것 방지
+        const cands = finalRequiredIds
+            .map(id => [...teamState.onCourt, ...teamState.bench].find(p => p.playerId === id))
+            .filter((p): p is LivePlayer => !!p);
+        finalRequiredIds = pickBestFive(cands, teamState.depthChart, snapshotSlots(teamState)).map(p => p.playerId);
     }
 
     const currentOnCourtIds = teamState.onCourt.map(p => p.playerId);
@@ -303,6 +265,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
 
     // 반드시 5명이 확보된 경우에만 교체 실행 (안전장치)
     if (needsUpdate && finalRequiredIds.length === 5) {
+        const slotsBefore = snapshotSlots(teamState);
         const toRemove = teamState.onCourt.filter(p => !finalRequiredIds.includes(p.playerId));
         const toAdd = teamState.bench.filter(p => finalRequiredIds.includes(p.playerId));
 
@@ -324,15 +287,15 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
             if (idx > -1) {
                 teamState.bench.splice(idx, 1);
                 teamState.onCourt.push(p);
-                // 뎁스차트 슬롯 포지션으로 업데이트
-                p.position = getSlotPosition(p.playerId, teamState.depthChart) || p.position;
                 if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
                 state.rotationHistory[p.playerId].push({ in: currentTotalSec, out: -1 });
                 p.lastSubInTime = state.gameClock;
                 p.conditionAtSubIn = p.currentCondition;
             }
         });
-        
+        // [2026-10-22] 슬롯 재배정 — 이전엔 들어온 선수에게 뎁스차트 첫 등재 슬롯을 붙여 PG 2명 등이 생겼다(slotAssignment.ts)
+        assignCourtSlots(teamState, slotsBefore);
+
         if (toRemove.length > 0 || toAdd.length > 0) {
              const inNames = toAdd.map(p => p.playerName).join(', ');
              const outNames = toRemove.map(p => p.playerName).join(', ');
@@ -403,13 +366,13 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
         const inIdx = team.bench.indexOf(inPlayer);
 
         if (outIdx > -1 && inIdx > -1) {
+            const slotsBefore = snapshotSlots(team);
             team.onCourt.splice(outIdx, 1);
             team.bench.push(outPlayer);
 
             team.bench.splice(inIdx, 1);
             team.onCourt.push(inPlayer);
-            // 나가는 선수의 슬롯 포지션 계승
-            inPlayer.position = outPlayer.position;
+            assignCourtSlots(team, slotsBefore);   // 1:1이면 나간 선수 슬롯 승계(slotAssignment.ts)
 
             // 기록
             const histOut = state.rotationHistory[outPlayer.playerId];
@@ -459,6 +422,12 @@ export function benchWithOverride(
 
     // 2. 대체자 탐색
     const excludeIds = new Set<string>([outPlayer.playerId, ...team.onCourt.map(p => p.playerId)]);
+    // [2026-10-22] 탈진 교체의 대체자는 지금 선수보다 체력이 SHUTDOWN_MIN_GAIN 이상 높은 선수만(substitutionSystem과 같은 조건)
+    if (reason === 'shutdown') {
+        for (const b of team.bench) {
+            if (b.currentCondition < outPlayer.currentCondition + SHUTDOWN_MIN_GAIN) excludeIds.add(b.playerId);
+        }
+    }
     let filler = findResCandidate(team, outPlayer.position, excludeIds, false);
     if (!filler) filler = findResCandidate(team, outPlayer.position, excludeIds, true);
     if (!filler) return; // 뎁스 소진 → 벤치 불가, 계속 기용
@@ -508,12 +477,12 @@ export function benchWithOverride(
     const inIdx = team.bench.indexOf(filler);
 
     if (outIdx > -1 && inIdx > -1) {
+        const slotsBefore = snapshotSlots(team);
         team.onCourt.splice(outIdx, 1);
         team.bench.push(outPlayer);
         team.bench.splice(inIdx, 1);
         team.onCourt.push(filler);
-        // 나가는 선수의 슬롯 포지션 계승
-        filler.position = outPlayer.position;
+        assignCourtSlots(team, slotsBefore);   // 1:1이면 나간 선수 슬롯 승계(slotAssignment.ts)
 
         const histOut = state.rotationHistory[outPlayer.playerId];
         if (histOut && histOut.length > 0) {
@@ -771,6 +740,7 @@ export function executeGarbageSubstitution(
     const inPlayers: LivePlayer[] = [];
     const outNames: string[] = [];
     const inNames: string[] = [];
+    const slotsBefore = snapshotSlots(team);
 
     for (const outP of outPlayers) {
         // 1차: 같은 포지션 + OVR 낮은 순
@@ -788,8 +758,6 @@ export function executeGarbageSubstitution(
         team.bench.push(outP);
         team.bench.splice(team.bench.indexOf(inP), 1);
         team.onCourt.push(inP);
-        // 나가는 선수의 슬롯 포지션 계승
-        inP.position = outP.position;
 
         // [Fix 2026-10-17] Sync rotationMap with the swap. Without this, checkAndApplyRotation (same step)
         // rebuilds the lineup from the map and puts outP straight back, and the garbage request repeats
@@ -818,6 +786,8 @@ export function executeGarbageSubstitution(
         outNames.push(outP.playerName);
         inNames.push(inP.playerName);
     }
+    // [2026-10-22] 일괄 교체 후 슬롯 재배정(이전: 짝지은 나간 선수 슬롯을 하나씩 승계)
+    assignCourtSlots(team, slotsBefore);
 
     if (inNames.length > 0) {
         state.logs.push({

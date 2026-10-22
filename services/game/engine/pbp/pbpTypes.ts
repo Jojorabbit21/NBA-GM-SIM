@@ -20,6 +20,8 @@ export interface LivePlayer extends PlayerBoxScore {
     currentCondition: number;
     startCondition: number; // [New] To calculate fatigue used
     position: string;
+    /** [2026-10-22] 선수 고유 포지션(meta). position은 "지금 맡은 코트 슬롯" — 슬롯 배정(slotAssignment.ts)에만 쓴다 */
+    nativePosition?: string;
     ovr: number;
     isStarter: boolean; 
     health: 'Healthy' | 'Injured' | 'Day-to-Day'; 

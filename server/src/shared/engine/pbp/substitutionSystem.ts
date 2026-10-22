@@ -31,6 +31,19 @@ interface FoulTroubleAction {
 
 const HARD_FLOOR = 20;
 
+// [2026-10-22] 탈진 교체 기준을 "쓸 수 있는 벤치 선수 수"에 따라 낮춘다. 쓸 수 있는 벤치 = 건강하고, 퇴장·탈진·임시 벤치가 아니고,
+// 코트에 없는 선수. 벤치가 얇은데 20%에서 계속 빼면 지친 대체자와 번갈아 들락거리거나(체력 회복 기준이 70%라 한 번 탈진하면 오래
+// 못 돌아옴) 바꿀 사람이 없어도 탈진 플래그만 켜진다. 사람이 부족할수록 지친 채로 버티게 한다(성능 페널티는 기존 체력 시스템 그대로).
+//   쓸 수 있는 벤치 3명 이상: ×1 (기준 20%, 지금과 같음) / 2명: ×0.75 (15%) / 1명: ×0.5 (10%) / 0명: ×0 (빼지 않음)
+export function shutdownFloorScale(usableBench: number): number {
+    if (usableBench >= 3) return 1;
+    if (usableBench === 2) return 0.75;
+    if (usableBench === 1) return 0.5;
+    return 0;
+}
+/** 탈진 교체는 대체자의 체력이 지금 선수보다 이만큼 이상 높을 때만(18%인 선수를 22%로 바꿔봐야 의미가 없다) */
+export const SHUTDOWN_MIN_GAIN = 15;
+
 // ─────────────────────────────────────────────────────────────
 // Player Importance Classification
 // ─────────────────────────────────────────────────────────────
@@ -242,8 +255,11 @@ export function checkSubstitutionsV2(
         }
 
         const restThreshold = playerConfig?.restThreshold ?? 0;
-        const effectiveFloor = Math.max(HARD_FLOOR, restThreshold);
-        if (p.currentCondition <= effectiveFloor) {
+        // [2026-10-22] 쓸 수 있는 벤치 수에 따라 기준 완화 + 대체자가 확실히 나을 때만 교체(shutdownFloorScale / SHUTDOWN_MIN_GAIN)
+        const usableBench = team.bench.filter(b => b.health === 'Healthy' && !isOut(b) && !b.isShutdown && !b.benchReason);
+        const effectiveFloor = Math.max(HARD_FLOOR, restThreshold) * shutdownFloorScale(usableBench.length);
+        const bestAltCondition = usableBench.reduce((m, b) => Math.max(m, b.currentCondition), -Infinity);
+        if (p.currentCondition <= effectiveFloor && bestAltCondition >= p.currentCondition + SHUTDOWN_MIN_GAIN) {
             p.isShutdown = true;
             requests.push({
                 outPlayer: p,

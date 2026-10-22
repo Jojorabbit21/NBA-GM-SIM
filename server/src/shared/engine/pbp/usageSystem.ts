@@ -18,7 +18,7 @@ import { PLAY_TYPE_USAGE_WEIGHTS } from '../../game/config/usageWeights.ts';
 // 먹이는 Star Gravity 부스트(possessionHandler.ts)도 자체 Math.min(0.30,...)로 topGravity=83부터
 // saturate돼서 부작용 없음(확인 완료). 320명 리그 실측: raw≥99 29명(전부 OVR87+), 중앙값 60.1 —
 // 기존 부스트 임계값(63/83)과 여전히 맞아떨어져 재조정 없이 유지.
-function calculateScoringGravity(p: LivePlayer, insideOut: number): number {
+export function calculateScoringGravity(p: Pick<LivePlayer, 'attr' | 'ovr'>, insideOut: number): number {
     const a = p.attr;
     const insZone = (a.closeShot + a.layup + a.dunk + a.postPlay) / 4;
     const threeAvg = (a.threeCorner + a.three45 + a.threeTop) / 3;

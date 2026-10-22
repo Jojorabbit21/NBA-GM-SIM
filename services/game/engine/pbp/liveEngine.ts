@@ -8,6 +8,7 @@ import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
 import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
 import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution } from './rotationLogic';
+import { assignCourtSlots, snapshotSlots } from './slotAssignment';
 import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
 import { calculateRecovery } from '../fatigueSystem';
@@ -791,13 +792,14 @@ export function applyManualSubstitution(
     const inIdx  = userTeam.bench.indexOf(inPlayer);
 
     if (outIdx > -1 && inIdx > -1) {
+        const slotsBefore = snapshotSlots(userTeam);
         userTeam.onCourt.splice(outIdx, 1);
         userTeam.bench.push(outPlayer);
 
         userTeam.bench.splice(inIdx, 1);
         userTeam.onCourt.push(inPlayer);
-        // 나가는 선수의 슬롯 포지션 계승
-        inPlayer.position = outPlayer.position;
+        // [2026-10-22] 슬롯 재배정 — 1:1이면 나가는 선수 슬롯 승계(slotAssignment.ts)
+        assignCourtSlots(userTeam, slotsBefore);
 
         // rotation history 기록
         const histOut = state.rotationHistory[outPlayer.playerId];

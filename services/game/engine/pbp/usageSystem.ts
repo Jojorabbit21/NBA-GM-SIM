@@ -45,7 +45,7 @@ import { PLAY_TYPE_USAGE_WEIGHTS } from '../../config/usageWeights';
  *     중앙값 60.1, p90 98.1 — Star Gravity 부스트 임계값(63/83, possessionHandler.ts:366)은 이
  *     분포와 여전히 합리적으로 맞아떨어져(63 미만 57%, 83 이상 19%) 별도 재조정 없이 유지.
  */
-function calculateScoringGravity(p: LivePlayer, insideOut: number): number {
+export function calculateScoringGravity(p: Pick<LivePlayer, 'attr' | 'ovr'>, insideOut: number): number {
     const a = p.attr;
     // 그라비티 전용 zone — p.attr.ins/out과는 다른 값 (위 docstring 참고)
     const insZone = (a.closeShot + a.layup + a.dunk + a.postPlay) / 4;

@@ -9,6 +9,8 @@ import { getCoachPreferences } from '../../../coachingStaff/coachGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
 import { LeagueContext, normalizeAttrs } from './leagueNormalization';
+import { assignCourtSlots } from './slotAssignment';
+import { planSuccession } from './rotationSuccession';
 
 /**
  * Player.tendencies.zones(선수 DNA) → 4존 선호도(ra/itp/mid/three) 정규화.
@@ -153,6 +155,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             currentCondition,
             startCondition: currentCondition,
             position: getSlotPosition(p.id) || p.position,
+            nativePosition: p.position,
             ovr: calculatePlayerOvr(p),
             isStarter: false,
             health: p.health || 'Healthy',
@@ -193,6 +196,26 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     const bench: LivePlayer[] = [];
     
     let startingIds: string[] = [];
+
+    // [2026-10-22] 부상 선수의 로테이션 시간 승계를 선발 확정보다 먼저 한다 — 선발은 이 결과 표의 0분 출전자로 정한다.
+    // 이전에는 선발을 먼저 별도 규칙(OVR 순)으로 채운 뒤 승계를 따로 해서 표와 어긋났고(CLE 허드슨/스트릭랜드), 승계도 후임에게
+    // 시간을 덧붙이기만 해 후임이 48분 풀타임이거나 겹치는 분에 4명만 예정되는 문제가 있었다(GS 리브스 24→48분, 표 총합 231분).
+    // 규칙 상세: rotationSuccession.ts.
+    {
+        const injuredNow = sortedRoster.filter(p => p.health === 'Injured').map(p => p.id).sort();
+        if (safeTactics.rotationMap && injuredNow.length > 0) {
+            planSuccession({
+                outIds: injuredNow,
+                fromMinute: 0,
+                rotationMap: safeTactics.rotationMap,
+                depthChart: effectiveDepthChart ?? undefined,
+                players: liveRoster.map(lp => ({
+                    id: lp.playerId, ovr: lp.ovr, nativePosition: lp.nativePosition ?? lp.position,
+                    tier: lp.health === 'Injured' ? 2 : 0, returnDate: lp.returnDate,
+                })),
+            });
+        }
+    }
 
     // [Step 1] 로테이션 맵의 0분대 설정 확인
     if (safeTactics.rotationMap) {
@@ -253,59 +276,6 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         }
     }
     
-    // 3.5. 부상 선수의 로테이션 시간을 뎁스차트 기반으로 백업에게 승계
-    if (safeTactics.rotationMap && effectiveDepthChart && injuredIds.size > 0) {
-        const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-        for (const injuredId of injuredIds) {
-            const injuredMap = safeTactics.rotationMap[injuredId];
-            if (!injuredMap || !injuredMap.some(Boolean)) continue;
-
-            // 해당 선수의 뎁스차트 포지션 및 순번 찾기
-            let rolePos: keyof DepthChart | null = null;
-            let depthIndex = -1;
-            for (const pos of positions) {
-                const chart = effectiveDepthChart[pos];
-                if (!chart) continue;
-                const idx = chart.indexOf(injuredId);
-                if (idx !== -1) { rolePos = pos; depthIndex = idx; break; }
-            }
-
-            // 승계 대상 찾기: 같은 포지션의 다음 순번 → 없으면 OVR 높은 건강한 선수
-            let successorId: string | null = null;
-            if (rolePos) {
-                const chart = effectiveDepthChart[rolePos];
-                for (let i = depthIndex + 1; i < chart.length; i++) {
-                    if (chart[i] && !injuredIds.has(chart[i])) {
-                        successorId = chart[i];
-                        break;
-                    }
-                }
-            }
-            if (!successorId) {
-                // 뎁스차트에 대체자가 없으면 OVR순 건강한 선수
-                const fallback = sortedRoster.find(p =>
-                    p.health !== 'Injured' && p.id !== injuredId &&
-                    !safeTactics.rotationMap![p.id]?.some(Boolean)
-                );
-                if (fallback) successorId = fallback.id;
-            }
-
-            if (successorId) {
-                if (!safeTactics.rotationMap[successorId]) {
-                    safeTactics.rotationMap[successorId] = Array(48).fill(false);
-                }
-                // 부상 선수의 출전 시간을 승계자에게 이전
-                for (let i = 0; i < 48; i++) {
-                    if (injuredMap[i]) {
-                        safeTactics.rotationMap[successorId][i] = true;
-                    }
-                }
-            }
-            // 부상 선수의 맵 비움
-            for (let i = 0; i < 48; i++) injuredMap[i] = false;
-        }
-    }
-
     // 4. 결정된 ID를 기반으로 코트/벤치 배정
     liveRoster.forEach(p => {
         if (startingIds.includes(p.playerId)) {
@@ -324,7 +294,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         ? onCourt.reduce((prev, curr) => (prev.ovr > curr.ovr) ? prev : curr, onCourt[0])
         : null;
 
-    return {
+    const teamState: TeamState = {
         id: team.id,
         name: team.name,
         city: team.city || undefined,
@@ -338,4 +308,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         bonus: false,
         acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID
     };
+    // [2026-10-22] 선발 5명에게 서로 다른 슬롯 배정 — 부상 주전 대체·같은 뎁스 슬롯 2명 선발 시 PG 2명 등 방지
+    assignCourtSlots(teamState);
+    return teamState;
 }

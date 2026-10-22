@@ -61,13 +61,18 @@ Record<string, boolean[]>   // playerId → 48개 boolean (분 단위)
 
 **트리거**: 부상, 6파울 퇴장
 
-**승계 로직** (`applyRotationSuccession`):
-- 뎁스 차트(PG/SG/SF/PF/C × [주전, 벤치, 써드])를 참조
-- 아웃된 선수의 위치에 따라 하위 뎁스로 맵을 승계:
-  - 주전 OUT → 벤치가 주전 맵 상속, 써드가 벤치 맵 상속
-  - 벤치 OUT → 써드가 벤치 맵 상속
-  - 써드 OUT → RES(로테이션 외) 선수가 맵 상속
+**승계 로직** (`rotationSuccession.ts`의 `planSuccession` — 2026-10-22 통일): 경기 전 부상 선수 처리(`initializer`)와 경기 중 영구 이탈(`applyRotationSuccession`)이 **같은 함수**를 쓴다. 로테이션 맵을 직접 갱신한다.
+- 하드 규칙은 하나: 매 분 예정 인원을 `min(5, 처리 전 인원)` 이상으로 유지. 출전 시간 상한 같은 하드 제한은 없다(건강한 선수가 5~6명이면 상한이 규칙끼리 충돌).
+- **1) 역할 승계**: 같은 슬롯 뎁스차트에서 건강한 선수를 순서대로 세워 주전 역할·백업 역할·써드 역할(= 그 순번 선수의 원래 출전 패턴)을 한 칸씩 위로 올린다.
+  - 주전 OUT → 백업이 주전 패턴(예: 36분), 써드가 백업 패턴(예: 12분). 백업이 48분 풀타임이 되지 않는다.
+  - 백업 OUT → 써드가 백업 패턴. 소속 슬롯은 "뎁스차트에서 주전으로 등재된 슬롯, 없으면 처음 등재된 슬롯".
+- **2) 남은 구멍 메우기**: 승계 후에도 그 분의 예정 인원이 모자라면, 그 분에 쉬고 있는 선수 중 점수가 가장 낮은 선수가 맡는다.
+  - 점수 = 자리 적합도(`slotAssignment.vacancyFit`) + 0.06 × 이미 예정된 분 + 컨디션 단계 페널티(탈진·임시 벤치 +20, 부상 +100 — 건강한 선수가 없을 때만, 부상은 복귀 빠른 순) − 직전 분에 같은 구멍을 메운 선수 우대(0.4).
+  - 결과: 인접 포지션 비주전 > 같은 슬롯 주전 연장 > 두 칸 이상 떨어진 선수 순.
+  - 사용자가 원래부터 비워 둔 분(예정 5명 미만)은 건드리지 않는다(런타임 폴백 몫).
+- 선발도 이 결과 표의 0분 출전자로 정한다(`initializer`). 이전엔 선발을 별도 규칙(OVR 순)으로 채워 표와 어긋났다.
 - **아웃된 선수의 잔여 맵은 영구적으로 비워짐** (복귀 불가)
+- 시험: `scripts/rotationSuccessionScenarios.ts`(예외 12개 + 건강한 선수 5·6·7명).
 
 **대체자 탐색 우선순위** (`findResCandidate`):
 1. 동일 포지션 우선
@@ -93,6 +98,22 @@ Record<string, boolean[]>   // playerId → 48개 boolean (분 단위)
 5. `activeOverrides` 스택에 오버라이드 기록
 6. 선수에 `benchReason`, `scheduledReturnMinute` 등 메타데이터 설정
 7. 물리적 스왑 실행
+
+### 탈진(Shutdown) 기준 — 2026-10-22 동적화 (`substitutionSystem.ts`)
+기준 체력은 기본 20%(`HARD_FLOOR`; 개인 휴식 임계치는 2026-10-17부터 비활성이라 실제로는 전원 20%). **쓸 수 있는 벤치 선수 수**에 따라 낮춘다.
+쓸 수 있는 벤치 = 건강하고, 퇴장·탈진·임시 벤치가 아니고, 코트에 없는 선수.
+
+| 쓸 수 있는 벤치 | 기준 (`shutdownFloorScale`) |
+|---|---|
+| 3명 이상 | ×1 → 20% (이전과 동일) |
+| 2명 | ×0.75 → 15% |
+| 1명 | ×0.5 → 10% |
+| 0명 | ×0 → 빼지 않음 (바꿀 사람이 없으니 탈진 플래그도 켜지 않음) |
+
+- **대체자 조건**: 벤치 최고 체력이 지금 선수보다 `SHUTDOWN_MIN_GAIN`(15) 이상 높을 때만 교체. `benchWithOverride`의 대체자 후보도 같은 조건(체력이 이만큼 높지 않은 벤치 선수 제외)을 적용해 두 곳의 판단이 어긋나지 않게 한다.
+- 이유: 벤치가 얇을 때 20%에서 계속 빼면 지친 대체자와 번갈아 들락거린다(체력 회복 기준이 70%라 한 번 탈진하면 오래 못 돌아옴). 사람이 부족할수록 지친 채로 버티게 한다 — 체력 낮은 선수의 성능 페널티는 기존 체력 시스템 그대로.
+- 실측(Pro Basketball League 30팀, 건강한 선수 수 제한): 건강한 6명일 때 경기당 탈진 교체 56.1회 → 1.0회, 7명 5.5 → 1.6, 15명(정상)은 완전히 동일. 대신 체력 20% 미만 선수가 뛴 공격권 비율은 6명 11.2 → 16.3%, 7명 0.3 → 10.8%로 늘어난다(의도된 맞교환).
+- 한계: 비상 보충(`checkAndApplyRotation`)의 "탈진 선수도 포함" 단계와 후임 선정(`rotationSuccession`)의 컨디션 단계 페널티는 이 기준과 별개로 같은 원칙(건강 > 탈진 > 부상)을 따른다.
 
 ---
 
@@ -161,24 +182,36 @@ interface RotationOverride {
 
 ---
 
-## 10. Assigned Position (슬롯 포지션)
+## 10. Assigned Position (슬롯 포지션) — 2026-10-22 개정
 
-`LivePlayer.position`은 선수의 고유 포지션이 아닌 **뎁스차트 슬롯 포지션**을 나타낸다.
+`LivePlayer.position`은 선수의 고유 포지션이 아닌 **지금 맡은 코트 슬롯**을 나타낸다. 고유 포지션은 `LivePlayer.nativePosition`(2026-10-22 추가)에 따로 둔다.
+코트에는 항상 PG·SG·SF·PF·C 슬롯이 하나씩 있으며, **모든 교체 경로가 `slotAssignment.ts`의 `assignCourtSlots()` 하나로 슬롯을 정한다.**
 
-### 초기화
-- `initializer.ts`에서 `getSlotPosition(playerId, depthChart)`로 슬롯 조회
-- 뎁스차트에 없는 RES 선수는 고유 포지션 유지
+### 배정 규칙 (`slotAssignment.ts`)
+코트 위 5명을 다섯 슬롯에 놓는 120가지를 모두 비교해 "어색함" 합이 가장 낮은 배치:
 
-### 교체 시 포지션 계승
-모든 교체 경로에서 들어오는 선수가 나가는 선수의 position을 계승:
-
-| 교체 경로 | 포지션 할당 방식 |
+| 선수와 슬롯 관계 | 어색함 |
 |---|---|
-| `checkAndApplyRotation` | 뎁스차트 슬롯 재조회 (`getSlotPosition`) |
-| `forceSubstitution` | `inPlayer.position = outPlayer.position` |
-| `benchWithOverride` | `filler.position = outPlayer.position` |
-| `executeGarbageSubstitution` | `inP.position = outP.position` |
-| `applyManualSubstitution` | `inPlayer.position = outPlayer.position` |
+| 뎁스차트에 그 슬롯의 **주전**으로 등재 | 0 |
+| 그 슬롯 백업·써드로 등재, 또는 고유 포지션 = 슬롯 | 0.6 |
+| 고유 포지션과 한 칸 / 두 칸 / 세 칸+ 차이 | 1 / 3 / 10 |
+| 코트에 계속 있던 선수가 슬롯을 옮김 | +0.5 |
+
+- 1:1 교체면 결과적으로 **나간 선수의 슬롯을 승계**한다(남은 선수가 움직이는 쪽이 항상 더 비쌈).
+- 8인 로테이션의 "커버 후 복귀"(벤치 가드가 PG를 커버하다가 PG 주전 복귀와 동시에 SG 주전이 쉴 때)는 벤치 가드가 SG로 옮긴다.
+- 동점: 기존 슬롯을 더 많이 유지하는 배치 → 선수 id 순(결정론).
+- 판단(매치업·PnR 자격 등)은 계속 **슬롯 기준** — 고유 포지션은 배정에만 쓴다(고유 포지션 게이팅은 [pf-slot-stacking-issue.md](pf-slot-stacking-issue.md)에서 기각).
+
+### 적용 경로
+| 교체 경로 | 슬롯 배정 |
+|---|---|
+| 경기 시작 (`initTeamState`) | 선발 확정 후 `assignCourtSlots` |
+| 정기 교체 `checkAndApplyRotation` | 교체 직전 스냅샷 → 교체 후 `assignCourtSlots` (이전: 뎁스차트 첫 등재 슬롯 `getSlotPosition` — 삭제) |
+| 빈 시간 보충(맵에 5명 미만) | 후보를 한 명씩 고를 때 `체력 점수 − 10 × vacancyFit`(남은 빈 슬롯 적합도) |
+| 6명 이상 예정 | `pickBestFive` — 슬롯을 가장 잘 채우는 5명(동점 OVR 합). 이전: OVR 상위 5명 |
+| `forceSubstitution` / `benchWithOverride` / `executeGarbageSubstitution` / `applyManualSubstitution` | 스왑 후 `assignCourtSlots` (이전: 나간 선수 position 직접 복사) |
+
+실측(2026-10-22, Pro Basketball League 저장 전술 120경기): 슬롯이 PG~C 하나씩이 아닌 공격권 11.3% → 0.0%(서버·클라이언트 엔진 모두). 리그 득점·포지션별 득점 변화 없음(잡음 범위). 상세: `docs/history/dev-log.md` 2026-10-22.
 
 ### 영향 범위
 position은 엔진 내 수비자 매칭, 존 디펜스 앵커, PnR 스크리너 수비, 코트 비주얼 등에서 `===` 비교로 사용됨. 슬롯 포지션 덕분에 PG를 C에 넣으면 상대 C를 정상 매칭한다.
