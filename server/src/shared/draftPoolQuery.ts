@@ -13,12 +13,20 @@
 // 신뢰할 수 있는 draft_year 범위(leagues.draft_year_min~draft_year_max) 하나로 통일한다.
 // draft_year가 아예 없는 선수(21명, 대부분 옛날 선수)는 범위 필터를 만족할 수 없어 자연히
 // 제외되는데, 이는 필터 설계 문제가 아니라 해당 선수들의 draft_year 데이터 자체가 없어서다.
+// [2026-10-22] 은퇴 필터 추가 — meta_players.retired(boolean)와 leagues.draft_retired_filter.
+// 'all'=필터 없음(기본, 기존 동작), 'active'=현역만, 'retired'=은퇴 선수만. 연도 범위와 AND.
+export type DraftRetiredFilter = 'all' | 'active' | 'retired';
+
 export function applyMetaPlayerPoolFilter<Q extends { eq: any; gte: any; lte: any }>(
     query: Q,
     draftYearMin: number,
     draftYearMax: number,
+    retiredFilter: DraftRetiredFilter | null | undefined = 'all',
 ): Q {
     const min = Number.isFinite(draftYearMin) ? Math.trunc(draftYearMin) : 1946;
     const max = Number.isFinite(draftYearMax) ? Math.trunc(draftYearMax) : 2025;
-    return query.eq('in_multi_pool', true).gte('draft_year', min).lte('draft_year', max);
+    let q = query.eq('in_multi_pool', true).gte('draft_year', min).lte('draft_year', max);
+    if (retiredFilter === 'active') q = q.eq('retired', false);
+    else if (retiredFilter === 'retired') q = q.eq('retired', true);
+    return q;
 }

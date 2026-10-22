@@ -6,13 +6,15 @@
 // 같은 공식의 최종 방어선이 있다(미러) — 공식을 바꾸면 둘 다 고칠 것.
 import { supabase } from '../supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../dataMapper';
-import { applyMetaPlayerPoolFilter } from './draftPoolQuery';
+import { applyMetaPlayerPoolFilter, type DraftRetiredFilter } from './draftPoolQuery';
 import { isEligibleForStandardPool } from '../contracts/draftSalaryScale';
 import type { Player } from '../../types';
 
 export interface DraftPoolFilterParams {
     draftYearMin:       number;
     draftYearMax:       number;
+    /** [2026-10-22] 은퇴 필터 — 미지정이면 'all'. 서버 startDraft.ts와 같은 필터. */
+    retiredFilter?:     DraftRetiredFilter;
     ovrMin:             number;
     ovrMax:             number;
     useCustomOverrides: boolean;
@@ -38,7 +40,7 @@ export async function fetchDraftPoolPlayers(params: DraftPoolFilterParams): Prom
     let query = supabase
         .from('meta_players')
         .select('id, position, base_attributes, tendencies, draft_year');
-    query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax);
+    query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax, params.retiredFilter);
 
     const { data, error } = await query;
     if (error) throw new Error(`드래프트 풀 조회 실패: ${error.message}`);

@@ -35,6 +35,26 @@
 
 
 
+## 2026-10-22 — 멀티 드래프트 풀: 은퇴(retired) 필터 추가
+
+**배경**: 세션 생성 시 `draft_year` 범위로만 풀을 거를 수 있어 "현역만 / 은퇴 선수만" 구분이 불가능했다. `meta_players.retired`(boolean)를 신설하고, 리그별 `draft_retired_filter`(all/active/retired)를 연도 범위와 AND로 결합한다. 기본값 `all`이라 기존 리그는 동작 불변.
+
+**변경 파일**:
+- DB 마이그레이션 `add_meta_players_retired_and_leagues_draft_retired_filter` (+ `migrations/add_retired_filter.sql` 기록용)
+- `services/multi/draftPoolQuery.ts` (client) / `server/src/shared/draftPoolQuery.ts` (server 미러) — `applyMetaPlayerPoolFilter` 4번째 인자 `retiredFilter`, `DraftRetiredFilter` 타입
+- `services/multi/draftPoolCapacity.ts`, `components/multi/DraftPoolModal.tsx`, `components/multi/DraftPoolSettings.tsx`(은퇴 여부 3버튼), `components/multi/CreateLeagueModal.tsx`, `views/multi/league/LeagueSettingsView.tsx`, `views/multi/season/LeagueLobbyPanel.tsx`, `hooks/useMultiSearchData.ts`(queryKey에 포함), `services/multi/leagueService.ts`, `services/multi/roomQueries.ts`
+- `server/src/startDraft.ts`, `server/src/finalize.ts`(muLeague 캐시키·select에 포함)
+
+**Before**: `applyMetaPlayerPoolFilter(q, draftYearMin, draftYearMax)` → `in_multi_pool=true AND draft_year BETWEEN`.
+**After**: 추가로 `retiredFilter==='active'` → `.eq('retired', false)`, `'retired'` → `.eq('retired', true)`.
+
+**DB**: `meta_players.retired boolean NOT NULL DEFAULT false`, `leagues.draft_retired_filter text NOT NULL DEFAULT 'all'` (CHECK all/active/retired), 설정 변경 로그 트리거(`trg_lal_league_settings`) 컬럼 목록에 추가.
+**초기 백필(휴리스틱)**: `draft_year<2026` AND 2026 시즌을 덮는 계약 없음 AND career_history에 2025-26 이후 기록 없음 → retired=true (853명 중 297명). 부정확할 수 있어 검수 필요.
+
+**[후속 — 같은 날] retired 재백필**: 휴리스틱 값을 폐기하고 `scripts/data/bbref_id_worksheet_verified.csv`의 현역 468명 id 목록 기준으로 재설정 — `retired = (id ∉ 현역468 AND draft_year < 2026)`. 결과: 은퇴 307 / 비은퇴 546(현역 466 + 2026 이후 드래프트 80). 현역 468 중 2명은 DB에 id가 없음. 이전 휴리스틱(297명)으로 복원하려면 위 백필 SQL을 다시 실행.
+
+**롤백 방법**: 호출부에서 4번째 인자 제거 + 컬럼 `ALTER TABLE ... DROP COLUMN retired / draft_retired_filter`, 트리거 함수에서 `'draft_retired_filter',` 제거. 서버/클라 미러 같이 되돌릴 것.
+
 ## 2026-10-21 — 세션 설정 "채팅 검수" 탭 (신고 내역·메시지 검색·앞뒤 보기)
 
 **배경**: DM·신고(같은 날) 이후 신고를 볼 화면이 없었음. 결정 3-a/3-b/3-e — 신고에 맥락 스냅샷을 붙이지 않고 검수 화면에서 검색으로 맥락 파악, 열람자 = 전역 어드민 + 세션 오너, DM 전체 검색은 전역 어드민만(오너는 신고된 대화만 — 오너가 참가자라 이해충돌).

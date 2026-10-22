@@ -12,6 +12,7 @@ import {
 } from '../../services/multi/leagueService';
 import { DraftPoolSettings, type DraftFormat } from './DraftPoolSettings';
 import { checkDraftPoolCapacity } from '../../services/multi/draftPoolCapacity';
+import type { DraftRetiredFilter } from '../../services/multi/draftPoolQuery';
 import { DraftSalaryScaleSettings } from './DraftSalaryScaleSettings';
 import {
     type ContractMode, type DraftSalaryScale, DEFAULT_DRAFT_SALARY_SCALE, validateDraftSalaryScale,
@@ -224,6 +225,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     const [draftOvrMax,    setDraftOvrMax]    = useState(99);
     const [draftYearMin,   setDraftYearMin]   = useState(2001);
     const [draftYearMax,   setDraftYearMax]   = useState(2025);
+    const [retiredFilter,  setRetiredFilter]  = useState<DraftRetiredFilter>('all');
     const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     // [2026-09-22] 드래프트 계약 생성 — 'standard'(실제 계약 유지, 풀은 유효 계약자+당해 신인) /
     // 'alternative'(드래프트 전원 라운드 스케일 1년 계약). 표는 services/contracts/draftSalaryScale.ts 기본값.
@@ -400,7 +402,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                 }
                 const capacityErr = await checkDraftPoolCapacity({
                     teamCount: maxTeams, totalRounds,
-                    draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+                    draftYearMin, draftYearMax, retiredFilter, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
                     contractMode, seasonStartYear: virtualSeasonYear, rookieClassYear: draftYearMax,
                 });
                 if (capacityErr) throw new Error(capacityErr);
@@ -436,6 +438,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                         draftOvrMax,
                         draftYearMin,
                         draftYearMax,
+                        draftRetiredFilter: retiredFilter,
                         useCustomOverrides,
                         contractMode,
                         draftSalaryScale,
@@ -475,6 +478,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                         draftOvrMax,
                         draftYearMin,
                         draftYearMax,
+                        draftRetiredFilter: retiredFilter,
                         useCustomOverrides,
                         contractMode,
                         draftSalaryScale,
@@ -1134,6 +1138,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                             onDraftYearMinChange={setDraftYearMin}
                             draftYearMax={draftYearMax}
                             onDraftYearMaxChange={setDraftYearMax}
+                            retiredFilter={retiredFilter}
+                            onRetiredFilterChange={setRetiredFilter}
                             draftFormat={draftFormat}
                             onDraftFormatChange={setDraftFormat}
                             useCustomOverrides={useCustomOverrides}

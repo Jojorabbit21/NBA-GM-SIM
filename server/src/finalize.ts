@@ -226,21 +226,22 @@ async function initializeTeamTactics(
  */
 async function applyLeagueNormalization(
     roomId: string,
-    league: { draft_ovr_min?: number | null; draft_ovr_max?: number | null; draft_year_min?: number | null; draft_year_max?: number | null },
+    league: { draft_ovr_min?: number | null; draft_ovr_max?: number | null; draft_year_min?: number | null; draft_year_max?: number | null; draft_retired_filter?: string | null },
     teamCount: number,
 ): Promise<void> {
     const ovrMin = league.draft_ovr_min ?? 0;
     const ovrMax = league.draft_ovr_max ?? 99;
     const draftYearMin = league.draft_year_min ?? 2001;
     const draftYearMax = league.draft_year_max ?? 2025;
-    const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${teamCount}`;
+    const retiredFilter = (league.draft_retired_filter ?? 'all') as 'all' | 'active' | 'retired';
+    const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${retiredFilter}|${teamCount}`;
 
     const muLeague = await getOrComputeDraftPoolMuLeague(cacheKey, teamCount, async () => {
         // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
         // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
         // (applyMetaPlayerPoolFilter를 startDraft.ts와 공유해서 어긋남을 구조적으로 방지한다.)
         let q = supabase.from('meta_players').select('id, base_attributes');
-        q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+        q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
         const { data: poolData } = await q;
         const ovrs: number[] = [];
         for (const p of poolData ?? []) {
@@ -389,7 +390,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes')
         .eq('id', room.league_id)
         .single();
 
@@ -525,7 +526,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, contract_mode, draft_salary_scale, salary_cap_amount')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, contract_mode, draft_salary_scale, salary_cap_amount')
         .eq('id', room.league_id)
         .single();
 

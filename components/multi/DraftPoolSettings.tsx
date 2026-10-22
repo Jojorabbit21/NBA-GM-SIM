@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Users, AlertTriangle } from 'lucide-react';
 import { fetchDraftPoolPlayers, buildCapacityError } from '../../services/multi/draftPoolCapacity';
 import { DraftPoolModal } from './DraftPoolModal';
+import type { DraftRetiredFilter } from '../../services/multi/draftPoolQuery';
 
 export type DraftFormat = 'snake' | 'linear';
 
@@ -27,6 +28,9 @@ interface Props {
     onDraftYearMinChange: (v: number) => void;
     draftYearMax:         number;
     onDraftYearMaxChange: (v: number) => void;
+    /** [2026-10-22] 은퇴 필터 — 둘 다 넘긴 호출부에서만 선택 UI를 표시한다(개인 팩 드래프트는 카드 풀이라 미전달). */
+    retiredFilter?:          DraftRetiredFilter;
+    onRetiredFilterChange?:  (v: DraftRetiredFilter) => void;
     draftFormat:          DraftFormat;
     onDraftFormatChange:  (v: DraftFormat) => void;
     useCustomOverrides:      boolean;
@@ -54,6 +58,12 @@ const FORMATS: { value: DraftFormat; label: string; desc: string }[] = [
     { value: 'linear', label: '선형',     desc: '매 라운드 동일한 순서' },
 ];
 
+const RETIRED_OPTIONS: { value: DraftRetiredFilter; label: string; desc: string }[] = [
+    { value: 'all',     label: '전체',     desc: '현역과 은퇴 선수 모두 포함' },
+    { value: 'active',  label: '현역만',   desc: '은퇴하지 않은 선수만 풀에 포함' },
+    { value: 'retired', label: '은퇴만',   desc: '은퇴한 선수만 풀에 포함' },
+];
+
 const POS_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'];
 
 export const DraftPoolSettings: React.FC<Props> = ({
@@ -61,6 +71,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
     ovrMax, onOvrMaxChange,
     draftYearMin, onDraftYearMinChange,
     draftYearMax, onDraftYearMaxChange,
+    retiredFilter = 'all', onRetiredFilterChange,
     draftFormat, onDraftFormatChange,
     useCustomOverrides, onUseCustomOverridesChange,
     teamCount, totalRounds,
@@ -111,14 +122,14 @@ export const DraftPoolSettings: React.FC<Props> = ({
         timerRef.current = setTimeout(fetchStats, 400);
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear]);
 
     const fetchStats = async () => {
         setStatsLoading(true);
         try {
             // 저장 시 용량 검증(checkDraftPoolCapacity)과 정확히 같은 조회 경로 — 여기 표시되는
             // "총 선수"가 곧 검증에 쓰이는 풀 크기다.
-            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, ovrMin, ovrMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear });
+            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, retiredFilter, ovrMin, ovrMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear });
 
             const byPos: Record<string, number> = {};
             for (const p of all) {
@@ -204,6 +215,32 @@ export const DraftPoolSettings: React.FC<Props> = ({
                 </p>
             </div>
 
+            {/* 은퇴 여부 필터 — meta_players.retired 기준, 드래프트 연도 범위와 AND */}
+            {onRetiredFilterChange && (
+                <div>
+                    <label className="text-xs text-slate-400 ko-normal block mb-2">은퇴 여부</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {RETIRED_OPTIONS.map(o => (
+                            <button
+                                key={o.value}
+                                type="button"
+                                onClick={() => onRetiredFilterChange(o.value)}
+                                className={`py-2 rounded-xl text-xs font-bold transition-colors ${
+                                    retiredFilter === o.value
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-slate-500 ko-normal">
+                        {RETIRED_OPTIONS.find(o => o.value === retiredFilter)?.desc}
+                    </p>
+                </div>
+            )}
+
             {/* custom_overrides(피크시즌 스탯) 적용 여부 */}
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
                 useCustomOverrides ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent'
@@ -281,6 +318,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
                     ovrMax={ovrMax}
                     draftYearMin={draftYearMin}
                     draftYearMax={draftYearMax}
+                    retiredFilter={retiredFilter}
                     useCustomOverrides={useCustomOverrides}
                     onClose={() => setShowModal(false)}
                 />

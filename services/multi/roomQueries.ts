@@ -82,6 +82,7 @@ export interface LeagueRow {
     draft_ovr_max: number;
     draft_year_min: number;
     draft_year_max: number;
+    draft_retired_filter?: 'all' | 'active' | 'retired';
     /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부 — 기본 false.
      *  utils/leagueOverrides.ts의 shouldUseCustomOverrides() 참조. */
     use_custom_overrides: boolean;

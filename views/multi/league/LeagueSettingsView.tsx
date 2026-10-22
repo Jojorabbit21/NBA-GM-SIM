@@ -14,6 +14,7 @@ import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
 import { DraftPoolSettings, type DraftFormat } from '../../../components/multi/DraftPoolSettings';
 import { checkDraftPoolCapacity } from '../../../services/multi/draftPoolCapacity';
+import type { DraftRetiredFilter } from '../../../services/multi/draftPoolQuery';
 import { DraftSalaryScaleSettings } from '../../../components/multi/DraftSalaryScaleSettings';
 import {
     type ContractMode, type DraftSalaryScale, normalizeDraftSalaryScale, validateDraftSalaryScale,
@@ -183,6 +184,7 @@ const LeagueSettingsView: React.FC = () => {
     const [draftOvrMax,       setDraftOvrMax]       = useState(99);
     const [draftYearMin,      setDraftYearMin]      = useState(2001);
     const [draftYearMax,      setDraftYearMax]      = useState(2025);
+    const [retiredFilter,      setRetiredFilter]     = useState<DraftRetiredFilter>('all');
     const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     const [draftFormat,       setDraftFormat]       = useState<DraftFormat>('snake');
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
@@ -341,6 +343,7 @@ const LeagueSettingsView: React.FC = () => {
         setDraftOvrMax(league.draft_ovr_max ?? 99);
         setDraftYearMin(league.draft_year_min ?? 2001);
         setDraftYearMax(league.draft_year_max ?? 2025);
+        setRetiredFilter(league.draft_retired_filter ?? 'all');
         setUseCustomOverrides((league as any).use_custom_overrides ?? false);
         setDraftFormat((league.draft_pool_strategy ?? 'snake') as DraftFormat);
         setMatchFormat(league.match_format ?? 'best_of_1');
@@ -458,7 +461,7 @@ const LeagueSettingsView: React.FC = () => {
         if (isInProgress) return null;
         return checkDraftPoolCapacity({
             teamCount: maxTeams, totalRounds,
-            draftYearMin, draftYearMax, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+            draftYearMin, draftYearMax, retiredFilter, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
             contractMode, seasonStartYear: (league as any)?.virtual_season_year ?? new Date().getFullYear(), rookieClassYear: draftYearMax,
         });
     };
@@ -487,6 +490,7 @@ const LeagueSettingsView: React.FC = () => {
             draftOvrMax,
             draftYearMin,
             draftYearMax,
+            draftRetiredFilter: retiredFilter,
             useCustomOverrides,
             matchFormat,
             finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
@@ -804,6 +808,7 @@ const LeagueSettingsView: React.FC = () => {
         draftOvrMax !== (league.draft_ovr_max ?? 99) ||
         draftYearMin !== (league.draft_year_min ?? 2001) ||
         draftYearMax !== (league.draft_year_max ?? 2025) ||
+        retiredFilter !== (league.draft_retired_filter ?? 'all') ||
         useCustomOverrides !== ((league as any).use_custom_overrides ?? false) ||
         draftFormat !== (league.draft_pool_strategy ?? 'snake') ||
         (league.type === 'tournament' && (
@@ -2300,6 +2305,8 @@ const LeagueSettingsView: React.FC = () => {
                     draftYearMin={draftYearMin}
                     onDraftYearMinChange={setDraftYearMin}
                     draftYearMax={draftYearMax}
+                    retiredFilter={retiredFilter}
+                    onRetiredFilterChange={setRetiredFilter}
                     onDraftYearMaxChange={setDraftYearMax}
                     draftFormat={draftFormat}
                     onDraftFormatChange={setDraftFormat}

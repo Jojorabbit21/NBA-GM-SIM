@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
-import { applyMetaPlayerPoolFilter } from '../../services/multi/draftPoolQuery';
+import { applyMetaPlayerPoolFilter, type DraftRetiredFilter } from '../../services/multi/draftPoolQuery';
 import { OvrBadge } from '../common/OvrBadge';
 import type { Player } from '../../types';
 import { IconButton } from '../common/IconButton';
@@ -15,6 +15,7 @@ interface Props {
     ovrMin:             number;
     ovrMax:             number;
     draftYearMin:       number;
+    retiredFilter?:     DraftRetiredFilter;
     draftYearMax:       number;
     useCustomOverrides: boolean;
     onClose:            () => void;
@@ -36,7 +37,7 @@ const getStatColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides, onClose }) => {
+export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter = 'all', useCustomOverrides, onClose }) => {
     const [players,   setPlayers]   = useState<Player[]>([]);
     const [loading,   setLoading]   = useState(true);
     const [search,    setSearch]    = useState('');
@@ -53,7 +54,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
         const fetch = async () => {
             setLoading(true);
             let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies');
-            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax);
+            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
 
             const { data, error } = await (q as any);
             if (error) console.error('[DraftPoolModal] query error:', error.message);
@@ -66,7 +67,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
 
         fetch();
         return () => { cancelled = true; };
-    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, useCustomOverrides]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, useCustomOverrides]);
 
     const sorted = useMemo(() => {
         let list = players;
