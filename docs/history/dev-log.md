@@ -35,6 +35,22 @@
 
 
 
+## 2026-10-22 — 배포: Fly 서버는 깨끗한 HEAD worktree에서만 (`scripts/deploy-server.sh`)
+
+**배경**: 여러 세션이 같은 작업 트리를 공유하는데 `fly deploy`는 폴더 파일을 그대로 올려, 다른 세션의 미커밋 작업까지 실서버로 나갈 수 있었음(v188 이후 미커밋 서버 변경 다수 확인). 사용자 결정으로 모든 세션 규칙화.
+
+**변경 파일**:
+- `scripts/deploy-server.sh` (신규) — HEAD를 임시 worktree로 꺼내 `server/`에서 `flyctl deploy -a basketballgm-app-server --remote-only --image-label git-<SHA>`, 푸시 안 된 HEAD는 거부, 끝나면 worktree 제거
+- `CLAUDE.md` — "🚨 Fly 서버 배포 규칙" 섹션 추가
+
+**Before**: 프로젝트 폴더(또는 `server/`)에서 `fly deploy` / `flyctl deploy` 직접 실행.
+
+**After**: `scripts/deploy-server.sh` 실행만 허용(커밋·푸시 후).
+
+**검증**: 이 스크립트로 타임아웃 커밋 배포(아래 항목 참고).
+
+**롤백 방법**: 스크립트 삭제 + CLAUDE.md 섹션 제거(엔진/서버 코드 영향 없음).
+
 ## 2026-10-22 — 드래프트 결과 화면 UI: 격자 하나로 확정(행 = 팀, 열 = 라운드)
 
 **배경**: 사용자 결정 — 리스트 뷰 폐기, 격자만 사용하되 축을 뒤집음. 1열 드래프트 순위, 2열 팀 이름, 1행 라운드 번호, 셀은 선수 이름(text-sm).
