@@ -282,6 +282,17 @@ export interface GameState {
 
     // [New 2026-07] 직전 포제션이 "우리 팀의 수비 리바운드"로 끝났는지 (defReb 속공 트레이드오프용)
     lastEntryWasDefReb: boolean;
+
+    // [2026-10-22] 타임아웃 NBA 규정화 — 피리어드별 의무 타임아웃 슬롯 진행 + 팀별 마지막 타임아웃 시각(경과초)
+    timeoutPeriod: TimeoutPeriodState;
+    lastTimeoutSec: { home: number; away: number };
+}
+
+// [2026-10-22] 피리어드별 타임아웃 진행 상태 (timeoutPolicy.ts 가 관리)
+export interface TimeoutPeriodState {
+    slots: number;                  // 소화된 의무 타임아웃 슬롯 수 (0~2) — 이 피리어드 타임아웃 횟수(최대 2)
+    firstTeamId: string | null;     // 첫 번째 타임아웃을 쓴 팀(두 번째 의무는 반대 팀 차감)
+    lateCapApplied: boolean;        // 4쿼터 3분 이후 2회 상한 적용 완료
 }
 
 // ── Court Position Visualization ──

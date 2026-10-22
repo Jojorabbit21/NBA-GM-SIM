@@ -9,7 +9,7 @@ export const SIM_CONFIG = {
     FATIGUE: {
         DRAIN_BASE: 1.5,
         BENCH_RECOVERY_RATE: 3.0,
-        TIMEOUT_RECOVERY: 1,        // 타임아웃 시 전 선수 기본 회복량
+        TIMEOUT_RECOVERY: 0.5,      // 타임아웃 시 전 선수 기본 회복량 ([2026-10-22] 1 → 0.5: 타임아웃 7회·의무 도입으로 경기당 횟수 증가 보정)
         QUARTER_BREAK_RECOVERY: 1.5,// 쿼터 휴식(1Q→2Q, 3Q→4Q) 시 전 선수 기본 회복량
         HALFTIME_RECOVERY: 5,       // 하프타임(2Q→3Q) 시 전 선수 기본 회복량
         RECOVERY_STAMINA_FACTOR: 0.30,    // 회복 시 Stamina 영향 계수

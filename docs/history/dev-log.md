@@ -35,6 +35,76 @@
 
 
 
+## 2026-10-22 — 엔진: 타임아웃 체력 회복량 1 → 0.5
+
+**배경**: 타임아웃 NBA 규정화(아래 항목)로 경기당 타임아웃이 양 팀 합계 약 14회(합성 시뮬 기준)로 늘어, 1회당 양 팀 전 선수 회복 1이면 경기당 약 14 회복 — 체력 70 안팎 주전의 약 7분 코트 소모량. 이전 수준(최대 8회, 8점 런 때만)에 가깝게 맞추기 위해 사용자 결정으로 절반으로 하향.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts`
+
+**Before**:
+```ts
+TIMEOUT_RECOVERY: 1,
+```
+
+**After**:
+```ts
+TIMEOUT_RECOVERY: 0.5,
+```
+
+**검증**: 상수 값만 변경(사용처 `liveEngine.applyTimeout` → `recoverAllPlayers` 1곳, client/server 동일). 실엔진 하네스로 주전 평균 체력·출전시간 비교는 미실시.
+
+**롤백 방법**: 양쪽 constants.ts의 `TIMEOUT_RECOVERY`를 1로 되돌림.
+
+## 2026-10-22 — 엔진: 타임아웃 NBA 규정화 (7회·의무 타임아웃·4Q 캡·AI 소진 로직)
+
+**배경**: 타임아웃이 경기 전체 4회뿐이라 실제 농구와 거리가 있었음. NBA 룰북 Rule 5 §VI 기준으로 확장. 사용자 결정: 의무 타임아웃도 7회에서 차감(기록원 강제 선언 없이 양 팀이 알아서 분담), 의무도 일반 타임아웃과 동일하게 모멘텀 리셋+체력 회복, 연장전은 이번 범위 제외, 4쿼터 막판 접전 전략 타임아웃 포함, 초과분 소멸 안내 로그 없이 AI(멀티는 유저 팀 포함)가 소멸 전에 소진. 마지막 2분 팀파울 면제 규정은 의도적으로 제외(별건). 계획서: `docs/plan/timeout-system.md`.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `services/game/engine/pbp/timeoutPolicy.ts` / `server/src/shared/engine/pbp/timeoutPolicy.ts` — **신규**(import 확장자 외 동일)
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts`
+- `services/game/engine/pbp/initializer.ts` / `server/src/shared/engine/pbp/initializer.ts`
+- `types/engine.ts` / `server/src/shared/types/engine.ts`
+- `views/multi/season/MultiGamePbpView.tsx`, `views/LiveGameView.tsx` (도트 4→7, 파울/도트 2줄 배치)
+- `components/game/TimeoutBars.tsx` (신규, 납작한 바 7개 — 잔여 `bg-orange-500`/사용 `bg-slate-700`, `getTimeoutsLeftFromLogs`), `views/multi/season/MultiGamePbpView.tsx` `FinalTeamBlock`(종료 헤더 점수 하단에 바 추가, `TEAM_TIMEOUTS_TOTAL`은 TimeoutBars에서 import), `components/game/ResultHeader.tsx`(싱글 결과 헤더 점수 하단에 바, PBP 로그 없으면 숨김)
+  - Before: 종료 헤더에 타임아웃 표시 없음. 롤백: TimeoutBars 사용처 3곳 제거 후 파일 삭제.
+
+**Before**:
+```ts
+// initializer.ts
+timeouts: 4,
+// liveEngine.ts
+export function applyTimeout(state, teamId, isUserCall = false): void { ...; team.timeouts -= 1; ... text: isUserCall ? `⏸ 타임아웃 선언 (잔여: N회)` : `타임아웃 (잔여: N회)` ... }
+function checkAITimeout(state): string | null {   // 상대 8pt+ 런이면 무조건, 유저 팀(비위임)은 스킵
+    ...; if (victimTeam.timeouts <= 0) return null; ...; return runEpochPts - victimEpochPts >= 8 ? victimTeam.id : null;
+}
+// stepPossession 끝: const aiTimeoutTeamId = checkAITimeout(state); if (aiTimeoutTeamId) { applyTimeout(state, aiTimeoutTeamId); ... isTimeout: true ... }
+// 쿼터 전환(A): state.home.fouls = 0; state.away.fouls = 0;  (타임아웃 처리 없음)
+// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 4, TimeoutDots className "w-16 ... text-xl", 파울+도트 가로(홈은 도트→파울 순)
+// LiveGameView: Array.from({ length: 4 }) 도트 2곳
+```
+
+**After**:
+```ts
+// initializer.ts: timeouts: 7
+// timeoutPolicy.ts (신규): TIMEOUT_RULES(7/4/2, 의무 6:59(419)·2:59(179), 간격 45/20초, 소진 리드 150초, 전략 2:30·8점차·동점은 1:30, 마지막 1분 전부 소진)
+//   startTimeoutPeriod / applyLateCapIfDue / recordTimeoutTaken / decideTimeout(state, runVictimId)
+//   decideTimeout 우선순위: 4Q 전략 → 초과분 소진(Q3 말 4회, Q4 3분 2회) → 런 대응(예비분 게이트) → 마지막 1분 소진 → 의무(첫째=홈, 둘째=첫째 안 낸 팀, 못 내면 상대, 둘 다 없으면 슬롯만 소화)
+// liveEngine.ts: applyTimeout(state, teamId, isUserCall, kind='team'|'mandatory') — 차감 후 recordTimeoutTaken, 의무는 '의무 타임아웃' 로그 + timeoutKind
+//   checkAITimeout → detectRunVictimId (런 판정만), stepPossession: decideTimeout 결과로 applyTimeout, 의무도 isTimeout=true(일반과 동일하게 라이브 UI 일시정지)
+//   쿼터 전환(A): startTimeoutPeriod(state) — 새 피리어드 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
+//   createGameState: timeoutPeriod {slots:0, firstTeamId:null, lateCapApplied:false}, lastTimeoutSec {home:-9999, away:-9999}
+// pbpTypes.ts: GameState.timeoutPeriod / lastTimeoutSec, TimeoutPeriodState
+// types/engine.ts: PbpLog.timeoutKind?: 'team' | 'mandatory'
+// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 7, 파울(위)·타임아웃 도트(아래) 2줄 세로 배치(gap-1.5 유지), 도트 text-xl→text-base, 고정폭 제거
+// LiveGameView: length 7, 파울(위)·도트(아래) flex-col(gap-2 유지), 도트 text-[8px]
+```
+
+**검증**: `tsc`(루트·server) 변경 파일 관련 오류 없음(기존 무관 오류만 존재). 정책 모듈 단독 합성 시뮬(3000경기×2모드, 스크래치패드 `tp_test.mts`): 양 팀 자동 시 소멸 0건, 경기 종료 평균 잔여 홈 0.03/원정 0.12, 피리어드당 호출 최소 2회(의무 보장). 싱글 라이브에서 유저 팀이 직접 안 쓰면 4Q 캡으로 평균 약 2회 소멸(유저 책임 — 의도). 실제 엔진 전체 경기 하네스로 체력·출전시간·득점 분포 비교는 **미실시**.
+
+**롤백 방법**: Before 블록대로 `timeouts: 4`, `checkAITimeout` 복원, `timeoutPolicy.ts`(양쪽) 삭제, liveEngine에서 `recordTimeoutTaken`/`startTimeoutPeriod`/`decideTimeout` import·호출 및 `createGameState`의 두 필드 제거, pbpTypes/types 필드 제거, UI 상수 4로 복귀. client/server 쌍 동시에.
+
 ## 2026-10-22 — 멀티 드래프트 풀: 은퇴(retired) 필터 추가
 
 **배경**: 세션 생성 시 `draft_year` 범위로만 풀을 거를 수 있어 "현역만 / 은퇴 선수만" 구분이 불가능했다. `meta_players.retired`(boolean)를 신설하고, 리그별 `draft_retired_filter`(all/active/retired)를 연도 범위와 AND로 결합한다. 기본값 `all`이라 기존 리그는 동작 불변.

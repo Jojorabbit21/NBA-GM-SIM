@@ -821,14 +821,14 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <div className="flex flex-col items-end gap-2 text-[10px] text-slate-400">
                                 {awayFouls >= 5 ? (
                                     <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
                                 ) : (
                                     <span>파울 <span className="text-white font-bold tabular-nums">{awayFouls}</span></span>
                                 )}
-                                <span className="flex gap-0.5">
-                                    {Array.from({ length: 4 }).map((_, i) => (
+                                <span className="flex gap-0.5 text-[8px] leading-none">
+                                    {Array.from({ length: 7 }).map((_, i) => (
                                         <span key={i} className={i < timeoutsLeft.away ? 'text-amber-400' : 'text-slate-700'}>●</span>
                                     ))}
                                 </span>
@@ -885,17 +885,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                                <span className="flex gap-0.5">
-                                    {Array.from({ length: 4 }).map((_, i) => (
-                                        <span key={i} className={i < timeoutsLeft.home ? 'text-amber-400' : 'text-slate-700'}>●</span>
-                                    ))}
-                                </span>
+                            <div className="flex flex-col items-start gap-2 text-[10px] text-slate-400">
                                 {homeFouls >= 5 ? (
                                     <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
                                 ) : (
                                     <span>파울 <span className="text-white font-bold tabular-nums">{homeFouls}</span></span>
                                 )}
+                                <span className="flex gap-0.5 text-[8px] leading-none">
+                                    {Array.from({ length: 7 }).map((_, i) => (
+                                        <span key={i} className={i < timeoutsLeft.home ? 'text-amber-400' : 'text-slate-700'}>●</span>
+                                    ))}
+                                </span>
                             </div>
                         </div>
                     </div>

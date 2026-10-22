@@ -333,7 +333,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         depthChart: effectiveDepthChart || undefined,
         onCourt,
         bench,
-        timeouts: 4,
+        timeouts: 7, // [2026-10-22] 4 → 7 (NBA 규정: 경기당 팀당 7회)
         fouls: 0,
         bonus: false,
         acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID

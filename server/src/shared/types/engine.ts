@@ -72,6 +72,7 @@ export interface PbpLog {
     runTeamId?: string;
     runHomePts?: number;
     runAwayPts?: number;
+    timeoutKind?: 'team' | 'mandatory'; // [2026-10-22] 일반/의무 타임아웃 구분(optional — 과거 로그 호환)
     timeoutsLeft?: number;
     foulTeamId?: string;
     isPossessionEnd?: boolean;

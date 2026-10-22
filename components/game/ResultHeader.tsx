@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Team, PbpLog, QuarterScores } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
+import { TimeoutBars, getTimeoutsLeftFromLogs } from './TimeoutBars';
 
 interface ResultHeaderProps {
     homeTeam: Team;
@@ -60,6 +61,11 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
         return scores;
     }, [pbpLogs, quarterScoresData, homeTeam.id, homeScore, awayScore]);
     
+    // 경기 종료 시점 잔여 타임아웃 (PBP 로그가 없는 경기는 바를 숨김)
+    const hasLogs = !!pbpLogs && pbpLogs.length > 0;
+    const homeTimeouts = useMemo(() => getTimeoutsLeftFromLogs(pbpLogs, homeTeam.id), [pbpLogs, homeTeam.id]);
+    const awayTimeouts = useMemo(() => getTimeoutsLeftFromLogs(pbpLogs, awayTeam.id), [pbpLogs, awayTeam.id]);
+
     const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#ffffff';
     const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#ffffff';
 
@@ -88,6 +94,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                                 {awayTeam.name}
                             </div>
                             <div className={`text-4xl md:text-5xl font-black mt-1 leading-none ${awayScore > homeScore ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-slate-500'}`}>{Math.round(awayScore)}</div>
+                            {hasLogs && <TimeoutBars left={awayTimeouts} className="mt-2 justify-end" />}
                         </div>
                         <TeamLogo teamId={awayTeam.id} size="custom" className="w-16 h-16 md:w-20 md:h-20 drop-shadow-2xl group-hover:scale-105 transition-transform" />
                     </div>
@@ -144,6 +151,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                                 {homeTeam.name}
                             </div>
                             <div className={`text-4xl md:text-5xl font-black mt-1 leading-none ${homeScore > awayScore ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
+                            {hasLogs && <TimeoutBars left={homeTimeouts} className="mt-2 justify-start" />}
                         </div>
                     </div>
                 </div>

@@ -13,6 +13,7 @@ import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappe
 import { calculateRecovery } from '../fatigueSystem';
 import { SIM_CONFIG } from '../../config/constants';
 import { computeCourtPositions } from './handlers/courtPositions';
+import { startTimeoutPeriod, recordTimeoutTaken, decideTimeout } from './timeoutPolicy';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -162,11 +163,18 @@ function recoverAllPlayers(state: GameState, baseAmount: number): void {
  * 타임아웃 효과 적용 (모멘텀 리셋 + 핫/콜드 반감 + 타임아웃 차감 + 체력 회복 + 로그)
  * useLiveGame(유저 타임아웃)과 엔진 내부(AI 타임아웃) 모두에서 호출.
  */
-export function applyTimeout(state: GameState, teamId: string, isUserCall: boolean = false): void {
+export function applyTimeout(
+    state: GameState,
+    teamId: string,
+    isUserCall: boolean = false,
+    kind: 'team' | 'mandatory' = 'team',
+): void {
     const team = state.home.id === teamId ? state.home : state.away;
     if (team.timeouts <= 0) return;
 
     team.timeouts -= 1;
+    // [2026-10-22] 의무 타임아웃 슬롯/간격 기록 + 4Q 막판 2회 상한 (의무도 7회에서 차감 — 위에서 이미 차감됨)
+    recordTimeoutTaken(state, team.id);
 
     // 모멘텀 초기화
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
@@ -180,9 +188,11 @@ export function applyTimeout(state: GameState, teamId: string, isUserCall: boole
     recoverAllPlayers(state, SIM_CONFIG.FATIGUE.TIMEOUT_RECOVERY);
 
     // 로그
-    const text = isUserCall
-        ? `⏸ 타임아웃 선언 (잔여: ${team.timeouts}회)`
-        : `타임아웃 (잔여: ${team.timeouts}회)`;
+    const text = kind === 'mandatory'
+        ? `의무 타임아웃 (잔여: ${team.timeouts}회)`
+        : isUserCall
+            ? `⏸ 타임아웃 선언 (잔여: ${team.timeouts}회)`
+            : `타임아웃 (잔여: ${team.timeouts}회)`;
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
@@ -191,33 +201,26 @@ export function applyTimeout(state: GameState, teamId: string, isUserCall: boole
         type: 'timeout', // [2026-08-02] 이전엔 'info' + timeoutsLeft 필드로만 구분 — 인사이트 차트
                           // 포제션 마커(타임아웃 점)가 type으로 바로 필터링할 수 있도록 전용 타입 부여
         timeoutsLeft: team.timeouts, // 멀티플레이어 리플레이에서 잔여 타임아웃 표시용
+        timeoutKind: kind,
     });
 }
 
 /**
- * AI 타임아웃 판단: 상대 8pt+ 런 시 타임아웃 선언.
- * userTeamId가 설정된 경우, 유저 팀은 자동 타임아웃 스킵 (유저가 직접 결정).
+ * 상대 8pt+ 런을 맞고 있는 팀 ID (없으면 null).
+ * [2026-10-22] 타임아웃 발동 여부는 timeoutPolicy.decideTimeout 이 보유량/의무/전략까지 종합해 결정 —
+ * 여기서는 기존 런 판정만 제공. 유저 팀 스킵 판단도 정책 쪽(isAutoTeam)으로 이동.
  */
-function checkAITimeout(state: GameState): string | null {
+function detectRunVictimId(state: GameState): string | null {
     const m = state.momentum;
     if (!m.activeRun) return null;
 
     const runTeamId = m.activeRun.teamId;
     const victimTeam = runTeamId === state.home.id ? state.away : state.home;
 
-    // 라이브 모드: 유저 팀은 자동 타임아웃 스킵 (단, 코치 위임 중이면 발동 허용)
-    if (state.userTeamId && victimTeam.id === state.userTeamId && !state.isUserDelegated) return null;
-
-    if (victimTeam.timeouts <= 0) return null;
-
     const runEpochPts = runTeamId === state.home.id ? m.homeEpochPts : m.awayEpochPts;
     const victimEpochPts = victimTeam.id === state.home.id ? m.homeEpochPts : m.awayEpochPts;
 
-    if (runEpochPts - victimEpochPts >= 8) {
-        return victimTeam.id;
-    }
-
-    return null;
+    return runEpochPts - victimEpochPts >= 8 ? victimTeam.id : null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -280,6 +283,8 @@ export function createGameState(
         boxTimeline: [],
         prevBoxSnap: {},
         lastEntryWasDefReb: false,
+        timeoutPeriod: { slots: 0, firstTeamId: null, lateCapApplied: false },
+        lastTimeoutSec: { home: -9999, away: -9999 },
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
@@ -352,6 +357,7 @@ export function stepPossession(state: GameState): StepResult {
         state.shotClock = 24;
         state.home.fouls = 0;
         state.away.fouls = 0;
+        startTimeoutPeriod(state); // [2026-10-22] 의무 타임아웃 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
 
         const transitionTotalSec = (state.quarter - 1) * 720;
         resetMomentum(state, transitionTotalSec);
@@ -533,15 +539,16 @@ export function stepPossession(state: GameState): StepResult {
         return { result, isQuarterEnd: true, isGameEnd: false, isTimeout: false, newLogs };
     }
 
-    // AI 타임아웃 체크 (포세션 완료 후, 쿼터 중간에만)
-    const aiTimeoutTeamId = checkAITimeout(state);
-    if (aiTimeoutTeamId) {
-        applyTimeout(state, aiTimeoutTeamId);
+    // 타임아웃 체크 (포세션 완료 후, 쿼터 중간에만) — 런 대응/초과분 소진/4Q 전략/의무를 정책 모듈이 통합 판단.
+    // 의무 타임아웃도 일반 타임아웃과 동일하게 isTimeout=true (라이브 UI 일시정지).
+    const timeoutDecision = decideTimeout(state, detectRunVictimId(state));
+    if (timeoutDecision) {
+        applyTimeout(state, timeoutDecision.teamId, false, timeoutDecision.mandatory ? 'mandatory' : 'team');
         // 타임아웃 로그 포함하여 전체 newLogs 재수집
         const allNewLogs = state.logs.slice(logsBefore);
         const sh = state.home.score, sa = state.away.score;
         allNewLogs.forEach(log => { if (!log.homeScore) { log.homeScore = sh; log.awayScore = sa; } });
-        return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: true, timeoutTeamId: aiTimeoutTeamId, newLogs: allNewLogs };
+        return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: true, timeoutTeamId: timeoutDecision.teamId, newLogs: allNewLogs };
     }
 
     return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: false, newLogs };

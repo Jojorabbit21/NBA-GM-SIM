@@ -21,6 +21,7 @@ import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
+import { TimeoutBars, TEAM_TIMEOUTS_TOTAL } from '../../../components/game/TimeoutBars';
 import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
 import { GameShotChartTab } from '../../../components/game/tabs/GameShotChartTab';
 import { GamePbpTab } from '../../../components/game/tabs/GamePbpTab';
@@ -44,7 +45,6 @@ import { toGameSeconds } from '../../../utils/gameClock';
 
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
-const TEAM_TIMEOUTS_TOTAL = 4;
 // [2026-09-01] ?section= 딥링크 검증용 — 6섹션 탭 배열(아래 렌더 안, ~2100줄 근방)의 id와
 // 동일한 값 목록. 그 배열은 JSX 안에서 렌더 시점에 만들어져 재사용이 번거로워 별도로 둠.
 const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'shotchart', 'rotation', 'onoff'] as const;
@@ -53,7 +53,7 @@ const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'shotchart', 'rotation', '
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
 function TimeoutDots({ left }: { left: number }) {
     return (
-        <span className="w-16 shrink-0 flex gap-0.5 text-xl">
+        <span className="shrink-0 flex gap-0.5 text-base leading-none">
             {Array.from({ length: TEAM_TIMEOUTS_TOTAL }).map((_, i) => (
                 <span key={i} className={i < left ? 'text-amber-400' : 'text-slate-700'}>●</span>
             ))}
@@ -732,12 +732,16 @@ const FinalTeamBlock: React.FC<{
     onClick: () => void;
     /** 팀 호버 카드를 붙일 팀 slug — 올스타처럼 리그 팀이 아니면 생략 */
     teamId?: string;
-}> = ({ side, name, wl, score, won, onClick, teamId }) => {
+    /** 경기 종료 시점 잔여 타임아웃 — 점수 영역 하단에 납작한 바 7개로 표시 */
+    timeoutsLeft: number;
+}> = ({ side, name, wl, score, won, onClick, teamId, timeoutsLeft }) => {
     const isAway = side === 'away';
     const nameBlock = (
         <div className={`flex flex-col min-w-0 gap-0.5 ${isAway ? 'items-end' : 'items-start'}`}>
             <TeamHover teamId={teamId}><span className="text-xl font-bold text-white truncate cursor-pointer hover:text-indigo-400 hover:underline" onClick={onClick}>{name}</span></TeamHover>
             {wl && <span className="text-sm text-slate-400 tabular-nums">{`${wl.wins}W ${wl.losses}L`}</span>}
+            {/* 팀이름·전적 블록 아래 타임아웃 바 — 바 한 개 8px, 블록 정렬 방향(원정=우, 홈=좌)에 붙음 */}
+            <TimeoutBars left={timeoutsLeft} barWidth="w-2" className="mt-1.5" />
         </div>
     );
     const scoreEl = <span className={`text-5xl font-black tracking-tight leading-none shrink-0 ${won ? 'text-white' : 'text-slate-500'}`}>{score}</span>;
@@ -2291,7 +2295,7 @@ const MultiGamePbpView: React.FC = () => {
                                     채우게 함. grid 자체에 min-h-20(런 정보까지 2줄 들어갈 여유)을 줘서, 런이
                                     뜨든 안 뜨든 행 높이가 항상 동일 — 결과적으로 팀정보가 절대 안 밀림. */}
                                 {/* 1행 1열: 원정 파울/보너스 + 타임아웃 */}
-                                <div className="h-full flex items-center gap-1.5 justify-self-start text-xl text-slate-400">
+                                <div className="h-full flex flex-col justify-center items-start gap-1.5 justify-self-start text-xl text-slate-400">
                                     {/* [Fix 2026-08-05] "BONUS 칩 표시 시 타임아웃 칸과 겹침" — BONUS 뱃지
                                         (px-1 패딩 포함) 실제 렌더링 폭이 기존 w-16(64px)보다 넓어서 박스를
                                         벗어나 옆 타임아웃 칸 쪽으로 overflow가 흘러넘쳤음. w-24(96px)로 확장해
@@ -2330,10 +2334,10 @@ const MultiGamePbpView: React.FC = () => {
                                 </div>
 
                                 {/* 1행 3열: 홈 타임아웃 + 파울/보너스 */}
-                                <div className="h-full flex items-center gap-1.5 justify-self-end text-xl text-slate-400">
-                                    <TimeoutDots left={timeoutsLeft.home} />
+                                <div className="h-full flex flex-col justify-center items-end gap-1.5 justify-self-end text-xl text-slate-400">
                                     {/* [Fix 2026-08-05] 원정쪽과 동일한 이유 — w-16 → w-24 확장. */}
                                     <FoulBonusBadge fouls={homeFouls} align="right" />
+                                    <TimeoutDots left={timeoutsLeft.home} />
                                 </div>
 
                             </div>
@@ -2361,7 +2365,7 @@ const MultiGamePbpView: React.FC = () => {
                             <FinalHeaderLogo teamSlug={awayTeamId ?? ''} abbr={awayAbbr} />
 
                             {/* 원정: 이름·전적(우측 정렬) → 점수 → (승리 시) ◂ 마커 */}
-                            <FinalTeamBlock side="away" name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={awayWon} onClick={() => goTeamRoster(awayTeamId)} teamId={isAllstar ? undefined : awayTeamId} />
+                            <FinalTeamBlock side="away" name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={awayWon} onClick={() => goTeamRoster(awayTeamId)} teamId={isAllstar ? undefined : awayTeamId} timeoutsLeft={timeoutsLeft.away} />
 
                             {/* 가운데: 종료 라벨 + 미니멀 쿼터별 득점 표 */}
                             <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -2385,7 +2389,7 @@ const MultiGamePbpView: React.FC = () => {
                             </div>
 
                             {/* 홈: (승리 시) ▸ 마커 → 점수 → 이름·전적(좌측 정렬) */}
-                            <FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} teamId={isAllstar ? undefined : homeTeamId} />
+                            <FinalTeamBlock side="home" name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={homeWon} onClick={() => goTeamRoster(homeTeamId)} teamId={isAllstar ? undefined : homeTeamId} timeoutsLeft={timeoutsLeft.home} />
 
                             <FinalHeaderLogo teamSlug={homeTeamId ?? ''} abbr={homeAbbr} />
                         </div>
