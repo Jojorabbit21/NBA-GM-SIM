@@ -20,6 +20,7 @@ import { TEAM_DATA } from './shared/teamData';
 import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMapper';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
+import { postDraftResult } from './postDraftResultNews';
 import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
 import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
 import { generateDraftContracts } from './shared/draftContracts';
@@ -173,7 +174,7 @@ async function initializeTeamTactics(
         if (missing.length > 0) {
             const { data: rawPlayers } = await supabase
                 .from('meta_players')
-                .select('id, name, position, base_attributes, tendencies')
+                .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
                 .in('id', missing);
             for (const r of (rawPlayers ?? []) as any[]) rawById.set(String(r.id), r);
         }
@@ -185,7 +186,7 @@ async function initializeTeamTactics(
     } else {
         const { data: rawPlayers } = await supabase
             .from('meta_players')
-            .select('id, name, position, base_attributes, tendencies')
+            .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
             .in('id', allPlayerIds);
         for (const raw of rawPlayers ?? []) {
             playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
@@ -240,7 +241,7 @@ async function applyLeagueNormalization(
         // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
         // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
         // (applyMetaPlayerPoolFilter를 startDraft.ts와 공유해서 어긋남을 구조적으로 방지한다.)
-        let q = supabase.from('meta_players').select('id, base_attributes');
+        let q = supabase.from('meta_players').select('id, base_attributes, ovr_base, ovr_custom');
         q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
         const { data: poolData } = await q;
         const ovrs: number[] = [];
@@ -522,6 +523,10 @@ export async function finalizeDraft(roomId: string): Promise<void> {
         console.log(`[finalize] ${roomId} — claim failed (already processed)`);
         return;
     }
+
+    // 드래프트 결과 서신 게시 — claim을 통과한 호출만 여기 도달하므로 리그당 한 번. 실패해도 리그 시작은 계속.
+    await postDraftResult(roomId, room.league_id)
+        .catch(err => console.error('[finalize] postDraftResult failed:', err));
 
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase

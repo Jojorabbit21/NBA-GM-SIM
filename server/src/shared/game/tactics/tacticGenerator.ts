@@ -1,7 +1,7 @@
 
 import { Team, GameTactics, DepthChart, Player } from '../../types.ts';
 import { HeadCoachPreferences } from '../../types/coaching.ts';
-import { calculateOvr } from '../../utils/ovrUtils.ts';
+import { calculatePlayerOvr } from '../../utils/ovrUtils.ts';
 import { DEFAULT_SLIDERS } from '../config/tacticPresets.ts';
 import { SLIDER_STEPS, valueToStep, stepToValue } from '../config/sliderSteps.ts';
 
@@ -164,7 +164,7 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     const healthy = team.roster.filter(p => p.health !== 'Injured');
     const sortedRoster = preserveDraftOrder
         ? healthy
-        : [...healthy].sort((a, b) => calculateOvr(b) - calculateOvr(a));
+        : [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     const { depthChart, usedIds } = buildDepthChart(sortedRoster);
     const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -233,7 +233,7 @@ export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreference
     // insideOut: 인사이드(3) ↔ 아웃사이드(8) — 자동생성 범위는 3~8로 제한
     // [2026-07-29] 주전 중 OVR 최고 선수(앵커)가 카림 압둘자바·윌트 체임벌린형 또는 스테판 커리·
     // 제임스 하든형이면 그 한 명의 아키타입으로 슬라이더를 직행시킨다(client 미러 상세 참조).
-    const anchor = starters.reduce((best, p) => (calculateOvr(p) > calculateOvr(best) ? p : best));
+    const anchor = starters.reduce((best, p) => (calculatePlayerOvr(p) > calculatePlayerOvr(best) ? p : best));
     const isEliteBig = get3pt(anchor) < 35 && postScore(anchor) >= 85;
     const isEliteShooter = get3pt(anchor) >= 90;
 

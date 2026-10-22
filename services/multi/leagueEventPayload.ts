@@ -483,6 +483,27 @@ export interface DraftLotteryResultDetail {
     picks: DraftLotteryPick[]; // rank 오름차순(1순위부터)
 }
 
+/** [2026-10-22] 드래프트 결과 서신 — 서버 미러: server/src/postDraftResultNews.ts의 DraftResultPayloadData.
+ * 서신에는 1라운드 지명만 싣고, 전체 라운드는 /season/draft-result 화면(draft_picks)에서 본다.
+ * 필드명을 바꿀 땐 반드시 양쪽 다 같이 고칠 것(client/server 미러 쌍 — dev-log.md 기록 대상). */
+export interface DraftResultPick {
+    pick: number;      // 전체 지명 순번(1부터)
+    round: number;
+    slot: number;
+    teamSlug: string;
+    teamName: string;
+    playerId: string;
+    playerName: string;
+    position: string;
+    ovr: number;
+}
+export interface DraftResultDetail {
+    kind: 'draft_result';
+    rounds: number;
+    totalPicks: number;
+    picks: DraftResultPick[]; // 1라운드 지명(pick 오름차순)
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // 플레이오프 서신 7종 [2026-09-15]
 // 서버 미러: server/src/shared/multi/playoffNews.ts. 로직/필드명을 바꿀 땐 반드시 양쪽 다
@@ -596,6 +617,7 @@ export type LeagueEventDetail =
     | AllstarThreePointContestResultDetail
     | AllstarDunkContestResultDetail
     | DraftLotteryResultDetail
+    | DraftResultDetail
     | PlayInBracketDetail
     | PlayInResultDetail
     | PlayoffBracketConfirmedDetail
@@ -1181,6 +1203,26 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     .map((p: any): DraftLotteryPick => ({ rank: p.rank, teamSlug: p.teamSlug, teamName: p.teamName }));
                 if (!picks.length) return LEGACY;
                 return { kind: 'draft_lottery_result', picks };
+            }
+            case 'draft_result': {
+                if (!Array.isArray(payload.picks)) return LEGACY;
+                const picks: DraftResultPick[] = payload.picks
+                    .filter((p: any) => p && typeof p.pick === 'number' && typeof p.round === 'number' && typeof p.slot === 'number'
+                        && isNonEmptyString(p.teamSlug) && isNonEmptyString(p.teamName)
+                        && isNonEmptyString(p.playerId) && isNonEmptyString(p.playerName))
+                    .map((p: any): DraftResultPick => ({
+                        pick: p.pick, round: p.round, slot: p.slot, teamSlug: p.teamSlug, teamName: p.teamName,
+                        playerId: p.playerId, playerName: p.playerName,
+                        position: typeof p.position === 'string' ? p.position : '',
+                        ovr: typeof p.ovr === 'number' ? p.ovr : 0,
+                    }));
+                if (!picks.length) return LEGACY;
+                return {
+                    kind: 'draft_result',
+                    rounds: typeof payload.rounds === 'number' ? payload.rounds : 1,
+                    totalPicks: typeof payload.totalPicks === 'number' ? payload.totalPicks : picks.length,
+                    picks,
+                };
             }
             case 'play_in_bracket': {
                 if (!isNonEmptyString(payload.seasonLabel) || !Array.isArray(payload.matchups)) return LEGACY;

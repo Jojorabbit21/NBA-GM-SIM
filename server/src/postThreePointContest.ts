@@ -159,7 +159,7 @@ export async function computeAndRunThreePointContest(
 
     const { data: rawPlayers } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, tendencies')
+        .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
         .in('id', participants.map(p => p.playerId));
     const playerMap = new Map<string, any>();
     for (const raw of rawPlayers ?? []) {

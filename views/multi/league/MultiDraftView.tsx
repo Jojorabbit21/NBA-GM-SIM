@@ -36,7 +36,7 @@ const POSITION_COLORS: Record<string, string> = {
  */
 function toPlayer(p: DraftPoolPlayer, applyCustomOverrides = false): Player {
     return mapRawPlayerToRuntimePlayer(
-        { id: p.id, name: p.name, position: p.position, salary: p.salary, base_attributes: p.base_attributes },
+        { id: p.id, name: p.name, position: p.position, salary: p.salary, base_attributes: p.base_attributes, ovr_base: p.ovr_base, ovr_custom: p.ovr_custom },
         applyCustomOverrides,
         true,
     );

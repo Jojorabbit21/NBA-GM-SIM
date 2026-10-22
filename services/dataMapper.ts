@@ -154,7 +154,15 @@ export const mapFreeAgents = (playersData: any[]): Player[] => {
  * (드래프트된 선수가 시즌 내내 로테이션 불가능해지는 문제) 멀티플레이어 호출부는 반드시 true로 넘길 것.
  * 진행 중 부상(경기 중 발생)은 room.roster_state 오버레이로 별도 적용되므로 이 값과 무관하다.
  */
-export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = false, forceHealthy = false): Player => {
+export const mapRawPlayerToRuntimePlayer = (
+    raw: any,
+    applyCustomOverrides = false,
+    forceHealthy = false,
+    // [2026-10-22] true면 meta_players.ovr_base/ovr_custom(고정 OVR)을 ovr로 사용한다(없으면 계산 폴백).
+    // 멀티플레이어 호출부는 전부 forceHealthy=true를 쓰므로 기본값을 그에 맞췄다 — 싱글플레이(성장/퇴화로 OVR이
+    // 변하는 경로)는 forceHealthy=false라 기존 계산 그대로. server/src/shared/dataMapper.ts는 항상 고정값 우선.
+    useFixedOvr = forceHealthy,
+): Player => {
     // DB의 base_attributes 컬럼 파싱 (JSON or Object)
     const baseAttrs = typeof raw.base_attributes === 'string' 
         ? JSON.parse(raw.base_attributes) 
@@ -308,7 +316,13 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
     // meta_players row에는 이 컬럼이 없으므로 일반 선수 OVR은 지금처럼 항상 능력치 기반 동적 계산.
     // server/src/shared/dataMapper.ts 미러 — 둘 다 같이 바꿀 것.
     const cardFixedOvr = raw.manual_ovr != null && !isNaN(Number(raw.manual_ovr)) ? Number(raw.manual_ovr) : null;
-    const ovr = cardFixedOvr ?? ovrCalc.ovr;
+    // [2026-10-22] 고정 OVR — custom_overrides 적용 리그면 ovr_custom, 아니면 ovr_base. null/미조회면 계산 폴백.
+    // 카드(manual_ovr)도 fixedOvr를 세운다 — 안 그러면 ovr만 고정되고 calculatePlayerOvr()가 능력치로 다시 계산해 화면마다 어긋난다.
+    // 카드는 meta_players 컬럼이 없으므로 manual_ovr이 우선(useFixedOvr와 무관하게 적용, 카드는 멀티 전용).
+    const fixedCol = applyCustomOverrides ? raw.ovr_custom : raw.ovr_base;
+    const metaFixedOvr = useFixedOvr && fixedCol != null && !isNaN(Number(fixedCol)) ? Number(fixedCol) : null;
+    const fixedOvr = cardFixedOvr ?? metaFixedOvr;
+    const ovr = fixedOvr ?? ovrCalc.ovr;
     const { archetype, secondaryArchetype } = ovrCalc;
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
@@ -356,6 +370,7 @@ export const mapRawPlayerToRuntimePlayer = (raw: any, applyCustomOverrides = fal
         contractYears: 0,
 
         ovr,
+        fixedOvr: fixedOvr ?? undefined,
         archetype,
         secondaryArchetype,
         manualOvr: (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : undefined,
@@ -459,7 +474,7 @@ export const postProcessAllPlayersOVR = (teams: Team[], freeAgents: Player[]): v
 
     for (const p of allPlayers) {
         const { ovr, archetype, secondaryArchetype } = calculateOvrWithArchetype(p);
-        p.ovr = ovr;
+        p.ovr = p.fixedOvr ?? ovr;
         p.archetype = archetype;
         p.secondaryArchetype = secondaryArchetype;
         p.rawOvr = calculateRawOvr(p);

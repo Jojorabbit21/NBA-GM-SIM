@@ -126,7 +126,7 @@ async function buildTeamsForRoom(
         // draft_year — 라이징스타 선발(runRisingStarsSelection, YOS≤1 필터)에 필요. 처음엔
         // 빠져 있어서 mapRawPlayerToRuntimePlayer가 draftYear를 항상 undefined로 매핑 →
         // 후보가 전부 걸러지는 버그였다(2026-09-08, dataMapper.ts의 popularity 누락과 동일 유형).
-        supabase.from('meta_players').select('id, name, position, draft_year, base_attributes').in('id', allPlayerIds),
+        supabase.from('meta_players').select('id, name, position, draft_year, base_attributes, ovr_base, ovr_custom').in('id', allPlayerIds),
         supabase.from('games')
             .select('home_team_id, away_team_id, home_score, away_score')
             .eq('league_id', leagueId).eq('is_playoff', false).eq('played', true),

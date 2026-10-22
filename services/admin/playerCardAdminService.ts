@@ -69,7 +69,7 @@ export async function createCardFromCopy(sourcePlayerId: string, season: string,
     if (!editionId) throw new Error('에디션을 선택해주세요.');
     const { data: source, error: srcErr } = await supabase
         .from('meta_players')
-        .select('id, name, position, height, weight, base_team_id, base_attributes, tendencies')
+        .select('id, name, position, height, weight, base_team_id, base_attributes, tendencies, ovr_base')
         .eq('id', sourcePlayerId)
         .single();
     if (srcErr) throw srcErr;
@@ -88,6 +88,8 @@ export async function createCardFromCopy(sourcePlayerId: string, season: string,
             base_team_id: source.base_team_id,
             base_attributes: JSON.parse(JSON.stringify(source.base_attributes ?? {})),
             tendencies: source.tendencies ? JSON.parse(JSON.stringify(source.tendencies)) : null,
+            // [2026-10-22] 카드 OVR은 항상 고정값 — 원본 선수의 고정 OVR(ovr_base)을 출발값으로 복사(없으면 null, 편집기에서 채움)
+            manual_ovr: source.ovr_base ?? null,
         })
         .select(CARD_COLS)
         .single();

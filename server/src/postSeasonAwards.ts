@@ -78,7 +78,7 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
     if (allPlayerIds.length === 0) return;
 
     const [playersRes, gamesRes, statsRes] = await Promise.all([
-        supabase.from('meta_players').select('id, name, position, base_attributes').in('id', allPlayerIds),
+        supabase.from('meta_players').select('id, name, position, base_attributes, ovr_base, ovr_custom').in('id', allPlayerIds),
         supabase.from('games')
             .select('home_team_id, away_team_id, home_score, away_score')
             .eq('league_id', leagueId).eq('is_playoff', false).eq('played', true),

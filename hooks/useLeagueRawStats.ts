@@ -57,7 +57,8 @@ export interface LeagueRawStatsData {
 // 이제서야 이 문제를 드러냄 — hooks/useMultiSearchData.ts의 FA 풀 조회에서 같은 원인의
 // "FA 선수 연차 전부 0년" 버그를 고치며 같이 발견). draft_year는 numeric 스칼라 컬럼이라
 // (JSONB인 tendencies/career_history와 달리) 다시 넣어도 위 주석의 성능 이슈와 무관하다.
-const RAW_PLAYER_COLS = 'id, name, position, draft_year, base_attributes';
+// [2026-10-22] ovr_base/ovr_custom — 고정 OVR(매퍼가 forceHealthy=true일 때 사용). 빠지면 조용히 계산 폴백되어 화면 간 불일치가 생기니 지우지 말 것.
+const RAW_PLAYER_COLS = 'id, name, position, draft_year, base_attributes, ovr_base, ovr_custom';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
 const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
 const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';

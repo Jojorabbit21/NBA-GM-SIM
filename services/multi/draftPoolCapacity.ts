@@ -39,7 +39,7 @@ export function getRequiredDraftPicks(teamCount: number, totalRounds: number): n
 export async function fetchDraftPoolPlayers(params: DraftPoolFilterParams): Promise<Player[]> {
     let query = supabase
         .from('meta_players')
-        .select('id, position, base_attributes, tendencies, draft_year');
+        .select('id, position, base_attributes, tendencies, draft_year, ovr_base, ovr_custom');
     query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax, params.retiredFilter);
 
     const { data, error } = await query;

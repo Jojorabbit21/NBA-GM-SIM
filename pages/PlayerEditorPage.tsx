@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import PlayerCardModal from '../components/PlayerCardModal';
 import type { PlayerCardData } from '../components/PlayerCardModal';
 import { useOutletContext } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, fetchCareerHistory, updateCareerHistory, fetchCareerPresentIds, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, updateFixedOvr, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, fetchCareerHistory, updateCareerHistory, fetchCareerPresentIds, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { preloadGameConfig, fetchArchetypeLabels, fetchTagConfig } from '../services/admin/gameConfigService';
 import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
@@ -558,6 +558,9 @@ const PlayerEditorPage: React.FC = () => {
     const [includeAlltime, setIncludeAlltimeState] = useState<boolean>(true);
     const [alltimeToggling, setAlltimeToggling] = useState(false);
     const [draftYearVal, setDraftYearVal] = useState<string>('');
+    // [2026-10-22] 고정 OVR(meta_players.ovr_base / ovr_custom) 입력값 — 빈 문자열이면 null(미설정)로 저장
+    const [ovrBaseVal, setOvrBaseVal] = useState<string>('');
+    const [ovrCustomVal, setOvrCustomVal] = useState<string>('');
     const [inMultiPool, setInMultiPoolState] = useState<boolean>(true);
     const [multiPoolToggling, setMultiPoolToggling] = useState(false);
     // 테이블 필터/페이지네이션
@@ -1321,6 +1324,8 @@ function sortBy(th) {
         setIncludeAlltimeState(fresh.include_alltime ?? true);
         setInMultiPoolState(fresh.in_multi_pool ?? true);
         setDraftYearVal(fresh.draft_year != null ? String(fresh.draft_year) : '');
+        setOvrBaseVal(fresh.ovr_base != null ? String(fresh.ovr_base) : '');
+        setOvrCustomVal(fresh.ovr_custom != null ? String(fresh.ovr_custom) : '');
         const attrs = JSON.parse(JSON.stringify(fresh.base_attributes));
         if (attrs.team) {
             const slug = resolveTeamId(attrs.team);
@@ -1799,6 +1804,24 @@ function sortBy(th) {
                 setResults(prev => prev.map(r => r.id === selected.id ? { ...r, draft_year: newDraftYear } : r));
             }
 
+            // 고정 OVR 컬럼 저장 (변경된 경우) — 빈 칸은 null, 값은 1~99 정수만 허용
+            const parseFixedOvr = (raw: string, label: string): number | null => {
+                const t = raw.trim();
+                if (t === '') return null;
+                const n = Number(t);
+                if (!Number.isInteger(n) || n < 1 || n > 99) throw new Error(`${label}는 1~99 정수여야 합니다`);
+                return n;
+            };
+            const newOvrBase = parseFixedOvr(ovrBaseVal, 'OVR(base)');
+            const newOvrCustom = parseFixedOvr(ovrCustomVal, 'OVR(custom)');
+            const prevOvrBase = selected.ovr_base ?? null;
+            const prevOvrCustom = selected.ovr_custom ?? null;
+            if (newOvrBase !== prevOvrBase || newOvrCustom !== prevOvrCustom) {
+                await updateFixedOvr(selected.id, newOvrBase, newOvrCustom);
+                if (newOvrBase !== prevOvrBase) diff['ovr_base'] = { before: prevOvrBase, after: newOvrBase };
+                if (newOvrCustom !== prevOvrCustom) diff['ovr_custom'] = { before: prevOvrCustom, after: newOvrCustom };
+            }
+
             // name 컬럼 동기화 (변경된 경우)
             if (newName && newName !== selected.name) {
                 await updatePlayerName(selected.id, newName);
@@ -1835,7 +1858,7 @@ function sortBy(th) {
         } finally {
             setSaving(false);
         }
-    }, [selected, draft, tendencies, draftYearVal, careerHistory]);
+    }, [selected, draft, tendencies, draftYearVal, ovrBaseVal, ovrCustomVal, careerHistory]);
 
     const handleIncludeAlltimeToggle = useCallback(async (newVal: boolean) => {
         if (!selected) return;
@@ -2829,6 +2852,69 @@ function sortBy(th) {
                             </div>
                         );
                     })()}
+
+                    {/* ── 고정 OVR (meta_players.ovr_base / ovr_custom) ── */}
+                    <Section label="고정 OVR">
+                        {(() => {
+                            const inputCls = (changed: boolean, amber: boolean) => `w-24 rounded px-2 py-1 text-lg font-bold text-center ring-1 ring-inset focus:outline-none transition-colors ${amber ? 'bg-amber-950/20 text-amber-300 focus:ring-amber-400' : 'bg-white/5 text-white focus:ring-indigo-500/60'} ${changed ? (amber ? 'ring-amber-500/60' : 'ring-indigo-500/60') : 'ring-white/10'}`;
+                            const calcBase = livePreview?.base?.displayOvr ?? null;
+                            const calcCustom = livePreview?.co?.displayOvr ?? calcBase;
+                            const baseChanged = ovrBaseVal.trim() !== (selected?.ovr_base != null ? String(selected.ovr_base) : '');
+                            const customChanged = ovrCustomVal.trim() !== (selected?.ovr_custom != null ? String(selected.ovr_custom) : '');
+                            const curBase = ovrBaseVal.trim() === '' ? null : Number(ovrBaseVal);
+                            const curCustom = ovrCustomVal.trim() === '' ? null : Number(ovrCustomVal);
+                            const diffNote = (cur: number | null, calc: number | null) => {
+                                if (cur == null || calc == null || Number.isNaN(cur)) return null;
+                                const d = cur - calc;
+                                return d === 0 ? '계산값과 동일' : `계산값 대비 ${d > 0 ? '+' : ''}${d}`;
+                            };
+                            return (
+                                <div className="rounded-xl ring-1 ring-white/10 p-4 space-y-3">
+                                    <p className="text-[11px] text-gray-500 leading-relaxed">
+                                        게임이 OVR로 읽을 값입니다(계산 대신 저장값 사용 전환용). 능력치 편집과 독립적으로 저장되며, 빈 칸은 미설정(null)입니다.
+                                        <b className="text-gray-400"> custom</b>은 피크시즌(CO) 리그에서 쓰는 값이고, CO가 없는 선수는 base와 같은 값으로 두세요.
+                                        "계산값"은 현재 편집 중인 능력치로 엔진이 계산한 참고값입니다.
+                                    </p>
+                                    <div className="flex flex-wrap gap-x-10 gap-y-3">
+                                        <div>
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <span className="text-sm text-gray-300">base</span>
+                                                <span className="text-[9px] text-gray-700 font-mono">ovr_base</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input type="number" min={1} max={99} step={1} placeholder="—" className={inputCls(baseChanged, false)}
+                                                    value={ovrBaseVal} onChange={e => setOvrBaseVal(e.target.value)} />
+                                                <button type="button" disabled={calcBase == null} onClick={() => calcBase != null && setOvrBaseVal(String(calcBase))}
+                                                    className="px-2 py-1 text-[11px] rounded bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-40 transition-colors">
+                                                    계산값 {calcBase ?? '—'} 적용
+                                                </button>
+                                            </div>
+                                            <div className="text-[10px] text-gray-500 mt-1">{diffNote(curBase, calcBase) ?? '\u00A0'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <span className="text-sm text-amber-400/90">custom</span>
+                                                <span className="text-[9px] text-gray-700 font-mono">ovr_custom</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input type="number" min={1} max={99} step={1} placeholder="—" className={inputCls(customChanged, true)}
+                                                    value={ovrCustomVal} onChange={e => setOvrCustomVal(e.target.value)} />
+                                                <button type="button" disabled={calcCustom == null} onClick={() => calcCustom != null && setOvrCustomVal(String(calcCustom))}
+                                                    className="px-2 py-1 text-[11px] rounded bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-40 transition-colors">
+                                                    계산값 {calcCustom ?? '—'} 적용
+                                                </button>
+                                                <button type="button" disabled={ovrBaseVal.trim() === ''} onClick={() => setOvrCustomVal(ovrBaseVal)}
+                                                    className="px-2 py-1 text-[11px] rounded bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-40 transition-colors">
+                                                    base와 동일
+                                                </button>
+                                            </div>
+                                            <div className="text-[10px] text-gray-500 mt-1">{diffNote(curCustom, calcCustom) ?? '\u00A0'}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </Section>
 
                     {/* ── 인적 정보 — base / CO ── */}
                     <Section label="인적 정보">

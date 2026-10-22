@@ -41,7 +41,7 @@ export function multiSearchPoolQuery(league: LeagueRow | null) {
             // 중복 저장되지 않는 별도 컬럼이라(DB로 직접 확인) 명시적으로 select해야 한다.
             let q = supabase
                 .from('meta_players')
-                .select('id, name, position, draft_year, base_attributes, tendencies');
+                .select('id, name, position, draft_year, base_attributes, tendencies, ovr_base, ovr_custom');
             q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
             const { data, error } = await q;
             console.timeEnd('[perf] multiSearchPool: fetch');

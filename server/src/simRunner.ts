@@ -10,7 +10,7 @@ import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
-import { calculateOvr } from './shared/utils/ovrUtils.ts';
+import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
 import { recoverPlayersThrough } from './fatigueRecovery.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
@@ -206,7 +206,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const tendencySeed = room.tendency_seed   ?? '';
 
             // ── 3.5 League-relative normalization context ──────────────────────
-            resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculateOvr);
+            resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculatePlayerOvr);
 
             // ── 3.6 백투백 판정 + 체력 설정 (docs/plan/multiplayer-fatigue.md 3-5, D6) ─────
             // 팀 일정 기준: 이 팀이 치른 가장 최근 경기(올스타 제외)가 전날이면 백투백.

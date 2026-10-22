@@ -38,7 +38,7 @@ import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
-import { calculateOvr } from './shared/utils/ovrUtils.ts';
+import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator.ts';
 import { pickTeamMvp } from './shared/leagueEvents.ts';
@@ -251,7 +251,7 @@ export async function computeAndRunAllStarGame(
 
     const { data: rawPlayers } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes, tendencies')
+        .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
         .in('id', allPlayerIds);
 
     const playerMap = new Map<string, any>();
@@ -289,7 +289,7 @@ export async function computeAndRunAllStarGame(
     const allStarSimSettings = { ...baseSimSettings, injuriesEnabled: false, suspensionsEnabled: false };
     const tendencySeed = ((room as any).tendency_seed ?? '') + ':' + gameId;
 
-    resolveNormalizationContext(allStarSimSettings, [homeTeam, awayTeam], calculateOvr);
+    resolveNormalizationContext(allStarSimSettings, [homeTeam, awayTeam], calculatePlayerOvr);
 
     // 뎁스차트(포지션 배정)는 generateAutoTactics()의 기존 알고리즘을 그대로 재사용하되,
     // rotationMap(분당 출전 여부)만 buildAllStarRotationMap()으로 교체한다 — 정규시즌 AI팀이

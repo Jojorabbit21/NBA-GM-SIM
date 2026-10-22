@@ -35,6 +35,245 @@
 
 
 
+## 2026-10-22 — 드래프트 결과 화면 UI: 격자 하나로 확정(행 = 팀, 열 = 라운드)
+
+**배경**: 사용자 결정 — 리스트 뷰 폐기, 격자만 사용하되 축을 뒤집음. 1열 드래프트 순위, 2열 팀 이름, 1행 라운드 번호, 셀은 선수 이름(text-sm).
+
+**변경 파일**: `views/multi/season/MultiDraftResultView.tsx` (UI 전용, 미러 없음)
+
+**Before**(바로 아래 항목): 리스트/그리드 `SegmentedControl`, 이름 검색·라운드·팀 필터, 그리드는 열 = 팀 / 행 = 라운드, 리스트에 OVR 배지.
+**After**: 격자 하나. 행 = 팀(1라운드 slot 순, 1라운드 기록 없는 팀은 뒤에 이름순·순위 '—'), 열 = 라운드(`{n}라운드`), 셀 = 선수 이름(호버카드·클릭 이동, 없으면 '—'). 순위(56px)·팀(176px) 두 열 `stickyLeft` 고정 + sticky 헤더, 라운드 열 128px 고정(`tableLayout: fixed`) → 가로 스크롤. 내 팀 행 강조. 검색/필터/뷰 전환/OVR 제거, `draft_picks` select도 `position, ovr` 제외.
+
+**검증**: `tsc --noEmit` 기존과 동일(신규 오류 0). 브라우저 육안 확인 미실시.
+
+**롤백 방법**: 이 파일만 바로 아래 항목(리스트/그리드 전환 버전)으로 되돌리면 됨.
+
+## 2026-10-22 — 드래프트 결과 화면 UI: 시즌명 제목, 리스트/그리드 뷰 전환
+
+**배경**: 사용자 요청 — 제목 우측 "총 N명 지명 · M명 표시" 텍스트 삭제, 제목을 `{시즌명} 드래프트 결과`로, 리스트/그리드 뷰 전환 추가(그리드 = 팀 30개 컬럼 × 라운드 행, 선수 이름만 text-sm, OVR 없음).
+
+**변경 파일**: `views/multi/season/MultiDraftResultView.tsx` (UI 전용, 미러 없음)
+
+**Before**: 제목 "드래프트 결과" + 우측 카운트 텍스트, 리스트 뷰만, 라운드 필터 기본값 1라운드.
+**After**:
+- 제목 `${seasonLabelFor(league.virtual_season_year)} 드래프트 결과` — 서버 `playoffSeeder.ts seasonLabelFor()`와 같은 `'2026-27'` 표기를 화면 안에 로컬 함수로 복제(클라이언트에 공용 함수 없음). 카운트 텍스트 제거.
+- `SegmentedControl` 리스트/그리드 전환(기본 리스트). 라운드 필터 기본값 [] (전체) — 그리드가 1라운드만 보이지 않도록.
+- 그리드: 열 = 팀(1라운드 지명 순서, 1라운드 기록 없는 팀은 뒤에 이름순), 행 = 라운드, 셀 = 선수 이름(text-sm, 호버카드·클릭 이동), 빈 셀 '—'. 첫 열(라운드) `stickyLeft={0}` + sticky 헤더, 열 너비 72/128px 고정(`tableLayout: fixed`), 내 팀 열 강조. 이름 검색은 리스트에서만(그리드에서는 입력창 숨김), 라운드/팀 필터는 양쪽 공통.
+
+**검증**: `tsc --noEmit` 기존과 동일(신규 오류 0). 브라우저 육안 확인 미실시.
+
+**롤백 방법**: 이 파일만 이전 항목(아래 "드래프트 결과 화면 신설")의 버전으로 되돌리면 됨.
+
+## 2026-10-22 — 드래프트 결과 화면(/season/draft-result) + 드래프트 완료 시 "드래프트 결과" 서신
+
+**배경**: 드래프트가 끝나면 지명 결과를 한눈에 볼 곳이 없었다. (1) 헤더 "리그" 드롭다운 맨 아래에 "드래프트 결과" 화면을 추가(사이드바 메뉴에는 의도적으로 추가하지 않음 — 사용자 요청), (2) 드래프트 완료 시 뉴스피드에 "드래프트 결과" 서신(league_events)을 자동 게시.
+
+**변경 파일** (서버/클라이언트 미러 쌍은 둘 다):
+- `server/src/postDraftResultNews.ts` (신규) — `buildDraftResultPayload()`(순수 함수) + `postDraftResult(roomId, leagueId)`: `draft_picks`를 읽어 1라운드 지명 전체를 담은 `league_events`(type `draft_result`, score 20, team_ids/player_ids 포함)를 게시. 같은 room에 이미 있으면 건너뜀.
+- `server/src/finalize.ts` — `finalizeDraft()`에서 `drafting→in_progress` claim 통과 직후 `postDraftResult` 호출(claim을 통과한 호출만 도달 → 리그당 1회, 실패해도 리그 시작은 계속)
+- `services/multi/leagueEventPayload.ts` (client 미러) — `DraftResultPick`/`DraftResultDetail` 타입, `parseLeagueEventPayload` `'draft_result'` case
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `'draft_result'`, `STORY_TYPES`에 추가(없으면 뉴스피드에 안 뜸)
+- `views/multi/season/newsFeedCards.tsx` — `DraftResultCard`(1라운드 표 + 전체 결과 링크), `extractEventPlayerIds`, `HEADLINE_ICON`, `StoryCard` dispatcher + `onOpenDraftResult` prop
+- `views/multi/season/MultiNewsFeedView.tsx`, `views/multi/season/PlayerNewsTab.tsx` — `onOpenDraftResult` 연결, 뉴스 필터에 "드래프트"(로터리+결과) 그룹 추가
+- `views/multi/season/MultiDraftResultView.tsx` (신규) — 지명 전체 표(순위/라운드·슬롯/팀/선수/포지션/OVR), 라운드·팀·이름 필터(기본 1라운드), 내 팀 행 강조, 선수/팀 클릭 이동
+- `App.tsx` — `season/draft-result` 라우트
+- `components/dashboard/MultiHeaderNavMenu.tsx` — 리그 드롭다운 맨 아래 "드래프트 결과"(드래프트 완료 + 비관전자일 때만), `isLeagueActive`에 경로 포함
+
+**서신 페이로드(서버↔클라 미러)**: `{ v:1, headline, rounds, totalPicks, picks:[{pick, round, slot, teamSlug, teamName, playerId, playerName, position, ovr}] }` — picks는 1라운드만(약 5KB). 필드명을 바꿀 땐 `postDraftResultNews.ts`와 `leagueEventPayload.ts`를 같이 고칠 것.
+
+**검증**: 실제 DB 지명 기록 2개 방(300건·450건)으로 `buildDraftResultPayload` → 클라이언트 `parseLeagueEventPayload` 왕복 확인(1라운드 30행, 헤드라인 "전체 1순위 르브론 제임스(…)", 불량 페이로드는 legacy, 빈 입력은 null). `tsc --noEmit` 루트 기존과 동일, 서버 신규 파일 오류 0. 브라우저 화면/실제 드래프트 완료 시 서신 게시는 미확인.
+
+**주의 / 한계**:
+- 이미 끝난 기존 리그에는 서신이 소급 게시되지 않는다(필요하면 `postDraftResult(roomId, leagueId)` 일회성 실행으로 가능).
+- 개인 팩 드래프트(카드)는 `draft_picks`를 쓰지 않아 서신·화면 모두 대상이 아니다(화면은 빈 상태 표시).
+- 관전자: `draft_picks`에 관전자 SELECT 정책이 없고 `utils/spectatorAccess.ts` 허용 목록에도 없어 메뉴 항목을 숨겼다. 뉴스피드 서신(league_events)은 관전자도 볼 수 있으나 전체 보기 링크는 홈으로 돌려보내진다(올스타 링크와 동일한 기존 동작).
+- 토스트 알림은 보내지 않는다(로터리 서신과 동일 — `TOASTED_EVENT_TYPES` 미포함).
+- 서버(Fly)와 클라이언트(Vercel) 모두 배포해야 서신 발행+표시가 동작.
+
+**롤백 방법**: 위 파일의 변경을 되돌리면 됨. 이미 게시된 `draft_result` 이벤트는 `DELETE FROM league_events WHERE type='draft_result'`로 제거(클라이언트가 모르는 타입은 LegacyCard로 표시되므로 롤백 후에도 화면은 깨지지 않음).
+
+## 2026-10-22 — 공용 풀 드래프트 지명 기록(draft_picks.ovr)을 고정 OVR로 기록
+
+**배경**: 멀티 OVR 고정값 전환 점검에서 `submit_draft_pick_v2`가 지명 기록(`draft_picks.ovr`)에 `meta_players.base_attributes->>'ovr'`(옛 키, 없으면 0)를 쓰는 것을 발견. 실제 지명 750건 중 286건이 0, 689건이 `ovr_base`와 달랐다. 노출 위치: `components/draft/DraftAdminPanel.tsx`(`OVR {pick.ovr}`), `views/multi/league/LeagueSettingsView.tsx`(드래프트 결과 표 `이름(포지션,OVR)`). 드래프트 보드/지명 기록 화면은 `BoardPick.ovr`을 렌더링하지 않는다.
+
+**변경 파일**: DB 마이그레이션 `draft_pick_ovr_use_fixed_ovr` (+ `migrations/draft_pick_ovr_use_fixed_ovr.sql` 기록용). 클라이언트/서버 코드 변경 없음(서버는 4-인자 오버로드 RPC를 호출).
+
+**Before**:
+```sql
+-- submit_draft_pick_v2 (3-인자/4-인자 둘 다)
+SELECT name, position, COALESCE((base_attributes->>'ovr')::integer, 0)
+INTO   v_player_name, v_position, v_ovr FROM meta_players WHERE id = p_player_id;
+```
+**After**:
+```sql
+SELECT name, position INTO v_player_name, v_position FROM meta_players WHERE id = p_player_id;
+...(rooms 조회 FOR UPDATE 직후, league_id 확정)
+v_ovr := public.meta_player_fixed_ovr(p_player_id, v_league_id);
+-- 헬퍼: 리그 use_custom_overrides ? ovr_custom : ovr_base, 둘 다 null이면 옛 키 → 0 (클라/서버 매퍼와 같은 우선순위)
+```
+기존 `draft_picks` 750건의 `ovr`도 같은 헬퍼로 일괄 보정(표시용, 게임 로직 영향 없음).
+
+**검증**: 두 오버로드 모두 헬퍼 사용·옛 키 읽기 제거·`league_id` 확정 뒤 설정 확인. 보정 후 지명 750건 중 0값 0건, 헬퍼와 불일치 0건, 범위 77~99(리그 2개 모두 `use_custom_overrides=true`라 `ovr_custom`과 일치). 헬퍼 샘플: 앤서니 에드워즈 91(custom), 카멜로 92.
+
+**주의/롤백**: 보정된 기존 지명의 옛 `ovr` 값은 백업이 없어 복원 불가(애초에 틀린 값). 롤백하려면 두 오버로드를 이전 정의(옛 키 읽기)로 `CREATE OR REPLACE`하고 헬퍼를 DROP. 개인 팩 드래프트(카드)는 이 함수를 쓰지 않는다 — 카드는 `manual_ovr`(`personal_draft_card_ovr`).
+
+## 2026-10-22 — 카드 OVR 단일 소스화: base_attributes.ovr 이중 기록 제거 (manual_ovr만 사용)
+
+**배경**: 카드 편집기가 저장할 때마다 유효 OVR을 카드 사본의 `base_attributes.ovr`에도 같이 적었다(개인 팩 드래프트 자동 지명 SQL `personal_draft_card_ovr`의 폴백 기준). 이중 저장이라 `manual_ovr`와 어긋날 수 있고, 카드 505장이 모두 `manual_ovr`를 갖게 된 뒤로는 폴백이 필요 없다. (참고: 편집기가 쓰던 건 `meta_player_cards.base_attributes` — `meta_players`는 건드리지 않았음.)
+
+**변경 파일**:
+- DB 함수 `personal_draft_card_ovr` (+ `migrations/personal_draft_card_ovr_use_manual_ovr_only.sql` 기록용)
+- `pages/PlayerCardEditorPage.tsx` — "OVR 고정값" 체크박스 제거(입력 항상 노출), 저장 시 `base_attributes.ovr` 기록 제거 + 옛 `ovr` 키 제거, 빈 값 저장 차단, `manual_ovr`가 없는 카드는 열 때 계산값을 출발값으로 채움
+- `services/admin/playerCardAdminService.ts` — `createCardFromCopy`가 원본 `meta_players.ovr_base`를 `manual_ovr` 초기값으로 복사
+
+**Before**:
+```sql
+COALESCE((p_format->'cardOvrById'->>p_card_id)::integer,
+         (SELECT COALESCE(c.manual_ovr, (c.base_attributes->>'ovr')::integer) FROM meta_player_cards c WHERE c.id::text = p_card_id), 0)
+```
+```ts
+// 편집기 저장
+base_attributes: { ...draft.attrs, age, ...(draftOvrPreview != null ? { ovr: draftOvrPreview } : {}) },
+manual_ovr: draft.manualOvrEnabled && draft.manualOvr !== '' ? Number(draft.manualOvr) : null,
+```
+**After**:
+```sql
+COALESCE((p_format->'cardOvrById'->>p_card_id)::integer,
+         (SELECT c.manual_ovr FROM meta_player_cards c WHERE c.id::text = p_card_id), 0)
+```
+```ts
+base_attributes: { ...(draft.attrs에서 ovr 키 제외), age },
+manual_ovr: Number(draft.manualOvr),   // 빈 값이면 저장 거부("OVR을 입력해주세요.")
+```
+
+**검증**: DB에서 함수 실행 — 포맷 없음 → `manual_ovr`(81), 포맷 `cardOvrById` 있음 → 그 값(77), 없는 카드 id → 0. `base_attributes->>'ovr'`를 읽는 DB 함수는 `personal_draft_card_ovr`(카드)와 `submit_draft_pick_v2`(meta_players, 별개 항목)뿐임을 확인. `Player.manualOvr`(옛 `base_attributes.ovr`에서 읽던 필드)를 읽는 코드 없음. `tsc --noEmit` 기존과 동일(신규 오류 0).
+
+**주의**: 기존 카드 505장의 `base_attributes.ovr` 옛 키는 그대로 남아 있다(읽는 곳 없음, 해당 카드를 편집기에서 저장할 때 제거됨). 일괄 정리는 안 함. 카드 편집기 UI는 서버/클라이언트 배포 없이 클라이언트(Vercel) 배포만으로 반영되며, SQL은 이미 DB에 적용됨.
+
+**롤백 방법**: SQL — 마이그레이션 파일 주석의 이전 정의로 `CREATE OR REPLACE`. 편집기/서비스는 위 Before로 복구.
+
+## 2026-10-22 — OVR 고정값 전환: 시즌 카드(meta_player_cards)도 fixedOvr 적용 + manual_ovr 499장 백필
+
+**배경**: 2단계 이후 점검에서 멀티에 남은 가변 OVR이 개인 팩 드래프트의 시즌 카드뿐임을 확인. 카드 505장 중 499장이 `manual_ovr=null`이라 능력치+DB 아키타입 설정으로 동적 계산(기기/설정 로딩 시점에 따라 달라질 수 있음)되고, `manual_ovr`가 있는 6장도 매퍼가 `ovr`만 고정하고 `fixedOvr`는 세우지 않아 `calculatePlayerOvr()`를 쓰는 화면에서는 다시 계산돼 어긋났다.
+
+**변경 파일** (미러 쌍은 둘 다):
+- `services/dataMapper.ts` (client) / `server/src/shared/dataMapper.ts` (server 미러)
+- `scripts/backfill_card_manual_ovr.ts` (신규)
+- DB 데이터: `meta_player_cards.manual_ovr` 499건 UPDATE (스키마 변경 없음)
+
+**Before**:
+```ts
+const fixedOvr = (useFixedOvr &&) cardFixedOvr == null && fixedCol != null ... ? Number(fixedCol) : null;
+const ovr = cardFixedOvr ?? fixedOvr ?? ovrCalc.ovr;   // 카드: ovr만 고정, player.fixedOvr 없음
+```
+**After**:
+```ts
+const metaFixedOvr = (useFixedOvr &&) fixedCol != null && !isNaN(Number(fixedCol)) ? Number(fixedCol) : null;
+const fixedOvr = cardFixedOvr ?? metaFixedOvr;          // 카드 manual_ovr 우선, 카드는 useFixedOvr와 무관하게 적용
+const ovr = fixedOvr ?? ovrCalc.ovr;                    // player.fixedOvr = fixedOvr
+```
+카드 OVR은 최대 3자리(예: 르브론 101, DB CHECK 0~999) — 이제 `calculatePlayerOvr()`도 그 값을 그대로 반환한다(이전엔 화면에 따라 ≤99 계산값이 나왔음).
+
+**백필**: `computeCardOvr()`(services/multi/cardPool.ts, 드래프트 풀/카드 편집기와 동일 규칙)을 DB 아키타입 설정(weights 25 / tags 15) 로딩 상태에서 계산해 `manual_ovr IS NULL`인 카드에만 기록(`.is('manual_ovr', null)` 가드). 실행: `(set -a; . ./.env; set +a; REACT_APP_SUPABASE_ANON_KEY="$SUPABASE_SERVICE_ROLE_KEY" npx tsx scripts/backfill_card_manual_ovr.ts [--apply])`. 계산 499건/실패 0, 범위 60~99.
+
+**검증**: 적용 후 카드 505/505 `manual_ovr` 보유(min 60, max 101). 실제 카드로 확인 — 르브론 101, 스티븐 아담스 81: client(멀티)·client(플래그 없이)·server 모두 `ovr == fixedOvr == calculatePlayerOvr`. `tsc --noEmit` 기존과 동일(신규 오류 0).
+
+**영향 / 주의**:
+- 카드 편집기(`PlayerCardEditorPage`)에서는 이제 모든 카드가 "수동 OVR" 체크 상태로 열리며, 카드 능력치를 고쳐도 OVR은 자동으로 바뀌지 않는다(바꾸려면 수동 OVR 값을 직접 수정 — 능력치↔OVR 분리라는 전환 방침과 동일).
+- 서버/클라이언트 모두 배포해야 반영됨(매퍼 변경). 이전에 이미 계산돼 캐시된 카드 OVR은 기존 캐시 버스터(`2026-10-22-fixed-ovr`)로 폐기됨.
+- 아키타입 라벨/특성 태그는 여전히 DB 설정 기반 계산(OVR 아님, 이번 범위 밖).
+
+**롤백 방법**: 매퍼 변경은 위 Before로 복구. 데이터는 `UPDATE meta_player_cards SET manual_ovr = NULL WHERE id IN (...)`로 되돌릴 수 있으나, 백필 전부터 값이 있던 6장(르브론 제임스 101 포함)은 건드리면 안 되므로 `created_at`이 아니라 이 스크립트 실행 로그의 대상 id로만 복구할 것(대상은 "백필 직전 manual_ovr IS NULL"이던 499장).
+
+## 2026-10-22 — OVR 고정값 전환 2단계: 멀티 매퍼가 ovr_base/ovr_custom을 읽고, calculatePlayerOvr가 고정값 반환
+
+**배경**: 멀티에서 같은 선수 OVR이 기기/시점에 따라 다르게 보임(DB 아키타입 설정 로딩 전후 계산값 차이 + `multiSearchPool` localStorage 영속). 멀티 화면의 대부분은 `player.ovr`이 아니라 `calculatePlayerOvr(p)`(능력치 재계산)를 부르므로, 매퍼만 고치면 효과가 없고 이 함수가 병목이었다. 그래서 (1) 매퍼가 고정값을 `player.fixedOvr`에 담고 (2) `calculatePlayerOvr`가 `fixedOvr`가 있으면 그대로 반환하게 해 호출부 약 60곳을 한 번에 커버. 서버는 `calculateOvr` 직접 호출 8개 파일을 서버판 `calculatePlayerOvr`로 교체. 싱글플레이는 성장/퇴화로 OVR이 변하므로 계산 유지.
+
+**변경 파일** (미러 쌍은 둘 다):
+- `types/player.ts` / `server/src/shared/types/player.ts` — `Player.fixedOvr?: number`
+- `services/dataMapper.ts` (client) / `server/src/shared/dataMapper.ts` (server 미러)
+- `utils/constants.ts` (client `calculatePlayerOvr`) / `server/src/shared/utils/ovrUtils.ts` (server `calculatePlayerOvr` 신설)
+- 서버 호출부 `calculateOvr` → `calculatePlayerOvr`: `shared/engine/pbp/initializer.ts`, `shared/game/tactics/{minutesManager,tacticGenerator,tacticRepair}.ts`, `shared/game/tactics/aiCoach/rosterEvaluator.ts`, `shared/multi/awardVoting.ts`, `simRunner.ts`, `postAllStarGame.ts` (클라 미러 `services/game/**`는 원래 `calculatePlayerOvr`를 써서 변경 없음)
+- select에 `ovr_base, ovr_custom` 추가: 클라 `hooks/useLeagueRawStats.ts`(RAW_PLAYER_COLS), `hooks/useMultiSearchData.ts`, `views/multi/league/settings/{TeamTacticsTab,AdminTradeBlock}.tsx`(ROSTER_COLS), `components/dashboard/AdminTradePanel.tsx`, `components/multi/DraftPoolModal.tsx`, `views/multi/season/{LeagueLobbyPanel,MultiGamePbpView}.tsx`, `services/multi/draftPoolCapacity.ts` / 서버 `playerLoader.ts`(META_COLUMNS 신설, 카드 조회는 기존 RAW_COLUMNS), `finalize.ts`(3곳), `startDraft.ts`, `DraftRoom.ts`, `postSeasonAwards.ts`, `postAllStarGame.ts`, `postAllStarVoteNews.ts`, `postPowerRankingNews.ts`, `postDunkContest.ts`, `postThreePointContest.ts`
+- 드래프트 룸: `server/src/protocol.ts` / `types/multiDraft.ts` `DraftPoolPlayer`에 `ovr_base?/ovr_custom?`, `views/multi/league/MultiDraftView.tsx` `toPlayer`가 그대로 전달
+- `index.tsx` — `PERSIST_CACHE_BUSTER` `'2026-10-14-persist-whitelist'` → `'2026-10-22-fixed-ovr'` (기기별 localStorage에 굳은 옛 계산값 `multiSearchPool` 일괄 폐기)
+
+**Before**:
+```ts
+// client dataMapper
+const ovr = cardFixedOvr ?? ovrCalc.ovr;
+// constants.ts
+export const calculatePlayerOvr = (p, position?) => calculateOvr(p, position || p.position);
+// server: stableSort/initializer 등은 calculateOvr(p)를 직접 호출
+```
+**After**:
+```ts
+// client dataMapper: 4번째 인자 useFixedOvr = forceHealthy (멀티 호출부는 전부 forceHealthy=true)
+const fixedCol = applyCustomOverrides ? raw.ovr_custom : raw.ovr_base;
+const fixedOvr = useFixedOvr && cardFixedOvr == null && fixedCol != null && !isNaN(Number(fixedCol)) ? Number(fixedCol) : null;
+const ovr = cardFixedOvr ?? fixedOvr ?? ovrCalc.ovr;      // player.fixedOvr = fixedOvr
+// constants.ts / server ovrUtils.ts
+export const calculatePlayerOvr = (p, position?) => {
+    if (position === undefined && p.fixedOvr != null) return p.fixedOvr;   // position 명시 호출은 계산 유지
+    return calculateOvr(p, position || p.position);
+};
+// server dataMapper: 클라와 동일(항상 고정값 우선) + applyRosterState의 attrDeltas 재계산이 fixedOvr를 덮어쓰지 않음
+// client postProcessAllPlayersOVR: p.ovr = p.fixedOvr ?? ovr
+```
+규칙: null이거나 select에서 컬럼이 빠진 행은 **조용히 계산 폴백**한다(= select 누락은 에러 없이 불일치로 나타남 — 새 select 추가 시 두 컬럼 포함할 것). 카드(`manual_ovr`)는 기존대로 ovr만 고정, `fixedOvr` 플래그는 안 세움(카드 경로 불변). 개인 팩 드래프트 인스턴스(카드)는 `ovr_base`가 없어 계산 유지.
+
+**검증**: 실제 DB 행으로 확인 — 카멜로 앤서니: 설정 미로딩 상태에서 멀티=92(고정), 싱글=95(폴백 계산) → 멀티는 설정 로딩 여부와 무관하게 92. 에드워즈 base 96 / custom(CO) 91. `ovr_base=null`·컬럼 누락 → 계산 폴백, `ovr_base=88` 직접 지정 시 88 반환(`calculatePlayerOvr(p, p.position)`처럼 position 명시 호출은 계산값). 서버 매퍼: base 96/custom 91, `ovr_base=70` 지정 후 `applyRosterState(attrDeltas)`에도 70 유지. `tsc --noEmit`(루트): 변경 전과 오류 91줄 동일(신규 0). 서버 tsconfig: 신규 오류 없음(기존 bun 타입/Supabase 제네릭 오류만).
+
+**영향 / 주의**:
+- PBP 엔진 `LivePlayer.ovr`(initializer.ts:160)와 로스터 정렬이 고정값을 따르게 됨 → 이후 어드민이 `ovr_base`를 수동 조정하면 정렬·AI 판단이 즉시 바뀐다. 시뮬 내부 능력치 사용은 그대로.
+- 배포: 서버(Fly)와 클라이언트(Vercel) 둘 다 배포해야 일관됨. 서버만 먼저 나가면 클라 화면이 옛 계산값이라 어긋남.
+- 남은 일: 선수 에디터 목록의 OVR 정렬/필터/내보내기는 아직 계산값 기준, `base_attributes.ovr` 옛 키(드래프트 자동 지명 SQL `submit_draft_pick_v2`가 읽음) 정리, 싱글 성장 반영 방식.
+
+**롤백 방법**: 위 파일들의 변경을 되돌리면 됨 — 최소 롤백은 `utils/constants.ts`·`server/src/shared/utils/ovrUtils.ts`의 `calculatePlayerOvr`에서 `fixedOvr` 분기 한 줄 제거(그러면 `fixedOvr`가 있어도 무시되어 예전 계산 동작으로 복귀). 미러 쌍(매퍼·`calculatePlayerOvr`)은 같이 되돌릴 것. `PERSIST_CACHE_BUSTER`는 되돌릴 필요 없음.
+
+## 2026-10-22 — 어드민 선수 편집: 고정 OVR(ovr_base / ovr_custom) 편집·저장 UI
+
+**배경**: OVR 고정값 전환(아래 항목) 2단계 진행 전에, 어드민이 두 컬럼 값을 직접 보고 고칠 수 있어야 한다. 능력치를 깎아서 OVR을 맞추는 대신 이 값을 직접 지정하는 용도.
+
+**변경 파일** (미러 쌍 없음, 어드민 전용):
+- `services/admin/playerAdminService.ts` — `MetaPlayerRow`에 `ovr_base?/ovr_custom?`(optional: `admin_search_meta_players` RPC는 이 컬럼을 반환하지 않음), `searchPlayers`/`fetchPlayerById`/`insertPlayer`의 select에 두 컬럼 추가, `updateFixedOvr(id, ovr_base, ovr_custom)` 신설
+- `pages/PlayerEditorPage.tsx` — 상태 `ovrBaseVal/ovrCustomVal`, `handleSelect`에서 로드, `handleSave`에서 변경 시 `updateFixedOvr` 호출 + 편집 로그 diff(`ovr_base`/`ovr_custom`), "인적 정보" 위에 "고정 OVR" 섹션(입력 2칸, 엔진 계산값 참고 표시·"계산값 적용"·"base와 동일" 버튼)
+
+**Before**: 두 컬럼을 편집하는 UI/저장 경로 없음. 선수 편집 화면의 OVR은 능력치로 계산한 미리보기만 존재.
+**After**: 저장 시 빈 칸=null, 값=1~99 정수(아니면 "저장 실패" 메시지, 다른 필드는 이미 저장된 뒤일 수 있음 — 검증은 컬럼 저장 시점). 변경된 컬럼만 편집 로그에 `{before, after}`로 남음. 능력치(`base_attributes`) 저장과는 독립이며 서로 자동 연동하지 않음.
+
+**검증**: `tsc --noEmit` — 변경 파일에서 새 오류 없음(기존 오류 6건은 부상 필드 `delete`, `ModuleScores` 캐스팅으로 이번 변경 무관). 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 위 두 파일의 변경분을 되돌리면 됨(DB 컬럼은 그대로 두어도 무해).
+
+## 2026-10-22 — OVR 고정값 전환 1단계: meta_players.ovr_base / ovr_custom 컬럼 추가 + 일괄 채우기
+
+**배경**: 제보("멀티에서 PC/모바일마다 OVR이 다르다", 카멜로 앤서니 변동 심함). 원인은 OVR이 능력치 + DB 아키타입 설정(`archetypes` 테이블: weights/positions/labels/tags)으로 매번 계산되는데, 클라이언트는 설정 로딩 전/실패 시 하드코딩 폴백으로 계산하고(`getWeightConfigSync()` 등이 null), `multiSearchPool`처럼 계산 결과(Player.ovr)가 기기별 localStorage에 24h 영속화되기 때문. 카멜로는 폴백 94.6→95, DB 설정 92.4→92. 또 OVR을 맞추려고 쓸데없이 능력치를 깎는 밸런스 왜곡을 막기 위해 "계산 대신 저장값 읽기"로 전환하기로 결정. **이번 단계는 컬럼 추가 + 값 채우기만**이며 매퍼/호출부는 아직 이 컬럼을 읽지 않는다(동작 변화 없음).
+
+**변경 파일**:
+- DB 마이그레이션 `add_meta_players_fixed_ovr` (+ `migrations/add_meta_players_fixed_ovr.sql` 기록용)
+- `scripts/backfill_meta_players_ovr.ts` (신규) — 일괄 채우기 스크립트
+- (미러 쌍 코드 변경 없음)
+
+**Before**: `meta_players`에 OVR 저장 컬럼 없음(일부 행의 `base_attributes.ovr`는 별개의 옛 값이며 이번에 건드리지 않음).
+**After**:
+```sql
+alter table public.meta_players
+    add column if not exists ovr_base smallint,    -- base_attributes 기준 OVR
+    add column if not exists ovr_custom smallint;  -- custom_overrides 적용 기준 OVR (오버라이드 없으면 ovr_base와 동일)
+```
+값 = 클라이언트 `mapRawPlayerToRuntimePlayer(raw, applyCustomOverrides, true).ovr`를 **DB 아키타입 설정을 로딩한 상태**(weights 25 / tags 15)에서 계산. `ovr_base`는 `false`, `ovr_custom`은 `true`로 계산.
+
+**실행 방법**: `(set -a; . ./.env; set +a; REACT_APP_SUPABASE_ANON_KEY="$SUPABASE_SERVICE_ROLE_KEY" npx tsx scripts/backfill_meta_players_ovr.ts [--apply] [--only-null])`
+- 익명 키로는 `archetypes`가 RLS로 비어 보여 weights 0개 → 폴백 값이 박힌다. 그래서 서비스 키를 클라이언트 키 자리에 주입하고, 설정이 비어 있으면 스크립트가 중단하도록 가드를 넣음.
+- 기본은 dry-run, `--apply`일 때만 25건씩 병렬 UPDATE.
+
+**검증**: 853명 전원 계산 성공(실패 0), 전원 채워짐(base 853 / custom 853), 범위 55~99, `custom_overrides` 없는 선수 중 base≠custom 0건, base≠custom 총 92명. 카멜로 앤서니 base=92/custom=92, 앤서니 에드워즈 base=96/custom=91.
+
+**롤백 방법**: `alter table public.meta_players drop column ovr_base, drop column ovr_custom;` (이 컬럼을 읽는 코드는 아직 없으므로 안전). 값만 다시 만들려면 스크립트를 `--apply`로 재실행(설정을 바꿨다면 재계산됨).
+
+**후속 단계(미진행)**: 2) 매퍼 미러 쌍이 `ovr_base`/`ovr_custom` 우선·null이면 계산 폴백, 3) `calculateOvr(p)` 직접 호출부를 `p.ovr`로 교체, 4) 선수 에디터에 직접 입력 + 계산값 비교, 5) 신인 생성 시 저장, 단일플레이 성장 반영 방식 결정.
+
 ## 2026-10-22 — 엔진: 타임아웃 체력 회복량 1 → 0.5
 
 **배경**: 타임아웃 NBA 규정화(아래 항목)로 경기당 타임아웃이 양 팀 합계 약 14회(합성 시뮬 기준)로 늘어, 1회당 양 팀 전 선수 회복 1이면 경기당 약 14 회복 — 체력 70 안팎 주전의 약 7분 코트 소모량. 이전 수준(최대 8회, 8점 런 때만)에 가깝게 맞추기 위해 사용자 결정으로 절반으로 하향.

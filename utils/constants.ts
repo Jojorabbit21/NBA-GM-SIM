@@ -301,7 +301,11 @@ export const CONFERENCE_COLORS: Record<'East' | 'West', string> = {
 export const RISING_STARS_COLORS = { A: '#0080FF', B: '#FF00A6' };
 
 // [Critical] 항상 능력치 기반으로 OVR 동적 계산 (성장/퇴화 반영)
+// [2026-10-22] 고정 OVR(meta_players.ovr_base/ovr_custom, 멀티)이 있으면 그 값을 그대로 반환한다.
+// 단 position을 명시한 호출("그 포지션이라면 OVR이 몇인가")은 고정값이 의미 없으므로 계산한다.
+// server/src/shared/utils/ovrUtils.ts calculatePlayerOvr 미러 — 둘 다 같이 바꿀 것.
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
+    if (position === undefined && p.fixedOvr != null) return p.fixedOvr;
     return calculateOvr(p, position || p.position);
 };
 

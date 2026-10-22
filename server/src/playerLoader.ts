@@ -13,6 +13,8 @@ import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 
 const RAW_COLUMNS = 'id, name, position, base_attributes, tendencies';
+// meta_players 전용 — 고정 OVR 컬럼 포함(meta_player_cards에는 없으므로 카드 조회는 RAW_COLUMNS 그대로)
+const META_COLUMNS = `${RAW_COLUMNS}, ovr_base, ovr_custom`;
 const CHUNK = 100;   // .in() 필터가 URL에 실리므로 id 수백 개를 한 번에 보내지 않는다
 
 export interface PlayerLoaderLeague {
@@ -53,7 +55,7 @@ export async function loadRoomPlayers(
         const rawById = new Map<string, any>(cardRows.map((r: any) => [r.id, r]));
         const missing = sourceIds.filter(id => !rawById.has(id));
         if (missing.length > 0) {
-            for (const r of await selectIn('meta_players', RAW_COLUMNS, 'id', missing)) rawById.set(r.id, r);
+            for (const r of await selectIn('meta_players', META_COLUMNS, 'id', missing)) rawById.set(r.id, r);
         }
         for (const { instance_id, source_player_id } of instances as any[]) {
             const raw = rawById.get(source_player_id);
@@ -62,7 +64,7 @@ export async function loadRoomPlayers(
             playerMap.set(instance_id, { ...player, id: instance_id });
         }
     } else {
-        for (const raw of await selectIn('meta_players', RAW_COLUMNS, 'id', ids)) {
+        for (const raw of await selectIn('meta_players', META_COLUMNS, 'id', ids)) {
             playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
         }
     }

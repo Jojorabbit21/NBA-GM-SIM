@@ -138,7 +138,7 @@ export class DraftRoom {
             chunks.map(ids =>
                 supabase
                     .from('meta_players')
-                    .select('id, name, position, salary, base_attributes')
+                    .select('id, name, position, salary, base_attributes, ovr_base, ovr_custom')
                     .in('id', ids)
             )
         );

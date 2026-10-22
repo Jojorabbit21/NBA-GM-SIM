@@ -64,6 +64,7 @@ export const PlayerNewsTab: React.FC<Props> = ({ roomId, playerId, myTeamSlug, l
     const openPlayer = (id: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(id)}`);
     const openTeam = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
     const openAllStar = (view?: string) => navigate(`/multi/leagues/${leagueId}/season/allstar${view ? `?view=${view}` : ''}`);
+    const openDraftResult = () => navigate(`/multi/leagues/${leagueId}/season/draft-result`);
 
     if (isLoading) {
         return (
@@ -115,7 +116,7 @@ export const PlayerNewsTab: React.FC<Props> = ({ roomId, playerId, myTeamSlug, l
                         event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
                         roomId={roomId}
                         onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
-                        onOpenAllStar={openAllStar}
+                        onOpenAllStar={openAllStar} onOpenDraftResult={openDraftResult}
                     />
                 )}
             </div>

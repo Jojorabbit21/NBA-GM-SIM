@@ -122,6 +122,16 @@ export const calculateOvr = (attributes: Player | any, position?: string): numbe
 };
 
 /**
+ * [2026-10-22] 고정 OVR(meta_players.ovr_base/ovr_custom)이 있으면 그 값을, 없으면 calculateOvr()을 반환.
+ * position을 명시한 호출은 고정값이 의미 없으므로 계산. 클라이언트 utils/constants.ts calculatePlayerOvr 미러 —
+ * 둘 다 같이 바꿀 것. 서버의 로스터 정렬/전술/어워드 등 "선수의 OVR"이 필요한 곳은 calculateOvr 대신 이것을 쓴다.
+ */
+export const calculatePlayerOvr = (p: Player | any, position?: string): number => {
+  if (position === undefined && p?.fixedOvr != null) return p.fixedOvr;
+  return calculateOvr(p, position);
+};
+
+/**
  * calculateOvr()과 동일한 evaluatePlayerRawOVR() 결과 하나로 OVR과 주/부 아키타입 라벨을
  * 같이 뽑아낸다 — 아키타입 표시가 필요한 곳(드래프트 풀 등)에서 OVR을 두 번 계산하지
  * 않도록 하기 위함. 라벨은 DB 커스텀 설정(archetypes.labels) 우선, 없으면 하드코딩 폴백.

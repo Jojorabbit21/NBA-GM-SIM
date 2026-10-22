@@ -48,7 +48,7 @@ const EDIT_TABS: { id: EditTab; label: string }[] = [
     { id: 'depth', label: '뎁스 차트' }, { id: 'rotation', label: '로테이션' }, { id: 'team', label: '팀 전술' },
 ];
 /** mapRawPlayerToRuntimePlayer가 읽는 컬럼(useLeagueRawStats.RAW_PLAYER_COLS + tendencies). */
-const ROSTER_COLS = 'id, name, position, draft_year, base_attributes, tendencies';
+const ROSTER_COLS = 'id, name, position, draft_year, base_attributes, tendencies, ovr_base, ovr_custom';
 
 /** 슬라이더 표시 순서/라벨 — TacticsSlidersPanel의 라벨과 동일하게 맞춘다. */
 const SLIDER_ROWS: { key: keyof TacticalSliders; label: string; group: string }[] = [

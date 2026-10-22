@@ -41,6 +41,7 @@ import MultiNewsFeedView from './views/multi/season/MultiNewsFeedView';
 import MultiRosterView from './views/multi/season/MultiRosterView';
 import MultiFrontOfficeView from './views/multi/season/MultiFrontOfficeView';
 import MultiDraftPoolView from './views/multi/season/MultiDraftPoolView';
+import MultiDraftResultView from './views/multi/season/MultiDraftResultView';
 import MultiTacticsView from './views/multi/season/MultiTacticsView';
 import MultiGamePbpView from './views/multi/season/MultiGamePbpView';
 import MultiLeaderboardView from './views/multi/season/MultiLeaderboardView';
@@ -435,6 +436,8 @@ const App: React.FC = () => {
                                 {/* [2026-10-14] 자유 계약은 트레이드 화면의 하위 탭으로 흡수 — 옛 링크(북마크·외부 참조)는 그 탭으로 */}
                                 <Route path="free-agent"   element={<FreeAgentRedirect />} />
                                 <Route path="pool"         element={<MultiDraftPoolView />} />
+                                {/* [2026-10-22] 드래프트 결과 — 헤더 "리그" 드롭다운에서만 진입(사이드바 메뉴 없음) */}
+                                <Route path="draft-result" element={<MultiDraftResultView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                                 <Route path="negotiate/:playerId" element={<MultiNegotiationView />} />

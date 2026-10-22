@@ -16,12 +16,16 @@ export interface MetaPlayerRow {
     include_alltime: boolean;
     in_multi_pool: boolean;
     draft_year: number | null;     // numeric 컬럼 — 2026이면 드래프트 클래스 선수
+    // [2026-10-22] 고정 OVR 전용 컬럼(마이그레이션 add_meta_players_fixed_ovr). admin_search_meta_players RPC는
+    // 이 컬럼을 반환하지 않으므로 optional — 값이 필요하면 fetchPlayerById로 다시 읽을 것.
+    ovr_base?: number | null;      // base_attributes 기준 고정 OVR
+    ovr_custom?: number | null;    // custom_overrides 적용 기준 고정 OVR
 }
 
 export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     let q = supabase
         .from('meta_players')
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
         .order('name');
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
@@ -86,7 +90,7 @@ export async function searchPlayersAdvanced(filters: PlayerSearchFilters): Promi
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
         .eq('id', id)
         .single();
     if (error) throw error;
@@ -155,6 +159,19 @@ export async function updateDraftYear(
     const { error } = await supabase
         .from('meta_players')
         .update({ draft_year })
+        .eq('id', id);
+    if (error) throw error;
+}
+
+/** [2026-10-22] 고정 OVR 저장 — 두 값 모두 정수(1~99) 또는 null(미설정). */
+export async function updateFixedOvr(
+    id: string,
+    ovr_base: number | null,
+    ovr_custom: number | null
+): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ ovr_base, ovr_custom })
         .eq('id', id);
     if (error) throw error;
 }
@@ -236,7 +253,7 @@ export async function insertPlayer(opts: {
             include_alltime: false,
             in_multi_pool: true,
         })
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
         .single();
     if (error) throw error;
     return data;

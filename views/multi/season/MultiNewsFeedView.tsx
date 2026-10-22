@@ -52,6 +52,7 @@ const NEWS_TYPE_FILTER_OPTIONS: NewsTypeFilterOption[] = [
     { label: '수상', types: ['mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team'] },
     { label: '부상', types: ['injury'] },
     { label: '출장정지', types: ['suspension'] },
+    { label: '드래프트', types: ['draft_lottery_result', 'draft_result'] },
     { label: '올스타', types: ['allstar_vote_update', 'allstar_vote_start', 'allstar_vote_result', 'allstar_rising_stars', 'allstar_three_point_contest', 'allstar_dunk_contest', 'allstar_game_result', 'allstar_rising_stars_result', 'allstar_three_point_contest_result', 'allstar_dunk_contest_result'] },
     // [2026-09-15] 플레이인 대진/결과, 본선 대진 확정, 경기/시리즈 결과, 우승팀, 파이널 MVP — 7종.
     { label: '플레이오프', types: ['play_in_bracket', 'play_in_result', 'playoff_bracket_confirmed', 'playoff_game_result', 'playoff_series_result', 'playoff_champion', 'finals_mvp'] },
@@ -326,6 +327,7 @@ const MultiNewsFeedView: React.FC = () => {
     // 이동해야 해서(사용자 요청) view 파라미터를 선택적으로 받도록 확장 — 안 넘기면 기존과
     // 동일하게 기본(올스타) 탭으로 이동.
     const openAllStar = (view?: string) => navigate(`/multi/leagues/${leagueId}/season/allstar${view ? `?view=${view}` : ''}`);
+    const openDraftResult = () => navigate(`/multi/leagues/${leagueId}/season/draft-result`);
 
     return (
         <div className="h-full flex flex-col overflow-hidden text-slate-200 pretendard">
@@ -567,7 +569,7 @@ const MultiNewsFeedView: React.FC = () => {
                             event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
                             roomId={room?.id}
                             onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
-                            onOpenAllStar={openAllStar}
+                            onOpenAllStar={openAllStar} onOpenDraftResult={openDraftResult}
                         />
                     ) : (
                         <div className="h-full flex items-center justify-center text-slate-600 text-sm ko-normal">선택된 소식이 없습니다.</div>

@@ -16,7 +16,7 @@ import type { Player } from '../../../../types';
 import { useLeagueContext } from '../LeagueLayout';
 import { useGame } from '../../../../hooks/useGameContext';
 
-const ROSTER_COLS = 'id, name, position, draft_year, base_attributes, tendencies';
+const ROSTER_COLS = 'id, name, position, draft_year, base_attributes, tendencies, ovr_base, ovr_custom';
 
 export const AdminTradeBlock: React.FC = () => {
     const { league, room, members, leagueTeams, reload } = useLeagueContext();

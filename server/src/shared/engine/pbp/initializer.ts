@@ -4,7 +4,7 @@ import { LeagueCoachingData } from '../../types/coaching.ts';
 import { TeamState, LivePlayer } from './pbpTypes.ts';
 import { calculatePlayerArchetypes } from './archetypeSystem.ts';
 import { INITIAL_STATS } from '../../utils/constants.ts';
-import { calculateOvr } from '../../utils/ovrUtils.ts';
+import { calculatePlayerOvr } from '../../utils/ovrUtils.ts';
 import { generateAutoTactics } from '../../game/tactics/tacticGenerator.ts';
 import { getCoachPreferences } from '../../coachingStaff/coachGenerator.ts';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../utils/hiddenTendencies.ts';
@@ -103,7 +103,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     };
 
     // 2. 로스터 정렬 및 라이브 플레이어 객체 생성
-    const sortedRoster = [...team.roster].sort((a, b) => calculateOvr(b) - calculateOvr(a));
+    const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
     
     const liveRoster: LivePlayer[] = sortedRoster.map(p => {
         const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
@@ -154,7 +154,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             currentCondition,
             startCondition: currentCondition,
             position: getSlotPosition(p.id) || p.position,
-            ovr: calculateOvr(p),
+            ovr: calculatePlayerOvr(p),
             isStarter: false,
             health: p.health || 'Healthy',
             injuryType: p.injuryType,

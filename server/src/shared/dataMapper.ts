@@ -174,7 +174,13 @@ export function mapRawPlayerToRuntimePlayer(raw: any, applyCustomOverrides = fal
     // meta_players row에는 이 컬럼이 없으므로 일반 선수 OVR은 지금처럼 항상 능력치 기반 동적 계산.
     // services/dataMapper.ts(클라이언트) 미러 — 둘 다 같이 바꿀 것.
     const cardFixedOvr = raw.manual_ovr != null && !isNaN(Number(raw.manual_ovr)) ? Number(raw.manual_ovr) : null;
-    player.ovr = cardFixedOvr ?? ovrResult.ovr;
+    // [2026-10-22] 고정 OVR — custom_overrides 적용 리그면 ovr_custom, 아니면 ovr_base. null/미조회면 계산 폴백.
+    // 카드(manual_ovr)도 fixedOvr를 세운다(manual_ovr 우선). services/dataMapper.ts(클라이언트) 미러.
+    const fixedCol = applyCustomOverrides ? raw.ovr_custom : raw.ovr_base;
+    const metaFixedOvr = fixedCol != null && !isNaN(Number(fixedCol)) ? Number(fixedCol) : null;
+    const fixedOvr = cardFixedOvr ?? metaFixedOvr;
+    player.ovr = fixedOvr ?? ovrResult.ovr;
+    if (fixedOvr != null) player.fixedOvr = fixedOvr;
     player.archetype = ovrResult.archetype;
     player.secondaryArchetype = ovrResult.secondaryArchetype;
     // potential은 항상 현재 ovr 이상이어야 함(성장 로직이 potential < ovr을 가정하지 않음)
@@ -212,7 +218,8 @@ export function applyRosterState(player: any, rosterState: Record<string, any>):
             player[cat] = calcCategoryAvg(player, cat);
         }
         const ovrResult = calculateOvrWithArchetype(player);
-        player.ovr = ovrResult.ovr;
+        // 고정 OVR 선수는 능력치 델타로 OVR이 재계산돼 덮어써지면 안 된다(아키타입 라벨만 갱신).
+        player.ovr = player.fixedOvr ?? ovrResult.ovr;
         player.archetype = ovrResult.archetype;
         player.secondaryArchetype = ovrResult.secondaryArchetype;
     }

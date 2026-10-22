@@ -73,4 +73,7 @@ export interface DraftPoolPlayer {
     position:        string;
     salary:          number;
     base_attributes: Record<string, unknown>;  // ovr, age, ins, out … 전부 여기에 있음
+    /** [2026-10-22] 고정 OVR(meta_players.ovr_base/ovr_custom) — 서버 protocol.ts DraftPoolPlayer 미러 */
+    ovr_base?: number | null;
+    ovr_custom?: number | null;
 }

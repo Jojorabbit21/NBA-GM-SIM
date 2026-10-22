@@ -41,7 +41,8 @@ const EXTRA_TEAM_OPTIONS = [...CARD_EXTRA_TEAMS].sort((a, b) => a.abbr.localeCom
 
 /** [2026-09-18] manual_ovr가 있으면 그대로 쓰고(카드 전용 고정값), 없으면 지금처럼
  *  base_attributes 기반 동적 계산. meta_players/일반 선수 OVR 파이프라인은 건드리지 않음 —
- *  이 함수는 카드 목록·미리보기 표시 전용. */
+ *  이 함수는 카드 목록·미리보기 표시 전용. [2026-10-22] 이제 모든 카드가 manual_ovr를 가지므로 계산 경로는
+ *  값이 비어 있는 옛/신규 카드를 편집기에서 열 때 출발값을 채우는 용도로만 쓰인다. */
 function computeOvrPreview(card: PlayerCardRow): number | null {
     if (card.manual_ovr != null) return card.manual_ovr;
     try {
@@ -177,8 +178,8 @@ const PlayerCardEditorPage: React.FC = () => {
             edition_id: card.edition_id,
             height: card.height ?? '', weight: card.weight ?? '', base_team_id: card.base_team_id ?? '',
             attrs: { ...(card.base_attributes ?? {}) },
-            manualOvrEnabled: card.manual_ovr != null,
-            manualOvr: card.manual_ovr ?? '',
+            // [2026-10-22] OVR은 항상 고정값(manual_ovr). 값이 없는 옛 카드는 현재 능력치 계산값을 출발점으로 채운다.
+            manualOvr: card.manual_ovr ?? computeOvrPreview(card) ?? '',
             bg_image_url: card.bg_image_url ?? null,
         });
         setSaveOk(false); setSaveErr(null); setBgErr(null); setPreviewCollectionId('');
@@ -276,14 +277,14 @@ const PlayerCardEditorPage: React.FC = () => {
 
     const draftOvrPreview = useMemo(() => {
         if (!editing) return null;
-        if (draft.manualOvrEnabled) return draft.manualOvr === '' ? null : Number(draft.manualOvr);
-        return computeOvrPreview({ ...editing, position: draft.position, base_attributes: draft.attrs, manual_ovr: null });
-    }, [editing, draft.position, draft.attrs, draft.manualOvrEnabled, draft.manualOvr]);
+        return draft.manualOvr === '' ? null : Number(draft.manualOvr);
+    }, [editing, draft.manualOvr]);
 
     const handleSave = async () => {
         if (!editing) return;
         setSaving(true); setSaveErr(null); setSaveOk(false);
         try {
+            if (draft.manualOvr === '' || !Number.isFinite(Number(draft.manualOvr))) throw new Error('OVR을 입력해주세요.');
             const patch: UpdateCardPatch = {
                 season: String(draft.season).trim(),
                 name: String(draft.name).trim(),
@@ -292,14 +293,14 @@ const PlayerCardEditorPage: React.FC = () => {
                 height: draft.height === '' ? null : Number(draft.height),
                 weight: draft.weight === '' ? null : Number(draft.weight),
                 base_team_id: draft.base_team_id || null,
-                // [2026-09-20] 유효 OVR(고정값 또는 계산값)을 base_attributes.ovr에도 기록 — 서버 자동 지명 정렬
-                // (personal_draft_card_ovr)의 폴백 기준. 포맷의 cardOvrById가 있으면 그게 우선이라 표시엔 영향 없음.
-                base_attributes: {
-                    ...draft.attrs,
-                    age: draft.attrs.age != null ? Number(draft.attrs.age) : undefined,
-                    ...(draftOvrPreview != null ? { ovr: draftOvrPreview } : {}),
-                },
-                manual_ovr: draft.manualOvrEnabled && draft.manualOvr !== '' ? Number(draft.manualOvr) : null,
+                // [2026-10-22] 카드 OVR의 단일 소스는 manual_ovr. 예전엔 유효 OVR을 base_attributes.ovr에도 이중 기록해
+                // 서버 자동 지명 SQL(personal_draft_card_ovr)의 폴백으로 썼으나 SQL이 manual_ovr만 읽도록 바뀌어 더는 쓰지 않는다
+                // (옛 ovr 키는 저장 시 제거 — 읽는 곳 없음).
+                base_attributes: (() => {
+                    const { ovr: _legacyOvr, ...attrs } = draft.attrs;
+                    return { ...attrs, age: draft.attrs.age != null ? Number(draft.attrs.age) : undefined };
+                })(),
+                manual_ovr: Number(draft.manualOvr),
                 bg_image_url: draft.bg_image_url ?? null,
             };
             await updateCard(editing.id, patch);
@@ -465,28 +466,18 @@ const PlayerCardEditorPage: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-4 flex-wrap justify-end">
                                 {/* [2026-09-18] 이 카드에 한정된 OVR 고정값 — meta_players/일반 선수
-                                    OVR 계산 파이프라인과 완전히 분리, 여기서만 적용됨. 꺼두면 지금처럼
-                                    아래 능력치 기반으로 항상 다시 계산. */}
+                                    OVR과 완전히 분리, 이 카드에서만 적용됨. [2026-10-22] 카드 OVR은 항상 고정값이라
+                                    체크박스를 없애고 입력을 항상 노출(능력치를 고쳐도 자동으로 바뀌지 않음). */}
                                 <div className="flex items-center gap-2 shrink-0">
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={draft.manualOvrEnabled}
-                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvrEnabled: e.target.checked }))}
-                                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
-                                        />
-                                        <span className="text-xs text-slate-400 ko-normal">OVR 고정값</span>
-                                    </label>
+                                    <span className="text-xs text-slate-400 ko-normal">OVR 고정값</span>
                                     {/* [2026-09-20] 카드 전용 세 자리 OVR 허용(0~999, DB CHECK와 동일).
                                         일반 선수 OVR은 여전히 99가 상한 — 이 입력만 예외. */}
-                                    {draft.manualOvrEnabled && (
-                                        <input
-                                            type="number" min={0} max={999}
-                                            value={draft.manualOvr}
-                                            onChange={e => setDraft((d: any) => ({ ...d, manualOvr: e.target.value === '' ? '' : Math.max(0, Math.min(999, Number(e.target.value))) }))}
-                                            className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500"
-                                        />
-                                    )}
+                                    <input
+                                        type="number" min={0} max={999}
+                                        value={draft.manualOvr}
+                                        onChange={e => setDraft((d: any) => ({ ...d, manualOvr: e.target.value === '' ? '' : Math.max(0, Math.min(999, Number(e.target.value))) }))}
+                                        className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white text-center focus:outline-none focus:border-indigo-500"
+                                    />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {saveErr && <span className="text-xs text-red-400 ko-normal">{saveErr}</span>}

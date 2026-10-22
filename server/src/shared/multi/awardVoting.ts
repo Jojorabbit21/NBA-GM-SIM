@@ -4,11 +4,11 @@
  * (client/server 미러 쌍 — dev-log.md 기록 대상).
  *
  * 원본과의 유일한 차이: calculatePlayerOvr(utils/constants.ts, 클라 전용) 대신 서버에
- * 이미 이식되어 있는 calculateOvr(ovrUtils.ts)를 사용. 스코어링 로직 자체는 100% 동일.
+ * 이미 이식되어 있는 calculatePlayerOvr(ovrUtils.ts)를 사용. 스코어링 로직 자체는 100% 동일.
  */
 
 import type { Team, Player } from '../types.ts';
-import { calculateOvr } from '../utils/ovrUtils.ts';
+import { calculatePlayerOvr } from '../utils/ovrUtils.ts';
 
 // ── 타입 ──
 
@@ -141,7 +141,7 @@ export function buildCandidates(
                 playerName: p.name,
                 teamId: team.id,
                 position: p.position,
-                ovr: calculateOvr(p),
+                ovr: calculatePlayerOvr(p),
                 statLine: {
                     ppg: p.stats.pts / g,
                     rpg: p.stats.reb / g,

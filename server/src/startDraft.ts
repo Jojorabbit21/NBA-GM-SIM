@@ -267,7 +267,7 @@ async function buildDraftSetup(
     // use_custom_overrides 설정을 따른다(오버라이드 없는 선수는 no-op이라 켜도 무해하지만,
     // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
     // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
-    let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year');
+    let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year, ovr_base, ovr_custom');
     q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
     const { data: poolData } = await q;
     // [2026-09-22] contract_mode 'standard' — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는

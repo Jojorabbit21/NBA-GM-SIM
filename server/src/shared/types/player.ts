@@ -198,6 +198,9 @@ export interface Player {
     salary: number;
     contractYears: number;
     ovr: number;
+    /** [2026-10-22] meta_players.ovr_base/ovr_custom 고정 OVR(멀티 전용). 있으면 calculatePlayerOvr()가 능력치 재계산 대신 이 값을 반환한다.
+     *  매퍼가 useFixedOvr일 때만 채움 — 싱글플레이/카드는 undefined(기존 계산 유지). */
+    fixedOvr?: number;
     /** 주 아키타입 표시 라벨(예: "Rim Protector") — OVR 계산 시 같이 산출됨 */
     archetype?: string;
     /** 부 아키타입 표시 라벨 — primary와 동일하면 null */

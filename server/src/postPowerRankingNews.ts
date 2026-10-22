@@ -58,7 +58,7 @@ export async function recomputeAndPostPowerRankings(
 
     const { data: rawPlayers, error: playersErr } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_attributes')
+        .select('id, name, position, base_attributes, ovr_base, ovr_custom')
         .in('id', allPlayerIds);
     if (playersErr) {
         console.error(`[powerRanking] room=${roomId} meta_players 조회 실패:`, playersErr.message);

@@ -13,7 +13,7 @@
  */
 import type { GameTactics, DepthChart } from '../../types/tactics.ts';
 import type { Player } from '../../types.ts';
-import { calculateOvr } from '../../utils/ovrUtils.ts';
+import { calculatePlayerOvr } from '../../utils/ovrUtils.ts';
 
 const POSITIONS: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
 
@@ -72,7 +72,7 @@ export function repairAiTactics(
     // 2) 분당 5명 미만 구간 채움
     const effectiveDepth = depthChart ?? tactics.depthChart ?? null;
     const healthy = roster.filter(p => p.health !== 'Injured');
-    const ovrOf = new Map<string, number>(healthy.map(p => [String(p.id), calculateOvr(p)]));
+    const ovrOf = new Map<string, number>(healthy.map(p => [String(p.id), calculatePlayerOvr(p)]));
     const scheduledAt = (id: string, m: number) => !!rotationMap[id]?.[m];
     const totalMinutes = (id: string) => (rotationMap[id] ?? []).filter(Boolean).length;
 

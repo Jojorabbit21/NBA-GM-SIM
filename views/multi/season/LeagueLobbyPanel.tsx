@@ -119,7 +119,7 @@ const LeagueLobbyPanel: React.FC = () => {
         const useCustomOverrides = shouldUseCustomOverrides(league);
 
         (async () => {
-            let query = supabase.from('meta_players').select('id, base_attributes');
+            let query = supabase.from('meta_players').select('id, base_attributes, ovr_base, ovr_custom');
             query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax, retiredFilter);
             const { data } = await query;
             let count = 0;

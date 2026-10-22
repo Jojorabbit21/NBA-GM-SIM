@@ -53,7 +53,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
 
         const fetch = async () => {
             setLoading(true);
-            let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies');
+            let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies, ovr_base, ovr_custom');
             q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
 
             const { data, error } = await (q as any);

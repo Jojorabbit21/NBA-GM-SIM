@@ -118,7 +118,7 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
     const isTacticsActive = pathname.startsWith(`${base}/tactics`);
     const isLeagueActive  = pathname.startsWith(`${base}/standings`) || pathname.startsWith(`${base}/race`) || pathname.startsWith(`${base}/leaderboard`)
         || pathname.startsWith(`${base}/schedule`) || pathname.startsWith(`${base}/transaction`)
-        || pathname.startsWith(`${base}/playoffs`);
+        || pathname.startsWith(`${base}/playoffs`) || pathname.startsWith(`${base}/draft-result`);
     const isToolsActive   = pathname.startsWith(`${base}/compare`);
 
     // tabValue가 있으면 같은 경로 안에서 ?tab= 값까지 맞아야 활성 처리(로스터/전술처럼
@@ -163,6 +163,9 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
         { label: '리더보드',  path: `${base}/leaderboard` },
         { label: '일정',      path: `${base}/schedule` },
         ...(isSpectator ? [] : [{ label: '트레이드', path: `${base}/transaction`, badge: pendingTradeCount }]),
+        // [2026-10-22] 드래프트 결과 — 드래프트 완료 후에만, 헤더 리그 메뉴 맨 아래. 사이드바에는 일부러 넣지 않음.
+        // 관전자는 제외: draft_picks에 관전자 SELECT 정책이 없어 데이터가 비어 보인다(utils/spectatorAccess.ts 허용 목록에도 없음).
+        ...(isDraftComplete && !isSpectator ? [{ label: '드래프트 결과', path: `${base}/draft-result` }] : []),
     ];
 
     // [2026-10-18] "도구" 그룹 — 사이드바 맨 아래(자유 계약 다음 구분선 아래) 아이콘과 같은 항목.

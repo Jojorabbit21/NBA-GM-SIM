@@ -75,7 +75,7 @@ export const AdminTradePanel: React.FC<AdminTradePanelProps> = ({
         setTeamBLoading(true);
         const ids = teamBRow.roster;
         // [2026-10-06] 인스턴스 룸(개인 팩 드래프트) 호환 — meta_players 직접 조회 대신 해석기 사용
-        fetchMetaPlayersByRosterIds(roomId, ids, 'id, name, position, draft_year, base_attributes, tendencies')
+        fetchMetaPlayersByRosterIds(roomId, ids, 'id, name, position, draft_year, base_attributes, tendencies, ovr_base, ovr_custom')
             .then(data => {
                 const byId = new Map(data.map(raw => [String(raw.id), raw]));
                 const ordered = ids.map(id => byId.get(String(id))).filter(Boolean) as Record<string, unknown>[];

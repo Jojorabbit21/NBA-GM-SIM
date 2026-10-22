@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { TeamHover } from '../../../components/common/TeamHover';
-import { Flame, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, type LucideIcon } from 'lucide-react';
+import { Flame, TrendingUp, TrendingDown, Star, ArrowLeftRight, Tv, BarChart3, Trophy, Shield, HeartPulse, Swords, Vote, Sparkles, Target, Zap, Shuffle, ListOrdered, type LucideIcon } from 'lucide-react';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { OvrBadge } from '../../../components/common/OvrBadge';
@@ -68,6 +68,7 @@ export function extractEventPlayerIds(event: LeagueEvent): string[] {
         case 'allstar_rising_stars_result': return event.detail.mvp ? [event.detail.mvp.playerId] : [];
         case 'allstar_three_point_contest_result': return event.detail.round1.map(e => e.playerId);
         case 'allstar_dunk_contest_result': return event.detail.round1.map(e => e.playerId);
+        case 'draft_result': return event.detail.picks.map(p => p.playerId);
         default: return [];
     }
 }
@@ -1053,6 +1054,81 @@ export const DraftLotteryResultCard: React.FC<{
                     ))}
                 </TableBody>
             </Table>
+        </LetterShell>
+    );
+};
+
+// ── draft_result — 드래프트 완료 직후 게시되는 서신(server/src/postDraftResultNews.ts).
+// 1라운드 지명 전체를 표로 보여주고, 전체 라운드는 "드래프트 결과" 화면(/season/draft-result)으로 안내한다.
+export const DraftResultCard: React.FC<{
+    event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
+    onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void; onOpenDraftResult?: () => void;
+}> = ({ event, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, onOpenDraftResult }) => {
+    if (event.detail.kind !== 'draft_result') return null;
+    const { picks, rounds, totalPicks } = event.detail;
+    const first = picks[0];
+    const firstTeam = first ? teamBySlug.get(first.teamSlug) : undefined;
+
+    return (
+        <LetterShell
+            title="드래프트 결과"
+            date={event.simDate ?? formatRelativeTime(event.createdAt)}
+        >
+            {first && (
+                <p className="text-sm text-slate-300 leading-relaxed">
+                    전체 1순위 지명은{' '}
+                    <ClickableText className="font-bold text-white" onClick={onOpenTeam ? () => onOpenTeam(first.teamSlug) : undefined} teamHoverId={first.teamSlug}>
+                        {firstTeam?.team_name ?? first.teamName}
+                    </ClickableText>
+                    {' '}의{' '}
+                    <PlayerHoverCard player={playerCardMap.get(first.playerId)?.player} teamAbbr={playerCardMap.get(first.playerId)?.teamAbbr}>
+                        <ClickableText className="font-bold text-white" onClick={onPlayerClick ? () => onPlayerClick(first.playerId) : undefined}>
+                            {first.playerName}
+                        </ClickableText>
+                    </PlayerHoverCard>
+                    {' '}선수였습니다. 총 {rounds}라운드 {totalPicks}명의 지명이 마무리되었습니다.
+                </p>
+            )}
+
+            <LetterSectionTitle level="h3">1라운드 지명 결과</LetterSectionTitle>
+            <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
+                <TableHead>
+                    <TableHeaderCell width="10%">순위</TableHeaderCell>
+                    <TableHeaderCell align="left" width="30%">팀</TableHeaderCell>
+                    <TableHeaderCell align="left" width="40%">선수</TableHeaderCell>
+                    <TableHeaderCell width="10%">포지션</TableHeaderCell>
+                    <TableHeaderCell width="10%">OVR</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {picks.map(pick => (
+                        <TableRow key={pick.pick}>
+                            <LetterRankCell rank={pick.pick} />
+                            <TableCell align="left">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <TeamMark variant="logo" teamId={pick.teamSlug} teamName={pick.teamName} size="xs" />
+                                    <TeamHover teamId={onOpenTeam ? pick.teamSlug : null}><span
+                                        className={`text-sm font-semibold text-slate-100 truncate ${onOpenTeam ? 'cursor-pointer hover:text-indigo-400 hover:underline' : ''}`}
+                                        onClick={onOpenTeam ? () => onOpenTeam(pick.teamSlug) : undefined}
+                                    >
+                                        {teamBySlug.get(pick.teamSlug)?.team_name ?? pick.teamName}
+                                    </span></TeamHover>
+                                </div>
+                            </TableCell>
+                            <LetterPlayerCell
+                                name={pick.playerName}
+                                entry={playerCardMap.get(pick.playerId)}
+                                onClick={onPlayerClick ? () => onPlayerClick(pick.playerId) : undefined}
+                                className="truncate"
+                            />
+                            <TableCell className="text-slate-400">{pick.position}</TableCell>
+                            <TableCell><div className="flex justify-center"><OvrBadge value={pick.ovr} size="sm" className="!shadow-none" /></div></TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+            {onOpenDraftResult && totalPicks > picks.length && (
+                <LetterLink onClick={onOpenDraftResult}>전체 라운드 결과 보기</LetterLink>
+            )}
         </LetterShell>
     );
 };
@@ -2730,6 +2806,7 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     allstar_three_point_contest_result: Target,
     allstar_dunk_contest_result: Zap,
     draft_lottery_result: Shuffle,
+    draft_result: ListOrdered,
     play_in_bracket: Swords,
     play_in_result: Swords,
     playoff_bracket_confirmed: BarChart3,
@@ -2765,7 +2842,8 @@ export const StoryCard: React.FC<{
     onPlayerClick?: (playerId: string) => void;
     onOpenTeam?: (teamSlug: string) => void;
     onOpenAllStar?: (view?: string) => void;
-}> = ({ event, teamBySlug, playerCardMap, roomId, onOpenGame, onPlayerClick, onOpenTeam, onOpenAllStar }) => {
+    onOpenDraftResult?: () => void;
+}> = ({ event, teamBySlug, playerCardMap, roomId, onOpenGame, onPlayerClick, onOpenTeam, onOpenAllStar, onOpenDraftResult }) => {
     switch (event.detail.kind) {
         case 'game_result': return <GameResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />;
         case 'player_feat': return <FeatCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} roomId={roomId} onPlayerClick={onPlayerClick} onOpenGame={onOpenGame} onOpenTeam={onOpenTeam} />;
@@ -2790,6 +2868,7 @@ export const StoryCard: React.FC<{
         case 'allstar_three_point_contest_result': return <AllstarThreePointContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'allstar_dunk_contest_result': return <AllstarDunkContestResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenAllStar={onOpenAllStar} />;
         case 'draft_lottery_result': return <DraftLotteryResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
+        case 'draft_result': return <DraftResultCard event={event} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} onOpenDraftResult={onOpenDraftResult} />;
         case 'play_in_bracket': return <PlayInBracketCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
         case 'play_in_result': return <PlayInResultCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;
         case 'playoff_bracket_confirmed': return <PlayoffBracketConfirmedCard event={event} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam} />;

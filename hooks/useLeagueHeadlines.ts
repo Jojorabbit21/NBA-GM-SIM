@@ -15,7 +15,7 @@ export type LeagueEventType = 'game_result' | 'player_feat' | 'player_streak' | 
     | 'allstar_three_point_contest' | 'allstar_dunk_contest'
     | 'allstar_game_result' | 'allstar_rising_stars_result'
     | 'allstar_three_point_contest_result' | 'allstar_dunk_contest_result'
-    | 'draft_lottery_result'
+    | 'draft_lottery_result' | 'draft_result'
     // [2026-09-15] 플레이오프 서신 6종(+파이널 MVP) — utils/allStarSelection.ts 패턴과 동일하게
     // "플레이오프" 카테고리 하나로 묶임(MultiNewsFeedView.tsx의 NEWS_TYPE_FILTER_OPTIONS).
     | 'play_in_bracket' | 'play_in_result' | 'playoff_bracket_confirmed'
@@ -92,7 +92,7 @@ export function useLeagueHeadlines(roomId: string | undefined, myTeamSlug: strin
 // (leagueEvents.ts 참고), score>10(=마진 보너스가 붙은 것만)을 "특이케이스" 기준으로 삼는다.
 // PostgREST .or()로 "STORY_TYPES 중 하나 OR (game_result면서 score>10)"을 한 쿼리로 표현.
 const STORIES_PAGE_SIZE = 30;
-const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade', 'power_ranking', 'mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team', 'injury', 'suspension', 'allstar_vote_update', 'allstar_vote_start', 'allstar_vote_result', 'allstar_rising_stars', 'allstar_three_point_contest', 'allstar_dunk_contest', 'allstar_game_result', 'allstar_rising_stars_result', 'allstar_three_point_contest_result', 'allstar_dunk_contest_result', 'draft_lottery_result',
+const STORY_TYPES: LeagueEventType[] = ['player_feat', 'player_streak', 'win_streak', 'trade', 'power_ranking', 'mvp_award', 'dpoy_award', 'all_nba_team', 'all_def_team', 'injury', 'suspension', 'allstar_vote_update', 'allstar_vote_start', 'allstar_vote_result', 'allstar_rising_stars', 'allstar_three_point_contest', 'allstar_dunk_contest', 'allstar_game_result', 'allstar_rising_stars_result', 'allstar_three_point_contest_result', 'allstar_dunk_contest_result', 'draft_lottery_result', 'draft_result',
     // [2026-09-15] 플레이오프 서신 7종 — game_result와 달리 score 문턱 없이 전부 노출(플레이오프
     // 경기/시리즈는 정규시즌 일반 경기와 달리 그 자체로 항상 "특이케이스"급 뉴스이므로).
     'play_in_bracket', 'play_in_result', 'playoff_bracket_confirmed',

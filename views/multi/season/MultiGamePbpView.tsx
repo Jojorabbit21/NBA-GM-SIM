@@ -1657,11 +1657,12 @@ const MultiGamePbpView: React.FC = () => {
         let cancelled = false;
         (async () => {
             // [2026-09-18] 개인 팩 드래프트 룸은 박스스코어 playerId가 인스턴스 id — 해석기로 조회
-            const data = await fetchMetaPlayersByRosterIds(room?.id, ids, 'id, name, position, base_attributes, tendencies').catch(() => null);
+            const data = await fetchMetaPlayersByRosterIds(room?.id, ids, 'id, name, position, base_attributes, tendencies, ovr_base, ovr_custom').catch(() => null);
             if (cancelled || !data) return;
             const map: Record<string, Player> = {};
             for (const raw of data) {
-                map[String(raw.id)] = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides);
+                // 4번째 인자 true = 고정 OVR 사용(이 호출부는 forceHealthy를 안 쓰므로 명시)
+                map[String(raw.id)] = mapRawPlayerToRuntimePlayer(raw, useCustomOverrides, false, true);
             }
             setRosterCache(map);
         })();
