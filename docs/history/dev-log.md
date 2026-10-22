@@ -35,6 +35,42 @@
 
 
 
+## 2026-10-22 — AI 감독 C7: 경기 직전 AI 팀 뎁스·로테이션 설정을 simRunner에 연결 (폴백 + 끄기 스위치)
+
+**배경**: 라인업(C2)·로테이션(C3) 모듈이 완성돼 AI 팀에 실제 적용. 사용자 확정(2026-10-22): 생성기를 기본으로, 실패 시 "주전 혹사 36/12 틀 + 엔진 대체 레이어"로 폴백. AI 전술은 저장·표시하지 않음. **서버 배포 시 모든 멀티 리그의 AI 팀 경기에 적용됨.**
+
+**변경 파일** (server 전용, 미러 없음):
+- `server/src/shared/game/tactics/aiCoach/aiCoachPlan.ts` (신규)
+- `server/src/simRunner.ts`
+- `scripts/aiCoachPlanScenarios.ts` (신규, 시험 도구)
+
+**Before** (simRunner 3.1단계):
+```ts
+({ tactics: homeTactics, depth: homeDepth } = await repairAi(homeMember, homeTeam, homeTactics, homeDepth));
+({ tactics: awayTactics, depth: awayDepth } = await repairAi(awayMember, awayTeam, awayTactics, awayDepth));
+// repairAi: AI 팀이고 tactics가 있으면 repairAiTactics로 로테이션 구멍 등을 최소 보정, 바뀌었으면 room_members에 저장
+```
+
+**After**:
+```ts
+const AI_COACH_DISABLED = process.env.AI_COACH_DISABLED === '1';    // 파일 상단(runSimulation 앞)
+const coachAi = (member, team, tactics) => { if (!member?.is_ai || AI_COACH_DISABLED) return null; planAiTeam(team, tactics) → plan (builder 외 단계거나 실패면 console.warn) ; 예외는 catch 후 null };
+const homePlan = coachAi(homeMember, homeTeam, homeTactics); const awayPlan = coachAi(awayMember, awayTeam, awayTactics);
+if (homePlan) { homeTactics = homePlan.tactics; homeDepth = homePlan.depthChart; } else ({ tactics: homeTactics, depth: homeDepth } = await repairAi(...));
+if (awayPlan) { ... } else ({ ... } = await repairAi(...));
+// aiCoachPlan.planAiTeam: builder(buildLineup+buildRotation) → overwork(새 라인업+overworkRotation) → auto(generateAutoTactics) → null. 각 단계 validatePlan 통과 필수
+```
+- 계획은 그 경기에서만 쓰고 저장하지 않음. 슬라이더는 저장값 유지.
+- `overworkRotation`은 `utils/rotationAllocation.ts` `computeRotationMap(chart, 'Overwork', roster)`의 서버 미러(서버 Docker는 server/src만 복사). 규칙을 바꾸면 양쪽을 같이 고칠 것.
+
+**검증**:
+- server `tsc -p .` 오류 51건 그대로(기존 SupabaseClient 제네릭 불일치), simRunner·aiCoach 새 오류 없음.
+- `scripts/aiCoachPlanScenarios.ts` 통과(주전 혹사 틀 = 원본 500/500, validatePlan 거름 8종).
+- 실제 리그 60팀 전부 builder 단계, 계획 계산 평균 4.1ms. 계획을 엔진에 넣은 60경기 완주, 슬롯 꼬임 0.00%. 폴백 2단계 30/30·3단계 28/30팀 유효. 건강한 선수 10~3명 극단 로스터 70팀 전부 builder 단계 유효 + 완주. A/B 시뮬 효과: +0.94(±0.24)점/경기(5,220경기).
+- **simRunner 자체는 DB에 쓰기 때문에 실제 DB로 end-to-end 실행하지 않음** — 배포 후 AI 팀 경기(예: NO·CHA·DET)에서 `[simRunner] AI 감독` 경고 로그가 없는지, 출전 시간표가 정상인지 확인 필요.
+
+**롤백 방법**: ① 즉시: Fly secret `AI_COACH_DISABLED=1` ② 코드: simRunner의 3.05 블록을 Before 두 줄로 복원하고 `planAiTeam` import 삭제, `aiCoachPlan.ts` 삭제.
+
 ## 2026-10-22 — 배포: Fly 서버는 깨끗한 HEAD worktree에서만 (`scripts/deploy-server.sh`)
 
 **배경**: 여러 세션이 같은 작업 트리를 공유하는데 `fly deploy`는 폴더 파일을 그대로 올려, 다른 세션의 미커밋 작업까지 실서버로 나갈 수 있었음(v188 이후 미커밋 서버 변경 다수 확인). 사용자 결정으로 모든 세션 규칙화.
@@ -50,6 +86,109 @@
 **검증**: 이 스크립트로 타임아웃 커밋 배포(아래 항목 참고).
 
 **롤백 방법**: 스크립트 삭제 + CLAUDE.md 섹션 제거(엔진/서버 코드 영향 없음).
+
+## 2026-10-22 — 엔진: 탈진(Shutdown) 교체 기준을 "쓸 수 있는 벤치 수"에 따라 낮춤 + 대체자 체력 조건
+
+**배경**: 사용자 제안 — 코트에 뛸 사람이 극단적으로 적어 쉴 수 없을 때는 탈진 교체 기준을 낮춰야 한다(예: 평소 35%에서 빼면 사람이 없을 땐 15%에서). 확인 결과 현재 기준은 `HARD_FLOOR = 20` 하나(개인 휴식 임계치는 2026-10-17부터 비활성)이고, 대체자를 못 찾으면 교체를 포기하지만 탈진 플래그(`isShutdown`)는 이미 켜져 있었으며, 벤치가 얇으면 지친 대체자와 번갈아 들락거렸다(체력 회복 기준 70%). 후임 선정 통일(위 항목)로 소수 선수에게 시간이 몰리는 팀이 더 정확히 생기므로 짝으로 처리.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `server/src/shared/engine/pbp/substitutionSystem.ts` / `services/game/engine/pbp/substitutionSystem.ts`
+- `server/src/shared/engine/pbp/rotationLogic.ts` / `services/game/engine/pbp/rotationLogic.ts`
+
+**Before**:
+```ts
+// substitutionSystem.checkSubstitutionsV2 (코트 위 각 선수)
+const restThreshold = playerConfig?.restThreshold ?? 0;
+const effectiveFloor = Math.max(HARD_FLOOR, restThreshold);          // HARD_FLOOR = 20
+if (p.currentCondition <= effectiveFloor) {
+    p.isShutdown = true;
+    requests.push({ ... benchReason: 'shutdown' });
+    return;
+}
+// rotationLogic.benchWithOverride: excludeIds = [outPlayer, 코트 위 선수 전원] → findResCandidate(... allowShutdown false → true)
+```
+
+**After**:
+```ts
+// substitutionSystem.ts
+export function shutdownFloorScale(usableBench: number): number { 3+ → 1, 2 → 0.75, 1 → 0.5, 0 → 0 }
+export const SHUTDOWN_MIN_GAIN = 15;
+// checkSubstitutionsV2
+const usableBench = team.bench.filter(b => b.health === 'Healthy' && !isOut(b) && !b.isShutdown && !b.benchReason);
+const effectiveFloor = Math.max(HARD_FLOOR, restThreshold) * shutdownFloorScale(usableBench.length);   // 20 / 15 / 10 / 0
+const bestAltCondition = usableBench.reduce((m, b) => Math.max(m, b.currentCondition), -Infinity);
+if (p.currentCondition <= effectiveFloor && bestAltCondition >= p.currentCondition + SHUTDOWN_MIN_GAIN) { p.isShutdown = true; ... }
+// rotationLogic.benchWithOverride: reason === 'shutdown'이면 체력이 outPlayer.currentCondition + SHUTDOWN_MIN_GAIN 미만인 벤치 선수를 excludeIds에 추가
+```
+
+**검증**:
+- server·client `tsc -p .` engine/pbp 오류 없음.
+- 건강한 선수 수 제한 스트레스 시험(Pro Basketball League 30팀 × 2경기, 건강한 선수 상위 N명만 남기고 나머지 부상, 1단계 상태 → 2단계):
+  - 건강한 15명(정상): 모든 지표 **완전히 동일**(교체 11.2회/경기, 탈진 교체 0, 득점 201.9).
+  - 6명: 경기당 탈진 교체 **56.1 → 1.0**(전체 교체 62.2 → 6.9), 탈진 플래그 선수 코트 비율 14.4 → 2.3%, 체력 20% 미만 선수가 뛴 공격권 11.2 → 16.3%, 코트 평균 체력 68.0 → 67.1, 합계 득점 204.4 → 202.4, 홈 득실 +1.3 → +1.2.
+  - 7명: 탈진 교체 5.5 → 1.6, 저체력 공격권 0.3 → 10.8%, 평균 체력 77.5 → 76.7. 5명: 탈진 플래그 18.2 → 0%, 8명: 지표 거의 동일. 전 시나리오 슬롯 꼬임 0%.
+  - 서버·클라이언트 엔진 5·6·7명 시나리오 모든 지표 정확히 일치(시드 순번을 맞춰 비교).
+- 임계값(20/15/10/0, 대체자 +15)은 사용자 제안 비율(35→15)을 현재 기준 20%에 맞춘 초안. 시험으로 조정 가능.
+
+**롤백 방법**: 위 Before로 — `shutdownFloorScale`·`SHUTDOWN_MIN_GAIN`·`usableBench` 블록 삭제하고 조건을 `p.currentCondition <= Math.max(HARD_FLOOR, restThreshold)`로, `benchWithOverride`의 shutdown 제외 루프 삭제, `rotationLogic`의 `SHUTDOWN_MIN_GAIN` import 제거. **서버·클라이언트 둘 다.**
+
+## 2026-10-22 — 엔진: 부상·이탈 선수의 출전 시간 승계 통일 (rotationSuccession) + 선발은 승계 결과 표로 확정
+
+**배경**: 사용자 질문("후보가 없으면 인접 포지션, 부족하면 주전이 더 뛰어야…")에서 시작해 점검. 경기 전 부상 처리(initializer 3.5)와 경기 중 이탈 처리(rotationLogic.applyRotationSuccession)가 서로 다른 코드로 같은 일을 하고 있었다. 실측(Pro Basketball League 저장 전술, 현재 부상자 상태): ① 경기 전 처리는 후임에게 시간을 덧붙이기만 해 **GS 리브스 24→48분 풀타임, 로테이션 표 총합 231분(240분 아님)** — 겹치는 9분 동안 4명만 예정, **CLE 스트릭랜드 12→48분**. ② 선발(Step 1·2)이 승계(3.5)보다 먼저 별도 규칙(OVR 순)으로 확정돼 표와 어긋남(CLE 선발 루 허드슨 ≠ 표의 0분 스트릭랜드 → 첫 공격권 직후 교체). ③ 경기 중 처리는 한 칸씩 올리지만 후임의 건강·그 분의 중복 출전을 확인하지 않음(OR 병합으로 겹치는 분에 인원 감소). 사람 팀에도 해당하는 엔진 버그.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `server/src/shared/engine/pbp/rotationSuccession.ts` / `services/game/engine/pbp/rotationSuccession.ts` (신규, import 경로만 다름)
+- `server/src/shared/engine/pbp/slotAssignment.ts` / `services/game/engine/pbp/slotAssignment.ts` (`SlotPlayer` 타입 도입으로 LivePlayer 외 경량 객체 허용, `Slot`·`slotCost`·`listedSlots` export, `pickBestFive` 제네릭)
+- `server/src/shared/engine/pbp/initializer.ts` / `services/game/engine/pbp/initializer.ts`
+- `server/src/shared/engine/pbp/rotationLogic.ts` / `services/game/engine/pbp/rotationLogic.ts`
+- `scripts/rotationSuccessionScenarios.ts` (신규, 시험 도구, 엔진 무관)
+
+**Before** (initializer, 선발 확정 *뒤*에 실행):
+```ts
+// 3.5. 부상 선수의 로테이션 시간을 뎁스차트 기반으로 백업에게 승계
+if (safeTactics.rotationMap && effectiveDepthChart && injuredIds.size > 0) {
+    for (const injuredId of injuredIds) {
+        const injuredMap = safeTactics.rotationMap[injuredId];
+        if (!injuredMap || !injuredMap.some(Boolean)) continue;
+        // 해당 선수의 뎁스차트 슬롯(rolePos)·순번(depthIndex) 찾기
+        // 승계 대상: 같은 슬롯 다음 순번 중 건강한 첫 선수 → 없으면 OVR 높은 건강한 선수 중 맵에 출전 시간이 전혀 없는 선수
+        if (successorId) {
+            for (let i = 0; i < 48; i++) if (injuredMap[i]) safeTactics.rotationMap[successorId][i] = true;   // 덧붙이기(OR)
+        }
+        for (let i = 0; i < 48; i++) injuredMap[i] = false;
+    }
+}
+```
+```ts
+// rotationLogic.applyRotationSuccession(team, outPlayer, currentMinute)
+// depthIndex 0 (주전): benchId && thirdId → transferSchedule(bench→third); benchId → transferSchedule(starter→bench);
+//                      benchId 없고 thirdId → starter→third; 둘 다 없으면 findResCandidate로 starter→res
+// depthIndex 1 (벤치): thirdId → bench→third; 없으면 findResCandidate
+// depthIndex 2 (써드): findResCandidate → third→res
+// 후임의 건강·중복 출전 확인 없음. transferSchedule은 target[i] = true OR 병합
+// 마지막에 outPlayer 맵을 currentMinute 이후 false
+```
+
+**After**:
+```ts
+// rotationSuccession.ts: planSuccession({ outIds, fromMinute, rotationMap, depthChart, players: { id, ovr, nativePosition, tier(0 정상/1 탈진·임시벤치/2 부상/3 퇴장·완전불가), returnDate } })
+//  하드 규칙: 매 분 예정 인원 ≥ min(5, 처리 전 인원). 출전 시간 상한 없음.
+//  1) 슬롯별 역할 승계(waterfall): 건강한(tier 0) 뎁스 선수를 순서대로 세워 주전·백업·써드 역할의 원래 출전 패턴을 한 칸씩 위로
+//  2) 남은 구멍 메우기: 그 분에 쉬는 선수 중 점수 최소 — vacancyFit + LOAD_WEIGHT(0.06)×예정 분 + TIER_PENALTY{0:0,1:20,2:100}
+//     + 부상자 복귀 빠른 순(INJURY_RANK_STEP 0.5) − 직전 분 같은 구멍 메운 선수 우대(CONTINUITY_BONUS 0.4). 동점 OVR → id
+// initializer: 선발 확정(Step 1·2) *앞*에서 planSuccession(outIds = 부상자 전원 id 정렬, fromMinute 0, tier = 부상 2/그 외 0). 옛 3.5 블록 삭제
+// rotationLogic.applyRotationSuccession: planSuccession(outIds=[outPlayer], fromMinute=currentMinute,
+//     tier = 방금 이탈/isOut 3, 부상 2, 비건강·isShutdown·benchReason 1, 그 외 0)
+```
+
+**검증**:
+- server `tsc -p .` engine/pbp 오류 없음, client `tsc -p .` engine/pbp 오류 없음.
+- `scripts/rotationSuccessionScenarios.ts`: 예외 12종 + 건강한 선수 5·6·7명 전부 통과(분당 예정 인원 유지, 백업이 48분 되지 않음, 슬롯 전원 부상 시 인접 SG가 분담, 4명뿐이면 부상자 투입, 입력 순서 무관 결정론).
+- 실제 리그 30팀에 부상자를 임의로 넣은 스트레스 시험(원본 HEAD 엔진 → 수정 후, 시나리오 4종 × 30팀): 표에 5명 미만인 분이 있는 팀 7~11 → 3(3팀은 부상과 무관하게 원래 저장 표에 구멍이 있는 ATL·LAW·WAS), 시작 5명 ≠ 표 0분 출전자인 팀 22~30 → 2(ATL·WAS, 위와 같은 원인), 표 기준 최대 출전 시간 평균 46~48 → 37~38분, **슬롯 꼬임 14~46% → 0.0%**, 42분 초과 출전 선수 5~35 → 1~10. 서버·클라이언트 엔진 결과가 모든 시나리오에서 정확히 일치.
+- 리그 시뮬(실제 현재 부상자 + 저장 전술, 1740경기): 경기당 팀 득점 102.2 → 102.3, 포지션별 36분당 득점 변화 ±0.2 이내, 팀 득실 변화 평균 1.32(시드만 다를 때 1.59), 42분 초과 출전 49건 → 0건.
+- 알려진 사항(이번 범위 밖): 사용자가 저장한 로테이션 표 자체의 구멍(ATL 48분 전부 5명 미만, WAS 34분, LAW 10분)은 부상과 무관하게 원본에도 있음 — 후속 "저장 차단"에서 다룸. 임시 이탈(파울 트러블·탈진)의 대타 선정(findResCandidate)은 이 변경 대상이 아님.
+
+**롤백 방법**: 위 Before로 — 두 미러의 rotationSuccession.ts 삭제, initializer에 3.5 블록 복원(선발 확정 뒤)하고 앞에 추가한 planSuccession 호출 삭제, rotationLogic.applyRotationSuccession 본문을 위 Before로 복원, slotAssignment의 `SlotPlayer`를 `LivePlayer`로. **서버·클라이언트 둘 다 되돌릴 것.**
 
 ## 2026-10-22 — 드래프트 결과 화면 UI: 격자 하나로 확정(행 = 팀, 열 = 라운드)
 
@@ -290,6 +429,69 @@ alter table public.meta_players
 
 **후속 단계(미진행)**: 2) 매퍼 미러 쌍이 `ovr_base`/`ovr_custom` 우선·null이면 계산 폴백, 3) `calculateOvr(p)` 직접 호출부를 `p.ovr`로 교체, 4) 선수 에디터에 직접 입력 + 계산값 비교, 5) 신인 생성 시 저장, 단일플레이 성장 반영 방식 결정.
 
+## 2026-10-22 — AI 감독 C3: 로테이션(48분 출전표) 생성 모듈 신설 (호출부 없음)
+
+**배경**: 사용자 확정 순서 3단계(라인업 → 로테이션 → 공격 전술 …). 현행 AI 팀은 드래프트 직후 만든 고정 틀(주전 0~12·18~36·42~48분 / 벤치 12~18·36~42분)만 쓴다. 우리 로스터만 보고(상대 미반영) 로스터에 맞는 8~10인 로테이션을 만든다. 게임 동작 영향 없음.
+
+**변경 파일** (server 전용, 미러 없음):
+- `server/src/shared/game/tactics/aiCoach/rotationBuilder.ts` (신규)
+- `scripts/rotationBuilderScenarios.ts` (신규, 시험 도구)
+
+**Before**: 없음(신규). 비교 기준은 `tacticGenerator.generateAutoTactics()`의 고정 틀 로테이션.
+
+**After**:
+```ts
+buildRotation(roster, lineup) / buildRotationFromInputs(healthyPlayers, starterIds, depthChart, allRosterIds)
+ → { rotationMap, minutes, targets, stints, rotationSize, shortMinutes, notes }
+// 목표 시간: TEMPLATES[N](5~10인, 합 240) × (1 + QUALITY_K(0.006)×(OVR−평균)) × 체력·컨디션 계수(STAMINA_TARGET_K 0.005, CONDITION_FLOOR 0.75) ± 주전/벤치 격차 보정(DROPOFF_BASE_GAP 7, +4/−2)
+//         → 240분 정규화 → 상한(CAP_BASE 26 + 0.18×stamina, 최대 44, × 컨디션) 물 채우기
+// 스케줄러(매 분): 욕구 = 목표×진행률 − 뛴 분 + HYST(5, 지금 뛰는 선수) − 11분 초과(2.5/분) − 3분 미만 휴식(4) + START_BONUS(100, 0·24분 선발)
+//                   + 42분 이후 0.5×(OVR−평균) − 상한 초과 3/분 → 슬롯별 상위 4명 조합 탐색 점수 Σ욕구 − SLOT_WEIGHT(4)×Σslotcost − STAGGER_WEIGHT(8)×max(0, 2−OVR상위3중 코트 인원)
+```
+- 엔진 `slotAssignment.slotCost`/`listedSlots`를 재사용(어색함 비용을 엔진 슬롯 배정과 일치시킴).
+
+**검증**:
+- tsc(--strict, noUnusedLocals) 오류 없음.
+- `scripts/rotationBuilderScenarios.ts` 12개 시나리오 전부 통과. 시험 중 발견·수정: ① 체력/컨디션이 상한에만 반영돼 stamina 45와 85가 같은 34분 → 목표 시간에도 곱함(→ 31분, 컨디션 45는 36 → 29분) ② 결정론 시험이 키 순서 차이로 거짓 실패(시험 수정).
+- A/B 리그 시뮬(같은 로스터, 새 방식 vs 현행 AI 방식, 홈·원정 모든 매치업, 현재 부상 반영): 현행 vs 현행 −0.01(±0.42), 새 라인업+고정 틀 −0.08, 새 라인업+새 로테이션 3세트 5,220경기 **+0.94(±0.24)**, 승률 52.2%. 엇갈린 휴식 항 추가 전 +0.99(1세트), 후 +1.13(1세트).
+- 속도: 평균 약 3.5ms(첫 호출 12ms).
+
+**롤백 방법**: `rotationBuilder.ts`·시험 도구 삭제(호출부 없음).
+
+## 2026-10-22 — AI 감독 C2 라인업 개정: 포지션 공급 부족 처리 + 후보 소진 버그 수정 + 커버 목록 (호출부 없음)
+
+**배경**: 라인업 모듈의 알려진 결함 두 가지(후보 없는 슬롯에서 결과 칸이 밀림 / 앞 슬롯이 후보를 다 쓰면 주전이 전부 빔)와 사용자 설계("포지션이 비대칭이면 인접 포지션 선수가 더 뛰어야") 반영. 사용자 확정(2026-10-22): 라인업·로테이션은 우리 로스터만(상대 미반영), 공격 전술만 상대 수비수 기준, 수비 전술은 균형, AI 전술은 저장·표시하지 않음(계획서 1장 "제안 D"). 게임 동작 영향 없음.
+
+**변경 파일** (server 전용, 미러 없음):
+- `server/src/shared/game/tactics/aiCoach/lineupBuilder.ts`
+- `scripts/lineupBuilderScenarios.ts` (신규, 시험 도구)
+
+**Before**:
+```ts
+// 슬롯 후보: 고유 포지션 OVR 상위 3명 → 없으면 인접 상위 3명 → 없으면 전원 상위 3명 (5슬롯 × 3 = 243조합)
+// walk(i): candidates[i].length === 0이면 walk(i + 1) — chosen[i]로 읽어서 칸이 한 칸씩 밀림
+// 같은 선수가 앞 슬롯에서 쓰였으면 건너뜀 → 남는 후보가 없으면 조합이 끝까지 못 가 주전 전부 ''
+// 뎁스: 고유 포지션 → 인접 (비용 개념 없음), 점수 = ΣOVR + 조합 보너스(핸들러 2 / 슈터 1.5×최대 2 / 림 2)
+```
+
+**After**:
+```ts
+// 슬롯별 후보 = 어색함(0/1/3/10) 오름차순 → OVR 내림차순 상위 CANDIDATES_PER_SLOT(4) (가용 6명 이하면 전원), 슬롯 인덱스로 직접 저장
+// 점수 = ΣOVR − MISMATCH_WEIGHT(30) × Σ어색함 − EMPTY_PENALTY(1000) × 빈 슬롯 + 조합 보너스 + BONUS_SLOT_ANCHOR(1.5) × (PG 슬롯=핸들링 상위2, C 슬롯=림 보호 상위2)
+// 가용 5명 미만일 때만 '슬롯 비움' 선택지, 후보 제한으로 완전 배정이 없으면 completeGreedy
+// 한 번 훑으며 보너스 있는 최고(withBonus)와 보너스 없는 최고(base, changedFromOvrOrder 비교용)를 같이 구함 — 비트마스크로 중복 제거
+// 반환값에 cover[slot](어색함 ≤ 3, 어색함 → OVR 순), shortage[], score.anchor, score.mismatch 추가
+// buildLineup(roster) → buildLineupFromCandidates(pool) 분리 (가상 선수로 시험 가능)
+```
+
+**검증**:
+- tsc(--strict, noUnusedLocals) 오류 없음.
+- `scripts/lineupBuilderScenarios.ts` 13개 시나리오 전부 통과. 시험 중 설계 빈틈 발견: 핸들러 보너스가 "주전 5명 중 누구든"이라 PG가 없는 팀에서 최고 핸들러 SG가 PG든 SG든 점수가 같음 → 슬롯 핵심 능력 보너스(BONUS_SLOT_ANCHOR) 추가.
+- 첫 구현은 후보 6명+비움으로 탐색 조합이 16,807개·탐색을 두 번 돌려 실제 리그 60팀 평균 23ms / 최대 81ms로 무거움 → 후보 4명, 단일 순회, 비트마스크로 **평균 1.37ms**(최대 22ms는 첫 호출 워밍업).
+- 실제 리그 60팀(Pro Basketball League 30 + 두 번째 방 30, 현재 부상 반영): 모든 팀 주전 5명 채움, 포지션 공급 부족 팀 없음, 이전 버전과 주전이 다른 팀 7곳(전부 OVR 비슷한 두 선수 사이 교체).
+
+**롤백 방법**: 이전 버전은 git에 없음(미커밋 신규 파일이었음) — 위 Before 설명대로 후보 3명·243조합 탐색으로 복원하거나, `lineupBuilder.ts`를 삭제하면 됨(호출부 없음).
+
 ## 2026-10-22 — 엔진: 타임아웃 체력 회복량 1 → 0.5
 
 **배경**: 타임아웃 NBA 규정화(아래 항목)로 경기당 타임아웃이 양 팀 합계 약 14회(합성 시뮬 기준)로 늘어, 1회당 양 팀 전 선수 회복 1이면 경기당 약 14 회복 — 체력 70 안팎 주전의 약 7분 코트 소모량. 이전 수준(최대 8회, 8점 런 때만)에 가깝게 맞추기 위해 사용자 결정으로 절반으로 하향.
@@ -379,6 +581,242 @@ function checkAITimeout(state): string | null {   // 상대 8pt+ 런이면 무�
 **[후속 — 같은 날] retired 재백필**: 휴리스틱 값을 폐기하고 `scripts/data/bbref_id_worksheet_verified.csv`의 현역 468명 id 목록 기준으로 재설정 — `retired = (id ∉ 현역468 AND draft_year < 2026)`. 결과: 은퇴 307 / 비은퇴 546(현역 466 + 2026 이후 드래프트 80). 현역 468 중 2명은 DB에 id가 없음. 이전 휴리스틱(297명)으로 복원하려면 위 백필 SQL을 다시 실행.
 
 **롤백 방법**: 호출부에서 4번째 인자 제거 + 컬럼 `ALTER TABLE ... DROP COLUMN retired / draft_retired_filter`, 트리거 함수에서 `'draft_retired_filter',` 제거. 서버/클라 미러 같이 되돌릴 것.
+
+## 2026-10-22 — 엔진: 코트 슬롯 배정 규칙 통일 (PG 2명·SG 0명 등 슬롯 꼬임 제거)
+
+**배경**: 교체 경로마다 들어온 선수의 슬롯(LivePlayer.position)을 정하는 규칙이 달랐다 — 로테이션 맵 교체는 뎁스차트 첫 등재 슬롯, 긴급 교체는 나간 선수 슬롯 복사, 빈 시간 보충·6명 이상 컷은 슬롯 무시. Pro Basketball League 저장 전술 그대로 120경기를 돌려 매 공격권 코트 슬롯을 검사한 결과 **11.3%가 PG~C 하나씩이 아님**(TOR 62%, OKC·LAM 46%, GS 41% …). 원인: ① 같은 뎁스 슬롯 선수 2명 동시 출전(TOR 매직+아이버슨 둘 다 PG), ② 경기 시작 시 부상 주전 대체(GS 지노빌리 → PG 2명, CLE 케빈 존슨 → PG 0명), ③ 맵 빈 시간 보충(BOS 48분 중 36분 5명 미만). 사람 팀에도 해당하는 엔진 버그.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `server/src/shared/engine/pbp/slotAssignment.ts` (server 신규) / `services/game/engine/pbp/slotAssignment.ts` (client 신규, import 경로만 다름)
+- `server/src/shared/engine/pbp/pbpTypes.ts` / `services/game/engine/pbp/pbpTypes.ts`
+- `server/src/shared/engine/pbp/initializer.ts` / `services/game/engine/pbp/initializer.ts`
+- `server/src/shared/engine/pbp/rotationLogic.ts` / `services/game/engine/pbp/rotationLogic.ts`
+- `server/src/shared/engine/pbp/liveEngine.ts` / `services/game/engine/pbp/liveEngine.ts`
+
+**Before**:
+```ts
+// pbpTypes LivePlayer: position(슬롯)만 있음, 고유 포지션 필드 없음
+// initializer: position: getSlotPosition(p.id) || p.position; return { ...TeamState }
+// rotationLogic.checkAndApplyRotation:
+//   폴백: allAvailable 정렬(fallbackScore > OVR) 후 앞에서부터 5명까지 추가
+//   >5명: OVR 내림차순 상위 5명
+//   toAdd: p.position = getSlotPosition(p.playerId, teamState.depthChart) || p.position;
+// forceSubstitution:          inPlayer.position = outPlayer.position;
+// benchWithOverride:          filler.position = outPlayer.position;
+// executeGarbageSubstitution: inP.position = outP.position;
+// liveEngine.applyManualSubstitution: inPlayer.position = outPlayer.position;
+// rotationLogic: function getSlotPosition(...) 존재
+```
+
+**After**:
+```ts
+// slotAssignment.ts: assignCourtSlots(team, before), snapshotSlots(team), bestSlotAssignment, pickBestFive, vacancyFit
+//   비용: 슬롯 주전 등재 0 / 백업·써드 등재 또는 고유 포지션 일치 0.6(NATURAL_COST) / 거리 1·2·3+ = 1·3·10 / 계속 있던 선수 이동 +0.5(MOVE_PENALTY)
+// pbpTypes LivePlayer: nativePosition?: string 추가
+// initializer: nativePosition: p.position 추가, const teamState = {...}; assignCourtSlots(teamState); return teamState;
+// checkAndApplyRotation:
+//   폴백: 한 명씩 고름 — score = fallbackScore(p) − FALLBACK_SLOT_FIT_WEIGHT(10) × vacancyFit(p, selected, depthChart)
+//   >5명: pickBestFive(cands, depthChart, snapshotSlots(teamState))
+//   교체 직전 const slotsBefore = snapshotSlots(teamState); toAdd 후 assignCourtSlots(teamState, slotsBefore)
+// forceSubstitution / benchWithOverride / executeGarbageSubstitution / applyManualSubstitution:
+//   스왑 직전 snapshotSlots → 스왑 후 assignCourtSlots(team, slotsBefore)
+// rotationLogic: getSlotPosition 삭제(사용처 없음)
+```
+
+**검증**:
+- server `tsc -p .` 오류 51 그대로(무관 파일), client `tsc -p .` engine/pbp 오류 없음(전체 60건은 무관 파일).
+- 슬롯 검사(스크래치패드 하네스): Pro Basketball League 120경기 11.3% → **0.0%**, 두 번째 방 120경기 0.0%, client 엔진 60경기 0.0%.
+- 장면 확인: TOR 매직 PG·아이버슨 SG / GS 지노빌리 부상 시 대체 선수 SG / CLE 케빈 존슨 부상 시 PG 채움 / 8인 로테이션 합성(아레나스 8~14분 PG → 14~20분 SG, 체임벌린 복귀 시 C·모닝 PF). 첫 시험에서 "주전 C 복귀 시 PF로 밀림" 발견 → 뎁스 주전 0 / 백업·고유 0.6으로 구분해 수정.
+- 리그 시뮬(저장 전술, 870경기 × 3시즌, 수정 전 2세트·수정 후 1세트): 경기당 팀 득점 102.7 → 102.9, 포지션별 36분당 득점 변화 ±0.1, 팀별 득실 변화 평균 0.80(같은 엔진 시드만 다를 때 1.27) → 밸런스 영향 잡음 범위.
+- 관찰(기존 동작, 이번 변경과 무관): 경기 시작 시 부상 주전 대체 선수(5번째 선발: OVR 순)와 로테이션 맵 승계자(뎁스차트 같은 슬롯의 다음 순번)가 달라 첫 공격권 직후 1회 교체가 일어남. **확인된 사례는 CLE뿐**(PG 케빈 존슨 부상 → 선발 루 허드슨(OVR 순), 맵 0분 출전자는 로드 스트릭랜드(PG2) → 첫 교체 `IN 스트릭랜드 OUT 허드슨`). 2026-10-22 정정: GS(지노빌리 부상)는 후임이 뎁스 PG2 오스틴 리브스로 선발과 맵이 일치해 이 현상이 없음 — 처음 GS도 사례로 적었으나, 시드를 고정하지 않은 시험에서 본 0분 교체(리브스→올라디포)는 이 현상이 아니라 재현되지 않는 경기 중 우연한 이벤트였음(원인 미확인).
+
+**롤백 방법**: 위 Before로 — 두 미러의 slotAssignment.ts 삭제, pbpTypes의 nativePosition 제거, initializer를 `return {...}`로, rotationLogic의 getSlotPosition 복원 및 4개 경로의 position 직접 대입 복원, 폴백 for 루프·OVR 컷 복원, liveEngine 수동 교체 복원. **서버·클라이언트 둘 다 되돌릴 것.**
+
+## 2026-10-22 — AI 감독 C2: 라인업 결정 모듈 신설 + 리그 시뮬 시험
+
+**배경**: 사용자 확정 순서 1단계 — 능력치와 조합으로 주전 5인을 정한다(상대 미반영, 고유 포지션 우선). 호출부 없음 — 게임 동작 영향 없음.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/lineupBuilder.ts` (server 신규, 클라이언트 미러 없음)
+
+**Before**: 없음(신규). 비교 기준인 현행 AI 뎁스는 `tacticGenerator.generateAutoTactics()`의 OVR 순 4단계 채움.
+
+**After**:
+```ts
+buildLineup(roster) → { starters, depthChart, score, changedFromOvrOrder, has, notes }
+// 후보: 슬롯별 고유 포지션 OVR 상위 3(CANDIDATES_PER_SLOT) → 없으면 인접 → 없으면 전원, 최대 243조합 전수
+// 점수: ΣOVR + BONUS_HANDLER 2 (팀 내 handler 상위 2) + BONUS_PER_SHOOTER 1.5 × min(2, 팀 내 3점 상위 4 중 주전 수)
+//       + BONUS_RIM 2 (팀 내 rimProtector 상위 2). 동점은 id 사전순
+// 뎁스: 포지션별 OVR 순(고유 → 인접), 없으면 null
+```
+
+**검증**: tsc(--strict, noUnusedLocals) 오류 없음, server `tsc -p .` 오류 51 그대로. Pro Basketball League 30팀 왕복 리그전 870경기 × 5시즌 × 3세트(스크래치패드 하네스, 약 5분) — 주전 변경 7팀 효과 평균 0.0, 잡음(시드만 다름) 팀 평균 0.98·최대 2.96 → 효과는 잡음 범위 안. 상세는 계획서 2-6. 시험 중 벤치 "전원" 폴백 버그(CHI PG 백업에 C) 발견 → 빈칸으로 수정.
+
+**롤백 방법**: `lineupBuilder.ts` 삭제(호출부 없음).
+
+## 2026-10-21 — AI 감독 C1: 플레이타입별 기대 득점 추정 모듈 신설
+
+**배경**: 사용자 결정 — 전술은 "플레이별 기대 득점을 측정해 그에 가깝게" 맞춘다. 30명 백분위만으로는 "우리 슈터가 나빠도 상대 슈터가 더 나쁘면 좋다고 인식"하는 결함이 있어, 엔진 자신의 명중률로 기대 득점을 잰다(외부 데이터 0). 호출부 없음 — 게임 동작 영향 없음.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/expectedPoints.ts` (server 신규, 클라이언트 미러 없음, 엔진 파일 수정 없음)
+
+**Before**: 없음(신규).
+
+**After**:
+```ts
+estimatePlayTypeEV(off: TeamState, def: TeamState, { samples = 60, seed = 20261021 }) → {
+  byPlayType: Record<PlayType, { ev, hitRate, threeShare, shooters[top3] }>, ranking
+}
+// 표본마다: resolvePlayAction(off, pt, DEFAULT_SLIDERS) → 같은 슬롯 포지션 수비수 →
+//           calculateHitRate(actor, defender, def, pt, zone, sliders, ctx.bonusHitRate, ace, …, ctx.shotType).rate × (3PT ? 3 : 2)
+// 결정론: withSeededRandom(seed, fn) — 실행 동안만 Math.random = mulberry32(seed), finally 복구(동기 전용)
+```
+- 원래 계획(명중률 함수에 노이즈 끄기 옵션 = 엔진 미러 쌍 수정)은 플레이 선택 함수도 Math.random을 써서 부족 → 시드 교체 방식으로 대체, 엔진 무수정.
+
+**검증**: tsc(noUnusedLocals) 오류 없음, server `tsc -p .` 오류 51 그대로. 4개 매치업(NO-SAC, DEN-MEM, WAS-PHI, PHX-HOU) 실측 4~6ms/회, 재실행 결과 동일. 결과표는 계획서 2-5.
+
+**롤백 방법**: `expectedPoints.ts` 삭제(호출부 없음).
+
+## 2026-10-21 — AI 감독 C1 최종: 외부 데이터 0 — 이 경기 두 팀 30명 안의 백분위로 평가
+
+**배경**: 사용자 지시 — 고정 보정표는 선수 데이터가 바뀌면 낡는 하드코딩이라 폐기, 루브릭 고정 기준도 쓰지 말 것. "30명 선수의 데이터만 받아서 분석하는 가벼운 엔진". 호출부 없음 — 게임 동작 영향 없음.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/rosterEvaluator.ts` (server 전용)
+- `server/src/shared/game/tactics/aiCoach/rosterEvalCalibration.ts` (**삭제**)
+- `scripts/genRosterEvalCalibration.ts` (**삭제**)
+
+**Before**:
+```ts
+evaluateTeam(teamId, roster, { calibration? })        // 백분위 = ROSTER_EVAL_CALIBRATION(게임 전체 선수 풀 분위수 상수)
+quantilePercentile / buildCalibration / EvalCalibration / CALIBRATION_POINTS
+```
+
+**After**:
+```ts
+evaluateTeam(teamId, roster, opponentRoster = [])     // 백분위 = 두 팀 선수(약 30명) 안의 순위
+buildPool(players) → Map<id, { skills, ovr, pct, insidePct, outsidePct }>   // 스킬 19종 정렬 + 종합값 2차 백분위
+percentile(sorted, v)                                  // 동점 중간 순위
+```
+- 나머지(에이스 유형=가장 강한 축, 공격 체제, insideLean, 무기 목록 WEAPON_PCT=80, TOP_HEAVY_OVR_GAP=8, 플래그 9종)는 그대로 — 비교 집단만 바뀜.
+
+**검증**: tsc(noUnusedLocals) 오류 없음, server `tsc -p .` 오류 수 51 그대로(기존 무관 파일). Pro Basketball League NO·DEN·WAS·PHX를 다음 경기 상대와 평가 — 계획서 2-4. 실행 시간 0.85ms/회(1,000회 평균).
+
+**롤백 방법**: 이전 항목("리그 비교 제거(B안) + 팀 무기 목록") 시점의 rosterEvaluator.ts + 삭제한 두 파일 복원(git 미커밋 상태였다면 이 문서의 이전 항목 Before/After 참조).
+
+## 2026-10-21 — AI 감독 C1: 리그 비교 제거(B안) + 팀 무기 목록 추가
+
+**배경**: 사용자 결정 — 리그 평균 성향/지표는 필요 없고 "내 로스터에 좋은 슈터가 있는지, 좋은 포스트 스코어러가 있는지"로 전술을 정한다(B안). 리그에 의존하던 유일한 부분(벤치 두께의 muLeague 비교) 제거, 대신 무기 목록 출력. 호출부 없음 — 게임 동작 영향 없음.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/rosterEvaluator.ts` (server 전용)
+
+**Before**:
+```ts
+evaluateTeam(teamId, roster, { leagueAvgOvr?, calibration? })
+depth: { starterOvr, benchOvr, gap, benchVsLeague, label }   // THIN_BENCH_VS_LEAGUE=-3.5, DEEP_BENCH_VS_LEAGUE=-2.0
+RosterFlag: ... | 'THIN_BENCH' | 'TOP_HEAVY' | ...
+```
+
+**After**:
+```ts
+evaluateTeam(teamId, roster, { calibration? })
+depth: { starterOvr, benchOvr, gap }                          // TOP_HEAVY_OVR_GAP = 8 유지
+weapons: Record<WeaponKey, { best: { id, name, pct } | null; count }>   // WEAPON_PCT = 80, 핵심 로테이션 9명
+// WeaponKey: post / roller / shooter / creator / playmaker / slasher / rimProtector / perimeterStopper / rebounder
+RosterFlag에서 'THIN_BENCH' 삭제
+```
+
+**검증**: tsc(noUnusedLocals) 오류 없음. Pro Basketball League NO·DEN·WAS·PHX 무기 목록 수동 확인(계획서 2-4).
+
+**롤백 방법**: 위 Before로 — `leagueAvgOvr` 옵션·`benchVsLeague`/`label`·두 상수·THIN_BENCH 복원, `weapons`/`WeaponKey`/`WEAPON_SCORE`/`WEAPON_PCT` 삭제.
+
+## 2026-10-21 — AI 감독 C1 개정: 리그 데이터 없이 자기 팀만 평가 (고정 보정표)
+
+**배경**: 리그 백분위 기준표를 만들려면 방 전체 선수(약 450명)를 읽어야 해서, 리그가 30~40개로 늘면 DB 부담이 큼(사용자 요청: "데이터를 불러오지 않고도 자기 팀의 선수들을 평가할 수 있는 엔진"). 호출부가 없어 게임 동작 영향 없음.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/rosterEvaluator.ts` (server 전용)
+- `server/src/shared/game/tactics/aiCoach/rosterEvalCalibration.ts` (신규, 자동 생성 상수)
+- `scripts/genRosterEvalCalibration.ts` (신규, 보정표 생성 — 개발용 읽기 전용)
+
+**Before**:
+```ts
+buildEvalReference(leaguePlayers) → EvalReference      // 방 전체 선수로 런타임 백분위 기준
+evaluateRoster(teamId, roster, ref)
+evaluateLeague(teams, ref)                              // 팀 간 백분위, insideLean 리그 평균=0, 벤치 = 리그 팀 하위/상위 20%
+classifyAnchor(pos, pct)                                // 임계값 순서 검사
+depth: { starterValue, benchValue, gap, benchRank, label }   // 선수 백분위 기준, TOP_HEAVY = 격차 ≥ 40
+```
+
+**After**:
+```ts
+evaluateTeam(teamId, roster, { leagueAvgOvr?, calibration? })  // 보정표 = ROSTER_EVAL_CALIBRATION(상수)
+buildCalibration(samples, version) / quantilePercentile(q, v)  // 생성 스크립트 전용 / 21점 선형 보간
+classifyAnchor(e: PlayerEval)                                   // 가장 강한 공격 축, 1·2위 차 < 4 → Balanced
+depth: { starterOvr, benchOvr, gap, benchVsLeague, label }      // OVR 기준
+// TOP_HEAVY_OVR_GAP = 8, THIN_BENCH_VS_LEAGUE = -3.5, DEEP_BENCH_VS_LEAGUE = -2.0, ANCHOR_BALANCED_MARGIN = 4
+```
+- 보정표: 2026-10-21 meta_players 853명 + 전성기 오버라이드 313명 = 1,166 표본, 스킬 19종 + 인사이드/외곽 종합값 × 21분위.
+- 생성 스크립트는 서버 공유 모듈(ovrUtils → gameConfigService → supabaseAdmin)이 로드 시 `Bun.env`·WebSocket을 요구해 Node용 shim을 깔고 동적 import.
+
+**검증**: tsc(noUnusedLocals) 오류 없음, server `tsc -p .` aiCoach 오류 없음. Pro Basketball League·두 번째 방 60팀 재평가 — 에이스 유형 수동 확인(계획서 2-4), 벤치 임계값은 60팀 OVR 분포 하위/상위 약 20%로 맞춤. 알려진 한계: 공격 성향 절대값이라 레전드 리그 인사이드 쏠림, 팀 지표 85~98 포화(계획서 2-4·3장).
+
+**롤백 방법**: 세 파일을 직전 커밋 상태로(rosterEvaluator.ts는 아래 "C1 후속" 항목 시점 = buildEvalReference/evaluateLeague 버전), rosterEvalCalibration.ts·genRosterEvalCalibration.ts 삭제. 호출부 없음.
+
+## 2026-10-21 — AI 감독 C1 후속: 벤치얇음(THIN_BENCH) / 주전편중(TOP_HEAVY) 분리
+
+**배경**: Pro Basketball League 피닉스(가용 15명)에 "벤치얇음"이 붙어 사용자 질문. 판정이 인원·벤치 수준이 아니라 "주전 평균 − 벤치 평균 ≥ 40"(전력 편중)이었음. 두 개념 분리.
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/rosterEvaluator.ts` (server 전용, 호출부 없음 — 게임 동작 영향 없음)
+
+**Before**:
+```ts
+const depthLabel = depthGap >= 40 ? 'thin' : depthGap <= 20 ? 'deep' : 'normal';
+if (depthLabel === 'thin') flags.push('THIN_BENCH');
+depth: { starterValue, benchValue, gap: depthGap, label: depthLabel },
+```
+
+**After**:
+- `evaluateRoster`: `if (depthGap >= TOP_HEAVY_GAP /*40*/) flags.push('TOP_HEAVY')`, `depth.label = 'normal'`, `depth.benchRank = null` (단독 호출은 리그 비교가 없어 벤치 두께 판정 안 함)
+- `evaluateLeague`: `benchRank` = 벤치(6~8번째) value 백분위 평균의 리그 팀 간 백분위. `< BENCH_RANK_EDGE(20)` → `label 'thin'` + `THIN_BENCH`, `> 80` → `'deep'`, 그 외 `'normal'`
+- 타입: `RosterFlag`에 `'TOP_HEAVY'` 추가, `depth.benchRank: number | null` 추가
+
+**검증**: tsc(noUnusedLocals) 오류 없음. 방 2개 재평가 — 방마다 thin 6팀 / deep 6팀(설계대로 20%씩). 피닉스는 TOP_HEAVY와 THIN_BENCH 둘 다(벤치 6~8번째 OVR 81로 리그 30팀 중 2백분위 — 벤치 자체도 실제로 최하위권).
+
+**롤백 방법**: 이 파일의 depth/flags 부분을 Before로 되돌리고 `TOP_HEAVY`·`benchRank`·두 상수 삭제.
+
+## 2026-10-21 — AI 감독 C1: 로스터 평가 엔진 신설 + scoring gravity export
+
+**배경**: 멀티 AI 팀 전술이 슬라이더 중간값 고정이라 로스터 성향이 반영되지 않음(체임벌린 사례, `docs/plan/ai-coach-plan.md` 0장). 매일 재평가하는 AI 감독의 1단계로, 성격 없는(balanced) 로스터 평가 모듈을 만든다. **아직 아무 데서도 호출하지 않음 — 게임 동작 변화 없음.**
+
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/rosterEvaluator.ts` (server 신규, 클라이언트 미러 없음)
+- `server/src/shared/engine/pbp/usageSystem.ts` (server 미러) — `calculateScoringGravity` export
+- `services/game/engine/pbp/usageSystem.ts` (client 미러) — 동일 변경
+
+**Before** (usageSystem.ts, 두 미러 동일):
+```ts
+function calculateScoringGravity(p: LivePlayer, insideOut: number): number {
+```
+
+**After**:
+```ts
+export function calculateScoringGravity(p: Pick<LivePlayer, 'attr' | 'ovr'>, insideOut: number): number {
+```
+(본문 변경 없음 — 시그니처 타입을 attr/ovr만 요구하도록 좁히고 export만 추가. 기존 호출부는 LivePlayer를 넘기므로 그대로 호환)
+
+rosterEvaluator.ts 요지 (상세는 계획서 2장):
+- `buildEvalReference(players)` → 스킬 19종 + 인사이드/외곽 종합값의 방 내 선수 백분위 기준
+- `evaluateRoster(teamId, roster, ref)` → `TeamProfile`(에이스·유형·공격 체제·insideLean·공격/수비/뎁스/컨디션 지표·플래그·요약 문구)
+- `evaluateLeague(teams, ref)` → 팀 지표를 팀 간 백분위로 변환, insideLean은 리그 평균 = 0으로 평행 이동
+- 상수: `ROTATION_WEIGHTS=[1,1,1,1,1,0.6,0.5,0.4,0.2]`, `ROLE_PCT=75`, `USAGE_GAP_HELIO=0.20`, `USAGE_GAP_DUO=0.12`, `USAGE_EXP=2`, `LEAN_SCALE=35`, 주무기:사용률 가중 = 0.6:0.4
+
+**검증**: server `tsc --noEmit -p .` 신규/수정 파일 오류 없음(기존 오류 51건은 무관 파일). client tsc usageSystem 오류 없음. 스크래치패드 하네스로 진행 중인 방 2개(aeb5794a·895d10da) 전 팀 평가 — insideLean 평균 0.00, 범위 −1.00~+0.72, 에이스 유형 분류 수동 확인(계획서 2-4). 시험 중 기각한 방식 5개는 계획서 2-3.
+
+**롤백 방법**: `server/src/shared/game/tactics/aiCoach/` 디렉터리 삭제 + 두 usageSystem.ts의 시그니처를 Before로 되돌림(미러 둘 다). 호출부가 없으므로 다른 파일 영향 없음.
 
 ## 2026-10-21 — 세션 설정 "채팅 검수" 탭 (신고 내역·메시지 검색·앞뒤 보기)
 

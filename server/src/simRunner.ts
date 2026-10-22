@@ -9,6 +9,7 @@ import { postseasonIntervalDays } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
+import { planAiTeam } from './shared/game/tactics/aiCoach/aiCoachPlan.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
@@ -41,6 +42,9 @@ export interface SimResult {
 }
 
 // ── 공개 진입점 ───────────────────────────────────────────────────────────────
+
+// AI 감독(경기 직전 뎁스·로테이션 설정) 끄기 스위치 — Fly secret AI_COACH_DISABLED=1로 즉시 기존 동작(저장된 AI 전술 + repairAiTactics)으로 복귀
+const AI_COACH_DISABLED = process.env.AI_COACH_DISABLED === '1';
 
 export async function runSimulation(roomId: string, gameId: string, forceStartNow = false): Promise<SimResult> {
     const t0 = Date.now();
@@ -198,8 +202,29 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 if (repErr) console.error(`[simRunner] AI 전술 보정 저장 실패 room=${roomId} team=${member.team_id}: ${repErr.message}`);
                 return { tactics: r.tactics, depth: r.depthChart };
             };
-            ({ tactics: homeTactics, depth: homeDepth } = await repairAi(homeMember, homeTeam, homeTactics, homeDepth));
-            ({ tactics: awayTactics, depth: awayDepth } = await repairAi(awayMember, awayTeam, awayTactics, awayDepth));
+            // ── 3.05 AI 감독: 경기 직전 AI 팀의 뎁스차트·로테이션 설정 (docs/plan/ai-coach-plan.md) ──────────
+            // 우리 로스터(부상·컨디션 반영)만 보고 그 경기에서만 쓸 계획을 만든다 — 저장하지 않는다(room_members 쓰기·실시간 전송 0).
+            // 생성기 → 주전 혹사 틀 → 기존 자동 전술 순으로 폴백하고, 모두 실패하면 아래 repairAi 경로(기존 동작)를 쓴다.
+            // 슬라이더는 저장된 값(현재 AI 팀은 중간값 고정)을 유지한다. 끄려면 환경 변수 AI_COACH_DISABLED=1.
+            const coachAi = (member: any, team: any, tactics: any) => {
+                if (!member?.is_ai || AI_COACH_DISABLED) return null;
+                try {
+                    const { plan, notes } = planAiTeam(team, tactics);
+                    if (!plan || plan.source !== 'builder') {
+                        console.warn(`[simRunner] AI 감독 ${plan ? '폴백(' + plan.source + ')' : '실패'} room=${roomId} team=${member.team_id}: ${notes.join(' / ')}`);
+                    }
+                    return plan;
+                } catch (e) {
+                    console.error(`[simRunner] AI 감독 예외 room=${roomId} team=${member.team_id}:`, e);
+                    return null;
+                }
+            };
+            const homePlan = coachAi(homeMember, homeTeam, homeTactics);
+            const awayPlan = coachAi(awayMember, awayTeam, awayTactics);
+            if (homePlan) { homeTactics = homePlan.tactics; homeDepth = homePlan.depthChart; }
+            else ({ tactics: homeTactics, depth: homeDepth } = await repairAi(homeMember, homeTeam, homeTactics, homeDepth));
+            if (awayPlan) { awayTactics = awayPlan.tactics; awayDepth = awayPlan.depthChart; }
+            else ({ tactics: awayTactics, depth: awayDepth } = await repairAi(awayMember, awayTeam, awayTactics, awayDepth));
 
             const coachingData = (room.coaching_staff ?? null) as any;
             const simSettings  = (room.sim_settings   ?? null) as any;

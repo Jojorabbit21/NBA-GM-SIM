@@ -27,4 +27,5 @@
 | [league-chat-plan.md](league-chat-plan.md) | 리그 세션 채팅 — `league_chat_messages` 테이블 + RPC `send_chat_message`(레이트 리밋) + Supabase Realtime Broadcast 비공개 채널(`realtime.send`), Fly 서버 미관여 | 계획 (2026-10-17) |
 | [multi-ai-trade-plan.md](multi-ai-trade-plan.md) | 멀티 AI↔유저 트레이드 — 서버 평가기(가상 자정 지연 응답)+`ai_respond_trade_offer` 코어 공유, 리그 토글별 AI 판단 요소 on/off(`buildAiTradeRules`+`MULTI_SYSTEMS`), 남용 방지 | 계획, 결정 D1~D7 대기 — 세션 설정 "AI 트레이드" 섹션(토글·난이도·제한 수치) 포함 (2026-10-19) |
 | [multi-ai-gm-profile-plan.md](multi-ai-gm-profile-plan.md) | 멀티 AI 단장 프로필 — `meta_gms` 실제 단장 고정 배정, 수치 4개(승부욕·깐깐함·로스터 구성 성향·부상 감수), 결정론적 시즌 상황 판정 + 현재 기조 라벨. AI 트레이드의 선행 작업 | G1·G2 순수 모듈 완료, G3 표시 위치 결정 대기 (2026-10-20) |
+| [ai-coach-plan.md](ai-coach-plan.md) | 멀티 AI 감독 — 경기 직전 AI 팀 라인업(C2)·로테이션(C3)·공격 전술(C4)·단장 성격(C6) 설정. 현행 AI 전술 중간값 고정 대체 | C1·C2·C3·C7 구현·simRunner 연결 완료(2026-10-22), 실경기 데이터 수집 후 C4 결정 |
 | [timeout-system.md](timeout-system.md) | 타임아웃 NBA 규정화 — 경기 7회, 4Q 진입 4회/막판 2회 캡, 연장 2회, 쿼터당 의무 타임아웃 2회(6:59/2:59), AI 타임아웃 예비분 로직 | 구현 완료(실엔진 밸런스 하네스 미실시) (2026-10-22) |
