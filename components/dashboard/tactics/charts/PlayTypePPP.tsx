@@ -9,8 +9,6 @@ import { InlineNotice } from '../../../common/InlineNotice';
 /** [2026-10-18] 실제 경기 기반 PPP(멀티 전술 화면 전용) — 지정되면 예상 비중 차트 아래 "PPP" 섹션을 그린다 */
 export interface PlayTypeActual {
     totals: TeamPlayTypeTotals | undefined;
-    /** 우리 팀 시즌 경기 중 추정치(백필)가 섞인 경기 수 — 0보다 크면 안내 문구 */
-    estimatedGames?: number;
     myTeamId: string | null;
     isLoading: boolean;
     isError: boolean;
@@ -151,11 +149,6 @@ const PlayTypeActualSection: React.FC<{ actual: PlayTypeActual }> = ({ actual })
             <div className="h-px bg-slate-700 my-4" />
             <h5 className="text-base font-black text-white">PPP</h5>
             <div className="-mt-1.5 text-xs text-slate-500 leading-relaxed">이번 시즌 · 포제션당 득점(자유투·턴오버 포함)</div>
-            {!!actual.estimatedGames && (
-                <div className="text-xs text-amber-400/90 leading-relaxed break-keep">
-                    {actual.estimatedGames}경기는 기능 도입 전 기록이라 턴오버·자유투 배분이 추정치입니다
-                </div>
-            )}
 
             {actual.isError ? (
                 <InlineNotice tone="danger" size="sm">PPP를 불러오지 못했습니다</InlineNotice>

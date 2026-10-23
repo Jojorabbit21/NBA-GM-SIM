@@ -8,8 +8,8 @@ import { supabase } from '../services/supabaseClient';
 export interface PlayTypeTotals { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number }
 /** teamId → playType → 시즌 합계 */
 export type TeamPlayTypeTotals = Record<string, Record<string, PlayTypeTotals>>;
-/** totals + 팀별 "추정치가 섞인 경기 수"(엔진 집계 도입 전 백필분 — 턴오버·자유투 기회 배분이 추정) */
-export interface TeamPlayTypeStatsData { totals: TeamPlayTypeTotals; estimatedGames: Record<string, number> }
+// RPC의 estimated_games 열(엔진 집계 도입 전 백필 경기 수)은 [2026-10-23] 화면 안내 제거로 읽지 않는다.
+export interface TeamPlayTypeStatsData { totals: TeamPlayTypeTotals }
 
 export function useTeamPlayTypeStats(roomId: string | undefined | null) {
     return useQuery({
@@ -19,17 +19,14 @@ export function useTeamPlayTypeStats(roomId: string | undefined | null) {
             const { data, error } = await supabase.rpc('get_team_playtype_stats', { p_room_id: roomId });
             if (error) throw error;
             const totals: TeamPlayTypeTotals = {};
-            const estimatedGames: Record<string, number> = {};
             for (const row of (data ?? []) as Record<string, string | number>[]) {
                 const teamId = String(row.team_id);
                 (totals[teamId] ??= {})[String(row.play_type)] = {
                     poss: Number(row.poss), pts: Number(row.pts), fga: Number(row.fga),
                     fgm: Number(row.fgm), fta: Number(row.fta), tov: Number(row.tov),
                 };
-                // 플레이타입 행마다 같은 경기 집합의 부분 집계라 팀 내 최댓값 = 그 팀의 추정 경기 수
-                estimatedGames[teamId] = Math.max(estimatedGames[teamId] ?? 0, Number(row.estimated_games ?? 0));
             }
-            return { totals, estimatedGames };
+            return { totals };
         },
     });
 }

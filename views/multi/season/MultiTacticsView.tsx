@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { InlineNotice } from '../../../components/common/InlineNotice';
-import { Save, Check, RotateCcw } from 'lucide-react';
+import { Save, Check, RotateCcw, PenLine } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { getSeriesRoundLabel } from '../../../utils/playoffLogic';
@@ -44,6 +44,13 @@ import { TacticPresetSelector } from '../../../components/multi/TacticPresetSele
 import { useMultiTacticPresets } from '../../../hooks/useMultiTacticPresets';
 import { buildDepthPresetData, buildTeamPresetData, applyDepthPreset, applyTeamPreset } from '../../../utils/tacticPresetData';
 import type { DepthPresetData, TeamPresetData, TacticPresetKind, TacticPresetSlot, MultiTacticPreset } from '../../../services/multi/tacticPresets';
+import { Dropdown, DropdownButton } from '../../../components/common/Dropdown';
+import { TacticSetTimeline } from '../../../components/dashboard/tactics/TacticSetTimeline';
+import { getSetLabel, getSetSliders, withSetSliders, withSetName, isClutchOn } from '../../../utils/tacticSetEdit';
+import { IconButton } from '../../../components/common/IconButton';
+import { TACTIC_PRESET_NAME_MAX, normalizePresetName } from '../../../services/multi/tacticPresets';
+import { isImeComposing } from '../../../utils/ime';
+import type { TacticSetId } from '../../../services/game/engine/pbp/tacticSchedule';
 
 type PresetNotice = { tone: 'info' | 'danger'; text: string };
 const PRESET_KINDS: TacticPresetKind[] = ['depth', 'team'];
@@ -390,7 +397,6 @@ const MultiTacticsView: React.FC = () => {
     const playTypeActual = useMemo(
         () => ({
             totals: playTypeData?.totals, myTeamId, isLoading: playTypePending, isError: playTypeError,
-            estimatedGames: myTeamId ? (playTypeData?.estimatedGames[myTeamId] ?? 0) : 0,
         }),
         [playTypeData, myTeamId, playTypePending, playTypeError],
     );
@@ -561,6 +567,36 @@ const MultiTacticsView: React.FC = () => {
     // (generateAutoTactics와 같은 슬라이더 계산 + 감독 성향 블렌드). 뎁스·로테이션은 건드리지 않음.
     // 주전 5명이 다 안 차 있으면 바꾸지 않고 안내. 초기화: DEFAULT_SLIDERS(싱글 TacticsBoard.handleReset과 동일, confirm).
     const [autoSetNotice, setAutoSetNotice] = useState<string | null>(null);
+
+    // [2026-10-23] 시간별 전술 세트 — 헤더 아래 드롭다운으로 편집할 세트(1번/2번/클러치)를 고르고,
+    // 슬라이더 패널·초기화는 고른 세트에만 적용(전술 자동 설정은 1번 전술 전용). 경기 반영 규칙은 engine/pbp/tacticSchedule.ts.
+    const [selectedSet, setSelectedSet] = useState<TacticSetId>('main');
+    const [setMenuOpen, setSetMenuOpen] = useState(false);
+    // 1번/2번 이름 편집 — 프리셋 이름 변경과 같은 흐름(드롭다운 → 입력창 + 확인, Enter 확정·Esc 취소)
+    const [nameDraft, setNameDraft] = useState<string | null>(null);
+    // 체크 해제 상태 — 저장된 클러치 값은 보여주되(흐리게) 편집은 막는다
+    const clutchLocked = selectedSet === 'clutch' && !isClutchOn(userTactics);
+    const editingTactics = useMemo(
+        () => (userTactics ? { ...userTactics, sliders: getSetSliders(userTactics, selectedSet) } : null),
+        [userTactics, selectedSet],
+    );
+    const handleUpdateSetTactics = useCallback((t: GameTactics) => {
+        if (!userTactics) return;
+        // 클러치는 체크박스로 켠 뒤에만 편집 — 꺼진 상태에서 편집으로 생성되지 않게
+        if (selectedSet === 'clutch' && !isClutchOn(userTactics)) return;
+        setUserTactics(withSetSliders(userTactics, selectedSet, t.sliders));
+    }, [userTactics, selectedSet, setUserTactics]);
+    const altMinutes = useMemo(
+        () => (userTactics?.sliderSchedule ?? '').split('').filter(c => c === '2').length,
+        [userTactics?.sliderSchedule],
+    );
+    const confirmSetName = () => {
+        if (nameDraft === null || selectedSet === 'clutch' || !userTactics) return;
+        if (!normalizePresetName(nameDraft)) return;
+        setUserTactics(withSetName(userTactics, selectedSet, nameDraft));
+        setNameDraft(null);
+    };
+
     const handleAutoSetSliders = useCallback(() => {
         if (!userTactics) return;
         const ids = (['PG', 'SG', 'SF', 'PF', 'C'] as const).map(pos => depthChart?.[pos]?.[0] || userTactics.starters?.[pos] || '');
@@ -573,13 +609,16 @@ const MultiTacticsView: React.FC = () => {
         }
         setAutoSetNotice(null);
         const sliders = generateSlidersForStarters(starters, getCoachPreferences(coachingData, myTeamId ?? ''));
-        setUserTactics({ ...userTactics, sliders });
+        // 자동 설정은 1번 전술 전용 — 결과가 보이도록 1번으로 전환
+        setUserTactics(withSetSliders(userTactics, 'main', sliders));
+        setSelectedSet('main');
+        setNameDraft(null);
     }, [userTactics, depthChart, team.roster, coachingData, myTeamId, setUserTactics]);
 
     const handleResetSliders = useCallback(() => {
-        if (!userTactics || !window.confirm('팀 전술 슬라이더를 전부 기본값으로 초기화하시겠습니까?')) return;
-        setUserTactics({ ...userTactics, sliders: { ...DEFAULT_SLIDERS } });
-    }, [userTactics, setUserTactics]);
+        if (!userTactics || clutchLocked || !window.confirm(`${getSetLabel(userTactics, selectedSet)} 슬라이더를 전부 기본값으로 초기화하시겠습니까?`)) return;
+        setUserTactics(withSetSliders(userTactics, selectedSet, { ...DEFAULT_SLIDERS }));
+    }, [userTactics, setUserTactics, selectedSet, clutchLocked]);
 
     // 뎁스차트 "체력" 열 — 로스터 탭·선수 프로필과 같은 공용 훅(결과 공개 전 경기는 경기 전 체력)
     const myRosterIds = useMemo(() => [...(myTeamRow?.roster ?? [])], [myTeamRow?.roster]);
@@ -810,14 +849,87 @@ const MultiTacticsView: React.FC = () => {
                                 </Button>
                             </div>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-8 pb-20 bg-slate-900">
-                            <TacticsSlidersPanel
+                        {/* ── 전술 세트 선택 바 [2026-10-23] — 슬라이더 패널·초기화가 고른 세트에 적용 ── */}
+                        <div className="px-6 py-2.5 bg-slate-900 border-b border-slate-700 flex items-center gap-2 flex-shrink-0 min-w-0">
+                            {nameDraft !== null ? (
+                                <>
+                                    <input
+                                        type="text"
+                                        value={nameDraft}
+                                        onChange={e => setNameDraft(e.target.value)}
+                                        onFocus={e => e.currentTarget.select()}
+                                        onKeyDown={e => {
+                                            if (isImeComposing(e)) return;
+                                            if (e.key === 'Enter') confirmSetName();
+                                            if (e.key === 'Escape') setNameDraft(null);
+                                        }}
+                                        maxLength={TACTIC_PRESET_NAME_MAX}
+                                        placeholder="전술 이름"
+                                        autoFocus
+                                        className="h-8 w-[168px] px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                                    />
+                                    <Button variant="primary" size="md" onClick={confirmSetName} disabled={!normalizePresetName(nameDraft)}>
+                                        확인
+                                    </Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Dropdown
+                                        isOpen={setMenuOpen}
+                                        onOpenChange={setSetMenuOpen}
+                                        align="left"
+                                        width="w-44"
+                                        trigger={
+                                            <DropdownButton
+                                                isOpen={setMenuOpen}
+                                                label={getSetLabel(userTactics, selectedSet)}
+                                                className="h-8 w-[168px] !px-3 !py-0"
+                                            />
+                                        }
+                                        items={(['main', 'alt', 'clutch'] as TacticSetId[]).map(id => ({
+                                            id,
+                                            label: <span className="truncate">{getSetLabel(userTactics, id)}</span>,
+                                            active: id === selectedSet,
+                                            onClick: () => setSelectedSet(id),
+                                        }))}
+                                    />
+                                    <IconButton
+                                        label="이름 변경"
+                                        size="lg"
+                                        tone="subtle"
+                                        onClick={() => setNameDraft(getSetLabel(userTactics, selectedSet))}
+                                        disabled={selectedSet === 'clutch'}
+                                    >
+                                        <PenLine size={16} />
+                                    </IconButton>
+                                </>
+                            )}
+                            {selectedSet === 'alt' && altMinutes === 0 && (
+                                <InlineNotice tone="danger" size="sm">전술 로테이션에 이 전술 구간이 없어 경기에 쓰이지 않습니다</InlineNotice>
+                            )}
+                            {clutchLocked && (
+                                <InlineNotice tone="danger" size="sm">전술 로테이션 차트의 클러치 전술 체크박스를 켜면 편집할 수 있습니다</InlineNotice>
+                            )}
+                            {/* 상시 주의사항 — 미지정 시간의 엔진 처리(tacticSchedule.scheduledSetAt: '2'가 아니면 1번) */}
+                            <span className="ml-auto pl-4 text-sm text-slate-400 shrink-0">
+                                전술 로테이션에서 지정하지 않은 시간은 1번 전술{getSetLabel(userTactics, 'main') !== '1번 전술' && `(${getSetLabel(userTactics, 'main')})`}로 진행됩니다
+                            </span>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
+                            <TacticSetTimeline
                                 tactics={userTactics!}
                                 onUpdateTactics={setUserTactics}
-                                roster={rosterWithZoneStats}
-                                offenseDefenseSplit
-                                playTypeActual={playTypeActual}
+                                selectedSet={selectedSet}
                             />
+                            <div className={`p-8 pb-20 ${clutchLocked ? 'opacity-40 pointer-events-none select-none' : ''}`} aria-disabled={clutchLocked}>
+                                <TacticsSlidersPanel
+                                    tactics={editingTactics!}
+                                    onUpdateTactics={handleUpdateSetTactics}
+                                    roster={rosterWithZoneStats}
+                                    offenseDefenseSplit
+                                    playTypeActual={playTypeActual}
+                                />
+                            </div>
                         </div>
                     </div>
                 )}

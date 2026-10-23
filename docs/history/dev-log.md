@@ -170,6 +170,175 @@ const FALLBACK_TEMP_BENCH_PENALTY = 300;
 
 **롤백 방법**: 위 Before로 — substitutionSystem의 매트릭스·classifyPlayerImportance·isScheduled 조건·exitType 분기 복원(HARD_FLOOR export 제거), pbpTypes `foulCheckedPf` 삭제, rotationLogic의 successionPlayers·benchForFoulTrouble·swapForTemporaryBench 삭제 후 applyRotationSuccession/benchWithOverride/checkTemporaryReturns/handleFillerExit를 Before대로(evaluateFoulTroubleAction 호출부에 team 인자 복원), rotationSuccession의 toMinute·held/roles 삭제, possessionHandler 세 줄 복원. **서버·클라이언트 둘 다 되돌릴 것.** 문서 4개도 같이.
 
+## 2026-10-23 — PPP 추정치 안내 문구 제거
+
+**변경 파일** (client 전용): `components/dashboard/tactics/charts/PlayTypePPP.tsx` — `actual.estimatedGames > 0`일 때 뜨던 "{N}경기는 기능 도입 전 기록이라 턴오버·자유투 배분이 추정치입니다"(text-xs amber) 블록 삭제. 후속으로 전달 코드도 정리: `hooks/useTeamPlayTypeStats.ts`(`TeamPlayTypeStatsData.estimatedGames`·집계 루프 제거, RPC `estimated_games` 열은 읽지 않음), `views/multi/season/MultiTacticsView.tsx`(`playTypeActual.estimatedGames` 제거), `PlayTypePPP.tsx`(`PlayTypeActual.estimatedGames` prop 제거). DB RPC `get_team_playtype_stats`는 그대로(반환 열 유지). 이유: 다음 풀리그부터는 전 경기가 엔진 집계라 추정치가 없음
+
+**롤백 방법**: 세 파일의 estimatedGames 계산·전달·prop 복원 후, 부제 div 아래에 `{!!actual.estimatedGames && (<div className="text-xs text-amber-400/90 leading-relaxed break-keep">{actual.estimatedGames}경기는 기능 도입 전 기록이라 턴오버·자유투 배분이 추정치입니다</div>)}` 복원
+
+## 2026-10-23 — 미지정 시간 안내를 세트 선택 바 우측 상시 문구로 이동
+
+**변경 파일** (client 전용):
+- `components/dashboard/tactics/TacticSetTimeline.tsx` — 표 아래 `unassigned > 0`일 때만 뜨던 `InlineNotice`("지정하지 않은 N분 → {1번 이름} 적용") 블록·`unassigned` 계산·InlineNotice import 삭제
+- `views/multi/season/MultiTacticsView.tsx` — 세트 선택 바 맨 우측(`ml-auto`)에 상시 문구 `text-sm text-slate-400`: "전술 로테이션에서 지정하지 않은 시간은 1번 전술(이름)로 진행됩니다" — 이름이 기본값이면 괄호 생략
+
+**롤백 방법**: 선택 바의 span 삭제, 타임라인 컴포넌트 끝에 `{unassigned > 0 && (<div className="px-6 py-2 border-t border-slate-800 bg-slate-900"><InlineNotice tone="info" size="sm">…</InlineNotice></div>)}` 복원
+
+## 2026-10-23 — 전술 로테이션 차트: 시간 배정된 전술 이름 셀 초록 강조
+
+**변경 파일** (client 전용): `components/dashboard/tactics/TacticSetTimeline.tsx` — `renderPaintRow` 이름 셀
+- 배정 시간 > 0: 이름 `text-emerald-400`(선택 중 `text-emerald-300`), 셀 틴트 `shadow-[inset_0_0_0_999px_rgba(16,185,129,0.10)]`(선택 중 0.18). sticky 셀이라 반투명 bg 대신 불투명 배경 + inset 그림자로 틴트
+- 0분: 기존 그대로(선택 `text-white`+`!bg-slate-800` / 비선택 `text-slate-400`)
+
+**롤백 방법**: td의 `mins > 0 ? shadow…` 조건 클래스와 span의 emerald 분기를 제거
+
+## 2026-10-23 — 클러치 체크 해제 시 값 보존(clutchEnabled) + 분 눈금 행 복원 + 클러치 문구 통일
+
+**배경**: 클러치 전술을 설정·저장한 뒤 체크를 풀면 clutchSliders가 삭제돼 다시 켜면 1번 값으로 돌아갔다. 사용 여부만 끄고 값은 보존해 달라는 요청. 함께 전술 로테이션 차트 헤더 아래 분 눈금 행 복원, 클러치 행 문구를 체크 전/후 하나로 통일.
+
+**변경 파일**:
+- `types/tactics.ts` / `server/src/shared/types/tactics.ts` (server 미러) — `clutchEnabled?: boolean` (없음 = 켜짐 → 기존 clutchSliders 보유 행 호환)
+- `services/game/engine/pbp/initializer.ts` / server 미러 — 클러치 세트 생성 조건
+  - Before: `clutchSliders: tactics.clutchSliders ? { ...DEFAULT_SLIDERS, ...tactics.clutchSliders } : undefined,`
+  - After: `clutchSliders: tactics.clutchSliders && tactics.clutchEnabled !== false ? { ...DEFAULT_SLIDERS, ...tactics.clutchSliders } : undefined,`
+- `services/game/engine/pbp/tacticSchedule.ts` / server 미러 — 상단 주석만
+- `services/multi/tacticPresets.ts`, `utils/tacticPresetData.ts` — 프리셋에 `clutchEnabled: false`(꺼짐일 때만 키 포함) 저장·적용
+- `utils/tacticSetEdit.ts` — `isClutchOn()` 신설, `withClutchEnabled`: 끄기 = `clutchEnabled: false`(값 보존) / 켜기 = 플래그 제거, 값이 없을 때만 1번 값으로 생성
+  - Before(끄기): `const { clutchSliders: _removed, ...rest } = tactics; return rest;`
+- `components/dashboard/tactics/TacticSetTimeline.tsx` — 헤더 2행(분 눈금 2분 간격 text-sm, 전술/시간/초기화는 rowSpan 2), 클러치 문구 단일화: "4쿼터 5:00 ~ 0:00 · 점수 차 10점 이내일 때 자동 발동 (일반 전술보다 우선 적용)" (on/off는 색만 다름)
+- `views/multi/season/MultiTacticsView.tsx` — 클러치 잠금 판정을 `isClutchOn` 기준으로(꺼짐이면 저장된 클러치 값을 흐리게 보여주고 편집 불가)
+
+**검증**: client/server tsc 수정 파일 오류 0건. 서버 미러 엔진 시뮬: clutchEnabled=false 20경기 클러치 활성 0회·tacticSets.clutch 미생성(2번은 유지), true면 생성, 기존 항목 전부 통과. 미러 diff 일치.
+
+**롤백 방법**: initializer 두 곳 Before로, withClutchEnabled 끄기 Before로. 저장된 `clutchEnabled` 키는 롤백 엔진이 무시하므로 데이터 정리 불필요(단 꺼둔 클러치가 다시 켜진 것처럼 동작).
+
+## 2026-10-23 — 전술 세트 이름 DB 검증 + room_members.tactics 크기 상한
+
+**배경**: 전술 세트 이름(`tacticSetNames`)은 jsonb 안에 있어 프리셋 이름 CHECK가 적용되지 않았고, `room_members.tactics`엔 CHECK가 전혀 없었다(크기 무제한, 방 멤버·관전자 전원 SELECT 가능). 클라이언트를 우회한 API 직접 호출로 무제한 길이·방향 제어 문자·비문자열 값을 저장할 수 있었음.
+
+**변경 파일 / DB** (프로젝트 buummihpewiaeltywdff, 2026-10-23 적용):
+- `migrations/add_tactic_set_names_check.sql` (신규, 적용 완료)
+  - 함수 `public.tactic_set_names_valid(jsonb)`: null 허용, 객체만, 키 main/alt만, 값은 문자열·1~12자·trim됨·금지 문자 없음. 금지 문자 정규식은 `room_member_tactic_presets_name_check`의 라이브 정의에서 추출(재타이핑 안 함)
+  - `room_members_tactics_check`: `tactics is null or (object and octet_length <= 65536 and tactic_set_names_valid(tactics->'tacticSetNames'))`
+  - `room_member_tactic_presets_set_names_check`: `tactic_set_names_valid(data->'tacticSetNames')`
+- `utils/tacticSetEdit.ts` — `getSetLabel`은 문자열만 이름으로 인정, `withSetName`은 기존 이름 중 문자열만 복사
+- `utils/tacticPresetData.ts` — `cleanSetNames`도 문자열만 유지
+
+**Before**: room_members CHECK = depth_preset_slot/team_preset_slot/team_id_format만. 프리셋 data는 크기(64KB)만.
+**After**: 위 두 CHECK 추가.
+
+**검증**: 적용 전 기존 행 전부 객체·최대 6,964바이트. 함수 단위 15건(정상 4/비정상 11: 13자·빈값·숫자·객체·키 외·배열·앞공백·U+202E·U+200B·줄바꿈·BOM) 전부 기대값. 실테이블 UPDATE 3건(멤버 bidi·멤버 70KB·프리셋 숫자 이름) 전부 check_violation, 테스트는 예외로 전체 롤백·데이터 불변 확인. client tsc 수정 파일 오류 0건.
+
+**롤백 방법**:
+```sql
+alter table public.room_members drop constraint room_members_tactics_check;
+alter table public.room_member_tactic_presets drop constraint room_member_tactic_presets_set_names_check;
+drop function public.tactic_set_names_valid(jsonb);
+```
+
+## 2026-10-23 — 전술 세트 안내 문구 톤 변경(info → danger)
+
+**변경 파일** (client 전용): `views/multi/season/MultiTacticsView.tsx` — 세트 선택 바의 안내 2개 `InlineNotice tone="info" size="sm"` → `tone="danger" size="sm"`
+- "전술 로테이션에 이 전술 구간이 없어 경기에 쓰이지 않습니다"(2번 선택 + 구간 0분)
+- "전술 로테이션 차트의 클러치 전술 체크박스를 켜면 편집할 수 있습니다"(클러치 선택 + 꺼짐)
+
+**롤백 방법**: 두 곳의 `tone="danger"` → `tone="info"`
+
+## 2026-10-23 — 전술 로테이션 차트 2차: 독립 행·겹침 차단·클러치 체크박스·세트 이름·프리셋 백필
+
+**배경**: 바로 아래 항목의 후속 요청. 로테이션 차트와 글자 크기 통일, 클러치는 로테이션 행에서 빼고 체크박스로, 행별 초기화, 겹침 빨간 표시·적용 불가, 1·2번 이름 지정, 기존 프리셋 2번 백필, 자동 설정은 1번 전용.
+
+**변경 파일**:
+- `services/game/engine/pbp/tacticSchedule.ts` (client) / `server/src/shared/engine/pbp/tacticSchedule.ts` (server 미러) — `ScheduleSet`에 `'0'`(미지정) 추가. `parseSchedule`: 필드 없음=전부 '1', 그 외 '1'/'2' 아닌 칸='0'. `serializeSchedule`: 전부 '1'일 때만 undefined(전부 '0'은 그대로 저장). **엔진 판정(`scheduledSetAt`/`resolveTacticSet`)은 무변경** — '2'만 2번, 나머지(미지정 포함) 1번
+- `types/tactics.ts` / `server/src/shared/types/tactics.ts` — `tacticSetNames?: { main?: string; alt?: string }`(UI 전용)
+- `services/multi/tacticPresets.ts`, `utils/tacticPresetData.ts` — 프리셋에 `tacticSetNames`. `buildTeamPresetData`는 2번이 없으면 1번 값으로 채워 항상 `altSliders` 포함(백필 규칙과 동일 → 되돌리기 버튼 오탐 방지), `applyTeamPreset`도 2번 없는 프리셋은 1번 값으로 채움
+- `utils/tacticSetEdit.ts` — `TACTIC_SET_LABELS`/`withoutClutch` → `DEFAULT_TACTIC_SET_LABELS`/`getSetLabel`/`withSetName`/`withClutchEnabled`
+- `components/dashboard/tactics/TacticSetTimeline.tsx` — DepthRotationBoard와 같은 표 구조(헤더·쿼터·셀 text-sm, 2분 눈금 행 제거, 오른쪽 시간 40px·초기화 54px 열). 1·2번 행은 독립(같은 분 동시 소유 불가): 드래그 중 상대 행 칸은 빨간색 미리보기·적용 안 함, 이미 자기 칸에서 시작하면 지우기('0'). 행별 초기화 = 그 행 칸을 '0'으로. 클러치 행은 colSpan 텍스트(발동 조건 자동 표기) + 체크박스, 로테이션 행 아님. 미지정 분 안내
+- `views/multi/season/MultiTacticsView.tsx` — 드롭다운 오른쪽 이름 변경 버튼(PenLine) → 입력창+확인(Enter/Esc, 12자, 프리셋 이름 변경과 동일 흐름), 클러치 꺼짐이면 슬라이더 패널 비활성+안내(편집으로 생성 안 됨), 전술 자동 설정은 1번 전용(1번으로 전환), 초기화는 고른 세트
+
+**DB 백필** (2026-10-23 실행, 프로젝트 buummihpewiaeltywdff):
+```sql
+update room_member_tactic_presets
+set data = data || jsonb_build_object('altSliders', data->'sliders')
+where kind = 'team' and data ? 'sliders' and not (data ? 'altSliders');
+-- 38행, 전부 altSliders = sliders 확인. 클러치는 체크박스로만 생성 → 백필 안 함
+```
+롤백: `update room_member_tactic_presets set data = data - 'altSliders' where kind = 'team';` (단, 이후 사용자가 2번을 실제 편집해 저장한 프리셋까지 지워지므로 배포 후엔 쓰지 말 것)
+
+**되돌리기 동작**: 활성 프리셋 되돌리기는 팀 프리셋 전체(1·2번·타임라인·클러치·이름)를 프리셋 값으로 복원 — 바뀐 세트만 실제로 값이 달라지므로 "둘 다 바뀌면 둘 다, 하나만 바뀌면 그 하나만" 되돌린 결과와 같다.
+
+**검증**: client/server tsc 수정 파일 오류 0건(나머지 60/50건 기존 무관). 스케줄 단위 시험 8건 통과(미지정 '0' 왕복·엔진 1번 처리 등), 서버 미러 엔진 40경기 시뮬 재실행 전부 통과. 브라우저 확인 미실시.
+
+**롤백 방법**: 이 항목 파일들을 아래 항목 시점으로 되돌림. 엔진 판정 로직은 이번에 안 바뀌었으므로 tacticSchedule.ts는 parse/serialize만 되돌리면 됨(client+server 쌍).
+
+## 2026-10-23 — 시간별 전술 세트(1번/2번/클러치) + 팀 전술 타임라인
+
+**배경**: 한 가지 전술로 48분을 돌리던 것을, 주전·벤치 구간 등 시간대별로 다른 전술을 쓸 수 있게 해달라는 요청. 라인업 기준 자동 전환은 과하다는 결정 → 분 단위 타임라인(1번/2번) + 클러치 상황 전용 전술. 프리셋도 세 전술+타임라인을 함께 저장.
+
+**변경 파일**:
+- `types/tactics.ts` (client) / `server/src/shared/types/tactics.ts` (server 미러) — `GameTactics`에 `altSliders?`, `clutchSliders?`, `sliderSchedule?`(48자 '1'|'2') 추가
+- `services/game/engine/pbp/tacticSchedule.ts` (client, 신규) / `server/src/shared/engine/pbp/tacticSchedule.ts` (server 미러, 신규) — `resolveTacticSet`/`applyTacticSchedule`/`parseSchedule`/`serializeSchedule`
+- `services/game/engine/pbp/pbpTypes.ts` / server 미러 — `TeamState.tacticSets?`, `activeTacticSet?`
+- `services/game/engine/pbp/initializer.ts` / server 미러 — 유저 전술 분기에서 alt/clutch 슬라이더를 DEFAULT_SLIDERS로 채움, 둘 중 하나라도 있으면 `teamState.tacticSets` 설정
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — `stepPossession` 클러치 계산 직후 `applyTacticSchedule(home/away, 포세션 시작 분, isClutch)`, `extractSimResult.mapTactics`가 TeamState를 받아 항상 1번 세트를 스냅샷
+- `services/multi/tacticPresets.ts`, `utils/tacticPresetData.ts` (client) — TeamPresetData에 세 필드, build/apply가 함께 저장·적용(옛 프리셋 적용 시 2번/클러치/타임라인 제거)
+- `utils/tacticSetEdit.ts` (client, 신규), `components/dashboard/tactics/TacticSetTimeline.tsx` (client, 신규), `views/multi/season/MultiTacticsView.tsx` (client) — 팀 전술 탭 헤더 아래 세트 드롭다운 + 타임라인 + 고른 세트만 편집하는 슬라이더 패널
+
+**규칙**:
+- 매 포세션 시작 시: 클러치(엔진 기존 isClutch: 4Q 이후 ≤5:00, 점수차 ≤10) && clutchSliders 있음 → 클러치 / 타임라인 '2' && altSliders 있음 → 2번 / 그 외 1번
+- 전환은 `team.tactics.sliders` 객체 교체 — 슬라이더를 읽는 엔진 코드(20여 곳)는 무변경
+- 교체 전에 현재 `tactics.sliders`를 활성 세트에 되써서, 라이브 경기 중 슬라이더 편집(useLiveGame applyTactics/위임)이 지금 활성 세트에 반영됨
+- 2번·클러치가 없는 팀(AI·기존 저장 데이터)은 `tacticSets` 미생성 → 완전 기존 경로
+
+**Before** (liveEngine.ts stepPossession / extractSimResult):
+```ts
+        clutchContext = { isClutch, isSuperClutch, trailingTeamSide, scoreDiff, desperation };
+    }
+
+    const result = simulatePossession(state, { clutchContext });
+...
+    const mapTactics = (t: GameTactics) => ({
+        stopperId: t.stopperId,
+        pace: t.sliders.pace,
+        sliders: t.sliders,
+    });
+...
+        homeTactics: mapTactics(state.home.tactics),
+        awayTactics: mapTactics(state.away.tactics),
+```
+**After**:
+```ts
+        clutchContext = { isClutch, isSuperClutch, trailingTeamSide, scoreDiff, desperation };
+    }
+
+    const possStartMinute = Math.min(47, Math.floor((((state.quarter - 1) * 720) + (720 - state.gameClock)) / 60));
+    applyTacticSchedule(state.home, possStartMinute, isClutch);
+    applyTacticSchedule(state.away, possStartMinute, isClutch);
+
+    const result = simulatePossession(state, { clutchContext });
+...
+    const mapTactics = (team: TeamState) => {
+        const t = team.tactics;
+        const main = team.tacticSets && team.activeTacticSet !== 'main' ? team.tacticSets.main : t.sliders;
+        return { stopperId: t.stopperId, pace: main.pace, sliders: main };
+    };
+...
+        homeTactics: mapTactics(state.home),
+        awayTactics: mapTactics(state.away),
+```
+**Before** (initializer.ts): `safeTactics`에 alt/clutch 정규화 없음, `assignCourtSlots(teamState)` 앞 tacticSets 블록 없음.
+**After**: `altSliders`/`clutchSliders`를 `{ ...DEFAULT_SLIDERS, ...x }`로 채움(없으면 undefined) + `if (safeTactics.altSliders || safeTactics.clutchSliders) { teamState.tacticSets = {...}; teamState.activeTacticSet = 'main'; }`
+
+**Before** (tacticPresetData.ts): `buildTeamPresetData` = `{ sliders }`, `applyTeamPreset` = `{ ...tactics, sliders }`.
+**After**: 세 필드를 있을 때만 키로 포함/적용, 프리셋에 없으면 tactics에서 제거.
+
+**검증**:
+- client `tsc --noEmit` / server `tsc --noEmit`: 수정 파일 오류 0건(나머지 오류 61/50건은 기존 무관 파일)
+- 서버 미러 엔진 가상 팀 40경기(스크래치 스크립트): 활성 세트=슬라이더 객체 불일치 0, 1·3Q=1번 / 2·4Q=2번 / 클러치는 4Q만(331포세션), 3PA 비율 1번(인사이드) 0.155 vs 2번(아웃사이드) 0.564, 결과 스냅샷=1번, 기존 전술·altSliders 없는 타임라인은 tacticSets 미생성
+- 클라이언트/서버 미러 diff(import 제외) 일치. 브라우저 화면 확인은 미실시
+
+**롤백 방법**: 엔진은 liveEngine/initializer/pbpTypes(client+server 쌍) Before로 되돌리고 tacticSchedule.ts 두 개 삭제. 엔진만 롤백해도 저장된 새 필드는 무시되므로 데이터 정리 불필요. UI는 MultiTacticsView의 세트 바·타임라인 블록 제거 + TacticsSlidersPanel에 `tactics={userTactics!} onUpdateTactics={setUserTactics}` 복원, 자동 설정/초기화의 `withSetSliders(...)`를 `{ ...userTactics, sliders }`로 복원.
+
 ## 2026-10-23 — 박스스코어에 ovr 기록 (경기 종료 화면 OVR 배지 지연 제거)
 
 **배경**: 고정 OVR 전환 후에도 멀티 경기 종료 화면의 OVR 배지가 잠깐 스켈레톤 뒤에 나타났다. 박스스코어(`PlayerBoxScore`)에 OVR이 없어, gameData 도착 후 `MultiGamePbpView`가 `fetchMetaPlayersByRosterIds`(인스턴스→카드/meta_players 순차 조회)로 rosterCache를 채우고 나서야 배지를 그렸기 때문. 서버가 저장 시점에 선수별 ovr을 박스스코어에 같이 기록하도록 변경.

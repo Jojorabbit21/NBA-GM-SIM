@@ -3,6 +3,7 @@ import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, 
 import { SimSettings } from '../../../../types/simSettings';
 import type { ArchetypeRatings } from './archetypeSystem';
 import type { PlayContext } from './playTypes';
+import type { TacticSets, TacticSetId } from './tacticSchedule';
 
 // [2026-10-19] 퇴장 사유 — 퇴장 여부는 pf가 아니라 ejectionReason으로 판정한다(isOut).
 // 예전엔 테크니컬 2회/플래그런트 2/싸움 퇴장 시 pf=6을 마커로 덮어써 박스스코어 PF가 오염됐음.
@@ -134,6 +135,9 @@ export interface TeamState {
     bonus: boolean; // Penalty situation
     acePlayerId?: string; // [New] Identify the team's Ace (Highest OVR Starter)
     garbageApplied?: boolean; // 가비지타임 일괄교체 완료 플래그
+    // [2026-10-23] 시간별 전술 세트(tacticSchedule.ts) — 2번/클러치가 있는 팀만. tactics.sliders = 지금 활성 세트.
+    tacticSets?: TacticSets;
+    activeTacticSet?: TacticSetId;
 }
 
 // [New] Structured Shot Event for Visualization

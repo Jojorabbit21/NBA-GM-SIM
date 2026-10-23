@@ -33,6 +33,12 @@ export interface DepthPresetData {
 
 export interface TeamPresetData {
     sliders: TacticalSliders;
+    // [2026-10-23] 시간별 전술 세트 — 옛 프리셋엔 없음(불러오면 1번 전술 단독)
+    altSliders?: TacticalSliders;
+    clutchSliders?: TacticalSliders;
+    sliderSchedule?: string;
+    clutchEnabled?: boolean;
+    tacticSetNames?: { main?: string; alt?: string };
 }
 
 export type TacticPresetData = DepthPresetData | TeamPresetData;

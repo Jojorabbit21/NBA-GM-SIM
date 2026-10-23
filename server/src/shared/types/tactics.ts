@@ -55,6 +55,12 @@ export interface GameTactics {
     minutesLimits: Record<string, number>;
     depthChart?: DepthChart;
     playerTactics?: Record<string, PlayerTacticConfig>;
+    // [2026-10-23] Time-based tactic sets (mirror of types/tactics.ts)
+    altSliders?: TacticalSliders;
+    clutchSliders?: TacticalSliders;
+    sliderSchedule?: string;
+    clutchEnabled?: boolean;
+    tacticSetNames?: { main?: string; alt?: string };
 }
 
 export interface TacticalSnapshot {

@@ -55,6 +55,16 @@ export interface GameTactics {
     minutesLimits: Record<string, number>;
     depthChart?: DepthChart;
     playerTactics?: Record<string, PlayerTacticConfig>;
+    // [2026-10-23] Time-based tactic sets — sliders = set 1, altSliders = set 2, clutchSliders = clutch.
+    // sliderSchedule: 48 chars ('0'|'1'|'2', '0' = unassigned → set 1 in engine), index = game minute. Missing → all set 1.
+    // clutchSliders present = clutch set enabled (Q4+ ≤5:00 & ≤10 pt margin, engine isClutch).
+    altSliders?: TacticalSliders;
+    clutchSliders?: TacticalSliders;
+    sliderSchedule?: string;
+    /** Clutch on/off without discarding clutchSliders. Missing = on (legacy rows with clutchSliders). */
+    clutchEnabled?: boolean;
+    /** User-defined names for set 1 / set 2 (UI only; engine ignores). */
+    tacticSetNames?: { main?: string; alt?: string };
 }
 
 export interface TacticalSnapshot {

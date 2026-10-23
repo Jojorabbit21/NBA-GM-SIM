@@ -85,6 +85,10 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
                 ...DEFAULT_SLIDERS,
                 ...tactics.sliders
             },
+            // [2026-10-23] 시간별 전술 세트 — 2번/클러치도 누락 키를 기본값으로 채움(없으면 그대로 undefined)
+            altSliders: tactics.altSliders ? { ...DEFAULT_SLIDERS, ...tactics.altSliders } : undefined,
+            // clutchEnabled === false = 체크 해제(값은 보존, 경기엔 미사용)
+            clutchSliders: tactics.clutchSliders && tactics.clutchEnabled !== false ? { ...DEFAULT_SLIDERS, ...tactics.clutchSliders } : undefined,
             rotationMap: tactics.rotationMap
                 ? Object.fromEntries(
                     Object.entries(tactics.rotationMap).map(([pid, arr]) => [pid, [...arr]])
@@ -309,6 +313,11 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         bonus: false,
         acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID
     };
+    // [2026-10-23] 2번/클러치 전술이 있는 팀만 세트 보관 — 포세션마다 applyTacticSchedule이 tactics.sliders를 교체
+    if (safeTactics.altSliders || safeTactics.clutchSliders) {
+        teamState.tacticSets = { main: safeTactics.sliders, alt: safeTactics.altSliders, clutch: safeTactics.clutchSliders };
+        teamState.activeTacticSet = 'main';
+    }
     // [2026-10-22] 선발 5명에게 서로 다른 슬롯 배정 — 부상 주전 대체·같은 뎁스 슬롯 2명 선발 시 PG 2명 등 방지
     assignCourtSlots(teamState);
     return teamState;

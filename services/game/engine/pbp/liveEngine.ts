@@ -15,6 +15,7 @@ import { calculateRecovery } from '../fatigueSystem';
 import { SIM_CONFIG } from '../../config/constants';
 import { computeCourtPositions } from './handlers/courtPositions';
 import { startTimeoutPeriod, recordTimeoutTaken, decideTimeout } from './timeoutPolicy';
+import { applyTacticSchedule } from './tacticSchedule';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -409,6 +410,11 @@ export function stepPossession(state: GameState): StepResult {
         clutchContext = { isClutch, isSuperClutch, trailingTeamSide, scoreDiff, desperation };
     }
 
+    // [2026-10-23] 시간별 전술 세트 — 포세션 시작 시점의 분/클러치 여부로 양 팀 슬라이더 교체(세트 없는 팀은 no-op)
+    const possStartMinute = Math.min(47, Math.floor((((state.quarter - 1) * 720) + (720 - state.gameClock)) / 60));
+    applyTacticSchedule(state.home, possStartMinute, isClutch);
+    applyTacticSchedule(state.away, possStartMinute, isClutch);
+
     const result = simulatePossession(state, { clutchContext });
     state.courtSnapshot = computeCourtPositions(result, state.home.id);
     // [2026-10-07] 테크니컬 파울은 데드볼 중 발생하는 독립 이벤트 — 시간 차감 없이(중단 시점 그대로) 자유투만
@@ -707,11 +713,12 @@ export function extractSimResult(state: GameState): SimulationResult {
         });
     };
 
-    const mapTactics = (t: GameTactics) => ({
-        stopperId: t.stopperId,
-        pace: t.sliders.pace,
-        sliders: t.sliders,
-    });
+    // [2026-10-23] 스냅샷은 항상 1번 전술 — 경기 종료 시점 활성 세트(클러치·2번)가 아니라
+    const mapTactics = (team: TeamState) => {
+        const t = team.tactics;
+        const main = team.tacticSets && team.activeTacticSet !== 'main' ? team.tacticSets.main : t.sliders;
+        return { stopperId: t.stopperId, pace: main.pace, sliders: main };
+    };
 
     const rosterUpdates: Record<string, RosterUpdate> = {};
     [state.home, state.away].forEach(team => {
@@ -733,8 +740,8 @@ export function extractSimResult(state: GameState): SimulationResult {
         awayScore: state.away.score,
         homeBox: mapToBox(state.home),
         awayBox: mapToBox(state.away),
-        homeTactics: mapTactics(state.home.tactics),
-        awayTactics: mapTactics(state.away.tactics),
+        homeTactics: mapTactics(state.home),
+        awayTactics: mapTactics(state.away),
         rosterUpdates,
         pbpLogs: state.logs,
         rotationData: state.rotationHistory,
