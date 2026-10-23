@@ -147,6 +147,72 @@
 - `QuarterScores`: compact·fullWidth 둘 다 미진행 쿼터 `'—'` → `''`(공란) — 2곳
 - `MilestoneJumbotronBody`: 팀약어·선수명 줄과 라벨 줄 `text-3xl` → `text-2xl`
 
+## 2026-10-23 — 멀티 드래프트 큐 Q2·Q3: 클라 훅(`myQueue`/`setQueue`) + 좌측 패널 [기록 | 큐] 탭 + 풀 큐 열 + 내 차례 자동 선택
+
+**배경**: Q1(서버·DB) 후속. 계획 `docs/plan/draft-queue-plan.md` D5~D10.
+
+**변경 파일** (client 전용):
+- `hooks/useLeagueDraft.ts` — `myQueue: string[]`, `setQueue(ids)` 반환. `case 'queue'` 수신(auth 직후·에코), 낙관적 로컬 갱신 + 600ms 디바운스 `setQueue` 전송, `queueDirtyRef`(미전송 편집 있으면 서버 에코로 덮지 않고 그 신호에 `flushQueue()`로 재전송 — 재접속 복구 겸). 방 변경 시 큐 초기화. `pong` case에 누락됐던 `break` 추가(default 로 fall-through 했으나 default 가 빈 블록이라 동작 변화 없음)
+- `components/draft/DraftQueuePanel.tsx` (신규) — 헤더 h-10(좌 슬롯 `headerLeft`, 우 `남은 N` + 지명된 선수 정리 버튼), 행 h-8 `핸들·순번·POS·OvrBadge·이름·(↑↓✕ 호버)`, 네이티브 HTML5 드래그 정렬, 지명된 행은 취소선+opacity-50+순번 `—`
+- `components/draft/PickHistory.tsx` — `headerLeft?: ReactNode` 슬롯(없으면 기존 제목, 싱글/루키 무변화)
+- `components/draft/PlayerPool.tsx` — `queueRankById?: Map<string,number>` + `onToggleQueue?` 둘 다 있을 때만 마지막 열 `큐`(w-9) 렌더: 큐에 있으면 `Q{n}` 배지(클릭 제거, hover 빨강), 없으면 호버 시 `+` IconButton(success). `colSpan` +1. 행 `tr`에 `group` 클래스 추가
+- `views/multi/league/MultiDraftView.tsx` — `leftTabChoice`(null=자동: waiting→큐, 그 외→기록), `queueRankById`/`queuePlayersById`(미지명은 adaptedPlayers, 지명된 건 `draftState.picks`에서 이름/POS/OVR), `handleToggleQueue`(ref 기반, 참조 고정), D6 효과(`isMyTurn` true 전환 시 선택 비어 있으면 큐 최상단 남은 선수 `setSelectedPlayerId`), `renderLeftPanel()`을 waiting/active 두 화면의 좌측 22% 칸에 공용. 비참가자(`myTeamId` 없음)는 큐 탭 disabled·풀 큐 열 숨김
+
+**Before**: 좌측 칸 `<PickHistory …/>` 고정, PlayerPool 14(+POT)열, 큐 개념 없음.
+**After**: 위 요약. 서버 프로토콜은 Q1 그대로(`setQueue`/`queue`).
+
+**같은 날 수정(사용자 요청)**: ① 풀 큐 열을 **POS 왼쪽**(라디오 다음)으로 이동, 호버 전용 `+`/`Q{n}` 배지 → 항상 보이는 `+`(success) / `−`(danger) IconButton xs, 순번 표시 없음 — prop `queueRankById: Map` → `queuedIds: Set`. ② 좌측 패널 전환을 `SegmentedControl` → 공용 `Dropdown`(제목 텍스트 "드래프트 기록 ▾ / 드래프트 큐 (N) ▾" 가 트리거, `align="left" width="w-40"`, 비참가자는 큐 항목 자체를 숨김). ③ 풀 라디오 버튼이 행 중앙보다 위로 떠 보이던 것 수정 — `align-middle`(inline, 베이스라인 기준) → `block mx-auto`. ④ 드롭다운 항목 순서 큐→기록, 기본 탭 **항상 큐**(참가자; 비참가자만 기록) — D7의 "waiting=큐/active=기록" 규칙 폐기. ⑤ 큐 행 h-8 → h-10. ⑥ 큐에서 바로 지명: 큐 행에 풀과 같은 라디오(`name="draft-player-queue"`) + 행 클릭 → `selectedPlayerId` 공유(`handleSelectQueuePlayer`, 같은 선수 재클릭 시 해제) → 풀의 같은 행도 선택되고 "드래프트" 버튼 활성. 지명된 행은 라디오 없음·클릭 무시. ↑↓✕ 버튼 영역은 `stopPropagation`. ⑦ 큐 행 포지션을 이름 뒤로 이동(`라디오·핸들·순번·OVR·이름·POS`). ⑧ 순번 `text-center`. ⑨ (⑧의 "포지션 우측 끝" 정정) 포지션은 이름 뒤 `w-7 text-left`. ↑↓ 이동 버튼 삭제(정렬은 드래그만), ✕ 제거 버튼은 호버 오버레이 → **상시 표시**·행 우측 끝(흐름 안, `absolute`/`relative` 제거). 헤더 아래 서브헤더(h-8, `bg-slate-800/15`)에 남은(미지명) 큐 선수의 포지션별 수 `PG n SG n SF n PF n C n`(MyRoster 헤더 카운트와 같은 표기). ⑩ **자동 저장(600ms 디바운스) 폐기 → 저장 버튼 방식**(사용자 결정 — 소실 구멍 3개를 버튼 하나로 정리): 훅은 `myQueue`(로컬 편집본)·`savedQueue`(서버 저장본)·`queueDirty`(둘이 다름)·`queueSaving`·`saveQueue()`(submitPick 과 같은 Promise 패턴: 에코=성공 / `error code:'queue_save_failed'`=실패 / 5초 타임아웃). 서버 `queue` 메시지는 항상 savedQueue 갱신, 로컬은 미저장 편집 없을 때만 동기화. dirty 면 `beforeunload` 확인창. 서버: `setQueue()` 반환 `boolean` → `'ok'|'not_participant'|'failed'`, `index.ts` 가 둘 다 새 에러 코드 `queue_save_failed`(protocol `ErrorMsg.code` 합류)로 보냄 — 예전엔 DB 실패가 `internal`로 묻혀 클라가 모른 채 화면만 저장된 것처럼 보였음. 패널 헤더 우측 `저장`(dirty 면 primary, 아니면 secondary disabled "저장됨"/"저장 중…"), 서브헤더 우측에 `저장 안 됨`(warning) / 실패 문구(danger) InlineNotice sm. **오토픽은 저장본만 본다.** ⑪ 헤더의 "남은 N" 텍스트 제거(드롭다운 라벨 `드래프트 큐 (N)`이 이미 표시), 저장 버튼은 상태 무관하게 아이콘 없이 텍스트만(`저장`/`저장 중…`/`저장됨`).
+
+**검증**: `tsc --noEmit` 변경 파일 오류 없음, `vite build` 성공(순환 의존 경고 없음 — 기존 vendor 청크 경고만). 브라우저 E2E 미실시(Fly 미배포라 서버 `queue` 메시지가 아직 안 옴 → 로컬 Bun 서버 또는 배포 후 확인).
+
+**롤백 방법**: MultiDraftView 의 `renderLeftPanel()` 두 곳을 Before 의 `<PickHistory picks totalRounds userTeamId teamMeta/>`로, PlayerPool 에 `queueRankById/onToggleQueue` 미전달, 훅의 `myQueue/setQueue` 제거. `DraftQueuePanel.tsx` 삭제.
+
+## 2026-10-23 — 멀티 드래프트 큐 Q1: `draft_queues` 테이블 + 서버 큐 상태 + 자동 지명 4곳 큐 우선(→BPA 폴백)
+
+**배경**: 유저가 드래프트 시작 전부터 희망 선수 순서(큐)를 만들어 두고, 오토픽/타임아웃 대납/어드민 스킵/자동완료가 그 순서대로 지명하게 하는 기능. 계획·결정 D1~D10은 `docs/plan/draft-queue-plan.md`. 이 항목은 서버·DB 단계(Q1)만. 클라 훅(Q2)·UI(Q3)는 별도 항목.
+
+**변경 파일** (server 전용, 클라 미러 없음 — 클라 훅은 메시지 타입을 `any`로 처리):
+- `migrations/add_draft_queues.sql` (신규, **Supabase 적용 완료 2026-10-23**) — `draft_queues(room_id uuid FK rooms CASCADE, user_id uuid, player_ids text[], updated_at)` PK `(room_id,user_id)`, RLS 켜고 정책 없음(service role만)
+- `server/src/shared/multiDraftEngine.ts` — `getQueuedAvailableId(queue, draftedIds)` 신규(큐 순서상 미지명 첫 선수, 없으면 null)
+- `server/src/protocol.ts` — `SetQueueMsg {type:'setQueue', playerIds}`(ClientMsg 합류), `QueueMsg {type:'queue', playerIds}`(ServerMsg 합류)
+- `server/src/DraftRoom.ts` — `MAX_QUEUE_SIZE=100`, `queues: Map<userId,string[]>`, `load()`에서 `draft_queues` 복원(풀 로드와 `Promise.all`, 실패 시 로그만), `resolveAutoPickId(entry)` 헬퍼, `sendToUser()`, `getQueue()`, `setQueue()`
+- `server/src/index.ts` — auth 성공 시 스냅샷 직후 `queue` 메시지 1회 전송, `setQueue` 핸들러(실패 시 `error internal 'not a draft participant'`)
+
+**Before** (자동 지명 4곳이 전부 직접 호출):
+```ts
+// onAiPick / onPickTimeout / handleAdmin 'skip-turn' / 'autocomplete'
+const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+if (!bestId) return;   // (skip/autocomplete는 break)
+const result = await this.persistPick(entry.userId, bestId /*, entry.isAi ?? false (onAiPick만) */);
+```
+
+**After**:
+```ts
+private resolveAutoPickId(entry: PickOrderEntry): { id: string; source: 'queue' | 'bpa' } | null {
+    if (!entry.isAi) {
+        const queue = this.queues.get(entry.userId);
+        if (queue?.length) {
+            const fromQueue = getQueuedAvailableId(queue, this.draftedIds);
+            if (fromQueue) return { id: fromQueue, source: 'queue' };
+        }
+    }
+    const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+    return bestId ? { id: bestId, source: 'bpa' } : null;
+}
+// 4곳: const resolved = this.resolveAutoPickId(entry); if (!resolved) return/break; … persistPick(entry.userId, resolved.id, …)
+// 로그에 (queue)/(bpa) 출처 표기. 큐 없는 유저·AI 슬롯은 예전과 동일 경로.
+
+async setQueue(userId, rawIds: unknown): Promise<boolean>
+//  pickOrder 사람 참가자 아니면 false → 정규화(문자열/숫자만, config.poolIds 내, 중복 제거, 100개 절단)
+//  → draft_queues upsert 성공 후에만 this.queues 반영(write-then-commit) → 같은 userId 소켓 전부에 {type:'queue'} 에코
+```
+- 지명된 선수는 저장 목록에서 지우지 않음(픽 시점 `draftedIds`로만 걸러냄, D5).
+- `rooms.draft_cursor`/`DraftConfig`는 변경 없음.
+
+**검증**: `tsc --noEmit`(server) 변경 파일 오류 없음(기존 `bun` 타입 미설치 오류만). `getQueuedAvailableId` 5케이스(빈 큐/전원 지명/중간 지명/정상/끝만 남음) tsx 실행 PASS. 통합(E2E)은 Q3 UI 후 실시. **Fly 미배포**.
+
+**롤백 방법**: `resolveAutoPickId` 4곳 호출을 Before의 `getBestAvailableId` 직접 호출로 되돌리면 큐는 저장만 되고 무해. DB는 `DROP TABLE public.draft_queues`(다른 참조 없음). `index.ts`의 `setQueue` 분기·`queue` 전송 제거.
+
 **검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
 **롤백 방법**: 직전 항목(2단 구성)으로 되돌림, `''`→`'—'`, `text-2xl`→`text-3xl`.
 

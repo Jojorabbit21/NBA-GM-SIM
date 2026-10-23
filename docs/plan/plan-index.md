@@ -15,6 +15,7 @@
 | [multi-season-plan.md](multi-season-plan.md) | 멀티시즌 지원 구현 계획 | 계획 |
 | [physics-choreography-engine.md](physics-choreography-engine.md) | 물리 기반 안무 엔진 (공 물리, 절차적 움직임 합성) | 논의 중 |
 | [draft-autopick-plan.md](draft-autopick-plan.md) | 멀티 드래프트 오토픽 시스템 (타임아웃/미입장/재접속/어드민 토글) | 계획 |
+| [draft-queue-plan.md](draft-queue-plan.md) | 멀티 드래프트 큐 — 시작 전 희망 순서 저장(`draft_queues`, WS 전용), 오토픽·타임아웃·스킵·자동완료 전부 큐 우선→BPA 폴백, 좌측 "기록" 패널 탭 겸용 | Q1~Q3 구현 완료·미커밋·Fly 미배포, Q4 배포+E2E 대기 (2026-10-23) |
 | [multi-admin-trade-plan.md](multi-admin-trade-plan.md) | 멀티 어드민 트레이드(팀↔팀 선수 스왑) — RPC 설계 + 뎁스차트 정리 | 계획 |
 | [multi-role-fit-score-toggle-plan.md](multi-role-fit-score-toggle-plan.md) | 멀티플레이어 역할 적합도 점수(ArchetypeRatings, playType 액터 선정용) 토글 노출 | 폐기 (2026-07-28) |
 | [multi-player-archetype-tags-plan.md](multi-player-archetype-tags-plan.md) | 멀티플레이어 선수 정체성 아키타입(Primary/Secondary) + 14개 특성 태그 적용 | 폐기 (2026-07-28) |

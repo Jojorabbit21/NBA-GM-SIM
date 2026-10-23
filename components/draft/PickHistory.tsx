@@ -11,9 +11,11 @@ interface PickHistoryProps {
     totalRounds: number;
     userTeamId: string;
     teamMeta?: RoomTeamMetaMap;
+    /** [2026-10-23] 헤더 좌측 슬롯 — 멀티 드래프트가 [기록 | 큐] 세그먼트를 넣는다(없으면 제목 텍스트, 싱글/루키는 그대로) */
+    headerLeft?: React.ReactNode;
 }
 
-const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId, teamMeta }) => {
+const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId, teamMeta, headerLeft }) => {
     const [roundFilter, setRoundFilter] = useState<number | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const topRef = useRef<HTMLDivElement>(null);
@@ -33,7 +35,7 @@ const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, 
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                <span className="text-sm font-black text-indigo-400">드래프트 기록</span>
+                {headerLeft ?? <span className="text-sm font-black text-indigo-400">드래프트 기록</span>}
                 {/* Round Filter Dropdown */}
                 <div className="relative">
                     <button

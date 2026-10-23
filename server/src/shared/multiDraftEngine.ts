@@ -62,6 +62,21 @@ function mulberry32(a: number): number {
 }
 
 /**
+ * [2026-10-23] 유저 큐 기반 자동 픽 — 큐 순서대로 훑어 아직 지명되지 않은 첫 선수.
+ * 큐가 비었거나 전원 지명됐으면 null → 호출부가 getBestAvailableId()로 폴백한다.
+ * (docs/plan/draft-queue-plan.md D3/D4)
+ */
+export function getQueuedAvailableId(
+    queue: readonly string[],
+    draftedIds: ReadonlySet<string>
+): string | null {
+    for (const id of queue) {
+        if (!draftedIds.has(id)) return id;
+    }
+    return null;
+}
+
+/**
  * 현재 차례 유저의 자동 픽 — 우선순위: 1) 높은 OVR, 2) 포지션 정합성.
  * OVR 내림차순으로 훑되, 이미 로스터에 같은 포지션이 2명 이상이면 건너뛰고
  * 그 다음으로 OVR이 높은 "다른 포지션" 선수를 선택한다.

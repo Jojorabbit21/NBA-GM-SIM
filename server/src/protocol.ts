@@ -92,12 +92,18 @@ export interface ToggleAutoPickMsg {
     enabled: boolean;
 }
 
+/** [2026-10-23] 본인 드래프트 큐 전체 교체 (어드민 권한 불필요, 본인 userId에만 적용, waiting 상태에서도 허용) */
+export interface SetQueueMsg {
+    type: 'setQueue';
+    playerIds: string[];
+}
+
 /** Heartbeat */
 export interface PingMsg {
     type: 'ping';
 }
 
-export type ClientMsg = AuthMsg | SubmitPickMsg | AdminMsg | ToggleAutoPickMsg | PingMsg;
+export type ClientMsg = AuthMsg | SubmitPickMsg | AdminMsg | ToggleAutoPickMsg | SetQueueMsg | PingMsg;
 
 // ── 서버 → 클라이언트 ─────────────────────────────────────────────────────────
 
@@ -132,8 +138,16 @@ export interface AckMsg {
 /** 에러 (제출자 또는 어드민에게만) */
 export interface ErrorMsg {
     type: 'error';
-    code: 'unauthorized' | 'not_your_turn' | 'already_drafted' | 'draft_not_active' | 'not_admin' | 'internal';
+    code: 'unauthorized' | 'not_your_turn' | 'already_drafted' | 'draft_not_active' | 'not_admin' | 'internal'
+        /** [2026-10-23] setQueue 실패(비참가자 또는 DB 쓰기 실패) — 클라가 픽 제출 에러와 구분해 큐 저장 Promise 만 깨운다 */
+        | 'queue_save_failed';
     message?: string;
+}
+
+/** [2026-10-23] 본인 드래프트 큐 — auth 직후 1회 + setQueue 에코. 해당 userId의 소켓에만 보낸다(다른 유저 큐는 절대 전송 안 함). */
+export interface QueueMsg {
+    type: 'queue';
+    playerIds: string[];
 }
 
 /** Heartbeat 응답 */
@@ -141,7 +155,7 @@ export interface PongMsg {
     type: 'pong';
 }
 
-export type ServerMsg = SnapshotMsg | PickMsg | CursorMsg | AckMsg | ErrorMsg | PongMsg;
+export type ServerMsg = SnapshotMsg | PickMsg | CursorMsg | AckMsg | ErrorMsg | QueueMsg | PongMsg;
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 

@@ -111,8 +111,9 @@ async function handleMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
                 console.log(`[ws] timer re-scheduled for room ${msg.roomId}`);
             }
 
-            // 초기 스냅샷 전송
+            // 초기 스냅샷 전송 + [2026-10-23] 본인 드래프트 큐(스냅샷은 소켓 공용이라 유저별 데이터는 따로)
             ws.send(encode(room.buildSnapshot()));
+            ws.send(encode({ type: 'queue', playerIds: room.getQueue(userId) }));
             console.log(`[ws] authenticated uid=${userId} room=${msg.roomId}`);
             return;
         }
@@ -140,6 +141,15 @@ async function handleMessage(ws: ServerWebSocket<WsData>, raw: string | Buffer):
             const ok = await room.setAutoPick(ws.data.userId, msg.enabled);
             if (!ok) {
                 ws.send(encode({ type: 'error', code: 'internal', message: 'not a draft participant' }));
+            }
+            return;
+        }
+
+        // ── setQueue (본인 큐 전체 교체, 어드민 권한 불필요) [2026-10-23] ──────
+        if (msg.type === 'setQueue') {
+            const result = await room.setQueue(ws.data.userId, msg.playerIds);
+            if (result !== 'ok') {
+                ws.send(encode({ type: 'error', code: 'queue_save_failed', message: result === 'not_participant' ? 'not a draft participant' : 'db write failed' }));
             }
             return;
         }

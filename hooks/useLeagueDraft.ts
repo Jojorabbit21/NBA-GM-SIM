@@ -29,6 +29,16 @@ export interface UseLeagueDraftReturn {
     /** 본인 팀 오토픽 모드 on/off (어드민 권한 불필요) */
     toggleAutoPick:   (enabled: boolean) => void;
 
+    /** [2026-10-23] 본인 드래프트 큐 로컬 편집본(playerId[], 희망 순서). 지명된 선수도 그대로 남는다(화면에서 걸러 표시). */
+    myQueue:          string[];
+    /** 로컬 편집만 — 서버엔 안 보낸다(저장 버튼 방식) */
+    setQueue:         (playerIds: string[]) => void;
+    /** 로컬 큐를 서버(draft_queues)에 저장 — 오토픽은 저장본만 본다. 에코/실패/5초 타임아웃으로 resolve */
+    saveQueue:        () => Promise<{ error: string | null }>;
+    /** 로컬 편집본 ≠ 서버 저장본 */
+    queueDirty:       boolean;
+    queueSaving:      boolean;
+
     /** [2026-10-13] WS 연결 상태 — reconnecting이면 화면이 지명 버튼·오토픽 토글을 막고 인라인으로 알린다 */
     connectionState:  'connecting' | 'connected' | 'reconnecting';
     /** 연속 재연결 시도 횟수(연결 성공 시 0) */
@@ -47,6 +57,7 @@ export interface UseLeagueDraftReturn {
  *   ← cursor (pause/resume/reset-timer)
  *   → { type:'submitPick', playerId }   ← { type:'ack' } | { type:'error', code }
  *   → { type:'admin', action, params }
+ *   ← queue (auth 직후 1회, 본인 큐만) / → { type:'setQueue', playerIds } ← queue (에코, 같은 유저 소켓 전부) | { type:'error', code:'queue_save_failed' }
  *   → { type:'ping' }   ← { type:'pong' }  (30s heartbeat)
  */
 export function useLeagueDraft(
@@ -89,6 +100,21 @@ export function useLeagueDraft(
         resolve: (v: { error: string | null }) => void;
         timer:   ReturnType<typeof setTimeout>;
     } | null>(null);
+
+    // [2026-10-23] 드래프트 큐 — 로컬 편집본(myQueue) + 서버 저장본(savedQueue), 저장 버튼으로만 전송(사용자 결정:
+    // 자동 저장·디바운스 폐기). dirty = 둘이 다름. 서버 queue 메시지(auth 직후·에코·다른 탭 저장)는 항상 savedQueue 를
+    // 갱신하고, 로컬에 미저장 편집이 없을 때만 myQueue 도 따라간다(미저장 편집을 옛 값으로 덮지 않기 위해).
+    const [myQueue,    setMyQueue]    = useState<string[]>([]);
+    const [savedQueue, setSavedQueue] = useState<string[]>([]);
+    const queueLocalRef = useRef<string[]>([]);
+    const queueSavedRef = useRef<string[]>([]);
+    const [queueSaving, setQueueSaving] = useState(false);
+    // saveQueue Promise 콜백 (queue 에코 / queue_save_failed 수신 시 resolve)
+    const pendingQueueRef = useRef<{
+        resolve: (v: { error: string | null }) => void;
+        timer:   ReturnType<typeof setTimeout>;
+    } | null>(null);
+    const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
     // ── WS 연결 / 재연결 ──────────────────────────────────────────────────────
     const connect = useCallback(() => {
@@ -162,8 +188,18 @@ export function useLeagueDraft(
                     break;
                 }
 
-                // ── 에러 (submitPick 또는 admin 실패) ─────────────────────
+                // ── 에러 (submitPick / admin / 큐 저장 실패) ───────────────
                 case 'error': {
+                    // [2026-10-23] 큐 저장 실패는 큐 Promise 로만 보낸다 — 픽 제출 Promise 를 잘못 깨우지 않도록 분리
+                    if (msg.code === 'queue_save_failed') {
+                        setQueueSaving(false);
+                        if (pendingQueueRef.current) {
+                            clearTimeout(pendingQueueRef.current.timer);
+                            pendingQueueRef.current.resolve({ error: '큐를 저장하지 못했습니다. 다시 시도하세요.' });
+                            pendingQueueRef.current = null;
+                        }
+                        break;
+                    }
                     setIsSubmitting(false);
                     if (pendingPickRef.current) {
                         clearTimeout(pendingPickRef.current.timer);
@@ -174,8 +210,30 @@ export function useLeagueDraft(
                     break;
                 }
 
+                // ── [2026-10-23] 본인 큐 (auth 직후 1회 + 저장 에코 + 다른 탭 저장) ──
+                case 'queue': {
+                    const ids = Array.isArray(msg.playerIds) ? msg.playerIds.map(String) : [];
+                    const wasDirty = !sameIds(queueLocalRef.current, queueSavedRef.current);
+                    queueSavedRef.current = ids;
+                    setSavedQueue(ids);
+                    if (pendingQueueRef.current) {
+                        // 내가 보낸 저장의 에코 — 저장 중 추가 편집이 없었으면 로컬도 서버값으로 정리(정규화 결과 반영)
+                        clearTimeout(pendingQueueRef.current.timer);
+                        pendingQueueRef.current.resolve({ error: null });
+                        pendingQueueRef.current = null;
+                        setQueueSaving(false);
+                        if (sameIds(queueLocalRef.current, ids) || !wasDirty) { queueLocalRef.current = ids; setMyQueue(ids); }
+                    } else if (!wasDirty) {
+                        // auth 초기값·다른 탭 저장 — 미저장 편집이 없을 때만 로컬 동기화
+                        queueLocalRef.current = ids;
+                        setMyQueue(ids);
+                    }
+                    break;
+                }
+
                 case 'pong':
                     missedPongRef.current = 0; // heartbeat 응답 — 좀비 카운터 리셋
+                    break;
 
                 default:
                     break;
@@ -204,6 +262,13 @@ export function useLeagueDraft(
         setIsLoading(true);
         setDraftState(null);
         setPoolPlayers([]);
+        // 방이 바뀌면 큐도 초기화 — 새 방의 큐는 auth 직후 서버가 보내준다
+        setMyQueue([]);
+        setSavedQueue([]);
+        queueLocalRef.current = [];
+        queueSavedRef.current = [];
+        setQueueSaving(false);
+        if (pendingQueueRef.current) { clearTimeout(pendingQueueRef.current.timer); pendingQueueRef.current = null; }
 
         connect();
 
@@ -238,6 +303,7 @@ export function useLeagueDraft(
         return () => {
             destroyedRef.current = true;
             clearInterval(pingTimer);
+            if (pendingQueueRef.current) { clearTimeout(pendingQueueRef.current.timer); pendingQueueRef.current = null; }
             window.removeEventListener('online', wake);
             document.removeEventListener('visibilitychange', onVisible);
             if (reconnectRef.current) clearTimeout(reconnectRef.current);
@@ -308,11 +374,45 @@ export function useLeagueDraft(
         wsRef.current.send(JSON.stringify({ type: 'toggleAutoPick', enabled }));
     }, []);
 
+    // ── [2026-10-23] 큐 편집(로컬만) / 저장(서버 전송) ─────────────────────────
+    const setQueue = useCallback((playerIds: string[]) => {
+        const ids = playerIds.map(String);
+        queueLocalRef.current = ids;
+        setMyQueue(ids);
+    }, []);
+
+    // submitPick 과 같은 패턴: 전송 후 queue 에코(성공) / queue_save_failed(실패) / 5초 타임아웃으로 resolve
+    const saveQueue = useCallback(async (): Promise<{ error: string | null }> => {
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return { error: '연결이 끊겨 저장할 수 없습니다. 다시 연결 중…' };
+        if (pendingQueueRef.current) return { error: null };   // 이미 저장 중 — 중복 전송 안 함
+        setQueueSaving(true);
+        return new Promise<{ error: string | null }>((resolve) => {
+            const timer = setTimeout(() => {
+                pendingQueueRef.current = null;
+                setQueueSaving(false);
+                resolve({ error: '서버 응답이 없어 저장을 확인하지 못했습니다. 다시 시도하세요.' });
+            }, 5_000);
+            pendingQueueRef.current = { resolve, timer };
+            wsRef.current!.send(JSON.stringify({ type: 'setQueue', playerIds: queueLocalRef.current }));
+        });
+    }, []);
+
+    const queueDirty = !sameIds(myQueue, savedQueue);
+
+    // 미저장 편집이 있으면 탭 닫기/새로고침 때 브라우저 확인창 — 저장 버튼 방식의 유일한 소실 경로 방지
+    useEffect(() => {
+        if (!queueDirty) return;
+        const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [queueDirty]);
+
     return {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting,
         sendAdmin, toggleAutoPick,
+        myQueue, setQueue, saveQueue, queueDirty, queueSaving,
         connectionState, reconnectAttempt,
     };
 }

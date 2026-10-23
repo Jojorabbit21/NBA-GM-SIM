@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Plus, Minus } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { Button } from '../common/Button';
+import { IconButton } from '../common/IconButton';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { getAttrColor } from '../../utils/attrRatingColor';
 
@@ -22,6 +23,9 @@ interface PlayerPoolProps {
     showPotential?: boolean;
     /** [2026-10-13] 드래프트 버튼 왼쪽 슬롯 — 지명 실패/연결 끊김 InlineNotice sm(에러 표시 정책 0-7) */
     toolbarNotice?: React.ReactNode;
+    /** [2026-10-23] 드래프트 큐 — 큐에 든 playerId 집합. 둘 다 넘길 때만 POS 왼쪽에 + / − 버튼 열 렌더링(멀티 전용, 순번 표시 없음) */
+    queuedIds?: Set<string>;
+    onToggleQueue?: (player: Player) => void;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -36,7 +40,10 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
     onDraft,
     showPotential = false,
     toolbarNotice,
+    queuedIds,
+    onToggleQueue,
 }) => {
+    const showQueue = !!(queuedIds && onToggleQueue);
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
     const [sortKey, setSortKey] = useState<SortKey>('ovr');
@@ -92,7 +99,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
     const visibleRows   = filtered.slice(startIndex, endIndex);
     const topSpacerPx    = startIndex * ROW_HEIGHT;
     const bottomSpacerPx = (filtered.length - endIndex) * ROW_HEIGHT;
-    const colSpan = showPotential ? 15 : 14;
+    const colSpan = (showPotential ? 15 : 14) + (showQueue ? 1 : 0);
 
     const handleHeaderClick = (key: SortKey) => {
         if (sortKey === key) setSortAsc(!sortAsc);
@@ -162,6 +169,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                     <thead className="sticky top-0 z-10 bg-slate-900">
                         <tr className="text-sm font-bold text-slate-400 border-b border-slate-800">
                             <th className="w-6 px-1 py-1.5"></th>
+                            {showQueue && <th className="px-1 py-1.5 text-center w-8 text-slate-400">큐</th>}
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
                             <th className="px-2 py-1.5 text-left w-36">NAME</th>
                             <th className="px-1 py-1.5 text-left text-slate-400">TYPE</th>
@@ -186,6 +194,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                         )}
                         {visibleRows.map(player => {
                             const isSelected = player.id === selectedPlayerId;
+                            const isQueued   = showQueue && queuedIds!.has(player.id);
                             return (
                                 <tr
                                     key={player.id}
@@ -204,9 +213,24 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                             checked={isSelected}
                                             onChange={() => onSelectPlayer(player)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-3.5 h-3.5 cursor-pointer align-middle appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
+                                            // [2026-10-23] inline + align-middle 은 글꼴 베이스라인에 걸려 행 중앙보다 위로 떠 보였음 → block 으로 셀 세로 중앙에 맞춤
+                                            className="block mx-auto w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
                                         />
                                     </td>
+                                    {/* [2026-10-23] 큐 + / − (POS 왼쪽, 항상 표시, 순번 없음) */}
+                                    {showQueue && (
+                                        <td className="px-1 py-0.5 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                                            {isQueued ? (
+                                                <IconButton label="큐에서 제거" size="xs" tone="danger" shape="md" onClick={() => onToggleQueue!(player)}>
+                                                    <Minus size={13} />
+                                                </IconButton>
+                                            ) : (
+                                                <IconButton label="큐에 추가" size="xs" tone="success" shape="md" onClick={() => onToggleQueue!(player)}>
+                                                    <Plus size={13} />
+                                                </IconButton>
+                                            )}
+                                        </td>
+                                    )}
                                     <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>

@@ -8,7 +8,7 @@
  */
 import type { ServerWebSocket } from 'bun';
 import { supabase } from './supabaseAdmin';
-import { getBestAvailableId } from './shared/multiDraftEngine';
+import { getBestAvailableId, getQueuedAvailableId } from './shared/multiDraftEngine';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 import {
     encode,
@@ -16,14 +16,19 @@ import {
     type DraftCursor,
     type DraftPickEntry,
     type DraftPoolPlayer,
+    type PickOrderEntry,
     type PickMsg,
     type CursorMsg,
     type SnapshotMsg,
+    type QueueMsg,
 } from './protocol';
 
 const AI_MIN_DELAY_MS = 2500;
 const AI_MAX_DELAY_MS = 3500;
 const CHUNK_SIZE = 100;
+
+// [2026-10-23] 유저 드래프트 큐 상한 — 페이로드/메모리 상한(docs/plan/draft-queue-plan.md D9)
+const MAX_QUEUE_SIZE = 100;
 
 // persistPick() 실패(주로 순간적인 DB/네트워크 장애) 시 같은 픽을 재시도하는 정책.
 // onAiPick()/onPickTimeout() 공용 — 무한 재시도로 RPC를 계속 두드리지 않도록 상한을 둔다.
@@ -63,6 +68,12 @@ export class DraftRoom {
     // config.autoPickAfterMisses(어드민 세션 설정)에 도달하면 오토픽 모드로 전환하고,
     // 유저가 직접 픽을 제출하면(=돌아왔다는 증거) 0으로 리셋한다.
     private pickMissCounts = new Map<string, number>();
+
+    // [2026-10-23] 유저별 드래프트 큐(userId → playerIds, 희망 순서) — DB draft_queues 의 메모리 미러.
+    // 오토픽/타임아웃/skip-turn/autocomplete 가 BPA 대신 이 순서를 먼저 따른다(resolveAutoPickId).
+    // 오토픽 상태와 달리 DB에 영속(시작 전에 만들어 두는 데이터라 서버 재시작에도 살아야 함).
+    // 지명된 선수는 목록에서 지우지 않고 픽 시점에만 걸러낸다(D5).
+    private queues = new Map<string, string[]>();
 
     // ── 픽 결과 ───────────────────────────────────────────────────────────────
     private picks: DraftPickEntry[] = [];
@@ -128,21 +139,32 @@ export class DraftRoom {
             room.draftedIds.add(entry.playerId);
         }
 
-        // 풀 로드 (1회, 청크 병렬 조회)
+        // 풀 로드 (1회, 청크 병렬 조회) + [2026-10-23] 유저 큐 복원(draft_queues)을 같이 기다린다
         const poolIds: string[] = (room.config.poolIds ?? []).map(String);
         const chunks: string[][] = [];
         for (let i = 0; i < poolIds.length; i += CHUNK_SIZE) {
             chunks.push(poolIds.slice(i, i + CHUNK_SIZE));
         }
-        const chunkResults = await Promise.all(
-            chunks.map(ids =>
-                supabase
-                    .from('meta_players')
-                    .select('id, name, position, salary, base_attributes, ovr_base, ovr_custom')
-                    .in('id', ids)
-            )
-        );
+        const [chunkResults, queueRes] = await Promise.all([
+            Promise.all(
+                chunks.map(ids =>
+                    supabase
+                        .from('meta_players')
+                        .select('id, name, position, salary, base_attributes, ovr_base, ovr_custom')
+                        .in('id', ids)
+                )
+            ),
+            supabase.from('draft_queues').select('user_id, player_ids').eq('room_id', roomId),
+        ]);
         room.poolPlayers = chunkResults.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
+
+        if (queueRes.error) {
+            // 큐는 보조 데이터 — 못 읽어도 방은 뜨게 두고(BPA 폴백) 로그만 남긴다
+            console.error(`[DraftRoom:${roomId}] draft_queues load failed: ${queueRes.error.message}`);
+        }
+        for (const row of queueRes.data ?? []) {
+            room.queues.set(String(row.user_id), (row.player_ids ?? []).map(String));
+        }
 
         // custom_overrides 반영한 실제 OVR을 방 로드 시점에 딱 한 번만 계산해 base_attributes.ovr에
         // 덮어쓴다. 원래 base_attributes.ovr은 오버라이드 미반영 원본값이라, 올타임 풀에서 이 값을
@@ -320,6 +342,21 @@ export class DraftRoom {
         return this.picks.filter(p => p.teamId === teamId).map(p => p.position);
     }
 
+    // [2026-10-23] 자동 지명 대상 선정 — 오토픽/타임아웃/skip-turn/autocomplete 4곳 공용.
+    // 사람 유저에게 큐가 있으면 큐 순서상 아직 안 뽑힌 첫 선수, 없거나 소진이면 기존 BPA.
+    // 큐가 없는 유저/AI 슬롯은 예전과 바이트 단위로 같은 경로(getBestAvailableId)를 탄다.
+    private resolveAutoPickId(entry: PickOrderEntry): { id: string; source: 'queue' | 'bpa' } | null {
+        if (!entry.isAi) {
+            const queue = this.queues.get(entry.userId);
+            if (queue?.length) {
+                const fromQueue = getQueuedAvailableId(queue, this.draftedIds);
+                if (fromQueue) return { id: fromQueue, source: 'queue' };
+            }
+        }
+        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+        return bestId ? { id: bestId, source: 'bpa' } : null;
+    }
+
     // retryCount>0이면 직전 persistPick() 실패(주로 순간적인 DB/네트워크 장애)에 대한 재시도
     // 호출 — scheduleNext()를 다시 거치지 않고 같은 픽 시도를 곧바로 재예약한다(정책은 파일
     // 상단 MAX_PICK_RETRY/PICK_RETRY_DELAY_MS 참조).
@@ -328,13 +365,14 @@ export class DraftRoom {
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry || (!entry.isAi && !this.autoPickUserIds.has(entry.userId))) return;
 
-        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-        if (!bestId) {
+        const resolved = this.resolveAutoPickId(entry);
+        if (!resolved) {
             console.warn(`[DraftRoom:${this.roomId}] no available players for auto pick`);
             return;
         }
+        const bestId = resolved.id;
 
-        console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} → player=${bestId}`);
+        console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} → player=${bestId} (${resolved.source})`);
         // entry.isAi 그대로 전달 — 오토픽 모드로 대납되는 실제 사람 유저는 is_ai=false로
         // 정확히 기록되어야 draft_picks 감사 기록/향후 기능에서 AI 슬롯과 혼동되지 않는다.
         const result = await this.persistPick(entry.userId, bestId, entry.isAi ?? false);
@@ -370,8 +408,10 @@ export class DraftRoom {
             }
         }
 
-        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-        if (!bestId) return;
+        const resolved = this.resolveAutoPickId(entry);
+        if (!resolved) return;
+        const bestId = resolved.id;
+        console.log(`[DraftRoom:${this.roomId}] timeout pick #${this.currentPickIndex} → player=${bestId} (${resolved.source})`);
 
         const result = await this.persistPick(entry.userId, bestId);
         if (!result) {
@@ -547,14 +587,14 @@ export class DraftRoom {
                 break;
 
             case 'skip-turn': {
-                // 현재 차례 건너뛰기 — 베스트 선수 자동픽
+                // 현재 차례 건너뛰기 — 유저 큐 우선, 없으면 베스트 선수 자동픽
                 if (this.status !== 'active') break;
                 const entry = this.config.pickOrder[this.currentPickIndex];
                 if (!entry) break;
-                const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-                if (!bestId) break;
+                const resolved = this.resolveAutoPickId(entry);
+                if (!resolved) break;
                 this.clearTimers();
-                const result = await this.persistPick(entry.userId, bestId);
+                const result = await this.persistPick(entry.userId, resolved.id);
                 if (!result) break;
                 this.applyPickToMemory(result);
                 this.broadcastDelta(result);
@@ -568,9 +608,9 @@ export class DraftRoom {
                 while (this.status === 'active' && this.currentPickIndex < this.config.pickOrder.length) {
                     const entry = this.config.pickOrder[this.currentPickIndex];
                     if (!entry) break;
-                    const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-                    if (!bestId) break;
-                    const result = await this.persistPick(entry.userId, bestId);
+                    const resolved = this.resolveAutoPickId(entry);
+                    if (!resolved) break;
+                    const result = await this.persistPick(entry.userId, resolved.id);
                     if (!result) break;
                     this.applyPickToMemory(result);
                     this.broadcastDelta(result);
@@ -673,6 +713,58 @@ export class DraftRoom {
                 this.sockets.delete(ws);
             }
         }
+    }
+
+    /** [2026-10-23] 특정 유저의 소켓 전부에만 전송(다중 탭 동기화) — 큐처럼 본인에게만 보여야 하는 데이터용 */
+    private sendToUser(userId: string, payload: string): void {
+        for (const ws of this.sockets) {
+            if (ws.data.userId !== userId) continue;
+            try {
+                ws.send(payload);
+            } catch {
+                this.sockets.delete(ws);
+            }
+        }
+    }
+
+    // ── [2026-10-23] 유저 드래프트 큐 ──────────────────────────────────────────
+
+    getQueue(userId: string): string[] {
+        return [...(this.queues.get(userId) ?? [])];
+    }
+
+    /** 본인 큐 전체 교체. pickOrder 의 사람 참가자가 아니면 'not_participant', DB 실패면 'failed'.
+     *  waiting/active/paused/completed 전부 허용(저장만 하므로 무해). */
+    async setQueue(userId: string, rawIds: unknown): Promise<'ok' | 'not_participant' | 'failed'> {
+        const inOrder = this.config.pickOrder.some(e => e.userId === userId && !e.isAi);
+        if (!inOrder) return 'not_participant';
+
+        // 정규화: 문자열만 · 풀에 있는 선수만 · 중복 제거 · 상한 절단 (D9)
+        const poolSet = new Set((this.config.poolIds ?? []).map(String));
+        const seen = new Set<string>();
+        const playerIds: string[] = [];
+        for (const raw of Array.isArray(rawIds) ? rawIds : []) {
+            if (typeof raw !== 'string' && typeof raw !== 'number') continue;
+            const id = String(raw);
+            if (!poolSet.has(id) || seen.has(id)) continue;
+            seen.add(id);
+            playerIds.push(id);
+            if (playerIds.length >= MAX_QUEUE_SIZE) break;
+        }
+
+        // write-then-commit(activate()와 같은 원칙): DB 성공 후에만 메모리 반영
+        const { error } = await supabase
+            .from('draft_queues')
+            .upsert({ room_id: this.roomId, user_id: userId, player_ids: playerIds, updated_at: new Date().toISOString() });
+        if (error) {
+            console.error(`[DraftRoom:${this.roomId}] setQueue DB write failed: ${error.message}`);
+            return 'failed';
+        }
+
+        this.queues.set(userId, playerIds);
+        const msg: QueueMsg = { type: 'queue', playerIds };
+        this.sendToUser(userId, encode(msg));
+        return 'ok';
     }
 
     // ── 유틸 ──────────────────────────────────────────────────────────────────

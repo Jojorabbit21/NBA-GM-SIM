@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { InlineNotice } from '../../../components/common/InlineNotice';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GripHorizontal, ChevronLeft } from 'lucide-react';
+import { GripHorizontal, ChevronLeft, ChevronDown } from 'lucide-react';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonReady } from '../../../hooks/useSeasonReady';
 import { useLeagueContext } from './LeagueLayout';
@@ -21,6 +21,9 @@ import type { BoardPick } from '../../../components/draft/DraftBoard';
 import { PickHistory } from '../../../components/draft/PickHistory';
 import { PlayerPool } from '../../../components/draft/PlayerPool';
 import { MyRoster } from '../../../components/draft/MyRoster';
+import { DraftQueuePanel } from '../../../components/draft/DraftQueuePanel';
+import type { QueuePlayerInfo } from '../../../components/draft/DraftQueuePanel';
+import { Dropdown } from '../../../components/common/Dropdown';
 import { Button } from '../../../components/common/Button';
 import { Spinner } from '../../../components/common/Spinner';
 import { IconButton } from '../../../components/common/IconButton';
@@ -55,6 +58,7 @@ const MultiDraftView: React.FC = () => {
         draftState, poolPlayers, isLoading,
         isMyTurn, currentPickEntry, timeRemaining, myTeamId, myPicks,
         submitPick, isSubmitting, sendAdmin, toggleAutoPick,
+        myQueue, setQueue, saveQueue, queueDirty, queueSaving,
         connectionState, reconnectAttempt,
     } = useLeagueDraft(room?.id ?? null, session);
 
@@ -274,6 +278,105 @@ const MultiDraftView: React.FC = () => {
         if (error) setPickError(error);
     }, [isMyTurn, isSubmitting, submitPick]);
 
+    // ── [2026-10-23] 드래프트 큐 (docs/plan/draft-queue-plan.md Q3) ─────────────
+    // 좌측 패널: 기본 큐(참가자), 비참가자(큐 없음)만 기록. 사용자가 드롭다운에서 고르면 세션 내 유지
+    const isDraftParticipant = !!myTeamId;
+    const [leftTabChoice, setLeftTabChoice] = useState<'history' | 'queue' | null>(null);
+    const leftTab: 'history' | 'queue' = leftTabChoice ?? (isDraftParticipant ? 'queue' : 'history');
+    const [queueSaveError, setQueueSaveError] = useState<string | null>(null);   // 저장 실패 문구(편집·재저장 시 소거)
+
+    // 큐에 든 playerId 집합(PlayerPool + / − 버튼용) · 남은 수(지명 안 된 선수만, 드롭다운 라벨용)
+    const queuedIds      = useMemo(() => new Set(myQueue), [myQueue]);
+    const queueRemaining = useMemo(() => myQueue.filter(id => !draftedSet.has(id)).length, [myQueue, draftedSet]);
+
+    // 큐 행 표시 정보 — 미지명은 풀(adaptedPlayers), 지명된 선수는 picks(이름/포지션/OVR 보유)에서
+    const queuePlayersById = useMemo((): Map<string, QueuePlayerInfo> => {
+        const m = new Map<string, QueuePlayerInfo>();
+        if (myQueue.length === 0) return m;
+        const wanted = new Set(myQueue);
+        for (const p of adaptedPlayers) if (wanted.has(p.id)) m.set(p.id, { name: p.name, position: p.position, ovr: p.ovr });
+        for (const p of draftState?.picks ?? []) if (wanted.has(p.playerId) && !m.has(p.playerId)) m.set(p.playerId, { name: p.playerName, position: p.position, ovr: p.ovr });
+        return m;
+    }, [myQueue, adaptedPlayers, draftState?.picks]);
+
+    // PlayerPool 은 React.memo — 콜백 참조를 고정해야 리스트가 매 렌더마다 다시 그려지지 않는다
+    const myQueueRef = useRef(myQueue);
+    myQueueRef.current = myQueue;
+    const handleToggleQueue = useCallback((p: Player) => {
+        const cur = myQueueRef.current;
+        setQueueSaveError(null);
+        setQueue(cur.includes(p.id) ? cur.filter(id => id !== p.id) : [...cur, p.id]);
+    }, [setQueue]);
+
+    // 내 차례가 시작되는 순간 선택이 비어 있으면 큐 최상단 남은 선수를 자동 선택 (D6) — 차례 시작 시 1회만
+    useEffect(() => {
+        if (!isMyTurn) return;
+        const first = myQueueRef.current.find(id => !draftedSet.has(id));
+        if (first) setSelectedPlayerId(prev => prev ?? first);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMyTurn]);
+
+    // 패널 제목 자체가 드롭다운 트리거 — 기록 ↔ 큐 전환 (PickHistory 라운드 필터와 같은 톤)
+    const queueLabel = queueRemaining > 0 ? `드래프트 큐 (${queueRemaining})` : '드래프트 큐';
+    const leftTabs = (
+        <Dropdown
+            align="left"
+            width="w-40"
+            trigger={
+                <span className="flex items-center gap-1 text-sm font-black text-indigo-400 hover:text-indigo-300 transition-colors select-none">
+                    {leftTab === 'queue' ? queueLabel : '드래프트 기록'}
+                    <ChevronDown size={12} className="text-slate-500" />
+                </span>
+            }
+            items={[
+                ...(isDraftParticipant
+                    ? [{ id: 'queue', label: queueLabel, active: leftTab === 'queue', onClick: () => setLeftTabChoice('queue') }]
+                    : []),
+                { id: 'history', label: '드래프트 기록', active: leftTab === 'history', onClick: () => setLeftTabChoice('history') },
+            ]}
+        />
+    );
+    // 큐 행 선택 — 풀의 handleSelectPlayer 와 같은 토글 규칙(같은 선수 다시 클릭 시 해제), id 기반
+    const handleSelectQueuePlayer = useCallback((id: string) => {
+        setSelectedPlayerId(prev => prev === id ? null : id);
+    }, []);
+    // 큐 저장(저장 버튼) — 실패 문구는 패널 서브헤더 인라인(에러 표시 정책: 액션 실패는 InlineNotice)
+    const handleSaveQueue = useCallback(async () => {
+        setQueueSaveError(null);
+        const { error } = await saveQueue();
+        if (error) setQueueSaveError(error);
+    }, [saveQueue]);
+    const handleQueueChange = useCallback((ids: string[]) => {
+        setQueueSaveError(null);
+        setQueue(ids);
+    }, [setQueue]);
+    const renderLeftPanel = () => (
+        leftTab === 'queue' && draftState ? (
+            <DraftQueuePanel
+                queue={myQueue}
+                playersById={queuePlayersById}
+                draftedIds={draftedSet}
+                onChange={handleQueueChange}
+                selectedPlayerId={selectedPlayerId}
+                onSelect={handleSelectQueuePlayer}
+                disabled={connectionState !== 'connected'}
+                headerLeft={leftTabs}
+                dirty={queueDirty}
+                saving={queueSaving}
+                saveError={queueSaveError}
+                onSave={handleSaveQueue}
+            />
+        ) : draftState ? (
+            <PickHistory
+                picks={boardPicks}
+                totalRounds={draftState.totalRounds}
+                userTeamId={myTeamId ?? ''}
+                teamMeta={teamMeta}
+                headerLeft={leftTabs}
+            />
+        ) : null
+    );
+
     // ── 로딩 / 에러 가드 ─────────────────────────────────────────────────────
     if (isLoading) {
         return <Spinner variant="page" />;
@@ -356,13 +459,9 @@ const MultiDraftView: React.FC = () => {
                     드래프트 시작 전이라 히스토리·로스터는 비어있지만, 실제 진행 중 화면과
                     동일한 레이아웃을 미리 보여준다(사용자 요청). ── */}
                 <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 p-1.5">
+                    {/* [2026-10-23] 기록 | 큐 탭 — 시작 전엔 기본 큐 */}
                     <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                        <PickHistory
-                            picks={boardPicks}
-                            totalRounds={draftState.totalRounds}
-                            userTeamId={myTeamId ?? ''}
-                            teamMeta={teamMeta}
-                        />
+                        {renderLeftPanel()}
                     </div>
 
                     <div className="flex-1 bg-slate-900/60 rounded-xl overflow-hidden">
@@ -373,6 +472,8 @@ const MultiDraftView: React.FC = () => {
                             isUserTurn={false}
                             onDraft={() => {}}
                             positionColors={POSITION_COLORS}
+                            queuedIds={isDraftParticipant ? queuedIds : undefined}
+                            onToggleQueue={isDraftParticipant ? handleToggleQueue : undefined}
                         />
                     </div>
 
@@ -457,14 +558,9 @@ const MultiDraftView: React.FC = () => {
             {/* ── 하단 3열 패널 ── */}
             <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 p-1.5">
 
-                {/* 픽 히스토리 */}
+                {/* 픽 히스토리 | [2026-10-23] 드래프트 큐 — 헤더 세그먼트로 전환 */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                    <PickHistory
-                        picks={boardPicks}
-                        totalRounds={draftState.totalRounds}
-                        userTeamId={myTeamId ?? ''}
-                        teamMeta={teamMeta}
-                    />
+                    {renderLeftPanel()}
                 </div>
 
                 {/* 선수 풀 — [2026-10-13] 지명 실패/연결 끊김은 상단 띠 대신 툴바 "드래프트" 버튼 왼쪽 sm(끊김이 우선) */}
@@ -477,6 +573,8 @@ const MultiDraftView: React.FC = () => {
                             isUserTurn={isMyTurn && !isSubmitting && connectionState === 'connected'}
                             onDraft={handleDraft}
                             positionColors={POSITION_COLORS}
+                            queuedIds={isDraftParticipant ? queuedIds : undefined}
+                            onToggleQueue={isDraftParticipant ? handleToggleQueue : undefined}
                             toolbarNotice={
                                 connectionState !== 'connected' ? (
                                     <InlineNotice tone="danger" size="sm" className="text-right">
