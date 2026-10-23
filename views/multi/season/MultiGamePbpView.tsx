@@ -4,13 +4,17 @@ import { Spinner } from '../../../components/common/Spinner';
 import { TeamHover } from '../../../components/common/TeamHover';
 import { InlineNotice } from '../../../components/common/InlineNotice';
 import { Button } from '../../../components/common/Button';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
 import { computeWL } from './multiSeasonUtils';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
+import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
+import { usePlayerInjuryRowsBatch } from '../../../hooks/usePlayerInjuryRowsBatch';
+import { useCurrentVirtualDate } from '../../../hooks/useCurrentVirtualDate';
+import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { fetchMetaPlayersByRosterIds } from '../../../services/multi/instancePlayers';
 import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
@@ -34,6 +38,7 @@ import { kstDateKey, fmtFullDate } from './multiScheduleUtils';
 import { TabBar } from '../../../components/common/TabBar';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { Skeleton } from '../../../components/common/Skeleton';
+import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { ConditionBar } from '../../../components/common/ConditionBar';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -162,11 +167,11 @@ function MilestoneJumbotronBody({ teamAbbr, playerName, accentClass, label }: {
 }) {
     return (
         <div className="flex flex-col items-center gap-0.5 animate-in fade-in duration-300">
-            <div className="flex items-center gap-1.5 text-3xl">
+            <div className="flex items-center gap-1.5 text-lg">
                 <span className="font-black text-white">{teamAbbr}</span>
                 <span className="font-bold text-white whitespace-nowrap">{playerName}</span>
             </div>
-            <span className={`text-3xl font-black ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
+            <span className={`text-lg font-black ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
                 {label}
             </span>
         </div>
@@ -420,6 +425,23 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
     return Array.from(rows.values());
 }
 
+// [2026-10-23] 라이브 박스 스탯 셀 틴트 — 선수별 "가장 최근에 반영된 포제션"의 변화분. elapsed 시점까지 재생된 틱 중 선수별 마지막
+// 틱 하나를 남긴다. 틴트는 그 선수의 다음 변동이 올 때까지 유지되고, 도착 순간(리플레이 시각이 STAT_FLASH_FRESH_MS 안)에만
+// 밝게 켜지는 애니메이션을 붙인다(fresh) — 탭을 오가며 재마운트돼도 오래된 틴트는 번쩍이지 않고 유지 밝기로만 보인다.
+// 셀은 `${col}-${t}`를 key로 써서 새 틱마다 CSS 애니메이션이 처음부터 재생된다.
+const STAT_FLASH_FRESH_MS = 3000;
+export interface StatFlash { t: number; d: BoxDelta; fresh: boolean }
+function liveStatFlashesAt(timeline: BoxTick[], elapsed: number): Map<string, StatFlash> {
+    const last = new Map<string, StatFlash>();
+    for (const tick of timeline) {
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
+        if (replayMs > elapsed) break;
+        const fresh = elapsed - replayMs <= STAT_FLASH_FRESH_MS;
+        for (const [pid, d] of Object.entries(tick.d)) last.set(pid, { t: tick.t, d, fresh });
+    }
+    return last;
+}
+
 // [2026-10-17] 라이브 체력 배지 — box_timeline의 tick.c(체력 5단위, 첫 틱 전원 + 이후 변경분)를 elapsed 시점까지 누적.
 // tick.c가 하나도 없는 경기(엔진에 기록이 추가되기 전 시뮬된 경기)는 null → 호출부가 경기 전 체력으로 폴백.
 function liveConditionsAt(timeline: BoxTick[], elapsed: number): Map<string, number> | null {
@@ -496,24 +518,25 @@ const QuarterScores: React.FC<{
     const aTotal = scores.away.reduce((a, b) => a + b, 0);
 
     if (compact) {
+        // [2026-10-23] 점보트론용으로 더 촘촘하게 — 셀 세로 패딩 1px, 줄높이 snug(≈16.5px@text-xs), 열폭 w-7/w-8, 약어 칸 pr-2. 3행 ≈ 56px.
         const row = (abbr: string, vals: number[], total: number) => (
             <tr>
-                <td className="text-left pr-3 py-0.5 font-bold text-white">{abbr}</td>
+                <td className="text-left pr-2 py-px leading-snug font-bold text-white">{abbr}</td>
                 {vals.map((v, i) => (
-                    <td key={i} className="text-center w-8 py-0.5 tabular-nums text-slate-200">
-                        {i + 1 <= currentQuarter ? v : '—'}
+                    <td key={i} className="text-center w-7 py-px leading-snug tabular-nums text-slate-200">
+                        {i + 1 <= currentQuarter ? v : 0}
                     </td>
                 ))}
-                <td className="text-center w-9 py-0.5 tabular-nums font-bold text-white">{total}</td>
+                <td className="text-center w-8 py-px leading-snug tabular-nums font-bold text-white">{total}</td>
             </tr>
         );
         return (
-            <table className="text-sm border-collapse">
+            <table className="text-xs border-collapse">
                 <thead>
                     <tr className="text-slate-400 border-b border-slate-800">
-                        <th className="pr-3 py-0.5"></th>
-                        {[1, 2, 3, 4].map(q => <th key={q} className="text-center w-8 py-0.5 font-semibold">{q}</th>)}
-                        <th className="text-center w-9 py-0.5 font-semibold">T</th>
+                        <th className="pr-2 py-px leading-snug"></th>
+                        {[1, 2, 3, 4].map(q => <th key={q} className="text-center w-7 py-px leading-snug font-semibold">{q}</th>)}
+                        <th className="text-center w-8 py-px leading-snug font-semibold">T</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -554,7 +577,7 @@ const QuarterScores: React.FC<{
                         <td className="text-center py-1.5 px-3 font-bold text-slate-200 border-b border-slate-800">{abbr}</td>
                         {qs.map((v, i) => (
                             <td key={i} className="text-center py-1.5 px-3 tabular-nums text-slate-200 border-b border-slate-800">
-                                {i + 1 <= currentQuarter ? v : '—'}
+                                {i + 1 <= currentQuarter ? v : 0}
                             </td>
                         ))}
                         <td className="text-center py-1.5 px-3 tabular-nums font-bold text-white border-b border-slate-800">{total}</td>
@@ -565,6 +588,20 @@ const QuarterScores: React.FC<{
     );
 };
 
+// ─── 라이브/예정 화면 탭 정의 (2026-10-23 개편) ──────────────────────────────────
+// 게임 센터 = 기존 3열 라이브 뷰. 나머지 탭은 종료 화면 컴포넌트/게임 센터 조각을 재사용.
+type LiveTab = 'center' | 'box' | 'pbp' | 'team' | 'shot';
+const LIVE_TABS: { id: LiveTab; label: string }[] = [
+    { id: 'center', label: '게임 센터' },
+    { id: 'box',    label: '박스스코어' },
+    { id: 'pbp',    label: '플레이-바이-플레이' },
+    { id: 'team',   label: '팀 스탯' },
+    { id: 'shot',   label: '샷 차트' },
+];
+
+// 게임 센터 3열 카드 컨테이너 — 공용 Table card 변형(components/common/Table.tsx)과 같은 토큰
+const LIVE_CARD = 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden';
+
 // ─── PlayerBoxPanel ───────────────────────────────────────────────────────────
 // [Fix 2026-08-05] 박스스코어 테이블(components/common/Table.tsx / BoxScoreTable.tsx) 디자인
 // 이식 — div 기반 그리드를 실제 <table>로 교체, thead bg-slate-950 + uppercase/tracking-widest/
@@ -572,13 +609,24 @@ const QuarterScores: React.FC<{
 // font-semibold tabular-nums, 팀합계 행 bg-slate-800/50 + border-t border-slate-700로 통일
 // (바로 위 QuarterScores와 동일 패턴). 라이브 전용 기능(온코트 강조/핫콜드 스트릭)은 유지.
 
+// [2026-10-23] 게임 센터 간소 컬럼(P, MP, PTS, REB, AST, PF, FG, 3P, FT) — STL/BLK/TOV는 박스스코어 탭(전체 컬럼)에서만.
+// 공용 Table 규칙에 맞춤 — 헤더 h-10 / text-sm font-bold text-slate-400, 본문 셀 py-2 text-sm, 선 slate-800.
+// (table-fixed + colgroup 퍼센트 폭이 필요해 공용 <Table> 컴포넌트 대신 raw <table>을 유지하되 토큰만 동일하게 맞춘다.)
+// 선수 이름은 프로필 링크 + 호버카드(능력치만, 시즌 스탯 숨김 — 경기 중 스탯이 계속 바뀌어 조회 부하가 생기므로).
+
 const PlayerBoxPanel: React.FC<{
     players: PlayerBoxScore[];
     label:   string;
     onCourtIds?: Set<string>;
     /** [2026-10-17] 이름 오른쪽 체력 배지(막대만, 수치는 호버). 없거나 맵에 없는 선수는 배지 미표시 */
     conditions?: Map<string, number | null>;
-}> = ({ players, label, onCourtIds, conditions }) => {
+    /** 선수 id → 능력치가 로드된 실제 Player(rosterCache). 없거나 스텁이면 호버카드 비활성 */
+    playerById?: Record<string, Player>;
+    /** 선수 id → 프로필 경로. 주어지면 이름이 링크가 된다 */
+    getPlayerHref?: (playerId: string) => string | undefined;
+    /** [2026-10-23] 방금 반영된 포제션의 선수별 변화분(liveStatFlashesAt) — 해당 스탯 셀 배경을 켰다가 페이드 */
+    statFlashes?: Map<string, StatFlash>;
+}> = ({ players, label, onCourtIds, conditions, playerById, getPlayerHref, statFlashes }) => {
     const sorted = useMemo(
         () => [...players].sort((a, b) => (b.mp ?? 0) - (a.mp ?? 0)),
         [players],
@@ -588,14 +636,41 @@ const PlayerBoxPanel: React.FC<{
         const s = (fn: (p: PlayerBoxScore) => number) => sorted.reduce((acc, p) => acc + fn(p), 0);
         return {
             pts: s(p => p.pts), reb: s(p => p.reb), ast: s(p => p.ast),
-            stl: s(p => p.stl), blk: s(p => p.blk), tov: s(p => p.tov),
             pf:  s(p => p.pf),  fgm: s(p => p.fgm), fga: s(p => p.fga),
             p3m: s(p => p.p3m), p3a: s(p => p.p3a),
             ftm: s(p => p.ftm), fta: s(p => p.fta),
         };
     }, [sorted]);
 
-    const statCell = 'text-right py-1.5 px-1.5 border-b border-slate-800/50 text-white font-semibold tabular-nums';
+    const statCell = 'text-right py-2 px-1.5 border-b border-slate-800 text-white font-semibold tabular-nums';
+    // 스탯 셀 틴트 — 컬럼별 규칙: 득점/성공은 초록, 시도만 있고 성공 없음은 빨강, 파울은 주황. 다음 변동까지 유지(정적 bg), 도착 순간만
+    // 애니메이션(fresh). 틴트가 없으면 key가 고정이라 재마운트 없음.
+    type FlashCol = 'pts' | 'reb' | 'ast' | 'pf' | 'fg' | 'p3' | 'ft';
+    const flashOf = (pid: string, col: FlashCol): { key: string; cls: string } => {
+        const f = statFlashes?.get(pid);
+        if (!f) return { key: col, cls: '' };
+        const d = f.d;
+        const g = (v?: number) => (v ?? 0) > 0;
+        let tone: 'green' | 'red' | 'amber' | null = null;
+        switch (col) {
+            case 'pts': tone = g(d.pts) ? 'green' : null; break;
+            case 'reb': tone = g(d.reb) ? 'green' : null; break;
+            case 'ast': tone = g(d.ast) ? 'green' : null; break;
+            case 'pf':  tone = g(d.pf) ? 'amber' : null; break;
+            case 'fg':  tone = g(d.fgm) ? 'green' : g(d.fga) ? 'red' : null; break;
+            case 'p3':  tone = g(d.p3m) ? 'green' : g(d.p3a) ? 'red' : null; break;
+            case 'ft':  tone = g(d.ftm) ? 'green' : g(d.fta) ? 'red' : null; break;
+        }
+        if (!tone) return { key: col, cls: '' };
+        const stay = tone === 'green' ? ' bg-emerald-400/[0.18]' : tone === 'red' ? ' bg-red-400/[0.18]' : ' bg-amber-400/[0.18]';
+        return { key: `${col}-${f.t}`, cls: stay + (f.fresh ? ` animate-stat-flash-${tone}` : '') };
+    };
+    // 컴포넌트가 아니라 요소를 돌려주는 헬퍼 — 렌더 안에서 컴포넌트를 정의하면 매 렌더(매초)마다 타입이 바뀌어 셀이 전부
+    // 재마운트되고 애니메이션이 매초 다시 재생된다. 요소의 key만 바꾸면 플래시가 있는 셀만, 새 틱일 때만 재마운트된다.
+    const statTd = (pid: string, col: FlashCol, children: React.ReactNode) => {
+        const { key, cls } = flashOf(pid, col);
+        return <td key={key} className={`${statCell}${cls}`}>{children}</td>;
+    };
     // [Fix 2026-08-05] "TEAM 행의 FG%/3P%/FT% 표기를 00.0%에서 .000으로" 요청 — 야구 타율식
     // 표기(선행 0 생략 + 소수 3자리). 100%(=1.000)는 애초에 "0"으로 시작 안 해서 그대로 안 잘림.
     const fmtPct3 = (made: number, att: number) => att > 0 ? (made / att).toFixed(3).replace(/^0/, '') : '-';
@@ -614,50 +689,53 @@ const PlayerBoxPanel: React.FC<{
                 모든 셀 텍스트가 줄바꿈 대신 한 줄 유지) ② min-w-[600px](table-fixed 퍼센트가
                 과도하게 좁아지는 것 자체를 방지하는 바닥값) ③ 부모 div에 overflow-x-auto(그래도
                 컨테이너가 600px보다 좁으면 컬럼을 찌그러뜨리는 대신 테이블 전체를 가로 스크롤). */}
-            <table className="w-full min-w-[600px] text-xs border-collapse table-fixed whitespace-nowrap">
+            <table className="w-full min-w-[480px] text-sm border-collapse table-fixed whitespace-nowrap">
                 <colgroup>
-                    <col className="w-[24%]" />
-                    <col className="w-[5%]" />
-                    <col className="w-[5%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[6%]" />
+                    <col className="w-[30%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[7%]" />
                     <col className="w-[8%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[9%]" />
                     <col className="w-[8%]" />
                     <col className="w-[8%]" />
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                    <tr className="text-slate-400 font-bold">
-                        <th className="text-left py-2 px-2 font-sans">{label}</th>
-                        <th className="text-center py-2 px-1">P</th>
-                        <th className="text-right py-2 px-1">MP</th>
-                        <th className="text-right py-2 px-1.5">PTS</th>
-                        <th className="text-right py-2 px-1.5">REB</th>
-                        <th className="text-right py-2 px-1.5">AST</th>
-                        <th className="text-right py-2 px-1.5">STL</th>
-                        <th className="text-right py-2 px-1.5">BLK</th>
-                        <th className="text-right py-2 px-1.5">TOV</th>
-                        <th className="text-right py-2 px-1.5">PF</th>
-                        <th className="text-right py-2 px-1.5">FG</th>
-                        <th className="text-right py-2 px-1.5">3P</th>
-                        <th className="text-right py-2 px-1.5">FT</th>
+                    <tr className="h-10 text-slate-400 text-sm font-bold">
+                        <th className="text-left px-2 font-sans">{label}</th>
+                        <th className="text-center px-1">P</th>
+                        <th className="text-right px-1">MP</th>
+                        <th className="text-right px-1.5">PTS</th>
+                        <th className="text-right px-1.5">REB</th>
+                        <th className="text-right px-1.5">AST</th>
+                        <th className="text-right px-1.5">PF</th>
+                        <th className="text-right px-1.5">FG</th>
+                        <th className="text-right px-1.5">3P</th>
+                        <th className="text-right px-1.5">FT</th>
                     </tr>
                 </thead>
                 <tbody className="bg-slate-900">
                     {sorted.map(p => (
                         <tr
                             key={p.playerId}
-                            className={`transition-colors hover:bg-white/5 ${onCourtIds?.has(p.playerId) ? 'bg-emerald-400/15' : ''}`}
+                            className="transition-colors hover:bg-white/5"
                         >
-                            <td className="py-1.5 px-2 border-b border-slate-800 font-sans text-slate-200">
+                            {/* [2026-10-23] 온코트 표시는 행 전체 초록 틴트 대신 이름 셀만 밝게 — 스탯 셀 플래시 색과 섞이지 않게 */}
+                            <td className={`py-2 px-2 border-b border-slate-800 font-sans text-slate-200 ${onCourtIds?.has(p.playerId) ? 'bg-white/[0.08]' : ''}`}>
                                 <span className="flex items-center gap-1 min-w-0">
-                                    {p.playerName
-                                        ? <span className="truncate">{p.playerName}</span>
-                                        : <Skeleton className="h-3 w-20" />}
+                                    {(() => {
+                                        if (!p.playerName) return <Skeleton className="h-3.5 w-24" />;
+                                        const href = getPlayerHref?.(p.playerId);
+                                        const info = playerById?.[p.playerId];
+                                        // 스텁({id,name,position}만)엔 age가 없다 — PlayerIdentityCells와 같은 판별
+                                        const card = info && (info as { age?: number }).age !== undefined ? info : null;
+                                        const nameEl = href
+                                            ? <Link to={href} className="truncate font-semibold hover:text-indigo-400 hover:underline">{p.playerName}</Link>
+                                            : <span className="truncate font-semibold">{p.playerName}</span>;
+                                        return <PlayerHoverCard player={card} teamAbbr={label} hideStats>{nameEl}</PlayerHoverCard>;
+                                    })()}
                                     {conditions?.get(p.playerId) != null && (
                                         <ConditionBar value={conditions.get(p.playerId)!} showValue={false} size="xs" />
                                     )}
@@ -669,36 +747,30 @@ const PlayerBoxPanel: React.FC<{
                                     })()}
                                 </span>
                             </td>
-                            <td className="text-center py-1.5 px-1 border-b border-slate-800 text-slate-200">{p.position ?? '-'}</td>
-                            <td className="text-right py-1.5 px-1 border-b border-slate-800 text-slate-200 tabular-nums">{Math.round(p.mp ?? 0)}</td>
-                            <td className={statCell}>{p.pts}</td>
-                            <td className={statCell}>{p.reb}</td>
-                            <td className={statCell}>{p.ast}</td>
-                            <td className={statCell}>{p.stl}</td>
-                            <td className={statCell}>{p.blk}</td>
-                            <td className={statCell}>{p.tov}</td>
-                            <td className={statCell}>{p.pf}</td>
-                            <td className={statCell}>{p.fgm}-{p.fga}</td>
-                            <td className={statCell}>{p.p3m}-{p.p3a}</td>
-                            <td className={statCell}>{p.ftm}-{p.fta}</td>
+                            <td className="text-center py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold">{p.position ?? '-'}</td>
+                            <td className="text-right py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold tabular-nums">{Math.round(p.mp ?? 0)}</td>
+                            {statTd(p.playerId, 'pts', p.pts)}
+                            {statTd(p.playerId, 'reb', p.reb)}
+                            {statTd(p.playerId, 'ast', p.ast)}
+                            {statTd(p.playerId, 'pf', p.pf)}
+                            {statTd(p.playerId, 'fg', `${p.fgm}-${p.fga}`)}
+                            {statTd(p.playerId, 'p3', `${p.p3m}-${p.p3a}`)}
+                            {statTd(p.playerId, 'ft', `${p.ftm}-${p.fta}`)}
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr className="bg-slate-800/50 border-t border-slate-800 text-white font-semibold">
-                        <td className="py-1.5 px-2 font-sans text-xs">TEAM</td>
+                    <tr className="bg-slate-800/50 border-t border-slate-700 text-white font-semibold">
+                        <td className="py-2 px-2 font-sans text-sm">TEAM</td>
                         <td />
                         <td />
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.pts}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.reb}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.ast}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.stl}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.blk}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.tov}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{total.pf}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{fmtPct3(total.fgm, total.fga)}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{fmtPct3(total.p3m, total.p3a)}</td>
-                        <td className="text-right py-1.5 px-1.5 tabular-nums">{fmtPct3(total.ftm, total.fta)}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{total.pts}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{total.reb}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{total.ast}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{total.pf}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{fmtPct3(total.fgm, total.fga)}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{fmtPct3(total.p3m, total.p3a)}</td>
+                        <td className="text-right py-2 px-1.5 tabular-nums">{fmtPct3(total.ftm, total.fta)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -820,7 +892,10 @@ const TeamStatsCompare: React.FC<{
     awayBox:   PlayerBoxScore[];
     homeColor: string;
     awayColor: string;
-}> = ({ home, away, homeBox, awayBox, homeColor, awayColor }) => {
+    /** [2026-10-23] panel(기본) = 사이드 카드용 작은 글자(text-[10px])·자체 "팀 스탯" 캡션·border-t. card = 팀 스탯 탭 카드 본문용 — 캡션/상단선 없이 text-sm·굵은 막대 */
+    variant?:  'panel' | 'card';
+}> = ({ home, away, homeBox, awayBox, homeColor, awayColor, variant = 'panel' }) => {
+    const card = variant === 'card';
     const derived = useMemo(() => {
         const sum = (box: PlayerBoxScore[], fn: (p: PlayerBoxScore) => number) => box.reduce((s, p) => s + fn(p), 0);
         const mk = (s: TeamStats, box: PlayerBoxScore[]) => ({
@@ -846,9 +921,9 @@ const TeamStatsCompare: React.FC<{
     }, [home, away, homeBox, awayBox]);
 
     return (
-        <div className="shrink-0 px-3 py-2 border-t border-slate-800">
-            <p className="text-[10px] text-slate-500 font-semibold mb-1.5">팀 스탯</p>
-            <div className="flex flex-col gap-1">
+        <div className={card ? 'px-4 py-3' : 'shrink-0 px-3 py-2 border-t border-slate-800'}>
+            {!card && <p className="text-[10px] text-slate-500 font-semibold mb-1.5">팀 스탯</p>}
+            <div className={`flex flex-col ${card ? 'gap-2' : 'gap-1'}`}>
                 {TEAM_STAT_ROWS.map(({ key, label, fmt }) => {
                     const h = derived.home[key];
                     const a = derived.away[key];
@@ -857,15 +932,18 @@ const TeamStatsCompare: React.FC<{
                     const aPct  = total > 0 ? (a / total) * 100 : 50;
                     const bothZero = h === 0 && a === 0;
                     return (
-                        <div key={key} className="grid grid-cols-[1fr_30px_36px_30px_1fr] items-center gap-1">
-                            <div className="h-2.5 flex justify-end rounded-sm overflow-hidden bg-slate-900">
-                                {!bothZero && <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${aPct}%`, backgroundColor: awayColor }} />}
+                        <div key={key} className={`grid items-center ${card ? 'grid-cols-[1fr_44px_48px_44px_1fr] gap-2' : 'grid-cols-[1fr_30px_36px_30px_1fr] gap-1'}`}>
+                            {/* [2026-10-23 perf] width 트랜지션 → transform scaleX. width는 레이아웃 속성이라 포제션마다 막대 7~8개가
+                                300ms 동안 매 프레임 레이아웃(객체 4,300개)+전체 뷰포트 페인트를 유발했다(트레이스: Paint 134회 710ms).
+                                scaleX는 컴포지터에서만 돌아 레이아웃·페인트 없음. 원정은 오른쪽 기준(origin-right), 홈은 왼쪽 기준. */}
+                            <div className={`${card ? 'h-3' : 'h-2.5'} rounded-sm overflow-hidden ${card ? 'bg-slate-800' : 'bg-slate-900'}`}>
+                                {!bothZero && <div className="w-full h-full rounded-sm origin-right transition-transform duration-300" style={{ transform: `scaleX(${aPct / 100})`, backgroundColor: awayColor }} />}
                             </div>
-                            <span className={`text-[10px] text-right text-white ${a > h ? 'font-bold' : ''}`}>{fmt(a)}</span>
-                            <span className="text-xs font-bold text-slate-500 text-center">{label}</span>
-                            <span className={`text-[10px] text-left text-white ${h > a ? 'font-bold' : ''}`}>{fmt(h)}</span>
-                            <div className="h-2.5 flex justify-start rounded-sm overflow-hidden bg-slate-900">
-                                {!bothZero && <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${hPct}%`, backgroundColor: homeColor }} />}
+                            <span className={`${card ? 'text-sm' : 'text-[10px]'} tabular-nums text-right text-white ${a > h ? 'font-bold' : ''}`}>{fmt(a)}</span>
+                            <span className={`${card ? 'text-sm' : 'text-xs'} font-bold text-slate-500 text-center`}>{label}</span>
+                            <span className={`${card ? 'text-sm' : 'text-[10px]'} tabular-nums text-left text-white ${h > a ? 'font-bold' : ''}`}>{fmt(h)}</span>
+                            <div className={`${card ? 'h-3' : 'h-2.5'} rounded-sm overflow-hidden ${card ? 'bg-slate-800' : 'bg-slate-900'}`}>
+                                {!bothZero && <div className="w-full h-full rounded-sm origin-left transition-transform duration-300" style={{ transform: `scaleX(${hPct / 100})`, backgroundColor: homeColor }} />}
                             </div>
                         </div>
                     );
@@ -1416,9 +1494,18 @@ const MultiGamePbpView: React.FC = () => {
     // 뉴스피드의 "박스스코어" 버튼 등이 ?section=box로 넘어오면 진입 시 바로 그 섹션으로
     // 스크롤(아래 딥링크 useEffect). 다른 화면들처럼 파라미터 없이 들어오면 기본값(insights)
     // 그대로 — 기존 "게임으로 이동" 링크는 전혀 영향받지 않는다.
-    const [searchParams] = useSearchParams();
-    const { room, leagueTeams, league } = useLeagueContext();
-    const { schedule }         = useSeasonContext();
+    const [searchParams, setSearchParams] = useSearchParams();
+    // [2026-10-23] 라이브/예정 화면 탭(게임 센터 | 박스스코어 | 플레이-바이-플레이 | 팀 스탯 | 샷 차트) — URL ?tab=에 보관해
+    // 새로고침·링크 공유 시 유지. 잘못된 값이면 게임 센터. (종료 화면의 ?section= 딥링크와는 별개 키)
+    const liveTabParam = searchParams.get('tab');
+    const liveTab: LiveTab = (LIVE_TABS as readonly { id: string }[]).some(t => t.id === liveTabParam) ? (liveTabParam as LiveTab) : 'center';
+    const setLiveTab = (id: LiveTab) => setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        if (id === 'center') next.delete('tab'); else next.set('tab', id);
+        return next;
+    }, { replace: true });
+    const { room, leagueTeams, league, timeline } = useLeagueContext();
+    const { schedule, currentSimDate } = useSeasonContext();
     const { session }           = useGame();
     const simStart = league?.sim_real_start_at ?? null;
     const gprd     = league?.games_per_real_day ?? 5;
@@ -1517,7 +1604,19 @@ const MultiGamePbpView: React.FC = () => {
 
     // scheduled/live/final 표시 상태. scheduledAt + serverNow만으로 결정되므로
     // 누가 언제 접속해도 동일한 시점에 동일한 상태가 나온다.
-    const displayState = getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed }, serverNow);
+    // [2026-10-23] 개발용 라이브 리플레이 — 종료된 경기를 라이브 화면 그대로 다시 재생한다(라이브 화면 편집 확인용).
+    // URL ?devLive=1 → 리플레이 길이(리그 설정, 기본 10분) 주기로 무한 반복, ?devLive=<경기초> → 그 시점에 정지
+    // (예: devLive=1500 = 3쿼터 1분 경과). 리그 관리자 또는 개발 빌드에서만 켜진다. 서버 폴링은 끄고(종료 경기라
+    // 전체 데이터가 한 번에 오므로) 아래 gameStartMs가 가짜 시작 시각을 공급 → 기존 live 필터(이벤트/샷/박스
+    // 타임라인/온코트/체력)가 전부 그 시계로 동작한다. 실제 라이브 판정(getGameDisplayState)엔 영향 없음.
+    const isLeagueAdmin = !!session?.user?.id && league?.admin_user_id === session.user.id;
+    const devLiveParam = searchParams.get('devLive');
+    const devLive = devLiveParam != null && (isLeagueAdmin || import.meta.env.DEV);
+    const devLiveFreezeSec = devLive && devLiveParam !== '1' && Number.isFinite(Number(devLiveParam)) ? Number(devLiveParam) : null;
+    const devAnchorRef = useRef(Date.now());
+    const displayState: ReturnType<typeof getGameDisplayState> = devLive
+        ? 'live'
+        : getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed }, serverNow);
 
     // [migration 2026-08-06] rooms.schedule 배열 fetch 대신 games 테이블 단일 row 조회.
     // game_pbp는 RLS로 정시 전 row가 숨겨지므로 scheduled 상태 판정에는 이 정보가 필요하다.
@@ -1643,16 +1742,25 @@ const MultiGamePbpView: React.FC = () => {
 
         setIsLoading(true);
         load(true);
-        const timer = displayState === 'live' ? setInterval(() => load(false), LIVE_POLL_MS) : null;
+        // devLive(개발용 리플레이)는 종료 경기 전체 데이터를 한 번에 받으므로 폴링하지 않는다(폴링하면 이벤트가 중복 누적됨)
+        const timer = displayState === 'live' && !devLive ? setInterval(() => load(false), LIVE_POLL_MS) : null;
         return () => { cancelled = true; if (timer) clearInterval(timer); if (retryTimer) clearTimeout(retryTimer); };
     }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt, retryTick]);
 
-    // ── final 전용: 박스스코어 탭(OVR/포지션 표시)에 쓸 실제 선수 능력치 조회 ──────
+    // ── live/final: 박스스코어(OVR/포지션/호버카드)에 쓸 실제 선수 능력치 조회 ──────
     // PlayerBoxScore엔 이름/포지션/스탯만 있고 OVR이 없어서, BoxScoreTable이 team.roster에서
     // 능력치를 찾아 OVR을 계산한다(calculatePlayerOvr) — 그래서 실제 Player를 채워야 한다.
+    // [2026-10-23] 라이브 박스스코어 호버카드(능력치만)도 같은 캐시를 쓰므로 live에서도 조회한다.
+    // 라이브 폴링은 매번 home_box/away_box 배열을 새로 만들어 내려주므로(identityOnly) 배열 참조가 아니라
+    // 선수 id 목록 문자열을 의존성으로 써서 "같은 선수 집합이면 재조회하지 않는다".
+    const boxPlayerIds = useMemo(
+        () => [...(gameData?.home_box ?? []), ...(gameData?.away_box ?? [])].map(b => b.playerId),
+        [gameData?.home_box, gameData?.away_box],
+    );
+    const boxIdsKey = boxPlayerIds.join(',');
     useEffect(() => {
-        if (displayState !== 'final' || !gameData) return;
-        const ids = [...(gameData?.home_box ?? []), ...(gameData?.away_box ?? [])].map(b => b.playerId);
+        if ((displayState !== 'final' && displayState !== 'live') || !gameData) return;
+        const ids = boxIdsKey ? boxIdsKey.split(',') : [];
         if (ids.length === 0) return;
         let cancelled = false;
         (async () => {
@@ -1667,36 +1775,97 @@ const MultiGamePbpView: React.FC = () => {
             setRosterCache(map);
         })();
         return () => { cancelled = true; };
-    }, [displayState, gameData?.home_box, gameData?.away_box, useCustomOverrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [displayState, boxIdsKey, useCustomOverrides]);
+
+    // 호버카드의 "시즌 기록" 용(종료 화면 전용) — rosterCache(meta_players 기반)엔 stats가 없어서 리그 공용 시즌 스탯 쿼리(캐시 공유)로 덮어쓴다.
+    const { data: seasonStatsBatch } = usePlayerSeasonStatsBatch(room?.id, displayState === 'final' ? boxPlayerIds : []);
+    // 호버카드의 부상/출장정지 배지용 — 뉴스피드와 동일하게 "지금(가상 오늘) 기준 활성 부상"을 room_player_state에서 가볍게 조회.
+    // 메인리그는 injury_history 날짜가 가상 캘린더라 currentSimDate(실제 KST) 대신 가상 날짜를 써야 한다.
+    const virtualToday = useCurrentVirtualDate(schedule, league?.type, simStart, gprd, timeline);
+    const { data: injuryRows } = usePlayerInjuryRowsBatch(room?.id, displayState === 'final' ? boxPlayerIds : []);
+    const activeInjuryByPlayer = useMemo(() => {
+        const teamByPlayer = new Map<string, string>();
+        for (const b of gameData?.home_box ?? []) teamByPlayer.set(b.playerId, gameData!.home_team_id);
+        for (const b of gameData?.away_box ?? []) teamByPlayer.set(b.playerId, gameData!.away_team_id);
+        return buildActiveInjurySeverityMap(injuryRows, virtualToday ?? currentSimDate, room?.season_number, {
+            schedule,
+            getTeamId: id => teamByPlayer.get(id),
+        });
+    }, [injuryRows, virtualToday, currentSimDate, room?.season_number, schedule, gameData]);
+    const rosterCacheWithStats = useMemo(() => {
+        if (!seasonStatsBatch && activeInjuryByPlayer.size === 0) return rosterCache;
+        const out: Record<string, Player> = {};
+        for (const [id, p] of Object.entries(rosterCache)) {
+            const st = seasonStatsBatch?.[id];
+            const inj = activeInjuryByPlayer.get(id);
+            out[id] = (st || inj) ? {
+                ...p,
+                ...(st ? { stats: { ...p.stats, ...st } } : {}),
+                ...(inj ? {
+                    activeInjurySeverity: inj.severity,
+                    injuryType: inj.injuryType,
+                    activeInjuryDuration: inj.duration,
+                    returnDate: inj.returnDate ?? undefined,
+                } : {}),
+            } : p;
+        }
+        return out;
+    }, [rosterCache, seasonStatsBatch, activeInjuryByPlayer]);
 
     // ── 시간 기반 필터 ──────────────────────────────────────────────────────────
 
+    // 라이브 필터들이 공유하는 "경기 시작 시각(ms)". 평소엔 game_pbp.game_start_time, devLive면 가짜 시계:
+    // 반복 모드는 리플레이 길이로 나눈 나머지만큼 과거, 정지 모드는 지정 경기초에 해당하는 리플레이 ms만큼 과거.
+    const gameStartMs = useMemo(() => {
+        if (!gameData) return 0;
+        if (!devLive) return new Date(gameData.game_start_time).getTime();
+        const replayMs = getReplayDurationMs();
+        if (devLiveFreezeSec != null) return serverNow - (Math.min(devLiveFreezeSec, TOTAL_GAME_SECONDS) / TOTAL_GAME_SECONDS) * replayMs;
+        return serverNow - ((serverNow - devAnchorRef.current) % replayMs);
+    }, [gameData, devLive, devLiveFreezeSec, serverNow]);
+
     // live가 아니면(final/레거시) 항상 전체를 표시 — reveal 상태가 단일 진실 소스이므로
     // game_start_time 기반 elapsed와 displayState 간 엣지케이스 불일치를 방지한다.
+    // [2026-10-23 perf] 참조 안정화 — 이 두 memo는 serverNow(매초) 때문에 매초 다시 돌며 새 배열을 만들었고, 공개된 이벤트 수가
+    // 그대로인 초에도 참조가 바뀌어 하류 memo 전부(filteredLogs·computeTeamStats×2·currentScore·쿼터 득점·파울/타임아웃 집계·
+    // 샷차트 SVG)가 재계산·재조정됐다(트레이스: 조용한 초에도 70~130ms). 같은 원본 배열에서 같은 개수가 나오면 이전 결과를
+    // 그대로 돌려준다(라이브 공개 이벤트는 단조 증가 — devLive 반복 모드에서 되감기면 개수가 줄어 자연히 새 배열이 된다).
+    // 원본(gameData.events)은 폴링이 새 이벤트를 붙일 때만 새 배열이 되므로 그때는 정상적으로 다시 계산된다.
+    const visibleEventsRef = useRef<{ src: PbpLog[] | null; out: PbpLog[] }>({ src: null, out: [] });
     const visibleEvents = useMemo<PbpLog[]>(() => {
         if (!gameData) return [];
         const all = gameData?.events as PbpLog[];
         if (displayState !== 'live') return all;
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         const elapsed = serverNow - startMs;
-        return all.filter(e => {
+        const next = all.filter(e => {
             const replayMs = (toGameSeconds(e) / TOTAL_GAME_SECONDS) * getReplayDurationMs();
             return replayMs <= elapsed;
         });
-    }, [gameData, serverNow, displayState]);
+        const prev = visibleEventsRef.current;
+        if (prev.src === all && prev.out.length === next.length) return prev.out;
+        visibleEventsRef.current = { src: all, out: next };
+        return next;
+    }, [gameData, serverNow, displayState, gameStartMs]);
 
+    const visibleShotsRef = useRef<{ src: ShotEvent[] | null; out: ShotEvent[] }>({ src: null, out: [] });
     const visibleShotEvents = useMemo<ShotEvent[]>(() => {
         if (!gameData) return [];
         const all = (gameData?.shot_events ?? []) as ShotEvent[];
         if (displayState !== 'live') return all;
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         const elapsed = serverNow - startMs;
-        return all.filter(s => {
+        const next = all.filter(s => {
             const secs    = (s.quarter - 1) * 720 + (720 - ((s as any).gameClock ?? 0));
             const replayMs = (secs / TOTAL_GAME_SECONDS) * getReplayDurationMs();
             return replayMs <= elapsed;
         });
-    }, [gameData, serverNow, displayState]);
+        const prev = visibleShotsRef.current;
+        if (prev.src === all && prev.out.length === next.length) return prev.out;
+        visibleShotsRef.current = { src: all, out: next };
+        return next;
+    }, [gameData, serverNow, displayState, gameStartMs]);
 
     // [Fix 2026-08-05] "최신 로그 행 배경 페이드" 인터랙션을 위해 각 로그에 visibleEvents 기준
     // 안정적인 원래 인덱스(idx)를 같이 들고 다닌다 — 새 로그가 계속 앞쪽(reverse 후 index 0)에
@@ -1855,15 +2024,15 @@ const MultiGamePbpView: React.FC = () => {
 
     const liveHomeBox = useMemo<PlayerBoxScore[]>(() => {
         if (!gameData || displayState !== 'live' || !hasBoxTimeline) return [];
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         return buildLiveBox(gameData?.box_timeline ?? [], serverNow - startMs, gameData?.home_box ?? []);
-    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+    }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
 
     const liveAwayBox = useMemo<PlayerBoxScore[]>(() => {
         if (!gameData || displayState !== 'live' || !hasBoxTimeline) return [];
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         return buildLiveBox(gameData?.box_timeline ?? [], serverNow - startMs, gameData?.away_box ?? []);
-    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+    }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
 
     // ── 체력 배지 (docs/plan/multiplayer-fatigue.md 5장) ───────────────────────────
     // 예정: 현재 체력(공용 훅) / 라이브: box_timeline tick.c를 리플레이 시점까지 누적(없는 옛 경기는 훅 = 경기 전 체력) /
@@ -1872,11 +2041,15 @@ const MultiGamePbpView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const conditionIds = useMemo(() => [...homeRosterIds, ...awayRosterIds], [rosterIdsKey]);
     const dbConditions = useMultiPlayerConditions(conditionIds);
+    const liveStatFlashes = useMemo(() => {
+        if (!gameData || displayState !== 'live' || !hasBoxTimeline) return undefined;
+        return liveStatFlashesAt(gameData.box_timeline ?? [], serverNow - gameStartMs);
+    }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
     const liveConditions = useMemo(() => {
         if (!gameData || displayState !== 'live' || !hasBoxTimeline) return null;
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         return liveConditionsAt(gameData.box_timeline ?? [], serverNow - startMs);
-    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+    }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
     const finalConditions = useMemo(() => {
         if (displayState !== 'final' || !gameData) return null;
         return new Map<string, number | null>(
@@ -1981,9 +2154,9 @@ const MultiGamePbpView: React.FC = () => {
     // 현재 코트 위 선수(양 팀 합산) — 박스스코어 행 하이라이트용
     const onCourtIds = useMemo<Set<string>>(() => {
         if (!gameData || displayState !== 'live' || !hasBoxTimeline) return new Set();
-        const startMs = new Date(gameData.game_start_time).getTime();
+        const startMs = gameStartMs;
         return getOnCourtIds(gameData?.box_timeline ?? [], serverNow - startMs);
-    }, [gameData, serverNow, displayState, hasBoxTimeline]);
+    }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
 
     const currentScore = useMemo(() => {
         const last = [...visibleEvents].reverse().find(e => e.homeScore != null);
@@ -2044,7 +2217,12 @@ const MultiGamePbpView: React.FC = () => {
         ? new Date(scheduledStartMs).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
         : '';
     const maxSelectableQ = visibleEvents.length > 0 ? Math.max(...visibleEvents.map(e => e.quarter)) : 0;
-    const maxQuarter     = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);
+    // [2026-10-23] 쿼터 셀렉터의 OT 칸은 "실제 플레이 로그"가 5쿼터 이상에 있을 때만. 엔진(liveEngine stepPossession)이
+    // 4쿼터 종료 시 state.quarter=5로 올린 뒤 '경기 종료 (Final)' SYSTEM 로그를 남겨서, 연장이 없어도 그 로그 하나가
+    // quarter 5로 저장된다 — 그래서 전체 로그 최대값으로 세면 항상 OT1이 떴음. SYSTEM 로그는 제외하고, 스포일러 방지를
+    // 위해 공개된(visible) 로그 기준으로만 센다.
+    const maxPlayedQuarter = visibleEvents.reduce((m, e) => (e.teamId !== 'SYSTEM' && e.quarter > m ? e.quarter : m), 0);
+    const maxQuarter     = Math.max(maxPlayedQuarter, 4);
     // 라이브 인사이트 패널용 — maxQuarter는 항상 최종 경기 기준이라 연장전 여부가 스포일러가 됨.
     // 지금까지 공개된 로그 기준(maxSelectableQ)으로 대체(최소 4쿼터는 보장).
     const liveMaxQuarter       = Math.max(maxSelectableQ, 4);
@@ -2088,13 +2266,15 @@ const MultiGamePbpView: React.FC = () => {
     }, [showBox, gameData, searchParams]);
 
     // ── final 전용: 싱글플레이어 탭 재사용을 위한 어댑터 + 집계 ─────────────────
+    // [2026-10-23] 예정 상태(gameData 없음)엔 0스탯 로스터(scheduledHomeBox)로 어댑터를 만들어 박스스코어 탭에 명단이 뜨게 한다 —
+    // rosterCache가 없어 스텁({id,name,position})만 들어가므로 OVR 칸은 PlayerIdentityCells의 스텁 판별로 스켈레톤이 된다(70 폴백 아님).
     const homeTeamAdapter = useMemo(
-        () => buildTeamAdapter(gameData?.home_team_id ?? '', homeName, gameData?.home_box ?? [], rosterCache),
-        [gameData?.home_team_id, homeName, gameData?.home_box, rosterCache],
+        () => buildTeamAdapter(homeTeamId ?? '', homeName, gameData?.home_box?.length ? gameData.home_box : scheduledHomeBox, rosterCacheWithStats),
+        [homeTeamId, homeName, gameData?.home_box, scheduledHomeBox, rosterCacheWithStats],
     );
     const awayTeamAdapter = useMemo(
-        () => buildTeamAdapter(gameData?.away_team_id ?? '', awayName, gameData?.away_box ?? [], rosterCache),
-        [gameData?.away_team_id, awayName, gameData?.away_box, rosterCache],
+        () => buildTeamAdapter(awayTeamId ?? '', awayName, gameData?.away_box?.length ? gameData.away_box : scheduledAwayBox, rosterCacheWithStats),
+        [awayTeamId, awayName, gameData?.away_box, scheduledAwayBox, rosterCacheWithStats],
     );
     const allBoxPlayers = useMemo(
         () => [...(gameData?.home_box ?? []), ...(gameData?.away_box ?? [])],
@@ -2114,6 +2294,22 @@ const MultiGamePbpView: React.FC = () => {
         blk: Math.max(0, ...allBoxPlayers.map(p => p.blk)),
         tov: Math.max(0, ...allBoxPlayers.map(p => p.tov)),
     }), [allBoxPlayers]);
+    // [2026-10-23] 라이브 박스스코어 탭용 — 최종 박스(gameData.home_box)는 스포일러라 리플레이 시점 박스(liveHomeBox/liveAwayBox)로 리더·MVP 계산
+    const liveAllBoxPlayers = useMemo(() => [...liveHomeBox, ...liveAwayBox], [liveHomeBox, liveAwayBox]);
+    const liveMvpId = useMemo(
+        () => liveAllBoxPlayers.length > 0
+            ? liveAllBoxPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), liveAllBoxPlayers[0]).playerId
+            : '',
+        [liveAllBoxPlayers],
+    );
+    const liveLeaders = useMemo<GameStatLeaders>(() => ({
+        pts: Math.max(0, ...liveAllBoxPlayers.map(p => p.pts)),
+        reb: Math.max(0, ...liveAllBoxPlayers.map(p => p.reb)),
+        ast: Math.max(0, ...liveAllBoxPlayers.map(p => p.ast)),
+        stl: Math.max(0, ...liveAllBoxPlayers.map(p => p.stl)),
+        blk: Math.max(0, ...liveAllBoxPlayers.map(p => p.blk)),
+        tov: Math.max(0, ...liveAllBoxPlayers.map(p => p.tov)),
+    }), [liveAllBoxPlayers]);
 
     // ── Loading / Scheduled / Error ───────────────────────────────────────────
 
@@ -2163,12 +2359,170 @@ const MultiGamePbpView: React.FC = () => {
     // BoxScorePlaceholder로 튀지 않게 — isScheduled 대신 "0스탯 로스터를 실제로 만들었는가"로 판단.
     const renderBoxPanel = (side: 'away' | 'home') => {
         const abbr = side === 'away' ? awayAbbr : homeAbbr;
-        if (showBox) return <PlayerBoxPanel players={(side === 'away' ? gameData?.away_box : gameData?.home_box) ?? []} label={abbr} conditions={boxConditions} />;
-        if (hasBoxTimeline) return <PlayerBoxPanel players={side === 'away' ? liveAwayBox : liveHomeBox} label={abbr} onCourtIds={onCourtIds} conditions={boxConditions} />;
+        const linkProps = { playerById: rosterCache, getPlayerHref };
+        if (showBox) return <PlayerBoxPanel players={(side === 'away' ? gameData?.away_box : gameData?.home_box) ?? []} label={abbr} conditions={boxConditions} {...linkProps} />;
+        if (hasBoxTimeline) return <PlayerBoxPanel players={side === 'away' ? liveAwayBox : liveHomeBox} label={abbr} onCourtIds={onCourtIds} conditions={boxConditions} statFlashes={liveStatFlashes} {...linkProps} />;
         const scheduledBox = side === 'away' ? scheduledAwayBox : scheduledHomeBox;
-        if (scheduledBox.length > 0) return <PlayerBoxPanel players={scheduledBox} label={abbr} conditions={boxConditions} />;
+        if (scheduledBox.length > 0) return <PlayerBoxPanel players={scheduledBox} label={abbr} conditions={boxConditions} {...linkProps} />;
         return <BoxScorePlaceholder label={abbr} />;
     };
+
+    // [2026-10-23] PBP 피드 본문(헤더+쿼터 필터+로그 목록) — 게임 센터 가운데 카드와 플레이-바이-플레이 탭이 같은 JSX를 공유한다.
+    // 훅은 없고 위에서 계산된 filteredLogs/quarterFilter 등만 참조하므로 렌더 직전에 한 번 만들어 두 곳에서 쓴다.
+    const pbpFeedBody = (
+        <>
+        {/* 헤더(좌) + 쿼터 필터(우) */}
+        <div className="shrink-0 px-3 h-10 flex items-center bg-slate-800 border-b border-slate-700">
+            <div className="flex items-center justify-between gap-3 w-full">
+                <p className="text-sm text-slate-300 font-semibold">
+                    플레이-바이-플레이
+                </p>
+                <SegmentedControl
+                    size="sm"
+                    value={String(quarterFilter)}
+                    onChange={(v) => setQuarterFilter(Number(v) as 0|1|2|3|4|5)}
+                    options={([0, 1, 2, 3, 4, ...(maxQuarter > 4 ? Array.from({ length: maxQuarter - 4 }, (_, i) => i + 5) : [])] as number[]).map(q => ({
+                        value: String(q),
+                        label: q === 0 ? '전체' : q <= 4 ? `${q}Q` : `OT${q - 4}`,
+                        disabled: q > maxSelectableQ && q !== 0,
+                    }))}
+                />
+            </div>
+        </div>
+
+        {/* PBP 스크롤 */}
+        <div
+            className="flex-1 min-h-0 overflow-y-auto text-sm bg-slate-900"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+        >
+            {/* [Fix 2026-08-05] "원정 코멘터리 | 원정 점수 | 쿼터 | 시간 | 홈 점수 | 홈 코멘터리"
+                구조로 재편 — 이벤트가 어느 팀 소속인지에 따라 코멘터리가 좌(원정)/우(홈) 중
+                한쪽에만 채워지고 반대쪽은 비워둔다(중앙 쿼터/시계/점수 기준 좌우 대칭 레이아웃). */}
+            <div className="flex items-center gap-2 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
+                <div className="flex-1 text-right text-sm font-black text-slate-500 truncate">{awayName}</div>
+                {/* [Fix 2026-08-05] "양 팀 스코어와 시간 컬럼 간격이 너무 넓다" 요청 — 이 3칸만
+                    별도 gap-1로 묶어서 본문 행의 centerCols와 동일하게 좁힘(바깥 코멘터리 칸
+                    사이 gap-2는 그대로 유지). */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="w-8 text-center text-sm font-black text-slate-500"></div>
+                    <div className="w-20 text-center text-sm font-black text-slate-500">시간</div>
+                    <div className="w-8 text-center text-sm font-black text-slate-500"></div>
+                </div>
+                <div className="flex-1 text-sm font-black text-slate-500 truncate">{homeName}</div>
+            </div>
+            {/* [2026-10-23] divide-y 대신 행마다 border-b — divide-y는 맨 위 행(첫 자식)엔 선이 없다가 새 로그가 위에
+                끼어들어 둘째 행이 되는 순간 border-top이 생기는데, 그 행의 border-color가 preflight 기본(gray-200)에서
+                slate로 바뀌는 걸 transition-colors가 150ms 동안 보간해 흰 선이 번쩍였다. 행마다 색을 마운트 때 고정하면 사라진다. */}
+            <div>
+                {filteredLogs.map(({ log, idx }, i) => {
+                    const isHome      = log.teamId === (homeTeamId ?? '');
+                    const isScore     = log.type === 'score';
+                    const isFT        = log.type === 'freethrow';
+                    const isFoul      = log.type === 'foul';
+                    const isTurnover  = log.type === 'turnover';
+                    const isBlock     = log.type === 'block';
+                    const isInfo      = log.type === 'info' || log.type === 'timeout';
+                    const isInjury    = log.type === 'injury';
+                    // [Fix] teamId === 'SYSTEM'이 실제 엔진 마커 — 텍스트 매칭은 "2쿼터 시작"처럼
+                    // '경기 시작'/'종료'/'하프 타임'을 포함하지 않는 로그를 놓쳤음 (GamePbpTab.tsx 동일 수정 참고)
+                    const isFlowEvent = log.teamId === 'SYSTEM';
+
+                    // [Fix 2026-08-05] "가장 최신 로그 행은 배경을 살짝 밝게 켰다가 시간에 따라
+                    // 페이드"— 지금 필터/정렬 결과에서 맨 위(i===0)가 항상 가장 최근 로그.
+                    // key를 idx(visibleEvents 기준 불변 인덱스)로 줘서, 새 로그가 들어와 이
+                    // 자리를 넘겨받을 때마다 실제로 새 DOM 노드가 마운트되어 CSS 애니메이션이
+                    // 매번 처음부터 재생된다(포지션 기반 key였다면 노드가 재사용돼 재생 안 됨).
+                    const flashClass = i === 0 ? ' animate-pbp-row-flash' : '';
+
+                    if (isFlowEvent) {
+                        return (
+                            <div key={idx} className={`flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
+                                <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-sm">
+                                    <Clock size={12} />
+                                    <span>{log.text}</span>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    const centerCols = (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                            <div className="w-8 text-center pt-0.5 overflow-hidden">
+                                {log.awayScore !== undefined && (
+                                    <span className={`text-sm font-black tracking-tight tabular-nums ${!isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
+                                        {log.awayScore}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="w-20 text-slate-500 font-bold text-sm text-center tabular-nums pt-0.5 overflow-hidden">
+                                {log.quarter}Q {log.timeRemaining || '-'}
+                            </div>
+                            <div className="w-8 text-center pt-0.5 overflow-hidden">
+                                {log.homeScore !== undefined && (
+                                    <span className={`text-sm font-black tracking-tight tabular-nums ${isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
+                                        {log.homeScore}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+
+                    if (log.text.startsWith('교체:')) {
+                        const inMatch  = log.text.match(/IN \[(.*?)\]/);
+                        const outMatch = log.text.match(/OUT \[(.*?)\]/);
+                        if (inMatch && outMatch) {
+                            const inPlayers  = inMatch[1].split(',').map(s => s.trim());
+                            const outPlayers = outMatch[1].split(',').map(s => s.trim());
+                            const isSubHome  = log.teamId === (homeTeamId ?? '');
+                            return (
+                                <div key={idx} className={`flex items-start py-2 px-3 gap-2 border-b border-slate-800/50 hover:bg-white/5 transition-colors${flashClass}`}>
+                                    <div className="flex-1 min-w-0">
+                                        {!isSubHome && <SubChangeBlock side="away" inPlayers={inPlayers} outPlayers={outPlayers} />}
+                                    </div>
+                                    {centerCols}
+                                    <div className="flex-1 min-w-0">
+                                        {isSubHome && <SubChangeBlock side="home" inPlayers={inPlayers} outPlayers={outPlayers} />}
+                                    </div>
+                                </div>
+                            );
+                        }
+                    }
+
+                    let textColor = 'text-slate-400';
+                    if (isInjury) textColor = 'text-red-400 font-bold';
+                    else if (isInfo) textColor = 'text-slate-300';
+                    else if (isScore) textColor = 'text-slate-200';
+                    else if (isFT) textColor = 'text-cyan-400';
+                    else if (isFoul) textColor = 'text-orange-400';
+                    else if (isTurnover) textColor = 'text-red-400';
+                    else if (isBlock) textColor = 'text-blue-400';
+
+                    const bgClass = isInjury
+                        ? 'bg-red-900/20 border-y border-red-900/30'
+                        : 'border-b border-slate-800/50 hover:bg-white/5 transition-colors';
+
+                    return (
+                        <div key={idx} className={`flex items-center py-2 px-3 gap-2 ${bgClass}${flashClass}`}>
+                            <div className={`flex-1 min-w-0 text-right break-words leading-relaxed text-sm ${textColor}`}>
+                                {!isHome ? log.text : ''}
+                            </div>
+                            {centerCols}
+                            <div className={`flex-1 min-w-0 break-words leading-relaxed text-sm ${textColor}`}>
+                                {isHome ? log.text : ''}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {filteredLogs.length === 0 && (
+                    <div className="py-10 text-center text-slate-600 text-sm ko-normal">
+                        {isLive || isScheduled ? '경기 시작 대기 중…' : '해당 쿼터의 기록이 없습니다.'}
+                    </div>
+                )}
+            </div>
+        </div>
+        </>
+    );
 
     return (
         <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
@@ -2234,33 +2588,6 @@ const MultiGamePbpView: React.FC = () => {
                                         </span>
                                     )}
                                 </div>
-                            ) : isLive && activeJumbotron ? (
-                                activeJumbotron.kind === 'flow' ? (
-                                    <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
-                                        <span
-                                            className="text-lg font-black text-white text-center"
-                                            style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
-                                        >
-                                            {activeJumbotron.text}
-                                        </span>
-                                    </div>
-                                ) : activeJumbotron.kind === 'combo' ? (
-                                    <MilestoneJumbotronBody
-                                        key={activeJumbotron.key}
-                                        teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                        playerName={activeJumbotron.player.playerName}
-                                        accentClass={COMBO_ACCENT[activeJumbotron.combo]}
-                                        label={COMBO_LABEL[activeJumbotron.combo]}
-                                    />
-                                ) : (
-                                    <MilestoneJumbotronBody
-                                        key={activeJumbotron.key}
-                                        teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                        playerName={activeJumbotron.player.playerName}
-                                        accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
-                                        label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
-                                    />
-                                )
                             ) : isLive ? (
                             // [Fix 2026-08-05] "경기 중 화면 헤더 수정이 경기 종료 화면 헤더에도 영향을 미친다,
                             // 둘을 분리해달라" 요청 — 이 grid(점보트론 idle 3단 레이아웃)는 이제 isLive일
@@ -2273,74 +2600,111 @@ const MultiGamePbpView: React.FC = () => {
                             // 런이 있을 때만 중앙 열 아래에 추가(좌우 열은 빈 칸 — grid auto-flow가 3칸씩 채운
                             // 뒤 자동으로 다음 행으로 넘어가는 걸 이용). self-stretch — 이 wrapper 자체가
                             // 가운데 컬럼 전체 폭(40%)까지 늘어나야 내부 grid가 진짜 40% 폭 기준으로 계산됨.
-                            <div className="relative self-stretch w-full grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 px-4 min-h-20">
-                                {/* [Fix 2026-08-05] "스코어링 런 발생 시 점보트론 중앙 하단에 불타는 것처럼 보이는
-                                    붉은 타원형 그라디언트" 요청 — 런 정보 텍스트 바로 아래에 은은하게 이글거리는
-                                    불빛처럼 보이도록 radial-gradient 타원 + blur + animate-pulse. -z-10이라
-                                    부모(relative)의 static 자식들(파울/타임아웃/쿼터·클락 텍스트)보다 항상 뒤에
-                                    그려짐 — absolute라 grid 셀을 차지하지 않아 DOM 위치는 레이아웃에 영향 없음. */}
+                            // [2026-10-23] 가운데 컬럼 2행 grid —
+                            //   파울/보너스 │ 쿼터·게임클락 (+런이 있을 때만 그 아래 한 줄)
+                            //   타임아웃    │ 쿼터별 득점표 ↔ 마일스톤        (좌우는 2행을 합친 높이의 세로 중앙)
+                            // 좌우 칸은 row-span-2 + self-center. 점보트론 이벤트는 2행만 대체.
+                            <div className="relative self-stretch w-full px-4 py-2">
+                                {/* 런 글로우 위·아래 — 아래는 바닥에서 솟는 타원, 위는 상하 반전 */}
                                 {!showBox && isLive && activeRun && (
-                                    <div
-                                        className="absolute left-1/2 -translate-x-1/2 -z-10 pointer-events-none animate-pulse"
-                                        style={{
-                                            bottom: '-40px',
-                                            width: '900px',
-                                            height: '200px',
-                                            background: 'radial-gradient(ellipse 50% 50% at 50% 100%, rgba(255,120,0,0.6) 0%, rgba(239,68,68,0.4) 45%, rgba(239,68,68,0) 75%)',
-                                            filter: 'blur(10px)',
-                                        }}
-                                    />
+                                    <>
+                                        <div
+                                            className="absolute left-1/2 -translate-x-1/2 -z-10 pointer-events-none animate-pulse"
+                                            style={{
+                                                top: '-40px',
+                                                width: '900px',
+                                                height: '200px',
+                                                background: 'radial-gradient(ellipse 50% 50% at 50% 0%, rgba(255,120,0,0.6) 0%, rgba(239,68,68,0.4) 45%, rgba(239,68,68,0) 75%)',
+                                                filter: 'blur(10px)',
+                                            }}
+                                        />
+                                        <div
+                                            className="absolute left-1/2 -translate-x-1/2 -z-10 pointer-events-none animate-pulse"
+                                            style={{
+                                                bottom: '-40px',
+                                                width: '900px',
+                                                height: '200px',
+                                                background: 'radial-gradient(ellipse 50% 50% at 50% 100%, rgba(255,120,0,0.6) 0%, rgba(239,68,68,0.4) 45%, rgba(239,68,68,0) 75%)',
+                                                filter: 'blur(10px)',
+                                            }}
+                                        />
+                                    </>
                                 )}
-                                {/* [Fix 2026-08-05] "스코어링 런 카운트가 떠도 좌우 팀정보가 위로 밀리지 않게" —
-                                    3개 컨테이너(원정/쿼터·클락/홈)에 h-full을 줘서 자기 행의 높이를 그대로
-                                    채우게 함. grid 자체에 min-h-20(런 정보까지 2줄 들어갈 여유)을 줘서, 런이
-                                    뜨든 안 뜨든 행 높이가 항상 동일 — 결과적으로 팀정보가 절대 안 밀림. */}
-                                {/* 1행 1열: 원정 파울/보너스 + 타임아웃 */}
-                                <div className="h-full flex flex-col justify-center items-start gap-1.5 justify-self-start text-xl text-slate-400">
-                                    {/* [Fix 2026-08-05] "BONUS 칩 표시 시 타임아웃 칸과 겹침" — BONUS 뱃지
-                                        (px-1 패딩 포함) 실제 렌더링 폭이 기존 w-16(64px)보다 넓어서 박스를
-                                        벗어나 옆 타임아웃 칸 쪽으로 overflow가 흘러넘쳤음. w-24(96px)로 확장해
-                                        여유를 둠. isLive 체크는 생략 — 이 grid 자체가 isLive 분기 안에서만
-                                        렌더되므로 항상 true. */}
-                                    <FoulBonusBadge fouls={awayFouls} align="left" />
-                                    <TimeoutDots left={timeoutsLeft.away} />
-                                </div>
+                                <div className="w-full grid grid-cols-[1fr_auto_1fr] grid-rows-[auto_auto] items-center gap-x-2 gap-y-1">
+                                    {/* 1열: 원정 파울/보너스 + 타임아웃 — 3행 전체를 차지하고(row-span-3) 그 안에서 세로 중앙 */}
+                                    <div className="col-start-1 row-start-1 row-span-2 self-center justify-self-start flex flex-col items-start gap-1.5 text-xl text-slate-400">
+                                        <FoulBonusBadge fouls={awayFouls} align="left" />
+                                        <TimeoutDots left={timeoutsLeft.away} />
+                                    </div>
 
-                                {/* [Fix 2026-08-05] "런 발생 시 가운데 영역 텍스트는 두 줄 처리되고 수직/수평
-                                    중앙정렬" 요청 — 쿼터+클락 줄과 런 정보 줄을 같은 flex-col 안에 넣어 하나의
-                                    응집된 2줄 블록으로 만들고, justify-center로 그 블록 자체를(1줄이든 2줄이든)
-                                    이 컬럼의 세로 중앙에 정렬. 가로는 items-center로 두 줄 모두 중앙 정렬. */}
-                                <div className="h-full flex flex-col items-center justify-center gap-0.5 justify-self-center">
-                                    <div className="flex items-center gap-2">
-                                        {/* [Fix 2026-08-04] "Final" 텍스트 삭제 요청 — quarterLabel은 라이브가 아닐 때
-                                            'Final'이 되므로, 라이브일 때(Q{n} 표시)만 렌더링. */}
-                                        {isLive && (
-                                            <span className="text-3xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
-                                        )}
-                                        {isLive && currentTimeRemaining && (
-                                            <>
-                                                <span className="text-slate-600 text-3xl leading-none font-light">|</span>
-                                                <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">{currentTimeRemaining}</span>
-                                            </>
+                                    {/* 2열 1행: 쿼터 | 게임클락 + (런이 있을 때만) 그 아래 스코어링 런 — 런 자리를 예약하지 않아 런이 없으면
+                                        클락이 빈 공간 없이 1행을 꽉 채운다(좌우 파울/타임아웃은 row-span-2 self-center라 영향 없음) */}
+                                    <div className="col-start-2 row-start-1 flex flex-col items-center justify-center gap-0.5">
+                                        <div className="flex items-center justify-center gap-2">
+                                            {isLive && (
+                                                <span className="text-3xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
+                                            )}
+                                            {isLive && currentTimeRemaining && (
+                                                <>
+                                                    <span className="text-slate-600 text-3xl leading-none font-light">|</span>
+                                                    <span className="text-3xl font-black tabular-nums text-slate-300 leading-none">{currentTimeRemaining}</span>
+                                                </>
+                                            )}
+                                        </div>
+                                        {!showBox && isLive && activeRun && (
+                                            <span className="text-base font-bold text-white whitespace-nowrap">
+                                                🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+                                                {activeRun.teamPts}-{activeRun.oppPts}
+                                            </span>
                                         )}
                                     </div>
-                                    {/* 스코어링 런 정보 — 런이 실제로 발생 중일 때만 2번째 줄로 추가(자리 예약
-                                        없이 grid 전체 min-h-20으로 이미 공간을 확보해뒀으므로 팀정보는 안 밀림). */}
-                                    {!showBox && isLive && activeRun && (
-                                        <span className="text-2xl font-bold text-white whitespace-nowrap">
-                                            🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
-                                            {activeRun.teamPts}-{activeRun.oppPts}
-                                        </span>
-                                    )}
-                                </div>
+                                    {/* 2열 2행: 쿼터별 득점표 ↔ 점보트론 이벤트. min-h로 표 높이 예약 */}
+                                    <div className="col-start-2 row-start-2 flex items-center justify-center min-h-[64px]">
+                                        {activeJumbotron ? (
+                                            activeJumbotron.kind === 'flow' ? (
+                                                <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
+                                                    <span
+                                                        className="text-base font-black text-white text-center"
+                                                        style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
+                                                    >
+                                                        {activeJumbotron.text}
+                                                    </span>
+                                                </div>
+                                            ) : activeJumbotron.kind === 'combo' ? (
+                                                <MilestoneJumbotronBody
+                                                    key={activeJumbotron.key}
+                                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                                                    playerName={activeJumbotron.player.playerName}
+                                                    accentClass={COMBO_ACCENT[activeJumbotron.combo]}
+                                                    label={COMBO_LABEL[activeJumbotron.combo]}
+                                                />
+                                            ) : (
+                                                <MilestoneJumbotronBody
+                                                    key={activeJumbotron.key}
+                                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                                                    playerName={activeJumbotron.player.playerName}
+                                                    accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
+                                                    label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
+                                                />
+                                            )
+                                        ) : (
+                                            <QuarterScores
+                                                allLogs={visibleEvents}
+                                                homeTeamId={(homeTeamId ?? '')}
+                                                currentQuarter={currentQuarter}
+                                                homeAbbr={homeAbbr}
+                                                awayAbbr={awayAbbr}
+                                                compact
+                                            />
+                                        )}
+                                    </div>
 
-                                {/* 1행 3열: 홈 타임아웃 + 파울/보너스 */}
-                                <div className="h-full flex flex-col justify-center items-end gap-1.5 justify-self-end text-xl text-slate-400">
-                                    {/* [Fix 2026-08-05] 원정쪽과 동일한 이유 — w-16 → w-24 확장. */}
-                                    <FoulBonusBadge fouls={homeFouls} align="right" />
-                                    <TimeoutDots left={timeoutsLeft.home} />
+                                    {/* 3열: 홈 파울/보너스 + 타임아웃 — 1열과 대칭, 3행 전체 세로 중앙 */}
+                                    <div className="col-start-3 row-start-1 row-span-2 self-center justify-self-end flex flex-col items-end gap-1.5 text-xl text-slate-400">
+                                        <FoulBonusBadge fouls={homeFouls} align="right" />
+                                        <TimeoutDots left={timeoutsLeft.home} />
+                                    </div>
                                 </div>
-
                             </div>
                             ) : null}
                         </div>
@@ -2420,52 +2784,46 @@ const MultiGamePbpView: React.FC = () => {
                 homeTeamId·awayTeamId(schedule 폴백 포함) 변수로 바꿔서 gameData가 null이어도 안전하게
                 렌더된다 — scheduled에서도 라이브와 동일한 3열 레이아웃이 뜨고, 각 패널은 데이터가
                 없으므로 자연스럽게 빈 상태(BoxScorePlaceholder, "경기 시작 대기 중…" 등)로 표시된다. */}
+            {/* [2026-10-23] 라이브/예정 탭 그룹 — 점보트론(스코어버그 헤더) 바로 아래, 가운데 정렬. 종료 화면 TabBar와 같은 공용 컴포넌트 */}
             {(isLive || isScheduled) && (
+                <TabBar
+                    tabs={LIVE_TABS}
+                    activeTab={liveTab}
+                    onTabChange={setLiveTab}
+                    align="center"
+                    bgClassName="bg-slate-900"
+                    rightSlot={devLive ? (
+                        <span className="text-xs font-bold text-amber-400 ko-normal" title="URL ?devLive 파라미터로 켜진 개발용 리플레이 — 실제 중계가 아닙니다">
+                            DEV 리플레이{devLiveFreezeSec != null ? ` · ${devLiveFreezeSec}초 정지` : ' · 반복'}
+                        </span>
+                    ) : undefined}
+                />
+            )}
+
+            {(isLive || isScheduled) && liveTab === 'center' && (
             // [Fix 2026-10-07] 바디 전체를 세로 스크롤 가능하게 — 바깥 래퍼가 스크롤을 맡고, 안쪽 3열
             // flex는 min-h-full로 최소 화면 높이를 채우되 컨텐츠가 길면 그만큼 늘어난다.
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
-            <div className="flex min-h-full">
+            // [2026-10-23] 3열을 카드화 — 바디 p-4 여백 + 열 사이 gap-4, 각 열은 공용 Table card 변형과 같은
+            // 토큰(bg-slate-900 · border-slate-800 · rounded-xl · shadow-lg). items-start라 각 카드는 자기 내용 높이만큼만.
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+            <div className="flex gap-4 items-start min-h-full">
 
-                {/* LEFT: 원정팀 박스스코어 + 하단 인사이트 그래프.
-                    [Fix 2026-08-04] "인사이트 그래프 영역을 좌측 하단으로" 요청 — CENTER 하단에 있던
-                    GameInsightsPanel을 이쪽으로 이동(PBP 피드와 자리를 맞바꿈). */}
-                <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col">
+                {/* LEFT: 원정팀 박스스코어(간소 컬럼). [2026-10-23] 여기 있던 인사이트 그래프는 플레이-바이-플레이 탭으로 이동 예정 */}
+                <div className={`w-[30%] flex flex-col ${LIVE_CARD}`}>
                     {renderBoxPanel('away')}
-                    {/* 경기 그래프(인사이트) — allLogs/homeOreb/awayOreb/maxQuarter는 라이브 세이프 값
-                        (visibleEvents, liveHomeOreb/liveAwayOreb, liveMaxQuarter)으로 교체 — 컴포넌트
-                        자체는 무수정.
-                        [Fix 2026-08-05] "하단을 꽉 채우지 말고 낮은 고정 높이로" 요청 — flex-1(남는
-                        세로 공간 전부 차지) 대신 h-[300px] 고정(처음 200px로 적용 후 300px로 조정).
-                        shrink-0으로 위 박스스코어 패널이 길어져도 이 영역이 눌려서 찌그러지지 않게 함. */}
-                    <div className="h-[300px] shrink-0 overflow-y-auto border-t border-slate-800" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-                        <GameInsightsPanel
-                            allLogs={visibleEvents}
-                            homeTeamId={(homeTeamId ?? '')}
-                            homeStats={homeStats}
-                            awayStats={awayStats}
-                            homeOreb={liveHomeOreb}
-                            awayOreb={liveAwayOreb}
-                            maxQuarter={liveMaxQuarter}
-                            homeColor={homeColor}
-                            awayColor={awayColor}
-                            homeAbbr={homeAbbr}
-                            awayAbbr={awayAbbr}
-                            boxTimeline={gameData?.box_timeline}
-                            homeBox={gameData?.home_box ?? []}
-                            awayBox={gameData?.away_box ?? []}
-                        />
-                    </div>
+                    {/* [2026-10-23] 인사이트 그래프(GameInsightsPanel)는 게임 센터에서 제거 — 플레이-바이-플레이 탭으로 이동 예정 */}
                 </div>
 
                 {/* CENTER: 풀코트 샷차트(상단, aspect-ratio) + PBP 피드(하단).
                     [Fix 2026-08-04] "PBP 코멘터리 영역을 가운데로" 요청 — LEFT 컬럼에 있던 PBP 피드를
                     이쪽으로 이동(인사이트 그래프와 자리를 맞바꿈). 전광판은 헤더 가운데 컬럼으로 통합돼
                     여기 있던 검은 LED 바는 삭제됨. */}
-                <div className="flex-1 min-w-0 flex flex-col bg-slate-950">
+                {/* [2026-10-23] 샷차트와 PBP를 각각 별도 카드로 — 중앙 컬럼은 카드 두 장을 세로로 쌓는 컨테이너 */}
+                <div className="flex-1 min-w-0 flex flex-col gap-4">
                     {liveWarning && <InlineNotice tone="warning" className="shrink-0">{liveWarning}</InlineNotice>}
 
-                    {/* 샷차트 */}
-                    <div className="shrink-0 border-b border-slate-700">
+                    {/* 샷차트 카드 */}
+                    <div className={`shrink-0 ${LIVE_CARD}`}>
                         <MultiFullCourtChart
                             homeTeamId={(homeTeamId ?? '')}
                             homeColor={homeColor}
@@ -2480,187 +2838,144 @@ const MultiGamePbpView: React.FC = () => {
                             courtThree={homeTeam?.court_three}
                             courtShowLogo={homeTeam?.court_show_logo}
                             courtLogoScale={homeTeam?.court_logo_scale}
+                            headerVariant="split"
+                            awayTextColor={awayText}
+                            homeTextColor={homeText}
                         />
                     </div>
 
-                    {/* PBP 피드 */}
-                    <div className="shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800">
-                        {/* 헤더 + 쿼터 필터 */}
-                        <div className="shrink-0 px-3 h-9 flex items-center bg-slate-800 border-b border-slate-700">
-                            <div className="flex items-center gap-3">
-                                <p className="text-xs text-slate-300 font-semibold">
-                                    플레이-바이-플레이
-                                </p>
-                                <SegmentedControl
-                                    size="sm"
-                                    value={String(quarterFilter)}
-                                    onChange={(v) => setQuarterFilter(Number(v) as 0|1|2|3|4|5)}
-                                    options={([0, 1, 2, 3, 4, ...(maxQuarter > 4 ? Array.from({ length: maxQuarter - 4 }, (_, i) => i + 5) : [])] as number[]).map(q => ({
-                                        value: String(q),
-                                        label: q === 0 ? '전체' : q <= 4 ? `${q}Q` : `OT${q - 4}`,
-                                        disabled: q > maxSelectableQ && q !== 0,
-                                    }))}
+                    {/* PBP 피드 카드 */}
+                    <div className={`shrink-0 min-h-[160px] max-h-[70vh] flex flex-col ${LIVE_CARD}`}>
+                        {pbpFeedBody}
+                    </div>
+                </div>
+
+                {/* RIGHT: 홈팀 박스스코어(간소 컬럼). [2026-10-23] 여기 있던 쿼터별 득점표(점보트론으로 이동)와 팀 스탯 비교(팀 스탯 탭 예정)는 제거 */}
+                <div className={`w-[30%] flex flex-col ${LIVE_CARD}`}>
+                    {renderBoxPanel('home')}
+                </div>
+            </div>
+            </div>
+            )}
+
+            {/* [2026-10-23] 라이브 박스스코어 탭 — 종료 화면과 같은 GameBoxScoreTab(전체 컬럼·OVR·Traditional/Advanced/Defense)을
+                리플레이 시점 박스(liveHomeBox/liveAwayBox)로 그린다. 예정 상태는 0스탯 로스터(scheduledHomeBox/AwayBox). 미출전 행은 "출전 대기". */}
+            {(isLive || isScheduled) && liveTab === 'box' && (
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+                    <div className={LIVE_CARD}>
+                        <GameBoxScoreTab
+                            homeTeam={homeTeamAdapter}
+                            awayTeam={awayTeamAdapter}
+                            homeBox={hasBoxTimeline ? liveHomeBox : scheduledHomeBox}
+                            awayBox={hasBoxTimeline ? liveAwayBox : scheduledAwayBox}
+                            mvpId={liveMvpId}
+                            leaders={liveLeaders}
+                            teams={[]}
+                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
+                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                            splitLayout
+                            getPlayerHref={getPlayerHref}
+                            loading={isLive && (!gameData || !hasBoxTimeline)}
+                            dnpLabel="출전 대기"
+                            hideOvr
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* [2026-10-23] 라이브 샷 차트 탭 — 종료 화면과 같은 GameShotChartTab(풀코트·선수 필터 표·존별 성공률·히트맵)을 공개된 슛(visibleShotEvents)과
+                리플레이 시점 박스(POS/MP 열용)로 그린다. 예정 상태는 슛이 없어 빈 코트 + 0스탯 로스터. */}
+            {(isLive || isScheduled) && liveTab === 'shot' && (
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+                    <div className={LIVE_CARD}>
+                        <GameShotChartTab
+                            homeTeam={homeTeamAdapter}
+                            awayTeam={awayTeamAdapter}
+                            shotEvents={visibleShotEvents}
+                            homeBadge={{ color: homeColor, abbr: homeAbbr }}
+                            awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                            homeBox={hasBoxTimeline ? liveHomeBox : scheduledHomeBox}
+                            awayBox={hasBoxTimeline ? liveAwayBox : scheduledAwayBox}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* [2026-10-23] 라이브 플레이-바이-플레이 탭 — 세로 한 열 가운데 정렬(팀 스탯 탭과 동일 폭). 위: 인사이트 그래프(게임 센터 좌측 하단에서 이동,
+                고정 300px), 아래: PBP 피드(게임 센터 가운데 카드와 같은 pbpFeedBody, 여기선 더 길게 max-h-[75vh]). */}
+            {(isLive || isScheduled) && liveTab === 'pbp' && (
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4 flex flex-col gap-4">
+                    {/* 인사이트 카드는 화면 좌우 꽉 채움(w-full), 아래 PBP 피드만 가운데 열(max-w-3xl).
+                        shrink-0 필수 — 래퍼가 flex-col이라 overflow-hidden(LIVE_CARD)인 이 카드는 세로 공간이 모자라면 min-height 0으로
+                        취급돼 높이 0까지 찌그러진다(2026-10-23 실제 발생: 카드가 가는 선 하나로 보임). 축소 대신 래퍼 스크롤로 넘긴다. */}
+                    <div className={`w-full shrink-0 ${LIVE_CARD}`}>
+                            <div className="h-10 px-4 flex items-center bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">인사이트</div>
+                            <div className="h-[300px] overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+                                <GameInsightsPanel
+                                    allLogs={visibleEvents}
+                                    homeTeamId={(homeTeamId ?? '')}
+                                    homeStats={homeStats}
+                                    awayStats={awayStats}
+                                    homeOreb={liveHomeOreb}
+                                    awayOreb={liveAwayOreb}
+                                    maxQuarter={liveMaxQuarter}
+                                    homeColor={homeColor}
+                                    awayColor={awayColor}
+                                    homeAbbr={homeAbbr}
+                                    awayAbbr={awayAbbr}
+                                    boxTimeline={gameData?.box_timeline}
+                                    homeBox={gameData?.home_box ?? []}
+                                    awayBox={gameData?.away_box ?? []}
+                                />
+                            </div>
+                    </div>
+                    <div className="w-full max-w-3xl mx-auto shrink-0">
+                        <div className={`min-h-[160px] max-h-[75vh] flex flex-col ${LIVE_CARD}`}>
+                            {pbpFeedBody}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* [2026-10-23] 라이브 팀 스탯 탭 — 좌: 쿼터별 득점(fullWidth 표), 우: 팀 스탯 비교(TeamStatsCompare card 변형). 둘 다 공개 로그(visibleEvents)·
+                리플레이 시점 박스 기준이라 스포일러 없음. 게임 센터 우측 카드에서 뺀 두 표가 여기로 왔다. */}
+            {(isLive || isScheduled) && liveTab === 'team' && (
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+                    {/* 세로 배치 + 가운데 정렬 — 두 카드 폭을 같게(max-w-3xl) 묶어 한 열로 */}
+                    <div className="flex flex-col items-stretch gap-4 w-full max-w-3xl mx-auto">
+                        <div className={LIVE_CARD}>
+                            <div className="h-10 px-4 flex items-center bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">쿼터별 득점</div>
+                            <div className="p-2">
+                                <QuarterScores
+                                    allLogs={visibleEvents}
+                                    homeTeamId={(homeTeamId ?? '')}
+                                    currentQuarter={currentQuarter}
+                                    homeAbbr={homeAbbr}
+                                    awayAbbr={awayAbbr}
+                                    fullWidth
                                 />
                             </div>
                         </div>
-
-                        {/* PBP 스크롤 */}
-                        <div
-                            className="flex-1 min-h-0 overflow-y-auto text-xs bg-slate-900"
-                            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-                        >
-                            {/* [Fix 2026-08-05] "원정 코멘터리 | 원정 점수 | 쿼터 | 시간 | 홈 점수 | 홈 코멘터리"
-                                구조로 재편 — 이벤트가 어느 팀 소속인지에 따라 코멘터리가 좌(원정)/우(홈) 중
-                                한쪽에만 채워지고 반대쪽은 비워둔다(중앙 쿼터/시계/점수 기준 좌우 대칭 레이아웃). */}
-                            <div className="flex items-center gap-2 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                                <div className="flex-1 text-right text-xs font-black text-slate-500 truncate">{awayName}</div>
-                                {/* [Fix 2026-08-05] "양 팀 스코어와 시간 컬럼 간격이 너무 넓다" 요청 — 이 3칸만
-                                    별도 gap-1로 묶어서 본문 행의 centerCols와 동일하게 좁힘(바깥 코멘터리 칸
-                                    사이 gap-2는 그대로 유지). */}
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                    <div className="w-8 text-center text-xs font-black text-slate-500"></div>
-                                    <div className="w-16 text-center text-xs font-black text-slate-500">시간</div>
-                                    <div className="w-8 text-center text-xs font-black text-slate-500"></div>
-                                </div>
-                                <div className="flex-1 text-xs font-black text-slate-500 truncate">{homeName}</div>
+                        <div className={LIVE_CARD}>
+                            <div className="h-10 px-4 flex items-center justify-between bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">
+                                <span>팀 스탯 비교</span>
+                                <span className="flex items-center gap-3 text-xs">
+                                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: awayColor }} />{awayAbbr}</span>
+                                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: homeColor }} />{homeAbbr}</span>
+                                </span>
                             </div>
-                            <div className="divide-y divide-slate-800/50">
-                                {filteredLogs.map(({ log, idx }, i) => {
-                                    const isHome      = log.teamId === (homeTeamId ?? '');
-                                    const isScore     = log.type === 'score';
-                                    const isFT        = log.type === 'freethrow';
-                                    const isFoul      = log.type === 'foul';
-                                    const isTurnover  = log.type === 'turnover';
-                                    const isBlock     = log.type === 'block';
-                                    const isInfo      = log.type === 'info' || log.type === 'timeout';
-                                    const isInjury    = log.type === 'injury';
-                                    // [Fix] teamId === 'SYSTEM'이 실제 엔진 마커 — 텍스트 매칭은 "2쿼터 시작"처럼
-                                    // '경기 시작'/'종료'/'하프 타임'을 포함하지 않는 로그를 놓쳤음 (GamePbpTab.tsx 동일 수정 참고)
-                                    const isFlowEvent = log.teamId === 'SYSTEM';
-
-                                    // [Fix 2026-08-05] "가장 최신 로그 행은 배경을 살짝 밝게 켰다가 시간에 따라
-                                    // 페이드"— 지금 필터/정렬 결과에서 맨 위(i===0)가 항상 가장 최근 로그.
-                                    // key를 idx(visibleEvents 기준 불변 인덱스)로 줘서, 새 로그가 들어와 이
-                                    // 자리를 넘겨받을 때마다 실제로 새 DOM 노드가 마운트되어 CSS 애니메이션이
-                                    // 매번 처음부터 재생된다(포지션 기반 key였다면 노드가 재사용돼 재생 안 됨).
-                                    const flashClass = i === 0 ? ' animate-pbp-row-flash' : '';
-
-                                    if (isFlowEvent) {
-                                        return (
-                                            <div key={idx} className={`flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
-                                                <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs">
-                                                    <Clock size={12} />
-                                                    <span>{log.text}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-
-                                    const centerCols = (
-                                        <div className="flex items-center gap-1 flex-shrink-0">
-                                            <div className="w-8 text-center pt-0.5 overflow-hidden">
-                                                {log.awayScore !== undefined && (
-                                                    <span className={`text-xs font-black tracking-tight tabular-nums ${!isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
-                                                        {log.awayScore}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="w-16 text-slate-500 font-bold text-xs text-center tabular-nums pt-0.5 overflow-hidden">
-                                                {log.quarter}Q {log.timeRemaining || '-'}
-                                            </div>
-                                            <div className="w-8 text-center pt-0.5 overflow-hidden">
-                                                {log.homeScore !== undefined && (
-                                                    <span className={`text-xs font-black tracking-tight tabular-nums ${isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
-                                                        {log.homeScore}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-
-                                    if (log.text.startsWith('교체:')) {
-                                        const inMatch  = log.text.match(/IN \[(.*?)\]/);
-                                        const outMatch = log.text.match(/OUT \[(.*?)\]/);
-                                        if (inMatch && outMatch) {
-                                            const inPlayers  = inMatch[1].split(',').map(s => s.trim());
-                                            const outPlayers = outMatch[1].split(',').map(s => s.trim());
-                                            const isSubHome  = log.teamId === (homeTeamId ?? '');
-                                            return (
-                                                <div key={idx} className={`flex items-start py-2 px-3 gap-2 hover:bg-white/5 transition-colors${flashClass}`}>
-                                                    <div className="flex-1 min-w-0">
-                                                        {!isSubHome && <SubChangeBlock side="away" inPlayers={inPlayers} outPlayers={outPlayers} />}
-                                                    </div>
-                                                    {centerCols}
-                                                    <div className="flex-1 min-w-0">
-                                                        {isSubHome && <SubChangeBlock side="home" inPlayers={inPlayers} outPlayers={outPlayers} />}
-                                                    </div>
-                                                </div>
-                                            );
-                                        }
-                                    }
-
-                                    let textColor = 'text-slate-400';
-                                    if (isInjury) textColor = 'text-red-400 font-bold';
-                                    else if (isInfo) textColor = 'text-slate-300';
-                                    else if (isScore) textColor = 'text-slate-200';
-                                    else if (isFT) textColor = 'text-cyan-400';
-                                    else if (isFoul) textColor = 'text-orange-400';
-                                    else if (isTurnover) textColor = 'text-red-400';
-                                    else if (isBlock) textColor = 'text-blue-400';
-
-                                    const bgClass = isInjury
-                                        ? 'bg-red-900/20 border-y border-red-900/30'
-                                        : 'hover:bg-white/5 transition-colors';
-
-                                    return (
-                                        <div key={idx} className={`flex items-center py-2 px-3 gap-2 ${bgClass}${flashClass}`}>
-                                            <div className={`flex-1 min-w-0 text-right break-words leading-relaxed text-xs ${textColor}`}>
-                                                {!isHome ? log.text : ''}
-                                            </div>
-                                            {centerCols}
-                                            <div className={`flex-1 min-w-0 break-words leading-relaxed text-xs ${textColor}`}>
-                                                {isHome ? log.text : ''}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {filteredLogs.length === 0 && (
-                                    <div className="py-10 text-center text-slate-600 text-xs ko-normal">
-                                        {isLive || isScheduled ? '경기 시작 대기 중…' : '해당 쿼터의 기록이 없습니다.'}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* RIGHT: 홈팀 박스스코어 + 팀스탯 */}
-                <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col">
-                    {renderBoxPanel('home')}
-                    <div className="shrink-0 border-t border-slate-800 flex flex-col">
-                        <div className="p-2">
-                            <QuarterScores
-                                allLogs={visibleEvents}
-                                homeTeamId={(homeTeamId ?? '')}
-                                currentQuarter={currentQuarter}
-                                homeAbbr={homeAbbr}
-                                awayAbbr={awayAbbr}
-                                fullWidth
+                            <TeamStatsCompare
+                                home={homeStats}
+                                away={awayStats}
+                                homeBox={hasBoxTimeline ? liveHomeBox : scheduledHomeBox}
+                                awayBox={hasBoxTimeline ? liveAwayBox : scheduledAwayBox}
+                                homeColor={homeColor}
+                                awayColor={awayColor}
+                                variant="card"
                             />
                         </div>
-                        <TeamStatsCompare
-                            home={homeStats}
-                            away={awayStats}
-                            homeBox={showBox ? (gameData?.home_box ?? []) : liveHomeBox}
-                            awayBox={showBox ? (gameData?.away_box ?? []) : liveAwayBox}
-                            homeColor={homeColor}
-                            awayColor={awayColor}
-                        />
                     </div>
                 </div>
-            </div>
-            </div>
             )}
 
             {/* ── Body: 종료된 경기 — 6개 섹션(박스스코어/인사이트/경기기록/샷차트/로테이션/온오프)을
@@ -2683,6 +2998,7 @@ const MultiGamePbpView: React.FC = () => {
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                             splitLayout
                             getPlayerHref={getPlayerHref}
+                            loading={!gameData}
                         />
                     </ResultSection>
 

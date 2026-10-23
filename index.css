@@ -239,6 +239,20 @@ body {
 }
 .animate-pbp-row-flash { animation: pbp-row-flash 1.8s ease-out; }
 
+/* [2026-10-23] 라이브 박스스코어 스탯 셀 — 포제션 변화분(box_timeline tick.d)이 반영된 셀. 틴트는 다음 변동까지 유지(정적
+   클래스 bg-*/[0.18]), 도착 순간만 더 밝게(0.35) 켜졌다가 유지 밝기로 내려온다. 끝 키프레임 = 정적 클래스 값이라 애니메이션이
+   끝나도 튀지 않는다(fill-mode none). 셀 key에 틱 시각을 넣어 새 포제션마다 DOM이 다시 마운트되며 처음부터 재생. */
+@keyframes stat-flash-green { 0% { background-color: rgba(52, 211, 153, 0.35); } 100% { background-color: rgba(52, 211, 153, 0.18); } }
+@keyframes stat-flash-red   { 0% { background-color: rgba(248, 113, 113, 0.35); } 100% { background-color: rgba(248, 113, 113, 0.18); } }
+@keyframes stat-flash-amber { 0% { background-color: rgba(251, 191, 36, 0.35); }  100% { background-color: rgba(251, 191, 36, 0.18); } }
+.animate-stat-flash-green { animation: stat-flash-green 1.8s ease-out; }
+
+/* [2026-10-23] 멀티 좌우 분할 박스스코어(standalone, table-layout fixed + 퍼센트 colgroup) 헤더 — 퍼센트가 작은 열(OREB/DREB 5%,
+   OREB%/DREB% 7%)에서 라벨이 말줄임되지 않도록 헤더만 text-xs + 좌우 패딩 4px. 본문은 text-sm 그대로. PLAYER(첫 열)는 px-4 유지. */
+.box-compact-head thead th:not(:first-child) { padding-left: 0.25rem; padding-right: 0.25rem; font-size: 0.75rem; line-height: 1rem; }
+.animate-stat-flash-red   { animation: stat-flash-red 1.8s ease-out; }
+.animate-stat-flash-amber { animation: stat-flash-amber 1.8s ease-out; }
+
 .text-shadow-ovr { text-shadow: 0px 1.5px 3px rgba(0, 0, 0, 0.5); }
 .ko-tight { letter-spacing: -0.025em; }
 .ko-normal { letter-spacing: -0.01em; }

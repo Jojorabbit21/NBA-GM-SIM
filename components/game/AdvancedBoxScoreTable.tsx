@@ -6,7 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import { TEAM_DATA } from '../../data/teamData';
 import { computeTeamBoxTotals, computeAdvancedStats, computePieRaw } from '../../utils/advancedBoxStats';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
-import { BlankBoxRows, DnpCell } from './boxScoreRows';
+import { BlankBoxRows, DnpCell, BoxColGroup, ADV_STAT_COL_PCTS, fixedBoxTableStyle } from './boxScoreRows';
 
 interface AdvancedBoxScoreTableProps {
     team: Team;
@@ -21,6 +21,12 @@ interface AdvancedBoxScoreTableProps {
     getProfileHref?: (playerId: string) => string | undefined;
     /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
     padRows?: number;
+    /** true면 padRows를 빈 칸 대신 스켈레톤 행으로 그린다(로딩 중) */
+    padSkeleton?: boolean;
+    /** 미출전 행 문구(기본 'Did Not Play'). 라이브 중엔 '출전 대기' */
+    dnpLabel?: string;
+    /** OVR 열 생략(라이브 박스스코어 탭) */
+    hideOvr?: boolean;
 }
 
 const fmtPct = (v: number | null) => v == null ? '-' : v.toFixed(1);
@@ -28,7 +34,7 @@ const fmtPct = (v: number | null) => v == null ? '-' : v.toFixed(1);
 const statCellClass = (standalone?: boolean) => `${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums`;
 const totalCellClass = (standalone?: boolean) => `py-2 px-2 leading-6 text-center ${standalone ? 'text-sm' : 'text-xs'} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
 
-export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ team, box, oppBox, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
+export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ team, box, oppBox, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0, padSkeleton, dnpLabel, hideOvr }) => {
     const teamTotals = useMemo(() => computeTeamBoxTotals(box), [box]);
     const oppTotals = useMemo(() => computeTeamBoxTotals(oppBox), [oppBox]);
 
@@ -64,9 +70,10 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                 {headerRight}
             </div>
 
-            <Table className={standalone ? "!rounded-none" : "!rounded-none !border-0 !shadow-none"}>
+            <Table className={standalone ? "!rounded-none box-compact-head" : "!rounded-none !border-0 !shadow-none"} tableStyle={standalone ? fixedBoxTableStyle(720) : undefined}>
+                {standalone && <BoxColGroup statPcts={ADV_STAT_COL_PCTS} hideOvr={hideOvr} />}
                 <TableHead>
-                    <PlayerIdentityHeaderCells />
+                    <PlayerIdentityHeaderCells hideOvr={hideOvr} />
                     <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-14">TS%</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-14">EFG%</TableHeaderCell>
@@ -84,8 +91,8 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                         const pie = totalPieRaw > 0 ? (computePieRaw(p) / totalPieRaw) * 100 : null;
                         return (
                             <TableRow key={p.playerId}>
-                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
-                                {!(p.mp > 0) ? <DnpCell colSpan={10} standalone={standalone} /> : (<>
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} teamAbbr={badge?.abbr} hideOvr={hideOvr} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={10} standalone={standalone} label={dnpLabel} /> : (<>
                                 <TableCell align="center" className={statCell}>{Math.round(p.mp)}</TableCell>
                                 <TableCell align="center" className={statCell}>{fmtPct(adv.tsPct)}</TableCell>
                                 <TableCell align="center" className={statCell}>{fmtPct(adv.efgPct)}</TableCell>
@@ -100,14 +107,14 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                             </TableRow>
                         );
                     })}
-                    <BlankBoxRows count={padRows} totalCols={13} />
+                    <BlankBoxRows count={padRows} totalCols={hideOvr ? 12 : 13} skeleton={padSkeleton} />
                 </TableBody>
                 <tfoot>
                     <tr>
                         <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
                             <span className={`${standalone ? 'text-sm' : 'text-xs'} font-black text-white`}>TEAM TOTALS</span>
                         </td>
-                        <td className={totalCell} colSpan={2}></td>
+                        <td className={totalCell} colSpan={hideOvr ? 1 : 2}></td>
                         <td className={totalCell}>{Math.round(teamTotals.mp)}</td>
                         {/* TS%~PIE는 선수 개인의 팀 대비 점유율 지표라 "팀 합계"라는 개념 자체가
                             성립하지 않아 빈 칸으로 둔다 — Traditional/Defense와 동일한 TEAM TOTALS

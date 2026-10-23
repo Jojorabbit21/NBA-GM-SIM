@@ -5,7 +5,7 @@ import { TeamMark } from '../common/TeamMark';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { TEAM_DATA } from '../../data/teamData';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
-import { BlankBoxRows, DnpCell } from './boxScoreRows';
+import { BlankBoxRows, DnpCell, BoxColGroup, DEF_STAT_COL_PCTS, fixedBoxTableStyle } from './boxScoreRows';
 
 interface DefenseBoxScoreTableProps {
     team: Team;
@@ -19,6 +19,12 @@ interface DefenseBoxScoreTableProps {
     getProfileHref?: (playerId: string) => string | undefined;
     /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
     padRows?: number;
+    /** true면 padRows를 빈 칸 대신 스켈레톤 행으로 그린다(로딩 중) */
+    padSkeleton?: boolean;
+    /** 미출전 행 문구(기본 'Did Not Play'). 라이브 중엔 '출전 대기' */
+    dnpLabel?: string;
+    /** OVR 열 생략(라이브 박스스코어 탭) */
+    hideOvr?: boolean;
 }
 
 const fmtPct = (m: number, a: number) => a > 0 ? ((m / a) * 100).toFixed(1) : '-';
@@ -28,7 +34,7 @@ const totalCellClass = (standalone?: boolean) => `py-2 px-2 leading-6 text-cente
 
 // DFGA/DFGM/DFG% — 이 선수가 컨테스트(contest)한 상대 슛 시도/성공/피FG%.
 // 존별 세분화(림/미드/3점 등)는 컬럼이 너무 많아져 컨테스트 전체 합산만 노출한다.
-export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team, box, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
+export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team, box, mvpId, badge, standalone, headerRight, getProfileHref, padRows = 0, padSkeleton, dnpLabel, hideOvr }) => {
     const sortedBox = useMemo(() => [...box].sort((a, b) => {
         // Did Not Play(mp 0)는 항상 맨 아래
         if ((a.mp > 0) !== (b.mp > 0)) return a.mp > 0 ? -1 : 1;
@@ -65,9 +71,10 @@ export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team
                 {headerRight}
             </div>
 
-            <Table className={standalone ? "!rounded-none" : "!rounded-none !border-0 !shadow-none"}>
+            <Table className={standalone ? "!rounded-none box-compact-head" : "!rounded-none !border-0 !shadow-none"} tableStyle={standalone ? fixedBoxTableStyle(640) : undefined}>
+                {standalone && <BoxColGroup statPcts={DEF_STAT_COL_PCTS} hideOvr={hideOvr} />}
                 <TableHead>
-                    <PlayerIdentityHeaderCells />
+                    <PlayerIdentityHeaderCells hideOvr={hideOvr} />
                     <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
@@ -80,8 +87,8 @@ export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team
                 <TableBody>
                     {sortedBox.map(p => (
                         <TableRow key={p.playerId}>
-                            <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
-                                {!(p.mp > 0) ? <DnpCell colSpan={8} standalone={standalone} /> : (<>
+                            <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} teamAbbr={badge?.abbr} hideOvr={hideOvr} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={8} standalone={standalone} label={dnpLabel} /> : (<>
                             <TableCell align="center" className={statCell}>{Math.round(p.mp)}</TableCell>
                             <TableCell align="center" className={statCell}>{p.stl}</TableCell>
                             <TableCell align="center" className={statCell}>{p.blk}</TableCell>
@@ -93,14 +100,14 @@ export const DefenseBoxScoreTable: React.FC<DefenseBoxScoreTableProps> = ({ team
                         </>)}
                             </TableRow>
                     ))}
-                    <BlankBoxRows count={padRows} totalCols={11} />
+                    <BlankBoxRows count={padRows} totalCols={hideOvr ? 10 : 11} skeleton={padSkeleton} />
                 </TableBody>
                 <tfoot>
                     <tr>
                         <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
                             <span className={`${standalone ? 'text-sm' : 'text-xs'} font-black text-white`}>TEAM TOTALS</span>
                         </td>
-                        <td className={totalCell} colSpan={2}></td>
+                        <td className={totalCell} colSpan={hideOvr ? 1 : 2}></td>
                         <td className={totalCell}>{Math.round(totals.mp)}</td>
                         <td className={totalCell}>{totals.stl}</td>
                         <td className={totalCell}>{totals.blk}</td>

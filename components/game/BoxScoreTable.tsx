@@ -5,7 +5,7 @@ import { TeamMark } from '../common/TeamMark';
 import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
-import { BlankBoxRows, DnpCell } from './boxScoreRows';
+import { BlankBoxRows, DnpCell, BoxColGroup, TRAD_STAT_COL_PCTS, fixedBoxTableStyle } from './boxScoreRows';
 
 export interface GameStatLeaders {
     pts: number;
@@ -33,11 +33,17 @@ interface BoxScoreTableProps {
     getProfileHref?: (playerId: string) => string | undefined;
     /** 상대 팀과 표 높이를 맞추려고 본문 끝에 덧붙일 빈 행 수 */
     padRows?: number;
+    /** true면 padRows를 빈 칸 대신 스켈레톤 행으로 그린다(로딩 중) */
+    padSkeleton?: boolean;
+    /** 미출전 행 문구(기본 'Did Not Play'). 라이브 중엔 '출전 대기' */
+    dnpLabel?: string;
+    /** OVR 열 생략(라이브 박스스코어 탭) */
+    hideOvr?: boolean;
 }
 
 type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'oreb' | 'dreb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
-export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight, getProfileHref, padRows = 0 }) => {
+export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders, badge, standalone, headerRight, getProfileHref, padRows = 0, padSkeleton, dnpLabel, hideOvr }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
     // 행마다 team.roster.find()를 반복하지 않도록 팀당 1회만 Map으로 인덱싱
@@ -130,8 +136,9 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     const textSize = standalone ? 'text-sm' : 'text-xs';
     const totalCellClass = `py-2 px-2 leading-6 text-center ${textSize} font-semibold text-white tabular-nums bg-slate-800/50 border-t border-slate-700`;
     const sc = `${textSize} font-semibold text-white tabular-nums`;
-    // DNP 행이 덮을 스탯 열 수(숨김 열 제외) — standalone: MIN~PF 10(OREB/DREB 포함) + FG/3P/FT 3 + +/- 1, 기본: FAT 1 + MIN~FF 12 + 6 + 1
-    const statCols = standalone ? 14 : 20;
+    // DNP/빈/스켈레톤 행이 덮을 스탯 열 수(숨김 열 제외) — 헤더 열 수와 정확히 같아야 한다(1이라도 크면 표에 빈 열이 생김).
+    // standalone: MIN~PF 9(OREB/DREB 포함) + FG/3P/FT 3 + +/- 1 = 13, 기본: FAT 1 + MIN~FF 11 + FG/FG%/3P/3P%/FT/FT% 6 + +/- 1 = 19
+    const statCols = standalone ? 13 : 19;
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
@@ -183,9 +190,11 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             {/* standalone: Table 자체의 기본 border/shadow는 살리되 라운딩만 제거(테이블 외부가
                 바디 가장자리에 바로 붙으므로). 기본(상하 배치): 바깥 wrapper가 테두리를 담당하므로
                 Table 쪽은 지움(중복 방지). */}
-            <Table className={standalone ? "!rounded-none" : "!rounded-none !border-0 !shadow-none"}>
+            {/* standalone: 고정 레이아웃 + 퍼센트 colgroup(열 흔들림 방지). hidden 열(FAT/TF/FF/FG%/3P%/FT%)은 display:none이라 열 슬롯을 차지하지 않으므로 colgroup은 보이는 16열만. */}
+            <Table className={standalone ? "!rounded-none box-compact-head" : "!rounded-none !border-0 !shadow-none"} tableStyle={standalone ? fixedBoxTableStyle(760) : undefined}>
+                {standalone && <BoxColGroup statPcts={TRAD_STAT_COL_PCTS} hideOvr={hideOvr} />}
                 <TableHead>
-                    <PlayerIdentityHeaderCells />
+                    <PlayerIdentityHeaderCells hideOvr={hideOvr} />
                     <TableHeaderCell align="center" className={`w-10 ${hideCls}`}>FAT</TableHeaderCell>
 
                     <SortableHeader label="MIN" sKey="mp" />
@@ -232,8 +241,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
                         return (
                             <TableRow key={p.playerId} className={isMvp && !standalone ? 'bg-amber-900/10' : ''}>
-                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} />
-                                {!(p.mp > 0) ? <DnpCell colSpan={statCols} standalone={standalone} /> : (<>
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} teamAbbr={badge?.abbr} hideOvr={hideOvr} />
+                                {!(p.mp > 0) ? <DnpCell colSpan={statCols} standalone={standalone} label={dnpLabel} /> : (<>
                                 <TableCell align="center" className={hideCls}>
                                     <span className={`${textSize} font-semibold ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
@@ -263,7 +272,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             </TableRow>
                         );
                     })}
-                    <BlankBoxRows count={padRows} totalCols={3 + statCols} />
+                    <BlankBoxRows count={padRows} totalCols={(hideOvr ? 2 : 3) + statCols} skeleton={padSkeleton} />
                 </TableBody>
                 <tfoot>
                     <tr>
@@ -271,7 +280,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <span className={`${textSize} font-black text-white`}>TEAM TOTALS</span>
                         </td>
                         {/* standalone: FAT 컬럼이 숨겨져서 POS+OVR 2칸만 span(원래 POS+OVR+FAT 3칸) */}
-                        <td className={totalCellClass} colSpan={standalone ? 2 : 3}></td>
+                        <td className={totalCellClass} colSpan={(standalone ? 2 : 3) - (hideOvr ? 1 : 0)}></td>
                         <td className={totalCellClass}>{Math.round(totals.mp)}</td>
                         <td className={totalCellClass}>{totals.pts}</td>
                         <td className={totalCellClass}>{totals.offReb}</td>

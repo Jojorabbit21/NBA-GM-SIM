@@ -8,6 +8,7 @@ import { DefenseBoxScoreTable } from '../DefenseBoxScoreTable';
 import { Dropdown, DropdownButton } from '../../common/Dropdown';
 
 type StatMode = 'traditional' | 'advanced' | 'defense';
+const LOADING_SKELETON_ROWS = 13;
 const STAT_MODES: { id: StatMode; label: string }[] = [
     { id: 'traditional', label: 'Traditional' },
     { id: 'advanced', label: 'Advanced' },
@@ -31,6 +32,12 @@ interface GameBoxScoreTabProps {
     splitLayout?: boolean;
     /** 선수 id → 프로필 경로(멀티플레이어 전용). 주어지면 박스스코어 선수 이름이 링크가 된다 */
     getPlayerHref?: (playerId: string) => string | undefined;
+    /** true면 박스 데이터 도착 전 — 본문을 스켈레톤 행으로 채워 표 높이를 미리 확보(멀티 splitLayout 전용) */
+    loading?: boolean;
+    /** 미출전 행 문구 — 라이브 중엔 '출전 대기'처럼 바꿔 '경기에 안 나왔다'는 오해를 막는다 */
+    dnpLabel?: string;
+    /** OVR 열 생략(라이브 박스스코어 탭) */
+    hideOvr?: boolean;
 }
 
 // 팀별 헤더 우측에 들어가는 Traditional/Advanced/Defense 드롭다운 — 팀마다 독립적으로 전환 가능.
@@ -64,7 +71,7 @@ const StatModeSelector: React.FC<{ value: StatMode; onChange: (m: StatMode) => v
 };
 
 export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge, splitLayout, getPlayerHref
+    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame, homeBadge, awayBadge, splitLayout, getPlayerHref, loading, dnpLabel, hideOvr
 }) => {
 
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
@@ -73,7 +80,8 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
     const activeHomeBox = useMemo(() => splitLayout ? homeBox : homeBox.filter(p => p.mp > 0), [homeBox, splitLayout]);
     const activeAwayBox = useMemo(() => splitLayout ? awayBox : awayBox.filter(p => p.mp > 0), [awayBox, splitLayout]);
     // 좌우 표 높이를 맞추려고 인원이 적은 팀에 덧붙일 빈 행 수(멀티 전용)
-    const maxRows = Math.max(activeHomeBox.length, activeAwayBox.length);
+    // 로딩 중(박스 비어 있음)이면 일반적인 로스터 인원수만큼 스켈레톤 행을 깔아 둔다
+    const maxRows = loading ? LOADING_SKELETON_ROWS : Math.max(activeHomeBox.length, activeAwayBox.length);
 
     // 팀별로 독립적으로 전환 — 원정/홈 각자 다른 스탯 모드를 볼 수 있음
     const [awayStatMode, setAwayStatMode] = useState<StatMode>('traditional');
@@ -90,10 +98,10 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
         const padRows = splitLayout ? maxRows - box.length : 0;
 
         if (mode === 'advanced') {
-            return <AdvancedBoxScoreTable team={team} box={box} oppBox={oppBox} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} />;
+            return <AdvancedBoxScoreTable team={team} box={box} oppBox={oppBox} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} padSkeleton={loading} dnpLabel={dnpLabel} hideOvr={hideOvr} />;
         }
         if (mode === 'defense') {
-            return <DefenseBoxScoreTable team={team} box={box} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} />;
+            return <DefenseBoxScoreTable team={team} box={box} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} padSkeleton={loading} dnpLabel={dnpLabel} hideOvr={hideOvr} />;
         }
         return (
             <BoxScoreTable
@@ -107,6 +115,9 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                 headerRight={headerRight}
                 getProfileHref={getPlayerHref}
                 padRows={padRows}
+                padSkeleton={loading}
+                dnpLabel={dnpLabel}
+                hideOvr={hideOvr}
             />
         );
     };

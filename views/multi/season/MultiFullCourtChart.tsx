@@ -26,6 +26,12 @@ interface MultiFullCourtChartProps {
     /** [2026-10-02] 홈팀의 "코트 중앙 로고" 설정 */
     courtShowLogo?:   boolean;
     courtLogoScale?:  number;
+    /** [2026-10-23] 헤더 변형 — legend(기본): 범례 점 + 선수 필터 버튼. split: 좌(원정)/우(홈) 반반을 팀 테마 컬러로 칠한
+     *  헤더, 선수 필터는 숨김(게임 센터 카드용). */
+    headerVariant?: 'legend' | 'split';
+    /** split 헤더의 글자색 — 팀 컬러 위 대비색(점보트론과 같은 awayText/homeText). 없으면 흰색 */
+    awayTextColor?: string;
+    homeTextColor?: string;
 }
 
 interface PlayerOption { id: string; name: string }
@@ -89,6 +95,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
     awayTeamId, awayColor, awayAbbr,
     shotEvents,
     courtBackground, courtPaint, courtLine, courtThree, courtShowLogo, courtLogoScale,
+    headerVariant = 'legend', awayTextColor, homeTextColor,
 }) => {
     // null/empty = team follows the admin-configured global default court colors
     const courtDefaults = useCourtDefaults(homeTeamId);
@@ -163,7 +170,19 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
 
     return (
         <div className="w-full">
+            {/* [2026-10-23] split: 헤더를 반으로 나눠 좌(원정)/우(홈) 팀 테마 컬러. 필터 버튼 없음(필터 로직은 유지, 렌더만 생략) */}
+            {headerVariant === 'split' && (
+                <div className="flex h-10 border-b border-slate-700">
+                    <div className="flex-1 flex items-center justify-center px-3 text-base font-black truncate" style={{ backgroundColor: awayColor, color: awayTextColor ?? '#ffffff' }}>
+                        {awayAbbr}
+                    </div>
+                    <div className="flex-1 flex items-center justify-center px-3 text-base font-black truncate" style={{ backgroundColor: homeColor, color: homeTextColor ?? '#ffffff' }}>
+                        {homeAbbr}
+                    </div>
+                </div>
+            )}
             {/* Legend */}
+            {headerVariant === 'legend' && (
             <div className="relative flex items-center gap-4 px-3 h-9 bg-slate-800 border-b border-x border-slate-700">
                 <div className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayColor }} />
@@ -209,6 +228,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
                     )}
                 </div>
             </div>
+            )}
 
             {/* Court — aspect ratio 940:500, fills width */}
             <div

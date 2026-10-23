@@ -21,12 +21,14 @@ interface TabBarProps<T extends string> {
     theme?: { bg: string; text: string; accent: string };
     /** theme 미지정 시 배경색 클래스 오버라이드 (기본값 bg-slate-950) */
     bgClassName?: string;
+    /** [2026-10-23] 탭 버튼 정렬 — 기본 start(좌측). center면 탭 묶음을 바 가운데에 둔다(라이브 경기 화면). rightSlot은 그대로 우측 끝 */
+    align?: 'start' | 'center';
 }
 
-export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSlot, theme, bgClassName }: TabBarProps<T>) {
+export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSlot, theme, bgClassName, align = 'start' }: TabBarProps<T>) {
     return (
         <div
-            className={`px-8 border-b flex items-center gap-8 h-14 flex-shrink-0 ${theme ? 'border-black/20' : `border-slate-800 ${bgClassName ?? 'bg-slate-950'}`}`}
+            className={`px-8 border-b flex items-center gap-8 h-14 flex-shrink-0 ${align === 'center' ? 'justify-center relative' : ''} ${theme ? 'border-black/20' : `border-slate-800 ${bgClassName ?? 'bg-slate-950'}`}`}
             style={theme ? { backgroundColor: theme.bg } : undefined}
         >
             {tabs.map(t => {
@@ -55,7 +57,8 @@ export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSl
                     </button>
                 );
             })}
-            {rightSlot && <div className="ml-auto flex items-center gap-3">{rightSlot}</div>}
+            {/* center 정렬일 땐 ml-auto가 justify-center를 이겨 탭이 왼쪽으로 쏠리므로 rightSlot을 절대 배치로 뺀다 */}
+            {rightSlot && <div className={align === 'center' ? 'absolute right-8 top-1/2 -translate-y-1/2 flex items-center gap-3' : 'ml-auto flex items-center gap-3'}>{rightSlot}</div>}
         </div>
     );
 }

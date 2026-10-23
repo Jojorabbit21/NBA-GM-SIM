@@ -34,6 +34,310 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — 라이브 "플레이-바이-플레이" 탭 복구·본문(인사이트 + PBP 피드, 가운데 정렬) · PBP 피드 JSX 공유화
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- `LIVE_TABS`에 `{ id: 'pbp', label: '플레이-바이-플레이' }` 복원(박스스코어 다음)
+- PBP 피드 본문(헤더+쿼터 필터+로그 목록, 약 150줄)을 게임 센터 카드 안 인라인 JSX에서 `const pbpFeedBody = (<>…</>)`로 추출(렌더 직전, `renderBoxPanel` 뒤). 게임 센터 카드는 `{pbpFeedBody}`만 렌더(마크업·클래스 불변)
+- `liveTab === 'pbp'` 본문: `p-4` 래퍼 + `flex flex-col gap-4 w-full max-w-3xl mx-auto`(팀 스탯 탭과 동일 폭). 위 카드 "인사이트" = `GameInsightsPanel`(게임 센터에서 제거했던 것과 같은 props: visibleEvents·liveHomeOreb/liveAwayOreb/liveMaxQuarter·box_timeline·gameData 박스), 높이 300px. 아래 카드 = `{pbpFeedBody}`(`min-h-[160px] max-h-[75vh]`)
+
+**검증**: tsc 변경 파일 오류 없음.
+**롤백 방법**: pbp 탭 블록 삭제, `pbpFeedBody` 내용을 게임 센터 카드 안으로 되돌림(들여쓰기 +16), LIVE_TABS에서 pbp 제거.
+
+### 버그 수정 — PBP 탭 인사이트 카드가 높이 0으로 찌그러짐 (같은 날): 래퍼 flex-col + 카드 overflow-hidden → flex-shrink로 min-height 0 취급. 인사이트 카드·PBP 열에 `shrink-0`. 
+
+### 보완 — PBP 탭 인사이트 카드 전폭 (같은 날): 래퍼 `p-4 flex flex-col gap-4`, 인사이트 카드 `w-full`(열 밖), PBP 피드만 `max-w-3xl mx-auto` 열 안. 롤백: 둘 다 한 열 안으로.
+## 2026-10-23 — 라이브 탭 그룹 배경 한 단계 밝게 · "팀 스탯" 탭 본문
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- 라이브 `TabBar`에 `bgClassName="bg-slate-900"`(기본 slate-950 → 한 단계 밝게). 종료 화면 TabBar는 불변
+- `TeamStatsCompare`에 `variant?: 'panel' | 'card'`(기본 panel = 기존 그대로). card: 캡션·border-t 없음, `px-4 py-3`, 행 `gap-2`, 그리드 `[1fr_44px_48px_44px_1fr]`, 값·라벨 `text-sm`(+`tabular-nums`), 막대 `h-3` 트랙 `bg-slate-800`
+- `liveTab === 'team'` 본문: `p-4` 래퍼 + `grid lg:grid-cols-[2fr_3fr] gap-4 items-start`. 좌 카드 "쿼터별 득점"(`QuarterScores fullWidth`, 헤더 `h-10 px-4 bg-slate-950 border-b text-sm font-bold text-slate-400`), 우 카드 "팀 스탯 비교"(헤더 우측에 팀 컬러 범례, 본문 `TeamStatsCompare variant="card"`). 데이터는 `visibleEvents`·`liveHomeBox/AwayBox`(예정은 scheduled*). 자리표시자 블록 삭제(모든 탭 본문 채워짐)
+
+**검증**: tsc 변경 파일 오류 없음.
+**롤백 방법**: bgClassName 제거, variant prop·card 분기 제거, team 블록을 자리표시자로.
+
+### 보완 — 팀 스탯 탭 레이아웃 (같은 날): 2열 grid(`lg:grid-cols-[2fr_3fr]`) → 세로 한 열 가운데 정렬(`flex flex-col gap-4 w-full max-w-3xl mx-auto`). 롤백: grid 복원.
+## 2026-10-23 — 라이브 "샷 차트" 탭 본문(GameShotChartTab 재사용) · "플레이-바이-플레이" 탭 보류
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- `LIVE_TABS`에서 `{ id: 'pbp', label: '플레이-바이-플레이' }` 제거(타입 `LiveTab`엔 유지 — URL `?tab=pbp`는 검증에서 걸러져 게임 센터로). 사용자 결정으로 잠시 보류
+- `liveTab === 'shot'` 본문: `p-4` 래퍼 + `LIVE_CARD` 안에 `<GameShotChartTab homeTeam/awayTeam={어댑터} shotEvents={visibleShotEvents} homeBox/awayBox={hasBoxTimeline ? live* : scheduled*} badge… />`. 자리표시자는 `team` 탭만
+
+**검증**: tsc 변경 파일 오류 없음.
+**롤백 방법**: LIVE_TABS에 pbp 복원, shot 블록을 자리표시자 조건으로 되돌림.
+## 2026-10-23 — 박스스코어 세 표(standalone) 열 폭 고정: table-layout fixed + 퍼센트 colgroup
+
+**배경**: 라이브 박스스코어 탭에서 값이 바뀔 때마다 열 폭이 흔들림. 공용 Table이 `table-layout: auto`라 열 폭이 셀 내용(`5/9`→`10/18`, `+2`→`-14`) 기준으로 매번 재계산되기 때문. 게임 센터 간소 박스와 같은 퍼센트 colgroup 방식으로 통일.
+
+**변경 파일** (client 전용):
+- `components/game/boxScoreRows.tsx` — `IDENTITY_COL_PCTS=[22,5,5]`, `TRAD_STAT_COL_PCTS`(13열, 합 68), `ADV_STAT_COL_PCTS`(10열), `DEF_STAT_COL_PCTS`(8열), `BoxColGroup`(colgroup 렌더), `fixedBoxTableStyle(minWidthPx)` → `{ tableLayout:'fixed', minWidth }`
+- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `standalone`일 때만 `<Table tableStyle={fixedBoxTableStyle(760|720|640)}>` + `<BoxColGroup statPcts=…/>`를 TableHead 앞에. 비-standalone(싱글 상하 배치)은 불변
+
+**Before**: `<Table className={…}>` + 헤더 `w-12/w-14` 희망 폭(auto 레이아웃)
+**After**: 위 참조. fixed 레이아웃에서는 `<col>` 폭이 우선이라 헤더의 `w-*` 클래스·`SortableHeader`의 `w-${width}` 조립은 standalone에서 무시됨(해 없음). Traditional의 hidden 열(FAT/TF/FF/FG%/3P%/FT%)은 display:none이라 열 슬롯을 차지하지 않아 colgroup은 보이는 16열만.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인 — 비율은 화면 보고 조정.
+**롤백 방법**: 세 표의 `tableStyle`·`BoxColGroup` 줄 제거(헬퍼는 남겨도 무해).
+
+### 보완 — PLAYER 열 20% (같은 날, 사용자 결정): `IDENTITY_COL_PCTS` [22,5,5]→[20,5,5], `_NO_OVR` [27,5]→[20,5]. `BoxColGroup`이 스탯 열 값을 가중치로 보고 (100−정체성 합)에 정규화(OVR 유무에 따라 70%/75%를 비율대로 분배). 롤백: 상수·정규화 제거.
+
+### 보완 — 라이브 박스스코어 탭 OVR 열 생략 (같은 날): `hideOvr?` prop 체인 `GameBoxScoreTab → BoxScoreTable/Advanced/Defense → PlayerIdentityHeaderCells/PlayerIdentityCells`(헤더·셀 생략) + `BoxColGroup hideOvr`(`IDENTITY_COL_PCTS_NO_OVR=[27,5]`, OVR 5%를 PLAYER에) + `BlankBoxRows totalCols`·푸터 `colSpan` −1. `MultiGamePbpView` live box 탭에 `hideOvr`. 종료 화면은 불변. 롤백: prop 전달 제거.
+
+### 보완 — 헤더 라벨 말줄임 (같은 날): 작은 퍼센트 열에서 OREB/DREB/OREB% 등 라벨이 `truncate`로 잘림 → `index.css` `.box-compact-head thead th:not(:first-child) { padding 4px; font-size 12px }` 추가, 세 표 standalone `Table className`에 `box-compact-head`. 롤백: 클래스·CSS 제거.
+## 2026-10-23 — 라이브 "박스스코어" 탭 본문: 종료 화면 GameBoxScoreTab 재사용
+
+**배경**: 라이브 탭 개편 2단계. 종료 화면의 박스스코어(전체 컬럼·OVR 배지·Traditional/Advanced/Defense 셀렉터·좌우 분할)를 라이브에서 그대로 사용.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `liveAllBoxPlayers`/`liveMvpId`/`liveLeaders` 추가 — 최종 박스(gameData.home_box, 스포일러) 대신 리플레이 시점 `liveHomeBox/liveAwayBox`로 리더·MVP 계산
+  - `liveTab === 'box'` 본문: `p-4` 스크롤 래퍼 + `LIVE_CARD` 안에 `<GameBoxScoreTab homeBox={hasBoxTimeline ? liveHomeBox : scheduledHomeBox} … mvpId={liveMvpId} leaders={liveLeaders} splitLayout loading={isLive && (!gameData || !hasBoxTimeline)} dnpLabel="출전 대기" />`. 자리표시자는 나머지 탭(pbp/team/shot)만
+  - `homeTeamAdapter/awayTeamAdapter`: 박스가 비면(예정) `scheduledHomeBox/AwayBox`로 로스터 구성, teamId는 `homeTeamId/awayTeamId`(schedule 폴백 포함)
+- `components/game/boxScoreRows.tsx` — `DnpCell`에 `label?`(기본 'Did Not Play')
+- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `dnpLabel?` prop → `DnpCell label`
+- `components/game/tabs/GameBoxScoreTab.tsx` — `dnpLabel?` prop을 세 표에 전달
+
+**Before**: 박스스코어 탭 = "준비 중" 자리표시자. `buildTeamAdapter(gameData?.home_team_id ?? '', homeName, gameData?.home_box ?? [], …)`
+**After**: 위 참조.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인(devLive 권장).
+**롤백 방법**: box 탭 블록을 자리표시자로 되돌리고 live* memo 3개·dnpLabel 체인 제거, 어댑터를 Before로.
+## 2026-10-23 — 게임 센터 우측 카드: 쿼터별 득점표·팀 스탯 비교 제거
+
+**배경**: 쿼터별 득점표는 점보트론 가운데로 옮겨졌고, 팀 스탯 비교는 "팀 스탯" 탭으로 갈 예정 → 우측 카드는 홈 박스스코어(간소 컬럼)만.
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- 우측 카드 안 `<div className="shrink-0 border-t border-slate-800 flex flex-col">` 블록(`QuarterScores fullWidth` + `TeamStatsCompare`) 삭제. `TeamStatsCompare` 컴포넌트·`homeStats/awayStats` 계산은 유지(팀 스탯 탭에서 재사용)
+
+**Before**: 우측 카드 = 홈 박스 + (득점표 fullWidth + TeamStatsCompare)
+**After**: 우측 카드 = 홈 박스만
+
+**검증**: tsc 변경 파일 오류 없음.
+**롤백 방법**: 삭제한 블록 복원(git diff 참고).
+## 2026-10-23 — 점보트론 가운데 3×3 grid 재구성 · 득점표 미진행 쿼터 공란 · 마일스톤 글자 한 단계 축소
+
+**배경**: 사용자 지정 구조 — `파울 | 쿼터·클락 | 파울` / `보너스(타임아웃) | 스코어링 런 | 보너스(타임아웃)` / `  | 쿼터득점표↔마일스톤 |`. 좌우 1·2행이 가운데 1·2행과 줄을 맞추도록 명시적 grid 배치.
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- 라이브 헤더 가운데: 직전 "flex-col + 상단 3단 grid + 하단 블록" → 단일 `grid grid-cols-[1fr_auto_1fr] grid-rows-[auto_auto_auto] items-center gap-x-2 gap-y-1`. 셀 배치: (1,1) 원정 `FoulBonusBadge` / (1,2) 원정 `TimeoutDots` / (2,1) 쿼터|클락 / (2,2) 런(`min-h-6` 자리 예약, 없어도 줄 유지) / (2,3) `activeJumbotron ? 이벤트 JSX : QuarterScores compact`(`min-h-[76px]`) / (3,1)(3,2) 홈 대칭. 런 글로우 위·아래는 그대로(래퍼 relative)
+- `QuarterScores`: compact·fullWidth 둘 다 미진행 쿼터 `'—'` → `''`(공란) — 2곳
+- `MilestoneJumbotronBody`: 팀약어·선수명 줄과 라벨 줄 `text-3xl` → `text-2xl`
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 직전 항목(2단 구성)으로 되돌림, `''`→`'—'`, `text-2xl`→`text-3xl`.
+
+### 보완 — 득점표 미진행 쿼터 `''`→`0`(compact·fullWidth 2곳), 마일스톤 두 줄 `text-base`→`text-lg` (같은 날). 롤백: 복원.
+
+### 보완 — 득점표 줄간격 약간 확대 (같은 날): compact 셀 6곳 `py-0 leading-tight` → `py-px leading-snug`. 롤백: 클래스 복원.
+
+### 보완 — 점보트론 알림 글자 통일 (같은 날): `MilestoneJumbotronBody` 두 줄 `text-2xl`→`text-base`, 흐름 문구(쿼터/경기 시작·종료) `text-lg`→`text-base`. 롤백: 클래스 복원.
+
+### 보완 — 런 자리 예약 제거 + 득점표 text-xs (같은 날): grid 3행→2행(`grid-rows-[auto_auto]`, 좌우 `row-span-2`). 런은 1행 셀 안 flex-col로 클락 아래에 조건부 렌더(예전 2행 `min-h-6` 예약 삭제 → 런 없을 때 클락이 위로 떠 보이던 빈 공간 해소). compact 표 `text-sm`→`text-xs`. 롤백: 3행 구조·min-h-6·text-sm 복원.
+
+### 보완 — QuarterScores compact 촘촘하게 (같은 날): 글자는 이미 text-sm(유지), `py-0.5`→`py-0` + `leading-tight`, 열폭 `w-8/w-9`→`w-7/w-8`, 약어 `pr-3`→`pr-2`; 3행 예약 높이 `min-h-[76px]`→`min-h-[64px]`. 롤백: 클래스 복원.
+
+### 보완 — 좌우 파울/보너스·타임아웃을 3행 전체 세로 중앙으로 (같은 날). 좌우 셀을 1·2행 분리 배치 → `row-start-1 row-span-3 self-center` + 내부 `flex flex-col gap-1.5`(원정 items-start, 홈 items-end). 롤백: 1·2행 분리 배치로 복원.
+## 2026-10-23 — 점보트론 가운데 2단: 상단 쿼터·클락(+런) / 하단 쿼터별 득점표(이벤트 시 대체), 런 글로우 위·아래
+
+**배경**: 가운데(40%) 칸을 상단 [원정 파울·타임아웃 | 쿼터 | 클락(+스코어링 런) | 홈 파울·타임아웃] + 하단 쿼터별 득점표로 재구성. 마일스톤/흐름 이벤트는 하단 득점표 자리만 대체. 런 글로우는 바닥뿐 아니라 천장에도.
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx` (라이브 헤더 `isLive` 분기)
+- 래퍼: `<div className="relative self-stretch w-full grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 px-4 min-h-20">` → `relative self-stretch w-full flex flex-col items-center gap-1 px-4 py-2`(flex-col) 안에 ① 글로우 2개 ② 상단 grid `w-full grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 min-h-16`(좌/가운데/우 기존 그대로, 가운데는 idle 내용만) ③ 하단 `flex items-center justify-center min-h-[76px]` — `activeJumbotron ? (flow|combo|milestone JSX) : <QuarterScores allLogs={visibleEvents} … compact />`
+- 글로우: 기존 bottom:-40px 타원 유지 + `top:-40px`, `radial-gradient(ellipse 50% 50% at 50% 0%, …)` 상하 반전 타원 추가
+- 직전 항목(가운데 칸 ternary)은 이 구조로 대체됨
+
+**Before**: 가운데 칸 하나에 `activeJumbotron ? 이벤트 : 쿼터·클락·런`, 글로우 bottom만, 득점표 없음
+**After**: 위 구조. 득점표 데이터는 `visibleEvents`(공개 로그)라 스포일러 없음, `currentQuarter`까지만 숫자·이후 '—'.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인(헤더 높이 증가 — 득점표 3행 ≈ 76px).
+**롤백 방법**: 래퍼를 Before grid로 되돌리고 하단 블록·top 글로우 삭제, 가운데 칸에 ternary 복원(직전 항목 참고).
+
+### 보완 — 스코어링 런 글자 `text-2xl`(24px) → `text-base`(16px) (같은 날). 롤백: 클래스만 되돌림.
+## 2026-10-23 — 점보트론: 이벤트 표시 중에도 좌우 파울/보너스·타임아웃 유지
+
+**배경**: 라이브 헤더 가운데(40%) 칸이 `isScheduled ? 카운트다운 : isLive && activeJumbotron ? 이벤트 문구 : isLive ? 3단 grid` 구조라, 쿼터/경기 시작·종료·선수 마일스톤 이벤트가 뜨는 동안 3단 grid 자체가 사라져 양옆 파울/보너스 배지와 타임아웃 도트가 잠깐 안 보였다.
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- `isLive && activeJumbotron` 분기 제거 → `isLive`면 항상 3단 grid 렌더
+- grid 가운데 칸(`h-full flex flex-col items-center justify-center gap-0.5 justify-self-center`) 안에서 `activeJumbotron ? (flow 문구 | combo MilestoneJumbotronBody | milestone MilestoneJumbotronBody) : (<>쿼터·클락 + 런 정보</>)`로 교체. 좌(원정 FoulBonusBadge+TimeoutDots)·우(홈) 칸은 손대지 않음
+
+**Before**: `) : isLive && activeJumbotron ? ( …이벤트 JSX… ) : isLive ? ( <div grid> 좌 | 가운데(쿼터·클락·런) | 우 </div> ) : null`
+**After**: `) : isLive ? ( <div grid> 좌 | 가운데(activeJumbotron ? 이벤트 JSX : 쿼터·클락·런) | 우 </div> ) : null`
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인(devLive로 쿼터 전환 시점 확인 권장).
+**롤백 방법**: 가운데 칸의 ternary를 풀어 idle 내용만 남기고, grid 앞에 `isLive && activeJumbotron` 분기를 Before대로 복원.
+## 2026-10-23 — 라이브 화면 성능: 팀 스탯 막대 width→transform, visibleEvents/visibleShotEvents 참조 안정화
+
+**배경**: Chrome Performance 트레이스(11.5초) 분석 — 메인 스레드 28%. ① `TeamStatsCompare` 막대의 `transition-all duration-300`(width)이 포제션마다 7~8개씩 300ms 동안 매 프레임 레이아웃(4,300객체)+전체 뷰포트 페인트 유발(Animation 30회, Paint 134회 710ms + PrePaint 142 + Layerize 81). ② `visibleEvents`/`visibleShotEvents`가 매초 새 배열을 만들어 하류 memo·PBP 행 수백 개·샷차트 SVG가 매초 재조정(조용한 초에도 70~130ms). 스탯 틴트는 2회·2ms로 무혐의.
+
+**변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`
+- `TeamStatsCompare` 막대 2곳: `<div className="h-2.5 flex justify-end rounded-sm overflow-hidden bg-slate-900"><div className="h-full rounded-sm transition-all duration-300" style={{ width: `${aPct}%` }}/></div>` → 트랙 `h-2.5 rounded-sm overflow-hidden bg-slate-900`, 채움 `w-full h-full rounded-sm origin-right transition-transform duration-300` + `style={{ transform: `scaleX(${aPct / 100})` }}`(홈은 origin-left, hPct)
+- `visibleEvents`/`visibleShotEvents`: `useRef<{src, out}>`로 직전 결과 보관, `prev.src === all && prev.out.length === next.length`면 `prev.out` 반환(필터는 그대로 돌되 참조만 유지). 비-live는 원본 그대로.
+
+**Before**: 위 인용. **After**: 위 인용.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 재녹화 미실시(프로덕션 빌드 또는 DevTools 끈 상태 권장).
+**롤백 방법**: 막대 2곳을 Before 마크업으로, 두 memo에서 ref 비교 3줄 제거하고 `return next` → 직접 반환.
+
+같은 `h-full rounded-sm transition-all duration-300` width 트랜지션이 `components/game/TeamStatsCompare.tsx`, `PlayTypeStats.tsx`, `tabs/LiveTacticsTab.tsx`, `dashboard/tactics/charts/PlayTypePPP.tsx`에도 있음(미수정 — 라이브 매초 갱신 화면이 아님).
+## 2026-10-23 — 게임 센터 라이브 박스: 포제션별 스탯 셀 플래시 + 온코트 표시를 이름 셀로
+
+**배경**: 포제션마다 바뀐 스탯 셀(득점/성공 초록, 시도만 빨강, 파울 주황)을 켰다가 페이드. 온코트 표시는 행 전체 초록 틴트 → 이름 셀만 밝게(플래시 색과 안 섞이게).
+
+**변경 파일** (client 전용):
+- `index.css` — `@keyframes stat-flash-green/red/amber` + `.animate-stat-flash-*`(1.8s ease-out, fill none)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - 신규 `STAT_FLASH_WINDOW_MS = 3000`, `StatFlash {t, d}`, `liveStatFlashesAt(timeline, elapsed)`: elapsed까지 재생된 틱 중 리플레이 시각이 3초 안인 것만, 선수별 마지막 `tick.d` 보관
+  - `liveStatFlashes` useMemo(live && box_timeline일 때만) → `renderBoxPanel` live 분기에서 `statFlashes` prop으로 전달
+  - `PlayerBoxPanel`: `statFlashes?` prop. `flashOf(pid, col)` 규칙 — pts: pts>0 초록 / reb·ast >0 초록 / pf>0 주황 / fg: fgm>0 초록, 아니면 fga>0 빨강 / p3·ft 동일. 셀은 `statTd()` 헬퍼로 `<td key={`${col}-${t}`} className={statCell + animate-stat-flash-*}>` — key가 바뀔 때만 재마운트되어 애니메이션 재생(컴포넌트 내부 정의 금지: 매초 재마운트됨)
+  - 온코트: `<tr className={... bg-emerald-400/15}>` → tr 틴트 제거, 이름 td에 `bg-white/[0.08]`
+
+**Before**: `<td className={statCell}>{p.pts}</td>` …, tr `${onCourtIds?.has(id) ? 'bg-emerald-400/15' : ''}`
+**After**: `{statTd(p.playerId, 'pts', p.pts)}` …, 이름 td `${onCourtIds?.has(id) ? 'bg-white/[0.08]' : ''}`
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인(devLive로 확인 권장).
+**롤백 방법**: statTd 호출 7곳을 Before td로, tr/이름 td 클래스 Before로, liveStatFlashes·liveStatFlashesAt·CSS 삭제.
+
+### 보완 — 틴트를 다음 변동까지 유지 (같은 날)
+- `liveStatFlashesAt`: 3초 창 필터 제거(선수별 마지막 틱을 항상 보관), `fresh`(리플레이 시각이 3초 안) 플래그 추가. `STAT_FLASH_WINDOW_MS` → `STAT_FLASH_FRESH_MS`
+- `flashOf`: 정적 틴트 `bg-emerald-400/[0.18]` / `bg-red-400/[0.18]` / `bg-amber-400/[0.18]` 항상 부여 + fresh일 때만 `animate-stat-flash-*`
+- `index.css`: 키프레임 끝값 0 → 0.18(정적 클래스와 동일, 애니메이션 종료 시 튐 없음)
+- 롤백: 위 세 곳 Before로.
+## 2026-10-23 — 게임 센터: 샷차트/PBP 카드 분리 · 샷차트 헤더 약어만 text-base · PBP 헤더 text-sm+셀렉터 우측 · 새 행 흰 선 번쩍임 수정
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiGamePbpView.tsx`
+  - 중앙 컬럼 `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` → `flex-1 min-w-0 flex flex-col gap-4`(카드 아님), 샷차트 래퍼 `shrink-0 border-b border-slate-700` → `shrink-0 ${LIVE_CARD}`, PBP 래퍼 `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800` → `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col ${LIVE_CARD}`
+  - PBP 헤더 `h-9` → `h-10`, 제목 `text-xs` → `text-sm`, 안쪽 `flex items-center gap-3` → `flex items-center justify-between gap-3 w-full`(셀렉터 우측)
+  - 새 행 흰 선 번쩍임: 원인은 `divide-y divide-slate-800/50` + 행의 `transition-colors`. 맨 위 행(첫 자식)은 divide 선이 없어 border-color가 preflight 기본(gray-200)인데, 새 로그가 위에 끼어들어 둘째 행이 되는 순간 border-top 1px + slate 색으로 바뀌고 transition-colors가 gray-200→slate를 150ms 보간 → 흰 선. 컨테이너 `divide-y divide-slate-800/50` 제거, 일반 행·교체 행에 `border-b border-slate-800/50` 직접 부여(부상 행은 기존 border-y red 유지)
+- `views/multi/season/MultiFullCourtChart.tsx` — split 헤더 텍스트 `{abbr} 원정/홈` → `{abbr}`, `text-sm` → `text-base`
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 위 Before 클래스로 복구, 컨테이너에 `divide-y divide-slate-800/50` 복원 + 행 `border-b border-slate-800/50` 제거.
+## 2026-10-23 — 게임 센터: 샷차트 헤더 팀컬러 분할(필터 숨김) · PBP 쿼터 셀렉터 OT1 오탐 수정 · PBP text-sm
+
+**배경**: ① 게임 센터 샷차트 헤더의 선수 필터를 숨기고 헤더를 좌(원정)/우(홈) 팀 테마 컬러로 반반 분할. ② 연장이 없는 경기에도 PBP 쿼터 셀렉터에 OT1이 뜸 — 엔진 `liveEngine.ts stepPossession`이 4Q 종료 시 `state.quarter = 5`로 올린 뒤 `'경기 종료 (Final)'` SYSTEM 로그를 남겨 그 로그가 quarter 5로 저장되기 때문(엔진은 미수정, 뷰에서 SYSTEM 제외). ③ PBP 피드 글자 text-xs → text-sm.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiFullCourtChart.tsx` — `headerVariant?: 'legend' | 'split'`(기본 legend, 기존 동작 불변) + `awayTextColor/homeTextColor`. split이면 h-10 헤더를 flex 반반, 각각 `backgroundColor: awayColor/homeColor`, 글자는 대비색. 필터 버튼·범례는 legend에서만 렌더(필터 state/로직은 그대로)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `<MultiFullCourtChart headerVariant="split" awayTextColor={awayText} homeTextColor={homeText} />`
+  - `maxQuarter`: `Math.max(...gameData.events.map(q), 4)` → `maxPlayedQuarter = visibleEvents.reduce(SYSTEM 제외 최대 quarter)`, `Math.max(maxPlayedQuarter, 4)`. 공개 로그 기준이라 스포일러도 방지
+  - PBP 스크롤 블록(헤더 행·플로우 배너·점수·시간·코멘터리·빈 상태) `text-xs` 12곳 → `text-sm`, 시간 칸 `w-16` 2곳 → `w-20`
+
+**Before**: `const maxQuarter = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);` / 샷차트 헤더 범례+필터 / PBP `text-xs`, 시간 `w-16`
+**After**: 위 참조.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: headerVariant prop 전달 제거(기본 legend로 복귀), maxQuarter를 Before로, PBP 블록 text-sm→text-xs·w-20→w-16.
+## 2026-10-23 — 개발용 라이브 리플레이(?devLive) — 종료 경기를 라이브 화면으로 재생
+
+**배경**: 라이브 화면을 편집하려면 실제 진행 중인 경기가 있어야만 확인 가능했음. 종료된 경기의 game_pbp 전체 데이터를 클라이언트 가짜 시계로 다시 재생해 언제든 라이브 화면을 볼 수 있게 함.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `devLive` = URL `?devLive` 존재 && (리그 관리자 `league.admin_user_id === session.user.id` || `import.meta.env.DEV`). `devLive=1` 반복, `devLive=<경기초>` 정지
+  - `displayState`: devLive면 강제 `'live'`(아니면 기존 `getGameDisplayState`)
+  - 신규 `gameStartMs` useMemo: 평소 `new Date(gameData.game_start_time).getTime()`, devLive 반복 = `serverNow - ((serverNow - anchor) % replayMs)`, 정지 = `serverNow - (sec/2880)*replayMs`
+  - live 필터 6곳(`visibleEvents`/`visibleShotEvents`/`liveHomeBox`/`liveAwayBox`/`liveConditions`/`onCourtIds`)의 `const startMs = new Date(gameData.game_start_time).getTime()` → `const startMs = gameStartMs`(deps에 gameStartMs 추가)
+  - 폴링 타이머: `displayState === 'live'` → `displayState === 'live' && !devLive`(종료 경기는 전체 데이터가 한 번에 오므로 폴링하면 이벤트 중복)
+  - 라이브 TabBar `rightSlot`에 "DEV 리플레이 · 반복/N초 정지" 앰버 라벨
+- `components/common/TabBar.tsx` — `align="center"`일 때 rightSlot을 `absolute right-8`로(ml-auto가 justify-center를 이겨 탭이 왼쪽으로 쏠리는 문제)
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: devLive 블록·gameStartMs 삭제, 6곳 `startMs`를 Before로, 폴링 조건 `&& !devLive` 제거, rightSlot 제거.
+## 2026-10-23 — 라이브 경기 화면 개편 1단계: 점보트론 하단 탭 그룹(가운데 정렬)
+
+**배경**: 라이브/예정 화면을 종료 화면처럼 탭 구조로 개편(게임 센터 | 박스스코어 | 플레이-바이-플레이 | 팀 스탯 | 샷 차트). 1단계로 탭 그룹만 추가하고 기존 3열 라이브 뷰를 "게임 센터" 탭 본문으로 둔다. 목업: claude.ai/artifact/DxA6UUprgTLv2SJqhfUa3r
+
+**변경 파일** (client 전용):
+- `components/common/TabBar.tsx` — `align?: 'start' | 'center'` prop 추가(기본 start, 기존 호출부 영향 없음). center면 바에 `justify-center`
+- `views/multi/season/MultiGamePbpView.tsx`
+  - 모듈 레벨 `LiveTab` 타입 + `LIVE_TABS` 5종 정의
+  - `useSearchParams()`에서 `setSearchParams`도 꺼냄. `liveTab`은 URL `?tab=`(center는 키 삭제, 잘못된 값→center), `setLiveTab`은 replace 모드
+  - 스코어버그 헤더 아래 `{(isLive || isScheduled) && <TabBar tabs={LIVE_TABS} align="center" />}`
+  - 기존 3열 라이브 바디 게이트: `(isLive || isScheduled)` → `(isLive || isScheduled) && liveTab === 'center'`
+  - 그 외 탭은 "○○ 탭은 준비 중입니다" 자리표시자(다음 단계에서 본문 채움)
+
+**Before**: 라이브 바디 `{(isLive || isScheduled) && (<div className="flex-1 ... overflow-y-auto">…3열…</div>)}`, TabBar는 종료 화면에만
+**After**: 위 블록 앞에 TabBar(center 정렬) 추가, 바디 조건에 `&& liveTab === 'center'`, 다른 탭 자리표시자 블록 추가
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: TabBar `align` prop 제거(또는 방치), MultiGamePbpView의 탭 블록·자리표시자 블록 삭제, 바디 조건에서 `&& liveTab === 'center'` 제거.
+
+### 2단계 — 게임 센터 3열 카드화 (같은 날)
+- `MultiGamePbpView.tsx`: 모듈 상수 `LIVE_CARD = 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden'`(공용 Table card 토큰). 바디 스크롤 래퍼에 `p-4`, 안쪽 `flex min-h-full` → `flex gap-4 items-start min-h-full`. 세 열의 `border-r/border-l border-slate-800 bg-slate-950` → `${LIVE_CARD}`.
+- Before: `<div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col">` / `<div className="flex-1 min-w-0 flex flex-col bg-slate-950">` / `<div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col">`
+- After: `<div className={\`w-[30%] flex flex-col ${LIVE_CARD}\`}>` / `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` / 우측 동일
+- 롤백: 위 Before로, 래퍼 p-4·gap-4·items-start 제거.
+
+### 3단계 — 좌우 박스 간소 컬럼 + 인사이트 그래프 제거 (같은 날)
+- `MultiGamePbpView.tsx` `PlayerBoxPanel`: 13열(PLAYER P MP PTS REB AST STL BLK TOV PF FG 3P FT) → 10열(STL/BLK/TOV 제거). colgroup 24/5/5/6×7/8×3 → 30/7/7/8/8/8/7/9/8/8, `min-w-[600px]` → `min-w-[480px]`, `total`에서 stl/blk/tov 합계 제거.
+- 좌측 카드의 `<div className="h-[300px] ... border-t"><GameInsightsPanel …/></div>` 블록 삭제(주석만 남김). `GameInsightsPanel` 컴포넌트·`liveHomeOreb/liveAwayOreb/liveMaxQuarter` 계산은 유지(플레이-바이-플레이 탭에서 재사용 예정).
+- 롤백: 열 3개(헤더 th·본문 td·푸터 td)와 colgroup 복구, 좌측 카드에 인사이트 블록 복구(git diff 참고).
+## 2026-10-23 — 라이브 박스스코어(PlayerBoxPanel) 이름 링크·호버카드·text-sm·행 높이
+
+**배경**: 라이브 뷰 좌우 박스스코어는 이름이 평문이고 text-xs/py-1.5라 종료 화면 표·공용 Table과 톤이 달랐다. 이름을 프로필 링크 + 호버카드로, 글자 text-sm, 헤더 h-10·셀 py-2로 공용 Table 규칙에 맞춤. 라이브 호버카드는 경기 중 스탯이 계속 바뀌어 시즌 스탯 조회 부하가 생기므로 능력치만 보여준다.
+
+**변경 파일** (client 전용):
+- `components/common/PlayerHoverCard.tsx` — `PlayerHoverCard`/`PlayerRatingsStatsPopup`에 `hideStats?: boolean` 추가(시즌 스탯 섹션 통째로 생략)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - rosterCache 조회 effect: `displayState === 'final'`만 → `final || live`. 의존성을 `gameData.home_box/away_box` 배열 참조 → 선수 id 문자열(`boxIdsKey`)로 교체(라이브 폴링이 매번 새 배열을 내려줘도 같은 선수 집합이면 재조회 없음). `boxPlayerIds` useMemo를 effect 위로 이동
+  - `PlayerBoxPanel`: `playerById`/`getPlayerHref` prop 추가. 이름 → `<PlayerHoverCard hideStats><Link/></PlayerHoverCard>`(스텁이면 카드 비활성, age 유무로 판별). `text-xs`→`text-sm`, 헤더 `py-2`→`h-10`, 본문/푸터 `py-1.5`→`py-2`, 본문 선 `slate-800/50`→`slate-800`, 푸터 상단선 `slate-700`, P/MP 셀 font-semibold, 스켈레톤 h-3→h-3.5 w-24
+  - `renderBoxPanel`: 세 분기 모두 `playerById={rosterCache} getPlayerHref` 전달
+
+**Before**:
+```tsx
+useEffect(() => { if (displayState !== 'final' || !gameData) return; ... }, [displayState, gameData?.home_box, gameData?.away_box, useCustomOverrides]);
+<table className="w-full min-w-[600px] text-xs ...">  <tr className="text-slate-400 font-bold"><th className="text-left py-2 px-2 ...">
+<td className="py-1.5 px-2 ..."><span className="truncate">{p.playerName}</span>
+```
+**After**:
+```tsx
+useEffect(() => { if ((displayState !== 'final' && displayState !== 'live') || !gameData) return; ... }, [displayState, boxIdsKey, useCustomOverrides]);
+<table className="w-full min-w-[600px] text-sm ...">  <tr className="h-10 text-slate-400 text-sm font-bold"><th className="text-left px-2 ...">
+<td className="py-2 px-2 ..."><PlayerHoverCard player={card} teamAbbr={label} hideStats><Link to={href} ...>{p.playerName}</Link></PlayerHoverCard>
+```
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 위 Before로 되돌림. `hideStats` prop은 남겨도 무해.
+## 2026-10-23 — 멀티 종료 화면 박스스코어 선수 호버카드
+
+**배경**: 종료 화면 박스스코어의 선수 이름에 호버카드(능력치+시즌 스탯)가 없었음(`PlayerIdentityCells` 주석 "호버카드 없음").
+
+**변경 파일** (client 전용):
+- `components/game/PlayerIdentityCells.tsx` — `profileHref`가 있을 때(멀티 종료 화면) 이름 Link를 `PlayerHoverCard`로 감쌈. 스텁(능력치 로딩 전)이면 `player=null`이라 카드 비활성. `teamAbbr` prop 추가
+- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `teamAbbr={badge?.abbr}` 전달
+- `views/multi/season/MultiGamePbpView.tsx` — `usePlayerSeasonStatsBatch`(리그 시즌 스탯 쿼리 공유 캐시)로 박스 선수 시즌 스탯을 `rosterCacheWithStats`로 병합, `buildTeamAdapter`에 사용
+
+**Before**: `<Link ...>{p.playerName}</Link>` / `buildTeamAdapter(..., rosterCache)`
+**After**: `<PlayerHoverCard player={isStub ? null : playerInfo} teamAbbr={teamAbbr}><Link .../></PlayerHoverCard>` / `buildTeamAdapter(..., rosterCacheWithStats)`
+
+- (추가) `MultiGamePbpView.tsx` — `usePlayerInjuryRowsBatch` + `useCurrentVirtualDate` + `buildActiveInjurySeverityMap`으로 "지금(가상 오늘) 기준 활성 부상/출장정지"를 `rosterCacheWithStats`의 `activeInjurySeverity/injuryType/activeInjuryDuration/returnDate`에 병합(뉴스피드와 동일 방식, 출장정지 남은 경기수는 박스의 소속팀+schedule로 재계산)
+
+**검증**: tsc 변경 파일 오류 없음. 싱글플레이(profileHref 없음)는 동작 불변.
+**롤백 방법**: 위 Before로 되돌림.
+## 2026-10-23 — 경기 종료 화면 박스스코어 로딩 스켈레톤 (행이 뒤늦게 생기며 레이아웃 밀림)
+
+**배경**: 종료 경기 진입 시 `gameData`가 오기 전엔 `homeBox/awayBox`가 `[]`라 본문 행 0개짜리 표가 그려지고, 데이터 도착 후 행 13개 안팎이 한꺼번에 생겨 아래 섹션이 밀렸다. 로딩 중엔 스켈레톤 행으로 높이를 미리 확보.
+
+**변경 파일** (client 전용):
+- `components/game/boxScoreRows.tsx` — `BlankBoxRows`에 `skeleton?` 추가(첫 칸 h-6 안에 Skeleton w-24, 나머지 칸 Skeleton w-5)
+- `components/game/BoxScoreTable.tsx`, `AdvancedBoxScoreTable.tsx`, `DefenseBoxScoreTable.tsx` — `padSkeleton?` prop 추가, `BlankBoxRows`로 전달
+- `components/game/tabs/GameBoxScoreTab.tsx` — `loading?` prop 추가, true면 `maxRows = 13`(LOADING_SKELETON_ROWS)로 padRows를 깔고 padSkeleton 전달
+- `views/multi/season/MultiGamePbpView.tsx` — 종료 박스스코어 탭에 `loading={!gameData}`
+
+**Before**: `<BlankBoxRows count={padRows} totalCols={N} />`, `maxRows = Math.max(home.length, away.length)`
+**After**: `<BlankBoxRows count={padRows} totalCols={N} skeleton={padSkeleton} />`, `maxRows = loading ? 13 : Math.max(...)`
+
+**검증**: tsc 변경 파일 오류 없음(LiveTacticsTab 기존 오류만).
+**롤백 방법**: 위 Before로 되돌리고 `loading`/`padSkeleton` prop 제거.
+
+### 추가 수정 — Traditional 표 statCols 1 초과 버그 (빈 열 발생)
+- 원인: 10-21 `b60d0ae7`(REB→OREB/DREB 분리, 열 +1)에서 `statCols`를 +2(12→14, 18→20) 올려 DNP 행 colSpan·`BlankBoxRows` 칸 수가 헤더보다 1 많음 → DNP 선수가 있거나 padRows/스켈레톤이 있을 때 표 오른쪽에 빈 열이 생김(간헐적).
+- `components/game/BoxScoreTable.tsx` (client 전용): `statCols = standalone ? 14 : 20` → `standalone ? 13 : 19`
+- 롤백: 값을 14/20으로 되돌림(빈 열 버그가 되살아남).
 ## 2026-10-23 — 시즌 달력을 리그 생성 시점에 저장 + 시즌 시작 전 날짜 스트립에 올스타 날짜 숨김
 
 **배경**: v2 배포 후 새 리그(PBL Active, 모집 중)의 날짜 스트립이 "2027-02-16 올스타전"으로 시작. ① `season_calendar`는 finalize(드래프트 종료) 때만 저장돼 모집·드래프트 단계에선 null → 기존 고정 달력(본경기 2/16)으로 계산. ② 스트립의 올스타 행사일 주입(f69cd1b5)이 메인리그 여부만 봐서, 정규시즌 경기가 없는 시즌 전에도 올스타 날짜만 표시.

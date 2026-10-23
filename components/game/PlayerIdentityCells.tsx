@@ -7,17 +7,19 @@ import { OvrBadge } from '../common/OvrBadge';
 import { TableCell, TableHeaderCell } from '../common/Table';
 import { Skeleton } from '../common/Skeleton';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { PlayerHoverCard } from '../common/PlayerHoverCard';
 
 // PLAYER/POS/OVR 3열 — Traditional/Advanced/Defense 셀렉터를 바꿔도 절대 바뀌면 안 되는 공통 열.
 // BoxScoreTable/AdvancedBoxScoreTable/DefenseBoxScoreTable 세 테이블이 전부 이 컴포넌트를
 // 공유해서 디자인/행 높이가 100% 동일하게 유지되도록 한다(OVR 배지 높이가 행 높이를 결정하는
 // 실질적 기준이라, 세 테이블 모두 이 컴포넌트를 쓰면 자동으로 행 높이가 맞춰진다).
 
-export const PlayerIdentityHeaderCells: React.FC = () => (
+/** hideOvr: OVR 열 생략(라이브 박스스코어 탭 — 경기 중엔 능력치보다 스탯이 우선, 열 폭도 아낌). 본문 PlayerIdentityCells와 같은 값을 넘길 것 */
+export const PlayerIdentityHeaderCells: React.FC<{ hideOvr?: boolean }> = ({ hideOvr }) => (
     <>
         <TableHeaderCell align="left" className="px-4 w-40">PLAYER</TableHeaderCell>
         <TableHeaderCell align="center" className="w-12">POS</TableHeaderCell>
-        <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+        {!hideOvr && <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>}
     </>
 );
 
@@ -31,9 +33,13 @@ interface PlayerIdentityCellsProps {
     standalone?: boolean;
     /** 주어지면 선수 이름이 이 경로로 가는 프로필 링크가 된다(멀티플레이어 종료 화면 전용, 호버카드 없음) */
     profileHref?: string;
+    /** 호버카드 헤더에 표시할 소속팀 약어(멀티 종료 화면 전용) */
+    teamAbbr?: string;
+    /** OVR 셀 생략(헤더 PlayerIdentityHeaderCells와 짝) */
+    hideOvr?: boolean;
 }
 
-export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone, profileHref }) => {
+export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone, profileHref, teamAbbr, hideOvr }) => {
     // standalone(멀티 좌우 분할)에선 표 본문 글자를 text-sm으로 키운다(2026-10-18)
     const textSize = standalone ? 'text-sm' : 'text-xs';
     const isMvp = p.playerId === mvpId;
@@ -55,7 +61,10 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
             <TableCell className="px-4">
                 <div className="flex items-center gap-2">
                     {profileHref
-                        ? <Link to={profileHref} className={`${nameClass} hover:text-indigo-400 hover:underline`}>{p.playerName}</Link>
+                        // 호버카드는 멀티 종료 화면(profileHref가 있을 때)에서만, 능력치가 로드된 실제 Player일 때만 뜬다
+                        ? <PlayerHoverCard player={isStub ? null : playerInfo} teamAbbr={teamAbbr}>
+                            <Link to={profileHref} className={`${nameClass} hover:text-indigo-400 hover:underline`}>{p.playerName}</Link>
+                        </PlayerHoverCard>
                         : <span className={nameClass}>{p.playerName}</span>}
                     <div className="flex items-center gap-1 flex-shrink-0">
                         {isMvp && !standalone && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
@@ -80,13 +89,15 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
                 </div>
             </TableCell>
             <TableCell align="center" className={`${textSize} font-semibold text-slate-200`}>{p.position || playerInfo?.position || '-'}</TableCell>
-            <TableCell align="center">
-                <div className="flex justify-center">
-                    {ovr === null
-                        ? <Skeleton className="!w-6 !h-6 rounded-full" />
-                        : <OvrBadge value={ovr} size="sm" className="!shadow-none" />}
-                </div>
-            </TableCell>
+            {!hideOvr && (
+                <TableCell align="center">
+                    <div className="flex justify-center">
+                        {ovr === null
+                            ? <Skeleton className="!w-6 !h-6 rounded-full" />
+                            : <OvrBadge value={ovr} size="sm" className="!shadow-none" />}
+                    </div>
+                </TableCell>
+            )}
         </>
     );
 };
