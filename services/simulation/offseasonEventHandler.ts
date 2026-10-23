@@ -13,7 +13,7 @@ import { generateDraftClass } from '../draft/rookieGenerator';
 import { GeneratedPlayerRow } from '../../types/generatedPlayer';
 import { fetchPredefinedDraftClass } from '../queries';
 import { buildSeasonConfig } from '../../utils/seasonConfig';
-import { generateSeasonSchedule, ScheduleConfig } from '../../utils/scheduleGenerator';
+import { generateSeasonScheduleLegacy, ScheduleConfig } from '../../utils/scheduleGenerator';
 import { INITIAL_STATS, LEAGUE_FINANCIALS } from '../../utils/constants';
 import { processOffseason, OffseasonResult } from '../playerDevelopment/playerAging';
 import { calculateLuxuryTax } from '../financeEngine/budgetManager';
@@ -448,7 +448,9 @@ function handleOpeningNight(
         allStarStart: nextConfig.allStarStart,
         allStarEnd: nextConfig.allStarEnd,
     };
-    const newSchedule = generateSeasonSchedule(scheduleConfig);
+    // [2026-10-23] 싱글은 기존 생성기 고정 — 시즌 생성(offseasonEventHandler)과 로드 시 재생성(useGameData)이
+    // 같은 결과를 내야 하므로 두 곳을 함께 바꾸기 전엔 v2(generateSeasonSchedule)로 옮기지 말 것.
+    const newSchedule = generateSeasonScheduleLegacy(scheduleConfig);
 
     // 팀 W/L 리셋
     for (const team of teams) {

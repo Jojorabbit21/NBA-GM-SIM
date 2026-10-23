@@ -24,6 +24,7 @@ import {
     buildCandidates, MIN_GAMES, positionGroup, voterNoise, scoreAllNBA,
     type AwardCandidate, type AwardStatLine,
 } from './awardVoting.ts';
+import { resolveSeasonCalendar } from '../seasonCalendar.ts';
 
 // ══════════════════════════════════════════════════════════════════════════
 // 키데이트
@@ -60,9 +61,10 @@ function addDaysStr(dateStr: string, days: number): string {
 
 const VOTE_WINDOW_DAYS = 28;
 
-export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
-    const allStarStart = `${virtualSeasonYear + 1}-02-13`;
-    const allStarEnd = `${virtualSeasonYear + 1}-02-18`;
+export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: unknown): AllStarKeyDates {
+    // [2026-10-23] 브레이크 날짜는 리그별 저장 달력(leagues.season_calendar)에서 — 없으면 기존 고정값(2/13~18).
+    // 아래 서브 이벤트 오프셋(+1/+2/+3)은 신·구 달력 모두 같다(seasonCalendar.ts 참고).
+    const { allStarStart, allStarEnd } = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
     const allStarSelectionDate = addDaysStr(allStarStart, -7);
     const allStarVoteEnd = allStarSelectionDate;
     const allStarVoteStart = addDaysStr(allStarVoteEnd, -VOTE_WINDOW_DAYS);
@@ -81,9 +83,9 @@ export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
  *  여부. 투표 시작일(allStarVoteStart)부터 브레이크 종료일(allStarEnd) 전날까지(브레이크
  *  종료 당일부터는 숨김). 서버 쪽에서는 현재 사용처가 없지만(스케줄러는 자체 키데이트
  *  비교를 씀) 미러 쌍 로직 동기화 원칙에 따라 함께 추가. */
-export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number): boolean {
+export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number, seasonCalendar?: unknown): boolean {
     if (!virtualDate) return false;
-    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
     return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
 }
 

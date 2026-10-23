@@ -26,6 +26,7 @@ import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
 import { generateDraftContracts } from './shared/draftContracts';
 import { SIM_CONFIG } from './shared/game/config/constants';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
+import { buildSeasonCalendar } from './shared/seasonCalendar';
 import type { TacticalSliders } from './shared/types/tactics';
 
 // URL에 노출되는 게임 ID(T_R1_M0_G1 등)를 대체하는 짧은 코드 — services/multi/leagueService.ts의
@@ -305,12 +306,15 @@ function buildMainLeagueSchedule(
     nowDate: Date,
 ): MainLeagueScheduleResult {
     const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
-    const keyDates = getAllStarKeyDates(virtualSeasonYear);
+    // [2026-10-23] 일정 생성기 v2 — 시즌 달력(정규시즌·올스타)을 요일 규칙으로 정하고 일정·타임라인과 함께
+    // leagues.season_calendar에 저장한다. 이후 올스타 키데이트·포스트시즌 앵커는 전부 이 저장값을 읽는다.
+    const seasonCalendar = buildSeasonCalendar(virtualSeasonYear);
+    const keyDates = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
     const rawSchedule = generateSeasonSchedule(
         {
             seasonYear:       virtualSeasonYear,
-            seasonStart:      `${virtualSeasonYear}-10-21`,
-            regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
+            seasonStart:      seasonCalendar.regularStart,
+            regularSeasonEnd: seasonCalendar.regularEnd,
             allStarStart: keyDates.allStarStart,
             allStarEnd:   keyDates.allStarEnd,
         },
@@ -328,6 +332,7 @@ function buildMainLeagueSchedule(
 
     const calendar = buildVirtualCalendar({
         virtualSeasonYear, keyDates,
+        regularStart: seasonCalendar.regularStart, regularEnd: seasonCalendar.regularEnd,
         playoff: {
             intervalDays,
             playInEnabled: league.play_in_enabled ?? true,
@@ -368,6 +373,7 @@ function buildMainLeagueSchedule(
             duration_weeks:             Math.max(1, Math.ceil(feas.realDays / 7)),
             playoff_game_interval_days: intervalDays,
             replay_minutes:             replayMin,
+            season_calendar:            seasonCalendar,
         },
     };
 }

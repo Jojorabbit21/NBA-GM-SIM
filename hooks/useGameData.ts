@@ -32,7 +32,7 @@ import { generateLeagueGMProfiles } from '../services/tradeEngine/gmProfiler';
 import { initializeLeaguePickAssets } from '../services/draftAssets/pickInitializer';
 import { buildSeasonConfig, SeasonConfig, DEFAULT_SEASON_CONFIG } from '../utils/seasonConfig';
 import { updateLeagueFinancials, generateCapHistory, getSeasonCap } from '../utils/constants';
-import { generateSeasonSchedule, ScheduleConfig } from '../utils/scheduleGenerator';
+import { generateSeasonScheduleLegacy, ScheduleConfig } from '../utils/scheduleGenerator';
 import { LotteryResult } from '../services/draft/lotteryEngine';
 import { OffseasonPhase } from '../types/app';
 import { LeagueFAPool } from '../types/generatedPlayer';
@@ -274,7 +274,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             allStarStart: sc.allStarStart,
                             allStarEnd: sc.allStarEnd,
                         };
-                        baseSchedule = generateSeasonSchedule(schedCfg);
+                        // [2026-10-23] 싱글은 기존 생성기 고정 — 시즌 생성(offseasonEventHandler)과 로드 시 재생성(useGameData)이
+                        // 같은 결과를 내야 하므로 두 곳을 함께 바꾸기 전엔 v2(generateSeasonSchedule)로 옮기지 말 것.
+                        baseSchedule = generateSeasonScheduleLegacy(schedCfg);
                         console.log(`📅 Generated season ${savedSeasonNumber} schedule: ${baseSchedule.length} games`);
                     } else {
                         baseSchedule = baseData.schedule;

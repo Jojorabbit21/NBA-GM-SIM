@@ -63,7 +63,7 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     const g                = postseasonIntervalDays(league);
     const playInStart      = kstMidnightPlusDays(new Date().toISOString(), 1);
     const playInStartIso   = playInStart.toISOString();
-    const virtualStartDate = postseasonVirtualAnchor(league.virtual_season_year);
+    const virtualStartDate = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
     const gamesPerRealDay  = league.games_per_real_day ?? 48;
     const intervalMinutes  = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
 
@@ -202,8 +202,8 @@ export async function handlePlayInAdvance(
     const usesTimeline = timeline.length > 0;
     const g            = postseasonIntervalDays(league);
     const playInVirtualDate = tag === '8th'
-        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? g : 1)
-        : postseasonVirtualAnchor(league.virtual_season_year);
+        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? g : 1)
+        : postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
     const pendingEvents: PendingLeagueEvent[] = [{
         type: 'play_in_result', simDate: playInVirtualDate,
         teamIds: [finished.winnerId, loserId],
@@ -230,7 +230,7 @@ export async function handlePlayInAdvance(
             // 시각(scheduledAt)만 호출 시점의 real "now"+1일을 그대로 사용.
             // [2026-09-18] 타임라인 리그: 디사이더 = 앵커 + g(가상 날짜), 슬롯 0에 두고 scheduled_at은 표에서.
             // 구 리그: 예전 그대로(앵커+1, 슬롯 1, 30분 간격, real now+1일 앵커).
-            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? g : 1);
+            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? g : 1);
             const deciderStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
             const gamesPerRealDay = league.games_per_real_day ?? 48;
             const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
@@ -334,7 +334,7 @@ async function resolveRoundOneFromPlayIn(
     const timeline     = await loadLeagueTimeline(league.id);
     const usesTimeline = timeline.length > 0;
     const g            = postseasonIntervalDays(league);
-    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), usesTimeline ? 2 * g : 1);
+    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? 2 * g : 1);
     const startAnchor     = kstMidnightPlusDays(new Date().toISOString(), 1);
     const gamesPerRealDay = league.games_per_real_day ?? 48;
     const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;

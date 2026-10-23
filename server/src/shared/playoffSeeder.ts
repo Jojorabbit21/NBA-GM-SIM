@@ -29,6 +29,7 @@ import { buildLedger, buildContext, rankConference, type TiebreakTeam } from './
 import { TEAM_DATA } from './teamData';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
 import { DEFAULT_PLAYOFF_INTERVAL_DAYS } from './leagueTimeline';
+import { resolveSeasonCalendar } from './seasonCalendar';
 
 /** "2026-27" 형태 — MultiHeader.tsx의 seasonShortFromDate와 동일 규칙(가상 시즌 시작 연도 기준). */
 export function seasonLabelFor(virtualSeasonYear: number | null | undefined): string {
@@ -118,6 +119,9 @@ export interface PostseasonLeagueRow {
      *  것과 동일한 값. 호출부(scheduler.ts checkSeasonCompletions, simRunner.ts
      *  handleTournamentAdvance)가 select에 포함시켜야 한다. */
     virtual_season_year: number | null;
+    /** [2026-10-23] 리그별 시즌 달력(seasonCalendar.ts) — 포스트시즌 앵커(정규시즌 종료 +1일)용.
+     *  호출부 select에 포함할 것(없으면 기존 4/13 종료로 계산). */
+    season_calendar?: unknown;
     /** [2026-09-18] 고정 길이 가상 하루 타임라인 — 시리즈 안 경기 간격(가상 일, 1=매일/2=격일)과
      *  하루 길이. 타임라인이 있는 리그(신규 메인리그)는 scheduled_at을 slot이 아니라
      *  league_virtual_days 표에서 계산한다(timelineStore.fillPostseasonRealTimes). 호출부 select에 포함할 것. */
@@ -147,9 +151,10 @@ export function postseasonIntervalDays(league: { playoff_game_interval_days?: nu
  * (scheduledAt/simRealStartAt)은 이 함수와 무관하게 계속 `new Date()` 기반으로 남는다 —
  * "언제 실제로 시뮬레이션되는가"와 "화면에 어떤 날짜로 보이는가"는 서로 다른 축이다.
  */
-export function postseasonVirtualAnchor(virtualSeasonYear: number | null | undefined): string {
+export function postseasonVirtualAnchor(virtualSeasonYear: number | null | undefined, seasonCalendar?: unknown): string {
     const y = virtualSeasonYear ?? (new Date().getFullYear() - 1);
-    return `${y + 1}-04-14`;
+    // [2026-10-23] 정규시즌 종료일은 리그별 저장 달력(leagues.season_calendar, 일정 생성기 v2) — 없으면 기존 4/13.
+    return addDaysStr(resolveSeasonCalendar(y, seasonCalendar).regularEnd, 1);
 }
 
 /** 'YYYY-MM-DD' 문자열에 일수를 더한 새 'YYYY-MM-DD' — tournamentInitializer.ts의
@@ -250,7 +255,7 @@ export async function buildAndStoreConferenceBracket(
     const g                = postseasonIntervalDays(league);
     const playoffStart     = kstMidnightPlusDays(new Date().toISOString(), Math.max(1, round1DayOffset));
     const playoffStartIso  = playoffStart.toISOString();
-    const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year), round1DayOffset);
+    const virtualStartDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), round1DayOffset);
     const gamesPerRealDay  = league.games_per_real_day ?? 48;
     const intervalMinutes  = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
 

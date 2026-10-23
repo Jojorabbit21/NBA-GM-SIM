@@ -34,6 +34,79 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — 일정 생성기 v2: 실측 NBA 패턴 재현 + 시즌 달력(올스타 포함) 리그별 저장
+
+**배경**: Pro Basketball League 일정이 실제와 크게 달랐다(마지막 날 1경기·6팀만 종료, 하루 9·6경기 교대 반복, 개막일 9경기, B2B 6~15회, 4-in-5 51건, 추수감사절 경기). 10시즌 실측 분석(`docs/research/nba-schedule-patterns.md`) → 계획 `docs/plan/schedule-generator-v2.md`. 사용자 결정: 이동 거리 미반영, 같은 경기장 2연전 재현, 올스타 일정을 일정 생성과 함께 생성, 올스타 배치 A안(목 발표~수 재개), NCAA 월요일 제외, 진행 중 리그 유지.
+
+**변경 파일**:
+- `utils/seasonCalendar.ts` (client, 신규) ↔ `server/src/shared/seasonCalendar.ts` (server 미러, 신규) — `buildSeasonCalendar(year)`(개막=10/18 이후 첫 화, 종료=개막+173일(일), 올스타 본경기=2/14 이후 첫 일 → 브레이크 = 본경기−3(목)~본경기+2(화)), `legacySeasonCalendar(year)`(10/21~4/13, 2/13~18), `resolveSeasonCalendar(year, stored)`
+- `utils/scheduleOptimizer.ts` (client, 신규) ↔ `server/src/shared/scheduleOptimizer.ts` (server 미러, 신규) — `assignDatesV2()`: 2연전 묶기(30~44쌍) → 날짜 틀(요일 가중치 + σ3.6 흔들림, 고정일: 개막 2·크리스마스 5·마지막 금 15/토 0/일 15, 휴무: 추수감사절·이브) → 고정일 예약(30팀 완전 매칭) → 초기 배치 → 담금질 40만 회(벌점: 3-in-3·4-in-5 500, B2B 13~16, 휴식 분포, 연속 홈/원정 ≤8, 같은 상대 7일, 전반 41경기 홈 17~24 등)
+- `utils/scheduleGenerator.ts` (client) ↔ `server/src/shared/scheduleGenerator.ts` (server 미러) — `generateSeasonSchedule`이 `assignDatesV2` 사용, 기존 경로는 `generateSeasonScheduleLegacy`로 보존, 공통 후처리 `toGames()` 분리
+- `utils/allStarSelection.ts` (client) ↔ `server/src/shared/multi/allStarSelection.ts` (server 미러) — `getAllStarKeyDates(year, seasonCalendar?)`, `isAllStarWindowActive(date, year, seasonCalendar?)`
+- `utils/leagueTimeline.ts` ↔ `server/src/shared/leagueTimeline.ts` — 주석만(regularStart/regularEnd를 달력에서 넘길 것)
+- `server/src/shared/playoffSeeder.ts` — `postseasonVirtualAnchor(year, seasonCalendar?)`, `PostseasonLeagueRow.season_calendar?`
+- `server/src/shared/playInSeeder.ts` — 앵커 호출 5곳에 `league.season_calendar` 전달
+- `server/src/finalize.ts` — `buildMainLeagueSchedule`: 달력 생성 → 일정·타임라인 → `leagueFields.season_calendar` 저장
+- `server/src/scheduler.ts` — leagues select 7곳에 `season_calendar` 추가, `getAllStarKeyDates` 6곳·`computeAndStoreAllStarVotes`에 전달
+- `server/src/postAllStarVoteNews.ts` — `computeAndStoreAllStarVotes(..., seasonCalendar?)`
+- `server/src/simRunner.ts` — 토너먼트/플레이인 진행 select·인자에 `season_calendar`
+- client 호출부: `services/multi/roomQueries.ts`(LeagueRow.season_calendar), `components/MultiSidebar.tsx`, `components/MultiHeader.tsx`, `views/multi/season/MultiScheduleView.tsx`, `MultiAllStarView.tsx`, `MultiSeasonLayout.tsx`, `pages/MultiSeasonPage.tsx`, `views/multi/league/settings/ScheduleSettingsTab.tsx`(정규시즌 종료일도 달력에서), `components/multi/CreateLeagueModal.tsx`(실현 가능성 계산을 v2 달력으로)
+- 싱글: `hooks/useGameData.ts`, `services/simulation/offseasonEventHandler.ts` — `generateSeasonScheduleLegacy`로 고정(동작 불변. 시즌 생성과 로드 시 재생성이 같은 결과여야 해서 둘을 함께 옮기기 전엔 v2 금지)
+- DB: `migrations/add_league_season_calendar.sql` — `leagues.season_calendar jsonb` (적용 완료, NULL = 기존 리그)
+- 하네스: `scripts/schedule-research/check_v2.ts`(합격 기준), `gen_our_schedule.ts`(v2 달력으로 덤프)
+
+**Before**:
+```ts
+// allStarSelection.ts (client/server)
+export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
+    const allStarStart = `${virtualSeasonYear + 1}-02-13`;
+    const allStarEnd = `${virtualSeasonYear + 1}-02-18`;
+// playoffSeeder.ts
+export function postseasonVirtualAnchor(virtualSeasonYear: number | null | undefined): string {
+    const y = virtualSeasonYear ?? (new Date().getFullYear() - 1);
+    return `${y + 1}-04-14`;
+}
+// finalize.ts buildMainLeagueSchedule
+    const keyDates = getAllStarKeyDates(virtualSeasonYear);
+    const rawSchedule = generateSeasonSchedule({ seasonYear: virtualSeasonYear,
+        seasonStart: `${virtualSeasonYear}-10-21`, regularSeasonEnd: `${virtualSeasonYear + 1}-04-13`,
+        allStarStart: keyDates.allStarStart, allStarEnd: keyDates.allStarEnd }, filteredTeamData as any);
+    const calendar = buildVirtualCalendar({ virtualSeasonYear, keyDates, playoff: {...} });
+// scheduleGenerator.ts generateSeasonSchedule
+    const calendar = buildCalendar(config);
+    const scheduled = assignDates(matchups, calendar, groups.teamIds, rng);
+    balanceBackToBacks(scheduled, calendar, groups.teamIds);
+```
+
+**After**:
+```ts
+export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: unknown): AllStarKeyDates {
+    const { allStarStart, allStarEnd } = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
+export function postseasonVirtualAnchor(virtualSeasonYear, seasonCalendar?: unknown): string {
+    return addDaysStr(resolveSeasonCalendar(y, seasonCalendar).regularEnd, 1);
+// finalize.ts
+    const seasonCalendar = buildSeasonCalendar(virtualSeasonYear);
+    const keyDates = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
+    ... seasonStart: seasonCalendar.regularStart, regularSeasonEnd: seasonCalendar.regularEnd ...
+    buildVirtualCalendar({ ..., regularStart: seasonCalendar.regularStart, regularEnd: seasonCalendar.regularEnd })
+    leagueFields.season_calendar = seasonCalendar
+// scheduleGenerator.ts
+    const { scheduled } = assignDatesV2({ matchups, teamIds, teamConference, seasonStart, regularSeasonEnd, allStarStart, allStarEnd, rng });
+    return toGames(scheduled);
+```
+
+**검증**:
+- `check_v2.ts` 멀티 20시드 + 싱글 달력 3시즌 전부 합격: 1,230경기·팀 82/홈 41, 같은 날 2경기·3-in-3·4-in-5 0, 개막 2경기, 마지막 금 15/토 0/일 15(30팀), 추수감사절·이브 0, 크리스마스 5, 전 팀 2일차까지 첫 경기, B2B 13~16(sd ≤0.73), 2연전 31~47, 최장 연속 홈/원정 8, 생성 1.4~1.8초(tsx/Node).
+- 실측 비교(5시드): 휴식 0/1/2/3+일 19/62/15/3%(실측 18/63/15/2), 1~3경기인 날 13.2(15.6), 12경기+ 날 12.8(14.4), B2B 평균 15.0(14.3).
+- `generateSeasonScheduleLegacy` 출력이 변경 전 HEAD `generateSeasonSchedule`과 싱글 시즌 1~6 모두 바이트 단위 동일.
+- tsc: 변경 파일 신규 오류 없음(서버 scheduler.ts 572/615·simRunner SupabaseClient 타입·client useGameData 463~ 오류는 기존). vite build 통과.
+- 서버 미배포, 실리그 생성 미확인.
+
+**롤백 방법**:
+- 생성기만 되돌리기(안전): client/server `generateSeasonSchedule` 본문을 `generateSeasonScheduleLegacy`와 같게(또는 finalize.ts에서 Legacy 호출). 달력·저장 경로는 그대로 둬도 됨.
+- 달력 경로까지 되돌리기: **v2로 만든 리그(season_calendar NOT NULL)가 이미 있으면 위험** — 그 리그의 올스타·플레이오프 날짜가 구 고정값으로 계산돼 타임라인과 어긋난다. 그런 리그가 없을 때만 Before 블록대로 복원 + 호출부 인자 제거. 컬럼은 남겨도 무해.
+- 미러 쌍(seasonCalendar / scheduleOptimizer / scheduleGenerator / allStarSelection / leagueTimeline)은 반드시 양쪽 같이.
+
 ## 2026-10-23 — 엔진: 파울 트러블 개정 (4파울부터·구분 없음·즉시 벤치·연쇄 승계) + 도움 수비 파울 회피
 
 **배경**: 사용자 제보 — 경기 `5ef4qaxy`(g_bkn_mil_2027-01-24)에서 MIL 게리 페이튼이 1Q 7:46에 3파울이었는데 쿼터 끝까지 뛰었다. 원인: `checkSubstitutionsV2`가 `!isScheduled`(로테이션 표상 그 분에 출전 예정이 아님)일 때만 파울 트러블을 판정 → 표대로 나가는 순간에만 사유가 붙었다. 최근 400경기 실측: 원인 파울 → 교체까지 평균 2~5분, 30초 안 교체 6~19%. 같이 드러난 문제: ① 영구 벤치(returnMinute null → forceSubstitution, 남은 표 삭제)가 1Q 3파울 벤치 선수·2Q/3Q 5파울 비스타 등에 적용, ② 복귀 시각 재평가가 같은 파울 수로 휴식을 계속 연장(1Q 2파울 6분 → 6분씩 추가), ③ 대체자 1명에게 시간을 덧붙이기만 하고 연쇄 승계·대체자 파울/체력 확인 없음, ④ 도움 수비수 파울은 원래 수비수 파울 수로 회피 배수를 계산. 사용자 결정: 4파울부터만, 주전/벤치 구분 없이, 3Q 5파울은 4Q 시작까지, 4Q 5파울은 클러치 전 3분 휴식·클러치면 계속, 대체자 파울·부상·체력 확인, 파울 트러블도 연쇄 승계, 교체는 1:1+슬롯 재배정(현행 유지), 도움 수비수는 본인 파울 수로.

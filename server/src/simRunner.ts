@@ -655,7 +655,7 @@ async function tryAdvanceTournamentOnce(
     // games UPDATE가 이미 기록했다 — 여기서는 시리즈 진행(series)과 다음 라운드 경기 생성만 담당.
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year, playoff_game_interval_days, day_length_min, replay_minutes')
+        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year, season_calendar, playoff_game_interval_days, day_length_min, replay_minutes')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -813,7 +813,7 @@ async function tryAdvanceTournamentOnce(
     let extraFields: { tournament_start_at?: string; sim_real_start_at?: string } = {};
     if (seriesObj.round === 0 && seriesObj.finished) {
         const playInResult = await handlePlayInAdvance(
-            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year, playoff_game_interval_days: (leagueRow as any).playoff_game_interval_days, day_length_min: (leagueRow as any).day_length_min, replay_minutes: (leagueRow as any).replay_minutes },
+            { id: leagueRow.id, match_format: leagueRow.match_format, finals_match_format: leagueRow.finals_match_format as string | null, games_per_real_day: leagueRow.games_per_real_day, playoff_team_count: (leagueRow as any).playoff_team_count, virtual_season_year: (leagueRow as any).virtual_season_year, season_calendar: (leagueRow as any).season_calendar, playoff_game_interval_days: (leagueRow as any).playoff_game_interval_days, day_length_min: (leagueRow as any).day_length_min, replay_minutes: (leagueRow as any).replay_minutes },
             roomId, series, seriesId, homeTeamId, awayTeamId, homeScore, awayScore,
         ).catch((err): HandlePlayInAdvanceResult => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return { pendingEvents: [] }; });
         extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };

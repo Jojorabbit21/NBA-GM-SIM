@@ -1,5 +1,6 @@
 
 import { TEAM_DATA, TeamStaticData } from './teamData.ts';
+import { assignDatesV2 } from './scheduleOptimizer.ts';
 
 interface Game {
     id: string;
@@ -507,7 +508,62 @@ function assignGameTimes(games: Game[]): void {
     }
 }
 
+/** 정렬된 (날짜, 매치업) 목록 → Game[] (경기 시각 배정 + 날짜·시간순 정렬). */
+function toGames(scheduled: { date: string; matchup: Matchup }[]): Game[] {
+    scheduled.sort((a, b) => a.date.localeCompare(b.date));
+
+    const games: Game[] = scheduled.map(s => ({
+        id: `g_${s.matchup.homeTeamId}_${s.matchup.awayTeamId}_${s.date}`,
+        homeTeamId: s.matchup.homeTeamId,
+        awayTeamId: s.matchup.awayTeamId,
+        date: s.date,
+        played: false,
+        isPlayoff: false,
+    }));
+
+    // 경기 시간 배정 (홈팀 시간대 기반)
+    assignGameTimes(games);
+
+    // [2026-09-18 Fix] assignGameTimes()는 날짜별 "복사본" 배열만 시간순으로 정렬해 time을 붙이므로
+    // games 원본의 같은 날짜 안 순서는 매치업 배정 순서(사실상 무작위) 그대로였다. 이후 단계
+    // (타임라인 실제 시각 배정 game_seq 재번호, 화면 정렬 폴백)가 배열 순서를 그대로 쓰므로,
+    // 여기서 날짜·시간순으로 안정 정렬해 "늦은 시간대 경기가 먼저 시작"하는 여지를 없앤다.
+    games.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
+
+    return games;
+}
+
+/**
+ * [2026-10-23] 일정 생성기 v2 — 매치업 생성(4/4/3/2 공식)·홈원정 균형은 그대로, 날짜 배정을
+ * scheduleOptimizer.assignDatesV2()로 교체(요일 리듬, 개막 2경기, 마지막 금·일 30팀, B2B 13~16,
+ * 4-in-5 금지, 같은 경기장 2연전). docs/plan/schedule-generator-v2.md
+ */
 export function generateSeasonSchedule(
+    config: ScheduleConfig,
+    teamData: Record<string, TeamStaticData> = TEAM_DATA
+): Game[] {
+    const seed = config.seed ?? config.seasonYear;
+    const rng = createRng(seed);
+
+    const groups = buildTeamGroups(teamData);
+    const matchups = generateMatchups(groups, rng);
+    balanceHomeAway(matchups, groups.teamIds, rng);
+
+    const { scheduled } = assignDatesV2({
+        matchups,
+        teamIds: groups.teamIds,
+        teamConference: groups.teamConference,
+        seasonStart: config.seasonStart,
+        regularSeasonEnd: config.regularSeasonEnd,
+        allStarStart: config.allStarStart,
+        allStarEnd: config.allStarEnd,
+        rng,
+    });
+    return toGames(scheduled);
+}
+
+/** v2 이전 그리디 날짜 배정 — 롤백용으로 남겨 둠(2026-10-23). 호출부 없음. */
+export function generateSeasonScheduleLegacy(
     config: ScheduleConfig,
     teamData: Record<string, TeamStaticData> = TEAM_DATA
 ): Game[] {
@@ -520,25 +576,5 @@ export function generateSeasonSchedule(
     const calendar = buildCalendar(config);
     const scheduled = assignDates(matchups, calendar, groups.teamIds, rng);
     balanceBackToBacks(scheduled, calendar, groups.teamIds);
-
-    scheduled.sort((a, b) => a.date.localeCompare(b.date));
-
-    const games: Game[] = scheduled.map(s => ({
-        id: `g_${s.matchup.homeTeamId}_${s.matchup.awayTeamId}_${s.date}`,
-        homeTeamId: s.matchup.homeTeamId,
-        awayTeamId: s.matchup.awayTeamId,
-        date: s.date,
-        played: false,
-        isPlayoff: false,
-    }));
-
-    assignGameTimes(games);
-
-    // [2026-09-18 Fix] assignGameTimes()는 날짜별 "복사본" 배열만 시간순으로 정렬해 time을 붙이므로
-    // games 원본의 같은 날짜 안 순서는 매치업 배정 순서(사실상 무작위) 그대로였다. 이후 단계
-    // (타임라인 실제 시각 배정 game_seq 재번호, 화면 정렬 폴백)가 배열 순서를 그대로 쓰므로,
-    // 여기서 날짜·시간순으로 안정 정렬해 "늦은 시간대 경기가 먼저 시작"하는 여지를 없앤다.
-    games.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
-
-    return games;
+    return toGames(scheduled);
 }

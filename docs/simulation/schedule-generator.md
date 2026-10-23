@@ -1,5 +1,11 @@
 # 시즌 일정 자동생성 시스템
 
+> **[2026-10-23] v2 전환** — `generateSeasonSchedule()`의 날짜 배정이 `scheduleOptimizer.ts`의 `assignDatesV2()`로 바뀌었다
+> (요일 리듬, 개막 2경기, 마지막 금·일 30팀 전원, B2B 13~16, 4-in-5 금지, 같은 경기장 2연전, 추수감사절·이브 휴무, 크리스마스 5경기).
+> 멀티 리그는 시즌 달력(정규시즌·올스타)을 `seasonCalendar.ts`로 정해 `leagues.season_calendar`에 저장한다.
+> 아래 "4. 날짜 배정(Rest-First)"·"5. B2B 후처리"는 **구 알고리즘**이며 `generateSeasonScheduleLegacy()`로 남아 있고, **싱글 플레이가 계속 사용**한다.
+> 설계·목표값: `docs/plan/schedule-generator-v2.md`, 실측 근거: `docs/research/nba-schedule-patterns.md`, 검사: `npx tsx scripts/schedule-research/check_v2.ts`.
+
 ## 개요
 
 `utils/scheduleGenerator.ts` — NBA 실제 경기 배분 공식 기반으로 82경기 × 30팀 시즌 일정을 자동 생성하는 독립 모듈.

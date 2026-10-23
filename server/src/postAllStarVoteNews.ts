@@ -205,14 +205,14 @@ async function buildTeamsForRoom(
  * 보장한다 — 이 함수는 그 전제 위에서 득표를 계산해 저장하기만 한다.
  */
 export async function computeAndStoreAllStarVotes(
-    roomId: string, leagueId: string, virtualSeasonYear: number, virtualDate: string,
+    roomId: string, leagueId: string, virtualSeasonYear: number, virtualDate: string, seasonCalendar?: unknown,
 ): Promise<void> {
     const built = await buildTeamsForRoom(roomId, leagueId);
     if (!built) return;
     const { teams, season, seasonNumber, leagueName } = built;
     const seed = `${roomId}_${season}_allstar`;
 
-    const keyDates = getAllStarKeyDates(virtualSeasonYear);
+    const keyDates = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
     const windowLen = daysBetween(keyDates.allStarVoteStart, keyDates.allStarVoteEnd);
     const elapsed = daysBetween(keyDates.allStarVoteStart, virtualDate);
     const voteProgress = windowLen > 0 ? elapsed / windowLen : 1;

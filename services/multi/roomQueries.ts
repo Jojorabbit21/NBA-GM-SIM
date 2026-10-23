@@ -132,6 +132,10 @@ export interface LeagueRow {
     /** 시즌 개막 연도(가상 캘린더 기준) — getAllStarKeyDates()의 인자. finalize.ts가 리그
      *  생성 시 채운다(CreateLeagueModal.tsx 참조). */
     virtual_season_year: number | null;
+    /** [2026-10-23] 리그별 시즌 달력(utils/seasonCalendar.ts — 정규시즌 시작·종료, 올스타 브레이크).
+     *  일정 생성기 v2로 만든 리그만 채워지고, null이면 기존 고정 달력(10/21~4/13, 올스타 2/13~18).
+     *  getAllStarKeyDates/isAllStarWindowActive에 virtual_season_year와 함께 넘길 것. */
+    season_calendar: unknown | null;
     /** [2026-09-16] 트레이드 데드라인(가상 시즌 캘린더 날짜). 기본값은 virtual_season_year+1년
      *  2월 둘째 주 목요일(utils/tradeDeadline.ts) — 어드민은 그 날짜로부터 최대 한 달 전까지만
      *  앞당길 수 있고 뒤로는 늘릴 수 없다. null이면 데드라인 없음(무제한). */

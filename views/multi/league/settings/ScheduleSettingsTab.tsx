@@ -29,6 +29,7 @@ import {
     type RescheduleDayInput, type RescheduleGameInput, type RescheduleSettingsInput,
 } from '../../../../services/multi/leagueService';
 import { getAllStarKeyDates } from '../../../../utils/allStarSelection';
+import { resolveSeasonCalendar } from '../../../../utils/seasonCalendar';
 import { useGame } from '../../../../hooks/useGameContext';
 import {
     buildLeagueTimeline, computeTimelineFeasibility, assignRealTimes, resolveVirtualDate, allStarScheduleFromTimeline,
@@ -255,8 +256,8 @@ function buildJumpPlan(
     const lastRow = newRows[newRows.length - 1];
     const todayVirtual = resolveVirtualDate(timeline, nowMs) ?? targetDate;
     const year = league.virtual_season_year ?? new Date().getFullYear();
-    const keyDates = getAllStarKeyDates(year);
-    const regularSeasonEnd = `${year + 1}-04-13`;
+    const keyDates = getAllStarKeyDates(year, league.season_calendar);
+    const regularSeasonEnd = resolveSeasonCalendar(year, league.season_calendar).regularEnd;
 
     return {
         targetDate, daysToPass, gamesToProcess, liveNow, newRows,

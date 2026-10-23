@@ -35,6 +35,7 @@ import {
     REPLAY_MINUTE_OPTIONS, lateGameClampsAt,
 } from '../../utils/leagueTimeline';
 import { getAllStarKeyDates } from '../../utils/allStarSelection';
+import { buildSeasonCalendar } from '../../utils/seasonCalendar';
 
 const ALL_REAL_TEAMS = Object.values(TEAM_DATA);
 const EAST_TEAMS = ALL_REAL_TEAMS.filter(t => t.conference === 'East');
@@ -538,15 +539,21 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     // utils/leagueTimeline.ts(서버 finalize.ts와 미러)와 동일한 계산 — 가상 캘린더 일수(정규시즌 약 175일 +
     // 플레이오프 최대 일수)를 실제 기간에 담을 때 필요한 일일 시뮬 시간대 길이를 구하고, 자정을 넘기면
     // 생성을 막고 대안(종료일/하루 길이/시작 시각)을 제시한다.
-    const virtualCalendarDays = React.useMemo(() => buildVirtualCalendar({
-        virtualSeasonYear,
-        keyDates: getAllStarKeyDates(virtualSeasonYear),
-        playoff: {
-            intervalDays: playoffIntervalDays, playInEnabled: true,
-            teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF,
-            targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
-        },
-    }).length, [virtualSeasonYear, playoffIntervalDays]);
+    // [2026-10-23] 새 리그는 요일 규칙 달력(seasonCalendar.ts) — finalize.ts가 같은 함수로 만들어 저장한다.
+    const virtualCalendarDays = React.useMemo(() => {
+        const seasonCalendar = buildSeasonCalendar(virtualSeasonYear);
+        return buildVirtualCalendar({
+            virtualSeasonYear,
+            regularStart: seasonCalendar.regularStart,
+            regularEnd: seasonCalendar.regularEnd,
+            keyDates: getAllStarKeyDates(virtualSeasonYear, seasonCalendar),
+            playoff: {
+                intervalDays: playoffIntervalDays, playInEnabled: true,
+                teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF,
+                targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
+            },
+        }).length;
+    }, [virtualSeasonYear, playoffIntervalDays]);
     const playoffDays = playoffMaxDays({
         intervalDays: playoffIntervalDays, playInEnabled: true,
         teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF, targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,

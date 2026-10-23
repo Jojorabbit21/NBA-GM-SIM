@@ -899,7 +899,7 @@ const PHASE_COLOR: Record<LeaguePhase, string> = {
 
 // 리그 현황 문구 — 메인리그 진행 중이면 정규시즌/올스타/플레이오프로 세분화, 그 외는 리그 상태 라벨(모집 중/드래프트 중/종료).
 function resolveLeagueStatus(
-    league: { status?: string; type?: string; virtual_season_year?: number | null } | null | undefined,
+    league: { status?: string; type?: string; virtual_season_year?: number | null; season_calendar?: unknown } | null | undefined,
     currentVirtualDate: string | null,
     regularSeasonEnd: string | null,
 ): { text: string | null; phase: LeaguePhase } {
@@ -908,7 +908,7 @@ function resolveLeagueStatus(
     if (league.type !== 'main_league') return { text: '토너먼트 진행', phase: 'other' };
     if (!currentVirtualDate) return { text: STATUS_LABEL.in_progress, phase: 'other' };
     // 올스타 브레이크는 allStarStart~allStarEnd 전날까지만(투표 기간은 정규시즌 진행 중이므로 해당 없음).
-    const { allStarStart, allStarEnd } = getAllStarKeyDates(league.virtual_season_year ?? new Date().getFullYear());
+    const { allStarStart, allStarEnd } = getAllStarKeyDates(league.virtual_season_year ?? new Date().getFullYear(), league.season_calendar);
     if (currentVirtualDate >= allStarStart && currentVirtualDate < allStarEnd) return { text: '올스타 브레이크', phase: 'allstar' };
     if (regularSeasonEnd && currentVirtualDate > regularSeasonEnd) return { text: '플레이오프', phase: 'playoffs' };
     return { text: '정규시즌', phase: 'regular' };

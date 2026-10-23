@@ -391,8 +391,8 @@ const MultiAllStarView: React.FC = () => {
     const openTeam = (teamSlug: string) => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${teamSlug}`);
 
     const keyDates = useMemo(
-        () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear()),
-        [league?.virtual_season_year],
+        () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar),
+        [league?.virtual_season_year, league?.season_calendar],
     );
 
     // 올스타는 main_league 전용 기능(server/src/scheduler.ts가 type='main_league'만 투표/경기를

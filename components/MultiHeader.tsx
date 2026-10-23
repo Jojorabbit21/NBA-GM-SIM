@@ -111,7 +111,7 @@ export const MultiHeader: React.FC = () => {
 
     // [2026-09-15 Fix] "올스타" 메뉴 노출 — 투표 시작일에 나타나고 브레이크 종료일에 사라진다.
     // currentVirtualDate를 이미 위에서 계산해두므로 추가 조회 없이 날짜 비교만 하면 된다.
-    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear());
+    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
     const showPlayoffRace = usePlayoffRaceOpen(schedule, currentVirtualDate, league?.type);
 
     const opponentId  = nextGame

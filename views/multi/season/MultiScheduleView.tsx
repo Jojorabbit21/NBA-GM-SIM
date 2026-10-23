@@ -612,8 +612,8 @@ const MultiScheduleView: React.FC = () => {
     // [2026-09-15] 올스타 서브 이벤트 5개 — 날짜별로 묶어둔다(3점/덩크는 같은 날이라 한
     // 날짜에 항목이 2개). main_league가 아니면(토너먼트) 빈 맵.
     const allStarKeyDates = useMemo(
-        () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear()),
-        [league?.virtual_season_year],
+        () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar),
+        [league?.virtual_season_year, league?.season_calendar],
     );
     const allStarEntriesByDate = useMemo(() => {
         const map = new Map<string, AllStarScheduleEntry[]>();

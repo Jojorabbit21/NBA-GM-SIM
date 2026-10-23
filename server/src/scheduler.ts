@@ -249,7 +249,7 @@ async function runFatigueMidnights(): Promise<void> {
 async function checkSeasonCompletions(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at, virtual_season_year, playoff_game_interval_days, day_length_min, replay_minutes')
+        .select('id, match_format, finals_match_format, games_per_real_day, playoff_team_count, play_in_enabled, regular_season_ended_at, virtual_season_year, season_calendar, playoff_game_interval_days, day_length_min, replay_minutes')
         .eq('type', 'main_league')
         .eq('status', 'in_progress')
         .is('bracket_data', null);
@@ -338,7 +338,7 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
 async function runAllStarVoteUpdates(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year')
+        .select('id, virtual_season_year, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -350,10 +350,10 @@ async function runAllStarVoteUpdates(): Promise<void> {
         if (vdErr || !virtualDate) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         if (virtualDate < keyDates.allStarVoteStart || virtualDate > keyDates.allStarVoteEnd) continue;
 
-        await computeAndStoreAllStarVotes(room.id, league.id, virtualSeasonYear, virtualDate).catch(err =>
+        await computeAndStoreAllStarVotes(room.id, league.id, virtualSeasonYear, virtualDate, (league as any).season_calendar).catch(err =>
             console.error(`[scheduler:allstar] computeAndStoreAllStarVotes failed(${league.id}):`, err),
         );
     }
@@ -395,7 +395,7 @@ interface AllStarScheduleRow {
 async function runThreePointContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule')
+        .select('id, virtual_season_year, allstar_schedule, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -404,7 +404,7 @@ async function runThreePointContestNews(): Promise<void> {
         if (!room) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
         if (!(await isAllStarSubEventDue(room.id, schedule?.announceAt, keyDates.allStarStart))) continue;
 
@@ -419,7 +419,7 @@ async function runThreePointContestNews(): Promise<void> {
 async function runDunkContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule')
+        .select('id, virtual_season_year, allstar_schedule, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -428,7 +428,7 @@ async function runDunkContestNews(): Promise<void> {
         if (!room) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
         if (!(await isAllStarSubEventDue(room.id, schedule?.announceAt, keyDates.allStarStart))) continue;
 
@@ -445,7 +445,7 @@ async function runDunkContestNews(): Promise<void> {
 async function runAllStarGames(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule')
+        .select('id, virtual_season_year, allstar_schedule, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -454,7 +454,7 @@ async function runAllStarGames(): Promise<void> {
         if (!room) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
 
         if (await isAllStarSubEventDue(room.id, schedule?.mainGameAt, keyDates.allStarMainGameDate)) {
@@ -477,7 +477,7 @@ async function runAllStarGames(): Promise<void> {
 async function runThreePointContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule')
+        .select('id, virtual_season_year, allstar_schedule, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -486,7 +486,7 @@ async function runThreePointContestResult(): Promise<void> {
         if (!room) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
         if (!(await isAllStarSubEventDue(room.id, schedule?.contestsAt, keyDates.allStarThreePointContestDate))) continue;
 
@@ -503,7 +503,7 @@ async function runThreePointContestResult(): Promise<void> {
 async function runDunkContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule')
+        .select('id, virtual_season_year, allstar_schedule, season_calendar')
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
@@ -512,7 +512,7 @@ async function runDunkContestResult(): Promise<void> {
         if (!room) continue;
 
         const virtualSeasonYear = (league as any).virtual_season_year ?? new Date().getFullYear();
-        const keyDates = getAllStarKeyDates(virtualSeasonYear);
+        const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         const schedule = (league as any).allstar_schedule as AllStarScheduleRow | null;
         if (!(await isAllStarSubEventDue(room.id, schedule?.contestsAt, keyDates.allStarDunkContestDate))) continue;
 

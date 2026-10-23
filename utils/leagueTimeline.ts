@@ -48,7 +48,7 @@ export const REPLAY_MINUTE_OPTIONS = [5, 8, 10, 12] as const;
 /** 하루 길이 하한 = 리플레이 + 이 여유(분) — 마지막 경기 시작 이후 최소한의 재생 시간을 보장. */
 export const DAY_LENGTH_REPLAY_MARGIN_MIN = 2;
 export const DEFAULT_PLAYOFF_INTERVAL_DAYS = 1;
-/** 정규시즌 가상 캘린더 — finalize.ts의 generateSeasonSchedule 설정과 동일 규칙. */
+/** 기존 고정 정규시즌 범위(2026-10-23 이전 리그) — 새 리그는 seasonCalendar.ts의 요일 규칙 달력을 넘긴다. */
 export const REGULAR_SEASON_START_MMDD = '10-21';
 export const REGULAR_SEASON_END_MMDD   = '04-13';
 
@@ -195,7 +195,8 @@ export interface BuildVirtualCalendarInput {
     virtualSeasonYear: number;
     keyDates: AllStarKeyDatesLike;
     playoff: PlayoffCalendarSpec;
-    /** 기본값 `${year}-10-21` / `${year+1}-04-13` — finalize.ts의 정규시즌 설정과 동일. */
+    /** 리그 시즌 달력(seasonCalendar.ts)의 regularStart/regularEnd를 넘길 것.
+     *  생략 시 기존 고정 달력 `${year}-10-21` / `${year+1}-04-13`(2026-10-23 이전 리그 규칙). */
     regularStart?: string;
     regularEnd?: string;
 }

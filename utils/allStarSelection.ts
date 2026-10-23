@@ -28,6 +28,7 @@ import {
     buildCandidates, MIN_GAMES, positionGroup, voterNoise, scoreAllNBA,
     type AwardCandidate, type AwardStatLine,
 } from './awardVoting';
+import { resolveSeasonCalendar } from './seasonCalendar';
 
 // ══════════════════════════════════════════════════════════════════════════
 // 키데이트
@@ -73,12 +74,13 @@ function addDaysStr(dateStr: string, days: number): string {
 /** 팬 투표 기간(4주) — 실제 NBA도 크리스마스 무렵~2월 초까지 약 한 달간 투표를 받는다. */
 const VOTE_WINDOW_DAYS = 28;
 
-/** virtualSeasonYear(시즌 개막 연도) 기준 올스타 키데이트 전체. finalize.ts가 스케줄 생성
- *  시 쓰는 allStarStart/End(2월 13~18일)를 그대로 계산해주는 단일 소스이기도 하다 — 날짜를
- *  바꿀 땐 이 함수(및 서버 미러) 한 곳만 고치면 된다. */
-export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
-    const allStarStart = `${virtualSeasonYear + 1}-02-13`;
-    const allStarEnd = `${virtualSeasonYear + 1}-02-18`;
+/** virtualSeasonYear(시즌 개막 연도) 기준 올스타 키데이트 전체. seasonCalendar = 리그의
+ *  leagues.season_calendar(없으면 기존 고정 2월 13~18일). 브레이크 날짜 자체는 seasonCalendar.ts가
+ *  단일 소스이고, 여기서는 투표·선발·서브 이벤트 날짜만 파생한다. */
+export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: unknown): AllStarKeyDates {
+    // [2026-10-23] 브레이크 날짜는 리그별 저장 달력(leagues.season_calendar)에서 — 없으면 기존 고정값(2/13~18).
+    // 아래 서브 이벤트 오프셋(+1/+2/+3)은 신·구 달력 모두 같다(seasonCalendar.ts 참고).
+    const { allStarStart, allStarEnd } = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
     const allStarSelectionDate = addDaysStr(allStarStart, -7);
     const allStarVoteEnd = allStarSelectionDate;
     const allStarVoteStart = addDaysStr(allStarVoteEnd, -VOTE_WINDOW_DAYS);
@@ -97,9 +99,9 @@ export function getAllStarKeyDates(virtualSeasonYear: number): AllStarKeyDates {
  *  종료일(allStarEnd) 전날까지(브레이크 종료 당일부터는 숨김). 사용자 확정 스펙: "투표가
  *  시작되는 날 보여주고, 브레이크가 종료되는 날 숨긴다". virtualDate는 findCurrentVirtualDate()
  *  등으로 구한 "가상 캘린더 오늘"(YYYY-MM-DD) — 아직 못 구했으면(null) false. */
-export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number): boolean {
+export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number, seasonCalendar?: unknown): boolean {
     if (!virtualDate) return false;
-    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear);
+    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
     return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
 }
 

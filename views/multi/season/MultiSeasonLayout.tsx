@@ -75,15 +75,16 @@ export function MultiSeasonLayout() {
 
     // 스트립 날짜 목록에 추가로 표시할 올스타 경기일(경기 행이 생기기 전에도 보이도록).
     const virtualSeasonYear = league?.virtual_season_year;
+    const seasonCalendar = league?.season_calendar;
     const isMainLeague = league?.type === 'main_league';
     const stripEventDates = useMemo(() => {
         if (!isMainLeague) return [];
-        const kd = getAllStarKeyDates(virtualSeasonYear ?? new Date().getFullYear());
+        const kd = getAllStarKeyDates(virtualSeasonYear ?? new Date().getFullYear(), seasonCalendar);
         return [
             { dateKey: kd.allStarRisingStarsDate, label: '라이징스타 챌린지', time: '19:00', awayId: 'RISINGSTARS-B', homeId: 'RISINGSTARS-A' },
             { dateKey: kd.allStarMainGameDate, label: '올스타 본경기', time: '20:30', awayId: 'WEST-ALLSTAR', homeId: 'EAST-ALLSTAR' },
         ];
-    }, [isMainLeague, virtualSeasonYear]);
+    }, [isMainLeague, virtualSeasonYear, seasonCalendar]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
 

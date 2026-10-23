@@ -14,6 +14,7 @@
 
 import { Game } from '../types/game';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
+import { assignDatesV2 } from './scheduleOptimizer';
 
 // ── 설정 인터페이스 ──
 
@@ -725,32 +726,8 @@ export function validateSchedule(
 
 // ── 메인 함수 ──
 
-export function generateSeasonSchedule(
-    config: ScheduleConfig,
-    teamData: Record<string, TeamStaticData> = TEAM_DATA
-): Game[] {
-    const seed = config.seed ?? config.seasonYear;
-    const rng = createRng(seed);
-
-    // 1. 팀 그룹핑
-    const groups = buildTeamGroups(teamData);
-
-    // 2. 매치업 생성
-    const matchups = generateMatchups(groups, rng);
-
-    // 3. H/A 밸런스 보정
-    balanceHomeAway(matchups, groups.teamIds, rng);
-
-    // 4. 캘린더 구축
-    const calendar = buildCalendar(config);
-
-    // 5. 날짜 배정
-    const scheduled = assignDates(matchups, calendar, groups.teamIds, rng);
-
-    // 6. B2B 후처리
-    balanceBackToBacks(scheduled, calendar, groups.teamIds);
-
-    // 7. 날짜순 정렬 후 Game[] 변환
+/** 정렬된 (날짜, 매치업) 목록 → Game[] (경기 시각 배정 + 날짜·시간순 정렬). */
+function toGames(scheduled: { date: string; matchup: Matchup }[]): Game[] {
     scheduled.sort((a, b) => a.date.localeCompare(b.date));
 
     const games: Game[] = scheduled.map(s => ({
@@ -762,7 +739,7 @@ export function generateSeasonSchedule(
         isPlayoff: false,
     }));
 
-    // 8. 경기 시간 배정 (홈팀 시간대 기반)
+    // 경기 시간 배정 (홈팀 시간대 기반)
     assignGameTimes(games);
 
     // [2026-09-18 Fix] assignGameTimes()는 날짜별 "복사본" 배열만 시간순으로 정렬해 time을 붙이므로
@@ -772,4 +749,50 @@ export function generateSeasonSchedule(
     games.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 
     return games;
+}
+
+/**
+ * [2026-10-23] 일정 생성기 v2 — 매치업 생성(4/4/3/2 공식)·홈원정 균형은 그대로, 날짜 배정을
+ * scheduleOptimizer.assignDatesV2()로 교체(요일 리듬, 개막 2경기, 마지막 금·일 30팀, B2B 13~16,
+ * 4-in-5 금지, 같은 경기장 2연전). docs/plan/schedule-generator-v2.md
+ */
+export function generateSeasonSchedule(
+    config: ScheduleConfig,
+    teamData: Record<string, TeamStaticData> = TEAM_DATA
+): Game[] {
+    const seed = config.seed ?? config.seasonYear;
+    const rng = createRng(seed);
+
+    const groups = buildTeamGroups(teamData);
+    const matchups = generateMatchups(groups, rng);
+    balanceHomeAway(matchups, groups.teamIds, rng);
+
+    const { scheduled } = assignDatesV2({
+        matchups,
+        teamIds: groups.teamIds,
+        teamConference: groups.teamConference,
+        seasonStart: config.seasonStart,
+        regularSeasonEnd: config.regularSeasonEnd,
+        allStarStart: config.allStarStart,
+        allStarEnd: config.allStarEnd,
+        rng,
+    });
+    return toGames(scheduled);
+}
+
+/** v2 이전 그리디 날짜 배정 — 롤백용으로 남겨 둠(2026-10-23). 호출부 없음. */
+export function generateSeasonScheduleLegacy(
+    config: ScheduleConfig,
+    teamData: Record<string, TeamStaticData> = TEAM_DATA
+): Game[] {
+    const seed = config.seed ?? config.seasonYear;
+    const rng = createRng(seed);
+
+    const groups = buildTeamGroups(teamData);
+    const matchups = generateMatchups(groups, rng);
+    balanceHomeAway(matchups, groups.teamIds, rng);
+    const calendar = buildCalendar(config);
+    const scheduled = assignDates(matchups, calendar, groups.teamIds, rng);
+    balanceBackToBacks(scheduled, calendar, groups.teamIds);
+    return toGames(scheduled);
 }
