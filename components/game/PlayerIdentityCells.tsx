@@ -43,7 +43,8 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
     // 넣는데, 이 스텁도 playerInfo 존재 자체는 truthy라 위 삼항연산자로는 못 걸러진다. 스텁엔
     // Player의 필수 필드인 age가 없으므로 그걸로 "진짜 로딩된 데이터인지"를 판별한다.
     const isStub = playerInfo != null && (playerInfo as { age?: number }).age === undefined;
-    const ovr = !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
+    // 박스스코어에 서버가 기록한 ovr이 있으면 로스터 조회를 기다리지 않고 즉시 표시(구버전 기록은 폴백)
+    const ovr = p.ovr != null ? p.ovr : !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
     // 라이브와 동일하게 경기에서 실제로 뛴 슬롯 포지션(p.position)을 우선 — 없으면(구버전 저장분) 로스터 고유 포지션
     const effect = p.matchupEffect || 0;
     const isBuff = effect > 0;

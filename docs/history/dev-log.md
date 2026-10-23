@@ -34,6 +34,33 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — 박스스코어에 ovr 기록 (경기 종료 화면 OVR 배지 지연 제거)
+
+**배경**: 고정 OVR 전환 후에도 멀티 경기 종료 화면의 OVR 배지가 잠깐 스켈레톤 뒤에 나타났다. 박스스코어(`PlayerBoxScore`)에 OVR이 없어, gameData 도착 후 `MultiGamePbpView`가 `fetchMetaPlayersByRosterIds`(인스턴스→카드/meta_players 순차 조회)로 rosterCache를 채우고 나서야 배지를 그렸기 때문. 서버가 저장 시점에 선수별 ovr을 박스스코어에 같이 기록하도록 변경.
+
+**변경 파일**:
+- `types/engine.ts` (client) / `server/src/shared/types/engine.ts` (server 미러) — `PlayerBoxScore.ovr?: number` 추가
+- `server/src/boxOvr.ts` (신규) — `stampBoxOvr(box, ...rosters)`: roster 선수 id로 `calculatePlayerOvr` 계산해 `ovr` 부여
+- `server/src/simRunner.ts` — game_pbp upsert의 `home_box`/`away_box`를 `stampBoxOvr(...)`로 감쌈
+- `server/src/postAllStarGame.ts` — 올스타/라이징스타 game_pbp upsert 동일 적용
+- `components/game/PlayerIdentityCells.tsx` — `p.ovr != null`이면 그 값 우선, 없으면 기존 로직(스텁이면 스켈레톤)
+
+**Before**:
+```ts
+home_box: result.homeBox ?? [], away_box: result.awayBox ?? [],
+const ovr = !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
+```
+
+**After**:
+```ts
+home_box: stampBoxOvr(result.homeBox, homeTeam.roster, awayTeam.roster), ...
+const ovr = p.ovr != null ? p.ovr : !playerInfo ? 70 : isStub ? null : calculatePlayerOvr(playerInfo);
+```
+
+**검증**: server tsc 신규 오류 없음(기존 bun/scheduler 오류만). 배포 후 새 경기부터 적용 — 기존 저장 경기는 ovr 없음 → 기존 조회 폴백.
+
+**롤백 방법**: 위 Before로 되돌림(타입 필드·boxOvr.ts는 남겨도 무해). 서버는 `scripts/deploy-server.sh`로 재배포.
+
 ## 2026-10-23 — Supabase 인증 락: 타임아웃 시 락 없이 진행 (폰 "리그를 찾을 수 없습니다")
 
 **배경**: 폰에서만 Pro Basketball League 진입 시 "리그를 찾을 수 없습니다". DB·RLS·REST는 정상(anon REST 200 확인). 콘솔 로그 `Acquiring an exclusive Navigator LockManager lock "lock:sb-…-auth-token" timed out waiting 10000ms`. 모바일 브라우저가 supabase-js의 탭 간 인증 락(토큰 갱신·탭 복귀 처리)을 쥔 채로 탭을 얼리면, 복귀 후 모든 쿼리가 토큰을 얻으려 락을 10초 기다리다 실패 → `loadLeague()`가 에러를 null로 반환 → "찾을 수 없음". 두 PC를 번갈아 쓰는 건 락이 기기(브라우저)별이라 무관.

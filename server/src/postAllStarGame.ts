@@ -39,6 +39,7 @@ import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMappe
 import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
+import { stampBoxOvr } from './boxOvr.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator.ts';
 import { pickTeamMvp } from './shared/leagueEvents.ts';
@@ -327,7 +328,7 @@ export async function computeAndRunAllStarGame(
     await supabase.from('game_pbp').upsert({
         room_id: roomId, game_id: gameId,
         events: result.pbpLogs ?? [], shot_events: result.pbpShotEvents ?? [],
-        home_box: result.homeBox ?? [], away_box: result.awayBox ?? [],
+        home_box: stampBoxOvr(result.homeBox, homeTeam.roster, awayTeam.roster), away_box: stampBoxOvr(result.awayBox, homeTeam.roster, awayTeam.roster),
         home_score: homeScore, away_score: awayScore,
         home_team_id: homeTeamId, away_team_id: awayTeamId,
         game_start_time: scheduledAt,

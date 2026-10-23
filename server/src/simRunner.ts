@@ -12,6 +12,7 @@ import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
 import { planAiTeam } from './shared/game/tactics/aiCoach/aiCoachPlan.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
+import { stampBoxOvr } from './boxOvr.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
 import { recoverPlayersThrough } from './fatigueRecovery.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
@@ -328,8 +329,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 game_id:         gameId,
                 events:          result.pbpLogs ?? [],
                 shot_events:     result.pbpShotEvents ?? [],
-                home_box:        result.homeBox ?? [],
-                away_box:        result.awayBox ?? [],
+                home_box:        stampBoxOvr(result.homeBox, homeTeam.roster, awayTeam.roster),
+                away_box:        stampBoxOvr(result.awayBox, homeTeam.roster, awayTeam.roster),
                 home_score:      homeScore,
                 away_score:      awayScore,
                 home_team_id:    homeTeamId,

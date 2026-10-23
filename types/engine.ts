@@ -5,6 +5,8 @@ export interface PlayerBoxScore {
     playerId: string;
     playerName: string;
     position?: string;
+    /** 경기 기록 시점의 고정 OVR(서버가 박스스코어 저장 시 기록, 구버전 기록엔 없음) */
+    ovr?: number;
     pts: number;
     reb: number;
     offReb: number;
