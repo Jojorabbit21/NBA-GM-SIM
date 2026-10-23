@@ -34,6 +34,29 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — OVR 배지 임페리얼(99+)·갤럭시 오팔(97) 채우기를 3색 → 2색 세로 그라디언트로
+
+**배경**: 사용자가 배지 스튜디오 JSON을 다시 붙여넣으며 "적용이 안 된 것 같다"고 함(드래프트 룸 스크린샷). 색·구간·크기는 이미 일치했으나, 스튜디오 `bg()`는 `fill:'linear'`면 c1→c2 2색 세로 그라디언트만 그리고(c3 무시) 3색 대각선은 `fill:'tri'`일 때만 쓴다. JSON의 두 등급이 `linear`인데 코드는 `grad3`(어두운 막 + 3색 대각선)로 그리고 있어 어둡고 탁하게 보였음.
+
+**변경 파일**:
+- `components/common/OvrBadge.tsx` (client) — `TIERS` 2줄, `grad3`는 export로 보존
+
+**Before**:
+```ts
+{ min: 99, style: { background: grad3('#ffdd00', '#ff004c', '#e205ff'), textColor: '#ffffff', glowColor: '#b3005f' } },
+{ min: 97, style: { background: grad3('#0ab6ff', '#7000fa', '#05fa88'), textColor: '#ffffff', glowColor: '#2e03c9' } },
+```
+
+**After**:
+```ts
+{ min: 99, style: { background: grad2('#ffdd00', '#ff004c'), textColor: '#ffffff', glowColor: '#b3005f' } },
+{ min: 97, style: { background: grad2('#0ab6ff', '#7000fa'), textColor: '#ffffff', glowColor: '#2e03c9' } },
+```
+
+**검증**: 코드상 JSON `ovr` 12단계와 전수 대조 일치. 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: Before 두 줄로 되돌리기(`grad3`는 그대로 남아 있음).
+
 ## 2026-10-23 — 라이브 "플레이-바이-플레이" 탭 복구·본문(인사이트 + PBP 피드, 가운데 정렬) · PBP 피드 JSX 공유화
 
 **변경 파일** (client 전용): `views/multi/season/MultiGamePbpView.tsx`

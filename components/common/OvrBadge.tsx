@@ -34,15 +34,16 @@ interface TierStyle {
     glowColor: string | null;
 }
 
-// 2K식 채우기: 2색은 위→아래 세로 그라디언트, 3색(오팔류)은 어두운 막을 한 겹 덮은 대각선 그라디언트.
+// 채우기: 스튜디오 fill=linear는 위→아래 2색 세로 그라디언트(c3 무시). 3색 대각선(fill=tri, grad3)은 현재 쓰는 등급 없음.
 const grad2 = (c1: string, c2: string) => `linear-gradient(${c1},${c2})`;
-const grad3 = (c1: string, c2: string, c3: string) =>
+// [2026-10-23] 임페리얼/갤럭시 오팔이 grad2로 바뀌어 미사용 — 스튜디오에서 fill=tri로 되돌릴 때를 위해 보존.
+export const grad3 = (c1: string, c2: string, c3: string) =>
     `linear-gradient(rgba(75,168,255,.1),rgba(0,0,0,.7)),linear-gradient(to bottom left,${c1},${c2},${c3})`;
 
 // min 내림차순 — 위에서부터 value >= min 첫 항목이 해당 등급.
 const TIERS: { min: number; style: TierStyle }[] = [
-    { min: 99, style: { background: grad3('#ffdd00', '#ff004c', '#e205ff'), textColor: '#ffffff', glowColor: '#b3005f' } }, // 임페리얼
-    { min: 97, style: { background: grad3('#0ab6ff', '#7000fa', '#05fa88'), textColor: '#ffffff', glowColor: '#2e03c9' } }, // 갤럭시 오팔
+    { min: 99, style: { background: grad2('#ffdd00', '#ff004c'), textColor: '#ffffff', glowColor: '#b3005f' } },          // 임페리얼 (스튜디오 fill=linear → c3 미사용)
+    { min: 97, style: { background: grad2('#0ab6ff', '#7000fa'), textColor: '#ffffff', glowColor: '#2e03c9' } },          // 갤럭시 오팔 (동일)
     { min: 95, style: { background: grad2('#1153ee', '#0a33ae'), textColor: '#ffffff', glowColor: null } },               // 핑크 다이아몬드
     { min: 92, style: { background: grad2('#e01a70', '#b30024'), textColor: '#ffffff', glowColor: null } },               // 다이아몬드
     { min: 90, style: { background: grad2('#ff0fd3', '#a23a02'), textColor: '#ffffff', glowColor: null } },               // 아메시스트
