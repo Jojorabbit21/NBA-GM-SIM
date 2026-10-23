@@ -14,7 +14,7 @@ export interface QueuePlayerInfo {
 }
 
 interface DraftQueuePanelProps {
-    /** 희망 순서 playerId[] — 지명된 선수도 그대로 남아 있음(D5), 여기서 취소선 표시 */
+    /** 희망 순서 playerId[] — 지명된 선수도 그대로 남아 있음(D5), 여기선 라디오 disabled + 이름/OVR 흐리게 */
     queue: string[];
     playersById: Map<string, QueuePlayerInfo>;
     draftedIds: Set<string>;
@@ -155,23 +155,22 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                             onDragEnd={endDrag}
                             onClick={drafted ? undefined : () => onSelect(id)}
                             className={`group h-10 min-h-10 max-h-10 px-2 border-b border-slate-700/50 flex items-center gap-1.5 transition-colors ${
-                                drafted ? 'opacity-50' : 'cursor-pointer'
+                                drafted ? '' : 'cursor-pointer'
                             } ${isDragging ? 'opacity-40' : ''} ${
                                 isOver ? 'bg-indigo-500/10' : isSelected ? 'bg-amber-500/[0.06]' : drafted ? '' : 'hover:bg-white/[0.03]'
                             }`}
                         >
-                            {/* 라디오 — 풀(PlayerPool)과 같은 스타일, 선택 상태 공유 */}
+                            {/* 라디오 — 풀(PlayerPool)과 같은 스타일, 선택 상태 공유. 지명된 선수는 disabled */}
                             <span className="w-4 shrink-0 flex items-center justify-center">
-                                {!drafted && (
-                                    <input
-                                        type="radio"
-                                        name="draft-player-queue"
-                                        checked={isSelected}
-                                        onChange={() => onSelect(id)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="block w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
-                                    />
-                                )}
+                                <input
+                                    type="radio"
+                                    name="draft-player-queue"
+                                    checked={isSelected}
+                                    disabled={drafted}
+                                    onChange={() => onSelect(id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="block w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                />
                             </span>
                             {/* 핸들 */}
                             <span className={`w-4 shrink-0 flex items-center justify-center ${canEdit ? 'cursor-grab text-slate-600 group-hover:text-slate-400' : 'text-slate-800'}`}>
@@ -181,8 +180,11 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                             <span className="text-sm font-bold w-5 shrink-0 text-slate-500 text-center">
                                 {drafted ? '—' : rank}
                             </span>
-                            {info ? <OvrBadge value={info.ovr} size="sm" /> : <span className="w-7 shrink-0" />}
-                            <span className={`text-sm font-semibold truncate flex-1 ${drafted ? 'line-through text-slate-600' : 'text-slate-200'}`}>
+                            {/* 지명된 선수: 이름·OVR 배지만 흐리게(행 전체는 그대로) */}
+                            <span className={`shrink-0 flex items-center ${drafted ? 'opacity-40' : ''}`}>
+                                {info ? <OvrBadge value={info.ovr} size="sm" /> : <span className="w-7 shrink-0" />}
+                            </span>
+                            <span className={`text-sm font-semibold truncate flex-1 text-slate-200 ${drafted ? 'opacity-40' : ''}`}>
                                 {info?.name ?? id}
                             </span>
                             {/* 포지션 — 이름 뒤, 텍스트 좌측 정렬 */}
