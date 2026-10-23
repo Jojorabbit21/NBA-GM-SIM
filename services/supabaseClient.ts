@@ -1,5 +1,6 @@
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, navigatorLock } from '@supabase/supabase-js';
+import type { LockFunc } from '@supabase/supabase-js';
 
 // 1. 환경 변수 로드 (Vite/CRA 호환성을 위해 process.env와 import.meta.env 모두 체크)
 // 주의: 번들러가 빌드 타임에 문자열을 치환할 수 있도록 'process.env.변수명'을 직접 사용해야 합니다.
@@ -27,10 +28,33 @@ if (!isSupabaseConfigured) {
 export const supabaseUrl = isUrlValid ? envUrl! : 'https://placeholder.supabase.co';
 export const supabaseKey = isKeyValid ? envKey! : 'placeholder-key';
 
+// [2026-10-23] Mobile browsers freeze background tabs while supabase-js holds the cross-tab auth lock
+// (token refresh / visibility recovery). On resume every request waited 10s on that stuck lock and then
+// failed ("Acquiring an exclusive Navigator LockManager lock ... timed out"), so pages showed
+// "league not found". Try the normal navigator lock first; only when a blocking acquire times out,
+// run without the lock. Immediate-try calls (acquireTimeout === 0, the auto-refresh tick) keep failing
+// fast as before so a second refresh never runs alongside one already in progress.
+const navigatorLockWithFallback: LockFunc = async (name, acquireTimeout, fn) => {
+    if (!globalThis.navigator?.locks) return fn();
+    // navigatorLock maps any AbortError to a timeout error, including one thrown from inside fn —
+    // only fall back when fn never started, otherwise fn would run twice.
+    let started = false;
+    try {
+        return await navigatorLock(name, acquireTimeout, () => { started = true; return fn(); });
+    } catch (e: any) {
+        if (e?.isAcquireTimeout && acquireTimeout !== 0 && !started) {
+            console.warn(`[supabase auth] lock "${name}" not acquired in ${acquireTimeout}ms, proceeding without it`);
+            return fn();
+        }
+        throw e;
+    }
+};
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
+        lock: navigatorLockWithFallback,
     },
     global: {
         headers: {

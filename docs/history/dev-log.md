@@ -34,6 +34,53 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — Supabase 인증 락: 타임아웃 시 락 없이 진행 (폰 "리그를 찾을 수 없습니다")
+
+**배경**: 폰에서만 Pro Basketball League 진입 시 "리그를 찾을 수 없습니다". DB·RLS·REST는 정상(anon REST 200 확인). 콘솔 로그 `Acquiring an exclusive Navigator LockManager lock "lock:sb-…-auth-token" timed out waiting 10000ms`. 모바일 브라우저가 supabase-js의 탭 간 인증 락(토큰 갱신·탭 복귀 처리)을 쥔 채로 탭을 얼리면, 복귀 후 모든 쿼리가 토큰을 얻으려 락을 10초 기다리다 실패 → `loadLeague()`가 에러를 null로 반환 → "찾을 수 없음". 두 PC를 번갈아 쓰는 건 락이 기기(브라우저)별이라 무관.
+
+**변경 파일**:
+- `services/supabaseClient.ts` (client 전용, 서버 미러 없음)
+
+**Before**:
+```ts
+import { createClient } from '@supabase/supabase-js';
+...
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+    },
+```
+
+**After**:
+```ts
+import { createClient, navigatorLock } from '@supabase/supabase-js';
+import type { LockFunc } from '@supabase/supabase-js';
+...
+const navigatorLockWithFallback: LockFunc = async (name, acquireTimeout, fn) => {
+    if (!globalThis.navigator?.locks) return fn();
+    let started = false;
+    try {
+        return await navigatorLock(name, acquireTimeout, () => { started = true; return fn(); });
+    } catch (e: any) {
+        if (e?.isAcquireTimeout && acquireTimeout !== 0 && !started) {
+            console.warn(`[supabase auth] lock "${name}" not acquired in ${acquireTimeout}ms, proceeding without it`);
+            return fn();
+        }
+        throw e;
+    }
+};
+... auth: { persistSession: true, autoRefreshToken: true, lock: navigatorLockWithFallback },
+```
+- 평소엔 기본(navigatorLock)과 동일. 블로킹 획득(기본 10초)이 타임아웃일 때만 락 없이 fn 실행.
+- `acquireTimeout === 0`(자동 갱신 틱의 즉시 시도)은 기존처럼 실패 → 진행 중 갱신과 중복 갱신 방지.
+- `started` 플래그: navigatorLock은 fn 내부 AbortError도 타임아웃 에러로 바꾸므로, fn이 이미 실행된 경우엔 재실행하지 않음.
+
+**부작용**: 우회 시 두 탭/얼었던 요청과 동시 토큰 갱신 가능. 서버의 리프레시 토큰 재사용 허용 구간(약 10초) 안이면 무해, 벗어나면 해당 탭 로그아웃 가능(드묾).
+
+**검증**: `tsc --noEmit` supabaseClient 관련 오류 없음, `vite build` 성공. 폰 실기기 확인은 배포 후.
+
+**롤백 방법**: Before 블록으로 되돌리기(`lock` 옵션과 래퍼·import 제거).
 
 ## 2026-10-22 — AI 감독 C7: 경기 직전 AI 팀 뎁스·로테이션 설정을 simRunner에 연결 (폴백 + 끄기 스위치)
 
