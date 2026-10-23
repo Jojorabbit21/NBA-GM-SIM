@@ -2,9 +2,9 @@
 import { GameState, TeamState, LivePlayer, RotationOverride, isOut } from './pbpTypes';
 import { DepthChart, RotationOutReason } from '../../../../types';
 import { formatTime } from './timeEngine';
-import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN } from './substitutionSystem';
+import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN, HARD_FLOOR } from './substitutionSystem';
 import { assignCourtSlots, snapshotSlots, pickBestFive, vacancyFit } from './slotAssignment';
-import { planSuccession } from './rotationSuccession';
+import { planSuccession, type SuccessionPlayer } from './rotationSuccession';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -18,6 +18,9 @@ export interface SubRequest {
 // 시뮬 검증(docs/history/dev-log.md 2026-10-18): 보너스 4는 교체 진동이 현행보다 악화, 8 이상부터 안정.
 const FALLBACK_ONCOURT_BONUS = 8;       // 체력 점수에 더하는 코트 위 가산점 (진동 방지 히스테리시스 폭)
 const FALLBACK_MIN_STINT_SEC = 120;     // 투입 후 이 시간 안에는 폴백이 내보내지 않음
+// [2026-10-23] 임시 벤치(파울 트러블 등) 중인 선수의 폴백 감점 — 다른 후보를 다 쓴 뒤에만 뽑힌다(막지는 않음: 벤치가 얇으면 파울
+// 트러블이어도 뛴다). 체력(0~100) + 슬롯 어색함 감점(최대 100)보다 커야 순서가 확실히 뒤로 간다.
+const FALLBACK_TEMP_BENCH_PENALTY = 300;
 const FALLBACK_MIN_REST_SEC = 120;      // 교체 아웃 후 이 시간 안에는 폴백이 다시 투입하지 않음
 // [2026-10-22] 빈 시간 보충 시 비어 있는 슬롯에 맞는 선수를 우선 — 슬롯 어색함 1점당 체력 점수 이만큼 감점
 // (인접 포지션 = −10, 두 칸 = −30, 세 칸 = −100). 이전엔 슬롯을 전혀 보지 않아 보충 선수가 SF 2명·SG 0명 등을 만들었다.
@@ -137,28 +140,38 @@ export function transferSchedule(team: TeamState, sourceId: string | null, targe
  * 2. 승계 로직 (Succession Logic) - 지시 사항 엄수
  */
 /**
+ * [2026-10-23] 승계 후보의 컨디션 단계 — 영구 이탈(applyRotationSuccession)·파울 트러블 임시 벤치(benchForFoulTrouble) 공용.
+ *  3 완전 불가: 시간을 비울 선수(outId), 퇴장, 경기 중 부상(checkAndApplyRotation은 Healthy만 투입하므로 시간을 줘도 못 뛴다 —
+ *    이전엔 2단계로 두어 다른 후보가 없으면 부상자에게 시간이 가고 그 분이 비었다)
+ *  1 최후 수단: Day-to-Day, 탈진, 임시 벤치 중, 체력 HARD_FLOOR 이하, 지금 투입하면 파울 트러블 기준에 걸리는 파울 수(foulPolicy 'ignore' 제외)
+ *  0 정상 — 연쇄 승계(역할 한 칸씩 올리기)는 0단계만 받고, 1단계 이상은 자기 역할을 그대로 갖는다(rotationSuccession)
+ */
+function successionPlayers(state: GameState, team: TeamState, outId: string, currentMinute: number): SuccessionPlayer[] {
+    return [...team.onCourt, ...team.bench].map(p => {
+        let tier: 0 | 1 | 2 | 3;
+        if (p.playerId === outId || isOut(p) || p.health === 'Injured') tier = 3;
+        else if (p.health !== 'Healthy' || p.isShutdown || p.benchReason || p.currentCondition <= HARD_FLOOR) tier = 1;
+        else if (team.tactics.playerTactics?.[p.playerId]?.foulPolicy !== 'ignore'
+            && evaluateFoulTroubleAction(state, p, currentMinute).shouldBench) tier = 1;
+        else tier = 0;
+        return { id: p.playerId, ovr: p.ovr, nativePosition: p.nativePosition ?? p.position, tier, returnDate: p.returnDate };
+    });
+}
+
+/**
  * 영구 이탈(부상·퇴장 등)한 선수의 남은 출전 시간을 이어받을 사람을 정한다.
  * [2026-10-22] 경기 전 부상 처리와 같은 함수(rotationSuccession.planSuccession)를 쓴다 — 이전에는 이 함수가 따로 한 칸씩
  * 올리기만 하고 후임의 건강·그 분의 중복 출전을 확인하지 않았다(transferSchedule로 OR 병합 → 겹치는 분에 인원 감소).
  */
-function applyRotationSuccession(team: TeamState, outPlayer: LivePlayer, currentMinute: number) {
+function applyRotationSuccession(state: GameState, team: TeamState, outPlayer: LivePlayer, currentMinute: number) {
     if (!team.tactics.rotationMap) return;
-
-    const players = [...team.onCourt, ...team.bench].map(p => {
-        let tier: 0 | 1 | 2 | 3;
-        if (p.playerId === outPlayer.playerId || isOut(p)) tier = 3;
-        else if (p.health === 'Injured') tier = 2;
-        else if (p.health !== 'Healthy' || p.isShutdown || p.benchReason) tier = 1;
-        else tier = 0;
-        return { id: p.playerId, ovr: p.ovr, nativePosition: p.nativePosition ?? p.position, tier, returnDate: p.returnDate };
-    });
 
     planSuccession({
         outIds: [outPlayer.playerId],
         fromMinute: currentMinute,
         rotationMap: team.tactics.rotationMap,
         depthChart: team.depthChart,
-        players,
+        players: successionPlayers(state, team, outPlayer.playerId, currentMinute),
     });
 }
 
@@ -222,6 +235,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
         const fallbackScore = (p: LivePlayer) => {
             const onCourt = teamState.onCourt.includes(p);
             let score = p.currentCondition + (onCourt ? FALLBACK_ONCOURT_BONUS : 0);
+            if (!onCourt && p.benchReason) score -= FALLBACK_TEMP_BENCH_PENALTY;
             if (onCourt) {
                 const l = lastSeg(p.playerId);
                 if (l && l.out < 0 && currentTotalSec - l.in < FALLBACK_MIN_STINT_SEC) score += 1000;
@@ -319,7 +333,7 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
     // 1. 승계 로직 실행
-    applyRotationSuccession(team, outPlayer, currentMinute);
+    applyRotationSuccession(state, team, outPlayer, currentMinute);
 
     // 2. 즉시 교체 대상 찾기
     // 건강하고 파울 아웃되지 않은 선수 중, 셧다운되지 않은 선수 우선
@@ -348,17 +362,21 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
     // B. 맵에 없다면 RES 로직 (Shutdown 고려)
     if (!inPlayer) {
         const excludeIds = new Set<string>([outPlayer.playerId, ...team.onCourt.map(p => p.playerId)]);
-        // 1차: 정상 선수 중 찾기
-        inPlayer = findResCandidate(team, outPlayer.position, excludeIds, false) || undefined;
-        // 2차: 없으면 탈진 선수라도 찾기
+        // [2026-10-23] 임시 벤치(파울 트러블 등) 중인 선수는 먼저 빼고 찾고, 없을 때만 다시 넣어 찾는다(얇은 벤치면 뛰어야 함)
+        const resting = team.bench.filter(p => p.benchReason).map(p => p.playerId);
+        const excludeResting = new Set<string>([...excludeIds, ...resting]);
+        // 1차: 정상 선수 중 찾기 → 2차: 없으면 탈진 선수라도 찾기 (각각 임시 벤치 제외 → 포함 순)
+        inPlayer = findResCandidate(team, outPlayer.position, excludeResting, false)
+            || findResCandidate(team, outPlayer.position, excludeResting, true) || undefined;
         if (!inPlayer) {
-             inPlayer = findResCandidate(team, outPlayer.position, excludeIds, true) || undefined;
+            inPlayer = findResCandidate(team, outPlayer.position, excludeIds, false)
+                || findResCandidate(team, outPlayer.position, excludeIds, true) || undefined;
         }
     }
 
     // C. 최후의 수단: 아무나 (OVR 순)
     if (!inPlayer && available.length > 0) {
-        inPlayer = available.sort((a, b) => b.ovr - a.ovr)[0];
+        inPlayer = available.sort((a, b) => (a.benchReason ? 1 : 0) - (b.benchReason ? 1 : 0) || b.ovr - a.ovr)[0];
     }
 
     if (inPlayer) {
@@ -400,6 +418,108 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * [2026-10-23] 파울 트러블 임시 벤치: 빠진 선수의 [지금, 복귀 시각) 출전 시간을 뎁스차트 연쇄 승계로 메운다 — 부상 승계와 같은
+ * planSuccession이고 끝 분만 다르다. 같은 슬롯 다음 뎁스가 역할을 한 칸씩 올려 받고(백업 → 주전 역할, 써드 → 백업 역할), 그래도
+ * 빈 분은 인접 포지션 선수가 메운다. 대체자의 부상·파울 트러블·체력은 successionPlayers 단계로 본다.
+ * 복귀 시각 이후의 표는 아무도 건드리지 않으므로 복귀하면 그 분부터 원래 로테이션 그대로다(되돌리기 불필요).
+ * 실제 교체는 1:1(지금 분에 예정된 벤치 선수 1명 IN), 슬롯은 assignCourtSlots가 다시 배정한다.
+ * 들어올 사람이 없으면 표를 되돌리고 벤치하지 않는다(foulCheckedPf를 안 올리므로 다음 공격권에 다시 시도).
+ * 이전: findResCandidate로 대체자 1명에게 빠진 선수 시간을 덧붙이기만 함(연쇄 없음, 대체자 파울·체력·누적 출전 미확인).
+ */
+function benchForFoulTrouble(
+    state: GameState, team: TeamState, outPlayer: LivePlayer, currentMinute: number, returnMinute: number
+): void {
+    const map = team.tactics.rotationMap;
+    if (!map) return;
+
+    const mapBefore: Record<string, boolean[]> = {};
+    for (const [id, arr] of Object.entries(map)) mapBefore[id] = [...arr];
+    const originalSlots = Array(48).fill(false) as boolean[];
+    for (let i = currentMinute; i < 48; i++) originalSlots[i] = !!map[outPlayer.playerId]?.[i];
+
+    planSuccession({
+        outIds: [outPlayer.playerId],
+        fromMinute: currentMinute,
+        toMinute: returnMinute,
+        rotationMap: map,
+        depthChart: team.depthChart,
+        players: successionPlayers(state, team, outPlayer.playerId, currentMinute),
+    });
+
+    // 들어올 선수: 지금 분에 예정된 벤치 선수(승계로 새로 예정된 선수 우선). 원래 표에 구멍이 있던 분이면 예정된 선수가 없을 수
+    // 있다 → 옛 대체자 규칙(같은 슬롯 뎁스 → 인접 포지션 뎁스 → OVR)으로 1명만 넣고 표는 그대로(빈 시간 보충은 런타임 폴백 몫).
+    const scheduledNow = team.bench.filter(p =>
+        p !== outPlayer && p.health === 'Healthy' && !isOut(p) && !p.benchReason && !!map[p.playerId]?.[currentMinute]);
+    let filler: LivePlayer | null = scheduledNow.find(p => !mapBefore[p.playerId]?.[currentMinute]) ?? scheduledNow[0] ?? null;
+    if (!filler) {
+        const excludeIds = new Set<string>([outPlayer.playerId, ...team.onCourt.map(p => p.playerId)]);
+        for (const p of team.bench) if (p.benchReason) excludeIds.add(p.playerId);
+        filler = findResCandidate(team, outPlayer.position, excludeIds, false) ?? findResCandidate(team, outPlayer.position, excludeIds, true);
+    }
+    if (!filler) {
+        for (const id of Object.keys(map)) if (!(id in mapBefore)) delete map[id];
+        for (const [id, arr] of Object.entries(mapBefore)) map[id] = arr;
+        return;
+    }
+
+    state.activeOverrides.push({
+        outPlayerId: outPlayer.playerId,
+        fillerPlayerId: filler.playerId,
+        reason: 'foul_trouble',
+        fromMinute: currentMinute,
+        toMinute: returnMinute,
+        originalSlots,
+        active: true,
+    });
+
+    outPlayer.benchReason = 'foul_trouble';
+    outPlayer.benchedAtMinute = currentMinute;
+    outPlayer.benchedAtQuarter = state.quarter;
+    outPlayer.scheduledReturnMinute = returnMinute;
+    outPlayer.foulCheckedPf = outPlayer.pf;
+
+    swapForTemporaryBench(state, team, outPlayer, filler, 'foul_trouble');
+}
+
+/** 임시 벤치(파울 트러블·탈진)의 물리적 1:1 교체 + 슬롯 재배정 + 출전 기록 + 로그 */
+function swapForTemporaryBench(
+    state: GameState, team: TeamState, outPlayer: LivePlayer, filler: LivePlayer, reason: 'foul_trouble' | 'shutdown'
+): void {
+    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const outIdx = team.onCourt.indexOf(outPlayer);
+    const inIdx = team.bench.indexOf(filler);
+
+    if (outIdx > -1 && inIdx > -1) {
+        const slotsBefore = snapshotSlots(team);
+        team.onCourt.splice(outIdx, 1);
+        team.bench.push(outPlayer);
+        team.bench.splice(inIdx, 1);
+        team.onCourt.push(filler);
+        assignCourtSlots(team, slotsBefore);   // 1:1이면 나간 선수 슬롯 승계(slotAssignment.ts)
+
+        const histOut = state.rotationHistory[outPlayer.playerId];
+        if (histOut && histOut.length > 0) {
+            histOut[histOut.length - 1].out = currentTotalSec;
+            histOut[histOut.length - 1].outReason = reason;
+        }
+        if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
+        state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+        filler.lastSubInTime = state.gameClock;
+        filler.conditionAtSubIn = filler.currentCondition;
+
+        const reasonText = reason === 'foul_trouble'
+            ? `파울 트러블 (${outPlayer.pf}반칙)` : '탈진(Shutdown)';
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: team.id,
+            text: `교체: IN [${filler.playerName}] OUT [${outPlayer.playerName}] (${reasonText})`,
+            type: 'info'
+        });
+    }
+}
+
+/**
  * 임시 벤치: 원본 맵을 보존하면서 대체자에게 일시적으로 슬롯을 넘김.
  * forceSubstitution과 달리 승계 로직(applyRotationSuccession)을 호출하지 않음.
  * returnMinute 이후의 원본 맵 슬롯은 그대로 유지 → 자동 복귀.
@@ -409,6 +529,11 @@ export function benchWithOverride(
     reason: 'foul_trouble' | 'shutdown',
     currentMinute: number, returnMinute: number | null
 ): void {
+    // [2026-10-23] 파울 트러블은 연쇄 승계 경로(benchForFoulTrouble). 아래는 탈진 전용(복귀 시각 없음, 체력 회복 시 복귀).
+    if (reason === 'foul_trouble') {
+        if (returnMinute !== null) benchForFoulTrouble(state, team, outPlayer, currentMinute, returnMinute);
+        return;
+    }
     const map = team.tactics.rotationMap;
     if (!map) return;
 
@@ -471,39 +596,7 @@ export function benchWithOverride(
     outPlayer.benchedAtQuarter = state.quarter;
     outPlayer.scheduledReturnMinute = returnMinute ?? undefined;
 
-    // 7. 물리적 스왑 + 히스토리 + 로그
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-    const outIdx = team.onCourt.indexOf(outPlayer);
-    const inIdx = team.bench.indexOf(filler);
-
-    if (outIdx > -1 && inIdx > -1) {
-        const slotsBefore = snapshotSlots(team);
-        team.onCourt.splice(outIdx, 1);
-        team.bench.push(outPlayer);
-        team.bench.splice(inIdx, 1);
-        team.onCourt.push(filler);
-        assignCourtSlots(team, slotsBefore);   // 1:1이면 나간 선수 슬롯 승계(slotAssignment.ts)
-
-        const histOut = state.rotationHistory[outPlayer.playerId];
-        if (histOut && histOut.length > 0) {
-            histOut[histOut.length - 1].out = currentTotalSec;
-            histOut[histOut.length - 1].outReason = reason;
-        }
-        if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
-        state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
-        filler.lastSubInTime = state.gameClock;
-        filler.conditionAtSubIn = filler.currentCondition;
-
-        const reasonText = reason === 'foul_trouble'
-            ? `파울 트러블 (${outPlayer.pf}반칙)` : '탈진(Shutdown)';
-        state.logs.push({
-            quarter: state.quarter,
-            timeRemaining: formatTime(state.gameClock),
-            teamId: team.id,
-            text: `교체: IN [${filler.playerName}] OUT [${outPlayer.playerName}] (${reasonText})`,
-            type: 'info'
-        });
-    }
+    swapForTemporaryBench(state, team, outPlayer, filler, reason);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -547,19 +640,25 @@ export function checkTemporaryReturns(
         let shouldReturn = false;
 
         if (override.reason === 'foul_trouble') {
-            // 예정 분에 도달하면 복귀 판정
-            if (player.scheduledReturnMinute !== undefined && currentMinute >= player.scheduledReturnMinute) {
-                // 복귀 전 재평가: 상황이 변했을 수 있음
-                const recheck = evaluateFoulTroubleAction(state, team, player, currentMinute);
-                if (recheck.shouldBench && recheck.returnMinute !== null) {
-                    // 아직 위험 → 연장
-                    override.toMinute = recheck.returnMinute;
-                    player.scheduledReturnMinute = recheck.returnMinute;
-                    continue;
-                }
-                shouldReturn = !recheck.shouldBench;
-            }
-        } else if (override.reason === 'shutdown') {
+            // [2026-10-23] 복귀 시각이 되면 그대로 복귀. 승계를 복귀 시각까지만 했으므로 표를 되돌릴 필요가 없고(그 분부터 원래 표,
+            // 실제 투입은 checkAndApplyRotation), 벤치에서는 파울이 늘지 않으므로 재평가도 하지 않는다(이전: 재평가가 같은 파울 수로
+            // 휴식을 계속 연장 — 1Q 2파울 6분 휴식이 6분씩 늘어남).
+            if (currentMinute < override.toMinute) continue;
+            override.active = false;
+            player.benchReason = null;
+            player.benchedAtMinute = undefined;
+            player.benchedAtQuarter = undefined;
+            player.scheduledReturnMinute = undefined;
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: formatTime(state.gameClock),
+                teamId: team.id,
+                text: `${player.playerName} 복귀 준비 (파울 트러블 해소)`,
+                type: 'info'
+            });
+            continue;
+        }
+        if (override.reason === 'shutdown') {
             // 체력 회복 + 셧다운 해제되면 복귀 (선수별 returnThreshold 적용, 기본 70)
             const returnThreshold = team.tactics.playerTactics?.[player.playerId]?.returnThreshold ?? 70;
             if (!player.isShutdown && player.currentCondition > returnThreshold) {
@@ -600,12 +699,11 @@ export function checkTemporaryReturns(
         player.benchedAtQuarter = undefined;
         player.scheduledReturnMinute = undefined;
 
-        const reasonText = override.reason === 'foul_trouble' ? '파울 트러블 해소' : '체력 회복';
         state.logs.push({
             quarter: state.quarter,
             timeRemaining: formatTime(state.gameClock),
             teamId: team.id,
-            text: `${player.playerName} 복귀 준비 (${reasonText})`,
+            text: `${player.playerName} 복귀 준비 (체력 회복)`,
             type: 'info'
         });
         // 실제 물리적 투입은 checkAndApplyRotation이 맵 기반으로 처리
@@ -658,7 +756,9 @@ export function handleFillerExit(
     if (!state.activeOverrides) return;
 
     const override = state.activeOverrides.find(
-        o => o.active && o.fillerPlayerId === exitedFiller.playerId
+        // [2026-10-23] 파울 트러블은 연쇄 승계(benchForFoulTrouble)로 메워 대체자 1명에 묶이지 않는다 — 승계받은 선수가 이탈하면
+        // 일반 영구 이탈 승계가 처리하고, 빠진 선수는 정해진 복귀 시각에 돌아온다. 탈진 오버라이드만 여기서 대체자 체인을 관리.
+        o => o.active && o.reason === 'shutdown' && o.fillerPlayerId === exitedFiller.playerId
     );
     if (!override) return;
 
@@ -676,18 +776,6 @@ export function handleFillerExit(
             originalPlayer.benchedAtQuarter = undefined;
             originalPlayer.scheduledReturnMinute = undefined;
             return;
-        }
-        if (override.reason === 'foul_trouble') {
-            const action = evaluateFoulTroubleAction(state, team, originalPlayer, currentMinute);
-            if (!action.shouldBench) {
-                restorePlayerMap(state, team, originalPlayer, currentMinute);
-                override.active = false;
-                originalPlayer.benchReason = null;
-                originalPlayer.benchedAtMinute = undefined;
-                originalPlayer.benchedAtQuarter = undefined;
-                originalPlayer.scheduledReturnMinute = undefined;
-                return;
-            }
         }
     }
 

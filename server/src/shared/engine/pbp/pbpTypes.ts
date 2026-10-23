@@ -41,6 +41,7 @@ export interface LivePlayer extends PlayerBoxScore {
     benchedAtMinute?: number;
     benchedAtQuarter?: number;
     scheduledReturnMinute?: number;
+    foulCheckedPf?: number;          // [2026-10-23] 파울 트러블 판정을 마친 파울 수 — 파울이 이보다 늘었을 때만 다시 판정
 
     // Hot/Cold Streak
     hotColdRating: number;

@@ -34,6 +34,142 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — 엔진: 파울 트러블 개정 (4파울부터·구분 없음·즉시 벤치·연쇄 승계) + 도움 수비 파울 회피
+
+**배경**: 사용자 제보 — 경기 `5ef4qaxy`(g_bkn_mil_2027-01-24)에서 MIL 게리 페이튼이 1Q 7:46에 3파울이었는데 쿼터 끝까지 뛰었다. 원인: `checkSubstitutionsV2`가 `!isScheduled`(로테이션 표상 그 분에 출전 예정이 아님)일 때만 파울 트러블을 판정 → 표대로 나가는 순간에만 사유가 붙었다. 최근 400경기 실측: 원인 파울 → 교체까지 평균 2~5분, 30초 안 교체 6~19%. 같이 드러난 문제: ① 영구 벤치(returnMinute null → forceSubstitution, 남은 표 삭제)가 1Q 3파울 벤치 선수·2Q/3Q 5파울 비스타 등에 적용, ② 복귀 시각 재평가가 같은 파울 수로 휴식을 계속 연장(1Q 2파울 6분 → 6분씩 추가), ③ 대체자 1명에게 시간을 덧붙이기만 하고 연쇄 승계·대체자 파울/체력 확인 없음, ④ 도움 수비수 파울은 원래 수비수 파울 수로 회피 배수를 계산. 사용자 결정: 4파울부터만, 주전/벤치 구분 없이, 3Q 5파울은 4Q 시작까지, 4Q 5파울은 클러치 전 3분 휴식·클러치면 계속, 대체자 파울·부상·체력 확인, 파울 트러블도 연쇄 승계, 교체는 1:1+슬롯 재배정(현행 유지), 도움 수비수는 본인 파울 수로.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `server/src/shared/engine/pbp/substitutionSystem.ts` / `services/game/engine/pbp/substitutionSystem.ts`
+- `server/src/shared/engine/pbp/rotationLogic.ts` / `services/game/engine/pbp/rotationLogic.ts`
+- `server/src/shared/engine/pbp/rotationSuccession.ts` / `services/game/engine/pbp/rotationSuccession.ts`
+- `server/src/shared/engine/pbp/pbpTypes.ts` / `services/game/engine/pbp/pbpTypes.ts`
+- `server/src/shared/engine/pbp/possessionHandler.ts` / `services/game/engine/pbp/possessionHandler.ts`
+- `scripts/rotationSuccessionScenarios.ts` (시험 13~16 추가, 엔진 무관)
+- 문서: `docs/engine/foul-trouble.md`(전면 재작성), `docs/engine/rotation-algorithm.md`(5·7·8·11절), `docs/engine/player-tactics.md`, `docs/engine/engine-index.md`
+
+**Before**:
+```ts
+// substitutionSystem.ts
+type PlayerImportance = 'star' | 'rotation' | 'bench';
+const HARD_FLOOR = 20;
+function classifyPlayerImportance(team, player) { // 코트+벤치 OVR 3번째 값 이상 && isStarter → star / isStarter → rotation / 그 외 bench }
+export function evaluateFoulTroubleAction(state, team, player, currentMinute) {
+  // isClutch = currentMinute >= 42, halfEnd = 24
+  // Q4: 5파울 star && !clutch → min(45, cur+3) / 5파울 bench → null(영구) / 그 외 계속
+  // Q3: 5+ star → cur+4, 그 외 null / 4 → cur+6
+  // Q2: 5+ star → 24, 그 외 null / 4 → 24 / 3 bench → null, 그 외 cur+6
+  // Q1: 4+ star → 24, 그 외 null / 3 bench → null, 그 외 24 / 2 → cur+6
+}
+// checkSubstitutionsV2 (코트 위 각 선수)
+const isScheduled = tactics.rotationMap?.[p.playerId]?.[currentMinute];
+...
+const ignoreFoul = playerConfig?.foulPolicy === 'ignore';
+if (!isScheduled && !ignoreFoul) {
+    const action = evaluateFoulTroubleAction(state, team, p, currentMinute);
+    if (action.shouldBench) { requests.push({ ..., exitType: action.returnMinute !== null ? 'temporary' : 'permanent', returnMinute: action.returnMinute, benchReason: 'foul_trouble' }); return; }
+}
+```
+```ts
+// rotationLogic.ts
+import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN } from './substitutionSystem';
+import { planSuccession } from './rotationSuccession';
+function applyRotationSuccession(team, outPlayer, currentMinute) {
+  // tier: outPlayer||isOut → 3 / Injured → 2 / !Healthy||isShutdown||benchReason → 1 / 그 외 0 → planSuccession(fromMinute=cur)
+}
+// forceSubstitution: applyRotationSuccession(team, outPlayer, currentMinute);
+// benchWithOverride(reason 'foul_trouble'|'shutdown'): 파울 트러블·탈진 공통 — findResCandidate로 filler 1명, [cur, returnMinute ?? 48) 동안
+//   out 선수 슬롯을 filler에게 OR 이전, returnMinute 이후 out 선수 맵을 originalRotationMap에서 복원, override push, 물리 스왑(본문 인라인)
+// checkTemporaryReturns 'foul_trouble': cur >= scheduledReturnMinute → evaluateFoulTroubleAction 재평가 → 아직 벤치면 returnMinute 연장,
+//   아니면 restorePlayerMap + restoreFillerMap 후 복귀. 공통 꼬리 로그 reasonText = foul_trouble ? '파울 트러블 해소' : '체력 회복'
+// handleFillerExit: o.active && o.fillerPlayerId === exited (사유 무관), foul_trouble이면 재평가 후 원래 선수 조기 복귀
+```
+```ts
+// rotationSuccession.ts planSuccession: fromMinute ~ 48 고정, 역할 승계 chain = tier 0인 비이탈 선수(tier ≥ 1은 건너뛰고 그 역할도 아래 순번이 가져감)
+const patterns = listed.map(id => (map[id] ?? Array(48).fill(false)).slice(fromMinute) as boolean[]);
+const chain = listed.filter(id => !outSet.has(id) && byId.get(id)!.tier === 0);
+chain.forEach((id, j) => { ... patterns[j] ... role: j });
+```
+```ts
+// possessionHandler.ts (슈팅 파울)
+shootingFoulRate *= foulProbMod * matchupFoulMult;
+const helpFoulShare = helpBonusRate > 0 ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate) : 0;
+```
+
+**After**:
+```ts
+// substitutionSystem.ts — classifyPlayerImportance/PlayerImportance 삭제, HARD_FLOOR export
+export function evaluateFoulTroubleAction(state, player, currentMinute) {   // team 파라미터 제거
+  // Q1·Q2 4+ → 24 / Q3 5+ → 36 / Q3 4 → cur+6 / Q4 5+ && cur < 42 → min(45, cur+3) / 그 외 계속. returnMinute <= cur면 계속
+}
+// checkSubstitutionsV2: isScheduled 삭제
+if (!ignoreFoul && p.pf > (p.foulCheckedPf ?? 0)) {
+    const action = evaluateFoulTroubleAction(state, p, currentMinute);
+    if (action.shouldBench) { requests.push({ ..., exitType: 'temporary', returnMinute: action.returnMinute, benchReason: 'foul_trouble' }); return; }
+    p.foulCheckedPf = p.pf;
+}
+// pbpTypes LivePlayer: foulCheckedPf?: number 추가
+```
+```ts
+// rotationLogic.ts
+import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN, HARD_FLOOR } from './substitutionSystem';
+import { planSuccession, type SuccessionPlayer } from './rotationSuccession';
+function successionPlayers(state, team, outId, cur): SuccessionPlayer[]   // 영구 이탈·파울 트러블 공용
+  // outId||isOut||Injured → 3 / !Healthy||isShutdown||benchReason||condition <= HARD_FLOOR → 1
+  // foulPolicy !== 'ignore' && evaluateFoulTroubleAction(state, p, cur).shouldBench → 1 / 그 외 0
+function applyRotationSuccession(state, team, outPlayer, cur)  // players: successionPlayers(...)
+// forceSubstitution: applyRotationSuccession(state, team, outPlayer, currentMinute);
+function benchForFoulTrouble(state, team, outPlayer, cur, returnMinute)   // 신규
+  // mapBefore 스냅샷 → planSuccession({ outIds:[out], fromMinute: cur, toMinute: returnMinute, players: successionPlayers })
+  // filler = 지금 분 예정 벤치 선수(새로 예정된 선수 우선, benchReason 없음) ?? findResCandidate(벤치 benchReason 제외)
+  // filler 없음 → map을 mapBefore로 되돌리고 return / 있으면 override push(reason foul_trouble, toMinute returnMinute),
+  //   benchReason·benchedAt*·scheduledReturnMinute·foulCheckedPf = pf 설정, swapForTemporaryBench(...)
+function swapForTemporaryBench(state, team, outPlayer, filler, reason)    // benchWithOverride 7단계(물리 스왑·슬롯·기록·로그)를 그대로 추출
+// benchWithOverride: 맨 앞 if (reason === 'foul_trouble') { if (returnMinute !== null) benchForFoulTrouble(...); return; } — 나머지는 탈진 전용, 끝은 swapForTemporaryBench
+// checkTemporaryReturns 'foul_trouble': if (cur < override.toMinute) continue; → 메타 해제 + 로그 '복귀 준비 (파울 트러블 해소)' + continue (재평가·맵 복원 없음)
+//   공통 꼬리 로그는 '복귀 준비 (체력 회복)' 고정
+// handleFillerExit: o.active && o.reason === 'shutdown' && o.fillerPlayerId === exited, foul_trouble 재평가 블록 삭제
+```
+```ts
+// rotationSuccession.ts planSuccession: opts.toMinute?(기본 48) — 모든 루프 [fromMinute, toMinute), patterns.slice(fromMinute, toMinute)
+const held = new Set(listed.filter(id => !outSet.has(id) && byId.get(id)!.tier !== 0));   // 못 뛰는 비이탈 선수는 자기 역할 유지
+const roles = listed.map((_, i) => i).filter(i => !held.has(listed[i]));
+const chain = listed.filter(id => !outSet.has(id) && !held.has(id));
+chain.forEach((id, j) => { const role = roles[j]; ... patterns[role] ... role });
+```
+```ts
+// possessionHandler.ts
+const helpPf = helpDefender?.pf ?? defFouls;
+const helpFoulProbMod = helpPf >= 5 ? ft.PROB_MOD[5] : helpPf >= 4 ? ft.PROB_MOD[4] : helpPf >= 3 ? ft.PROB_MOD[3] : 1.0;
+shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
+const helpFoulShare = helpBonusRate > 0 ? Math.min(1, (helpBonusRate * helpFoulProbMod) / shootingFoulRate) : 0;
+```
+
+**검증**:
+- server `tsc -p .` engine/pbp 오류 0(전체 45건은 무관 파일), client `tsc -p .` engine/pbp 오류 0(전체 60건 무관 파일).
+- `scripts/rotationSuccessionScenarios.ts` 시험 16종 전부 통과. 13: 주전 C 8~24분 휴식 → 백업 10분(주전 역할)·써드 6분(백업 역할), 24분 이후·8분 이전 표 전원 그대로 / 14: C 뎁스 소진 → PF 비주전이 10분 메움 / 15: 백업 C 파울 위험 → 써드가 승계, 백업 자기 시간 유지 / 16: 주전 C 임시 벤치 중 백업 C 부상 → 주전 역할 유지, 써드가 백업 역할. **16은 수정 전 엔진에서 실패**(그 분 6명 예정 + 써드 12분) — 이전부터 있던 버그.
+- 리그 시뮬(Pro Basketball League 저장 전술·현재 부상자, 1740경기 × 시드 2세트, 전후 같은 시드): 경기당 파울 트러블 교체 1.70 → 0.69, 원인 파울 → 교체 211초 → 0초, 100경기당 6반칙 퇴장 3.4 → 2.2, 5파울 마감 선수 출전 31.1 → 28.4분, 4파울 마감 30.8 → 30.1분, 주전 평균 출전 32.77 → 32.68분, 팀 득점 101.86 → 101.89, 팀 득실 변화 평균 1.11/0.97(같은 엔진 시드만 다를 때 1.57 — 잡음 범위), 팀 총 출전 240분(+연장) 어긋남 0 → 0, 42분 초과 출전 1 → 1. 파울 트러블 교체 쿼터·파울 분포(시드 0): Q1-4 37 / Q2-4 208 / Q3-4 790 / Q3-5 122 / Q4-5 52, 전부 복귀(교체 수 = 복귀 수).
+- 서버·클라이언트 엔진 870경기 결과 모든 지표 정확히 일치.
+- 참고: "수정 후" 측정 복사본에는 같은 시각 다른 세션의 미커밋 시간별 전술 세트 코드(tacticSchedule)가 함께 들어갔으나, 이 리그 30팀 중 세트 사용 팀 0 → 측정 영향 없음.
+- 로그 확인: 조던 3Q 8:22 4반칙 → 같은 시각 교체 → 3Q 2:52 복귀 / 스탁턴 3Q 2:31 4반칙 → 즉시 교체 → 4Q 9:00 복귀.
+
+**추가 (같은 날, 사용자 요청)** — 다른 교체 경로에서 임시 벤치(파울 트러블 등) 선수를 후순위로. 막지는 않는다(사용자: 벤치가 얇으면 파울 트러블이어도 뛰어야 함, 엄격하게 막으면 이상한 경기가 나옴). `rotationLogic.ts` 서버·클라이언트 둘 다.
+```ts
+// Before
+// forceSubstitution B: inPlayer = findResCandidate(team, pos, excludeIds, false) || findResCandidate(..., true)
+// forceSubstitution C: inPlayer = available.sort((a, b) => b.ovr - a.ovr)[0];
+// checkAndApplyRotation fallbackScore: score = condition + (onCourt ? FALLBACK_ONCOURT_BONUS : 0) (+1000 최소 출전 보호)
+//   → 1단계는 benchReason 제외, 인원이 모자라 완화하면 benchReason 선수도 체력 점수로 동등 경쟁
+// After
+const FALLBACK_TEMP_BENCH_PENALTY = 300;
+// fallbackScore: if (!onCourt && p.benchReason) score -= FALLBACK_TEMP_BENCH_PENALTY;   // 완화 단계에서도 다른 후보를 다 쓴 뒤에만
+// forceSubstitution B: excludeResting(= excludeIds + 벤치의 benchReason 선수)로 false → true 먼저, 없으면 excludeIds로 false → true
+// forceSubstitution C: sort((a, b) => (a.benchReason ? 1 : 0) - (b.benchReason ? 1 : 0) || b.ovr - a.ovr)
+```
+검증: tsc engine/pbp 0/0. 리그 시뮬(870경기, 정상 로스터 / 팀당 건강한 선수 7명) 지표가 위 개정 버전과 **완전히 동일** — 이 데이터에선 해당 경로가 실행되지 않음(승계가 먼저 정상 선수를 예정해 두기 때문), 안전장치. 참고 지표 "파울 트러블 휴식 중 복귀 시각 전 재투입"(100경기당): 정상 로스터 개정 전 34.6 → 개정 후 0, 건강한 7명 33.4 → 2.0(남은 2.0은 쓸 수 있는 선수가 없어 뛰는 경우). 건강한 7명에서 100경기당 6반칙 퇴장 14.4 → 7.5. 서버·클라이언트 일치.
+롤백: 위 Before 세 곳으로 되돌리고 상수 삭제.
+
+**롤백 방법**: 위 Before로 — substitutionSystem의 매트릭스·classifyPlayerImportance·isScheduled 조건·exitType 분기 복원(HARD_FLOOR export 제거), pbpTypes `foulCheckedPf` 삭제, rotationLogic의 successionPlayers·benchForFoulTrouble·swapForTemporaryBench 삭제 후 applyRotationSuccession/benchWithOverride/checkTemporaryReturns/handleFillerExit를 Before대로(evaluateFoulTroubleAction 호출부에 team 인자 복원), rotationSuccession의 toMinute·held/roles 삭제, possessionHandler 세 줄 복원. **서버·클라이언트 둘 다 되돌릴 것.** 문서 4개도 같이.
+
 ## 2026-10-23 — 박스스코어에 ovr 기록 (경기 종료 화면 OVR 배지 지연 제거)
 
 **배경**: 고정 OVR 전환 후에도 멀티 경기 종료 화면의 OVR 배지가 잠깐 스켈레톤 뒤에 나타났다. 박스스코어(`PlayerBoxScore`)에 OVR이 없어, gameData 도착 후 `MultiGamePbpView`가 `fetchMetaPlayersByRosterIds`(인스턴스→카드/meta_players 순차 조회)로 rosterCache를 채우고 나서야 배지를 그렸기 때문. 서버가 저장 시점에 선수별 ovr을 박스스코어에 같이 기록하도록 변경.

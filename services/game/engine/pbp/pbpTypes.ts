@@ -41,6 +41,7 @@ export interface LivePlayer extends PlayerBoxScore {
     benchedAtMinute?: number;        // 벤치된 시점의 게임 분(0-47)
     benchedAtQuarter?: number;       // 벤치된 시점의 쿼터(1-4)
     scheduledReturnMinute?: number;  // 자동 복귀 예정 분 (undefined = 조건 복귀)
+    foulCheckedPf?: number;          // [2026-10-23] 파울 트러블 판정을 마친 파울 수 — 파울이 이보다 늘었을 때만 다시 판정
 
     // [New] Hot/Cold Streak (슈팅 분산)
     hotColdRating: number;    // -1.0(아이스) ~ +1.0(온 파이어), 초기값 0

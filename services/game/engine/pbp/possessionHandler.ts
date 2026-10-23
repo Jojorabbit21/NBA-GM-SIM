@@ -655,6 +655,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const ft = SIM_CONFIG.FOUL_TROUBLE;
     const defFouls = defender.pf;
     const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
+    // [2026-10-23] 도움 수비 파울분(helpBonusRate)은 도움 수비수 본인의 파울 수로 회피한다 — 이전엔 원래 수비수의 파울 수를 써서
+    // 5파울 도움 수비수도 평소처럼 파울했다(파울 아웃 직결 경로).
+    const helpPf = helpDefender?.pf ?? defFouls;
+    const helpFoulProbMod = helpPf >= 5 ? ft.PROB_MOD[5] : helpPf >= 4 ? ft.PROB_MOD[4] : helpPf >= 3 ? ft.PROB_MOD[3] : 1.0;
 
     // [2026-07-29] 매치업 격차 → 파울 배수(0.5~1.5x). 신체/기술 미스매치의 결과는 주로 적중률
     // (calculateHitRate의 isMismatch, ±12%)로 흡수되고, 파울 쪽은 보조적으로만 반영 — "가드가
@@ -669,7 +673,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const isInteriorZoneForFoul = preferredZone === 'Rim' || preferredZone === 'Paint';
     const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5); // Mid/3PT만 0.5~1.5배 유지
 
-    shootingFoulRate *= foulProbMod * matchupFoulMult;
+    shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
@@ -679,7 +683,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     if (Math.random() < shootingFoulRate) {
         // 헬프 보너스가 기여한 비율만큼 확률적으로 실제 헬퍼에게 파울 귀속(전체 파울 확률 자체는 불변)
         const helpFoulShare = helpBonusRate > 0
-            ? Math.min(1, (helpBonusRate * foulProbMod) / shootingFoulRate)
+            ? Math.min(1, (helpBonusRate * helpFoulProbMod) / shootingFoulRate)
             : 0;
         const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
         const isHelpFoul = !!helpDefender && fouler === helpDefender;

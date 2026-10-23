@@ -21,15 +21,13 @@ export interface SubRequestV2 {
     benchReason: 'foul_trouble' | 'shutdown' | 'injury' | 'foul_out' | 'garbage' | null;
 }
 
-type PlayerImportance = 'star' | 'rotation' | 'bench';
-
 interface FoulTroubleAction {
     shouldBench: boolean;
     returnMinute: number | null;
     reason: string;
 }
 
-const HARD_FLOOR = 20;
+export const HARD_FLOOR = 20;
 
 // [2026-10-22] 탈진 교체 기준을 "쓸 수 있는 벤치 선수 수"에 따라 낮춘다. 쓸 수 있는 벤치 = 건강하고, 퇴장·탈진·임시 벤치가 아니고,
 // 코트에 없는 선수. 벤치가 얇은데 20%에서 계속 빼면 지친 대체자와 번갈아 들락거리거나(체력 회복 기준이 70%라 한 번 탈진하면 오래
@@ -45,106 +43,33 @@ export function shutdownFloorScale(usableBench: number): number {
 export const SHUTDOWN_MIN_GAIN = 15;
 
 // ─────────────────────────────────────────────────────────────
-// Player Importance Classification
-// ─────────────────────────────────────────────────────────────
-
-function classifyPlayerImportance(team: TeamState, player: LivePlayer): PlayerImportance {
-    const allPlayers = [...team.onCourt, ...team.bench];
-    const sortedOvr = allPlayers.map(p => p.ovr).sort((a, b) => b - a);
-    const top3Threshold = sortedOvr[Math.min(2, sortedOvr.length - 1)];
-
-    if (player.ovr >= top3Threshold && player.isStarter) return 'star';
-    if (player.isStarter) return 'rotation';
-    return 'bench';
-}
-
-// ─────────────────────────────────────────────────────────────
 // Foul Trouble Decision Matrix
+// ─────────────────────────────────────────────────────────────
+// [2026-10-23] 4파울부터만, 주전/벤치 구분 없이 적용한다. 복귀 시각은 항상 정해져 있다(경기 끝까지 벤치 = 영구 벤치는 없음 —
+// 영구 이탈은 부상·퇴장 전용). 3파울 이하는 벤치로 빼지 않고 파울 회피(SIM_CONFIG.FOUL_TROUBLE.PROB_MOD)만으로 버틴다.
+//   Q1·Q2 4파울+ → 후반 시작(24분)까지 휴식
+//   Q3 4파울     → 6분 휴식
+//   Q3 5파울     → 4Q 시작(36분)까지 휴식
+//   Q4 5파울     → 클러치(42분) 전이면 3분 휴식(최대 45분), 클러치면 계속 출전
+//   Q4 4파울 / 연장 → 계속 출전
+// 판정은 파울이 새로 늘었을 때 한 번만 한다(checkSubstitutionsV2의 foulCheckedPf) — 쿼터가 바뀌었다고 복귀한 선수를 같은 파울
+// 수로 다시 빼지 않는다(이전: 복귀 시각에 재평가해 "1Q 2파울 6분 휴식"이 6분씩 계속 연장됨).
 // ─────────────────────────────────────────────────────────────
 
 export function evaluateFoulTroubleAction(
-    state: GameState, team: TeamState, player: LivePlayer, currentMinute: number
+    state: GameState, player: LivePlayer, currentMinute: number
 ): FoulTroubleAction {
     const quarter = state.quarter;
     const fouls = player.pf;
-    const importance = classifyPlayerImportance(team, player);
-    const isClutch = currentMinute >= 42;
-    const halfEnd = 24;
+    let returnMinute: number | null = null;
+    let note = '';
+    if (quarter <= 2 && fouls >= 4) { returnMinute = 24; note = '후반 투입'; }
+    else if (quarter === 3 && fouls >= 5) { returnMinute = 36; note = '4쿼터 투입'; }
+    else if (quarter === 3 && fouls === 4) { returnMinute = currentMinute + 6; note = '6분 휴식'; }
+    else if (quarter === 4 && fouls >= 5 && currentMinute < 42) { returnMinute = Math.min(45, currentMinute + 3); note = '잠시 휴식'; }
 
-    if (quarter === 4) {
-        if (fouls === 5 && importance === 'star' && !isClutch) {
-            return {
-                shouldBench: true,
-                returnMinute: Math.min(45, currentMinute + 3),
-                reason: `파울 트러블 (${fouls}반칙, 잠시 휴식)`
-            };
-        }
-        if (fouls === 5 && importance === 'bench') {
-            return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        return { shouldBench: false, returnMinute: null, reason: '' };
-    }
-
-    if (quarter === 3) {
-        if (fouls >= 5) {
-            if (importance === 'star') {
-                return {
-                    shouldBench: true,
-                    returnMinute: currentMinute + 4,
-                    reason: `파울 트러블 (${fouls}반칙, 단기 휴식)`
-                };
-            }
-            return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        if (fouls >= 4) {
-            return {
-                shouldBench: true,
-                returnMinute: currentMinute + 6,
-                reason: `파울 트러블 (${fouls}반칙)`
-            };
-        }
-        return { shouldBench: false, returnMinute: null, reason: '' };
-    }
-
-    if (quarter === 2) {
-        if (fouls >= 5) {
-            if (importance === 'star') {
-                return { shouldBench: true, returnMinute: halfEnd, reason: `파울 트러블 (${fouls}반칙, 후반 투입)` };
-            }
-            return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        if (fouls >= 4) {
-            return { shouldBench: true, returnMinute: halfEnd, reason: `파울 트러블 (${fouls}반칙, 하프타임까지 휴식)` };
-        }
-        if (fouls >= 3) {
-            if (importance === 'bench') {
-                return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-            }
-            return { shouldBench: true, returnMinute: currentMinute + 6, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        return { shouldBench: false, returnMinute: null, reason: '' };
-    }
-
-    if (quarter === 1) {
-        if (fouls >= 4) {
-            if (importance === 'star') {
-                return { shouldBench: true, returnMinute: halfEnd, reason: `파울 트러블 (${fouls}반칙, 후반 투입)` };
-            }
-            return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        if (fouls >= 3) {
-            if (importance === 'bench') {
-                return { shouldBench: true, returnMinute: null, reason: `파울 트러블 (${fouls}반칙)` };
-            }
-            return { shouldBench: true, returnMinute: halfEnd, reason: `파울 트러블 (${fouls}반칙, 후반 투입)` };
-        }
-        if (fouls >= 2) {
-            return { shouldBench: true, returnMinute: currentMinute + 6, reason: `파울 트러블 (${fouls}반칙)` };
-        }
-        return { shouldBench: false, returnMinute: null, reason: '' };
-    }
-
-    return { shouldBench: false, returnMinute: null, reason: '' };
+    if (returnMinute === null || returnMinute <= currentMinute) return { shouldBench: false, returnMinute: null, reason: '' };
+    return { shouldBench: true, returnMinute, reason: `파울 트러블 (${fouls}반칙, ${note})` };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -242,7 +167,6 @@ export function checkSubstitutionsV2(
         if (p.benchReason) return;
 
         const playerConfig = tactics.playerTactics?.[p.playerId];
-        const isScheduled = tactics.rotationMap?.[p.playerId]?.[currentMinute];
 
         if (p.health === 'Injured' && p.injuredThisGame) {
             requests.push({ outPlayer: p, reason: '부상', exitType: 'permanent', benchReason: 'injury' });
@@ -270,20 +194,23 @@ export function checkSubstitutionsV2(
             });
             return;
         }
-
+        // [2026-10-23] 파울 트러블: 로테이션 표에 있는 분에도 판정한다(이전엔 표에 없는 분에만 판정 → 표대로 나갈 때 사유만 붙고
+        // 3파울에도 계속 뛰었다). 적용 여부는 foulPolicy만으로 정한다. 파울이 새로 늘었을 때 한 번만 판정 — 벤치가 성공하면
+        // benchForFoulTrouble이 foulCheckedPf를 갱신하고, 대신 뛸 사람이 없어 실패하면 다음 공격권에 다시 시도한다.
         const ignoreFoul = playerConfig?.foulPolicy === 'ignore';
-        if (!isScheduled && !ignoreFoul) {
-            const action = evaluateFoulTroubleAction(state, team, p, currentMinute);
+        if (!ignoreFoul && p.pf > (p.foulCheckedPf ?? 0)) {
+            const action = evaluateFoulTroubleAction(state, p, currentMinute);
             if (action.shouldBench) {
                 requests.push({
                     outPlayer: p,
                     reason: action.reason,
-                    exitType: action.returnMinute !== null ? 'temporary' : 'permanent',
+                    exitType: 'temporary',
                     returnMinute: action.returnMinute,
                     benchReason: 'foul_trouble'
                 });
                 return;
             }
+            p.foulCheckedPf = p.pf;
         }
     });
 

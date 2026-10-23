@@ -1,209 +1,108 @@
 # 파울 트러블 관리 시스템
 
-> 관련 파일: `services/game/engine/pbp/substitutionSystem.ts`, `rotationLogic.ts`, `liveEngine.ts`
+> 관련 파일 (서버·클라이언트 미러 쌍 — 둘 다 같은 규칙):
+> `substitutionSystem.ts`(판정), `rotationLogic.ts`(임시 벤치·복귀), `rotationSuccession.ts`(연쇄 승계), `possessionHandler.ts`(파울 회피), `constants.ts`(`FOUL_TROUBLE`)
+> 경로: `server/src/shared/engine/pbp/` ↔ `services/game/engine/pbp/`
+>
+> 2026-10-23 전면 개정. 이전 동작(주전·벤치 구분, 2·3파울 벤치, 영구 벤치, 복귀 재평가, 로테이션 표에 있는 분 판정 생략)은 `docs/history/dev-log.md` 2026-10-23 항목 참고.
 
 ## 개요
 
-파울이 쌓인 선수를 쿼터·파울 수·선수 중요도에 따라 차등적으로 벤치시키고, 조건 충족 시 자동 복귀시키는 시스템. NBA 감독의 파울 매니지먼트 전략을 시뮬레이션한다.
+파울이 쌓이면 두 가지가 일어난다.
+
+1. **파울 회피** (3파울부터): 코트 위 수비수가 파울을 덜 하는 대신 수비가 물러진다.
+2. **임시 벤치** (4파울부터): 쿼터와 파울 수에 따라 정해진 시각까지 벤치로 뺀다. 빈 시간은 뎁스차트 연쇄 승계로 메우고, 복귀 시각부터는 원래 로테이션 표대로 돌아간다.
+
+주전·벤치 구분은 없다. 경기 끝까지 벤치(영구 벤치)도 없다 — 영구 이탈은 부상·퇴장 전용.
 
 ---
 
-## 1. 선수 중요도 분류 (classifyPlayerImportance)
+## 1. 임시 벤치 기준 (`evaluateFoulTroubleAction`)
 
-```typescript
-type PlayerImportance = 'star' | 'rotation' | 'bench';
-```
+| 쿼터 | 파울 | 처리 |
+|---|---|---|
+| 1Q·2Q | 4 이상 | 후반 시작(24분)까지 휴식 |
+| 3Q | 4 | 6분 휴식 |
+| 3Q | 5 | 4Q 시작(36분)까지 휴식 |
+| 4Q | 4 | 계속 출전 |
+| 4Q | 5 | 클러치(42분) 전이면 3분 휴식(최대 45분까지), 클러치면 계속 출전 |
+| 연장 | — | 계속 출전 |
 
-| 등급 | 조건 |
-|------|------|
-| **star** | 팀 전체 OVR 상위 3위 이내 **+** 선발 선수 |
-| **rotation** | 선발이지만 OVR 상위 3위 밖 |
-| **bench** | 비선발 선수 |
+- 3파울 이하는 벤치로 빼지 않는다(파울 회피만 적용).
+- 복귀 시각이 지금보다 늦지 않으면(예: 2Q 23분대 4파울 → 24분) 그대로 둔다.
+- 6파울(파울 아웃)은 이 표와 별개로 항상 영구 퇴장.
 
-- 상위 3위 기준: 코트 + 벤치 전체 선수 중 OVR 내림차순 3번째 값
-- 중요도가 높을수록 파울 트러블에서도 복귀 기회를 더 많이 부여
+### 판정 시점 — 파울이 새로 늘었을 때 한 번만
+- `checkSubstitutionsV2`는 `p.pf > p.foulCheckedPf`일 때만 판정한다.
+- 벤치가 필요 없다는 판정이면 `foulCheckedPf = pf`, 벤치에 성공하면 `benchForFoulTrouble`이 `foulCheckedPf = pf`로 올린다.
+- 그래서 복귀한 선수를 쿼터가 바뀌었다는 이유만으로 같은 파울 수로 다시 빼지 않는다. 예: 2Q 4파울로 쉬고 3Q에 복귀 → 3Q 기준(4파울 = 6분 휴식)을 다시 적용하지 않음. 5번째 파울이 나오면 그때 3Q 5파울 기준으로 판정.
+- 대신 뛸 사람이 없어 벤치에 실패하면 `foulCheckedPf`를 올리지 않으므로 다음 공격권에 다시 시도한다.
+- 로테이션 표에서 그 분에 출전 예정인지와 관계없이 판정한다(이전엔 표에 없는 분에만 판정 → 사실상 표대로 나갈 때 사유만 붙었다).
 
----
-
-## 2. 파울 트러블 의사결정 매트릭스
-
-`evaluateFoulTroubleAction()` — quarter × fouls × importance → 행동 결정
-
-### 행동 코드
-
-| 코드 | 설명 | returnMinute |
-|------|------|--------------|
-| STAY | 계속 기용 | - |
-| REST_N | N분 휴식 후 자동 복귀 | currentMinute + N |
-| HALF | 전반 끝까지 휴식, 후반에 복귀 | 24 (Q3 시작) |
-| GAME | 경기 나머지 출전 안함 | null |
-| BRIEF | 3분만 휴식 후 복귀 | currentMinute + 3 |
-
-### Q1 (1쿼터)
-
-| 파울 수 | Star | Rotation | Bench |
-|---------|------|----------|-------|
-| 2 | REST_6 | REST_6 | REST_6 |
-| 3 | HALF | HALF | GAME |
-| 4+ | HALF | GAME | GAME |
-
-### Q2 (2쿼터)
-
-| 파울 수 | Star | Rotation | Bench |
-|---------|------|----------|-------|
-| 3 | REST_6 | REST_6 | GAME |
-| 4 | HALF | HALF | GAME |
-| 5+ | HALF | GAME | GAME |
-
-### Q3 (3쿼터)
-
-| 파울 수 | Star | Rotation | Bench |
-|---------|------|----------|-------|
-| 4 | REST_6 | REST_6 | GAME |
-| 5+ | REST_4 | GAME | GAME |
-
-### Q4 (4쿼터)
-
-| 파울 수 | Star (비클러치) | Star (클러치) | Rotation | Bench |
-|---------|----------------|--------------|----------|-------|
-| 4 | STAY | STAY | STAY | STAY |
-| 5 | BRIEF (3분) | STAY | STAY | GAME |
-
-- **클러치 = Q4 42분 이후 (잔여 6분 이하)**
-- Q4에서는 거의 벤치하지 않음 — 실제 NBA 감독 행동과 일치
-- 5파울 스타도 클러치에서는 강행 기용 (6번째 파울 도박)
+### 유저 설정 — `foulPolicy`
+- `'auto'`(기본): 위 기준 적용.
+- `'ignore'`: 임시 벤치 판정을 하지 않는다. 6파울 퇴장과 파울 회피는 그대로.
 
 ---
 
-## 3. NBA 시나리오 매핑
+## 2. 임시 벤치 실행 (`benchForFoulTrouble`)
 
-### 시나리오 1: Q1에 3파울 스타터
-- 매트릭스: Q1 / 3파울 / Star → **HALF** (returnMinute = 24)
-- 동작: 전반 동안 벤치, Q3 시작 시 복귀
-- NBA 현실: 감독이 전반을 희생하고 후반에 최대 기용
+`executeSubstitution` → `benchWithOverride(reason='foul_trouble')` → `benchForFoulTrouble`.
 
-### 시나리오 2: Q4 10분경 4파울 스타터
-- 매트릭스: Q4 / 4파울 / Star → **STAY**
-- 동작: 계속 기용 (Q4에서 4파울은 위험하지 않음)
-- 5파울이 되면 비클러치 시 BRIEF (3분 쉬고 복귀)
+1. **연쇄 승계** — `planSuccession({ outIds:[빠진 선수], fromMinute: 지금, toMinute: 복귀 시각 })`. 부상 승계와 같은 함수이고 끝 분만 다르다.
+   - 같은 슬롯 뎁스차트에서 건강한 선수가 역할을 한 칸씩 올려 받는다(백업 → 주전 역할, 써드 → 백업 역할).
+   - 그래도 빈 분은 점수(자리 적합도 + 누적 출전 + 컨디션 단계)가 가장 낮은 선수가 메운다 → 같은 포지션 다음 뎁스가 없으면 인접 포지션 선수.
+   - **복귀 시각 이후의 표는 아무도 건드리지 않는다.** 복귀하면 그 분부터 원래 로테이션 그대로이고, 되돌리기 작업이 필요 없다.
+2. **후보 기준** (`successionPlayers`, 영구 이탈 승계와 공용)
 
-### 시나리오 3: Q2에 3파울 벤치 선수
-- 매트릭스: Q2 / 3파울 / Bench → **GAME** (returnMinute = null)
-- 동작: 남은 경기 출전 안함
-- NBA 현실: 생산성 낮은 선수를 파울 위험 안고 기용할 이유 없음
+   | 단계 | 조건 | 처리 |
+   |---|---|---|
+   | 0 정상 | 아래 어디에도 해당 없음 | 연쇄 승계 대상 |
+   | 1 최후 수단 | Day-to-Day, 탈진, 임시 벤치 중, 체력 20% 이하, 지금 투입하면 위 기준에 걸리는 파울 수(`foulPolicy:'ignore'` 제외) | 연쇄 승계에서 빠지고 **자기 역할은 그대로 유지**, 빈 분 메우기에선 +20점 |
+   | 3 불가 | 빠지는 선수 본인, 퇴장, 경기 중 부상 | 후보 제외 |
 
-### 시나리오 4: Q4 클러치에서 5파울 스타
-- 매트릭스: Q4 / 5파울 / Star / 클러치 → **STAY**
-- 동작: 파울아웃 위험을 감수하고 계속 기용
-- NBA 현실: 승부처에서 에이스를 빼는 감독은 없음
+3. **실제 교체는 1:1** — 지금 분에 새로 예정된 벤치 선수 1명이 들어온다. 표에 원래 구멍이 있던 분이라 예정된 선수가 없으면 옛 대체자 규칙(`findResCandidate`: 같은 슬롯 뎁스 → 인접 포지션 뎁스 → OVR)으로 1명.
+4. **슬롯 재배정** — `assignCourtSlots`가 코트 5명 슬롯을 다시 정한다(1:1이면 대개 들어온 선수가 나간 선수 슬롯을 받고, 대체자가 그 슬롯에 아주 어색할 때만 기존 선수들이 한 칸씩 이동). 상세는 `rotation-algorithm.md` 10절.
+5. 들어올 사람이 아무도 없으면 표를 원래대로 되돌리고 벤치하지 않는다.
+6. `activeOverrides`에 `{ reason:'foul_trouble', toMinute: 복귀 시각 }` 기록, 선수에 `benchReason`·`scheduledReturnMinute` 설정. 로그: `교체: IN [..] OUT [..] (파울 트러블 (N반칙))`.
 
----
+## 3. 복귀 (`checkTemporaryReturns`)
 
-## 4. 교체 파이프라인에서의 위치
-
-```
-checkSubstitutionsV2() — 우선순위:
-
-Priority 1: 부상 / 6파울 퇴장         → 영구 퇴장 (permanent)
-Priority 2: 탈진 (condition ≤ 20)     → 임시 벤치 (temporary)
-Priority 3: 파울 트러블 (매트릭스)      → 임시 또는 영구
-Priority 4: 가비지 타임               → 영구 퇴장
-
-※ 유저가 rotationMap에 해당 분을 명시적으로 true로 설정한 경우,
-   Priority 2(탈진)와 Priority 3(파울 트러블)은 스킵됨 (유저 의사 존중)
-```
-
-### SubRequestV2 타입
-
-```typescript
-interface SubRequestV2 {
-    outPlayer: LivePlayer;
-    reason: string;
-    exitType: 'permanent' | 'temporary';
-    returnMinute?: number | null;
-    benchReason: 'foul_trouble' | 'shutdown' | 'injury' | 'foul_out' | 'garbage' | null;
-}
-```
+- `currentMinute >= toMinute`이면 그대로 복귀 처리(`benchReason` 해제, 로그 `복귀 준비 (파울 트러블 해소)`).
+- 재평가는 하지 않는다 — 벤치에서는 파울이 늘지 않는다.
+- 실제 투입은 `checkAndApplyRotation`이 원래 표대로 한다(그 분에 원래 출전 예정이 아니면 다음 예정 분에 들어옴).
+- 승계받은 선수가 그사이 다치거나 퇴장하면 일반 영구 이탈 승계가 처리한다(`handleFillerExit`는 탈진 오버라이드 전용).
+- 다른 교체 경로(부상·퇴장 교체 `forceSubstitution`, 표 구멍 보충 `checkAndApplyRotation` 폴백)는 쉬는 선수를 **막지 않고 후순위로만** 둔다 — 다른 후보를 다 쓴 뒤에만 들어온다. 벤치가 얇으면 파울 트러블이어도 뛴다(사용자 결정).
 
 ---
 
-## 5. 임시 벤치 실행 (benchWithOverride)
+## 4. 파울 회피 (`possessionHandler.ts`, `SIM_CONFIG.FOUL_TROUBLE`)
 
-파울 트러블로 벤치되는 경우 `benchWithOverride()`가 호출됨:
+| 파울 수 | 파울 확률 배수 (`PROB_MOD`) | 수비 약화 (`DEF_PENALTY` × 0.10 → 공격 성공률 가산) |
+|---|---|---|
+| 0~2 | ×1.00 | 없음 |
+| 3 | ×0.85 | 없음 |
+| 4 | ×0.60 | +1.5%p |
+| 5 | ×0.30 | +4.0%p |
 
-1. 아웃 선수의 로테이션 맵을 `returnMinute`까지만 Filler에게 전이
-2. `returnMinute` 이후 슬롯은 `originalRotationMap`에서 복원
-3. `activeOverrides` 스택에 추적 기록 생성
-4. 선수에 `benchReason: 'foul_trouble'` + `scheduledReturnMinute` 설정
-
-**vs 영구 퇴장 (`forceSubstitution`)**:
-- 영구 퇴장은 승계 로직 실행 + 잔여 맵 영구 비움
-- 임시 벤치는 원본 맵 보존 + 복귀 후 자동 복원
-
----
-
-## 6. 자동 복귀 판정 (checkTemporaryReturns)
-
-매 포세션마다 실행. 파울 트러블로 벤치된 선수의 복귀 판정:
-
-```
-currentMinute >= scheduledReturnMinute?
-    ├─ YES → evaluateFoulTroubleAction() 재평가
-    │        ├─ 아직 위험 → returnMinute 연장, 계속 대기
-    │        └─ 안전 → 맵 복원, 복귀 준비
-    └─ NO → 계속 대기
-```
-
-- 복귀 전에 반드시 **재평가**를 수행
-- 예: Q1에 2파울로 벤치 → 6분 후 복귀 예정이었지만, 그 사이 쿼터가 변했으면 새 기준 적용
-- 물리적 투입은 `checkAndApplyRotation`이 맵 기반으로 처리
+- 슈팅 파울·비슈팅 파울(수비 반칙) 확률 둘 다에 곱한다.
+- **도움 수비 파울분**(골밑 도움 수비가 붙어 늘어난 확률 `helpBonusRate`)은 도움 수비수 본인의 파울 수로 배수를 정한다(2026-10-23, 이전엔 원래 수비수 파울 수를 써서 5파울 도움 수비수도 평소처럼 파울).
+- 적용 안 되는 파울: 공격자 파울(차징·일리걸 스크린), 테크니컬, 플래그런트.
 
 ---
 
-## 7. 파울 관련 수비 페널티 (constants.ts)
+## 5. 측정 (2026-10-23, Pro Basketball League 저장 전술, 1740경기, 시드 고정 전후 비교)
 
-파울이 많이 쌓인 선수가 코트에 남아있을 때의 수비 약화:
+| 지표 | 개정 전 | 개정 후 |
+|---|---|---|
+| 경기당 파울 트러블 교체 | 1.70 | 0.69 |
+| 원인 파울 → 교체까지 | 평균 211초(표대로 나갈 때까지 기다림) | 0초(즉시) |
+| 100경기당 6반칙 퇴장 | 3.4 | 2.2 |
+| 4파울로 마친 선수 평균 출전 | 30.8분 | 30.1분 |
+| 5파울로 마친 선수 평균 출전 | 31.1분 | 28.4분 |
+| 주전 평균 출전 | 32.77분 | 32.68분 |
+| 팀 경기당 득점 | 101.86 | 101.89 |
+| 팀 득실 변화(평균 절댓값) | — | 1.11 (같은 엔진 시드만 다를 때 1.57) |
+| 팀 총 출전 240분(+연장) 어긋남 | 0 | 0 |
 
-```typescript
-FOUL_TROUBLE: {
-    PROB_MOD: { 3: 0.85, 4: 0.60, 5: 0.30 },   // 파울 시도 확률 감소
-    DEF_PENALTY: { 3: 0.0, 4: 0.15, 5: 0.40 }   // 수비 효율 페널티
-}
-```
-
-| 파울 수 | 파울 시도 확률 | 수비 페널티 |
-|---------|--------------|-----------|
-| 3 | 85% (15% 자제) | 0% |
-| 4 | 60% (40% 자제) | 15% 약화 |
-| 5 | 30% (70% 자제) | 40% 약화 |
-
-- `PROB_MOD`: 파울이 많은 수비자는 적극적 수비(파울 유발 가능한 행동)를 자제
-- `DEF_PENALTY`: 파울 자제로 인한 수비 효율 감소 (공격자에게 유리)
-- 이 페널티는 벤치 여부와 무관하게 코트 위에 있으면 적용됨
-
----
-
-## 8. 중복 처리 방지
-
-```typescript
-// checkSubstitutionsV2 — 154-156행
-team.onCourt.forEach(p => {
-    if (p.benchReason) return;  // 이미 처리 중인 선수 스킵
-    ...
-});
-```
-
-- `benchReason`이 이미 설정된 선수는 중복으로 교체 요청을 생성하지 않음
-- 복귀 후 `benchReason`이 null로 초기화되어야 다음 파울 트러블 감지 가능
-
----
-
-## 9. 엣지 케이스
-
-| 케이스 | 처리 |
-|--------|------|
-| 벤치 중 파울 추가 | 불가능 — 벤치 선수는 파울 안 받음 |
-| 복귀 직후 즉시 파울 | 다음 포세션에서 재감지 → 새 override 생성 |
-| Filler도 파울 트러블 | handleFillerExit → 원래 선수 복귀 가능 여부 확인 → 불가능하면 새 Filler |
-| GAME 판정 후 뎁스 부족 | 벤치 불가, 계속 기용 (뎁스 소진 안전장치) |
-| Q1 4파울 Star → HALF → Q3 복귀 시 재평가 | Q3 기준으로 4파울 = REST_6 → 다시 6분 더 쉬어야 할 수 있음 |
+서버·클라이언트 엔진 결과는 모든 지표가 정확히 일치.

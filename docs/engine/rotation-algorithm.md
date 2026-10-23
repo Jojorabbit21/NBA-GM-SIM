@@ -88,6 +88,14 @@ Record<string, boolean[]>   // playerId → 48개 boolean (분 단위)
 
 > 개인 전술 시스템 전체: [player-tactics.md](player-tactics.md)
 
+### 파울 트러블 — 2026-10-23 개정 (`benchForFoulTrouble`)
+기준·판정 시점·측정은 [foul-trouble.md](foul-trouble.md). 요약:
+- 4파울부터, 주전·벤치 구분 없이, 복귀 시각이 항상 정해진 임시 벤치(영구 벤치 없음). 로테이션 표에 있는 분에도 판정.
+- 빈 시간은 `planSuccession(..., toMinute = 복귀 시각)` — 4절과 같은 연쇄 승계를 복귀 시각까지만. 복귀 시각 이후 표는 그대로라 복귀 시 되돌리기가 없다.
+- 후보 단계(`successionPlayers`, 4절 영구 이탈과 공용): 퇴장·경기 중 부상 = 제외 / Day-to-Day·탈진·임시 벤치·체력 20% 이하·파울 트러블 위험 = 최후 수단(연쇄 승계에서 빠지고 자기 역할 유지) / 그 외 정상.
+- 교체는 1:1, 슬롯은 `assignCourtSlots`(10절).
+
+### 탈진 (`benchWithOverride`)
 **핵심 차이**: `forceSubstitution`과 달리 승계 로직을 호출하지 않음.
 
 **처리 흐름**:
@@ -135,9 +143,9 @@ activeOverrides: RotationOverride[];              // 임시 교체 추적 스택
 
 매 포세션마다 `checkAndApplyRotation` 이전에 호출.
 
-**파울 트러블 복귀 조건**:
-- `scheduledReturnMinute`에 도달
-- 복귀 전 `evaluateFoulTroubleAction()` 재평가 → 아직 위험하면 연장
+**파울 트러블 복귀 조건** (2026-10-23):
+- 오버라이드의 `toMinute`(복귀 시각)에 도달하면 그대로 복귀. 재평가 없음(벤치에서는 파울이 늘지 않음).
+- 표 복원도 없음 — 승계를 복귀 시각까지만 했기 때문(아래 "복귀 처리" 1·2는 탈진 전용).
 
 **탈진(Shutdown) 복귀 조건**:
 - `isShutdown === false` (벤치에서 체력 회복 시 자동 해제)
@@ -158,7 +166,7 @@ activeOverrides: RotationOverride[];              // 임시 교체 추적 스택
 
 1. 원래 선수가 복귀 가능한지 확인
    - 탈진 해소 + 체력 > 70 → 원래 선수 조기 복귀
-   - 파울 트러블 재평가 → 벤치 불필요 시 조기 복귀
+   - (2026-10-23부터 탈진 오버라이드만 해당 — 파울 트러블은 연쇄 승계로 메워 대체자 1명에 묶이지 않음. 승계받은 선수가 이탈하면 일반 영구 이탈 승계가 처리)
 2. 복귀 불가 → 새 Filler 탐색
    - Filler의 잔여 맵을 새 Filler에게 전이
    - 오버라이드의 `fillerPlayerId` 갱신
@@ -228,6 +236,7 @@ position은 엔진 내 수비자 매칭, 존 디펜스 앵커, PnR 스크리너 
 | 벤치 중 추가 파울 | 불가능 (벤치 선수는 파울 안 받음) |
 | 복귀 직후 재탈진 | 다음 포세션에서 `checkSubstitutionsV2`가 재감지 → 새 override |
 | 동시 다수 스타터 아웃 | override 스택이 독립 추적, `excludeIds`가 중복 filler 방지 |
-| 뎁스 완전 소진 | `benchWithOverride`가 filler 못 찾으면 벤치 불가, 계속 기용 |
-| 하프타임 복귀 (returnMinute=24) | Q3 첫 포세션에서 `checkTemporaryReturns` 감지 → 맵 복원 |
-| 유저 맵에 명시된 선수 | `isScheduled === true`면 탈진·파울트러블 체크 스킵 (유저 의사 존중) |
+| 뎁스 완전 소진 | 들어올 선수가 없으면 벤치 불가, 계속 기용 (파울 트러블은 표를 되돌리고 다음 공격권에 재시도) |
+| 하프타임 복귀 (returnMinute=24) | Q3 첫 포세션에서 `checkTemporaryReturns` 감지 → 복귀 (파울 트러블은 표 복원 없이 원래 표대로) |
+| 유저 맵에 명시된 선수 | 탈진(2026-10-22~)·파울 트러블(2026-10-23~) 모두 표와 무관하게 판정. 파울 트러블을 끄려면 선수별 `foulPolicy:'ignore'` |
+| 복귀 후 같은 파울 수 | 다시 빼지 않음 — 파울이 새로 늘었을 때만 판정(`foulCheckedPf`) |

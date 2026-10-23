@@ -37,7 +37,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
 | [ace-stopper.md](ace-stopper.md) | 에이스 스토퍼 매치업 효과 (-50%~+40%) | aceStopperSystem.ts |
-| [foul-trouble.md](foul-trouble.md) | 파울 트러블 심리 (파울 확률/수비 페널티) | possessionHandler.ts, constants.ts |
+| [foul-trouble.md](foul-trouble.md) | 파울 트러블 (임시 벤치 기준·연쇄 승계·파울 회피) | substitutionSystem.ts, rotationLogic.ts, possessionHandler.ts, constants.ts |
 | [tf-ff-system.md](tf-ff-system.md) | 턴오버/자유투 시스템 | possessionHandler.ts |
 
 ---

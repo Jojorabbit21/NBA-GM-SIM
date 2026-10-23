@@ -27,7 +27,7 @@ import type { DepthChart } from '../../../../types';
 import { COURT_SLOTS, vacancyFit, type Slot, type SlotPlayer } from './slotAssignment';
 
 /**
- * 0 정상 / 1 탈진·임시 벤치 / 2 부상(경증 우선, 마지막 수단) / 3 퇴장·방금 이탈 등 완전 불가(후보에서 제외).
+ * 0 정상 / 1 탈진·임시 벤치·저체력·파울 트러블 위험 / 2 부상(경기 전 전용, 경증 우선, 마지막 수단) / 3 퇴장·방금 이탈·경기 중 부상 등 완전 불가(후보에서 제외).
  * outIds(시간을 비워야 하는 선수)와 tier는 별개다: 경기 전 부상자는 outIds이면서 tier 2(건강한 선수가 모자랄 때만 다시 투입),
  * 경기 중 방금 이탈한 선수는 outIds이면서 tier 3.
  */
@@ -75,17 +75,21 @@ function ownerSlot(id: string, depthChart: DepthChart | undefined): Slot | null 
 }
 
 /**
- * outIds 선수들의 fromMinute 이후 출전 시간을 이어받을 사람을 정해 map을 직접 갱신한다.
+ * outIds 선수들의 [fromMinute, toMinute) 출전 시간을 이어받을 사람을 정해 map을 직접 갱신한다.
  * map의 키는 선수 id, 값은 48칸 출전 여부. players에 없는 id(유령)는 건드리지 않고 인원 계산에서도 제외한다.
+ * toMinute(기본 48 = 경기 끝): [2026-10-23] 파울 트러블 임시 벤치는 복귀 시각까지만 승계한다 — 그 이후의 표는 전원 그대로라
+ * 복귀 시각부터 원래 로테이션으로 돌아간다(되돌리기 작업이 필요 없다).
  */
 export function planSuccession(opts: {
     outIds: readonly string[];
     fromMinute: number;
+    toMinute?: number;
     rotationMap: Record<string, boolean[]>;
     depthChart: DepthChart | undefined;
     players: readonly SuccessionPlayer[];
 }): SuccessionResult {
     const { fromMinute, rotationMap: map, depthChart } = opts;
+    const toMinute = Math.min(48, opts.toMinute ?? 48);
     const players = [...opts.players].sort((a, b) => a.id.localeCompare(b.id));
     const byId = new Map(players.map(p => [p.id, p]));
     const known = new Set(byId.keys());
@@ -105,24 +109,30 @@ export function planSuccession(opts: {
         }
         if (!listed.some(id => outSet.has(id))) continue;
 
-        const patterns = listed.map(id => (map[id] ?? Array(48).fill(false)).slice(fromMinute) as boolean[]);
-        const chain = listed.filter(id => !outSet.has(id) && byId.get(id)!.tier === 0);
+        const patterns = listed.map(id => (map[id] ?? Array(48).fill(false)).slice(fromMinute, toMinute) as boolean[]);
+        // [2026-10-23] 나가지 않았지만 지금 못 뛰는 선수(tier ≥ 1: 탈진·임시 벤치·파울 트러블 위험·이미 이탈)는 자기 역할을 그대로
+        // 갖고 있고, 나머지 역할만 건강한 선수가 한 칸씩 올려 받는다. 이전엔 이런 선수를 건너뛰고 그 역할까지 아래 순번이 가져가
+        // 복귀 후 같은 패턴이 두 명에게 겹치고(그 분 인원 초과) 원래 역할 하나가 비었다. 경기 전 처리엔 이런 선수가 없어 영향 없음.
+        const held = new Set(listed.filter(id => !outSet.has(id) && byId.get(id)!.tier !== 0));
+        const roles = listed.map((_, i) => i).filter(i => !held.has(listed[i]));
+        const chain = listed.filter(id => !outSet.has(id) && !held.has(id));
 
         // 나간 선수 시간 비우기 → 건강한 선수가 순서대로 역할을 한 칸씩 올려 받음
-        for (const id of listed) if (outSet.has(id)) for (let m = fromMinute; m < 48; m++) ensure(id)[m] = false;
+        for (const id of listed) if (outSet.has(id)) for (let m = fromMinute; m < toMinute; m++) ensure(id)[m] = false;
         chain.forEach((id, j) => {
+            const role = roles[j];
             const arr = ensure(id);
             let gained = 0;
-            for (let m = fromMinute; m < 48; m++) {
-                const v = patterns[j][m - fromMinute];
+            for (let m = fromMinute; m < toMinute; m++) {
+                const v = patterns[role][m - fromMinute];
                 if (v && !arr[m]) gained++;
                 arr[m] = v;
             }
-            if (id !== listed[j] || gained > 0) result.promoted.push({ id, slot, role: j, minutes: patterns[j].filter(Boolean).length });
+            if (id !== listed[role] || gained > 0) result.promoted.push({ id, slot, role, minutes: patterns[role].filter(Boolean).length });
         });
     }
     // 소속 슬롯이 없는 나간 선수(뎁스차트에 없음) → 시간만 비움, 구멍은 2)가 메움
-    for (const id of outSet) for (let m = fromMinute; m < 48; m++) if (map[id]) map[id][m] = false;
+    for (const id of outSet) for (let m = fromMinute; m < toMinute; m++) if (map[id]) map[id][m] = false;
 
     // ── 2) 남은 구멍 메우기 ──
     const injuredRank = new Map(
@@ -132,7 +142,7 @@ export function planSuccession(opts: {
     );
     const slotPlayer = (p: SuccessionPlayer): SlotPlayer => ({ playerId: p.id, ovr: p.ovr, position: p.nativePosition, nativePosition: p.nativePosition });
     let prevFillers = new Set<string>();
-    for (let m = fromMinute; m < 48; m++) {
+    for (let m = fromMinute; m < toMinute; m++) {
         const target = Math.min(5, before[m]);
         const scheduled = () => players.filter(p => map[p.id]?.[m]);
         const fillers = new Set<string>();

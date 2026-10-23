@@ -81,17 +81,17 @@ if !isShutdown && currentCondition > returnThreshold → 복귀
 
 | 값 | 동작 |
 |----|------|
-| `'auto'` | 기본 파울 트러블 매트릭스 적용 (Q/파울수/중요도별 벤치 결정) |
+| `'auto'` | 기본 파울 트러블 기준 적용 (쿼터·파울 수별 임시 벤치, 4파울부터 — [foul-trouble.md](foul-trouble.md)) |
 | `'ignore'` | 파울 트러블 매트릭스 스킵. 파울이 몇 개 쌓여도 벤치 안 보냄 |
 
 **구현 위치**: `substitutionSystem.ts` Priority 3:
 
 ```ts
 const ignoreFoul = playerConfig?.foulPolicy === 'ignore';
-if (!isScheduled && !ignoreFoul) { evaluateFoulTroubleAction(...) }
+if (!ignoreFoul && p.pf > (p.foulCheckedPf ?? 0)) { evaluateFoulTroubleAction(...) }   // 2026-10-23: 표 출전 여부 무관, 파울이 늘었을 때만
 ```
 
-> **주의**: 6파울 퇴장은 Priority 1에서 처리되므로 `ignore`를 설정해도 항상 적용됨. `ignore`는 5파울 이하의 파울 트러블 벤치 결정만 무력화한다.
+> **주의**: 6파울 퇴장은 Priority 1에서 처리되므로 `ignore`를 설정해도 항상 적용됨. `ignore`는 5파울 이하의 파울 트러블 벤치 결정만 무력화한다(파울 회피 `PROB_MOD`는 그대로 적용).
 
 ---
 
