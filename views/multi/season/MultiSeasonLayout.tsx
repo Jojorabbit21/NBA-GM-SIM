@@ -77,14 +77,16 @@ export function MultiSeasonLayout() {
     const virtualSeasonYear = league?.virtual_season_year;
     const seasonCalendar = league?.season_calendar;
     const isMainLeague = league?.type === 'main_league';
+    // [2026-10-23] 시즌 진행 전(모집·드래프트)엔 정규시즌 경기가 없어 스트립에 올스타 날짜만 남으므로 진행 중/종료 리그에서만.
+    const isSeasonStarted = league?.status === 'in_progress' || league?.status === 'finished';
     const stripEventDates = useMemo(() => {
-        if (!isMainLeague) return [];
+        if (!isMainLeague || !isSeasonStarted) return [];
         const kd = getAllStarKeyDates(virtualSeasonYear ?? new Date().getFullYear(), seasonCalendar);
         return [
             { dateKey: kd.allStarRisingStarsDate, label: '라이징스타 챌린지', time: '19:00', awayId: 'RISINGSTARS-B', homeId: 'RISINGSTARS-A' },
             { dateKey: kd.allStarMainGameDate, label: '올스타 본경기', time: '20:30', awayId: 'WEST-ALLSTAR', homeId: 'EAST-ALLSTAR' },
         ];
-    }, [isMainLeague, virtualSeasonYear, seasonCalendar]);
+    }, [isMainLeague, isSeasonStarted, virtualSeasonYear, seasonCalendar]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
 

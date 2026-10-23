@@ -34,6 +34,19 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-23 — 시즌 달력을 리그 생성 시점에 저장 + 시즌 시작 전 날짜 스트립에 올스타 날짜 숨김
+
+**배경**: v2 배포 후 새 리그(PBL Active, 모집 중)의 날짜 스트립이 "2027-02-16 올스타전"으로 시작. ① `season_calendar`는 finalize(드래프트 종료) 때만 저장돼 모집·드래프트 단계에선 null → 기존 고정 달력(본경기 2/16)으로 계산. ② 스트립의 올스타 행사일 주입(f69cd1b5)이 메인리그 여부만 봐서, 정규시즌 경기가 없는 시즌 전에도 올스타 날짜만 표시.
+
+**변경 파일** (client 전용):
+- `services/multi/leagueService.ts` — 리그 insert payload에 `season_calendar = buildSeasonCalendar(virtualSeasonYear)` 추가(virtual_season_year와 같은 조건). finalize가 같은 함수로 다시 저장하므로 값 동일.
+- `views/multi/season/MultiSeasonLayout.tsx` — `stripEventDates`: `if (!isMainLeague) return [];` → `if (!isMainLeague || !isSeasonStarted) return [];` (`isSeasonStarted` = status in_progress/finished), deps에 추가.
+- DB 데이터: PBL Active(`22d3b515-…`) `season_calendar` 백필(2026-27 v2 달력, finalize 결과와 동일 값).
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: payload 줄 삭제, 조건을 `if (!isMainLeague) return [];`로 복원(deps에서 isSeasonStarted 제거).
+
+
 ## 2026-10-23 — 일정 생성기 v2: 실측 NBA 패턴 재현 + 시즌 달력(올스타 포함) 리그별 저장
 
 **배경**: Pro Basketball League 일정이 실제와 크게 달랐다(마지막 날 1경기·6팀만 종료, 하루 9·6경기 교대 반복, 개막일 9경기, B2B 6~15회, 4-in-5 51건, 추수감사절 경기). 10시즌 실측 분석(`docs/research/nba-schedule-patterns.md`) → 계획 `docs/plan/schedule-generator-v2.md`. 사용자 결정: 이동 거리 미반영, 같은 경기장 2연전 재현, 올스타 일정을 일정 생성과 함께 생성, 올스타 배치 A안(목 발표~수 재개), NCAA 월요일 제외, 진행 중 리그 유지.

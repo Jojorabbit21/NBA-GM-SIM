@@ -6,6 +6,7 @@ import { TEAM_DATA, TEAM_COLORS } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import type { SimSettings } from '../../types/simSettings';
 import { HEX_COLOR_RE } from '../../utils/colorContrast';
+import { buildSeasonCalendar } from '../../utils/seasonCalendar';
 import type { PersonalDraftFormat } from './personalDraftFormat';
 
 // [2026-10-02] 코트 색상은 이제 NULL = "전역 기본값(app_settings.court_default_colors) 따라감".
@@ -221,6 +222,9 @@ export const createLeague = async (
     if (opts.playoffTeamCount     !== undefined) payload.playoff_team_count      = opts.playoffTeamCount;
     if (opts.playInEnabled        !== undefined) payload.play_in_enabled         = opts.playInEnabled;
     if (opts.virtualSeasonYear    !== undefined) payload.virtual_season_year     = opts.virtualSeasonYear;
+    // [2026-10-23] 시즌 달력도 생성 시점에 저장 — finalize(드래프트 종료)가 같은 함수로 다시 쓰지만, 그 전(모집·드래프트)에
+    // 화면이 비어 있는 값을 읽으면 기존 고정 달력(올스타 2/13~18)으로 계산돼 날짜가 어긋난다.
+    if (opts.virtualSeasonYear    !== undefined) payload.season_calendar         = buildSeasonCalendar(opts.virtualSeasonYear);
     if (opts.gamesPerRealDay      !== undefined) payload.games_per_real_day      = opts.gamesPerRealDay;
     if (opts.tradeDeadlineDate    !== undefined) payload.trade_deadline_date     = opts.tradeDeadlineDate;
     if (opts.tradeDeadlineEnabled !== undefined) payload.trade_deadline_enabled  = opts.tradeDeadlineEnabled;
