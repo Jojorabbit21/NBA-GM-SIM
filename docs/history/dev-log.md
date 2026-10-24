@@ -34,6 +34,17 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-24 — 시즌 일정 화면 플레이인 경기 라운드 라벨 "0라운드" → "플레이인"
+
+**배경**: 플레이인 경기 표시 수정(같은 날) 후 시즌 일정 화면 라운드 컬럼에 "0라운드"로 표시됨. `computeRoundLabelMap()`이 `${r}라운드`로 round 0(PI_*)을 처리하지 않았다. PBP 화면(`computePlayoffStageLabel`)·헤더(`MultiSeasonPage`)는 이미 round 0 = 플레이인 처리.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiScheduleView.tsx` — `computeRoundLabelMap`: `r === 0 ? '플레이인'` 분기 추가
+- `views/multi/season/TournamentBracketView.tsx` — `getRoundLabel`/`getSideRoundLabel`에 `if (round === 0) return '플레이인';` 추가(대진표는 1라운드부터 그려 헤더엔 영향 없음, 시리즈 상세 창 방어)
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 추가한 round 0 분기 3줄 삭제.
+
 ## 2026-10-24 — 플레이인 경기가 일정 화면·날짜 스트립에서 안 보이던 버그 수정
 
 **배경**: PBL 플레이인(4/14 7·8위전·9·10위전 4경기, 4/15 8번 시드 결정전 2경기)이 DB에는 정상 생성·진행됐는데 시즌 일정 화면과 날짜 스트립에 안 보임. 두 화면은 스포일러 방지로 `computeRevealedSeries()`가 공개 처리한 시리즈의 경기만 표시하는데, 이 함수가 `for (round = 1 ...)`로 플레이인(round 0)을 처리하지 않아 플레이인 경기가 "미공개 시리즈"로 분류돼 전부 숨겨졌다(플레이인 도입 때부터의 기존 버그).

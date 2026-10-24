@@ -28,6 +28,7 @@ interface Props {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getRoundLabel(round: number, totalRounds: number): string {
+    if (round === 0) return '플레이인';
     if (round === totalRounds) return '결승';
     if (round === totalRounds - 1 && totalRounds > 2) return '준결승';
     return `${round}라운드`;
@@ -36,6 +37,7 @@ function getRoundLabel(round: number, totalRounds: number): string {
 // 컨퍼런스 분리(좌/우 대칭) 모드에서 한쪽 진영 내부 라운드 라벨 — 마지막 라운드(그 진영의
 // 우승팀을 가리는 라운드)만 "컨퍼런스 파이널"로 부르고, 나머지는 N라운드 그대로 표기한다.
 function getSideRoundLabel(round: number, confRounds: number): string {
+    if (round === 0) return '플레이인';
     if (round === confRounds) return '컨퍼런스 파이널';
     return `${round}라운드`;
 }

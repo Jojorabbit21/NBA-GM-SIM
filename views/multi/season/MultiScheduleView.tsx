@@ -46,7 +46,9 @@ function computeRoundLabelMap(bracketData: unknown): Record<string, string> {
     const map: Record<string, string> = {};
     for (const s of series) {
         const r = s.round ?? 1;
-        map[s.id] = r === totalRounds ? '결승'
+        // [2026-10-24] round 0 = 플레이인(PI_*) — 예전엔 "0라운드"로 표시됨
+        map[s.id] = r === 0 ? '플레이인'
+            : r === totalRounds ? '결승'
             : r === totalRounds - 1 && totalRounds > 2 ? '준결승'
             : `${r}라운드`;
     }
