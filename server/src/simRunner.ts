@@ -746,6 +746,7 @@ async function tryAdvanceTournamentOnce(
             const winnerName = await getTeamName(winnerSlug);
             pendingEvents.push({
                 type: 'playoff_series_result', simDate: gameDate,
+                gameId, // spoiler gate: RLS hides rows with game_id until that game's replay ends
                 teamIds: [winnerSlug, loserSlug],
                 payload: {
                     headline: `${winnerName}, ${label} 시리즈 승리`,
@@ -853,6 +854,7 @@ async function tryAdvanceTournamentOnce(
             const seasonLabel = seasonLabelFor((leagueRow as any).virtual_season_year);
             pendingEvents.push({
                 type: 'playoff_champion', simDate: gameDate,
+                gameId, // spoiler gate (see playoff_series_result)
                 teamIds: [championSlug],
                 payload: { headline: `${championName}, ${seasonLabel}시즌 챔피언 등극`, seasonLabel, championSlug, championName, playoffWins, playoffLosses },
             });
@@ -864,6 +866,7 @@ async function tryAdvanceTournamentOnce(
             if (mvp) {
                 pendingEvents.push({
                     type: 'finals_mvp', simDate: gameDate,
+                    gameId, // spoiler gate (see playoff_series_result)
                     teamIds: [championSlug], playerIds: [mvp.playerId],
                     payload: {
                         headline: `${mvp.playerName}, ${seasonLabel}시즌 파이널 MVP 선정`,

@@ -25,6 +25,9 @@ import type { TradeOfferRow } from '../services/multi/tradeService';
 export type LeagueNotificationScope = 'my_team' | 'all' | 'off';
 const SCOPE_KEY = 'nba-gm-sim-notif-league-scope';
 const BUNDLE_WINDOW_MS = 400;
+const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp'];
+const POLL_INTERVAL_MS = 30_000;
+const POLL_LOOKBACK_MS = 60 * 60 * 1000;
 
 export function getLeagueNotificationScope(): LeagueNotificationScope {
     try {
@@ -90,6 +93,9 @@ export function useLeagueNotifications(params: {
         const buffer: any[] = [];
         let timer: ReturnType<typeof setTimeout> | null = null;
 
+        // 실시간·폴링 두 경로가 같은 이벤트를 두 번 알리지 않도록 이미 알린 id를 기억한다.
+        const notified = new Set<string>();
+
         const flush = () => {
             timer = null;
             const rows = buffer.splice(0, buffer.length);
@@ -99,8 +105,9 @@ export function useLeagueNotifications(params: {
             const teamBySlug = new Map(teams.map(t => [t.team_slug, t]));
             const mySlug = myTeamRef.current?.team_slug ?? null;
             const events = rows.map(r => mapRow(r, mySlug));
-            const rest = events.filter(ev => TOASTED_EVENT_TYPES.has(ev.type) && (scope === 'all' || ev.involvesMyTeam));
+            const rest = events.filter(ev => TOASTED_EVENT_TYPES.has(ev.type) && (scope === 'all' || ev.involvesMyTeam) && !notified.has(String(ev.id)));
             for (const ev of rest) {
+                notified.add(String(ev.id));
                 let title: string | null = null;
                 try { title = buildNewsTitle(ev, teamBySlug); } catch { title = null; }
                 const message = title ?? ev.headline;
@@ -125,7 +132,39 @@ export function useLeagueNotifications(params: {
                     timer = setTimeout(flush, BUNDLE_WINDOW_MS);
                 })
             .subscribe();
+
+        // [2026-10-24] 스포일러 방지 — 시리즈 결과/우승/파이널 MVP는 game_id가 걸려 있어 RLS가 경기 중계가 끝날 때까지 숨긴다.
+        // Realtime은 INSERT 시점에 RLS를 판정하므로 공개 전 행은 영영 오지 않는다 → 공개 후 조회로 보충한다.
+        // 첫 조회는 이미 공개돼 있던 행을 "알린 것"으로만 기록(접속 직후 과거 알림이 쏟아지지 않게).
+        let seeded = false;
+        let stopped = false;
+        const poll = async () => {
+            try {
+                const since = new Date(Date.now() - POLL_LOOKBACK_MS).toISOString();
+                const { data } = await supabase
+                    .from('league_events')
+                    .select('id, type, team_ids, player_ids, score, payload, created_at, game_id, sim_date, room_id')
+                    .eq('room_id', roomId)
+                    .in('type', GATED_POLL_TYPES)
+                    .gte('created_at', since)
+                    .limit(20);
+                if (stopped || !data) return;
+                if (!seeded) {
+                    seeded = true;
+                    for (const r of data) notified.add(String(r.id));
+                    return;
+                }
+                const fresh = data.filter(r => !notified.has(String(r.id)));
+                if (fresh.length === 0) return;
+                buffer.push(...fresh);
+                flush();
+            } catch { /* 조용히 다음 주기에 재시도 */ }
+        };
+        void poll();
+        const pollTimer = setInterval(() => { if (!document.hidden) void poll(); }, POLL_INTERVAL_MS);
         return () => {
+            stopped = true;
+            clearInterval(pollTimer);
             if (timer) clearTimeout(timer);
             supabase.removeChannel(channel);
         };

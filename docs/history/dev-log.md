@@ -50,6 +50,22 @@
 
 
 
+## 2026-10-24 — 플레이오프 시리즈 결과/우승/파이널 MVP 알림 스포일러 차단
+
+**배경**: 멀티 플레이오프 중 채팅 위젯 알림 탭/토스트로 경기 중계가 끝나기 전에 시리즈 결과·우승이 노출됨. 원인: `playoff_series_result`/`playoff_champion`/`finals_mvp`가 `game_id` 없이 insert되어 `league_events` RLS(`game_id IS NULL`이면 즉시 공개)를 우회 → Realtime으로 서버 시뮬 직후 알림 발행(뉴스피드도 동일하게 선공개).
+
+**변경 파일**:
+- `server/src/simRunner.ts` (server 전용) — 위 3종 pendingEvents에 `gameId` 추가
+- `hooks/useLeagueNotifications.ts` (client) — 공개 후 30초 폴링 보충 + 알림 id 중복 방지 Set
+
+**Before**: `{ type: 'playoff_series_result', simDate: gameDate, teamIds: [...], payload }` (gameId 없음, champion/finals_mvp 동일). 훅은 Realtime INSERT만 수신.
+
+**After**: 3종 모두 `gameId` 포함 → RLS가 `game_start_time + room_replay_interval` 이후에만 공개. Realtime은 INSERT 시점 RLS로 판정해 공개 전 행을 보내지 않으므로, 훅이 30초마다(탭 활성 시) 최근 1시간·3종 조회로 보충. 첫 조회는 기존 행을 "알림 완료"로만 기록.
+
+**검증**: tsc 오류 없음(해당 파일). 실서버 E2E 미실시.
+
+**롤백 방법**: simRunner의 `gameId,` 3줄 삭제 + 훅 되돌리기(git revert). 이미 저장된 행은 game_id가 채워진 채 남아도 무해.
+
 ## 2026-10-24 — 드래프트 전 리그에서 선수 비교 툴 개방
 
 **배경**: 드래프트가 끝나기 전 리그는 홈/뉴스/드래프트 풀 메뉴만 노출되어 "도구 › 선수 비교"에 접근할 수 없었음. 드래프트 풀 선수끼리 비교할 수 있도록 요청.
