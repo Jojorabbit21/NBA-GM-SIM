@@ -689,18 +689,18 @@ const PlayerBoxPanel: React.FC<{
                 모든 셀 텍스트가 줄바꿈 대신 한 줄 유지) ② min-w-[600px](table-fixed 퍼센트가
                 과도하게 좁아지는 것 자체를 방지하는 바닥값) ③ 부모 div에 overflow-x-auto(그래도
                 컨테이너가 600px보다 좁으면 컬럼을 찌그러뜨리는 대신 테이블 전체를 가로 스크롤). */}
-            <table className="w-full min-w-[480px] text-sm border-collapse table-fixed whitespace-nowrap">
+            <table className="w-full min-w-[520px] text-sm border-collapse table-fixed whitespace-nowrap">
                 <colgroup>
-                    <col className="w-[30%]" />
-                    <col className="w-[7%]" />
-                    <col className="w-[7%]" />
+                    <col className="w-[22%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[6%]" />
                     <col className="w-[8%]" />
                     <col className="w-[8%]" />
                     <col className="w-[8%]" />
-                    <col className="w-[7%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[8%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
                     <tr className="h-10 text-slate-400 text-sm font-bold">

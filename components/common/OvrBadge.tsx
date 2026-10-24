@@ -98,7 +98,7 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
 
     return (
         <div
-            className={`flex items-center justify-center leading-none ${box.cls} ${textCls} ${className}`}
+            className={`flex shrink-0 items-center justify-center leading-none ${box.cls} ${textCls} ${className}`}
             style={boxStyle}
         >
             <span className="leading-none" style={{ ...DIGIT_FONT, color: tier.textColor, textShadow: TEXT_SHADOW }}>{value}</span>

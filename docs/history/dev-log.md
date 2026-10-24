@@ -34,6 +34,50 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2026-10-24 — OvrBadge 가로 찌그러짐 수정 (shrink-0)
+
+**배경**: 경기 종료 박스스코어(PlayerIdentityCells)에서 OVR 배지가 좌우로 찌그러짐. 배지가 `flex justify-center` 래퍼 안의 flex 자식이라 OVR 열이 좁으면 `flex-shrink:1`로 너비만 줄어듦(높이는 고정).
+
+**변경 파일**: `components/common/OvrBadge.tsx` (client)
+
+**Before**: `className={`flex items-center justify-center leading-none ${box.cls} ...`}`
+**After**: `className={`flex shrink-0 items-center justify-center leading-none ${box.cls} ...`}`
+
+**롤백 방법**: `shrink-0 ` 제거.
+
+## 2026-10-24 — 라이브 박스스코어 슈팅 컬럼 폭 확대 (FT/FG/3P 넘침 수정)
+
+**배경**: 라이브 뷰 박스스코어에서 자유투가 "15-17"처럼 늘어나면 FT 컬럼(8%)이 좁아 컬럼 밖으로 삐져나감.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` (colgroup 폭, 테이블 min-w)
+
+**Before**: 컬럼 % = 이름30 / P7 / MP7 / PTS8 / REB8 / AST8 / PF7 / FG9 / 3P8 / FT8, `min-w-[480px]`
+
+**After**: 이름24 / P6 / MP6 / PTS8 / REB8 / AST8 / PF6 / FG11 / 3P11 / FT12, `min-w-[520px]`
+
+**검증**: 폭 합계 100%, 육안 확인 전.
+
+**추가(같은 날)**: FG/3P/FT 모두 두 자리-두 자리가 가능하므로 세 컬럼을 동일 12%로 통일, 이름 24%→22%.
+
+**롤백 방법**: Before 값으로 colgroup과 min-w 복원.
+
 ## 2026-10-24 — 시즌 일정 화면 플레이인 경기 라운드 라벨 "0라운드" → "플레이인"
 
 **배경**: 플레이인 경기 표시 수정(같은 날) 후 시즌 일정 화면 라운드 컬럼에 "0라운드"로 표시됨. `computeRoundLabelMap()`이 `${r}라운드`로 round 0(PI_*)을 처리하지 않았다. PBP 화면(`computePlayoffStageLabel`)·헤더(`MultiSeasonPage`)는 이미 round 0 = 플레이인 처리.
