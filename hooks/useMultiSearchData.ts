@@ -77,10 +77,11 @@ export function useMultiSearchData(league: LeagueRow | null, leagueTeams: League
         return m;
     }, [leagueTeams]);
 
-    const { data: poolPlayers = EMPTY_POOL } = useQuery({
+    const { data: poolPlayers = EMPTY_POOL, refetch: refetchPool, isFetching: isPoolFetching } = useQuery({
         ...multiSearchPoolQuery(league),
         enabled: !!league?.id,
     });
 
-    return { poolPlayers, rosterMap };
+    // [2026-10-25] refetchPool/isPoolFetching — 드래프트 풀 화면의 새로고침 버튼용(어드민 편집 반영을 사용자가 직접 요청).
+    return { poolPlayers, rosterMap, refetchPool, isPoolFetching };
 }

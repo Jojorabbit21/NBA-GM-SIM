@@ -50,6 +50,19 @@
 
 
 
+## 2026-10-25 — 드래프트 풀 화면에 "선수 데이터 새로고침" 버튼 (staleTime은 Infinity 유지)
+
+**배경**: 어드민이 meta_players를 고쳐도 `multiSearchPool`이 staleTime Infinity + localStorage 24h 영속이라 새로고침해도 옛 풀이 보임. staleTime을 줄이면(60초 검토) 모든 사용자가 주기적으로 풀 전체를 재조회하므로, 평소엔 캐시를 쓰고 필요한 사람이 버튼으로 직접 새로 받게 함. (참고: 멀티 OVR은 meta_players.ovr_base/ovr_custom 고정값이 우선이라 능력치만 고치면 OVR 배지는 안 바뀜 — 별개 이슈.)
+
+**변경 파일**:
+- `hooks/useMultiSearchData.ts` (client) — 반환값에 `refetchPool`, `isPoolFetching` 추가. `staleTime: Infinity` 그대로.
+- `views/multi/season/MultiDraftPoolView.tsx` (client) — 제목 옆 새로고침 IconButton(RefreshCw, 조회 중 회전·비활성).
+
+**Before**: 훅 반환 `{ poolPlayers, rosterMap }`, 화면에 새로고침 수단 없음.
+**After**: 훅 반환 `{ poolPlayers, rosterMap, refetchPool, isPoolFetching }`, 버튼 클릭 시 `refetchPool()`로 DB 재조회 후 캐시 교체(영속 캐시도 갱신).
+
+**롤백 방법**: 버튼 블록과 import/구조분해, 훅 반환 필드 제거.
+
 ## 2026-10-24 — 드래프트 시작 직전 풀 재조회 (대기 중 편집된 OVR 반영)
 
 **배경**: DraftRoom은 첫 WS 접속(또는 시작) 때 `meta_players`를 1회 읽어 OVR을 계산하고 메모리에 유지한다. 대기(waiting) 중 방이 로드된 뒤 어드민이 OVR/능력치를 고쳐도 `activate()`가 재조회하지 않아 드래프트 룸에 반영되지 않았음.

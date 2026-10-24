@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
-import { Search, X } from 'lucide-react';
+import { RefreshCw, Search, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
@@ -42,7 +42,7 @@ const ATTR_FILTER_OPTIONS = ATTR_ITEMS.map(i => ({ value: i.key, label: i.label 
 
 const MultiDraftPoolView: React.FC = () => {
     const { league, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
-    const { poolPlayers } = useMultiSearchData(league, leagueTeams);
+    const { poolPlayers, refetchPool, isPoolFetching } = useMultiSearchData(league, leagueTeams);
     const { getPlayerUrlId } = usePlayerShortCodes();
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
@@ -106,6 +106,10 @@ const MultiDraftPoolView: React.FC = () => {
             <div className="flex flex-col shrink-0 bg-slate-900 border-b border-slate-800">
                 <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <h1 className="text-lg font-black text-white ko-tight truncate shrink-0">드래프트 풀</h1>
+                    {/* [2026-10-25] 선수 풀은 브라우저에 캐시돼 있어(어드민 편집이 자동 반영되지 않음) 사용자가 직접 새로 받는다 */}
+                    <IconButton label="선수 데이터 새로고침" size="md" tone="subtle" onClick={() => { void refetchPool(); }} disabled={isPoolFetching}>
+                        <RefreshCw size={14} className={isPoolFetching ? 'animate-spin' : ''} />
+                    </IconButton>
 
                     <div className="flex flex-wrap items-center gap-3 ml-auto">
                         <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors shadow-sm shrink-0 w-48">
