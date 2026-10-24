@@ -446,3 +446,71 @@ export function fromDbRows(rows: any[]): VirtualDayRow[] {
         realStartAt: toIso(r.real_start_at), realMidnightAt: toIso(r.real_midnight_at), realEndAt: toIso(r.real_end_at),
     })).sort((a, b) => a.realStartAt.localeCompare(b.realStartAt));
 }
+
+// ── 플레이오프 형식 변경 → 타임라인 날짜 덧붙이기/줄이기 (2026-10-24) ──────────────────
+
+/** 경기 형식 → 시리즈 승리 수(best_of_7 → 4). 서버 tournamentBracket.targetWinsFromFormat과 같은 규칙, null → 7전. */
+export function playoffTargetWins(matchFormat: string | null | undefined): number {
+    const n = Number(String(matchFormat ?? 'best_of_7').replace('best_of_', ''));
+    return Number.isFinite(n) && n >= 1 ? Math.ceil(n / 2) : 4;
+}
+
+export interface PlayoffTimelinePlan {
+    /** 새 형식의 최대 플레이오프 일수(playoffMaxDays) */
+    required: number;
+    /** 지금 타임라인에 잡힌 플레이오프 일수 */
+    current: number;
+    /** 덧붙일 행(필요 일수가 늘었을 때) — 마지막 행 다음 슬롯부터 기존 격자(하루 길이·시간대·하루당 일수) 그대로 */
+    appendRows: VirtualDayRow[];
+    /** 줄일 때 이 가상 날짜 이후 플레이오프 행을 지운다(null이면 안 지움) */
+    trimFromDate: string | null;
+    /** 바뀐 뒤 타임라인 마지막 행이 끝나는 KST 날짜 */
+    newRealEndDate: string | null;
+}
+
+/**
+ * 진행 중 리그의 플레이오프 형식(진출 팀 수·플레이인·시리즈 길이·경기 간격)을 바꿨을 때 타임라인을 어떻게
+ * 바꿔야 하는지 계산한다. 리그 생성 시 타임라인은 "그때 형식의 최악 일수"만 확보하므로, 형식이 길어지면
+ * 모자란 날짜를 기존 격자를 이어 붙이고(시간대가 차면 다음 날 창으로), 짧아지면 남는 뒷날짜를 지운다.
+ * 호출부(세션 설정 플레이오프 탭)가 결과를 apply_league_playoff_format RPC로 한 트랜잭션에 반영한다.
+ */
+export function planPlayoffTimelineChange(
+    timeline: VirtualDayRow[], spec: PlayoffCalendarSpec,
+    cfg: { dayLengthMin: number; windowStartMin: number },
+): PlayoffTimelinePlan {
+    const rows = [...timeline].sort((a, b) => a.date.localeCompare(b.date));
+    const po = rows.filter(r => r.kind === 'playoff');
+    const required = playoffMaxDays(spec);
+    const current = po.length;
+    const last = rows[rows.length - 1];
+    if (!last) return { required, current, appendRows: [], trimFromDate: null, newRealEndDate: null };
+
+    if (required > current) {
+        // 하루당 가상 일수 = 지금 격자에서 한 실제 날짜에 가장 많이 담긴 수
+        const perRealDay = new Map<string, number>();
+        for (const r of rows) {
+            const k = msToKstDateStr(new Date(r.realStartAt).getTime());
+            perRealDay.set(k, (perRealDay.get(k) ?? 0) + 1);
+        }
+        const perDay = Math.max(1, ...perRealDay.values());
+        const firstNew = po.length ? addDaysToDateStr(po[po.length - 1].date, 1) : addDaysToDateStr(last.date, 1);
+        const days: VirtualCalendarDay[] = [];
+        for (let i = 0; i < required - current; i++) days.push({ date: addDaysToDateStr(firstNew, i), kind: 'playoff' });
+        const lastEndMs = new Date(last.realEndAt).getTime();
+        const appendRows = buildLeagueTimeline(days, {
+            realStartDate: msToKstDateStr(new Date(last.realStartAt).getTime()),
+            dayLengthMin: cfg.dayLengthMin, windowStartMin: cfg.windowStartMin, perDay,
+            notBeforeMs: lastEndMs, firstDayIndex: last.dayIndex + 1,
+        });
+        const end = appendRows[appendRows.length - 1];
+        return { required, current, appendRows, trimFromDate: null, newRealEndDate: msToKstDateStr(new Date(end.realEndAt).getTime()) };
+    }
+    if (required < current) {
+        const keptLast = po[required - 1] ?? rows.filter(r => r.kind !== 'playoff').pop() ?? last;
+        return {
+            required, current, appendRows: [], trimFromDate: po[required].date,
+            newRealEndDate: msToKstDateStr(new Date(keptLast.realEndAt).getTime()),
+        };
+    }
+    return { required, current, appendRows: [], trimFromDate: null, newRealEndDate: null };
+}

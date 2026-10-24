@@ -167,6 +167,10 @@ export const createLeague = async (
     if (params.type === 'main_league') {
         payload.group_id = params.groupId;
         payload.tier     = params.tier;
+        // [2026-10-24] 플레이오프 시리즈 형식 — 기본 7전 4선승(서버 finalize/playoffSeeder의 null 폴백과 같음).
+        // 파이널이 일반 라운드와 같으면 null.
+        payload.match_format        = params.matchFormat ?? 'best_of_7';
+        payload.finals_match_format = params.finalsMatchFormat ?? null;
     }
 
     // 토너먼트 전용
@@ -1149,6 +1153,44 @@ export interface RescheduleSettingsInput {
     replay_minutes?: number;
     allstar_schedule?: { announceAt: string; risingStarsAt: string; contestsAt: string; mainGameAt: string } | null;
 }
+
+// ─── 메인리그 플레이오프 형식 변경 (2026-10-24) ───────────────────────────────────
+// apply_league_playoff_format RPC(migrations/add_apply_league_playoff_format_rpc.sql) — 형식 저장 + 타임라인
+// 날짜 덧붙이기/줄이기를 한 트랜잭션에. 덧붙일 행·줄일 시작일·새 종료일은 utils/leagueTimeline.ts
+// planPlayoffTimelineChange()가 계산한다. 대진표가 생긴 뒤에는 서버가 거부(playoffs_started).
+export interface PlayoffFormatSettingsInput {
+    match_format: string;
+    finals_match_format: string | null;
+    playoff_team_count: number;
+    play_in_enabled: boolean;
+    playoff_game_interval_days: number;
+}
+
+export const applyLeaguePlayoffFormat = async (
+    leagueId: string,
+    settings: PlayoffFormatSettingsInput,
+    appendDays: Omit<RescheduleDayInput, 'kind'>[],
+    trimFromDate: string | null,
+    realEndDate: string | null,
+): Promise<{ appended: number; trimmed: number; error: string | null }> => {
+    const { data, error } = await supabase.rpc('apply_league_playoff_format', {
+        p_league_id: leagueId,
+        p_settings: settings,
+        p_append_days: appendDays,
+        p_trim_from: trimFromDate,
+        p_real_end_date: realEndDate,
+    });
+    if (error) {
+        const head = '플레이오프 형식 저장에 실패했습니다.';
+        const msg = error.message ?? '';
+        if (/playoffs_started/.test(msg)) return { appended: 0, trimmed: 0, error: `${head} 플레이오프 대진표가 이미 만들어졌습니다.` };
+        if (/trim_started_days/.test(msg)) return { appended: 0, trimmed: 0, error: `${head} 이미 시작된 플레이오프 날짜는 줄일 수 없습니다.` };
+        if (/append_not_contiguous/.test(msg)) return { appended: 0, trimmed: 0, error: `${head} 일정이 그 사이 바뀌었습니다. 새로고침 후 다시 시도하세요.` };
+        return { appended: 0, trimmed: 0, error: actionFailure(error, '플레이오프 형식 저장') };
+    }
+    const r = (data ?? {}) as { appended?: number; trimmed?: number };
+    return { appended: Number(r.appended ?? 0), trimmed: Number(r.trimmed ?? 0), error: null };
+};
 
 export const applyLeagueReschedule = async (
     leagueId: string,

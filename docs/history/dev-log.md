@@ -34,6 +34,72 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-24 — 플레이인 경기가 일정 화면·날짜 스트립에서 안 보이던 버그 수정
+
+**배경**: PBL 플레이인(4/14 7·8위전·9·10위전 4경기, 4/15 8번 시드 결정전 2경기)이 DB에는 정상 생성·진행됐는데 시즌 일정 화면과 날짜 스트립에 안 보임. 두 화면은 스포일러 방지로 `computeRevealedSeries()`가 공개 처리한 시리즈의 경기만 표시하는데, 이 함수가 `for (round = 1 ...)`로 플레이인(round 0)을 처리하지 않아 플레이인 경기가 "미공개 시리즈"로 분류돼 전부 숨겨졌다(플레이인 도입 때부터의 기존 버그).
+
+**변경 파일** (client 전용):
+- `views/multi/season/multiGameReveal.ts` — `computeRevealedSeries`: 승수·종료 판정을 `gateWins()`로 추출하고, round 1 루프 전에 round 0 처리 추가. `_7v8`/`_9v10`은 원본 시드 그대로, `_8th`는 같은 접두사의 7v8 패자(higher)·9v10 승자(lower)를 **두 경기가 공개(gated finished)된 뒤에만** 채우고 그 전엔 'TBD'(서버 playInSeeder와 같은 배치). round ≥1 로직은 그대로.
+
+**Before**:
+```ts
+    for (let round = 1; round <= maxRound; round++) {   // round 0(플레이인) 미처리 → 맵에 없음 → 호출부 필터에서 제외
+```
+
+**After**:
+```ts
+    const playIn = series.filter(s => s.round === 0);
+    for (const s of playIn) if (!s.id.endsWith('_8th')) gatedById.set(s.id, gateWins(s, s.higherSeedId, s.lowerSeedId));
+    for (const s of playIn) { /* _8th: loser(7v8) vs winner(9v10), 둘 다 공개 전엔 TBD */ }
+    for (let round = 1; round <= maxRound; round++) {
+```
+
+**영향**: MultiScheduleView·GameDateStrip(필터), TournamentBracketView(`gatedById.get(s.id) ?? s` — 플레이인도 게이팅 적용, 결정전 대진은 공개 전 TBD).
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: round 0 블록 삭제하고 `gateWins` 인라인 복원(동작상 round 0 블록만 지우면 이전과 같음).
+
+## 2026-10-24 — 메인리그 플레이오프 형식 선택(기본 7전 4선승) + 형식 변경 시 타임라인 날짜 덧붙이기/줄이기 + PBL 긴급 조치
+
+**배경**: Pro Basketball League(진행 중) 플레이오프가 단판·격일 11일로 잡혀 있었다. 메인리그는 생성 모달에 시리즈 길이 선택이 없고(토너먼트만), 세션 설정 "드래프트" 탭 저장이 리그 종류와 무관하게 `match_format`(state 기본 'best_of_1')을 덮어써 단판이 됐다. 또 진행 중 형식(진출 팀 수 등)을 바꿔도 타임라인은 생성 시점 최악 일수만 확보해, 늘어나면 뒤 라운드 경기가 실제 시각을 못 받는(자동 시뮬 정지) 잠재 버그가 있었다. 사용자 결정: 메인리그 기본 7전 4선승·관리자 조절, 형식 변경 시 타임라인에 날짜 덧붙이기, PBL은 7전·매일·종료일 10/25.
+
+**긴급 데이터 조치 (DB 직접, 2026-10-24 07:2x KST, 정규시즌 종료·대진 생성 전)**:
+- `leagues` PBL(`f7836b62-…`): `match_format` best_of_1→best_of_7, `finals_match_format` null, `playoff_game_interval_days` 2→1, `real_end_date`/`season_end_date` 2026-10-24→2026-10-25
+- `league_virtual_days` PBL: 플레이오프 행 19개 추가(day_index 186~204, 가상 2027-04-25~05-13, 실제 10/24 15:00~17:00 + 10/25 09:00~13:20 KST, 하루 20분·자정 +12:30) → 플레이오프 30일(4/14~5/13) = 7전·매일·8팀·플레이인 최대 일수
+- `leagues` PBL Active(`22d3b515-…`, 모집 중): `match_format` best_of_1→best_of_7(드래프트 탭 저장 버그로 들어간 값. 생성 모달은 7전 가정으로 검증했던 리그, 10/26~11/9·하루 14일로 들어감)
+- 롤백: PBL `delete from league_virtual_days where league_id='f7836b62-cb45-4400-8257-cfd6bf7476db' and day_index between 186 and 204;` + leagues 위 값 원복(대진표 생성 전까지만 의미 있음)
+
+**변경 파일**:
+- `utils/leagueTimeline.ts` (client) ↔ `server/src/shared/leagueTimeline.ts` (server 미러) — 추가: `playoffTargetWins(format)`, `planPlayoffTimelineChange(timeline, spec, {dayLengthMin, windowStartMin})` → `{required, current, appendRows, trimFromDate, newRealEndDate}`. 덧붙이기는 `buildLeagueTimeline(..., notBeforeMs = 마지막 행 종료, perDay = 실제 하루 최대 행 수, firstDayIndex = 마지막+1)`로 기존 격자 이어붙임
+- `migrations/add_apply_league_playoff_format_rpc.sql` — `apply_league_playoff_format(p_league_id, p_settings, p_append_days, p_trim_from, p_real_end_date)` (적용 완료). `assert_caller_is_room_admin`, 메인리그만, `bracket_data` 있으면 `playoffs_started`, 덧붙이기는 마지막 날짜+1부터 연속(`append_not_contiguous`), 줄이기는 시작 안 한 날만(`trim_started_days`), 형식 값 검증
+- `services/multi/leagueService.ts` — createLeague: 메인리그 `match_format = matchFormat ?? 'best_of_7'`, `finals_match_format`; 신규 `applyLeaguePlayoffFormat()`(RPC 래퍼, 도메인 오류 문구)
+- `views/multi/league/settings/PlayoffSettingsTab.tsx` (신규) — 세션 설정 "플레이오프" 탭: 일반 라운드/파이널 시리즈, 경기 간격, 진출 팀 수, 플레이인 + 일정 영향 미리보기(덧붙일 날짜·실제 시각·새 종료일 / 줄일 날짜), 타임라인 없는 리그는 전체 기간 실현 가능성 검증 후 저장
+- `views/multi/league/LeagueSettingsView.tsx` — 탭 `playoff` 추가, "리그" 탭의 플레이오프 형식 섹션·state(`playoffTeamsPerConf`/`playInEnabled`/`isPlayoffDirty`)·저장 payload 제거(리그 정보 요약은 league 값 직접 표시), 드래프트 탭 저장의 `matchFormat`/`finalsMatchFormat`을 토너먼트 전용으로
+- `components/multi/CreateLeagueModal.tsx` — 메인리그 플레이오프 선택(일반 라운드/파이널 시리즈 기본 7전, 진출 팀 수, 플레이인) + 간격 버튼의 "최대 N일"을 선택값으로 계산, 실현 가능성 계산도 고정 가정(7전·8팀·플레이인) 대신 선택값. createLeague에 matchFormat/finalsMatchFormat/playoffTeamCount/playInEnabled 전달
+
+**Before**:
+```ts
+// leagueService.createLeague — 메인리그는 match_format 미설정(null → 서버 7전 폴백), 토너먼트만 matchFormat ?? 'best_of_1'
+// LeagueSettingsView 드래프트 탭 저장
+            matchFormat,
+            finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
+            ...(league?.type === 'tournament' ? { gamesPerRealDay: ... } : {}),
+// CreateLeagueModal
+            playoff: { intervalDays: playoffIntervalDays, playInEnabled: true, teamsPerConference: 8, targetWins: 4, finalsTargetWins: 4 },
+```
+
+**After**:
+```ts
+// createLeague 메인리그 블록
+        payload.match_format        = params.matchFormat ?? 'best_of_7';
+        payload.finals_match_format = params.finalsMatchFormat ?? null;
+// 드래프트 탭 저장 — 토너먼트일 때만 matchFormat/finalsMatchFormat/gamesPerRealDay
+// CreateLeagueModal — playoff: playoffSpec(playoffIntervalDays) (선택값)
+```
+
+**검증**: `planPlayoffTimelineChange`를 PBL 조치 직전 상태(플레이오프 11일)로 돌리면 수동으로 넣은 19행과 시각까지 동일. RPC는 롤백 트랜잭션으로 권한 없음→forbidden, 불연속→append_not_contiguous, 잘못된 형식→invalid_match_format, 정상 덧붙이기·줄이기 확인. tsc 변경 파일 오류 없음, vite build 통과. 브라우저 미확인.
+
+**롤백 방법**: 클라이언트 파일 Before로 복원(PlayoffSettingsTab 삭제 + LeagueSettingsView 섹션 복원). RPC는 `drop function public.apply_league_playoff_format(uuid, jsonb, jsonb, date, date);`. leagueTimeline 추가 함수는 미러 둘 다 삭제(서버는 호출부 없음).
+
 ## 2026-10-23 — OVR 배지 임페리얼(99+)·갤럭시 오팔(97) 채우기를 3색 → 2색 세로 그라디언트로
 
 **배경**: 사용자가 배지 스튜디오 JSON을 다시 붙여넣으며 "적용이 안 된 것 같다"고 함(드래프트 룸 스크린샷). 색·구간·크기는 이미 일치했으나, 스튜디오 `bg()`는 `fill:'linear'`면 c1→c2 2색 세로 그라디언트만 그리고(c3 무시) 3색 대각선은 `fill:'tri'`일 때만 쓴다. JSON의 두 등급이 `linear`인데 코드는 `grad3`(어두운 막 + 3색 대각선)로 그리고 있어 어둡고 탁하게 보였음.

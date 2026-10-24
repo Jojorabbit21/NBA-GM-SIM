@@ -123,6 +123,31 @@ export function computeRevealedSeries(
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 1);
     const gatedById = new Map<string, PlayoffSeries>();
 
+    const gateWins = (s: PlayoffSeries, higherSeedId: string, lowerSeedId: string) => {
+        const higherSeedWins = winsMap[s.id]?.[higherSeedId] ?? 0;
+        const lowerSeedWins  = winsMap[s.id]?.[lowerSeedId]  ?? 0;
+        const finished = higherSeedId !== 'TBD' && lowerSeedId !== 'TBD'
+            && (higherSeedWins >= s.targetWins || lowerSeedWins >= s.targetWins);
+        const winnerId = finished ? (higherSeedWins >= s.targetWins ? higherSeedId : lowerSeedId) : undefined;
+        return { ...s, higherSeedId, lowerSeedId, higherSeedWins, lowerSeedWins, finished, winnerId };
+    };
+
+    // [2026-10-24] 플레이인(round 0, PI_{CONF}_7v8 / _9v10 / _8th) — 예전엔 round 1부터만 돌아 플레이인 시리즈가
+    // 맵에 없었고, 호출부(일정 화면·날짜 스트립)가 "미공개 시리즈"로 보고 플레이인 경기를 통째로 숨겼다.
+    // 7v8·9v10은 정규시즌 순위로 바로 정해지므로 그대로, 8번 시드 결정전은 두 경기 결과가 공개된 뒤에만
+    // 대진을 드러낸다(higher = 7v8 패자, lower = 9v10 승자 — 서버 playInSeeder와 같은 배치).
+    const playIn = series.filter(s => s.round === 0);
+    for (const s of playIn) if (!s.id.endsWith('_8th')) gatedById.set(s.id, gateWins(s, s.higherSeedId, s.lowerSeedId));
+    for (const s of playIn) {
+        if (!s.id.endsWith('_8th')) continue;
+        const prefix = s.id.slice(0, -'_8th'.length);
+        const g78 = gatedById.get(`${prefix}_7v8`);
+        const g910 = gatedById.get(`${prefix}_9v10`);
+        const loser78 = g78?.finished && g78.winnerId ? (g78.winnerId === g78.higherSeedId ? g78.lowerSeedId : g78.higherSeedId) : 'TBD';
+        const winner910 = g910?.finished && g910.winnerId ? g910.winnerId : 'TBD';
+        gatedById.set(s.id, gateWins(s, loser78, winner910));
+    }
+
     for (let round = 1; round <= maxRound; round++) {
         const roundSeries = series
             .filter(s => s.round === round)

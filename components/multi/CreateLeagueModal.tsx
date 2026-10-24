@@ -30,7 +30,7 @@ import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/s
 import { TEAM_DATA } from '../../data/teamData';
 import { getDefaultTradeDeadline, getTradeDeadlineBounds, clampTradeDeadline } from '../../utils/tradeDeadline';
 import {
-    buildVirtualCalendar, computeTimelineFeasibility, playoffMaxDays, addDaysToDateStr, minToHHMM,
+    buildVirtualCalendar, computeTimelineFeasibility, playoffMaxDays, playoffTargetWins, addDaysToDateStr, minToHHMM,
     MIN_DAY_LENGTH_MIN, MAX_DAY_LENGTH_MIN, DEFAULT_DAY_LENGTH_MIN, DEFAULT_WINDOW_START_MIN, DEFAULT_REPLAY_MIN,
     REPLAY_MINUTE_OPTIONS, lateGameClampsAt,
 } from '../../utils/leagueTimeline';
@@ -103,7 +103,14 @@ const DEFAULT_MAIN_LEAGUE_REAL_DAYS = 14;
 // 플레이오프 가상 캘린더 최대 일수 계산에 쓰는 기본 포맷(생성 모달은 플레이오프 팀 수/포맷을 따로
 // 받지 않으므로 DB 기본값과 동일: 컨퍼런스 8팀·플레이인·7전 4선승).
 const DEFAULT_PLAYOFF_TEAMS_PER_CONF = 8;
-const DEFAULT_PLAYOFF_TARGET_WINS = 4;
+/** [2026-10-24] 메인리그 플레이오프 시리즈 기본 형식 — 7전 4선승(관리자가 생성 시·세션 설정 "플레이오프" 탭에서 조절). */
+const DEFAULT_MAIN_PLAYOFF_FORMAT: MatchFormat = 'best_of_7';
+const MAIN_PLAYOFF_FORMAT_OPTIONS: { value: MatchFormat; label: string }[] = [
+    { value: 'best_of_1', label: '단판' },
+    { value: 'best_of_3', label: '3전 2선승' },
+    { value: 'best_of_5', label: '5전 3선승' },
+    { value: 'best_of_7', label: '7전 4선승' },
+];
 
 // [2026-09-11] "토너먼트 시작/드래프트/로터리 일시를 전부 어드민이 직접 설정하게" 요청 —
 // 예전엔 로터리/드래프트가 토너먼트 시작 시각 기준 오프셋(-40분/-30분)으로만 자동 계산됐고
@@ -208,6 +215,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     const [dayLengthMin,  setDayLengthMin]  = useState(DEFAULT_DAY_LENGTH_MIN);
     const [windowStart,   setWindowStart]   = useState(minToHHMM(DEFAULT_WINDOW_START_MIN));
     const [playoffIntervalDays, setPlayoffIntervalDays] = useState<1 | 2>(1);
+    // [2026-10-24] 메인리그 플레이오프 형식 — 토너먼트용 matchFormat/finalsMatchFormat과 별개 상태(기본값이 다름)
+    const [playoffFormat,       setPlayoffFormat]       = useState<MatchFormat>(DEFAULT_MAIN_PLAYOFF_FORMAT);
+    const [playoffFinalsFormat, setPlayoffFinalsFormat] = useState<MatchFormat>(DEFAULT_MAIN_PLAYOFF_FORMAT);
+    const [playoffTeamsPerConf, setPlayoffTeamsPerConf] = useState(DEFAULT_PLAYOFF_TEAMS_PER_CONF);
+    const [playInEnabled,       setPlayInEnabled]       = useState(true);
     // [2026-09-18 2단계] 리플레이(결과 공개 지연) 길이 — 경기 하나가 실제로 재생되는 시간이자 결과가 숨겨지는 시간.
     const [replayMinutes, setReplayMinutes] = useState<number>(DEFAULT_REPLAY_MIN);
     // 트레이드 데드라인(가상 시즌 캘린더 날짜) — 기본값(2월 둘째 주 목요일)에서 최대 한 달
@@ -470,7 +482,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                     tier,
                     maxTeams,
                     seasonNumber: 1,
+                    matchFormat:       playoffFormat,
+                    finalsMatchFormat: playoffFinalsFormat !== playoffFormat ? playoffFinalsFormat : undefined,
                     options: {
+                        playoffTeamCount:     playoffTeamsPerConf,
+                        playInEnabled,
                         draftTotalRounds:     totalRounds,
                         draftPickDurationSec: pickDurationSec,
                         draftAutoPickAfterMisses: autoPickAfterMisses,
@@ -539,6 +555,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     // utils/leagueTimeline.ts(서버 finalize.ts와 미러)와 동일한 계산 — 가상 캘린더 일수(정규시즌 약 175일 +
     // 플레이오프 최대 일수)를 실제 기간에 담을 때 필요한 일일 시뮬 시간대 길이를 구하고, 자정을 넘기면
     // 생성을 막고 대안(종료일/하루 길이/시작 시각)을 제시한다.
+    // [2026-10-24] 실제 선택한 플레이오프 형식으로 계산(예전엔 형식 선택 없이 7전·8팀·플레이인 고정 가정).
+    const playoffSpec = (intervalDays: number) => ({
+        intervalDays, playInEnabled, teamsPerConference: playoffTeamsPerConf,
+        targetWins: playoffTargetWins(playoffFormat), finalsTargetWins: playoffTargetWins(playoffFinalsFormat),
+    });
     // [2026-10-23] 새 리그는 요일 규칙 달력(seasonCalendar.ts) — finalize.ts가 같은 함수로 만들어 저장한다.
     const virtualCalendarDays = React.useMemo(() => {
         const seasonCalendar = buildSeasonCalendar(virtualSeasonYear);
@@ -547,17 +568,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
             regularStart: seasonCalendar.regularStart,
             regularEnd: seasonCalendar.regularEnd,
             keyDates: getAllStarKeyDates(virtualSeasonYear, seasonCalendar),
-            playoff: {
-                intervalDays: playoffIntervalDays, playInEnabled: true,
-                teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF,
-                targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
-            },
+            playoff: playoffSpec(playoffIntervalDays),
         }).length;
-    }, [virtualSeasonYear, playoffIntervalDays]);
-    const playoffDays = playoffMaxDays({
-        intervalDays: playoffIntervalDays, playInEnabled: true,
-        teamsPerConference: DEFAULT_PLAYOFF_TEAMS_PER_CONF, targetWins: DEFAULT_PLAYOFF_TARGET_WINS, finalsTargetWins: DEFAULT_PLAYOFF_TARGET_WINS,
-    });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [virtualSeasonYear, playoffIntervalDays, playoffFormat, playoffFinalsFormat, playoffTeamsPerConf, playInEnabled]);
+    const playoffDays = playoffMaxDays(playoffSpec(playoffIntervalDays));
     const timelineFeasibility = React.useMemo(() => computeTimelineFeasibility({
         realStartDate, realEndDate, dayLengthMin, windowStartMin: hhmmToMin(windowStart), virtualDayCount: virtualCalendarDays, replayMin: replayMinutes,
     }), [realStartDate, realEndDate, dayLengthMin, windowStart, virtualCalendarDays, replayMinutes]);
@@ -998,12 +1013,45 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                                 </p>
 
                                 <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">플레이오프 일반 라운드 시리즈</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {MAIN_PLAYOFF_FORMAT_OPTIONS.map(o => (
+                                            <ToggleBtn key={o.value} active={playoffFormat === o.value} onClick={() => setPlayoffFormat(o.value)}>{o.label}</ToggleBtn>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 ko-normal block mb-1.5">플레이오프 파이널 시리즈</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {MAIN_PLAYOFF_FORMAT_OPTIONS.map(o => (
+                                            <ToggleBtn key={o.value} active={playoffFinalsFormat === o.value} onClick={() => setPlayoffFinalsFormat(o.value)}>{o.label}</ToggleBtn>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs text-slate-400 ko-normal block mb-1.5">컨퍼런스별 진출 팀 수</label>
+                                        <input
+                                            type="number" min={2} max={16} step={1} value={playoffTeamsPerConf}
+                                            onChange={e => setPlayoffTeamsPerConf(Math.min(16, Math.max(2, Math.round(Number(e.target.value) || 0))))}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 ko-normal block mb-1.5">플레이인 토너먼트</label>
+                                        <div className="flex gap-2">
+                                            <ToggleBtn active={playInEnabled} onClick={() => setPlayInEnabled(true)} className="px-3">켜기</ToggleBtn>
+                                            <ToggleBtn active={!playInEnabled} onClick={() => setPlayInEnabled(false)} className="px-3">끄기</ToggleBtn>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
                                     <label className="text-xs text-slate-400 ko-normal block mb-1.5">플레이오프 경기 간격</label>
                                     <div className="flex gap-2">
-                                        <ToggleBtn active={playoffIntervalDays === 1} onClick={() => setPlayoffIntervalDays(1)} className="px-3">매일 (최대 30일)</ToggleBtn>
-                                        <ToggleBtn active={playoffIntervalDays === 2} onClick={() => setPlayoffIntervalDays(2)} className="px-3">격일 (최대 59일)</ToggleBtn>
+                                        <ToggleBtn active={playoffIntervalDays === 1} onClick={() => setPlayoffIntervalDays(1)} className="px-3">매일 (최대 {playoffMaxDays(playoffSpec(1))}일)</ToggleBtn>
+                                        <ToggleBtn active={playoffIntervalDays === 2} onClick={() => setPlayoffIntervalDays(2)} className="px-3">격일 (최대 {playoffMaxDays(playoffSpec(2))}일)</ToggleBtn>
                                     </div>
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">시리즈 안 경기와 라운드 사이 간격(가상 일). 짧은 리그는 매일, 3~4주 리그는 격일이 자연스럽습니다. 생성 후 변경 불가.</p>
+                                    <p className="text-[11px] text-slate-600 ko-normal mt-1">시리즈 안 경기와 라운드 사이 간격(가상 일). 짧은 리그는 매일, 3~4주 리그는 격일이 자연스럽습니다. 형식·진출 팀 수·간격은 생성 후 세션 설정 "플레이오프" 탭에서 대진표가 만들어지기 전까지 바꿀 수 있고, 필요한 날짜는 자동으로 덧붙습니다.</p>
                                 </div>
 
                                 <div>

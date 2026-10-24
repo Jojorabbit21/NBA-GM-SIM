@@ -35,6 +35,7 @@ import { loadSchedule } from '../../../services/multi/gameQueries';
 import { daysBetweenKeys, addDaysToKey } from '../season/multiScheduleUtils';
 import type { Game } from '../../../types';
 import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
+import { PlayoffSettingsTab } from './settings/PlayoffSettingsTab';
 import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
 import { ActionLogTab } from './settings/ActionLogTab';
 import { TeamTacticsTab } from './settings/TeamTacticsTab';
@@ -107,13 +108,16 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'schedule' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics' | 'chat';
+type SettingsTabId = 'league' | 'schedule' | 'playoff' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics' | 'chat';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'league',   label: '리그' },
     // [2026-09-18] 일정 탭 — 총 진행기간/일일 시뮬 시간대 수정 + 남은 경기 재배치 + 경기별 시각 수동 편집
     // (views/multi/league/settings/ScheduleSettingsTab.tsx). 자체 저장 버튼을 가지므로 TAB_SAVE_MAP에는 없음.
     { id: 'schedule', label: '일정' },
+    // [2026-10-24] 플레이오프 형식(진출 팀 수·플레이인·시리즈 길이·경기 간격) — 예전 "리그" 탭 섹션을 옮기고 시리즈 길이 추가.
+    // 형식이 바뀌면 타임라인에 날짜를 덧붙이거나 줄인다(PlayoffSettingsTab.tsx). 자체 저장 버튼 — TAB_SAVE_MAP 미등록.
+    { id: 'playoff',  label: '플레이오프' },
     { id: 'draft',   label: '드래프트' },
     { id: 'trade',   label: '트레이드' },
     { id: 'cap',     label: '샐러리캡' },
@@ -190,8 +194,6 @@ const LeagueSettingsView: React.FC = () => {
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
     const [finalsMatchFormat, setFinalsMatchFormat] = useState('best_of_1');
     const [tournamentIntervalMin, setTournamentIntervalMin] = useState(30);
-    const [playoffTeamsPerConf, setPlayoffTeamsPerConf] = useState(8);
-    const [playInEnabled,        setPlayInEnabled]       = useState(true);
     const [injuriesEnabled,    setInjuriesEnabled]    = useState(DEFAULT_SIM_SETTINGS.injuriesEnabled);
     const [injuryFrequency,      setInjuryFrequency]      = useState(DEFAULT_SIM_SETTINGS.injuryFrequency);
     const [majorInjuryFrequency, setMajorInjuryFrequency] = useState(DEFAULT_SIM_SETTINGS.majorInjuryFrequency);
@@ -350,8 +352,6 @@ const LeagueSettingsView: React.FC = () => {
         setFinalsMatchFormat(league.finals_match_format ?? league.match_format ?? 'best_of_1');
         const gprd = (league as any).games_per_real_day ?? 48;
         setTournamentIntervalMin(Math.round(1440 / gprd));
-        setPlayoffTeamsPerConf(league.playoff_team_count ?? 8);
-        setPlayInEnabled(league.play_in_enabled ?? true);
         setMaxRosterSize((league as any).max_roster_size ?? DEFAULT_MAX_ROSTER_SIZE);
         setTwoWaySlots((league as any).two_way_slots ?? DEFAULT_TWO_WAY_SLOTS);
         setTwoWayEnabled((league as any).two_way_enabled ?? true);
@@ -436,13 +436,11 @@ const LeagueSettingsView: React.FC = () => {
             }
         }
         const trimmedName = nameInput.trim();
-        const playoffEditable = league.type === 'main_league' && !league.bracket_data;
         const { error: err } = await updateLeagueSettings({
             leagueId: league.id,
             roomId: room?.id,
             ...(trimmedName && trimmedName !== league.name ? { name: trimmedName } : {}),
             maxTeams,
-            ...(playoffEditable ? { playoffTeamCount: playoffTeamsPerConf, playInEnabled } : {}),
             spectateEnabled,
         });
         setSavingLeague(false);
@@ -492,10 +490,13 @@ const LeagueSettingsView: React.FC = () => {
             draftYearMax,
             draftRetiredFilter: retiredFilter,
             useCustomOverrides,
-            matchFormat,
-            finalsMatchFormat:   finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
+            // [2026-10-24] 경기 포맷은 토너먼트만 — 메인리그는 "플레이오프" 탭이 관리(예전엔 여기서 단판으로 덮어썼음)
             ...(league?.type === 'tournament'
-                ? { gamesPerRealDay: Math.round(1440 / Math.max(1, tournamentIntervalMin)) }
+                ? {
+                    matchFormat,
+                    finalsMatchFormat: finalsMatchFormat !== matchFormat ? finalsMatchFormat : null,
+                    gamesPerRealDay: Math.round(1440 / Math.max(1, tournamentIntervalMin)),
+                }
                 : {}),
         });
         setSaving(false);
@@ -790,13 +791,8 @@ const LeagueSettingsView: React.FC = () => {
     // "저장 직후 dirty가 false로 떨어짐"이 보장된다(둘이 어긋나면 저장해도 계속 dirty로 보임).
     const isNameDirty = nameInput.trim() !== '' && nameInput.trim() !== league.name;
     const isMaxTeamsDirty = maxTeams !== (league.max_teams ?? 8);
-    const playoffEditable = league.type === 'main_league' && !league.bracket_data;
-    const isPlayoffDirty = playoffEditable && (
-        playoffTeamsPerConf !== (league.playoff_team_count ?? 8) ||
-        playInEnabled !== (league.play_in_enabled ?? true)
-    );
     const isSpectateDirty = spectateEnabled !== !!league.spectate_enabled;
-    const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isPlayoffDirty || isSpectateDirty;
+    const isLeagueTabDirty = isNameDirty || isMaxTeamsDirty || isSpectateDirty;
 
     const isDraftTabDirty = !isInProgress && (
         lotteryAt !== toInputValue(league.lottery_scheduled_at) ||
@@ -1159,6 +1155,9 @@ const LeagueSettingsView: React.FC = () => {
             )}
 
             {/* ── 일정 (총 진행기간/시간대 + 재배치 + 경기별 시각 편집) ──────────── */}
+            {activeTab === 'playoff' && (
+                <PlayoffSettingsTab league={league} onLeagueSaved={reload} />
+            )}
             {activeTab === 'schedule' && (
                 <ScheduleSettingsTab league={league} room={room} leagueTeams={leagueTeams} onLeagueSaved={reload} />
             )}
@@ -1206,15 +1205,15 @@ const LeagueSettingsView: React.FC = () => {
                                 <InfoRow label="플레이오프 여부" value={hasPlayoff ? '있음' : '없음'} />
                                 <InfoRow
                                     label="플레이인 토너먼트 여부"
-                                    value={league.type === 'main_league' ? (playInEnabled ? '켜짐' : '꺼짐') : '해당없음'}
+                                    value={league.type === 'main_league' ? ((league.play_in_enabled ?? true) ? '켜짐' : '꺼짐') : '해당없음'}
                                 />
                                 <InfoRow
                                     label="플레이오프 진출팀 수"
-                                    value={league.type === 'main_league' ? `컨퍼런스당 ${playoffTeamsPerConf}팀` : '해당없음'}
+                                    value={league.type === 'main_league' ? `컨퍼런스당 ${league.playoff_team_count ?? 8}팀` : '해당없음'}
                                 />
                                 <InfoRow
                                     label="플레이인 진출팀 수"
-                                    value={league.type === 'main_league' && playInEnabled ? '4팀 (7~10위)' : '해당없음'}
+                                    value={league.type === 'main_league' && (league.play_in_enabled ?? true) ? '4팀 (7~10위)' : '해당없음'}
                                 />
                                 <InfoRow label="올스타 경기" value="미구현" muted />
                                 <InfoRow label="정규시즌 수상" value="상시 활성 (토글 미지원)" muted />
@@ -1334,57 +1333,6 @@ const LeagueSettingsView: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                            </section>
-                        )}
-
-                        {/* ── 플레이오프 형식 (관리자 전용, 플레이오프 시작 전까지 진행 중 세션에서도 변경 가능) ── */}
-                        {league.type === 'main_league' && !league.bracket_data && (
-                            <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
-                                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <Trophy size={14} className="text-indigo-400" />
-                                    플레이오프 형식
-                                </h2>
-                                <p className="text-xs text-slate-500 ko-normal">
-                                    정규시즌이 끝나고 플레이오프 대진표가 만들어지기 전까지만 변경할 수 있습니다.
-                                </p>
-
-                                <div>
-                                    <div className="flex items-center justify-between px-1">
-                                        <span className="text-xs font-bold text-slate-300">컨퍼런스별 진출 팀 수</span>
-                                        <input
-                                            type="number"
-                                            min={2}
-                                            max={16}
-                                            step={1}
-                                            value={playoffTeamsPerConf}
-                                            onChange={e => setPlayoffTeamsPerConf(Math.min(16, Math.max(2, Math.round(Number(e.target.value) || 0))))}
-                                            className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-slate-600 ko-normal mt-1 px-1">
-                                        동부/서부 각 컨퍼런스에서 몇 팀이 플레이오프에 진출할지 정합니다(리그 전체가 아닌 컨퍼런스당 인원).
-                                    </p>
-                                </div>
-
-                                <label
-                                    className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
-                                        playInEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
-                                    }`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={playInEnabled}
-                                        onChange={e => setPlayInEnabled(e.target.checked)}
-                                        className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <span className={`text-xs font-bold ${playInEnabled ? 'text-white' : 'text-slate-400'}`}>플레이인 토너먼트</span>
-                                        <span className="ml-2 text-xs text-slate-500 ko-normal">
-                                            켜면 상위 {Math.max(0, playoffTeamsPerConf - 2)}팀은 자동 진출, 나머지 4팀(7~10위)이 미니 토너먼트로 마지막 2자리를 다툽니다.
-                                            끄면 컨퍼런스별 상위 {playoffTeamsPerConf}팀이 곧바로 진출합니다.
-                                        </span>
-                                    </div>
-                                </label>
                             </section>
                         )}
 
