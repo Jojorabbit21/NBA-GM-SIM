@@ -282,22 +282,20 @@ export const MultiHeaderNavMenu: React.FC<MultiHeaderNavMenuProps> = React.memo(
                     </div>
                 )}
 
-                {/* 도구 — 리그와 같은 노출 조건(드래프트 완료 후) */}
-                {isDraftComplete && (
-                    <div className="relative">
-                        <button
-                            onClick={() => toggle('tools')}
-                            className={`${tabBase} ${openDropdown === 'tools' ? tabOpen : isToolsActive ? tabActivePage : tabDefault}`}
-                        >
-                            도구
-                            {openDropdown === 'tools'
-                                ? <ChevronUp size={16} className="shrink-0" />
-                                : <ChevronDown size={16} className="shrink-0" />
-                            }
-                        </button>
-                        {openDropdown === 'tools' && <DropdownPanel items={toolsItems} minWidth="140px" />}
-                    </div>
-                )}
+                {/* 도구 — [2026-10-24] 드래프트 전에도 노출(드래프트 풀 선수 비교) */}
+                <div className="relative">
+                    <button
+                        onClick={() => toggle('tools')}
+                        className={`${tabBase} ${openDropdown === 'tools' ? tabOpen : isToolsActive ? tabActivePage : tabDefault}`}
+                    >
+                        도구
+                        {openDropdown === 'tools'
+                            ? <ChevronUp size={16} className="shrink-0" />
+                            : <ChevronDown size={16} className="shrink-0" />
+                        }
+                    </button>
+                    {openDropdown === 'tools' && <DropdownPanel items={toolsItems} minWidth="140px" />}
+                </div>
             </div>{/* end Nav 탭 묶음 */}
         </div>
     );

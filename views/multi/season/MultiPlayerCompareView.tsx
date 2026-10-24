@@ -151,6 +151,8 @@ const attrLabel = (item: CompactAttrItem) =>
 const MultiPlayerCompareView: React.FC = () => {
     const { league, leagueTeams, room, isLoading: leagueLoading } = useLeagueContext();
     const useCustomOverrides = shouldUseCustomOverrides(league);
+    // [2026-10-24] 드래프트 전엔 로스터가 비어 풀 선수 전원이 "팀 없음" 묶음으로 잡힌다 — 이름만 "드래프트 풀"로 표기.
+    const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
     const { isLoading: gameLoading, schedule } = useSeasonContext();
     const [searchParams, setSearchParams] = useSearchParams();
     const { getPlayerUrlId, resolvePlayerId, isLoading: shortCodesLoading } = usePlayerShortCodes();
@@ -294,6 +296,7 @@ const MultiPlayerCompareView: React.FC = () => {
                     onStatMode={setStatMode}
                     onPickTeam={key => pickTeam(side, key)}
                     onPickPlayer={id => setPlayer(side, id)}
+                    poolLabel={isDraftComplete ? 'FA' : '드래프트 풀'}
                 />
             ))}
             <CompareChart left={selected[0]?.player ?? null} right={selected[1]?.player ?? null} statLines={chartLines} seasonKey={chartSeason} seasonOptions={chartSeasonOptions} onSeason={setChartSeason} />
@@ -315,13 +318,15 @@ interface PaneProps {
     onStatMode: (m: 'season' | 'career') => void;
     onPickTeam: (key: string | null) => void;
     onPickPlayer: (id: string | null) => void;
+    /** 팀에 속하지 않은 선수 묶음의 표시명 — 드래프트 전엔 "드래프트 풀", 이후엔 "FA" */
+    poolLabel: string;
 }
 
 // 드롭다운 트리거는 서비스 공용 FilterTrigger(36px), 값이 정해지면 active(인디고) — 팀/선수 칸 폭을 채우도록 늘린다.
 const triggerFill = 'w-full justify-between overflow-hidden';
 
 const ComparePane: React.FC<PaneProps> = ({
-    side, entry, teamKey, teams, entryById, statLine, statMode, seasonShort, onStatMode, onPickTeam, onPickPlayer,
+    side, entry, teamKey, teams, entryById, statLine, statMode, seasonShort, onStatMode, onPickTeam, onPickPlayer, poolLabel,
 }) => {
     const [query, setQuery] = useState('');
     const [hl, setHl] = useState(0);
@@ -369,7 +374,7 @@ const ComparePane: React.FC<PaneProps> = ({
     };
 
     const team = teamKey && teamKey !== FA_KEY ? teams.find(t => t.id === teamKey) ?? null : null;
-    const teamLabel = !teamKey ? '팀 선택' : teamKey === FA_KEY ? 'FA' : team?.abbr ?? team?.name ?? '팀 선택';
+    const teamLabel = !teamKey ? '팀 선택' : teamKey === FA_KEY ? poolLabel : team?.abbr ?? team?.name ?? '팀 선택';
     const player = entry?.player ?? null;
     const ovr = player ? calculatePlayerOvr(player) : null;
 
@@ -458,7 +463,7 @@ const ComparePane: React.FC<PaneProps> = ({
                                 id: FA_KEY,
                                 active: teamKey === FA_KEY,
                                 dividerBefore: true,
-                                label: <span className="text-sm">FA</span>,
+                                label: <span className="text-sm">{poolLabel}</span>,
                                 onClick: () => onPickTeam(FA_KEY),
                             },
                         ]}

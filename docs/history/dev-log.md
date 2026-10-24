@@ -50,6 +50,23 @@
 
 
 
+## 2026-10-24 — 드래프트 전 리그에서 선수 비교 툴 개방
+
+**배경**: 드래프트가 끝나기 전 리그는 홈/뉴스/드래프트 풀 메뉴만 노출되어 "도구 › 선수 비교"에 접근할 수 없었음. 드래프트 풀 선수끼리 비교할 수 있도록 요청.
+
+**변경 파일**:
+- `components/MultiSidebar.tsx` (client) — "선수 비교" NavItem(+앞 Divider)을 `{isDraftComplete && (...)}` 블록 밖으로 이동
+- `components/dashboard/MultiHeaderNavMenu.tsx` (client) — 헤더 "도구" 드롭다운의 `isDraftComplete &&` 조건 제거
+- `views/multi/season/MultiPlayerCompareView.tsx` (client) — `poolLabel`: 팀 없는 선수 묶음 표기를 드래프트 전 "드래프트 풀" / 이후 "FA"로
+
+**Before**: 사이드바 compare 항목과 헤더 "도구"가 `isDraftComplete`(status in_progress/finished)일 때만 렌더. 비교 화면의 팀 없는 묶음 라벨은 항상 "FA".
+
+**After**: 두 메뉴는 항상 렌더. 비교 화면은 로스터가 비면 풀 선수 전원이 `team: null` 엔트리(기존 FA 경로)로 잡혀 별도 로직 없이 동작, 라벨만 상태별로 다름.
+
+**검증**: tsc 해당 3파일 오류 없음. 로스터 ID가 비어도 `useLeagueRawStats`/`usePlayerSeasonStatsLeague`가 isPending을 false로 집계(2026-09-11 Fix)하므로 무한 스피너 없음.
+
+**롤백 방법**: 사이드바 compare 블록을 isDraftComplete 내부로 되돌리고, 헤더 도구 div를 `{isDraftComplete && (...)}`로 감싸고, poolLabel을 'FA' 고정으로.
+
 ## 2026-10-24 — OvrBadge 가로 찌그러짐 수정 (shrink-0)
 
 **배경**: 경기 종료 박스스코어(PlayerIdentityCells)에서 OVR 배지가 좌우로 찌그러짐. 배지가 `flex justify-center` 래퍼 안의 flex 자식이라 OVR 열이 좁으면 `flex-shrink:1`로 너비만 줄어듦(높이는 고정).

@@ -261,17 +261,17 @@ export const MultiSidebar: React.FC = () => {
                             onClick={() => navigate(`${base}/transaction?tab=fa`)}
                         />
                         </>)}
-                        {/* [2026-10-18] 도구 메뉴(헤더 "도구" 드롭다운과 동일 항목) */}
-                        <Divider />
-                        <NavItem
-                            active={pathname.startsWith(`${base}/compare`)}
-                            icon={<NavIcon name="compare" active={pathname.startsWith(`${base}/compare`)} />}
-                            label="선수 비교"
-                            onClick={() => navigate(`${base}/compare`)}
-                        />
-
                     </>
                 )}
+                {/* [2026-10-18] 도구 메뉴(헤더 "도구" 드롭다운과 동일 항목)
+                    [2026-10-24] 드래프트 전에도 드래프트 풀 선수를 비교할 수 있도록 isDraftComplete 블록 밖으로 이동. */}
+                <Divider />
+                <NavItem
+                    active={pathname.startsWith(`${base}/compare`)}
+                    icon={<NavIcon name="compare" active={pathname.startsWith(`${base}/compare`)} />}
+                    label="선수 비교"
+                    onClick={() => navigate(`${base}/compare`)}
+                />
             </nav>
 
             <div className="flex flex-col items-center gap-6 py-6 shrink-0 relative z-10">
