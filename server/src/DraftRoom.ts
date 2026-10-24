@@ -166,12 +166,22 @@ export class DraftRoom {
             room.queues.set(String(row.user_id), (row.player_ids ?? []).map(String));
         }
 
+        room.applyPoolRows(room.poolPlayers);
+
+        return room;
+    }
+
+    /**
+     * 풀 행(meta_players)에 OVR/아키타입을 계산해 붙이고 AI 픽용 정렬본(pool)을 만든다.
+     * load()와 reloadPool()이 공유 — 계산 로직이 한 곳에만 있도록 분리(2026-10-24).
+     */
+    private applyPoolRows(rows: DraftPoolPlayer[]): void {
         // custom_overrides 반영한 실제 OVR을 방 로드 시점에 딱 한 번만 계산해 base_attributes.ovr에
         // 덮어쓴다. 원래 base_attributes.ovr은 오버라이드 미반영 원본값이라, 올타임 풀에서 이 값을
         // 그대로 스냅샷/CPU 랭킹에 쓰면 부정확했다(버그) — 클라이언트가 렌더링마다 재계산하던 것도
         // 이 시점 1회 계산으로 옮겨서 클라이언트 쪽 계산 자체를 없앤다(성능 개선 겸).
-        const applyCustomOverrides = room.config.applyCustomOverrides ?? false;
-        for (const p of room.poolPlayers) {
+        const applyCustomOverrides = this.config.applyCustomOverrides ?? false;
+        for (const p of rows) {
             const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
             (p.base_attributes as any).ovr = mapped.ovr;
             // 같은 OVR 엔진 호출에서 같이 나오는 주/부 아키타입도 붙여 보낸다(드래프트 풀 화면 표시용) —
@@ -180,11 +190,47 @@ export class DraftRoom {
             (p.base_attributes as any).secondaryArchetype = mapped.secondaryArchetype;
         }
 
-        room.pool = room.poolPlayers
+        this.poolPlayers = rows;
+        this.pool = rows
             .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0, position: p.position }))
             .sort((a, b) => b.ovr - a.ovr);
+    }
 
-        return room;
+    /**
+     * [2026-10-24] 드래프트 시작 직전 풀 재조회 — 방이 대기 중(waiting)에 메모리에 올라온 뒤 어드민이
+     * meta_players의 OVR/능력치를 고쳐도 반영되도록, 시작 순간의 DB 값으로 OVR을 다시 계산한다.
+     * poolIds(풀 멤버십)는 준비 단계에서 확정된 그대로 쓴다. 조회 실패/빈 결과면 기존 풀을 유지하고
+     * false 반환(부분 결과로 선수가 빠지는 것 방지). 성공 시 true.
+     */
+    private async reloadPool(): Promise<boolean> {
+        const poolIds: string[] = (this.config.poolIds ?? []).map(String);
+        const chunks: string[][] = [];
+        for (let i = 0; i < poolIds.length; i += CHUNK_SIZE) chunks.push(poolIds.slice(i, i + CHUNK_SIZE));
+        try {
+            const results = await Promise.all(
+                chunks.map(ids =>
+                    supabase
+                        .from('meta_players')
+                        .select('id, name, position, salary, base_attributes, ovr_base, ovr_custom')
+                        .in('id', ids)
+                )
+            );
+            const failed = results.find(r => r.error);
+            if (failed) {
+                console.error(`[DraftRoom:${this.roomId}] reloadPool failed, keeping previous pool: ${failed.error!.message}`);
+                return false;
+            }
+            const rows = results.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
+            if (rows.length === 0 || rows.length < this.poolPlayers.length) {
+                console.warn(`[DraftRoom:${this.roomId}] reloadPool returned ${rows.length} rows (prev ${this.poolPlayers.length}), keeping previous pool`);
+                return false;
+            }
+            this.applyPoolRows(rows);
+            return true;
+        } catch (e: any) {
+            console.error(`[DraftRoom:${this.roomId}] reloadPool threw, keeping previous pool: ${e?.message}`);
+            return false;
+        }
     }
 
     // ── 스냅샷 (연결 시 1회) ─────────────────────────────────────────────────
@@ -514,6 +560,10 @@ export class DraftRoom {
     async activate(): Promise<boolean> {
         if (this.status !== 'waiting') return false;
 
+        // [2026-10-24] 시작 직전 풀 재조회 — 대기 중 편집된 OVR 반영(실패 시 기존 풀 유지)
+        const poolRefreshed = await this.reloadPool();
+        if (this.status !== 'waiting') return false; // await 중 다른 경로가 먼저 활성화했으면 중단
+
         // [Fix 2026-08-13] "쓰기 성공 후에만 메모리에 반영"(write-then-commit) — 예전엔 메모리를
         // 먼저 active로 바꾼 뒤 DB write 결과(error)를 확인 안 해서, write가 실패해도 그냥
         // 넘어가 메모리(active, 타이머 돎)와 DB(여전히 waiting)가 갈라질 수 있었다. 이제 DB
@@ -556,9 +606,11 @@ export class DraftRoom {
         this.currentPickIndex     = nextCursor.currentPickIndex;
         this.currentPickStartedAt = nextCursor.currentPickStartedAt;
 
+        // 접속 중인 클라이언트는 대기 중 받은 옛 풀을 갖고 있으므로, 풀이 갱신됐으면 스냅샷 재전송
+        if (poolRefreshed) this.broadcast(encode(this.buildSnapshot()));
         this.broadcastCursor();
         this.scheduleNext();
-        console.log(`[DraftRoom:${this.roomId}] activated (waiting → active)`);
+        console.log(`[DraftRoom:${this.roomId}] activated (waiting → active, pool ${poolRefreshed ? 'refreshed' : 'kept'})`);
         return true;
     }
 

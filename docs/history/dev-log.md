@@ -50,6 +50,25 @@
 
 
 
+## 2026-10-24 — 드래프트 시작 직전 풀 재조회 (대기 중 편집된 OVR 반영)
+
+**배경**: DraftRoom은 첫 WS 접속(또는 시작) 때 `meta_players`를 1회 읽어 OVR을 계산하고 메모리에 유지한다. 대기(waiting) 중 방이 로드된 뒤 어드민이 OVR/능력치를 고쳐도 `activate()`가 재조회하지 않아 드래프트 룸에 반영되지 않았음.
+
+**변경 파일**: `server/src/DraftRoom.ts` (server 전용, 클라이언트 변경 없음 — `hooks/useLeagueDraft.ts`가 snapshot 수신 시 풀을 통째로 교체)
+
+**Before**:
+- `load()` 안에 OVR 적용 루프 + `room.pool` 정렬이 인라인. `activate()`는 풀을 건드리지 않음.
+
+**After**:
+- `applyPoolRows(rows)`(private) 분리: OVR/아키타입 계산 + `poolPlayers`/`pool`(정렬본) 갱신. `load()`가 이를 호출.
+- `reloadPool()`(private) 신설: `config.poolIds` 그대로 청크 조회 → 성공 시 `applyPoolRows`. 조회 에러/0행/이전보다 적은 행이면 기존 풀 유지 + false.
+- `activate()`: status 확인 직후 `reloadPool()`, await 후 status 재확인(경쟁 방지). DB write 성공 후 풀이 갱신됐으면 `broadcast(snapshot)` → `broadcastCursor()`.
+- 풀 멤버십(poolIds)은 준비 단계 확정값 그대로 — 은퇴 해제 등으로 멤버십이 바뀌는 건 반영 안 됨. 드래프트 진행 중 편집분도 반영 안 됨(의도).
+
+**검증**: server tsc — DraftRoom.ts 신규 오류 없음(`bun` 모듈 타입 없음 오류는 기존).
+
+**롤백 방법**: `applyPoolRows` 본문을 `load()`에 인라인으로 되돌리고 `reloadPool`/`activate()` 내 추가 3줄(재조회, 재확인, snapshot broadcast) 제거. 배포는 `scripts/deploy-server.sh`.
+
 ## 2026-10-24 — 영속 캐시 버스터 갱신 (은퇴 토글 후 홈 드래프트 풀 낡은 캐시)
 
 **배경**: 어드민에서 벤 시몬스 은퇴를 해제했지만 `multiSearchPool`이 staleTime/gcTime Infinity + localStorage 24h 영속이라 홈 드래프트 풀(/pool)에 반영 안 됨. 하드 리프레시로는 localStorage가 지워지지 않아 버스터를 올림.
