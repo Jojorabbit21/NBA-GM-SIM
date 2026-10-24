@@ -15,6 +15,9 @@ export interface MetaPlayerRow {
     tendencies: Record<string, any> | null; // PlayerTendencies JSONB 컬럼
     include_alltime: boolean;
     in_multi_pool: boolean;
+    // [2026-10-24] 은퇴 여부(meta_players.retired). admin_search_meta_players RPC는 반환하지 않으므로 optional —
+    // 선택 시 fetchPlayerById로 다시 읽는다.
+    retired?: boolean;
     draft_year: number | null;     // numeric 컬럼 — 2026이면 드래프트 클래스 선수
     // [2026-10-22] 고정 OVR 전용 컬럼(마이그레이션 add_meta_players_fixed_ovr). admin_search_meta_players RPC는
     // 이 컬럼을 반환하지 않으므로 optional — 값이 필요하면 fetchPlayerById로 다시 읽을 것.
@@ -25,7 +28,7 @@ export interface MetaPlayerRow {
 export async function searchPlayers(query: string): Promise<MetaPlayerRow[]> {
     let q = supabase
         .from('meta_players')
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom, retired')
         .order('name');
     if (query.trim()) {
         q = q.ilike('name', `%${query.trim()}%`);
@@ -90,7 +93,7 @@ export async function searchPlayersAdvanced(filters: PlayerSearchFilters): Promi
 export async function fetchPlayerById(id: string): Promise<MetaPlayerRow | null> {
     const { data, error } = await supabase
         .from('meta_players')
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom, retired')
         .eq('id', id)
         .single();
     if (error) throw error;
@@ -187,6 +190,17 @@ export async function updateInMultiPool(
     if (error) throw error;
 }
 
+export async function updateRetired(
+    id: string,
+    value: boolean
+): Promise<void> {
+    const { error } = await supabase
+        .from('meta_players')
+        .update({ retired: value })
+        .eq('id', id);
+    if (error) throw error;
+}
+
 export async function bulkUpdateIncludeAlltime(ids: string[], value: boolean): Promise<void> {
     if (ids.length === 0) return;
     const { error } = await supabase
@@ -253,7 +267,7 @@ export async function insertPlayer(opts: {
             include_alltime: false,
             in_multi_pool: true,
         })
-        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom')
+        .select('id, name, position, base_team_id, base_attributes, tendencies, include_alltime, in_multi_pool, draft_year, ovr_base, ovr_custom, retired')
         .single();
     if (error) throw error;
     return data;

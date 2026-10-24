@@ -51,7 +51,7 @@ const queryClient = new QueryClient({
 // 가장 최근에 갱신된 1개만 저장한다. 메모리 캐시(gcTime)는 이 규칙과 무관하게 그대로 유지된다.
 const PERSIST_INCLUDE_ROOT_KEYS = new Set(['multiSearchPool', 'metaPlayerOrder', 'gameShortCodes']);
 // 영속 캐시 버전 — 바꾸면 모든 사용자의 localStorage 캐시가 다음 로드 때 한 번 폐기된다.
-const PERSIST_CACHE_BUSTER = '2026-10-22-fixed-ovr';
+const PERSIST_CACHE_BUSTER = '2026-10-24-retired-toggle';
 
 /** 같은 루트 키(예: multiSearchPool)의 인스턴스가 여러 개(리그/방마다)면 가장 최근 성공한 1개만 영속. */
 const isLatestOfRoot = (query: { queryKey: readonly unknown[]; state: { dataUpdatedAt: number } }): boolean => {

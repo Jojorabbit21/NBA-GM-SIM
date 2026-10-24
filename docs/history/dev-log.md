@@ -50,6 +50,39 @@
 
 
 
+## 2026-10-24 — 영속 캐시 버스터 갱신 (은퇴 토글 후 홈 드래프트 풀 낡은 캐시)
+
+**배경**: 어드민에서 벤 시몬스 은퇴를 해제했지만 `multiSearchPool`이 staleTime/gcTime Infinity + localStorage 24h 영속이라 홈 드래프트 풀(/pool)에 반영 안 됨. 하드 리프레시로는 localStorage가 지워지지 않아 버스터를 올림.
+
+**변경 파일**: `index.tsx` (client 전용)
+
+**Before**: `const PERSIST_CACHE_BUSTER = '2026-10-22-fixed-ovr';`
+**After**: `const PERSIST_CACHE_BUSTER = '2026-10-24-retired-toggle';`
+
+**동작**: 배포 후 새 번들을 받은 사용자는 다음 로드 때 영속 캐시가 한 번 폐기되고 풀을 새로 받음. 앞으로 어드민 편집 후 전원 갱신이 필요하면 이 값만 바꿔 배포.
+
+**롤백 방법**: 값을 이전 문자열로 되돌림.
+
+## 2026-10-24 — 어드민 선수 편집기에 은퇴(retired) 토글 추가
+
+**배경**: `meta_players.retired`(2026-10-22 추가, 멀티 드래프트 풀 은퇴 필터용)를 어드민에서 수정할 방법이 없었음(SQL 직접 수정만 가능).
+
+**변경 파일**:
+- `services/admin/playerAdminService.ts` (client 전용, 미러 없음)
+- `pages/PlayerEditorPage.tsx` (client 전용)
+
+**Before**:
+- `MetaPlayerRow`에 `retired` 없음, select 문자열에 `retired` 없음, 편집 UI 없음.
+
+**After**:
+- `MetaPlayerRow.retired?: boolean` 추가, `searchPlayers`/`fetchPlayerById`/`insertPlayer`의 select 끝에 `, retired` 추가, `updateRetired(id, value)` 신설.
+- PlayerEditorPage: 상태 `retiredVal`/`retiredToggling`, `handleRetiredToggle`(즉시 저장 + edit log에 `retired` before/after 기록), "올타임/멀티 드래프트 풀" 토글 줄 오른쪽에 "은퇴" 토글(은퇴/현역) 추가. `handleSelect`에서 fresh.retired로 초기화.
+- `admin_search_meta_players` RPC는 retired를 반환하지 않으므로 검색 결과 행에는 값이 없고, 선수 선택 시 `fetchPlayerById`로 읽음.
+
+**검증**: tsc — 변경 부분 신규 오류 없음(파일 내 기존 오류 6건은 그대로).
+
+**롤백 방법**: 위 두 파일의 retired 관련 추가분 제거(DB 컬럼은 그대로 둠).
+
 ## 2026-10-24 — 플레이오프 시리즈 결과/우승/파이널 MVP 알림 스포일러 차단
 
 **배경**: 멀티 플레이오프 중 채팅 위젯 알림 탭/토스트로 경기 중계가 끝나기 전에 시리즈 결과·우승이 노출됨. 원인: `playoff_series_result`/`playoff_champion`/`finals_mvp`가 `game_id` 없이 insert되어 `league_events` RLS(`game_id IS NULL`이면 즉시 공개)를 우회 → Realtime으로 서버 시뮬 직후 알림 발행(뉴스피드도 동일하게 선공개).

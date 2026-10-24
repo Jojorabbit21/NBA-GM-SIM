@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import PlayerCardModal from '../components/PlayerCardModal';
 import type { PlayerCardData } from '../components/PlayerCardModal';
 import { useOutletContext } from 'react-router-dom';
-import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateDraftYear, updateFixedOvr, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, fetchCareerHistory, updateCareerHistory, fetchCareerPresentIds, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
+import { searchPlayers, fetchPlayerById, updateBaseAttributes, updatePosition, updatePlayerName, updatePlayerTendencies, updateIncludeAlltime, updateInMultiPool, updateRetired, updateDraftYear, updateFixedOvr, bulkUpdateIncludeAlltime, bulkUpdateInMultiPool, insertEditLog, fetchEditLog, insertPlayer, deletePlayer, fetchCareerHistory, updateCareerHistory, fetchCareerPresentIds, EditLogEntry, MetaPlayerRow } from '../services/admin/playerAdminService';
 import { preloadGameConfig, fetchArchetypeLabels, fetchTagConfig } from '../services/admin/gameConfigService';
 import type { ArchetypeLabelConfig, TagConfigList } from '../types/gameConfig';
 import { resolveTeamId } from '../utils/constants';
@@ -563,6 +563,8 @@ const PlayerEditorPage: React.FC = () => {
     const [ovrCustomVal, setOvrCustomVal] = useState<string>('');
     const [inMultiPool, setInMultiPoolState] = useState<boolean>(true);
     const [multiPoolToggling, setMultiPoolToggling] = useState(false);
+    const [retiredVal, setRetiredVal] = useState<boolean>(false);
+    const [retiredToggling, setRetiredToggling] = useState(false);
     // 테이블 필터/페이지네이션
     const [filterTeams, setFilterTeams] = useState<string[] | null>(null); // null=전체, []=선택없음, ['fa','atl'...]=개별선택
     const [filterTeamOpen, setFilterTeamOpen] = useState(false);
@@ -1323,6 +1325,7 @@ function sortBy(th) {
         setSelected(fresh);
         setIncludeAlltimeState(fresh.include_alltime ?? true);
         setInMultiPoolState(fresh.in_multi_pool ?? true);
+        setRetiredVal(fresh.retired ?? false);
         setDraftYearVal(fresh.draft_year != null ? String(fresh.draft_year) : '');
         setOvrBaseVal(fresh.ovr_base != null ? String(fresh.ovr_base) : '');
         setOvrCustomVal(fresh.ovr_custom != null ? String(fresh.ovr_custom) : '');
@@ -1885,6 +1888,24 @@ function sortBy(th) {
             setSaveMsg(`✗ 멀티 풀 설정 실패: ${e.message}`);
         } finally {
             setMultiPoolToggling(false);
+        }
+    }, [selected]);
+
+    const handleRetiredToggle = useCallback(async (newVal: boolean) => {
+        if (!selected) return;
+        setRetiredToggling(true);
+        try {
+            await updateRetired(selected.id, newVal);
+            setRetiredVal(newVal);
+            setSelected(prev => prev ? { ...prev, retired: newVal } : prev);
+            setResults(prev => prev.map(r => r.id === selected.id ? { ...r, retired: newVal } : r));
+            await insertEditLog(selected.id, selected.name, { retired: { before: !newVal, after: newVal } })
+                .then(entry => { if (entry) setEditLog(prev => [entry, ...prev]); })
+                .catch(() => {});
+        } catch (e: any) {
+            setSaveMsg(`✗ 은퇴 설정 실패: ${e.message}`);
+        } finally {
+            setRetiredToggling(false);
         }
     }, [selected]);
 
@@ -3157,6 +3178,17 @@ function sortBy(th) {
                                                             </button>
                                                             <span className={`text-sm ${inMultiPool ? 'text-emerald-400' : 'text-gray-600'}`}>
                                                                 {multiPoolToggling ? '저장 중...' : inMultiPool ? '포함' : '제외'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="w-px h-4 bg-white/10" />
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm text-gray-300">은퇴</span>
+                                                            <button disabled={retiredToggling} onClick={() => handleRetiredToggle(!retiredVal)}
+                                                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${retiredVal ? 'bg-rose-600' : 'bg-white/10'}`}>
+                                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${retiredVal ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                            </button>
+                                                            <span className={`text-sm ${retiredVal ? 'text-rose-400' : 'text-gray-600'}`}>
+                                                                {retiredToggling ? '저장 중...' : retiredVal ? '은퇴' : '현역'}
                                                             </span>
                                                         </div>
                                                     </div>
