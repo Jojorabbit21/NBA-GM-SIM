@@ -54,6 +54,40 @@
 
 
 
+## 2026-10-25 — 드래프트 풀 이름 검색어를 URL 쿼리에서 로컬 상태로 환원
+
+**배경**: 3d1c0558에서 검색어(`q`)를 URL로 옮긴 뒤 키 입력마다 라우터 갱신+전체 재파싱으로 렉, 한글 자모 분리가 발생. 직전 수정(로컬 입력+디바운스)은 compositionEnd 때 값이 안 바뀌어 URL 반영이 누락돼 "풀네임이 안 뜨고 한 글자 지워야 뜸" 버그를 만듦 → 디바운스 방식 폐기.
+
+**변경 파일**: `views/multi/season/MultiDraftPoolView.tsx` (client)
+
+**Before**: `nameQuery = searchParams.get('q')`, 입력은 nameInput 로컬+200ms 디바운스로 `q` 갱신
+**After**: `const [nameQuery, setNameQuery] = useState('')` 단순 로컬 상태. 나머지 필터/정렬/페이지는 URL 유지. 검색 변경 시 page 파라미터가 있을 때만 1페이지로 리셋.
+
+**롤백 방법**: 3d1c0558 상태로 복원.
+
+## 2026-10-25 — 드래프트 풀 이름 검색 한글 자모 분리 수정
+
+**배경**: 커밋 3d1c0558에서 검색어(`q`)를 URL 쿼리로 옮기면서 input의 `value`가 라우터(setSearchParams) 왕복으로 결정됨 → 한글 IME 조합 중 값이 덮어써져 "ㄴㅣㅋㅗㄹㄹㅏ"처럼 자모가 분리됨.
+
+**변경 파일**:
+- `views/multi/season/MultiDraftPoolView.tsx` (client)
+
+**Before**:
+```tsx
+<input value={nameQuery} onChange={e => setNameQuery(e.target.value)} />   // nameQuery = searchParams.get('q')
+```
+
+**After**:
+```tsx
+const [nameInput, setNameInput] = useState(nameQuery);   // 로컬 입력 상태
+// 조합 중(composingRef)에는 URL 반영·외부 동기화 안 함, 조합 종료 후 200ms 디바운스로 setNameQuery
+<input value={nameInput} onChange={...setNameInput} onCompositionStart/End={...} />
+```
+
+**검증**: tsc에서 해당 파일 오류 없음. 브라우저 한글 입력은 육안 확인 필요.
+
+**롤백 방법**: Before 코드로 복원 (nameInput/composingRef/두 useEffect 제거).
+
 ## 2026-10-25 — 시즌 어워드 뉴스 sim_date를 가상 캘린더 키 데이트로
 
 **배경**: 어워드 뉴스(mvp_award 등 4종)의 `league_events.sim_date`에 `rooms.sim_date`(실제 KST 방송일, 2026-10-25)가 들어가 뉴스피드(sim_date 기준 정렬/필터)에 현실 날짜로 노출됨. 어워드 키 데이트는 정규시즌 종료 +1일(`postseasonVirtualAnchor`, utils/seasonConfig.ts의 awardsAnnouncement와 동일).

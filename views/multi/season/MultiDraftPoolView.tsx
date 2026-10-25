@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { RefreshCw, Search, X } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -40,7 +40,7 @@ const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const ATTR_ITEMS = COMPACT_ATTR_GROUPS.flatMap(g => g.items);
 const ATTR_FILTER_OPTIONS = ATTR_ITEMS.map(i => ({ value: i.key, label: i.label }));
 
-// [2026-10-25] 필터/정렬/페이지는 URL 쿼리(?q=&pos=&arch=&sf=&sort=&page=&size=)에 저장한다 — 선수 프로필에
+// [2026-10-25] 필터/정렬/페이지는 URL 쿼리(?pos=&arch=&sf=&sort=&page=&size=)에 저장한다 — 선수 프로필에
 // 들어갔다 뒤로 오면 같은 URL이라 상태가 그대로 복원되고, 새로고침·링크 공유에도 유지된다.
 // 값이 바뀔 때는 replace로 갱신해 뒤로 가기가 필터 조작 이력을 한 단계씩 되감지 않게 한다.
 type SortKey = 'name' | 'position' | 'age' | 'height' | 'weight' | 'ovr' | string;
@@ -59,7 +59,8 @@ const MultiDraftPoolView: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // URL → 상태 (파싱 결과는 searchParams가 바뀔 때만 새로 만든다)
-    const nameQuery = searchParams.get('q') ?? '';
+    // 이름 검색어는 URL이 아닌 로컬 상태 — 키 입력마다 라우터를 거치면 렉이 걸리고 한글 조합이 깨진다.
+    const [nameQuery, setNameQuery] = useState('');
     const selectedPositions = useMemo(() => searchParams.getAll('pos'), [searchParams]);
     const selectedArchetypes = useMemo(() => searchParams.getAll('arch'), [searchParams]);
     const statFilters = useMemo<StatFilterItem[]>(() => searchParams.getAll('sf').flatMap((raw, i) => {
@@ -87,7 +88,7 @@ const MultiDraftPoolView: React.FC = () => {
     };
     const setList = (name: string) => (values: string[]) =>
         updateParams(n => { n.delete(name); values.forEach(v => n.append(name, v)); });
-    const setNameQuery = (v: string) => updateParams(n => { if (v) n.set('q', v); else n.delete('q'); });
+
     const setSelectedPositions = setList('pos');
     const setSelectedArchetypes = setList('arch');
     const writeStatFilters = (items: StatFilterItem[]) =>
@@ -168,6 +169,7 @@ const MultiDraftPoolView: React.FC = () => {
     const currentPage = Math.min(Math.max(1, rawPage || 1), maxPage);   // 풀이 줄어 범위를 벗어난 page 보정
     const setCurrentPage = (page: number) =>
         updateParams(n => { if (page > 1) n.set('page', String(page)); else n.delete('page'); }, false);
+    const resetPageIfNeeded = () => { if (rawPage > 1) setCurrentPage(1); };   // 검색어 변경 시 URL은 page가 있을 때만 건드림
     const pagedPlayers = displayPlayers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     const handleItemsPerPageChange = (val: number) => {
         updateParams(n => { if (val !== PAGE_SIZES_FALLBACK) n.set('size', String(val)); else n.delete('size'); });
@@ -202,11 +204,11 @@ const MultiDraftPoolView: React.FC = () => {
                                 type="text"
                                 placeholder="이름으로 검색"
                                 value={nameQuery}
-                                onChange={e => setNameQuery(e.target.value)}
+                                onChange={e => { setNameQuery(e.target.value); resetPageIfNeeded(); }}
                                 className="h-full w-full bg-transparent pl-9 pr-3 text-sm font-bold text-white outline-none placeholder:text-slate-600"
                             />
                             {nameQuery && (
-                                <IconButton label="검색어 지우기" size="xs" tone="ghost" onClick={() => setNameQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <IconButton label="검색어 지우기" size="xs" tone="ghost" onClick={() => { setNameQuery(''); resetPageIfNeeded(); }} className="absolute right-2 top-1/2 -translate-y-1/2">
                                     <X size={12} />
                                 </IconButton>
                             )}
