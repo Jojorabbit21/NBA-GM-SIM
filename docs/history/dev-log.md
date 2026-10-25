@@ -33,6 +33,34 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-25 — 일정 재배치에 "재배치 시작일" 추가
+
+**배경**: 시작 전 리그(첫 날 10.26 10:00)의 시간대 시작을 19:00으로 바꿔 미리보기하면 10.26 19:00이 아니라 10.25 22:20부터로 나옴. `buildReschedulePlan`이 격자 기준일(`realStartDate`)을 항상 "오늘"로 고정해서, 오늘 격자의 지금+5분 이후 첫 슬롯부터 깔았기 때문.
+
+**변경 파일**:
+- `views/multi/league/settings/ScheduleSettingsTab.tsx` (client 전용, 서버 미러 없음, DB/RPC 변경 없음)
+
+**Before**:
+```ts
+const todayKst = msToKstDateStr(nowMs);
+const endDate = realEndDate >= todayKst ? realEndDate : todayKst;
+computeTimelineFeasibility({ realStartDate: todayKst, ... });
+buildLeagueTimeline(..., { realStartDate: todayKst, ... });
+```
+
+**After**:
+```ts
+// buildReschedulePlan(..., nowMs, realStartDate?)
+const startDate = realStartDate && realStartDate > todayKst ? realStartDate : todayKst;
+const endDate = realEndDate >= startDate ? realEndDate : startDate;
+// feasibility / buildLeagueTimeline 모두 realStartDate: startDate
+```
+- 폼에 "재배치 시작일(KST)" date 입력 추가(min=오늘). 기본값 = 다음 미시작 가상 날짜의 KST 날짜가 오늘보다 뒤면 그 날짜, 아니면 오늘. 저장되지 않음(재배치에만 사용).
+
+**검증**: tsc 해당 파일 오류 없음.
+
+**롤백 방법**: 위 Before로 복원(startDate 상태/입력/인자 제거) 또는 해당 커밋 revert.
+
 
 
 

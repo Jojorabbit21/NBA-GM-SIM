@@ -124,6 +124,7 @@ interface ReschedulePlan {
 function buildReschedulePlan(
     timeline: VirtualDayRow[], schedule: Game[],
     dayLengthMin: number, windowStartMin: number, realEndDate: string, replayMin: number, nowMs: number,
+    realStartDate?: string,
 ): ReschedulePlan | null {
     if (!timeline.length) return null;
     const notBefore = nowMs + RESCHEDULE_LEAD_MS;
@@ -133,13 +134,15 @@ function buildReschedulePlan(
     const toRelay = timeline.slice(splitIdx);
 
     const todayKst = msToKstDateStr(nowMs);
-    const endDate = realEndDate >= todayKst ? realEndDate : todayKst;
+    // Re-lay anchor: chosen start date, never earlier than today (past slots are skipped by notBefore anyway)
+    const startDate = realStartDate && realStartDate > todayKst ? realStartDate : todayKst;
+    const endDate = realEndDate >= startDate ? realEndDate : startDate;
     const feas = computeTimelineFeasibility({
-        realStartDate: todayKst, realEndDate: endDate, dayLengthMin, windowStartMin, virtualDayCount: toRelay.length, replayMin,
+        realStartDate: startDate, realEndDate: endDate, dayLengthMin, windowStartMin, virtualDayCount: toRelay.length, replayMin,
     });
     const newRows = buildLeagueTimeline(
         toRelay.map(r => ({ date: r.date, kind: r.kind })),
-        { realStartDate: todayKst, dayLengthMin, windowStartMin, perDay: feas.perDay, notBeforeMs: notBefore, firstDayIndex: toRelay[0].dayIndex },
+        { realStartDate: startDate, dayLengthMin, windowStartMin, perDay: feas.perDay, notBeforeMs: notBefore, firstDayIndex: toRelay[0].dayIndex },
     );
     const mergedRows = [...kept, ...newRows].sort((a, b) => a.realStartAt.localeCompare(b.realStartAt));
 
@@ -316,6 +319,16 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
     const [windowStart, setWindowStart] = useState(minToHHMM(savedWindowStart));
     const [endDate, setEndDate]         = useState(savedEndDate);
     const [replayMin, setReplayMin]     = useState(savedReplay);
+    // Start date of the re-lay (not persisted): if nothing has started yet, default to the first pending day's date, else today
+    const defaultStartDate = useMemo(() => {
+        const today = msToKstDateStr(getServerNow());
+        const next = timeline.find(r => new Date(r.realStartAt).getTime() > getServerNow() + RESCHEDULE_LEAD_MS);
+        const nextDate = next ? msToKstDateStr(new Date(next.realStartAt).getTime()) : today;
+        return nextDate > today ? nextDate : today;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeline]);
+    const [startDate, setStartDate]     = useState(defaultStartDate);
+    useEffect(() => { setStartDate(defaultStartDate); }, [defaultStartDate]);
     useEffect(() => { setDayLength(savedDayLength); setWindowStart(minToHHMM(savedWindowStart)); setEndDate(savedEndDate); setReplayMin(savedReplay); }, [savedDayLength, savedWindowStart, savedEndDate, savedReplay]);
     const windowStartMin = hhmmToMin(windowStart, DEFAULT_WINDOW_START_MIN);
     const settingsDirty = dayLength !== savedDayLength || windowStartMin !== savedWindowStart || endDate !== savedEndDate || replayMin !== savedReplay;
@@ -359,15 +372,15 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
     const [previewAnchorMs, setPreviewAnchorMs] = useState(() => getServerNow());
     const plan = useMemo(() => {
         if (!previewOn || !hasTimeline) return null;
-        return buildReschedulePlan(timeline, schedule, dayLength, windowStartMin, endDate, replayMin, previewAnchorMs);
-    }, [previewOn, hasTimeline, timeline, schedule, dayLength, windowStartMin, endDate, replayMin, previewAnchorMs]);
+        return buildReschedulePlan(timeline, schedule, dayLength, windowStartMin, endDate, replayMin, previewAnchorMs, startDate);
+    }, [previewOn, hasTimeline, timeline, schedule, dayLength, windowStartMin, endDate, replayMin, previewAnchorMs, startDate]);
     const togglePreview = () => { if (!previewOn) setPreviewAnchorMs(getServerNow()); setPreviewOn(v => !v); };
 
     const [applying, setApplying] = useState(false);
     const [applyMsg, setApplyMsg] = useState<{ ok: boolean; text: string } | null>(null);
     const handleApply = async () => {
         if (!hasTimeline) return;
-        const fresh = buildReschedulePlan(timeline, schedule, dayLength, windowStartMin, endDate, replayMin, getServerNow());
+        const fresh = buildReschedulePlan(timeline, schedule, dayLength, windowStartMin, endDate, replayMin, getServerNow(), startDate);
         if (!fresh) { setApplyMsg({ ok: false, text: '재배치할 남은 가상 날짜가 없습니다.' }); return; }
         if (!fresh.stats.feasible) { setApplyMsg({ ok: false, text: `이 설정으로는 배치할 수 없습니다: ${fresh.stats.reasons.join(' ')}` }); return; }
         const s = fresh.stats;
@@ -581,12 +594,17 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                 </p>
                                 {lateGameClamped && <InlineNotice tone="warning" size="sm" className="mt-1">이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다.</InlineNotice>}
                             </div>
-                            <div className="col-span-2">
+                            <div>
+                                <label className="text-xs text-slate-400 ko-normal block mb-1">재배치 시작일 (KST)</label>
+                                <input type="date" value={startDate} min={todayKey} disabled={!hasTimeline} onChange={e => setStartDate(e.target.value || defaultStartDate)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+                            </div>
+                            <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">실제 종료일 (KST)</label>
                                 <input type="date" value={endDate} min={todayKey} disabled={!hasTimeline} onChange={e => setEndDate(e.target.value || savedEndDate)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
                                 <p className="text-xs text-slate-600 ko-normal mt-1">
-                                    시작일({league.real_start_date ?? '—'})과 플레이오프 경기 간격({league.playoff_game_interval_days === 2 ? '격일' : '매일'})은 생성 시에만 정할 수 있습니다. 일일 시뮬 시간대 길이는 기간과 하루 길이에서 계산됩니다.
+                                    재배치 시작일은 남은 날짜를 깔기 시작할 날(시작 시각은 위 시간대 시작)이며 저장되지 않고 재배치에만 쓰입니다. 리그 생성 시작일({league.real_start_date ?? '—'})과 플레이오프 경기 간격({league.playoff_game_interval_days === 2 ? '격일' : '매일'})은 생성 시에만 정할 수 있습니다. 일일 시뮬 시간대 길이는 기간과 하루 길이에서 계산됩니다.
                                 </p>
                             </div>
                         </div>
@@ -638,7 +656,7 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                             <div className="space-y-1.5">
                                 <Row label="유지 / 재배치" value={`가상 ${plan.stats.keptDays}일 유지 · ${plan.stats.relaidDays}일 재배치 (${fmtVirtualShort(plan.fromVirtualDate)}부터)`} />
                                 <Row label="대상 경기" value={`${plan.stats.relaidGames}경기`} />
-                                <Row label="실제 일수 예산" value={`오늘 ~ ${endDate} = ${plan.stats.realDaysBudget}일`} />
+                                <Row label="실제 일수 예산" value={`${startDate > todayKey ? startDate : '오늘'} ~ ${endDate} = ${plan.stats.realDaysBudget}일`} />
                                 <Row label="하루당 가상 일수" value={`${plan.stats.perDay}일`} />
                                 <Row label="일일 시뮬 시간대" value={`${minToHHMM(windowStartMin)} ~ ${minToHHMM(Math.min(1440, plan.stats.windowEndMin))} (${fmtMinutes(plan.stats.windowMin)})`} changed={!plan.stats.feasible} />
                                 <Row label="같은 날짜 안 슬롯 간격(30가상분)" value={fmtMinutes(dayLength * 30 / 480)} />
