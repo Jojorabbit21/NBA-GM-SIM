@@ -33,6 +33,66 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-25 — 로스터 변경마다 전원이 선수 정보를 다시 받던 요청 폭주 완화 (leagueRaw* 방 단위 쿼리 + 팀 갱신 묶기)
+
+**배경**: 2026-10-25 10:30~12:00 UTC "NBA Active" 리그 FA 시기에 FA 계약·방출이 11시(UTC) 한 시간에 102건 몰렸고, 그 한 시간 동안 선수 정보 관련 요청이 87,094건(그중 OPTIONS 사전요청 34,604건, 접속자 29명) 나갔다 — 계약 1건당 접속자 한 명이 약 29건(요청 세트를 3~4번 재조회). 원인: `useLeagueRawStats`의 `leagueRawPlayers`·`leagueRawSeasonInjury` 캐시 키에 "전 리그 로스터 id 목록"이 통째로 들어가, 로스터가 한 명만 바뀌어도 새 키가 되어 접속자 전원이 meta_players·room_player_instances·room_player_state·league_player_seasons를 처음부터 다시 받았다(앞선 League 스탯 쿼리와 같은 유형). 이번엔 DB(Small)가 버텼지만 FA·트레이드가 더 몰리면 정지 위험. 계획·판단 근거는 대화 기록(요청 폭주 점검)과 앞선 2026-10-20 항목들 참고.
+
+**변경 파일**:
+- `services/multi/instancePlayers.ts` (client) — `fetchAllRoomPlayers`, `pickRawPlayersByIds`, `selectAllPages` 추가(기존 `fetchMetaPlayersByRosterIds`는 그대로, 다른 호출처 6곳 유지)
+- `hooks/useLeagueRawStats.ts` (client) — `leagueRawPlayersQuery(roomId)`, `leagueRawSeasonInjuryQuery(roomId)` 방 단위로, 훅이 `select`로 요청한 선수만 고름
+- `hooks/useLeagueBootstrap.ts` (client) — 두 팩토리 호출에서 `allRosterIds` 인자 제거
+- `hooks/useCurrentLeague.ts` (client) — league_teams 실시간 갱신 디바운스 300ms → 1초 + 최대 대기 3초
+
+**Before**:
+```ts
+// hooks/useLeagueRawStats.ts
+export function leagueRawPlayersQuery(roomId, allRosterIds: string[]) {
+    return { queryKey: ['leagueRawPlayers', roomId ?? null, allRosterIds.join(',')],
+             queryFn: () => fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS) };
+}
+export function leagueRawSeasonInjuryQuery(roomId, allRosterIds: string[]) {
+    return { queryKey: ['leagueRawSeasonInjury', roomId, allRosterIds.join(',')],
+             queryFn: ... league_player_seasons(room) + room_player_state(room).in('player_id', allRosterIds) };
+}
+// 훅: useQuery({ ...leagueRawPlayersQuery(roomId, ids), enabled, placeholderData: keepPreviousData }) (season/injury도 동일)
+// 전역 기본값 staleTime: Infinity → 갱신 계기는 사실상 "로스터가 바뀌어 키가 달라질 때"뿐
+// hooks/useLeagueBootstrap.ts
+add(leagueRawPlayersQuery(roomId, allRosterIds)); add(leagueRawSeasonInjuryQuery(roomId, allRosterIds));
+// hooks/useCurrentLeague.ts — refetchTeams: clearTimeout 후 setTimeout(300ms)
+```
+
+**After**:
+```ts
+// hooks/useLeagueRawStats.ts
+export const LEAGUE_RAW_PLAYERS_STALE_MS = 10 * 60 * 1000;
+export function leagueRawPlayersQuery(roomId) {
+    return { queryKey: ['leagueRawPlayers', roomId ?? null], staleTime: LEAGUE_RAW_PLAYERS_STALE_MS,
+             queryFn: () => fetchAllRoomPlayers(roomId, RAW_PLAYER_COLS) };   // meta_players 전체(854명, 약 1.28MB) + 이 룸 인스턴스
+}
+export const LEAGUE_RAW_SEASON_INJURY_STALE_MS = 5 * 60 * 1000;
+export function leagueRawSeasonInjuryQuery(roomId) {
+    return { queryKey: ['leagueRawSeasonInjury', roomId], staleTime: LEAGUE_RAW_SEASON_INJURY_STALE_MS,
+             queryFn: ... league_player_seasons(room) + selectAllPages(room_player_state(room), order player_id, 1000행 페이지) };   // .in() 제거
+}
+// 훅: useQuery({ ...leagueRawPlayersQuery(roomId), enabled, select: pickRawPlayersByIds(all, allRosterIds) })
+//     useQuery({ ...leagueRawSeasonInjuryQuery(roomId), enabled, select: playerInjuryRows를 allRosterIds로 거름 })
+//     (select는 useCallback, 의존성 idsKey / placeholderData: keepPreviousData 삭제 — 키가 안 바뀌니 불필요)
+// hooks/useLeagueBootstrap.ts: add(leagueRawPlayersQuery(roomId)); add(leagueRawSeasonInjuryQuery(roomId));
+// hooks/useCurrentLeague.ts — DEBOUNCE_MS=1000, MAX_WAIT_MS=3000: 첫 알림부터 3초가 지나면 강제로 읽음(연속 알림에도 굶지 않음)
+```
+- 요청한 선수 id에 대해 예전 `fetchMetaPlayersByRosterIds`와 같은 모양의 행을 돌려준다: meta_players는 `{...raw, id, source_player_id: id}`, 인스턴스는 `{...원본(카드 또는 meta_players), id: instance_id, source_player_id}`. 순서·중복 제거도 요청 id 기준으로 동일.
+- 부상/시즌 기록 갱신 계기가 "로스터 변경 시"에서 "5분 신선도(마운트 시점)"로 바뀜 — 실시간 컨디션은 기존 `useRoomPlayerConditions` 폴링이 담당.
+- 선수 기본 정보 갱신은 10분 신선도 — 어드민이 선수를 수정하면 최대 10분(또는 새로고침) 뒤 반영.
+
+**검증**:
+- 가짜 Supabase로 새 경로와 예전 경로를 비교(Node): 1,500행 페이징(1,000행 제한 초과), 임의 id 집합 20회(중복 id 포함) 행·필드 동일, 없는 id/빈 목록/요청 순서·중복 제거, 개인 팩 인스턴스 룸(카드·옛 포맷 폴백·일반 id 혼합) 결과가 순서까지 완전 동일하고 다른 룸 인스턴스 제외, roomId 없음(meta_players만) — 전부 통과.
+- 디바운스를 가짜 타이머로 재현: 연속 알림 3개→1번 읽음, 8초간 끊김 없는 알림→3초마다 강제 읽음, 5초 간격 알림→각각 1초 뒤 읽음 — 통과.
+- 실제 DB 크기: 선수 정보 854명 약 1.28MB, room_player_state 404~421행(약 105KB, 1,000행 제한 안쪽), room_player_instances 0건(인스턴스 경로는 현재 미사용).
+- `tsc --noEmit`: 내 파일 4개를 되돌린 상태와 적용한 상태의 오류 목록이 완전히 동일(91줄, 다른 세션 작업 파일 포함 기존 오류).
+- 브라우저 육안 확인과 요청 감소 효과(edge_logs의 5종 요청 수)는 배포 후 확인 필요. FA 서명·트레이드가 몰릴 때 계약 1건당 접속자 한 명의 요청이 약 29건에서 한 자릿수(팀 목록 1건 + 사전요청)로 줄어드는지 같은 로그로 비교할 것.
+
+**롤백 방법**: 위 4개 파일을 이전 커밋으로 되돌리면 된다(DB 변경 없음). `fetchMetaPlayersByRosterIds`는 그대로라 다른 호출처에 영향 없음.
+
 ## 2026-10-25 — [배포] Fly v200 (git cf09591e) — 블록 림 프로텍터 + 엔진 묶음(프레스·파울·샷클락·플레이타입·슛 커브·템포)
 
 **내용**: 직전 서버 v199(git c2aae248) 이후 커밋 3개를 `scripts/deploy-server.sh`로 배포.

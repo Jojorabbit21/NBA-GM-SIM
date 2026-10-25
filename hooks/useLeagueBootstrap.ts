@@ -73,8 +73,8 @@ function buildEntries(input: BootstrapInput): Entry[] {
     add(metaPlayerOrderQuery());
     add(gameShortCodesQuery(roomId));
     if (allRosterIds.length > 0) {
-        add(leagueRawPlayersQuery(roomId, allRosterIds));
-        add(leagueRawSeasonInjuryQuery(roomId, allRosterIds));
+        add(leagueRawPlayersQuery(roomId));
+        add(leagueRawSeasonInjuryQuery(roomId));
         add(playerSeasonStatsLeagueQuery(roomId, false));
     }
     add(homeLeagueTransactionsQuery(roomId));

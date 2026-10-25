@@ -2,7 +2,7 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { fetchMetaPlayersByRosterIds } from '../services/multi/instancePlayers';
+import { fetchAllRoomPlayers, pickRawPlayersByIds, selectAllPages } from '../services/multi/instancePlayers';
 
 // 홈 로스터 위젯 / 로스터 화면 / 리더보드 화면 / 선수상세 화면이 각자 따로 meta_players+
 // game_pbp를 긁어오던 걸 하나로 통합 — 같은 queryKey를 쓰는 useQuery라면 어느 화면에서
@@ -79,28 +79,39 @@ export function useRoomGamePbp(roomId: string | undefined | null, enabled: boole
     });
 }
 
-/** [2026-10-06] 리그 부트스트랩 게이트가 같은 키·함수로 프리패치할 수 있도록 분리.
- *  [2026-09-18] 개인 팩 드래프트 룸은 roster id가 room_player_instances.instance_id라 roomId가 결과에 영향 — 키에 포함. */
-export function leagueRawPlayersQuery(roomId: string | undefined | null, allRosterIds: string[]) {
+/** [2026-10-25] 키에서 "로스터 id 목록"을 뺐다 — 방(room) 단위 쿼리.
+ *  전엔 ['leagueRawPlayers', room, 전 리그 로스터 id 목록]이라 FA 서명·트레이드로 로스터가 한 명만 바뀌어도 새 키가 되어, 접속자 전원이
+ *  선수 정보 5종(meta_players·room_player_instances·room_player_state·league_player_seasons…)을 처음부터 다시 받았다
+ *  (NBA Active FA 시기 시간당 8.7만 건, 계약 1건당 접속자 한 명이 약 29건). meta_players는 로스터가 바뀌어도 내용이 안 바뀌므로
+ *  방 전체를 한 번 받고(fetchAllRoomPlayers) 호출부가 select로 필요한 선수만 고른다. 부트스트랩 게이트도 같은 팩토리를 쓴다.
+ *  개인 팩 드래프트 룸은 roster id가 room_player_instances.instance_id라 roomId가 결과에 영향 — 키에 포함. */
+export const LEAGUE_RAW_PLAYERS_STALE_MS = 10 * 60 * 1000;
+export function leagueRawPlayersQuery(roomId: string | undefined | null) {
     return {
-        queryKey: ['leagueRawPlayers', roomId ?? null, allRosterIds.join(',')] as const,
-        queryFn: async (): Promise<any[]> => fetchMetaPlayersByRosterIds(roomId, allRosterIds, RAW_PLAYER_COLS),
+        queryKey: ['leagueRawPlayers', roomId ?? null] as const,
+        staleTime: LEAGUE_RAW_PLAYERS_STALE_MS,
+        queryFn: async (): Promise<any[]> => fetchAllRoomPlayers(roomId, RAW_PLAYER_COLS),
     };
 }
-export function leagueRawSeasonInjuryQuery(roomId: string | undefined | null, allRosterIds: string[]) {
+/** 부상/시즌 기록도 방 단위. 전엔 로스터가 바뀔 때만(=키가 바뀔 때만) 다시 받는 식이라 사실상 갱신 계기가 그것뿐이었는데,
+ *  이제 5분마다(마운트 시점 기준) 갱신된다. 실시간 컨디션은 useRoomPlayerConditions가 따로 폴링한다. */
+export const LEAGUE_RAW_SEASON_INJURY_STALE_MS = 5 * 60 * 1000;
+export function leagueRawSeasonInjuryQuery(roomId: string | undefined | null) {
     return {
-        queryKey: ['leagueRawSeasonInjury', roomId, allRosterIds.join(',')] as const,
+        queryKey: ['leagueRawSeasonInjury', roomId] as const,
+        staleTime: LEAGUE_RAW_SEASON_INJURY_STALE_MS,
         queryFn: async () => {
-            const [seasonRes, injuryRes] = await Promise.all([
+            const [seasonRes, injuryRows] = await Promise.all([
                 supabase.from('league_player_seasons').select(RAW_LEAGUE_SEASON_COLS).eq('room_id', roomId!),
-                supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS).eq('room_id', roomId!).in('player_id', allRosterIds),
+                // 로스터 id 필터(.in)를 뺐다 — 방 전체를 받고 호출부가 거른다. 1000행 제한을 넘어도 잘리지 않게 페이지로 읽는다.
+                selectAllPages((from, to) =>
+                    supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS).eq('room_id', roomId!).order('player_id').range(from, to)),
             ]);
-            // [2026-10-06] 조회 오류를 빈 배열로 삼키지 않도록(게이트가 실패를 감지해야 함)
+            // [2026-10-06] 조회 오류를 빈 배열로 삼키지 않도록(게이트가 실패를 감지해야 함) — 페이지 조회는 오류 시 throw
             if (seasonRes.error) throw seasonRes.error;
-            if (injuryRes.error) throw injuryRes.error;
             return {
                 leagueSeasonRows: seasonRes.data ?? [],
-                playerInjuryRows: injuryRes.data ?? [],
+                playerInjuryRows: injuryRows as any[],
             };
         },
     };
@@ -132,16 +143,32 @@ export function useLeagueRawStats<T = LeagueRawStatsData>(
     const seasonInjuryEnabled = allRosterIds.length > 0 && !!roomId && extraEnabled;
     const pbpEnabled          = !!roomId && allRosterIds.length > 0 && extraEnabled && includePbp;
 
+    // 키에 선수 목록이 없어(방 단위) 로스터가 바뀌어도 다시 받지 않는다 — 요청한 선수만 골라 예전과 같은 결과를 만든다.
+    // (예전 placeholderData: keepPreviousData는 새 키를 기다리는 동안의 깜빡임 방지용이었고, 키가 안 바뀌니 필요 없다.)
+    const selectPlayers = useCallback(
+        (all: any[]) => pickRawPlayersByIds(all, allRosterIds),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [idsKey],
+    );
+    const selectSeasonInjury = useCallback(
+        (d: { leagueSeasonRows: any[]; playerInjuryRows: any[] }) => {
+            const ids = new Set(allRosterIds.map(String));
+            return { leagueSeasonRows: d.leagueSeasonRows, playerInjuryRows: d.playerInjuryRows.filter(r => ids.has(String(r.player_id))) };
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [idsKey],
+    );
+
     const playersQuery = useQuery({
-        ...leagueRawPlayersQuery(roomId, allRosterIds),
+        ...leagueRawPlayersQuery(roomId),
         enabled: playersEnabled,
-        placeholderData: keepPreviousData,
+        select: selectPlayers,
     });
 
     const seasonInjuryQuery = useQuery({
-        ...leagueRawSeasonInjuryQuery(roomId, allRosterIds),
+        ...leagueRawSeasonInjuryQuery(roomId),
         enabled: seasonInjuryEnabled,
-        placeholderData: keepPreviousData,
+        select: selectSeasonInjury,
     });
 
     const pbpQuery = useRoomGamePbp(roomId, allRosterIds.length > 0 && extraEnabled && includePbp);

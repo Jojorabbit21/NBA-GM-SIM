@@ -115,3 +115,70 @@ export async function fetchMetaPlayersByRosterIds(
     }
     return out;
 }
+
+const PAGE = 1000;
+
+/** PostgREST 기본 행 제한(1000)을 넘는 테이블도 빠짐없이 읽는다. order는 페이지 경계가 안 흔들리게 고정 키로. */
+export async function selectAllPages(build: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<Record<string, unknown>[]> {
+    const out: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await build(from, from + PAGE - 1);
+        if (error) throw error;
+        const rows = (data ?? []) as Record<string, unknown>[];
+        out.push(...rows);
+        if (rows.length < PAGE) break;
+    }
+    return out;
+}
+
+/**
+ * [2026-10-25] 방(room)의 선수 전체를 한 번에 — useLeagueRawStats가 "로스터 id 목록"을 캐시 키에 넣어 FA 서명·트레이드마다
+ * 전원이 선수 정보를 처음부터 다시 받던 것(2026-10-25 NBA Active FA 시기 시간당 8만 건)을 없애려는 방식.
+ * meta_players는 로스터가 바뀌어도 내용이 안 바뀌므로 전체(약 850명, 1.3MB)를 방 단위로 한 번 받고, 호출부가 필요한 id만 고른다
+ * (pickRawPlayersByIds). 요청한 id 하나하나에 대해 fetchMetaPlayersByRosterIds와 같은 모양의 행을 돌려준다:
+ *  - meta_players 행: { ...raw, id, source_player_id: id }
+ *  - 이 룸의 인스턴스(개인 팩 드래프트): { ...원본(카드 또는 meta_players), id: instance_id, source_player_id: 원본 id }
+ * 인스턴스 룸에서도 로스터에 섞여 들어올 수 있는 meta_players id를 위해 meta_players 전체도 함께 돌려준다.
+ */
+export async function fetchAllRoomPlayers(
+    roomId: string | null | undefined,
+    cols: string,
+): Promise<ResolvedRawPlayer[]> {
+    const metaRows = await selectAllPages((from, to) =>
+        supabase.from('meta_players').select(cols).order('id').range(from, to));
+    const out: ResolvedRawPlayer[] = metaRows.map(r => ({ ...r, id: String(r.id), source_player_id: String(r.id) }));
+    if (!roomId) return out;
+
+    const instances = (await selectAllPages((from, to) =>
+        supabase.from('room_player_instances').select('instance_id, source_player_id').eq('room_id', roomId).order('instance_id').range(from, to)
+    )) as { instance_id: string; source_player_id: string }[];
+    if (instances.length === 0) return out;
+
+    const sourceIds = Array.from(new Set(instances.map(i => String(i.source_player_id))));
+    const rawById = new Map<string, Record<string, unknown>>((await selectCards(sourceIds)).map(r => [String(r.id), r]));
+    // 카드에 없는 source는 meta_players로(옛 포맷 하위호환) — 이미 전체를 받아 둔 metaRows에서 찾는다.
+    const metaById = new Map<string, Record<string, unknown>>(metaRows.map(r => [String(r.id), r]));
+    for (const inst of instances) {
+        const sourceId = String(inst.source_player_id);
+        const raw = rawById.get(sourceId) ?? metaById.get(sourceId);
+        if (!raw) continue;
+        out.push({ ...raw, id: String(inst.instance_id), source_player_id: sourceId });
+    }
+    return out;
+}
+
+/** fetchAllRoomPlayers 결과에서 요청한 id만, 요청한 순서·중복 제거로 고른다 — fetchMetaPlayersByRosterIds(ids)와 같은 결과. */
+export function pickRawPlayersByIds<T extends { id: string }>(all: T[], ids: string[]): T[] {
+    const byId = new Map<string, T>();
+    for (const p of all) byId.set(String(p.id), p);
+    const out: T[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+        const key = String(id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const p = byId.get(key);
+        if (p) out.push(p);
+    }
+    return out;
+}

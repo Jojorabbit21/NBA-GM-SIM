@@ -137,13 +137,22 @@ export function useCurrentLeague(): CurrentLeagueState {
         const roomId = room.id;
         let timer: ReturnType<typeof setTimeout> | null = null;
         let cancelled = false;
+        // [2026-10-25] 300ms → 1초로 늘려 FA 서명·트레이드처럼 한 건이 league_teams UPDATE를 연달아 일으키는 경우를 한 번으로 묶는다.
+        // 단 알림이 끊기지 않고 이어져도(드래프트 픽 연속 등) 팀 목록이 영영 갱신되지 않는 일이 없게, 첫 알림부터 3초가 지나면 강제로 읽는다.
+        const DEBOUNCE_MS = 1000;
+        const MAX_WAIT_MS = 3000;
+        let firstPendingAt = 0;
 
         const refetchTeams = () => {
+            const now = Date.now();
+            if (!timer) firstPendingAt = now;
             if (timer) clearTimeout(timer);
+            const wait = Math.max(0, Math.min(DEBOUNCE_MS, firstPendingAt + MAX_WAIT_MS - now));
             timer = setTimeout(async () => {
+                timer = null;
                 const updated = await listLeagueTeams(roomId);
                 if (!cancelled) setLeagueTeams(updated);
-            }, 300);
+            }, wait);
         };
 
         const channel = supabase
