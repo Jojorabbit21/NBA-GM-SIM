@@ -54,6 +54,42 @@
 
 
 
+## 2026-10-25 — 시즌 어워드 미발송 수정 (ALL_STAR 행을 "발표 완료"로 오판)
+
+**배경**: PBL 정규시즌 종료(regular_season_ended_at 10-24 02:00Z) 후 24시간이 지났는데 MVP/DPOY/올팀 뉴스·어워드가 안 나감. DB 확인: league_player_awards에 ALL_STAR 24행(10-21 생성)만 있고 MVP 등 0행, league_events에 mvp_award 등 0건. `runScheduledSeasonAwards()`의 멱등성 검사가 league_id의 모든 어워드 행을 세서 올스타 행 때문에 매 틱 continue.
+
+**변경 파일**:
+- `server/src/scheduler.ts` (runScheduledSeasonAwards, 서버 전용·미러 없음)
+
+**Before**:
+```ts
+const { count: alreadyPosted } = await supabase
+    .from('league_player_awards')
+    .select('id', { count: 'exact', head: true })
+    .eq('league_id', league.id);
+if ((alreadyPosted ?? 0) > 0) continue;
+
+const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
+if (!room) continue;
+```
+
+**After**:
+```ts
+const { data: room } = await supabase.from('rooms').select('id, season_number').eq('league_id', league.id).maybeSingle();
+if (!room) continue;
+const { count: alreadyPosted } = await supabase
+    .from('league_player_awards')
+    .select('id', { count: 'exact', head: true })
+    .eq('league_id', league.id)
+    .eq('season_number', room.season_number ?? 1)
+    .eq('award_type', 'MVP');
+if ((alreadyPosted ?? 0) > 0) continue;
+```
+
+**검증**: 배포 후 다음 틱에 PBL에 대해 자동 발송되는지 DB(league_player_awards MVP, league_events mvp_award) 확인 필요.
+
+**롤백 방법**: Before 블록으로 되돌림.
+
 ## 2026-10-25 — 로비 팀 편집 모달 연고지 고정
 
 **배경**: 팀 설정 탭은 연고지를 고정하지만, 로비의 팀 "편집"(TeamSetupModal)은 팀 이름 전체를 자유 입력해 유저가 연고지를 바꿀 수 있었음(실제로 샬럿 → "우동 호네츠"). 서버 RPC 검증은 이번엔 추가하지 않음(사용자 결정).

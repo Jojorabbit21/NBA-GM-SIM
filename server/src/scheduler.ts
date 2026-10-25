@@ -310,14 +310,18 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        const { data: room } = await supabase.from('rooms').select('id, season_number').eq('league_id', league.id).maybeSingle();
+        if (!room) continue;
+
+        // Only count season-award rows (MVP); ALL_STAR rows are written earlier in the season and
+        // must not be mistaken for "already posted".
         const { count: alreadyPosted } = await supabase
             .from('league_player_awards')
             .select('id', { count: 'exact', head: true })
-            .eq('league_id', league.id);
+            .eq('league_id', league.id)
+            .eq('season_number', (room as any).season_number ?? 1)
+            .eq('award_type', 'MVP');
         if ((alreadyPosted ?? 0) > 0) continue;
-
-        const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
-        if (!room) continue;
 
         console.log(`[scheduler:season] league=${league.id} — posting season awards`);
         await computeAndPostSeasonAwards(room.id, league.id).catch(err =>
