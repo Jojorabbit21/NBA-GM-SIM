@@ -10,6 +10,8 @@ import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import { useGame } from '../../../hooks/useGameContext';
 import { supabase } from '../../../services/supabaseClient';
 import { applyMetaPlayerPoolFilter } from '../../../services/multi/draftPoolQuery';
+import { TEAM_DATA } from '../../../data/teamData';
+import { VIRTUAL_TEAMS } from '../../../data/virtualTeams';
 import { TeamSetupModal } from '../../../components/multi/TeamSetupModal';
 import { useLeagueDraft } from '../../../hooks/useLeagueDraft';
 import { usePersonalDraftStatus } from '../../../hooks/usePersonalDraftStatus';
@@ -590,6 +592,7 @@ const LeagueLobbyPanel: React.FC = () => {
                     open={!!editTarget}
                     roomId={room.id}
                     userId={userId}
+                    fixedCity={TEAM_DATA[editTarget.team_slug]?.city ?? VIRTUAL_TEAMS.find(t => t.team_slug === editTarget.team_slug)?.city}
                     existingTeamIds={leagueTeams
                         .filter(t => t.id !== editTarget.id)
                         .map(t => t.team_slug)}

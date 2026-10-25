@@ -13,6 +13,8 @@ interface TeamSetupModalProps {
     userId:          string;
     /** 같은 방의 다른 멤버 team_id slug 목록 (자기 제외) — 중복 방지용 */
     existingTeamIds: string[];
+    /** 지정하면 연고지는 고정 표시하고 닉네임만 입력받는다. 저장 시 `연고지 닉네임`으로 합쳐 전달. */
+    fixedCity?:      string;
     initial?: {
         name:           string;
         abbr:           string;
@@ -40,7 +42,7 @@ type FieldErrors = Partial<Record<FieldKey, string>>;
 const HEX_FORMAT_MSG = '#RRGGBB 형식이어야 합니다';
 
 export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
-    open, roomId, userId, existingTeamIds, initial, onClose, onSaved, saveOverride,
+    open, roomId, userId, existingTeamIds, fixedCity, initial, onClose, onSaved, saveOverride,
 }) => {
     const [name,           setName]           = useState('');
     const [abbr,           setAbbr]           = useState('');
@@ -54,7 +56,9 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
     // 모달이 열릴 때마다 초기값으로 리셋
     useEffect(() => {
         if (!open) return;
-        setName(initial?.name           ?? '');
+        const initName = initial?.name ?? '';
+        const cityPrefix = fixedCity ? `${fixedCity} ` : '';
+        setName(cityPrefix && initName.startsWith(cityPrefix) ? initName.slice(cityPrefix.length) : initName);
         setAbbr(initial?.abbr           ?? '');
         setColorPrimary(initial?.colorPrimary   ?? '#e11d48');
         setColorSecondary(initial?.colorSecondary ?? '#fbbf24');
@@ -91,6 +95,7 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
 
     const handleSave = async () => {
         const trimName = name.trim();
+        const fullName = fixedCity ? `${fixedCity} ${trimName}` : trimName;
         const errors = validate(trimName);
         setFieldErrors(errors);
         if (Object.values(errors).some(Boolean)) return;
@@ -99,10 +104,10 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
         setSaveErr(null);
         let saveError: string | null = null;
         if (saveOverride) {
-            const res = await saveOverride({ name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
+            const res = await saveOverride({ name: fullName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
             saveError = res.error;
         } else {
-            const res = await setMemberTeam({ roomId, userId, name: trimName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
+            const res = await setMemberTeam({ roomId, userId, name: fullName, abbr: displayAbbr, colorPrimary, colorSecondary, colorText });
             saveError = res.error;
         }
         setSaving(false);
@@ -160,20 +165,28 @@ export const TeamSetupModal: React.FC<TeamSetupModalProps> = ({
                         {displayAbbr || '—'}
                     </div>
                     <span className="text-sm text-slate-400 ko-normal">
-                        {name.trim() || '팀명 미입력'}
+                        {name.trim() ? (fixedCity ? `${fixedCity} ${name.trim()}` : name.trim()) : '팀명 미입력'}
                     </span>
                 </div>
 
                 {/* 입력 필드 */}
                 <div className="space-y-3">
                     <div>
-                        <label className="text-xs text-slate-400 ko-normal block mb-1">팀 이름</label>
+                        {fixedCity && (
+                            <>
+                                <label className="text-xs text-slate-400 ko-normal block mb-1">연고지 (고정)</label>
+                                <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-500 ko-normal truncate mb-3">
+                                    {fixedCity}
+                                </div>
+                            </>
+                        )}
+                        <label className="text-xs text-slate-400 ko-normal block mb-1">{fixedCity ? '닉네임' : '팀 이름'}</label>
                         <input
                             type="text"
                             value={name}
                             onChange={e => { setName(e.target.value); clearField('name'); }}
                             maxLength={16}
-                            placeholder="예: 서울 파이어스"
+                            placeholder={fixedCity ? '예: 파이어스' : '예: 서울 파이어스'}
                             className={inputClass(fieldErrors.name)}
                         />
                         {fieldErrors.name && <InlineNotice tone="danger" size="sm" className="mt-1">{fieldErrors.name}</InlineNotice>}

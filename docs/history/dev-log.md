@@ -50,6 +50,28 @@
 
 
 
+
+
+
+
+## 2026-10-25 — 로비 팀 편집 모달 연고지 고정
+
+**배경**: 팀 설정 탭은 연고지를 고정하지만, 로비의 팀 "편집"(TeamSetupModal)은 팀 이름 전체를 자유 입력해 유저가 연고지를 바꿀 수 있었음(실제로 샬럿 → "우동 호네츠"). 서버 RPC 검증은 이번엔 추가하지 않음(사용자 결정).
+
+**변경 파일**:
+- `components/multi/TeamSetupModal.tsx` — `fixedCity?: string` prop 추가. 지정 시 연고지 읽기 전용 표시 + 닉네임만 입력, 저장/미리보기 시 `연고지 닉네임`으로 합침. 미지정 시 기존 동작.
+- `views/multi/season/LeagueLobbyPanel.tsx` — 편집 모달에 `fixedCity`(TEAM_DATA → VIRTUAL_TEAMS 순으로 조회한 city) 전달.
+
+**Before**: 모달의 "팀 이름" 단일 입력(1~16자)이 `team_name` 전체를 그대로 저장.
+
+**After**: `fixedCity`가 있으면 연고지 박스(고정) + "닉네임" 입력, 저장값 = `${fixedCity} ${닉네임}`.
+
+**DB 데이터 정정**: `league_teams` id `d208de99-9052-4369-a9f9-f886ee426894` team_name "우동 호네츠" → "샬럿 호네츠".
+
+**검증**: tsc 해당 파일 오류 없음.
+
+**롤백 방법**: 두 파일의 변경을 git revert. DB 이름은 UPDATE로 원복.
+
 ## 2026-10-25 — 드래프트 풀 화면 상태 저장을 모듈 변수 → URL 쿼리로 교체
 
 **배경**: 직전 항목(`fe1e436c`)은 필터/정렬/페이지를 모듈 변수(`viewStateByLeague`)에 보관해 새로고침하면 사라지고 공유도 안 됐다. 사용자 요청으로 URL 쿼리 방식으로 변경.
