@@ -4,6 +4,7 @@
  * HTTP 라우트:
  *   GET  /          → 헬스체크
  *   POST /start-draft  → 어드민이 드래프트 수동 시작
+ *   POST /refresh-draft-pool → 어드민이 대기 중 드래프트 룸의 풀/선수 데이터 최신화
  *   POST /run-lottery  → 어드민이 로터리 추첨 실행 (직후 방 준비까지 이어서 처리)
  *   GET  /ws        → WebSocket 업그레이드 (드래프트 방 입장)
  *
@@ -16,7 +17,7 @@ import type { ServerWebSocket } from 'bun';
 import { verifyToken, isGlobalAdmin } from './auth';
 import { RoomManager } from './RoomManager';
 import { startScheduler } from './scheduler';
-import { handleStartDraft, handleRunLottery } from './startDraft';
+import { handleStartDraft, handleRunLottery, handleRefreshDraftPool } from './startDraft';
 import { simWorkerPool } from './workers/simWorkerPool';
 import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
@@ -199,6 +200,11 @@ const server = Bun.serve<WsData>({
         // 드래프트 로터리 추첨 (어드민 JWT 필수) — 추첨 직후 방 준비까지 이어서 처리
         if (url.pathname === '/run-lottery' && req.method === 'POST') {
             return handleRunLottery(req);
+        }
+
+        // 드래프트 룸 풀/선수 데이터 최신화 (어드민 JWT 필수, 시작 전 waiting 상태에서만)
+        if (url.pathname === '/refresh-draft-pool' && req.method === 'POST') {
+            return handleRefreshDraftPool(req);
         }
 
         // 경기 수동 시뮬 오버라이드 (어드민용, admin-sim-override EF 대체)

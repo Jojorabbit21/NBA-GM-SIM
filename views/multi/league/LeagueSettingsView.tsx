@@ -8,7 +8,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Save, CalendarDays, Clock, Users, Shield, Trash2, RotateCcw, Trophy, Activity, DollarSign, ArrowLeftRight, Wallet, Info, Crown, ClipboardList, TrendingUp, Link2, Copy, Check, UserPlus, Eye } from 'lucide-react';
 import { TabBar } from '../../../components/common/TabBar';
 import { useLeagueContext } from './LeagueLayout';
-import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague, kickMemberToAi, createLeagueInvite, revokeLeagueInvite, listPendingInvites, buildInviteUrl, type LeagueInviteRow } from '../../../services/multi/leagueService';
+import { updateLeagueSettings, leaveLeague, runDraftLottery, startDraft, refreshDraftPool, resetTournament, updateTeamName, getRoomMemberEmails, deleteLeague, kickMemberToAi, createLeagueInvite, revokeLeagueInvite, listPendingInvites, buildInviteUrl, type LeagueInviteRow } from '../../../services/multi/leagueService';
 import { supabase } from '../../../services/supabaseClient';
 import { useGame } from '../../../hooks/useGameContext';
 import { listDraftPicks, type LeagueTeamRow, type DraftPickRow } from '../../../services/multi/roomQueries';
@@ -293,6 +293,10 @@ const LeagueSettingsView: React.FC = () => {
 
     // ── 드래프트 즉시 시작 상태 — 추첨 완료 후 예정 시각 전에 어드민이 수동으로 시작 ──────
     const [draftStarting, setDraftStarting] = useState(false);
+    // [2026-10-25] 드래프트 룸 데이터 최신화 버튼 상태
+    const [poolRefreshing, setPoolRefreshing] = useState(false);
+    const [poolRefreshErr, setPoolRefreshErr] = useState<string | null>(null);
+    const [poolRefreshMsg, setPoolRefreshMsg] = useState<string | null>(null);
     const [draftStartErr, setDraftStartErr] = useState<string | null>(null);
 
     // ── kick state ────────────────────────────────────────────────────────────
@@ -658,6 +662,20 @@ const LeagueSettingsView: React.FC = () => {
         setDraftStarting(false);
         if (err) { setDraftStartErr(err); return; }
         reload();
+    };
+
+    // 방 준비 후 수정된 선수 데이터/풀 멤버십을 대기 중 드래프트 룸에 반영(접속자 화면도 즉시 갱신).
+    const handleRefreshDraftPool = async () => {
+        if (!league?.id) return;
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        if (!token) { setPoolRefreshErr('인증 정보를 가져올 수 없습니다.'); return; }
+        setPoolRefreshing(true);
+        setPoolRefreshErr(null);
+        setPoolRefreshMsg(null);
+        const { data, error: err } = await refreshDraftPool(league.id, token);
+        setPoolRefreshing(false);
+        if (err || !data) { setPoolRefreshErr(err ?? '최신화에 실패했습니다.'); return; }
+        setPoolRefreshMsg(`최신화 완료 — 풀 ${data.poolSize}명 (추가 ${data.added}, 제외 ${data.removed})`);
     };
 
     const handleReset = async () => {
@@ -2342,6 +2360,26 @@ const LeagueSettingsView: React.FC = () => {
                                 ))
                             }
                         </div>
+
+                        {league.status === 'recruiting' && (
+                            <div className="space-y-2 pt-1">
+                                <p className="text-xs text-slate-400 ko-normal">
+                                    드래프트 시작 전에 선수 데이터(OVR·능력치 등)나 풀 설정을 수정했다면 눌러서 드래프트 룸에 반영하세요.
+                                    접속 중인 참가자 화면도 바로 갱신됩니다.
+                                </p>
+                                {poolRefreshErr && <InlineNotice tone="danger" size="sm">{poolRefreshErr}</InlineNotice>}
+                                {poolRefreshMsg && <InlineNotice tone="success" size="sm">{poolRefreshMsg}</InlineNotice>}
+                                <Button
+                                    variant="secondary"
+                                    shape="xl"
+                                    onClick={handleRefreshDraftPool}
+                                    isLoading={poolRefreshing}
+                                    loadingText="최신화 중…"
+                                >
+                                    드래프트 룸 데이터 최신화
+                                </Button>
+                            </div>
+                        )}
 
                         {/* [2026-09-11] 예정 시각(draft_scheduled_at) 전이라도 어드민이 바로
                             드래프트를 시작할 수 있게 — league.status가 여전히 'drafting'으로

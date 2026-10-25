@@ -1051,6 +1051,34 @@ export const startDraft = async (
     }
 };
 
+// ─── 드래프트 룸 데이터 최신화 (어드민, Fly.io POST /refresh-draft-pool) ─────
+// [2026-10-25] 방 준비 후 어드민이 선수 데이터를 고쳐도 대기 중 룸엔 반영되지 않던 문제 —
+// 풀 멤버십 재계산 + 선수 데이터 재조회 + 접속자 스냅샷 재전송. 드래프트 시작 전에만 가능.
+
+export const refreshDraftPool = async (
+    leagueId: string,
+    accessToken?: string
+): Promise<{ data: { poolSize: number; added: number; removed: number } | null; error: string | null }> => {
+    const token = accessToken ?? (await supabase.auth.getSession()).data.session?.access_token;
+    try {
+        const res = await fetch(`${FLY_SERVER}/refresh-draft-pool`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ leagueId }),
+        });
+        const data = await res.json().catch(() => ({})) as any;
+        if (!res.ok) {
+            return { data: null, error: httpActionFailure(res.status, data?.error, '드래프트 룸 최신화') };
+        }
+        return { data: { poolSize: data.poolSize ?? 0, added: data.added ?? 0, removed: data.removed ?? 0 }, error: null };
+    } catch (e: any) {
+        return { data: null, error: actionFailure(e, '드래프트 룸 최신화') };
+    }
+};
+
 // ─── 드래프트 로터리 추첨 (어드민, Fly.io POST /run-lottery) ─────────────────
 // 예전엔 Supabase RPC를 클라이언트가 직접 호출해서 Bun 서버가 로터리 완료 시점을 몰랐고,
 // 그래서 서버의 30초 폴링 스케줄러가 뒤늦게 발견할 때까지 방 준비(prepareDraftRoom)가

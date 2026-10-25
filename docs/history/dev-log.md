@@ -50,6 +50,26 @@
 
 
 
+## 2026-10-25 — 세션 설정 드래프트 탭에 "드래프트 룸 데이터 최신화" 버튼 (풀 멤버십 + 선수 데이터 재반영)
+
+**배경**: 로터리 직후 방 준비(`prepareDraftRoom`)에서 풀 멤버십(`draft_config.poolIds`)과 선수 데이터가 확정되고, 이후 어드민이 meta_players(OVR/연도/은퇴 등)를 고쳐도 대기 중 드래프트 룸엔 반영되지 않았다. 유저가 큐를 저장할 때 `setQueue`가 `poolIds`로 걸러서 선수가 빠질 수 있었다(10-24 시작 직전 재조회는 OVR만 갱신, 멤버십은 고정).
+
+**변경 파일**:
+- `server/src/startDraft.ts` — 풀 ID 계산을 `computeDraftPoolIds(league)`로 분리(buildDraftSetup 공유, 로직 동일), 신규 `handleRefreshDraftPool` (POST /refresh-draft-pool)
+- `server/src/DraftRoom.ts` — 신규 `refreshPool(poolIds)`, `reloadPool(allowShrink=false)` 파라미터 추가
+- `server/src/index.ts` — 라우트 등록
+- `services/multi/leagueService.ts` — `refreshDraftPool()`
+- `views/multi/league/LeagueSettingsView.tsx` — 드래프트 탭 추첨 완료 + recruiting 구간에 버튼/상태 메시지
+
+**Before**: buildDraftSetup 안에 풀 쿼리·계약 필터·OVR 필터가 인라인. reloadPool은 행 수가 줄면 무조건 거부.
+
+**After**: 위 인라인 블록을 `computeDraftPoolIds`로 그대로 이동(동작 동일). 신규 핸들러: 어드민 검증 → cursor가 'waiting'일 때만 → 풀 재계산 → 용량 가드(teamCount×totalRounds) → `rooms.draft_config.poolIds` 갱신(cursor waiting 조건부 update) → 메모리 방이 있으면 `refreshPool`(config 교체 + 선수 재조회 + 스냅샷 브로드캐스트, 실패 시 메모리 config 원복). 응답 `{poolSize, added, removed}`.
+
+**검증**: 클라 tsc에서 변경 파일 오류 없음. 서버 tsc는 기존 환경 오류(bun 타입, 내로잉)만. E2E(대기 룸 접속 중 OVR 수정 → 버튼 → 화면 갱신)는 미실시, 배포 필요.
+
+**롤백 방법**: 이 커밋 되돌리기. computeDraftPoolIds 인라인 복원 시 buildDraftSetup의 `const poolIds = await computeDraftPoolIds(league)` 줄을 원래 블록으로 교체.
+
+
 ## 2026-10-25 — 드래프트 풀 화면에 "선수 데이터 새로고침" 버튼 (staleTime은 Infinity 유지)
 
 **배경**: 어드민이 meta_players를 고쳐도 `multiSearchPool`이 staleTime Infinity + localStorage 24h 영속이라 새로고침해도 옛 풀이 보임. staleTime을 줄이면(60초 검토) 모든 사용자가 주기적으로 풀 전체를 재조회하므로, 평소엔 캐시를 쓰고 필요한 사람이 버튼으로 직접 새로 받게 함. (참고: 멀티 OVR은 meta_players.ovr_base/ovr_custom 고정값이 우선이라 능력치만 고치면 OVR 배지는 안 바뀜 — 별개 이슈.)

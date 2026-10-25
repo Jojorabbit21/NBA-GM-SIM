@@ -201,8 +201,9 @@ export class DraftRoom {
      * meta_players의 OVR/능력치를 고쳐도 반영되도록, 시작 순간의 DB 값으로 OVR을 다시 계산한다.
      * poolIds(풀 멤버십)는 준비 단계에서 확정된 그대로 쓴다. 조회 실패/빈 결과면 기존 풀을 유지하고
      * false 반환(부분 결과로 선수가 빠지는 것 방지). 성공 시 true.
+     * allowShrink: 어드민이 멤버십을 직접 줄인 refreshPool()에서만 true(행 수 감소를 정상으로 취급).
      */
-    private async reloadPool(): Promise<boolean> {
+    private async reloadPool(allowShrink = false): Promise<boolean> {
         const poolIds: string[] = (this.config.poolIds ?? []).map(String);
         const chunks: string[][] = [];
         for (let i = 0; i < poolIds.length; i += CHUNK_SIZE) chunks.push(poolIds.slice(i, i + CHUNK_SIZE));
@@ -221,7 +222,7 @@ export class DraftRoom {
                 return false;
             }
             const rows = results.flatMap(r => r.data ?? []) as DraftPoolPlayer[];
-            if (rows.length === 0 || rows.length < this.poolPlayers.length) {
+            if (rows.length === 0 || (!allowShrink && rows.length < this.poolPlayers.length)) {
                 console.warn(`[DraftRoom:${this.roomId}] reloadPool returned ${rows.length} rows (prev ${this.poolPlayers.length}), keeping previous pool`);
                 return false;
             }
@@ -231,6 +232,26 @@ export class DraftRoom {
             console.error(`[DraftRoom:${this.roomId}] reloadPool threw, keeping previous pool: ${e?.message}`);
             return false;
         }
+    }
+
+    /**
+     * [2026-10-25] 어드민 "드래프트 룸 데이터 최신화" — 새 poolIds로 풀 멤버십을 교체하고 선수 데이터를
+     * 다시 읽어 접속자 전원에게 스냅샷을 재전송한다. waiting 상태에서만 동작(시작 후엔 false).
+     * 실패 시 메모리 config/풀은 원래대로 되돌린다(DB의 poolIds는 호출자가 이미 갱신했으므로, 이 경우
+     * 다음 방 로드 때 새 값이 적용됨).
+     */
+    async refreshPool(poolIds: string[]): Promise<boolean> {
+        if (this.status !== 'waiting') return false;
+        const prevConfig = this.config;
+        this.config = { ...prevConfig, poolIds };
+        const ok = await this.reloadPool(true);
+        if (!ok || this.status !== 'waiting') {
+            this.config = prevConfig;
+            return false;
+        }
+        this.broadcast(encode(this.buildSnapshot()));
+        console.log(`[DraftRoom:${this.roomId}] pool refreshed by admin (${poolIds.length} players)`);
+        return true;
     }
 
     // ── 스냅샷 (연결 시 1회) ─────────────────────────────────────────────────

@@ -127,6 +127,85 @@ export async function handleRunLottery(req: Request): Promise<Response> {
     return json({ ok: true, leagueTeams: lotteryResult });
 }
 
+// ── HTTP POST /refresh-draft-pool 핸들러 ──────────────────────────────────────
+// [2026-10-25] 어드민 "드래프트 룸 데이터 최신화" 버튼. 방 준비(로터리 직후) 때 확정된 풀 멤버십과
+// 선수 데이터는 그 뒤 어드민이 meta_players(OVR/연도/은퇴 등)를 고쳐도 반영되지 않아, 유저가 큐를
+// 짤 때 선수가 빠지거나 옛 OVR이 보였다. 리그 설정으로 풀 ID를 다시 계산해 draft_config.poolIds에 쓰고,
+// 메모리에 올라온 방이 있으면 선수 데이터도 재조회해 접속자 전원에게 스냅샷을 다시 보낸다.
+// 드래프트 시작 전(cursor 'waiting')에만 허용 — 진행 중 풀 변경은 픽 정합성을 깨므로 막는다.
+export async function handleRefreshDraftPool(req: Request): Promise<Response> {
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return json({ error: 'Unauthorized' }, 401);
+
+    const userId = await verifyToken(token);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+    const body = await req.json().catch(() => null) as { leagueId?: string } | null;
+    if (!body?.leagueId) return json({ error: 'leagueId required' }, 400);
+
+    const { data: league } = await supabase
+        .from('leagues')
+        .select('*')
+        .eq('id', body.leagueId)
+        .single();
+    if (!league)                                                            return json({ error: 'league not found' }, 404);
+    if (league.admin_user_id !== userId && !(await isGlobalAdmin(userId)))  return json({ error: 'Forbidden' }, 403);
+    if (league.status !== 'recruiting')                                     return json({ error: 'league not in recruiting status' }, 400);
+
+    const { data: room } = await supabase
+        .from('rooms')
+        .select('id, draft_config, draft_cursor')
+        .eq('league_id', body.leagueId)
+        .eq('status', 'active')
+        .single();
+    if (!room) return json({ error: 'room not found' }, 404);
+
+    const cursorStatus = (room.draft_cursor as any)?.status;
+    if (!room.draft_config || cursorStatus !== 'waiting') {
+        return json({ error: 'draft room is not in waiting state (lottery not done or draft already started)' }, 400);
+    }
+
+    const prevConfig = room.draft_config as any;
+    const prevIds: string[] = (prevConfig.poolIds ?? []).map(String);
+    const poolIds = await computeDraftPoolIds(league);
+
+    // 용량 가드(buildDraftSetup과 같은 공식) — 설정이 좁혀져 풀이 모자라면 기존 풀을 그대로 둔다.
+    const requiredPicks = (prevConfig.teamCount ?? 0) * (prevConfig.totalRounds ?? 0);
+    if (poolIds.length === 0 || poolIds.length < requiredPicks) {
+        return json({
+            error: `draft pool too small: pool=${poolIds.length} < required=${requiredPicks} — 기존 풀 유지`,
+        }, 400);
+    }
+
+    // cursor가 여전히 waiting일 때만 반영(그 사이 시작됐으면 덮어쓰지 않음)
+    const { data: updatedRows, error: updErr } = await supabase
+        .from('rooms')
+        .update({ draft_config: { ...prevConfig, poolIds } })
+        .eq('id', room.id)
+        .contains('draft_cursor', { status: 'waiting' })
+        .select('id');
+    if (updErr) return json({ error: updErr.message }, 500);
+    if (!updatedRows?.length) return json({ error: 'draft already started' }, 409);
+
+    // 메모리에 올라온 방(접속자 있음)은 선수 데이터까지 재조회 + 스냅샷 재전송.
+    // 메모리에 없으면 다음 로드 때 새 poolIds로 읽으므로 추가 작업 불필요.
+    const live = RoomManager.get(room.id);
+    if (live) {
+        const ok = await live.refreshPool(poolIds);
+        if (!ok) return json({ error: 'pool saved but live room refresh failed (draft already started or DB error)' }, 500);
+    }
+
+    const prevSet = new Set(prevIds);
+    const nextSet = new Set(poolIds);
+    return json({
+        ok: true,
+        poolSize: poolIds.length,
+        added:   poolIds.filter(id => !prevSet.has(id)).length,
+        removed: prevIds.filter(id => !nextSet.has(id)).length,
+    });
+}
+
 // ── 스케줄러 진입점 (자동 시작) ───────────────────────────────────────────────
 
 export async function startDraftForRoom(leagueId: string, roomId: string): Promise<boolean> {
@@ -152,6 +231,41 @@ interface DraftSetup {
         applyCustomOverrides: boolean;
         autoPickAfterMisses: number;
     };
+}
+
+/**
+ * 리그 설정(연도/OVR/은퇴 필터/계약 모드)으로 드래프트 풀 선수 ID 목록을 계산한다.
+ * buildDraftSetup(준비 단계)과 handleRefreshDraftPool(어드민 최신화 버튼)이 공유 — 2026-10-25 분리.
+ */
+async function computeDraftPoolIds(league: any): Promise<string[]> {
+    const ovrMin          = league.draft_ovr_min           ?? 0;
+    const ovrMax          = league.draft_ovr_max           ?? 99;
+    const draftYearMin    = league.draft_year_min          ?? 2001;
+    const draftYearMax    = league.draft_year_max          ?? 2025;
+    const retiredFilter   = league.draft_retired_filter    ?? 'all';
+    const useCustomOverrides = shouldUseCustomOverrides(league);
+
+    // 풀 구성 — draft_year_min~draft_year_max 범위 하나로 통일(2026-09-16, 'standard'/
+    // 'alltime'/'rookies' 풀 타입 구분 완전 폐지). custom_overrides 적용 여부는 리그별
+    // use_custom_overrides 설정을 따른다(오버라이드 없는 선수는 no-op이라 켜도 무해하지만,
+    // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
+    // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
+    let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year, ovr_base, ovr_custom');
+    q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
+    const { data: poolData } = await q;
+    // [2026-09-22] contract_mode 'standard' — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는
+    // 선수(은퇴 레전드 등)"는 풀에서 제외하고 당해 클래스(draft_year ≥ draft_year_max) 신인만 예외.
+    // 매핑 전 raw 단계에서 걸러야 한다(매퍼가 모든 선수에 플레이스홀더 contract를 박음).
+    // 클라이언트 services/multi/draftPoolCapacity.ts fetchDraftPoolPlayers()와 미러 — 둘 다 고칠 것.
+    const contractMode    = league.contract_mode ?? 'standard';
+    const seasonStartYear = Number(league.virtual_season_year ?? new Date().getFullYear());
+    const poolRows = (poolData ?? []).filter((p: any) => contractMode !== 'standard'
+        || isEligibleForStandardPool(p.base_attributes?.contract, p.draft_year, seasonStartYear, draftYearMax));
+    const rawPlayers = poolRows.map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
+
+    return rawPlayers
+        .filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax)
+        .map((p: any) => String(p.id));
 }
 
 async function buildDraftSetup(
@@ -255,34 +369,9 @@ async function buildDraftSetup(
     const pickDurationSec    = (league as any).draft_pick_duration_sec        ?? DEFAULT_PICK_DURATION_SEC;
     const autoPickAfterMisses = (league as any).draft_auto_pick_after_misses  ?? DEFAULT_AUTO_PICK_AFTER_MISSES;
     const draftStrategy   = (league as any).draft_pool_strategy     ?? 'snake';
-    const ovrMin          = (league as any).draft_ovr_min           ?? 0;
-    const ovrMax          = (league as any).draft_ovr_max           ?? 99;
-    const draftYearMin    = (league as any).draft_year_min          ?? 2001;
-    const draftYearMax    = (league as any).draft_year_max          ?? 2025;
-    const retiredFilter   = (league as any).draft_retired_filter    ?? 'all';
     const useCustomOverrides = shouldUseCustomOverrides(league as any);
 
-    // 풀 구성 — draft_year_min~draft_year_max 범위 하나로 통일(2026-09-16, 'standard'/
-    // 'alltime'/'rookies' 풀 타입 구분 완전 폐지). custom_overrides 적용 여부는 리그별
-    // use_custom_overrides 설정을 따른다(오버라이드 없는 선수는 no-op이라 켜도 무해하지만,
-    // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
-    // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
-    let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year, ovr_base, ovr_custom');
-    q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
-    const { data: poolData } = await q;
-    // [2026-09-22] contract_mode 'standard' — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는
-    // 선수(은퇴 레전드 등)"는 풀에서 제외하고 당해 클래스(draft_year ≥ draft_year_max) 신인만 예외.
-    // 매핑 전 raw 단계에서 걸러야 한다(매퍼가 모든 선수에 플레이스홀더 contract를 박음).
-    // 클라이언트 services/multi/draftPoolCapacity.ts fetchDraftPoolPlayers()와 미러 — 둘 다 고칠 것.
-    const contractMode    = (league as any).contract_mode ?? 'standard';
-    const seasonStartYear = Number((league as any).virtual_season_year ?? new Date().getFullYear());
-    const poolRows = (poolData ?? []).filter((p: any) => contractMode !== 'standard'
-        || isEligibleForStandardPool(p.base_attributes?.contract, p.draft_year, seasonStartYear, draftYearMax));
-    const rawPlayers = poolRows.map((p: any) => mapRawPlayerToRuntimePlayer(p, useCustomOverrides));
-
-    const poolIds = rawPlayers
-        .filter((p: any) => p.ovr >= ovrMin && p.ovr <= ovrMax)
-        .map((p: any) => String(p.id));
+    const poolIds = await computeDraftPoolIds(league);
 
     // [2026-09-17] 드래프트 풀 용량 최종 방어선 — 참가팀 × 라운드만큼 선수가 없으면 DraftRoom이
     // 마지막 픽에서 "no available players for auto pick"으로 멈춘 채 영영 완료되지 않는다
