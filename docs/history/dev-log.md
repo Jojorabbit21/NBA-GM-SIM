@@ -54,6 +54,102 @@
 
 
 
+## 2026-10-25 — 드래프트 풀 이름 검색어를 URL 쿼리에서 로컬 상태로 환원
+
+**배경**: 3d1c0558에서 검색어(`q`)를 URL로 옮긴 뒤 키 입력마다 라우터 갱신+전체 재파싱으로 렉, 한글 자모 분리가 발생. 직전 수정(로컬 입력+디바운스)은 compositionEnd 때 값이 안 바뀌어 URL 반영이 누락돼 "풀네임이 안 뜨고 한 글자 지워야 뜸" 버그를 만듦 → 디바운스 방식 폐기.
+
+**변경 파일**: `views/multi/season/MultiDraftPoolView.tsx` (client)
+
+**Before**: `nameQuery = searchParams.get('q')`, 입력은 nameInput 로컬+200ms 디바운스로 `q` 갱신
+**After**: `const [nameQuery, setNameQuery] = useState('')` 단순 로컬 상태. 나머지 필터/정렬/페이지는 URL 유지. 검색 변경 시 page 파라미터가 있을 때만 1페이지로 리셋.
+
+**롤백 방법**: 3d1c0558 상태로 복원.
+
+## 2026-10-25 — 드래프트 풀 이름 검색 한글 자모 분리 수정
+
+**배경**: 커밋 3d1c0558에서 검색어(`q`)를 URL 쿼리로 옮기면서 input의 `value`가 라우터(setSearchParams) 왕복으로 결정됨 → 한글 IME 조합 중 값이 덮어써져 "ㄴㅣㅋㅗㄹㄹㅏ"처럼 자모가 분리됨.
+
+**변경 파일**:
+- `views/multi/season/MultiDraftPoolView.tsx` (client)
+
+**Before**:
+```tsx
+<input value={nameQuery} onChange={e => setNameQuery(e.target.value)} />   // nameQuery = searchParams.get('q')
+```
+
+**After**:
+```tsx
+const [nameInput, setNameInput] = useState(nameQuery);   // 로컬 입력 상태
+// 조합 중(composingRef)에는 URL 반영·외부 동기화 안 함, 조합 종료 후 200ms 디바운스로 setNameQuery
+<input value={nameInput} onChange={...setNameInput} onCompositionStart/End={...} />
+```
+
+**검증**: tsc에서 해당 파일 오류 없음. 브라우저 한글 입력은 육안 확인 필요.
+
+**롤백 방법**: Before 코드로 복원 (nameInput/composingRef/두 useEffect 제거).
+
+## 2026-10-25 — 시즌 어워드 뉴스 sim_date를 가상 캘린더 키 데이트로
+
+**배경**: 어워드 뉴스(mvp_award 등 4종)의 `league_events.sim_date`에 `rooms.sim_date`(실제 KST 방송일, 2026-10-25)가 들어가 뉴스피드(sim_date 기준 정렬/필터)에 현실 날짜로 노출됨. 어워드 키 데이트는 정규시즌 종료 +1일(`postseasonVirtualAnchor`, utils/seasonConfig.ts의 awardsAnnouncement와 동일).
+
+**변경 파일**:
+- `server/src/scheduler.ts` (runScheduledSeasonAwards; 서버 전용)
+- `server/src/postSeasonAwards.ts` (서버 전용)
+
+**Before**:
+```ts
+// scheduler: .select('id') ... computeAndPostSeasonAwards(room.id, league.id)
+// postSeasonAwards: rooms select 'id, season, season_number, sim_date'; const simDate = room.sim_date ?? null;
+```
+
+**After**:
+```ts
+// scheduler: .select('id, virtual_season_year, season_calendar')
+//   const awardsDate = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
+//   computeAndPostSeasonAwards(room.id, league.id, awardsDate)
+// postSeasonAwards(roomId, leagueId, virtualDate): const simDate = virtualDate;
+```
+
+**검증**: tsc 해당 파일 신규 오류 0. PBL 기존 4건은 SQL로 sim_date 2026-10-25 → 2027-04-14 보정(정규시즌 마지막 경기 2027-04-13).
+
+**롤백 방법**: Before로 되돌림. DB 보정은 `update league_events set sim_date='2026-10-25' where type in (...) and league_id='f7836b62-...'`.
+
+## 2026-10-25 — 시즌 어워드 미발송 수정 (ALL_STAR 행을 "발표 완료"로 오판)
+
+**배경**: PBL 정규시즌 종료(regular_season_ended_at 10-24 02:00Z) 후 24시간이 지났는데 MVP/DPOY/올팀 뉴스·어워드가 안 나감. DB 확인: league_player_awards에 ALL_STAR 24행(10-21 생성)만 있고 MVP 등 0행, league_events에 mvp_award 등 0건. `runScheduledSeasonAwards()`의 멱등성 검사가 league_id의 모든 어워드 행을 세서 올스타 행 때문에 매 틱 continue.
+
+**변경 파일**:
+- `server/src/scheduler.ts` (runScheduledSeasonAwards, 서버 전용·미러 없음)
+
+**Before**:
+```ts
+const { count: alreadyPosted } = await supabase
+    .from('league_player_awards')
+    .select('id', { count: 'exact', head: true })
+    .eq('league_id', league.id);
+if ((alreadyPosted ?? 0) > 0) continue;
+
+const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
+if (!room) continue;
+```
+
+**After**:
+```ts
+const { data: room } = await supabase.from('rooms').select('id, season_number').eq('league_id', league.id).maybeSingle();
+if (!room) continue;
+const { count: alreadyPosted } = await supabase
+    .from('league_player_awards')
+    .select('id', { count: 'exact', head: true })
+    .eq('league_id', league.id)
+    .eq('season_number', room.season_number ?? 1)
+    .eq('award_type', 'MVP');
+if ((alreadyPosted ?? 0) > 0) continue;
+```
+
+**검증**: 배포 후 다음 틱에 PBL에 대해 자동 발송되는지 DB(league_player_awards MVP, league_events mvp_award) 확인 필요.
+
+**롤백 방법**: Before 블록으로 되돌림.
+
 ## 2026-10-25 — 블락: 헬프 블락 → 림 프로텍터 개입 판정으로 교체 (드랍/블리츠 보정 이전, 지역방어 보너스, 개입 파울)
 
 **배경**: PBL(레전드 풀)에서 블락이 너무 적다는 사용자 지적. 실경기 1,318건 실측: 팀 BPG 3.58, 블락 95+ 13명 평균 1.25개(최고 하워드 2.21), 무톰보(blk 99) 1.29개.
@@ -243,102 +339,6 @@ const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selec
 
 **롤백 방법**: 미러 4개 파일을 함께 되돌린다. constants는 위 Before 블록으로 복원하고 `RIM_PROTECTION` 블록 전체를 삭제한다. possessionHandler는 신규 함수 3개와 2.6단계 2줄을 삭제하고, 파울 3군데를 위 Before로, 블락 D~F를 위 Before로 되돌린다.
 
-## 2026-10-25 — 드래프트 풀 이름 검색어를 URL 쿼리에서 로컬 상태로 환원
-
-**배경**: 3d1c0558에서 검색어(`q`)를 URL로 옮긴 뒤 키 입력마다 라우터 갱신+전체 재파싱으로 렉, 한글 자모 분리가 발생. 직전 수정(로컬 입력+디바운스)은 compositionEnd 때 값이 안 바뀌어 URL 반영이 누락돼 "풀네임이 안 뜨고 한 글자 지워야 뜸" 버그를 만듦 → 디바운스 방식 폐기.
-
-**변경 파일**: `views/multi/season/MultiDraftPoolView.tsx` (client)
-
-**Before**: `nameQuery = searchParams.get('q')`, 입력은 nameInput 로컬+200ms 디바운스로 `q` 갱신
-**After**: `const [nameQuery, setNameQuery] = useState('')` 단순 로컬 상태. 나머지 필터/정렬/페이지는 URL 유지. 검색 변경 시 page 파라미터가 있을 때만 1페이지로 리셋.
-
-**롤백 방법**: 3d1c0558 상태로 복원.
-
-## 2026-10-25 — 드래프트 풀 이름 검색 한글 자모 분리 수정
-
-**배경**: 커밋 3d1c0558에서 검색어(`q`)를 URL 쿼리로 옮기면서 input의 `value`가 라우터(setSearchParams) 왕복으로 결정됨 → 한글 IME 조합 중 값이 덮어써져 "ㄴㅣㅋㅗㄹㄹㅏ"처럼 자모가 분리됨.
-
-**변경 파일**:
-- `views/multi/season/MultiDraftPoolView.tsx` (client)
-
-**Before**:
-```tsx
-<input value={nameQuery} onChange={e => setNameQuery(e.target.value)} />   // nameQuery = searchParams.get('q')
-```
-
-**After**:
-```tsx
-const [nameInput, setNameInput] = useState(nameQuery);   // 로컬 입력 상태
-// 조합 중(composingRef)에는 URL 반영·외부 동기화 안 함, 조합 종료 후 200ms 디바운스로 setNameQuery
-<input value={nameInput} onChange={...setNameInput} onCompositionStart/End={...} />
-```
-
-**검증**: tsc에서 해당 파일 오류 없음. 브라우저 한글 입력은 육안 확인 필요.
-
-**롤백 방법**: Before 코드로 복원 (nameInput/composingRef/두 useEffect 제거).
-
-## 2026-10-25 — 시즌 어워드 뉴스 sim_date를 가상 캘린더 키 데이트로
-
-**배경**: 어워드 뉴스(mvp_award 등 4종)의 `league_events.sim_date`에 `rooms.sim_date`(실제 KST 방송일, 2026-10-25)가 들어가 뉴스피드(sim_date 기준 정렬/필터)에 현실 날짜로 노출됨. 어워드 키 데이트는 정규시즌 종료 +1일(`postseasonVirtualAnchor`, utils/seasonConfig.ts의 awardsAnnouncement와 동일).
-
-**변경 파일**:
-- `server/src/scheduler.ts` (runScheduledSeasonAwards; 서버 전용)
-- `server/src/postSeasonAwards.ts` (서버 전용)
-
-**Before**:
-```ts
-// scheduler: .select('id') ... computeAndPostSeasonAwards(room.id, league.id)
-// postSeasonAwards: rooms select 'id, season, season_number, sim_date'; const simDate = room.sim_date ?? null;
-```
-
-**After**:
-```ts
-// scheduler: .select('id, virtual_season_year, season_calendar')
-//   const awardsDate = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
-//   computeAndPostSeasonAwards(room.id, league.id, awardsDate)
-// postSeasonAwards(roomId, leagueId, virtualDate): const simDate = virtualDate;
-```
-
-**검증**: tsc 해당 파일 신규 오류 0. PBL 기존 4건은 SQL로 sim_date 2026-10-25 → 2027-04-14 보정(정규시즌 마지막 경기 2027-04-13).
-
-**롤백 방법**: Before로 되돌림. DB 보정은 `update league_events set sim_date='2026-10-25' where type in (...) and league_id='f7836b62-...'`.
-
-## 2026-10-25 — 시즌 어워드 미발송 수정 (ALL_STAR 행을 "발표 완료"로 오판)
-
-**배경**: PBL 정규시즌 종료(regular_season_ended_at 10-24 02:00Z) 후 24시간이 지났는데 MVP/DPOY/올팀 뉴스·어워드가 안 나감. DB 확인: league_player_awards에 ALL_STAR 24행(10-21 생성)만 있고 MVP 등 0행, league_events에 mvp_award 등 0건. `runScheduledSeasonAwards()`의 멱등성 검사가 league_id의 모든 어워드 행을 세서 올스타 행 때문에 매 틱 continue.
-
-**변경 파일**:
-- `server/src/scheduler.ts` (runScheduledSeasonAwards, 서버 전용·미러 없음)
-
-**Before**:
-```ts
-const { count: alreadyPosted } = await supabase
-    .from('league_player_awards')
-    .select('id', { count: 'exact', head: true })
-    .eq('league_id', league.id);
-if ((alreadyPosted ?? 0) > 0) continue;
-
-const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
-if (!room) continue;
-```
-
-**After**:
-```ts
-const { data: room } = await supabase.from('rooms').select('id, season_number').eq('league_id', league.id).maybeSingle();
-if (!room) continue;
-const { count: alreadyPosted } = await supabase
-    .from('league_player_awards')
-    .select('id', { count: 'exact', head: true })
-    .eq('league_id', league.id)
-    .eq('season_number', room.season_number ?? 1)
-    .eq('award_type', 'MVP');
-if ((alreadyPosted ?? 0) > 0) continue;
-```
-
-**검증**: 배포 후 다음 틱에 PBL에 대해 자동 발송되는지 DB(league_player_awards MVP, league_events mvp_award) 확인 필요.
-
-**롤백 방법**: Before 블록으로 되돌림.
-
 ## 2026-10-25 — 로비 팀 편집 모달 연고지 고정
 
 **배경**: 팀 설정 탭은 연고지를 고정하지만, 로비의 팀 "편집"(TeamSetupModal)은 팀 이름 전체를 자유 입력해 유저가 연고지를 바꿀 수 있었음(실제로 샬럿 → "우동 호네츠"). 서버 RPC 검증은 이번엔 추가하지 않음(사용자 결정).
@@ -472,22 +472,6 @@ if ((alreadyPosted ?? 0) > 0) continue;
 
 **롤백 방법**: 위 두 파일의 retired 관련 추가분 제거(DB 컬럼은 그대로 둠).
 
-## 2026-10-24 — 플레이오프 시리즈 결과/우승/파이널 MVP 알림 스포일러 차단
-
-**배경**: 멀티 플레이오프 중 채팅 위젯 알림 탭/토스트로 경기 중계가 끝나기 전에 시리즈 결과·우승이 노출됨. 원인: `playoff_series_result`/`playoff_champion`/`finals_mvp`가 `game_id` 없이 insert되어 `league_events` RLS(`game_id IS NULL`이면 즉시 공개)를 우회 → Realtime으로 서버 시뮬 직후 알림 발행(뉴스피드도 동일하게 선공개).
-
-**변경 파일**:
-- `server/src/simRunner.ts` (server 전용) — 위 3종 pendingEvents에 `gameId` 추가
-- `hooks/useLeagueNotifications.ts` (client) — 공개 후 30초 폴링 보충 + 알림 id 중복 방지 Set
-
-**Before**: `{ type: 'playoff_series_result', simDate: gameDate, teamIds: [...], payload }` (gameId 없음, champion/finals_mvp 동일). 훅은 Realtime INSERT만 수신.
-
-**After**: 3종 모두 `gameId` 포함 → RLS가 `game_start_time + room_replay_interval` 이후에만 공개. Realtime은 INSERT 시점 RLS로 판정해 공개 전 행을 보내지 않으므로, 훅이 30초마다(탭 활성 시) 최근 1시간·3종 조회로 보충. 첫 조회는 기존 행을 "알림 완료"로만 기록.
-
-**검증**: tsc 오류 없음(해당 파일). 실서버 E2E 미실시.
-
-**롤백 방법**: simRunner의 `gameId,` 3줄 삭제 + 훅 되돌리기(git revert). 이미 저장된 행은 game_id가 채워진 채 남아도 무해.
-
 ## 2026-10-24 — 드래프트 전 리그에서 선수 비교 툴 개방
 
 **배경**: 드래프트가 끝나기 전 리그는 홈/뉴스/드래프트 풀 메뉴만 노출되어 "도구 › 선수 비교"에 접근할 수 없었음. 드래프트 풀 선수끼리 비교할 수 있도록 요청.
@@ -504,6 +488,596 @@ if ((alreadyPosted ?? 0) > 0) continue;
 **검증**: tsc 해당 3파일 오류 없음. 로스터 ID가 비어도 `useLeagueRawStats`/`usePlayerSeasonStatsLeague`가 isPending을 false로 집계(2026-09-11 Fix)하므로 무한 스피너 없음.
 
 **롤백 방법**: 사이드바 compare 블록을 isDraftComplete 내부로 되돌리고, 헤더 도구 div를 `{isDraftComplete && (...)}`로 감싸고, poolLabel을 'FA' 고정으로.
+
+## 2026-10-24 — 플레이오프 시리즈 결과/우승/파이널 MVP 알림 스포일러 차단
+
+**배경**: 멀티 플레이오프 중 채팅 위젯 알림 탭/토스트로 경기 중계가 끝나기 전에 시리즈 결과·우승이 노출됨. 원인: `playoff_series_result`/`playoff_champion`/`finals_mvp`가 `game_id` 없이 insert되어 `league_events` RLS(`game_id IS NULL`이면 즉시 공개)를 우회 → Realtime으로 서버 시뮬 직후 알림 발행(뉴스피드도 동일하게 선공개).
+
+**변경 파일**:
+- `server/src/simRunner.ts` (server 전용) — 위 3종 pendingEvents에 `gameId` 추가
+- `hooks/useLeagueNotifications.ts` (client) — 공개 후 30초 폴링 보충 + 알림 id 중복 방지 Set
+
+**Before**: `{ type: 'playoff_series_result', simDate: gameDate, teamIds: [...], payload }` (gameId 없음, champion/finals_mvp 동일). 훅은 Realtime INSERT만 수신.
+
+**After**: 3종 모두 `gameId` 포함 → RLS가 `game_start_time + room_replay_interval` 이후에만 공개. Realtime은 INSERT 시점 RLS로 판정해 공개 전 행을 보내지 않으므로, 훅이 30초마다(탭 활성 시) 최근 1시간·3종 조회로 보충. 첫 조회는 기존 행을 "알림 완료"로만 기록.
+
+**검증**: tsc 오류 없음(해당 파일). 실서버 E2E 미실시.
+
+**롤백 방법**: simRunner의 `gameId,` 3줄 삭제 + 훅 되돌리기(git revert). 이미 저장된 행은 game_id가 채워진 채 남아도 무해.
+
+## 2026-10-25 — 속공 러너 스피드 보정 신설 (SIM_CONFIG.TRANSITION_SPEED)
+
+**배경**: 페이스 재설계(바로 아래 항목) 후에도 빠른 페이스의 이득이 작음. 사용자 요청 "속공 보너스를 아주 소폭만" — 일괄 상향(리그 인플레)
+대신 로스터 연동 안 채택: 속공 림·페인트 마무리에 러너 스피드 반영, 기준점을 실제 속공 슈터 평균으로 잡아 리그 영향 0.
+(기존 Afterburner 아키타입은 ZONE_SHOOTING.ENABLED=false로 비활성.) 측정: 속공 슈터 (speed+spdBall)/2 평균 79.6, p10 60 / p50 82.5 / p90 93.
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `TRANSITION_SPEED` 신설(TRANSITION_ENTRY 아래)
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — `transitionSpeedBonus`
+
+**Before**: `... + stealTransitionBonus + transitionEntryBonus + (press?.hitBonus ?? 0) ...` (스피드 보정 없음)
+**After**:
+```ts
+const transitionSpeedBonus = (tsCfg.ENABLED && selectedPlayType === 'Transition' && (preferredZone === 'Rim' || preferredZone === 'Paint'))
+    ? clamp(((actor.attr.speed + actor.attr.spdBall) / 2 - 80) * 0.0025, ±0.04) : 0;
+... + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + ...
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(작업 폴더 전체 사본): 리그(1230경기×2) 계수 0/0.0015/0.0025 팀 득점 111.3·TS .574·속공 PPP 1.05 불변.
+최고 스피드 팀 댈러스(82.7) 속공 PPP 1.039→1.048, pace10−5 득실 +1.8→+1.7(유지) / 최저 덴버(67.6) 1.037→1.026, −0.3→−0.7. 미커밋·미배포.
+
+**롤백 방법**: `TRANSITION_SPEED.ENABLED = false`.
+
+## 2026-10-25 — 템포·페이스 재설계: 포세션 BASE 19→18 + 페이스 슛 감점 삭제 + 페이스 체력 대칭 커브 + 속공 진입 방식 연동
+
+**배경**: 볼륨 점검 — 엔진 팀 득점 105 vs NBA 114.2, 차이의 3/4이 포세션 수(엔진 95.3 vs NBA 101.4, 같은 공식 FGA−ORB+0.44FTA+TOV).
+전 팀 pace 5(중립)에서도 95.1로 부족 → 엔진 기본 템포 문제. `GAME_ENV.BASE_POSSESSIONS: 98`은 어디서도 안 쓰이는 값(포세션 수는 소요 시간 누적 결과).
+사용자 제보: PBL 빠른 페이스 팀이 효율 저하·턴오버 급증으로 손해만 봄. 통제 실험(애틀랜타 단독 580경기): pace 10 득실 −15.5(pace 5 −4.8), TS .580→.531,
+원인 = pace>5 1단계당 모든 슛 −1%(속공 포함). 감점 끄면 −6.3, 체력 페널티 끄면 −14.7(체력 쪽 영향 미미). 턴오버율은 pace 무관 16.4~16.5%(개수만 포세션 따라 증가).
+사용자 판단: 슛 감점은 체력→성공률 디버프와 이중 과세 → 삭제, 대가를 체력으로 일원화. 속공은 공격권 진입 방식(라이브볼/데드볼)과 연동.
+**주의**: 측정 사본엔 다른 세션의 미커밋 블락 재설계(RIM_PROTECTION, 진행 중)가 포함 — 그 작업으로 리그 TS .577→.566 하락 관측.
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `POSSESSION_TIME.BASE`, `FATIGUE.PACE_FATIGUE_*` → `PACE_FATIGUE_CURVE`, `TRANSITION_ENTRY` 신설(STEAL_TRANSITION 위)
+- `services/game/engine/pbp/flowEngine.ts` / `server/src/shared/engine/pbp/flowEngine.ts` — 5. Pace Penalty 삭제
+- `services/game/engine/fatigueSystem.ts` / `server/src/shared/engine/fatigueSystem.ts` — pace 체력 블록(다른 세션 미커밋 변경 있는 파일, pace 블록만 교체)
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — 속공 선택 확률 진입 배율 + `transitionEntryBonus`
+
+**Before**:
+```ts
+POSSESSION_TIME: { BASE: 19, PACE_NEUTRAL: 5, PACE_COMPRESSION: 0.2 }
+// flowEngine
+if (offSliders.pace > 5) { hitRate -= (offSliders.pace - 5) * 0.01; }
+// fatigue — PACE_FATIGUE_THRESHOLD 5 / BASE 5 / PER_LEVEL 2
+if (sliders.pace >= C.PACE_FATIGUE_THRESHOLD) { drain *= 1 + (C.PACE_FATIGUE_BASE + (pace − 5) × C.PACE_FATIGUE_PER_LEVEL) / 100; }
+// possessionHandler
+if (Math.random() < (sliders.pace * 0.03 + defRebFreqBonus + stealFreqBonus)) {
+... + stealTransitionBonus + (press?.hitBonus ?? 0) ...
+```
+
+**After**:
+```ts
+POSSESSION_TIME: { BASE: 18, ... }
+// flowEngine: 페이스 감점 없음(주석으로 이전 코드 보존)
+drain *= (1 + interpolateCurve(sliders.pace, C.PACE_FATIGUE_CURVE) / 100);   // [[1,-8],[5,0],[10,30]]
+const entryMult = !te.ENABLED ? 1 : lastEntryWasSteal ? STEAL_MULT(2.0) : lastEntryWasDefReb ? DEF_REB_MULT(2.0)
+                : lastEntryWasOffReb ? OFF_REB_MULT(0) : DEAD_BALL_MULT(0.35);
+if (Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus)) {
+const transitionEntryBonus = (Transition && !steal) ? (defReb ? DEF_REB_HIT_BONUS(+0.03) : DEAD_BALL_HIT_BONUS(−0.04)) : 0;
+... + stealTransitionBonus + transitionEntryBonus + ...
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(작업 폴더 전체 사본, PBL 실제 전술, 시드 2):
+- BASE 19→18: 포세션 실제 전술 94.2→100.9 / pace5 95.1→102.2(NBA 101.4), FTA 20.5→22.2, 파울 17.0→18.2, 효율 불변. (17.5는 104.7/106.1로 과다)
+- 애틀랜타 통제(580경기×2) pace10−pace5 득실 차: 기존 −10.7 → 감점 삭제+F30 −2.4 → +진입 연동 −1.9 → +진입 질 −1.5.
+  샌안토니오: −9.7 → +0.6 → +1.7 → +1.2. F45·F60은 체력 대가가 커져 대부분 손해(애틀랜타 −3.8/−5.4), 백투백에서 F45 pace10 −14.5.
+- 리그(1230경기×2): 진입 연동 후 속공 비율 수비리바 13.8→27.7%, 스틸 59→72%, 데드볼 13.8→4.8%, 공격리바 10→0%; 리그 속공 비중 16.5→16.0%.
+  진입 질 추가 후 속공 PPP 수비리바 1.018→1.067 / 데드볼 1.007→0.939 / 스틸 1.073→1.081, 리그 득점 111.1→111.3(불변). 미커밋·미배포.
+
+**롤백 방법**: BASE 18→19 / 페이스 감점 주석 복원 / `PACE_FATIGUE_CURVE` → THRESHOLD·BASE·PER_LEVEL과 이전 블록 /
+`TRANSITION_ENTRY.ENABLED = false`(빈도 배율·질 보너스 둘 다 즉시 무효).
+
+## 2026-10-25 — 비슈팅 파울 기본 확률 상향(C1): BASE_RATE 0.025 → 0.05, MAX_RATE 0.06 → 0.12
+
+**배경**: 볼륨 점검(엔진 FTA 18.5 / 파울 14.3 vs NBA 21.7 / 18.7, FTr .222 vs .244). 2026-10-23 FTA 조사에서 결정 대기였던
+"NON_SHOOTING_FOUL.BASE_RATE 2.5%→5~6.5% + MAX 0.12" 재측정. 기존 MAX 0.06은 BASE 5~6%면 플레이 보정만으로 바로 걸림. 사용자 결정: C1.
+
+**변경 파일** (client/server 미러 쌍): `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `NON_SHOOTING_FOUL.BASE_RATE`, `MAX_RATE`
+
+**Before**: `BASE_RATE: 0.025,` / `MAX_RATE: 0.06,`
+**After**: `BASE_RATE: 0.05,` / `MAX_RATE: 0.12,`
+
+**검증**: client/server tsc 오류 0. 전체 엔진(작업 폴더, PBL 실제 전술, 시드 2 × 1230경기) C0 → C1(→ C2 6%/12% 참고):
+파울 14.3 → 16.7(17.7), FTA 18.5 → 19.8(20.3), FTr .222 → .241(.250), 비슈팅 파울 4.1 → 6.5(보너스 0.6 → 1.2), 슈팅파울 판정 7.3 불변,
+포세션 95.3 → 94.4(94.1), 득점 105.4 → 104.9(104.6), TS .577 → .579, 파울아웃 0.032 → 0.055(0.072)/팀경기, 5파울+ 0.26 → 0.39.
+PF/36: 샤킬 2.12→2.37, 고베어 1.85→2.47, 엠비드 2.45→2.72, 요키치 2.77→3.33. 미커밋·미배포.
+참고: FTr은 맞지만 득점은 오히려 −0.5 — 보너스 전 파울이 공격권 유지 대신 시간을 소모(템포 문제와 연결).
+
+**롤백 방법**: Before 값 두 개로 되돌리면 됨.
+
+## 2026-10-25 — 2점 과효율 보정: 페인트 점퍼 전용 커브 + 플로터·훅·미드 커브 하향 + 레이업 +0.05
+
+**배경**: 3점 커브 하향(K1/K3) 후 3점 의존 플레이 PPP가 낮아(CatchShoot 0.928 vs PostUp 1.031) 반대쪽 점검.
+엔진(전체, PBL 실제 전술) vs NBA 2023-24(Basketball-Reference): 2P% .577 vs .545, 림 .608 vs 0~3ft .699(오히려 낮음),
+페인트 .575 vs 3~10ft .452, 미드 .494 vs 10~16ft .446/16ft~ .407. 슛 유형 분해 — 페인트 슛이 림과 같은 INSIDE_BASE_PCT(57%)에서 출발,
+특히 페인트 점퍼는 MID_OFF_CURVE(+8.7%p)를 57% 위에 얹어 기대 63.7%(림 레이업 55.9%보다 높음), 플로터 54.9%, 훅 61.2%, 미드 49~51%.
+사용자 결정: 목표 페인트 점퍼 46 / 플로터 45 / 훅 50 / 미드 43~44%, 림 +0/+3/+5 탐색 후 "+5". 기본 명중률 블록(사용자 잠금)은 미변경.
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SHOOTING.LAYUP_OFF_CURVE`(+0.05), `MID_OFF_CURVE`(−0.06),
+  `FLOATER_OFF_CURVE`(−0.10), `HOOK_OFF_CURVE`(−0.11), `PAINT_JUMPER_OFF_CURVE` 신설(이전 MID −0.177). 이전 값은 각 커브 주석에 기록.
+- `services/game/engine/pbp/flowEngine.ts` / `server/src/shared/engine/pbp/flowEngine.ts` — shotCurve 선택
+
+**Before**:
+```ts
+            : st === 'Hook' ? S.HOOK_OFF_CURVE
+            : S.MID_OFF_CURVE;  // Pullup, Jumper, Fadeaway
+LAYUP   [[25,-.135],[40,-.105],[55,-.075],[70,-.045],[85,-.005],[90,+.015],[95,+.075],[99,+.135]]
+MID     [[25,-.083],[40,-.033],[55,+.007],[70,+.047],[85,+.077],[92,+.097],[95,+.137],[99,+.187]]
+FLOATER [[50,-.177],[60,-.147],[70,-.107],[80,-.067],[85,-.047],[90,-.027],[95,-.007],[99,+.013]]
+HOOK    [[50,-.217],[60,-.167],[70,-.107],[80,-.037],[85,-.017],[90,+.003],[95,+.023],[99,+.033]]
+```
+
+**After**:
+```ts
+            : st === 'Hook' ? S.HOOK_OFF_CURVE
+            : (preferredZone === 'Paint' && st === 'Jumper') ? S.PAINT_JUMPER_OFF_CURVE
+            : S.MID_OFF_CURVE;  // Pullup, Jumper(Mid), Fadeaway
+LAYUP        [[25,-.085],[40,-.055],[55,-.025],[70,+.005],[85,+.045],[90,+.065],[95,+.125],[99,+.185]]
+MID          [[25,-.143],[40,-.093],[55,-.053],[70,-.013],[85,+.017],[92,+.037],[95,+.077],[99,+.127]]
+PAINT_JUMPER [[25,-.260],[40,-.210],[55,-.170],[70,-.130],[85,-.100],[92,-.080],[95,-.040],[99,+.010]]
+FLOATER      [[50,-.277],[60,-.247],[70,-.207],[80,-.167],[85,-.147],[90,-.127],[95,-.107],[99,-.087]]
+HOOK         [[50,-.327],[60,-.277],[70,-.217],[80,-.147],[85,-.127],[90,-.107],[95,-.087],[99,-.077]]
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(커브 이동 환경변수)와 실제 코드 사본 결과 완전 일치(시드 2 × 1230경기, 전체 엔진, PBL 실제 전술):
+2P% .577→.550, 림 .608→.630, 페인트 .575→.444, 미드 .494→.432, 3P% .354→.356, TS .592→.577(NBA .580), 팀 득점 108.2→105.4.
+기대 성공률: 페인트 점퍼 63.7→46.0, 플로터 54.9→44.9, 훅 61.2→50.2, 미드 점퍼/풀업 49.1/50.6→43.1/44.6, 레이업 55.9→60.9.
+PPP: PostUp 1.031→0.986, CatchShoot 0.928→0.938, PnR_Handler/Iso 0.983/0.991→0.952/0.956, Transition 1.074→1.051, Putback 1.131→1.174.
+OVR 90+ 외곽−골밑 pts/36 격차 2.9→3.2(유지). 림 +3 대안: 2P% .545·TS .574. 미커밋·미배포.
+남은 과제: 팀 득점이 NBA(114.2)보다 낮은 건 볼륨 쪽 — FTA 18.3(NBA 21.7), 3PA 비중 33%(39.5%).
+
+**롤백 방법**: Before 블록(각 커브 주석의 이전 값)으로 되돌리고 `PAINT_JUMPER_OFF_CURVE` 삭제 + flowEngine 한 줄 원복. 커브별 독립.
+
+## 2026-10-25 — 3점 커브 80~84 구간 36% 상향(K3)
+
+**배경**: 바로 아래 K1 적용 후 80~84 구간 기대 35.2%, 3점 의존 플레이 PPP 하락(CatchShoot 0.920). 사용자 목표: 80~84 약 36%.
+
+**변경 파일** (client/server 미러 쌍): `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `THREE_OFF_CURVE` 두 점
+
+**Before**: `[75, -0.030], [80, -0.005], [85, +0.020], [90, +0.042],`
+**After**: `[75, -0.030], [80, +0.008], [85, +0.024], [90, +0.042],`
+
+**검증**: 전체 엔진(작업 폴더 server/src/shared, PBL 실제 전술, 시드 2~3 × 1230경기), K1 → K3: 기대 성공률 75~79 32.9→33.3 / 80~84 35.2→36.1 /
+85~89 37.3→37.5 / 그 외 동일(<75 26.9, 90~94 38.9, 95~98 39.6, 99 41.4). 리그 3P% 35.0→35.4%, TS .590→.592, 팀 득점 107.7→108.0.
+PPP: CatchShoot 0.920→0.927, PnR_Handler 0.974→0.981(Iso 0.987), PnR_Pop 0.864→0.868. 41% 이상 4→6명(커리 43.8). 미커밋·미배포.
+
+**롤백 방법**: Before 한 줄로 되돌리면 K1 상태.
+
+## 2026-10-25 — 3점 커브 상위 완화·하위 하향(K1) + 스틸 후 속공 보너스 골밑 한정
+
+**배경**: 3번 문제(3점 최상위 과다). 현재 상태(이번 세션 변경 포함) 분해 — 슈터 3점 능력별 기대 성공률 <75 31.2% / 80~84 38.5% /
+85~89 40.5% / 90~94 43.4% / 95+ 46.1%, 커리 48.6%, 400+ 시도자 123명 중 41% 이상 35명, 리그 38.7%(NBA 36.6%), TS .607(NBA .580).
+커브 밖 가산(수비 −7.5%p·체력 +3.2%p·보너스 +4.5~5.4%p 등)이 구간 무관 약 +0.345로 일정 → 커브만으로 역산 가능.
+또 STEAL_TRANSITION.HIT_BONUS(+0.07)가 속공 3점에도 붙어 속공 3점(3점 시도의 18.8%) 기대 42.3%.
+사용자 목표: 75 미만 기대 25~28%, 95~98 약 40%, 99 41~42%. 후보 K1(중간 직선)/K2(중간 상향) 측정 후 K1 + 99점 +0.077→+0.072 채택,
+스틸 보너스 골밑 한정(S)도 함께 적용(제안 수용).
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SHOOTING.THREE_OFF_CURVE`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — `stealTransitionBonus` 조건
+
+**Before**:
+```ts
+THREE_OFF_CURVE: [[25,-.234],[40,-.154],[55,-.084],[70,-.014],[85,+.046],[90,+.078],[95,+.110],[99,+.136]]
+const stealTransitionBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal && selectedPlayType === 'Transition')
+    ? SIM_CONFIG.STEAL_TRANSITION.HIT_BONUS : 0;
+```
+
+**After**:
+```ts
+THREE_OFF_CURVE: [[25,-.265],[40,-.195],[55,-.125],[70,-.055],[75,-.030],[80,-.005],[85,+.020],[90,+.042],[95,+.060],[99,+.072]]
+const stealTransitionBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal && selectedPlayType === 'Transition'
+    && (preferredZone === 'Rim' || preferredZone === 'Paint'))
+    ? SIM_CONFIG.STEAL_TRANSITION.HIT_BONUS : 0;
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 전체 엔진(작업 폴더 server/src/shared 전체, PBL 실제 전술, 시드 2~3 × 1230경기):
+기대 성공률 <75 26.9 / 75~79 32.9 / 80~84 35.2 / 85~89 37.3 / 90~94 38.9 / 95~98 39.6 / 99 41.4%. 리그 3P% 38.7→35.0%, TS .607→.590,
+팀 득점 110.9→107.7. 41% 이상 35→4명(커리 42.9, 히로 42.2, 레지 밀러 42.0, 탐슨 41.8).
+**부작용**: 3점 의존 플레이 PPP 하락 — CatchShoot 1.013(HEAD)→0.920, PnR_Pop 0.895→0.864, OffBallScreen 1.016→0.970,
+PnR_Handler 1.003→0.974(Iso 0.985보다 다시 낮아짐), 커리 pts/36 27.8→25.4. 후속 조정 검토 중. 미커밋·미배포.
+
+**롤백 방법**: Before 두 블록으로 되돌리면 됨(독립).
+
+## 2026-10-25 — 골밑 스타 볼륨 보정: PostUp 선정 체격 혼합(P2) + 중립 기본 비중 재조정(V3) + PostUp 집중도(W1)
+
+**배경**: "공격에서 OVR 체급이 안 드러난다" 조사(PBL 실측, OVR 90+ 67명) — 같은 평균 OVR(92.8)에서 골밑형 빅 pts/36 16.7 vs 가드 22.1·SF 23.6·
+스트레치 빅 23.1, TS%는 비슷(.607) → 효율이 아니라 볼륨 문제. 공격형 골밑 빅(ins 85+) 17명 pts/36 10.6~25.7, 포스트 능력 상관 0.32 < 핸들링 0.53.
+원인: ① 중립 전술(5/5/5)에서 외곽 스타가 직접 만드는 플레이(Iso 1.5 + PnR_Handler 2.0) ≫ PostUp 1.2 ② postScorer에 체격이 없어 PostUp의 50%를
+가드·SF가 가져감(드렉슬러 89·조던 95 vs 올라주원 93) ③ PostUp 1인자가 풀의 30~40%만 가져감(순위 배율 2.2/1.6/1.0/0.6/0.3).
+사용자 결정: 빅맨에게 Iso를 여는 A안은 "Iso와 PostUp은 시작 위치만 다른 사실상 같은 플레이 — 볼륨 독식" 우려로 기각,
+P2(체격 0.4) + V3 + W1 채택(W2는 1인자 빅 31점대·2옵션 빅 손실로 기각).
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts` — PostUp actor criteria
+- `services/game/config/playTypeProfiles.ts` / `server/src/shared/game/config/playTypeProfiles.ts` — base 5개
+- `services/game/config/usageWeights.ts` / `server/src/shared/game/config/usageWeights.ts` — PostUp 순위 배율
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.POST_SELECTION` 신설(POSITION_WEIGHT 아래)
+
+**Before**:
+```ts
+const actor = pickWeightedActor(p => p.archetypes.postScorer);
+// PLAY_TYPE_PROFILES base: Iso 1.5 / PostUp 1.2 / PnR_Roll 1.1 / CatchShoot 1.2 / OffBallScreen 0.9
+// PLAY_TYPE_USAGE_WEIGHTS PostUp: [2.2, 1.6, 1.0, 0.6, 0.3]
+```
+
+**After**:
+```ts
+const postPhysW = SIM_CONFIG.POST_SELECTION.PHYSIQUE_WEIGHT;   // 0.4
+const actor = pickWeightedActor(p => p.archetypes.postScorer * (1 - postPhysW) + calculateScreenerPhysique(p.attr) * postPhysW);
+// base: Iso 1.1 / PostUp 1.8 / PnR_Roll 1.3 / CatchShoot 1.0 / OffBallScreen 0.8 (합계 10.7 유지)
+// PostUp: [3.0, 1.5, 0.8, 0.4, 0.2]
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(HEAD 사본 + 이번 세션 변경, 시드 2 × 1230경기) 단계별 OVR 90+ 외곽−골밑 pts/36 격차(중립/실제 전술):
+현재 9.5/7.1 → V1~V3 단독 8.3~6.1 → P1~P3 단독 9.1~7.9 → P2+V3 4.8/4.2 → +W1 4.3/3.1 → +W2 3.8/2.4.
+PostUp 슛 고유 포지션(중립+V3, P2 전): PG 12 / SG 19 / SF 19 / PF 23 / C 27%.
+새크라멘토 통제 실험: insideOut 1에서도 올라주원 18~20 vs 드렉슬러 26(풀 개수 한계).
+최종 전체 검증(작업 폴더 server/src/shared 전체 = 다른 세션 미커밋 포함, PBL 실제 전술, 시드 3 × 1230경기, HEAD 대비):
+격차 6.4 → 3.4, OVR–pts36 상관 0.483 → 0.515. 올라주원 10.8→15.0, 마이칸 15.0→19.6, 샤킬 24.7→28.6, 카림 25.0→30.0,
+말론 11.7→13.9, 야니스 16.4→18.0, 조던 30.0→29.6, 커리 27.8→28.4. 미커밋·미배포.
+
+**롤백 방법**: Before 세 블록으로 되돌리고 `POST_SELECTION` 삭제(셋은 독립 — 부분 롤백 가능).
+
+## 2026-10-24 — 턴오버 구성 재조정: 비강제 실책 ↓, 스틸 ↑(온볼·패싱레인 커브 평탄화), 차징 기본값 ↓
+
+**배경**: PBL 실측 팀당 경기 스틸 5.14 / 턴오버 14.39(스틸 비중 36%) vs NBA 2023-24 스틸 7.5 / 턴오버 13.6(약 55%,
+Basketball-Reference 리그 평균). 하네스 턴오버 출처 분해(현재 코드, 팀당 경기): 비강제 실책 5.40 · 온볼 스틸 3.42 · 차징 1.90 ·
+레인 스틸 0.96 · 샷클락 0.58 · 일리걸 스크린 0.39 — 총량은 맞고 구성이 틀림. 비강제 기본 6%가 지배, 레인 스틸 곡선이 수비자당 0.4%(stl 70)로 미미.
+배율 상향만 하면 두 스틸 커브 모두 90+ 급경사 때문에 엘리트 스틸러에게 몰려 SPG 4~5(온볼)·3.7+(레인) — 커브 모양 자체를 평탄화.
+사용자 결정: 레인 커브 A, 차징 1%. (NBA 차징 수치는 확인 못함 — 근거 약함 표시)
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `STEAL.ONBALL_STEAL_CURVE`, `STEAL.LANE_STEAL_CURVE`, `FOUL_EVENTS.OFFENSIVE_FOUL_BASE`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — calculateTurnoverChance `baseProb`
+
+**Before**:
+```ts
+ONBALL_STEAL_CURVE: [[40,.015],[55,.025],[70,.040],[80,.055],[85,.070],[90,.095],[95,.145],[99,.170]]
+LANE_STEAL_CURVE:   [[40,.001],[55,.002],[70,.004],[80,.006],[85,.009],[90,.013],[95,.022],[99,.028]]
+OFFENSIVE_FOUL_BASE: 0.015
+let baseProb = 0.06;
+```
+
+**After**:
+```ts
+ONBALL_STEAL_CURVE: [[40,.030],[55,.040],[70,.052],[80,.060],[85,.067],[90,.075],[95,.085],[99,.095]]
+LANE_STEAL_CURVE:   [[40,.005],[55,.009],[70,.016],[80,.022],[85,.027],[90,.033],[95,.040],[99,.045]]
+OFFENSIVE_FOUL_BASE: 0.010
+let baseProb = 0.035;
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(현재 코드 상태 + 이번 값, 강분포·C3·STEAL_TRANSITION 포함, 시드 3 × 1230경기):
+턴오버 13.26 → 13.39, 스틸 4.65 → 7.27(온볼 3.42 → 4.12, 레인 0.96 → 2.87), 비강제 실책 5.40 → 약 3.4, 차징 1.90 → 약 1.5,
+리그 PPP 1.0184 → 1.0199, 팀 득점 109.0 → 109.5. SPG 1/5/10/20/50위 3.00/2.28/1.58/1.14/0.75 → 2.55/2.05/1.86/1.54/1.13
+(상위: 페이튼 2.55, 스탁턴 2.38, 조던 2.38, 카와이 2.18, 버드 2.05). 스윕 비교: 온볼×1.3~1.5(곡선 유지) → SPG 1위 4.2~5.2(기각),
+레인×3.5(곡선 유지) → 1위 3.75(기각), 레인 B [[40,.006],[55,.010],[70,.018],[80,.024],[85,.028],[90,.032],[95,.036],[99,.039]] → 스틸 7.45·1위 2.35(대안).
+프레스 재설계(다른 세션, 미커밋)는 하네스 미포함 — 실제로는 프레스 트랩 스틸만큼 조금 더 많음. 미커밋·미배포.
+
+**롤백 방법**: Before 값 4개로 되돌리면 됨(상호 독립, 부분 롤백 가능 — 단 실책만 되돌리고 스틸을 남기면 턴오버 총량 약 +2).
+
+## 2026-10-24 — 블리츠 재설계: 커버리지 무관 킥아웃 폐지 + 블리츠 트랩 판정(탈출 = 패스아웃 / 실패 = 턴오버·스틸) + 커버리지 분포 재조정
+
+**배경**: 블리츠의 대가가 같은 포세션 안에서 일어나지 않았음 — PnR_Handler면 핸들러만 −8%·TOV+4%, PnR_Roll이면 롤맨만 +7%
+(플레이타입이 커버리지보다 먼저 결정). PnR_Handler의 "더블팀 유도 후 킥아웃"(0~40%)은 커버리지와 무관하게 플레이 선택 단계에서 결정.
+사용자 결정: ① 더블팀 킥아웃은 블리츠에서만 → 기존 킥아웃 삭제 ② 블리츠 = 핸들링 나쁘면 턴오버/스틸(→ 속공), 좋으면 다른 4명에게
+노마크 ③ 패스아웃 수신 = 스크리너 20~25%, 나머지 팀원 중 적합자 ④ 탈출 확률·분포는 시뮬레이션 튜닝 ⑤ 에이스 대상 블리츠 강화 불필요.
+선행 작업: 바로 아래 STEAL_TRANSITION 항목(스틸 후 속공).
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts`
+  - PnR_Handler 케이스의 PNR_HANDLER_KICKOUT 확률 킥아웃 블록 전체 삭제
+  - `resolvePlayAction(team, playType, sliders, blitz?: { handler, screener })` 4번째 인자 추가, `resolveBlitzPassOut()` 클로저 신설
+  - `PlayContext.blitzTarget?: 'screener' | 'weakside'`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts`
+  - `resolveBlitzTrap()`·`pickRotationDefender()` 신설(resolveScreen 아래)
+  - playCtx/identifyDefender 구조분해 `const` → `let`(`screener`만 const)
+  - 프레스 직후 "2.35 블리츠 트랩" 블록, `calcCoverage`(패스아웃 후 'none')를 턴오버·calculateHitRate에 전달
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts` — `PossessionResult.isBlitzTrap?`
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.BLITZ` 신설(SCREEN 아래), `PNR_COVERAGE.DIST` 변경
+- `components/dashboard/tactics/tacticsSliderConfig.ts`, `components/game/tabs/LiveTacticsTab.tsx` — 블리츠 설명 문구(client 전용)
+
+**Before**:
+```ts
+// playTypes PnR_Handler
+const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+const phkCfg = SIM_CONFIG.PNR_HANDLER_KICKOUT;   // phKickChance = 0~0.40 × playStyle
+if (Math.random() < phKickChance) { kickTarget = spacer ... return { ..., bonusHitRate: 0.01 + passIqBonus, isKickout: true }; }
+const screener = ...
+// possessionHandler: 블리츠 핸들러 = flowEngine BLITZ_HANDLER_PENALTY(0.08×scale) + TOV BLITZ_TOV_BONUS(0.04) + 온볼 스틸 +0.02
+// PNR_COVERAGE.DIST: 0 [0.70,0.20,0.10] / 1 [0.15,0.60,0.25] / 2 [0.10,0.20,0.70]
+```
+
+**After**:
+```ts
+if (blitz) return resolveBlitzPassOut(blitz.handler, blitz.screener);
+const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+const screener = ...   // 킥아웃 없음
+// possessionHandler 2.35: PnR_Handler && pnrCoverage === 'blitz' && !isKickout && secondaryActor
+//   resolveBlitzTrap(handler, defender, screenerDefender):
+//     skill = handling×0.5 + passVision×0.25 + passIq×0.25, trap = 트래퍼(1~2명) 평균(perDef×0.4 + stl×0.3 + agility×0.3)
+//     P(탈출) = interpolateCurve(skill − trap, ESCAPE_CURVE [[-20,.50],[0,.80],[20,.93],[40,.97]])
+//     실패: FAIL_STEAL_SHARE 0.6 → 트래퍼 stl 가중 스틸(isSteal → STEAL_TRANSITION 속공), 나머지 비강제 턴오버. isBlitzTrap: true 반환
+//     성공: resolvePlayAction(offTeam, 'PnR_Handler', sliders, { handler, screener }) → actor/secondaryActor/zone/shotType/bonus/isKickout 교체,
+//           defender = pickRotationDefender(트래퍼 제외, 같은 슬롯 → helpDefIq 최고), calcCoverage = 'none'
+// resolveBlitzPassOut: SCREENER_SHARE 0.22 → 스크리너 selectZone(4존) 롤(BLITZ_ROLL_BONUS 0.07)/팝(BLITZ_POP_BONUS 0.06),
+//   나머지 → 핸들러·스크리너 제외 spacer 가중 선정, OPEN_BONUS 0.05. 둘 다 + 핸들러 passIq 보너스, isKickout: true(통계 PnR_Handler)
+// PNR_COVERAGE.DIST: 0 [0.80,0.15,0.05] / 1 [0.15,0.70,0.15] / 2 [0.10,0.25,0.65]
+```
+`PNR_HANDLER_KICKOUT`는 PASSIQ_BONUS_* 만 사용(확률부 미사용). flowEngine의 BLITZ_HANDLER_PENALTY·TOV의 BLITZ_TOV_BONUS/blitzBonus는
+PnR_Handler에서 더 이상 도달하지 않음(코드는 그대로, Roll/Pop 블리츠 보너스는 유지).
+
+**검증**: client/server tsc 수정 파일 오류 0(타 파일 기존 오류는 무관). 하네스(HEAD 사본 + 지금까지 변경, 시드 2 × 1230경기):
+- 탈출 곡선 스윕 C0~C3 → C3 확정(사용자 결정): 블리츠 포세션당 득점 0.858(재설계 전) → 0.911, 트랩 TOV 17.5%(스틸 ~10%), 패스아웃 PPP 1.255,
+  gap별 gap<0 0.71 / 0~10 0.87 / 10~20 0.99 / 20+ 1.06. PBL 블리츠 gap 분포 p10 −6 / p50 +10 / p90 +24.
+  PnR_Handler PPP 0.974 → 0.988(Iso 0.993과 동률 — 1번 문제 목표 달성). C0([[-20,.55],[0,.72],[20,.85],[40,.92]])은 트랩 TOV 25%로 과함.
+- 분포: 30팀 강제 설정(드랍/헷지/블리츠) 리그 PPP 차이 0.005 이내(균형). 실효 블리츠 비중이 낮음(지역 방어 40%는 항상 드롭, 스위치 선점).
+- 통제 실험(새크라멘토 580경기 × 2, 핸들링·시야·패스IQ 감소): 강분포 블리츠 vs 헷지 — 원래 핸들러 PPP 0.955→0.947(팀 차이 없음),
+  −15 0.919→0.837(팀 0.932→0.924), −30 0.871→0.767(팀 0.877→0.859). 블리츠 당한 포세션 −15 0.60(TOV 37%), −30 0.44(TOV 50%).
+  → 강분포 채택(사용자 결정). 미커밋·미배포.
+
+**롤백 방법**: `SIM_CONFIG.BLITZ.ENABLED = false`면 트랩 판정만 꺼짐(이 경우 블리츠 핸들러는 다시 −8% 슛 경로, 단 킥아웃은 삭제된 상태).
+완전 원복은 Before 블록으로 playTypes 킥아웃 블록 복원 + resolveBlitzPassOut/resolveBlitzTrap/pickRotationDefender/blitz 인자/blitzTarget/isBlitzTrap 삭제,
+`let` → `const`, `calcCoverage` → `pnrCoverage`, DIST 이전 값, UI 문구 이전 문장(아래).
+- tacticsSliderConfig 이전: '블리츠 : 사용시 핸들러에게 강한 더블팀을 적용하여 핸들러를 봉쇄합니다. 다만 스크리너의 공격 성공률이 증가합니다. 또한 빅맨의 기동력이 느리다면 오히려 역효과가 일어날 수 있습니다.'
+- LiveTacticsTab 이전: '블리츠는 쇄도하는 스크리너를 버리고 핸들러에게 더블팀을 가는 방식으로 롤맨의 공격 성공률이 대폭 증가하지만 핸들러의 턴오버를 유발할 수 있습니다. 발이 느린 빅맨이라면 오히려 역효과가 날 수도 있습니다.'
+
+## 2026-10-24 — 라이브볼 스틸 → 다음 포세션 속공 연결 신설 (SIM_CONFIG.STEAL_TRANSITION)
+
+**배경**: 블리츠 재설계(트랩 실패 → 스틸 후 속공)의 선행 작업. 엔진에 스틸 후 속공 연결 장치가 없어 스틸 직후 공격권이
+일반 공격권과 같았음(하네스: 스틸 후 속공 비율 13.4% = 전체 평균, PPP 1.011). 사용자 결정: 블리츠 전용이 아니라 모든 라이브볼
+스틸 공통 적용, 보너스는 시뮬레이션으로 결정 → 빈도 0.45 / 성공률 0.07(0.03은 너무 낮다는 사용자 판단).
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — 초기 state `lastEntryWasSteal: false`, 공격권 유지 시 false, 공격권 이동 시 `result.type === 'turnover' && !!result.isSteal`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts` — `GameState.lastEntryWasSteal?: boolean`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — 속공 선택 확률 가산, 스틸발 속공 성공률 가산, 프레스 제외
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `STEAL_TRANSITION` 신설(DEF_REB_TRANSITION 바로 위)
+
+**Before**:
+```ts
+        if (Math.random() < (sliders.pace * 0.03 + defRebFreqBonus)) {
+    const pressActive = !state.lastEntryWasOffReb;
+    let defRebSuccessBonus = 0;
+    ... + helpHitRatePenalty + defRebSuccessBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus,
+// liveEngine: lastEntryWasSteal 없음
+```
+
+**After**:
+```ts
+        const stealFreqBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal) ? SIM_CONFIG.STEAL_TRANSITION.FREQ_BONUS : 0;
+        if (Math.random() < (sliders.pace * 0.03 + defRebFreqBonus + stealFreqBonus)) {
+    const pressActive = !state.lastEntryWasOffReb && !state.lastEntryWasSteal;
+    const stealTransitionBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal && selectedPlayType === 'Transition')
+        ? SIM_CONFIG.STEAL_TRANSITION.HIT_BONUS : 0;
+    ... + helpHitRatePenalty + defRebSuccessBonus + stealTransitionBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus,
+// liveEngine 공격권 이동: state.lastEntryWasSteal = result.type === 'turnover' && !!result.isSteal;
+// STEAL_TRANSITION: { ENABLED: true, FREQ_BONUS: 0.45, HIT_BONUS: 0.07 }
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(HEAD 사본 + 지금까지 변경, 시드 2 × 1230경기, 프레스 재설계 미포함) 스윕:
+FREQ 0/0.3/0.45/0.6 × HIT 0/0.03/0.06/0.07. 확정값(0.45/0.07): 스틸 후 속공 비율 13.4→58.3%, 스틸 후 PPP 1.011→1.109,
+스틸발 속공 PPP 1.020→1.181(FG 59.7%, 일반 속공 1.052), 리그 PPP 1.0095→1.0143, 팀 득점 107.2→108.5/경기.
+참고: 팀당 경기 스틸 4.6개(NBA 7~8개 수준으로 알려짐 — 미확인)로 적어 리그 영향이 작음, 스틸 확률 자체는 별도 과제.
+프레스 제외 줄은 다른 세션의 미커밋 프레스 재설계 hunk 안에 들어감(커밋 시 주의). 미커밋·미배포.
+
+**롤백 방법**: `STEAL_TRANSITION.ENABLED: false`로 즉시 무효화, 완전 제거는 Before로 되돌리고 `lastEntryWasSteal` 필드·상수 블록 삭제.
+
+## 2026-10-24 — Handoff 빅(허브) 선정에 패서 집중 증폭 적용
+
+**배경**: Handoff 빅 선정 criteria `passIq×0.5 + hands×0.5`는 선형 가중이라 점수 폭(70~95)이 좁아 패스 능력이 사실상 무시됨
+(패스 IQ/시야/정확도 45/38/32인 벤 월리스가 허브 상위 10위). 패스 능력 추가(V1: IQ.3/시야.2/정확.2/핸즈.3)·체격 혼합(V2)은
+분포 변화 거의 없음 확인. pickPasser와 같은 집중 증폭(V3)만 실효. 사용자 결정: V3 채택 — "핸드오프는 스크린 파생 액션만 있는 게 아니다".
+체격 자격(SCREEN.ELIGIBLE_PHYSIQUE_MIN 55)은 그대로 유지.
+
+**변경 파일** (client/server 미러 쌍): `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts` — Handoff `big` criteria
+
+**Before**: `p => p.attr.passIq * 0.5 + p.attr.hands * 0.5,`
+**After**: `p => (p.attr.passIq * 0.5 + p.attr.hands * 0.5) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),`
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(시드 2 × 1230경기): 허브 슬롯 C 43→39 / PF 31→29 / SF 19→23 / 가드 7→10%.
+상위 허브 시몬스 184→319, 워튼 307→300, 드레이먼드 155→189, 아브디야 100→187, 아비다스 사보니스 137→185. 조던 76→132, 매직 72→123,
+돈치치 35→49(주로 수신자로 먼저 뽑혀 제외됨). 벤 월리스 122→111, 하워드 81→65. Handoff PPP 0.961→0.998(패서 시야·정확도 슛 보정 경유),
+리그 PPP 1.0075→1.0095. 미커밋·미배포.
+
+**롤백 방법**: Before 한 줄로 되돌리면 됨.
+
+## 2026-10-24 — PnR_Pop: 3점·미드 텐던시 둘 다 0인 선수 팝퍼 배제 + selectZone 0합계 폴백을 무작위 → 능력치 최고 존
+
+**배경**: `selectZone`은 후보 존 텐던시 합이 0이면 균등 무작위로 존을 골랐음(존 텐던시 도입 커밋 8b3b4ae5부터).
+후보가 3PT/Mid 둘뿐인 PnR_Pop에서만 실제로 발생 — 3점·미드 텐던시가 둘 다 0인 빅맨이 팝퍼로 뽑히면(3점 성향 감점 ×0.05라
+배제는 아님, 미드 성향은 아예 안 봄) 절반을 3점으로 던졌음(하네스: 샤킬 오닐 팝 27회 중 41%, 고베어 48%, 하워드 50%).
+PBL 해당 선수 34명. 사용자 결정: 코트에 팝 가능한 선수가 없을 때 PnR_Roll로 바꾸는 안(b)은 "전술·로스터 설정 실수의 책임을
+지지 않는 구조"라 기각 → (a) 배제하되 후보가 없으면 그대로 팝, 슛 존은 능력치로. 텐던시 데이터(유잉·이셀·시크마·루카스·카림 미드 0)는 손대지 않음(사용자 결정).
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts` — `selectZone()` 폴백, PnR_Pop 팝퍼 필터
+
+**Before**:
+```ts
+// selectZone
+    if (total <= 0) {
+        return zones[Math.floor(Math.random() * zones.length)];
+    }
+// PnR_Pop
+            const popper = pickWeightedActor(
+                p => { ... return p.archetypes.popper * (popEligible[p.position] ?? 0) * threePenalty; },
+                undefined, 'shooter',
+                p => (popEligible[p.position] ?? 0) > 0
+            );
+```
+
+**After**:
+```ts
+    if (total <= 0) {
+        const a = actor.attr;
+        const zoneRating = { '3PT': (a.threeCorner + a.three45 + a.threeTop) / 3, 'Mid': a.mid, 'Paint': a.closeShot, 'Rim': Math.max(a.layup, a.dunk) };
+        return zones.reduce((best, z) => zoneRating[z] > zoneRating[best] ? z : best, zones[0]);
+    }
+            const canPop = (p: LivePlayer) => (popEligible[p.position] ?? 0) > 0 && (p.zonePref.three > 0 || p.zonePref.mid > 0);
+            const popFilter = players.some(canPop) ? canPop : (p: LivePlayer) => (popEligible[p.position] ?? 0) > 0;
+            const popper = pickWeightedActor(..., undefined, 'shooter', popFilter);
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(시드 2 × 1230경기, 이번 변경만 비교): 샤킬 오닐·고베어·아담스·하워드·드러먼드·카림
+팝 15~27회 → 0회, 3PA/36 고베어 0.18→0.03 · 아담스 0.14→0.02 · 샤킬 0.07→0.00. 팝 PPP 0.907→0.911, 3P% 35.4→35.9%,
+그 외 플레이 ±0.001, 리그 1.0070→1.0075. 미드 텐던시만 있는 빅(모제스 말론·벤 월리스·모닝)은 팝 유지(미드 점퍼). 미커밋·미배포.
+
+**롤백 방법**: Before 블록 두 곳으로 되돌리면 됨(서로 독립 — 부분 롤백 가능).
+
+## 2026-10-24 — [부분 롤백] PnR_Roll/Pop 선정을 슬롯 포지션 가중치로 되돌림 (체격 자격은 PnR_Handler 스크리너·Handoff만)
+
+**배경**: 바로 아래 항목에서 Roll/Pop까지 체격 자격으로 통일하면서 슬롯 가중치(C 0.5/PF 0.3/SF 0.15)를 완전히 대체한 결과,
+롤맨·팝퍼는 직접 슛을 쏘는 액터라 자격 변화가 득점 볼륨으로 직결됨 — 돈치치 팝 0→703회·pts/36 22.0→31.8,
+토바이어스 해리스 22.4→29.4, 쳇 홈그렌(체격 53.3) 21.8→12.0 등. 하네스로 검토한 대안:
+체격+포지션(가드 0.05) → 돈치치 25.4, 팝퍼 공식 체격0.6/3점0.4 → 효과 미미(팝 703→659, 성향 보정이 지배),
+극단 가중치 X1(0.5/0.4/0.08/0.02)·X2(0.5/0.4/0.03/0.005) → 가드 롤 소멸이나 팝 PPP 0.907→0.857, 슬롯 격차 최대 13배(PF 편법 보상 증가).
+사용자 결정: Roll/Pop은 1단계(HEAD) 상태로 되돌리고 원점 재검토. PnR_Handler 스크리너(슛 안 쏨, 볼륨 영향 없음)는 체격 자격 유지.
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts` — PnR_Roll·PnR_Pop 블록을 HEAD 코드로 원복(아래 항목 Before와 동일), screenEligible 주석 수정
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — 주석만(`POSITION_WEIGHT.PNR_ROLL` = Roll/Pop 전용, `ELIGIBLE_PHYSIQUE_MIN` = Handler 스크리너·Handoff)
+
+**After(현재 상태)**: PnR_Roll/Pop = `POSITION_WEIGHT.PNR_ROLL` 가중·필터(HEAD와 동일), PnR_Handler 스크리너·Handoff 빅 = `screenEligible()`.
+
+**검증**: client/server tsc 수정 파일 오류 0. `git diff HEAD`에서 Roll/Pop 블록 변경 없음 확인.
+
+**롤백 방법**: 아래 항목의 After(Roll/Pop 체격 자격)로 다시 바꾸면 됨.
+
+## 2026-10-24 — 스크린 자격을 슬롯 포지션 → 체격 점수(55)로 교체 (PnR_Handler 스크리너·Roll·Pop·Handoff)
+
+**배경**: PnR_Handler 스크리너 선정에 포지션 제한이 없어 스크린의 30%를 가드가 섰음(C 27/PF 23/SF 20/SG 16/PG 14%).
+사용자 결정: "스크린은 빅맨이 서되, 아주 큰 가드·포워드는 가능" → 키 단독 기준은 바클리·드레이먼드·자이언·로드먼·언셀드가
+빠져서 기각, 체격 점수(근력·키·몸무게 = screener 아키타입 원본) ≥ 55로 결정. Roll/Pop/Handoff도 같은 기준으로 통일(사용자 결정).
+55 기준 자격 비율(PBL 414명): PG 4% / SG 2% / SF 40% / PF 78% / C 96%. 자격 가드 = 벤 시몬스·돈치치·매직·글렌 라이스·조던.
+자격자가 코트에 없으면 전원 후보(사용자 결정). OffBallScreen 스크리너는 그대로(사용자 결정).
+참고: 체격 점수 게이팅은 `docs/engine/pf-slot-stacking-issue.md` 기각안 #2와 같은 형태 — 이번 목적은 편법 해결이 아니라 스크리너 현실화.
+
+**변경 파일** (client/server 미러 쌍):
+- `services/game/engine/pbp/archetypeSystem.ts` / `server/src/shared/engine/pbp/archetypeSystem.ts` — `calculateScreenerPhysique()` export 신설, screenerRaw가 이를 사용(값 동일)
+- `services/game/engine/pbp/playTypes.ts` / `server/src/shared/engine/pbp/playTypes.ts` — `screenEligible()` 헬퍼, 4곳 선정 교체
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SCREEN.ELIGIBLE_PHYSIQUE_MIN: 55`, `POSITION_WEIGHT.PNR_ROLL`은 미사용 주석만(값 유지)
+
+**Before**:
+```ts
+// archetypeSystem
+const screenerRaw = (attr.strength * 0.40) + (normHeight * 0.30) + (normWeight * 0.30);
+// PnR_Handler
+const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer');
+// PnR_Roll
+const rollWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+const screener = pickWeightedActor(
+    p => (p.archetypes.roller + p.archetypes.screener * 0.5) * (rollWeights[p.position] ?? 0),
+    undefined, 'shooter', p => (rollWeights[p.position] ?? 0) > 0);
+// PnR_Pop
+const popEligible = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+    return p.archetypes.popper * (popEligible[p.position] ?? 0) * threePenalty;
+    ... p => (popEligible[p.position] ?? 0) > 0
+// Handoff
+const handoffHubWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+    ... p => (handoffHubWeights[p.position] ?? 0) > 0
+```
+
+**After**:
+```ts
+const screenerRaw = calculateScreenerPhysique(attr);   // 같은 식, export 함수로 분리
+const screenEligible = (excludeId?) => { const ok = p => calculateScreenerPhysique(p.attr) >= SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN;
+    return players.some(p => p.playerId !== excludeId && ok(p)) ? ok : undefined; };
+// PnR_Handler: pickWeightedActor(..., actor.playerId, 'passer', screenEligible(actor.playerId))
+// PnR_Roll:    pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5, undefined, 'shooter', screenEligible())
+// PnR_Pop:     return p.archetypes.popper * threePenalty;  ... screenEligible()
+// Handoff:     ... screenEligible(actor.playerId)
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(시드 2 × 1230경기, 스크린 판정 1단계 대비):
+PnR_Handler 스크리너 슬롯 C 27→49% / PF 23→32% / SF 20→16% / SG 16→2% / PG 14→2%.
+PnR_Roll C 57→46%, SF 14→17%, 가드 0→5% (피펜 384→536, 윌킨스 224→518, 바클리 347→518 — 슬롯 가중치 제거로 운동능력 윙 상승).
+PnR_Pop PF 47→34%, 가드 0→8% (**돈치치 0→703회 팝 2위, 글렌 라이스 0→397** — 큰 가드가 Handler·Iso·Pop 풀을 겹쳐 가짐).
+Handoff 허브 SF 34→20%, 벤 시몬스 2위. PPP: Roll 1.034→1.050, Handoff 0.956→0.968, 그 외 ±0.003, 리그 +0.002. 미커밋·미배포.
+
+**롤백 방법**: Before 블록으로 playTypes 4곳 되돌리고 `screenEligible`·`ELIGIBLE_PHYSIQUE_MIN` 삭제(archetypeSystem 함수 분리는 값 동일이라 유지해도 무방).
+
+## 2026-10-24 — 픽앤롤 스크린 판정 신설 + PnR_Handler 스크리너-패서 오인 버그 4건 수정
+
+**배경**: PBL 한 시즌 실측에서 PnR_Handler PPP 0.957(12종 중 11위, Iso 1.036), 턴오버율 15.0%(최고). 조사 결과
+① 엔진에 "스크린을 건다"는 판정 자체가 없었음(스크리너는 뽑기만 하고 핸들러 이점 0 — OffBallScreen만 screenBonus 있음),
+② 핸들러 본인 슛(PnR_Handler 비킥아웃)에서 secondaryActor(=스크리너, 대개 빅맨)를 패서로 취급하는 버그 4곳.
+사용자 결정: 적용 범위 PnR 3종 + Handoff / 스크린 능력 = 체격 + 타이밍 / 효과 = 슛 성공률 보너스만 / 버그 4건 같이 수정.
+커버리지(블리츠·헤지) 감점·킥아웃-커버리지 순서 문제는 이번 범위 밖(다음 단계).
+
+**변경 파일** (전부 client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.SCREEN` 신설(PNR_COVERAGE 바로 아래)
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — `resolveScreen()` 신설(getMomentumBonus 아래), 턴오버·슛 보정 패서 교체, 결과에 screenResult
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts` — `PossessionResult.screenResult?` 추가
+- `services/game/engine/pbp/statsMappers.ts` / `server/src/shared/engine/pbp/statsMappers.ts` — PnR_Handler 비킥아웃 어시스트 0
+
+**Before**:
+```ts
+// calculateTurnoverChance 시그니처 끝
+    passer?: LivePlayer
+): { isTurnover: boolean, ... } {
+    const isPassPlay = playType === 'CatchShoot' || playType === 'Handoff'
+        || playType === 'PnR_Handler' || playType === 'PnR_Roll'
+        || playType === 'PnR_Pop' || playType === 'Cut'
+        || playType === 'OffBallScreen' || playType === 'DriveKick';
+
+// simulatePossession 4. Turnover
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess, secondaryActor);
+// 5. Shot
+    const assistQualityMod = secondaryActor ? (secondaryActor.attr.passVision - 70) * 0.001 : 0;
+    const deliveryQualityMod = secondaryActor ? (secondaryActor.attr.passAcc - 70) * 0.0008 : 0;
+    if (pmCfg.ENABLED && secondaryActor) { const pa = secondaryActor.attr; ...
+    const shotContext = calculateHitRate(..., bonusHitRate + ... - lateClockPenalty, ...);   // screen.bonus 없음
+// miss/score 반환 객체에 screenResult 없음
+
+// statsMappers 어시스트
+    const prob = result.isKickout ? 0.9 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
+```
+
+**After**:
+```ts
+    passer?: LivePlayer,
+    selfCreated: boolean = false
+): { ... } {
+    const isPassPlay = !selfCreated && (playType === 'CatchShoot' || ... || playType === 'DriveKick');
+
+    const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
+    const shotPasser = isHandlerSelf ? undefined : secondaryActor;
+    const tovResult = calculateTurnoverChance(..., helpSuccess, shotPasser, isHandlerSelf);
+    const assistQualityMod = shotPasser ? (shotPasser.attr.passVision - 70) * 0.001 : 0;
+    const deliveryQualityMod = shotPasser ? (shotPasser.attr.passAcc - 70) * 0.0008 : 0;
+    if (pmCfg.ENABLED && shotPasser) { const pa = shotPasser.attr; ...
+    const screen = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+    const shotContext = calculateHitRate(..., ... - lateClockPenalty + screen.bonus, ...);
+// miss/score 반환에 screenResult: screen.result
+
+    const prob = result.isKickout ? 0.9 : playType === 'PnR_Handler' ? 0 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
+```
+`resolveScreen()` 요약: 스크리너 = PnR_Handler/Handoff는 secondaryActor, PnR_Roll/Pop은 actor 본인. 스크린 받는 수비수 =
+PnR_Handler/Handoff는 defender, Roll/Pop은 핸들러(secondaryActor)와 같은 슬롯의 수비수(없으면 판정 생략).
+power = `archetypes.screener×0.7 + offBallMovement×0.3`, evade = `agility×0.4 + perDef×0.3 + strength×0.3`, gap = power−evade.
+클린 확률 `CLEAN_CURVE [[-30,.10],[-6,.35],[15,.60],[30,.70]]`, 실패 확률 `FAIL_CURVE [[-30,.55],[-6,.30],[15,.15],[30,.10]]`, 나머지 부분.
+보너스 클린 +0.05 / 부분 +0.02 / 실패 0, 지역 방어 ×0.5. 킥아웃·스위치·스위치 실수는 판정 생략(bonus 0).
+`SIM_CONFIG.SCREEN.ENABLED = false`로 스크린 판정만 즉시 끌 수 있음(버그 4건 수정은 유지됨).
+
+**검증**: client/server `tsc --noEmit` 수정 파일 오류 0. 하네스(HEAD 사본 + 이번 변경만, PBL 실제 로스터·저장 전술, 시드 4개 × 1230경기):
+PnR_Handler PPP 0.932→0.974(+0.042, TOV 11.6%→9.3%, 스틸 6.2%→4.1%, FG 47.2→48.2%), PnR_Roll 1.017→1.038, PnR_Pop 0.896→0.917,
+Handoff 0.932→0.953, 그 외 8종 ±0.01 이내, 리그 PPP 1.000→1.008. 스크린 결과 비중(판정된 슛 기준) PnR_Handler 클린 27%/부분 35%/실패 39%
+(스크리너 포지션 제한이 없어 가드 스크리너가 섞임). PnR_Handler는 아직 Iso(0.988)보다 낮음 — 남은 격차는 커버리지 감점(다음 단계). 미커밋·미배포.
+
+**롤백 방법**: 위 Before 블록으로 4쌍(8파일) 되돌리고 `SIM_CONFIG.SCREEN` 블록·`resolveScreen()` 함수·`screenResult` 필드 삭제.
+스크린만 끄려면 `SCREEN.ENABLED: false`.
 
 ## 2026-10-24 — OvrBadge 가로 찌그러짐 수정 (shrink-0)
 
@@ -610,6 +1184,148 @@ if ((alreadyPosted ?? 0) > 0) continue;
 
 **롤백 방법**: 클라이언트 파일 Before로 복원(PlayoffSettingsTab 삭제 + LeagueSettingsView 섹션 복원). RPC는 `drop function public.apply_league_playoff_format(uuid, jsonb, jsonb, date, date);`. leagueTimeline 추가 함수는 미러 둘 다 삭제(서버는 호출부 없음).
 
+## 2026-10-24 — 엔진: 풀코트 프레스 T4 — 고단계 도박 구조(9~10단계 배율) + 지친 수비수·파울 곡선·수비 포세션 한정 체력 소모 (2026-10-25 커밋, Fly 미배포 — 플레이타입 작업 반영 엔진에서 MIL급 10단계 이득 재점검 필요)
+
+**배경**: 바로 아래 2026-10-23 프레스 재설계(선형 구조) 후속. 사용자 핵심 요구: "10단계를 아무 팀이나 쓰면 부작용으로
+팀이 망가져야 한다 + 극단적인 앞선 수비 팀(MIL급)은 10단계에서 이득을 봐야 한다 + 강한 압박이면 팀 PF가 NBA 평균(19.9)보다
+많은 22~23개 수준". 하네스에 경기 간 체력 누적(CARRY, simRunner·fatigueRecovery 규칙 재현)을 넣고, 30팀을 10팀씩
+3묶음으로 각 단계를 켜서 팀별 순득실을 비교하는 방식으로 V1~V7, T1~T4를 탐색(시즌 10회분, 노이즈 SD ≈ ±0.7).
+5단계부터 트랩(5%→22%) 변경도 이 항목에 포함(10-23 항목 이후 추가분).
+
+**변경 파일** (전부 client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `FULL_COURT_PRESS`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — `GameState.pressActiveThisPossession?`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — `getPressZoneEff`/`getTrapRate` 신규, `resolveFullCourtPress` 개편, `simulatePossession`에서 `pressActiveThisPossession` 기록
+- `services/game/engine/fatigueSystem.ts` / `server/.../fatigueSystem.ts` — 프레스 체력 소모 공식
+- `services/game/engine/pbp/stateUpdater.ts` / `server/.../stateUpdater.ts` — 프레스 체력 소모를 프레스 거는 수비팀에만, C·PF 절반
+- `components/dashboard/tactics/tacticsSliderConfig.ts`, `components/game/tabs/LiveTacticsTab.tsx` — 설명 문구
+
+**Before** (10-23 항목 상태):
+```ts
+// FULL_COURT_PRESS
+PRESSURE_TOV_SLOPE: 0.002, PRESSURE_TOV_MAX: 0.08, REACH_IN_RATE: 0.01, TRAP_MIN_LEVEL: 7, TRAP_MAX_RATE: 0.22 (f × 22%),
+TRAP_TOV_SLOPE: 0.010, TRAP_FOUL_RATE: 0.08
+// resolveFullCourtPress: defScore = weightedScore(DEFENDER_WEIGHTS) (체력 무관), 트랩 7단계+ f×22%,
+// pFoul = TRAP_FOUL_RATE × (1+foulProneness합×.25), 리치인 = f × REACH_IN_RATE × clean
+// fatigueSystem: if (fullCourtPress > 1) drain *= 1 + (fullCourtPress-1) × 0.15/9   (공·수 모든 포세션, 전원)
+```
+
+**After**:
+```ts
+// FULL_COURT_PRESS 추가/변경
+PRESSURE_TOV_SLOPE: 0.006, PRESSURE_TOV_MAX: 0.12, REACH_IN_MAX: 0.06, TRAP_MIN_LEVEL: 5, TRAP_MIN_RATE: 0.05, TRAP_MAX_RATE: 0.22,
+TRAP_TOV_SLOPE: 0.015, TRAP_FOUL_BASE: 0.08, TRAP_FOUL_EXTRA: 0.12,
+HIGH_LEVEL_MULT: {9: 1.25, 10: 1.5}, HIGH_LEVEL_FOUL_MULT: {9: 1.25, 10: 1.5},
+FATIGUE_THRESHOLD: 85, FATIGUE_DEF_PENALTY: 1.5, FATIGUE_DEF_MULT_MIN: 0.4, FATIGUE_FOUL_PENALTY: 3,
+FOUL_CONSIST_NEUTRAL 70 / SLOPE 0.03 / MIN 0.4 / MAX 1.6, FOUL_DEF_NEUTRAL 80 / SLOPE 0.02 / MIN 0.6 / MAX 1.4,
+DRAIN_MAX 0.5, DRAIN_EXP 1.5, DRAIN_STAMINA_NEUTRAL 80 / SLOPE 0.03 / MIN 0.5 / MAX 1.5, DRAIN_BIG_SHARE 0.5
+// resolveFullCourtPress
+tier = HIGH_LEVEL_MULT[level] ?? 1, foulTier = HIGH_LEVEL_FOUL_MULT[level] ?? 1
+defScore = raw × max(0.4, 1 − max(0, 85 − 체력)/100 × 1.5)               // 체력 85% 이상이면 그대로
+foulMult = (1 + max(0, 85 − 체력)/100 × 3) × clamp(1 − (defConsist−70)×0.03, .4, 1.6) × clamp(1 − (raw수비점수−80)×0.02, .6, 1.4)
+trapRate = getTrapRate × tier (5단계 5% → 10단계 22% 선형 × 존 감쇠), 트랩 성공 기울기 × tier, 압박 턴오버 기울기 × tier
+뚫림 확률 × tier, 뚫림/탈출 슛 보너스 × tier
+트랩 파울 = foulTier × (0.08 + 0.12 f²) × proneness × (foulMult(1차)+foulMult(보조))/2
+리치인 = foulTier × 0.06 × f² × clean × foulMult(1차)
+// fatigueSystem: pressPenalty = HIGH_LEVEL_MULT[단계] × 0.5 × ((단계−1)/9)^1.5 × clamp(1 − (stamina−80)×0.03, .5, 1.5)
+// stateUpdater: 프레스 거는 수비팀(pressActiveThisPossession)만 실제 단계, 나머지 1. C·PF 슬롯은 1 + (단계−1)×0.5
+```
+
+**검증** (하네스, 서버 simRunner 경로 + 경기 간 체력 누적, PBL 30팀, 10팀×3묶음, 각 1230경기×10회):
+- 시제품 T4(다른 세션 10-24 플레이타입/스크린 변경 **이전** 코드 기준): 10단계 순득실 변화 중앙값 −2.7, 손해 26/30, −3 이하 15,
+  1~3번 주전 외곽수비 상관 +0.47, MIL +1.6 / POR +2.0 / HOU +1.1, 10단계 팀 PF 평균 21.4(16.3~27.4), 상대 FTA +5.7, 파울아웃 0.104
+- 저장소 RF(다른 세션 10-24 미커밋 엔진 변경 **포함** 상태): 중앙값 −2.7, 손해 27, −3 이하 13, 상관 +0.43, **MIL +0.1**, POR +1.9,
+  10단계 PF 21.4(16.2~28.1). 7단계: 중앙값 +0.1, 손해 12, PF 15.4. 기준 리그 득점 112.0 / 포세션 97.4 / TS 60.1% / PF 14.8 / 파울아웃 0.032
+- 엘리트 이득 감소는 다른 세션의 패싱레인 스틸 조건 변경(selfCreated) 영향으로 추정(미분리)
+- tsc: server 45 / client 60 (변경 파일 관련 0건)
+
+**⚠️ 상태**: (10-25 갱신) 플레이타입·스크린·슛 커브·템포 작업(다른 세션)과 같은 커밋으로 묶어 커밋됨. 커밋 시점 미배포.
+이전 메모: 같은 엔진 파일들에 사용자가 진행 중인 플레이타입·스크린 작업(10-24, 미커밋)이 섞여 있음. 사용자 결정(10-24):
+플레이타입 작업이 끝나면 그 상태 기준으로 프레스를 재점검(엘리트 이득 재조정 가능) 후 커밋·배포. 10-23 파울 버그 수정·
+10-23 프레스 재설계·이 항목 모두 미커밋, 일괄 배포 예정.
+
+**롤백 방법**: 위 파일들을 Before로 — constants `FULL_COURT_PRESS`의 신규/변경 키를 Before 값으로(REACH_IN_MAX→REACH_IN_RATE 0.01,
+TRAP_FOUL_BASE/EXTRA→TRAP_FOUL_RATE 0.08, TRAP_MIN_LEVEL 7 등) + 신규 키 삭제, possessionHandler의 tier/foulTier/fatigueShort/foulMult 제거,
+fatigueSystem 프레스 블록을 `(fullCourtPress-1) × 0.15/9`로, stateUpdater의 pressingTeam/__fatigueSliders 제거, pbpTypes 필드 삭제.
+client/server 반드시 같이.
+
+## 2026-10-23 — 엔진: 풀코트 프레스 재설계(1대1 압박 + 7단계 이상 트랩, 뚫림 대가·리치인 파울·시간 소모) + 샷클락 막판 슛 페널티 신설
+
+> ⚠️ 이 항목의 계수·구조 일부는 위 2026-10-24 "프레스 T4" 항목으로 대체됨(트랩 시작 단계, 파울 곡선, 체력 소모 등).
+
+**배경**: PBL TS%·파울 조사 후속. 하네스 측정 결과 기존 프레스는 상대·로스터와 무관하게 매 포세션 스틸/레인스틸/턴오버
+보너스만 주고 대가는 체력뿐이라, 프레스 1→10이 6팀 평균 순득실 **+4.8/100포세션**인 "공짜 전술"이었음(파울·자유투 변화 0).
+사용자 결정(2026-10-23): ① 프레스가 뚫리면 상대 쉬운 득점 ② 파울이 늘어나는 장치 ③ 수비 강도(defIntensity)는 그대로
+④ 상대 공격 리바운드로 이어진 포세션은 프레스 제외(수비 리바운드 후는 적용) ⑤ 뚫림은 공 운반자(핸들링·드리블 속도·속도·민첩성)
+vs **매치업 수비수**(외곽 수비·수비 일관성·민첩성) 대결, 잘하는/못하는 핸들러 차이를 크게 ⑥ 트랩은 가끔, 슬라이더 비례,
+**7단계 미만은 트랩 없음**, 보조 = 남은 1~3번 중 최고 도움 수비수 ⑦ 탈출 후 슛으로 직결하지 않고 이번 포세션 성공률 보너스만
+⑧ 트랩 성공률 가변, 중앙값 ~15% ⑨ 기존 일괄 보너스 대체 ⑩ 프레스 강할수록 상대 시간 소모 ⑪ 목표 = "약간 이득"
+⑫ 샷클락 막판 슛 페널티 신설(잔여 4초 미만), 클러치 능력으로 일부 감쇄.
+
+**변경 파일** (전부 client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `STEAL.PRESS_*` 3개 삭제, `FULL_COURT_PRESS`·`LATE_SHOT_CLOCK` 블록 신규
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — `GameState.preSampledPossessionTime?`, `PossessionResult.pressEvent?`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — `getPressFactor`/`weightedScore`/`resolveFullCourtPress`/`getLateShotClockPenalty` 신규, `calculateTurnoverChance` 프레스 보너스 제거, `simulatePossession`에 2.3 프레스 단계·2.4 포세션 시간 선추출, 슈팅파울·hitRate·샷클락 바이올레이션 프레스 항
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — timeTaken: `preSampledPossessionTime` 우선 사용
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — `recordPlayTypeStat` pressEvent 제외, turnover/foul 분기 프레스 전용 커멘터리
+- `services/game/engine/commentary/textGenerator.ts` / `server/.../textGenerator.ts` — `getPressCommentary()` 신규
+- `components/dashboard/tactics/tacticsSliderConfig.ts`, `components/game/tabs/LiveTacticsTab.tsx` — 프레스 설명 문구(UI, 미러 아님)
+
+**Before**:
+```ts
+// constants.ts STEAL
+PRESS_STEAL_COEFF: 0.015 / 9,   // 10단계 +1.5%p 온볼 스틸
+PRESS_TOV_COEFF: 0.025 / 9,     // 10단계 +2.5%p 비강제 턴오버
+PRESS_LANE_STEAL_COEFF: 0.0075 / 9,  // 10단계 +0.75%p 레인 스틸(헬퍼별)
+// possessionHandler.ts calculateTurnoverChance — 모든 포세션(공리 포함)에 일괄 적용
+const pressEffectiveness = 1 - (defTeam.tactics.sliders.zoneFreq - 1) * SIM_CONFIG.ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL;
+const pressLevel = Math.max(0, defTeam.tactics.sliders.fullCourtPress - 1) * pressEffectiveness;
+const pressStealBonus = pressLevel * stlCfg.PRESS_STEAL_COEFF;
+const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus + pressStealBonus);
+const pressLaneStealBonus = pressLevel * stlCfg.PRESS_LANE_STEAL_COEFF;   // laneProb = max(0.001, laneBase - passResist + pressLaneStealBonus)
+const pressTovBonus = pressLevel * stlCfg.PRESS_TOV_COEFF;                 // unforcedProb += pressTovBonus
+// 샷클락 바이올레이션: pressShotClockBonus = max(0, fullCourtPress-1) × PRESS_SHOT_CLOCK_FACTOR × pressEffectivenessSC (항상)
+// liveEngine timeTaken = calculatePossessionTime(state, sliders, result.playType)  (슛 판정 후 계산, 샷클락 막판 개념 없음)
+```
+
+**After**:
+```ts
+// constants.ts — FULL_COURT_PRESS (계수 전부 여기), LATE_SHOT_CLOCK { PENALTY_CURVE [[1,.06],[2,.045],[3,.025],[4,0]], CLUTCH_NEUTRAL .65, CLUTCH_RANGE .30, MITIGATION_MAX .4 }
+// possessionHandler.ts simulatePossession (수비수 확정 직후)
+const pressActive = !state.lastEntryWasOffReb;
+const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType) : null;
+if (press?.result) return press.result;   // 트랩 스틸/트랩 파울/1대1 압박 턴오버/1대1 리치인 (pressEvent 표시, 3~6초)
+// 포세션 시간 선추출: 버틴 포세션 shotClock -= extra 후 계산 + extra(f×3초), 뚫림/탈출 -4초(최소 4초)
+state.preSampledPossessionTime = t;
+lateClockPenalty = getLateShotClockPenalty(actor, state.shotClock - t);  // gameClock > shotClock 일 때만
+// hitRate 합 += press.hitBonus(뚫림 +4%p / 트랩 탈출 +8%p) - lateClockPenalty, shootingFoulRate += press.shootingFoulBonus(탈출 +3%p)
+// pressShotClockBonus 는 pressActive && !press.beaten 일 때만
+```
+- `resolveFullCourtPress`: f = (press-1)/9 × 존 감쇠. 공 운반자 = 코트 위 핸들러 점수 1위(handling .35/spdBall .30/speed .20/agility .15),
+  1차 수비 = 스토퍼(운반자가 에이스일 때) → 같은 슬롯 → 무작위. **press ≥ 7**이면 f×22% 확률로 트랩: 보조 = 남은 PG/SG/SF 중
+  (helpDefIq .5/perDef .25/agility .25) 1위, 성공률 = clamp(0.19 − (공격[handling .4/passVision .35/passAcc .25] − 수비[1차 .4 + 보조 .4 + 평균 stl .2])×0.01, 3%, 45%),
+  파울 8%×(1+foulProneness합×.25), 나머지 = 탈출. 트랩이 아니면 1대1: 뚫림 = f × BREAK_CURVE(gap)
+  (gap 0 → 13%, +10 → 27%, −10 → 5%), 아니면 압박 턴오버 f×clamp(4% − gap×0.2%p, 0, 8%)(절반 스틸), 리치인 f×1%×max(0.6, 1−(stl−70)/75).
+- 프레스 파울은 기존 `type: 'foul'` 경로(팀파울·보너스·보너스 전 공격권 유지) 그대로.
+- 프레스 체력 소모(fatigueSystem)·지역 방어 감쇠·수비 강도는 무변경.
+
+**검증** (스크래치패드 하네스, 서버 simRunner 경로 재현, PBL 30팀 현재 전술, 6팀[MIL·LAW·MEM·SAC·CHI·BOS] 프레스만 덮어씀,
+5시즌분 6150경기·동일 시드, 저장소 server/src/shared 그대로 복사, 체력 누적/B2B 미반영):
+- 프레스 1→10 순득실 변화(6팀 평균): 기존 엔진 +4.8 → **5단계 +0.3 / 7단계 +0.6 / 10단계 +1.1**
+- 6팀 상대 턴오버: 1단계 13.4 / 5단계 14.1 / 7단계 16.4 / 10단계 17.9, 6팀 PF 13.9 → 15.8, 상대 FTA 17.8 → 18.5
+- 리그(6팀 프레스 1 실행): 득점 110.4, 포세션 96.8, TS 59.5%, PF 14.2, FTA 17.8, 파울아웃 0.028/팀·경기
+  (비교: 기존 엔진+파울버그수정 111.6 / 98.9 / 59.5 / 14.0 / 17.9 / 0.021) — **⚠️ 리그 페이스 약 −2포세션**(버틴 프레스 시간 추가)
+  → 사용자 결정(2026-10-23): 페이스 저하는 **그대로 둠** — `POSSESSION_TIME.BASE`(19) 보정 안 함, 프레스 단계 구조(1단계 0, 2단계부터 비례)도 유지
+- 계수 탐색(시제품, 3시즌×여러 조합): 트랩 탈출 +6/+8/+10%p × 1대1 압박 턴오버 3/4% → +8%p/4% 채택(+1.7, 7단계 게이트 전), 트랩 성공률 중앙값 14.8%
+- 커멘터리: 30경기(전 팀 프레스 10) trapSteal 205 / trapFoul 85 / pressTurnover 95 / pressFoul 29건 정상 출력
+- tsc: server 45 / client 60 (변경 파일 관련 0건, 직전과 동일)
+- **Fly 배포 전** (파울 버그 수정과 함께 일괄 배포 예정, `scripts/deploy-server.sh`)
+
+**롤백 방법**: 위 파일들을 Before로 — constants.ts에 `PRESS_STEAL/TOV/LANE_STEAL_COEFF` 복원 + `FULL_COURT_PRESS`/`LATE_SHOT_CLOCK` 삭제,
+possessionHandler.ts에서 신규 함수 4개·2.3/2.4 블록·`press?.`/`lateClockPenalty` 항 제거 + calculateTurnoverChance의 pressLevel 3곳 복원 +
+`calculatePossessionTime` import 제거, liveEngine.ts timeTaken 분기에서 `preSampledPossessionTime` 줄 제거, pbpTypes 필드 2개 삭제,
+statsMappers의 `pressEvent` 3곳·import 제거, textGenerator `getPressCommentary` 삭제, UI 문구 2곳 원복. client/server 반드시 같이.
+
 ## 2026-10-23 — OVR 배지 임페리얼(99+)·갤럭시 오팔(97) 채우기를 3색 → 2색 세로 그라디언트로
 
 **배경**: 사용자가 배지 스튜디오 JSON을 다시 붙여넣으며 "적용이 안 된 것 같다"고 함(드래프트 룸 스크린샷). 색·구간·크기는 이미 일치했으나, 스튜디오 `bg()`는 `fill:'linear'`면 c1→c2 2색 세로 그라디언트만 그리고(c3 무시) 3색 대각선은 `fill:'tri'`일 때만 쓴다. JSON의 두 등급이 `linear`인데 코드는 `grad3`(어두운 막 + 3색 대각선)로 그리고 있어 어둡고 탁하게 보였음.
@@ -632,6 +1348,72 @@ if ((alreadyPosted ?? 0) > 0) continue;
 **검증**: 코드상 JSON `ovr` 12단계와 전수 대조 일치. 브라우저 육안 확인은 미실시.
 
 **롤백 방법**: Before 두 줄로 되돌리기(`grad3`는 그대로 남아 있음).
+
+## 2026-10-23 — 멀티 드래프트 큐 Q2·Q3: 클라 훅(`myQueue`/`setQueue`) + 좌측 패널 [기록 | 큐] 탭 + 풀 큐 열 + 내 차례 자동 선택
+
+**배경**: Q1(서버·DB) 후속. 계획 `docs/plan/draft-queue-plan.md` D5~D10.
+
+**변경 파일** (client 전용):
+- `hooks/useLeagueDraft.ts` — `myQueue: string[]`, `setQueue(ids)` 반환. `case 'queue'` 수신(auth 직후·에코), 낙관적 로컬 갱신 + 600ms 디바운스 `setQueue` 전송, `queueDirtyRef`(미전송 편집 있으면 서버 에코로 덮지 않고 그 신호에 `flushQueue()`로 재전송 — 재접속 복구 겸). 방 변경 시 큐 초기화. `pong` case에 누락됐던 `break` 추가(default 로 fall-through 했으나 default 가 빈 블록이라 동작 변화 없음)
+- `components/draft/DraftQueuePanel.tsx` (신규) — 헤더 h-10(좌 슬롯 `headerLeft`, 우 `남은 N` + 지명된 선수 정리 버튼), 행 h-8 `핸들·순번·POS·OvrBadge·이름·(↑↓✕ 호버)`, 네이티브 HTML5 드래그 정렬, 지명된 행은 취소선+opacity-50+순번 `—`
+- `components/draft/PickHistory.tsx` — `headerLeft?: ReactNode` 슬롯(없으면 기존 제목, 싱글/루키 무변화)
+- `components/draft/PlayerPool.tsx` — `queueRankById?: Map<string,number>` + `onToggleQueue?` 둘 다 있을 때만 마지막 열 `큐`(w-9) 렌더: 큐에 있으면 `Q{n}` 배지(클릭 제거, hover 빨강), 없으면 호버 시 `+` IconButton(success). `colSpan` +1. 행 `tr`에 `group` 클래스 추가
+- `views/multi/league/MultiDraftView.tsx` — `leftTabChoice`(null=자동: waiting→큐, 그 외→기록), `queueRankById`/`queuePlayersById`(미지명은 adaptedPlayers, 지명된 건 `draftState.picks`에서 이름/POS/OVR), `handleToggleQueue`(ref 기반, 참조 고정), D6 효과(`isMyTurn` true 전환 시 선택 비어 있으면 큐 최상단 남은 선수 `setSelectedPlayerId`), `renderLeftPanel()`을 waiting/active 두 화면의 좌측 22% 칸에 공용. 비참가자(`myTeamId` 없음)는 큐 탭 disabled·풀 큐 열 숨김
+
+**Before**: 좌측 칸 `<PickHistory …/>` 고정, PlayerPool 14(+POT)열, 큐 개념 없음.
+**After**: 위 요약. 서버 프로토콜은 Q1 그대로(`setQueue`/`queue`).
+
+**같은 날 수정(사용자 요청)**: ① 풀 큐 열을 **POS 왼쪽**(라디오 다음)으로 이동, 호버 전용 `+`/`Q{n}` 배지 → 항상 보이는 `+`(success) / `−`(danger) IconButton xs, 순번 표시 없음 — prop `queueRankById: Map` → `queuedIds: Set`. ② 좌측 패널 전환을 `SegmentedControl` → 공용 `Dropdown`(제목 텍스트 "드래프트 기록 ▾ / 드래프트 큐 (N) ▾" 가 트리거, `align="left" width="w-40"`, 비참가자는 큐 항목 자체를 숨김). ③ 풀 라디오 버튼이 행 중앙보다 위로 떠 보이던 것 수정 — `align-middle`(inline, 베이스라인 기준) → `block mx-auto`. ④ 드롭다운 항목 순서 큐→기록, 기본 탭 **항상 큐**(참가자; 비참가자만 기록) — D7의 "waiting=큐/active=기록" 규칙 폐기. ⑤ 큐 행 h-8 → h-10. ⑥ 큐에서 바로 지명: 큐 행에 풀과 같은 라디오(`name="draft-player-queue"`) + 행 클릭 → `selectedPlayerId` 공유(`handleSelectQueuePlayer`, 같은 선수 재클릭 시 해제) → 풀의 같은 행도 선택되고 "드래프트" 버튼 활성. 지명된 행은 라디오 없음·클릭 무시. ↑↓✕ 버튼 영역은 `stopPropagation`. ⑦ 큐 행 포지션을 이름 뒤로 이동(`라디오·핸들·순번·OVR·이름·POS`). ⑧ 순번 `text-center`. ⑨ (⑧의 "포지션 우측 끝" 정정) 포지션은 이름 뒤 `w-7 text-left`. ↑↓ 이동 버튼 삭제(정렬은 드래그만), ✕ 제거 버튼은 호버 오버레이 → **상시 표시**·행 우측 끝(흐름 안, `absolute`/`relative` 제거). 헤더 아래 서브헤더(h-8, `bg-slate-800/15`)에 남은(미지명) 큐 선수의 포지션별 수 `PG n SG n SF n PF n C n`(MyRoster 헤더 카운트와 같은 표기). ⑩ **자동 저장(600ms 디바운스) 폐기 → 저장 버튼 방식**(사용자 결정 — 소실 구멍 3개를 버튼 하나로 정리): 훅은 `myQueue`(로컬 편집본)·`savedQueue`(서버 저장본)·`queueDirty`(둘이 다름)·`queueSaving`·`saveQueue()`(submitPick 과 같은 Promise 패턴: 에코=성공 / `error code:'queue_save_failed'`=실패 / 5초 타임아웃). 서버 `queue` 메시지는 항상 savedQueue 갱신, 로컬은 미저장 편집 없을 때만 동기화. dirty 면 `beforeunload` 확인창. 서버: `setQueue()` 반환 `boolean` → `'ok'|'not_participant'|'failed'`, `index.ts` 가 둘 다 새 에러 코드 `queue_save_failed`(protocol `ErrorMsg.code` 합류)로 보냄 — 예전엔 DB 실패가 `internal`로 묻혀 클라가 모른 채 화면만 저장된 것처럼 보였음. 패널 헤더 우측 `저장`(dirty 면 primary, 아니면 secondary disabled "저장됨"/"저장 중…"), 서브헤더 우측에 `저장 안 됨`(warning) / 실패 문구(danger) InlineNotice sm. **오토픽은 저장본만 본다.** ⑪ 헤더의 "남은 N" 텍스트 제거(드롭다운 라벨 `드래프트 큐 (N)`이 이미 표시), 저장 버튼은 상태 무관하게 아이콘 없이 텍스트만(`저장`/`저장 중…`/`저장됨`). ⑫ (배포 `6d7f90e7` 이후, 미커밋) 지명된 큐 행: 행 전체 `opacity-50`·이름 취소선 → 라디오는 **항상 렌더 + `disabled`**(`disabled:opacity-40 cursor-not-allowed`), **이름·OVR 배지만 `opacity-40`**, 행 배경/핸들/✕는 그대로.
+
+**검증**: `tsc --noEmit` 변경 파일 오류 없음, `vite build` 성공(순환 의존 경고 없음 — 기존 vendor 청크 경고만). 브라우저 E2E 미실시(Fly 미배포라 서버 `queue` 메시지가 아직 안 옴 → 로컬 Bun 서버 또는 배포 후 확인).
+
+**롤백 방법**: MultiDraftView 의 `renderLeftPanel()` 두 곳을 Before 의 `<PickHistory picks totalRounds userTeamId teamMeta/>`로, PlayerPool 에 `queueRankById/onToggleQueue` 미전달, 훅의 `myQueue/setQueue` 제거. `DraftQueuePanel.tsx` 삭제.
+
+## 2026-10-23 — 멀티 드래프트 큐 Q1: `draft_queues` 테이블 + 서버 큐 상태 + 자동 지명 4곳 큐 우선(→BPA 폴백)
+
+**배경**: 유저가 드래프트 시작 전부터 희망 선수 순서(큐)를 만들어 두고, 오토픽/타임아웃 대납/어드민 스킵/자동완료가 그 순서대로 지명하게 하는 기능. 계획·결정 D1~D10은 `docs/plan/draft-queue-plan.md`. 이 항목은 서버·DB 단계(Q1)만. 클라 훅(Q2)·UI(Q3)는 별도 항목.
+
+**변경 파일** (server 전용, 클라 미러 없음 — 클라 훅은 메시지 타입을 `any`로 처리):
+- `migrations/add_draft_queues.sql` (신규, **Supabase 적용 완료 2026-10-23**) — `draft_queues(room_id uuid FK rooms CASCADE, user_id uuid, player_ids text[], updated_at)` PK `(room_id,user_id)`, RLS 켜고 정책 없음(service role만)
+- `server/src/shared/multiDraftEngine.ts` — `getQueuedAvailableId(queue, draftedIds)` 신규(큐 순서상 미지명 첫 선수, 없으면 null)
+- `server/src/protocol.ts` — `SetQueueMsg {type:'setQueue', playerIds}`(ClientMsg 합류), `QueueMsg {type:'queue', playerIds}`(ServerMsg 합류)
+- `server/src/DraftRoom.ts` — `MAX_QUEUE_SIZE=100`, `queues: Map<userId,string[]>`, `load()`에서 `draft_queues` 복원(풀 로드와 `Promise.all`, 실패 시 로그만), `resolveAutoPickId(entry)` 헬퍼, `sendToUser()`, `getQueue()`, `setQueue()`
+- `server/src/index.ts` — auth 성공 시 스냅샷 직후 `queue` 메시지 1회 전송, `setQueue` 핸들러(실패 시 `error internal 'not a draft participant'`)
+
+**Before** (자동 지명 4곳이 전부 직접 호출):
+```ts
+// onAiPick / onPickTimeout / handleAdmin 'skip-turn' / 'autocomplete'
+const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+if (!bestId) return;   // (skip/autocomplete는 break)
+const result = await this.persistPick(entry.userId, bestId /*, entry.isAi ?? false (onAiPick만) */);
+```
+
+**After**:
+```ts
+private resolveAutoPickId(entry: PickOrderEntry): { id: string; source: 'queue' | 'bpa' } | null {
+    if (!entry.isAi) {
+        const queue = this.queues.get(entry.userId);
+        if (queue?.length) {
+            const fromQueue = getQueuedAvailableId(queue, this.draftedIds);
+            if (fromQueue) return { id: fromQueue, source: 'queue' };
+        }
+    }
+    const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+    return bestId ? { id: bestId, source: 'bpa' } : null;
+}
+// 4곳: const resolved = this.resolveAutoPickId(entry); if (!resolved) return/break; … persistPick(entry.userId, resolved.id, …)
+// 로그에 (queue)/(bpa) 출처 표기. 큐 없는 유저·AI 슬롯은 예전과 동일 경로.
+
+async setQueue(userId, rawIds: unknown): Promise<boolean>
+//  pickOrder 사람 참가자 아니면 false → 정규화(문자열/숫자만, config.poolIds 내, 중복 제거, 100개 절단)
+//  → draft_queues upsert 성공 후에만 this.queues 반영(write-then-commit) → 같은 userId 소켓 전부에 {type:'queue'} 에코
+```
+- 지명된 선수는 저장 목록에서 지우지 않음(픽 시점 `draftedIds`로만 걸러냄, D5).
+- `rooms.draft_cursor`/`DraftConfig`는 변경 없음.
+
+**검증**: `tsc --noEmit`(server) 변경 파일 오류 없음(기존 `bun` 타입 미설치 오류만). `getQueuedAvailableId` 5케이스(빈 큐/전원 지명/중간 지명/정상/끝만 남음) tsx 실행 PASS. 통합(E2E)은 Q3 UI 후 실시. **Fly 미배포**.
+
+**롤백 방법**: `resolveAutoPickId` 4곳 호출을 Before의 `getBestAvailableId` 직접 호출로 되돌리면 큐는 저장만 되고 무해. DB는 `DROP TABLE public.draft_queues`(다른 참조 없음). `index.ts`의 `setQueue` 분기·`queue` 전송 제거.
 
 ## 2026-10-23 — 라이브 "플레이-바이-플레이" 탭 복구·본문(인사이트 + PBP 피드, 가운데 정렬) · PBP 피드 JSX 공유화
 
@@ -723,72 +1505,6 @@ if ((alreadyPosted ?? 0) > 0) continue;
 - `QuarterScores`: compact·fullWidth 둘 다 미진행 쿼터 `'—'` → `''`(공란) — 2곳
 - `MilestoneJumbotronBody`: 팀약어·선수명 줄과 라벨 줄 `text-3xl` → `text-2xl`
 
-## 2026-10-23 — 멀티 드래프트 큐 Q2·Q3: 클라 훅(`myQueue`/`setQueue`) + 좌측 패널 [기록 | 큐] 탭 + 풀 큐 열 + 내 차례 자동 선택
-
-**배경**: Q1(서버·DB) 후속. 계획 `docs/plan/draft-queue-plan.md` D5~D10.
-
-**변경 파일** (client 전용):
-- `hooks/useLeagueDraft.ts` — `myQueue: string[]`, `setQueue(ids)` 반환. `case 'queue'` 수신(auth 직후·에코), 낙관적 로컬 갱신 + 600ms 디바운스 `setQueue` 전송, `queueDirtyRef`(미전송 편집 있으면 서버 에코로 덮지 않고 그 신호에 `flushQueue()`로 재전송 — 재접속 복구 겸). 방 변경 시 큐 초기화. `pong` case에 누락됐던 `break` 추가(default 로 fall-through 했으나 default 가 빈 블록이라 동작 변화 없음)
-- `components/draft/DraftQueuePanel.tsx` (신규) — 헤더 h-10(좌 슬롯 `headerLeft`, 우 `남은 N` + 지명된 선수 정리 버튼), 행 h-8 `핸들·순번·POS·OvrBadge·이름·(↑↓✕ 호버)`, 네이티브 HTML5 드래그 정렬, 지명된 행은 취소선+opacity-50+순번 `—`
-- `components/draft/PickHistory.tsx` — `headerLeft?: ReactNode` 슬롯(없으면 기존 제목, 싱글/루키 무변화)
-- `components/draft/PlayerPool.tsx` — `queueRankById?: Map<string,number>` + `onToggleQueue?` 둘 다 있을 때만 마지막 열 `큐`(w-9) 렌더: 큐에 있으면 `Q{n}` 배지(클릭 제거, hover 빨강), 없으면 호버 시 `+` IconButton(success). `colSpan` +1. 행 `tr`에 `group` 클래스 추가
-- `views/multi/league/MultiDraftView.tsx` — `leftTabChoice`(null=자동: waiting→큐, 그 외→기록), `queueRankById`/`queuePlayersById`(미지명은 adaptedPlayers, 지명된 건 `draftState.picks`에서 이름/POS/OVR), `handleToggleQueue`(ref 기반, 참조 고정), D6 효과(`isMyTurn` true 전환 시 선택 비어 있으면 큐 최상단 남은 선수 `setSelectedPlayerId`), `renderLeftPanel()`을 waiting/active 두 화면의 좌측 22% 칸에 공용. 비참가자(`myTeamId` 없음)는 큐 탭 disabled·풀 큐 열 숨김
-
-**Before**: 좌측 칸 `<PickHistory …/>` 고정, PlayerPool 14(+POT)열, 큐 개념 없음.
-**After**: 위 요약. 서버 프로토콜은 Q1 그대로(`setQueue`/`queue`).
-
-**같은 날 수정(사용자 요청)**: ① 풀 큐 열을 **POS 왼쪽**(라디오 다음)으로 이동, 호버 전용 `+`/`Q{n}` 배지 → 항상 보이는 `+`(success) / `−`(danger) IconButton xs, 순번 표시 없음 — prop `queueRankById: Map` → `queuedIds: Set`. ② 좌측 패널 전환을 `SegmentedControl` → 공용 `Dropdown`(제목 텍스트 "드래프트 기록 ▾ / 드래프트 큐 (N) ▾" 가 트리거, `align="left" width="w-40"`, 비참가자는 큐 항목 자체를 숨김). ③ 풀 라디오 버튼이 행 중앙보다 위로 떠 보이던 것 수정 — `align-middle`(inline, 베이스라인 기준) → `block mx-auto`. ④ 드롭다운 항목 순서 큐→기록, 기본 탭 **항상 큐**(참가자; 비참가자만 기록) — D7의 "waiting=큐/active=기록" 규칙 폐기. ⑤ 큐 행 h-8 → h-10. ⑥ 큐에서 바로 지명: 큐 행에 풀과 같은 라디오(`name="draft-player-queue"`) + 행 클릭 → `selectedPlayerId` 공유(`handleSelectQueuePlayer`, 같은 선수 재클릭 시 해제) → 풀의 같은 행도 선택되고 "드래프트" 버튼 활성. 지명된 행은 라디오 없음·클릭 무시. ↑↓✕ 버튼 영역은 `stopPropagation`. ⑦ 큐 행 포지션을 이름 뒤로 이동(`라디오·핸들·순번·OVR·이름·POS`). ⑧ 순번 `text-center`. ⑨ (⑧의 "포지션 우측 끝" 정정) 포지션은 이름 뒤 `w-7 text-left`. ↑↓ 이동 버튼 삭제(정렬은 드래그만), ✕ 제거 버튼은 호버 오버레이 → **상시 표시**·행 우측 끝(흐름 안, `absolute`/`relative` 제거). 헤더 아래 서브헤더(h-8, `bg-slate-800/15`)에 남은(미지명) 큐 선수의 포지션별 수 `PG n SG n SF n PF n C n`(MyRoster 헤더 카운트와 같은 표기). ⑩ **자동 저장(600ms 디바운스) 폐기 → 저장 버튼 방식**(사용자 결정 — 소실 구멍 3개를 버튼 하나로 정리): 훅은 `myQueue`(로컬 편집본)·`savedQueue`(서버 저장본)·`queueDirty`(둘이 다름)·`queueSaving`·`saveQueue()`(submitPick 과 같은 Promise 패턴: 에코=성공 / `error code:'queue_save_failed'`=실패 / 5초 타임아웃). 서버 `queue` 메시지는 항상 savedQueue 갱신, 로컬은 미저장 편집 없을 때만 동기화. dirty 면 `beforeunload` 확인창. 서버: `setQueue()` 반환 `boolean` → `'ok'|'not_participant'|'failed'`, `index.ts` 가 둘 다 새 에러 코드 `queue_save_failed`(protocol `ErrorMsg.code` 합류)로 보냄 — 예전엔 DB 실패가 `internal`로 묻혀 클라가 모른 채 화면만 저장된 것처럼 보였음. 패널 헤더 우측 `저장`(dirty 면 primary, 아니면 secondary disabled "저장됨"/"저장 중…"), 서브헤더 우측에 `저장 안 됨`(warning) / 실패 문구(danger) InlineNotice sm. **오토픽은 저장본만 본다.** ⑪ 헤더의 "남은 N" 텍스트 제거(드롭다운 라벨 `드래프트 큐 (N)`이 이미 표시), 저장 버튼은 상태 무관하게 아이콘 없이 텍스트만(`저장`/`저장 중…`/`저장됨`). ⑫ (배포 `6d7f90e7` 이후, 미커밋) 지명된 큐 행: 행 전체 `opacity-50`·이름 취소선 → 라디오는 **항상 렌더 + `disabled`**(`disabled:opacity-40 cursor-not-allowed`), **이름·OVR 배지만 `opacity-40`**, 행 배경/핸들/✕는 그대로.
-
-**검증**: `tsc --noEmit` 변경 파일 오류 없음, `vite build` 성공(순환 의존 경고 없음 — 기존 vendor 청크 경고만). 브라우저 E2E 미실시(Fly 미배포라 서버 `queue` 메시지가 아직 안 옴 → 로컬 Bun 서버 또는 배포 후 확인).
-
-**롤백 방법**: MultiDraftView 의 `renderLeftPanel()` 두 곳을 Before 의 `<PickHistory picks totalRounds userTeamId teamMeta/>`로, PlayerPool 에 `queueRankById/onToggleQueue` 미전달, 훅의 `myQueue/setQueue` 제거. `DraftQueuePanel.tsx` 삭제.
-
-## 2026-10-23 — 멀티 드래프트 큐 Q1: `draft_queues` 테이블 + 서버 큐 상태 + 자동 지명 4곳 큐 우선(→BPA 폴백)
-
-**배경**: 유저가 드래프트 시작 전부터 희망 선수 순서(큐)를 만들어 두고, 오토픽/타임아웃 대납/어드민 스킵/자동완료가 그 순서대로 지명하게 하는 기능. 계획·결정 D1~D10은 `docs/plan/draft-queue-plan.md`. 이 항목은 서버·DB 단계(Q1)만. 클라 훅(Q2)·UI(Q3)는 별도 항목.
-
-**변경 파일** (server 전용, 클라 미러 없음 — 클라 훅은 메시지 타입을 `any`로 처리):
-- `migrations/add_draft_queues.sql` (신규, **Supabase 적용 완료 2026-10-23**) — `draft_queues(room_id uuid FK rooms CASCADE, user_id uuid, player_ids text[], updated_at)` PK `(room_id,user_id)`, RLS 켜고 정책 없음(service role만)
-- `server/src/shared/multiDraftEngine.ts` — `getQueuedAvailableId(queue, draftedIds)` 신규(큐 순서상 미지명 첫 선수, 없으면 null)
-- `server/src/protocol.ts` — `SetQueueMsg {type:'setQueue', playerIds}`(ClientMsg 합류), `QueueMsg {type:'queue', playerIds}`(ServerMsg 합류)
-- `server/src/DraftRoom.ts` — `MAX_QUEUE_SIZE=100`, `queues: Map<userId,string[]>`, `load()`에서 `draft_queues` 복원(풀 로드와 `Promise.all`, 실패 시 로그만), `resolveAutoPickId(entry)` 헬퍼, `sendToUser()`, `getQueue()`, `setQueue()`
-- `server/src/index.ts` — auth 성공 시 스냅샷 직후 `queue` 메시지 1회 전송, `setQueue` 핸들러(실패 시 `error internal 'not a draft participant'`)
-
-**Before** (자동 지명 4곳이 전부 직접 호출):
-```ts
-// onAiPick / onPickTimeout / handleAdmin 'skip-turn' / 'autocomplete'
-const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-if (!bestId) return;   // (skip/autocomplete는 break)
-const result = await this.persistPick(entry.userId, bestId /*, entry.isAi ?? false (onAiPick만) */);
-```
-
-**After**:
-```ts
-private resolveAutoPickId(entry: PickOrderEntry): { id: string; source: 'queue' | 'bpa' } | null {
-    if (!entry.isAi) {
-        const queue = this.queues.get(entry.userId);
-        if (queue?.length) {
-            const fromQueue = getQueuedAvailableId(queue, this.draftedIds);
-            if (fromQueue) return { id: fromQueue, source: 'queue' };
-        }
-    }
-    const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
-    return bestId ? { id: bestId, source: 'bpa' } : null;
-}
-// 4곳: const resolved = this.resolveAutoPickId(entry); if (!resolved) return/break; … persistPick(entry.userId, resolved.id, …)
-// 로그에 (queue)/(bpa) 출처 표기. 큐 없는 유저·AI 슬롯은 예전과 동일 경로.
-
-async setQueue(userId, rawIds: unknown): Promise<boolean>
-//  pickOrder 사람 참가자 아니면 false → 정규화(문자열/숫자만, config.poolIds 내, 중복 제거, 100개 절단)
-//  → draft_queues upsert 성공 후에만 this.queues 반영(write-then-commit) → 같은 userId 소켓 전부에 {type:'queue'} 에코
-```
-- 지명된 선수는 저장 목록에서 지우지 않음(픽 시점 `draftedIds`로만 걸러냄, D5).
-- `rooms.draft_cursor`/`DraftConfig`는 변경 없음.
-
-**검증**: `tsc --noEmit`(server) 변경 파일 오류 없음(기존 `bun` 타입 미설치 오류만). `getQueuedAvailableId` 5케이스(빈 큐/전원 지명/중간 지명/정상/끝만 남음) tsx 실행 PASS. 통합(E2E)은 Q3 UI 후 실시. **Fly 미배포**.
-
-**롤백 방법**: `resolveAutoPickId` 4곳 호출을 Before의 `getBestAvailableId` 직접 호출로 되돌리면 큐는 저장만 되고 무해. DB는 `DROP TABLE public.draft_queues`(다른 참조 없음). `index.ts`의 `setQueue` 분기·`queue` 전송 제거.
-
 **검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
 **롤백 방법**: 직전 항목(2단 구성)으로 되돌림, `''`→`'—'`, `text-2xl`→`text-3xl`.
 
@@ -869,140 +1585,6 @@ async setQueue(userId, rawIds: unknown): Promise<boolean>
 - `flashOf`: 정적 틴트 `bg-emerald-400/[0.18]` / `bg-red-400/[0.18]` / `bg-amber-400/[0.18]` 항상 부여 + fresh일 때만 `animate-stat-flash-*`
 - `index.css`: 키프레임 끝값 0 → 0.18(정적 클래스와 동일, 애니메이션 종료 시 튐 없음)
 - 롤백: 위 세 곳 Before로.
-## 2026-10-23 — 게임 센터: 샷차트/PBP 카드 분리 · 샷차트 헤더 약어만 text-base · PBP 헤더 text-sm+셀렉터 우측 · 새 행 흰 선 번쩍임 수정
-
-**변경 파일** (client 전용):
-- `views/multi/season/MultiGamePbpView.tsx`
-  - 중앙 컬럼 `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` → `flex-1 min-w-0 flex flex-col gap-4`(카드 아님), 샷차트 래퍼 `shrink-0 border-b border-slate-700` → `shrink-0 ${LIVE_CARD}`, PBP 래퍼 `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800` → `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col ${LIVE_CARD}`
-  - PBP 헤더 `h-9` → `h-10`, 제목 `text-xs` → `text-sm`, 안쪽 `flex items-center gap-3` → `flex items-center justify-between gap-3 w-full`(셀렉터 우측)
-  - 새 행 흰 선 번쩍임: 원인은 `divide-y divide-slate-800/50` + 행의 `transition-colors`. 맨 위 행(첫 자식)은 divide 선이 없어 border-color가 preflight 기본(gray-200)인데, 새 로그가 위에 끼어들어 둘째 행이 되는 순간 border-top 1px + slate 색으로 바뀌고 transition-colors가 gray-200→slate를 150ms 보간 → 흰 선. 컨테이너 `divide-y divide-slate-800/50` 제거, 일반 행·교체 행에 `border-b border-slate-800/50` 직접 부여(부상 행은 기존 border-y red 유지)
-- `views/multi/season/MultiFullCourtChart.tsx` — split 헤더 텍스트 `{abbr} 원정/홈` → `{abbr}`, `text-sm` → `text-base`
-
-**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
-**롤백 방법**: 위 Before 클래스로 복구, 컨테이너에 `divide-y divide-slate-800/50` 복원 + 행 `border-b border-slate-800/50` 제거.
-## 2026-10-23 — 게임 센터: 샷차트 헤더 팀컬러 분할(필터 숨김) · PBP 쿼터 셀렉터 OT1 오탐 수정 · PBP text-sm
-
-**배경**: ① 게임 센터 샷차트 헤더의 선수 필터를 숨기고 헤더를 좌(원정)/우(홈) 팀 테마 컬러로 반반 분할. ② 연장이 없는 경기에도 PBP 쿼터 셀렉터에 OT1이 뜸 — 엔진 `liveEngine.ts stepPossession`이 4Q 종료 시 `state.quarter = 5`로 올린 뒤 `'경기 종료 (Final)'` SYSTEM 로그를 남겨 그 로그가 quarter 5로 저장되기 때문(엔진은 미수정, 뷰에서 SYSTEM 제외). ③ PBP 피드 글자 text-xs → text-sm.
-
-**변경 파일** (client 전용):
-- `views/multi/season/MultiFullCourtChart.tsx` — `headerVariant?: 'legend' | 'split'`(기본 legend, 기존 동작 불변) + `awayTextColor/homeTextColor`. split이면 h-10 헤더를 flex 반반, 각각 `backgroundColor: awayColor/homeColor`, 글자는 대비색. 필터 버튼·범례는 legend에서만 렌더(필터 state/로직은 그대로)
-- `views/multi/season/MultiGamePbpView.tsx`
-  - `<MultiFullCourtChart headerVariant="split" awayTextColor={awayText} homeTextColor={homeText} />`
-  - `maxQuarter`: `Math.max(...gameData.events.map(q), 4)` → `maxPlayedQuarter = visibleEvents.reduce(SYSTEM 제외 최대 quarter)`, `Math.max(maxPlayedQuarter, 4)`. 공개 로그 기준이라 스포일러도 방지
-  - PBP 스크롤 블록(헤더 행·플로우 배너·점수·시간·코멘터리·빈 상태) `text-xs` 12곳 → `text-sm`, 시간 칸 `w-16` 2곳 → `w-20`
-
-**Before**: `const maxQuarter = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);` / 샷차트 헤더 범례+필터 / PBP `text-xs`, 시간 `w-16`
-**After**: 위 참조.
-
-**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
-**롤백 방법**: headerVariant prop 전달 제거(기본 legend로 복귀), maxQuarter를 Before로, PBP 블록 text-sm→text-xs·w-20→w-16.
-## 2026-10-23 — 개발용 라이브 리플레이(?devLive) — 종료 경기를 라이브 화면으로 재생
-
-**배경**: 라이브 화면을 편집하려면 실제 진행 중인 경기가 있어야만 확인 가능했음. 종료된 경기의 game_pbp 전체 데이터를 클라이언트 가짜 시계로 다시 재생해 언제든 라이브 화면을 볼 수 있게 함.
-
-**변경 파일** (client 전용):
-- `views/multi/season/MultiGamePbpView.tsx`
-  - `devLive` = URL `?devLive` 존재 && (리그 관리자 `league.admin_user_id === session.user.id` || `import.meta.env.DEV`). `devLive=1` 반복, `devLive=<경기초>` 정지
-  - `displayState`: devLive면 강제 `'live'`(아니면 기존 `getGameDisplayState`)
-  - 신규 `gameStartMs` useMemo: 평소 `new Date(gameData.game_start_time).getTime()`, devLive 반복 = `serverNow - ((serverNow - anchor) % replayMs)`, 정지 = `serverNow - (sec/2880)*replayMs`
-  - live 필터 6곳(`visibleEvents`/`visibleShotEvents`/`liveHomeBox`/`liveAwayBox`/`liveConditions`/`onCourtIds`)의 `const startMs = new Date(gameData.game_start_time).getTime()` → `const startMs = gameStartMs`(deps에 gameStartMs 추가)
-  - 폴링 타이머: `displayState === 'live'` → `displayState === 'live' && !devLive`(종료 경기는 전체 데이터가 한 번에 오므로 폴링하면 이벤트 중복)
-  - 라이브 TabBar `rightSlot`에 "DEV 리플레이 · 반복/N초 정지" 앰버 라벨
-- `components/common/TabBar.tsx` — `align="center"`일 때 rightSlot을 `absolute right-8`로(ml-auto가 justify-center를 이겨 탭이 왼쪽으로 쏠리는 문제)
-
-**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
-**롤백 방법**: devLive 블록·gameStartMs 삭제, 6곳 `startMs`를 Before로, 폴링 조건 `&& !devLive` 제거, rightSlot 제거.
-## 2026-10-23 — 라이브 경기 화면 개편 1단계: 점보트론 하단 탭 그룹(가운데 정렬)
-
-**배경**: 라이브/예정 화면을 종료 화면처럼 탭 구조로 개편(게임 센터 | 박스스코어 | 플레이-바이-플레이 | 팀 스탯 | 샷 차트). 1단계로 탭 그룹만 추가하고 기존 3열 라이브 뷰를 "게임 센터" 탭 본문으로 둔다. 목업: claude.ai/artifact/DxA6UUprgTLv2SJqhfUa3r
-
-**변경 파일** (client 전용):
-- `components/common/TabBar.tsx` — `align?: 'start' | 'center'` prop 추가(기본 start, 기존 호출부 영향 없음). center면 바에 `justify-center`
-- `views/multi/season/MultiGamePbpView.tsx`
-  - 모듈 레벨 `LiveTab` 타입 + `LIVE_TABS` 5종 정의
-  - `useSearchParams()`에서 `setSearchParams`도 꺼냄. `liveTab`은 URL `?tab=`(center는 키 삭제, 잘못된 값→center), `setLiveTab`은 replace 모드
-  - 스코어버그 헤더 아래 `{(isLive || isScheduled) && <TabBar tabs={LIVE_TABS} align="center" />}`
-  - 기존 3열 라이브 바디 게이트: `(isLive || isScheduled)` → `(isLive || isScheduled) && liveTab === 'center'`
-  - 그 외 탭은 "○○ 탭은 준비 중입니다" 자리표시자(다음 단계에서 본문 채움)
-
-**Before**: 라이브 바디 `{(isLive || isScheduled) && (<div className="flex-1 ... overflow-y-auto">…3열…</div>)}`, TabBar는 종료 화면에만
-**After**: 위 블록 앞에 TabBar(center 정렬) 추가, 바디 조건에 `&& liveTab === 'center'`, 다른 탭 자리표시자 블록 추가
-
-**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
-**롤백 방법**: TabBar `align` prop 제거(또는 방치), MultiGamePbpView의 탭 블록·자리표시자 블록 삭제, 바디 조건에서 `&& liveTab === 'center'` 제거.
-
-### 2단계 — 게임 센터 3열 카드화 (같은 날)
-- `MultiGamePbpView.tsx`: 모듈 상수 `LIVE_CARD = 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden'`(공용 Table card 토큰). 바디 스크롤 래퍼에 `p-4`, 안쪽 `flex min-h-full` → `flex gap-4 items-start min-h-full`. 세 열의 `border-r/border-l border-slate-800 bg-slate-950` → `${LIVE_CARD}`.
-- Before: `<div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col">` / `<div className="flex-1 min-w-0 flex flex-col bg-slate-950">` / `<div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col">`
-- After: `<div className={\`w-[30%] flex flex-col ${LIVE_CARD}\`}>` / `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` / 우측 동일
-- 롤백: 위 Before로, 래퍼 p-4·gap-4·items-start 제거.
-
-### 3단계 — 좌우 박스 간소 컬럼 + 인사이트 그래프 제거 (같은 날)
-- `MultiGamePbpView.tsx` `PlayerBoxPanel`: 13열(PLAYER P MP PTS REB AST STL BLK TOV PF FG 3P FT) → 10열(STL/BLK/TOV 제거). colgroup 24/5/5/6×7/8×3 → 30/7/7/8/8/8/7/9/8/8, `min-w-[600px]` → `min-w-[480px]`, `total`에서 stl/blk/tov 합계 제거.
-- 좌측 카드의 `<div className="h-[300px] ... border-t"><GameInsightsPanel …/></div>` 블록 삭제(주석만 남김). `GameInsightsPanel` 컴포넌트·`liveHomeOreb/liveAwayOreb/liveMaxQuarter` 계산은 유지(플레이-바이-플레이 탭에서 재사용 예정).
-- 롤백: 열 3개(헤더 th·본문 td·푸터 td)와 colgroup 복구, 좌측 카드에 인사이트 블록 복구(git diff 참고).
-## 2026-10-23 — 라이브 박스스코어(PlayerBoxPanel) 이름 링크·호버카드·text-sm·행 높이
-
-**배경**: 라이브 뷰 좌우 박스스코어는 이름이 평문이고 text-xs/py-1.5라 종료 화면 표·공용 Table과 톤이 달랐다. 이름을 프로필 링크 + 호버카드로, 글자 text-sm, 헤더 h-10·셀 py-2로 공용 Table 규칙에 맞춤. 라이브 호버카드는 경기 중 스탯이 계속 바뀌어 시즌 스탯 조회 부하가 생기므로 능력치만 보여준다.
-
-**변경 파일** (client 전용):
-- `components/common/PlayerHoverCard.tsx` — `PlayerHoverCard`/`PlayerRatingsStatsPopup`에 `hideStats?: boolean` 추가(시즌 스탯 섹션 통째로 생략)
-- `views/multi/season/MultiGamePbpView.tsx`
-  - rosterCache 조회 effect: `displayState === 'final'`만 → `final || live`. 의존성을 `gameData.home_box/away_box` 배열 참조 → 선수 id 문자열(`boxIdsKey`)로 교체(라이브 폴링이 매번 새 배열을 내려줘도 같은 선수 집합이면 재조회 없음). `boxPlayerIds` useMemo를 effect 위로 이동
-  - `PlayerBoxPanel`: `playerById`/`getPlayerHref` prop 추가. 이름 → `<PlayerHoverCard hideStats><Link/></PlayerHoverCard>`(스텁이면 카드 비활성, age 유무로 판별). `text-xs`→`text-sm`, 헤더 `py-2`→`h-10`, 본문/푸터 `py-1.5`→`py-2`, 본문 선 `slate-800/50`→`slate-800`, 푸터 상단선 `slate-700`, P/MP 셀 font-semibold, 스켈레톤 h-3→h-3.5 w-24
-  - `renderBoxPanel`: 세 분기 모두 `playerById={rosterCache} getPlayerHref` 전달
-
-**Before**:
-```tsx
-useEffect(() => { if (displayState !== 'final' || !gameData) return; ... }, [displayState, gameData?.home_box, gameData?.away_box, useCustomOverrides]);
-<table className="w-full min-w-[600px] text-xs ...">  <tr className="text-slate-400 font-bold"><th className="text-left py-2 px-2 ...">
-<td className="py-1.5 px-2 ..."><span className="truncate">{p.playerName}</span>
-```
-**After**:
-```tsx
-useEffect(() => { if ((displayState !== 'final' && displayState !== 'live') || !gameData) return; ... }, [displayState, boxIdsKey, useCustomOverrides]);
-<table className="w-full min-w-[600px] text-sm ...">  <tr className="h-10 text-slate-400 text-sm font-bold"><th className="text-left px-2 ...">
-<td className="py-2 px-2 ..."><PlayerHoverCard player={card} teamAbbr={label} hideStats><Link to={href} ...>{p.playerName}</Link></PlayerHoverCard>
-```
-
-**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
-**롤백 방법**: 위 Before로 되돌림. `hideStats` prop은 남겨도 무해.
-## 2026-10-23 — 멀티 종료 화면 박스스코어 선수 호버카드
-
-**배경**: 종료 화면 박스스코어의 선수 이름에 호버카드(능력치+시즌 스탯)가 없었음(`PlayerIdentityCells` 주석 "호버카드 없음").
-
-**변경 파일** (client 전용):
-- `components/game/PlayerIdentityCells.tsx` — `profileHref`가 있을 때(멀티 종료 화면) 이름 Link를 `PlayerHoverCard`로 감쌈. 스텁(능력치 로딩 전)이면 `player=null`이라 카드 비활성. `teamAbbr` prop 추가
-- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `teamAbbr={badge?.abbr}` 전달
-- `views/multi/season/MultiGamePbpView.tsx` — `usePlayerSeasonStatsBatch`(리그 시즌 스탯 쿼리 공유 캐시)로 박스 선수 시즌 스탯을 `rosterCacheWithStats`로 병합, `buildTeamAdapter`에 사용
-
-**Before**: `<Link ...>{p.playerName}</Link>` / `buildTeamAdapter(..., rosterCache)`
-**After**: `<PlayerHoverCard player={isStub ? null : playerInfo} teamAbbr={teamAbbr}><Link .../></PlayerHoverCard>` / `buildTeamAdapter(..., rosterCacheWithStats)`
-
-- (추가) `MultiGamePbpView.tsx` — `usePlayerInjuryRowsBatch` + `useCurrentVirtualDate` + `buildActiveInjurySeverityMap`으로 "지금(가상 오늘) 기준 활성 부상/출장정지"를 `rosterCacheWithStats`의 `activeInjurySeverity/injuryType/activeInjuryDuration/returnDate`에 병합(뉴스피드와 동일 방식, 출장정지 남은 경기수는 박스의 소속팀+schedule로 재계산)
-
-**검증**: tsc 변경 파일 오류 없음. 싱글플레이(profileHref 없음)는 동작 불변.
-**롤백 방법**: 위 Before로 되돌림.
-## 2026-10-23 — 경기 종료 화면 박스스코어 로딩 스켈레톤 (행이 뒤늦게 생기며 레이아웃 밀림)
-
-**배경**: 종료 경기 진입 시 `gameData`가 오기 전엔 `homeBox/awayBox`가 `[]`라 본문 행 0개짜리 표가 그려지고, 데이터 도착 후 행 13개 안팎이 한꺼번에 생겨 아래 섹션이 밀렸다. 로딩 중엔 스켈레톤 행으로 높이를 미리 확보.
-
-**변경 파일** (client 전용):
-- `components/game/boxScoreRows.tsx` — `BlankBoxRows`에 `skeleton?` 추가(첫 칸 h-6 안에 Skeleton w-24, 나머지 칸 Skeleton w-5)
-- `components/game/BoxScoreTable.tsx`, `AdvancedBoxScoreTable.tsx`, `DefenseBoxScoreTable.tsx` — `padSkeleton?` prop 추가, `BlankBoxRows`로 전달
-- `components/game/tabs/GameBoxScoreTab.tsx` — `loading?` prop 추가, true면 `maxRows = 13`(LOADING_SKELETON_ROWS)로 padRows를 깔고 padSkeleton 전달
-- `views/multi/season/MultiGamePbpView.tsx` — 종료 박스스코어 탭에 `loading={!gameData}`
-
-**Before**: `<BlankBoxRows count={padRows} totalCols={N} />`, `maxRows = Math.max(home.length, away.length)`
-**After**: `<BlankBoxRows count={padRows} totalCols={N} skeleton={padSkeleton} />`, `maxRows = loading ? 13 : Math.max(...)`
-
-**검증**: tsc 변경 파일 오류 없음(LiveTacticsTab 기존 오류만).
-**롤백 방법**: 위 Before로 되돌리고 `loading`/`padSkeleton` prop 제거.
-
-### 추가 수정 — Traditional 표 statCols 1 초과 버그 (빈 열 발생)
-- 원인: 10-21 `b60d0ae7`(REB→OREB/DREB 분리, 열 +1)에서 `statCols`를 +2(12→14, 18→20) 올려 DNP 행 colSpan·`BlankBoxRows` 칸 수가 헤더보다 1 많음 → DNP 선수가 있거나 padRows/스켈레톤이 있을 때 표 오른쪽에 빈 열이 생김(간헐적).
-- `components/game/BoxScoreTable.tsx` (client 전용): `statCols = standalone ? 14 : 20` → `standalone ? 13 : 19`
-- 롤백: 값을 14/20으로 되돌림(빈 열 버그가 되살아남).
 ## 2026-10-23 — 시즌 달력을 리그 생성 시점에 저장 + 시즌 시작 전 날짜 스트립에 올스타 날짜 숨김
 
 **배경**: v2 배포 후 새 리그(PBL Active, 모집 중)의 날짜 스트립이 "2027-02-16 올스타전"으로 시작. ① `season_calendar`는 finalize(드래프트 종료) 때만 저장돼 모집·드래프트 단계에선 null → 기존 고정 달력(본경기 2/16)으로 계산. ② 스트립의 올스타 행사일 주입(f69cd1b5)이 메인리그 여부만 봐서, 정규시즌 경기가 없는 시즌 전에도 올스타 날짜만 표시.
@@ -1014,7 +1596,6 @@ useEffect(() => { if ((displayState !== 'final' && displayState !== 'live') || !
 
 **검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
 **롤백 방법**: payload 줄 삭제, 조건을 `if (!isMainLeague) return [];`로 복원(deps에서 isSeasonStarted 제거).
-
 
 ## 2026-10-23 — 일정 생성기 v2: 실측 NBA 패턴 재현 + 시즌 달력(올스타 포함) 리그별 저장
 
@@ -1088,6 +1669,157 @@ export function postseasonVirtualAnchor(virtualSeasonYear, seasonCalendar?: unkn
 - 생성기만 되돌리기(안전): client/server `generateSeasonSchedule` 본문을 `generateSeasonScheduleLegacy`와 같게(또는 finalize.ts에서 Legacy 호출). 달력·저장 경로는 그대로 둬도 됨.
 - 달력 경로까지 되돌리기: **v2로 만든 리그(season_calendar NOT NULL)가 이미 있으면 위험** — 그 리그의 올스타·플레이오프 날짜가 구 고정값으로 계산돼 타임라인과 어긋난다. 그런 리그가 없을 때만 Before 블록대로 복원 + 호출부 인자 제거. 컬럼은 남겨도 무해.
 - 미러 쌍(seasonCalendar / scheduleOptimizer / scheduleGenerator / allStarSelection / leagueTimeline)은 반드시 양쪽 같이.
+
+## 2026-10-23 — 게임 센터: 샷차트/PBP 카드 분리 · 샷차트 헤더 약어만 text-base · PBP 헤더 text-sm+셀렉터 우측 · 새 행 흰 선 번쩍임 수정
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiGamePbpView.tsx`
+  - 중앙 컬럼 `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` → `flex-1 min-w-0 flex flex-col gap-4`(카드 아님), 샷차트 래퍼 `shrink-0 border-b border-slate-700` → `shrink-0 ${LIVE_CARD}`, PBP 래퍼 `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col overflow-hidden border-t border-slate-800` → `shrink-0 min-h-[160px] max-h-[70vh] flex flex-col ${LIVE_CARD}`
+  - PBP 헤더 `h-9` → `h-10`, 제목 `text-xs` → `text-sm`, 안쪽 `flex items-center gap-3` → `flex items-center justify-between gap-3 w-full`(셀렉터 우측)
+  - 새 행 흰 선 번쩍임: 원인은 `divide-y divide-slate-800/50` + 행의 `transition-colors`. 맨 위 행(첫 자식)은 divide 선이 없어 border-color가 preflight 기본(gray-200)인데, 새 로그가 위에 끼어들어 둘째 행이 되는 순간 border-top 1px + slate 색으로 바뀌고 transition-colors가 gray-200→slate를 150ms 보간 → 흰 선. 컨테이너 `divide-y divide-slate-800/50` 제거, 일반 행·교체 행에 `border-b border-slate-800/50` 직접 부여(부상 행은 기존 border-y red 유지)
+- `views/multi/season/MultiFullCourtChart.tsx` — split 헤더 텍스트 `{abbr} 원정/홈` → `{abbr}`, `text-sm` → `text-base`
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 위 Before 클래스로 복구, 컨테이너에 `divide-y divide-slate-800/50` 복원 + 행 `border-b border-slate-800/50` 제거.
+## 2026-10-23 — 게임 센터: 샷차트 헤더 팀컬러 분할(필터 숨김) · PBP 쿼터 셀렉터 OT1 오탐 수정 · PBP text-sm
+
+**배경**: ① 게임 센터 샷차트 헤더의 선수 필터를 숨기고 헤더를 좌(원정)/우(홈) 팀 테마 컬러로 반반 분할. ② 연장이 없는 경기에도 PBP 쿼터 셀렉터에 OT1이 뜸 — 엔진 `liveEngine.ts stepPossession`이 4Q 종료 시 `state.quarter = 5`로 올린 뒤 `'경기 종료 (Final)'` SYSTEM 로그를 남겨 그 로그가 quarter 5로 저장되기 때문(엔진은 미수정, 뷰에서 SYSTEM 제외). ③ PBP 피드 글자 text-xs → text-sm.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiFullCourtChart.tsx` — `headerVariant?: 'legend' | 'split'`(기본 legend, 기존 동작 불변) + `awayTextColor/homeTextColor`. split이면 h-10 헤더를 flex 반반, 각각 `backgroundColor: awayColor/homeColor`, 글자는 대비색. 필터 버튼·범례는 legend에서만 렌더(필터 state/로직은 그대로)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `<MultiFullCourtChart headerVariant="split" awayTextColor={awayText} homeTextColor={homeText} />`
+  - `maxQuarter`: `Math.max(...gameData.events.map(q), 4)` → `maxPlayedQuarter = visibleEvents.reduce(SYSTEM 제외 최대 quarter)`, `Math.max(maxPlayedQuarter, 4)`. 공개 로그 기준이라 스포일러도 방지
+  - PBP 스크롤 블록(헤더 행·플로우 배너·점수·시간·코멘터리·빈 상태) `text-xs` 12곳 → `text-sm`, 시간 칸 `w-16` 2곳 → `w-20`
+
+**Before**: `const maxQuarter = Math.max(...((gameData?.events ?? []) as PbpLog[]).map(e => e.quarter), 4);` / 샷차트 헤더 범례+필터 / PBP `text-xs`, 시간 `w-16`
+**After**: 위 참조.
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: headerVariant prop 전달 제거(기본 legend로 복귀), maxQuarter를 Before로, PBP 블록 text-sm→text-xs·w-20→w-16.
+## 2026-10-23 — 개발용 라이브 리플레이(?devLive) — 종료 경기를 라이브 화면으로 재생
+
+**배경**: 라이브 화면을 편집하려면 실제 진행 중인 경기가 있어야만 확인 가능했음. 종료된 경기의 game_pbp 전체 데이터를 클라이언트 가짜 시계로 다시 재생해 언제든 라이브 화면을 볼 수 있게 함.
+
+**변경 파일** (client 전용):
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `devLive` = URL `?devLive` 존재 && (리그 관리자 `league.admin_user_id === session.user.id` || `import.meta.env.DEV`). `devLive=1` 반복, `devLive=<경기초>` 정지
+  - `displayState`: devLive면 강제 `'live'`(아니면 기존 `getGameDisplayState`)
+  - 신규 `gameStartMs` useMemo: 평소 `new Date(gameData.game_start_time).getTime()`, devLive 반복 = `serverNow - ((serverNow - anchor) % replayMs)`, 정지 = `serverNow - (sec/2880)*replayMs`
+  - live 필터 6곳(`visibleEvents`/`visibleShotEvents`/`liveHomeBox`/`liveAwayBox`/`liveConditions`/`onCourtIds`)의 `const startMs = new Date(gameData.game_start_time).getTime()` → `const startMs = gameStartMs`(deps에 gameStartMs 추가)
+  - 폴링 타이머: `displayState === 'live'` → `displayState === 'live' && !devLive`(종료 경기는 전체 데이터가 한 번에 오므로 폴링하면 이벤트 중복)
+  - 라이브 TabBar `rightSlot`에 "DEV 리플레이 · 반복/N초 정지" 앰버 라벨
+- `components/common/TabBar.tsx` — `align="center"`일 때 rightSlot을 `absolute right-8`로(ml-auto가 justify-center를 이겨 탭이 왼쪽으로 쏠리는 문제)
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: devLive 블록·gameStartMs 삭제, 6곳 `startMs`를 Before로, 폴링 조건 `&& !devLive` 제거, rightSlot 제거.
+## 2026-10-23 — 라이브 경기 화면 개편 1단계: 점보트론 하단 탭 그룹(가운데 정렬)
+
+**배경**: 라이브/예정 화면을 종료 화면처럼 탭 구조로 개편(게임 센터 | 박스스코어 | 플레이-바이-플레이 | 팀 스탯 | 샷 차트). 1단계로 탭 그룹만 추가하고 기존 3열 라이브 뷰를 "게임 센터" 탭 본문으로 둔다. 목업: claude.ai/artifact/DxA6UUprgTLv2SJqhfUa3r
+
+**변경 파일** (client 전용):
+- `components/common/TabBar.tsx` — `align?: 'start' | 'center'` prop 추가(기본 start, 기존 호출부 영향 없음). center면 바에 `justify-center`
+- `views/multi/season/MultiGamePbpView.tsx`
+  - 모듈 레벨 `LiveTab` 타입 + `LIVE_TABS` 5종 정의
+  - `useSearchParams()`에서 `setSearchParams`도 꺼냄. `liveTab`은 URL `?tab=`(center는 키 삭제, 잘못된 값→center), `setLiveTab`은 replace 모드
+  - 스코어버그 헤더 아래 `{(isLive || isScheduled) && <TabBar tabs={LIVE_TABS} align="center" />}`
+  - 기존 3열 라이브 바디 게이트: `(isLive || isScheduled)` → `(isLive || isScheduled) && liveTab === 'center'`
+  - 그 외 탭은 "○○ 탭은 준비 중입니다" 자리표시자(다음 단계에서 본문 채움)
+
+**Before**: 라이브 바디 `{(isLive || isScheduled) && (<div className="flex-1 ... overflow-y-auto">…3열…</div>)}`, TabBar는 종료 화면에만
+**After**: 위 블록 앞에 TabBar(center 정렬) 추가, 바디 조건에 `&& liveTab === 'center'`, 다른 탭 자리표시자 블록 추가
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: TabBar `align` prop 제거(또는 방치), MultiGamePbpView의 탭 블록·자리표시자 블록 삭제, 바디 조건에서 `&& liveTab === 'center'` 제거.
+
+### 2단계 — 게임 센터 3열 카드화 (같은 날)
+- `MultiGamePbpView.tsx`: 모듈 상수 `LIVE_CARD = 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden'`(공용 Table card 토큰). 바디 스크롤 래퍼에 `p-4`, 안쪽 `flex min-h-full` → `flex gap-4 items-start min-h-full`. 세 열의 `border-r/border-l border-slate-800 bg-slate-950` → `${LIVE_CARD}`.
+- Before: `<div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col">` / `<div className="flex-1 min-w-0 flex flex-col bg-slate-950">` / `<div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col">`
+- After: `<div className={\`w-[30%] flex flex-col ${LIVE_CARD}\`}>` / `<div className={\`flex-1 min-w-0 flex flex-col ${LIVE_CARD}\`}>` / 우측 동일
+- 롤백: 위 Before로, 래퍼 p-4·gap-4·items-start 제거.
+
+### 3단계 — 좌우 박스 간소 컬럼 + 인사이트 그래프 제거 (같은 날)
+- `MultiGamePbpView.tsx` `PlayerBoxPanel`: 13열(PLAYER P MP PTS REB AST STL BLK TOV PF FG 3P FT) → 10열(STL/BLK/TOV 제거). colgroup 24/5/5/6×7/8×3 → 30/7/7/8/8/8/7/9/8/8, `min-w-[600px]` → `min-w-[480px]`, `total`에서 stl/blk/tov 합계 제거.
+- 좌측 카드의 `<div className="h-[300px] ... border-t"><GameInsightsPanel …/></div>` 블록 삭제(주석만 남김). `GameInsightsPanel` 컴포넌트·`liveHomeOreb/liveAwayOreb/liveMaxQuarter` 계산은 유지(플레이-바이-플레이 탭에서 재사용 예정).
+- 롤백: 열 3개(헤더 th·본문 td·푸터 td)와 colgroup 복구, 좌측 카드에 인사이트 블록 복구(git diff 참고).
+## 2026-10-23 — 엔진: 보너스 전 비슈팅 파울이 공격권을 넘기던 버그 수정 (공격권 유지 + 샷클락 14초 규정)
+
+**배경**: PBL TS%·FTA 조사 중 발견. 팀 파울 4개 이하에서 비슈팅 파울(`result.type === 'foul'`)이 나오면
+`liveEngine.ts`의 공격권 유지 목록에 `'foul'`이 없어 **공격권이 상대에게 넘어갔고**, 포세션 시간도 통째로
+(8~23초) 소모됐다. 실제 농구는 공격팀이 인바운드로 공격을 이어간다(샷클락 14초 미만이면 14초). 결과적으로
+팀당 경기당 ~3.2회의 "턴오버로 기록되지 않는 공격권 상실"이 생겼고, 비슈팅 파울 확률을 올리면 득점이 오히려
+줄어드는 원인이었다. (`statsMappers.ts` recordPlayTypeStat 주석은 이미 "공격이 이어지므로"라고 적혀 있어
+의도와 실제 동작이 어긋나 있었음.) 사용자 승인: "버그 수정 먼저 하자". 비슈팅 파울 확률 자체(`NON_SHOOTING_FOUL.BASE_RATE`)는
+이번에 건드리지 않음(별도 결정 대기).
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/liveEngine.ts` (client) — stepPossession 내 timeTaken 계산부, possessionTimeAccum, retainPossession
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — 동일
+- `services/game/engine/pbp/statsMappers.ts` (client) — `type === 'foul'` 분기의 파울 addLog
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+// liveEngine.ts
+const timeTaken = isTechnical ? 0
+    : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
+    : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+if (!isTechnical) { ...; sideAccum.total += timeTaken; sideAccum.count += 1; }
+...
+const retainPossession = isOffReb
+    || result.type === 'technicalFoul'
+    || result.type === 'flagrantFoul';
+if (retainPossession) {
+    if (isOffReb) state.shotClock = 14;
+    else if (result.type === 'flagrantFoul') state.shotClock = 14;
+    ...
+
+// statsMappers.ts — 비슈팅 파울 로그 (보너스 전이면 포제션 종료 nonScoring 스탬프)
+addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id, defTeam.fouls > 4 ? undefined : 'nonScoring', offTeam.id);
+```
+
+**After**:
+```ts
+// liveEngine.ts — fouls는 applyPossessionResult(commitFoul) 전 값이라 "< 4" = 이번 파울로 4개 이하
+const fouledTeam = state.possession === 'home' ? state.away : state.home;
+const isNonBonusFoul = result.type === 'foul' && fouledTeam.fouls < 4;
+let timeTaken = isTechnical ? 0 : ... (동일);
+if (isNonBonusFoul) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
+if (!isTechnical) { ...; sideAccum.total += timeTaken; if (!isNonBonusFoul) sideAccum.count += 1; }
+...
+const retainPossession = isOffReb
+    || result.type === 'technicalFoul'
+    || result.type === 'flagrantFoul'
+    || isNonBonusFoul;
+if (retainPossession) {
+    if (isOffReb) state.shotClock = 14;
+    else if (result.type === 'flagrantFoul') state.shotClock = 14;
+    else if (isNonBonusFoul) state.shotClock = Math.max(14, state.shotClock - timeTaken);
+    ...
+
+// statsMappers.ts — 파울 로그는 항상 포제션 종료 스탬프 없음(보너스면 자유투 로그가 종료, 아니면 포제션 계속)
+addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
+```
+- 보너스 파울(5번째부터)은 기존대로 자유투 2개 후 공격권 전환. 슈팅 파울·앤드원·테크니컬·플래그런트 경로는 무변경.
+- "포세션 시간의 25~75%만 소모"는 파울이 공격 도중 일어난다는 가정값(실측 근거 없음).
+- `Math.random()` 호출이 1회 늘어 같은 시드라도 이후 난수열이 달라진다(결정론 재현 시 참고).
+
+**검증** (스크래치패드 하네스, 서버 simRunner 경로 재현 — repairAiTactics·정규화·autoTimeoutAllTeams, PBL 30팀
+현재 로스터·전술, 1230경기·동일 시드, 체력 누적/B2B 미반영):
+- 팀당 경기당: 득점 109.6 → **111.6**, TS 59.3 → 59.5%, ORtg 112.4 → 112.8, FTA 17.7 → 17.9, PF 13.8 → 14.0,
+  쿼터당 팀 파울 2.87 → 2.90, 보너스 도달 쿼터 16 → 17%, 파울 아웃 0.021 → 0.021/팀·경기
+- 저장소 수정본을 그대로 복사해 돌린 결과가 실험 패치(eng_fix025)와 완전히 동일
+- 로그 점검(40경기): 보너스 전 비슈팅 파울 226건 → 다음 공격 행동은 전부 같은 팀(예외 9건은 모두 이어진 공격에서
+  오펜시브 파울이 나 정상적으로 공격권이 넘어간 경우), 파울 로그의 isPossessionEnd 스탬프 0건
+- tsc: 변경 파일 4개 관련 오류 0건 (server 전체 45 / client 전체 60, 기존 다른 파일 오류)
+- **Fly 배포 전** (배포는 `scripts/deploy-server.sh`로)
+
+**롤백 방법**: 위 4개 파일을 Before 블록대로 되돌림 — client/server 미러를 반드시 같이.
+`isNonBonusFoul`/`fouledTeam` 선언 삭제, `let timeTaken` → `const`, retainPossession·샷클락 분기에서 isNonBonusFoul 제거,
+statsMappers 파울 addLog에 `defTeam.fouls > 4 ? undefined : 'nonScoring', offTeam.id` 인자 복원.
+
+
+
 
 ## 2026-10-23 — 엔진: 파울 트러블 개정 (4파울부터·구분 없음·즉시 벤치·연쇄 승계) + 도움 수비 파울 회피
 
@@ -1394,6 +2126,68 @@ where kind = 'team' and data ? 'sliders' and not (data ? 'altSliders');
 
 **롤백 방법**: 엔진은 liveEngine/initializer/pbpTypes(client+server 쌍) Before로 되돌리고 tacticSchedule.ts 두 개 삭제. 엔진만 롤백해도 저장된 새 필드는 무시되므로 데이터 정리 불필요. UI는 MultiTacticsView의 세트 바·타임라인 블록 제거 + TacticsSlidersPanel에 `tactics={userTactics!} onUpdateTactics={setUserTactics}` 복원, 자동 설정/초기화의 `withSetSliders(...)`를 `{ ...userTactics, sliders }`로 복원.
 
+## 2026-10-23 — 라이브 박스스코어(PlayerBoxPanel) 이름 링크·호버카드·text-sm·행 높이
+
+**배경**: 라이브 뷰 좌우 박스스코어는 이름이 평문이고 text-xs/py-1.5라 종료 화면 표·공용 Table과 톤이 달랐다. 이름을 프로필 링크 + 호버카드로, 글자 text-sm, 헤더 h-10·셀 py-2로 공용 Table 규칙에 맞춤. 라이브 호버카드는 경기 중 스탯이 계속 바뀌어 시즌 스탯 조회 부하가 생기므로 능력치만 보여준다.
+
+**변경 파일** (client 전용):
+- `components/common/PlayerHoverCard.tsx` — `PlayerHoverCard`/`PlayerRatingsStatsPopup`에 `hideStats?: boolean` 추가(시즌 스탯 섹션 통째로 생략)
+- `views/multi/season/MultiGamePbpView.tsx`
+  - rosterCache 조회 effect: `displayState === 'final'`만 → `final || live`. 의존성을 `gameData.home_box/away_box` 배열 참조 → 선수 id 문자열(`boxIdsKey`)로 교체(라이브 폴링이 매번 새 배열을 내려줘도 같은 선수 집합이면 재조회 없음). `boxPlayerIds` useMemo를 effect 위로 이동
+  - `PlayerBoxPanel`: `playerById`/`getPlayerHref` prop 추가. 이름 → `<PlayerHoverCard hideStats><Link/></PlayerHoverCard>`(스텁이면 카드 비활성, age 유무로 판별). `text-xs`→`text-sm`, 헤더 `py-2`→`h-10`, 본문/푸터 `py-1.5`→`py-2`, 본문 선 `slate-800/50`→`slate-800`, 푸터 상단선 `slate-700`, P/MP 셀 font-semibold, 스켈레톤 h-3→h-3.5 w-24
+  - `renderBoxPanel`: 세 분기 모두 `playerById={rosterCache} getPlayerHref` 전달
+
+**Before**:
+```tsx
+useEffect(() => { if (displayState !== 'final' || !gameData) return; ... }, [displayState, gameData?.home_box, gameData?.away_box, useCustomOverrides]);
+<table className="w-full min-w-[600px] text-xs ...">  <tr className="text-slate-400 font-bold"><th className="text-left py-2 px-2 ...">
+<td className="py-1.5 px-2 ..."><span className="truncate">{p.playerName}</span>
+```
+**After**:
+```tsx
+useEffect(() => { if ((displayState !== 'final' && displayState !== 'live') || !gameData) return; ... }, [displayState, boxIdsKey, useCustomOverrides]);
+<table className="w-full min-w-[600px] text-sm ...">  <tr className="h-10 text-slate-400 text-sm font-bold"><th className="text-left px-2 ...">
+<td className="py-2 px-2 ..."><PlayerHoverCard player={card} teamAbbr={label} hideStats><Link to={href} ...>{p.playerName}</Link></PlayerHoverCard>
+```
+
+**검증**: tsc 변경 파일 오류 없음. 브라우저 미확인.
+**롤백 방법**: 위 Before로 되돌림. `hideStats` prop은 남겨도 무해.
+## 2026-10-23 — 멀티 종료 화면 박스스코어 선수 호버카드
+
+**배경**: 종료 화면 박스스코어의 선수 이름에 호버카드(능력치+시즌 스탯)가 없었음(`PlayerIdentityCells` 주석 "호버카드 없음").
+
+**변경 파일** (client 전용):
+- `components/game/PlayerIdentityCells.tsx` — `profileHref`가 있을 때(멀티 종료 화면) 이름 Link를 `PlayerHoverCard`로 감쌈. 스텁(능력치 로딩 전)이면 `player=null`이라 카드 비활성. `teamAbbr` prop 추가
+- `components/game/BoxScoreTable.tsx` / `AdvancedBoxScoreTable.tsx` / `DefenseBoxScoreTable.tsx` — `teamAbbr={badge?.abbr}` 전달
+- `views/multi/season/MultiGamePbpView.tsx` — `usePlayerSeasonStatsBatch`(리그 시즌 스탯 쿼리 공유 캐시)로 박스 선수 시즌 스탯을 `rosterCacheWithStats`로 병합, `buildTeamAdapter`에 사용
+
+**Before**: `<Link ...>{p.playerName}</Link>` / `buildTeamAdapter(..., rosterCache)`
+**After**: `<PlayerHoverCard player={isStub ? null : playerInfo} teamAbbr={teamAbbr}><Link .../></PlayerHoverCard>` / `buildTeamAdapter(..., rosterCacheWithStats)`
+
+- (추가) `MultiGamePbpView.tsx` — `usePlayerInjuryRowsBatch` + `useCurrentVirtualDate` + `buildActiveInjurySeverityMap`으로 "지금(가상 오늘) 기준 활성 부상/출장정지"를 `rosterCacheWithStats`의 `activeInjurySeverity/injuryType/activeInjuryDuration/returnDate`에 병합(뉴스피드와 동일 방식, 출장정지 남은 경기수는 박스의 소속팀+schedule로 재계산)
+
+**검증**: tsc 변경 파일 오류 없음. 싱글플레이(profileHref 없음)는 동작 불변.
+**롤백 방법**: 위 Before로 되돌림.
+## 2026-10-23 — 경기 종료 화면 박스스코어 로딩 스켈레톤 (행이 뒤늦게 생기며 레이아웃 밀림)
+
+**배경**: 종료 경기 진입 시 `gameData`가 오기 전엔 `homeBox/awayBox`가 `[]`라 본문 행 0개짜리 표가 그려지고, 데이터 도착 후 행 13개 안팎이 한꺼번에 생겨 아래 섹션이 밀렸다. 로딩 중엔 스켈레톤 행으로 높이를 미리 확보.
+
+**변경 파일** (client 전용):
+- `components/game/boxScoreRows.tsx` — `BlankBoxRows`에 `skeleton?` 추가(첫 칸 h-6 안에 Skeleton w-24, 나머지 칸 Skeleton w-5)
+- `components/game/BoxScoreTable.tsx`, `AdvancedBoxScoreTable.tsx`, `DefenseBoxScoreTable.tsx` — `padSkeleton?` prop 추가, `BlankBoxRows`로 전달
+- `components/game/tabs/GameBoxScoreTab.tsx` — `loading?` prop 추가, true면 `maxRows = 13`(LOADING_SKELETON_ROWS)로 padRows를 깔고 padSkeleton 전달
+- `views/multi/season/MultiGamePbpView.tsx` — 종료 박스스코어 탭에 `loading={!gameData}`
+
+**Before**: `<BlankBoxRows count={padRows} totalCols={N} />`, `maxRows = Math.max(home.length, away.length)`
+**After**: `<BlankBoxRows count={padRows} totalCols={N} skeleton={padSkeleton} />`, `maxRows = loading ? 13 : Math.max(...)`
+
+**검증**: tsc 변경 파일 오류 없음(LiveTacticsTab 기존 오류만).
+**롤백 방법**: 위 Before로 되돌리고 `loading`/`padSkeleton` prop 제거.
+
+### 추가 수정 — Traditional 표 statCols 1 초과 버그 (빈 열 발생)
+- 원인: 10-21 `b60d0ae7`(REB→OREB/DREB 분리, 열 +1)에서 `statCols`를 +2(12→14, 18→20) 올려 DNP 행 colSpan·`BlankBoxRows` 칸 수가 헤더보다 1 많음 → DNP 선수가 있거나 padRows/스켈레톤이 있을 때 표 오른쪽에 빈 열이 생김(간헐적).
+- `components/game/BoxScoreTable.tsx` (client 전용): `statCols = standalone ? 14 : 20` → `standalone ? 13 : 19`
+- 롤백: 값을 14/20으로 되돌림(빈 열 버그가 되살아남).
 ## 2026-10-23 — 박스스코어에 ovr 기록 (경기 종료 화면 OVR 배지 지연 제거)
 
 **배경**: 고정 OVR 전환 후에도 멀티 경기 종료 화면의 OVR 배지가 잠깐 스켈레톤 뒤에 나타났다. 박스스코어(`PlayerBoxScore`)에 OVR이 없어, gameData 도착 후 `MultiGamePbpView`가 `fetchMetaPlayersByRosterIds`(인스턴스→카드/meta_players 순차 조회)로 rosterCache를 채우고 나서야 배지를 그렸기 때문. 서버가 저장 시점에 선수별 ovr을 박스스코어에 같이 기록하도록 변경.
@@ -1520,6 +2314,139 @@ if (awayPlan) { ... } else ({ ... } = await repairAi(...));
 **검증**: 이 스크립트로 타임아웃 커밋 배포(아래 항목 참고).
 
 **롤백 방법**: 스크립트 삭제 + CLAUDE.md 섹션 제거(엔진/서버 코드 영향 없음).
+
+## 2026-10-22 — AI 감독 C3: 로테이션(48분 출전표) 생성 모듈 신설 (호출부 없음)
+
+**배경**: 사용자 확정 순서 3단계(라인업 → 로테이션 → 공격 전술 …). 현행 AI 팀은 드래프트 직후 만든 고정 틀(주전 0~12·18~36·42~48분 / 벤치 12~18·36~42분)만 쓴다. 우리 로스터만 보고(상대 미반영) 로스터에 맞는 8~10인 로테이션을 만든다. 게임 동작 영향 없음.
+
+**변경 파일** (server 전용, 미러 없음):
+- `server/src/shared/game/tactics/aiCoach/rotationBuilder.ts` (신규)
+- `scripts/rotationBuilderScenarios.ts` (신규, 시험 도구)
+
+**Before**: 없음(신규). 비교 기준은 `tacticGenerator.generateAutoTactics()`의 고정 틀 로테이션.
+
+**After**:
+```ts
+buildRotation(roster, lineup) / buildRotationFromInputs(healthyPlayers, starterIds, depthChart, allRosterIds)
+ → { rotationMap, minutes, targets, stints, rotationSize, shortMinutes, notes }
+// 목표 시간: TEMPLATES[N](5~10인, 합 240) × (1 + QUALITY_K(0.006)×(OVR−평균)) × 체력·컨디션 계수(STAMINA_TARGET_K 0.005, CONDITION_FLOOR 0.75) ± 주전/벤치 격차 보정(DROPOFF_BASE_GAP 7, +4/−2)
+//         → 240분 정규화 → 상한(CAP_BASE 26 + 0.18×stamina, 최대 44, × 컨디션) 물 채우기
+// 스케줄러(매 분): 욕구 = 목표×진행률 − 뛴 분 + HYST(5, 지금 뛰는 선수) − 11분 초과(2.5/분) − 3분 미만 휴식(4) + START_BONUS(100, 0·24분 선발)
+//                   + 42분 이후 0.5×(OVR−평균) − 상한 초과 3/분 → 슬롯별 상위 4명 조합 탐색 점수 Σ욕구 − SLOT_WEIGHT(4)×Σslotcost − STAGGER_WEIGHT(8)×max(0, 2−OVR상위3중 코트 인원)
+```
+- 엔진 `slotAssignment.slotCost`/`listedSlots`를 재사용(어색함 비용을 엔진 슬롯 배정과 일치시킴).
+
+**검증**:
+- tsc(--strict, noUnusedLocals) 오류 없음.
+- `scripts/rotationBuilderScenarios.ts` 12개 시나리오 전부 통과. 시험 중 발견·수정: ① 체력/컨디션이 상한에만 반영돼 stamina 45와 85가 같은 34분 → 목표 시간에도 곱함(→ 31분, 컨디션 45는 36 → 29분) ② 결정론 시험이 키 순서 차이로 거짓 실패(시험 수정).
+- A/B 리그 시뮬(같은 로스터, 새 방식 vs 현행 AI 방식, 홈·원정 모든 매치업, 현재 부상 반영): 현행 vs 현행 −0.01(±0.42), 새 라인업+고정 틀 −0.08, 새 라인업+새 로테이션 3세트 5,220경기 **+0.94(±0.24)**, 승률 52.2%. 엇갈린 휴식 항 추가 전 +0.99(1세트), 후 +1.13(1세트).
+- 속도: 평균 약 3.5ms(첫 호출 12ms).
+
+**롤백 방법**: `rotationBuilder.ts`·시험 도구 삭제(호출부 없음).
+
+## 2026-10-22 — AI 감독 C2 라인업 개정: 포지션 공급 부족 처리 + 후보 소진 버그 수정 + 커버 목록 (호출부 없음)
+
+**배경**: 라인업 모듈의 알려진 결함 두 가지(후보 없는 슬롯에서 결과 칸이 밀림 / 앞 슬롯이 후보를 다 쓰면 주전이 전부 빔)와 사용자 설계("포지션이 비대칭이면 인접 포지션 선수가 더 뛰어야") 반영. 사용자 확정(2026-10-22): 라인업·로테이션은 우리 로스터만(상대 미반영), 공격 전술만 상대 수비수 기준, 수비 전술은 균형, AI 전술은 저장·표시하지 않음(계획서 1장 "제안 D"). 게임 동작 영향 없음.
+
+**변경 파일** (server 전용, 미러 없음):
+- `server/src/shared/game/tactics/aiCoach/lineupBuilder.ts`
+- `scripts/lineupBuilderScenarios.ts` (신규, 시험 도구)
+
+**Before**:
+```ts
+// 슬롯 후보: 고유 포지션 OVR 상위 3명 → 없으면 인접 상위 3명 → 없으면 전원 상위 3명 (5슬롯 × 3 = 243조합)
+// walk(i): candidates[i].length === 0이면 walk(i + 1) — chosen[i]로 읽어서 칸이 한 칸씩 밀림
+// 같은 선수가 앞 슬롯에서 쓰였으면 건너뜀 → 남는 후보가 없으면 조합이 끝까지 못 가 주전 전부 ''
+// 뎁스: 고유 포지션 → 인접 (비용 개념 없음), 점수 = ΣOVR + 조합 보너스(핸들러 2 / 슈터 1.5×최대 2 / 림 2)
+```
+
+**After**:
+```ts
+// 슬롯별 후보 = 어색함(0/1/3/10) 오름차순 → OVR 내림차순 상위 CANDIDATES_PER_SLOT(4) (가용 6명 이하면 전원), 슬롯 인덱스로 직접 저장
+// 점수 = ΣOVR − MISMATCH_WEIGHT(30) × Σ어색함 − EMPTY_PENALTY(1000) × 빈 슬롯 + 조합 보너스 + BONUS_SLOT_ANCHOR(1.5) × (PG 슬롯=핸들링 상위2, C 슬롯=림 보호 상위2)
+// 가용 5명 미만일 때만 '슬롯 비움' 선택지, 후보 제한으로 완전 배정이 없으면 completeGreedy
+// 한 번 훑으며 보너스 있는 최고(withBonus)와 보너스 없는 최고(base, changedFromOvrOrder 비교용)를 같이 구함 — 비트마스크로 중복 제거
+// 반환값에 cover[slot](어색함 ≤ 3, 어색함 → OVR 순), shortage[], score.anchor, score.mismatch 추가
+// buildLineup(roster) → buildLineupFromCandidates(pool) 분리 (가상 선수로 시험 가능)
+```
+
+**검증**:
+- tsc(--strict, noUnusedLocals) 오류 없음.
+- `scripts/lineupBuilderScenarios.ts` 13개 시나리오 전부 통과. 시험 중 설계 빈틈 발견: 핸들러 보너스가 "주전 5명 중 누구든"이라 PG가 없는 팀에서 최고 핸들러 SG가 PG든 SG든 점수가 같음 → 슬롯 핵심 능력 보너스(BONUS_SLOT_ANCHOR) 추가.
+- 첫 구현은 후보 6명+비움으로 탐색 조합이 16,807개·탐색을 두 번 돌려 실제 리그 60팀 평균 23ms / 최대 81ms로 무거움 → 후보 4명, 단일 순회, 비트마스크로 **평균 1.37ms**(최대 22ms는 첫 호출 워밍업).
+- 실제 리그 60팀(Pro Basketball League 30 + 두 번째 방 30, 현재 부상 반영): 모든 팀 주전 5명 채움, 포지션 공급 부족 팀 없음, 이전 버전과 주전이 다른 팀 7곳(전부 OVR 비슷한 두 선수 사이 교체).
+
+**롤백 방법**: 이전 버전은 git에 없음(미커밋 신규 파일이었음) — 위 Before 설명대로 후보 3명·243조합 탐색으로 복원하거나, `lineupBuilder.ts`를 삭제하면 됨(호출부 없음).
+
+## 2026-10-22 — 엔진: 타임아웃 체력 회복량 1 → 0.5
+
+**배경**: 타임아웃 NBA 규정화(아래 항목)로 경기당 타임아웃이 양 팀 합계 약 14회(합성 시뮬 기준)로 늘어, 1회당 양 팀 전 선수 회복 1이면 경기당 약 14 회복 — 체력 70 안팎 주전의 약 7분 코트 소모량. 이전 수준(최대 8회, 8점 런 때만)에 가깝게 맞추기 위해 사용자 결정으로 절반으로 하향.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts`
+
+**Before**:
+```ts
+TIMEOUT_RECOVERY: 1,
+```
+
+**After**:
+```ts
+TIMEOUT_RECOVERY: 0.5,
+```
+
+**검증**: 상수 값만 변경(사용처 `liveEngine.applyTimeout` → `recoverAllPlayers` 1곳, client/server 동일). 실엔진 하네스로 주전 평균 체력·출전시간 비교는 미실시.
+
+**롤백 방법**: 양쪽 constants.ts의 `TIMEOUT_RECOVERY`를 1로 되돌림.
+
+## 2026-10-22 — 엔진: 타임아웃 NBA 규정화 (7회·의무 타임아웃·4Q 캡·AI 소진 로직)
+
+**배경**: 타임아웃이 경기 전체 4회뿐이라 실제 농구와 거리가 있었음. NBA 룰북 Rule 5 §VI 기준으로 확장. 사용자 결정: 의무 타임아웃도 7회에서 차감(기록원 강제 선언 없이 양 팀이 알아서 분담), 의무도 일반 타임아웃과 동일하게 모멘텀 리셋+체력 회복, 연장전은 이번 범위 제외, 4쿼터 막판 접전 전략 타임아웃 포함, 초과분 소멸 안내 로그 없이 AI(멀티는 유저 팀 포함)가 소멸 전에 소진. 마지막 2분 팀파울 면제 규정은 의도적으로 제외(별건). 계획서: `docs/plan/timeout-system.md`.
+
+**변경 파일** (미러 쌍 — 반드시 둘 다):
+- `services/game/engine/pbp/timeoutPolicy.ts` / `server/src/shared/engine/pbp/timeoutPolicy.ts` — **신규**(import 확장자 외 동일)
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts`
+- `services/game/engine/pbp/initializer.ts` / `server/src/shared/engine/pbp/initializer.ts`
+- `types/engine.ts` / `server/src/shared/types/engine.ts`
+- `views/multi/season/MultiGamePbpView.tsx`, `views/LiveGameView.tsx` (도트 4→7, 파울/도트 2줄 배치)
+- `components/game/TimeoutBars.tsx` (신규, 납작한 바 7개 — 잔여 `bg-orange-500`/사용 `bg-slate-700`, `getTimeoutsLeftFromLogs`), `views/multi/season/MultiGamePbpView.tsx` `FinalTeamBlock`(종료 헤더 점수 하단에 바 추가, `TEAM_TIMEOUTS_TOTAL`은 TimeoutBars에서 import), `components/game/ResultHeader.tsx`(싱글 결과 헤더 점수 하단에 바, PBP 로그 없으면 숨김)
+  - Before: 종료 헤더에 타임아웃 표시 없음. 롤백: TimeoutBars 사용처 3곳 제거 후 파일 삭제.
+
+**Before**:
+```ts
+// initializer.ts
+timeouts: 4,
+// liveEngine.ts
+export function applyTimeout(state, teamId, isUserCall = false): void { ...; team.timeouts -= 1; ... text: isUserCall ? `⏸ 타임아웃 선언 (잔여: N회)` : `타임아웃 (잔여: N회)` ... }
+function checkAITimeout(state): string | null {   // 상대 8pt+ 런이면 무조건, 유저 팀(비위임)은 스킵
+    ...; if (victimTeam.timeouts <= 0) return null; ...; return runEpochPts - victimEpochPts >= 8 ? victimTeam.id : null;
+}
+// stepPossession 끝: const aiTimeoutTeamId = checkAITimeout(state); if (aiTimeoutTeamId) { applyTimeout(state, aiTimeoutTeamId); ... isTimeout: true ... }
+// 쿼터 전환(A): state.home.fouls = 0; state.away.fouls = 0;  (타임아웃 처리 없음)
+// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 4, TimeoutDots className "w-16 ... text-xl", 파울+도트 가로(홈은 도트→파울 순)
+// LiveGameView: Array.from({ length: 4 }) 도트 2곳
+```
+
+**After**:
+```ts
+// initializer.ts: timeouts: 7
+// timeoutPolicy.ts (신규): TIMEOUT_RULES(7/4/2, 의무 6:59(419)·2:59(179), 간격 45/20초, 소진 리드 150초, 전략 2:30·8점차·동점은 1:30, 마지막 1분 전부 소진)
+//   startTimeoutPeriod / applyLateCapIfDue / recordTimeoutTaken / decideTimeout(state, runVictimId)
+//   decideTimeout 우선순위: 4Q 전략 → 초과분 소진(Q3 말 4회, Q4 3분 2회) → 런 대응(예비분 게이트) → 마지막 1분 소진 → 의무(첫째=홈, 둘째=첫째 안 낸 팀, 못 내면 상대, 둘 다 없으면 슬롯만 소화)
+// liveEngine.ts: applyTimeout(state, teamId, isUserCall, kind='team'|'mandatory') — 차감 후 recordTimeoutTaken, 의무는 '의무 타임아웃' 로그 + timeoutKind
+//   checkAITimeout → detectRunVictimId (런 판정만), stepPossession: decideTimeout 결과로 applyTimeout, 의무도 isTimeout=true(일반과 동일하게 라이브 UI 일시정지)
+//   쿼터 전환(A): startTimeoutPeriod(state) — 새 피리어드 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
+//   createGameState: timeoutPeriod {slots:0, firstTeamId:null, lateCapApplied:false}, lastTimeoutSec {home:-9999, away:-9999}
+// pbpTypes.ts: GameState.timeoutPeriod / lastTimeoutSec, TimeoutPeriodState
+// types/engine.ts: PbpLog.timeoutKind?: 'team' | 'mandatory'
+// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 7, 파울(위)·타임아웃 도트(아래) 2줄 세로 배치(gap-1.5 유지), 도트 text-xl→text-base, 고정폭 제거
+// LiveGameView: length 7, 파울(위)·도트(아래) flex-col(gap-2 유지), 도트 text-[8px]
+```
+
+**검증**: `tsc`(루트·server) 변경 파일 관련 오류 없음(기존 무관 오류만 존재). 정책 모듈 단독 합성 시뮬(3000경기×2모드, 스크래치패드 `tp_test.mts`): 양 팀 자동 시 소멸 0건, 경기 종료 평균 잔여 홈 0.03/원정 0.12, 피리어드당 호출 최소 2회(의무 보장). 싱글 라이브에서 유저 팀이 직접 안 쓰면 4Q 캡으로 평균 약 2회 소멸(유저 책임 — 의도). 실제 엔진 전체 경기 하네스로 체력·출전시간·득점 분포 비교는 **미실시**.
+
+**롤백 방법**: Before 블록대로 `timeouts: 4`, `checkAITimeout` 복원, `timeoutPolicy.ts`(양쪽) 삭제, liveEngine에서 `recordTimeoutTaken`/`startTimeoutPeriod`/`decideTimeout` import·호출 및 `createGameState`의 두 필드 제거, pbpTypes/types 필드 제거, UI 상수 4로 복귀. client/server 쌍 동시에.
 
 ## 2026-10-22 — 엔진: 탈진(Shutdown) 교체 기준을 "쓸 수 있는 벤치 수"에 따라 낮춤 + 대체자 체력 조건
 
@@ -1862,139 +2789,6 @@ alter table public.meta_players
 **롤백 방법**: `alter table public.meta_players drop column ovr_base, drop column ovr_custom;` (이 컬럼을 읽는 코드는 아직 없으므로 안전). 값만 다시 만들려면 스크립트를 `--apply`로 재실행(설정을 바꿨다면 재계산됨).
 
 **후속 단계(미진행)**: 2) 매퍼 미러 쌍이 `ovr_base`/`ovr_custom` 우선·null이면 계산 폴백, 3) `calculateOvr(p)` 직접 호출부를 `p.ovr`로 교체, 4) 선수 에디터에 직접 입력 + 계산값 비교, 5) 신인 생성 시 저장, 단일플레이 성장 반영 방식 결정.
-
-## 2026-10-22 — AI 감독 C3: 로테이션(48분 출전표) 생성 모듈 신설 (호출부 없음)
-
-**배경**: 사용자 확정 순서 3단계(라인업 → 로테이션 → 공격 전술 …). 현행 AI 팀은 드래프트 직후 만든 고정 틀(주전 0~12·18~36·42~48분 / 벤치 12~18·36~42분)만 쓴다. 우리 로스터만 보고(상대 미반영) 로스터에 맞는 8~10인 로테이션을 만든다. 게임 동작 영향 없음.
-
-**변경 파일** (server 전용, 미러 없음):
-- `server/src/shared/game/tactics/aiCoach/rotationBuilder.ts` (신규)
-- `scripts/rotationBuilderScenarios.ts` (신규, 시험 도구)
-
-**Before**: 없음(신규). 비교 기준은 `tacticGenerator.generateAutoTactics()`의 고정 틀 로테이션.
-
-**After**:
-```ts
-buildRotation(roster, lineup) / buildRotationFromInputs(healthyPlayers, starterIds, depthChart, allRosterIds)
- → { rotationMap, minutes, targets, stints, rotationSize, shortMinutes, notes }
-// 목표 시간: TEMPLATES[N](5~10인, 합 240) × (1 + QUALITY_K(0.006)×(OVR−평균)) × 체력·컨디션 계수(STAMINA_TARGET_K 0.005, CONDITION_FLOOR 0.75) ± 주전/벤치 격차 보정(DROPOFF_BASE_GAP 7, +4/−2)
-//         → 240분 정규화 → 상한(CAP_BASE 26 + 0.18×stamina, 최대 44, × 컨디션) 물 채우기
-// 스케줄러(매 분): 욕구 = 목표×진행률 − 뛴 분 + HYST(5, 지금 뛰는 선수) − 11분 초과(2.5/분) − 3분 미만 휴식(4) + START_BONUS(100, 0·24분 선발)
-//                   + 42분 이후 0.5×(OVR−평균) − 상한 초과 3/분 → 슬롯별 상위 4명 조합 탐색 점수 Σ욕구 − SLOT_WEIGHT(4)×Σslotcost − STAGGER_WEIGHT(8)×max(0, 2−OVR상위3중 코트 인원)
-```
-- 엔진 `slotAssignment.slotCost`/`listedSlots`를 재사용(어색함 비용을 엔진 슬롯 배정과 일치시킴).
-
-**검증**:
-- tsc(--strict, noUnusedLocals) 오류 없음.
-- `scripts/rotationBuilderScenarios.ts` 12개 시나리오 전부 통과. 시험 중 발견·수정: ① 체력/컨디션이 상한에만 반영돼 stamina 45와 85가 같은 34분 → 목표 시간에도 곱함(→ 31분, 컨디션 45는 36 → 29분) ② 결정론 시험이 키 순서 차이로 거짓 실패(시험 수정).
-- A/B 리그 시뮬(같은 로스터, 새 방식 vs 현행 AI 방식, 홈·원정 모든 매치업, 현재 부상 반영): 현행 vs 현행 −0.01(±0.42), 새 라인업+고정 틀 −0.08, 새 라인업+새 로테이션 3세트 5,220경기 **+0.94(±0.24)**, 승률 52.2%. 엇갈린 휴식 항 추가 전 +0.99(1세트), 후 +1.13(1세트).
-- 속도: 평균 약 3.5ms(첫 호출 12ms).
-
-**롤백 방법**: `rotationBuilder.ts`·시험 도구 삭제(호출부 없음).
-
-## 2026-10-22 — AI 감독 C2 라인업 개정: 포지션 공급 부족 처리 + 후보 소진 버그 수정 + 커버 목록 (호출부 없음)
-
-**배경**: 라인업 모듈의 알려진 결함 두 가지(후보 없는 슬롯에서 결과 칸이 밀림 / 앞 슬롯이 후보를 다 쓰면 주전이 전부 빔)와 사용자 설계("포지션이 비대칭이면 인접 포지션 선수가 더 뛰어야") 반영. 사용자 확정(2026-10-22): 라인업·로테이션은 우리 로스터만(상대 미반영), 공격 전술만 상대 수비수 기준, 수비 전술은 균형, AI 전술은 저장·표시하지 않음(계획서 1장 "제안 D"). 게임 동작 영향 없음.
-
-**변경 파일** (server 전용, 미러 없음):
-- `server/src/shared/game/tactics/aiCoach/lineupBuilder.ts`
-- `scripts/lineupBuilderScenarios.ts` (신규, 시험 도구)
-
-**Before**:
-```ts
-// 슬롯 후보: 고유 포지션 OVR 상위 3명 → 없으면 인접 상위 3명 → 없으면 전원 상위 3명 (5슬롯 × 3 = 243조합)
-// walk(i): candidates[i].length === 0이면 walk(i + 1) — chosen[i]로 읽어서 칸이 한 칸씩 밀림
-// 같은 선수가 앞 슬롯에서 쓰였으면 건너뜀 → 남는 후보가 없으면 조합이 끝까지 못 가 주전 전부 ''
-// 뎁스: 고유 포지션 → 인접 (비용 개념 없음), 점수 = ΣOVR + 조합 보너스(핸들러 2 / 슈터 1.5×최대 2 / 림 2)
-```
-
-**After**:
-```ts
-// 슬롯별 후보 = 어색함(0/1/3/10) 오름차순 → OVR 내림차순 상위 CANDIDATES_PER_SLOT(4) (가용 6명 이하면 전원), 슬롯 인덱스로 직접 저장
-// 점수 = ΣOVR − MISMATCH_WEIGHT(30) × Σ어색함 − EMPTY_PENALTY(1000) × 빈 슬롯 + 조합 보너스 + BONUS_SLOT_ANCHOR(1.5) × (PG 슬롯=핸들링 상위2, C 슬롯=림 보호 상위2)
-// 가용 5명 미만일 때만 '슬롯 비움' 선택지, 후보 제한으로 완전 배정이 없으면 completeGreedy
-// 한 번 훑으며 보너스 있는 최고(withBonus)와 보너스 없는 최고(base, changedFromOvrOrder 비교용)를 같이 구함 — 비트마스크로 중복 제거
-// 반환값에 cover[slot](어색함 ≤ 3, 어색함 → OVR 순), shortage[], score.anchor, score.mismatch 추가
-// buildLineup(roster) → buildLineupFromCandidates(pool) 분리 (가상 선수로 시험 가능)
-```
-
-**검증**:
-- tsc(--strict, noUnusedLocals) 오류 없음.
-- `scripts/lineupBuilderScenarios.ts` 13개 시나리오 전부 통과. 시험 중 설계 빈틈 발견: 핸들러 보너스가 "주전 5명 중 누구든"이라 PG가 없는 팀에서 최고 핸들러 SG가 PG든 SG든 점수가 같음 → 슬롯 핵심 능력 보너스(BONUS_SLOT_ANCHOR) 추가.
-- 첫 구현은 후보 6명+비움으로 탐색 조합이 16,807개·탐색을 두 번 돌려 실제 리그 60팀 평균 23ms / 최대 81ms로 무거움 → 후보 4명, 단일 순회, 비트마스크로 **평균 1.37ms**(최대 22ms는 첫 호출 워밍업).
-- 실제 리그 60팀(Pro Basketball League 30 + 두 번째 방 30, 현재 부상 반영): 모든 팀 주전 5명 채움, 포지션 공급 부족 팀 없음, 이전 버전과 주전이 다른 팀 7곳(전부 OVR 비슷한 두 선수 사이 교체).
-
-**롤백 방법**: 이전 버전은 git에 없음(미커밋 신규 파일이었음) — 위 Before 설명대로 후보 3명·243조합 탐색으로 복원하거나, `lineupBuilder.ts`를 삭제하면 됨(호출부 없음).
-
-## 2026-10-22 — 엔진: 타임아웃 체력 회복량 1 → 0.5
-
-**배경**: 타임아웃 NBA 규정화(아래 항목)로 경기당 타임아웃이 양 팀 합계 약 14회(합성 시뮬 기준)로 늘어, 1회당 양 팀 전 선수 회복 1이면 경기당 약 14 회복 — 체력 70 안팎 주전의 약 7분 코트 소모량. 이전 수준(최대 8회, 8점 런 때만)에 가깝게 맞추기 위해 사용자 결정으로 절반으로 하향.
-
-**변경 파일** (미러 쌍 — 반드시 둘 다):
-- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts`
-
-**Before**:
-```ts
-TIMEOUT_RECOVERY: 1,
-```
-
-**After**:
-```ts
-TIMEOUT_RECOVERY: 0.5,
-```
-
-**검증**: 상수 값만 변경(사용처 `liveEngine.applyTimeout` → `recoverAllPlayers` 1곳, client/server 동일). 실엔진 하네스로 주전 평균 체력·출전시간 비교는 미실시.
-
-**롤백 방법**: 양쪽 constants.ts의 `TIMEOUT_RECOVERY`를 1로 되돌림.
-
-## 2026-10-22 — 엔진: 타임아웃 NBA 규정화 (7회·의무 타임아웃·4Q 캡·AI 소진 로직)
-
-**배경**: 타임아웃이 경기 전체 4회뿐이라 실제 농구와 거리가 있었음. NBA 룰북 Rule 5 §VI 기준으로 확장. 사용자 결정: 의무 타임아웃도 7회에서 차감(기록원 강제 선언 없이 양 팀이 알아서 분담), 의무도 일반 타임아웃과 동일하게 모멘텀 리셋+체력 회복, 연장전은 이번 범위 제외, 4쿼터 막판 접전 전략 타임아웃 포함, 초과분 소멸 안내 로그 없이 AI(멀티는 유저 팀 포함)가 소멸 전에 소진. 마지막 2분 팀파울 면제 규정은 의도적으로 제외(별건). 계획서: `docs/plan/timeout-system.md`.
-
-**변경 파일** (미러 쌍 — 반드시 둘 다):
-- `services/game/engine/pbp/timeoutPolicy.ts` / `server/src/shared/engine/pbp/timeoutPolicy.ts` — **신규**(import 확장자 외 동일)
-- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts`
-- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts`
-- `services/game/engine/pbp/initializer.ts` / `server/src/shared/engine/pbp/initializer.ts`
-- `types/engine.ts` / `server/src/shared/types/engine.ts`
-- `views/multi/season/MultiGamePbpView.tsx`, `views/LiveGameView.tsx` (도트 4→7, 파울/도트 2줄 배치)
-- `components/game/TimeoutBars.tsx` (신규, 납작한 바 7개 — 잔여 `bg-orange-500`/사용 `bg-slate-700`, `getTimeoutsLeftFromLogs`), `views/multi/season/MultiGamePbpView.tsx` `FinalTeamBlock`(종료 헤더 점수 하단에 바 추가, `TEAM_TIMEOUTS_TOTAL`은 TimeoutBars에서 import), `components/game/ResultHeader.tsx`(싱글 결과 헤더 점수 하단에 바, PBP 로그 없으면 숨김)
-  - Before: 종료 헤더에 타임아웃 표시 없음. 롤백: TimeoutBars 사용처 3곳 제거 후 파일 삭제.
-
-**Before**:
-```ts
-// initializer.ts
-timeouts: 4,
-// liveEngine.ts
-export function applyTimeout(state, teamId, isUserCall = false): void { ...; team.timeouts -= 1; ... text: isUserCall ? `⏸ 타임아웃 선언 (잔여: N회)` : `타임아웃 (잔여: N회)` ... }
-function checkAITimeout(state): string | null {   // 상대 8pt+ 런이면 무조건, 유저 팀(비위임)은 스킵
-    ...; if (victimTeam.timeouts <= 0) return null; ...; return runEpochPts - victimEpochPts >= 8 ? victimTeam.id : null;
-}
-// stepPossession 끝: const aiTimeoutTeamId = checkAITimeout(state); if (aiTimeoutTeamId) { applyTimeout(state, aiTimeoutTeamId); ... isTimeout: true ... }
-// 쿼터 전환(A): state.home.fouls = 0; state.away.fouls = 0;  (타임아웃 처리 없음)
-// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 4, TimeoutDots className "w-16 ... text-xl", 파울+도트 가로(홈은 도트→파울 순)
-// LiveGameView: Array.from({ length: 4 }) 도트 2곳
-```
-
-**After**:
-```ts
-// initializer.ts: timeouts: 7
-// timeoutPolicy.ts (신규): TIMEOUT_RULES(7/4/2, 의무 6:59(419)·2:59(179), 간격 45/20초, 소진 리드 150초, 전략 2:30·8점차·동점은 1:30, 마지막 1분 전부 소진)
-//   startTimeoutPeriod / applyLateCapIfDue / recordTimeoutTaken / decideTimeout(state, runVictimId)
-//   decideTimeout 우선순위: 4Q 전략 → 초과분 소진(Q3 말 4회, Q4 3분 2회) → 런 대응(예비분 게이트) → 마지막 1분 소진 → 의무(첫째=홈, 둘째=첫째 안 낸 팀, 못 내면 상대, 둘 다 없으면 슬롯만 소화)
-// liveEngine.ts: applyTimeout(state, teamId, isUserCall, kind='team'|'mandatory') — 차감 후 recordTimeoutTaken, 의무는 '의무 타임아웃' 로그 + timeoutKind
-//   checkAITimeout → detectRunVictimId (런 판정만), stepPossession: decideTimeout 결과로 applyTimeout, 의무도 isTimeout=true(일반과 동일하게 라이브 UI 일시정지)
-//   쿼터 전환(A): startTimeoutPeriod(state) — 새 피리어드 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
-//   createGameState: timeoutPeriod {slots:0, firstTeamId:null, lateCapApplied:false}, lastTimeoutSec {home:-9999, away:-9999}
-// pbpTypes.ts: GameState.timeoutPeriod / lastTimeoutSec, TimeoutPeriodState
-// types/engine.ts: PbpLog.timeoutKind?: 'team' | 'mandatory'
-// MultiGamePbpView: TEAM_TIMEOUTS_TOTAL = 7, 파울(위)·타임아웃 도트(아래) 2줄 세로 배치(gap-1.5 유지), 도트 text-xl→text-base, 고정폭 제거
-// LiveGameView: length 7, 파울(위)·도트(아래) flex-col(gap-2 유지), 도트 text-[8px]
-```
-
-**검증**: `tsc`(루트·server) 변경 파일 관련 오류 없음(기존 무관 오류만 존재). 정책 모듈 단독 합성 시뮬(3000경기×2모드, 스크래치패드 `tp_test.mts`): 양 팀 자동 시 소멸 0건, 경기 종료 평균 잔여 홈 0.03/원정 0.12, 피리어드당 호출 최소 2회(의무 보장). 싱글 라이브에서 유저 팀이 직접 안 쓰면 4Q 캡으로 평균 약 2회 소멸(유저 책임 — 의도). 실제 엔진 전체 경기 하네스로 체력·출전시간·득점 분포 비교는 **미실시**.
-
-**롤백 방법**: Before 블록대로 `timeouts: 4`, `checkAITimeout` 복원, `timeoutPolicy.ts`(양쪽) 삭제, liveEngine에서 `recordTimeoutTaken`/`startTimeoutPeriod`/`decideTimeout` import·호출 및 `createGameState`의 두 필드 제거, pbpTypes/types 필드 제거, UI 상수 4로 복귀. client/server 쌍 동시에.
 
 ## 2026-10-22 — 멀티 드래프트 풀: 은퇴(retired) 필터 추가
 
@@ -2441,6 +3235,78 @@ const statCols = standalone ? 13 : 19;
 **롤백 방법**: 위 Before 값으로 되돌리고 OREB 헤더/셀/합계 3곳과 SortKey/getSortValue의 `oreb` 제거.
 
 
+## 2026-10-21 — AI 트레이드 실제 리그(Pro Basketball League) 시나리오 도구 (엔진 변경 없음)
+
+**변경 파일** (신규/수정, 읽기 전용): `scripts/aiTradePblScenarios.ts`(games 순위 + league_teams 로스터 + game_pbp 박스스코어 기록 + room_player_state 부상으로 A~D 시나리오), `scripts/aiTradeData.ts`(선수 이름·방 id·클라이언트 반환 추가)
+**결과 요약**: AI 7팀 에이스는 거의 모든 유저 팀이 살 수 있음(가격비 0.97~1.37). 전 유저 팀 동시 제안 161건 → 성사 33건(6라운드), 거절은 stale 40(패스트트랙)·asset_conflict 88.
+**롤백 방법**: 파일 삭제 / aiTradeData.ts 변경 되돌리기.
+
+## 2026-10-21 — AI 평가기: 데드라인 임박 완화를 점진 방식으로 (최대 0.05)
+
+**배경**: 기존 데드라인 완화(7일 이내 일괄 −0.02)는 S8 측정에서 효과가 1%p 수준이라 무의미. 사용자 선택(B): 마감일에 가까울수록 점진 완화, 최대 0.05.
+**변경 파일**: `server/src/shared/aiTrade/aiTradeEvaluate.ts`(서버 전용), `scripts/aiTradeScenarios.ts`(S8 경계선 제안 기준으로 개편)
+**Before**: 컨텐더/버블이고 `daysToDeadline ≤ 7`이면 threshold −0.02 (계단식), `DEADLINE_URGENCY_RELIEF = 0.02`
+**After**: `urgency = clamp(1 − days/7, 0, 1)`, threshold −= `DEADLINE_URGENCY_RELIEF(0.05) × urgency` (7일 전 0 → 마감일 −0.05). 대상 상황은 동일(컨텐더/버블), 데드라인 규칙이 꺼져 있으면 0.
+**측정(컨텐더/버블, 경계선 제안)**: 1:1 수락 56%(없음/7일) → 58%(5일) → 59%(3일) → 62%(1일) → 63%(당일). 2:1 38% → 44%. 스타 평균 가격비 1.26 → 1.20.
+**검증**: 하네스 14/14, 서버 tsc aiTrade 오류 0건.
+**롤백 방법**: `DEADLINE_URGENCY_RELIEF`를 0.02로, `urgency` 계산을 `daysToDeadline <= 7`이면 1, 아니면 0으로.
+
+## 2026-10-21 — AI 평가기: 팀 상황(stance)이 가격에 반영되도록 보정 추가
+
+**배경**: 시나리오 S1에서 컨텐더/탈락권이 스타를 같은 값에 파는 것으로 확인(상황은 ω·Δ로만 작용). 사용자 요청: 팀 상황이 가격에 영향을 줘야 함.
+
+**변경 파일**: `server/src/shared/aiTrade/aiTradeEvaluate.ts` (서버 전용, 미러 없음)
+
+**Before**: `m_out ∈ [1.0, 1.15]` = 스타 쏠림 × 포지션 뎁스. `m_in` = 스타 쏠림 × 부상 × 나이(성장 꺼짐 시). 상황 무관.
+**After**: 상황 보정 `STANCE`(out: 노장 내줄 때 −10%, 받는 노장 −10%, 받는 어린 선수(≤24세) +10% / contender: 핵심 5인(OVR 상위) 내줄 때 +10%, 받는 노장 +5%, 어린 선수 −5% / bubble: 핵심 +5% / middle: 없음). 노장=29세 이상. `m_out` 하한 1.0 → 0.9 (시장가 바닥 0.9가 계속 최종 방어선).
+
+**측정(S1, OVR 88~92 스타 가격)**: 탈락권 1.14배 / 기준 1.26배 / 컨텐더 1.29배 (이전엔 전부 1.19). 차익 순환 672건 중 이득 0건(평균 0.70, 최악 0.97). 스타 가능률 91~100% 유지, 무작위 수락률 변화 ±0.3%p.
+**검증**: 하네스 14/14, 서버 tsc aiTrade 오류 0건.
+**롤백 방법**: `STANCE`·`stanceIn/stanceOut` 제거, 곱 항 두 곳과 `outMin`을 1.0으로.
+
+## 2026-10-21 — AI 트레이드 시나리오 시뮬레이션 도구 (엔진 변경 없음)
+
+**배경**: 평가기를 실제 리그 로스터로 다양한 시나리오에서 점검.
+**변경 파일** (신규, 읽기 전용): `scripts/aiTradeData.ts`(공용 로더), `scripts/aiTradeScenarios.ts`(S1~S8, `npx tsx scripts/aiTradeScenarios.ts s1 s4 ...`)
+**결과 요약**: 스타 가격 1.19배(기준 1.05), 기준비율 0.95~1.25 → 가격 1.09~1.42. 부상 60일 이상 수락률 92→54%(토글 off 시 92%). 슬롯 비용으로 쓰레기 묶음 0%. 약점 보강 시 비율 +0.087. 차익 순환 672건 중 이득 1건, 평균 0.75. 동시 입찰·자산 충돌 분류 정상. 팀 상황(컨텐더/탈락권)은 가격에 영향 없음.
+**롤백 방법**: 파일 삭제.
+
+## 2026-10-21 — AI 트레이드 4단계 마무리: aiTeamInputs + 실제 로스터 보정
+
+**배경**: 평가기 시작값을 실제 리그 로스터(30팀·404명, 단장 프로필 반영)로 측정해 보정. 여전히 어디서도 import되지 않음.
+
+**변경 파일**:
+- `server/src/shared/aiTrade/aiTeamInputs.ts` (신규) — `buildAiTeamContexts(teams, opts)`: 팀 행 → AiTeamContext(리그 모듈 통계, 상황 판정, 단장 성향; 단장 없으면 중립값)
+- `scripts/aiTradeCalibrate.ts` (신규, 읽기 전용) — 실제 로스터 기준 스타 획득/무작위 제안 수락률/ω·Δ 크기/거절 사유 분포
+- `server/src/shared/aiTrade/aiTradeEvaluate.ts` — `POWER_SCALE_POINTS` 25 → 8
+
+**Before**: POWER_SCALE_POINTS=25 → ω·Δ 평균 절댓값 0.009 (약점 보강이 판정에 거의 무영향, 뒤집힌 수락 42건/약 11,700건)
+**After**: POWER_SCALE_POINTS=8 → 평균 절댓값 0.027, 뒤집힌 수락 76건. (5로 내리면 0.043/100건 — 과하다고 판단해 8 채택)
+
+**측정 결과(기준 1.05, 패키지 최대 3명)**: 스타 획득 가능률 OVR88~96 100%, 99 93%; 평균 필요 인원 88:1.7명, 94:2.2명, 99:2.7명; 평균 지급/요구 시장가 1.12~1.20. 무작위 수락률 AI1↔유저1 47%, 2↔1 17%, 1↔2 76%, 2↔2 45%. 거절 사유는 value_short_large가 압도적, roster_hole 81건.
+**미보정**: SLOT_COST_OVR=70, ω 상황별 값, 스타/중간급 보정 폭은 측정 결과에 큰 문제가 없어 유지. 현재 순위·승패 대신 OVR 상위 8명 평균을 파워 대용으로 사용(상황 판정이 시즌 중 실데이터와 다를 수 있음).
+
+**검증**: 하네스 14/14, 서버 tsc aiTrade 오류 0건.
+**롤백 방법**: 신규 2파일 삭제 + POWER_SCALE_POINTS를 25로.
+
+## 2026-10-21 — AI 트레이드 4단계: 규칙 빌더 / 모듈 점수 / 평가기 / 순차 검토 (순수 모듈, 미연결)
+
+**배경**: 멀티 AI↔유저 트레이드(docs/plan/multi-ai-trade-plan.md 10장 4단계). 아직 어디서도 import되지 않는 순수 서버 모듈 + 시나리오 하네스. DB/RPC/스케줄러 연결은 다음 단계.
+
+**변경 파일** (모두 신규, 롤백 = 파일 삭제):
+- `server/src/shared/aiTrade/aiTradeRules.ts` — `buildAiTradeRules(league, simSettings)`, `MULTI_SYSTEMS` 플래그(부상 true / 성장·계약만료·럭택 false)
+- `server/src/shared/aiTrade/aiModuleScores.ts` — 팀 모듈 점수(출전시간 가중, 절대 스케일), 약점 가중(하위 3개 ×2), 가중 변화량
+- `server/src/shared/aiTrade/aiPlayerModules.ts` — 선수 모듈 점수(ovrEngine 의존; Supabase 클라이언트를 끌어오므로 분리)
+- `server/src/shared/aiTrade/aiTradeEvaluate.ts` — `evaluateAiTradeOffer` (V×m 보정, 슬롯 비용, ω·Δ, 해시 노이즈, 시장가 바닥 0.9, C/PG 0명 하드 필터)
+- `server/src/shared/aiTrade/aiTradeReview.ts` — `runAiTradeReview` (재평가 루프, 팀별 잉여가치 최대, 유저 자산 충돌은 먼저 낸 제안, 연쇄 거절·패스트트랙 분류)
+- `scripts/aiTradeHarness.ts` — 합성 시나리오 14건 (`npx tsx scripts/aiTradeHarness.ts`)
+
+**시작값(보정 대상)**: POWER_SCALE_POINTS=25, SLOT_COST_OVR=70, ω(상황별) .35/.40/.20/.05, 노이즈 ±0.03, 스타 보정 ±0.15·중간급 ∓0.10, 포지션 뎁스 1.15/1.05(내주는 쪽에 적용 — 계획서 문구 "받는 쪽"과 다름).
+
+**검증**: 서버 tsc에서 aiTrade 관련 오류 0건(기존 bun/archiver 오류는 무관), 하네스 14/14 통과.
+
+**롤백 방법**: 위 파일 삭제 (참조하는 곳 없음).
+
 ## 2026-10-21 — 무효화(invalidated) 제안이 메세지함에서 사라지는 버그 수정
 
 **배경**: 역제안(CLE→PHO) 전송 후 CLE가 역제안에 포함된 선수를 다른 팀에 트레이드하면 서버가 그 역제안을 `invalidated`로 닫는다. 그런데 메세지함 조회(`RESOLVED_OFFER_STATUSES`)에 `invalidated`가 없어 어디에도 표시되지 않았고, 원본엔 "역제안됨" 칩만 남았다.
@@ -2461,6 +3327,31 @@ const statCols = standalone ? 13 : 19;
 **검증**: 코드 수정만(서버/DB 변경 없음). 기존 invalidated 행은 데이터 손실 없이 다시 보임.
 
 **롤백 방법**: Before 값으로 복원.
+
+## 2026-10-21 — AI 트레이드 1단계: 공통 가치 V(곡선 C) + 스타 획득 비용 표 도구 신설
+
+**배경**: `docs/plan/multi-ai-trade-plan.md` 10장 4번(서버 순수 모듈)의 첫 조각. 확정된 공통 시장 가치(D13 곡선 C)를 순수 함수로 만들고,
+"OVR 88/91/94/96/99를 사려면 어떤 패키지가 필요한가"를 실제 로스터로 뽑는 검증 도구를 함께 만든다. **클린룸 원칙(D11)**: 외부 프로젝트 소스를 열지 않고
+계획서 공식과 우리 싱글 엔진의 `(OVR−40)^3.8` 곡선만으로 작성. 아직 어떤 서버/클라 경로도 import하지 않음(동작 변화 없음).
+
+**변경 파일** (전부 신규):
+- `server/src/shared/aiTrade/aiTradeValue.ts` — `marketValue(ovr)`, `starMultiplier(ovr)`, `packageValue`, `marketRatio` + 상수(`DEFAULT_MIN_VALUE_RATIO=1.05`, `MARKET_FLOOR_RATIO=0.9`). import 없음.
+- `server/src/shared/aiTrade/starCostTable.ts` — `cheapestPackage()`(구매 팀 로스터에서 필요 가치를 넘기는 최소 가치 조합, 최대 N명, 결정적 동점 처리), `buildStarCostRows()`
+- `scripts/aiTradeStarCost.ts` — 곡선 표 / 목표별 필요 가치 / 눈여겨볼 거래 / 실제 로스터 기반 획득 비용. DB(`SUPABASE_SERVICE_ROLE_KEY`, 읽기 전용) 또는 `--rosters <json>` 오프라인. `--margin`, `--max-size` 옵션.
+
+**공식**:
+```
+V(OVR) = (OVR − 40)^3.8 × starMultiplier(OVR) / (80 − 40)^3.8          // OVR 80 = 1.0, OVR ≤ 40 → 0
+starMultiplier(OVR) = 1 + 0.08 × (min(OVR, 99) − 84)   (OVR > 84), else 1.0
+```
+**검증**: 손계산값과 일치(V: 84=1.44, 90=3.46, 94=5.63, 99=9.63 / 94+94→99 비율 1.17, 90×3→99 1.08, 94+90+84→99 1.09). `server` `tsc --noEmit` 새 파일 오류 0.
+실제 로스터(30팀·404명, 패키지 최대 3명, 기준 1.05): 가능률 88/91/94/96 = 100%, 99 = 97%; 평균 패키지 2.2~2.8명, AI 평균 초과분 약 6~7%; 가장 흔한 패키지 88←85+81, 91←89+81, 94←93+79, 96←95+81, 99←93+90+85.
+94 두 명 이상 보유 팀은 30팀 중 5곳뿐이고 99는 6명뿐이라 "94+94→99"가 통과할 수 있는 상황은 드묾 → 94 이후 기울기 0.10 상향은 지금 불필요(평가 모듈이 생긴 뒤 평가 로그로 재확인).
+
+**주의(시장 가치만 본 결과)**: 팀별 보정, 로스터 자리 비용, 전력 변화 항(ω·Δ)이 빠져 있어 2대1 통합은 실제 평가에서 더 엄격해질 수 있다.
+
+**롤백**: 3개 파일 삭제(import하는 곳 없음).
+
 
 ## 2026-10-20 — 역제안 UI 정리 (배너 제거 · 전송 버튼 · 탭 이탈 시 초기화)
 
@@ -2530,6 +3421,148 @@ const statCols = standalone ? 13 : 19;
 **검증**: 코드 리뷰만(빌드 미실행).
 
 **롤백 방법**: 버튼 onClick을 handleRespond 직접 호출로 되돌리고 확인 블록 및 state 제거.
+
+## 2026-10-20 — 리그 순위 탭에도 NBA 타이브레이커 적용 (같은 컨퍼런스 순서 모순 수정)
+
+**배경**: 리그 탭은 28-17 동률인 네츠(3위)/마이애미(4위)였는데 컨퍼런스 탭은 마이애미 2위/네츠 3위로 뒤집혀 있었다.
+리그 탭만 타이브레이커 없이 `pct → wins`로 정렬해서 동률이면 배열 순서가 그대로 노출됐고, 컨퍼런스 탭은 `rankGroup`을 써서 불일치.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` (client 전용, 미러 없음) — `rankLeagueByTiebreak()` 신규(최종: `rankGroup`에 리그 전체를 그대로 위임 — NBA 순위표가 리그 동률에도 시딩과 같은 L.2.a/b 목록을 적용),
+  `computeRankSnapshot`(▲▼ 화살표용 리그 순위), `tiebreak` useMemo(`leagueOrder` 추가), `rankedRows`의 `useTiebreak`
+
+**Before**:
+```ts
+// computeRankSnapshot
+[...slugs].sort((a, b) => (stats[b].pct - stats[a].pct) || (stats[b].wins - stats[a].wins)).forEach((slug, i) => { league[slug] = i + 1; });
+// rankedRows
+const useTiebreak = sortConfig.key === 'pct' && mode !== 'League';
+```
+
+**After**:
+```ts
+// rankGroup(ledger, 전체 팀, ctx) — 컨퍼런스가 달라도 같은 NBA 타이브레이커 목록 적용
+rankLeagueByTiebreak(ledger, ctx, leagueTeams).forEach((slug, i) => { league[slug] = i + 1; });
+const useTiebreak = sortConfig.key === 'pct';
+// League 모드: tiebreak.leagueOrder(), 그 외: tiebreak.orderOf(list)
+```
+
+**검증**: tsc에서 MultiStandingsView 관련 오류 없음. 브라우저 육안 확인은 미실시.
+
+**롤백 방법**: 위 Before 코드로 되돌리고 `rankLeagueByTiebreak`/`leagueOrder` 제거.
+
+## 2026-10-20 — 사람 단장 호버 카드: 트레이드 방식 + 로스터 성향 라벨 (로컬 전용)
+
+**배경**: AI 프런트 카드와 같은 방식으로 사람이 운영하는 팀의 단장 닉네임에도 호버 카드. 사용자 결정: 정보는 라벨 두 줄만(트레이드 방식, 로스터 성향),
+온라인 표시는 후순위. 설계: `docs/plan/multi-ai-gm-profile-plan.md` 9장. **아직 푸시하지 않음**(같은 화면 파일에 AI 팀 상대 목록 로컬 변경이 섞여 있음).
+
+**변경 파일**:
+- `services/multi/userGmProfile.ts` (신규, 클라이언트 전용 — 서버 사용처 없음) — `classifyTradeActivity()`, `countAcceptedTrades()`, `starGapOf()`, `computeRosterStyles()`
+- `views/multi/season/UserGmHoverCard.tsx` (신규) — `UserGmHover` 래퍼 + 카드(AI 프런트 카드와 같은 규격: 폭 300 · text-xs · 칩)
+- `views/multi/season/MultiFrontOfficeView.tsx` — 트레이드 "새 제안" 헤더의 사람 팀 "단장 {닉네임}" 이름에 `UserGmHover`(+ 팀/선수와 같은 hover 스타일), `userGmCtx` 추가
+- `views/multi/season/MultiRosterView.tsx` — 팀 화면 헤더 사람 팀 "GM : {닉네임}"의 닉네임에 `UserGmHover`. 기존 표시 문구 그대로이고 닉네임 span만 호버 대상
+
+**라벨 기준**:
+- 트레이드 방식 = 성사 트레이드 횟수: 0~2 관망 / 3~5 신중 / 6~9 중립 / 10~ 활발 (사용자 지정 "2건 이하 / 2~5 / 6~9 / 10~"에서 겹치는 2는 관망으로 해석).
+  집계: `league_trade_offers.status='accepted'`(RLS상 리그 구성원 공개) 중 당사자 + `resolved_as_admin=false`, 오퍼 id 중복 제거. 이 리그 전 기간 누적(오퍼에 시즌 컬럼 없음).
+- 로스터 성향 = 상위 2명 평균 OVR − 3~8번째 평균 OVR (스타 격차)를 30팀 안에서 상대 평가: 상위 1/3 스타 중심, 하위 1/3 뎁스 중심, 나머지 균형.
+  3명 미만 로스터/팀 3개 미만/격차 전부 동일이면 균형. AI 카드는 "프런트 선호", 이 카드는 "현재 로스터 결과"라는 점이 다름(줄 이름은 둘 다 "로스터 성향").
+- 데이터: `listTradeHistory(roomId)` (queryKey `['multiTradeHistory', roomId]`, staleTime 60초) — 카드가 열릴 때만 조회. 로딩 중 칩 자리에 같은 높이의 skeleton.
+
+**검증**: 경계값(0/1/2→관망, 3/5→신중, 6/9→중립, 10/15→활발), 관리자 처리·거절·중복 오퍼 제외, 스타 격차 분포(30팀 합성 데이터 depth 13/star 10/balanced 7 — 동점 때문),
+균일 격차·소수 팀 예외 전부 균형. `tsc --noEmit` 오류 0, `vite build` 성공. 브라우저 육안 확인은 미실시.
+참고: 현재 DB의 성사 트레이드 35건은 테스트 리그 1곳이고 전부 같은 인원수 맞교환이라, "선수 수 비교" 방식의 방향 라벨은 의미가 없어 만들지 않음(OVR 기준 방향 라벨은 필요 시 추가).
+
+**롤백**: 신규 2파일 삭제, MultiFrontOfficeView의 `UserGmHover`/`userGmCtx` 분기 → 이전(`FrontOfficeHover profile={targetIsAiTeam ? … : null}` 단일 래퍼),
+MultiRosterView의 사람 팀 분기·`userGmCtx` 제거(사람 팀은 null 반환 → RosterView 기존 표시).
+
+
+## 2026-10-20 — AI 프런트 호버 카드 + 팀 호버 카드 "단장" 줄을 프런트 대표로 (G3 2차, 로컬 전용)
+
+**배경**: 목업(https://claude.ai/artifact/YTKRLcHcBNcXmw7u5zYgdA) 확정 후 구현. 별도 프로필 페이지 없이 호버 카드로 AI 프런트를 보여준다.
+트레이드 "새 제안" 상대 헤더의 프런트 이름에 마우스를 올리면 카드, 팀 호버 카드의 AI 팀 "단장 없음"은 프런트 대표로 교체.
+공동 단장 표기는 하지 않기로 함(사용자 결정). **아직 푸시하지 않음** — 같은 파일(MultiFrontOfficeView)에 로컬 전용 변경이 섞여 있음.
+
+**변경 파일**:
+- `views/multi/season/FrontOfficeHoverCard.tsx` (신규) — `FrontOfficeHover`(래퍼, 기존 `TeamHoverCard` 위치·지연 재사용) + 카드 본문.
+  현재 기조는 카드가 열릴 때만 계산: 30팀을 `poolById`로 조립 → `calculatePreseasonPowerRankings()`(현재 로스터 기준 powerScore)
+  → `computeMultiStandingsStats()` 승패 + 미종료 정규시즌 경기 수 → `computeTeamSituations()` → `resolveGmStance()`.
+  사람 팀은 승부욕 0.5로 넣음. 데드라인 경과 또는 해당 팀 정규시즌 종료면 기조 줄 숨김.
+- `views/multi/season/frontOfficeCopy.ts` (신규) — 설명 문장 `describeFrontOffice()`(승부욕 구간 문구 + 깐깐함 ≥+0.015 "손해 보는 거래에는
+  깐깐하며" / ≤−0.02 "좋은 매물에는 값을 더 쳐주며" + 로스터 성향 문구), 배지 색 `ROSTER_STYLE_TONE`/`STANCE_TONE`
+- `services/multi/aiTeamSituation.ts` ↔ `server/src/shared/multi/aiTeamSituation.ts` (미러) — `HIGH_COMPETITIVENESS`/`LOW_COMPETITIVENESS`를 export로만 변경(값 동일 0.65/0.35)
+- `views/multi/season/MultiFrontOfficeView.tsx` — `targetIsAiTeam`, `frontOfficeCtx` 추가, 헤더 프런트 이름 span을 `FrontOfficeHover`로 감쌈(AI 팀만 이름 점선 밑줄)
+- `components/common/TeamHoverCard.tsx` — `TeamHoverCardInfo.gmTitle` 추가, "단장" 고정 라벨 → `{info.gmTitle}`
+- `views/multi/season/teamHoverData.ts` — `BuildArgs.aiFront` 추가, gmTitle/gmLabel 계산
+- `views/multi/season/MultiTeamHoverCard.tsx` — `useAiGmProfiles()`로 AI 팀 프런트 대표(사장 우선) 전달
+- `hooks/useAiGmProfiles.ts` — staleTime 0 → 5분 (팀 호버 카드가 열릴 때마다 마운트되므로 0이면 호버마다 재조회)
+
+**Before → After (팀 호버 카드)**:
+```ts
+// teamHoverData.ts
+const gmLabel = !row.is_ai && row.user_id && row.nickname ? row.nickname : '없음';
+// →
+const isHumanTeam = !row.is_ai && !!row.user_id;
+const gmTitle = !isHumanTeam && aiFront ? aiFront.title : '단장';
+const gmLabel = isHumanTeam ? (row.nickname || '없음') : (aiFront?.name ?? '없음');
+```
+
+**검증**: `tsc --noEmit` client/server 새·수정 파일 오류 0, `vite build` 성공(순환 임포트 실패 없음; vendor 청크 분할 경고 2줄은 기존 것).
+브라우저 육안 확인은 미실시.
+
+**[후속 수정 — 호버 스타일 통일]** 사용자 지적: 프런트 이름 밑줄이 팀/선수와 다르고, 카드 디자인이 기존 호버 카드와 달라야 함.
+- 이름: 상시 점선 밑줄(`underline decoration-dotted …`) 제거 → 팀/선수 이름 링크와 같은 호버 스타일 `transition-colors group-hover:text-indigo-400 group-hover:underline`
+  (바깥 span에 `group`). 클릭 동작이 없으므로 `cursor-pointer`는 붙이지 않음(ClickableText는 onClick이 있을 때만 pointer).
+- 카드 본문: 컨테이너 `text-xs` 일괄 → 요소별 `text-xs`(TeamHoverCardBody와 동일), 줄 간격 `gap-1.5`→`gap-1`,
+  배지 배경(`px-2 py-0.5 rounded bg-*/15`) 제거 → 글자색만(`font-bold`, 순위 값과 같은 방식), 설명 문장 `text-slate-300 leading-relaxed` → `text-xs text-slate-400`
+- `frontOfficeCopy.ts` 색: 배경+글자색 쌍 → 글자색만. 팀 카드 순위 색 팔레트(emerald-400/200 · slate-300 · amber-400 · rose-400) 재사용,
+  뎁스 성향만 sky-300. 기조 매핑: 우승 올인·우승 도전 emerald-400 / 총력전·순위 경쟁 emerald-200 / 보강 모색 sky-300 / 관망 slate-300 / 반등 시도 amber-400 / 정리 중 rose-400. 로스터 성향: 스타 amber-400 · 균형 slate-300 · 뎁스 sky-300.
+- **[재수정]** 사용자 요청: 로스터 성향·현재 기조는 예전처럼 칩으로 복원 — `px-2 py-0.5 rounded font-semibold` + 배경/글자색 쌍(`ROSTER_STYLE_TONE`/`STANCE_TONE`을 처음 안의 색으로 되돌림: 우승 yellow, 총력전·순위 경쟁 emerald, 보강 모색·뎁스 sky, 관망·균형 slate, 반등 시도 orange, 정리 중 rose, 스타 amber). 행 정렬 `items-baseline`→`items-center`. 위 "글자색만" 안과 팔레트 매핑은 폐기.
+
+**[후속 — 팀 화면 헤더에도 AI 프런트 표시]** 사용자 요청: 팀(로스터) 화면 헤더 우측 상단에 AI 팀 프런트를 사람 팀의 "GM : 닉네임"처럼 표시하고 호버 카드 연결.
+- `views/RosterView.tsx` (싱글/멀티 공용) — 선택 prop `renderTeamFront?: (teamId) => ReactNode` 추가. null이 아닌 값이 오면 기존 `GM : {닉네임}` span 대신 그 노드를 표시,
+  없으면 기존 동작 그대로(싱글 영향 없음). Before: `{gmNickname && <span …>GM : …</span>}` → After: `{teamFront ?? (gmNickname && <span …>GM : …</span>)}`
+- `views/multi/season/MultiRosterView.tsx` — `useAiGmProfiles`, `frontOfficeCtx`(선수 풀 = `allTeams` 로스터), `renderTeamFront` 추가 후 RosterView에 전달.
+  AI 팀이면 `사장 : 팀 코넬리 · 단장 : 맷 로이드` 형태(기존 GM 닉네임과 같은 `text-sm font-semibold text-white`, 호버 시 `text-indigo-400 underline`) + `FrontOfficeHover`.
+  사람 팀·프로필/이름이 없는 팀은 null → 기존 표시 유지.
+- 검증: `tsc` 오류 0, `vite build` 성공. 브라우저 육안 확인 전.
+- 롤백: RosterView의 prop/`teamFront` 3곳, MultiRosterView의 import 3줄·`aiGmProfiles`~`renderTeamFront` 블록·prop 전달 1줄 제거.
+
+**[후속 — 호버 대상을 이름으로 한정]** 사용자 지적: 팀 화면에서 "사장 : 브래드 스티븐스" 전체가 호버 효과를 받음 → 이름만 받아야 함.
+- `MultiRosterView.tsx`: 바깥 span 전체를 감싸던 `FrontOfficeHover`를 이름 span마다 개별로 변경(직함 "사장 :"은 평문). 이름이 둘이면 각각 같은 카드.
+- `MultiFrontOfficeView.tsx`(트레이드 헤더)도 같은 구조였음(바깥 span `group` + 이름 `group-hover:`라 직함 위에서도 두 이름이 반응) → 이름 span마다 `FrontOfficeHover` + `hover:text-indigo-400 hover:underline`로 교체, `group` 제거.
+
+**롤백**: 신규 2파일 삭제, MultiFrontOfficeView의 `FrontOfficeHover` 감싸기·`frontOfficeCtx`·import 제거, TeamHoverCard `gmTitle` 제거(라벨 '단장' 고정 복원),
+teamHoverData·MultiTeamHoverCard는 Before로, aiTeamSituation 두 상수 export 해제(미러 둘 다), useAiGmProfiles staleTime 0.
+
+
+## 2026-10-20 — 트레이드 "새 제안" 상대 팀 헤더 우측에 프런트 이름 표시 (G3 1차)
+
+**배경**: AI 단장 프로필 화면 표시 첫 단계(`docs/plan/multi-ai-gm-profile-plan.md` 4장). 사용자 결정: 사람 팀은
+"단장 {유저 닉네임}", AI 팀은 `meta_gms` 실제 프런트("사장 ○○ · 단장 ○○"). 현재 "새 제안" 상대 목록은 사람 팀만이라
+AI 팀 표시는 AI 트레이드 개방 후에 보인다.
+
+**변경 파일**:
+- `hooks/useAiGmProfiles.ts` (신규) — `meta_gms` 조회 → `buildAiGmProfileMap()`. `staleTime: 0`(전역 Infinity+localStorage
+  영속을 상속하면 meta_gms 갱신이 반영 안 됨 — useCardTeamColors와 같은 이유)
+- `views/multi/season/MultiFrontOfficeView.tsx` — `targetFrontOffice` useMemo 추가, 상대 팀 헤더(로고+팀 드롭다운 줄) 우측에 렌더
+
+**Before**: 헤더 = `[로고] [팀 드롭다운 ▾]`
+**After**: 헤더 = `[로고] [팀 드롭다운 ▾] ……… {직함(slate-400)} {이름(white, semibold)} · …` (`ml-auto truncate pr-4 text-sm`)
+- 사람 팀: `user_id && !is_ai` → nickname 있으면 `[{title:'단장', name: nickname}]`, 없으면 미표시
+- AI 팀: `aiGmProfiles.get(team_slug)`의 president·gm 중 있는 것만 (근거 약한 이름은 DB에 null이라 자동 생략)
+
+**검증**: `tsc --noEmit` 오류 0, 훅 호출 위치 앞에 조건부 return 없음 확인. 브라우저 육안 확인은 미실시.
+
+**롤백**: `useAiGmProfiles.ts` 삭제, MultiFrontOfficeView의 import 2줄·`aiGmProfiles`/`targetFrontOffice` 블록·헤더 `<span>` 블록 제거.
+
+**[로컬 전용 추가] "새 제안" 드롭다운에 AI 팀 포함** — 사용자 요청: AI 트레이드 개발 완료 전까지 **푸시하지 않음**.
+- `proposalTargetTeams`(내 팀 제외 전체, team_abbr 정렬) 신설 → 드롭다운 items·`targetTeamId` 기본값·빈 상태 검사에 사용.
+  `humanTargetTeams`는 리그 블록 표 "제안" 버튼(`isTargetable`)에만 남김.
+- AI 팀에 제출하면 서버 `create_trade_offer`가 `target_not_human`으로 거부 → 기존 매핑 문구("매니저가 있는 팀에만…") InlineNotice.
+- 되돌리기: 세 곳의 `proposalTargetTeams` → `humanTargetTeams`, `proposalTargetTeams` 선언 삭제. AI 트레이드 정식 구현 시엔
+  `ai_trade_enabled` 조건으로 교체(`docs/plan/multi-ai-trade-plan.md` 8장).
+
 
 ## 2026-10-20 — meta_gms 30팀 프런트 성향 재평가 (데이터 변경, 싱글·멀티 공유)
 

@@ -25,10 +25,15 @@ export function calculateIncrementalFatigue(
     if (isB2B) drain *= b2bMultiplier;
     if (isStopper) drain *= 1.3;
 
-    // [Fix 2026-07-26] Level 1 (0%) -> Level 10 (15%, 기존 45%에서 하향) — 스틸/TOV유발/샷클락
-    // 위반 보너스(possessionHandler.ts)와 짝을 이루는 트레이드오프
+    // [2026-10-23] 풀코트 프레스 체력 소모 — 호출부(stateUpdater)가 프레스를 거는 수비 포세션에만 실제 단계를 넘기고
+    // (아니면 1), C·PF 슬롯은 환산 단계를 넘긴다. 9~10단계 배율 × DRAIN_MAX × ((단계−1)/9)^DRAIN_EXP × 스태미나 배율.
+    // (이전: 공·수 모든 포세션에 1 + (단계−1)×0.15/9, 10단계 +15% 직선)
     if (sliders.fullCourtPress > 1) {
-        const pressPenalty = (sliders.fullCourtPress - 1) * (0.15 / 9);
+        const P = SIM_CONFIG.FULL_COURT_PRESS;
+        const staminaScale = Math.max(P.DRAIN_STAMINA_MIN, Math.min(P.DRAIN_STAMINA_MAX,
+            1 - ((player.attr.stamina ?? 70) - P.DRAIN_STAMINA_NEUTRAL) * P.DRAIN_STAMINA_SLOPE));
+        const pressPenalty = (P.HIGH_LEVEL_MULT[sliders.fullCourtPress] ?? 1) * P.DRAIN_MAX
+            * Math.pow((sliders.fullCourtPress - 1) / 9, P.DRAIN_EXP) * staminaScale;
         drain *= (1.0 + pressPenalty);
     }
 
@@ -37,10 +42,9 @@ export function calculateIncrementalFatigue(
     drain *= (1 - intensityFatigueMod / 100);
 
     // [pace 체력 트레이드오프 2026-07 신규] 5단계 미만 페널티 없음, 5단계 +5% ~ 10단계 +15% 선형
-    if (sliders.pace >= C.PACE_FATIGUE_THRESHOLD) {
-        const paceFatiguePenalty = C.PACE_FATIGUE_BASE + (sliders.pace - C.PACE_FATIGUE_THRESHOLD) * C.PACE_FATIGUE_PER_LEVEL;
-        drain *= (1 + paceFatiguePenalty / 100);
-    }
+    // [2026-10-25] 중립(5) 기준 대칭 커브로 교체 — 1단계 −8%(절약) / 5단계 0% / 10단계 +30%. 슛 감점 삭제 후 빠른 페이스의 유일한 대가.
+    // 이전: pace ≥ 5일 때 5% + (pace−5)×2% (10단계 +15%)
+    drain *= (1 + interpolateCurve(sliders.pace, C.PACE_FATIGUE_CURVE) / 100);
 
     // [defReb 속공 트레이드오프 C] defReb<5일 때만 추가 체력 소모 (매 포제션 상시, 팀 전체 균일 — 1단계 +1.5%p ~ 5단계 0%p)
     const drtCfg = SIM_CONFIG.DEF_REB_TRANSITION;

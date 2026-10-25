@@ -13,6 +13,10 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
     const teams = [state.home, state.away];
     const C = SIM_CONFIG.FATIGUE;
     
+    // [2026-10-23] 프레스 체력 소모는 프레스를 거는 수비팀에만(공격 포세션·프레스 미적용 포세션은 1단계로), C·PF 슬롯은 절반 강도
+    const pressingTeam = state.pressActiveThisPossession ? (state.possession === 'home' ? state.away : state.home) : null;
+    const pressCfg = SIM_CONFIG.FULL_COURT_PRESS;
+
     teams.forEach(team => {
         const isB2B = team.id === state.home.id ? state.isHomeB2B : state.isAwayB2B;
         
@@ -25,10 +29,14 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
             // Check if Ace Stopper
             const isStopper = team.tactics.stopperId === p.playerId;
 
+            const __lvl = team.tactics.sliders.fullCourtPress;
+            const __effLvl = team !== pressingTeam ? 1
+                : (p.position === 'C' || p.position === 'PF') ? 1 + (__lvl - 1) * pressCfg.DRAIN_BIG_SHARE : __lvl;
+            const __fatigueSliders = __effLvl === __lvl ? team.tactics.sliders : { ...team.tactics.sliders, fullCourtPress: __effLvl };
             const fatigueRes = calculateIncrementalFatigue(
                 p,
                 timeTaken,
-                team.tactics.sliders,
+                __fatigueSliders,
                 isB2B,
                 isStopper,
                 state.simSettings.injuryFrequency,

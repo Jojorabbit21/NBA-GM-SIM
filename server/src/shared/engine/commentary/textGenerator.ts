@@ -1473,3 +1473,39 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
         `${defender.playerName}의 슈팅 파울이 선언됩니다.`,
     ]);
 }
+
+/**
+ * [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션 커멘터리 (client/server 미러).
+ * trapSteal: 트랩 스틸 / trapFoul: 트랩 중 파울 / pressTurnover: 1대1 압박 턴오버 / pressFoul: 1대1 리치인.
+ */
+export function getPressCommentary(event: 'trapSteal' | 'trapFoul' | 'pressTurnover' | 'pressFoul', actor: LivePlayer, defender: LivePlayer | undefined, isSteal: boolean): string {
+    const d = defender?.playerName ?? '수비';
+    switch (event) {
+        case 'trapSteal':
+            return pick([
+                `풀코트 트랩에 갇힌 ${actor.playerName}, ${d}에게 공을 빼앗깁니다!`,
+                `사이드라인 트랩! ${d}, ${actor.playerName}의 공을 낚아챕니다.`,
+                `${actor.playerName}, 하프라인을 넘기 전에 더블팀에 걸려 ${d}에게 스틸을 허용합니다.`,
+            ]);
+        case 'trapFoul':
+            return pick([
+                `트랩을 걸던 ${d}, ${actor.playerName}와 접촉하며 파울이 선언됩니다.`,
+                `${d}, 백코트 트랩 과정에서 손이 먼저 나가 파울을 범합니다.`,
+            ]);
+        case 'pressTurnover':
+            return isSteal
+                ? pick([
+                    `${d}의 끈질긴 전방 압박! ${actor.playerName}의 드리블을 털어냅니다.`,
+                    `${actor.playerName}, 백코트에서 ${d}에게 공을 빼앗깁니다.`,
+                ])
+                : pick([
+                    `${d}의 전방 압박에 쫓긴 ${actor.playerName}, 공을 흘리며 턴오버.`,
+                    `${actor.playerName}, 프레스를 피하려다 패스가 라인 밖으로 나갑니다.`,
+                ]);
+        case 'pressFoul':
+            return pick([
+                `${d}, 백코트에서 ${actor.playerName}를 압박하다 리치인 파울을 범합니다.`,
+                `전방 압박을 하던 ${d}, ${actor.playerName}에게 손을 뻗다 파울.`,
+            ]);
+    }
+}

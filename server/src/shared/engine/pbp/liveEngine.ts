@@ -284,6 +284,7 @@ export function createGameState(
         boxTimeline: [],
         prevBoxSnap: {},
         lastEntryWasDefReb: false,
+        lastEntryWasSteal: false,
         timeoutPeriod: { slots: 0, firstTeamId: null, lateCapApplied: false },
         lastTimeoutSec: { home: -9999, away: -9999 },
     };
@@ -420,15 +421,24 @@ export function stepPossession(state: GameState): StepResult {
     const isTechnical = result.type === 'technicalFoul';
     // [2026-10-18] 샷클락 바이올레이션은 남은 샷클락을 전부 소모해야 함 — 일반 포세션 공식(8~23초)을 쓰면
     // 수비 리바운드 8초 뒤 "24초 바이올레이션" 같은 모순 로그가 찍혔음.
-    const timeTaken = isTechnical ? 0
+    // [2026-10-23] 보너스 전(수비팀 팀파울 4개 미만 → 이번 파울로 4개 이하) 비슈팅 파울은 공격권 유지 —
+    // 이전엔 공격권이 넘어가 "기록되지 않는 턴오버"로 작동했다(팀당 경기당 ~3회). 파울은 공격 도중에
+    // 일어나므로 포세션 시간의 25~75%만 소모하고, 샷클락은 아래 retainPossession에서 max(14, 잔여)로.
+    // fouls는 applyPossessionResult(commitFoul) 전이라 증가 전 값이다.
+    const fouledTeam = state.possession === 'home' ? state.away : state.home;
+    const isNonBonusFoul = result.type === 'foul' && fouledTeam.fouls < 4;
+    let timeTaken = isTechnical ? 0
         : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
+        // [2026-10-23] simulatePossession이 미리 뽑은 값이 있으면 그대로(프레스 시간·샷클락 막판 페널티와 일치), 없으면 기존 계산
+        : state.preSampledPossessionTime !== undefined ? Math.min(state.gameClock, state.preSampledPossessionTime)
         : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+    if (isNonBonusFoul) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
 
-    // 포세션 시간 누적 (평균 샷클락 소모 추적)
+    // 포세션 시간 누적 (평균 샷클락 소모 추적) — 보너스 전 파울은 포세션이 이어지므로 시간만 더하고 횟수는 제외
     if (!isTechnical) {
         const sideAccum = state.possession === 'home' ? state.possessionTimeAccum.home : state.possessionTimeAccum.away;
         sideAccum.total += timeTaken;
-        sideAccum.count += 1;
+        if (!isNonBonusFoul) sideAccum.count += 1;
     }
 
     // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
@@ -499,17 +509,21 @@ export function stepPossession(state: GameState): StepResult {
         }
     }
 
-    // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울
+    // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울, 보너스 전 비슈팅 파울
     const retainPossession = isOffReb
         || result.type === 'technicalFoul'
-        || result.type === 'flagrantFoul';
+        || result.type === 'flagrantFoul'
+        || isNonBonusFoul;
 
     if (retainPossession) {
         // [2026-10-07] 오펜시브 리바운드 14 / 플래그런트 14(프런트코트 인바운드 규정) / 테크니컬은 중단 시점 샷클락 유지
+        // [2026-10-23] 보너스 전 비슈팅 파울: 잔여 샷클락이 14초 미만이면 14초로(NBA 킥볼/수비 파울 규정)
         if (isOffReb) state.shotClock = 14;
         else if (result.type === 'flagrantFoul') state.shotClock = 14;
+        else if (isNonBonusFoul) state.shotClock = Math.max(14, state.shotClock - timeTaken);
         // technicalFoul: state.shotClock 그대로
         state.lastEntryWasDefReb = false;
+        state.lastEntryWasSteal = false;
         state.lastEntryWasOffReb = isOffReb;
         state.lastEntryWasFlagrant = result.type === 'flagrantFoul';
     } else {
@@ -517,6 +531,8 @@ export function stepPossession(state: GameState): StepResult {
         state.lastEntryWasFlagrant = false;
         // [New 2026-07] 수비 리바운드로 공격권이 넘어간 경우만 true — defReb 속공 트레이드오프용
         state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
+        // [2026-10-24] 라이브볼 스틸(프레스 트랩 스틸 포함)로 공격권이 넘어간 경우 — 다음 포세션 속공 연결(SIM_CONFIG.STEAL_TRANSITION)
+        state.lastEntryWasSteal = result.type === 'turnover' && !!result.isSteal;
         state.possession = state.possession === 'home' ? 'away' : 'home';
         state.shotClock = 24;
     }

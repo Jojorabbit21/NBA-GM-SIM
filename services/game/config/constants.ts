@@ -24,10 +24,9 @@ export const SIM_CONFIG = {
         // [defIntensity 체력 트레이드오프] 1단계 +5%p(드레인 절약) ~ 10단계 -8%p(드레인 추가) 선형
         DEF_INTENSITY_CURVE: [[1, 5], [10, -8]] as [number, number][],
 
-        // [pace 체력 트레이드오프 2026-07 신규] 5단계 미만은 페널티 없음, 5단계 +5% ~ 10단계 +15% 선형
-        PACE_FATIGUE_THRESHOLD: 5,
-        PACE_FATIGUE_BASE: 5,        // %, pace===threshold일 때
-        PACE_FATIGUE_PER_LEVEL: 2,   // %, threshold 초과 1단계당 추가
+        // [pace 체력 트레이드오프] [2026-10-25] 중립 기준 대칭 커브(%) — 1단계 −8 / 5단계 0 / 10단계 +30 (하네스 F30).
+        // 이전: THRESHOLD 5 / BASE 5 / PER_LEVEL 2 (pace ≥ 5만, 5단계 +5% ~ 10단계 +15%)
+        PACE_FATIGUE_CURVE: [[1, -8], [5, 0], [10, 30]] as [number, number][],
     },
     STATS: {
         STL_BASE_FACTOR: 0.08,
@@ -55,17 +54,24 @@ export const SIM_CONFIG = {
         DUNK_DEF_COEFF: 0.002,      // Dunk only (수비 영향 최대)
 
         // [3PT Non-linear Curve] 공격 능력치→FG% 비선형 커브
-        // 25-85: 감속형 완만 (5%→33%), 86-99: 급경사 (33%→42%)
+        // [2026-10-25] 상위 구간 완화 + 하위 구간 하향(K1, 사용자 목표: 75 미만 기대 25~28% / 95~98 약 40% / 99 41~42%).
+        // 커브 밖 가산(수비·체력·보너스 등)이 구간 무관 약 +0.345라 "목표 성공률 − 0.345"로 역산.
+        // [2026-10-25] 80~84 구간 36% 목표(사용자) — 80 −.005→+.008, 85 +.020→+.024 (K3)
+        // 이전: [25,-.234] [40,-.154] [55,-.084] [70,-.014] [85,+.046] [90,+.078] [95,+.110] [99,+.136] (95+ 기대 46%, 커리 48.6%)
         THREE_OFF_CURVE: [
-            [25, -0.234], [40, -0.154], [55, -0.084], [70, -0.014],
-            [85, +0.046], [90, +0.078], [95, +0.110], [99, +0.136],
+            [25, -0.265], [40, -0.195], [55, -0.125], [70, -0.055],
+            [75, -0.030], [80, +0.008], [85, +0.024], [90, +0.042],
+            [95, +0.060], [99, +0.072],
         ] as [number, number][],
         THREE_CORNER_BONUS: 0.015,
 
         // [Layup] 33%→48%(plateau@90)→60%(steep 91-99)
+        // [2026-10-25] 2점 과효율 보정(사용자 결정 "림 +5") — 엔진 2P% .577 vs NBA .545, 페인트 .575 vs 3~10ft .452, 미드 .494 vs .41~.45.
+        // INSIDE/MID_BASE_PCT(사용자 잠금)는 그대로, 커브만 이동. 결과(하네스): 2P% .550 · 림 .630 · 페인트 .444 · 미드 .432 · TS .577.
+        // 레이업 전 구간 +0.05 (이전: [25,-.135] [40,-.105] [55,-.075] [70,-.045] [85,-.005] [90,+.015] [95,+.075] [99,+.135])
         LAYUP_OFF_CURVE: [
-            [25, -0.135], [40, -0.105], [55, -0.075], [70, -0.045],
-            [85, -0.005], [90, +0.015], [95, +0.075], [99, +0.135],
+            [25, -0.085], [40, -0.055], [55, -0.025], [70, +0.005],
+            [85, +0.045], [90, +0.065], [95, +0.125], [99, +0.185],
         ] as [number, number][],
 
         // [Dunk] 60.5%→85% (균일 상승, 수비 영향 최대)
@@ -80,21 +86,31 @@ export const SIM_CONFIG = {
         ] as [number, number][],
 
         // [Mid] Pullup/Jumper/Fadeaway 공통: 23%→41%(plateau@92)→50%
+        // [2026-10-25] 전 구간 −0.06 (이전: [25,-.083] [40,-.033] [55,+.007] [70,+.047] [85,+.077] [92,+.097] [95,+.137] [99,+.187])
         MID_OFF_CURVE: [
-            [25, -0.083], [40, -0.033], [55, +0.007], [70, +0.047],
-            [85, +0.077], [92, +0.097], [95, +0.137], [99, +0.187],
+            [25, -0.143], [40, -0.093], [55, -0.053], [70, -0.013],
+            [85, +0.017], [92, +0.037], [95, +0.077], [99, +0.127],
+        ] as [number, number][],
+
+        // [2026-10-25] 페인트 점퍼 전용 — 이전엔 MID_OFF_CURVE를 INSIDE_BASE_PCT(57%) 위에 얹어 기대 63.7%(림 레이업보다 높음).
+        // = 이전 MID_OFF_CURVE − 0.177 (기대 약 46%)
+        PAINT_JUMPER_OFF_CURVE: [
+            [25, -0.260], [40, -0.210], [55, -0.170], [70, -0.130],
+            [85, -0.100], [92, -0.080], [95, -0.040], [99, +0.010],
         ] as [number, number][],
 
         // [Floater] 33%→52% (완만 가속, breakpoint 없음)
+        // [2026-10-25] 전 구간 −0.10 (이전: [50,-.177] [60,-.147] [70,-.107] [80,-.067] [85,-.047] [90,-.027] [95,-.007] [99,+.013])
         FLOATER_OFF_CURVE: [
-            [50, -0.177], [60, -0.147], [70, -0.107], [80, -0.067],
-            [85, -0.047], [90, -0.027], [95, -0.007], [99, +0.013],
+            [50, -0.277], [60, -0.247], [70, -0.207], [80, -0.167],
+            [85, -0.147], [90, -0.127], [95, -0.107], [99, -0.087],
         ] as [number, number][],
 
         // [Hook] 30%→55% (키 큰 센터 전용)
+        // [2026-10-25] 전 구간 −0.11 (이전: [50,-.217] [60,-.167] [70,-.107] [80,-.037] [85,-.017] [90,+.003] [95,+.023] [99,+.033])
         HOOK_OFF_CURVE: [
-            [50, -0.217], [60, -0.167], [70, -0.107], [80, -0.037],
-            [85, -0.017], [90, +0.003], [95, +0.023], [99, +0.033],
+            [50, -0.327], [60, -0.277], [70, -0.217], [80, -0.147],
+            [85, -0.127], [90, -0.107], [95, -0.087], [99, -0.077],
         ] as [number, number][],
 
         // shotIq + offConsist 일관성 시스템 (모든 존)
@@ -133,7 +149,7 @@ export const SIM_CONFIG = {
         // 오펜시브 파울 — [2026-07-29] 차징(actor 귀속)과 일리걸 스크린(실제 스크리너 귀속)을
         // 완전히 분리된 두 체크로 재설계. PostUp만 차징 전용 고율(2.5%), Iso는 기본값으로 복귀.
         // 일리걸 스크린은 PnR 3종(핸들러/롤/팝)과 OffBallScreen에서만, 실제 스크린을 선 선수에게.
-        OFFENSIVE_FOUL_BASE: 0.015,       // 차징 기본값 (PostUp 외 전 플레이타입)
+        OFFENSIVE_FOUL_BASE: 0.010,       // 차징 기본값 (PostUp 외 전 플레이타입) — [2026-10-24] 0.015 → 0.010 (팀당 경기 차징 1.9 → 1.5, 사용자 결정)
         CHARGE_BONUS_PER_DEF_CONSIST: 0.0003, // 차징 유도 보너스 — helpDefIq(위치 예측)보다
                                                // defConsist(정지 자세 유지력)가 더 적합하다고 판단해 교체
         POST_OFFENSIVE_FOUL_RATE: 0.025,  // PostUp 전용 차징 고율
@@ -273,11 +289,13 @@ export const SIM_CONFIG = {
     },
     // Non-Shooting Foul (팀 파울 / 루스볼 파울 — 보너스 상황에서만 FT)
     NON_SHOOTING_FOUL: {
-        BASE_RATE: 0.025,
+        // [2026-10-25] 0.025 → 0.05, MAX 0.06 → 0.12 (사용자 결정 C1) — 하네스: 파울 14.3→16.7, FTA 18.5→19.8, FTr .222→.241(NBA .244),
+        // 파울아웃 0.032→0.055/팀경기, 포세션 95.3→94.4(보너스 전 파울이 시간 소모)
+        BASE_RATE: 0.05,
         // defIntensity 보정: 5.5 기준 대칭(1단계 -2.0%p ~ 10단계 +2.0%p)
         // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
         DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
-        MAX_RATE: 0.06,
+        MAX_RATE: 0.12,
         // [2026-07-29] 플레이타입별 차등 — 몸싸움/드라이브 계열은 상승, 캐치앤슛류는 하락.
         // drawFoul(파울 유도 "기술")은 슛 동작 전용 개념이라 여기엔 안 넣음(슈팅파울 전용 유지).
         // [2026-07-30] PostUp 1.5%p→0.6%p 재조정 — PostUp/PnR_Roll의 포지션 가중치 도입(센터
@@ -361,6 +379,36 @@ export const SIM_CONFIG = {
         POSITION_FACTOR: { C: 1.5, PF: 1.2, SF: 1.0, SG: 1.0, PG: 1.0 } as Record<string, number>,
     },
     // Defensive Rebound 속공 트레이드오프 (2026-07 신규) — defReb 낮게 설정 시 속공 전환 이점 + 체력 대가
+    // [2026-10-25] pace 속공 확률(pace × 0.03)을 공격권이 넘어온 방식에 따라 배율 — 라이브볼(수비 리바운드·스틸)↑, 데드볼↓,
+    // 공격 리바운드(풋백 아닌 경우)는 이미 하프코트라 0. 가중평균 ≈ 1.0이 되도록 잡은 초안(측정 튜닝).
+    TRANSITION_ENTRY: {
+        ENABLED: true,
+        DEF_REB_MULT: 2.0,
+        STEAL_MULT: 2.0,
+        DEAD_BALL_MULT: 0.35,
+        OFF_REB_MULT: 0,
+        // 진입 방식별 속공 성공률 가산(기본 속공 보너스 +0.04 위에) — 데드볼 속공은 수비가 정돈된 얼리 오펜스라 보너스 상쇄.
+        // 스틸 진입은 STEAL_TRANSITION(골밑 +0.07)이 담당. 하네스: 속공 PPP 수비리바 1.018→1.067 / 데드볼 1.007→0.939, 리그 득점 불변.
+        DEF_REB_HIT_BONUS: 0.03,
+        DEAD_BALL_HIT_BONUS: -0.04,
+    },
+    // [2026-10-25] 속공 러너 스피드 보정 — 속공 림·페인트 마무리에 ((speed + spdBall)/2 − CENTER) × COEFF, ±CAP.
+    // CENTER = 실제 속공 슈터 평균(PBL 79.6)이라 리그 전체 영향 0. 하네스: 리그 득점·TS 불변, 속공 PPP 댈러스(로스터 스피드 82.7) 1.039→1.048 /
+    // 덴버(67.6) 1.037→1.026. 페이스 슬라이더 설명 "발이 빠른 선수가 있다면 유용"의 실제 구현.
+    TRANSITION_SPEED: {
+        ENABLED: true,
+        CENTER: 80,
+        COEFF: 0.0025,
+        CAP: 0.04,
+    },
+    // [2026-10-24] 라이브볼 스틸 → 다음 포세션 속공 연결 (possessionHandler.ts, liveEngine.ts lastEntryWasSteal)
+    // 모든 스틸 공통(블리츠 트랩 스틸·프레스 트랩 스틸 포함). 하네스(PBL 시드2×1230경기) 확정값:
+    // 스틸 후 속공 비율 13%→58%, 스틸 후 속공 PPP 1.02→1.18(일반 속공 1.05), 리그 PPP +0.005, 팀 득점 +1.3/경기.
+    STEAL_TRANSITION: {
+        ENABLED: true,
+        FREQ_BONUS: 0.45,   // Transition 선택 확률 가산 (기본 pace×0.03에 더함)
+        HIT_BONUS: 0.07,    // 스틸에서 이어진 Transition 슛 성공률 가산 (사용자 결정, 0.03은 너무 낮음)
+    },
     DEF_REB_TRANSITION: {
         // A. 빈도 보너스 (Transition 선택확률에 가산, 우리 defReb<5일 때만): (5-defReb) × 계수
         FREQ_BONUS_PER_LEVEL: 0.15 / 4,   // 최대 +15%p (defReb=1)
@@ -441,19 +489,22 @@ export const SIM_CONFIG = {
     // Steal System (커브 기반 재설계)
     STEAL: {
         // 온볼 스틸 커브: 수비자 stl → 스틸 확률 (주 수비자 전용)
-        // 85까지 완만, 90부터 급가속 (stl 95 → ~2.7 SPG, stl 99 → ~3.2 SPG 목표)
+        // [2026-10-24] 스틸 구성 재조정 — 하/중위 상향 + 상위 급경사 완화(평탄 B). 이전 커브(90부터 급가속)는 배율을 올리면
+        // 엘리트 스틸러에게만 몰려 SPG 4~5가 나왔음. 이전: [40,.015] [55,.025] [70,.040] [80,.055] [85,.070] [90,.095] [95,.145] [99,.170]
         ONBALL_STEAL_CURVE: [
-            [40, 0.015], [55, 0.025], [70, 0.040],
-            [80, 0.055], [85, 0.070], [90, 0.095],
-            [95, 0.145], [99, 0.170],
+            [40, 0.030], [55, 0.040], [70, 0.052],
+            [80, 0.060], [85, 0.067], [90, 0.075],
+            [95, 0.085], [99, 0.095],
         ] as [number, number][],
 
         // 패싱레인 스틸 커브: 오프볼 수비자 stl → 패스 가로채기 확률
         // 패스 플레이 전용, 주 수비자 외 4명 각각 판정
+        // [2026-10-24] 약 4배 상향 + 상위 평탄화(A, 사용자 결정) — 팀당 경기 레인 스틸 0.96 → 2.87. 상위 급경사를 그대로 키우면
+        // 엘리트 스틸러가 다른 4명의 패스까지 가로채 SPG 3.7+가 나왔음. 이전: [40,.001] [55,.002] [70,.004] [80,.006] [85,.009] [90,.013] [95,.022] [99,.028]
         LANE_STEAL_CURVE: [
-            [40, 0.001], [55, 0.002], [70, 0.004],
-            [80, 0.006], [85, 0.009], [90, 0.013],
-            [95, 0.022], [99, 0.028],
+            [40, 0.005], [55, 0.009], [70, 0.016],
+            [80, 0.022], [85, 0.027], [90, 0.033],
+            [95, 0.040], [99, 0.045],
         ] as [number, number][],
 
         // 공격자 볼스킬 저항 계수 (온볼 스틸 확률에서 감산)
@@ -465,11 +516,70 @@ export const SIM_CONFIG = {
         // passAcc 90 → 레인 스틸 확률 -1%, passAcc 50 → +1%
         PASSACC_RESIST_COEFF: 0.0005,
 
-        // [2026-07-26] fullCourtPress 트레이드오프 — defIntensity에서 이전
-        // (fullCourtPress-1) × 계수, 1단계 0%p ~ 10단계 최댓값(체력 소모와 짝을 이룸)
-        PRESS_STEAL_COEFF: 0.015 / 9,   // 10단계 기준 +1.5%p (온볼 스틸)
-        PRESS_TOV_COEFF: 0.025 / 9,     // 10단계 기준 +2.5%p (비강제 턴오버 유발)
-        PRESS_LANE_STEAL_COEFF: 0.0075 / 9,  // 10단계 기준 +0.75%p (패싱레인 스틸, 헬퍼별 개별 적용)
+        // [2026-10-23] PRESS_STEAL/TOV/LANE_STEAL_COEFF 삭제 — 프레스 효과는 FULL_COURT_PRESS(포세션 시작 단계)로 이전
+    },
+    // [2026-10-23] Full-court press — 포세션 시작 시 "공 운반자 vs 매치업 수비수" 1대1 압박 + 7단계 이상에서 가끔 트랩.
+    // 프레스 계수 f = (fullCourtPress-1)/9 × (1 - (zoneFreq-1) × ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL).
+    // 상대 공격 리바운드로 이어진 포세션은 프레스 불가(적용 제외). 하네스(PBL 30팀, 3시즌) 기준 프레스 10의
+    // 평균 순득실 +1.7/100포세션("약간 이득"), 트랩 성공률 중앙값 ~15%.
+    FULL_COURT_PRESS: {
+        // 대결 점수
+        HANDLER_WEIGHTS: { handling: 0.35, spdBall: 0.30, speed: 0.20, agility: 0.15 } as Record<string, number>,
+        DEFENDER_WEIGHTS: { perDef: 0.50, defConsist: 0.25, agility: 0.25 } as Record<string, number>,
+        // 1대1: 뚫림 확률 = f × 커브(핸들러 점수 - 수비 점수)
+        BREAK_CURVE: [[-20, 0.02], [-10, 0.05], [-5, 0.09], [0, 0.13], [5, 0.19], [10, 0.27], [20, 0.40]] as [number, number][],
+        BREAK_HIT_BONUS: 0.04,          // 뚫림 → 이번 포세션 슛 성공률 +4%p
+        PRESSURE_TOV_BASE: 0.04,        // 1대1 압박 턴오버 = f × clamp(BASE - gap×SLOPE, 0, MAX)
+        PRESSURE_TOV_SLOPE: 0.006,
+        PRESSURE_TOV_MAX: 0.12,
+        PRESSURE_TOV_STEAL_SHARE: 0.5,  // 압박 턴오버 중 스틸(수비수 귀속) 비율
+        REACH_IN_MAX: 0.06,             // 1대1 리치인 = 고단계배율 × MAX × f² × 스틸 능력 보정 × 수비수 파울 배율
+        REACH_IN_CLEAN_MIN: 0.6,        // 보정 = max(MIN, 1 - (stl-70)/75)
+        // 트랩: fullCourtPress ≥ TRAP_MIN_LEVEL 에서만. 확률 = TRAP_MIN_RATE → TRAP_MAX_RATE를 MIN_LEVEL~10단계 선형 보간
+        // (5단계 5% / 6단계 8.4% / 7단계 11.8% / 8단계 15.2% / 9단계 18.6% / 10단계 22%) × 지역 방어 감쇠
+        TRAP_MIN_LEVEL: 5,
+        TRAP_MIN_RATE: 0.05,
+        TRAP_MAX_RATE: 0.22,
+        TRAP_OFF_WEIGHTS: { handling: 0.40, passVision: 0.35, passAcc: 0.25 } as Record<string, number>,
+        TRAP_HELPER_WEIGHTS: { helpDefIq: 0.50, perDef: 0.25, agility: 0.25 } as Record<string, number>,
+        TRAP_TOV_BASE: 0.19,            // 트랩 성공률 = clamp(BASE - gap×SLOPE, MIN, MAX), gap = 공격 점수 - 트랩 수비 점수
+        TRAP_TOV_SLOPE: 0.015,
+        TRAP_TOV_MIN: 0.03,
+        TRAP_TOV_MAX: 0.45,
+        TRAP_FOUL_BASE: 0.08,           // 트랩 파울 = 고단계배율 × (BASE + EXTRA × f²) × (1 + foulProneness합×0.25) × 두 수비수 파울 배율 평균
+        TRAP_FOUL_EXTRA: 0.12,
+        ESCAPE_HIT_BONUS: 0.08,         // 트랩 탈출 → 이번 포세션 슛 성공률 +8%p
+        ESCAPE_SHOOTING_FOUL_BONUS: 0.03,
+        // 시간: 버틴 포세션 + f×MAX초(넘어오는 데 걸린 시간), 뚫림/탈출 -FAST_CUT초, 프레스 턴오버·파울 3~6초
+        HOLD_EXTRA_TIME_MAX: 3,
+        BREAK_TIME_CUT: 4,
+        // 9~10단계 "도박 단계" 배율 — 이득(트랩 확률, 트랩/압박 턴오버의 매치업 민감도)과 위험(뚫림 확률, 뚫림·탈출 슛 보너스,
+        // 체력 소모)을 같이 키운다. 위험은 능력치에 따라 갈리므로 앞선 수비가 강한 팀만 순이득.
+        HIGH_LEVEL_MULT: { 9: 1.25, 10: 1.5 } as Record<number, number>,
+        HIGH_LEVEL_FOUL_MULT: { 9: 1.25, 10: 1.5 } as Record<number, number>,
+        // 지친 프레스 수비수: 체력이 THRESHOLD 미만이면 1%p당 수비 점수 -DEF_PENALTY%(최저 DEF_MULT_MIN), 파울 +FOUL_PENALTY%
+        FATIGUE_THRESHOLD: 85,
+        FATIGUE_DEF_PENALTY: 1.5,
+        FATIGUE_DEF_MULT_MIN: 0.4,
+        FATIGUE_FOUL_PENALTY: 3,
+        // 수비수 파울 배율 = 체력 배율 × clamp(1 − (defConsist−70)×0.03, 0.4, 1.6) × clamp(1 − (수비 점수−80)×0.02, 0.6, 1.4)
+        FOUL_CONSIST_NEUTRAL: 70, FOUL_CONSIST_SLOPE: 0.03, FOUL_CONSIST_MIN: 0.4, FOUL_CONSIST_MAX: 1.6,
+        FOUL_DEF_NEUTRAL: 80, FOUL_DEF_SLOPE: 0.02, FOUL_DEF_MIN: 0.6, FOUL_DEF_MAX: 1.4,
+        // 프레스 체력 소모(fatigueSystem): 프레스를 거는 수비 포세션에서만. 고단계배율 × DRAIN_MAX × ((단계−1)/9)^DRAIN_EXP
+        // × 스태미나 배율 clamp(1 − (stamina−80)×0.03, 0.5, 1.5). C·PF 슬롯은 단계를 1 + (단계−1)×BIG_SHARE로 환산.
+        DRAIN_MAX: 0.5,
+        DRAIN_EXP: 1.5,
+        DRAIN_STAMINA_NEUTRAL: 80, DRAIN_STAMINA_SLOPE: 0.03, DRAIN_STAMINA_MIN: 0.5, DRAIN_STAMINA_MAX: 1.5,
+        DRAIN_BIG_SHARE: 0.5,
+    },
+    // [2026-10-23] 샷클락 막판 슛 페널티 — 슛 시점 잔여 샷클락(= 샷클락 - 이번 포세션 소요시간)이 4초 미만일 때.
+    // 근거: 82games 2003-04 리그 집계 21초 이상 소요 포세션 100포세션당 91.8 (16~20초 100.6, 약 -9%).
+    // 클러치 능력((intangibles×.5+offConsist×.3+shotIq×.2)/100 + clutchGene×.05)이 높으면 최대 MITIGATION_MAX만큼 감쇄.
+    LATE_SHOT_CLOCK: {
+        PENALTY_CURVE: [[1, 0.06], [2, 0.045], [3, 0.025], [4, 0]] as [number, number][],
+        CLUTCH_NEUTRAL: 0.65,
+        CLUTCH_RANGE: 0.30,
+        MITIGATION_MAX: 0.4,
     },
     // Help Defense System (2026-07 재설계 — 전 구역 적용, 명시적 헬퍼 지정)
     HELP_DEFENSE: {
@@ -524,7 +634,8 @@ export const SIM_CONFIG = {
     // 0.2 기준 pace=1→14.8초, pace=10→13.0초(실제 NBA 역대 최고속 팀 ~13.7초보다 약간 빠른 선에서
     // 상한, 폭주 방지하면서도 슬라이더 체감은 유지).
     POSSESSION_TIME: {
-        BASE: 19,
+        // [2026-10-25] 19 → 18 (사용자 결정) — 중립 pace 5에서도 포세션 95.1(NBA 같은 공식 101.4)로 6개 부족했음. 18: 실제 전술 100.9 / pace5 102.2
+        BASE: 18,
         PACE_NEUTRAL: 5,
         PACE_COMPRESSION: 0.2,
     },
@@ -673,10 +784,13 @@ export const SIM_CONFIG = {
     PNR_COVERAGE: {
         // Probability distribution by slider value (0=Drop, 1=Hedge, 2=Blitz)
         // [dropPct, hedgePct, blitzPct]
+        // [2026-10-24] 블리츠 재설계(SIM_CONFIG.BLITZ)에 맞춰 재조정 — 블리츠가 "트랩 탈출 실패 = 턴오버/스틸, 성공 = 노마크"
+        // 양자택일이 되면서 기본값(헷지)의 블리츠 25%가 과해짐. 사용자 결정 "강분포". 이전: 0 [.70,.20,.10] / 1 [.15,.60,.25] / 2 [.10,.20,.70].
+        // 실효 비중은 지역 방어(항상 드롭)·스위치가 먼저 가져가 훨씬 낮음(블리츠 설정에서 핸들러 포세션의 약 29%).
         DIST: {
-            0: [0.70, 0.20, 0.10],  // Drop focused
-            1: [0.15, 0.60, 0.25],  // Hedge balanced (default)
-            2: [0.10, 0.20, 0.70],  // Blitz focused
+            0: [0.80, 0.15, 0.05],  // Drop focused
+            1: [0.15, 0.70, 0.15],  // Hedge balanced (default)
+            2: [0.10, 0.25, 0.65],  // Blitz focused
         } as Record<number, [number, number, number]>,
         // Drop: 빅맨이 림 보호, 핸들러 미드레인지 허용
         DROP_HANDLER_MID_BONUS: 0.04,
@@ -697,6 +811,46 @@ export const SIM_CONFIG = {
         // [2026-10-25] BLITZ_BLOCK_PENALTY(0.02) 삭제 → RIM_PROTECTION.BLITZ_ENGAGE_PENALTY로 이전
         BLITZ_TOV_BONUS: 0.04,
     },
+    // [2026-10-24] 스크린 판정 (PnR_Handler/PnR_Roll/PnR_Pop/Handoff) — possessionHandler.ts resolveScreen()
+    // power = screener 아키타입(근력·키·몸무게) × 0.7 + offBallMovement(타이밍) × 0.3
+    // evade = 스크린을 받는 수비수 agility × 0.4 + perDef × 0.3 + strength × 0.3
+    // gap = power − evade → 클린/실패 확률(나머지 = 부분). 평균 C 스크리너 vs 평균 가드 수비수 ≈ gap −6.
+    SCREEN: {
+        ENABLED: true,
+        // 스크린 자격(PnR_Handler 스크리너·Handoff 빅) — 체격 점수 이 값 이상, 슬롯 포지션 무관. PnR_Roll/Pop은 POSITION_WEIGHT.PNR_ROLL.
+        // 55 기준 자격 비율(PBL): PG 4% / SG 2% / SF 40% / PF 78% / C 96% — 드레이먼드 그린 56·바클리 67 포함, 위긴스 48 제외.
+        ELIGIBLE_PHYSIQUE_MIN: 55,
+        PHYSIQUE_WEIGHT: 0.7,
+        TIMING_WEIGHT: 0.3,
+        EVADE_AGILITY: 0.4,
+        EVADE_PERDEF: 0.3,
+        EVADE_STRENGTH: 0.3,
+        CLEAN_CURVE: [[-30, 0.10], [-6, 0.35], [15, 0.60], [30, 0.70]] as [number, number][],
+        FAIL_CURVE: [[-30, 0.55], [-6, 0.30], [15, 0.15], [30, 0.10]] as [number, number][],
+        CLEAN_BONUS: 0.05,      // 클린 스크린: 슈터 성공률 +5%p
+        PARTIAL_BONUS: 0.02,    // 부분 성공: +2%p
+        ZONE_MULT: 0.5,         // 지역 방어: 수비가 사람을 따라가지 않아 스크린 효과 절반
+    },    // [2026-10-24] 블리츠 재설계 (possessionHandler.ts resolveBlitzTrap / playTypes.ts resolveBlitzPassOut)
+    // PnR_Handler + 블리츠: 트랩 탈출 판정 → 성공 = 패스아웃(노마크), 실패 = 턴오버/스틸(STEAL_TRANSITION으로 속공 연결).
+    // 기존 커버리지 무관 PnR_Handler 킥아웃(PNR_HANDLER_KICKOUT 확률부)은 폐지, 블리츠 핸들러 슛 감점(PNR_COVERAGE.BLITZ_HANDLER_PENALTY/
+    // BLITZ_TOV_BONUS)은 PnR_Handler에선 더 이상 도달하지 않음(Roll/Pop 블리츠 보너스는 유지). 수치는 측정 튜닝 중(임시값).
+    BLITZ: {
+        ENABLED: true,
+        HANDLER_HANDLING_W: 0.5,
+        HANDLER_PASSVISION_W: 0.25,
+        HANDLER_PASSIQ_W: 0.25,
+        TRAP_PERDEF_W: 0.4,
+        TRAP_STL_W: 0.3,
+        TRAP_AGILITY_W: 0.3,
+        // gap = 핸들러 점수 − 트랩 점수 → 탈출 확률. [2026-10-24] C3 확정(사용자 결정) — 가파른 곡선: 약한 핸들러는 크게 당하고
+        // 엘리트 핸들러는 블리츠를 역이용. PBL gap 분포 p10 −6 / p50 +10 / p90 +24. 하네스: 블리츠 포세션당 득점 0.911(트랩 TOV 17.5%,
+        // 패스아웃 PPP 1.255), gap<0 0.71 ~ gap20+ 1.06. (C0 [[-20,.55],[0,.72],[20,.85],[40,.92]]는 트랩 TOV 25%로 과함)
+        ESCAPE_CURVE: [[-20, 0.50], [0, 0.80], [20, 0.93], [40, 0.97]] as [number, number][],
+        FAIL_STEAL_SHARE: 0.6,   // 탈출 실패 중 스틸 비율(나머지 = 비강제 턴오버: 트래블링·악송구 등)
+        SCREENER_SHARE: 0.22,    // 패스아웃 중 스크리너가 받는 비율 (사용자 결정 20~25%)
+        OPEN_BONUS: 0.05,        // 위크사이드 노마크 성공률 보너스 (+ 핸들러 passIq 보너스, 스크리너는 BLITZ_ROLL/POP_BONUS)
+    },
+
     // Foul Trouble Logic
     // Zone Selection: selectZone 임계값 필터 (존 선호도 기반 플레이 리다이렉트)
     ZONE_SELECTION: {
@@ -719,7 +873,12 @@ export const SIM_CONFIG = {
     POSITION_WEIGHT: {
         // [2026-09-15] POST_UP 제거 — PostUp은 이제 postScorer 순수 실력 경쟁(playTypes.ts 참고),
         // PnR_Roll/PnR_Pop은 스크린을 설 수 있어야 한다는 물리적 전제가 있어 포지션 하드필터 유지.
+        // [2026-10-24] PnR_Roll/Pop 전용(Handoff·PnR_Handler 스크리너는 SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN 체격 자격으로 이전).
         PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
+    },
+    // [2026-10-24] PostUp 액터 선정 = postScorer × (1 − w) + 체격(calculateScreenerPhysique) × w (playTypes.ts)
+    POST_SELECTION: {
+        PHYSIQUE_WEIGHT: 0.4,
     },
     // [2026-07-31] PostUp 킥아웃 — 더블팀 유도 후 오픈 슈터에게 패스할지 결정. postScorer와
     // postPassing(passVision+passAcc 평균)을 1:1 비율로 경쟁시키는 방식은 둘 다 같은 0~99 스케일이라

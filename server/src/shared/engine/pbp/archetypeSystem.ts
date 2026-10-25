@@ -27,6 +27,16 @@ export interface ArchetypeRatings {
 }
 
 /**
+ * [2026-10-24] 스크리너 체격 점수(근력·키·몸무게, 피로 미반영) — screener 아키타입의 원본 값이자
+ * 스크린 자격 판정(SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN, playTypes.ts) 공용 소스.
+ */
+export function calculateScreenerPhysique(attr: Pick<LivePlayer['attr'], 'strength' | 'height' | 'weight'>): number {
+    return (attr.strength * 0.40)
+        + (Math.max(0, (attr.height - 185) * 3) * 0.30)
+        + (Math.max(0, (attr.weight - 80) * 1.6) * 0.30);
+}
+
+/**
  * Calculates all archetype scores for a given player based on attributes AND fatigue.
  */
 export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: number = 100, archetypesEnabled?: boolean): ArchetypeRatings {
@@ -70,7 +80,7 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
         (attr.mid * 0.20)
     );
 
-    const screenerRaw = (attr.strength * 0.40) + (normHeight * 0.30) + (normWeight * 0.30);
+    const screenerRaw = calculateScreenerPhysique(attr);
     const screener = getVal(screenerRaw);
 
     const roller = getVal(

@@ -19,13 +19,15 @@ export interface PlayTypeProfile {
 // 가드 주도형(Iso/PnR_Handler/DriveKick) + 논게이트 퍼리미터(CatchShoot)를 올렸다.
 // 총합 10.9→10.7(무관 — 상대 비중만 선택에 영향).
 export const PLAY_TYPE_PROFILES: Record<string, PlayTypeProfile> = {
-    'Iso':           { base: 1.5, inside:  0.0, pnr:  0.0, bm: -2.0 },
-    'PostUp':        { base: 1.2, inside: +2.5, pnr:  0.0, bm: -1.0 },
+    // [2026-10-24] 중립 기본값 재조정(V3) — 중립 전술(5/5/5)이 외곽 스타 쪽으로 기울어 있던 것 보정. 합계 10.7 유지.
+    // 이전 base: Iso 1.5 / PostUp 1.2 / PnR_Roll 1.1 / CatchShoot 1.2 / OffBallScreen 0.9
+    'Iso':           { base: 1.1, inside:  0.0, pnr:  0.0, bm: -2.0 },
+    'PostUp':        { base: 1.8, inside: +2.5, pnr:  0.0, bm: -1.0 },
     'PnR_Handler':   { base: 2.0, inside:  0.0, pnr: +3.0, bm:  0.0 },
-    'PnR_Roll':      { base: 1.1, inside: +1.5, pnr: +2.0, bm:  0.0 },
+    'PnR_Roll':      { base: 1.3, inside: +1.5, pnr: +2.0, bm:  0.0 },
     'PnR_Pop':       { base: 0.8, inside: -1.5, pnr: +2.0, bm:  0.0 },
-    'CatchShoot':    { base: 1.2, inside: -2.0, pnr:  0.0, bm: +2.0 },
-    'OffBallScreen': { base: 0.9, inside: -1.0, pnr:  0.0, bm: +1.5 },
+    'CatchShoot':    { base: 1.0, inside: -2.0, pnr:  0.0, bm: +2.0 },
+    'OffBallScreen': { base: 0.8, inside: -1.0, pnr:  0.0, bm: +1.5 },
     'DriveKick':     { base: 0.8, inside: -1.0, pnr:  0.0, bm: +2.0 },
     'Cut':           { base: 0.7, inside: +1.5, pnr:  0.0, bm: +1.5 },
     'Handoff':       { base: 0.5, inside:  0.0, pnr:  0.0, bm: +1.0 },

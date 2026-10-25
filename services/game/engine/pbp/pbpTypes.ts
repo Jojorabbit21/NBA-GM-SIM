@@ -225,6 +225,11 @@ export interface GameState {
     // shotClock===14 대신 이 플래그로 판정(플래그런트 후 샷클락 14초가 풋백을 유발하지 않도록). optional: 미설정=false.
     lastEntryWasOffReb?: boolean;
     lastEntryWasFlagrant?: boolean; // 플래그런트 후 공격권 유지(샷클락 14) — 샷클락 바이올레이션 문구 분기용
+    // [2026-10-23] simulatePossession이 슛 판정 전에 미리 뽑은 이번 포세션 소요 시간(초) — 샷클락 막판 페널티 판정용.
+    // liveEngine은 이 값이 있으면 calculatePossessionTime을 다시 부르지 않고 그대로 쓴다. 미설정 = 기존처럼 계산.
+    preSampledPossessionTime?: number;
+    // [2026-10-23] 이번 포세션에 수비팀이 실제로 프레스를 걸었는지(공격 리바운드 이어진 포세션·1단계 제외) — 프레스 체력 소모 판정용
+    pressActiveThisPossession?: boolean;
     home: TeamState;
     away: TeamState;
 
@@ -289,6 +294,9 @@ export interface GameState {
 
     // [New 2026-07] 직전 포제션이 "우리 팀의 수비 리바운드"로 끝났는지 (defReb 속공 트레이드오프용)
     lastEntryWasDefReb: boolean;
+
+    // [2026-10-24] 직전 포세션이 상대 턴오버 중 라이브볼 스틸로 끝났는지 (스틸 후 속공 연결용)
+    lastEntryWasSteal?: boolean;
 
     // [2026-10-22] 타임아웃 NBA 규정화 — 피리어드별 의무 타임아웃 슬롯 진행 + 팀별 마지막 타임아웃 시각(경과초)
     timeoutPeriod: TimeoutPeriodState;
@@ -368,6 +376,8 @@ export interface PossessionResult {
 
     // [New] PnR Defense Coverage
     pnrCoverage?: 'drop' | 'hedge' | 'blitz';
+    // [2026-10-24] 스크린 판정 결과 (PnR 3종 + Handoff, 판정 생략 시 undefined)
+    screenResult?: 'clean' | 'partial' | 'fail';
 
     // [New] 3PT sub-zone key (hitRate ↔ 스탯 기록 일관성)
     subZone?: string;
@@ -386,4 +396,8 @@ export interface PossessionResult {
     // [2026-07-31] PostUp/PnR_Roll 더블팀 유도 후 킥아웃으로 액터가 교체된 포제션인지
     // (어시스트 확률 고정치·전용 커멘터리 트리거용)
     isKickout?: boolean;
+    // [2026-10-24] 블리츠 트랩 탈출 실패 턴오버
+    isBlitzTrap?: boolean;
+    // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션(트랩 스틸/트랩 파울/1대1 압박 턴오버/1대1 리치인) — 커멘터리 분기 + 플레이타입 PPP 집계 제외용
+    pressEvent?: 'trapSteal' | 'trapFoul' | 'pressTurnover' | 'pressFoul';
 }

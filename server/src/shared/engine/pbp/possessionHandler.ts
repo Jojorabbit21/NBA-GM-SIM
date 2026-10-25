@@ -8,6 +8,7 @@ import { PlayType } from '../../types.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { computePlayTypeWeights } from '../../game/config/playTypeProfiles.ts';
 import { resolveDynamicZone } from '../shotDistribution.ts';
+import { calculatePossessionTime } from './timeEngine.ts';
 
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
 
@@ -188,22 +189,20 @@ function calculateTurnoverChance(
     pnrCoverage: PnrCoverage = 'none',
     helpDefender?: LivePlayer,
     helpSuccess: boolean = false,
-    passer?: LivePlayer
+    passer?: LivePlayer,
+    // [2026-10-24] 핸들러가 직접 만드는 슛(PnR_Handler 비킥아웃) — 패스가 없으므로 패싱레인 스틸 대상 아님
+    selfCreated: boolean = false
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
     const sliders = offTeam.tactics.sliders;
-    // [Fix 2026-07-26] defIntensity에서 제거했던 스틸/턴오버유발 보정을 fullCourtPress로 이전.
-    // 체력 소모(fatigueSystem.ts, 1단계 0% ~ 10단계 15%)와 짝을 이루는 하이리스크 하이리턴 트레이드오프.
-    // 1단계=0(효과 없음) ~ 10단계=예전 defIntensity 최대치와 동일한 크기.
-    // [2026-07-26] 존 디펜스와 풀코트 프레스는 상충 — zoneFreq 높을수록 press 효과 감쇠(최대 50%)
-    const pressEffectiveness = 1 - (defTeam.tactics.sliders.zoneFreq - 1) * SIM_CONFIG.ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL;
-    const pressLevel = Math.max(0, defTeam.tactics.sliders.fullCourtPress - 1) * pressEffectiveness;
+    // [2026-10-23] fullCourtPress 일괄 스틸/레인스틸/턴오버 보너스 삭제 — 프레스는 포세션 시작 단계(resolveFullCourtPress)에서
+    // 공 운반자 vs 매치업 수비수 대결로만 작동한다.
 
-    const isPassPlay = playType === 'CatchShoot' || playType === 'Handoff'
+    const isPassPlay = !selfCreated && (playType === 'CatchShoot' || playType === 'Handoff'
         || playType === 'PnR_Handler' || playType === 'PnR_Roll'
         || playType === 'PnR_Pop' || playType === 'Cut'
-        || playType === 'OffBallScreen' || playType === 'DriveKick';
+        || playType === 'OffBallScreen' || playType === 'DriveKick');
     // [2026-08-01] 핸들러로 기능하는 플레이(라이브 드리블 창조) — A-1/B 공통 사용.
     const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
 
@@ -219,10 +218,7 @@ function calculateTurnoverChance(
     // PnR 블리츠: 더블팀 압박으로 온볼 스틸 확률 증가
     const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
     const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
-    // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +1.5%p (예전 defIntensity 최대치 이전)
-    const pressStealBonus = pressLevel * stlCfg.PRESS_STEAL_COEFF;
-
-    const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus + pressStealBonus);
+    const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus);
 
     if (Math.random() < onballProb) {
         return { isTurnover: true, isSteal: true, stealer: defender };
@@ -235,8 +231,6 @@ function calculateTurnoverChance(
         // 패서 패스 정확도 저항 — [2026-08-01 Fix] 실제 패서(secondaryActor) 기준으로 교체
         // (client 미러 상세 참조), 패서 없으면 actor로 폴백.
         const passResist = ((passer ?? actor).attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
-        // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +0.75%p (헬퍼별 개별 적용)
-        const pressLaneStealBonus = pressLevel * stlCfg.PRESS_LANE_STEAL_COEFF;
 
         for (const helper of defTeam.onCourt) {
             if (helper.playerId === defender.playerId) continue;
@@ -244,7 +238,7 @@ function calculateTurnoverChance(
             // passPerc 가중 stl: 패싱레인 읽기 능력 반영
             const effectiveStl = helper.attr.stl * 0.7 + helper.attr.passPerc * 0.3;
             const laneBase = interpolateCurve(effectiveStl, stlCfg.LANE_STEAL_CURVE);
-            const laneProb = Math.max(0.001, laneBase - passResist + pressLaneStealBonus);
+            const laneProb = Math.max(0.001, laneBase - passResist);
 
             if (Math.random() < laneProb) {
                 return { isTurnover: true, isSteal: true, stealer: helper };
@@ -267,7 +261,8 @@ function calculateTurnoverChance(
     // ================================================================
     // B. 비강제 턴오버 (공격자 자체 실수, 스틸 기록 없음)
     // ================================================================
-    let baseProb = 0.06;
+    // [2026-10-24] 0.06 → 0.035 — 스틸 구성 재조정(턴오버 총량 유지, 비스틸 실책 5.4 → 3.4 / 스틸 4.65 → 7.3개, 팀당 경기)
+    let baseProb = 0.035;
 
     // 볼무브 리스크: 패스 많이 돌릴수록 실수 확률 증가
     const rawPassRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
@@ -323,12 +318,9 @@ function calculateTurnoverChance(
         needleReduction = pmCfg.NEEDLE_TOV_REDUCTION;
     }
 
-    // [Fix 2026-07-26] fullCourtPress: 1단계 0%p ~ 10단계 +2.5%p (예전 defIntensity 최대치 이전)
-    const pressTovBonus = pressLevel * stlCfg.PRESS_TOV_COEFF;
-
     let unforcedProb = baseProb + passRisk + ballSkillFactor + iqFactor
         + contextRisk + composureFactor
-        + dribbleGapRisk - needleReduction + pressTovBonus;
+        + dribbleGapRisk - needleReduction;
 
     unforcedProb = Math.max(0.015, Math.min(0.18, unforcedProb));
 
@@ -356,6 +348,210 @@ function getMomentumBonus(state: GameState, offTeamId: string): number {
     if (diff < 12) return 0.015; //  8-11pt 런: +1.5%
     if (diff < 16) return 0.025; // 12-15pt 런: +2.5%
     return 0.035;                 // 16pt+  런: +3.5% (상한)
+}
+
+type ScreenResult = 'clean' | 'partial' | 'fail';
+
+/**
+ * [2026-10-24] 스크린 판정 — PnR_Handler / PnR_Roll / PnR_Pop / Handoff.
+ * 스크리너 능력(체격 = screener 아키타입 + 타이밍 = offBallMovement) vs 스크린을 받는 수비수(볼을 가진
+ * 선수의 수비수)의 회피력(agility·perDef·strength)을 비교해 클린/부분/실패를 뽑고, 결과는 그 플레이의
+ * 슈터(핸들러·롤맨·팝퍼·핸드오프 수신자) 슛 성공률 보너스로만 반영한다(SIM_CONFIG.SCREEN).
+ * 판정 생략: 킥아웃(슈터가 바뀜) / 스위치(수비가 스크린에 이미 반응 — 매치업 격차로 처리) /
+ * 스위치 실수(이미 와이드 오픈 경로).
+ */
+function resolveScreen(
+    playType: PlayType,
+    actor: LivePlayer,
+    secondaryActor: LivePlayer | undefined,
+    defender: LivePlayer,
+    defTeam: TeamState,
+    isKickout: boolean,
+    isSwitch: boolean,
+    isBotchedSwitch: boolean,
+    isZone: boolean,
+): { result?: ScreenResult; bonus: number } {
+    const cfg = SIM_CONFIG.SCREEN;
+    if (!cfg.ENABLED || isKickout || isSwitch || isBotchedSwitch) return { bonus: 0 };
+
+    let screener: LivePlayer | undefined;
+    let screened: LivePlayer | undefined;
+    if (playType === 'PnR_Handler' || playType === 'Handoff') {
+        // 볼 가진 actor가 스크린을 쓰고, secondaryActor가 스크리너(PnR_Handler)/핸드오프 빅(Handoff)
+        screener = secondaryActor;
+        screened = defender;
+    } else if (playType === 'PnR_Roll' || playType === 'PnR_Pop') {
+        // actor 본인이 스크리너 — 스크린을 받는 건 핸들러(secondaryActor)의 수비수
+        screener = actor;
+        const handler = secondaryActor;
+        screened = handler
+            ? defTeam.onCourt.find(p => p.position === handler.position && p.playerId !== defender.playerId)
+            : undefined;
+    } else {
+        return { bonus: 0 };
+    }
+    if (!screener || !screened) return { bonus: 0 };
+
+    const power = screener.archetypes.screener * cfg.PHYSIQUE_WEIGHT + screener.attr.offBallMovement * cfg.TIMING_WEIGHT;
+    const evade = screened.attr.agility * cfg.EVADE_AGILITY + screened.attr.perDef * cfg.EVADE_PERDEF + screened.attr.strength * cfg.EVADE_STRENGTH;
+    const gap = power - evade;
+    const pClean = interpolateCurve(gap, cfg.CLEAN_CURVE);
+    const pFail = interpolateCurve(gap, cfg.FAIL_CURVE);
+
+    const r = Math.random();
+    const result: ScreenResult = r < pClean ? 'clean' : r < 1 - pFail ? 'partial' : 'fail';
+    const base = result === 'clean' ? cfg.CLEAN_BONUS : result === 'partial' ? cfg.PARTIAL_BONUS : 0;
+    return { result, bonus: base * (isZone ? cfg.ZONE_MULT : 1) };
+}
+
+/**
+ * [2026-10-24] 블리츠 트랩 판정 — PnR_Handler + 블리츠 커버리지 전용(SIM_CONFIG.BLITZ).
+ * 핸들러(핸들링 주력 + 패스 시야·IQ) vs 트랩 수비 2명(핸들러 수비수 + 스크리너 수비수, perDef·stl·agility 평균) 격차로 탈출 확률.
+ * 탈출 실패 = 턴오버(FAIL_STEAL_SHARE 비율은 트랩 수비수 stl 가중 스틸 → 스틸 후 속공 연결), 성공 = 패스아웃(호출부).
+ */
+function resolveBlitzTrap(handler: LivePlayer, onBall: LivePlayer, helper?: LivePlayer): { escaped: boolean; stealer?: LivePlayer } {
+    const c = SIM_CONFIG.BLITZ;
+    const skill = handler.attr.handling * c.HANDLER_HANDLING_W
+        + handler.attr.passVision * c.HANDLER_PASSVISION_W
+        + handler.attr.passIq * c.HANDLER_PASSIQ_W;
+    const trappers = helper && helper.playerId !== onBall.playerId ? [onBall, helper] : [onBall];
+    const trapScore = (p: LivePlayer) => p.attr.perDef * c.TRAP_PERDEF_W + p.attr.stl * c.TRAP_STL_W + p.attr.agility * c.TRAP_AGILITY_W;
+    const trap = trappers.reduce((s, p) => s + trapScore(p), 0) / trappers.length;
+    if (Math.random() < interpolateCurve(skill - trap, c.ESCAPE_CURVE)) return { escaped: true };
+    if (Math.random() >= c.FAIL_STEAL_SHARE) return { escaped: false };
+    const totalStl = trappers.reduce((s, p) => s + Math.max(1, p.attr.stl), 0);
+    let r = Math.random() * totalStl;
+    for (const p of trappers) { r -= Math.max(1, p.attr.stl); if (r <= 0) return { escaped: false, stealer: p }; }
+    return { escaped: false, stealer: trappers[trappers.length - 1] };
+}
+
+/** [2026-10-24] 블리츠 패스아웃 수신자의 수비수 — 트랩에 가담하지 않은 수비수 중 같은 슬롯, 없으면 helpDefIq 최고(로테이션). */
+function pickRotationDefender(defTeam: TeamState, receiver: LivePlayer, excludeIds: (string | undefined)[]): LivePlayer | undefined {
+    const pool = defTeam.onCourt.filter(p => !excludeIds.includes(p.playerId));
+    if (pool.length === 0) return defTeam.onCourt[0];
+    return pool.find(p => p.position === receiver.position)
+        ?? pool.reduce((best, p) => p.attr.helpDefIq > best.attr.helpDefIq ? p : best, pool[0]);
+}
+
+/** 지역 방어 비중에 따른 프레스 효과 감쇠(zoneFreq 1 = 1.0 ~ 10 = 0.5). */
+function getPressZoneEff(defTeam: TeamState): number {
+    return 1 - (defTeam.tactics.sliders.zoneFreq - 1) * SIM_CONFIG.ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL;
+}
+
+/** 프레스 계수 f — (fullCourtPress-1)/9, 지역 방어 비중만큼 감쇠. 1단계 = 0. */
+function getPressFactor(defTeam: TeamState): number {
+    return Math.max(0, defTeam.tactics.sliders.fullCourtPress - 1) * getPressZoneEff(defTeam) / 9;
+}
+
+/** 트랩 확률 — TRAP_MIN_LEVEL 미만 0, 이상은 TRAP_MIN_RATE→TRAP_MAX_RATE 선형(10단계), 지역 방어 감쇠. */
+function getTrapRate(defTeam: TeamState): number {
+    const C = SIM_CONFIG.FULL_COURT_PRESS;
+    const lvl = defTeam.tactics.sliders.fullCourtPress;
+    if (lvl < C.TRAP_MIN_LEVEL) return 0;
+    const t = Math.min(1, (lvl - C.TRAP_MIN_LEVEL) / Math.max(1, 10 - C.TRAP_MIN_LEVEL));
+    return (C.TRAP_MIN_RATE + (C.TRAP_MAX_RATE - C.TRAP_MIN_RATE) * t) * getPressZoneEff(defTeam);
+}
+
+function weightedScore(p: LivePlayer, weights: Record<string, number>): number {
+    let v = 0;
+    for (const [k, w] of Object.entries(weights)) v += ((p.attr as any)[k] ?? 50) * w;
+    return v;
+}
+
+interface PressOutcome {
+    result?: PossessionResult;   // 프레스 단계에서 포세션이 끝난 경우(턴오버/파울)
+    beaten: boolean;             // 1대1 뚫림 또는 트랩 탈출
+    hitBonus: number;            // 이번 포세션 슛 성공률 가산
+    shootingFoulBonus: number;   // 이번 포세션 슈팅 파울 확률 가산
+    extraTime: number;           // 버틴 포세션의 추가 소요 시간(초)
+}
+
+/**
+ * [2026-10-23] 풀코트 프레스 단계 — 포세션 시작 시 1회.
+ * 공 운반자 = 공격팀 코트 위 핸들러 점수 1위, 1차 수비 = 스토퍼(에이스가 운반할 때) → 같은 슬롯 매치업.
+ * fullCourtPress ≥ TRAP_MIN_LEVEL이면 getTrapRate() 확률로 트랩(보조 = 남은 1~3번 자리 중 도움 수비 점수 1위).
+ * 상대 공격 리바운드로 이어진 포세션은 프레스를 설 수 없으므로 호출하지 않는다.
+ */
+function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: TeamState, playType: PlayType): PressOutcome {
+    const none: PressOutcome = { beaten: false, hitBonus: 0, shootingFoulBonus: 0, extraTime: 0 };
+    const f = getPressFactor(defTeam);
+    if (f <= 0 || offTeam.onCourt.length === 0 || defTeam.onCourt.length === 0) return none;
+    const C = SIM_CONFIG.FULL_COURT_PRESS;
+    const level = defTeam.tactics.sliders.fullCourtPress;
+    const tier = C.HIGH_LEVEL_MULT[level] ?? 1;          // 9~10단계 이득·위험 배율
+    const foulTier = C.HIGH_LEVEL_FOUL_MULT[level] ?? 1;
+
+    // 지친 프레스 수비수(체력 THRESHOLD 미만)는 수비 점수가 떨어지고 파울이 는다 — 엘리트 수비수는 체력이 남아 있으면 그대로
+    const fatigueShort = (p: LivePlayer) => Math.max(0, C.FATIGUE_THRESHOLD - p.currentCondition) / 100;
+    const rawDefScore = (p: LivePlayer) => weightedScore(p, C.DEFENDER_WEIGHTS);
+    const defScore = (p: LivePlayer) => rawDefScore(p) * Math.max(C.FATIGUE_DEF_MULT_MIN, 1 - fatigueShort(p) * C.FATIGUE_DEF_PENALTY);
+    const foulMult = (p: LivePlayer) => (1 + fatigueShort(p) * C.FATIGUE_FOUL_PENALTY)
+        * Math.max(C.FOUL_CONSIST_MIN, Math.min(C.FOUL_CONSIST_MAX, 1 - (p.attr.defConsist - C.FOUL_CONSIST_NEUTRAL) * C.FOUL_CONSIST_SLOPE))
+        * Math.max(C.FOUL_DEF_MIN, Math.min(C.FOUL_DEF_MAX, 1 - (rawDefScore(p) - C.FOUL_DEF_NEUTRAL) * C.FOUL_DEF_SLOPE));
+    const handlerScore = (p: LivePlayer) => weightedScore(p, C.HANDLER_WEIGHTS);
+    const carrier = offTeam.onCourt.reduce((best, p) => handlerScore(p) > handlerScore(best) ? p : best);
+    let pressDef: LivePlayer | undefined;
+    if (carrier.playerId === offTeam.acePlayerId && defTeam.tactics.stopperId) {
+        pressDef = defTeam.onCourt.find(p => p.playerId === defTeam.tactics.stopperId);
+    }
+    if (!pressDef) pressDef = defTeam.onCourt.find(p => p.position === carrier.position);
+    if (!pressDef) pressDef = defTeam.onCourt[Math.floor(Math.random() * defTeam.onCourt.length)];
+
+    const end = (type: 'turnover' | 'foul', who: LivePlayer, isSteal: boolean, pressEvent: PossessionResult['pressEvent']): PressOutcome => {
+        state.preSampledPossessionTime = Math.min(state.gameClock, 3 + Math.floor(Math.random() * 4));
+        return {
+            ...none,
+            result: {
+                type, offTeam, defTeam, actor: carrier, defender: who, isSteal,
+                points: 0, isAndOne: false, playType, isSwitch: false, isZone: false, pressEvent,
+            },
+        };
+    };
+
+    // 트랩 (TRAP_MIN_LEVEL 이상, 가끔)
+    const trapRate = getTrapRate(defTeam) * tier;
+    if (trapRate > 0 && Math.random() < trapRate) {
+        const perim = defTeam.onCourt.filter(p => p.playerId !== pressDef!.playerId && (p.position === 'PG' || p.position === 'SG' || p.position === 'SF'));
+        const pool = perim.length > 0 ? perim : defTeam.onCourt.filter(p => p.playerId !== pressDef!.playerId);
+        const trapper = pool.length > 0
+            ? pool.reduce((best, p) => weightedScore(p, C.TRAP_HELPER_WEIGHTS) > weightedScore(best, C.TRAP_HELPER_WEIGHTS) ? p : best)
+            : pressDef;
+        const offTrap = weightedScore(carrier, C.TRAP_OFF_WEIGHTS);
+        const defTrap = defScore(pressDef) * 0.4 + defScore(trapper) * 0.4 + ((pressDef.attr.stl + trapper.attr.stl) / 2) * 0.2;
+        const pTov = Math.max(C.TRAP_TOV_MIN, Math.min(C.TRAP_TOV_MAX, C.TRAP_TOV_BASE - (offTrap - defTrap) * C.TRAP_TOV_SLOPE * tier));
+        const pFoul = foulTier * (C.TRAP_FOUL_BASE + C.TRAP_FOUL_EXTRA * f * f)
+            * (1 + ((pressDef.tendencies?.foulProneness ?? 0) + (trapper.tendencies?.foulProneness ?? 0)) * 0.25)
+            * (foulMult(pressDef) + foulMult(trapper)) / 2;
+        const r = Math.random();
+        if (r < pTov) {
+            const stealer = Math.random() < pressDef.attr.stl / Math.max(1, pressDef.attr.stl + trapper.attr.stl) ? pressDef : trapper;
+            return end('turnover', stealer, true, 'trapSteal');
+        }
+        if (r < pTov + pFoul) return end('foul', Math.random() < 0.5 ? pressDef : trapper, false, 'trapFoul');
+        return { beaten: true, hitBonus: C.ESCAPE_HIT_BONUS * tier, shootingFoulBonus: C.ESCAPE_SHOOTING_FOUL_BONUS, extraTime: 0 };
+    }
+
+    // 1대1 압박
+    const gap = handlerScore(carrier) - defScore(pressDef);
+    if (Math.random() < tier * f * interpolateCurve(gap, C.BREAK_CURVE)) {
+        return { beaten: true, hitBonus: C.BREAK_HIT_BONUS * tier, shootingFoulBonus: 0, extraTime: 0 };
+    }
+    const pTov1 = f * Math.max(0, Math.min(C.PRESSURE_TOV_MAX, C.PRESSURE_TOV_BASE - gap * C.PRESSURE_TOV_SLOPE * tier));
+    if (Math.random() < pTov1) return end('turnover', pressDef, Math.random() < C.PRESSURE_TOV_STEAL_SHARE, 'pressTurnover');
+    const clean = Math.max(C.REACH_IN_CLEAN_MIN, 1 - (pressDef.attr.stl - 70) / 75);
+    if (Math.random() < foulTier * C.REACH_IN_MAX * f * f * clean * foulMult(pressDef)) return end('foul', pressDef, false, 'pressFoul');
+    return { ...none, extraTime: Math.round(f * C.HOLD_EXTRA_TIME_MAX) };
+}
+
+/** [2026-10-23] 샷클락 막판(잔여 4초 미만) 슛 성공률 페널티 — 클러치 능력으로 최대 MITIGATION_MAX만큼 감쇄. */
+function getLateShotClockPenalty(actor: LivePlayer, remaining: number): number {
+    const L = SIM_CONFIG.LATE_SHOT_CLOCK;
+    const base = interpolateCurve(remaining, L.PENALTY_CURVE);
+    if (base <= 0) return 0;
+    const a = actor.attr;
+    const clutchRating = (a.intangibles * 0.50 + a.offConsist * 0.30 + a.shotIq * 0.20) / 100 + (actor.tendencies?.clutchGene ?? 0) * 0.05;
+    const mitigation = Math.max(0, Math.min(1, (clutchRating - L.CLUTCH_NEUTRAL) / L.CLUTCH_RANGE)) * L.MITIGATION_MAX;
+    return base * (1 - mitigation);
 }
 
 /** [2026-10-25] 파울 트러블 → 파울/개입 확률 배율 (FOUL_TROUBLE.PROB_MOD) */
@@ -457,6 +653,8 @@ function applyShooterBlockResistance(prob: number, actor: LivePlayer, preferredZ
 }
 
 export function simulatePossession(state: GameState, options?: { minHitRate?: number; clutchContext?: ClutchContext }): PossessionResult {
+    state.preSampledPossessionTime = undefined;
+    state.pressActiveThisPossession = false;
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
 
@@ -577,7 +775,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const defRebFreqBonus = (state.lastEntryWasDefReb && sliders.defReb < drtCfg.FREQ_THRESHOLD)
             ? (drtCfg.FREQ_THRESHOLD - sliders.defReb) * drtCfg.FREQ_BONUS_PER_LEVEL
             : 0;
-        if (Math.random() < (sliders.pace * 0.03 + defRebFreqBonus)) {
+        // [2026-10-24] 라이브볼 스틸 직후 — 수비가 정돈되기 전이라 속공으로 이어질 확률 가산
+        const stealFreqBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal) ? SIM_CONFIG.STEAL_TRANSITION.FREQ_BONUS : 0;
+        // [2026-10-25] pace 속공 확률을 공격권 진입 방식에 따라 배율(SIM_CONFIG.TRANSITION_ENTRY) — 이전엔 상대 득점·자유투 직후에도 동일
+        const teCfg = SIM_CONFIG.TRANSITION_ENTRY;
+        const entryMult = !teCfg.ENABLED ? 1
+            : state.lastEntryWasSteal ? teCfg.STEAL_MULT
+            : state.lastEntryWasDefReb ? teCfg.DEF_REB_MULT
+            : state.lastEntryWasOffReb ? teCfg.OFF_REB_MULT
+            : teCfg.DEAD_BALL_MULT;
+        if (Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus)) {
              selectedPlayType = 'Transition';
         } else {
             // Weighted Random Choice
@@ -594,13 +801,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
-    const { actor, secondaryActor, screener, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
+    // [2026-10-24] let — 블리츠 패스아웃 시 수신자 컨텍스트로 교체
+    let { actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
+    const { screener } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
     // zoneFreq=1: 8% 발동, zoneFreq=5: 40%, zoneFreq=10: 80%
     const isZone = Math.random() < defTeam.tactics.sliders.zoneFreq * 0.08;
-    const { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
+    let { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
         defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
 
@@ -615,6 +824,57 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             points: 0, isAndOne: false, playType: selectedPlayType,
             isSwitch: false, isZone: false,
         };
+    }
+
+    // 2.3 [2026-10-23] 풀코트 프레스 (상대 공격 리바운드로 이어진 포세션 제외)
+    // [2026-10-24] 스틸 직후도 제외 — 공을 뺏긴 팀은 프레스를 설 시간이 없음
+    const pressActive = !state.lastEntryWasOffReb && !state.lastEntryWasSteal;
+    state.pressActiveThisPossession = pressActive && getPressFactor(defTeam) > 0;
+    const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType) : null;
+    if (press?.result) return press.result;
+
+    // 2.35 [2026-10-24] 블리츠 트랩 (PnR_Handler + 블리츠) — 실패 = 턴오버/스틸(스틸이면 STEAL_TRANSITION 속공 연결),
+    // 성공 = 패스아웃(스크리너 4대3 또는 위크사이드 노마크). 패스아웃 이후엔 커버리지 보정을 적용하지 않음(calcCoverage).
+    let calcCoverage: PnrCoverage = pnrCoverage;
+    if (SIM_CONFIG.BLITZ.ENABLED && selectedPlayType === 'PnR_Handler' && pnrCoverage === 'blitz' && !isKickout && secondaryActor && defender) {
+        const trap = resolveBlitzTrap(actor, defender, screenerDefender);
+        if (!trap.escaped) {
+            return {
+                type: 'turnover',
+                offTeam, defTeam, actor,
+                defender: trap.stealer ?? defender,
+                isSteal: !!trap.stealer,
+                points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+                pnrCoverage: 'blitz',
+                isBlitzTrap: true,
+            };
+        }
+        const trapIds = [defender.playerId, screenerDefender?.playerId];
+        const passCtx = resolvePlayAction(offTeam, 'PnR_Handler', sliders, { handler: actor, screener: secondaryActor });
+        ({ actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = passCtx);
+        defender = pickRotationDefender(defTeam, actor, trapIds);
+        calcCoverage = 'none';
+    }
+    if (!defender) {
+        return {
+            type: 'turnover', offTeam, defTeam, actor, defender: actor,
+            points: 0, isAndOne: false, playType: selectedPlayType,
+            isSwitch: false, isZone: false,
+        };
+    }
+
+    // 2.4 [2026-10-23] 이번 포세션 소요 시간을 슛 판정 전에 미리 뽑는다(liveEngine이 그대로 사용).
+    // 프레스를 버틴 포세션은 넘어오는 데 쓴 시간만큼 길어지고(하프코트 샷클락도 그만큼 줄어듦), 뚫리면 짧아진다.
+    let lateClockPenalty = 0;
+    {
+        const extra = press?.extraTime ?? 0;
+        if (extra) state.shotClock -= extra;
+        let t = calculatePossessionTime(state, offTeam.tactics.sliders, selectedPlayType);
+        if (extra) { state.shotClock += extra; t = Math.min(state.gameClock, t + extra); }
+        if (press?.beaten) t = Math.max(Math.min(4, state.gameClock), t - SIM_CONFIG.FULL_COURT_PRESS.BREAK_TIME_CUT);
+        state.preSampledPossessionTime = t;
+        // 게임클락이 샷클락보다 적게 남으면 샷클락이 꺼진 상태 — 페널티 없음
+        if (state.gameClock > state.shotClock) lateClockPenalty = getLateShotClockPenalty(actor, state.shotClock - t);
     }
 
     // 2.5 Help Defense Resolution (통합 판정 — 파울/턴오버/hitRate/블락 공통 사용)
@@ -693,6 +953,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
+    // [2026-10-23] 트랩 탈출 — 늦게 복귀하는 수비수의 무리한 컨테스트
+    shootingFoulRate += press?.shootingFoulBonus ?? 0;
 
     // [2026-07-30] 트리거를 helpSuccess→helpAttempted로, 강도는 슬라이더 무관 고정값으로 (client 미러 참고)
     let helpBonusRate = 0;
@@ -953,7 +1215,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // fullCourtPress로 이전: 1단계 0%p ~ 10단계 +0.4%p (2026-10-18 ×0.4 축소, 이전 +1.0%p)
     // [2026-07-26] 존 디펜스와 풀코트 프레스 상충 — zoneFreq 높을수록 press 효과 감쇠(최대 50%)
     const pressEffectivenessSC = 1 - (defSliders.zoneFreq - 1) * SIM_CONFIG.ZONE_DEFENSE.PRESS_ZONE_DAMPEN_PER_LEVEL;
-    const pressShotClockBonus = Math.max(0, defSliders.fullCourtPress - 1) * offFoulConfig.PRESS_SHOT_CLOCK_FACTOR * pressEffectivenessSC;
+    // [2026-10-23] 프레스가 적용된 포세션에서만, 뚫린 경우 제외
+    const pressShotClockBonus = (pressActive && !press?.beaten)
+        ? Math.max(0, defSliders.fullCourtPress - 1) * offFoulConfig.PRESS_SHOT_CLOCK_FACTOR * pressEffectivenessSC
+        : 0;
     // [2026-07-26] zoneUsage 항목 제거 — 인과관계 없음(존은 개인압박 약함 → 오히려 셋업시간 늘려주는 쪽)
     const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE
         + defSliders.helpDef * offFoulConfig.SHOT_CLOCK_HELP_DEF_FACTOR
@@ -972,7 +1237,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 4. Turnover / Steal Check (Enhanced Logic with Baseline + Context)
-    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage, helpDefender, helpSuccess, secondaryActor);
+    // [2026-10-24] PnR_Handler 비킥아웃 = 핸들러 본인 슛 — secondaryActor는 스크리너라 패서가 아님.
+    // 턴오버(패스 능력·패싱레인 스틸)·슛 품질 보정(시야·전달)·어시스트에 스크리너를 쓰지 않는다.
+    const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
+    const shotPasser = isHandlerSelf ? undefined : secondaryActor;
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess, shotPasser, isHandlerSelf);
 
     if (tovResult.isTurnover) {
         return {
@@ -1029,8 +1298,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const egoMod = (actor.tendencies?.ego ?? 0) * ((3 - actorOptionRank) / 2) * 0.015;
 
     // [A-1] 어시스트 퀄리티: 패서의 passVision이 높으면 슈터가 더 좋은 위치에서 캐치
-    const assistQualityMod = secondaryActor
-        ? (secondaryActor.attr.passVision - 70) * 0.001
+    const assistQualityMod = shotPasser
+        ? (shotPasser.attr.passVision - 70) * 0.001
         : 0;
 
     // [A-3] CatchShoot/Handoff 오픈 탐지: 패서 시야가 넓으면 더 좋은 오픈 찬스
@@ -1041,8 +1310,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // [B-2] 어시스트 전달 퀄리티: 패서의 passAcc가 높으면 슈터가 리듬 유지
-    const deliveryQualityMod = secondaryActor
-        ? (secondaryActor.attr.passAcc - 70) * 0.0008
+    const deliveryQualityMod = shotPasser
+        ? (shotPasser.attr.passAcc - 70) * 0.0008
         : 0;
 
     // [B-4] PnR 랍패스 메카닉: PnR_Roll + Rim + Dunk/Layup → 랍 시도/성공 판정
@@ -1089,8 +1358,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // --- PLAYMAKING ARCHETYPE BONUSES (패서 히든 아키타입) ---
     let playmakingBonus = 0;
     const pmCfg = SIM_CONFIG.PLAYMAKING;
-    if (pmCfg.ENABLED && secondaryActor) {
-        const pa = secondaryActor.attr;
+    if (pmCfg.ENABLED && shotPasser) {
+        const pa = shotPasser.attr;
 
         // G-1. Clairvoyant: 어시스트 시 슈터 hitRate +2%
         if (pa.passIq >= pmCfg.CLAIRVOYANT_PASSIQ_THRESHOLD &&
@@ -1115,6 +1384,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 상대offReb≥7(크래시 하드) → 수비 전환이 늦어 우리 속공에 보너스
     // 상대offReb<5(백코트 전념) → 이미 수비가 준비돼 있어 우리 속공에 페널티
     const drtCfg2 = SIM_CONFIG.DEF_REB_TRANSITION;
+    // [2026-10-24] 라이브볼 스틸에서 이어진 속공 — 수비 복귀 전 찬스
+    const stealTransitionBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal && selectedPlayType === 'Transition'
+        // [2026-10-25] 골밑 마무리 한정 — 수비 복귀 전 쉬운 레이업/덩크 보너스가 속공 3점에도 붙어 3점 시도의 19%가 기대 42%였음
+        && (preferredZone === 'Rim' || preferredZone === 'Paint'))
+        ? SIM_CONFIG.STEAL_TRANSITION.HIT_BONUS : 0;
+    // [2026-10-25] 진입 방식별 속공 질(SIM_CONFIG.TRANSITION_ENTRY) — 수비 리바운드 진입 +, 데드볼 진입 −, 스틸 진입은 위 stealTransitionBonus
+    const teHitCfg = SIM_CONFIG.TRANSITION_ENTRY;
+    const transitionEntryBonus = (!teHitCfg.ENABLED || selectedPlayType !== 'Transition' || state.lastEntryWasSteal) ? 0
+        : state.lastEntryWasDefReb ? teHitCfg.DEF_REB_HIT_BONUS
+        : teHitCfg.DEAD_BALL_HIT_BONUS;
+    // [2026-10-25] 속공 러너 스피드 보정(SIM_CONFIG.TRANSITION_SPEED) — 림·페인트 마무리 한정(수비보다 먼저 골밑 도착)
+    const tsCfg = SIM_CONFIG.TRANSITION_SPEED;
+    const transitionSpeedBonus = (tsCfg.ENABLED && selectedPlayType === 'Transition' && (preferredZone === 'Rim' || preferredZone === 'Paint'))
+        ? Math.max(-tsCfg.CAP, Math.min(tsCfg.CAP, ((actor.attr.speed + actor.attr.spdBall) / 2 - tsCfg.CENTER) * tsCfg.COEFF)) : 0;
     let defRebSuccessBonus = 0;
     if (state.lastEntryWasDefReb && selectedPlayType === 'Transition') {
         const oppOffReb = defTeam.tactics.sliders.offReb;
@@ -1125,18 +1408,21 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
     }
 
+    // [2026-10-24] 스크린 판정 (PnR 3종 + Handoff) — 슛 성공률 보너스로만 반영
+    const screen = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+
     const shotContext = calculateHitRate(
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + defRebSuccessBonus,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + defRebSuccessBonus + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
         state.possession === 'home',
         state.simSettings.homeAdvantage,
         options?.clutchContext,
-        pnrCoverage,
+        calcCoverage,
         screenerDefender,
         shotType,
         subZone
@@ -1255,6 +1541,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             helpDefenderId,
             isHelpPlay: isHelpBlock,
             isKickout,
+            screenResult: screen.result,
         };
     }
 
@@ -1265,5 +1552,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         subZone, isZone,
         helpDefenderId,
         isKickout,
+        screenResult: screen.result,
     };
 }

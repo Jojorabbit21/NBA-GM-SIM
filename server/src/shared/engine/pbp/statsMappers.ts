@@ -4,7 +4,7 @@ import type { PbpLog } from '../../types/engine.ts';
 import { formatTime } from './timeEngine.ts';
 import { resolveRebound } from './reboundLogic.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
-import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary } from '../commentary/textGenerator.ts';
+import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary } from '../commentary/textGenerator.ts';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils.ts';
 import { recordShotEvent } from './handlers/visUtils.ts';
 
@@ -98,6 +98,7 @@ function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: num
     const { type, playType, offTeam } = result;
     if (!playType || !PLAY_TYPE_COUNTED_RESULTS.has(type)) return;
     if (type === 'foul' && fta <= 0) return; // 비보너스 파울 — 공격이 이어지므로 플레이 미종료
+    if (result.pressEvent) return; // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션 — 하프코트 플레이가 실행되지 않음
     if (!state.playTypeStats) state.playTypeStats = {};
     let byTeam = state.playTypeStats[offTeam.id];
     if (!byTeam) { byTeam = {}; state.playTypeStats[offTeam.id] = byTeam; }
@@ -172,7 +173,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'PostUp': 0.55, 'PnR_Handler': 0.50, 'Iso': 0.38, 'Putback': 0.10,
             };
             // [2026-07-31] PostUp/PnR_Roll 킥아웃 오버라이드 (client 미러 참고)
-            const prob = result.isKickout ? 0.9 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
+            // [2026-10-24] PnR_Handler 비킥아웃 = 핸들러 본인 득점 — assister는 스크리너(중계 문구용)라 어시스트 아님
+            const prob = result.isKickout ? 0.9
+                : playType === 'PnR_Handler' ? 0
+                : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
             if (Math.random() < prob) assister.ast += 1;
         }
 
@@ -240,11 +244,13 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
     } else if (type === 'turnover') {
         actor.tov += 1;
-        const logText = generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
-            isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
-            isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
-            isHelpPlay: !!result.isHelpPlay,
-        });
+        const logText = result.pressEvent
+            ? getPressCommentary(result.pressEvent, actor, defender, !!isSteal)
+            : generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
+                isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
+                isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
+                isHelpPlay: !!result.isHelpPlay,
+            });
         if (isSteal && defender) { defender.stl += 1; defender.tovForced += 1; }
         addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');
 
@@ -255,11 +261,13 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             isBlock: false, isSteal: false, points: 0,
             isHelpPlay: !!result.isHelpPlay,
         });
+        // [2026-10-23] 풀코트 프레스 리치인/트랩 파울은 전용 문구 (client/server 미러)
+        if (result.pressEvent) logText = getPressCommentary(result.pressEvent, actor, defender, false);
         if (fouledOut) logText += ' 6반칙으로 파울 아웃됩니다.';  // [2026-10-07] client 미러
         logText += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
-        // 보너스 자유투로 이어지면 그 자유투 로그가 진짜 포제션 종료 지점이므로 이 파울 로그는
-        // 스탬프하지 않는다(client 미러 참조).
-        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id, defTeam.fouls > 4 ? undefined : 'nonScoring', offTeam.id);
+        // 이 파울 로그는 포제션 종료로 스탬프하지 않는다 — 보너스면 아래 자유투 로그가 종료 지점이고,
+        // [2026-10-23] 보너스 전이면 공격권이 유지되어 포제션이 이어진다(liveEngine isNonBonusFoul, client 미러 참조).
+        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
 
         if (defTeam.fouls > 4) {
             let ftMade = 0;

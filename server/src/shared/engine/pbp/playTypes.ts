@@ -3,6 +3,7 @@ import { PlayType, TacticalSliders } from '../../types.ts';
 import { LivePlayer, TeamState } from './pbpTypes.ts';
 import { getContextualMultiplier, getTeamOptionRanks } from './usageSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
+import { calculateScreenerPhysique } from './archetypeSystem.ts';
 
 // ==========================================================================================
 //  PLAY TYPE SYSTEM
@@ -24,6 +25,8 @@ export interface PlayContext {
     shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number;
     isKickout?: boolean;
+    // [2026-10-24] 블리츠 패스아웃 수신자 구분 (resolveBlitzPassOut)
+    blitzTarget?: 'screener' | 'weakside';
 }
 
 // ==========================================================================================
@@ -58,9 +61,19 @@ function selectZone(
 
     const total = scored.reduce((s, c) => s + c.score, 0);
 
-    // [Safety] 텐던시 데이터가 전부 0인 예외적 케이스 (곱셈 구조라 total<=0 가능) → 균등 폴백
+    // [Safety] 후보 존의 텐던시가 전부 0인 예외적 케이스 (곱셈 구조라 total<=0 가능)
+    // [2026-10-24] 균등 무작위 → 선수 능력치가 가장 높은 존. 무작위였을 땐 3점·미드 텐던시가 둘 다 0인 빅맨이
+    // PnR_Pop(후보 3PT/Mid)을 받으면 절반을 3점으로 던졌음(샤킬 오닐 49%, 하네스 실측). 플레이·액터는 이미
+    // 결정된 뒤라 여기서 "쏘지 않음"은 불가 — 배제는 액터 선정 단계(PnR_Pop 팝퍼 필터)에서 한다.
     if (total <= 0) {
-        return zones[Math.floor(Math.random() * zones.length)];
+        const a = actor.attr;
+        const zoneRating: Record<string, number> = {
+            '3PT':   (a.threeCorner + a.three45 + a.threeTop) / 3,
+            'Mid':   a.mid,
+            'Paint': a.closeShot,
+            'Rim':   Math.max(a.layup, a.dunk),
+        };
+        return zones.reduce((best, z) => zoneRating[z] > zoneRating[best] ? z : best, zones[0]);
     }
 
     let r = Math.random() * total;
@@ -149,7 +162,11 @@ function resolveFinish(
 //  Core
 // ==========================================================================================
 
-export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: TacticalSliders): PlayContext {
+export function resolvePlayAction(
+    team: TeamState, playType: PlayType, sliders: TacticalSliders,
+    // [2026-10-24] 블리츠 트랩 탈출 성공 시 possessionHandler가 넘김 → PnR_Handler 패스아웃 컨텍스트 반환
+    blitz?: { handler: LivePlayer; screener: LivePlayer },
+): PlayContext {
     const players = team.onCourt;
     // [2026-09-10] 팀 전체 1~5옵션 랭킹(gravity 기반) — resolvePlayAction 호출당 1회만 계산해
     // 클로저로 재사용. STAR_USAGE_WEIGHTS와 함께 사용(아래 pickWeightedActor 참고).
@@ -230,6 +247,47 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         );
     };
 
+    // [2026-10-24] 스크린 자격 — 슬롯 포지션이 아니라 체격 점수(calculateScreenerPhysique, 피로 미반영)가
+    // SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN 이상인 선수. PnR_Handler 스크리너 / Handoff 빅 공용
+    // (PnR_Roll/Pop은 POSITION_WEIGHT.PNR_ROLL 슬롯 가중치 유지 — 2026-10-24 재검토 대기).
+    // 코트에 자격자가 없으면(스몰 라인업) undefined → 전원 후보 — 체격이 작으니 스크린 판정
+    // (possessionHandler.ts resolveScreen)에서 자연히 불리하다.
+    const screenEligible = (excludeId?: string): ((p: LivePlayer) => boolean) | undefined => {
+        const ok = (p: LivePlayer) => calculateScreenerPhysique(p.attr) >= SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN;
+        return players.some(p => p.playerId !== excludeId && ok(p)) ? ok : undefined;
+    };
+
+    // [2026-10-24] 블리츠 패스아웃 — possessionHandler가 블리츠 트랩 탈출 성공 시 resolvePlayAction(..., 'PnR_Handler', ..., { handler, screener })로
+    // 다시 호출해 받는 컨텍스트. 스크리너(SIM_CONFIG.BLITZ.SCREENER_SHARE) = 4대3 롤/팝(스크리너 존 성향), 나머지 = 핸들러·스크리너를 뺀
+    // 팀원 중 spacer 가중 선정(노마크). 통계는 PnR_Handler + isKickout(핸들러 어시스트 0.9).
+    const resolveBlitzPassOut = (handler: LivePlayer, screenerP: LivePlayer): PlayContext => {
+        const bCfg = SIM_CONFIG.BLITZ;
+        const pkCfg = SIM_CONFIG.PNR_HANDLER_KICKOUT;
+        const passIqBonus = Math.max(0, (handler.attr.passIq - pkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * pkCfg.PASSIQ_BONUS_SCALE);
+        const others = players.filter(p => p.playerId !== handler.playerId && p.playerId !== screenerP.playerId);
+        if (others.length === 0 || Math.random() < bCfg.SCREENER_SHARE) {
+            const sZone = selectZone(['Rim', 'Paint', 'Mid', '3PT'], screenerP, sliders);
+            if (sZone === 'Rim' || sZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(screenerP, 'roll', sliders, sZone);
+                return { playType, actor: screenerP, secondaryActor: handler, preferredZone: zone, shotType,
+                    bonusHitRate: SIM_CONFIG.PNR_COVERAGE.BLITZ_ROLL_BONUS + passIqBonus, isKickout: true, blitzTarget: 'screener' };
+            }
+            return { playType, actor: screenerP, secondaryActor: handler, preferredZone: sZone,
+                shotType: sZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                bonusHitRate: SIM_CONFIG.PNR_COVERAGE.BLITZ_POP_BONUS + passIqBonus, isKickout: true, blitzTarget: 'screener' };
+        }
+        const target = pickWeightedActor(p => p.archetypes.spacer, handler.playerId, 'shooter', p => p.playerId !== screenerP.playerId);
+        const tZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], target, sliders);
+        if (tZone === 'Rim' || tZone === 'Paint') {
+            const { zone, shotType } = resolveFinish(target, 'post', sliders, tZone);
+            return { playType, actor: target, secondaryActor: handler, preferredZone: zone, shotType,
+                bonusHitRate: bCfg.OPEN_BONUS + passIqBonus, isKickout: true, blitzTarget: 'weakside' };
+        }
+        return { playType, actor: target, secondaryActor: handler, preferredZone: tZone,
+            shotType: tZone === '3PT' ? 'CatchShoot' : 'Jumper',
+            bonusHitRate: bCfg.OPEN_BONUS + passIqBonus, isKickout: true, blitzTarget: 'weakside' };
+    };
+
     switch (playType) {
         case 'Iso': {
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
@@ -271,33 +329,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'PnR_Handler': {
             // [2026-07-29] isoScorer+handler*0.5로 교체 — 순수 패서형 편중 방지 (client 미러 참고)
+            if (blitz) return resolveBlitzPassOut(blitz.handler, blitz.screener);
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
 
-            // [2026-07-31] 더블팀 유도 후 킥아웃 + playStyle 보정 (client 미러 참고)
-            const phkCfg = SIM_CONFIG.PNR_HANDLER_KICKOUT;
-            const phPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
-            const phPassingNorm = Math.max(0, Math.min(1,
-                (phPassing - phkCfg.PASSING_MIN) / (phkCfg.PASSING_MAX - phkCfg.PASSING_MIN)));
-            let phKickChance = phkCfg.PROB_MIN + (phkCfg.PROB_MAX - phkCfg.PROB_MIN) * Math.pow(phPassingNorm, phkCfg.CURVE_EXPONENT);
-            const phPs = actor.tendencies?.playStyle ?? 0;
-            phKickChance *= (1 - phPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+            // [2026-10-24] 커버리지 무관 "더블팀 유도 후 킥아웃" 폐지 — 더블팀은 블리츠 커버리지에서만 일어난다(사용자 결정).
+            // 블리츠 트랩 판정·패스아웃은 possessionHandler(resolveBlitzTrap) → resolveBlitzPassOut.
 
-            if (Math.random() < phKickChance) {
-                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
-                const passIqBonus = Math.max(0,
-                    (actor.attr.passIq - phkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * phkCfg.PASSIQ_BONUS_SCALE);
-                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
-                if (koZone === 'Rim' || koZone === 'Paint') {
-                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
-                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
-                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
-                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
-                    return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
-                }
-                return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 + passIqBonus, isKickout: true };
-            }
-
-            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer');
+            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer', screenEligible(actor.playerId));
 
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (zone === 'Rim' || zone === 'Paint') {
@@ -361,6 +399,11 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 페널티를 받던 문제. 0에 가까울수록 더 강하게 깎임(최저 ×0.05) — 순수 림러너는 거의
             // 배제되고, 진짜 스트레치 빅(텐던시·스킬 둘 다 있음)은 그대로 기능 유지(docs/history/
             // dev-log.md 실측 확인: 전통 빅맨 3PA -78~-92%, 스트레치 빅 3PA -0.6~-14%).
+            // [2026-10-24] 3점·미드 텐던시가 둘 다 0인 선수(팝아웃 후 쏠 존이 없음)는 팝퍼 후보에서 배제.
+            // 코트에 남는 후보가 없으면 배제 없이 슬롯 자격만으로 선정 — 팝을 부른 전술·로스터 구성의 결과는
+            // 유저 책임(빈도 보정·플레이 전환 없음, 사용자 결정), 슛 존은 selectZone 폴백(능력치 최고 존)이 정한다.
+            const canPop = (p: LivePlayer) => (popEligible[p.position] ?? 0) > 0 && (p.zonePref.three > 0 || p.zonePref.mid > 0);
+            const popFilter = players.some(canPop) ? canPop : (p: LivePlayer) => (popEligible[p.position] ?? 0) > 0;
             const popper = pickWeightedActor(
                 p => {
                     const threePenalty = Math.max(0.05, Math.min(1.0,
@@ -368,7 +411,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                     return p.archetypes.popper * (popEligible[p.position] ?? 0) * threePenalty;
                 },
                 undefined, 'shooter',
-                p => (popEligible[p.position] ?? 0) > 0
+                popFilter
             );
             const handler = pickPasser(p => p.archetypes.handler, popper.playerId);
             // [2026-10-18] pop zone by popper's own tendency (3PT vs Mid) + team sliders (client mirror)
@@ -377,7 +420,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'PostUp': {
             // [2026-09-15] 포지션 가중치 제거 — postScorer 순수 실력 경쟁 (client 미러 참고)
-            const actor = pickWeightedActor(p => p.archetypes.postScorer);
+            // [2026-10-24] 체격 혼합(SIM_CONFIG.POST_SELECTION.PHYSIQUE_WEIGHT) — postScorer엔 체격이 없어 엘리트 윙·가드가 빅맨과
+            // 같은 점수(드렉슬러 89·조던 95 vs 올라주원 93)를 받아 PostUp의 절반을 외곽 선수가 가져갔음. 포지션 제한이 아니라 체격 비중.
+            const postPhysW = SIM_CONFIG.POST_SELECTION.PHYSIQUE_WEIGHT;
+            const actor = pickWeightedActor(p => p.archetypes.postScorer * (1 - postPhysW) + calculateScreenerPhysique(p.attr) * postPhysW);
 
             // [2026-07-31] 더블팀 유도 후 킥아웃 (client 미러 참고)
             const pkCfg = SIM_CONFIG.POST_KICKOUT;
@@ -446,11 +492,14 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'Handoff': {
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             // [2026-07-29] screener(체격) → passIq/hands 기반 허브 스코어 + C/PF 자격 제한 (client 미러 참고)
-            const handoffHubWeights = SIM_CONFIG.POSITION_WEIGHT.PNR_ROLL;
+            // [2026-10-24] 자격: 슬롯 포지션(POSITION_WEIGHT.PNR_ROLL) → 체격 자격(screenEligible)으로 교체
             const big = pickWeightedActor(
-                p => p.attr.passIq * 0.5 + p.attr.hands * 0.5,
+                // [2026-10-24] 패서 집중 증폭(pickPasser와 동일: (passVision×passIq/2500)^1.5) — 기존 선형 가중은 점수 폭(70~95)이
+                // 좁아 패스 능력이 사실상 무시됐음(패스 45/38/32 벤 월리스가 허브 상위 10위). 핸드오프는 스크린 파생 액션만이
+                // 아니라 패서 주도 액션이기도 해서 큰 볼핸들러(시몬스·매직) 허브 증가를 수용(사용자 결정).
+                p => (p.attr.passIq * 0.5 + p.attr.hands * 0.5) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
                 actor.playerId, 'passer',
-                p => (handoffHubWeights[p.position] ?? 0) > 0
+                screenEligible(actor.playerId)
             );
 
             const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);

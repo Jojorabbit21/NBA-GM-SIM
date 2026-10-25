@@ -15,7 +15,8 @@ export const PLAY_TYPE_USAGE_WEIGHTS: Record<PlayType, [number, number, number, 
     // [Hero Ball] 1옵션 강조하되 5옵도 최소 기회 보장
     // 현실 NBA: 역할 선수도 가끔 Iso/PostUp 기회가 옴
     'Iso':          [2.5, 1.8, 1.2, 0.7, 0.4],
-    'PostUp':       [2.2, 1.6, 1.0, 0.6, 0.3],
+    // [2026-10-24] W1 — 팀 최고 포스트 스코어러 집중 강화(이전 [2.2, 1.6, 1.0, 0.6, 0.3]). 1인자가 PostUp의 30~40%만 가져가던 것.
+    'PostUp':       [3.0, 1.5, 0.8, 0.4, 0.2],
     'PnR_Handler':  [2.5, 1.8, 1.2, 0.7, 0.4],
 
     // [Designed Action] 상위 옵션 선호하나 극단적이지 않음

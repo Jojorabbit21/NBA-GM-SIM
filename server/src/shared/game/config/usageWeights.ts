@@ -4,7 +4,8 @@ import { PlayType } from '../../types.ts';
 // 배열 인덱스 0 = Rank 1 (1옵션), 인덱스 4 = Rank 5 (5옵션)
 export const PLAY_TYPE_USAGE_WEIGHTS: Record<PlayType, [number, number, number, number, number]> = {
     'Iso':          [2.5, 1.8, 1.2, 0.7, 0.4],
-    'PostUp':       [2.2, 1.6, 1.0, 0.6, 0.3],
+    // [2026-10-24] W1 — 팀 최고 포스트 스코어러 집중 강화(이전 [2.2, 1.6, 1.0, 0.6, 0.3]). 1인자가 PostUp의 30~40%만 가져가던 것.
+    'PostUp':       [3.0, 1.5, 0.8, 0.4, 0.2],
     'PnR_Handler':  [2.5, 1.8, 1.2, 0.7, 0.4],
 
     'Handoff':        [2.0, 1.6, 1.2, 0.8, 0.5],

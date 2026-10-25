@@ -188,7 +188,9 @@ export function calculateHitRate(
             : st === 'Layup' ? S.LAYUP_OFF_CURVE
             : st === 'Floater' ? S.FLOATER_OFF_CURVE
             : st === 'Hook' ? S.HOOK_OFF_CURVE
-            : S.MID_OFF_CURVE;
+            // [2026-10-25] 페인트 점퍼는 전용 커브(이전엔 미드 커브 공유)
+            : (preferredZone === 'Paint' && st === 'Jumper') ? S.PAINT_JUMPER_OFF_CURVE
+            : S.MID_OFF_CURVE;  // Pullup, Jumper(Mid), Fadeaway
         const defCoeff = st === 'Dunk' ? S.DUNK_DEF_COEFF
             : preferredZone === 'Mid' ? S.MID_DEF_COEFF
             : S.INSIDE_DEF_COEFF;
@@ -311,9 +313,9 @@ export function calculateHitRate(
         matchupEffect = impact;
     }
 
-    if (offSliders.pace > 5) {
-        hitRate -= (offSliders.pace - 5) * 0.01;
-    }
+    // 5. Pace Penalty (Haste) — [2026-10-25] 삭제(사용자 결정). pace 5 초과 1단계당 모든 슛 −1%는 체력→성공률 경로와
+    //    이중 과세였고, pace 10 팀 TS .580→.531·득실 −10점으로 빠른 페이스를 항상 손해로 만들었음. 대가는 체력(FATIGUE.PACE_FATIGUE_CURVE)으로 일원화.
+    //    이전: if (offSliders.pace > 5) { hitRate -= (offSliders.pace - 5) * 0.01; }
 
     if (isHome) {
         hitRate += homeAdvantage;
