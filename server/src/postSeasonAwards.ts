@@ -59,9 +59,9 @@ function allTeamToRows(
     return rows;
 }
 
-export async function computeAndPostSeasonAwards(roomId: string, leagueId: string): Promise<void> {
+export async function computeAndPostSeasonAwards(roomId: string, leagueId: string, virtualDate: string): Promise<void> {
     const { data: room } = await supabase
-        .from('rooms').select('id, season, season_number, sim_date').eq('id', roomId).maybeSingle();
+        .from('rooms').select('id, season, season_number').eq('id', roomId).maybeSingle();
     if (!room) {
         console.error(`[seasonAwards] room=${roomId} 조회 실패`);
         return;
@@ -167,7 +167,9 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
         return;
     }
 
-    const simDate = (room as any).sim_date ?? null;
+    // league_events.sim_date is the in-game (virtual) date shown in the news feed; rooms.sim_date is
+    // the real broadcast date and must not be used here.
+    const simDate = virtualDate;
 
     // MVP 순위별 득표수(1~5위) — components/inbox/AwardsReportViewer.tsx의 mvpVoteBreakdown과
     // 동일한 집계(싱글플레이어는 SeasonAwardsContent.ballots를 클라에서 즉석 집계하지만, 여기선

@@ -54,6 +54,32 @@
 
 
 
+## 2026-10-25 — 시즌 어워드 뉴스 sim_date를 가상 캘린더 키 데이트로
+
+**배경**: 어워드 뉴스(mvp_award 등 4종)의 `league_events.sim_date`에 `rooms.sim_date`(실제 KST 방송일, 2026-10-25)가 들어가 뉴스피드(sim_date 기준 정렬/필터)에 현실 날짜로 노출됨. 어워드 키 데이트는 정규시즌 종료 +1일(`postseasonVirtualAnchor`, utils/seasonConfig.ts의 awardsAnnouncement와 동일).
+
+**변경 파일**:
+- `server/src/scheduler.ts` (runScheduledSeasonAwards; 서버 전용)
+- `server/src/postSeasonAwards.ts` (서버 전용)
+
+**Before**:
+```ts
+// scheduler: .select('id') ... computeAndPostSeasonAwards(room.id, league.id)
+// postSeasonAwards: rooms select 'id, season, season_number, sim_date'; const simDate = room.sim_date ?? null;
+```
+
+**After**:
+```ts
+// scheduler: .select('id, virtual_season_year, season_calendar')
+//   const awardsDate = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
+//   computeAndPostSeasonAwards(room.id, league.id, awardsDate)
+// postSeasonAwards(roomId, leagueId, virtualDate): const simDate = virtualDate;
+```
+
+**검증**: tsc 해당 파일 신규 오류 0. PBL 기존 4건은 SQL로 sim_date 2026-10-25 → 2027-04-14 보정(정규시즌 마지막 경기 2027-04-13).
+
+**롤백 방법**: Before로 되돌림. DB 보정은 `update league_events set sim_date='2026-10-25' where type in (...) and league_id='f7836b62-...'`.
+
 ## 2026-10-25 — 시즌 어워드 미발송 수정 (ALL_STAR 행을 "발표 완료"로 오판)
 
 **배경**: PBL 정규시즌 종료(regular_season_ended_at 10-24 02:00Z) 후 24시간이 지났는데 MVP/DPOY/올팀 뉴스·어워드가 안 나감. DB 확인: league_player_awards에 ALL_STAR 24행(10-21 생성)만 있고 MVP 등 0행, league_events에 mvp_award 등 0건. `runScheduledSeasonAwards()`의 멱등성 검사가 league_id의 모든 어워드 행을 세서 올스타 행 때문에 매 틱 continue.

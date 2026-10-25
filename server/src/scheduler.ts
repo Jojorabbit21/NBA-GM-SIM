@@ -18,7 +18,7 @@ import { startDraftForRoom, claimAndPrepareRoom } from './startDraft';
 import { startPersonalDraftTournament, preparePersonalDraftTournament, effectivePrepAt } from './personalDraftStart';
 import { sweepPersonalDraftDeadlines } from './personalDraftDeadline';
 import { simWorkerPool } from './workers/simWorkerPool';
-import { startPlayoffs } from './shared/playoffSeeder';
+import { startPlayoffs, postseasonVirtualAnchor } from './shared/playoffSeeder';
 import { startPlayIn } from './shared/playInSeeder';
 import { recomputeAndPostPowerRankings } from './postPowerRankingNews';
 import { postDraftLotteryResult } from './postDraftLotteryNews';
@@ -302,7 +302,7 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
 
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id')
+        .select('id, virtual_season_year, season_calendar')
         .eq('type', 'main_league')
         .not('regular_season_ended_at', 'is', null)
         .lte('regular_season_ended_at', cutoff);
@@ -324,7 +324,9 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
         if ((alreadyPosted ?? 0) > 0) continue;
 
         console.log(`[scheduler:season] league=${league.id} — posting season awards`);
-        await computeAndPostSeasonAwards(room.id, league.id).catch(err =>
+        // Awards key date = regular season end + 1 day on the virtual calendar (not the real date).
+        const awardsDate = postseasonVirtualAnchor((league as any).virtual_season_year, (league as any).season_calendar);
+        await computeAndPostSeasonAwards(room.id, league.id, awardsDate).catch(err =>
             console.error(`[scheduler:season] computeAndPostSeasonAwards failed(${league.id}):`, err),
         );
     }
