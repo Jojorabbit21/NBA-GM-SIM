@@ -23,7 +23,8 @@ import type { LeagueRow, RoomRow, LeagueTeamRow } from '../services/multi/roomQu
 import { multiSearchPoolQuery } from './useMultiSearchData';
 import { metaPlayerOrderQuery } from './usePlayerShortCodes';
 import { gameShortCodesQuery } from './useGameShortCodes';
-import { leagueRawPlayersQuery, leagueRawSeasonInjuryQuery } from './useLeagueRawStats';
+import { leagueRawPlayersQuery, leagueRawSeasonInjuryQuery, refreshLeagueRawStateRows } from './useLeagueRawStats';
+import { rosterPlacement, changedPlacementIds } from '../utils/rosterStateSync';
 import { playerSeasonStatsLeagueQuery } from './usePlayerSeasonStatsLeague';
 import { homeLeagueTransactionsQuery } from './useHomeLeagueTransactions';
 import { leagueNewsStoriesQuery } from './useLeagueHeadlines';
@@ -151,6 +152,22 @@ export function useLeagueBootstrap(input: BootstrapInput): LeagueBootstrapState 
     useEffect(() => {
         if (state.status === 'ready' && leagueId && roomId) readyKeyRef.current = `${leagueId}:${roomId}`;
     }, [state.status, leagueId, roomId]);
+
+    // [2026-10-25] 로스터 배치가 바뀐 선수(FA 서명·트레이드·드래프트)의 room_player_state 행(계약 오버라이드 등)만 다시 받아
+    // 방 단위 leagueRawSeasonInjury 캐시에 합친다. 그 쿼리가 방 단위 5분 신선도라, 이게 없으면 새로 들어온 선수가 최대 5분간
+    // 옛 계약(meta_players 원본)으로 보인다. 이 훅은 레이아웃에서 한 번만 돌아 접속자당 요청이 1건(+사전요청)이다.
+    const placementRef = useRef<{ roomId: string; map: Map<string, string> } | null>(null);
+    useEffect(() => {
+        if (!enabled || !roomId) { placementRef.current = null; return; }
+        const next = rosterPlacement(leagueTeams);
+        const prev = placementRef.current;
+        placementRef.current = { roomId, map: next };
+        if (!prev || prev.roomId !== roomId) return;   // 첫 관찰(또는 방 전환)은 비교 대상이 없다 — 전체 로드가 최신 값을 가져온다
+        const changed = changedPlacementIds(prev.map, next);
+        if (changed.length > 0) void refreshLeagueRawStateRows(queryClient, roomId, changed);
+    // leagueTeams 객체가 아니라 로스터 내용(rosterKey)이 바뀔 때만 재평가
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled, roomId, rosterKey, queryClient]);
 
     const retry = useCallback(() => {
         if (state.status !== 'failed') return;

@@ -3,6 +3,8 @@ import { useMemo, useCallback } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import { fetchAllRoomPlayers, pickRawPlayersByIds, selectAllPages } from '../services/multi/instancePlayers';
+import type { QueryClient } from '@tanstack/react-query';
+import { mergeStateRows } from '../utils/rosterStateSync';
 
 // 홈 로스터 위젯 / 로스터 화면 / 리더보드 화면 / 선수상세 화면이 각자 따로 meta_players+
 // game_pbp를 긁어오던 걸 하나로 통합 — 같은 queryKey를 쓰는 useQuery라면 어느 화면에서
@@ -115,6 +117,45 @@ export function leagueRawSeasonInjuryQuery(roomId: string | undefined | null) {
             };
         },
     };
+}
+
+/**
+ * [2026-10-25] 로스터 배치가 바뀐 선수(FA 서명·트레이드·드래프트로 새로 들어오거나 팀이 바뀐 선수)의 room_player_state 행만 다시 받아
+ * 방 단위 leagueRawSeasonInjury 캐시에 합친다 — 계약 오버라이드가 5분 늦게 보이는 것을 막는다(utils/rosterStateSync.ts 참고).
+ * 캐시가 아직 없으면(첫 로드 전) 할 일이 없고, 실패하면 전체 재조회로 폴백한다.
+ */
+export async function refreshLeagueRawStateRows(
+    qc: QueryClient,
+    roomId: string,
+    playerIds: string[],
+    fetchRows: (ids: string[]) => Promise<any[]> = async ids => {
+        const out: any[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+            const { data, error } = await supabase.from('room_player_state').select(RAW_PLAYER_INJURY_COLS)
+                .eq('room_id', roomId).in('player_id', ids.slice(i, i + 100));
+            if (error) throw error;
+            out.push(...(data ?? []));
+        }
+        return out;
+    },
+): Promise<void> {
+    const key = leagueRawSeasonInjuryQuery(roomId).queryKey;
+    if (playerIds.length === 0 || qc.getQueryData(key) === undefined) return;
+    try {
+        const fresh = await fetchRows(playerIds);
+        if (fresh.length === 0) return;
+        // 이 변경 이전 시점에 시작된 전체 조회가 나중에 끝나 방금 받은 행을 덮어쓰지 않게 먼저 취소한다.
+        await qc.cancelQueries({ queryKey: key });
+        // updatedAt을 유지해 5분 신선도 주기(전체 재조회)를 뒤로 미루지 않는다.
+        qc.setQueryData(
+            key,
+            (old: any) => old ? { ...old, playerInjuryRows: mergeStateRows(old.playerInjuryRows ?? [], fresh) } : old,
+            { updatedAt: qc.getQueryState(key)?.dataUpdatedAt },
+        );
+    } catch (err) {
+        console.warn('[leagueRaw] state row refresh failed — falling back to full refetch:', err);
+        void qc.invalidateQueries({ queryKey: key });
+    }
 }
 
 export interface UseLeagueRawStatsOptions {

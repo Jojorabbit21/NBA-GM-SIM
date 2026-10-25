@@ -91,7 +91,15 @@ export function leagueRawSeasonInjuryQuery(roomId) {
 - `tsc --noEmit`: 내 파일 4개를 되돌린 상태와 적용한 상태의 오류 목록이 완전히 동일(91줄, 다른 세션 작업 파일 포함 기존 오류).
 - 브라우저 육안 확인과 요청 감소 효과(edge_logs의 5종 요청 수)는 배포 후 확인 필요. FA 서명·트레이드가 몰릴 때 계약 1건당 접속자 한 명의 요청이 약 29건에서 한 자릿수(팀 목록 1건 + 사전요청)로 줄어드는지 같은 로그로 비교할 것.
 
-**롤백 방법**: 위 4개 파일을 이전 커밋으로 되돌리면 된다(DB 변경 없음). `fetchMetaPlayersByRosterIds`는 그대로라 다른 호출처에 영향 없음.
+**후속 보완 (같은 날, 푸시 전)**: 위 변경만으로는 부작용이 있었다. `room_player_state.contract`(buildLeagueTeams가 선수 계약 오버라이드로 씀)는 FA 서명 RPC(`sign_free_agent_negotiated`의 `INSERT INTO room_player_state … contract`)·트레이드(최저연봉 예외 등)가 로스터 이동과 함께 쓰는데, 예전엔 로스터가 바뀌면 캐시 키가 바뀌어 곧바로 전체를 다시 받아 가려져 있었다. 방 단위 5분 신선도로 바꾸자 새로 들어온 선수가 최대 5분간 옛 계약(meta_players 원본)으로 보이게 됨. 해결: 로스터 배치(선수 id→팀)를 비교해 새로 들어오거나 팀이 바뀐 선수만 골라 그 선수들의 room_player_state 행만 받아 `leagueRawSeasonInjury` 캐시에 합친다.
+- `utils/rosterStateSync.ts` (client, 신규·순수 함수) — `rosterPlacement`, `changedPlacementIds`, `mergeStateRows`
+- `hooks/useLeagueRawStats.ts` — `refreshLeagueRawStateRows(qc, roomId, ids)`: 변경 선수 행 조회(100명씩) → 진행 중이던 전체 조회 취소(나중에 끝나 덮어쓰지 않게) → `setQueryData` 병합(`updatedAt` 유지해 5분 주기 안 밀림). 캐시가 없으면 아무것도 안 하고, 조회 실패 시 전체 재조회로 폴백(`invalidateQueries`).
+- `hooks/useLeagueBootstrap.ts` — 레이아웃에서 한 번 도는 이 훅에 효과 추가: `rosterKey`가 바뀔 때 이전 배치와 비교해 변경 선수에 대해 위 함수 호출(접속자당 요청 1건+사전요청). 첫 관찰·방 전환은 비교 대상이 없어 건너뜀.
+- 검증: 순수 함수·실제 `QueryClient`를 쓴 시나리오 6종 통과(배치 비교, 병합, 새 선수 계약 즉시 반영·시즌 기록 보존·updatedAt 유지, 첫 로드 전 요청 없음, 실패 시 폴백·기존 데이터 보존, 빈 입력 불변). `tsc` 목록 동일(91줄).
+- 확인한 범위: 이 프로젝트의 계약 변경 경로(FA 서명, 트레이드, 드래프트)는 모두 로스터 배치 변경과 함께 일어난다(계약 연장 RPC는 없음, FA 협상 화면은 체결 후 `reload()`로 팀 목록 갱신).
+- 남는 한계: 개인 팩 드래프트(인스턴스) 룸은 첫 로드 이후 새로 생기는 인스턴스가 선수 정보 캐시(10분)에 없을 수 있다 — 인스턴스는 현재 0건이고 로스터가 비어 있는 동안은 조회 자체가 시작되지 않아 드래프트 이후 첫 로드에서 포함되지만, 해당 기능을 다시 쓰게 되면 재검토.
+
+**롤백 방법**: 이 항목의 변경 파일(`instancePlayers.ts`, `useLeagueRawStats.ts`, `useLeagueBootstrap.ts`, `useCurrentLeague.ts`, `rosterStateSync.ts`)을 이전 커밋으로 되돌리면 된다(DB 변경 없음). `fetchMetaPlayersByRosterIds`는 그대로라 다른 호출처에 영향 없음.
 
 ## 2026-10-25 — [배포] Fly v200 (git cf09591e) — 블록 림 프로텍터 + 엔진 묶음(프레스·파울·샷클락·플레이타입·슛 커브·템포)
 
