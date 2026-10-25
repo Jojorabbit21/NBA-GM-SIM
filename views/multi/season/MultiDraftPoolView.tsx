@@ -40,6 +40,21 @@ const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const ATTR_ITEMS = COMPACT_ATTR_GROUPS.flatMap(g => g.items);
 const ATTR_FILTER_OPTIONS = ATTR_ITEMS.map(i => ({ value: i.key, label: i.label }));
 
+// [2026-10-25] 선수 프로필에 들어갔다가 뒤로 오면 화면이 새로 마운트돼 필터/정렬/페이지가 초기화되던 문제 —
+// 리그별 화면 상태를 모듈 변수에 보관해 복원한다(SPA 이동 간에만 유지, 새로고침하면 초기화).
+type SortKey = 'name' | 'position' | 'age' | 'height' | 'weight' | 'ovr' | string;
+interface SortState { key: SortKey; dir: 'asc' | 'desc' }
+interface PoolViewState {
+    nameQuery: string;
+    selectedPositions: string[];
+    selectedArchetypes: string[];
+    statFilters: StatFilterItem[];
+    sort: SortState | null;
+    currentPage: number;
+    itemsPerPage: number;
+}
+const viewStateByLeague = new Map<string, PoolViewState>();
+
 const MultiDraftPoolView: React.FC = () => {
     const { league, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
     const { poolPlayers, refetchPool, isPoolFetching } = useMultiSearchData(league, leagueTeams);
@@ -47,19 +62,25 @@ const MultiDraftPoolView: React.FC = () => {
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
 
-    const [nameQuery, setNameQuery] = useState('');
-    const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
-    const [selectedArchetypes, setSelectedArchetypes] = useState<string[]>([]);
+    const saved = leagueId ? viewStateByLeague.get(leagueId) : undefined;
+    const [nameQuery, setNameQuery] = useState(saved?.nameQuery ?? '');
+    const [selectedPositions, setSelectedPositions] = useState<string[]>(saved?.selectedPositions ?? []);
+    const [selectedArchetypes, setSelectedArchetypes] = useState<string[]>(saved?.selectedArchetypes ?? []);
 
-    const [statFilters, setStatFilters] = useState<StatFilterItem[]>([]);
+    const [statFilters, setStatFilters] = useState<StatFilterItem[]>(saved?.statFilters ?? []);
+    // null = 기본 순서(OVR 내림차순)
+    const [sort, setSort] = useState<SortState | null>(saved?.sort ?? null);
 
     // 드래프트풀 전체(poolPlayers, league.draft_pool 설정 기준) — FA 화면과 달리 로스터
     // 배정 여부와 무관하게 전부 보여준다. OVR 계산은 정렬 비교 함수 안에서 매번 하면 비용이
     // 크므로(MultiFreeAgentView.tsx와 동일한 이유) Schwartzian transform으로 1회만 계산.
-    const sortedPlayers = useMemo(() => {
+    const { sortedPlayers, ovrById } = useMemo(() => {
         const withOvr = poolPlayers.map(p => ({ p, ovr: calculatePlayerOvr(p) }));
         withOvr.sort((a, b) => b.ovr - a.ovr || a.p.id.localeCompare(b.p.id));
-        return withOvr.map(x => x.p);
+        return {
+            sortedPlayers: withOvr.map(x => x.p),
+            ovrById: new Map(withOvr.map(x => [x.p.id, x.ovr] as const)),
+        };
     }, [poolPlayers]);
 
     const archetypeOptions = useMemo(
@@ -82,10 +103,61 @@ const MultiDraftPoolView: React.FC = () => {
         });
     }, [sortedPlayers, nameQuery, selectedPositions, selectedArchetypes, statFilters]);
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(50);
-    useEffect(() => setCurrentPage(1), [nameQuery, selectedPositions, selectedArchetypes, statFilters]);
-    const pagedPlayers = filteredPlayers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    // 컬럼 헤더 정렬 — 기본(null)은 sortedPlayers의 OVR 내림차순을 그대로 쓴다. 동점은 기본 순서 유지(안정 정렬).
+    const displayPlayers = useMemo(() => {
+        if (!sort) return filteredPlayers;
+        const item = ATTR_ITEMS.find(i => i.key === sort.key);
+        const valueOf = (p: typeof filteredPlayers[number]): string | number => {
+            switch (sort.key) {
+                case 'name': return p.name;
+                case 'position': return p.position;
+                case 'age': return Number(p.age) || 0;
+                case 'height': return Number(p.height) || 0;
+                case 'weight': return Number(p.weight) || 0;
+                case 'ovr': return ovrById.get(p.id) ?? 0;
+                default: return item ? getCompactAttrValue(p, item) : 0;
+            }
+        };
+        const sign = sort.dir === 'asc' ? 1 : -1;
+        const keyed = filteredPlayers.map(p => ({ p, v: valueOf(p) }));
+        keyed.sort((a, b) => {
+            const c = typeof a.v === 'string' && typeof b.v === 'string' ? a.v.localeCompare(b.v, 'ko') : (a.v as number) - (b.v as number);
+            return c * sign;
+        });
+        return keyed.map(x => x.p);
+    }, [filteredPlayers, sort, ovrById]);
+
+    // 헤더 클릭: 첫 클릭 = 이름/포지션은 오름차순·나머지는 내림차순, 두 번째 = 반대 방향, 세 번째 = 기본 순서 복귀
+    const handleSort = (key: SortKey) => {
+        setSort(prev => {
+            const textFirst = key === 'name' || key === 'position';
+            if (!prev || prev.key !== key) return { key, dir: textFirst ? 'asc' : 'desc' };
+            const firstDir = textFirst ? 'asc' : 'desc';
+            return prev.dir === firstDir ? { key, dir: textFirst ? 'desc' : 'asc' } : null;
+        });
+    };
+    const sortProps = (key: SortKey) => ({
+        sortable: true,
+        sortDirection: sort?.key === key ? sort.dir : null,
+        onSort: () => handleSort(key),
+    });
+
+    const [currentPage, setCurrentPage] = useState(saved?.currentPage ?? 1);
+    const [itemsPerPage, setItemsPerPage] = useState(saved?.itemsPerPage ?? 50);
+    // 필터/정렬이 바뀌면 1페이지로 — 단, 복원된 상태로 처음 마운트될 때는 저장된 페이지를 유지한다
+    // (StrictMode의 effect 이중 실행에도 안전하도록 의존값 참조 비교로 판단)
+    const prevDepsRef = useRef<unknown[] | null>(null);
+    useEffect(() => {
+        const deps = [nameQuery, selectedPositions, selectedArchetypes, statFilters, sort];
+        const prev = prevDepsRef.current;
+        prevDepsRef.current = deps;
+        if (prev && deps.some((d, i) => d !== prev[i])) setCurrentPage(1);
+    }, [nameQuery, selectedPositions, selectedArchetypes, statFilters, sort]);
+    useEffect(() => {
+        if (!leagueId) return;
+        viewStateByLeague.set(leagueId, { nameQuery, selectedPositions, selectedArchetypes, statFilters, sort, currentPage, itemsPerPage });
+    }, [leagueId, nameQuery, selectedPositions, selectedArchetypes, statFilters, sort, currentPage, itemsPerPage]);
+    const pagedPlayers = displayPlayers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     const handleItemsPerPageChange = (val: number) => {
         setItemsPerPage(val);
         setCurrentPage(1);
@@ -144,16 +216,17 @@ const MultiDraftPoolView: React.FC = () => {
                 <Table className="!rounded-none !border-x-0 !border-t-0" fullHeight tableStyle={{ tableLayout: 'auto', width: '100%' }}>
                     <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                         <tr className="h-10 text-slate-400 text-sm font-bold">
-                            <TableHeaderCell align="left" className="pl-4 bg-slate-950">선수</TableHeaderCell>
-                            <TableHeaderCell align="center" className="bg-slate-950">포지션</TableHeaderCell>
-                            <TableHeaderCell align="center" className="bg-slate-950">나이</TableHeaderCell>
-                            <TableHeaderCell align="center" className="bg-slate-950">키</TableHeaderCell>
-                            <TableHeaderCell align="center" className="bg-slate-950">몸무게</TableHeaderCell>
-                            <TableHeaderCell align="center" className="bg-slate-950">OVR</TableHeaderCell>
+                            <TableHeaderCell align="left" className="pl-4 bg-slate-950" {...sortProps('name')}>선수</TableHeaderCell>
+                            <TableHeaderCell align="center" className="bg-slate-950" {...sortProps('position')}>포지션</TableHeaderCell>
+                            <TableHeaderCell align="center" className="bg-slate-950" {...sortProps('age')}>나이</TableHeaderCell>
+                            <TableHeaderCell align="center" className="bg-slate-950" {...sortProps('height')}>키</TableHeaderCell>
+                            <TableHeaderCell align="center" className="bg-slate-950" {...sortProps('weight')}>몸무게</TableHeaderCell>
+                            <TableHeaderCell align="center" className="bg-slate-950" {...sortProps('ovr')}>OVR</TableHeaderCell>
                             {ATTR_ITEMS.map(item => (
                                 <TableHeaderCell
                                     key={item.key}
                                     className="bg-slate-950"
+                                    {...sortProps(item.key)}
                                     title={item.sourceKeys.map(k => ATTR_NAME_MAP[k] || k).join(' + ')}
                                 >
                                     {item.label}
@@ -186,7 +259,7 @@ const MultiDraftPoolView: React.FC = () => {
                                     <TableCell align="center" className="text-sm text-slate-400">{p.height}</TableCell>
                                     <TableCell align="center" className="text-sm text-slate-400">{p.weight}</TableCell>
                                     <TableCell align="center" className="">
-                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none" /></div>
+                                        <div className="flex justify-center"><OvrBadge value={ovrById.get(p.id) ?? calculatePlayerOvr(p)} size="sm" className="!shadow-none" /></div>
                                     </TableCell>
                                     {ATTR_ITEMS.map(item => (
                                         <TableCell
