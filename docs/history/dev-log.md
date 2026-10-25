@@ -50,6 +50,21 @@
 
 
 
+## 2026-10-25 — 드래프트 풀 화면 상태 저장을 모듈 변수 → URL 쿼리로 교체
+
+**배경**: 직전 항목(`fe1e436c`)은 필터/정렬/페이지를 모듈 변수(`viewStateByLeague`)에 보관해 새로고침하면 사라지고 공유도 안 됐다. 사용자 요청으로 URL 쿼리 방식으로 변경.
+
+**변경 파일**:
+- `views/multi/season/MultiDraftPoolView.tsx` (client 전용)
+
+**Before**: `useState` + 모듈 `Map`에 저장/복원, 필터 변경 시 page=1 리셋 effect(의존값 참조 비교).
+
+**After**: `useSearchParams`가 단일 출처. `?q=이름&pos=PG&pos=SG&arch=…&sf=attr|op|값&sort=key:dir&page=N&size=N`(기본값은 생략). 갱신은 `replace`라 뒤로 가기가 필터 조작을 되감지 않음. 필터/정렬/페이지크기 변경 시 `updateParams`가 page를 같이 지워 1페이지로(리셋 effect 제거). 범위 밖 page는 `maxPage`로 보정. 능력치 필터 칩 라벨은 URL에서 재구성(`라벨 연산자 값`), id는 인덱스.
+
+**검증**: tsc 오류 없음(해당 파일). 브라우저 확인 미실시.
+
+**롤백 방법**: `git checkout fe1e436c -- views/multi/season/MultiDraftPoolView.tsx` (모듈 변수 방식으로 복귀).
+
 ## 2026-10-25 — 드래프트 풀 화면: 컬럼 헤더 정렬 + 선수 프로필 왕복 시 상태 복원
 
 **배경**: 드래프트 풀 화면(`/pool`)에 정렬이 없었고, 선수 프로필에 들어갔다 뒤로 오면 화면이 새로 마운트돼 페이지/필터가 초기화(1페이지)되었다.

@@ -1,8 +1,8 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { RefreshCw, Search, X } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -40,20 +40,14 @@ const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const ATTR_ITEMS = COMPACT_ATTR_GROUPS.flatMap(g => g.items);
 const ATTR_FILTER_OPTIONS = ATTR_ITEMS.map(i => ({ value: i.key, label: i.label }));
 
-// [2026-10-25] 선수 프로필에 들어갔다가 뒤로 오면 화면이 새로 마운트돼 필터/정렬/페이지가 초기화되던 문제 —
-// 리그별 화면 상태를 모듈 변수에 보관해 복원한다(SPA 이동 간에만 유지, 새로고침하면 초기화).
+// [2026-10-25] 필터/정렬/페이지는 URL 쿼리(?q=&pos=&arch=&sf=&sort=&page=&size=)에 저장한다 — 선수 프로필에
+// 들어갔다 뒤로 오면 같은 URL이라 상태가 그대로 복원되고, 새로고침·링크 공유에도 유지된다.
+// 값이 바뀔 때는 replace로 갱신해 뒤로 가기가 필터 조작 이력을 한 단계씩 되감지 않게 한다.
 type SortKey = 'name' | 'position' | 'age' | 'height' | 'weight' | 'ovr' | string;
 interface SortState { key: SortKey; dir: 'asc' | 'desc' }
-interface PoolViewState {
-    nameQuery: string;
-    selectedPositions: string[];
-    selectedArchetypes: string[];
-    statFilters: StatFilterItem[];
-    sort: SortState | null;
-    currentPage: number;
-    itemsPerPage: number;
-}
-const viewStateByLeague = new Map<string, PoolViewState>();
+
+const OPERATOR_SET = new Set<string>(['>', '<', '>=', '<=', '=']);
+const PAGE_SIZES_FALLBACK = 50;
 
 const MultiDraftPoolView: React.FC = () => {
     const { league, leagueTeams, isLoading: leagueLoading } = useLeagueContext();
@@ -62,14 +56,42 @@ const MultiDraftPoolView: React.FC = () => {
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
 
-    const saved = leagueId ? viewStateByLeague.get(leagueId) : undefined;
-    const [nameQuery, setNameQuery] = useState(saved?.nameQuery ?? '');
-    const [selectedPositions, setSelectedPositions] = useState<string[]>(saved?.selectedPositions ?? []);
-    const [selectedArchetypes, setSelectedArchetypes] = useState<string[]>(saved?.selectedArchetypes ?? []);
+    const [searchParams, setSearchParams] = useSearchParams();
 
-    const [statFilters, setStatFilters] = useState<StatFilterItem[]>(saved?.statFilters ?? []);
-    // null = 기본 순서(OVR 내림차순)
-    const [sort, setSort] = useState<SortState | null>(saved?.sort ?? null);
+    // URL → 상태 (파싱 결과는 searchParams가 바뀔 때만 새로 만든다)
+    const nameQuery = searchParams.get('q') ?? '';
+    const selectedPositions = useMemo(() => searchParams.getAll('pos'), [searchParams]);
+    const selectedArchetypes = useMemo(() => searchParams.getAll('arch'), [searchParams]);
+    const statFilters = useMemo<StatFilterItem[]>(() => searchParams.getAll('sf').flatMap((raw, i) => {
+        const [attrKey, operator, valueStr] = raw.split('|');
+        const item = ATTR_ITEMS.find(it => it.key === attrKey);
+        const value = parseFloat(valueStr);
+        if (!item || !OPERATOR_SET.has(operator) || Number.isNaN(value)) return [];
+        return [{ id: String(i), attrKey, operator: operator as Operator, value, label: `${item.label} ${operator} ${valueStr}` }];
+    }), [searchParams]);
+    const sort = useMemo<SortState | null>(() => {
+        const [key, dir] = (searchParams.get('sort') ?? '').split(':');
+        return key && (dir === 'asc' || dir === 'desc') ? { key, dir } : null;   // null = 기본 순서(OVR 내림차순)
+    }, [searchParams]);
+    const rawPage = parseInt(searchParams.get('page') ?? '1', 10);
+    const itemsPerPage = parseInt(searchParams.get('size') ?? '', 10) || PAGE_SIZES_FALLBACK;
+
+    // 쿼리 갱신 공용 — resetPage=true면 page를 지워 1페이지로(필터/정렬 변경 시)
+    const updateParams = (mutate: (next: URLSearchParams) => void, resetPage = true) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            mutate(next);
+            if (resetPage) next.delete('page');
+            return next;
+        }, { replace: true });
+    };
+    const setList = (name: string) => (values: string[]) =>
+        updateParams(n => { n.delete(name); values.forEach(v => n.append(name, v)); });
+    const setNameQuery = (v: string) => updateParams(n => { if (v) n.set('q', v); else n.delete('q'); });
+    const setSelectedPositions = setList('pos');
+    const setSelectedArchetypes = setList('arch');
+    const writeStatFilters = (items: StatFilterItem[]) =>
+        updateParams(n => { n.delete('sf'); items.forEach(f => n.append('sf', `${f.attrKey}|${f.operator}|${f.value}`)); });
 
     // 드래프트풀 전체(poolPlayers, league.draft_pool 설정 기준) — FA 화면과 달리 로스터
     // 배정 여부와 무관하게 전부 보여준다. OVR 계산은 정렬 비교 함수 안에서 매번 하면 비용이
@@ -129,12 +151,12 @@ const MultiDraftPoolView: React.FC = () => {
 
     // 헤더 클릭: 첫 클릭 = 이름/포지션은 오름차순·나머지는 내림차순, 두 번째 = 반대 방향, 세 번째 = 기본 순서 복귀
     const handleSort = (key: SortKey) => {
-        setSort(prev => {
-            const textFirst = key === 'name' || key === 'position';
-            if (!prev || prev.key !== key) return { key, dir: textFirst ? 'asc' : 'desc' };
-            const firstDir = textFirst ? 'asc' : 'desc';
-            return prev.dir === firstDir ? { key, dir: textFirst ? 'desc' : 'asc' } : null;
-        });
+        const textFirst = key === 'name' || key === 'position';
+        const firstDir = textFirst ? 'asc' : 'desc';
+        let nextSort: SortState | null;
+        if (!sort || sort.key !== key) nextSort = { key, dir: firstDir };
+        else nextSort = sort.dir === firstDir ? { key, dir: textFirst ? 'desc' : 'asc' } : null;
+        updateParams(n => { if (nextSort) n.set('sort', `${nextSort.key}:${nextSort.dir}`); else n.delete('sort'); });
     };
     const sortProps = (key: SortKey) => ({
         sortable: true,
@@ -142,29 +164,17 @@ const MultiDraftPoolView: React.FC = () => {
         onSort: () => handleSort(key),
     });
 
-    const [currentPage, setCurrentPage] = useState(saved?.currentPage ?? 1);
-    const [itemsPerPage, setItemsPerPage] = useState(saved?.itemsPerPage ?? 50);
-    // 필터/정렬이 바뀌면 1페이지로 — 단, 복원된 상태로 처음 마운트될 때는 저장된 페이지를 유지한다
-    // (StrictMode의 effect 이중 실행에도 안전하도록 의존값 참조 비교로 판단)
-    const prevDepsRef = useRef<unknown[] | null>(null);
-    useEffect(() => {
-        const deps = [nameQuery, selectedPositions, selectedArchetypes, statFilters, sort];
-        const prev = prevDepsRef.current;
-        prevDepsRef.current = deps;
-        if (prev && deps.some((d, i) => d !== prev[i])) setCurrentPage(1);
-    }, [nameQuery, selectedPositions, selectedArchetypes, statFilters, sort]);
-    useEffect(() => {
-        if (!leagueId) return;
-        viewStateByLeague.set(leagueId, { nameQuery, selectedPositions, selectedArchetypes, statFilters, sort, currentPage, itemsPerPage });
-    }, [leagueId, nameQuery, selectedPositions, selectedArchetypes, statFilters, sort, currentPage, itemsPerPage]);
+    const maxPage = Math.max(1, Math.ceil(displayPlayers.length / itemsPerPage));
+    const currentPage = Math.min(Math.max(1, rawPage || 1), maxPage);   // 풀이 줄어 범위를 벗어난 page 보정
+    const setCurrentPage = (page: number) =>
+        updateParams(n => { if (page > 1) n.set('page', String(page)); else n.delete('page'); }, false);
     const pagedPlayers = displayPlayers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     const handleItemsPerPageChange = (val: number) => {
-        setItemsPerPage(val);
-        setCurrentPage(1);
+        updateParams(n => { if (val !== PAGE_SIZES_FALLBACK) n.set('size', String(val)); else n.delete('size'); });
     };
 
     const handleAddStatFilter = (draft: StatFilterDraft) => {
-        setStatFilters(prev => [...prev, { id: `${Date.now()}`, attrKey: draft.category, operator: draft.operator, value: draft.value, label: draft.label }]);
+        writeStatFilters([...statFilters, { id: String(statFilters.length), attrKey: draft.category, operator: draft.operator, value: draft.value, label: draft.label }]);
     };
 
     if (leagueLoading) {
@@ -209,7 +219,7 @@ const MultiDraftPoolView: React.FC = () => {
                     </div>
                 </div>
 
-                <FilterChips chips={statFilters} onRemove={id => setStatFilters(prev => prev.filter(f => f.id !== id))} onClear={() => setStatFilters([])} />
+                <FilterChips chips={statFilters} onRemove={id => writeStatFilters(statFilters.filter(f => f.id !== id))} onClear={() => writeStatFilters([])} />
             </div>
 
             <div className="flex-1 min-h-0">
