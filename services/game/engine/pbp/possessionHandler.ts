@@ -379,6 +379,104 @@ function getMomentumBonus(state: GameState, offTeamId: string): number {
     return 0.035;                 // 16pt+  런: +3.5% (상한)
 }
 
+/** [2026-10-25] 파울 트러블 → 파울/개입 확률 배율 (FOUL_TROUBLE.PROB_MOD) */
+function foulTroubleProbMod(pf: number): number {
+    const ft = SIM_CONFIG.FOUL_TROUBLE;
+    return pf >= 5 ? ft.PROB_MOD[5] : pf >= 4 ? ft.PROB_MOD[4] : pf >= 3 ? ft.PROB_MOD[3] : 1.0;
+}
+
+/**
+ * [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint 슛 전용) — 기존 헬프 블락 대체.
+ * 1차 수비수를 뺀 코트 위 4명 중 rimProtector(blk·intDef·점프·키, 체력 반영) 가중 룰렛으로 1명 선정 → P_engage 판정.
+ * 개입하면 슈팅 파울에 프로텍터 몫이 붙고(개입 대가), 1차 블락이 실패했을 때 개입 블락을 굴린다.
+ * 수비 형태별 보정: 지역방어(속공 제외)는 zoneUsage 보너스만 — 지역방어가 자동으로 붙이는 drop에는 드랍 보너스를 주지 않음(이중 부과).
+ * 맨투맨 PnR 3종은 실제 커버리지(drop +, blitz −), 맨투맨 비PnR 하프코트는 pnrDefense 슬라이더의 커버리지 분포를 빅맨 위치 성향으로 사용.
+ */
+function resolveRimProtector(
+    defTeam: TeamState, defender: LivePlayer, preferredZone: string,
+    playType: PlayType, pnrCoverage: PnrCoverage, isZone: boolean,
+): LivePlayer | undefined {
+    if (preferredZone !== 'Rim' && preferredZone !== 'Paint') return undefined;
+    const cfg = SIM_CONFIG.RIM_PROTECTION;
+
+    const pool = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
+    const weights = pool.map(p => Math.max(0, p.archetypes.rimProtector - cfg.SELECT_FLOOR) ** cfg.SELECT_POWER);
+    const total = weights.reduce((a, b) => a + b, 0);
+    if (total <= 0) return undefined;
+    let r = Math.random() * total;
+    let protector: LivePlayer | undefined;
+    for (let i = 0; i < pool.length; i++) {
+        if (weights[i] <= 0) continue;
+        protector = pool[i];
+        r -= weights[i];
+        if (r <= 0) break;
+    }
+    if (!protector) return undefined;
+
+    const sliders = defTeam.tactics.sliders;
+    let engage = cfg.ENGAGE_BASE
+        + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ
+        + (sliders.helpDef - 5) * cfg.ENGAGE_HELP_SLIDER;
+    const isHalfCourt = playType !== 'Transition';
+    if (isZone) {
+        if (isHalfCourt) engage += (sliders.zoneUsage - 1) * cfg.ZONE_USAGE_BONUS;
+    } else if (playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop') {
+        if (pnrCoverage === 'drop') engage += cfg.DROP_ENGAGE_BONUS;
+        else if (pnrCoverage === 'blitz') engage -= cfg.BLITZ_ENGAGE_PENALTY;
+    } else if (isHalfCourt) {
+        const pnrDef = Math.max(0, Math.min(2, Math.round(sliders.pnrDefense)));
+        const [dropPct, , blitzPct] = SIM_CONFIG.PNR_COVERAGE.DIST[pnrDef] || SIM_CONFIG.PNR_COVERAGE.DIST[1];
+        engage += (dropPct - blitzPct) * cfg.NON_PNR_DROP_TENDENCY;
+    }
+    engage = Math.max(cfg.ENGAGE_MIN, Math.min(cfg.ENGAGE_MAX, engage)) * foulTroubleProbMod(protector.pf);
+
+    return Math.random() < engage ? protector : undefined;
+}
+
+/** [2026-10-25] 슈터 쪽 블락 회피 — 1차 블락·림 프로텍터 개입 블락 공용(기존 1차 블락 D~E-0 단계를 순서 그대로 옮김) */
+function applyShooterBlockResistance(prob: number, actor: LivePlayer, preferredZone: string, shotType?: string): number {
+    // High ShotIQ and High Release point (Height) reduces block chance
+    const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
+    prob -= Math.max(0, offResist);
+
+    // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
+    const zCfg = SIM_CONFIG.ZONE_SHOOTING;
+    if (zCfg.ENABLED) {
+        // B-3. Tyrant: Rim/Paint에서 블락 확률 감소
+        if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
+            actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
+            (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
+             actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
+            prob -= zCfg.TYRANT_BLOCK_REDUCTION;
+        }
+
+        // B-4. Levitator: Paint에서 블락 확률 50% 감소
+        if (preferredZone === 'Paint' &&
+            actor.attr.closeShot >= zCfg.FLOATER_CLOSESHOT_THRESHOLD &&
+            actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
+            actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
+            prob *= zCfg.FLOATER_BLOCK_MULTIPLIER;
+        }
+
+        // B-6. Ascendant: 가드의 수직 도약으로 Rim 블락 회피
+        if (preferredZone === 'Rim' &&
+            (actor.position === 'PG' || actor.position === 'SG') &&
+            actor.attr.vertical >= zCfg.ASCENDANT_VERTICAL_THRESHOLD &&
+            actor.attr.closeShot >= zCfg.ASCENDANT_CLOSESHOT_THRESHOLD) {
+            prob *= zCfg.ASCENDANT_BLOCK_MULTIPLIER;
+        }
+    }
+
+    // shotType별 블록 배율
+    prob *= SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
+    // Dunk 전용: 공격자 strength/vertical 블록 저항
+    if (shotType === 'Dunk') {
+        prob -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
+        prob -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
+    }
+    return prob;
+}
+
 export function simulatePossession(state: GameState, options?: { minHitRate?: number; clutchContext?: ClutchContext }): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
@@ -597,6 +695,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-07-30] 슬라이더 무관 고정값 — 빈도는 helpDefLevel(ATTEMPT_BASE/PER_LEVEL)이 이미 결정
     const helpHitRatePenalty = (helpAttempted && helpSuccess) ? -helpCfg.HITRATE_PENALTY : 0;
 
+    // 2.6 [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint) — 파울(개입 대가)·블락 공통 사용, 상세는 resolveRimProtector
+    const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone);
+
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
     const defIntensity = defTeam.tactics.sliders.defIntensity;
@@ -635,7 +736,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 변경 — "성공적으로 잘 컨테스트한 헬프"일수록 파울도 늘어나는 역설이 있었음(체력 페널티는
     // 이미 시도 기준이라 이걸로 통일). 슬라이더 무관 고정값(빈도는 helpDefLevel이 이미 결정).
     let helpBonusRate = 0;
-    if (helpAttempted && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+    // [2026-10-25] 림 프로텍터가 개입했으면 일반 헬프 파울 보너스는 생략 — 프로텍터 파울 몫(아래)과 이중 부과 방지
+    if (helpAttempted && !rimProtector && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
         helpBonusRate = helpCfg.FOUL_BONUS;
         shootingFoulRate += helpBonusRate;
     }
@@ -674,6 +776,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5); // Mid/3PT만 0.5~1.5배 유지
 
     shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
+    // [2026-10-25] 림 프로텍터 개입 대가 — 수비 정교함(intDef×0.65+defConsist×0.35)이 낮을수록 파울 몫 증가, 본인 파울 트러블 반영
+    let protectorFoulRate = 0;
+    if (rimProtector) {
+        const rpCfg = SIM_CONFIG.RIM_PROTECTION;
+        const protSkill = rimProtector.attr.intDef * 0.65 + rimProtector.attr.defConsist * 0.35;
+        protectorFoulRate = interpolateCurve(protSkill, rpCfg.FOUL_CURVE) * (preferredZone === 'Paint' ? rpCfg.FOUL_PAINT_MULT : 1)
+            + (rimProtector.tendencies?.foulProneness ?? 0) * rpCfg.FOUL_PRONENESS_FACTOR;
+        protectorFoulRate = Math.max(0, protectorFoulRate) * foulTroubleProbMod(rimProtector.pf);
+        shootingFoulRate += protectorFoulRate;
+    }
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
@@ -685,8 +797,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const helpFoulShare = helpBonusRate > 0
             ? Math.min(1, (helpBonusRate * helpFoulProbMod) / shootingFoulRate)
             : 0;
-        const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
-        const isHelpFoul = !!helpDefender && fouler === helpDefender;
+        // [2026-10-25] 프로텍터 파울 몫도 같은 방식으로 귀속 (프로텍터 개입 시 helpBonusRate는 0이라 둘이 겹치지 않음)
+        const protectorFoulShare = protectorFoulRate > 0 ? Math.min(1, protectorFoulRate / shootingFoulRate) : 0;
+        const fouler = (rimProtector && Math.random() < protectorFoulShare) ? rimProtector
+            : (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
+        const isHelpFoul = fouler !== defender;
         return {
             type: 'freethrow',
             offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
@@ -1128,88 +1243,33 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 (selectedPlayType === 'Transition' || selectedPlayType === 'Cut')) {
                 archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
             }
-            // D-4. Defensive Anchor: 1차 블락 아닌 헬프 블락에서 발동 (아래 F 섹션)
+            // [2026-10-25] D-4 Defensive Anchor(헬프 블락 ×2) 삭제 — 헬프 블락이 림 프로텍터 개입(F)으로 대체됨
         }
 
         blockProb += archetypeBonus;
 
-        // D. Offense Resistance (Avoidance)
-        // High ShotIQ and High Release point (Height) reduces block chance
-        const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
-        blockProb -= Math.max(0, offResist);
-
-        // D-2. PnR Coverage Block Modifiers
-        const pnrBlkCfg = SIM_CONFIG.PNR_COVERAGE;
-        if (pnrCoverage === 'drop' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-            blockProb += pnrBlkCfg.DROP_BLOCK_BONUS;
-        }
-        if (pnrCoverage === 'blitz' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-            blockProb -= pnrBlkCfg.BLITZ_BLOCK_PENALTY;
-        }
-
-        // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
-        const zCfg = SIM_CONFIG.ZONE_SHOOTING;
-        if (zCfg.ENABLED) {
-            // B-3. Tyrant: Rim/Paint에서 블락 확률 감소
-            if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
-                actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
-                (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
-                 actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
-                blockProb -= zCfg.TYRANT_BLOCK_REDUCTION;
-            }
-
-            // B-4. Levitator: Paint에서 블락 확률 50% 감소
-            if (preferredZone === 'Paint' &&
-                actor.attr.closeShot >= zCfg.FLOATER_CLOSESHOT_THRESHOLD &&
-                actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
-                actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
-                blockProb *= zCfg.FLOATER_BLOCK_MULTIPLIER;
-            }
-
-            // B-6. Ascendant: 가드의 수직 도약으로 Rim 블락 회피
-            if (preferredZone === 'Rim' &&
-                (actor.position === 'PG' || actor.position === 'SG') &&
-                actor.attr.vertical >= zCfg.ASCENDANT_VERTICAL_THRESHOLD &&
-                actor.attr.closeShot >= zCfg.ASCENDANT_CLOSESHOT_THRESHOLD) {
-                blockProb *= zCfg.ASCENDANT_BLOCK_MULTIPLIER;
-            }
-        }
-
-        // E-0. shotType별 블록 배율
-        const blockMult = SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
-        blockProb *= blockMult;
-        // Dunk 전용: 공격자 strength/vertical 블록 저항
-        if (shotType === 'Dunk') {
-            blockProb -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
-            blockProb -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
-        }
+        // D. 슈터 회피 (shotIq/키, Tyrant/Levitator/Ascendant, shotType 배율, 덩크 저항) — 개입 블락과 공용
+        // [2026-10-25] PnR 커버리지 보정(드랍 +0.03 / 블리츠 −0.02)은 1차 수비수(PnR_Handler면 가드)에게 붙던 것을
+        // RIM_PROTECTION 개입 확률(DROP_ENGAGE_BONUS / BLITZ_ENGAGE_PENALTY)로 이전 — 내려앉은/튀어나간 빅맨에게 귀속
+        blockProb = applyShooterBlockResistance(blockProb, actor, preferredZone, shotType);
 
         // E. Roll Primary Block
         if (Math.random() < Math.max(0, blockProb)) {
             isBlock = true;
         }
-        // F. Help Defense Block (통합 헬프 결과 재사용 — Rim/Paint/Mid만, 3PT 제외)
-        // [New 2026-07] 더 이상 blk순 독자 선정 안 함 — 위에서 확정된 helpDefender/helpSuccess 재사용
-        else if (helpAttempted && helpSuccess && helpDefender &&
-                 (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid')) {
-             const helper = helpDefender;
-             let helpChance = blkCfg.HELP_BASE;
-             if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
-             if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
-
-             // D-4. Defensive Anchor: 스마트 로테이션 → 헬프 블락 확률 2배
-             if (blkCfg.ENABLED && helper.attr.helpDefIq >= 92 && helper.attr.blk >= 80) {
-                 helpChance *= blkCfg.ARCHETYPE_ANCHOR_HELP_MULT;
-             }
-
-             // Mid-range: 체이스다운 블락은 림보다 희귀
-             if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;
-
-             if (Math.random() < helpChance) {
-                 isBlock = true;
-                 finalDefender = helper;
-                 isHelpBlock = true;
-             }
+        // F. [2026-10-25] 림 프로텍터 개입 블락 (기존 헬프 블락 대체) — 개입 판정은 2.6에서 끝남, 여기선 블락 여부만
+        else if (rimProtector) {
+            const rpCfg = SIM_CONFIG.RIM_PROTECTION;
+            let protectProb = interpolateCurve(rimProtector.attr.blk, rpCfg.BLK_CURVE)
+                + Math.max(0, (rimProtector.attr.height - 200) * blkCfg.HEIGHT_FACTOR)
+                + Math.max(0, (rimProtector.attr.vertical - 70) * blkCfg.VERT_FACTOR);
+            if (preferredZone === 'Paint') protectProb *= rpCfg.PAINT_MULT;
+            protectProb = applyShooterBlockResistance(protectProb, actor, preferredZone, shotType);
+            if (Math.random() < Math.max(0, protectProb)) {
+                isBlock = true;
+                finalDefender = rimProtector;
+                isHelpBlock = true;
+            }
         }
     }
     // --- BLOCK CALCULATION END ---

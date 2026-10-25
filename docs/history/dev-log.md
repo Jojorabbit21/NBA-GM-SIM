@@ -54,6 +54,195 @@
 
 
 
+## 2026-10-25 — 블락: 헬프 블락 → 림 프로텍터 개입 판정으로 교체 (드랍/블리츠 보정 이전, 지역방어 보너스, 개입 파울)
+
+**배경**: PBL(레전드 풀)에서 블락이 너무 적다는 사용자 지적. 실경기 1,318건 실측: 팀 BPG 3.58, 블락 95+ 13명 평균 1.25개(최고 하워드 2.21), 무톰보(blk 99) 1.29개.
+원인은 구조였음. ① 1차 블락은 슛한 선수를 맡은 수비수만 굴린다. 그래서 림 프로텍터는 자기 매치업 슛(경기당 10개 안팎)에서만 기회가 있었다. ② 헬프 블락은 헬퍼를 helpDefIq만으로 뽑았고(blk 무관), 성공 게이트가 (민첩+속도)/2 ≥ 55였다. 그래서 무톰보(53.5)·고베어·마이칸·써몬드·잭 이디는 헬프 블락 확률이 정확히 0이었다. 윙도 경기당 약 0.03개로 사실상 0.
+③ 그 밖에 PnR 드랍 보너스(+0.03)가 내려앉은 빅맨이 아니라 1차 수비수(PnR_Handler면 핸들러를 맡은 가드)에게 붙어 있었다.
+사용자 결정: 림 프로텍터 개입 판정을 새로 두고 기존 헬프 블락은 폐기. 1차 블락 공식은 유지(드랍/블리츠 보정만 개입 쪽으로 이전). 개입의 대가는 능력치 기반 프로텍터 파울. 지역방어는 zoneUsage 비례 소폭 상승. 드랍은 비PnR 돌파까지 적용. 지역방어가 자동으로 붙이는 drop은 이중 부과라 지역방어 보너스만 받음. 스트레치 빅 끌어내기 효과는 넣지 않음. 개입 후 블락 실패 시 슛 성공률을 깎는 컨테스트 효과는 이번 범위에서 제외.
+목표는 C안(33분 환산 BPG): 60 0.35 / 70 0.6 / 80 1.2 / 85 1.5 / 90 1.95 / 95 2.7 / 99 3.6, 팀 약 6. 사용자가 처음 제시한 "80대 2~2.5"는 레전드 풀(팀당 blk 80+ 출전 68분)에서 팀 BPG 8.6이 돼서 C안으로 조정했다.
+
+**변경 파일** (미러 쌍 — 반드시 같이 롤백):
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server)
+  - `BLOCK`에서 `ARCHETYPE_ANCHOR_HELP_MULT`, `HELP_BASE`, `HELP_BLK_THRESHOLD`, `HELP_BLK_BONUS`, `HELP_RIM_THRESHOLD`, `HELP_RIM_BONUS`, `HELP_MID_FACTOR` 삭제
+  - `RIM_PROTECTION` 블록 신설 (BLOCK 바로 아래)
+  - `PNR_COVERAGE.DROP_BLOCK_BONUS`(0.03), `PNR_COVERAGE.BLITZ_BLOCK_PENALTY`(0.02) 삭제 → `RIM_PROTECTION.DROP_ENGAGE_BONUS`/`BLITZ_ENGAGE_PENALTY`로 이전
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts` (server)
+  - 신규 함수 3개(`simulatePossession` 바로 위): `foulTroubleProbMod`, `resolveRimProtector`, `applyShooterBlockResistance`
+  - 2.6단계 신설(`helpHitRatePenalty` 다음 줄): `const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone);`
+  - 슈팅 파울: 일반 헬프 파울 보너스 조건에 `!rimProtector` 추가, 결합식 다음에 `protectorFoulRate` 가산, 파울 귀속(fouler)에 프로텍터 추가
+  - 블락 계산 D~F 교체(아래 Before/After)
+
+**Before** (constants, 양쪽 동일):
+```ts
+        ARCHETYPE_ALIEN: 0.03,
+        ARCHETYPE_SKYWALKER: 0.05,
+        ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
+
+        // 헬프 블락 (림 프로텍터 회전 블락)
+        HELP_BASE: 0.025,
+        HELP_BLK_THRESHOLD: 82,
+        HELP_BLK_BONUS: 0.025,
+        HELP_RIM_THRESHOLD: 75,
+        HELP_RIM_BONUS: 0.03,
+        HELP_MID_FACTOR: 0.5,
+    },
+// ... PNR_COVERAGE 안:
+        DROP_BLOCK_BONUS: 0.03,
+// ...
+        BLITZ_BLOCK_PENALTY: 0.02,
+```
+
+**After** (constants):
+```ts
+        ARCHETYPE_ALIEN: 0.03,
+        ARCHETYPE_SKYWALKER: 0.05,
+        // [2026-10-25] ARCHETYPE_ANCHOR_HELP_MULT / HELP_* 헬프 블락 상수 삭제 — ...
+    },
+    RIM_PROTECTION: {
+        SELECT_FLOOR: 50,
+        SELECT_POWER: 1,
+        ENGAGE_BASE: 0.65,
+        ENGAGE_HELP_IQ: 0.006,          // × (helpDefIq − 75)
+        ENGAGE_HELP_SLIDER: 0.02,       // × (helpDef − 5)
+        ZONE_USAGE_BONUS: 0.012,        // 지역방어(속공 제외) × (zoneUsage − 1)
+        DROP_ENGAGE_BONUS: 0.15,        // 맨투맨 PnR 3종 + drop
+        BLITZ_ENGAGE_PENALTY: 0.10,     // 맨투맨 PnR 3종 + blitz
+        NON_PNR_DROP_TENDENCY: 0.10,    // 맨투맨 비PnR 하프코트 × (DIST drop − blitz)
+        ENGAGE_MIN: 0.20,
+        ENGAGE_MAX: 0.90,
+        BLK_CURVE: [[50, 0.000], [60, 0.030], [70, 0.080], [80, 0.140], [85, 0.170], [90, 0.200], [95, 0.250], [99, 0.310]],
+        PAINT_MULT: 0.75,
+        FOUL_CURVE: [[45, 0.040], [60, 0.030], [72, 0.022], [82, 0.015], [88, 0.010], [93, 0.007], [97, 0.005]],
+        FOUL_PAINT_MULT: 0.75,
+        FOUL_PRONENESS_FACTOR: 0.01,
+    },
+// PNR_COVERAGE 안의 두 줄은 "// [2026-10-25] ... 삭제 → RIM_PROTECTION....로 이전" 주석으로 대체
+```
+
+**Before** (possessionHandler 블락 D~F, 양쪽 동일. 2.6단계·신규 함수 3개·파울 변경분은 없던 상태):
+```ts
+        // D. Offense Resistance (Avoidance)
+        // High ShotIQ and High Release point (Height) reduces block chance
+        const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
+        blockProb -= Math.max(0, offResist);
+
+        // D-2. PnR Coverage Block Modifiers
+        const pnrBlkCfg = SIM_CONFIG.PNR_COVERAGE;
+        if (pnrCoverage === 'drop' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+            blockProb += pnrBlkCfg.DROP_BLOCK_BONUS;
+        }
+        if (pnrCoverage === 'blitz' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+            blockProb -= pnrBlkCfg.BLITZ_BLOCK_PENALTY;
+        }
+
+        // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
+        // (Tyrant −TYRANT_BLOCK_REDUCTION / Levitator ×FLOATER_BLOCK_MULTIPLIER / Ascendant ×ASCENDANT_BLOCK_MULTIPLIER
+        //  — 현재 applyShooterBlockResistance 안의 코드와 글자까지 같음, blockProb 변수명만 다름)
+
+        // E-0. shotType별 블록 배율
+        const blockMult = SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
+        blockProb *= blockMult;
+        // Dunk 전용: 공격자 strength/vertical 블록 저항
+        if (shotType === 'Dunk') {
+            blockProb -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
+            blockProb -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
+        }
+
+        // E. Roll Primary Block
+        if (Math.random() < Math.max(0, blockProb)) {
+            isBlock = true;
+        }
+        // F. Help Defense Block (통합 헬프 결과 재사용 — Rim/Paint/Mid만, 3PT 제외)
+        else if (helpAttempted && helpSuccess && helpDefender &&
+                 (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid')) {
+             const helper = helpDefender;
+             let helpChance = blkCfg.HELP_BASE;
+             if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
+             if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
+             if (blkCfg.ENABLED && helper.attr.helpDefIq >= 92 && helper.attr.blk >= 80) {
+                 helpChance *= blkCfg.ARCHETYPE_ANCHOR_HELP_MULT;
+             }
+             if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;
+             if (Math.random() < helpChance) {
+                 isBlock = true;
+                 finalDefender = helper;
+                 isHelpBlock = true;
+             }
+        }
+    }
+```
+Before (파울 부분):
+```ts
+    if (helpAttempted && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+        helpBonusRate = helpCfg.FOUL_BONUS;
+// ...
+    shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
+    // (protectorFoulRate 블록 없음)
+// ...
+        const fouler = (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
+        const isHelpFoul = !!helpDefender && fouler === helpDefender;
+```
+
+**After** (possessionHandler 요지):
+```ts
+// 2.6
+const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone);
+// resolveRimProtector: Rim/Paint만. 1차 수비수 제외 4명 중 max(0, rimProtector − 50)^1 가중 룰렛 →
+//   engage = 0.65 + (helpDefIq−75)×0.006 + (helpDef−5)×0.02
+//          + [isZone && !Transition] (zoneUsage−1)×0.012
+//          | [!isZone && PnR 3종] drop +0.15 / blitz −0.10      (지역방어가 자동으로 붙이는 drop은 isZone 분기라 미적용)
+//          | [!isZone && 비PnR && !Transition] (DIST[pnrDefense] drop − blitz)×0.10
+//   clamp(0.20, 0.90) × foulTroubleProbMod(protector.pf) → 성공 시 protector 반환
+// 파울: helpBonusRate 조건에 !rimProtector,
+//   protectorFoulRate = max(0, FOUL_CURVE(intDef×0.65+defConsist×0.35)×(Paint 0.75) + foulProneness×0.01) × foulTroubleProbMod(pf)
+//   결합식 다음 줄에 shootingFoulRate += protectorFoulRate (클램프 전), fouler는 protectorFoulShare 확률로 rimProtector
+// 블락 D~F:
+        blockProb = applyShooterBlockResistance(blockProb, actor, preferredZone, shotType);   // 기존 D/Tyrant/Levitator/Ascendant/E-0/덩크 저항을 순서 그대로 함수로 이동
+        if (Math.random() < Math.max(0, blockProb)) {
+            isBlock = true;
+        }
+        else if (rimProtector) {
+            let protectProb = interpolateCurve(rimProtector.attr.blk, RIM_PROTECTION.BLK_CURVE)
+                + max(0, (height−200)×BLOCK.HEIGHT_FACTOR) + max(0, (vertical−70)×BLOCK.VERT_FACTOR);
+            if (Paint) protectProb *= 0.75;
+            protectProb = applyShooterBlockResistance(protectProb, actor, preferredZone, shotType);
+            if (Math.random() < Math.max(0, protectProb)) { isBlock = true; finalDefender = rimProtector; isHelpBlock = true; }
+        }
+```
+- 1차 블락에서 바뀐 것은 드랍 +0.03 / 블리츠 −0.02 두 줄이 빠진 것뿐이다(나머지는 순서까지 동일).
+- Mid 헬프 블락(이전 F의 Mid 분기, ×0.5)은 없어졌다. 효과는 원래 경기당 0.01개 미만이었다.
+- 일반 헬프 시스템(헬퍼 선정 + IQ×신체 게이트)은 헬프 스틸·슛 성공률 페널티·체력 소모용으로 그대로 남아 있다.
+
+**검증**:
+- tsc: client/server 모두 수정 파일 오류 0(서버는 기존 Bun 타입 오류만 있음).
+- 하네스: PBL 실데이터(현재 로스터·저장 전술·AI 감독 경로·정규화·경기 간 체력 이월·B2B, 부상 미반영), 정규시즌 1,230경기 × 10시즌, 경기별 시드 고정. 작업 트리의 다른 엔진 WIP는 before/after에 똑같이 포함.
+
+| 지표 (팀/경기) | Before | After |
+|---|---|---|
+| BLK | 3.85 | **6.02** |
+| PF / FTA | 14.98 / 19.36 | 15.34 / 20.25 |
+| PTS / TS% / FG% | 109.3 / 57.74 / 48.54 | 106.5 / **56.23** / 46.74 |
+| Rim / Paint 블락률 | 8.64% / 3.58% | 14.71% / 5.55% |
+
+| blk 구간 (33분 환산 BPG) | Before | After | 목표 |
+|---|---|---|---|
+| 95–99 | 1.68 | 3.10 | 3.04 |
+| 90–94 | 1.33 | 2.36 | 2.23 |
+| 85–89 | 1.00 | 1.78 | 1.72 |
+| 80–84 | 0.80 | 1.31 | 1.29 |
+| 70–79 | 0.49 | 0.82 | 0.93 |
+| 60–69 | 0.28 | 0.32 | 0.44 |
+| 59 이하 | 0.20 | 0.16 | 0.35 |
+
+- 상위권 After: 하워드 4.20, 월리스 3.71, 웸반야마 3.23, 로빈슨 3.09, 올라주원 3.08, 가넷 3.00, 무톰보 2.85(Before 1.43). 빅맨 PF/36 변화는 +0.04~0.08.
+- 69 이하 구간이 목표에 못 미치는 건 1차 블락만으로 나오는 구간이라서다(사용자 결정으로 1차 블락 유지). 59 이하가 0.20 → 0.16으로 준 건 가드에게 붙던 드랍 보너스가 빠졌기 때문이다.
+- 전술 방향 확인(3시즌, 전 팀 슬라이더 강제): 맨투맨 드랍/헷지/블리츠 팀 BPG 6.02 / 5.79 / 5.63(Before 드랍·블리츠 3.69 / 3.47). 지역방어 10단계에서 zoneUsage 1 → 10이면 6.20 → 6.35.
+- 보정 과정: 처음 값(SELECT_POWER 2, BLK_CURVE 99 0.21)은 팀 4.92, 95+ 2.82, 80대 0.98이었다. 제곱 가중이 센터에 몰려서 선정 지수를 1로 낮추고 곡선을 올렸다(8개 조합 비교, 3시즌씩).
+- ⚠️ 부작용: TS −1.5%p, 팀 득점 −2.8. 블락은 강제 미스라 득점이 그만큼 빠진다. 진행 중인 TS% 조정(A2 커브 등)과 같이 봐야 한다.
+
+**롤백 방법**: 미러 4개 파일을 함께 되돌린다. constants는 위 Before 블록으로 복원하고 `RIM_PROTECTION` 블록 전체를 삭제한다. possessionHandler는 신규 함수 3개와 2.6단계 2줄을 삭제하고, 파울 3군데를 위 Before로, 블락 D~F를 위 Before로 되돌린다.
+
 ## 2026-10-25 — 드래프트 풀 이름 검색어를 URL 쿼리에서 로컬 상태로 환원
 
 **배경**: 3d1c0558에서 검색어(`q`)를 URL로 옮긴 뒤 키 입력마다 라우터 갱신+전체 재파싱으로 렉, 한글 자모 분리가 발생. 직전 수정(로컬 입력+디바운스)은 compositionEnd 때 값이 안 바뀌어 URL 반영이 누락돼 "풀네임이 안 뜨고 한 글자 지워야 뜸" 버그를 만듦 → 디바운스 방식 폐기.

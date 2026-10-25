@@ -403,15 +403,40 @@ export const SIM_CONFIG = {
         // 엘리트 블로커 아키타입 보너스 (조건부 발동)
         ARCHETYPE_ALIEN: 0.03,
         ARCHETYPE_SKYWALKER: 0.05,
-        ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
-
-        // 헬프 블락 (림 프로텍터 회전 블락)
-        HELP_BASE: 0.025,
-        HELP_BLK_THRESHOLD: 82,
-        HELP_BLK_BONUS: 0.025,
-        HELP_RIM_THRESHOLD: 75,
-        HELP_RIM_BONUS: 0.03,
-        HELP_MID_FACTOR: 0.5,
+        // [2026-10-25] ARCHETYPE_ANCHOR_HELP_MULT / HELP_* 헬프 블락 상수 삭제 — 헬프 블락은 RIM_PROTECTION(림 프로텍터 개입)으로 대체
+    },
+    // [2026-10-25] 림 프로텍터 개입 (Rim/Paint 슛 전용) — 1차 블락(BLOCK)과 별개로, 1차 수비수가 아닌 코트 위 림 프로텍터가 개입.
+    // 이전 헬프 블락은 헬퍼 선정이 helpDefIq만 보고 성공 게이트가 민첩·속도라 느린 정통 센터(무톰보·고베어 등)는 헬프 블락 0이었음.
+    // 흐름: 선정(rimProtector 가중) → 개입 판정(P_engage, 파울 판정 전) → 개입 시 프로텍터 파울 몫 가산 → 1차 블락 실패 시 개입 블락 판정.
+    RIM_PROTECTION: {
+        // 선정: 1차 수비수 제외 코트 위 4명, 가중치 max(0, rimProtector − SELECT_FLOOR)^SELECT_POWER
+        SELECT_FLOOR: 50,
+        SELECT_POWER: 1,               // 하네스 보정: 2(제곱)는 팀 최고 센터에 몰려 두 번째 빅맨(blk 80대)이 목표의 75%에 그침
+        // 개입 확률 P_engage
+        ENGAGE_BASE: 0.65,
+        ENGAGE_HELP_IQ: 0.006,          // × (프로텍터 helpDefIq − 75)
+        ENGAGE_HELP_SLIDER: 0.02,       // × (helpDef 슬라이더 − 5)
+        ZONE_USAGE_BONUS: 0.012,        // 지역방어 포세션(속공 제외): × (zoneUsage − 1) → 최대 +0.108. 지역방어가 자동으로 붙이는 drop은 아래 드랍 보너스 미적용(이중 부과 방지)
+        DROP_ENGAGE_BONUS: 0.15,        // 맨투맨 PnR 3종 + 실제 drop 커버리지 (이전 PNR_COVERAGE.DROP_BLOCK_BONUS 0.03을 1차 수비수에서 이쪽으로 이전)
+        BLITZ_ENGAGE_PENALTY: 0.10,     // 맨투맨 PnR 3종 + 실제 blitz 커버리지 (이전 PNR_COVERAGE.BLITZ_BLOCK_PENALTY 0.02를 이전)
+        NON_PNR_DROP_TENDENCY: 0.10,    // 맨투맨 비PnR 하프코트: × (PNR_COVERAGE.DIST의 drop 비율 − blitz 비율) → 슬라이더 0 +0.075 / 1 0 / 2 −0.055
+        ENGAGE_MIN: 0.20,
+        ENGAGE_MAX: 0.90,
+        // 개입 블락 확률: 커브(blk) + 키·점프(BLOCK과 같은 계수) → 슈터 회피(BLOCK과 동일) 적용
+        // 하네스 보정(PBL 10시즌): 33분 환산 BPG 목표 60 .35 / 70 .6 / 80 1.2 / 85 1.5 / 90 1.95 / 95 2.7 / 99 3.6, 팀 약 6
+        BLK_CURVE: [
+            [50, 0.000], [60, 0.030], [70, 0.080], [80, 0.140],
+            [85, 0.170], [90, 0.200], [95, 0.250], [99, 0.310],
+        ] as [number, number][],
+        PAINT_MULT: 0.75,
+        // 개입 대가 — 프로텍터 파울 몫(슈팅 파울 확률에 가산, 파울 시 기여 비율만큼 프로텍터 귀속)
+        // 수비 정교함 intDef×0.65 + defConsist×0.35 → 가산 확률
+        FOUL_CURVE: [
+            [45, 0.040], [60, 0.030], [72, 0.022], [82, 0.015],
+            [88, 0.010], [93, 0.007], [97, 0.005],
+        ] as [number, number][],
+        FOUL_PAINT_MULT: 0.75,
+        FOUL_PRONENESS_FACTOR: 0.01,    // × foulProneness(−1~+1)
     },
     // Steal System (커브 기반 재설계)
     STEAL: {
@@ -658,7 +683,7 @@ export const SIM_CONFIG = {
         DROP_HANDLER_3PT_BONUS: 0.01,
         DROP_ROLL_PENALTY: 0.04,
         DROP_POP_BONUS: 0.015,
-        DROP_BLOCK_BONUS: 0.03,
+        // [2026-10-25] DROP_BLOCK_BONUS(0.03) 삭제 → RIM_PROTECTION.DROP_ENGAGE_BONUS로 이전
         // Hedge: 빅맨이 순간 앞으로 나와 핸들러 지연 후 복귀
         HEDGE_HANDLER_PENALTY: 0.02,
         HEDGE_ROLL_BONUS: 0.03,
@@ -669,7 +694,7 @@ export const SIM_CONFIG = {
         BLITZ_HANDLER_PENALTY: 0.08,
         BLITZ_ROLL_BONUS: 0.07,
         BLITZ_POP_BONUS: 0.06,
-        BLITZ_BLOCK_PENALTY: 0.02,
+        // [2026-10-25] BLITZ_BLOCK_PENALTY(0.02) 삭제 → RIM_PROTECTION.BLITZ_ENGAGE_PENALTY로 이전
         BLITZ_TOV_BONUS: 0.04,
     },
     // Foul Trouble Logic
