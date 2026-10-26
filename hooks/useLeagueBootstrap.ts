@@ -65,7 +65,7 @@ function buildEntries(input: BootstrapInput): Entry[] {
     const allRosterIds = [...new Set(leagueTeams.flatMap(t => t.roster ?? []))];
     const mySlug = myTeam?.team_slug ?? null;
     const entries: Entry[] = [];
-    const add = (opts: { queryKey: readonly unknown[]; queryFn: (ctx: any) => Promise<any>; staleTime?: number; gcTime?: number }) =>
+    const add = (opts: { queryKey: readonly unknown[]; queryFn: (ctx: any) => Promise<any>; staleTime?: number | ((q: any) => number); gcTime?: number }) =>
         entries.push({ key: opts.queryKey, run: qc => qc.fetchQuery({ ...opts, retry: false } as any) });
     const addInfinite = (opts: { queryKey: readonly unknown[]; queryFn: (ctx: any) => Promise<any>; initialPageParam: number; getNextPageParam: any }) =>
         entries.push({ key: opts.queryKey, run: qc => qc.fetchInfiniteQuery({ ...opts, retry: false } as any) });

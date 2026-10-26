@@ -33,6 +33,64 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 멀티 경기 URL이 짧은 코드 대신 game_id(g_chi_law_2026-10-20)로 나오던 문제 (화면)
+
+**배경:** Test League 경기 종료 화면 URL 끝이 `g_chi_law_2026-10-20`. DB `game_short_codes`에는 해당 경기 코드가 있음(room ee5f27b3…, 1230건, 02:31 생성). 원인 2가지:
+1. 헤더 LIVE "경기 보기" 버튼(`MultiHeader.handleWatchLiveGame`)이 `getGameUrlId`를 거치지 않고 `myLiveGame.id`로 바로 이동 → 라이브로 들어가 종료까지 보면 URL이 game_id로 남음.
+2. `gameShortCodesQuery`가 `staleTime: Infinity` — 방 생성(02:26) 후 finalize가 코드를 만들기(02:31) 전 리그에 들어가면 빈 목록이 새로고침 전까지 영구 캐시 → 모든 경기 링크가 game_id 폴백.
+
+**변경 파일:**
+- `components/MultiHeader.tsx` — `useGameShortCodes` import, `handleWatchLiveGame`
+- `hooks/useGameShortCodes.ts` — `gameShortCodesQuery` staleTime
+- `hooks/useLeagueBootstrap.ts` — `buildEntries`의 `add` 파라미터 타입(staleTime 함수 허용)
+
+**Before:**
+```ts
+navigate(`${base}/game/${myLiveGame.id}`);           // MultiHeader
+staleTime: Infinity,                                  // gameShortCodesQuery
+staleTime?: number;                                   // useLeagueBootstrap add()
+```
+
+**After:**
+```ts
+const { getGameUrlId } = useGameShortCodes(roomId ?? undefined);
+navigate(`${base}/game/${getGameUrlId(myLiveGame.id)}`);
+staleTime: (q) => (q.state.data?.length ? Infinity : 30_000),
+staleTime?: number | ((q: any) => number);
+```
+
+**검증:** `tsc --noEmit` 세 파일 오류 없음. 경기 화면 자체는 game_id/짧은 코드 둘 다 열리므로(MultiGamePbpView 역조회) 기능 영향은 URL 표기뿐.
+
+**남은 것:** `useLeagueNotifications.eventLink`도 game_id로 링크하지만 `game_result`/`playoff_game_result`는 토스트 허용 목록 밖이라 현재 미사용 경로 — 손대지 않음.
+
+**롤백 방법:** 위 Before로 되돌리기(세 파일).
+
+## 2026-10-26 — 멀티 라이브 박스스코어 DREB 항상 0 수정 (화면)
+
+**배경:** Test League 진행 중 경기 박스스코어에서 DREB가 전원 0. 엔진(statsMappers)은 `defReb`를 정상 집계하지만, 라이브 구간은 `box_timeline` 델타로 박스를 재조립하는데 엔진 `BOX_DELTA_KEYS`(liveEngine.ts)에 `defReb`가 없어(reb/offReb만) 재조립 결과의 `defReb`가 초기값 0에 머물렀음. 경기 종료 후 박스(`home_box`/`away_box`)는 정상.
+
+**변경 파일:**
+- `views/multi/season/MultiGamePbpView.tsx` — `buildLiveBox()` 마지막 루프
+
+**Before:**
+```ts
+for (const [pid, row] of rows) {
+    row.recentShots = recentShots.get(pid);
+}
+```
+
+**After:**
+```ts
+for (const [pid, row] of rows) {
+    row.defReb = Math.max(0, (row.reb ?? 0) - (row.offReb ?? 0));
+    row.recentShots = recentShots.get(pid);
+}
+```
+
+**검증:** `tsc --noEmit` 해당 파일 오류 없음. 엔진·서버 변경 없음(틱 포맷 그대로) → 이미 시뮬된 경기에도 즉시 적용.
+
+**롤백 방법:** 위 한 줄 삭제.
+
 ## 2026-10-26 — 엔진(멀티 서버): 선수 성격(SaveTendencies)을 세션 안에서 고정 — 경기마다 재추첨하던 버그 수정
 
 **배경**: 팀 케미스트리 설계(`docs/plan/team-chemistry-plan.md`) 조사 중 발견. 멀티 서버가 엔진에 성격 시드로

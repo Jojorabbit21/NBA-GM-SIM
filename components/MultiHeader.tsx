@@ -7,6 +7,7 @@ import { useGame } from '../hooks/useGameContext';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
+import { useGameShortCodes } from '../hooks/useGameShortCodes';
 import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
 import { computeSeriesWins, seriesWinsFor } from '../views/multi/season/seasonPhase';
@@ -144,10 +145,12 @@ export const MultiHeader: React.FC = () => {
     const liveOpponentTeam = leagueTeams.find(t => t.team_slug === liveOpponentId);
     const isLiveAway       = myLiveGame?.awayTeamId === myTeamId;
 
+    // 경기 URL은 다른 화면과 같이 짧은 코드로(매핑 없으면 game_id 폴백)
+    const { getGameUrlId } = useGameShortCodes(roomId ?? undefined);
     const handleWatchLiveGame = useCallback(() => {
         if (!myLiveGame) return;
-        navigate(`${base}/game/${myLiveGame.id}`);
-    }, [navigate, base, myLiveGame]);
+        navigate(`${base}/game/${getGameUrlId(myLiveGame.id)}`);
+    }, [navigate, base, myLiveGame, getGameUrlId]);
 
     // 시리즈별 승수 집계 — schedule을 한 번만 돌아 seriesId → (teamId → 승수) 맵을 만든다.
     // 리플레이(10분) 공개 전 경기는 제외: 서버는 시뮬 직후 bracket_data.series를 즉시 갱신하므로

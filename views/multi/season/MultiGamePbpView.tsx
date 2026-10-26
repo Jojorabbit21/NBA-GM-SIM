@@ -418,7 +418,9 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
         }
     }
 
+    // box_timeline 델타는 용량 절약을 위해 defReb 없이 reb/offReb만 싣는다(엔진 BOX_DELTA_KEYS) — 여기서 파생.
     for (const [pid, row] of rows) {
+        row.defReb = Math.max(0, (row.reb ?? 0) - (row.offReb ?? 0));
         row.recentShots = recentShots.get(pid);
     }
 

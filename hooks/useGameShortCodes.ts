@@ -26,7 +26,9 @@ import { supabase } from '../services/supabaseClient';
 export function gameShortCodesQuery(roomId: string | undefined | null) {
     return {
         queryKey: ['gameShortCodes', roomId] as const,
-        staleTime: Infinity,
+        // 리그 생성 직후(finalize가 코드를 만들기 전)에 받은 빈 목록이 영구 캐시되면 새로고침 전까지 모든 경기 URL이
+        // game_id로 폴백된다 — 비어 있을 때만 30초 뒤 다시 받도록 한다.
+        staleTime: (q: { state: { data?: { game_id: string; short_code: string }[] } }) => (q.state.data?.length ? Infinity : 30_000),
         gcTime: Infinity,
         queryFn: async (): Promise<{ game_id: string; short_code: string }[]> => {
             const { data, error } = await supabase
