@@ -33,6 +33,34 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 대체 샐러리 리그: 미드래프트 당해 1라운드 루키를 일반 FA로 협상
+
+**배경**: contract_mode 'alternative' 리그(Test League/NBA Active/PBL, 시즌 2026)에서 리그 드래프트에 안 뽑힌 2026 1라운드 루키(예: NBA Active 17·19·23·25~30픽 등)를 FA로 영입할 수 없다는 신고. 협상 화면이 `draftRound===1 && draftYear===현재시즌`이면 계약 유형을 루키 스케일로 강제 → 연봉은 실제 NBA 픽 스케일(17픽 2.26%×최대 120% ≈ 캡 2.7%)·4년 고정, 캡%/연수 입력 비활성화. 이 금액이 `buildMultiFADemand`의 walkAwaySalary보다 낮으면 `evaluateFAOffer`가 무조건 false, 그보다 높아도 롤 해시가 `seed+salary+years`라 같은 오퍼는 항상 같은 결과 → 한 번 거절되면 영원히 거절(배율 80~120%만 바꿀 수 있음). 실거래 로그상 루키 스케일 FA 체결은 3건뿐. 대체 리그는 실제 계약을 무시하는 리그라 루키 스케일이라는 계약 자체가 성립하지 않음.
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx` — `rookiePick` 계산 (client 전용, 서버 미러 없음 / RPC 변경 없음)
+
+**Before**:
+```ts
+const rookiePick = player && player.draftRound === 1 && player.draftYear === currentSeasonYear
+    && player.draftPick && player.draftPick >= 1 && player.draftPick <= 30
+    ? player.draftPick
+    : null;
+```
+
+**After**:
+```ts
+const rookiePick = player && (league as any)?.contract_mode !== 'alternative'
+    && player.draftRound === 1 && player.draftYear === currentSeasonYear
+    && player.draftPick && player.draftPick >= 1 && player.draftPick <= 30
+    ? player.draftPick
+    : null;
+```
+
+**검증**: `tsc --noEmit` 해당 파일 오류 없음. 브라우저 확인 전.
+
+**롤백 방법**: Before 블록으로 되돌림. 'standard' 리그 동작은 변경 없음(같은 고정 금액 교착 가능성은 남아 있음, 미수정).
+
 ## 2026-10-26 — [배포] Fly v202~v204 (git 7ee9c763) + Vercel 프로덕션 — 연장전·B2B 간격·포스트시즌 휴식일
 
 **배포 내용**: 커밋 7ee9c763(연장전 P1~P4 + 세션 설정 토글, 일정 생성기 B2B 간격, 포스트시즌 휴식일). 같은 HEAD에 다른 세션의 d68271ce(라이브 박스 DREB·게임 URL 수정, 클라 전용)도 포함. 다른 세션의 미커밋 작업(AI 감독 C4 등)은 제외 — simRunner.ts는 이 세션 hunk만 스테이징.

@@ -298,7 +298,12 @@ const MultiNegotiationView: React.FC = () => {
     // [2026-09-17] "루키 스케일"(1라운드 픽 전용 4년 계약, 캡 대비 픽별 고정 비율의
     // 80~120% 사이에서 체결)인지는 이제 contractType으로 판별 — rookiePick(이번 시즌
     // 드래프트된 1라운드 픽인지)이 있으면 선택 불가로 자동 고정된다(아래 useEffect).
-    const rookiePick = player && player.draftRound === 1 && player.draftYear === currentSeasonYear
+    // [2026-10-26 Fix] contract_mode 'alternative' 리그는 실제 계약을 무시하고 드래프트 라운드 스케일만 쓰는
+    // 리그라 루키 스케일이라는 계약 자체가 없다 — 리그 드래프트에서 안 뽑힌 당해 1라운드 루키는 일반 FA로
+    // 협상한다. 예전엔 여기서 루키 스케일로 고정돼 연봉(최대 픽 스케일 120%)·연수(4년)를 못 바꾸고, 그 금액이
+    // 시장 요구액의 walkAwaySalary보다 낮으면 evaluateFAOffer가 매번 거절(같은 오퍼=같은 해시 롤)해 영입 불가였다.
+    const rookiePick = player && (league as any)?.contract_mode !== 'alternative'
+        && player.draftRound === 1 && player.draftYear === currentSeasonYear
         && player.draftPick && player.draftPick >= 1 && player.draftPick <= 30
         ? player.draftPick
         : null;
