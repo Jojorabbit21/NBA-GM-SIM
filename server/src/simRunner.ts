@@ -267,6 +267,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 autoTimeoutAllTeams: true,
                 // [2026-10-26] 연장전 리그 스위치(leagues.overtime_enabled, 기본 false) — docs/plan/overtime-system.md
                 overtimeEnabled: (leagueData as any)?.overtime_enabled === true,
+                fatigueDrainMultiplier: fatigueSettings.fatigueDrainMultiplier,
             };
 
             // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────

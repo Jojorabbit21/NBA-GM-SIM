@@ -33,6 +33,34 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 멀티 세션 설정: 경기 중 체력 소모 계수(fatigueDrainMultiplier) 추가
+
+**배경**: 멀티 세션 설정에서 경기 중 체력 소모 속도 전체를 조절하고 싶다는 요청. 기존엔 회복률 2종 + 백투백 배율만 조절 가능했다.
+
+**변경 파일**:
+- `types/simSettings.ts` (client) / `server/src/shared/types/simSettings.ts` (server 미러) — `SimSettings.fatigueDrainMultiplier?`, `MULTI_FATIGUE_DEFAULTS`(1.0), `MULTI_FATIGUE_RANGES`(0.5~1.5, step 0.05), `resolveMultiFatigueSettings` 반환값
+- `services/game/engine/fatigueSystem.ts` (client) / `server/src/shared/engine/fatigueSystem.ts` (server 미러) — `calculateIncrementalFatigue`에 마지막 인자 `drainMultiplier = 1.0`, 누적 피로 보정 직후 `drain *= drainMultiplier`
+- `services/game/engine/pbp/stateUpdater.ts` (client) / `server/src/shared/engine/pbp/stateUpdater.ts` (server 미러) — 호출 시 `state.simSettings.fatigueDrainMultiplier ?? 1.0` 전달
+- `server/src/simRunner.ts` — `engineSimSettings`에 `fatigueDrainMultiplier: fatigueSettings.fatigueDrainMultiplier` 주입
+- `views/multi/league/LeagueSettingsView.tsx` — "경기 중 체력 소모 계수" 입력란(상태/로드/저장/dirty/안내문)
+
+**Before**:
+```ts
+MULTI_FATIGUE_DEFAULTS = { fatigueOvernightKeep: 0.5, fatigueRestDayKeep: 0.25, fatigueB2BMultiplier: 1.3 }
+calculateIncrementalFatigue(..., injuryFrequency = 1.0, b2bMultiplier = 1.5)   // drain *= cumulativeFatiguePenalty; 로 끝
+```
+
+**After**:
+```ts
+MULTI_FATIGUE_DEFAULTS = { ..., fatigueDrainMultiplier: 1.0 }
+calculateIncrementalFatigue(..., b2bMultiplier = 1.5, drainMultiplier = 1.0)
+// drain *= cumulativeFatiguePenalty;  drain *= drainMultiplier;
+```
+
+**검증**: 클라 tsc에서 변경 파일 관련 오류 없음. 서버 tsc는 기존 SupabaseClient 제네릭 불일치만 존재(무관). 기본값 1.0이라 기존 리그/싱글 동작 불변.
+
+**롤백 방법**: 위 파일들에서 `fatigueDrainMultiplier`/`drainMultiplier` 관련 줄 제거(미러 쌍 같이). 저장된 sim_settings에 남은 키는 무시됨.
+
 ## 2026-10-26 — 파워랭킹 월 경계를 실제 KST 월 → 가상 캘린더 월로 수정
 
 **배경**: 메인리그는 시즌을 약 8일에 압축 방송하는데, 파워랭킹 트리거(`advanceSimDates`)가 `rooms.sim_date`(= 실제 KST 방송일) 월 변경을 감지해서, 가상 월이 7~8번 바뀌는 동안 실제 월은 안 바뀌어 `power_ranking` 이벤트가 한 번도 게시되지 않았다(11/1 KST에야 처음 발동 예정이었음).

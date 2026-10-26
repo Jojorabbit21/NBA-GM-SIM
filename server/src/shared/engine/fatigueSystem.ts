@@ -14,7 +14,8 @@ export function calculateIncrementalFatigue(
     injuryFrequency: number = 1.0,
     // [2026-10-17] B2B drain multiplier — multiplayer passes sim_settings.fatigueB2BMultiplier (resolved, default 1.3).
     // Fallback 1.5 = previous hardcoded value (single keeps it).
-    b2bMultiplier: number = 1.5
+    b2bMultiplier: number = 1.5,
+    drainMultiplier: number = 1.0
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -56,6 +57,9 @@ export function calculateIncrementalFatigue(
     const effectiveCondition = Math.max(0, player.currentCondition);
     const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - effectiveCondition) * 0.012);
     drain *= cumulativeFatiguePenalty;
+
+    // [2026-10-26] In-game drain coefficient — multiplayer sim_settings.fatigueDrainMultiplier (default 1.0). Final multiplier after all modifiers; does not affect injury chance.
+    drain *= drainMultiplier;
 
     let injuryOccurred = false;
     const durability = player.attr?.durability ?? 70;

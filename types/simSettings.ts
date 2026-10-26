@@ -43,6 +43,7 @@ export interface SimSettings {
     fatigueOvernightKeep?: number;   // 경기를 뛴 날 자정에 남는 체력 부족분 비율 (0.3~0.7)
     fatigueRestDayKeep?: number;     // 경기 없는 날 자정에 남는 체력 부족분 비율 (0.1~0.5)
     fatigueB2BMultiplier?: number;   // 백투백 경기 체력 소모 배율 (1.0~1.5, 엔진 폴백 1.5 = 싱글 값)
+    fatigueDrainMultiplier?: number; // [2026-10-26] 경기 중 체력 소모 계수 — 모든 소모에 곱함 (0.5~1.5, 기본 1.0, 엔진 폴백 1.0 = 싱글)
 
     // 서버 배치 시뮬 전용: 홈/원정 모두 AI 자동 타임아웃 허용 (미지정=false, 싱글/라이브는 유저 팀 스킵 유지)
     autoTimeoutAllTeams?: boolean;
@@ -60,12 +61,14 @@ export const MULTI_FATIGUE_DEFAULTS = {
     fatigueOvernightKeep: 0.5,
     fatigueRestDayKeep: 0.25,
     fatigueB2BMultiplier: 1.3,
+    fatigueDrainMultiplier: 1.0,
 } as const;
 
 export const MULTI_FATIGUE_RANGES = {
     fatigueOvernightKeep: { min: 0.3, max: 0.7, step: 0.05 },
     fatigueRestDayKeep:   { min: 0.1, max: 0.5, step: 0.05 },
     fatigueB2BMultiplier: { min: 1.0, max: 1.5, step: 0.05 },
+    fatigueDrainMultiplier: { min: 0.5, max: 1.5, step: 0.05 },
 } as const;
 
 export type MultiFatigueSettings = { -readonly [K in keyof typeof MULTI_FATIGUE_DEFAULTS]: number };
@@ -81,6 +84,7 @@ export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | und
         fatigueOvernightKeep: pick('fatigueOvernightKeep'),
         fatigueRestDayKeep: pick('fatigueRestDayKeep'),
         fatigueB2BMultiplier: pick('fatigueB2BMultiplier'),
+        fatigueDrainMultiplier: pick('fatigueDrainMultiplier'),
     };
 }
 

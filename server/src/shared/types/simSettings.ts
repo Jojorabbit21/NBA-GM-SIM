@@ -31,6 +31,7 @@ export interface SimSettings {
     fatigueOvernightKeep?: number;   // deficit fraction kept at midnight after a game day (0.3~0.7)
     fatigueRestDayKeep?: number;     // deficit fraction kept at midnight of a rest day (0.1~0.5)
     fatigueB2BMultiplier?: number;   // B2B drain multiplier (1.0~1.5, engine fallback 1.5)
+    fatigueDrainMultiplier?: number; // [2026-10-26] in-game drain multiplier applied to all drain (0.5~1.5, default 1.0, engine fallback 1.0)
 
     // Server batch sim only: allow AI auto-timeouts for both home/away (unset=false; single/live keep skipping the user team)
     autoTimeoutAllTeams?: boolean;
@@ -47,12 +48,14 @@ export const MULTI_FATIGUE_DEFAULTS = {
     fatigueOvernightKeep: 0.5,
     fatigueRestDayKeep: 0.25,
     fatigueB2BMultiplier: 1.3,
+    fatigueDrainMultiplier: 1.0,
 } as const;
 
 export const MULTI_FATIGUE_RANGES = {
     fatigueOvernightKeep: { min: 0.3, max: 0.7, step: 0.05 },
     fatigueRestDayKeep:   { min: 0.1, max: 0.5, step: 0.05 },
     fatigueB2BMultiplier: { min: 1.0, max: 1.5, step: 0.05 },
+    fatigueDrainMultiplier: { min: 0.5, max: 1.5, step: 0.05 },
 } as const;
 
 export type MultiFatigueSettings = { -readonly [K in keyof typeof MULTI_FATIGUE_DEFAULTS]: number };
@@ -68,6 +71,7 @@ export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | und
         fatigueOvernightKeep: pick('fatigueOvernightKeep'),
         fatigueRestDayKeep: pick('fatigueRestDayKeep'),
         fatigueB2BMultiplier: pick('fatigueB2BMultiplier'),
+        fatigueDrainMultiplier: pick('fatigueDrainMultiplier'),
     };
 }
 

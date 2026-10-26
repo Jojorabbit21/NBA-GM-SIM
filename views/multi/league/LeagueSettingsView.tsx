@@ -27,6 +27,7 @@ const recoveryPctToKeep = (pct: number) => Math.round((1 - pct / 100) * 100) / 1
 const OVERNIGHT_PCT_RANGE = { min: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueOvernightKeep.max), max: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueOvernightKeep.min) };
 const REST_DAY_PCT_RANGE  = { min: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueRestDayKeep.max),   max: keepToRecoveryPct(MULTI_FATIGUE_RANGES.fatigueRestDayKeep.min) };
 const B2B_RANGE = MULTI_FATIGUE_RANGES.fatigueB2BMultiplier;
+const DRAIN_RANGE = MULTI_FATIGUE_RANGES.fatigueDrainMultiplier;
 import { clearGameLeadersCache } from '../../../services/multi/gameLeadersCache';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { MIN_SALARY_YOS_TABLE } from '../../../utils/constants';
@@ -207,6 +208,7 @@ const LeagueSettingsView: React.FC = () => {
     const [overnightRecoveryPct, setOvernightRecoveryPct] = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep));
     const [restDayRecoveryPct,   setRestDayRecoveryPct]   = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep));
     const [b2bMultiplier,        setB2bMultiplier]        = useState<number>(MULTI_FATIGUE_DEFAULTS.fatigueB2BMultiplier);
+    const [drainMultiplier,      setDrainMultiplier]      = useState<number>(MULTI_FATIGUE_DEFAULTS.fatigueDrainMultiplier);
     const [saving,      setSaving]      = useState(false);
     const [saveOk,      setSaveOk]      = useState(false);
     const [saveErr,     setSaveErr]     = useState<string | null>(null);
@@ -372,6 +374,7 @@ const LeagueSettingsView: React.FC = () => {
         setOvernightRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueOvernightKeep));
         setRestDayRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueRestDayKeep));
         setB2bMultiplier(fatigueSettings.fatigueB2BMultiplier);
+        setDrainMultiplier(fatigueSettings.fatigueDrainMultiplier);
         setTradeMinValueRatio(room?.sim_settings?.tradeMinValueRatio ?? DEFAULT_SIM_SETTINGS.tradeMinValueRatio);
         setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
         setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
@@ -540,6 +543,7 @@ const LeagueSettingsView: React.FC = () => {
                     fatigueOvernightKeep: recoveryPctToKeep(overnightRecoveryPct),
                     fatigueRestDayKeep: recoveryPctToKeep(restDayRecoveryPct),
                     fatigueB2BMultiplier: b2bMultiplier,
+                    fatigueDrainMultiplier: drainMultiplier,
                 }),
             },
             overtimeEnabled,
@@ -949,7 +953,8 @@ const LeagueSettingsView: React.FC = () => {
         normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
         overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
         restDayRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueRestDayKeep) ||
-        b2bMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueB2BMultiplier;
+        b2bMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueB2BMultiplier ||
+        drainMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueDrainMultiplier;
 
     type TabSaveInfo = { dirty: boolean; saving: boolean; ok: boolean; err: string | null; onSave: () => void };
     const TAB_SAVE_MAP: Partial<Record<SettingsTabId, TabSaveInfo>> = {
@@ -1607,11 +1612,26 @@ const LeagueSettingsView: React.FC = () => {
                                 className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
                             />
                         </div>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">경기 중 체력 소모 계수</span>
+                            <input
+                                type="number"
+                                min={DRAIN_RANGE.min}
+                                max={DRAIN_RANGE.max}
+                                step={DRAIN_RANGE.step}
+                                value={drainMultiplier}
+                                onChange={e => setDrainMultiplier(Math.round((Number(e.target.value) || 0) * 100) / 100)}
+                                onBlur={() => setDrainMultiplier(v => Math.min(DRAIN_RANGE.max, Math.max(DRAIN_RANGE.min, v)))}
+                                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
                         <p className="text-[11px] text-slate-600 ko-normal px-1">
                             경기 사이 체력 회복 속도를 조절합니다. 가상 날짜가 바뀔 때마다, 그날 뛴 선수는 부족한 체력의 하룻밤 회복률만큼,
                             쉰 선수는 휴식일 회복률만큼 회복합니다(지구력·내구도가 높을수록 더 회복). 백투백 배율은 전날에도 경기한 팀의
-                            경기 중 체력 소모를 늘립니다(1.0 = 페널티 없음). 기본값 {keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep)}% /
-                            {' '}{keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep)}% / ×{MULTI_FATIGUE_DEFAULTS.fatigueB2BMultiplier}.
+                            경기 중 체력 소모를 늘립니다(1.0 = 페널티 없음).
+                            체력 소모 계수는 모든 선수의 경기 중 체력 소모에 곱해집니다(1.0 = 기본, 낮을수록 덜 지치고 높을수록 빨리 지침, 이후 경기부터 적용).
+                            기본값 {keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep)}% /
+                            {' '}{keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep)}% / ×{MULTI_FATIGUE_DEFAULTS.fatigueB2BMultiplier} / ×{MULTI_FATIGUE_DEFAULTS.fatigueDrainMultiplier}.
                         </p>
                     </div>
                 </div>

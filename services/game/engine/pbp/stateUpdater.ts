@@ -40,7 +40,8 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                 isB2B,
                 isStopper,
                 state.simSettings.injuryFrequency,
-                state.simSettings.fatigueB2BMultiplier ?? 1.5
+                state.simSettings.fatigueB2BMultiplier ?? 1.5,
+                state.simSettings.fatigueDrainMultiplier ?? 1.0
             );
 
             // Apply Drain

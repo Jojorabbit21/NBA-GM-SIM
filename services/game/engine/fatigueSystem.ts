@@ -17,7 +17,8 @@ export function calculateIncrementalFatigue(
     injuryFrequency: number = 1.0,
     // [2026-10-17] 백투백 소모 배율 — 멀티는 sim_settings.fatigueB2BMultiplier(해석값, 기본 1.3)를 넘김.
     // 폴백 1.5 = 기존 하드코딩 값(싱글은 이 값 유지).
-    b2bMultiplier: number = 1.5
+    b2bMultiplier: number = 1.5,
+    drainMultiplier: number = 1.0
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -62,6 +63,9 @@ export function calculateIncrementalFatigue(
     const effectiveCondition = Math.max(0, player.currentCondition);
     const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - effectiveCondition) * 0.012);
     drain *= cumulativeFatiguePenalty;
+
+    // [2026-10-26] 경기 중 체력 소모 계수 — 멀티 sim_settings.fatigueDrainMultiplier(기본 1.0). 모든 보정 뒤 최종 배율, 부상 확률엔 영향 없음.
+    drain *= drainMultiplier;
 
     // Injury Check (Micro-roll) — injuriesEnabled는 stateUpdater에서 체크
     // 기본 확률(0.03%) + 체력 저하 시 추가 확률 (durability 반영)
