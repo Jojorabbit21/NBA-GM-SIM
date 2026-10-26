@@ -33,6 +33,22 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — [배포] Fly v202~v204 (git 7ee9c763) + Vercel 프로덕션 — 연장전·B2B 간격·포스트시즌 휴식일
+
+**배포 내용**: 커밋 7ee9c763(연장전 P1~P4 + 세션 설정 토글, 일정 생성기 B2B 간격, 포스트시즌 휴식일). 같은 HEAD에 다른 세션의 d68271ce(라이브 박스 DREB·게임 URL 수정, 클라 전용)도 포함. 다른 세션의 미커밋 작업(AI 감독 C4 등)은 제외 — simRunner.ts는 이 세션 hunk만 스테이징.
+
+**순서**: Vercel(푸시 자동 배포, 빌드 로그 Commit 7ee9c76 확인) → 서버 배포 스크립트(scripts/deploy-server.sh)로 Fly v202(이미지 git-7ee9c763, 이전 v201 = git-24ee59a1).
+
+**사고(이 세션 실수)**: 배포 기록을 쓰는 셸 명령에서 따옴표 없는 heredoc을 써 기록 문구 안의 백틱이 명령으로 실행됨 — 서버 배포 스크립트가 두 번 더 돌아 같은 이미지로 v203·v204가 생기고(1~2분 사이 서버 재시작 2회), 롤백 예시로 적은 이미지 지정 배포 명령은 앱 이름 누락 오류로 실패해 롤백은 일어나지 않음. 최종 v204 = git-7ee9c763, 재기동 후 스케줄러·워커 정상, 복구 대상 방 없음. 재발 방지: 셸에서 문서 문구를 만들 땐 heredoc을 반드시 따옴표로('EOF') 감싸거나 파일로 쓴다.
+
+**DB**: 마이그레이션 4건(add_league_overtime_enabled, add_overtime_reveal_delay, set_league_overtime_enabled_default_true, add_overtime_enabled_to_settings_audit)은 배포 전에 이미 운영 적용.
+
+**검증**: 스테이징 트리를 따로 꺼내 vite 프로덕션 빌드 성공, client/server tsc 오류 목록이 HEAD와 동일(신규 0). Fly 재기동 후 정상 로그.
+
+**리그 상태**: PBL·NBA Active 연장전 off, Test League on(연장 테스트용 — P5 공개 시각 E2E 대상), 싱글 off.
+
+**롤백**: 7ee9c763을 revert해 푸시한 뒤 서버 배포 스크립트로 재배포(또는 Fly에서 이전 이미지 git-24ee59a1로 배포). DB는 ot_periods 0·스위치 off면 기존과 동일하게 동작하므로 되돌리지 않아도 됨.
+
 ## 2026-10-26 — 멀티 경기 URL이 짧은 코드 대신 game_id(g_chi_law_2026-10-20)로 나오던 문제 (화면)
 
 **배경:** Test League 경기 종료 화면 URL 끝이 `g_chi_law_2026-10-20`. DB `game_short_codes`에는 해당 경기 코드가 있음(room ee5f27b3…, 1230건, 02:31 생성). 원인 2가지:
