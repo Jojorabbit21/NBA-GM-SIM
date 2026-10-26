@@ -306,7 +306,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 isAwayB2B,
                 homeDepth,
                 awayDepth,
-                tendencySeed + ':' + gameId,
+                // Room seed only — personalities stay fixed for the whole session (same values the UI shows).
+                tendencySeed,
                 engineSimSettings,
                 coachingData,
                 awayTactics ?? undefined,

@@ -33,6 +33,60 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 엔진(멀티 서버): 선수 성격(SaveTendencies)을 세션 안에서 고정 — 경기마다 재추첨하던 버그 수정
+
+**배경**: 팀 케미스트리 설계(`docs/plan/team-chemistry-plan.md`) 조사 중 발견. 멀티 서버가 엔진에 성격 시드로
+`rooms.tendency_seed + ':' + gameId`를 넘겨, **같은 선수의 성격 16종(클러치·침착함·기질·자존심·볼 점유·플레이 스타일 등)이
+경기마다 새로 뽑혔다.** 화면(선수 상세·FA·협상·RFA)은 방 시드만으로 계산하므로 **화면 성격 ≠ 엔진 성격**이었다.
+예: 화면 기질 −0.31(침착) 선수가 5경기 동안 엔진에서 −0.42/−0.67/−0.25/+0.01/+0.37로 뜀. 2026-05-21 첫 멀티 이식
+(`8b429f49`)부터 있었고 의도 기록 없음. 생성기 주석("같은 시드 + 같은 선수 → 항상 동일")과 싱글(세이브 시드 그대로 전달)은 고정 설계.
+**사용자 확정(2026-10-26)**: "성격은 그 세션에서 고정되어야 한다 — 기획 의도. 고정으로 밸런스가 바뀌면 그게 맞는 방향."
+(세션마다 성격이 다른 건 의도 — DB 귀속 성격이면 유저가 선수 평판을 학습해 기피·메타 고착이 생기므로.)
+
+**변경 파일**:
+- `server/src/simRunner.ts` (서버 전용 — 클라이언트 미러 없음, 싱글은 원래 고정)
+- `server/src/postAllStarGame.ts` (서버 전용)
+
+**Before** (`simRunner.ts` `runFullGameSimulation` 9번째 인자):
+```ts
+                tendencySeed + ':' + gameId,
+```
+**After**:
+```ts
+                // Room seed only — personalities stay fixed for the whole session (same values the UI shows).
+                tendencySeed,
+```
+
+**Before** (`postAllStarGame.ts`):
+```ts
+    const tendencySeed = ((room as any).tendency_seed ?? '') + ':' + gameId;
+```
+**After**:
+```ts
+    // Room seed only — same fixed personalities as regular-season games.
+    const tendencySeed = (room as any).tendency_seed ?? '';
+```
+
+**주의**: `tendency_seed`가 NULL/빈 문자열인 방은 이제 `DEFAULT_TENDENCIES`(전원 중립)로 돈다(엔진 `initializer.ts`가 빈 시드를 "없음"으로 처리).
+배포 시점 DB의 방 2곳 모두 시드 있음 확인 → 해당 없음.
+
+**검증 (하네스, 스크래치패드 — 실제 DB 로스터·전술 읽기 전용, 엔진 = HEAD = Fly v200과 동일, 체력 누적·AI 감독 보정 미포함)**:
+PBL 10시즌 + NBA Active 6시즌, 각 1,230경기, 같은 경기 난수로 현행/고정 짝 비교.
+- 리그 전체 불변 (PBL 현행→고정): 팀 득점 115.2→115.4, TS 57.4→57.5%, TOV 14.45→14.44, PF 18.95→18.94, 테크니컬/경기 0.60→0.62.
+  Active도 전 지표 잡음 범위.
+- 화면 성격 상위20% vs 하위20% 격차 (PBL, 현행 → 고정): 기질→테크니컬/1000분 −0.01→+1.97, 기질→플래그런트 +0.03→+0.22,
+  볼 점유(ballDominance)→FGA/36 +0.9→+5.7, playStyle→AST/36 +0.04→−0.65, 파울 성향→PF/36 +0.05→+0.36.
+  현행은 화면 성격과 기록이 무관(= 성격이 사실상 작동 안 함), 고정 후 반영됨. 침착함·리바운드 투지·클러치는 박스스코어상 뚜렷한 차이 없음.
+- 선수 간 편차: PTS/36 SD +13.8%(PBL)/+7.2%(Active), TOV/36 +9~13%, TS% +1~2.5%. 개인 TS 실제 변화 SD ≈0.6~0.7%p.
+- 팀 승수: 팀 간 SD 10.5→10.4(PBL), 10.9→10.9(Active). 팀별 |차이| 평균 1.6~1.8승 ≈ 시즌 반복 오차 → 팀 단위 변화 검출 안 됨.
+- 눈에 띄는 개인 (PBL, PTS/36): 드렉슬러 27.0→33.8, 시아캄 21.3→28.5, 스타더마이어 17.3→24.4 (볼 점유 1.29~1.36) /
+  마얼리 17.4→9.4(AST 3.7→6.7), 아데바요 22.0→15.7, 로빈슨 18.1→12.5 (볼 점유 0.54~0.74). 테크니컬/시즌: 키릴렌코 2.7→8.5, 어빙 2.3→7.6.
+- `server` tsc: 기존 오류 11건(Bun 타입·Supabase 제네릭·startDraft 결과 타입)만, 변경 줄 관련 오류 없음.
+
+**영향**: 배포 이후 멀티 경기부터 적용. 이미 치른 경기 기록은 불변. 화면에 보이는 성격 = 엔진 성격으로 일치.
+
+**롤백 방법**: 위 Before 두 줄로 되돌린 뒤 커밋·푸시하고 `scripts/deploy-server.sh`로 재배포(또는 해당 커밋 revert).
+
 ## 2026-10-25 — 로스터 변경마다 전원이 선수 정보를 다시 받던 요청 폭주 완화 (leagueRaw* 방 단위 쿼리 + 팀 갱신 묶기)
 
 **배경**: 2026-10-25 10:30~12:00 UTC "NBA Active" 리그 FA 시기에 FA 계약·방출이 11시(UTC) 한 시간에 102건 몰렸고, 그 한 시간 동안 선수 정보 관련 요청이 87,094건(그중 OPTIONS 사전요청 34,604건, 접속자 29명) 나갔다 — 계약 1건당 접속자 한 명이 약 29건(요청 세트를 3~4번 재조회). 원인: `useLeagueRawStats`의 `leagueRawPlayers`·`leagueRawSeasonInjury` 캐시 키에 "전 리그 로스터 id 목록"이 통째로 들어가, 로스터가 한 명만 바뀌어도 새 키가 되어 접속자 전원이 meta_players·room_player_instances·room_player_state·league_player_seasons를 처음부터 다시 받았다(앞선 League 스탯 쿼리와 같은 유형). 이번엔 DB(Small)가 버텼지만 FA·트레이드가 더 몰리면 정지 위험. 계획·판단 근거는 대화 기록(요청 폭주 점검)과 앞선 2026-10-20 항목들 참고.

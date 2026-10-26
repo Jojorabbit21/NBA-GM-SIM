@@ -288,7 +288,8 @@ export async function computeAndRunAllStarGame(
     // 방의 기존 설정을 그대로 물려받는다.
     const baseSimSettings = (room as any).sim_settings ?? {};
     const allStarSimSettings = { ...baseSimSettings, injuriesEnabled: false, suspensionsEnabled: false };
-    const tendencySeed = ((room as any).tendency_seed ?? '') + ':' + gameId;
+    // Room seed only — same fixed personalities as regular-season games.
+    const tendencySeed = (room as any).tendency_seed ?? '';
 
     resolveNormalizationContext(allStarSimSettings, [homeTeam, awayTeam], calculatePlayerOvr);
 
