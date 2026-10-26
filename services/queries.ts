@@ -165,13 +165,13 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
             const [regularRes, playoffRes] = await Promise.all([
                 supabase
                     .from('user_game_results')
-                    .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
+                    .select('date, season, home_team_id, away_team_id, home_score, away_score, box_score')
                     .eq('user_id', userId)
                     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
                     .order('date', { ascending: false }),
                 supabase
                     .from('user_playoffs_results')
-                    .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
+                    .select('date, season, home_team_id, away_team_id, home_score, away_score, box_score')
                     .eq('user_id', userId)
                     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
                     .order('date', { ascending: false }),
@@ -198,6 +198,7 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
                         teamScore: isHome ? game.home_score : game.away_score,
                         opponentScore: isHome ? game.away_score : game.home_score,
                         isPlayoff: game.isPlayoff,
+                        season: (game as any).season,
                         ...playerBox,
                     };
                 })

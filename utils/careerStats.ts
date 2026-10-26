@@ -3,9 +3,14 @@
 import type { PlayerStats } from '../types/player';
 import type { Player, Team, Game } from '../types';
 
+/** 'TM' 합산 행 라벨(2TM, 3TM …) 여부 */
+export function isMultiTeamLabel(team: unknown): boolean {
+    return typeof team === 'string' && /^\d+TM$/.test(team);
+}
+
 export function computeCareerAvg(rows: any[], teamLabel: string): Record<string, any> {
-    // 2TM 합산 행 제외, gp>0인 행만
-    const valid = rows.filter(r => r.team !== '2TM' && (r.gp ?? 0) > 0);
+    // nTM 합산 행 제외, gp>0인 행만
+    const valid = rows.filter(r => !isMultiTeamLabel(r.team) && (r.gp ?? 0) > 0);
     if (valid.length === 0) return {};
     const totalGP = valid.reduce((s, r) => s + (r.gp ?? 0), 0);
     // 항상 집계되는 스탯 — null 없음

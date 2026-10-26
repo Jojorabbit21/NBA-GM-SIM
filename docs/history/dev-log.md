@@ -33,6 +33,131 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 커리어 탭 셀렉터 라벨 영문화
+
+**변경 파일**: `views/PlayerDetailView.tsx` — 정규시즌/플레이오프 → `Regular`/`Playoffs`, 기본/어드밴스드 → `Traditional`/`Advanced`.
+**롤백**: 위 라벨을 이전 한글로 복원.
+
+## 2026-10-26 — 게임 로그 표 헤더를 커리어·스플릿과 동일하게
+
+**원인**: 게임 로그만 `<TableHead noRow>` + 직접 쓴 `<tr>`이라 TableHead가 주는 행 스타일(`text-slate-400 text-sm font-bold`, 높이 h-8)이 빠졌고, 헤더/본문이 가운데 정렬이었다.
+**변경 파일**: `views/PlayerDetailView.tsx` — 표준 `<TableHead>`(noRow 제거), 헤더·본문·합계/평균 행 `align="left"`, 헤더 높이 상수 `GAME_LOG_HEADER_HEIGHT=32`(가상 스크롤·높이 계산).
+**롤백**: `noRow` + `<tr style={{height: ROW_HEIGHT}}>`로 복원, align 제거(기본 center), `headerHeight = ROW_HEIGHT`.
+
+## 2026-10-26 — 스플릿에 Traditional / Shooting / Defense 셀렉터
+
+**변경 파일**: `views/PlayerDetailView.tsx`(`GameLogSplitsTable`에 mode state·SegmentedControl, `buildSplitCells()` 신설, `SPLIT_COLS` 제거), `utils/gameLogSplits.ts`(`SplitLine` = {label, games, gp, w, l}로 단순화 — 스탯 계산은 화면에서).
+**Before**: 스플릿 열 고정(커리어 기본 열). **After**: 열이 게임 로그와 동일한 3가지 보기(구분·G·W-L + 보기별 열), 값은 게임 로그 "평균" 행과 같은 계산(슈팅%는 합계 기준, GS만 선발 수). % 값은 게임 로그처럼 `%` 표기.
+**롤백**: 이전 `SPLIT_COLS`(커리어 기본 열)와 `SplitLine` 수치 필드 버전으로 복원.
+
+## 2026-10-26 — 커리어 이적 서브행 색 통일 + 스플릿 열을 커리어(기본)와 동일하게
+
+**변경 파일**: `views/PlayerDetailView.tsx`, `utils/gameLogSplits.ts`
+**Before**: 커리어 2TM 서브행 `opacity-60`+`text-white/65`(어두운 회색). 스플릿 열 G, W-L, MIN, PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, TS%.
+**After**: 서브행도 다른 행과 같은 색(들여쓰기 선만 유지). 스플릿 열 = 구분, G, W-L + 커리어 기본 열(GS MIN PTS OREB DREB REB AST STL BLK TOV PF FGM FGA FG% 3PM 3PA 3P% FTM FTA FT%), 값은 `formatCareerCell`로 동일 포맷. `SplitLine` 필드명을 커리어 키(gp, fg_pct, fg3m …)로 변경. TS% 열 제거.
+**롤백**: 서브행 클래스에 `opacity-60`/`text-white/65` 복원, SPLIT_COLS·SplitLine을 이전 형태로.
+
+## 2026-10-26 — 커리어·스플릿 표 헤더 고정
+
+**변경 파일**: `views/PlayerDetailView.tsx`
+**방식**: 두 탭의 컨테이너를 `h-full min-h-0` flex column으로, `<Table>`에 `flex-1 min-h-0 !overflow-auto`(표 자체가 남은 높이 안에서 스크롤), `<TableHead className="sticky top-0 z-40">`. bare 표 래퍼는 `overflow-x:auto`라 페이지 스크롤에는 sticky가 안 먹어서 표 자체를 스크롤 영역으로 만든 것.
+**롤백**: 컨테이너 클래스를 `flex flex-col gap-4`/`<div>`로, Table className을 `text-sm`로, TableHead className 제거.
+
+## 2026-10-26 — 선수 프로필 표 3종(커리어·스플릿·게임 로그) Table 옵션 통일
+
+**변경 파일**: `views/PlayerDetailView.tsx`
+**Before**: 게임 로그 `variant="bare" density="compact"`(세로 구분선 기본 on) / 커리어·스플릿 `variant="bare" dividers={false}`(기본 밀도).
+**After**: 세 표 모두 `variant="bare" density="compact" className="text-sm"` (공용 기본 구분선).
+**롤백**: 커리어·스플릿 `<Table>`을 `variant="bare" dividers={false}`로 복원.
+
+## 2026-10-26 — 게임 로그 하단 합계/평균 행
+
+**변경 파일**: `views/PlayerDetailView.tsx` — `buildGameLogSummaryCells()`(신규), `buildGameLogCells(g, mode, avg)`에 avg 인자, `VirtualGameLog`에 `TableFoot` 2행, 높이 계산에 `GAME_LOG_FOOTER_ROWS`.
+**동작**: 합계 행(개수형은 합, 승패 기록)과 평균 행(경기당, 소수 1자리). 슈팅%는 합계로 재계산. 선택한 시즌·보기 방식 기준. GS는 합계=선발 수, 평균='-'.
+**롤백**: `TableFoot` 블록·`footerRows`·`GAME_LOG_FOOTER_ROWS` 제거, avg 인자 제거.
+
+## 2026-10-26 — 게임 로그 열 조정 (Traditional 순서 변경, Shooting RIM/MID 제거, TOVF)
+
+**변경 파일**: `views/PlayerDetailView.tsx` (`GAME_LOG_MODE_COLS`, `buildGameLogCells`)
+**Before**: Traditional = GS MIN PTS FGM FGA FG% 3P FT OREB DREB REB AST STL BLK TOV PF TF FF +/-. Shooting 끝에 RIM M/A/% · MID M/A/%. Defense의 `FTOV`.
+**After**: Traditional = GS MIN PTS OREB DREB TREB AST STL BLK TOV PF FGM FGA FG% 3PM 3PA 3P% FTM FTA FT% TF FF (+/- 제외). Shooting에서 RIM/MID 6열 제거. Defense `FTOV`→`TOVF`.
+**롤백**: 위 Before 순서/열로 복원.
+**참고**: 거리별(0-3/3-10/10-16/16-3P) 2점 슛 성공률은 엔진이 거리를 추첨해야 의미가 있어 보류(고도화 때 재논의).
+
+## 2026-10-26 — 게임 로그: Traditional / Shooting / Defense 보기 전환
+
+**변경 파일**: `views/PlayerDetailView.tsx` — `GAME_LOG_COLS` → `GAME_LOG_COMMON_COLS` + `GAME_LOG_MODE_COLS`(3종), `buildGameLogCells(g, mode)`, `VirtualGameLog`에 `mode` prop, 시즌 드롭다운 옆 `SegmentedControl`(`gameLogMode`).
+**Before**: 열 26개 단일 표(DATE OPP RESULT MIN PTS FG/3P/FT TS% OREB DREB REB AST STL BLK TOV PF TF FF +/-).
+**After**: Traditional = 기존에서 TS% 제거 + GS 추가. Shooting = 2P, eFG%, TS%, 3PAr, FTr, RIM/MID M·A·%. Defense = STL BLK FTOV DREB PF, CONT(수비한 시도)/DFGM(상대 성공)/DFG%, 구역(RA·ITP·MID·CNR·WING·ATB "상대성공/시도"). 새 필드가 없는 경기는 '-'.
+**롤백**: 위 Before의 단일 `GAME_LOG_COLS`/`buildGameLogCells(g)`로 복원하고 mode prop·토글 제거.
+
+## 2026-10-26 — 게임 로그 탭: "최근 경기" 제목을 시즌 선택 드롭다운으로
+
+**변경 파일**: `views/PlayerDetailView.tsx`(시즌 드롭다운·`gameLogSeason` state·`seasonGameLog`/`currentSeasonGameLog`), `services/queries.ts`(`usePlayerGameLog`가 `user_game_results`/`user_playoffs_results`의 `season` 컬럼도 select, 행에 `season` 포함).
+**Before**: 제목 "최근 경기", 전 기간 경기 한 표. **After**: 제목 자리가 `YYYY-YY 시즌` 드롭다운(선택지 = 현재 시즌 + 경기 행에 등장한 시즌), 선택 시즌 경기만 표시. 스플릿은 현재 시즌 경기만 사용.
+**한계**: 멀티 방은 현재 시즌 번호 1뿐이고 `game_pbp`/`games`에 시즌 컬럼이 없어, 멀티 경기 행은 `season`이 없으면 현재 시즌으로 취급 → 지금 멀티에선 선택지가 1개. 멀티 시즌 전환이 구현되면 행에 `season`만 채우면 됨.
+**롤백**: 드롭다운 블록을 `<SectionHeader title="최근 경기">` + 전체 `gameLog`로 복원, queries.ts select/`season` 제거.
+
+## 2026-10-26 — 스플릿 표를 커리어 표와 같은 모양으로 정리
+
+**변경 파일**: `views/PlayerDetailView.tsx` (`GameLogSplitsTable`)
+**Before**: 그룹 제목이 raw `<tr><td>`(text-xs, 별도 배경), 본문 셀 `text-white` 강제, 지그재그가 그룹마다 초기화.
+**After**: 그룹 제목도 공용 `TableRow`/`TableCell`, 본문 셀은 커리어 표처럼 색 미지정, 지그재그는 데이터 행 전체 연속.
+**롤백**: 위 Before 형태로 복원.
+
+## 2026-10-26 — 스플릿 상대팀별: 리그 전체 팀(내 팀 제외)을 알파벳순으로 모두 표시
+
+**변경 파일**: `utils/gameLogSplits.ts`(`buildGameLogSplits(gameLog, allOpponentIds?)`), `views/PlayerDetailView.tsx`(`splitOpponentIds` = allTeams에서 현재 소속팀 제외, 경기 0인 줄은 구분 열만 표시하고 나머지 빈칸).
+**Before**: 상대한 팀만 줄 생성. **After**: 리그 팀 전부(상대 안 한 팀은 빈 줄), 약어 알파벳순. allTeams가 없으면 상대한 팀만.
+**롤백**: 위 인자/`splitOpponentIds` 제거, `oppLines`를 `byOpp` 키만 쓰도록 복원.
+
+## 2026-10-26 — 스플릿: 최근 5/10경기를 경기 수와 무관하게 항상 표시
+
+**변경 파일**: `utils/gameLogSplits.ts` — 최근 N경기 줄을 `games.length >= N`일 때만 만들던 조건 제거(경기가 N 미만이면 있는 경기 전부, G 열에 실제 수).
+**롤백**: `[5, 10].filter(n => games.length >= n)` 조건 복원.
+
+## 2026-10-26 — 선수 프로필: 스플릿을 별도 탭으로 분리
+
+**변경 파일**: `views/PlayerDetailView.tsx` — 탭 `splits`(URL `?tab=splits`) 추가, `GameLogSplitsTable` 렌더를 게임 로그 탭에서 이 탭으로 이동. 정규시즌 경기가 없으면 EmptyState.
+**Before**: 게임 로그 탭 상단에 스플릿 표. **After**: 탭 `프로필 | 커리어 | 게임 로그 | 스플릿 | 샷 차트 | 뉴스`.
+**롤백**: `splits` 탭 id/블록 제거 후 `<GameLogSplitsTable>`을 게임 로그 탭 최상단에 되돌림.
+
+## 2026-10-26 — 선수 프로필 게임 로그 탭: 스플릿 표 추가
+
+**변경 파일**:
+- `utils/gameLogSplits.ts` (신규) — `buildGameLogSplits(gameLog)`: 정규시즌 경기만, 최근 5/10경기·홈/원정·승/패·월별·상대팀별 평균(G, W-L, MIN, PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, TS%). 슈팅%는 합계로 재계산.
+- `views/PlayerDetailView.tsx` — `GameLogSplitsTable` 컴포넌트 신설, 게임 로그 탭 최상단에 렌더(기존 "최근 경기" 표는 그 아래).
+- `views/multi/season/MultiPlayerDetailView.tsx` — 멀티 게임 로그 행의 `isPlayoff`를 하드코딩 false에서 일정(`schedule`)의 `isPlayoff`로 교체(플레이오프 경기가 스플릿에 섞이지 않게).
+
+**Before**: 게임 로그 탭 = 최근 경기 표뿐. 멀티 게임 로그는 모든 행 `isPlayoff:false`.
+**After**: 스플릿 표 + 최근 경기 표. 최근 N경기는 시즌 경기 수가 N 이상일 때만 표시.
+**롤백**: `GameLogSplitsTable` 렌더 한 줄 제거(컴포넌트·유틸은 남겨도 무해), 멀티 `isPlayoff`를 `false`로 복원.
+
+## 2026-10-26 — 선수 프로필: 기록 탭을 커리어 / 게임 로그 탭으로 분리
+
+**변경 파일**: `views/PlayerDetailView.tsx` (탭 id/URL 파라미터, 렌더 블록 분리)
+**Before**: 탭 `profile | records | shotchart | news`, `records` 안에 커리어 기록 표 + 최근 경기 표.
+**After**: 탭 `profile | career | gamelog | shotchart | news`. `career`=커리어 기록 표, `gamelog`=최근 경기 표. 옛 링크 `?tab=records`는 `career`로 열린다.
+**롤백**: 두 탭 id를 `records`로 합치고 두 렌더 블록을 하나의 `<div className="flex flex-col gap-4">`로 되돌림.
+
+## 2026-10-26 — 멀티 선수 프로필: 시즌 중 이적 선수 기록을 팀별(2TM/3TM)로 분리
+
+**배경**: 멀티 세션에서 쌓인 이번 시즌 기록은 `get_player_season_stats_league`가 선수 단위로만 합산해, 이적한 선수도 한 줄(현재 팀 약어)로만 보였다. 커리어 기록(BRef)의 2TM/3TM + 팀별 서브행 표시를 세션 기록에도 적용.
+
+**변경 파일**:
+- `migrations/add_player_team_splits_rpc.sql` (DB, 적용 완료) — 신규 RPC `get_player_team_splits(p_room_id, p_player_id)`: 박스스코어 행의 소속(home_box=home_team_id, away_box=away_team_id) × is_playoff별 합산. 리빌 게이팅·올스타 제외·mp>0은 league RPC와 동일.
+- `hooks/usePlayerTeamSplits.ts` (신규) — RPC 호출, 첫 출전 시각순 정렬, staleTime 5분.
+- `views/multi/season/MultiPlayerDetailView.tsx` — 훅 호출 후 `externalTeamSplits` prop 전달.
+- `views/PlayerDetailView.tsx` — `externalTeamSplits` prop, `expandTeamSplitRows()` 신설, careerRegular/careerPlayoff가 이를 사용, '2TM' 하드코딩을 `isMultiTeamLabel`로 교체.
+- `utils/careerStats.ts` — `isMultiTeamLabel()` 신설(/^\d+TM$/), `computeCareerAvg`의 합산행 제외가 3TM 이상도 처리.
+
+**Before**: careerRegular = [simRegularRow(team=현재 팀), ...historical]; 합산행 판정은 `team === '2TM'`만.
+**After**: 분할 2개 이상이면 [nTM 요약행, 팀별 서브행…, ...historical]; 1개면 그 팀 약어 한 줄; 분할 없으면(싱글·로딩 전) 기존 그대로.
+
+**검증**: tsc 해당 파일 오류 없음. 브라우저 육안 확인은 미실시.
+
+**롤백**: PlayerDetailView의 careerRegular/careerPlayoff를 Before 형태로 복원, MultiPlayerDetailView의 훅·prop 제거. RPC는 `drop function public.get_player_team_splits(uuid, text);`
+
 ## 2026-10-26 — 대체 샐러리 리그: 미드래프트 당해 1라운드 루키를 일반 FA로 협상
 
 **배경**: contract_mode 'alternative' 리그(Test League/NBA Active/PBL, 시즌 2026)에서 리그 드래프트에 안 뽑힌 2026 1라운드 루키(예: NBA Active 17·19·23·25~30픽 등)를 FA로 영입할 수 없다는 신고. 협상 화면이 `draftRound===1 && draftYear===현재시즌`이면 계약 유형을 루키 스케일로 강제 → 연봉은 실제 NBA 픽 스케일(17픽 2.26%×최대 120% ≈ 캡 2.7%)·4년 고정, 캡%/연수 입력 비활성화. 이 금액이 `buildMultiFADemand`의 walkAwaySalary보다 낮으면 `evaluateFAOffer`가 무조건 false, 그보다 높아도 롤 해시가 `seed+salary+years`라 같은 오퍼는 항상 같은 결과 → 한 번 거절되면 영원히 거절(배율 80~120%만 바꿀 수 있음). 실거래 로그상 루키 스케일 FA 체결은 3건뿐. 대체 리그는 실제 계약을 무시하는 리그라 루키 스케일이라는 계약 자체가 성립하지 않음.

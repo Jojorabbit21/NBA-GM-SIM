@@ -6,7 +6,9 @@ import { Player, PlayerStats, Team, Game } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 import { getPositionStars } from '../utils/positionRating';
 import { formatMoney } from '../utils/formatMoney';
-import { computeCareerAvg, statsToCareerRow, buildTeamAdvCtx, type TeamAdvCtx } from '../utils/careerStats';
+import { computeCareerAvg, statsToCareerRow, buildTeamAdvCtx, isMultiTeamLabel, type TeamAdvCtx } from '../utils/careerStats';
+import type { PlayerTeamSplits, PlayerTeamSplit } from '../hooks/usePlayerTeamSplits';
+import { buildGameLogSplits } from '../utils/gameLogSplits';
 import { getContractAav } from '../utils/contract';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
@@ -77,6 +79,8 @@ interface PlayerDetailViewProps {
     // 샷 차트 탭 — 이 선수의 개별 슛 이벤트(x/y 좌표, courtCoordinates.ts 기준 풀코트
     // x:0~94ft/y:0~50ft). d3-hexbin 밀도 히트맵(메인 샷 차트)의 원본 데이터.
     externalShotEvents?: any[];
+    // [2026-10-26] 멀티 전용 — 시즌 중 이적한 선수의 팀별 누적. 2개 팀 이상이면 기록 탭에 2TM/3TM 요약행 + 팀별 서브행으로 나눠 보여준다.
+    externalTeamSplits?: PlayerTeamSplits;
     // [2026-09-02] "수상 내역" 하단 "선수 이동 내역" 위젯 — 지정 시(현재 멀티플레이어만)에만
     // 렌더링되고, 미지정(싱글플레이어)이면 위젯 자체가 생략된다(externalGameLog와 동일한
     // "opt-in by presence" 패턴 — hideSections 방식과 달리 싱글에 아직 없는 데이터 소스라
@@ -165,20 +169,41 @@ const ZONE_STAT_KEYS: Record<string, { keyM: string; keyA: string }> = {};
 ZONE_TABLE.forEach(z => { ZONE_STAT_KEYS[z.key] = { keyM: z.keyM, keyA: z.keyA }; });
 
 // ── Game Log Columns (matches Traditional + DATE/OPP/RESULT) ──
-const GAME_LOG_COLS = [
+// 게임 로그 보기 방식 — Traditional(기본 박스) / Shooting(슈팅 상세) / Defense(수비 지표). 앞 3열(날짜·상대·결과)은 공통.
+type GameLogMode = 'trad' | 'shooting' | 'defense';
+const GAME_LOG_COMMON_COLS = [
     { key: 'date', label: 'DATE' }, { key: 'opp', label: 'OPP' }, { key: 'result', label: 'RESULT' },
-    { key: 'min', label: 'MIN' },
-    { key: 'pts', label: 'PTS' },
-    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
-    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
-    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
-    { key: 'ts%', label: 'TS%' },
-    { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' }, { key: 'reb', label: 'REB' },
-    { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' },
-    { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
-    { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
-    { key: 'pm', label: '+/-' },
 ];
+const GAME_LOG_MODE_COLS: Record<GameLogMode, { key: string; label: string }[]> = {
+    trad: [
+        { key: 'gs', label: 'GS' }, { key: 'min', label: 'MIN' }, { key: 'pts', label: 'PTS' },
+        { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' }, { key: 'reb', label: 'TREB' },
+        { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' },
+        { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+        { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
+        { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
+        { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
+        { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
+    ],
+    shooting: [
+        { key: 'min', label: 'MIN' }, { key: 'pts', label: 'PTS' },
+        { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
+        { key: '2pm', label: '2PM' }, { key: '2pa', label: '2PA' }, { key: '2p%', label: '2P%' },
+        { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
+        { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
+        { key: 'efg%', label: 'eFG%' }, { key: 'ts%', label: 'TS%' },
+        { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
+    ],
+    defense: [
+        { key: 'min', label: 'MIN' },
+        { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'ftov', label: 'TOVF' },
+        { key: 'dreb', label: 'DREB' }, { key: 'pf', label: 'PF' },
+        { key: 'cont', label: 'CONT' }, { key: 'dfgm', label: 'DFGM' }, { key: 'dfg%', label: 'DFG%' },
+        { key: 'ra', label: 'RA' }, { key: 'itp', label: 'ITP' }, { key: 'mid6', label: 'MID' },
+        { key: 'cnr', label: 'CNR' }, { key: 'wing', label: 'WING' }, { key: 'atb', label: 'ATB' },
+    ],
+};
+const gameLogCols = (mode: GameLogMode) => [...GAME_LOG_COMMON_COLS, ...GAME_LOG_MODE_COLS[mode]];
 
 // 능력치 막대 그래프에 단색 대신 그라데이션(등급 고유색 → 살짝 밝아진 톤)을 적용 — 등급
 // 구간별 색상 정체성은 시작점에 그대로 유지하면서 입체감을 준다.
@@ -436,50 +461,168 @@ const ShotBreakdownTable: React.FC<{
 );
 
 // ── Game log cell builder ──
-function buildGameLogCells(g: any): { val: string; color?: string }[] {
+function buildGameLogCells(g: any, mode: GameLogMode, avg = false): { val: string; color?: string }[] {
     const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
     const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
     const won = g.teamScore > g.opponentScore;
     const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
-    const fgPct = g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(1) + '%' : '-';
-    const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a * 100).toFixed(1) + '%' : '-';
-    const ftPct = g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(1) + '%' : '-';
-    const tsa = g.fga + 0.44 * (g.fta || 0);
-    const tsPct = tsa > 0 ? ((g.pts || 0) / (2 * tsa) * 100).toFixed(1) + '%' : '-';
-    const pmVal = g.plusMinus || 0;
-    const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
-
-    return [
+    const common = [
         { val: dateStr },
         { val: oppLabel },
         { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
-        { val: String(Math.round(g.mp || 0)) },
-        { val: String(g.pts || 0) },
-        { val: String(g.fgm || 0) }, { val: String(g.fga || 0) }, { val: fgPct },
-        { val: String(g.p3m || 0) }, { val: String(g.p3a || 0) }, { val: p3Pct },
-        { val: String(g.ftm || 0) }, { val: String(g.fta || 0) }, { val: ftPct },
-        { val: tsPct },
-        { val: String(g.offReb || 0) },
-        { val: String(g.defReb || 0) },
-        { val: String(g.reb || 0) },
-        { val: String(g.ast || 0) },
-        { val: String(g.stl || 0) },
-        { val: String(g.blk || 0) },
-        { val: String(g.tov || 0) },
-        { val: String(g.pf || 0) },
-        { val: String(g.techFouls || 0) },
-        { val: String(g.flagrantFouls || 0) },
-        { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
+    ];
+    const n = (k: string) => Number(g[k]) || 0;
+    // avg=true는 합계행/평균행용 — 개수형 스탯을 소수 1자리로
+    const fv = (v: number) => (avg ? v.toFixed(1) : String(v));
+    const f = (k: string) => fv(n(k));
+    const has = (k: string) => g[k] != null;
+    const pctS = (m: number, a: number) => (a > 0 ? (m / a * 100).toFixed(1) + '%' : '-');
+    // 예전 경기엔 없을 수 있는 필드는 비어 있으면 '-'
+    const cnt = (k: string) => (has(k) ? f(k) : '-');
+    const min = { val: avg ? n('mp').toFixed(1) : String(Math.round(n('mp'))) };
+
+    if (mode === 'shooting') {
+        const fg2m = n('fgm') - n('p3m'), fg2a = n('fga') - n('p3a');
+        const tsa = n('fga') + 0.44 * n('fta');
+        return [...common, min,
+            { val: f('pts') },
+            { val: f('fgm') }, { val: f('fga') }, { val: pctS(n('fgm'), n('fga')) },
+            { val: fv(fg2m) }, { val: fv(fg2a) }, { val: pctS(fg2m, fg2a) },
+            { val: f('p3m') }, { val: f('p3a') }, { val: pctS(n('p3m'), n('p3a')) },
+            { val: f('ftm') }, { val: f('fta') }, { val: pctS(n('ftm'), n('fta')) },
+            { val: n('fga') > 0 ? ((n('fgm') + 0.5 * n('p3m')) / n('fga') * 100).toFixed(1) + '%' : '-' },
+            { val: tsa > 0 ? (n('pts') / (2 * tsa) * 100).toFixed(1) + '%' : '-' },
+            { val: n('fga') > 0 ? (n('p3a') / n('fga') * 100).toFixed(1) + '%' : '-' },
+            { val: n('fga') > 0 ? (n('fta') / n('fga') * 100).toFixed(1) + '%' : '-' },
+        ];
+    }
+
+    if (mode === 'defense') {
+        // 구역 수비: "상대 성공/내가 수비한 시도". 기록이 없는 경기는 '-'
+        const zone = (z: string) => (has(`def${z}Attempted`) ? `${f(`def${z}Made`)}/${f(`def${z}Attempted`)}` : '-');
+        return [...common, min,
+            { val: f('stl') }, { val: f('blk') }, { val: cnt('tovForced') },
+            { val: f('defReb') }, { val: f('pf') },
+            { val: cnt('contestedAttempted') }, { val: cnt('contestedMade') },
+            { val: has('contestedAttempted') ? pctS(n('contestedMade'), n('contestedAttempted')) : '-' },
+            { val: zone('RA') }, { val: zone('ITP') }, { val: zone('MID') },
+            { val: zone('CNR') }, { val: zone('WING') }, { val: zone('ATB') },
+        ];
+    }
+
+    return [...common,
+        { val: avg ? '-' : has('gs') ? (n('gs') > 0 ? '1' : '0') : '-' },
+        min,
+        { val: f('pts') },
+        { val: f('offReb') }, { val: f('defReb') }, { val: f('reb') },
+        { val: f('ast') }, { val: f('stl') }, { val: f('blk') },
+        { val: f('tov') }, { val: f('pf') },
+        { val: f('fgm') }, { val: f('fga') }, { val: pctS(n('fgm'), n('fga')) },
+        { val: f('p3m') }, { val: f('p3a') }, { val: pctS(n('p3m'), n('p3a')) },
+        { val: f('ftm') }, { val: f('fta') }, { val: pctS(n('ftm'), n('fta')) },
+        { val: f('techFouls') }, { val: f('flagrantFouls') },
     ];
 }
 
+const GAME_LOG_SUMMARY_KEYS = ['mp', 'gs', 'pts', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta', 'offReb', 'defReb', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf',
+    'techFouls', 'flagrantFouls', 'tovForced', 'contestedAttempted', 'contestedMade',
+    ...['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'].flatMap(z => [`def${z}Attempted`, `def${z}Made`])];
+
+/** 게임 로그 하단 합계/평균 행. 개수형은 합(평균은 경기 수로 나눔), 슈팅%는 합계로 다시 계산(경기 평균의 평균이 아님). */
+function buildGameLogSummaryCells(gameLog: any[], mode: GameLogMode, kind: 'total' | 'avg'): { val: string; color?: string }[] {
+    const gp = gameLog.length;
+    const synth: Record<string, any> = { date: null, opponentId: '', teamScore: 0, opponentScore: 0 };
+    for (const k of GAME_LOG_SUMMARY_KEYS) {
+        if (!gameLog.some(r => r[k] != null)) continue; // 예전 경기에 없던 필드는 '-' 유지
+        const sum = gameLog.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+        synth[k] = kind === 'avg' ? sum / gp : sum;
+    }
+    const cells = buildGameLogCells(synth, mode, kind === 'avg');
+    const wins = gameLog.filter(r => r.teamScore > r.opponentScore).length;
+    // Traditional의 GS 열(공통 3열 바로 뒤)은 합계 행에선 선발 경기 수, 평균 행에선 '-'
+    if (mode === 'trad' && synth.gs != null) cells[3] = { val: kind === 'total' ? String(synth.gs) : '-' };
+    cells[0] = { val: kind === 'total' ? '합계' : '평균' };
+    cells[1] = { val: `${gp}경기` };
+    cells[2] = { val: `${wins}승 ${gp - wins}패` };
+    return cells;
+}
+
+const GAME_LOG_HEADER_HEIGHT = 32; // TableHead(compact) 기본 행 높이 h-8
+const GAME_LOG_FOOTER_ROWS = 2; // 합계 + 평균
 const ROW_HEIGHT = 36; // text-sm(20px 라인하이트) + py-2(16px) — text-xs(32px)에서 상향
 const OVERSCAN = 5;
 
 // 지그재그 행 배경 — 홀수 행만 살짝 밝게
 const ZEBRA_ROW_STYLE: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.02)' };
 
-const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; onGameClick?: (gameId: string) => void }> = React.memo(({ gameLog, gameLogLoading, teamId, onGameClick }) => {
+// ── 게임 로그 탭의 스플릿 표 — 정규시즌 경기를 홈/원정·승/패·월별·상대팀별·최근 N경기로 나눈 평균 ──
+/** 스플릿 한 줄의 셀 — 게임 로그의 평균 행과 같은 계산·열(보기 방식별). GS는 평균이 아니라 선발 수. 경기가 없으면 구분만 채운다. */
+function buildSplitCells(line: { label: string; games: any[]; gp: number; w: number; l: number }, mode: GameLogMode): string[] {
+    if (line.gp === 0) return [line.label, ...Array(2 + GAME_LOG_MODE_COLS[mode].length).fill('')];
+    const cells = buildGameLogSummaryCells(line.games, mode, 'avg').slice(3).map(c => c.val);
+    if (mode === 'trad') cells[0] = String(line.games.filter(g => Number(g.gs) > 0).length);
+    return [line.label, String(line.gp), `${line.w}-${line.l}`, ...cells];
+}
+
+const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: string[] }> = React.memo(({ gameLog, opponentIds }) => {
+    const [mode, setMode] = useState<GameLogMode>('trad');
+    const groups = useMemo(() => buildGameLogSplits(gameLog, opponentIds), [gameLog, opponentIds]);
+    const headers = useMemo(() => ['구분', 'G', 'W-L', ...GAME_LOG_MODE_COLS[mode].map(c => c.label)], [mode]);
+    if (groups.length === 0) return <EmptyState title="스플릿을 계산할 정규시즌 경기가 없습니다" />;
+    let zebra = -1; // 그룹과 상관없이 데이터 행 전체에 지그재그(커리어 표와 동일 방식)
+    return (
+        <div className="flex flex-col h-full min-h-0">
+            <SectionHeader title="스플릿" className="bg-slate-900">
+                <SegmentedControl<GameLogMode>
+                    size="sm"
+                    aria-label="스플릿 보기"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                        { value: 'trad', label: 'Traditional' },
+                        { value: 'shooting', label: 'Shooting' },
+                        { value: 'defense', label: 'Defense' },
+                    ]}
+                />
+            </SectionHeader>
+            {/* 표 영역이 스스로 스크롤(남은 높이를 채움) → 헤더 행이 위에 고정된다 */}
+            <Table variant="bare" density="compact" className="text-sm flex-1 min-h-0 !overflow-auto custom-scrollbar">
+                <TableHead className="sticky top-0 z-40">
+                    {headers.map((label, i) => (
+                        <TableHeaderCell key={label} align="left" stickyLeft={i === 0 ? 0 : undefined}>{label}</TableHeaderCell>
+                    ))}
+                </TableHead>
+                <TableBody>
+                    {groups.map(grp => (
+                        <React.Fragment key={grp.title}>
+                            {/* 그룹 제목 행 — 커리어 표와 같은 공용 TableRow/TableCell, 배경만 헤더 톤으로 구분 */}
+                            <TableRow className="hover:!bg-transparent">
+                                <TableCell align="left" colSpan={headers.length} className="font-bold text-slate-400 bg-slate-800/40">{grp.title}</TableCell>
+                            </TableRow>
+                            {grp.lines.map(line => {
+                                zebra++;
+                                return (
+                                    <TableRow key={line.label} style={zebra % 2 !== 0 ? ZEBRA_ROW_STYLE : undefined}>
+                                        {buildSplitCells(line, mode).map((val, ci) => (
+                                            <TableCell key={ci} align="left" stickyLeft={ci === 0 ? 0 : undefined}
+                                                className={`tabular-nums ${ci === 0 ? 'font-bold text-slate-300' : ''}`}>
+                                                {val}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                );
+                            })}
+                        </React.Fragment>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
+    );
+});
+
+
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string; mode: GameLogMode; onGameClick?: (gameId: string) => void }> = React.memo(({ gameLog, gameLogLoading, teamId, mode, onGameClick }) => {
+    const cols = useMemo(() => gameLogCols(mode), [mode]);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(0);
@@ -498,12 +641,16 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
 
     const processedRows = useMemo(() => {
         if (!gameLog || gameLog.length === 0) return [];
-        return gameLog.map((g: any) => buildGameLogCells(g));
-    }, [gameLog]);
+        return gameLog.map((g: any) => buildGameLogCells(g, mode));
+    }, [gameLog, mode]);
 
     const totalRows = processedRows.length;
-    const headerHeight = ROW_HEIGHT; // thead height
-    const totalHeight = headerHeight + totalRows * ROW_HEIGHT;
+    const headerHeight = GAME_LOG_HEADER_HEIGHT; // thead height (compact 기본 헤더 행 h-8)
+    const totalHeight = headerHeight + totalRows * ROW_HEIGHT + GAME_LOG_FOOTER_ROWS * ROW_HEIGHT;
+    const footerRows = useMemo(
+        () => (gameLog && gameLog.length > 0 ? [buildGameLogSummaryCells(gameLog, mode, 'total'), buildGameLogSummaryCells(gameLog, mode, 'avg')] : []),
+        [gameLog, mode],
+    );
 
     // visible range (account for sticky header)
     const scrollOffset = Math.max(0, scrollTop - headerHeight);
@@ -527,19 +674,18 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                         {/* compact 밀도 + 행 높이 ROW_HEIGHT 고정(가상 스크롤 오프셋 계산과 일치). 첫 열 헤더만 가로 스크롤 고정.
                             text-sm: 셀이 글자 크기를 지정하지 않아 페이지 기본 16px을 상속하던 것(ROW_HEIGHT 36은 14px/20px 기준). */}
                         <Table variant="bare" density="compact" className="text-sm">
-                            <TableHead noRow className="sticky top-0 z-40">
-                                <tr style={{ height: ROW_HEIGHT }}>
-                                    {GAME_LOG_COLS.map((c, i) => (
-                                        <TableHeaderCell key={c.key} stickyLeft={i === 0 ? 0 : undefined}>
-                                            {c.label}
-                                        </TableHeaderCell>
-                                    ))}
-                                </tr>
+                            {/* 커리어·스플릿 표와 같은 기본 헤더 행(TableHead가 행·글자색·굵기를 제공), 왼쪽 정렬 */}
+                            <TableHead className="sticky top-0 z-40">
+                                {cols.map((c, i) => (
+                                    <TableHeaderCell key={c.key} align="left" stickyLeft={i === 0 ? 0 : undefined}>
+                                        {c.label}
+                                    </TableHeaderCell>
+                                ))}
                             </TableHead>
                             <TableBody>
                                 {/* top spacer */}
                                 {startIdx > 0 && (
-                                    <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
+                                    <tr><td colSpan={cols.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
                                 {processedRows.slice(startIdx, endIdx).map((cells, vi) => {
                                     const rowGameId = gameLog?.[startIdx + vi]?.gameId as string | undefined;
@@ -549,7 +695,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                             const isResultCell = ci === 2;
                                             const clickable = isResultCell && !!onGameClick && !!rowGameId;
                                             return (
-                                            <TableCell key={ci} className="tabular-nums">
+                                            <TableCell key={ci} align="left" className="tabular-nums">
                                                 {clickable ? (
                                                     <button
                                                         onClick={() => onGameClick!(rowGameId!)}
@@ -570,9 +716,25 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                 })}
                                 {/* bottom spacer */}
                                 {endIdx < totalRows && (
-                                    <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: (totalRows - endIdx) * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
+                                    <tr><td colSpan={cols.length} style={{ height: (totalRows - endIdx) * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
                                 )}
                             </TableBody>
+                            <TableFoot>
+                                {footerRows.map((cells, fi) => (
+                                    <tr key={fi} style={{ height: ROW_HEIGHT }}>
+                                        {cells.map((cell, ci) => (
+                                            <TableCell
+                                                key={ci}
+                                                align="left"
+                                                stickyLeft={ci === 0 ? 0 : undefined}
+                                                className={`text-white tabular-nums ${ci === 0 ? 'font-bold' : ''} ${fi === 0 ? 'border-t border-t-slate-700' : ''}`}
+                                            >
+                                                {cell.val}
+                                            </TableCell>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </TableFoot>
                         </Table>
                     </div>
                 )}
@@ -581,7 +743,29 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
     );
 });
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTransactionHistory, onGameClick, newsSlot, condition }) => {
+/**
+ * [2026-10-26] 이번 시즌(시뮬) 기록 행을 만든다. 팀별 분할이 2개 이상이면 'nTM' 요약행(시즌 전체 합) 뒤에
+ * 팀별 서브행을 붙인다 — 커리어 기록의 이적 시즌 표시와 같은 형태라 computeCareerAvg가 서브행만 집계한다.
+ * 분할이 1개면 그 팀 약어로 한 줄, 분할 정보가 없으면(싱글·로딩 전) 기존 단일 행 그대로.
+ * 요약행/서브행은 팀 맥락(ctx)이 없어 USG%·AST% 등 팀 비중 지표는 비운다(기존 ctx는 현재 소속팀 기준이라 이적 선수에겐 틀림).
+ */
+function expandTeamSplitRows(
+    baseRow: Record<string, any> | null,
+    splits: PlayerTeamSplit[] | undefined,
+    totalStats: PlayerStats | undefined,
+    season: string,
+    age: number,
+    playoff: boolean,
+): Record<string, any>[] {
+    if (!baseRow) return [];
+    if (!splits || splits.length === 0 || !totalStats) return [baseRow];
+    if (splits.length === 1) return [{ ...baseRow, team: splits[0].teamId.toUpperCase() }];
+    const summary = statsToCareerRow(totalStats, season, `${splits.length}TM`, age, playoff);
+    const subs = splits.map(sp => statsToCareerRow(sp.stats, season, sp.teamId.toUpperCase(), age, playoff));
+    return [summary, ...subs];
+}
+
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, condition }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -709,6 +893,23 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const { data: internalGameLog, isLoading: internalGameLogLoading } = usePlayerGameLog(player.id, teamId);
     const gameLog        = externalGameLog !== undefined ? externalGameLog         : internalGameLog;
     const gameLogLoading = externalGameLogLoading !== undefined ? externalGameLogLoading  : internalGameLogLoading;
+    // 게임 로그 탭 시즌 선택 — 세션에서 경기를 치른 시즌만 고를 수 있다. 행에 season이 없으면(멀티: 단일 시즌 방) 현재 시즌으로 본다.
+    const [gameLogSeason, setGameLogSeason] = useState<string | null>(null);
+    const [gameLogMode, setGameLogMode] = useState<GameLogMode>('trad');
+    const rowSeason = useCallback((r: any): string => shortenSeasonLabel(r?.season ?? seasonShort), [seasonShort]);
+    const gameLogSeasons = useMemo(() => {
+        const set = new Set<string>([seasonShort, ...(gameLog ?? []).map(rowSeason)]);
+        return [...set].sort((a, b) => b.localeCompare(a));
+    }, [gameLog, rowSeason, seasonShort]);
+    const selectedGameLogSeason = gameLogSeason && gameLogSeasons.includes(gameLogSeason) ? gameLogSeason : seasonShort;
+    const seasonGameLog = useMemo(() => (gameLog ?? []).filter(r => rowSeason(r) === selectedGameLogSeason), [gameLog, rowSeason, selectedGameLogSeason]);
+    // 스플릿은 현재 시즌 경기만(과거 시즌이 섞이지 않게)
+    const currentSeasonGameLog = useMemo(() => (gameLog ?? []).filter(r => rowSeason(r) === seasonShort), [gameLog, rowSeason, seasonShort]);
+    // 스플릿 "상대팀별"에 빈 줄까지 채울 리그 전체 팀(현재 소속팀 제외). allTeams가 없으면 상대한 팀만 나온다.
+    const splitOpponentIds = useMemo(
+        () => allTeams?.map(t => t.id).filter(id => id.toLowerCase() !== (teamId ?? '').toLowerCase()),
+        [allTeams, teamId],
+    );
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
@@ -1008,12 +1209,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     // — 안 그러면 뒤로가기를 탭 클릭 횟수만큼 눌러야 이전 화면으로 돌아가는 문제가 생긴다.
     const [searchParams, setSearchParams] = useSearchParams();
     const tabParam = searchParams.get('tab');
-    const activeTab: 'profile' | 'records' | 'shotchart' | 'news' =
-        tabParam === 'records' || tabParam === 'shotchart' || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
+    // 'records'는 기록 탭을 커리어/게임 로그로 나누기 전 링크 호환용 — 커리어로 연다.
+    const activeTab: 'profile' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'news' =
+        tabParam === 'records' ? 'career' :
+        tabParam === 'career' || tabParam === 'gamelog' || tabParam === 'splits' || tabParam === 'shotchart' || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
     const setActiveTab = useCallback((tab: string) => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
-            if (tab === 'records' || tab === 'shotchart' || tab === 'news') next.set('tab', tab);
+            if (tab === 'career' || tab === 'gamelog' || tab === 'splits' || tab === 'shotchart' || tab === 'news') next.set('tab', tab);
             else next.delete('tab');
             return next;
         }, { replace: true });
@@ -1043,8 +1246,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     // career_history에서 현재 시즌과 동일한 행이 있으면 제거 후 앞에 시뮬 행 삽입
     const careerRegular = useMemo(() => {
         const historical = (player.career_history ?? []).filter(r => !r.playoff && r.season !== seasonShort);
-        return simRegularRow ? [simRegularRow, ...historical] : historical;
-    }, [player.career_history, simRegularRow, seasonShort]);
+        const simRows = expandTeamSplitRows(simRegularRow, externalTeamSplits?.regular, player.stats, seasonShort, player.age, false);
+        return [...simRows, ...historical];
+    }, [player.career_history, player.stats, player.age, simRegularRow, seasonShort, externalTeamSplits]);
 
     // 헤더 "커리어" 스탯 라인 — career_history가 없는 선수(멀티플레이어)는 careerRegular에
     // 이번 시즌 한 행만 있어 "시즌" 줄과 값이 같아짐(멀티는 다중 시즌 이력이 없어 자연스러운 폴백).
@@ -1055,8 +1259,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
     const careerPlayoff = useMemo(() => {
         const historical = (player.career_history ?? []).filter(r => r.playoff && r.season !== seasonShort);
-        return simPlayoffRow ? [simPlayoffRow, ...historical] : historical;
-    }, [player.career_history, simPlayoffRow, seasonShort]);
+        const simRows = expandTeamSplitRows(simPlayoffRow, externalTeamSplits?.playoff, player.playoffStats, seasonShort, player.age, true);
+        return [...simRows, ...historical];
+    }, [player.career_history, player.playoffStats, player.age, simPlayoffRow, seasonShort, externalTeamSplits]);
 
     const hasCareerPlayoff = careerPlayoff.length > 0;
 
@@ -1314,7 +1519,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             <TabBar
                 tabs={[
                     { id: 'profile', label: '프로필' },
-                    { id: 'records', label: '기록' },
+                    { id: 'career', label: '커리어' },
+                    { id: 'gamelog', label: '게임 로그' },
+                    { id: 'splits', label: '스플릿' },
                     { id: 'shotchart', label: '샷 차트' },
                     ...(newsSlot !== undefined ? [{ id: 'news', label: '뉴스' }] : []),
                 ]}
@@ -1752,11 +1959,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 </div>
                 )}
 
-                {activeTab === 'records' && (
-                    <div className="flex flex-col gap-4">
+                {activeTab === 'career' && (
+                    <div className="flex flex-col gap-4 h-full min-h-0">
                         {/* ── 커리어 기록(시즌 기록) — 프로필 탭에서 이동 ── */}
                         {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
-                            <div>
+                            <div className="flex flex-col flex-1 min-h-0">
                                 <SectionHeader title="기록" className="bg-slate-900">
                                     <SegmentedControl<'regular' | 'playoff'>
                                         size="sm"
@@ -1764,8 +1971,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         value={careerMode}
                                         onChange={setCareerMode}
                                         options={[
-                                            { value: 'regular', label: '정규시즌' },
-                                            ...(hasCareerPlayoff ? [{ value: 'playoff' as const, label: '플레이오프' }] : []),
+                                            { value: 'regular', label: 'Regular' },
+                                            ...(hasCareerPlayoff ? [{ value: 'playoff' as const, label: 'Playoffs' }] : []),
                                         ]}
                                     />
                                     <SegmentedControl<'trad' | 'adv'>
@@ -1773,23 +1980,23 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         aria-label="기록 종류"
                                         value={careerTab}
                                         onChange={setCareerTab}
-                                        options={[{ value: 'trad', label: '기본' }, { value: 'adv', label: '어드밴스드' }]}
+                                        options={[{ value: 'trad', label: 'Traditional' }, { value: 'adv', label: 'Advanced' }]}
                                     />
                                 </SectionHeader>
                                 {(() => {
                                     const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
                                     const isPlayoffMode = careerMode === 'playoff';
                                     const rows = isPlayoffMode ? careerPlayoff : careerRegular;
-                                    const multiTeamSeasons = new Set(rows.filter(r => (r as any).team === '2TM').map(r => (r as any).season));
-                                    const nonTm = rows.filter(r => (r as any).team !== '2TM');
+                                    const multiTeamSeasons = new Set(rows.filter(r => isMultiTeamLabel((r as any).team)).map(r => (r as any).season));
+                                    const nonTm = rows.filter(r => !isMultiTeamLabel((r as any).team));
                                     const teamOrder: string[] = [];
                                     nonTm.forEach(r => { const t = (r as any).team; if (!teamOrder.includes(t)) teamOrder.push(t); });
                                     const avgRows = [...teamOrder.map(t => computeCareerAvg(nonTm.filter(r => (r as any).team === t), t)), computeCareerAvg(nonTm, '커리어')].filter(r => r.team);
                                     let groupIdx = -1;
                                     return (
                                         // 첫 열(시즌)만 가로 스크롤 고정. 2TM 시즌의 팀별 서브행은 흐리게 + 왼쪽 들여쓰기 선.
-                                        <Table variant="bare" dividers={false} className="text-sm">
-                                            <TableHead>
+                                        <Table variant="bare" density="compact" className="text-sm flex-1 min-h-0 !overflow-auto custom-scrollbar">
+                                            <TableHead className="sticky top-0 z-40">
                                                 {cols.map((col, i) => (
                                                     <TableHeaderCell key={col.key} align="left" stickyLeft={i === 0 ? 0 : undefined}>
                                                         {col.label}
@@ -1801,8 +2008,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                     const isCurrentSeason = String((row as any).season) === seasonShort;
                                                     const team = (row as any).team;
                                                     const season = (row as any).season;
-                                                    const isSubRow = multiTeamSeasons.has(season) && team !== '2TM';
-                                                    const isSummaryRow = team === '2TM';
+                                                    const isSubRow = multiTeamSeasons.has(season) && !isMultiTeamLabel(team);
+                                                    const isSummaryRow = isMultiTeamLabel(team);
                                                     if (!isSubRow) groupIdx++;
                                                     return (
                                                         <TableRow key={ri} style={groupIdx % 2 !== 0 ? ZEBRA_ROW_STYLE : undefined}>
@@ -1816,7 +2023,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                         key={col.key}
                                                                         align="left"
                                                                         stickyLeft={isSticky ? 0 : undefined}
-                                                                        className={`tabular-nums ${isSticky ? `font-bold ${stickyColor}` : ''} ${isSubRow ? 'opacity-60' : ''} ${isSubRow && isSticky ? 'border-l-2 border-l-slate-800 !pl-5' : ''} ${isSubRow && !isSticky ? 'text-white/65' : ''}`}
+                                                                        className={`tabular-nums ${isSticky ? `font-bold ${stickyColor}` : ''} ${isSubRow && isSticky ? 'border-l-2 border-l-slate-800 !pl-5' : ''}`}
                                                                     >
                                                                         {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
                                                                     </TableCell>
@@ -1851,19 +2058,65 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             </div>
                         )}
 
+                    </div>
+                )}
+
+                {activeTab === 'splits' && (
+                    <div className="flex flex-col gap-4 h-full min-h-0">
+                        {gameLogLoading ? <Spinner /> : <GameLogSplitsTable gameLog={currentSeasonGameLog} opponentIds={splitOpponentIds} />}
+                    </div>
+                )}
+
+                {activeTab === 'gamelog' && (
+                    <div className="flex flex-col gap-4">
                         {/* ── 최근 경기 ── */}
                         {!gameLogLoading && gameLog && gameLog.length > 0 ? <div>
-                            <SectionHeader title="최근 경기" className="bg-slate-900" />
-                            <div style={{ height: gameLog.length * ROW_HEIGHT + ROW_HEIGHT }} className="relative">
-                                <VirtualGameLog
-                                    gameLog={gameLog}
-                                    gameLogLoading={gameLogLoading}
-                                    teamId={teamId}
-                                    onGameClick={onGameClick}
+                            {/* 제목 자리를 시즌 선택 드롭다운으로 — 세션에서 경기를 치른 시즌만 나온다 */}
+                            <div className="px-6 py-3 flex items-center justify-between bg-slate-900">
+                                <Dropdown
+                                    align="left"
+                                    width="w-40"
+                                    trigger={
+                                        <button className="flex items-center gap-1.5 text-base font-black text-white hover:text-indigo-300 transition-colors">
+                                            <span>{selectedGameLogSeason} 시즌</span>
+                                            <ChevronDown size={14} className="opacity-60" />
+                                        </button>
+                                    }
+                                    items={gameLogSeasons.map(sn => ({
+                                        id: sn,
+                                        active: sn === selectedGameLogSeason,
+                                        label: <span className="text-sm">{sn} 시즌</span>,
+                                        onClick: () => setGameLogSeason(sn),
+                                    }))}
+                                />
+                                <SegmentedControl<GameLogMode>
+                                    size="sm"
+                                    aria-label="게임 로그 보기"
+                                    value={gameLogMode}
+                                    onChange={setGameLogMode}
+                                    options={[
+                                        { value: 'trad', label: 'Traditional' },
+                                        { value: 'shooting', label: 'Shooting' },
+                                        { value: 'defense', label: 'Defense' },
+                                    ]}
                                 />
                             </div>
+                            {seasonGameLog.length > 0 ? (
+                                <div style={{ height: seasonGameLog.length * ROW_HEIGHT + GAME_LOG_HEADER_HEIGHT + GAME_LOG_FOOTER_ROWS * ROW_HEIGHT }} className="relative">
+                                    <VirtualGameLog
+                                        key={selectedGameLogSeason}
+                                        mode={gameLogMode}
+                                        gameLog={seasonGameLog}
+                                        gameLogLoading={gameLogLoading}
+                                        teamId={teamId}
+                                        onGameClick={onGameClick}
+                                    />
+                                </div>
+                            ) : (
+                                <EmptyState title="이 시즌의 경기 기록이 없습니다" />
+                            )}
                         </div> : (
-                            <EmptyState title="최근 경기 기록이 없습니다" />
+                            <EmptyState title="경기 기록이 없습니다" />
                         )}
                     </div>
                 )}

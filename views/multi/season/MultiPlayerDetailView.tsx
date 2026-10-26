@@ -10,6 +10,7 @@ import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsL
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { usePlayerShotEvents } from '../../../hooks/usePlayerShotEvents';
+import { usePlayerTeamSplits } from '../../../hooks/usePlayerTeamSplits';
 import { usePlayerTransactionHistory } from '../../../hooks/usePlayerTransactionHistory';
 import { usePlayerCareerHistory } from '../../../hooks/usePlayerCareerHistory';
 import { usePlayerTendencies } from '../../../hooks/usePlayerTendencies';
@@ -161,6 +162,7 @@ const MultiPlayerDetailView: React.FC = () => {
         // schedule(Game[])의 .date 필드에 있으므로 game_id로 매칭해서 가져온다.
         const dateByGameId = new Map((schedule as Game[]).map(g => [g.id, g.date]));
         const otByGameId = new Map((schedule as Game[]).map(g => [g.id, g.otPeriods ?? 0]));   // [2026-10-26] 연장 경기 공개 지연
+        const playoffByGameId = new Map((schedule as Game[]).map(g => [g.id, !!g.isPlayoff]));   // 스플릿은 정규시즌만 집계
         const rows: any[] = [];
         for (const row of raw.pbpRows as any[]) {
             if (!isFinal({ scheduledAt: row.game_start_time, played: true, otPeriods: row.ot_periods ?? otByGameId.get(row.game_id) ?? 0 }, now)) continue;
@@ -178,7 +180,7 @@ const MultiPlayerDetailView: React.FC = () => {
                     isHome: side.isHome,
                     teamScore: side.teamScore,
                     opponentScore: side.opponentScore,
-                    isPlayoff: false,
+                    isPlayoff: playoffByGameId.get(row.game_id) ?? false,
                     ...bs,
                 });
             }
@@ -193,6 +195,8 @@ const MultiPlayerDetailView: React.FC = () => {
     // — room 전체 게임을 클라이언트로 끌고 와 필터링하면 시즌 전체 슛 데이터를 통째로
     // 전송하게 돼 너무 무겁다는 걸 확인하고 RPC 방식으로 교체함).
     const { data: playerShotEvents = [] } = usePlayerShotEvents(room?.id, playerId);
+    // 기록 탭 — 시즌 중 이적했다면 팀별로 나눠 2TM/3TM 요약행 + 서브행으로 표시
+    const { data: playerTeamSplits } = usePlayerTeamSplits(room?.id, playerId);
 
     // "선수 이동 내역" 위젯용 — 드래프트+성사된 트레이드(services/multi/playerHistoryService.ts).
     const { data: transactionHistory = [] } = usePlayerTransactionHistory(room?.id, playerId, leagueTeams);
@@ -329,6 +333,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalGameLog={playerGameLog}
             externalGameLogLoading={gameLogPending}
             externalShotEvents={playerShotEvents}
+            externalTeamSplits={playerTeamSplits}
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
             newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} />}
