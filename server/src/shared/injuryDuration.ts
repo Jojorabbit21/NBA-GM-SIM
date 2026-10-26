@@ -82,8 +82,9 @@ export async function resolveReturnDate(
             .eq('played', false)
             .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
             .order('game_seq', { ascending: true })
-            .limit(n);
-        const nth = (upcoming as any[] | null)?.[n - 1];
+            .limit(n + 1);
+        // return_date는 '그 날짜 경기부터 출전 가능'이므로 N경기를 쉬려면 (N+1)번째 경기 날짜여야 한다.
+        const nth = (upcoming as any[] | null)?.[n];
         if (nth?.game_date) return nth.game_date as string;
         // 폴백: 예정된 경기가 N개 미만이면(시즌 막바지 등) 대략적인 날짜로 근사.
         return addDays(occurredDate, n * 2);

@@ -33,6 +33,29 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 출장정지 N경기가 N-1경기만 쉬던 off-by-one 수정
+
+**배경**: NBA Active에서 1경기 출장정지를 받은 데빈 부커가 다음 경기에 그대로 출전. `resolveReturnDate`가 안 치른 경기 중 N번째 경기 날짜를 `return_date`로 저장하는데, 출전 판정(simRunner)은 `return_date > game_date`일 때만 부상으로 봐서 복귀일 경기는 정상 출전이었다.
+
+**변경 파일**:
+- `server/src/shared/injuryDuration.ts` (server 전용, 클라 미러 없음) — `resolveReturnDate`의 "N경기" 분기
+
+**Before**:
+```ts
+.limit(n);
+const nth = (upcoming as any[] | null)?.[n - 1];
+```
+
+**After**:
+```ts
+.limit(n + 1);
+const nth = (upcoming as any[] | null)?.[n];   // (N+1)번째 경기 날짜 = 복귀일
+```
+
+**검증**: 부커 행(발생 10-23, 1경기, return_date 10-26, last_game_date 10-26)으로 버그 재현 확인. 폴백(`addDays(occurredDate, n*2)`)은 그대로.
+
+**롤백 방법**: Before 블록으로 되돌리기. 이미 저장된 기존 정지 행의 return_date는 이 수정으로 바뀌지 않음(룸 8e594b57의 3경기 정지 1건이 아직 진행 중일 수 있음).
+
 ## 2026-10-26 — 드래프트 로터리/결과 뉴스 sim_date를 실제 날짜 → 가상 날짜로 수정
 
 **배경**: 뉴스 피드가 `sim_date`(인게임 날짜) 내림차순인데, 드래프트 순서 추첨 결과·드래프트 결과 뉴스만 `sim_date`에 실제 현실 날짜를 넣어 다른 뉴스보다 항상 최상단에 고정됐다.
