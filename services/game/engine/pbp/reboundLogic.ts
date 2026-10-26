@@ -41,7 +41,7 @@ export function calculateOrbChance(
     // 슬라이더 보정
     const sliderAdj =
         (offTeam.tactics.sliders.offReb - 5) * cfg.SLIDER_IMPACT
-      - (defTeam.tactics.sliders.defReb - 5) * cfg.SLIDER_IMPACT;
+      - (defTeam.tactics.sliders.defReb - 5) * (defTeam.tactics.sliders.defReb > 5 ? cfg.DEF_SLIDER_IMPACT_ABOVE_MID : cfg.SLIDER_IMPACT);
 
     return Math.max(cfg.MIN_ORB_RATE, Math.min(cfg.MAX_ORB_RATE,
         cfg.BASE_ORB_RATE + qualityAdj + sliderAdj));

@@ -1406,6 +1406,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         } else if (oppOffReb < drtCfg2.RETREAT_THRESHOLD) {
             defRebSuccessBonus = -(drtCfg2.RETREAT_THRESHOLD - oppOffReb) * drtCfg2.RETREAT_PENALTY_PER_LEVEL;
         }
+        // [2026-10-26] 트레이드오프 D — 우리 defReb>5(박스아웃 인원 추가)면 속공 출발이 늦어 성공률 감소
+        if (sliders.defReb > drtCfg2.BOXOUT_THRESHOLD) {
+            defRebSuccessBonus -= (sliders.defReb - drtCfg2.BOXOUT_THRESHOLD) * drtCfg2.BOXOUT_PENALTY_PER_LEVEL;
+        }
     }
 
     // [2026-10-24] 스크린 판정 (PnR 3종 + Handoff) — 슛 성공률 보너스로만 반영

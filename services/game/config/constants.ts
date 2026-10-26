@@ -322,6 +322,8 @@ export const SIM_CONFIG = {
         MIN_ORB_RATE: 0.12,           // 하한 (극단적 수비 우위)
         MAX_ORB_RATE: 0.38,           // 상한 (극단적 공격 리바 크래쉬)
         SLIDER_IMPACT: 0.012,         // 슬라이더 1포인트당 ORB% ±1.2%
+        // [2026-10-26] 수비 defReb 5 초과 구간 전용 — 1.2%p면 대가 없는 이득이라 절반으로 체감 (offReb·5 이하는 SLIDER_IMPACT)
+        DEF_SLIDER_IMPACT_ABOVE_MID: 0.006,
         QUALITY_FACTOR: 0.08,         // 팀 리바 능력 차이 반영 계수
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
         // [2026-07-31] TEAM_REB_RATE_FG/FT 제거 — 아웃오브바운즈/루스볼파울/쿼터종료 등 실제
@@ -425,6 +427,11 @@ export const SIM_CONFIG = {
         // 상대(우리) Transition hitRate 페널티. B와 대칭(같은 변수, 반대 방향, 동일 최대폭)
         RETREAT_PENALTY_PER_LEVEL: 0.05 / 4, // 최대 -5%p (상대offReb=1)
         RETREAT_THRESHOLD: 5,
+
+        // D. [2026-10-26] 박스아웃 페널티 — 우리 defReb>5면 리바운드에 인원을 더 남겨 속공 출발이 늦음.
+        // 우리 수비 리바운드로 시작한 Transition hitRate에 -(defReb-5) × 계수 (A·C의 위쪽 대칭)
+        BOXOUT_PENALTY_PER_LEVEL: 0.10 / 5, // 최대 -10%p (defReb=10)
+        BOXOUT_THRESHOLD: 5,
     },
     // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {

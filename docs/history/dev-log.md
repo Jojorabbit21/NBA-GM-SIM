@@ -33,6 +33,56 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 수비 리바운드 슬라이더 5 초과 구간 대가 신설 (박스아웃 체감 + 속공 페널티)
+
+**배경**: "defReb 5 이상은 손해 없이 이득만" 제보 확인. 박스아웃 효과(상대 ORB −1.2%p/단계)는 전 구간인데 대가(A 속공 빈도 보너스·C 체력)는 defReb<5에만 있었음. 하네스(HEAD 엔진, PBL 데이터, 10시즌·체력 이월, 10팀×3묶음) 측정: 5→10 시 상대 ORB −6.07%p, net +2.20/100(희석, 전원5 상대 환산 +3.2), 82경기당 +3.5승, 대가 0. PBL 유저 30팀 중 defReb<5 0팀.
+- 속공 페널티 단독(박스아웃 1.2%p 유지)은 손익분기 약 −21%p지만 저페이스 팀(수비리바 후 속공 슛 1.8회/경기)엔 효과 없어 팀별 −2.9~+3.4로 벌어짐 → 박스아웃 체감과 병행.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `REBOUND.DEF_SLIDER_IMPACT_ABOVE_MID`, `DEF_REB_TRANSITION.BOXOUT_PENALTY_PER_LEVEL`/`BOXOUT_THRESHOLD` 추가
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `services/game/engine/pbp/reboundLogic.ts` (client) / `server/src/shared/engine/pbp/reboundLogic.ts` (server 미러) — `calculateOrbChance()` sliderAdj
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — `simulatePossession()` defRebSuccessBonus 블록
+
+**Before**:
+```ts
+// reboundLogic.ts calculateOrbChance
+      - (defTeam.tactics.sliders.defReb - 5) * cfg.SLIDER_IMPACT;
+// possessionHandler.ts (defRebSuccessBonus)
+        } else if (oppOffReb < drtCfg2.RETREAT_THRESHOLD) {
+            defRebSuccessBonus = -(drtCfg2.RETREAT_THRESHOLD - oppOffReb) * drtCfg2.RETREAT_PENALTY_PER_LEVEL;
+        }
+    }
+// constants.ts — 새 키 없음
+```
+
+**After**:
+```ts
+// constants.ts REBOUND
+        DEF_SLIDER_IMPACT_ABOVE_MID: 0.006,   // defReb 5 초과 구간만 0.6%p/단계 (offReb·5 이하는 SLIDER_IMPACT 0.012 그대로)
+// constants.ts DEF_REB_TRANSITION
+        BOXOUT_PENALTY_PER_LEVEL: 0.10 / 5,   // 최대 -10%p (defReb=10)
+        BOXOUT_THRESHOLD: 5,
+// reboundLogic.ts
+      - (defTeam.tactics.sliders.defReb - 5) * (defTeam.tactics.sliders.defReb > 5 ? cfg.DEF_SLIDER_IMPACT_ABOVE_MID : cfg.SLIDER_IMPACT);
+// possessionHandler.ts — lastEntryWasDefReb && Transition 블록 안, RETREAT 분기 뒤
+        if (sliders.defReb > drtCfg2.BOXOUT_THRESHOLD) {
+            defRebSuccessBonus -= (sliders.defReb - drtCfg2.BOXOUT_THRESHOLD) * drtCfg2.BOXOUT_PENALTY_PER_LEVEL;
+        }
+```
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스 격자(defReb 10 팀, net 희석값 / 속공 적은·중간·많은 10팀):
+| 박스아웃(5 초과) | 페널티 | net | 승/82 | 느린/중간/빠른 | 팀 범위 |
+|---|---|---|---|---|---|
+| 1.2%p | 0 (Before) | +2.20 | +3.54 | 2.07/2.13/2.40 | 0.7~3.5 |
+| 0.6%p | 0 | +1.20 | +2.22 | 1.16/1.03/1.40 | −0.2~2.4 |
+| **0.6%p** | **−10%p (After)** | **+0.23±0.15** | **+0.31** | 0.98/−0.11/−0.19 | −1.5~1.9 |
+| 0.6%p | −15%p | −0.35 | −0.80 | 0.66/−0.77/−0.95 | −2.2~1.4 |
+| 0.8%p | −15%p | −0.02 | −0.10 | 1.01/−0.32/−0.73 | −1.9~2.2 |
+HEAD+이 변경 엔진과 측정용 하네스 엔진의 1시즌 결과 완전 동일 확인. 남은 한계: 저페이스 팀은 약 +1 잔여 이득(속공 쪽 대가를 거의 안 냄). 슬라이더 툴팁 문구(`sliderSteps.ts`)는 미변경.
+
+**롤백 방법**: 위 Before로 6개 파일(client 3 + server 미러 3) 모두 되돌리고 새 상수 3개 삭제. 미러 한쪽만 되돌리지 말 것. 서버는 커밋·푸시 후 `scripts/deploy-server.sh`로 배포해야 반영됨.
+
 ## 2026-10-26 — 커리어 탭 셀렉터 라벨 영문화
 
 **변경 파일**: `views/PlayerDetailView.tsx` — 정규시즌/플레이오프 → `Regular`/`Playoffs`, 기본/어드밴스드 → `Traditional`/`Advanced`.
