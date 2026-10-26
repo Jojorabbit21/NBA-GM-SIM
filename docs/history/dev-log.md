@@ -33,6 +33,35 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 파워랭킹 월 경계를 실제 KST 월 → 가상 캘린더 월로 수정
+
+**배경**: 메인리그는 시즌을 약 8일에 압축 방송하는데, 파워랭킹 트리거(`advanceSimDates`)가 `rooms.sim_date`(= 실제 KST 방송일) 월 변경을 감지해서, 가상 월이 7~8번 바뀌는 동안 실제 월은 안 바뀌어 `power_ranking` 이벤트가 한 번도 게시되지 않았다(11/1 KST에야 처음 발동 예정이었음).
+
+**변경 파일**:
+- `server/src/scheduler.ts` (`advanceSimDates`, 서버 전용 — 클라 미러 없음)
+- `server/src/postPowerRankingNews.ts` (헤더 주석만)
+
+**Before**:
+```ts
+// ② select('room_id, scheduled_at') → nextByRoom만 구성
+// rooms에서 sim_date/season_number를 prevStateByRoom으로 읽고, candidateRoomIds(방송 시각이 지난 경기를 전부 소화한 방)마다:
+const prevMonth = prev?.simDate ? prev.simDate.slice(0, 7) : null;
+const nextMonth = nextDate.slice(0, 7);          // nextDate = kstDateFromMs(다음 경기 scheduled_at)
+if (prevMonth !== nextMonth) monthBoundaryRooms.push({ ..., month: nextMonth });
+```
+
+**After**:
+```ts
+// ② select('room_id, league_id, scheduled_at, game_date') → nextVirtualMonthByRoom[room] = 다음 미실행 경기의 game_date 월
+// league_events(type='power_ranking')에서 방별 마지막 게시 payload.month를 읽어,
+// 다음 가상 월 > 마지막 게시 월(또는 게시 이력 없음)이면 monthBoundaryRooms에 추가 → recomputeAndPostPowerRankings
+// rooms.sim_date 갱신 루프는 그대로(월 판정과 분리). 방송 시각이 지난 경기가 남은(blocked) 방도 판정 대상.
+```
+
+**검증**: `tsc --noEmit`에서 scheduler.ts/postPowerRankingNews.ts 신규 오류 없음(기존 578·621행 오류는 무관). DB 확인: NBA Active(played 0, 가상 10월 76경기 오늘 10:02 UTC 시작) 배포 후 첫 tick에 가상 2026-10 파워랭킹 게시되어야 함.
+
+**롤백 방법**: 이 변경 커밋을 revert 후 `scripts/deploy-server.sh`. 이미 게시된 `power_ranking` 이벤트는 `delete from league_events where type='power_ranking'`로 정리 가능(수정 전엔 0건이었음).
+
 ## 2026-10-26 — 수비 리바운드 슬라이더 5 초과 구간 대가 신설 (박스아웃 체감 + 속공 페널티)
 
 **배경**: "defReb 5 이상은 손해 없이 이득만" 제보 확인. 박스아웃 효과(상대 ORB −1.2%p/단계)는 전 구간인데 대가(A 속공 빈도 보너스·C 체력)는 defReb<5에만 있었음. 하네스(HEAD 엔진, PBL 데이터, 10시즌·체력 이월, 10팀×3묶음) 측정: 5→10 시 상대 ORB −6.07%p, net +2.20/100(희석, 전원5 상대 환산 +3.2), 82경기당 +3.5승, 대가 0. PBL 유저 30팀 중 defReb<5 0팀.

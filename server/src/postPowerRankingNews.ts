@@ -1,8 +1,9 @@
 
 /**
- * postPowerRankingNews.ts — 매월 초(가상 시즌 날짜 기준) 파워랭킹을 재계산해 league_events에
- * 뉴스로 게시한다. scheduler.ts의 advanceSimDates()가 방(room)의 sim_date 월(YYYY-MM)이
- * 바뀌는 걸 감지하면 이 함수를 호출한다.
+ * postPowerRankingNews.ts — 매월 초(가상 시즌 캘린더 기준) 파워랭킹을 재계산해 league_events에
+ * 뉴스로 게시한다. scheduler.ts의 advanceSimDates()가 "다음 미실행 경기의 games.game_date 월"이
+ * 마지막 게시 월(league_events power_ranking payload.month)보다 앞서는 걸 감지하면 이 함수를 호출한다.
+ * (rooms.sim_date는 실제 KST 방송일이라 월 판정에 쓰지 않는다.)
  *
  * 서버 전용 — 클라이언트 미러 없음(DB 조회+insert 오케스트레이션이라 클라에 대응물이 없음).
  * 계산 로직 자체(calculatePreseasonPowerRankings)는 server/src/shared/multi/powerRanking.ts

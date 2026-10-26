@@ -826,50 +826,65 @@ async function advanceSimDates(leagueIds: string[], today: string): Promise<void
     // ② 방별 다음 미실행 경기 시각 (scheduled_at 오름차순 → 방마다 첫 row가 next)
     const { data: upcoming } = await supabase
         .from('games')
-        .select('room_id, scheduled_at')
+        .select('room_id, league_id, scheduled_at, game_date')
         .in('league_id', leagueIds)
         .eq('played', false)
         .order('scheduled_at', { ascending: true });
 
     const nextByRoom = new Map<string, string>();
+    // 방별 "다음 미실행 경기의 가상 캘린더 월(YYYY-MM)" — 파워랭킹 월 경계 판정용.
+    // rooms.sim_date는 실제 KST 방송일이라 압축 시즌에서 가상 월과 무관하다.
+    const nextVirtualMonthByRoom = new Map<string, { leagueId: string; month: string }>();
     for (const r of upcoming ?? []) {
-        if (r.scheduled_at && !nextByRoom.has(r.room_id)) nextByRoom.set(r.room_id, r.scheduled_at);
-    }
-
-    // 실제로 전진할 후보 방들의 "현재" sim_date/season_number를 미리 읽어둔다 — 월 경계
-    // (예: 2026-10 → 2026-11) 감지에 이전 값이 필요한데, 기존 코드는 .neq() 조건만으로
-    // UPDATE했을 뿐 이전 값을 조회하지 않았다.
-    const candidateRoomIds = [...hasDue].filter(id => !blocked.has(id));
-    const prevStateByRoom = new Map<string, { simDate: string | null; seasonNumber: number | null }>();
-    if (candidateRoomIds.length > 0) {
-        const { data: roomRows } = await supabase
-            .from('rooms')
-            .select('id, sim_date, season_number')
-            .in('id', candidateRoomIds);
-        for (const r of roomRows ?? []) {
-            prevStateByRoom.set(r.id, { simDate: r.sim_date, seasonNumber: r.season_number });
+        if (r.scheduled_at && !nextByRoom.has(r.room_id)) {
+            nextByRoom.set(r.room_id, r.scheduled_at);
+            if (r.game_date && r.league_id) {
+                nextVirtualMonthByRoom.set(r.room_id, { leagueId: r.league_id, month: String(r.game_date).slice(0, 7) });
+            }
         }
     }
 
-    const monthBoundaryRooms: { roomId: string; leagueId: string; seasonNumber: number | null; month: string }[] = [];
+    // 실제로 전진할 후보 방들 + 파워랭킹 후보 방의 현재 season_number를 읽어둔다.
+    const candidateRoomIds = [...hasDue].filter(id => !blocked.has(id));
+    const rankRoomIds = [...nextVirtualMonthByRoom.keys()];
+    const seasonByRoom = new Map<string, number | null>();
+    const roomIdsToRead = [...new Set([...candidateRoomIds, ...rankRoomIds])];
+    if (roomIdsToRead.length > 0) {
+        const { data: roomRows } = await supabase
+            .from('rooms')
+            .select('id, season_number')
+            .in('id', roomIdsToRead);
+        for (const r of roomRows ?? []) seasonByRoom.set(r.id, r.season_number);
+    }
 
     for (const roomId of candidateRoomIds) {
         const nextAt   = nextByRoom.get(roomId);
         const nextDate = nextAt ? kstDateFromMs(new Date(nextAt).getTime()) : today;
-        const prev = prevStateByRoom.get(roomId);
         // 값이 안 바뀌면 쓰지 않는다 — 매 tick마다 무조건 쓰면 그때마다 rooms Realtime UPDATE가
         // 전 접속자에게 불필요하게 브로드캐스트된다.
         await supabase.from('rooms').update({ sim_date: nextDate })
             .eq('id', roomId).neq('sim_date', nextDate);
+    }
 
-        // 가상 날짜의 월(YYYY-MM)이 바뀌면 "매월 초" 파워랭킹 재계산 트리거 — sim_date가
-        // 아직 한 번도 없던 방(시즌 첫 경기 직전)도 첫 달로 취급해 함께 게시한다.
-        const prevMonth = prev?.simDate ? prev.simDate.slice(0, 7) : null;
-        const nextMonth = nextDate.slice(0, 7);
-        if (prevMonth !== nextMonth) {
-            const leagueId = leagueIdByRoom.get(roomId);
-            if (leagueId) {
-                monthBoundaryRooms.push({ roomId, leagueId, seasonNumber: prev?.seasonNumber ?? null, month: nextMonth });
+    // 파워랭킹: 다음 미실행 경기의 가상 월이 "마지막으로 게시된 파워랭킹 월"보다 앞서면 게시.
+    // 마지막 게시 월을 DB(league_events)에서 읽으므로 tick을 놓치거나 서버가 재시작돼도
+    // 다음 tick에 따라잡고, 같은 월은 중복 게시되지 않는다.
+    const monthBoundaryRooms: { roomId: string; leagueId: string; seasonNumber: number | null; month: string }[] = [];
+    if (rankRoomIds.length > 0) {
+        const { data: prRows } = await supabase
+            .from('league_events')
+            .select('room_id, payload')
+            .eq('type', 'power_ranking')
+            .in('room_id', rankRoomIds);
+        const lastPostedMonth = new Map<string, string>();
+        for (const r of prRows ?? []) {
+            const m = (r as any).payload?.month;
+            if (typeof m === 'string' && m > (lastPostedMonth.get(r.room_id) ?? '')) lastPostedMonth.set(r.room_id, m);
+        }
+        for (const [roomId, { leagueId, month }] of nextVirtualMonthByRoom) {
+            const last = lastPostedMonth.get(roomId);
+            if (!last || month > last) {
+                monthBoundaryRooms.push({ roomId, leagueId, seasonNumber: seasonByRoom.get(roomId) ?? null, month });
             }
         }
     }
