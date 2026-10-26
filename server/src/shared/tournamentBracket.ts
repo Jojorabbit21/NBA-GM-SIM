@@ -329,7 +329,11 @@ export function advanceTournamentState(
     startDate: string,
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
     simRealStartAt?: string | null,
+    roundRestDays: number = 0,
 ): void {
+    // [2026-10-26] roundRestDays — 라운드 사이 휴식일(타임라인 메인리그 = season_calendar.postseasonRestDays).
+    // r+1라운드 시작 날짜를 r·roundRestDays일 뒤로 민다(2라운드 +1, 3라운드 +2, 파이널 +3). 기본 0 = 토너먼트·구 리그 그대로.
+    // game_seq/scheduledAt(구 리그 슬롯 방식)은 슬롯 기준 그대로 — 휴식일은 타임라인 리그에서만 넘긴다.
     const byId: Record<string, PlayoffSeries> = Object.fromEntries(series.map(s => [s.id, s]));
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
     const roundBaseSlots = computeRoundBaseSlots(maxRound, targetWins, finalsTargetWins);
@@ -351,8 +355,9 @@ export function advanceTournamentState(
                 const alreadyExists = schedule.some(g => g.seriesId === nextId);
                 if (!alreadyExists) {
                     const startSlot = roundBaseSlots[round + 1];
+                    const roundStartDate = roundRestDays > 0 ? offsetDate(startDate, round * roundRestDays) : startDate;
                     schedule.push(...generateAllSeriesGames(
-                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startSlot, intervalMinutes, simRealStartAt,
+                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, roundStartDate, startSlot, intervalMinutes, simRealStartAt,
                     ));
                 }
             }

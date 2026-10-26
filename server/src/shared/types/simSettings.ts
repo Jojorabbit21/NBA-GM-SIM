@@ -34,6 +34,12 @@ export interface SimSettings {
 
     // Server batch sim only: allow AI auto-timeouts for both home/away (unset=false; single/live keep skipping the user team)
     autoTimeoutAllTeams?: boolean;
+
+    // [2026-10-26] 연장전 — 4쿼터 동점이면 5분 연장(최대 2회, 그래도 동점이면 결승 공격). 미지정 = false = 기존
+    // 버저비터 방식. 멀티는 leagues.overtime_enabled를 simRunner/postAllStarGame이 주입 — 칼럼 기본값은 P3(경기별
+    // 공개 시각) 완료와 함께 2026-10-26 true로 변경(새 리그부터, 이전 리그는 false 유지). 싱글은 미지정(off) — P4 표시 작업 후 검토.
+    // docs/plan/overtime-system.md
+    overtimeEnabled?: boolean;
 }
 
 // ── Multiplayer fatigue defaults/ranges (mirror of types/simSettings.ts) ──

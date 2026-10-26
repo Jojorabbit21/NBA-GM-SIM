@@ -15,6 +15,7 @@
 import { Game } from '../types/game';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { assignDatesV2 } from './scheduleOptimizer';
+import { isB2BGapSafe } from './leagueTimeline';
 
 // ── 설정 인터페이스 ──
 
@@ -726,8 +727,124 @@ export function validateSchedule(
 
 // ── 메인 함수 ──
 
-/** 정렬된 (날짜, 매치업) 목록 → Game[] (경기 시각 배정 + 날짜·시간순 정렬). */
-function toGames(scheduled: { date: string; matchup: Matchup }[]): Game[] {
+/**
+ * [2026-10-26] B2B 간격 보정 — 같은 팀의 연속 이틀 경기가 "첫날 늦은 시각 + 둘째 날 이른 시각"이면
+ * 압축 타임라인에서 실제 간격이 짧아져, 첫날 경기 리플레이(연장 포함)가 끝나기 전에 같은 팀의 다음 경기가
+ * 시작될 수 있다(다음 경기 라인업에 전날 부상이 먼저 드러남). 날짜는 그대로 두고 시각만 옮긴다 — 첫날 경기를
+ * 앞당기거나 둘째 날 경기를 늦추는 후보 중 홈팀 기본 시각에서 가장 덜 벗어나는 것을 고르고, 옮긴 경기의 양 팀
+ * 앞뒤 B2B도 함께 만족해야 한다. 슬롯당 경기 수 상한은 후보가 없을 때만 넘긴다. 판정은
+ * leagueTimeline.isB2BGapSafe(리그 설정 전 조합의 최악 조건). 반환값 = 남은 위반 수(정상이면 0).
+ * docs/plan/overtime-system.md 2-6
+ */
+function enforceB2BGaps(games: Game[]): number {
+    const toMin = (t: string | undefined) => {
+        const [h, m] = (t ?? DEFAULT_TIME_SLOT).split(':').map(Number);
+        return h * 60 + m;
+    };
+    const homeSlot = (g: Game) => TEAM_TIME_SLOT[g.homeTeamId] ?? DEFAULT_TIME_SLOT;
+
+    // 경기별 B2B 직전/직후 경기 (양 팀 합산)
+    const byTeam = new Map<string, Game[]>();
+    for (const g of games) {
+        for (const t of [g.homeTeamId, g.awayTeamId]) {
+            if (!byTeam.has(t)) byTeam.set(t, []);
+            byTeam.get(t)!.push(g);
+        }
+    }
+    const prevOf = new Map<Game, Game[]>();
+    const nextOf = new Map<Game, Game[]>();
+    for (const g of games) { prevOf.set(g, []); nextOf.set(g, []); }
+    for (const list of byTeam.values()) {
+        list.sort((a, b) => a.date.localeCompare(b.date));
+        for (let i = 1; i < list.length; i++) {
+            if (addDays(list[i - 1].date, 1) !== list[i].date) continue;
+            nextOf.get(list[i - 1])!.push(list[i]);
+            prevOf.get(list[i])!.push(list[i - 1]);
+        }
+    }
+
+    const slotKey = (date: string, slot: string | undefined) => `${date}|${slot}`;
+    const slotCount = new Map<string, number>();
+    for (const g of games) slotCount.set(slotKey(g.date, g.time), (slotCount.get(slotKey(g.date, g.time)) ?? 0) + 1);
+
+    const fits = (g: Game, slot: string) =>
+        prevOf.get(g)!.every(p => isB2BGapSafe(p.time, slot))
+        && nextOf.get(g)!.every(n => isB2BGapSafe(slot, n.time));
+    const hasRoom = (g: Game, slot: string, allowOverCapacity: boolean) =>
+        allowOverCapacity || slot === g.time || (slotCount.get(slotKey(g.date, slot)) ?? 0) < MAX_GAMES_PER_SLOT;
+    const moveTo = (g: Game, slot: string) => {
+        if (slot === g.time) return;
+        const oldKey = slotKey(g.date, g.time);
+        slotCount.set(oldKey, (slotCount.get(oldKey) ?? 1) - 1);
+        g.time = slot;
+        const newKey = slotKey(g.date, slot);
+        slotCount.set(newKey, (slotCount.get(newKey) ?? 0) + 1);
+    };
+    const cost = (g: Game, slot: string) => Math.abs(toMin(slot) - toMin(homeSlot(g)));
+
+    for (let pass = 0; pass < 5; pass++) {
+        let changed = false;
+        for (const first of games) {
+            for (const second of nextOf.get(first)!) {
+                if (isB2BGapSafe(first.time, second.time)) continue;
+                // 1) 한 경기만 옮기기 — 첫날 경기는 앞당기기만, 둘째 날 경기는 늦추기만
+                let single: { g: Game; slot: string; cost: number } | null = null;
+                for (const allowOverCapacity of [false, true]) {
+                    for (const slot of TIME_SLOTS) {
+                        for (const g of [first, second]) {
+                            if (g === first ? toMin(slot) >= toMin(first.time) : toMin(slot) <= toMin(second.time)) continue;
+                            if (!hasRoom(g, slot, allowOverCapacity) || !fits(g, slot)) continue;
+                            const c = cost(g, slot);
+                            if (!single || c < single.cost) single = { g, slot, cost: c };
+                        }
+                    }
+                    if (single) break;
+                }
+                if (single) {
+                    moveTo(single.g, single.slot);
+                    changed = true;
+                    continue;
+                }
+                // 2) 양쪽 다 다른 B2B에 묶여 한쪽만으로는 안 될 때 — 두 경기를 함께 옮긴다
+                const [t1, t2] = [first.time!, second.time!];
+                let pair: { a: string; b: string; cost: number } | null = null;
+                for (const allowOverCapacity of [false, true]) {
+                    for (const a of TIME_SLOTS) {
+                        if (toMin(a) > toMin(t1) || !hasRoom(first, a, allowOverCapacity)) continue;
+                        for (const b of TIME_SLOTS) {
+                            if (toMin(b) < toMin(t2) || !hasRoom(second, b, allowOverCapacity)) continue;
+                            first.time = a; second.time = b;
+                            const ok = fits(first, a) && fits(second, b);
+                            first.time = t1; second.time = t2;
+                            if (!ok) continue;
+                            const c = cost(first, a) + cost(second, b);
+                            if (!pair || c < pair.cost) pair = { a, b, cost: c };
+                        }
+                    }
+                    if (pair) break;
+                }
+                if (pair) {
+                    moveTo(first, pair.a);
+                    moveTo(second, pair.b);
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) break;
+    }
+
+    let remaining = 0;
+    for (const first of games) {
+        for (const second of nextOf.get(first)!) {
+            if (!isB2BGapSafe(first.time, second.time)) remaining++;
+        }
+    }
+    return remaining;
+}
+
+/** 정렬된 (날짜, 매치업) 목록 → Game[] (경기 시각 배정 + 날짜·시간순 정렬).
+ *  enforceB2BGap: [2026-10-26] 멀티 v2 전용 — B2B 간격 보정(enforceB2BGaps). 싱글 Legacy는 기존 시각 그대로. */
+function toGames(scheduled: { date: string; matchup: Matchup }[], opts: { enforceB2BGap?: boolean } = {}): Game[] {
     scheduled.sort((a, b) => a.date.localeCompare(b.date));
 
     const games: Game[] = scheduled.map(s => ({
@@ -741,6 +858,10 @@ function toGames(scheduled: { date: string; matchup: Matchup }[]): Game[] {
 
     // 경기 시간 배정 (홈팀 시간대 기반)
     assignGameTimes(games);
+    if (opts.enforceB2BGap) {
+        const remaining = enforceB2BGaps(games);
+        if (remaining > 0) console.warn(`[scheduleGenerator] B2B 간격 보정 후에도 ${remaining}건 남음`);
+    }
 
     // [2026-09-18 Fix] assignGameTimes()는 날짜별 "복사본" 배열만 시간순으로 정렬해 time을 붙이므로
     // games 원본의 같은 날짜 안 순서는 매치업 배정 순서(사실상 무작위) 그대로였다. 이후 단계
@@ -777,7 +898,7 @@ export function generateSeasonSchedule(
         allStarEnd: config.allStarEnd,
         rng,
     });
-    return toGames(scheduled);
+    return toGames(scheduled, { enforceB2BGap: true });
 }
 
 /** v2 이전 그리디 날짜 배정 — 롤백용으로 남겨 둠(2026-10-23). 호출부 없음. */

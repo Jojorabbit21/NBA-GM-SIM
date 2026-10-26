@@ -339,6 +339,8 @@ function buildMainLeagueSchedule(
             teamsPerConference: Math.max(2, league.playoff_team_count ?? 8),
             targetWins: targetWinsFromFormat(league.match_format ?? 'best_of_7'),
             finalsTargetWins: targetWinsFromFormat(league.finals_match_format ?? league.match_format ?? 'best_of_7'),
+            // [2026-10-26] 최종일↔플레이인, 플레이인↔1라운드 휴식일 — 시드 생성기(postseasonDayOffsets)와 같은 값
+            restDays: seasonCalendar.postseasonRestDays,
         },
     });
     const feas = computeTimelineFeasibility({

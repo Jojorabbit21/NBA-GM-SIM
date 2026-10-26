@@ -8,6 +8,9 @@
  * 최종 스코어가 방송(리플레이) 도중에 미리 새는 걸 물리적으로 막을 수 있다.
  */
 
+import { periodStartSec, periodLengthSec, MAX_OVERTIME_PERIODS, countOvertimePeriods } from './shared/engine/pbp/periodRules.ts';
+
+/** 정규시간 길이 — 재생 속도 기준(경기 초 / 2880 × 리플레이). 연장 경기는 같은 속도로 그만큼 더 재생된다. */
 export const TOTAL_GAME_SECONDS = 2880;       // 48분 경기
 /** 기본 리플레이 길이 — [2026-09-18 2단계] 실제 값은 리그 설정(leagues.replay_minutes)이며 호출부가
  *  replayConfig.getRoomReplayMs()로 구해 replayMs 인자로 넘긴다. 인자를 생략하면 이 기본값. */
@@ -55,12 +58,23 @@ function parseTimeRemaining(t: string): number {
     return m * 60 + s;
 }
 
+// [2026-10-26] 연장(5분) 반영 — 엔진 periodRules.elapsedGameSec와 같은 축(정규시간은 기존 값과 동일)
 function pbpToGameSeconds(e: PbpLog): number {
-    return (e.quarter - 1) * 720 + (720 - parseTimeRemaining(e.timeRemaining));
+    return periodStartSec(e.quarter) + periodLengthSec(e.quarter) - parseTimeRemaining(e.timeRemaining);
 }
 
 function shotToGameSeconds(e: ShotEvent): number {
-    return (e.quarter - 1) * 720 + (720 - e.gameClock);
+    return periodStartSec(e.quarter) + periodLengthSec(e.quarter) - e.gameClock;
+}
+
+/** [2026-10-26] 경기별 리플레이 길이 — 연장 1회당 정규 속도로 300초분 추가. DB game_reveal_at()·클라 multiGameReveal과 같은 식. */
+export function replayLengthMs(replayDurationMs: number, otPeriods: number | null | undefined): number {
+    return replayDurationMs * (TOTAL_GAME_SECONDS + 300 * Math.max(0, otPeriods ?? 0)) / TOTAL_GAME_SECONDS;
+}
+
+/** 연장 최대 횟수까지 포함한 가장 긴 리플레이 — 진행 중 경기 목록 조회 창(index.ts handleLiveGames). */
+export function maxReplayLengthMs(replayDurationMs: number): number {
+    return replayLengthMs(replayDurationMs, MAX_OVERTIME_PERIODS);
 }
 
 function withinElapsed(gameSeconds: number, elapsedMs: number, replayDurationMs: number): boolean {
@@ -103,6 +117,11 @@ export function computeQuarterScoresFromEvents(events: PbpLog[]): { home: number
         if (home[i] == null) home[i] = 0;
         if (away[i] == null) away[i] = 0;
     }
+    // [2026-10-26] 실제 피리어드 수(4 + 연장)를 넘는 칸은 4쿼터(마지막 칸)에 합친다 — 연장전 스위치 off 경기의
+    // 경기 종료 로그·동점 버저비터는 5쿼터로 찍히지만 연장이 아니다(예전 저장값은 5칸 — 클라 foldPeriodScores가 접음).
+    const periods = 4 + countOvertimePeriods(events);
+    for (let i = periods; i < home.length; i++) { home[periods - 1] = (home[periods - 1] ?? 0) + home[i]; away[periods - 1] = (away[periods - 1] ?? 0) + away[i]; }
+    if (home.length > periods) { home.length = periods; away.length = periods; }
     return { home, away };
 }
 
@@ -121,6 +140,7 @@ export interface GamePbpSource {
     away_box:        PlayerBoxScore[];
     box_timeline?:   BoxTick[];
     rotation_data?:  Record<string, RotationEntry[]>;
+    ot_periods?:     number | null;   // [2026-10-26] 연장 수 — 종료(final) 판정이 그만큼 늦어진다
 }
 
 export type LiveGameState = 'not_started' | 'live' | 'final';
@@ -142,17 +162,17 @@ export interface WindowedGameView {
     rotationData?:   Record<string, RotationEntry[]>; // final일 때만 포함
 }
 
-export function computeGameState(gameStartTime: string, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): { state: LiveGameState; elapsedMs: number } {
+export function computeGameState(gameStartTime: string, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS, otPeriods: number | null = 0): { state: LiveGameState; elapsedMs: number } {
     const startMs   = new Date(gameStartTime).getTime();
     const elapsedMs = nowMs - startMs;
     if (elapsedMs < 0)                    return { state: 'not_started', elapsedMs };
-    if (elapsedMs >= replayDurationMs)    return { state: 'final', elapsedMs };
+    if (elapsedMs >= replayLengthMs(replayDurationMs, otPeriods)) return { state: 'final', elapsedMs };
     return { state: 'live', elapsedMs };
 }
 
 /** row 전체를 elapsed 기준으로 잘라 클라이언트에 안전하게 내려줄 형태로 변환. */
 export function buildWindowedView(row: GamePbpSource, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): WindowedGameView {
-    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs);
+    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs, row.ot_periods ?? 0);
 
     if (state === 'final') {
         return {
@@ -240,7 +260,7 @@ export interface LiveGameSummary {
 }
 
 export function buildLiveSummary(row: GamePbpSource, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS): LiveGameSummary {
-    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs);
+    const { state, elapsedMs } = computeGameState(row.game_start_time, nowMs, replayDurationMs, row.ot_periods ?? 0);
 
     if (state === 'final') {
         return {

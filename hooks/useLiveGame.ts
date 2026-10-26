@@ -12,6 +12,8 @@ import {
     applyManualSubstitution,
 } from '../services/game/engine/pbp/liveEngine';
 import { formatTime } from '../services/game/engine/pbp/timeEngine';
+import { elapsedGameSec, scheduleMinute } from '../services/game/engine/pbp/periodRules';
+import { countOvertimePeriods, normalizePeriod } from '../utils/periodLabel';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -296,8 +298,7 @@ export function useLiveGame(
         userTeam.tactics.rotationMap = { ...newMap };
 
         // originalRotationMap도 미래 분만 갱신 (파울 트러블 복구 시 유저 의도 반영)
-        const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-        const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+        const currentMinute = scheduleMinute(state);   // [2026-10-26] 연장 = 43+k
         Object.entries(newMap).forEach(([pid, schedule]) => {
             if (!state.originalRotationMap[pid])
                 state.originalRotationMap[pid] = Array(48).fill(false);
@@ -405,7 +406,7 @@ function _buildDisplay(
     userTeamId: string | null
 ): LiveDisplayState {
     const m = state.momentum;
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentTotalSec = elapsedGameSec(state);
 
     let activeRun: LiveDisplayState['activeRun'] = null;
     if (m.activeRun) {
@@ -421,7 +422,8 @@ function _buildDisplay(
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
-        quarter: state.quarter > 4 ? 4 : state.quarter,
+        // [2026-10-26] 연장 중엔 5·6 그대로(OT1·OT2), 옛 방식 경기 종료 후의 5쿼터만 4로 접는다
+        quarter: normalizePeriod(state.quarter, countOvertimePeriods(state.logs)),
         gameClock: state.gameClock,
         recentLogs: state.logs.slice(-30),
         allLogs: [...state.logs],

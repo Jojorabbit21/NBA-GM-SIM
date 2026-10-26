@@ -5,6 +5,7 @@ import { LeagueCoachingData } from '../types/coaching';
 import { ShieldAlert, Clock, ChevronLeft } from 'lucide-react'; 
 import { CpuGameResult } from '../services/simulationService';
 import { extractQuarterScores } from '../utils/simulationUtils';
+import { countOvertimePeriods, periodShortLabel } from '../utils/periodLabel';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
@@ -232,7 +233,7 @@ export const GameResultView: React.FC<{
                                       <div className="text-right">
                                           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 bg-slate-900 px-2 py-1 rounded-lg">
                                               <Clock size={12} />
-                                              <span>{inj.quarter}Q {inj.timeRemaining}</span>
+                                              <span>{periodShortLabel(inj.quarter, countOvertimePeriods(pbpLogs ?? []), '1Q')} {inj.timeRemaining}</span>
                                           </div>
                                       </div>
                                   </div>

@@ -28,7 +28,7 @@ import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews'
 import { buildLedger, buildContext, rankConference, type TiebreakTeam } from './nbaTiebreak';
 import { TEAM_DATA } from './teamData';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
-import { DEFAULT_PLAYOFF_INTERVAL_DAYS } from './leagueTimeline';
+import { DEFAULT_PLAYOFF_INTERVAL_DAYS, postseasonDayOffsets } from './leagueTimeline';
 import { resolveSeasonCalendar } from './seasonCalendar';
 
 /** "2026-27" 형태 — MultiHeader.tsx의 seasonShortFromDate와 동일 규칙(가상 시즌 시작 연도 기준). */
@@ -132,11 +132,19 @@ export interface PostseasonLeagueRow {
 }
 
 /** [2026-09-18] 포스트시즌 가상 캘린더 오프셋(앵커 = 정규시즌 종료 다음 날, offset 0) —
- *  leagueTimeline.playoffMaxDays()와 반드시 같은 규칙: 플레이인 7v8·9v10 = 0, 디사이더 = g,
- *  본선 1라운드 = 플레이인 있으면 2g / 없으면 0. 타임라인이 없는 구 리그는 g=1로 예전 값
+ *  leagueTimeline.playoffMaxDays()와 반드시 같은 규칙 — 플레이인·디사이더·본선 1라운드 오프셋은
+ *  leagueTimeline.postseasonDayOffsets(g, playIn, 휴식일)로 통일(2026-10-26, 휴식일 0이면 플레이인 0·디사이더 g·1라운드 2g/0). 타임라인이 없는 구 리그는 g=1로 예전 값
  *  (디사이더 +1, 1라운드 +1)과 최대한 비슷하게 유지한다. */
 export function postseasonIntervalDays(league: { playoff_game_interval_days?: number | null }): number {
     return Math.max(1, league.playoff_game_interval_days ?? DEFAULT_PLAYOFF_INTERVAL_DAYS);
+}
+
+/** [2026-10-26] 포스트시즌 휴식일 — 리그 저장 달력(leagues.season_calendar.postseasonRestDays). 값이 없는 달력(이전
+ *  리그)은 0 = 기존 규칙이라 이미 깔린 타임라인 일수와 어긋나지 않는다. 타임라인 리그의 날짜 오프셋에만 쓴다
+ *  (leagueTimeline.postseasonDayOffsets). */
+export function postseasonRestDays(league: { virtual_season_year?: number | null; season_calendar?: unknown }): number {
+    const y = league.virtual_season_year ?? (new Date().getFullYear() - 1);
+    return resolveSeasonCalendar(y, league.season_calendar).postseasonRestDays;
 }
 
 /**
@@ -269,6 +277,7 @@ export async function buildAndStoreConferenceBracket(
         intervalMinutes,
         usesTimeline ? null : playoffStartIso,
         'ranked',
+        usesTimeline ? postseasonRestDays(league) : 0,   // [2026-10-26] 라운드 사이 휴식일
     );
     const scheduleGames = usesTimeline ? fillPostseasonRealTimes(result.schedule as any[], timeline, league) : result.schedule;
 
@@ -324,5 +333,10 @@ export async function buildAndStoreConferenceBracket(
 export async function startPlayoffs(league: PostseasonLeagueRow, roomId: string): Promise<void> {
     const { East, West } = await computeStandingsByConference(league.id, roomId);
     const n = Math.max(2, league.playoff_team_count ?? 8);
-    await buildAndStoreConferenceBracket(league, roomId, East.slice(0, n), West.slice(0, n));
+    // [2026-10-26] 플레이인 없는 리그 — 타임라인 리그는 1라운드를 휴식일 뒤로(postseasonDayOffsets). 구 리그는 기존 0.
+    const usesTimeline = (await loadLeagueTimeline(league.id)).length > 0;
+    const round1DayOffset = usesTimeline
+        ? postseasonDayOffsets(postseasonIntervalDays(league), false, postseasonRestDays(league)).round1
+        : 0;
+    await buildAndStoreConferenceBracket(league, roomId, East.slice(0, n), West.slice(0, n), [], round1DayOffset);
 }

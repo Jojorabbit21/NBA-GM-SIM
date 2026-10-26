@@ -87,9 +87,10 @@ export interface PbpLog {
                                 // 로그는 teamId가 수비팀이지만 포제션 자체는 공격팀 것)
 }
 
+/** [2026-10-26] Q1~Q4 + 연장(있으면 OT1, OT2 …) 순서 — 연장전 도입 전 저장값은 4칸(연장 득점은 Q4에 합산돼 있음). */
 export interface QuarterScores {
-    home: [number, number, number, number]; // Q1, Q2, Q3, Q4
-    away: [number, number, number, number];
+    home: number[];
+    away: number[];
 }
 
 // [2026-08-02] outReason: 이 스틴트가 왜 끝났는지(교체 사유) — 로테이션 차트 호버 툴팁용.

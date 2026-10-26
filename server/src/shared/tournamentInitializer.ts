@@ -214,6 +214,7 @@ function initSingleElim(
     // 셔플을 건너뛴다 — 정규시즌 성적 기반 플레이오프 시딩용(playoffSeeder.ts).
     // 기본값 'random'은 기존 토너먼트 동작(셔플 후 인접 페어링)을 그대로 유지한다.
     seedMode: 'random' | 'ranked' = 'random',
+    roundRestDays: number = 0,   // [2026-10-26] 라운드 사이 휴식일 — advanceTournamentState로 전달(부전승 R2 즉시 생성분)
 ): { series: PlayoffSeries[]; schedule: Game[] } {
     const shuffled = seedMode === 'ranked' ? teams : seededShuffle(teams, seed + ':seeding');
     const size = nextPow2(shuffled.length);
@@ -303,7 +304,7 @@ function initSingleElim(
     }
 
     // BYE 자동 진출 팀을 R2에 즉시 배치 (R2 시작 슬롯은 라운드 단위로 고정됨)
-    advanceTournamentState(series, schedule, targetWins, finalsTargetWins, startDate, intervalMinutes, simRealStartAt);
+    advanceTournamentState(series, schedule, targetWins, finalsTargetWins, startDate, intervalMinutes, simRealStartAt, roundRestDays);
 
     return { series, schedule };
 }
@@ -367,7 +368,11 @@ export function advanceTournamentState(
     startDate: string,
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
     simRealStartAt?: string | null,
+    roundRestDays: number = 0,
 ): void {
+    // [2026-10-26] roundRestDays — 라운드 사이 휴식일(타임라인 메인리그 = season_calendar.postseasonRestDays).
+    // r+1라운드 시작 날짜를 r·roundRestDays일 뒤로 민다(2라운드 +1, 3라운드 +2, 파이널 +3). 기본 0 = 토너먼트·구 리그 그대로.
+    // game_seq/scheduledAt(구 리그 슬롯 방식)은 슬롯 기준 그대로 — 휴식일은 타임라인 리그에서만 넘긴다.
     const byId = Object.fromEntries(series.map(s => [s.id, s]));
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
     const roundBaseSlots = computeRoundBaseSlots(maxRound, targetWins, finalsTargetWins);
@@ -389,8 +394,9 @@ export function advanceTournamentState(
                 const alreadyExists = schedule.some(g => g.seriesId === nextId);
                 if (!alreadyExists) {
                     const startSlot = roundBaseSlots[round + 1];
+                    const roundStartDate = roundRestDays > 0 ? offsetDate(startDate, round * roundRestDays) : startDate;
                     schedule.push(...generateAllSeriesGames(
-                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, startDate, startSlot, intervalMinutes, simRealStartAt,
+                        nextId, next.higherSeedId, next.lowerSeedId, next.targetWins, roundStartDate, startSlot, intervalMinutes, simRealStartAt,
                     ));
                 }
             }
@@ -415,6 +421,7 @@ export function initializeTournamentBracket(
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
     simRealStartAt?: string | null,
     seedMode: 'random' | 'ranked' = 'random',
+    roundRestDays: number = 0,   // [2026-10-26] 라운드 사이 휴식일(타임라인 메인리그만), single_elim에만 적용
 ): TournamentBracketResult {
     const targetWins       = targetWinsFromFormat(matchFormat);
     const finalsTargetWins = targetWinsFromFormat(finalsMatchFormat ?? matchFormat);
@@ -423,5 +430,5 @@ export function initializeTournamentBracket(
         return initRoundRobin(teams, startDate, intervalMinutes, simRealStartAt);
     }
 
-    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes, simRealStartAt, seedMode);
+    return initSingleElim(teams, targetWins, finalsTargetWins, tendencySeed, startDate, intervalMinutes, simRealStartAt, seedMode, roundRestDays);
 }

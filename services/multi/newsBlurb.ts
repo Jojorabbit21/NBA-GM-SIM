@@ -472,7 +472,7 @@ interface SuspensionVars {
 }
 
 function periodLabel(quarter: number): string {
-    return quarter <= 4 ? `${quarter}쿼터` : `연장 ${quarter - 4}차`;
+    return quarter <= 4 ? `${quarter}쿼터` : `${quarter - 4}차 연장`;   // [2026-10-26] PBP 표기(1차 연장)와 통일
 }
 
 const SUSPENSION_OPENERS: ((v: SuspensionVars) => string)[] = [

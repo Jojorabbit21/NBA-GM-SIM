@@ -7,7 +7,7 @@ import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
 import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
-import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution } from './rotationLogic';
+import { checkAndApplyRotation, prepareOvertimeRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution } from './rotationLogic';
 import { assignCourtSlots, snapshotSlots } from './slotAssignment';
 import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
@@ -16,6 +16,8 @@ import { SIM_CONFIG } from '../../config/constants';
 import { computeCourtPositions } from './handlers/courtPositions';
 import { startTimeoutPeriod, recordTimeoutTaken, decideTimeout } from './timeoutPolicy';
 import { applyTacticSchedule } from './tacticSchedule';
+import { elapsedGameSec, scheduleMinute, periodLengthSec, periodStartSec, isOvertimePeriod, teamFoulLimit, overtimeEnabled, shouldPlayOvertime, isDecisivePossession, resolveJumpBall, REGULATION_PERIODS, periodLabel } from './periodRules';
+import { updatePlusMinus } from './handlers/statUtils';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -179,7 +181,7 @@ export function applyTimeout(
     recordTimeoutTaken(state, team.id);
 
     // 모멘텀 초기화
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentTotalSec = elapsedGameSec(state);
     resetMomentum(state, currentTotalSec);
 
     // 핫/콜드 스트릭 반감 (양팀)
@@ -317,8 +319,121 @@ export function createGameState(
         text: '경기 시작 (Tip-off)',
         type: 'info',
     });
+    // [2026-10-26] 팁오프 점프볼 — 연장전 스위치(overtimeEnabled)와 함께 켜진다. 꺼져 있으면 기존대로 홈 공격으로 시작.
+    if (overtimeEnabled(state)) applyJumpBall(state);
 
     return state;
+}
+
+/** [2026-10-26] 점프볼(경기 시작·연장 시작) — 센터 신장·점프력으로 공격권 결정 + 로그 (periodRules.resolveJumpBall) */
+function applyJumpBall(state: GameState): void {
+    const jb = resolveJumpBall(state);
+    state.possession = jb.winner;
+    const winnerTeam = jb.winner === 'home' ? state.home : state.away;
+    const won  = jb.winner === 'home' ? jb.homeJumper : jb.awayJumper;
+    const lost = jb.winner === 'home' ? jb.awayJumper : jb.homeJumper;
+    // [2026-10-26] 센터 서클 점프볼 — 누가 나섰고 누가 따냈는지, 어느 팀 공격으로 시작하는지
+    const homeJ = jb.homeJumper?.playerName, awayJ = jb.awayJumper?.playerName;
+    const opening = state.quarter === 1 ? '경기를 시작합니다' : `${periodLabel(state.quarter)}을 시작합니다`;
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId: winnerTeam.id,
+        text: won && lost
+            ? `점프볼 — ${awayJ} vs ${homeJ}. ${won.playerName}, 높이 뛰어올라 공을 쳐냅니다! ${winnerTeam.name}의 공격으로 ${opening}.`
+            : `점프볼 — ${winnerTeam.name}의 공격으로 ${opening}.`,
+        type: 'info',
+    });
+}
+
+/**
+ * [2026-10-26] 결승 공격 — 득점으로 끝날 때까지 포세션을 다시 굴린다(minHitRate 1.0, 최대 8회). simulatePossession은
+ * 샷클락·포세션 시간 미리 뽑기·프레스 플래그만 바꾸고 기록은 applyPossessionResult에서 하므로 샷클락만 되돌린다.
+ * 8회 모두 득점이 아니면 null(호출부가 일반 포세션으로 진행 → 그래도 동점이면 _handleGameEnd 폴백).
+ */
+function simulateDecisivePossession(state: GameState, clutchContext?: ClutchContext): PossessionResult | null {
+    const shotClock = state.shotClock;
+    for (let i = 0; i < 8; i++) {
+        state.shotClock = shotClock;
+        const r = simulatePossession(state, { minHitRate: 1.0, clutchContext });
+        if (r.type === 'score') return r;
+    }
+    state.shotClock = shotClock;
+    return null;
+}
+
+/** [2026-10-26] 4쿼터 이후 리드 변화 추적 — 동점이 되면 지우고, 동점/열세에서 리드를 잡은 득점을 기록(위닝샷 후보). */
+function trackGoAhead(state: GameState, result: PossessionResult, before: { home: number; away: number }): void {
+    if (state.quarter < REGULATION_PERIODS) return;
+    const h = state.home.score, a = state.away.score;
+    if (h === a) { state.lastGoAhead = null; return; }
+    const side: 'home' | 'away' = h > a ? 'home' : 'away';
+    const scored = side === 'home' ? h > before.home : a > before.away;
+    const ledBefore = side === 'home' ? before.home > before.away : before.away > before.home;
+    if (scored && !ledBefore) {
+        state.lastGoAhead = { side, playerName: result.actor.playerName, quarter: state.quarter, gameClock: state.gameClock };
+    }
+}
+
+/**
+ * [2026-10-26] 피리어드가 끝난 포세션(시계 0) 직후 해설.
+ * - 0:00 야투 성공 = 버저비터: 1~3쿼터 "N쿼터(전반)를 마칩니다", 마지막 피리어드 동점 → 연장으로 끌고 감, 역전/리드 → 위닝샷
+ * - 피리어드 종료 안내: "1쿼터 종료"/"전반 종료"/"3쿼터 종료", 4쿼터·1차 연장 동점 → "N차 연장으로 갑니다".
+ *   경기가 그대로 끝나는 마지막 피리어드는 안내 없이 _handleGameEnd의 경기 종료 로그로 마무리.
+ */
+function pushPeriodEndCommentary(state: GameState, result: PossessionResult, before: { home: number; away: number }): void {
+    const q = state.quarter;
+    const label = q === 2 ? '전반' : periodLabel(q);
+    const homeGain = state.home.score - before.home, awayGain = state.away.score - before.away;
+    const scorerSide: 'home' | 'away' | null = result.type === 'score' && (homeGain > 0 || awayGain > 0)
+        ? (homeGain > 0 ? 'home' : 'away') : null;
+    const tied = state.home.score === state.away.score;
+    const finalStretch = q >= REGULATION_PERIODS;
+    const goesOvertime = shouldPlayOvertime(state);
+    const nextOt = q - REGULATION_PERIODS + 1;   // 다음 연장 차수
+    const push = (teamId: string, text: string) => state.logs.push({ quarter: q, timeRemaining: '0:00', teamId, text, type: 'info' });
+
+    if (scorerSide) {
+        const team = state[scorerSide];
+        const name = result.actor.playerName;
+        const scorerLeads = scorerSide === 'home' ? state.home.score > state.away.score : state.away.score > state.home.score;
+        const ledBefore = scorerSide === 'home' ? before.home > before.away : before.away > before.home;
+        if (!finalStretch) {
+            // 1~3쿼터는 마지막 공격이 남은 시간을 다 쓰는 구조라 0:00 득점이 흔하다(쿼터의 ~37%) — 3점만 버저비터로 부른다
+            if (result.zone === '3PT') push(team.id, `버저비터! ${name}, 종료 버저와 함께 3점슛을 꽂으며 ${label}${q === 2 ? '을' : '를'} 마칩니다.`);
+        } else if (tied) {
+            push(team.id, goesOvertime
+                ? `버저비터! ${name}, 종료 버저와 함께 동점을 만들어 경기를 ${nextOt}차 연장으로 끌고 갑니다!`
+                : `버저비터! ${name}, 종료 버저와 함께 동점을 만듭니다!`);
+        } else if (scorerLeads && !ledBefore) {
+            push(team.id, `버저비터 위닝샷! ${name}, 종료 버저와 함께 승부를 결정짓습니다!`);
+            if (state.lastGoAhead) state.lastGoAhead.buzzer = true;
+        }
+    }
+
+    if (!finalStretch) {
+        push('SYSTEM', `${label} 종료`);
+    } else if (goesOvertime) {
+        push('SYSTEM', `${periodLabel(q)} 종료 — 동점! ${nextOt}차 연장으로 갑니다.`);
+    } else if (tied) {
+        push('SYSTEM', `${periodLabel(q)} 종료 — 동점!`);
+    }
+}
+
+/** [2026-10-26] 경기 종료 직전 — 마지막 피리어드에서 24초 이내에 잡은 리드를 끝까지 지켰으면 위닝샷 해설 */
+function pushWinningShotCommentary(state: GameState): void {
+    const g = state.lastGoAhead;
+    if (!g || g.buzzer) return;
+    const winner: 'home' | 'away' | null = state.home.score > state.away.score ? 'home' : state.away.score > state.home.score ? 'away' : null;
+    const lastPeriod = overtimeEnabled(state) ? state.quarter : REGULATION_PERIODS;
+    if (winner !== g.side || g.quarter !== lastPeriod || g.gameClock > 24) return;
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: '0:00',
+        teamId: state[g.side].id,
+        text: `위닝샷 — 종료 ${formatTime(g.gameClock)} 전 ${g.playerName}의 결승 득점이 그대로 승부를 갈랐습니다.`,
+        type: 'info',
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -348,21 +463,22 @@ export function stepPossession(state: GameState): StepResult {
     // resume 후 첫 call: 새 쿼터 셋업만 하고 B로 fall-through → 첫 포세션까지 한 번에 실행
     // (hook이 isQuarterEnd를 감지해 pause → resume → 이 경로 진입 순서)
     if (state.gameClock <= 0) {
+        const goOvertime = shouldPlayOvertime(state);   // [2026-10-26] 증가 전 피리어드 기준(4쿼터·1차 연장 종료 동점)
         state.quarter++;
 
         // 게임 종료
-        if (state.quarter > 4) {
+        if (state.quarter > REGULATION_PERIODS && !goOvertime) {
             return _handleGameEnd(state);
         }
 
-        // 새 쿼터 셋업 (fall-through: 아래 B에서 첫 포세션 실행)
-        state.gameClock = 720;
+        // 새 쿼터 셋업 (fall-through: 아래 B에서 첫 포세션 실행) — 연장은 5분
+        state.gameClock = periodLengthSec(state.quarter);
         state.shotClock = 24;
         state.home.fouls = 0;
         state.away.fouls = 0;
         startTimeoutPeriod(state); // [2026-10-22] 의무 타임아웃 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
 
-        const transitionTotalSec = (state.quarter - 1) * 720;
+        const transitionTotalSec = periodStartSec(state.quarter);
         resetMomentum(state, transitionTotalSec);
 
         // Hot/Cold Streak: 하프타임 완전 리셋, 쿼터 전환 반감
@@ -380,11 +496,21 @@ export function stepPossession(state: GameState): StepResult {
 
         state.logs.push({
             quarter: state.quarter,
-            timeRemaining: '12:00',
+            timeRemaining: formatTime(state.gameClock),
             teamId: 'SYSTEM',
-            text: state.quarter === 3 ? '하프타임 종료 — 3쿼터 시작' : `${state.quarter}쿼터 시작`,
+            text: isOvertimePeriod(state.quarter) ? `${periodLabel(state.quarter)} 시작`
+                : state.quarter === 3 ? '하프타임 종료 — 3쿼터 시작' : `${state.quarter}쿼터 시작`,
             type: 'info',
         });
+        // [2026-10-26] 연장은 선발 5명으로 시작(표 43~47칸 재구성 후 바로 투입) → 점프볼
+        //   (체력 회복·팀파울/모멘텀 리셋·Hot/Cold 반감은 위 쿼터 휴식과 동일)
+        if (isOvertimePeriod(state.quarter)) {
+            for (const team of [state.home, state.away]) {
+                prepareOvertimeRotation(state, team);
+                checkAndApplyRotation(state, team, elapsedGameSec(state));
+            }
+            applyJumpBall(state);
+        }
         // return하지 않고 B로 진행 → 새 쿼터의 첫 포세션을 이 step에서 실행
     }
 
@@ -412,11 +538,13 @@ export function stepPossession(state: GameState): StepResult {
     }
 
     // [2026-10-23] 시간별 전술 세트 — 포세션 시작 시점의 분/클러치 여부로 양 팀 슬라이더 교체(세트 없는 팀은 no-op)
-    const possStartMinute = Math.min(47, Math.floor((((state.quarter - 1) * 720) + (720 - state.gameClock)) / 60));
+    const possStartMinute = scheduleMinute(state);   // [2026-10-26] 연장 k분째 = 4쿼터 마지막 5분(43+k)
     applyTacticSchedule(state.home, possStartMinute, isClutch);
     applyTacticSchedule(state.away, possStartMinute, isClutch);
 
-    const result = simulatePossession(state, { clutchContext });
+    // [2026-10-26] 마지막 연장 동점·24초 이내 공격 = 결승 공격(시간을 끝까지 쓰고 반드시 득점)
+    const decisive = isDecisivePossession(state);
+    const result = (decisive ? simulateDecisivePossession(state, clutchContext) : null) ?? simulatePossession(state, { clutchContext });
     state.courtSnapshot = computeCourtPositions(result, state.home.id);
     // [2026-10-07] 테크니컬 파울은 데드볼 중 발생하는 독립 이벤트 — 시간 차감 없이(중단 시점 그대로) 자유투만
     // 처리하고 같은 팀 공격을 재개한다. 평균 샷클락 소모 통계에서도 제외. 플래그런트는 플레이 중 발생하므로
@@ -429,8 +557,9 @@ export function stepPossession(state: GameState): StepResult {
     // 일어나므로 포세션 시간의 25~75%만 소모하고, 샷클락은 아래 retainPossession에서 max(14, 잔여)로.
     // fouls는 applyPossessionResult(commitFoul) 전이라 증가 전 값이다. (server 미러와 동일)
     const fouledTeam = state.possession === 'home' ? state.away : state.home;
-    const isNonBonusFoul = result.type === 'foul' && fouledTeam.fouls < 4;
-    let timeTaken = isTechnical ? 0
+    const isNonBonusFoul = result.type === 'foul' && fouledTeam.fouls < teamFoulLimit(state.quarter);   // [2026-10-26] 연장은 3
+    let timeTaken = decisive ? state.gameClock
+        : isTechnical ? 0
         : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
         // [2026-10-23] simulatePossession이 미리 뽑은 값이 있으면 그대로(프레스 시간·샷클락 막판 페널티와 일치), 없으면 기존 계산
         : state.preSampledPossessionTime !== undefined ? Math.min(state.gameClock, state.preSampledPossessionTime)
@@ -454,11 +583,12 @@ export function stepPossession(state: GameState): StepResult {
     applyPossessionResult(state, result);
 
     // 득점 후 momentum 업데이트
-    const currentTotalSecAfter = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentTotalSecAfter = elapsedGameSec(state);
     const homeScored = state.home.score - scoreBefore.home;
     const awayScored = state.away.score - scoreBefore.away;
     if (homeScored > 0) updateMomentum(state, state.home.id, homeScored, currentTotalSecAfter);
     if (awayScored > 0) updateMomentum(state, state.away.id, awayScored, currentTotalSecAfter);
+    trackGoAhead(state, result, scoreBefore);   // [2026-10-26] 위닝샷 해설용
 
     // 이번 포세션에서 새로 생성된 득점 로그에 런 상태 스탬프 (멀티플레이어 리플레이용 — PBP 저장 시 영구 보존됨)
     if (state.momentum.activeRun) {
@@ -475,8 +605,8 @@ export function stepPossession(state: GameState): StepResult {
         }
     }
 
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+    const currentTotalSec = elapsedGameSec(state);
+    const currentMinute = scheduleMinute(state);
 
     // 박스스코어 점진 공개용 델타 타임라인 기록 (교체 전 코트 라인업 기준)
     recordBoxTick(state, currentTotalSec, timeTaken, result);
@@ -540,6 +670,10 @@ export function stepPossession(state: GameState): StepResult {
         state.shotClock = 24;
     }
 
+    // [2026-10-26] 피리어드 종료 해설 — 버저비터(동점·위닝샷 포함)와 "N쿼터 종료/전반 종료/연장 돌입" 안내.
+    // 경기가 끝나는 경우의 마무리(위닝샷·경기 종료)는 _handleGameEnd.
+    if (state.gameClock <= 0) pushPeriodEndCommentary(state, result, scoreBefore);
+
     const newLogs = state.logs.slice(logsBefore);
 
     // 각 로그에 현재 스코어 스냅샷 기록 (포세션 결과 적용 후)
@@ -548,8 +682,10 @@ export function stepPossession(state: GameState): StepResult {
 
     if (state.gameClock <= 0) {
         // Q4 종료 = 즉시 게임 종료 (30초 타이머 없음)
-        if (state.quarter >= 4) {
-            state.quarter = 5;
+        if (state.quarter >= REGULATION_PERIODS) {
+            // [2026-10-26] 연장전 켜짐 + 동점 + 연장 횟수 남음 → 피리어드 종료로 반환(다음 step의 A 블록이 연장 시작)
+            if (shouldPlayOvertime(state)) return { result, isQuarterEnd: true, isGameEnd: false, isTimeout: false, newLogs };
+            if (!overtimeEnabled(state)) state.quarter = 5;   // 기존: 버저비터·종료 로그를 5쿼터로 기록(연장전 켜지면 마지막 피리어드 그대로)
             const gameEndResult = _handleGameEnd(state);
             return {
                 result: gameEndResult.result,
@@ -604,6 +740,32 @@ function buildBuzzerFallbackMessage(result: PossessionResult): string {
 function _handleGameEnd(state: GameState): StepResult {
     const logsBefore = state.logs.length;
 
+    // [2026-10-26] 연장전 켜짐: 마지막 연장이 그래도 동점으로 끝남(결승 공격이 성립하지 않은 드문 경우) — 공격권 팀이
+    // 0:00 직후 결승 공격(득점까지 재시도), 그래도 실패하면 자유투 1개 성공으로 기록(득점·FTM·FTA·+/− 정합).
+    if (overtimeEnabled(state) && state.home.score === state.away.score) {
+        const shootTeam = state.possession === 'home' ? state.home : state.away;
+        const defTeam   = state.possession === 'home' ? state.away : state.home;
+        const forced = simulateDecisivePossession(state);
+        if (forced) {
+            const before = { home: state.home.score, away: state.away.score };
+            applyPossessionResult(state, forced);
+            pushPeriodEndCommentary(state, forced, before);
+        } else {
+            const shooter = simulatePossession(state).actor;
+            shooter.fta += 1; shooter.ftm += 1; shooter.pts += 1;
+            shootTeam.score += 1;
+            updatePlusMinus(shootTeam, defTeam, 1);
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: '0:00',
+                teamId: shootTeam.id,
+                text: `${shooter.playerName}, 버저와 함께 얻어낸 자유투를 침착하게 성공시킵니다!`,
+                type: 'freethrow',
+                points: 1,
+            });
+        }
+    }
+
     // 동점 → 버저비터 포세션
     if (state.home.score === state.away.score) {
         // 50/50으로 공격팀 결정
@@ -638,7 +800,7 @@ function _handleGameEnd(state: GameState): StepResult {
     }
 
     // Rotation History 닫기
-    const GAME_END_SEC = 48 * 60;
+    const GAME_END_SEC = overtimeEnabled(state) ? elapsedGameSec(state) : 48 * 60;   // [2026-10-26] 연장 포함 실제 종료 시각
     [state.home, state.away].forEach(team => {
         team.onCourt.forEach(p => {
             const hist = state.rotationHistory[p.playerId];
@@ -646,13 +808,17 @@ function _handleGameEnd(state: GameState): StepResult {
         });
     });
 
+    // [2026-10-26] 위닝샷 — 4쿼터 이후 마지막 리드 득점이 24초 이내였고 끝까지 지켜졌으면(버저비터는 이미 해설)
+    pushWinningShotCommentary(state);
+
     // [2026-08-04] '경기 시작 (Tip-off)'과 대칭되는 종료 배너 — 이전엔 이 로그가 없어서
     // PBP 마지막 줄이 항상 마지막 포제션 커멘터리로 끝나고 별도 종료 안내가 없었음.
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: '0:00',
         teamId: 'SYSTEM',
-        text: '경기 종료 (Final)',
+        // [2026-10-26] 연장 경기는 몇 차 연장 승부였는지
+        text: overtimeEnabled(state) && isOvertimePeriod(state.quarter) ? `경기 종료 (Final) — ${state.quarter - REGULATION_PERIODS}차 연장 승부` : '경기 종료 (Final)',
         type: 'info',
     });
 
@@ -789,9 +955,9 @@ export function applyManualSubstitution(
     const inPlayer  = userTeam.bench.find(p => p.playerId === inId);
     if (!outPlayer || !inPlayer) return;
 
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-    const currentMinute   = Math.min(47, Math.floor(currentTotalSec / 60));
-    const quarterEndMin   = state.quarter * 12; // Q1→12, Q2→24, Q3→36, Q4→48
+    const currentTotalSec = elapsedGameSec(state);
+    const currentMinute   = scheduleMinute(state);
+    const quarterEndMin   = isOvertimePeriod(state.quarter) ? 48 : state.quarter * 12; // Q1→12 … Q4→48, 연장 = 표 43~47칸 끝까지
 
     if (!userTeam.tactics.rotationMap) userTeam.tactics.rotationMap = {};
 

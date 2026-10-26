@@ -12,8 +12,8 @@ export const SIMULATION_SPEED = {
 
 // WP Calculation Logic: Score diff + Time remaining
 // 50% is the baseline (Tie).
-export const calculateWinProbability = (homeScore: number, awayScore: number, timePassed: number) => {
-    const totalTime = 48;
+/** totalTime: 이 시점에 경기가 끝나는 분 — 정규 48, 연장 중이면 그 연장이 끝나는 분(53, 58 …). [2026-10-26] */
+export const calculateWinProbability = (homeScore: number, awayScore: number, timePassed: number, totalTime: number = 48) => {
     const timeRemaining = Math.max(0, totalTime - timePassed);
     const diff = homeScore - awayScore;
     

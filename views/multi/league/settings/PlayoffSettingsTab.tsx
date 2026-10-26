@@ -81,9 +81,12 @@ export const PlayoffSettingsTab: React.FC<Props> = ({ league, onLeagueSaved }) =
 
     const dirty = teams !== saved.teams || playIn !== saved.playIn || format !== saved.format || finals !== saved.finals || interval !== saved.interval;
 
+    // [2026-10-26] 포스트시즌 휴식일은 리그 저장 달력 값(이전 리그 0) — 이미 깔린 타임라인과 같은 규칙으로 일수를 센다.
+    const restDays = resolveSeasonCalendar(league.virtual_season_year ?? new Date().getFullYear(), league.season_calendar).postseasonRestDays;
     const spec: PlayoffCalendarSpec = {
         intervalDays: interval, playInEnabled: playIn, teamsPerConference: teams,
         targetWins: playoffTargetWins(format), finalsTargetWins: playoffTargetWins(finals),
+        restDays,
     };
     const dayLengthMin = league.day_length_min ?? DEFAULT_DAY_LENGTH_MIN;
     const windowStartMin = league.daily_window_start_min ?? DEFAULT_WINDOW_START_MIN;

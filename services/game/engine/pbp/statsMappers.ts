@@ -9,6 +9,7 @@ import { SIM_CONFIG } from '../../config/constants';
 import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary } from '../commentary/textGenerator';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
+import { teamFoulLimit } from './periodRules';
 
 function bumpDefendedShot(defender: LivePlayer, broadZone: string, subZone: string | undefined, isMake: boolean): void {
     defender.contestedAttempted = (defender.contestedAttempted ?? 0) + 1;
@@ -375,7 +376,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
 
         // Bonus Situation (Team Fouls > 4) -> 2 Free Throws
-        if (defTeam.fouls > 4) {
+        if (defTeam.fouls > teamFoulLimit(state.quarter)) {   // [2026-10-26] 정규 5번째·연장 4번째부터 자유투
             let ftMade = 0;
             const ftPct = actor.attr.ft / 100;
             const numShots = 2;

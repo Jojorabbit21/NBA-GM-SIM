@@ -24,6 +24,7 @@ import { formatMoney } from '../../../utils/formatMoney';
 import { EventLetterLogo, ClickableText, LetterShell, LetterSectionTitle, LetterLink, LetterHero, BoxScoreWaitNote, LetterPlayerCell, LetterTeamCell, LetterRankCell } from './newsFeedLetter';
 import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick } from '../../../services/multi/leagueEventPayload';
+import { foldPeriodScores, periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
 // 재수출만 해서 이 모듈을 이미 import하고 있는 곳(MultiNewsFeedView.tsx 등)의 기존 import
@@ -117,7 +118,9 @@ const BoxScoreHeadline: React.FC<{
     teamBySlug: Map<string, LeagueTeamRow>;
     onOpenTeam?: (teamSlug: string) => void;
     onOpenGame?: () => void;
-}> = ({ game, teamBySlug, onOpenTeam, onOpenGame }) => {
+    /** [2026-10-26] 연장 수 — 있으면 점수 뒤에 OT/2OT 표시 */
+    otPeriods?: number;
+}> = ({ game, teamBySlug, onOpenTeam, onOpenGame, otPeriods }) => {
     if (!game) return <h4 className="text-lg font-black text-white">박스스코어</h4>;
     const awayTeam = teamBySlug.get(game.awaySlug);
     const homeTeam = teamBySlug.get(game.homeSlug);
@@ -140,8 +143,9 @@ const BoxScoreHeadline: React.FC<{
         <h4 className="flex items-center gap-1.5">
             {teamLogo(game.awaySlug, awayTeam)}
             {teamSpan(game.awaySlug, awayTeam)}
+            {/* [2026-10-26] 연장 경기는 "000-000 OT"를 한 덩어리 텍스트로(경기 결과 링크 포함) */}
             <ClickableText className="text-lg font-black text-white" onClick={onOpenGame}>
-                {game.awayScore}-{game.homeScore}
+                {game.awayScore}-{game.homeScore}{overtimeTag(otPeriods) ? ` ${overtimeTag(otPeriods)}` : ''}
             </ClickableText>
             {teamSpan(game.homeSlug, homeTeam)}
             {teamLogo(game.homeSlug, homeTeam)}
@@ -178,13 +182,16 @@ const HeadlineTitle: React.FC<{
 const QuarterScoreTable: React.FC<{
     homeSlug: string; awaySlug: string; homeScore: number; awayScore: number;
     quarterScores: { home: number[]; away: number[] };
+    /** [2026-10-26] 연장 수 — 옛 경기의 5칸 저장값을 4칸으로 접는다 */
+    otPeriods?: number;
     teamBySlug: Map<string, LeagueTeamRow>;
     onOpenTeam?: (teamSlug: string) => void;
-}> = ({ homeSlug, awaySlug, homeScore, awayScore, quarterScores, teamBySlug, onOpenTeam }) => {
+}> = ({ homeSlug, awaySlug, homeScore, awayScore, quarterScores: rawScores, otPeriods = 0, teamBySlug, onOpenTeam }) => {
+    const quarterScores = { home: foldPeriodScores(rawScores.home, otPeriods), away: foldPeriodScores(rawScores.away, otPeriods) };
     const homeTeam = teamBySlug.get(homeSlug);
     const awayTeam = teamBySlug.get(awaySlug);
     const periodCount = Math.max(quarterScores.home.length, quarterScores.away.length, 4);
-    const periodLabel = (i: number) => (i < 4 ? `Q${i + 1}` : `OT${i - 3}`);
+    const periodLabel = (i: number) => periodShortLabel(i + 1, otPeriods);
 
     return (
         // "쿼터별 득점" 라벨 삭제(사용자 요청) — 테이블 자체(Q1~Q4/최종 헤더)로 충분히
@@ -440,12 +447,13 @@ export const GameResultCard: React.FC<{
                     <BoxScoreHeadline
                         game={{ homeSlug, awaySlug, homeScore, awayScore }} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam}
                         onOpenGame={event.gameId && onOpenGame ? () => onOpenGame(event.gameId!) : undefined}
+                        otPeriods={boxScore.otPeriods}
                     />
                     {boxScore.quarterScores && (
                         <QuarterScoreTable
                             homeSlug={boxScore.homeTeamId} awaySlug={boxScore.awayTeamId}
                             homeScore={boxScore.homeScore} awayScore={boxScore.awayScore}
-                            quarterScores={boxScore.quarterScores} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam}
+                            quarterScores={boxScore.quarterScores} otPeriods={boxScore.otPeriods} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam}
                         />
                     )}
                     <div className="space-y-4">
@@ -498,6 +506,7 @@ export const FeatCard: React.FC<{
                     <BoxScoreHeadline
                         game={game} teamBySlug={teamBySlug} onOpenTeam={onOpenTeam}
                         onOpenGame={event.gameId && onOpenGame ? () => onOpenGame(event.gameId!) : undefined}
+                        otPeriods={boxScore.otPeriods}
                     />
                     <TeamBoxTable team={teamBySlug.get(boxScore.awayTeamId)} teamSlug={boxScore.awayTeamId} box={boxScore.awayBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} highlightPlayerId={player.id} />
                     <TeamBoxTable team={teamBySlug.get(boxScore.homeTeamId)} teamSlug={boxScore.homeTeamId} box={boxScore.homeBox} playerCardMap={boxPlayerCardMap} onPlayerClick={onPlayerClick} onOpenTeam={onOpenTeam} highlightPlayerId={player.id} />
@@ -2461,12 +2470,13 @@ export const AllstarGameResultCard: React.FC<{
                         game={{ homeSlug: homeTeamId, awaySlug: awayTeamId, homeScore: boxScore.homeScore, awayScore: boxScore.awayScore }}
                         teamBySlug={new Map([[homeTeamId, homeTeamRow], [awayTeamId, awayTeamRow]])}
                         onOpenGame={event.gameId && onOpenGame ? () => onOpenGame(event.gameId!) : undefined}
+                        otPeriods={boxScore.otPeriods}
                     />
                     {boxScore.quarterScores && (
                         <QuarterScoreTable
                             homeSlug={homeTeamId} awaySlug={awayTeamId}
                             homeScore={boxScore.homeScore} awayScore={boxScore.awayScore}
-                            quarterScores={boxScore.quarterScores}
+                            quarterScores={boxScore.quarterScores} otPeriods={boxScore.otPeriods}
                             teamBySlug={new Map([[homeTeamId, homeTeamRow], [awayTeamId, awayTeamRow]])}
                         />
                     )}

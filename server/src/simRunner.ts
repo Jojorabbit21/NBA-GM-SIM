@@ -5,7 +5,7 @@
  */
 import { supabase } from './supabaseAdmin.ts';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineStore';
-import { postseasonIntervalDays } from './shared/playoffSeeder';
+import { postseasonIntervalDays, postseasonRestDays } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
@@ -29,6 +29,7 @@ import { seasonLabelFor } from './shared/playoffSeeder.ts';
 import { roundLabel, computeFinalsMvp, flushPendingLeagueEvents, type PendingLeagueEvent } from './shared/multi/playoffNews.ts';
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
+import { countOvertimePeriods } from './shared/engine/pbp/periodRules.ts';
 import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, detectInjuryEvent, detectSuspensionEvent, type DetectedEvent } from './shared/leagueEvents.ts';
 import { resolveReturnDate } from './shared/injuryDuration.ts';
 
@@ -66,7 +67,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
         // 들어있으므로 선수 하이드레이션(playerLoader.loadRoomPlayers)에서 한 번 더 resolve한다.
         const { data: leagueData } = await supabase
             .from('leagues')
-            .select('use_custom_overrides, sim_real_start_at, games_per_real_day, personal_draft_format')
+            .select('use_custom_overrides, sim_real_start_at, games_per_real_day, personal_draft_format, overtime_enabled')
             .eq('id', room.league_id)
             .maybeSingle();
 
@@ -264,6 +265,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 fatigueB2BMultiplier: fatigueSettings.fatigueB2BMultiplier,
                 // userTeamId is only a tactics anchor here (homeTeamId) — let both teams auto-call timeouts
                 autoTimeoutAllTeams: true,
+                // [2026-10-26] 연장전 리그 스위치(leagues.overtime_enabled, 기본 false) — docs/plan/overtime-system.md
+                overtimeEnabled: (leagueData as any)?.overtime_enabled === true,
             };
 
             // ── 4. PBP 엔진 실행 ───────────────────────────────────────────────
@@ -325,6 +328,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             console.log(`[simRunner] ${homeTeamId} ${homeScore} - ${awayScore} ${awayTeamId} (${simDurationMs}ms)`);
 
             // ── 5. game_pbp 저장 ───────────────────────────────────────────────
+            // [2026-10-26] 연장 수 — 결과 공개 시각(game_reveal_at)·중계 종료 판정이 경기별로 늦어진다. games에도 같은 값.
+            const otPeriods = countOvertimePeriods(result.pbpLogs ?? []);
             await supabase.from('game_pbp').upsert({
                 room_id:         roomId,
                 game_id:         gameId,
@@ -343,6 +348,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 // 카드/리스트 화면에서 매번 events(전체 PBP 로그, 경기당 수십~백KB) 전체를 다시
                 // 훑지 않도록, 쿼터별 점수는 시뮬레이션 완료 시 한 번만 계산해 별도 컬럼에 저장.
                 quarter_scores:  computeQuarterScoresFromEvents(result.pbpLogs ?? []),
+                ot_periods:      otPeriods,
             }, { onConflict: 'room_id,game_id' });
 
             // ── 5-1. 팀별 플레이타입 실적(멀티 전술 화면 PPP) [2026-10-18] ─────────────
@@ -376,7 +382,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const { data: applied, error: updErr } = await supabase
                 .from('games')
                 .update({
-                    played: true, home_score: homeScore, away_score: awayScore,
+                    played: true, home_score: homeScore, away_score: awayScore, ot_periods: otPeriods,
                     ...(forceStartNow ? { scheduled_at: gameStartTime } : {}),
                 })
                 .eq('room_id', roomId).eq('game_id', gameId).eq('played', false)
@@ -788,6 +794,7 @@ async function tryAdvanceTournamentOnce(
         advanceTournamentState(
             series, stub, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes,
             usesTimeline ? null : (leagueRow.sim_real_start_at as string | null),
+            usesTimeline ? postseasonRestDays(leagueRow as any) : 0,   // [2026-10-26] 라운드 사이 휴식일
         );
 
         const newGames = usesTimeline

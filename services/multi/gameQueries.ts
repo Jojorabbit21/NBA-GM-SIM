@@ -7,7 +7,7 @@ import type { PlayerBoxScore } from '../../types/engine';
 // 상세 배경: docs/history/dev-log.md 2026-08-06 항목.
 
 const GAME_COLS =
-    'game_id, home_team_id, away_team_id, game_date, game_time, game_seq, scheduled_at, played, home_score, away_score, is_playoff, series_id, is_allstar';
+    'game_id, home_team_id, away_team_id, game_date, game_time, game_seq, scheduled_at, played, home_score, away_score, is_playoff, series_id, is_allstar, ot_periods';
 
 // PostgREST는 timestamptz를 '2026-08-06T12:30:00+00:00' 형태로 반환하는데, 기존 JSONB엔
 // JS toISOString()의 '...Z' 형태가 저장돼 있었다. AdminSimView.tsx의 scheduledAt 문자열 직접
@@ -33,6 +33,7 @@ export function rowToGame(r: any): Game {
         isPlayoff:   !!r.is_playoff,
         seriesId:    r.series_id ?? undefined,
         isAllstar:   !!r.is_allstar,
+        otPeriods:   r.ot_periods ?? 0,   // [2026-10-26] 공개 시각(multiGameReveal) — DB game_reveal_at과 같은 식
     };
 }
 
@@ -75,6 +76,8 @@ export interface GameBoxScoreData {
      * 둔 값이라 여기서 재계산 불필요. 연장전이 있으면 4개보다 길어질 수 있어 고정 4튜플
      * (types/engine.ts의 QuarterScores)이 아니라 number[]로 느슨하게 받는다. */
     quarterScores: { home: number[]; away: number[] } | null;
+    /** [2026-10-26] 연장 수 — 옛 경기의 5칸 quarter_scores(5번째 = 경기 종료 로그 칸)를 4칸으로 접는 데 사용 */
+    otPeriods: number;
 }
 
 // [2026-09-01] 뉴스피드의 "선수 활약" 카드가 그 경기의 실제 박스스코어 테이블을 인라인으로
@@ -84,7 +87,7 @@ export interface GameBoxScoreData {
 export async function loadGameBoxScore(roomId: string, gameId: string): Promise<GameBoxScoreData | null> {
     const { data, error } = await supabase
         .from('game_pbp')
-        .select('home_team_id, away_team_id, home_score, away_score, home_box, away_box, quarter_scores')
+        .select('home_team_id, away_team_id, home_score, away_score, home_box, away_box, quarter_scores, ot_periods')
         .eq('room_id', roomId)
         .eq('game_id', gameId)
         .maybeSingle();
@@ -101,6 +104,7 @@ export async function loadGameBoxScore(roomId: string, gameId: string): Promise<
         homeBox: data.home_box ?? [],
         awayBox: data.away_box ?? [],
         quarterScores: data.quarter_scores ?? null,
+        otPeriods: data.ot_periods ?? 0,
     };
 }
 

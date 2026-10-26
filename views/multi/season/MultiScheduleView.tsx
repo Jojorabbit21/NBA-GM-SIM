@@ -31,6 +31,7 @@ import { ClickableText } from './newsFeedLetter';
 import { Button } from '../../../components/common/Button';
 import { IconButton } from '../../../components/common/IconButton';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
+import { periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 
 const LIVE_POLL_MS = 5000;
 
@@ -297,9 +298,9 @@ const GameRow: React.FC<GameRowProps> = ({ g, state, teamMap, myTeamId, liveSumm
             <TableCell className="align-middle text-sm">
                 <span className={`ko-normal ${state === 'live' ? 'text-white font-bold' : 'font-medium text-slate-400'}`}>
                     {state === 'live' && liveSummaries[g.id]
-                        ? `Q${liveSummaries[g.id].quarter ?? 1} ${liveSummaries[g.id].clock ?? ''}`
+                        ? `${periodShortLabel(liveSummaries[g.id].quarter ?? 1)} ${liveSummaries[g.id].clock ?? ''}`
                         : state === 'final'
-                        ? '종료'
+                        ? (g.otPeriods ? `종료 (${overtimeTag(g.otPeriods)})` : '종료')   // [2026-10-26] 연장 경기 표시
                         : EMPTY_CELL}
                 </span>
             </TableCell>

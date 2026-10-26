@@ -3,6 +3,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { ShotEvent } from '../../types';
 import { TooltipState, calcShotDistance } from '../../hooks/useShotChartTooltip';
+import { periodShortLabel } from '../../utils/periodLabel';
 
 interface ShotTooltipProps {
     tooltip: TooltipState;
@@ -30,7 +31,7 @@ function PrimaryShotInfo({ shot }: { shot: ShotEvent }) {
             {/* Row 1: Quarter + Time | Result */}
             <div className="flex items-center justify-between gap-4">
                 <span className="text-slate-400">
-                    Q{shot.quarter} {formatGameClock(shot.gameClock)}
+                    {periodShortLabel(shot.quarter)} {formatGameClock(shot.gameClock)}
                 </span>
                 {isMake ? (
                     <span className="font-black text-emerald-400">

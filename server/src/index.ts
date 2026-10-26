@@ -23,7 +23,7 @@ import { forceInitSchedule } from './finalize';
 import { supabase } from './supabaseAdmin';
 import { decode, encode } from './protocol';
 import type { WsData } from './DraftRoom';
-import { buildWindowedViewSince, buildLiveSummary, type GamePbpSource } from './liveGameView';
+import { buildWindowedViewSince, buildLiveSummary, maxReplayLengthMs, type GamePbpSource } from './liveGameView';
 import { getRoomReplayMs } from './replayConfig';
 import { verifyTokenCached, canReadRoomCached, createSharedLoader, LIVE_QUERY_TIMEOUT_MS } from './liveCache';
 import { preloadGameConfig } from './shared/services/admin/gameConfigService';
@@ -482,7 +482,7 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
     const row = await loadLiveGameRow(`${roomId}:${gameId}`, async () => {
         const { data, error } = await supabase
             .from('game_pbp')
-            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data')
+            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data,ot_periods')
             .eq('room_id', roomId)
             .eq('game_id', gameId)
             .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS))
@@ -534,10 +534,11 @@ async function handleLiveGames(req: Request, url: URL): Promise<Response> {
     // DB가 막히면 loader가 60초까지 직전 행으로 대신한다.
     const rows = await loadLiveGameRows(roomId, async () => {
         const nowIso    = new Date().toISOString();
-        const cutoffIso = new Date(Date.now() - replayMs).toISOString();
+        // [2026-10-26] 연장 경기는 리플레이가 더 길다 — 연장 최대 2회 길이까지 진행 중 후보로 조회(연장 없는 경기는 요약이 final로 계산됨)
+        const cutoffIso = new Date(Date.now() - maxReplayLengthMs(replayMs)).toISOString();
         const { data, error } = await supabase
             .from('game_pbp')
-            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline')
+            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,ot_periods')
             .eq('room_id', roomId)
             .lte('game_start_time', nowIso)
             .gt('game_start_time', cutoffIso)

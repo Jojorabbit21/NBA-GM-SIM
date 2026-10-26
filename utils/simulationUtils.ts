@@ -1,6 +1,7 @@
 
 import { Team, PlayoffSeries, PlayerBoxScore, PbpLog, QuarterScores } from '../types';
 import { INITIAL_STATS } from './constants';
+import { countOvertimePeriods } from './gameClock';
 
 /**
  * Applies a box score to a team's roster player stats in-memory.
@@ -173,7 +174,10 @@ export const updateSeriesState = (
 
 /**
  * pbpLogs에서 쿼터별 득점을 추출한다.
- * OT는 Q4에 합산. homeScore/awayScore로 최종 보정.
+ * [2026-10-26] 연장전이 있으면 칸이 늘어난다(Q1~Q4, OT1, OT2 …) — 연장 없는 경기는 기존처럼 4칸.
+ * 연장전 스위치가 꺼진 경기의 "5쿼터" 버저비터 득점(연장이 아님)은 기존처럼 Q4에 합산한다 —
+ * 연장 경기는 반드시 "연장 N 시작" 로그가 있으므로 그것으로 구분.
+ * homeScore/awayScore로 최종 보정(차이는 마지막 칸에).
  */
 export const extractQuarterScores = (
     pbpLogs: PbpLog[],
@@ -181,14 +185,15 @@ export const extractQuarterScores = (
     homeScore: number,
     awayScore: number,
 ): QuarterScores => {
-    const home: [number, number, number, number] = [0, 0, 0, 0];
-    const away: [number, number, number, number] = [0, 0, 0, 0];
+    const periods = 4 + countOvertimePeriods(pbpLogs);
+    const home = new Array<number>(periods).fill(0);
+    const away = new Array<number>(periods).fill(0);
 
     for (const log of pbpLogs) {
         if (log.type !== 'score' && log.type !== 'freethrow') continue;
         const pts = log.points ?? 0;
         if (pts === 0) continue;
-        const qi = Math.min(3, log.quarter - 1); // Q1→0, Q2→1, Q3→2, Q4+OT→3
+        const qi = Math.min(periods - 1, log.quarter - 1); // 연장 없는 경기: Q4+버저비터→3
         if (log.teamId === homeTeamId) {
             home[qi] += pts;
         } else {
@@ -196,11 +201,12 @@ export const extractQuarterScores = (
         }
     }
 
-    // 최종 스코어 보정 (엔진 quirk 대비) → Q4에 차이 반영
-    const homeDiff = homeScore - (home[0] + home[1] + home[2] + home[3]);
-    const awayDiff = awayScore - (away[0] + away[1] + away[2] + away[3]);
-    if (homeDiff !== 0) home[3] += homeDiff;
-    if (awayDiff !== 0) away[3] += awayDiff;
+    // 최종 스코어 보정 (엔진 quirk 대비) → 마지막 칸에 차이 반영
+    const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+    const homeDiff = homeScore - sum(home);
+    const awayDiff = awayScore - sum(away);
+    if (homeDiff !== 0) home[periods - 1] += homeDiff;
+    if (awayDiff !== 0) away[periods - 1] += awayDiff;
 
     return { home, away };
 };

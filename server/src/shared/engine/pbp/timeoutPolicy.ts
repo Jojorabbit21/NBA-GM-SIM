@@ -1,11 +1,12 @@
 import type { GameState, TeamState } from './pbpTypes.ts';
+import { elapsedGameSec, isOvertimePeriod, OT_TIMEOUTS } from './periodRules.ts';
 
 /**
  * 타임아웃 정책 (NBA 룰북 Rule 5 §VI 기반).
  * - 팀당 경기 7회, 의무 타임아웃도 7회에서 차감(기록원 강제 선언 없음 — 양 팀이 알아서 나눠 쓴다).
  * - 4쿼터 진입 시 최대 4회 / 4쿼터 3분 이후(그리고 두 번째 의무 타임아웃 이후) 최대 2회 — 초과분이 소멸하지
  *   않도록 AI(멀티는 유저 팀 포함)가 미리 소진한다.
- * - 연장전 규칙은 연장전 시스템 구현 시 연결(현재 quarter > 4 는 전부 무동작).
+ * - [2026-10-26] 연장: 피리어드당 팀당 OT_TIMEOUTS(2)회, 이월 없음, 의무 타임아웃·보유 상한 없음(decideOvertimeTimeout).
  * 순수 함수 모음 — RNG 없음(결정론). liveEngine.ts 와 server/src/shared 미러 쌍으로 유지할 것.
  */
 
@@ -35,7 +36,7 @@ export interface TimeoutDecision {
 
 const teamsOf = (state: GameState): TeamState[] => [state.home, state.away];
 const sideOf = (state: GameState, team: TeamState): Side => (team.id === state.home.id ? 'home' : 'away');
-const elapsedSec = (state: GameState): number => ((state.quarter - 1) * 720) + (720 - state.gameClock);
+const elapsedSec = (state: GameState): number => elapsedGameSec(state);
 
 /** 유저가 직접 조작하는 팀(라이브 싱글, 위임 안 함)은 자동 자발 타임아웃 대상이 아님 */
 function isAutoTeam(state: GameState, team: TeamState): boolean {
@@ -46,6 +47,10 @@ function isAutoTeam(state: GameState, team: TeamState): boolean {
 /** 새 피리어드 시작 시 호출 — 의무 타임아웃 슬롯 리셋 + 4쿼터 진입 상한 */
 export function startTimeoutPeriod(state: GameState): void {
     state.timeoutPeriod = { slots: 0, firstTeamId: null, lateCapApplied: false };
+    if (isOvertimePeriod(state.quarter)) {
+        for (const t of teamsOf(state)) t.timeouts = OT_TIMEOUTS; // 이월 없음
+        return;
+    }
     if (state.quarter === 4) {
         for (const t of teamsOf(state)) t.timeouts = Math.min(t.timeouts, TIMEOUT_RULES.Q4_ENTRY_MAX);
     }
@@ -111,7 +116,7 @@ function runReserve(state: GameState, team: TeamState): number {
 
 /** 4쿼터 막판 접전에서 뒤진 팀이 공격권을 쥐고 있을 때의 전략 타임아웃 */
 function wantsStrategic(state: GameState, team: TeamState): boolean {
-    if (state.quarter !== 4 || state.gameClock > TIMEOUT_RULES.STRATEGIC_CLOCK) return false;
+    if (state.quarter < 4 || state.gameClock > TIMEOUT_RULES.STRATEGIC_CLOCK) return false;   // 연장 포함
     const side = sideOf(state, team);
     if (state.possession !== side) return false;
     const mine = side === 'home' ? state.home.score : state.away.score;
@@ -127,7 +132,7 @@ function wantsStrategic(state: GameState, team: TeamState): boolean {
  * 우선순위: 4Q 전략 → 초과분 소진 → 런 대응 → 마지막 1분 소진 → 의무 타임아웃.
  */
 export function decideTimeout(state: GameState, runVictimId: string | null): TimeoutDecision | null {
-    if (state.quarter > 4) return null; // 연장전: 연장전 시스템 구현 시 연결
+    if (isOvertimePeriod(state.quarter)) return decideOvertimeTimeout(state, runVictimId);
     applyLateCapIfDue(state);
     const R = TIMEOUT_RULES;
 
@@ -166,4 +171,29 @@ export function decideTimeout(state: GameState, runVictimId: string | null): Tim
         return null;
     }
     return { teamId: payer.id, mandatory: true };
+}
+
+/**
+ * [2026-10-26] 연장 타임아웃 — 팀당 2회(이월 없음), 의무 타임아웃·보유 상한 없음.
+ * 우선순위: 막판 전략(뒤지거나 동점 막판 공격권) → 런 대응(2:30 전엔 전략용 1회 남김) → 마지막 1분 소진(어차피 소멸).
+ */
+function decideOvertimeTimeout(state: GameState, runVictimId: string | null): TimeoutDecision | null {
+    const R = TIMEOUT_RULES;
+    const order = teamsOf(state).sort((a, b) => b.timeouts - a.timeouts);
+    const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t));
+    for (const t of callable) {
+        if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && wantsStrategic(state, t)) return { teamId: t.id, mandatory: false };
+    }
+    for (const t of callable) {
+        const reserve = state.gameClock > R.STRATEGIC_CLOCK ? 1 : 0;
+        if (t.id === runVictimId && gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && t.timeouts - 1 >= reserve) {
+            return { teamId: t.id, mandatory: false };
+        }
+    }
+    if (state.gameClock <= R.FINAL_SPEND_CLOCK) {
+        for (const t of callable) {
+            if (gapOk(state, t, R.FINAL_GAP_SEC, R.FINAL_GAP_SEC)) return { teamId: t.id, mandatory: false };
+        }
+    }
+    return null;
 }

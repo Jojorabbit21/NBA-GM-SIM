@@ -87,6 +87,8 @@ export interface PlayoffCalendarSpec {
     teamsPerConference: number;
     targetWins: number;
     finalsTargetWins: number;
+    /** [2026-10-26] 포스트시즌 휴식일 — 리그 시즌 달력(seasonCalendar.postseasonRestDays). 생략 = 0(기존 규칙). */
+    restDays?: number;
 }
 
 export interface TimelineFeasibilityInput {
@@ -159,25 +161,48 @@ function nextPow2(n: number): number {
     return p;
 }
 
+export interface PostseasonDayOffsets {
+    /** 플레이인 7v8·9v10 */
+    playIn: number;
+    /** 플레이인 8시드 디사이더 */
+    decider: number;
+    /** 본선 1라운드 1차전 */
+    round1: number;
+}
+
+/**
+ * [2026-10-26] 포스트시즌 가상 날짜 오프셋(앵커 = 정규시즌 종료 다음 날 = 0) — 시드 생성(playInSeeder·playoffSeeder,
+ * 타임라인 리그)과 playoffMaxDays가 함께 쓰는 단일 규칙. r = 휴식일(seasonCalendar.postseasonRestDays), g = 경기 간격.
+ *  - 플레이인 = r, 디사이더 = r + g
+ *  - 1라운드 = 플레이인 있으면 디사이더 + g + r, 없으면 r
+ * r=0이면 기존 규칙(플레이인 0, 디사이더 g, 1라운드 2g / 플레이인 없으면 0)과 같다.
+ */
+export function postseasonDayOffsets(intervalDays: number, playInEnabled: boolean, restDays: number = 0): PostseasonDayOffsets {
+    const g = Math.max(1, Math.round(intervalDays));
+    const r = Math.max(0, Math.round(restDays));
+    const playIn = r;
+    const decider = playIn + g;
+    return { playIn, decider, round1: playInEnabled ? decider + g + r : r };
+}
+
 /**
  * 포스트시즌 가상 캘린더 최대 일수 — 앵커(정규시즌 종료 다음 날)를 offset 0으로:
- *  - 플레이인: 7v8·9v10 = offset 0, 디사이더 = offset g
- *  - 1라운드 시작 = 플레이인 있으면 2g, 없으면 0
- *  - 시리즈 안 경기: G_n = roundStart + (n−1)·g, 다음 라운드 시작 = roundStart + maxGames·g
+ *  - 플레이인·디사이더·1라운드 시작 = postseasonDayOffsets()
+ *  - 시리즈 안 경기: G_n = roundStart + (n−1)·g, 다음 라운드 시작 = roundStart + maxGames·g + 휴식일
  *  - 총 일수 = 결승 마지막 가능 경기 offset + 1
- * g=1·Bo7·플레이인: 30일, g=2: 59일 (컨퍼런스 8팀 기준 4라운드).
+ * g=1·Bo7·플레이인: 30일(휴식일 1이면 35일 = 최종일·디사이더 뒤 2 + 라운드 사이 3), g=2: 59일(64일) (컨퍼런스 8팀 기준 4라운드).
  */
 export function playoffMaxDays(spec: PlayoffCalendarSpec): number {
     const g = Math.max(1, Math.round(spec.intervalDays));
     const bracketSize = nextPow2(Math.max(2, spec.teamsPerConference * 2));
     const rounds = Math.max(1, Math.round(Math.log2(bracketSize)));
-    let roundStart = spec.playInEnabled ? 2 * g : 0;
+    let roundStart = postseasonDayOffsets(g, spec.playInEnabled, spec.restDays ?? 0).round1;
     let lastGameOffset = 0;
     for (let r = 1; r <= rounds; r++) {
         const tw = r === rounds ? spec.finalsTargetWins : spec.targetWins;
         const maxGames = tw * 2 - 1;
         lastGameOffset = roundStart + (maxGames - 1) * g;
-        roundStart = roundStart + maxGames * g;
+        roundStart = roundStart + maxGames * g + Math.max(0, Math.round(spec.restDays ?? 0));   // [2026-10-26] 라운드 사이 휴식일
     }
     return lastGameOffset + 1;
 }
@@ -335,6 +360,38 @@ export function gameRealStartMs(row: VirtualDayRow, timeHHMM: string | undefined
     const maxOffset = Math.max(0, dayLengthMin - replayMin);
     const offset = Math.min(maxOffset, virtualTimeToRealOffsetMin(timeHHMM, dayLengthMin));
     return start + offset * 60_000;
+}
+
+/** [2026-10-26] 연장전 최대 횟수 — B2B 간격 판정에서 경기 길이 상한 계산용. 엔진 연장전 구현
+ *  (docs/plan/overtime-system.md, 5분 × 최대 2회) 전에 일정 쪽에 먼저 반영. 엔진 상수가 생기면 같은 값으로 맞출 것. */
+export const MAX_OVERTIME_PERIODS = 2;
+
+const b2bGapCache = new Map<string, boolean>();
+
+/**
+ * [2026-10-26] 같은 팀의 연속 이틀(B2B) 경기 가상 시각 쌍이 안전한지 — 첫날 경기의 리플레이(정규 +
+ * 연장 최대 MAX_OVERTIME_PERIODS회, 같은 속도) + 여유 DAY_LENGTH_REPLAY_MARGIN_MIN이 끝나기 전에 둘째 날
+ * 경기가 시작하지 않아야 한다. 실제 간격 = D + 둘째 날 오프셋 − 첫날 오프셋(gameRealStartMs와 같은 클램프).
+ * 하루 길이·리플레이는 리그 생성 후에도 일정 설정 탭에서 바뀔 수 있으므로 허용 범위 전 조합
+ * (D 20~40분 × REPLAY_MINUTE_OPTIONS)에서 모두 성립해야 true. 최악 조합은 D=20·리플레이 12분.
+ */
+export function isB2BGapSafe(firstTimeHHMM: string | undefined, secondTimeHHMM: string | undefined): boolean {
+    const key = `${firstTimeHHMM}|${secondTimeHHMM}`;
+    const cached = b2bGapCache.get(key);
+    if (cached !== undefined) return cached;
+    let ok = true;
+    for (let D = MIN_DAY_LENGTH_MIN; D <= MAX_DAY_LENGTH_MIN && ok; D++) {
+        for (const R of REPLAY_MINUTE_OPTIONS) {
+            if (D < R + DAY_LENGTH_REPLAY_MARGIN_MIN) continue;   // 생성 검증에서 막히는 조합
+            const maxOffset = Math.max(0, D - R);
+            const off = (t: string | undefined) => Math.min(maxOffset, virtualTimeToRealOffsetMin(t, D));
+            const gap = D + off(secondTimeHHMM) - off(firstTimeHHMM);
+            const gameLen = R * (2880 + 300 * MAX_OVERTIME_PERIODS) / 2880;
+            if (gap < gameLen + DAY_LENGTH_REPLAY_MARGIN_MIN) { ok = false; break; }
+        }
+    }
+    b2bGapCache.set(key, ok);
+    return ok;
 }
 
 /** 플레이오프 시리즈 ID → 같은 가상 날짜 안에서 쓰는 가상 시각 슬롯. 매치 인덱스 기반이라

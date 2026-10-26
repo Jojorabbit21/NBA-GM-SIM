@@ -7,6 +7,7 @@ import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary } from '../commentary/textGenerator.ts';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils.ts';
 import { recordShotEvent } from './handlers/visUtils.ts';
+import { teamFoulLimit } from './periodRules.ts';
 
 function bumpDefendedShot(defender: LivePlayer, broadZone: string, subZone: string | undefined, isMake: boolean): void {
     defender.contestedAttempted = (defender.contestedAttempted ?? 0) + 1;
@@ -269,7 +270,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // [2026-10-23] 보너스 전이면 공격권이 유지되어 포제션이 이어진다(liveEngine isNonBonusFoul, client 미러 참조).
         addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
 
-        if (defTeam.fouls > 4) {
+        if (defTeam.fouls > teamFoulLimit(state.quarter)) {   // [2026-10-26] 정규 5번째·연장 4번째부터 자유투
             let ftMade = 0;
             const ftPct = actor.attr.ft / 100;
             actor.fta += 2;

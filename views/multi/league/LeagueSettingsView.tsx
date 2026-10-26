@@ -200,6 +200,8 @@ const LeagueSettingsView: React.FC = () => {
     const [suspensionsEnabled,  setSuspensionsEnabled]  = useState(DEFAULT_SIM_SETTINGS.suspensionsEnabled);
     const [suspensionFrequency, setSuspensionFrequency] = useState(DEFAULT_SIM_SETTINGS.suspensionFrequency);
     const [garbageTimeEnabled, setGarbageTimeEnabled] = useState(DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
+    // [2026-10-26] 연장전 — sim_settings가 아니라 리그 칼럼(leagues.overtime_enabled). 서버 simRunner가 엔진에 주입
+    const [overtimeEnabled,    setOvertimeEnabled]    = useState(false);
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
     // 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) — 회복률은 % 정수로 편집
     const [overnightRecoveryPct, setOvernightRecoveryPct] = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep));
@@ -374,6 +376,7 @@ const LeagueSettingsView: React.FC = () => {
         setCpuTradeBaseProbability(room?.sim_settings?.cpuTradeBaseProbability ?? DEFAULT_SIM_SETTINGS.cpuTradeBaseProbability);
         setTradeDeadlineDate((league as any).trade_deadline_date ?? getTradeDeadlineBounds((league as any).virtual_season_year ?? new Date().getFullYear()).default);
         setTradeDeadlineEnabled((league as any).trade_deadline_enabled ?? true);
+        setOvertimeEnabled((league as any).overtime_enabled ?? false);
         setTradeSalaryMatchingEnabled((league as any).trade_salary_matching_enabled ?? true);
         setCapEnabled((league as any).cap_enabled ?? true);
         setCbaRulesEnabled((league as any).cba_rules_enabled ?? true);
@@ -539,6 +542,7 @@ const LeagueSettingsView: React.FC = () => {
                     fatigueB2BMultiplier: b2bMultiplier,
                 }),
             },
+            overtimeEnabled,
         });
         setSavingSim(false);
         if (err) { setSaveSimErr(err); return; }
@@ -941,6 +945,7 @@ const LeagueSettingsView: React.FC = () => {
         suspensionsEnabled !== (room?.sim_settings?.suspensionsEnabled ?? DEFAULT_SIM_SETTINGS.suspensionsEnabled) ||
         suspensionFrequency !== (room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency) ||
         garbageTimeEnabled !== (room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled) ||
+        overtimeEnabled !== ((league as any)?.overtime_enabled ?? false) ||
         normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
         overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
         restDayRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueRestDayKeep) ||
@@ -1522,6 +1527,24 @@ const LeagueSettingsView: React.FC = () => {
                         <div className="flex-1 min-w-0">
                             <span className={`text-xs font-bold ${garbageTimeEnabled ? 'text-white' : 'text-slate-400'}`}>가비지타임 자동 벤치</span>
                             <span className="ml-2 text-xs text-slate-500 ko-normal">Q4 대량 점수차 시 주전 자동 벤치 및 후보 투입</span>
+                        </div>
+                    </label>
+
+                    {/* [2026-10-26] 연장전 — 리그 칼럼(overtime_enabled), 다음 경기부터 적용 */}
+                    <label
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${
+                            overtimeEnabled ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent hover:border-slate-600'
+                        }`}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={overtimeEnabled}
+                            onChange={e => setOvertimeEnabled(e.target.checked)}
+                            className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <span className={`text-xs font-bold ${overtimeEnabled ? 'text-white' : 'text-slate-400'}`}>연장전</span>
+                            <span className="ml-2 text-xs text-slate-500 ko-normal">4쿼터 동점 시 5분 연장(최대 2회, 그래도 동점이면 결승 공격). 경기 시작·연장은 점프볼로 시작하고, 연장 경기는 결과가 연장 길이만큼 늦게 공개됩니다. 다음 경기부터 적용</span>
                         </div>
                     </label>
 

@@ -4,6 +4,7 @@ import { Team, PbpLog, QuarterScores } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
 import { TimeoutBars, getTimeoutsLeftFromLogs } from './TimeoutBars';
+import { countOvertimePeriods, foldPeriodScores } from '../../utils/periodLabel';
 
 interface ResultHeaderProps {
     homeTeam: Team;
@@ -20,46 +21,45 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 }) => {
 
     // Calculate Quarter Scores: pre-computed data 우선, 없으면 pbpLogs에서 계산
+    // [2026-10-26] 연장이 있었던 경기만 OT 열 — 연장 수는 "N차 연장 시작" 로그 수(로그가 없으면 저장값의 4칸 뒤
+    // 0이 아닌 칸 수로 추정 — 옛 멀티 저장값의 5번째 "경기 종료 로그" 칸은 대개 0). 넘치는 칸은 4쿼터에 합친다.
     const quarterScores = useMemo(() => {
+        const hasLogs = !!pbpLogs && pbpLogs.length > 0;
         if (quarterScoresData) {
-            return {
-                home: { 1: quarterScoresData.home[0], 2: quarterScoresData.home[1], 3: quarterScoresData.home[2], 4: quarterScoresData.home[3] },
-                away: { 1: quarterScoresData.away[0], 2: quarterScoresData.away[1], 3: quarterScoresData.away[2], 4: quarterScoresData.away[3] },
-            };
+            let ot = 0;
+            if (hasLogs) ot = countOvertimePeriods(pbpLogs!);
+            else {
+                const len = Math.max(quarterScoresData.home.length, quarterScoresData.away.length);
+                for (let i = len - 1; i >= 4; i--) {
+                    if ((quarterScoresData.home[i] ?? 0) + (quarterScoresData.away[i] ?? 0) > 0) { ot = i - 3; break; }
+                }
+            }
+            return { home: foldPeriodScores(quarterScoresData.home, ot), away: foldPeriodScores(quarterScoresData.away, ot) };
         }
 
-        const scores = {
-            home: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 },
-            away: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 }
-        };
-
-        if (!pbpLogs) return scores;
+        const periods = 4 + (hasLogs ? countOvertimePeriods(pbpLogs!) : 0);
+        const home = new Array<number>(periods).fill(0);
+        const away = new Array<number>(periods).fill(0);
+        if (!pbpLogs) return { home, away };
 
         pbpLogs.forEach(log => {
             if (log.type === 'score' || log.type === 'freethrow') {
                 const points = log.points ?? 0;
-
-                const q = Math.min(4, log.quarter) as 1|2|3|4;
-                const isHome = log.teamId === homeTeam.id;
-
-                if (isHome) {
-                    scores.home[q] += points;
-                    scores.home.total += points;
-                } else {
-                    scores.away[q] += points;
-                    scores.away.total += points;
-                }
+                const qi = Math.min(periods, log.quarter) - 1;
+                if (log.teamId === homeTeam.id) home[qi] += points;
+                else away[qi] += points;
             }
         });
 
-        const homeDiff = homeScore - scores.home.total;
-        const awayDiff = awayScore - scores.away.total;
+        const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+        const homeDiff = homeScore - sum(home);
+        const awayDiff = awayScore - sum(away);
+        if (homeDiff !== 0) home[periods - 1] += homeDiff;
+        if (awayDiff !== 0) away[periods - 1] += awayDiff;
 
-        if (homeDiff !== 0) scores.home[4] += homeDiff;
-        if (awayDiff !== 0) scores.away[4] += awayDiff;
-
-        return scores;
+        return { home, away };
     }, [pbpLogs, quarterScoresData, homeTeam.id, homeScore, awayScore]);
+    const periodCount = quarterScores.home.length;
     
     // 경기 종료 시점 잔여 타임아웃 (PBP 로그가 없는 경기는 바를 숨김)
     const hasLogs = !!pbpLogs && pbpLogs.length > 0;
@@ -114,27 +114,20 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                                 <thead>
                                     <tr className="bg-slate-800/50 text-slate-400">
                                         <th className="px-2 py-1 border-r border-slate-800 w-8"></th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-800">1</th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-800">2</th>
-                                        <th className="px-2 py-1 text-center border-r border-slate-800">3</th>
-                                        <th className="px-2 py-1 text-center">4</th>
+                                        {Array.from({ length: periodCount }, (_, i) => (
+                                            <th key={i} className={`px-2 py-1 text-center ${i < periodCount - 1 ? 'border-r border-slate-800' : ''}`}>{i < 4 ? i + 1 : `OT${i - 3}`}</th>
+                                        ))}
                                     </tr>
                                 </thead>
                                 <tbody className="text-slate-300">
-                                    <tr className="border-b border-slate-800">
-                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-800 text-center">{awayTeam.id.toUpperCase()}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[1]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[2]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.away[3]}</td>
-                                        <td className="px-2 py-1 text-center">{quarterScores.away[4]}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-800 text-center">{homeTeam.id.toUpperCase()}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[1]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[2]}</td>
-                                        <td className="px-2 py-1 text-center border-r border-slate-800">{quarterScores.home[3]}</td>
-                                        <td className="px-2 py-1 text-center">{quarterScores.home[4]}</td>
-                                    </tr>
+                                    {([['away', awayTeam.id], ['home', homeTeam.id]] as const).map(([side, teamId], row) => (
+                                        <tr key={side} className={row === 0 ? 'border-b border-slate-800' : ''}>
+                                            <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-800 text-center">{teamId.toUpperCase()}</td>
+                                            {quarterScores[side].map((v, i) => (
+                                                <td key={i} className={`px-2 py-1 text-center ${i < periodCount - 1 ? 'border-r border-slate-800' : ''}`}>{v}</td>
+                                            ))}
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>

@@ -143,6 +143,8 @@ export interface LeagueRow {
     /** [2026-09-16] 트레이드 데드라인 강제 여부 마스터 스위치. false면 trade_deadline_date
      *  값이 있어도 무시(무제한) — cap_enabled/luxury_tax_enabled와 동일한 on/off + 값 패턴. */
     trade_deadline_enabled: boolean;
+    /** [2026-10-26] 연장전(5분×최대 2회+결승 공격, 점프볼) — 세션 설정 "엔진" 탭. 칼럼 기본 true(이전 리그는 false). */
+    overtime_enabled: boolean;
     /** [2026-10-19] 참가하지 않은 로그인 유저의 읽기 전용 관전 허용 여부. in_progress/finished 상태에서만 유효
      *  (recruiting/drafting은 항상 불가). 실제 접근 통제는 DB의 spectatable_room_ids() RLS가 담당. 기본 false. */
     spectate_enabled: boolean;

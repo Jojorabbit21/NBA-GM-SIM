@@ -82,9 +82,10 @@ export interface PbpLog {
     possessionTeamId?: string;
 }
 
+/** [2026-10-26] Q1~Q4 + 연장(있으면 OT1, OT2 …) 순서 — 연장전 도입 전 저장값은 4칸(연장 득점은 Q4에 합산돼 있음). */
 export interface QuarterScores {
-    home: [number, number, number, number];
-    away: [number, number, number, number];
+    home: number[];
+    away: number[];
 }
 
 export type RotationOutReason = 'normal' | 'foul_trouble' | 'shutdown' | 'injury' | 'foul_out' | 'garbage' | 'manual';

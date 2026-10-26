@@ -35,7 +35,7 @@ import {
     REPLAY_MINUTE_OPTIONS, lateGameClampsAt,
 } from '../../utils/leagueTimeline';
 import { getAllStarKeyDates } from '../../utils/allStarSelection';
-import { buildSeasonCalendar } from '../../utils/seasonCalendar';
+import { buildSeasonCalendar, POSTSEASON_REST_DAYS } from '../../utils/seasonCalendar';
 
 const ALL_REAL_TEAMS = Object.values(TEAM_DATA);
 const EAST_TEAMS = ALL_REAL_TEAMS.filter(t => t.conference === 'East');
@@ -556,9 +556,11 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
     // 플레이오프 최대 일수)를 실제 기간에 담을 때 필요한 일일 시뮬 시간대 길이를 구하고, 자정을 넘기면
     // 생성을 막고 대안(종료일/하루 길이/시작 시각)을 제시한다.
     // [2026-10-24] 실제 선택한 플레이오프 형식으로 계산(예전엔 형식 선택 없이 7전·8팀·플레이인 고정 가정).
+    // [2026-10-26] restDays — 새 리그 달력(buildSeasonCalendar)의 포스트시즌 휴식일, finalize.ts와 같은 값.
     const playoffSpec = (intervalDays: number) => ({
         intervalDays, playInEnabled, teamsPerConference: playoffTeamsPerConf,
         targetWins: playoffTargetWins(playoffFormat), finalsTargetWins: playoffTargetWins(playoffFinalsFormat),
+        restDays: POSTSEASON_REST_DAYS,
     });
     // [2026-10-23] 새 리그는 요일 규칙 달력(seasonCalendar.ts) — finalize.ts가 같은 함수로 만들어 저장한다.
     const virtualCalendarDays = React.useMemo(() => {

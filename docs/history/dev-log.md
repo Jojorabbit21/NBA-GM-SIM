@@ -91,6 +91,333 @@ for (const [pid, row] of rows) {
 
 **롤백 방법:** 위 한 줄 삭제.
 
+## 2026-10-26 — 경기 목록·결과에 연장 표시(OT / 2OT)
+
+**배경**: 사용자 요청 — 연장 경기를 목록·결과에서 구분(스코어보드 관례 "종료 (OT)", "112-110 OT").
+
+**변경 파일**:
+- `utils/periodLabel.ts` — `overtimeTag(ot)`: 0 → '', 1 → 'OT', 2 → '2OT'
+- `views/multi/season/MultiScheduleView.tsx` — 상태 칸 '종료' → 연장이면 '종료 (OT)'
+- `views/multi/season/GameDateStrip.tsx` — 상태 라벨 같은 처리 + 라이브 라벨 `${quarter}Q` → `periodShortLabel(q, undefined, '1Q')`(연장 OT1)
+- `views/multi/season/newsFeedCards.tsx` — `BoxScoreHeadline`에 `otPeriods`(박스스코어 로더 값), 점수 텍스트를 "000-000 OT" 한 덩어리로(경기 결과 링크 `ClickableText` 안 — 별도 태그 아님). 호출부 3곳
+- (팀 경기 로그 `TeamGameLog`·팀 일정 달력 `TeamScheduleCalendar`에도 넣었다가 사용자 요청으로 제거 — 두 파일 HEAD와 동일)
+
+**Before**: 연장 여부 표시 없음(상태 '종료', 점수만) / **After**: 멀티 일정·날짜 띠 '종료 (OT)', 뉴스 카드 결과 헤더 '112-110 OT'(링크 텍스트 일부)
+- 연장 수 출처: 멀티는 `games.ot_periods`(`rowToGame` → `Game.otPeriods`)·`game_pbp.ot_periods`(`loadGameBoxScore`). 태그는 점수와 같은 자리·같은 공개 조건(점수가 보일 때만)이라 스포일러 노출 변화 없음
+- 싱글은 `Game.otPeriods`가 없어 태그 미표시(싱글은 연장전 off). 뉴스 카드 중 이벤트 payload만 쓰는 목록(선수 경기 목록·연승 경기 기록)은 연장 수가 없어 미표시
+
+**검증**: client tsc 변경 파일 오류 없음. 브라우저 육안 미확인
+
+**롤백 방법**: `overtimeTag` 사용부 삭제(각 파일 import 포함), GameDateStrip 라이브 라벨 원복, BoxScoreHeadline `otPeriods` prop·호출부 인자 삭제
+
+## 2026-10-26 — 멀티 라이브 핫/콜드 재구성: 연장 진입 시 반감
+
+**배경**: `MultiGamePbpView.buildLiveBox`는 엔진의 핫/콜드 쿼터 전환 보정(Q2·Q4 진입 dampen, Q3 reset)을 tick 시각 720/1440/2160초로 재현하는데, 엔진은 연장 진입(쿼터 휴식 블록)에서도 `dampenHotCold`를 한다 — 라이브 화면의 연장 핫/콜드 표시가 엔진과 어긋남.
+
+**변경 파일**: `views/multi/season/MultiGamePbpView.tsx` (`buildLiveBox`)
+
+**Before**: `dampenedQ2`(t ≥ 720) / `resetQ3`(t ≥ 1440) / `dampenedQ4`(t ≥ 2160)만
+**After**: 추가로 `while (tick.t > 2880 + otDampened × 300) { recentShots 최근 3개로; otDampened++ }` — 정확히 2880초(4쿼터 0:00) 틱은 4쿼터 소속이라 `>`
+
+**검증**: client tsc 오류 없음(로직 한 줄, 정규시간 경기는 2880초 초과 틱이 없어 무영향)
+
+**롤백 방법**: `otDampened` 변수와 while 블록 삭제
+
+## 2026-10-26 — 세션 설정 "엔진" 탭에 연장전 on/off 토글
+
+**배경**: 사용자 요청 — 연장전을 세션 설정에서 켜고 끌 수 있게. P1~P3 동안은 공개 시각 처리 전이라 일부러 UI를 두지 않았고, P3 완료로 추가.
+
+**변경 파일**:
+- `views/multi/league/LeagueSettingsView.tsx` — `overtimeEnabled` 상태(리그 행 `overtime_enabled`로 초기화·동기화), 엔진 탭 dirty 판정, `handleSaveSimSettings`가 `overtimeEnabled` 함께 저장, "가비지타임 자동 벤치" 아래 토글 + 안내 문구
+- `services/multi/leagueService.ts` — `UpdateLeagueSettingsParams.overtimeEnabled` → payload `overtime_enabled`
+- `services/multi/roomQueries.ts` — `League.overtime_enabled`
+- DB `migrations/add_overtime_enabled_to_settings_audit.sql` (**운영 적용 완료**) — `trg_lal_league_settings`의 기록 칼럼 배열(v_cols)에 `overtime_enabled` 추가(로그 탭은 바뀐 칼럼명을 그대로 표시 — 라벨 표 없음)
+
+**Before**: 연장전 스위치는 DB에서만 변경 가능(UI 없음), 감사 로그 미기록
+**After**: 엔진 탭 체크박스 → 저장 시 `leagues.overtime_enabled` 갱신 → 서버 simRunner/postAllStarGame이 다음 경기부터 엔진 `simSettings.overtimeEnabled`로 주입, 변경은 리그 설정 감사 로그에 남음
+
+**검증**: client tsc 변경 파일 오류 없음, 트리거 정의에 `overtime_enabled` 반영 확인. 브라우저 육안 미확인
+
+**배포 순서**: 클라만 먼저 나가도 무해(현재 운영 서버는 이 칼럼을 읽지 않아 연장 안 함). 서버 P1~P3과 같이 나가야 실제로 연장이 돈다
+
+**롤백 방법**: LeagueSettingsView의 `overtimeEnabled` 상태·동기화·dirty·저장 인자·토글 블록 삭제, leagueService 파라미터·payload 줄 삭제, roomQueries 필드 삭제. 트리거는 v_cols에서 `'overtime_enabled'`를 빼는 같은 방식의 DO 블록(남겨도 무해)
+
+## 2026-10-26 — 연장전: 연장 라인업 = 주전 기본·탈진 시 벤치·마지막 2분 주전 복귀 (엔진)
+
+**배경**: 사용자 결정 — "연장은 기본적으로 주전이 뛰고, 체력 고갈 시 벤치가 들어오고, 클러치 상황에는 다시 주전이 들어와야 한다." 기존(P1)은 연장 k분째에 로테이션 표 43+k칸(4쿼터 마지막 5분 배치)을 그대로 읽어 주전 보장이 없었다. 로테이션 차트 자체는 48분 고정 유지(사용자 — 연장을 가정해 차트를 그리지 않음).
+
+**변경 파일**:
+- `services/game/engine/pbp/rotationLogic.ts` / `server/src/shared/engine/pbp/rotationLogic.ts` — `prepareOvertimeRotation(state, team)` 신설, `checkTemporaryReturns` 탈진 복귀에 연장 클러치 분기
+- `services/game/engine/pbp/substitutionSystem.ts` / server 미러 — 탈진 교체 조건에 연장 클러치 주전 제외
+- `services/game/engine/pbp/periodRules.ts` / server 미러 — `OT_CLUTCH_SEC = 120`, `isOvertimeClutch(state)`
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — 연장 시작 시 양 팀 `prepareOvertimeRotation` → `checkAndApplyRotation` → 점프볼
+
+**Before**:
+```ts
+// 연장: rotationMap[pid][43 + k]를 그대로 읽음(4쿼터 마지막 5분 배치), 연장 시작 시 라인업 재구성 없음(점프볼은 4쿼터 마지막 라인업으로)
+// checkTemporaryReturns(shutdown): !isShutdown && condition > returnThreshold(기본 70) && 원본 맵 출전 예정 → 복귀
+// substitutionSystem: condition <= effectiveFloor && 대체자 체력 +SHUTDOWN_MIN_GAIN → 탈진 임시 벤치
+```
+
+**After**:
+```ts
+// prepareOvertimeRotation (연장 시작마다, 스위치 on에서만 도달): 선발 5명(gs === 1) 확인 → 모든 선수의 표 43~47칸을
+//   선발이면 true, 아니면 false로(rotationMap + originalRotationMap 둘 다 — 탈진 복귀 기준). 부상·퇴장한 선발은
+//   applyRotationSuccession(43분부터)으로 승계. 선발이 5명이 아니면(정보 없음) 아무것도 안 함(기존 배치).
+//   직후 checkAndApplyRotation으로 즉시 투입 → 점프볼도 선발 센터가 뜀
+// isOvertimeClutch = 연장 && gameClock <= 120
+// checkTemporaryReturns(shutdown): 연장 클러치 && gs === 1 && 원본 맵 출전 예정 → isShutdown 해제하고 체력과 무관하게 복귀
+//   (else 기존 조건)
+// substitutionSystem: 연장 클러치의 선발(gs === 1)은 탈진 임시 벤치 대상에서 제외(else 기존 조건)
+```
+- 정규시간·스위치 off 동작은 변화 없음(연장에서만 도달하는 분기)
+
+**검증** (PBL 2시즌, 연장 on, 연장 팀·피리어드 100): 연장 시작 시 코트 위 선발 4.90/5(나머지는 부상·퇴장 선발의 후임), 연장 출전 시간 중 벤치 2.6%, 연장 마지막 2분 주전 비율 97.0%, 팀 출전 시간 합계(240 + 25·연장 수) 불일치 0. 연장 중 탈진 교체는 이 표본에서 0회(연장 직전 휴식 회복으로 기준 위) — 탈진→벤치→클러치 복귀 경로는 실행 검증 못 함. client/server tsc 오류 없음, `prepareOvertimeRotation` 미러 동일
+
+**롤백 방법**: 양쪽 `rotationLogic.ts`에서 `prepareOvertimeRotation` 삭제·`checkTemporaryReturns`의 `isOvertimeClutch` 분기 삭제(원래 `if (!player.isShutdown …)`로), 양쪽 `substitutionSystem.ts`의 `otClutchStarter` 줄·import 삭제, 양쪽 `periodRules.ts` `OT_CLUTCH_SEC`·`isOvertimeClutch` 삭제, 양쪽 liveEngine 연장 시작 블록을 `if (isOvertimePeriod(state.quarter)) applyJumpBall(state);`로·import 원복
+
+## 2026-10-26 — 연장전 P4-2: 점수판 OT 열(연장 진입 후에만) + 멀티 PBP 타임라인 연장 5분
+
+**배경**: 사용자 요청 — 라이브·결과 화면 쿼터별 득점표의 OT 열은 연장에 들어가면 보이고 그 전엔 숨김, 멀티 PBP 타임라인 수정.
+
+**변경 파일**:
+- `views/LiveGameView.tsx` — `QuarterScores`: 칸 수 = 4 + `countOvertimePeriods(allLogs)`(연장 시작 로그가 생겨야 OT 열), 헤더 `OT1`
+- `components/game/ResultHeader.tsx` — 쿼터 점수 가변 칸(저장값은 `foldPeriodScores`로 접기 — 연장 수는 로그 수, 로그 없으면 4칸 뒤 0 아닌 칸으로 추정), 헤더·행 반복 렌더
+- `views/multi/season/MultiGamePbpView.tsx` — `QuarterScores`(compact·전체 둘 다): 칸 수 = 4 + 공개된 로그의 연장 수, 헤더 OT1 / N차 연장. 인사이트 타임라인: `totalMinutes = 48 + 5 × 연장 수`(이전 `maxQuarter × 12`), 피리어드 경계선·라벨 위치 `periodStartSec`/`periodLengthSec` 기반, 승률 계산에 그 시점 경기 종료 분(`gameEndMinAt` — 정규 48, 연장 k 중 48+5k)
+- `utils/simulationMath.ts` — `calculateWinProbability(h, a, timePassed, totalTime = 48)` 인자 추가(기본값으로 기존 호출 동일)
+
+**Before / After**:
+```ts
+// Before: 점수판 [1,2,3,4] 고정(연장 득점은 4쿼터에 합산), 타임라인 totalMinutes = maxQuarter × 12(연장도 12분 칸),
+//   경계선 x = (i+1)·12, 승률 남은 시간 = 48 − 경과(연장 중 항상 0)
+// After: 점수판 칸 = 4 + 연장 수(라이브는 공개된 로그 기준 → 연장 시작 전엔 OT 열 없음), 타임라인 = 48 + 5·연장,
+//   경계선 x = periodStartSec(i+2)/60, 승률 남은 시간 = (그 시점 피리어드 끝) − 경과
+```
+- 로테이션 차트(`RotationChart`)·싱글 실시간 승률 미니 차트는 48분 고정 유지(사용자 결정, 미니 차트는 기존에도 연장 중 48분에서 멈춤)
+- 세 점수판 모두 `visibleEvents`/`allLogs`(공개분)만 받으므로 라이브 중 연장 여부 스포일러 없음(호출부 3곳 확인)
+
+**검증**: client tsc 변경 파일 오류 없음. 브라우저 육안 확인은 미실시
+
+**롤백 방법**: 각 컴포넌트를 4칸 고정 렌더로, `totalMinutes = maxQuarter * 12`·경계 `(i + 1) * 12`·라벨 `(i + 0.5) * 12`로, `calculateWinProbability` 4번째 인자 제거(호출부 3곳 함께)
+
+## 2026-10-26 — 연장전 P4-1: 쿼터 라벨(OT1·OT2 / N차 연장) + 옛 경기 5쿼터 오표시 수정
+
+**배경**: 연장전 P4 첫 단계(사용자 요청 — 쿼터 라벨부터). 화면마다 "Q1"/"1Q"/"1쿼터"로 제각각이고 연장 표기가 없거나 `q > 4`면 바로 OT로 표시. **함정**: 연장전 도입 전 엔진(그리고 스위치 off)은 경기 종료 로그와 동점 버저비터 포세션을 5쿼터로 찍는다 → `q > 4 = 연장` 판정은 옛 경기를 OT1로 잘못 보여준다. 실제로 멀티 PBP 화면은 동점 버저비터 경기(PBL 24경기)의 타임라인·필터에 OT1이 붙었고, **뉴스 카드 쿼터 점수표는 PBL 1,321경기 전부에 OT1 칸이 붙어 있었다**(서버 `quarter_scores`가 5번째 "경기 종료 로그" 칸까지 저장 — 1,321/1,321이 5칸, 그중 24경기만 득점).
+
+**변경 파일**:
+- `utils/periodLabel.ts` (신규) — `normalizePeriod(q, ot)`(실제 연장 범위 밖 5쿼터+ → 4), `periodShortLabel(q, ot?, 'Q1'|'1Q')`(연장 OT1·OT2), `periodKoreanLabel`(N쿼터·N차 연장), `periodList(ot)`, `foldPeriodScores(scores, ot)`(넘치는 칸을 4쿼터에 합침), `countOvertimePeriods` 재export
+- `views/LiveGameView.tsx` — 헤더(종료 시 Final), 일시정지 "OT1 종료", 쿼터 필터 탭(연장 탭 추가), 로그 행 라벨(폭 w-5→w-7), 필터 비교, 로테이션 현재 분 `scheduleMinute`
+- `hooks/useLiveGame.ts` — 표시 쿼터 `quarter > 4 ? 4` 클램프 → `normalizePeriod(quarter, 연장 수)`(연장 중 5·6 유지)
+- `components/game/tabs/GamePbpTab.tsx` — 필터 옵션(1~4쿼터 + N차 연장), 로그 행 라벨(w-6→w-7), 필터 비교
+- `views/GameResultView.tsx` — 부상 시각 라벨
+- `views/multi/season/MultiGamePbpView.tsx` — `otVisible`(공개된 로그 기준 연장 수 — 라이브 스포일러 없음), `maxQuarter = 4 + otVisible`(이전: SYSTEM 외 로그 최대 쿼터), `currentQuarter`·`maxSelectableQ` 접기, 헤더·필터·로그 행·타임라인/차트 툴팁 라벨, `secondsToClock` 연장 5분 반영, `quarterFilter` number
+- `views/multi/season/MultiScheduleView.tsx` — 라이브 요약 라벨
+- `views/multi/season/newsFeedCards.tsx` — `QuarterScoreTable`에 `otPeriods`, 저장값 `foldPeriodScores`로 접기, 헤더 라벨
+- `services/multi/gameQueries.ts` — `loadGameBoxScore` select `ot_periods`, `GameBoxScoreData.otPeriods`
+- `components/game/ShotTooltip.tsx` — 샷 시각 라벨
+- `services/multi/newsBlurb.ts` — 몸싸움 뉴스 피리어드 "연장 N차" → "N차 연장"
+- `server/src/liveGameView.ts` — `computeQuarterScoresFromEvents` 칸 수 = 4 + 연장 수(넘치는 칸 4쿼터에 합침 → 앞으로 저장되는 `quarter_scores`는 4칸/4+연장)
+
+**Before / After** (요약):
+```ts
+// Before: `Q${quarter}` / `${log.quarter}Q` / `${q}쿼터` 하드코딩, 필터 [0,1,2,3,4], useLiveGame quarter > 4 ? 4,
+//   MultiGamePbpView maxQuarter = max(SYSTEM 외 로그 쿼터, 4), newsFeedCards 칸 수 = 저장 배열 길이(옛 경기 5칸 → OT1)
+// After: periodShortLabel(q, countOvertimePeriods(logs), style) / periodKoreanLabel, 필터 [0, ...periodList(ot)],
+//   비교는 normalizePeriod, maxQuarter = 4 + 연장 수, 쿼터 점수 foldPeriodScores(저장값, ot_periods)
+```
+- `PlayerDetailView`(시즌 샷 차트 쿼터 필터)는 경기별 연장 수가 없어 그대로(`q > 4 → OT`). 옛 경기 동점 버저비터 샷(경기의 ~2%, 1개씩)이 OT1로 잡힐 수 있음 — 기존 동작과 같음
+
+**검증**: PBL 1,400경기(off 700 + on 700, 서버 미러 엔진): off 경기 로그 라벨에 OT 0건(옛 방식 동점 버저비터 32경기 포함 — 4Q로 표시), on 연장 경기 OT1·OT2 라벨 누락 0, `computeQuarterScoresFromEvents` 칸 수 = 4 + 연장 수·칸 합 = 최종 점수, 옛 5칸 저장값 `foldPeriodScores` = 새 계산 — 실패 0. client/server tsc 변경 파일 오류 없음
+
+**롤백 방법**: `utils/periodLabel.ts` 삭제 → 각 파일의 라벨을 Before 하드코딩으로, `useLiveGame` 클램프 복구, `MultiGamePbpView` `otVisible` 제거·`maxQuarter` 원래 식, `newsFeedCards` `otPeriods`·fold 제거, `gameQueries` select/필드 제거, 서버 `computeQuarterScoresFromEvents` 접기 블록 삭제(서버·클라 같이)
+
+## 2026-10-26 — 연장전 PBP 해설: 점프볼·피리어드 종료·N차 연장·버저비터/위닝샷·연장 경기 종료
+
+**배경**: 사용자 요청 — 경기 시작 점프볼 내용, 피리어드 종료 안내, "1차/2차 연장" 표기, 버저비터·위닝샷 해설, 연장 경기 종료 문구. 결승 공격은 플레이 타입을 그대로 따름(변경 없음 — 이미 엔진이 고른 플레이 타입 사용). 남은 1초 풀 플레이(기존 시간 처리 문제)는 범위 밖(사용자 동의).
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — `applyJumpBall` 문구, `trackGoAhead`·`pushPeriodEndCommentary`·`pushWinningShotCommentary` 신설, 연장 시작·경기 종료 문구, 연장 폴백 결승 득점에도 해설
+- `services/game/engine/pbp/pbpTypes.ts` / server 미러 — `GameState.lastGoAhead`
+- `services/game/engine/pbp/periodRules.ts` / server 미러 — `periodLabel(q)`(1~4쿼터, N차 연장), 연장 시작 로그 정규식 `OT_START_RE`(새 표기 + 개발 중 초기 표기)
+
+**Before**:
+```
+Q1 12:00 [info] 경기 시작 (Tip-off) / [info] 점프볼 승리 — A (vs B), 공격권 확보   (스위치 on일 때만)
+(피리어드 종료 로그 없음) → [info] 연장 1 시작 → … → [info] 경기 종료 (Final)
+0:00 득점은 일반 해설만
+```
+
+**After**:
+```
+Q1 12:00 [info] 경기 시작 (Tip-off)
+Q1 12:00 [info] 점프볼 — {원정 센터} vs {홈 센터}. {승자}, 높이 뛰어올라 공을 쳐냅니다! {팀명}의 공격으로 경기를 시작합니다.
+1~3쿼터 끝: [info SYSTEM] 1쿼터 종료 / 전반 종료 / 3쿼터 종료
+  0:00 3점 성공 시 [info 득점팀] 버저비터! {이름}, 종료 버저와 함께 3점슛을 꽂으며 {N쿼터를/전반을} 마칩니다.
+4쿼터·1차 연장 동점 끝: [info SYSTEM] {4쿼터|1차 연장} 종료 — 동점! {N}차 연장으로 갑니다.
+  0:00 동점 야투 시 [info 득점팀] 버저비터! {이름}, 종료 버저와 함께 동점을 만들어 경기를 {N}차 연장으로 끌고 갑니다!
+  (스위치 off 동점: "4쿼터 종료 — 동점!" / "버저비터! {이름}, 종료 버저와 함께 동점을 만듭니다!")
+연장 시작: [info SYSTEM] {N}차 연장 시작 → 점프볼 문구("…{N}차 연장을 시작합니다.")
+마지막 피리어드 0:00 역전/리드 야투: [info 득점팀] 버저비터 위닝샷! {이름}, 종료 버저와 함께 승부를 결정짓습니다!
+경기 종료 직전(버저비터 아님): 4쿼터 이후 마지막 리드 득점이 마지막 피리어드 24초 이내 + 끝까지 지켜짐 →
+  [info 득점팀] 위닝샷 — 종료 {M:SS} 전 {이름}의 결승 득점이 그대로 승부를 갈랐습니다.
+경기 종료: 연장이면 "경기 종료 (Final) — {N}차 연장 승부", 아니면 "경기 종료 (Final)"
+```
+- 1~3쿼터 버저비터를 3점만 부르는 이유: 엔진은 쿼터 마지막 공격이 남은 시간을 전부 써서 0:00 득점이 쿼터의 약 37%(시즌 쿼터당 ~450회) — 3점만이면 ~8%(~100회)
+- 해설은 난수를 쓰지 않음 → 스위치 off 결과(점수·출전 시간)는 그대로, 로그 줄만 늘어남(피리어드 종료 안내·0:00 3점 버저비터·위닝샷은 스위치와 무관하게 나옴. 점프볼은 기존대로 스위치 on일 때만)
+- 화면이 로그 문구를 문자열로 찾는 곳 없음(확인). 연장 판정은 `countOvertimePeriods`가 새 표기 인식
+
+**검증**: PBL 1,230경기(연장 on): 팁오프 점프볼 1,230, 연장 점프볼 26 = 연장 피리어드 26, 연장 경기 종료 문구 24 = 연장 경기 24, `countOvertimePeriods` = 실제 연장 수 불일치 0, 1·전반·3쿼터 종료 안내 누락 0, 시즌당 버저비터 위닝샷 27·위닝샷 27·동점 버저비터→연장 8. 스위치 off 1,230경기 점수·출전 시간 HEAD와 동일. client/server tsc 변경 파일 오류 없음, 미러 헬퍼 동일
+
+**롤백 방법**: 양쪽 liveEngine에서 세 헬퍼와 호출 3곳(`trackGoAhead`, `pushPeriodEndCommentary` 2곳, `pushWinningShotCommentary`) 삭제, `applyJumpBall`·연장 시작·경기 종료 문구 Before로, 양쪽 pbpTypes `lastGoAhead` 삭제, periodRules `periodLabel`·`OT_START_RE` 삭제하고 정규식 `/^연장 \d+ 시작/` 복구(같이 되돌려야 연장 판정 일치)
+
+## 2026-10-26 — 연장전 P3: 연장 경기만 연장 길이만큼 늦게 공개 + 리그 스위치 기본 on
+
+**배경**: 연장전 기획 2-6(사용자 결정 — 연장이 있었던 경기만 그만큼 늦게 배부). 공개 시각 = 시작 + 리플레이 × (2880 + 300 × 연장 수) / 2880. 정규시간 재생 속도는 모든 경기 동일(연장 여부를 미리 알 수 없음), 연장도 같은 속도로 이어서 재생. P3 완료 후 스위치 기본값 on(사용자 결정).
+
+**변경 파일**:
+- DB `migrations/add_overtime_reveal_delay.sql` (**운영 적용 완료**) — `game_pbp.ot_periods`·`games.ot_periods smallint NOT NULL DEFAULT 0`, `game_reveal_at(room, start, ot)` 신설, RPC 7개(`get_player_shot_events`, `get_player_season_stats_full/batch/league`, `get_team_opponent_zone_stats`, `get_team_season_advanced_stats`, `get_league_season_awards_stats`)의 `gp.game_start_time + room_replay_interval(p_room_id)` → `game_reveal_at(p_room_id, gp.game_start_time, gp.ot_periods)`, RLS 4개(`game_pbp` 멤버·관전, `league_events` 멤버·관전) 같은 교체, `admin_time_jump` 진행 중 창 `v_replay × (2880+600)/2880`
+- DB `migrations/set_league_overtime_enabled_default_true.sql` (**운영 적용 완료**) — `leagues.overtime_enabled` 기본값 false → true(기존 2개 리그는 false 유지)
+- `services/game/engine/pbp/periodRules.ts` / `server/src/shared/engine/pbp/periodRules.ts` — `countOvertimePeriods(logs)` 이동(단일 소스, `utils/gameClock.ts`는 재export)
+- `server/src/simRunner.ts` — `game_pbp`·`games`에 `ot_periods` 기록
+- `server/src/postAllStarGame.ts` — 같은 기록
+- `server/src/liveGameView.ts` — `replayLengthMs`·`maxReplayLengthMs` 신설, `computeGameState(…, otPeriods)` 종료 판정, `pbpToGameSeconds`·`shotToGameSeconds` 연장 반영, `GamePbpSource.ot_periods`
+- `server/src/index.ts` — 라이브 단건·목록 select에 `ot_periods`, 진행 중 목록 조회 창 `maxReplayLengthMs`
+- `types/game.ts` — `Game.otPeriods`
+- `services/multi/gameQueries.ts` — `GAME_COLS`에 `ot_periods`, `rowToGame` → `otPeriods`(Realtime 증분도 같은 매퍼)
+- `views/multi/season/multiGameReveal.ts` — `replayLengthMsFor(ot)`, `getGameDisplayState`/`isFinal`이 `game.otPeriods` 반영
+- `views/multi/season/MultiGamePbpView.tsx` — 표시 상태에 경기 `otPeriods`, 샷 경과초 `shotGameSeconds`
+- `views/multi/season/MultiPlayerDetailView.tsx` — 경기 로그 공개 판정에 연장 수(일정 맵)
+- `utils/gameClock.ts` — `shotGameSeconds` 신설
+- `types/simSettings.ts` / server 미러 — 주석(기본값 변경 반영)
+
+**Before**:
+```sql
+-- 공개 = gp.game_start_time + room_replay_interval(room) <= now()  (함수 7 + RLS 4), admin_time_jump v_replay := room_replay_interval(v_room)
+```
+```ts
+// liveGameView.computeGameState: elapsed >= replayDurationMs → final, pbpToGameSeconds = (q−1)·720 + (720−남은)
+// multiGameReveal.getGameDisplayState: now < start + getReplayDurationMs() → live
+// leagues.overtime_enabled DEFAULT false
+```
+
+**After**:
+```sql
+-- 공개 = game_reveal_at(room, gp.game_start_time, gp.ot_periods) <= now()
+--   game_reveal_at = start + room_replay_interval(room) × (2880 + 300 × max(ot,0)) / 2880
+-- admin_time_jump v_replay := room_replay_interval(v_room) × (2880 + 600) / 2880
+```
+```ts
+// 서버: ot_periods = countOvertimePeriods(pbpLogs) → game_pbp·games
+// liveGameView: final ⇔ elapsed >= replayLengthMs(replay, row.ot_periods); 공개 구간 필터는 기존 속도(경기초/2880 × 리플레이) 그대로
+// 클라: final ⇔ now >= start + replayLengthMsFor(game.otPeriods)
+// leagues.overtime_enabled DEFAULT true
+```
+- `ot_periods`를 `games`에 두는 것은 점수와 같은 행이라 노출 수준이 기존과 같음(games는 RLS 지연 없음, 스포일러 차단은 클라 담당)
+- 판정 함수에 `Game`을 펼쳐 넘기는 호출부(`{...g, scheduledAt}`)는 자동으로 `otPeriods`가 따라감. 직접 객체를 만들던 2곳(MultiGamePbpView, MultiPlayerDetailView)만 수정
+
+**검증**:
+- DB: 기존 1,321행 `game_reveal_at(…, ot_periods=0)` = 옛 식(차이 0행), 함수 7·RLS 4 교체·옛 식 잔존 0, `admin_time_jump` 반영
+- DB·서버·클라 공개 시각 일치(리플레이 10분: 연장 0/1/2회 → 600 / 662.5 / 725초), 리플레이 5/8/10/12분 × 연장 0~2회 전 조합에서 서버·클라 값 동일 + 공개 1ms 전 live·공개 시점 final 양쪽 동일
+- client/server tsc 변경 파일 신규 오류 없음(서버 `Bun` 타입 미설치 오류는 기존)
+- DB 마이그레이션만 적용된 지금(서버 미배포) 상태는 `ot_periods`가 전부 0이라 기존과 완전히 동일
+
+**배포 주의**: 서버(Fly)와 클라이언트(Vercel)를 같이 배포해야 한다. 서버만 먼저 나가면 연장 경기의 공개는 DB·서버 기준으로 늦어지지만 클라이언트 일정/헤더가 정규 시각에 final로 판정해 `games` 점수를 먼저 보여준다. 클라만 먼저 나가면 `ot_periods`가 0이라 무해. → **클라이언트 먼저 또는 동시**.
+
+**롤백 방법**: 서버·클라 코드는 Before 식으로(`computeGameState` otPeriods 인자·`replayLengthMs` 제거, select에서 `ot_periods` 제거, `rowToGame`·`Game.otPeriods`·`replayLengthMsFor` 제거). DB는 함수 7개·RLS 4개를 `X.game_start_time + room_replay_interval(room)`로 되돌리는 같은 방식의 DO 블록(문자열 역치환), `admin_time_jump`의 곱 제거, 칼럼은 남겨도 무해. 스위치 기본값은 `ALTER TABLE leagues ALTER COLUMN overtime_enabled SET DEFAULT false`.
+
+## 2026-10-26 — 연장전 P2: 48분 가정 정리(클라이언트 시계·실시간 훅·쿼터 점수)
+
+**배경**: 연장전 기획 P2. P1에서 엔진 내부(표 분 인덱스·수동 교체·교체 클러치·MIN)는 이미 처리 — 남은 엔진 밖 48분 가정 정리.
+
+**점검 결과(변경 없음)**:
+- 후임 승계 `planSuccession`: 연장 중엔 fromMinute = 43+k, toMinute 48로 그대로 동작. 파울 트러블 임시 벤치는 정규 쿼터에서만 걸리고(규칙표 "연장 — 계속 출전"), 탈진 교체는 복귀 분이 없음. `benchedAtMinute`·`lastSubInTime`은 분 차이 계산에 쓰이지 않아 연장에서 분 인덱스가 47→43으로 돌아가도 무해
+- DB `get_team_season_advanced_stats` 페이스 = 48·포제션 ÷ 실제 팀 출전 시간 → 연장 자동 반영. 리더보드 `g × 240`은 팀 출전 시간이 없을 때만 쓰는 폴백
+- 서버 `computeQuarterScoresFromEvents`는 이미 가변 칸
+
+**변경 파일**:
+- `utils/gameClock.ts` — `toGameSeconds` 연장 반영(`periodStartSec + periodLengthSec − 남은 시간`), `countOvertimePeriods(logs)`·`gameLengthSeconds(logs)` 신설
+- `hooks/useLiveGame.ts` — 로테이션 편집 반영 분 `scheduleMinute`, 런 지속시간 `elapsedGameSec`
+- `types/engine.ts` / `server/src/shared/types/engine.ts` — `QuarterScores`를 4칸 튜플 → `number[]`(Q1~Q4 + 연장)
+- `utils/simulationUtils.ts` — `extractQuarterScores` 칸 수 = 4 + 연장 횟수, 보정 차이는 마지막 칸
+
+**Before**:
+```ts
+// gameClock: toGameSeconds = (quarter − 1)·720 + (720 − 남은 시간)
+// useLiveGame: currentMinute = Math.min(47, floor(((q−1)·720 + (720−clock))/60)), currentTotalSec 같은 식
+// QuarterScores: home/away: [number, number, number, number]
+// extractQuarterScores: 4칸 고정, qi = min(3, quarter − 1)(5쿼터 득점은 Q4에 합산), 보정 차이 Q4에
+```
+
+**After**:
+```ts
+// gameClock: toGameSeconds = periodStartSec(q) + periodLengthSec(q) − 남은 시간 (정규시간은 기존 값과 동일)
+//   countOvertimePeriods = "연장 N 시작" SYSTEM 로그 수, gameLengthSeconds = 2880 + 300·연장 수
+// useLiveGame: scheduleMinute(state) / elapsedGameSec(state)
+// QuarterScores: number[] / extractQuarterScores: periods = 4 + countOvertimePeriods(logs), qi = min(periods−1, quarter−1)
+```
+- **함정**: 연장전 도입 전 엔진(그리고 스위치 off)은 경기 종료 로그를 항상 5쿼터로 찍는다 → "로그의 최대 쿼터"로 연장을 세면 모든 옛 경기가 연장 1회로 잡힌다. 연장 판정은 반드시 "연장 N 시작" 로그(또는 P3의 `ot_periods`)로.
+- 옛 경기 5쿼터 0:00 로그의 `toGameSeconds`는 3600 → 3180초로 바뀜(둘 다 48분 밖 — 표시 쪽이 경기 길이로 자름)
+- 표시 컴포넌트(실시간 쿼터 점수판 `LiveGameView.QuarterScores`, `ResultHeader`, 멀티 `MultiGamePbpView` 점수판·타임라인, `RotationChart`)와 `useLiveGame` 표시용 `quarter > 4 ? 4` 클램프는 P4
+
+**검증**: PBL 1,200경기(연장 on 600 + off 600, 서버 미러 엔진): 쿼터 점수 칸 합 = 최종 점수, 칸 수 = 4 + 연장 수(off 경기는 전부 4칸 — 기존과 동일), 연장 경기의 `gameLengthSeconds` = 로테이션 기록 최종 out 시각 = 마지막 로그 `toGameSeconds`, 로그 시각 단조 증가 — 실패 0. client/server tsc 변경 파일 오류 없음(나온 4건 `InjuryEvent.severity`·`LeagueFAMarket.available`은 HEAD 타입에도 없는 기존 오류, 해당 파일 미수정)
+
+**롤백 방법**: `gameClock.ts`의 `toGameSeconds`를 Before 식으로·`countOvertimePeriods`/`gameLengthSeconds`·import 삭제, `useLiveGame.ts` 두 곳 Before 식으로·import 삭제, 양쪽 `QuarterScores` 튜플로, `extractQuarterScores` Before로·import 삭제. 단 튜플 복구 시 연장 칸이 저장된 싱글 경기 결과가 있으면 타입만 어긋나고 런타임은 앞 4칸만 읽음.
+
+## 2026-10-26 — 연장전 P1: 엔진 코어 + 리그 스위치 `overtime_enabled`(기본 off)
+
+**배경**: 연장전 기획(`docs/plan/overtime-system.md`) P1. 사용자 결정 — 5분 연장 최대 2회 후 결승 공격, 센터 신장·점프 점프볼(팁오프 포함), 연장 팀파울 NBA 규정(4번째부터 자유투), 연장 타임아웃 2회 이월 없음, 연장 직전 회복 = 쿼터 휴식, 로테이션·전술은 4쿼터 마지막 5분 재사용, 리그 스위치 기본 off(P3 완료 후 on), 연장 빈도는 손대지 않음.
+
+**변경 파일**:
+- `services/game/engine/pbp/periodRules.ts` (client, 신규) / `server/src/shared/engine/pbp/periodRules.ts` (server 미러, 신규) — 피리어드 길이·경과초·표 분 인덱스·팀파울 기준·연장/결승 공격 판정·점프볼
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — 팁오프·연장 점프볼(`applyJumpBall`), 결승 공격(`simulateDecisivePossession`), 피리어드 전환·종료, 경과초/분 인덱스 교체, 수동 교체 연장 분기, `_handleGameEnd` 연장 폴백·종료 시각
+- `services/game/engine/pbp/rotationLogic.ts` / server 미러 — 경과초 3곳·분 인덱스 3곳 → `elapsedGameSec`/`scheduleMinute`
+- `services/game/engine/pbp/substitutionSystem.ts` / server 미러 — 교체 클러치 `quarter === 4` → `>= 4`
+- `services/game/engine/pbp/statsMappers.ts` / server 미러 — 보너스 자유투 `fouls > 4` → `> teamFoulLimit(quarter)`
+- `services/game/engine/pbp/timeoutPolicy.ts` / server 미러 — 경과초 헬퍼, 연장 진입 시 팀당 2회(이월 없음), `wantsStrategic` 연장 포함, `decideOvertimeTimeout` 신설
+- `types/simSettings.ts` / `server/src/shared/types/simSettings.ts` — `overtimeEnabled?: boolean`
+- `server/src/simRunner.ts`, `server/src/postAllStarGame.ts` — leagues select에 `overtime_enabled`, 엔진 simSettings에 `overtimeEnabled` 주입
+- `migrations/add_league_overtime_enabled.sql` — `leagues.overtime_enabled boolean NOT NULL DEFAULT false` (**운영 DB 적용 완료**, 기존 리그 전부 false)
+
+**Before**:
+```ts
+// liveEngine: 4쿼터 종료(gameClock<=0 && quarter>=4) → state.quarter = 5 → _handleGameEnd (동점이면 50/50 공격팀
+//   minHitRate 0.75 버저비터 1포제션, 실패 시 pts만 +1). 팁오프는 항상 home. 경과초 (quarter−1)·720 + (720−clock),
+//   분 인덱스 Math.min(47, floor(sec/60)). GAME_END_SEC = 48*60. 쿼터 시작 로그 timeRemaining '12:00' 고정.
+// statsMappers: if (defTeam.fouls > 4) → 보너스 자유투 / liveEngine: isNonBonusFoul = fouls < 4
+// timeoutPolicy: quarter > 4 면 decideTimeout null, startTimeoutPeriod 연장 처리 없음, wantsStrategic quarter !== 4 → false
+// substitutionSystem: isClutch = quarter === 4 && currentMinute >= 42
+```
+
+**After** (`simSettings.overtimeEnabled === true`일 때만 동작이 달라짐 — 미지정/false는 Before와 완전히 동일):
+```ts
+// periodRules: QUARTER 720 / OT 300초, MAX_OVERTIME_PERIODS 2, OT_TIMEOUTS 2
+//   elapsedGameSec = periodStartSec(q) + periodLengthSec(q) − clock (정규시간은 기존 식과 같음)
+//   scheduleMinute = 정규 min(47, floor(경과/60)), 연장 43 + min(4, floor((300−clock)/60))
+//   teamFoulLimit(q) = q > 4 ? 3 : 4
+//   shouldPlayOvertime = 켜짐 && 4 ≤ quarter < 4+2 && 동점 / isDecisivePossession = 켜짐 && quarter ≥ 6 && 동점 && clock ≤ 24
+//   resolveJumpBall: C 슬롯(없으면 최장신) 점수 = 신장cm + 0.25·점프력, P(home) = 로지스틱(차이/4) [0.2, 0.8]
+// liveEngine:
+//   createGameState: 켜짐이면 팁오프 점프볼(공격권 + 로그 "점프볼 승리 — A (vs B), 공격권 확보")
+//   피리어드 종료(clock 0, quarter ≥ 4): shouldPlayOvertime → isQuarterEnd 반환 → 다음 step A블록이 연장 시작
+//     (시계 300, 팀파울·모멘텀 리셋, Hot/Cold 반감, QUARTER_BREAK_RECOVERY, 타임아웃 2회, 로그 "연장 N 시작", 점프볼)
+//   꺼짐이면 기존대로 quarter = 5 후 종료, 켜짐이면 마지막 피리어드 번호 그대로 종료
+//   결승 공격: minHitRate 1.0으로 'score'가 나올 때까지 최대 8회 재시도(샷클락만 복원), 시간 전부 소모
+//   _handleGameEnd(켜짐·동점 — 드묾): 공격권 팀 결승 공격, 실패 시 자유투 1개 성공(FTA·FTM·PTS·+/− 정합)
+//   GAME_END_SEC = 켜짐 ? elapsedGameSec : 48*60
+// 팀파울: 연장은 4번째부터 자유투(statsMappers 보너스·liveEngine 보너스 전 파울 공격권 유지 둘 다 teamFoulLimit)
+// timeoutPolicy 연장: 막판 전략 → 런 대응(2:30 전엔 1회 남김) → 마지막 1분 소진, 의무·상한 없음
+```
+- 팁오프 점프볼은 사용자 결정("경기 시작에도 사용")에 따라 넣었고, 스위치를 끈 상태의 결과가 기존과 완전히 같도록 **같은 스위치로 묶었다**(점프볼이 난수를 하나 더 써서 이후 모든 판정이 달라지므로).
+- P2 일부를 같이 처리: 로테이션·전술 표 분 인덱스 연장 매핑, 수동 교체 연장 분기, 교체 클러치 연장 포함. 출전 시간(MIN)은 포세션 시간 누적이라 자동 반영.
+
+**검증** (스크래치 하네스: PBL 30팀 로스터·저장 전술·정규시즌 1,230경기 대진, 서버 미러 경로, 경기별 시드 고정, 체력 누적 없음):
+- **스위치 off = HEAD 엔진 완전 동일**: 1,230경기 점수·로그 수·출전 시간 합계 일치
+- 스위치 on 3시즌(3,690경기): 연장 68경기(1.84%, off일 때 4쿼터 동점 1.49%), 2차 연장 2, 동점 종료 0, 박스스코어 득점(=2·FGM+3PM+FTM)·팀 출전 시간(240+25·연장 수) 불일치 0, 연장 1회당 양 팀 합계 22.5점, 연장 4번째 팀파울 → 자유투 5/5, 연장 타임아웃 팀·피리어드당 1.95회(2회 초과 0), 팁오프 홈 승률 49.5%
+- 결승 공격: 복사본에서 연장 최대 0회로 바꿔 4쿼터 동점에서 강제 — 0:00 득점으로 동점이 깨진 경기 42/1,230, 동점 종료 0, 박스 불일치 0
+- client/server tsc 변경 파일 오류 없음(simRunner의 SupabaseClient TS2345 6건은 기존 오류)
+
+**롤백 방법**: 운영 영향이 없도록 스위치 기본 false라 롤백이 급하면 그대로 두면 된다. 코드 원복은 양쪽 `periodRules.ts` 삭제 → 양쪽 liveEngine/rotationLogic/substitutionSystem/statsMappers/timeoutPolicy를 Before 식으로(import 제거) → 양쪽 simSettings `overtimeEnabled` 삭제 → simRunner/postAllStarGame select·주입 줄 삭제. DB 칼럼은 남겨도 무해(`ALTER TABLE leagues DROP COLUMN overtime_enabled`로 제거 가능, 서버 select 원복 후에만). 미러 쌍은 반드시 같이.
+
 ## 2026-10-26 — 엔진(멀티 서버): 선수 성격(SaveTendencies)을 세션 안에서 고정 — 경기마다 재추첨하던 버그 수정
 
 **배경**: 팀 케미스트리 설계(`docs/plan/team-chemistry-plan.md`) 조사 중 발견. 멀티 서버가 엔진에 성격 시드로
@@ -144,6 +471,136 @@ PBL 10시즌 + NBA Active 6시즌, 각 1,230경기, 같은 경기 난수로 현�
 **영향**: 배포 이후 멀티 경기부터 적용. 이미 치른 경기 기록은 불변. 화면에 보이는 성격 = 엔진 성격으로 일치.
 
 **롤백 방법**: 위 Before 두 줄로 되돌린 뒤 커밋·푸시하고 `scripts/deploy-server.sh`로 재배포(또는 해당 커밋 revert).
+
+## 2026-10-26 — 포스트시즌 휴식일 2: 플레이오프 라운드 사이에도 하루씩 (새 리그부터)
+
+**배경**: 바로 아래 항목 후속. g=1이면 시리즈가 최대 경기까지 가면 다음 날 바로 다음 라운드 1차전 → 서부 1라운드 M5·M6·M7 → 2라운드 M2·M3 시각 조합이 B2B 간격 여유 미달. 사용자 요청으로 라운드 사이에도 휴식일 하루.
+
+**변경 파일**:
+- `server/src/shared/tournamentBracket.ts` — `advanceTournamentState(..., roundRestDays = 0)`
+- `server/src/shared/tournamentInitializer.ts` — `advanceTournamentState(..., roundRestDays = 0)`, `initSingleElim`·`initializeTournamentBracket(..., seedMode, roundRestDays = 0)` 전달(부전승 R2 즉시 생성분)
+- `server/src/shared/playoffSeeder.ts` — `initializeTournamentBracket` 호출에 `usesTimeline ? postseasonRestDays(league) : 0`
+- `server/src/simRunner.ts` — 다음 라운드 생성 `advanceTournamentState` 호출에 같은 값, import `postseasonRestDays`
+- `utils/leagueTimeline.ts` (client) / `server/src/shared/leagueTimeline.ts` (server 미러) — `playoffMaxDays` 라운드 전환마다 `+ restDays`
+
+**Before**:
+```ts
+// advanceTournamentState: generateAllSeriesGames(nextId, ..., startDate, startSlot, intervalMinutes, simRealStartAt)
+// playoffMaxDays: roundStart = roundStart + maxGames * g;
+```
+
+**After**:
+```ts
+// advanceTournamentState(..., roundRestDays = 0):
+//   const roundStartDate = roundRestDays > 0 ? offsetDate(startDate, round * roundRestDays) : startDate;  // r+1라운드 = +r·휴식일
+//   generateAllSeriesGames(nextId, ..., roundStartDate, startSlot, intervalMinutes, simRealStartAt)
+// playoffMaxDays: roundStart = roundStart + maxGames * g + Math.max(0, Math.round(spec.restDays ?? 0));
+```
+- 토너먼트·구 리그(타임라인 없음)는 0을 넘겨 날짜·`game_seq`·`scheduledAt` 불변. 슬롯(`game_seq`)은 그대로라 정렬 순서도 그대로
+- 새 리그 g=1·플레이인·Bo7: 포스트시즌 최대 32 → 35일(g=2: 61 → 64일). 기존 리그(휴식일 0)는 30/59일 그대로
+
+**검증**: 16팀 브라켓을 만들어 매 라운드를 7차전까지 진행시키는 스크립트 — g=1·휴식 1 / g=2·휴식 1 / g=1·휴식 0 모두 "이전 라운드 7차전 → 다음 라운드 1차전" 간격 = g + 휴식일, 파이널 7차전까지 사용 일수 = `playoffMaxDays`(35/64/30). server tsc: 변경 파일 신규 오류 없음(`simRunner.ts`의 SupabaseClient 타입 오류 6건은 HEAD에도 동일하게 있는 기존 오류)
+
+**롤백 방법**: 두 브라켓 모듈의 `roundRestDays` 인자·`roundStartDate` 줄 삭제(→ `startDate`), `initSingleElim`/`initializeTournamentBracket` 인자 삭제, `playoffSeeder.ts`·`simRunner.ts` 호출부 마지막 인자 삭제, 양쪽 `leagueTimeline.ts` `playoffMaxDays`의 `+ restDays` 삭제. 바로 아래 항목(최종일·디사이더 휴식일)과는 독립적으로 되돌릴 수 있음.
+
+## 2026-10-26 — 포스트시즌 휴식일: 정규시즌 최종일↔플레이인, 플레이인↔1라운드 사이 하루씩 (새 리그부터)
+
+**배경**: 포스트시즌 B2B 간격 점검(연장전 기획 후속) 결과, 포스트시즌 앵커가 "정규시즌 종료 다음 날"이라 플레이인(플레이인 없으면 1라운드)이 최종일 바로 다음 날 시작 → 일정 생성기 v2는 최종일에 30팀 전원이 뛰므로 진출 팀 전원이 매 시즌 B2B. 최종일 늦은 경기(20:30 이후, 시즌당 15경기 중 9경기) + 다음 날 19:00 경기면 2차 연장 시 실제 겹침(PBL 설정 22:30→19:00 0.83분, 최악 설정 최대 2.5분). 디사이더 → 1라운드도 g=1이면 B2B. 사용자 결정: 두 구간에 휴식일 하루씩 넣는다.
+
+**변경 파일**:
+- `utils/seasonCalendar.ts` (client) / `server/src/shared/seasonCalendar.ts` (server 미러) — `SeasonCalendar.postseasonRestDays`, `SEASON_CALENDAR_VERSION` 2→3, `POSTSEASON_REST_DAYS = 1`
+- `utils/leagueTimeline.ts` (client) / `server/src/shared/leagueTimeline.ts` (server 미러) — `PlayoffCalendarSpec.restDays?`, `postseasonDayOffsets()` 신설, `playoffMaxDays()`가 사용
+- `server/src/shared/playoffSeeder.ts` — `postseasonRestDays(league)` 신설, `startPlayoffs()` 1라운드 오프셋
+- `server/src/shared/playInSeeder.ts` — 플레이인·디사이더·결과 뉴스·1라운드(3곳) 날짜 6곳을 `postseasonDayOffsets`로
+- `server/src/finalize.ts` — 타임라인 생성 spec에 `restDays: seasonCalendar.postseasonRestDays`
+- `components/multi/CreateLeagueModal.tsx` — `playoffSpec`에 `restDays: POSTSEASON_REST_DAYS`(실현 가능성·최대 일수 표시)
+- `views/multi/league/settings/PlayoffSettingsTab.tsx` — spec에 리그 저장 달력의 `restDays`
+
+**Before** (타임라인 리그, 앵커 = 정규시즌 종료 다음 날 = 0, g = 경기 간격):
+```ts
+// 플레이인 7v8·9v10 = 0, 디사이더 = g, 1라운드 = 플레이인 있으면 2g / 없으면 0 — 각 파일에 하드코딩
+// playInSeeder: virtualStartDate = anchor; decider = anchor + (usesTimeline ? g : 1);
+//               round1DayOffset = usesTimeline ? 2 * g : 1; resolveRoundOneFromPlayIn: anchor + (usesTimeline ? 2 * g : 1)
+// playoffSeeder.startPlayoffs: buildAndStoreConferenceBracket(..., East, West)  // round1DayOffset 기본 0
+// leagueTimeline.playoffMaxDays: let roundStart = spec.playInEnabled ? 2 * g : 0;
+// seasonCalendar: version 2, postseasonRestDays 없음
+```
+
+**After**:
+```ts
+// leagueTimeline (양쪽)
+export function postseasonDayOffsets(intervalDays, playInEnabled, restDays = 0) {
+    // 플레이인 = r, 디사이더 = r + g, 1라운드 = 플레이인 있으면 디사이더 + g + r, 없으면 r
+}
+// playoffMaxDays: let roundStart = postseasonDayOffsets(g, spec.playInEnabled, spec.restDays ?? 0).round1;
+// seasonCalendar (양쪽): buildSeasonCalendar → { version: 3, ..., postseasonRestDays: 1 }, legacy → 0,
+//                        resolveSeasonCalendar: 저장값에 숫자 없으면 0
+// playoffSeeder: postseasonRestDays(league) = resolveSeasonCalendar(year, league.season_calendar).postseasonRestDays
+//                startPlayoffs: 타임라인 리그면 round1DayOffset = postseasonDayOffsets(g, false, rest).round1, 구 리그 0
+// playInSeeder: 타임라인 리그 날짜 전부 postseasonDayOffsets(g, true, rest) — playIn / decider / round1. 구 리그 값(앵커, +1)은 그대로
+// finalize / CreateLeagueModal / PlayoffSettingsTab: spec.restDays 전달
+```
+- 새 리그(g=1, 플레이인): 플레이인 = 최종일 +2일, 디사이더 +3일, 1라운드 +5일(이전 +1/+2/+3). 포스트시즌 최대 일수 30 → 32일(플레이인 없으면 +1일)
+- 기존 리그(PBL: 달력 null, NBA Active: v2 저장 달력)는 `postseasonRestDays = 0` → 날짜·타임라인 일수 완전히 동일
+
+**검증**:
+- 스크립트: 휴식일 0 = 기존 규칙(g=1/2 × 플레이인 유무), `playoffMaxDays` 기존값 30/59 유지, 휴식일 1이면 +2(플레이인)/+1, 미러 일치, v2 저장 달력·null → 0, v3 → 1, 결승 7차전까지 타임라인 안 — 전부 통과
+- client/server tsc 변경 파일 오류 없음, `check_v2.ts` 통과
+- DB `apply_league_playoff_format` RPC는 날짜를 계산하지 않고 클라이언트가 만든 행만 넣으므로 변경 불필요(확인함)
+
+**롤백 방법**: 양쪽 `seasonCalendar.ts`에서 `postseasonRestDays`·`POSTSEASON_REST_DAYS` 제거, 버전 2로 → 양쪽 `leagueTimeline.ts`에서 `postseasonDayOffsets`·`PostseasonDayOffsets`·`restDays` 제거, `playoffMaxDays` roundStart를 `spec.playInEnabled ? 2 * g : 0`으로 → `playInSeeder.ts` 6곳을 Before 식으로(import 2개 제거) → `playoffSeeder.ts` `postseasonRestDays` 제거·`startPlayoffs` 원복 → `finalize.ts`·`CreateLeagueModal.tsx`·`PlayoffSettingsTab.tsx`의 `restDays` 줄 삭제. 이미 v3 달력으로 만들어진 리그가 있으면 그 리그 타임라인은 +2일로 깔려 있으므로, 롤백 후에는 남는 뒷날짜가 비는 것뿐(경기 누락 없음).
+
+## 2026-10-26 — 일정 생성기 v2: B2B 경기 사이 최소 간격 보장 (시각만 보정, 날짜 불변)
+
+**배경**: 연장전 기획(`docs/plan/overtime-system.md` 2-6)에서 "연장 경기만 늦게 공개"로 결정 → 같은 팀이 B2B로 첫날 늦은 경기(예: 22:00) + 둘째 날 이른 경기(19:30)를 치르면, 압축 타임라인(가상 하루 = 실제 D분)에서 첫날 경기 리플레이(+연장)가 끝나기 전에 다음 경기가 시작될 수 있음(다음 경기 라인업에 전날 부상이 먼저 드러나는 스포일러). PBL 현재 일정은 해당 0건이라 감수(사용자 결정), 대신 새 일정부터 생성기가 넉넉한 간격을 보장하도록 요청받음. 기존 생성기는 최악 조건 기준 시즌당 약 47건(B2B의 10.6%) 위반(주로 서부 홈 22:00 → 다음 날 중부·동부 19:30~20:30).
+
+**변경 파일**:
+- `utils/leagueTimeline.ts` (client) / `server/src/shared/leagueTimeline.ts` (server 미러) — `MAX_OVERTIME_PERIODS = 2`, `isB2BGapSafe(firstHHMM, secondHHMM)` 신설
+- `utils/scheduleGenerator.ts` (client) / `server/src/shared/scheduleGenerator.ts` (server 미러) — `enforceB2BGaps(games)` 신설, `toGames(scheduled, opts)`에 `enforceB2BGap` 옵션, `generateSeasonSchedule`(v2)만 켬
+- `scripts/schedule-research/check_v2.ts` — 합격 기준에 `b2b gap` 항목 추가
+
+**Before**:
+```ts
+// scheduleGenerator.ts (양쪽)
+function toGames(scheduled: { date: string; matchup: Matchup }[]): Game[] {
+    ...
+    assignGameTimes(games);
+    games.sort(...);
+// generateSeasonSchedule (v2)
+    return toGames(scheduled);
+// leagueTimeline.ts: isB2BGapSafe / MAX_OVERTIME_PERIODS 없음
+```
+
+**After**:
+```ts
+// leagueTimeline.ts (양쪽) — 실제 간격 = D + off(둘째) − off(첫째), off = min(D − R, virtualTimeToRealOffsetMin(t, D))
+// D 20~40 × REPLAY_MINUTE_OPTIONS(5/8/10/12) 전 조합(D < R + 2 제외)에서
+//   간격 ≥ R × (2880 + 300 × MAX_OVERTIME_PERIODS) / 2880 + DAY_LENGTH_REPLAY_MARGIN_MIN(2)  이어야 true (결과 캐시)
+export const MAX_OVERTIME_PERIODS = 2;
+export function isB2BGapSafe(first, second): boolean
+// scheduleGenerator.ts (양쪽)
+function toGames(scheduled, opts: { enforceB2BGap?: boolean } = {}): Game[] {
+    assignGameTimes(games);
+    if (opts.enforceB2BGap) { const remaining = enforceB2BGaps(games); if (remaining > 0) console.warn(...); }
+// enforceB2BGaps: 팀별 B2B 앞/뒤 경기 맵 → 위반 쌍마다
+//   1) 한 경기만 이동(첫날은 앞당기기만, 둘째 날은 늦추기만), 옮긴 경기의 양 팀 앞뒤 B2B 모두 isB2BGapSafe, 슬롯당 3경기 상한(후보 없을 때만 초과),
+//      비용 = 홈팀 기본 시각과의 차이 최소
+//   2) 1)이 불가능(양쪽이 다른 B2B에 묶임)하면 두 경기를 함께 이동
+//   최대 5패스, 반환 = 남은 위반 수
+// generateSeasonSchedule (v2)
+    return toGames(scheduled, { enforceB2BGap: true });
+```
+- 최악 조합(D=20, 리플레이 12분) 기준 금지되는 시각 쌍: 22:00/22:30 → 다음 날 20:30 이전, 21:30 → 20:00 이전, 21:00 → 19:30 이전, 20:30 → 19:00
+- 싱글(`generateSeasonScheduleLegacy`)은 옵션을 켜지 않아 시각 불변
+
+**검증**:
+- 50시즌(2026~2075) 생성: 위반 47.5건/시즌 → **0건**
+- `npx tsx scripts/schedule-research/check_v2.ts 2026 20`: 멀티 20시즌 + 싱글 미러 3시즌 전부 통과(신규 b2b gap 항목 포함). B2B 횟수·분포·2연전·연속 홈원정은 수정 전과 동일(날짜 불변)
+- 시각 변화(20시즌 평균, 시즌 1,230경기): 홈 기본 시각 유지 985.5 → 941.5경기(약 44경기 이동). 앞당김 −30분 9.6 / −60분 17.1 / −90분 11.8경기. 22:00 슬롯 202 → 168, 21:00 132 → 147, 20:30 107 → 123. 슬롯당 3경기 초과 0
+- client/server tsc: 변경 파일 오류 없음(기존 `Bun` 타입 미설치 오류만)
+- 기존 진행 중 리그(PBL) 일정은 영향 없음(생성 시점에만 적용)
+
+**롤백 방법**: 양쪽 `scheduleGenerator.ts`에서 `enforceB2BGaps` 함수·`isB2BGapSafe` import·`toGames`의 `opts` 인자/호출 블록을 지우고 v2 `return toGames(scheduled)`로 복구 → 양쪽 `leagueTimeline.ts`에서 `MAX_OVERTIME_PERIODS`·`b2bGapCache`·`isB2BGapSafe` 삭제 → `check_v2.ts`의 `isB2BGapSafe` import·`time` 필드·`b2b gap` 검사 줄 삭제. 미러 4파일은 반드시 같이 되돌릴 것.
 
 ## 2026-10-25 — 로스터 변경마다 전원이 선수 정보를 다시 받던 요청 폭주 완화 (leagueRaw* 방 단위 쿼리 + 팀 갱신 묶기)
 

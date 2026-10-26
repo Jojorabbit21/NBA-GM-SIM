@@ -28,9 +28,18 @@ export interface SeasonCalendar {
     allStarStart: string;
     /** 올스타 브레이크 마지막 날 */
     allStarEnd: string;
+    /** [2026-10-26] 포스트시즌 휴식일 수 — 정규시즌 최종일 → 포스트시즌 첫 경기, 플레이인 디사이더 → 본선 1라운드
+     *  사이에 각각 넣는 경기 없는 날. 0 = 기존 규칙(최종일 다음 날 바로 포스트시즌, 디사이더 다음 경기 간격에 1라운드).
+     *  저장값에 없으면(v3 이전 달력) 0 — 그 리그 타임라인은 옛 규칙 일수로 이미 깔려 있다. leagueTimeline.postseasonDayOffsets 참고. */
+    postseasonRestDays: number;
 }
 
-export const SEASON_CALENDAR_VERSION = 2;
+/** v3(2026-10-26): postseasonRestDays 추가. */
+export const SEASON_CALENDAR_VERSION = 3;
+
+/** [2026-10-26] 새 리그의 포스트시즌 휴식일 — 최종일과 플레이인 사이, 플레이인과 플레이오프 사이에 하루씩.
+ *  같은 팀 백투백에서 앞 경기 리플레이(연장 포함)가 끝나기 전에 다음 경기가 시작되는 것을 막는다(docs/plan/overtime-system.md). */
+export const POSTSEASON_REST_DAYS = 1;
 
 function fmt(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -55,7 +64,10 @@ export function buildSeasonCalendar(virtualSeasonYear: number): SeasonCalendar {
     const regularEnd = addDays(regularStart, 173);
     const mainGame = firstWeekdayOnOrAfter(virtualSeasonYear + 1, 2, 14, 0);
     const allStarStart = addDays(mainGame, -3);
-    return { version: SEASON_CALENDAR_VERSION, regularStart, regularEnd, allStarStart, allStarEnd: addDays(allStarStart, 5) };
+    return {
+        version: SEASON_CALENDAR_VERSION, regularStart, regularEnd, allStarStart, allStarEnd: addDays(allStarStart, 5),
+        postseasonRestDays: POSTSEASON_REST_DAYS,
+    };
 }
 
 /** 저장값이 없는 리그(2026-10-23 이전 생성)의 기존 고정 달력. */
@@ -66,6 +78,7 @@ export function legacySeasonCalendar(virtualSeasonYear: number): SeasonCalendar 
         regularEnd: `${virtualSeasonYear + 1}-04-13`,
         allStarStart: `${virtualSeasonYear + 1}-02-13`,
         allStarEnd: `${virtualSeasonYear + 1}-02-18`,
+        postseasonRestDays: 0,
     };
 }
 
@@ -79,6 +92,7 @@ export function resolveSeasonCalendar(virtualSeasonYear: number, stored?: unknow
         return {
             version: typeof s.version === 'number' ? s.version : SEASON_CALENDAR_VERSION,
             regularStart: s.regularStart!, regularEnd: s.regularEnd!, allStarStart: s.allStarStart!, allStarEnd: s.allStarEnd!,
+            postseasonRestDays: typeof s.postseasonRestDays === 'number' && s.postseasonRestDays >= 0 ? Math.round(s.postseasonRestDays) : 0,
         };
     }
     return legacySeasonCalendar(virtualSeasonYear);

@@ -41,7 +41,13 @@ export function getReplayDurationMs(): number {
 
 export type GameDisplayState = 'scheduled' | 'live' | 'final';
 
-type ScheduledLike = Pick<Game, 'scheduledAt' | 'game_seq' | 'played'>;
+type ScheduledLike = Pick<Game, 'scheduledAt' | 'game_seq' | 'played' | 'otPeriods'>;
+
+/** [2026-10-26] 경기별 리플레이(공개까지) 길이 — 연장 1회당 정규 속도로 300초분 추가.
+ *  DB game_reveal_at()·서버 liveGameView.replayLengthMs와 같은 식. otPeriods 미지정 = 0(연장 없음). */
+export function replayLengthMsFor(otPeriods: number | null | undefined): number {
+    return getReplayDurationMs() * (2880 + 300 * Math.max(0, otPeriods ?? 0)) / 2880;
+}
 
 /**
  * game_seq + league 시간 압축 파라미터 → 현실 scheduledAt ISO 문자열 역산.
@@ -72,7 +78,7 @@ export function getGameDisplayState(game: ScheduledLike, serverNowMs: number): G
     }
     const start = new Date(game.scheduledAt).getTime();
     if (serverNowMs < start) return 'scheduled';
-    if (serverNowMs < start + getReplayDurationMs()) return 'live';
+    if (serverNowMs < start + replayLengthMsFor(game.otPeriods)) return 'live';
     return 'final';
 }
 

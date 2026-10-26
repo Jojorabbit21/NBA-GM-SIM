@@ -19,6 +19,7 @@ export interface Game {
     isPlayoff?: boolean;
     seriesId?: string;
     isAllstar?: boolean; // true면 올스타 본경기/라이징스타 챌린지(가상 팀 ID) — 시즌 통산 스탯/스탠딩 집계 대상 아님
+    otPeriods?: number;  // [2026-10-26] 멀티: 연장 수(games.ot_periods) — 결과 공개(final) 시각이 연장 1회당 정규 속도 300초분 늦어짐
 }
 
 export interface PlayoffSeries {

@@ -15,6 +15,8 @@ import { ShotTooltip } from '../components/game/ShotTooltip';
 import { PlayerMarkers } from '../components/game/PlayerMarkers';
 import { CourtBackground } from '../components/game/CourtBackground';
 import { TeamStatsCompare } from '../components/game/TeamStatsCompare';
+import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodList } from '../utils/periodLabel';
+import { scheduleMinute } from '../services/game/engine/pbp/periodRules';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -352,20 +354,22 @@ const QuarterScores: React.FC<{
     homeTeamCode: string;
     awayTeamCode: string;
 }> = ({ allLogs, homeTeamId, currentQuarter, homeTeamCode, awayTeamCode }) => {
+    // [2026-10-26] 연장 열은 연장에 들어간 뒤("N차 연장 시작" 로그가 생긴 뒤)에만 생긴다
+    const periods = useMemo(() => 4 + countOvertimePeriods(allLogs), [allLogs]);
     const scores = useMemo(() => {
-        const home = [0, 0, 0, 0];
-        const away = [0, 0, 0, 0];
+        const home = new Array<number>(periods).fill(0);
+        const away = new Array<number>(periods).fill(0);
 
         for (const log of allLogs) {
             if (log.type === 'score' || log.type === 'freethrow') {
                 const pts = log.points ?? 0;
-                const qi = Math.min(3, log.quarter - 1); // 0-indexed
+                const qi = Math.min(periods - 1, log.quarter - 1); // 0-indexed (옛 방식 5쿼터 버저비터는 4쿼터)
                 if (log.teamId === homeTeamId) home[qi] += pts;
                 else away[qi] += pts;
             }
         }
         return { home, away };
-    }, [allLogs, homeTeamId]);
+    }, [allLogs, homeTeamId, periods]);
 
     const hTotal = scores.home.reduce((a, b) => a + b, 0);
     const aTotal = scores.away.reduce((a, b) => a + b, 0);
@@ -382,8 +386,8 @@ const QuarterScores: React.FC<{
                 <thead>
                     <tr className="text-xs text-slate-600 uppercase bg-slate-900/60">
                         <th className="text-left px-1.5 py-1 font-semibold w-12 border-r border-slate-700/60 text-slate-500 tracking-wider">쿼터별 득점</th>
-                        {[1, 2, 3, 4].map(q => (
-                            <th key={q} className="text-center px-1.5 py-1 font-semibold w-8 border-r border-slate-700/60">{q}</th>
+                        {periodList(periods - 4).map(q => (
+                            <th key={q} className="text-center px-1.5 py-1 font-semibold w-8 border-r border-slate-700/60">{q <= 4 ? q : `OT${q - 4}`}</th>
                         ))}
                         <th className="text-center px-1.5 py-1 font-semibold w-8">T</th>
                     </tr>
@@ -690,7 +694,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     } = displayState;
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('court');
-    const [pbpQuarterFilter, setPbpQuarterFilter] = useState<0 | 1 | 2 | 3 | 4>(0);
+    const [pbpQuarterFilter, setPbpQuarterFilter] = useState<number>(0);   // 0 = 전체, 5·6 = 연장
     const [pauseCountdown, setPauseCountdown] = useState<number>(30);
     const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const resumeRef = useRef(resume);
@@ -705,8 +709,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const awayColor = awayData?.colors.primary || '#f59e0b';
     const userTeam = isUserHome ? homeTeam : awayTeam;
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
-    const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
-    const maxSelectableQ = (isGameEnd ? 4 : quarter) as 0 | 1 | 2 | 3 | 4;
+    const currentMinute = scheduleMinute({ quarter, gameClock });   // [2026-10-26] 연장 k분째 = 4쿼터 마지막 5분(43+k)
+    // [2026-10-26] 연장 수 = "N차 연장 시작" 로그 수(옛 경기의 5쿼터 종료·버저비터 로그는 연장 아님 — utils/periodLabel)
+    const otCount = useMemo(() => countOvertimePeriods(allLogs), [allLogs]);
+    const maxSelectableQ = isGameEnd ? 4 + otCount : normalizePeriod(quarter, otCount);
 
     // playerNames map for LiveTacticsTab (both teams)
     const playerNames = useMemo(() => {
@@ -766,17 +772,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         }
     }, [isGameEnd, getResult, onGameEnd]);
 
-    const quarterLabel = quarter <= 4 ? `Q${quarter}` : 'Final';
+    const quarterLabel = isGameEnd ? 'Final' : periodShortLabel(quarter, otCount);   // [2026-10-26] 연장 OT1·OT2
     const pauseLabel = pauseReason === 'halftime'   ? '하프타임'
                      : pauseReason === 'timeout'    ? '타임아웃'
-                     : pauseReason === 'quarterEnd' ? `Q${quarter} 종료`
+                     : pauseReason === 'quarterEnd' ? `${periodShortLabel(quarter, otCount)} 종료`
                      : '';
 
     // PBP 필터링
     const filteredLogs = useMemo(() => {
         if (pbpQuarterFilter === 0) return allLogs.slice().reverse();
-        return allLogs.filter(l => l.quarter === pbpQuarterFilter).slice().reverse();
-    }, [allLogs, pbpQuarterFilter]);
+        return allLogs.filter(l => normalizePeriod(l.quarter, otCount) === pbpQuarterFilter).slice().reverse();
+    }, [allLogs, pbpQuarterFilter, otCount]);
 
     const TABS: { key: ActiveTab; label: string }[] = isSpectateMode
         ? [{ key: 'court', label: '중계' }]
@@ -1108,7 +1114,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             플레이-바이-플레이
                                         </p>
                                         <div className="flex gap-1">
-                                            {([0, 1, 2, 3, 4] as const).map(q => (
+                                            {[0, ...periodList(otCount)].map(q => (
                                                 <button
                                                     key={q}
                                                     onClick={() => setPbpQuarterFilter(q)}
@@ -1120,7 +1126,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                                                         }`}
                                                 >
-                                                    {q === 0 ? '전체' : `${q}Q`}
+                                                    {q === 0 ? '전체' : periodShortLabel(q, otCount, '1Q')}
                                                 </button>
                                             ))}
                                         </div>
@@ -1174,8 +1180,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     const outPlayers = outMatch[1].split(',').map(s => s.trim());
                                                     return (
                                                         <div key={i} className="flex items-start py-2 px-3 gap-3 hover:bg-white/5 transition-colors">
-                                                            <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-xs text-center pt-0.5">
-                                                                {log.quarter}Q
+                                                            <div className="flex-shrink-0 w-7 text-slate-600 font-bold text-xs text-center pt-0.5">
+                                                                {periodShortLabel(log.quarter, otCount, '1Q')}
                                                             </div>
                                                             <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center pt-0.5">
                                                                 {log.timeRemaining || '-'}
@@ -1216,8 +1222,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
                                                     {/* 쿼터 */}
-                                                    <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-xs text-center">
-                                                        {log.quarter}Q
+                                                    <div className="flex-shrink-0 w-7 text-slate-600 font-bold text-xs text-center">
+                                                        {periodShortLabel(log.quarter, otCount, '1Q')}
                                                     </div>
                                                     {/* 시간 */}
                                                     <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center">

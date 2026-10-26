@@ -27,9 +27,10 @@ import { kstMidnightPlusDays } from './kst';
 import { supabase } from '../supabaseAdmin';
 import {
     computeStandingsByConference, buildAndStoreConferenceBracket, buildBracketConfirmedEvent, seasonLabelFor,
-    postseasonVirtualAnchor, addDaysStr, postseasonIntervalDays,
+    postseasonVirtualAnchor, addDaysStr, postseasonIntervalDays, postseasonRestDays,
     type StandingRow, type PostseasonLeagueRow,
 } from './playoffSeeder';
+import { postseasonDayOffsets } from './leagueTimeline';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
 import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
 
@@ -61,9 +62,13 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
     const timeline         = await loadLeagueTimeline(league.id);
     const usesTimeline     = timeline.length > 0;
     const g                = postseasonIntervalDays(league);
+    // [2026-10-26] 타임라인 리그는 휴식일(season_calendar.postseasonRestDays) 반영 — postseasonDayOffsets가 단일 규칙.
+    const restDays         = postseasonRestDays(league);
+    const offsets          = postseasonDayOffsets(g, true, restDays);
     const playInStart      = kstMidnightPlusDays(new Date().toISOString(), 1);
     const playInStartIso   = playInStart.toISOString();
-    const virtualStartDate = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
+    const anchorDate       = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
+    const virtualStartDate = usesTimeline ? addDaysStr(anchorDate, offsets.playIn) : anchorDate;
     const gamesPerRealDay  = league.games_per_real_day ?? 48;
     const intervalMinutes  = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
 
@@ -144,9 +149,11 @@ export async function startPlayIn(league: PostseasonLeagueRow, roomId: string): 
         });
     }
 
-    // 본선 1라운드 가상 날짜 오프셋 — 플레이인이 있으면 디사이더(g) 다음인 2g, 없으면 0.
+    // 본선 1라운드 가상 날짜 오프셋 — postseasonDayOffsets(휴식일 0이면 플레이인 있을 때 2g, 없으면 0).
     // 구 리그(타임라인 없음)는 예전 값(+1일)을 유지한다.
-    const round1DayOffset = schedule.length > 0 ? (usesTimeline ? 2 * g : 1) : 0;
+    const round1DayOffset = schedule.length > 0
+        ? (usesTimeline ? offsets.round1 : 1)
+        : (usesTimeline ? postseasonDayOffsets(g, false, restDays).round1 : 0);
     await buildAndStoreConferenceBracket(league, roomId, eastQualified, westQualified, series, round1DayOffset);
     console.log(`[playInSeeder] league=${league.id} — play-in started (${schedule.length} play-in games, timeline=${usesTimeline}, g=${g})`);
 }
@@ -192,8 +199,8 @@ export async function handlePlayInAdvance(
     const { data: teamRows } = await supabase.from('league_teams')
         .select('team_slug, team_name').eq('room_id', roomId).in('team_slug', [finished.winnerId, loserId]);
     const nameOf = (slug: string) => teamRows?.find((t: any) => t.team_slug === slug)?.team_name ?? slug;
-    // 플레이인은 항상 단판이라 이 시리즈의 game_date는 게임 종류(7v8/9v10=포스트시즌 day 0,
-    // 8th 디사이더=day 1)만으로 이미 결정돼 있다(startPlayIn()/handlePlayInAdvance의 디사이더
+    // 플레이인은 항상 단판이라 이 시리즈의 game_date는 게임 종류(7v8/9v10=postseasonDayOffsets().playIn,
+    // 8th 디사이더=.decider)만으로 이미 결정돼 있다(startPlayIn()/handlePlayInAdvance의 디사이더
     // 생성 로직과 동일 규칙) — 별도 조회 없이 그대로 계산.
     const confLabel = conf === 'East' ? '동부' : '서부';
     const tagLabel = tag === '7v8' ? '7-8위전' : tag === '9v10' ? '9-10위전' : '8시드 결정전';
@@ -201,9 +208,11 @@ export async function handlePlayInAdvance(
     const timeline     = await loadLeagueTimeline(league.id);
     const usesTimeline = timeline.length > 0;
     const g            = postseasonIntervalDays(league);
+    const offsets      = postseasonDayOffsets(g, true, postseasonRestDays(league));   // [2026-10-26] 휴식일 반영
+    const anchorDate   = postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
     const playInVirtualDate = tag === '8th'
-        ? addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? g : 1)
-        : postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar);
+        ? addDaysStr(anchorDate, usesTimeline ? offsets.decider : 1)
+        : (usesTimeline ? addDaysStr(anchorDate, offsets.playIn) : anchorDate);
     const pendingEvents: PendingLeagueEvent[] = [{
         type: 'play_in_result', simDate: playInVirtualDate,
         teamIds: [finished.winnerId, loserId],
@@ -230,7 +239,7 @@ export async function handlePlayInAdvance(
             // 시각(scheduledAt)만 호출 시점의 real "now"+1일을 그대로 사용.
             // [2026-09-18] 타임라인 리그: 디사이더 = 앵커 + g(가상 날짜), 슬롯 0에 두고 scheduled_at은 표에서.
             // 구 리그: 예전 그대로(앵커+1, 슬롯 1, 30분 간격, real now+1일 앵커).
-            const deciderVirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? g : 1);
+            const deciderVirtualDate = addDaysStr(anchorDate, usesTimeline ? offsets.decider : 1);
             const deciderStart    = kstMidnightPlusDays(new Date().toISOString(), 1);
             const gamesPerRealDay = league.games_per_real_day ?? 48;
             const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;
@@ -290,7 +299,7 @@ export async function handlePlayInAdvance(
         resolveQualified('East', East),
         resolveQualified('West', West),
         series,
-        usesTimeline ? 2 * g : 0,
+        usesTimeline ? offsets.round1 : 0,
         false,
     );
     if (!bracketResult) return { pendingEvents };
@@ -329,12 +338,15 @@ async function resolveRoundOneFromPlayIn(
     target.lowerSeedId = winnerId;
 
     // [2026-09-15 Fix] 본선 1라운드 가상 날짜 — startPlayIn()이 buildAndStoreConferenceBracket에 넘긴
-    // round1DayOffset(타임라인 리그 2g / 구 리그 1)과 동일해야 같은 라운드의 다른 매치업들과
+    // round1DayOffset(타임라인 리그 postseasonDayOffsets().round1 / 구 리그 1)과 동일해야 같은 라운드의 다른 매치업들과
     // game_date가 어긋나지 않는다.
     const timeline     = await loadLeagueTimeline(league.id);
     const usesTimeline = timeline.length > 0;
     const g            = postseasonIntervalDays(league);
-    const round1VirtualDate = addDaysStr(postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar), usesTimeline ? 2 * g : 1);
+    const round1VirtualDate = addDaysStr(
+        postseasonVirtualAnchor(league.virtual_season_year, league.season_calendar),
+        usesTimeline ? postseasonDayOffsets(g, true, postseasonRestDays(league)).round1 : 1,
+    );
     const startAnchor     = kstMidnightPlusDays(new Date().toISOString(), 1);
     const gamesPerRealDay = league.games_per_real_day ?? 48;
     const intervalMinutes = usesTimeline ? 1440 * g : 1440 / gamesPerRealDay;

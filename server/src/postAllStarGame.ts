@@ -41,6 +41,7 @@ import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormaliza
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { stampBoxOvr } from './boxOvr.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
+import { countOvertimePeriods } from './shared/engine/pbp/periodRules.ts';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator.ts';
 import { pickTeamMvp } from './shared/leagueEvents.ts';
 import type { DepthChart } from './shared/types.ts';
@@ -247,7 +248,7 @@ export async function computeAndRunAllStarGame(
 
     // custom_overrides 적용 여부 — simRunner.ts와 동일 판정.
     const { data: leagueData } = await supabase
-        .from('leagues').select('use_custom_overrides').eq('id', leagueId).maybeSingle();
+        .from('leagues').select('use_custom_overrides, overtime_enabled').eq('id', leagueId).maybeSingle();
     const useCustomOverrides = shouldUseCustomOverrides(leagueData);
 
     const { data: rawPlayers } = await supabase
@@ -287,7 +288,8 @@ export async function computeAndRunAllStarGame(
     // 전시성 경기 — 부상/출장정지 비활성화(사용자 확인). 다른 슬라이더(득점/파울 등)는
     // 방의 기존 설정을 그대로 물려받는다.
     const baseSimSettings = (room as any).sim_settings ?? {};
-    const allStarSimSettings = { ...baseSimSettings, injuriesEnabled: false, suspensionsEnabled: false };
+    // [2026-10-26] 올스타·라이징스타전도 리그 연장전 스위치를 따른다(사용자 결정)
+    const allStarSimSettings = { ...baseSimSettings, injuriesEnabled: false, suspensionsEnabled: false, overtimeEnabled: (leagueData as any)?.overtime_enabled === true };
     // Room seed only — same fixed personalities as regular-season games.
     const tendencySeed = (room as any).tendency_seed ?? '';
 
@@ -336,10 +338,11 @@ export async function computeAndRunAllStarGame(
         sim_duration_ms: 0,
         box_timeline: result.boxTimeline ?? [], rotation_data: result.rotationData ?? {},
         quarter_scores: computeQuarterScoresFromEvents(result.pbpLogs ?? []),
+        ot_periods: countOvertimePeriods(result.pbpLogs ?? []),   // [2026-10-26] 공개 시각(game_reveal_at)
     }, { onConflict: 'room_id,game_id' });
 
     await supabase.from('games')
-        .update({ played: true, home_score: homeScore, away_score: awayScore })
+        .update({ played: true, home_score: homeScore, away_score: awayScore, ot_periods: countOvertimePeriods(result.pbpLogs ?? []) })
         .eq('room_id', roomId).eq('game_id', gameId);
 
     // ── MVP 선정 + 결과 서신 발송 ────────────────────────────────────────────────────────

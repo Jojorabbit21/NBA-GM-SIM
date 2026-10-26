@@ -160,9 +160,10 @@ const MultiPlayerDetailView: React.FC = () => {
         // 리빌 게이팅 전용)이지 시뮬레이션 상의 가상 NBA 날짜가 아니다. 가상 날짜는
         // schedule(Game[])의 .date 필드에 있으므로 game_id로 매칭해서 가져온다.
         const dateByGameId = new Map((schedule as Game[]).map(g => [g.id, g.date]));
+        const otByGameId = new Map((schedule as Game[]).map(g => [g.id, g.otPeriods ?? 0]));   // [2026-10-26] 연장 경기 공개 지연
         const rows: any[] = [];
         for (const row of raw.pbpRows as any[]) {
-            if (!isFinal({ scheduledAt: row.game_start_time, played: true }, now)) continue;
+            if (!isFinal({ scheduledAt: row.game_start_time, played: true, otPeriods: row.ot_periods ?? otByGameId.get(row.game_id) ?? 0 }, now)) continue;
             const sides = [
                 { box: row.home_box ?? [], oppTeamId: row.away_team_id, isHome: true, teamScore: row.home_score, opponentScore: row.away_score },
                 { box: row.away_box ?? [], oppTeamId: row.home_team_id, isHome: false, teamScore: row.away_score, opponentScore: row.home_score },

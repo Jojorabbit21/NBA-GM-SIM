@@ -223,6 +223,8 @@ export interface GameState {
     // shotClock===14 대신 이 플래그로 판정(플래그런트 후 샷클락 14초가 풋백을 유발하지 않도록). optional: 미설정=false.
     lastEntryWasOffReb?: boolean;
     lastEntryWasFlagrant?: boolean; // 플래그런트 후 공격권 유지(샷클락 14) — 샷클락 바이올레이션 문구 분기용
+    /** [2026-10-26] 4쿼터 이후 마지막 역전·리드 득점(동점이 되면 null) — 경기 종료 시 위닝샷 해설용. buzzer = 0:00 버저비터로 이미 해설함 */
+    lastGoAhead?: { side: 'home' | 'away'; playerName: string; quarter: number; gameClock: number; buzzer?: boolean } | null;
     // [2026-10-23] simulatePossession이 슛 판정 전에 미리 뽑은 이번 포세션 소요 시간(초) — 샷클락 막판 페널티 판정용.
     // liveEngine은 이 값이 있으면 calculatePossessionTime을 다시 부르지 않고 그대로 쓴다. 미설정 = 기존처럼 계산.
     preSampledPossessionTime?: number;

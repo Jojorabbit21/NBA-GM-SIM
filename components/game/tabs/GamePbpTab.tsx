@@ -5,6 +5,7 @@ import { TEAM_DATA } from '../../../data/teamData';
 import { ArrowRight, Clock } from 'lucide-react';
 import { SegmentedControl } from '../../common/SegmentedControl';
 import { PlayTypeStats } from '../PlayTypeStats';
+import { countOvertimePeriods, normalizePeriod, periodKoreanLabel, periodShortLabel, periodList } from '../../../utils/periodLabel';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -72,11 +73,14 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
         });
     }, [logs]);
 
+    // [2026-10-26] 연장 수("N차 연장 시작" 로그) — 옛 경기의 5쿼터 종료·버저비터 로그는 4쿼터로 접는다(utils/periodLabel)
+    const otCount = useMemo(() => countOvertimePeriods(logs), [logs]);
+
     // 2. Filter by Quarter
     const displayLogs = useMemo(() => {
         if (selectedQuarter === 0) return processedLogs;
-        return processedLogs.filter(l => l.quarter === selectedQuarter);
-    }, [processedLogs, selectedQuarter]);
+        return processedLogs.filter(l => normalizePeriod(l.quarter, otCount) === selectedQuarter);
+    }, [processedLogs, selectedQuarter, otCount]);
 
     // Helper to format log text
     const renderLogContent = (text: string, homeTeam: Team, awayTeam: Team, teamId?: string) => {
@@ -156,7 +160,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         size="sm"
                         value={String(selectedQuarter)}
                         onChange={(v) => setSelectedQuarter(Number(v))}
-                        options={[0, 1, 2, 3, 4].map(q => ({ value: String(q), label: q === 0 ? '전체' : `${q}쿼터` }))}
+                        options={[0, ...periodList(otCount)].map(q => ({ value: String(q), label: q === 0 ? '전체' : periodKoreanLabel(q, otCount) }))}
                     />
                 </div>
 
@@ -225,8 +229,8 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         return (
                             <div key={idx} className={`flex items-center py-2.5 px-4 gap-4 ${bgClass}`}>
                                 {/* 1. Quarter */}
-                                <div className="flex-shrink-0 w-6 text-slate-300 text-xs text-center">
-                                    {log.quarter}Q
+                                <div className="flex-shrink-0 w-7 text-slate-300 text-xs text-center">
+                                    {periodShortLabel(log.quarter, otCount, '1Q')}
                                 </div>
 
                                 {/* 2. Time */}

@@ -5,6 +5,7 @@ import { formatTime } from './timeEngine.ts';
 import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN, HARD_FLOOR } from './substitutionSystem.ts';
 import { assignCourtSlots, snapshotSlots, pickBestFive, vacancyFit } from './slotAssignment.ts';
 import { planSuccession, type SuccessionPlayer } from './rotationSuccession.ts';
+import { elapsedGameSec, scheduleMinute, isOvertimeClutch } from './periodRules.ts';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -148,8 +149,34 @@ function applyRotationSuccession(state: GameState, team: TeamState, outPlayer: L
     });
 }
 
+/**
+ * [2026-10-26] 연장 라인업 — 연장 분(로테이션 표 43~47칸)을 이 경기 선발 5명(gs = 1)으로 다시 깐다(원본 맵도 같이 —
+ * 탈진 임시 벤치가 풀릴 때 돌아갈 기준). 부상·퇴장한 선발 자리는 planSuccession으로 승계. 탈진하면 기존 규칙대로 벤치가
+ * 들어가고(substitutionSystem), 연장 마지막 2분엔 주전이 복귀한다(checkTemporaryReturns·isOvertimeClutch). 연장 시작마다 호출.
+ */
+export function prepareOvertimeRotation(state: GameState, team: TeamState): void {
+    const map = team.tactics.rotationMap;
+    if (!map) return;
+    const roster = [...team.onCourt, ...team.bench];
+    const starters = roster.filter(p => p.gs === 1);
+    if (starters.length !== 5) return;   // 선발 정보가 없으면 기존(4쿼터 마지막 5분 배치)대로
+    const OT_FROM = 43;
+    for (const p of roster) {
+        const on = p.gs === 1;
+        map[p.playerId] ??= Array(48).fill(false);
+        state.originalRotationMap[p.playerId] ??= Array(48).fill(false);
+        for (let m = OT_FROM; m < 48; m++) {
+            map[p.playerId][m] = on;
+            state.originalRotationMap[p.playerId][m] = on;
+        }
+    }
+    for (const p of starters) {
+        if (p.health === 'Injured' || isOut(p)) applyRotationSuccession(state, team, p, OT_FROM);
+    }
+}
+
 export function checkAndApplyRotation(state: GameState, teamState: TeamState, currentTotalSec: number) {
-    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+    const currentMinute = scheduleMinute(state);   // [2026-10-26] 연장 = 43+k
 
     const map = teamState.tactics.rotationMap;
     const validSelectedIds = new Set<string>();
@@ -292,8 +319,8 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
 }
 
 export function forceSubstitution(state: GameState, team: TeamState, outPlayer: LivePlayer, reason: string, outReason?: RotationOutReason) {
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+    const currentTotalSec = elapsedGameSec(state);
+    const currentMinute = scheduleMinute(state);   // [2026-10-26] 연장 = 43+k
 
     applyRotationSuccession(state, team, outPlayer, currentMinute);
 
@@ -434,7 +461,7 @@ function benchForFoulTrouble(
 function swapForTemporaryBench(
     state: GameState, team: TeamState, outPlayer: LivePlayer, filler: LivePlayer, reason: 'foul_trouble' | 'shutdown'
 ): void {
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentTotalSec = elapsedGameSec(state);
     const outIdx = team.onCourt.indexOf(outPlayer);
     const inIdx = team.bench.indexOf(filler);
 
@@ -586,8 +613,13 @@ export function checkTemporaryReturns(
             continue;
         }
         if (override.reason === 'shutdown') {
+            // 체력 회복 + 셧다운 해제되면 복귀 (선수별 returnThreshold 적용, 기본 70)
             const returnThreshold = team.tactics.playerTactics?.[player.playerId]?.returnThreshold ?? 70;
-            if (!player.isShutdown && player.currentCondition > returnThreshold) {
+            // [2026-10-26] 연장 마지막 2분(클러치): 탈진으로 빠졌던 주전은 체력과 무관하게 바로 복귀
+            if (isOvertimeClutch(state) && player.gs === 1 && state.originalRotationMap[player.playerId]?.[currentMinute]) {
+                player.isShutdown = false;
+                shouldReturn = true;
+            } else if (!player.isShutdown && player.currentCondition > returnThreshold) {
                 const orig = state.originalRotationMap[player.playerId];
                 if (orig && orig[currentMinute]) {
                     shouldReturn = true;
@@ -713,8 +745,8 @@ export function handleFillerExit(
 export function executeGarbageSubstitution(
     state: GameState, team: TeamState, outPlayers: LivePlayer[]
 ): void {
-    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+    const currentTotalSec = elapsedGameSec(state);
+    const currentMinute = scheduleMinute(state);   // [2026-10-26] 연장 = 43+k
 
     const available = team.bench
         .filter(p => p.health === 'Healthy' && !isOut(p)

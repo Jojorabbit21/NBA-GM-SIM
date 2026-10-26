@@ -11,6 +11,7 @@ import { fetchLiveGamesSummary, type LiveGameSummary } from '../../../services/m
 import { useServerClockBucket } from '../../../utils/serverClock';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { IconButton } from '../../../components/common/IconButton';
+import { periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 
 // [2026-08-28] views/multi/season/MultiGamePbpView.tsx에서 분리 — 원래 그 화면(경기 관람)
 // 최상단에만 있던 "오늘 경기 목록" 스트립을 모든 시즌 화면(MultiSeasonLayout, 헤더 바로
@@ -390,8 +391,9 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                     const isCurrent = g.id === currentGameId;
                     const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
                     const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
-                    const statusLabel = state === 'final' ? '종료'
-                        : state === 'live' ? (live ? `${live.quarter ?? 1}Q ${live.clock ?? ''}` : '진행 중')
+                    // [2026-10-26] 연장 경기 '종료 (OT)', 라이브 연장 'OT1 3:21'
+                    const statusLabel = state === 'final' ? (g.otPeriods ? `종료 (${overtimeTag(g.otPeriods)})` : '종료')
+                        : state === 'live' ? (live ? `${periodShortLabel(live.quarter ?? 1, undefined, '1Q')} ${live.clock ?? ''}` : '진행 중')
                         : fmtTime(g, preferVirtual);
 
                     return (

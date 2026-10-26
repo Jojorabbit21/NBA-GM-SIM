@@ -46,7 +46,9 @@ import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { formatTime } from '../../../services/game/engine/pbp/timeEngine';
-import { toGameSeconds } from '../../../utils/gameClock';
+import { toGameSeconds, shotGameSeconds } from '../../../utils/gameClock';
+import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodKoreanLabel } from '../../../utils/periodLabel';
+import { periodStartSec, periodLengthSec } from '../../../services/game/engine/pbp/periodRules';
 
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
@@ -381,7 +383,8 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
     }
 
     // 핫/콜드 스트릭(recentShots) 쿼터 전환 보정 — 엔진의 dampenHotCold(Q2/Q4 진입)·resetHotCold(Q3=하프타임) 경계 재현
-    let dampenedQ2 = false, resetQ3 = false, dampenedQ4 = false;
+    // [2026-10-26] 연장 진입(2880초, 3180초 …)도 엔진은 dampenHotCold — 같은 처리
+    let dampenedQ2 = false, resetQ3 = false, dampenedQ4 = false, otDampened = 0;
 
     for (const tick of timeline) {
         const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
@@ -398,6 +401,10 @@ function buildLiveBox(timeline: BoxTick[], elapsed: number, referenceBox: Player
         if (!dampenedQ4 && tick.t >= 2160) {
             for (const [pid, arr] of recentShots) recentShots.set(pid, arr.slice(-3));
             dampenedQ4 = true;
+        }
+        while (tick.t > 2880 + otDampened * 300) {   // 정확히 피리어드 끝(0:00) 틱은 직전 피리어드 소속
+            for (const [pid, arr] of recentShots) recentShots.set(pid, arr.slice(-3));
+            otDampened++;
         }
 
         for (const pid of tick.on) {
@@ -490,23 +497,25 @@ const QuarterScores: React.FC<{
     // (GamePbpTab.tsx와 동일 원인). 각 이벤트에 이미 저장된 정확한 누적 스코어 스냅샷에서
     // 쿼터 종료 시점 값의 차분(delta)을 구하는 방식으로 교체 — type/teamId에 의존하지 않음.
     const scores = useMemo(() => {
-        const qEndHome: (number | null)[] = [null, null, null, null];
-        const qEndAway: (number | null)[] = [null, null, null, null];
+        // [2026-10-26] 연장 열은 연장에 들어간 뒤("N차 연장 시작" 로그 공개 후)에만 — allLogs는 지금까지 공개된 로그
+        const periods = 4 + countOvertimePeriods(allLogs);
+        const qEndHome: (number | null)[] = new Array(periods).fill(null);
+        const qEndAway: (number | null)[] = new Array(periods).fill(null);
         let lastHome = 0, lastAway = 0;
         for (const log of allLogs) {
             if (log.homeScore != null && log.awayScore != null) {
                 lastHome = log.homeScore;
                 lastAway = log.awayScore;
             }
-            const qi = Math.min(3, log.quarter - 1);
+            const qi = Math.min(periods - 1, log.quarter - 1);   // 옛 방식 5쿼터 종료·버저비터 로그는 4쿼터
             qEndHome[qi] = lastHome;
             qEndAway[qi] = lastAway;
         }
 
-        const home = [0, 0, 0, 0];
-        const away = [0, 0, 0, 0];
+        const home = new Array<number>(periods).fill(0);
+        const away = new Array<number>(periods).fill(0);
         let prevHome = 0, prevAway = 0;
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < periods; i++) {
             if (qEndHome[i] == null) break; // 아직 도달하지 않은 쿼터부터는 중단 (0 유지, isPlayed가 '—'로 표시)
             home[i] = qEndHome[i]! - prevHome;
             away[i] = qEndAway[i]! - prevAway;
@@ -537,7 +546,7 @@ const QuarterScores: React.FC<{
                 <thead>
                     <tr className="text-slate-400 border-b border-slate-800">
                         <th className="pr-2 py-px leading-snug"></th>
-                        {[1, 2, 3, 4].map(q => <th key={q} className="text-center w-7 py-px leading-snug font-semibold">{q}</th>)}
+                        {scores.home.map((_, i) => <th key={i} className="text-center w-7 py-px leading-snug font-semibold">{i < 4 ? i + 1 : `OT${i - 3}`}</th>)}
                         <th className="text-center w-8 py-px leading-snug font-semibold">T</th>
                     </tr>
                 </thead>
@@ -566,8 +575,8 @@ const QuarterScores: React.FC<{
             <thead className="bg-slate-950 border-b border-slate-800">
                 <tr className="text-slate-400 font-bold">
                     <th className="w-12 py-1.5 px-3"></th>
-                    {[1, 2, 3, 4].map(q => (
-                        <th key={q} className="text-center py-1.5 px-3 w-9">{q}쿼터</th>
+                    {scores.home.map((_, i) => (
+                        <th key={i} className="text-center py-1.5 px-3 w-9 whitespace-nowrap">{periodKoreanLabel(i + 1, scores.home.length - 4)}</th>
                     ))}
                     <th className="text-center py-1.5 px-3 w-9">총합</th>
                 </tr>
@@ -991,10 +1000,11 @@ function estimatePossessions(s: TeamStats, oreb: number): number {
 }
 
 // toGameSeconds()의 역변환 — 마우스 x 위치(경과초)를 "Q{n} {mm:ss}" 형태로 되돌린다.
-// toGameSeconds와 동일하게 쿼터(연장 포함) = 12분으로 가정해 스케일을 맞춘다.
+// [2026-10-26] toGameSeconds와 같이 연장 = 5분(정규 2880초 이후 300초씩). maxQuarter = 4 + 실제 연장 수.
 function secondsToClock(elapsedSec: number, maxQuarter: number): { quarter: number; clock: string } {
-    const q = Math.min(maxQuarter, Math.max(1, Math.floor(elapsedSec / 720) + 1));
-    const remaining = Math.max(0, Math.min(720, 720 - (elapsedSec - (q - 1) * 720)));
+    let q = elapsedSec < 2880 ? Math.floor(elapsedSec / 720) + 1 : 5 + Math.floor((elapsedSec - 2880) / 300);
+    q = Math.min(maxQuarter, Math.max(1, q));
+    const remaining = Math.max(0, Math.min(periodLengthSec(q), periodStartSec(q) + periodLengthSec(q) - elapsedSec));
     return { quarter: q, clock: formatTime(remaining) };
 }
 
@@ -1088,7 +1098,7 @@ const TeamPossessionRow: React.FC<{
                             }`}
                             style={{ left: `${Math.min(96, Math.max(4, hovered.startPct + hovered.widthPct / 2))}%` }}
                         >
-                            <p className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Q{quarter} {clock}</p>
+                            <p className="text-[10px] font-bold text-slate-400 whitespace-nowrap">{periodShortLabel(quarter)} {clock}</p>
                             <p className="text-[11px] font-black text-white whitespace-nowrap">
                                 {OUTCOME_LABEL[hovered.kind as 'scoring' | 'nonScoring' | 'turnover' | 'timeout']} · {hovered.durationSec.toFixed(0)}초
                             </p>
@@ -1135,7 +1145,12 @@ const GameInsightsPanel: React.FC<{
     homeBox:     PlayerBoxScore[];
     awayBox:     PlayerBoxScore[];
 }> = ({ allLogs, homeTeamId, homeStats, awayStats, homeOreb, awayOreb, maxQuarter, homeColor, awayColor, homeAbbr, awayAbbr, boxTimeline, homeBox, awayBox }) => {
-    const totalMinutes = maxQuarter * 12;
+    // [2026-10-26] 정규 48분 + 연장 5분씩 (maxQuarter = 4 + 연장 수). 피리어드 경계·라벨 위치도 실제 길이로.
+    const totalMinutes = 48 + 5 * Math.max(0, maxQuarter - 4);
+    const periodStartMin = (q: number) => periodStartSec(q) / 60;
+    const periodMidMin   = (q: number) => (periodStartSec(q) + periodLengthSec(q) / 2) / 60;
+    /** 그 시점에 경기가 끝나는 분 — 정규시간 48, 연장 k 중이면 48 + 5k (승률 계산의 남은 시간 기준) */
+    const gameEndMinAt = (elapsedMin: number) => (elapsedMin < 48 ? 48 : Math.min(totalMinutes, 48 + 5 * Math.max(1, Math.ceil((elapsedMin - 48) / 5))));
 
     // playerId → 이름+소속 팀 약어 (플레이 상세에서 "선수명 (팀약어)"로 표시해 어느 팀 플레이인지 구분)
     const playerInfoMap = useMemo(() => {
@@ -1214,11 +1229,11 @@ const GameInsightsPanel: React.FC<{
     const chartPoints = useMemo(() => {
         const pts = scoreEvents.map(ev => {
             const elapsedMin = ev.elapsedSec / 60;
-            return { elapsedMin, margin: ev.hScore - ev.aScore, wp: calculateWinProbability(ev.hScore, ev.aScore, elapsedMin) };
+            return { elapsedMin, margin: ev.hScore - ev.aScore, wp: calculateWinProbability(ev.hScore, ev.aScore, elapsedMin, gameEndMinAt(elapsedMin)) };
         });
         const last = scoreEvents[scoreEvents.length - 1];
         if (last && last.elapsedSec / 60 < totalMinutes) {
-            pts.push({ elapsedMin: totalMinutes, margin: last.hScore - last.aScore, wp: calculateWinProbability(last.hScore, last.aScore, totalMinutes) });
+            pts.push({ elapsedMin: totalMinutes, margin: last.hScore - last.aScore, wp: calculateWinProbability(last.hScore, last.aScore, totalMinutes, totalMinutes) });
         }
         return pts;
     }, [scoreEvents, totalMinutes]);
@@ -1386,7 +1401,7 @@ const GameInsightsPanel: React.FC<{
             cum = ev;
         }
         const { quarter, clock } = secondsToClock(elapsedSec, maxQuarter);
-        const wp = calculateWinProbability(cum.hScore, cum.aScore, elapsedMin);
+        const wp = calculateWinProbability(cum.hScore, cum.aScore, elapsedMin, gameEndMinAt(elapsedMin));
         return { quarter, clock, hScore: cum.hScore, aScore: cum.aScore, margin: cum.hScore - cum.aScore, wp, x: hoverFrac * W };
     }, [hoverFrac, scoreEvents, totalMinutes, maxQuarter]);
 
@@ -1429,7 +1444,7 @@ const GameInsightsPanel: React.FC<{
                         <line x1={W} y1="0" x2={W} y2={H} stroke="#475569" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
                         <line x1="0" y1={MID} x2={W} y2={MID} stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
                         {Array.from({ length: maxQuarter - 1 }).map((_, i) => (
-                            <line key={i} x1={((i + 1) * 12 / totalMinutes) * W} y1="0" x2={((i + 1) * 12 / totalMinutes) * W} y2={H}
+                            <line key={i} x1={(periodStartMin(i + 2) / totalMinutes) * W} y1="0" x2={(periodStartMin(i + 2) / totalMinutes) * W} y2={H}
                                 stroke="#1e293b" strokeWidth="1" strokeDasharray="2 4" />
                         ))}
                         <path d={wpArea} fill="#38bdf8" fillOpacity="0.12" stroke="none" />
@@ -1450,7 +1465,7 @@ const GameInsightsPanel: React.FC<{
                             className="absolute top-2 -translate-x-1/2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pointer-events-none shadow-lg whitespace-nowrap z-10"
                             style={{ left: `${Math.min(85, Math.max(15, (hoverInfo.x / W) * 100))}%` }}
                         >
-                            <p className="text-[10px] font-bold text-slate-400 mb-1">Q{hoverInfo.quarter} {hoverInfo.clock}</p>
+                            <p className="text-[10px] font-bold text-slate-400 mb-1">{periodShortLabel(hoverInfo.quarter)} {hoverInfo.clock}</p>
                             <p className="text-xs font-black text-white tabular-nums">
                                 {awayAbbr} {hoverInfo.aScore} <span className="text-slate-500">–</span> {homeAbbr} {hoverInfo.hScore}
                             </p>
@@ -1470,7 +1485,7 @@ const GameInsightsPanel: React.FC<{
                     <div className={`${GUTTER_W} shrink-0`} />
                     <div className="flex-1 text-[10px] font-bold text-slate-600 relative h-4">
                         {Array.from({ length: maxQuarter }).map((_, i) => (
-                            <span key={i} className="absolute -translate-x-1/2" style={{ left: `${((i + 0.5) * 12 / totalMinutes) * 100}%` }}>
+                            <span key={i} className="absolute -translate-x-1/2" style={{ left: `${(periodMidMin(i + 1) / totalMinutes) * 100}%` }}>
                                 {i < 4 ? `${i + 1}Q` : `OT${i - 3}`}
                             </span>
                         ))}
@@ -1545,11 +1560,12 @@ const MultiGamePbpView: React.FC = () => {
     // undefined: 미조회, null: 레거시(scheduledAt 없음), string: 정시
     const [scheduledAt,   setScheduledAt]   = useState<string | null | undefined>(undefined);
     const [gamePlayed,    setGamePlayed]    = useState(false);
+    const [gameOtPeriods, setGameOtPeriods] = useState(0);   // [2026-10-26] 공개(final) 시각 — 연장 경기는 늦게 끝남
     // [2026-09-09] 올스타 본경기/라이징스타 챌린지 여부 — games.is_allstar, loadGame() effect에서
     // 함께 세팅. 가상 팀(EAST-ALLSTAR 등) 이름/테마색 폴백 및 "전적 텍스트 숨김"에 사용.
     const [isAllstarGame, setIsAllstarGame] = useState(false);
     const allstarDisplay = useAllStarTeamDisplay(room?.id, room?.season_number);
-    const [quarterFilter, setQuarterFilter] = useState<0|1|2|3|4|5>(0);
+    const [quarterFilter, setQuarterFilter] = useState<number>(0);   // 0 = 전체, 5·6 = 연장
     // [2026-08-03] 6개 탭(박스스코어/샷차트/경기기록/로테이션/인사이트/온오프)을 스위칭하는 대신
     // 한 페이지에 세로로 이어붙임 — finalTab 전환 상태 대신 "현재 스크롤 위치가 어느 섹션인지"만
     // 추적(스크롤스파이)해서 상단 네비게이션 바의 활성 라벨 하이라이트에 쓴다.
@@ -1586,6 +1602,7 @@ const MultiGamePbpView: React.FC = () => {
         setError(null);
         setScheduledAt(undefined);
         setGamePlayed(false);
+        setGameOtPeriods(0);
         setIsLoading(true);
         eventCountRef.current = 0;
         shotCountRef.current  = 0;
@@ -1618,7 +1635,7 @@ const MultiGamePbpView: React.FC = () => {
     const devAnchorRef = useRef(Date.now());
     const displayState: ReturnType<typeof getGameDisplayState> = devLive
         ? 'live'
-        : getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed }, serverNow);
+        : getGameDisplayState({ scheduledAt: scheduledAt ?? undefined, played: gamePlayed, otPeriods: gameOtPeriods }, serverNow);
 
     // [migration 2026-08-06] rooms.schedule 배열 fetch 대신 games 테이블 단일 row 조회.
     // game_pbp는 RLS로 정시 전 row가 숨겨지므로 scheduled 상태 판정에는 이 정보가 필요하다.
@@ -1642,6 +1659,7 @@ const MultiGamePbpView: React.FC = () => {
             // resolvedGameId가 실제 game_id로 갱신되면서 이 effect가 재실행되길 기다린다.
             if (!game) return;
             setGamePlayed(!!game.played);
+            setGameOtPeriods(game.otPeriods ?? 0);
             setIsAllstarGame(!!game.isAllstar);
             setScheduledAt(resolveRealAt(game, simStart, gprd) ?? game.scheduledAt ?? null);
         })();
@@ -1859,7 +1877,7 @@ const MultiGamePbpView: React.FC = () => {
         const startMs = gameStartMs;
         const elapsed = serverNow - startMs;
         const next = all.filter(s => {
-            const secs    = (s.quarter - 1) * 720 + (720 - ((s as any).gameClock ?? 0));
+            const secs    = shotGameSeconds(s.quarter, (s as any).gameClock ?? 0);   // [2026-10-26] 연장 5분 반영
             const replayMs = (secs / TOTAL_GAME_SECONDS) * getReplayDurationMs();
             return replayMs <= elapsed;
         });
@@ -1875,13 +1893,16 @@ const MultiGamePbpView: React.FC = () => {
     // key가 바뀌지 않고, 그러면 새로 추가된 애니메이션 클래스도 재마운트가 안 돼서 CSS 애니메이션이
     // 다시 재생되지 않는다. idx는 visibleEvents에 계속 append만 되므로 로그 하나당 항상 고유하고
     // 불변이라 안정적인 key로 쓸 수 있다.
+    // [2026-10-26] 지금까지 공개된 연장 수("N차 연장 시작" 로그) — 라이브 중엔 연장이 시작돼야 늘어나 스포일러 없음.
+    // 옛 경기(연장전 도입 전)의 5쿼터 종료·버저비터 로그는 연장이 아니므로 4쿼터로 접는다(utils/periodLabel).
+    const otVisible = useMemo(() => countOvertimePeriods(visibleEvents), [visibleEvents]);
     const filteredLogs = useMemo<{ log: PbpLog; idx: number }[]>(() => {
         const indexed = visibleEvents.map((log, idx) => ({ log, idx }));
         const base = quarterFilter === 0
             ? indexed
-            : indexed.filter(e => e.log.quarter === quarterFilter);
+            : indexed.filter(e => normalizePeriod(e.log.quarter, otVisible) === quarterFilter);
         return base.filter(e => e.log.text.trim() !== '').slice().reverse();
-    }, [visibleEvents, quarterFilter]);
+    }, [visibleEvents, quarterFilter, otVisible]);
 
     // ── 팀 정보 ────────────────────────────────────────────────────────────────
     // [Fix 2026-08-04] "시작 전 경기도 실제 시뮬레이션 뷰(헤더 포함)로 들어가서 점보트론에
@@ -2176,7 +2197,7 @@ const MultiGamePbpView: React.FC = () => {
         return { teamId: lastScore.runTeamId, teamPts, oppPts };
     }, [visibleEvents, gameData?.home_team_id]);
 
-    const currentQuarter = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].quarter : 1;
+    const currentQuarter = visibleEvents.length > 0 ? normalizePeriod(visibleEvents[visibleEvents.length - 1].quarter, otVisible) : 1;
 
     // 파울(현재 쿼터) / 타임아웃 잔여 — 싱글플레이어와 동일하게 표시.
     // 파울은 지금까지 공개된 이벤트 중 '이번 쿼터'의 foul 타입 개수를 세어 파생하고,
@@ -2218,17 +2239,17 @@ const MultiGamePbpView: React.FC = () => {
     const scheduledStartLabel   = scheduledStartMs != null
         ? new Date(scheduledStartMs).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
         : '';
-    const maxSelectableQ = visibleEvents.length > 0 ? Math.max(...visibleEvents.map(e => e.quarter)) : 0;
+    const maxSelectableQ = visibleEvents.length > 0 ? normalizePeriod(Math.max(...visibleEvents.map(e => e.quarter)), otVisible) : 0;
     // [2026-10-23] 쿼터 셀렉터의 OT 칸은 "실제 플레이 로그"가 5쿼터 이상에 있을 때만. 엔진(liveEngine stepPossession)이
     // 4쿼터 종료 시 state.quarter=5로 올린 뒤 '경기 종료 (Final)' SYSTEM 로그를 남겨서, 연장이 없어도 그 로그 하나가
     // quarter 5로 저장된다 — 그래서 전체 로그 최대값으로 세면 항상 OT1이 떴음. SYSTEM 로그는 제외하고, 스포일러 방지를
     // 위해 공개된(visible) 로그 기준으로만 센다.
-    const maxPlayedQuarter = visibleEvents.reduce((m, e) => (e.teamId !== 'SYSTEM' && e.quarter > m ? e.quarter : m), 0);
-    const maxQuarter     = Math.max(maxPlayedQuarter, 4);
+    // [2026-10-26] 4 + 실제 연장 수 — 예전엔 "SYSTEM 외 로그의 최대 쿼터"라 옛 경기의 동점 버저비터(5쿼터) 경기가 OT1로 잡혔다
+    const maxQuarter     = 4 + otVisible;
     // 라이브 인사이트 패널용 — maxQuarter는 항상 최종 경기 기준이라 연장전 여부가 스포일러가 됨.
     // 지금까지 공개된 로그 기준(maxSelectableQ)으로 대체(최소 4쿼터는 보장).
     const liveMaxQuarter       = Math.max(maxSelectableQ, 4);
-    const quarterLabel         = isLive ? `Q${currentQuarter}` : 'Final';
+    const quarterLabel         = isLive ? periodShortLabel(currentQuarter, otVisible) : 'Final';
     const currentTimeRemaining = visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timeRemaining : '';
 
     // 결과 화면(6섹션 통합 페이지) 스크롤스파이 — 뷰포트 상단 30% 안에 처음 걸리는 섹션을 active로 표시.
@@ -2382,10 +2403,10 @@ const MultiGamePbpView: React.FC = () => {
                 <SegmentedControl
                     size="sm"
                     value={String(quarterFilter)}
-                    onChange={(v) => setQuarterFilter(Number(v) as 0|1|2|3|4|5)}
+                    onChange={(v) => setQuarterFilter(Number(v))}
                     options={([0, 1, 2, 3, 4, ...(maxQuarter > 4 ? Array.from({ length: maxQuarter - 4 }, (_, i) => i + 5) : [])] as number[]).map(q => ({
                         value: String(q),
-                        label: q === 0 ? '전체' : q <= 4 ? `${q}Q` : `OT${q - 4}`,
+                        label: q === 0 ? '전체' : periodShortLabel(q, otVisible, '1Q'),
                         disabled: q > maxSelectableQ && q !== 0,
                     }))}
                 />
@@ -2457,7 +2478,7 @@ const MultiGamePbpView: React.FC = () => {
                                 )}
                             </div>
                             <div className="w-20 text-slate-500 font-bold text-sm text-center tabular-nums pt-0.5 overflow-hidden">
-                                {log.quarter}Q {log.timeRemaining || '-'}
+                                {periodShortLabel(log.quarter, otVisible, '1Q')} {log.timeRemaining || '-'}
                             </div>
                             <div className="w-8 text-center pt-0.5 overflow-hidden">
                                 {log.homeScore !== undefined && (

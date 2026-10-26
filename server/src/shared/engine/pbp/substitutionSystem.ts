@@ -1,5 +1,6 @@
 
 import { GameState, TeamState, LivePlayer, EjectionReason, isOut } from './pbpTypes.ts';
+import { isOvertimeClutch } from './periodRules.ts';
 
 
 // [2026-10-07] 퇴장 사유별 교체 로그 문구 (`교체: IN [..] OUT [..] (사유)`)
@@ -82,7 +83,7 @@ export function checkSubstitutionsV2(
     const { tactics } = team;
     const scoreDiff = Math.abs(state.home.score - state.away.score);
 
-    const isClutch = state.quarter === 4 && currentMinute >= 42;
+    const isClutch = state.quarter >= 4 && currentMinute >= 42;   // [2026-10-26] 연장 포함(연장 분 = 43~47)
     if (isClutch) {
         const clutchRequests: SubRequestV2[] = [];
 
@@ -183,7 +184,9 @@ export function checkSubstitutionsV2(
         const usableBench = team.bench.filter(b => b.health === 'Healthy' && !isOut(b) && !b.isShutdown && !b.benchReason);
         const effectiveFloor = Math.max(HARD_FLOOR, restThreshold) * shutdownFloorScale(usableBench.length);
         const bestAltCondition = usableBench.reduce((m, b) => Math.max(m, b.currentCondition), -Infinity);
-        if (p.currentCondition <= effectiveFloor && bestAltCondition >= p.currentCondition + SHUTDOWN_MIN_GAIN) {
+        // [2026-10-26] 연장 마지막 2분(클러치)엔 주전을 탈진 교체하지 않는다
+        const otClutchStarter = isOvertimeClutch(state) && p.gs === 1;
+        if (!otClutchStarter && p.currentCondition <= effectiveFloor && bestAltCondition >= p.currentCondition + SHUTDOWN_MIN_GAIN) {
             p.isShutdown = true;
             requests.push({
                 outPlayer: p,
