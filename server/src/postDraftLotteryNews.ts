@@ -10,6 +10,7 @@
  * 같이 고칠 것(dev-log.md 기록 대상).
  */
 import { supabase } from './supabaseAdmin';
+import { resolveNewsSimDate } from './newsVirtualDate';
 
 export interface DraftLotteryPickPayload {
     rank: number;
@@ -36,9 +37,9 @@ export async function postDraftLotteryResult(
     if (!picks.length) return;
 
     const firstPickTeamName = picks[0].teamName;
-    // 로터리 시점엔 아직 시즌 캘린더(가상 날짜)가 존재하지 않으므로(드래프트조차 시작 전),
-    // 다른 뉴스들처럼 가상 날짜가 아니라 실제 게시 날짜를 sim_date로 기록한다.
-    const todayDate = new Date().toISOString().slice(0, 10);
+    // [2026-10-26] sim_date는 인게임(가상) 날짜 — 실제 날짜를 넣으면 피드 최신순 최상단에 고정되던 버그 수정.
+    // 시즌 시작 전이면 current_virtual_date()가 타임라인 첫 날짜를 돌려준다.
+    const todayDate = await resolveNewsSimDate(roomId);
 
     const { error } = await supabase.from('league_events').insert({
         room_id: roomId,

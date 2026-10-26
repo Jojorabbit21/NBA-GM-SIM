@@ -9,6 +9,7 @@
  * (client/server 미러 쌍 — dev-log.md 기록 대상).
  */
 import { supabase } from './supabaseAdmin';
+import { resolveNewsSimDate } from './newsVirtualDate';
 
 export interface DraftResultPickPayload {
     pick: number;      // 전체 지명 순번(1부터)
@@ -77,8 +78,8 @@ export async function postDraftResult(roomId: string, leagueId: string): Promise
     if (!payload) return;
     const first = payload.picks[0];
     const picks = payload.picks;
-    // 드래프트 시점엔 시즌 캘린더(가상 날짜)가 아직 없으므로 로터리 서신과 같이 실제 게시 날짜를 sim_date로 기록
-    const todayDate = new Date().toISOString().slice(0, 10);
+    // [2026-10-26] sim_date는 인게임(가상) 날짜 — 로터리 뉴스와 동일하게 current_virtual_date() 사용(실제 날짜는 피드 최상단 고정 버그)
+    const todayDate = await resolveNewsSimDate(roomId);
 
     const { error } = await supabase.from('league_events').insert({
         room_id: roomId,

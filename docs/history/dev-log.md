@@ -33,6 +33,32 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 드래프트 로터리/결과 뉴스 sim_date를 실제 날짜 → 가상 날짜로 수정
+
+**배경**: 뉴스 피드가 `sim_date`(인게임 날짜) 내림차순인데, 드래프트 순서 추첨 결과·드래프트 결과 뉴스만 `sim_date`에 실제 현실 날짜를 넣어 다른 뉴스보다 항상 최상단에 고정됐다.
+
+**변경 파일**:
+- `server/src/newsVirtualDate.ts` (신규) — `resolveNewsSimDate(roomId)`: `current_virtual_date` RPC, 실패 시 실제 날짜 폴백
+- `server/src/postDraftLotteryNews.ts`, `server/src/postDraftResultNews.ts` — `sim_date: new Date().toISOString().slice(0,10)` → `await resolveNewsSimDate(roomId)`
+- DB 데이터 보정(`league_events`, 5건) — 게시 시각(created_at) 기준 가상 날짜로 UPDATE
+
+**Before**:
+```ts
+const todayDate = new Date().toISOString().slice(0, 10);   // sim_date: todayDate
+```
+DB: draft_lottery_result/draft_result sim_date = 2026-10-16/22/24/25/26(실제 날짜)
+
+**After**:
+```ts
+const todayDate = await resolveNewsSimDate(roomId);        // current_virtual_date(room_id)
+```
+DB 보정값(id → old → new): beb8ea00 10-26→10-20, 740da2a5 10-26→10-20, d0209d26 10-25→10-20, 3ad0fe12 10-24→10-20, 249e0fac 10-16→10-21.
+**미보정**: 7d4d794c-c832-42cb-a9a4-4b6bb592402b (draft_result, 10-22) — 일정 재배치로 계산값이 2027-03-14로 나와 신뢰 불가, 그대로 둠.
+
+**검증**: 서버 tsc에서 변경 파일 관련 오류 없음. UPDATE 전 SELECT 미리보기로 대상·값 확인.
+
+**롤백 방법**: 세 서버 파일을 Before로 되돌리고(신규 파일 삭제), 위 5개 id의 sim_date를 old 값으로 UPDATE.
+
 ## 2026-10-26 — 멀티 세션 설정: 경기 중 체력 소모 계수(fatigueDrainMultiplier) 추가
 
 **배경**: 멀티 세션 설정에서 경기 중 체력 소모 속도 전체를 조절하고 싶다는 요청. 기존엔 회복률 2종 + 백투백 배율만 조절 가능했다.
