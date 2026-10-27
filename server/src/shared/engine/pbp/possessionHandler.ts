@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes.ts';
-import { resolvePlayAction } from './playTypes.ts';
+import { resolvePlayAction, selectZone, resolveFinish } from './playTypes.ts';
 import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine.ts';
 import { resolveRebound } from './reboundLogic.ts';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem.ts';
@@ -138,7 +138,7 @@ function identifyDefender(
             if (switchDef) {
                 // Botched Switch Check based on HelpDef slider
                 // Lower HelpDef = Higher confusion risk
-                const confusionChance = Math.max(0, (10 - sliders.helpDef) * 0.02);
+                const confusionChance = SIM_CONFIG.HELP_DEFENSE.SWITCH_CONFUSION; // [2026-10-27] helpDef 연동 제거 (client 미러 참고)
                 const isBotched = Math.random() < confusionChance;
 
                 return { defender: switchDef, isSwitch: true, isBotchedSwitch: isBotched, pnrCoverage: 'none' };
@@ -590,8 +590,7 @@ function resolveRimProtector(
 
     const sliders = defTeam.tactics.sliders;
     let engage = cfg.ENGAGE_BASE
-        + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ
-        + (sliders.helpDef - 5) * cfg.ENGAGE_HELP_SLIDER;
+        + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ; // [2026-10-27] helpDef 슬라이더 항 제거 — 헬프 빈도의 대가(킥아웃)가 닿지 않는 이득이었음
     const isHalfCourt = playType !== 'Transition';
     if (isZone) {
         if (isHalfCourt) engage += (sliders.zoneUsage - 1) * cfg.ZONE_USAGE_BONUS;
@@ -882,7 +881,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const helpCfg = SIM_CONFIG.HELP_DEFENSE;
     const helpDefLevel = defTeam.tactics.sliders.helpDef;
     const helpAttemptChance = helpCfg.ATTEMPT_BASE + (helpDefLevel - 1) * helpCfg.ATTEMPT_PER_LEVEL;
-    const helpAttempted = Math.random() < helpAttemptChance;
+    // [2026-10-27] 킥아웃 슛(이미 헬프를 끌어낸 뒤의 패스)에는 헬프 판정 생략 — 2차 로테이션 없음
+    const helpAttempted = Math.random() < helpAttemptChance && !isKickout;
 
     let helpDefender: LivePlayer | undefined;
     let helpSuccess = false;
@@ -921,7 +921,38 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 체력 소모(fatigueSystem.ts로 전달)용 ID — 시도만 해도 적용, 성공 여부 무관
     const helpDefenderId = (helpAttempted && helpDefender) ? helpDefender.playerId : undefined;
     // [2026-07-30] 슬라이더 무관 고정값 (client 미러 참고)
-    const helpHitRatePenalty = (helpAttempted && helpSuccess) ? -helpCfg.HITRATE_PENALTY : 0;
+    // 2.55 [2026-10-27] 헬프 킥아웃 (SIM_CONFIG.HELP_KICKOUT) — 헬퍼가 비운 선수에게 패스, 1회 한정
+    let helpKicked = false;
+    const hkCfg = SIM_CONFIG.HELP_KICKOUT;
+    if (hkCfg.ENABLED && helpAttempted && helpDefender && !isKickout
+        && (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid')) {
+        const passing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+        const passingNorm = Math.max(0, Math.min(1, (passing - hkCfg.PASSING_MIN) / (hkCfg.PASSING_MAX - hkCfg.PASSING_MIN)));
+        if (Math.random() < hkCfg.PROB_MIN + (hkCfg.PROB_MAX - hkCfg.PROB_MIN) * passingNorm) {
+            const others = offTeam.onCourt.filter(p => p.playerId !== actor.playerId);
+            const open = others.find(p => p.position === helpDefender!.position) ?? others[Math.floor(Math.random() * others.length)];
+            if (open) {
+                secondaryActor = actor;
+                actor = open;
+                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], open, sliders);
+                if (koZone === 'Rim' || koZone === 'Paint') {
+                    // 클로즈아웃 공략 돌파
+                    const fin = resolveFinish(open, 'drive', sliders, koZone);
+                    preferredZone = fin.zone;
+                    shotType = fin.shotType;
+                    bonusHitRate = hkCfg.DRIVE_BONUS;
+                } else {
+                    preferredZone = koZone;
+                    shotType = koZone === '3PT' ? 'CatchShoot' : 'Jumper';
+                    bonusHitRate = hkCfg.OPEN_BONUS;
+                }
+                isKickout = true;
+                defender = helpDefender; // 비운 자리로 돌아오는 헬퍼가 클로즈아웃
+                helpKicked = true;
+            }
+        }
+    }
+    const helpHitRatePenalty = (helpAttempted && helpSuccess && !helpKicked) ? -helpCfg.HITRATE_PENALTY : 0;
 
     // 2.6 [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint) — 파울(개입 대가)·블락 공통 사용, 상세는 resolveRimProtector
     const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone);
@@ -959,7 +990,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-07-30] 트리거를 helpSuccess→helpAttempted로, 강도는 슬라이더 무관 고정값으로 (client 미러 참고)
     let helpBonusRate = 0;
     // [2026-10-25] 림 프로텍터가 개입했으면 일반 헬프 파울 보너스는 생략 — 프로텍터 파울 몫(아래)과 이중 부과 방지
-    if (helpAttempted && !rimProtector && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+    if (helpAttempted && !helpKicked && !rimProtector && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
         helpBonusRate = helpCfg.FOUL_BONUS;
         shootingFoulRate += helpBonusRate;
     }
@@ -1221,7 +1252,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         : 0;
     // [2026-07-26] zoneUsage 항목 제거 — 인과관계 없음(존은 개인압박 약함 → 오히려 셋업시간 늘려주는 쪽)
     const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE
-        + defSliders.helpDef * offFoulConfig.SHOT_CLOCK_HELP_DEF_FACTOR
         + Math.max(0, 5 - offSliders.pace) * offFoulConfig.SHOT_CLOCK_LOW_PACE_FACTOR
         + offSliders.ballMovement * offFoulConfig.SHOT_CLOCK_HIGH_BM_FACTOR
         + pressShotClockBonus;
@@ -1241,7 +1271,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 턴오버(패스 능력·패싱레인 스틸)·슛 품질 보정(시야·전달)·어시스트에 스크리너를 쓰지 않는다.
     const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
     const shotPasser = isHandlerSelf ? undefined : secondaryActor;
-    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess, shotPasser, isHandlerSelf);
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf);
 
     if (tovResult.isTurnover) {
         return {

@@ -33,6 +33,77 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-27 — 도움 수비 대가 신설: 헬프 킥아웃 + 클로즈아웃 드라이브, helpDef 부수 효과 연결 제거
+
+**배경**: AI 감독 C5 수비 연구(`docs/plan/ai-coach-plan.md` 2-12)에서 helpDef 10이 대가 없는 지배 전략(+1.31)으로 나옴. 하네스 분해(HEAD a0d87aa9, PBL, 8시즌·체력 이월, 10팀×3묶음): helpDef 5→10 net +1.42 = 헬프 슛 −3.3%p +0.59 / 헬프 스틸 +0.42 / 림 프로텍터 개입 ENGAGE_HELP_SLIDER +0.38 / 스위치 실수 감소 +0.20 / 샷클락 +0.13, 대가(헬프 파울) 0. 헬프 판정이 슛 확정 후라 "비운 슈터로 킥아웃" 경로가 없었음.
+- 사용자 결정: 지역방어는 손대지 않음(판정 순서 이동은 "상대 전술 제한"이라 기각). 헬퍼 체력 소모는 2026-07-30 의도적 삭제를 유지(되살리지 않음). 덤프오프(림 프로텍터가 버린 선수)는 측정상 효과 없음(+0.76~0.85, 리그 득점만 +0.7~1)이라 제외.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `HELP_KICKOUT` 신설, `HELP_DEFENSE.SWITCH_CONFUSION` 신설, `FOUL_EVENTS.SHOT_CLOCK_BASE` 0.0012→0.0024·`SHOT_CLOCK_HELP_DEF_FACTOR` 삭제, `RIM_PROTECTION.ENGAGE_HELP_SLIDER` 삭제
+- `services/game/engine/pbp/playTypes.ts` (client) / server 미러 — `selectZone`, `resolveFinish` export
+- `services/game/engine/pbp/possessionHandler.ts` (client) / server 미러 — `identifyDefender()` 스위치 실수, `resolveRimProtector()` engage, `simulatePossession()` 헬프 판정·킥아웃(2.55)·헬프 파울·턴오버 인자·샷클락
+
+**Before**:
+```ts
+// constants.ts
+SHOT_CLOCK_BASE: 0.0012,
+SHOT_CLOCK_HELP_DEF_FACTOR: 0.00024,
+ENGAGE_HELP_SLIDER: 0.02,       // × (helpDef 슬라이더 − 5)   (RIM_PROTECTION)
+// HELP_DEFENSE: ... FOUL_BONUS: 0.006, (SWITCH_CONFUSION 없음) / HELP_KICKOUT 없음
+// playTypes.ts
+function selectZone(...)  /  function resolveFinish(...)
+// possessionHandler.ts
+import { resolvePlayAction } from './playTypes';            // server: './playTypes.ts'
+const confusionChance = Math.max(0, (10 - sliders.helpDef) * 0.02);
+let engage = cfg.ENGAGE_BASE + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ
+    + (sliders.helpDef - 5) * cfg.ENGAGE_HELP_SLIDER;
+const helpAttempted = Math.random() < helpAttemptChance;
+const helpHitRatePenalty = (helpAttempted && helpSuccess) ? -helpCfg.HITRATE_PENALTY : 0;
+if (helpAttempted && !rimProtector && (preferredZone === 'Rim' || preferredZone === 'Paint')) {   // 헬프 파울
+calculateTurnoverChance(..., helpDefender, helpSuccess, shotPasser, isHandlerSelf);
+const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE
+    + defSliders.helpDef * offFoulConfig.SHOT_CLOCK_HELP_DEF_FACTOR
+    + ...
+```
+
+**After**:
+```ts
+// constants.ts
+SHOT_CLOCK_BASE: 0.0024,         // helpDef 5 값 흡수, FACTOR 삭제
+// RIM_PROTECTION.ENGAGE_HELP_SLIDER 삭제
+// HELP_DEFENSE
+SWITCH_CONFUSION: 0.10,
+HELP_KICKOUT: { ENABLED: true, PASSING_MIN: 40, PASSING_MAX: 99, PROB_MIN: 0, PROB_MAX: 0.50, OPEN_BONUS: 0.10, DRIVE_BONUS: 0.05 },
+// playTypes.ts
+export function selectZone(...)  /  export function resolveFinish(...)
+// possessionHandler.ts
+import { resolvePlayAction, selectZone, resolveFinish } from './playTypes';
+const confusionChance = SIM_CONFIG.HELP_DEFENSE.SWITCH_CONFUSION;
+let engage = cfg.ENGAGE_BASE + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ;
+const helpAttempted = Math.random() < helpAttemptChance && !isKickout;     // 킥아웃 슛엔 헬프 없음(난수 소비는 동일)
+// 2.55 헬프 킥아웃: helpAttempted && helpDefender && !isKickout && Rim/Paint/Mid 일 때
+//   확률 = PROB_MIN + (PROB_MAX−PROB_MIN) × clamp(((passVision+passAcc)/2 − 40)/59)
+//   받는 선수 = 헬퍼와 같은 포지션 슬롯(없으면 무작위 동료), secondaryActor = 원래 슈터, defender = 헬퍼
+//   존 = selectZone(['3PT','Mid','Paint','Rim']) → Rim/Paint면 resolveFinish('drive') + DRIVE_BONUS, 아니면 CatchShoot/Jumper + OPEN_BONUS
+//   isKickout = true, helpKicked = true
+const helpHitRatePenalty = (helpAttempted && helpSuccess && !helpKicked) ? -helpCfg.HITRATE_PENALTY : 0;
+if (helpAttempted && !helpKicked && !rimProtector && (...Rim/Paint)) {      // 헬프 파울
+calculateTurnoverChance(..., helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf);
+const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE + ...;               // helpDef 항 제거
+```
+
+**검증**: client/server tsc 해당 파일 오류 없음. a0d87aa9+이 변경 엔진 = 하네스 G안 엔진 1시즌 결과 완전 동일. 최신 HEAD 위 1시즌 정상(리그 115.7점, TS 57.5). 하네스(helpDef 10 팀 순이득, 리그 지표는 전원 helpDef 5):
+| 안 | net | 승/82 | 리그 득점 | TS% | 3PA% | 킥아웃/드라이브 (팀·경기) |
+|---|---|---|---|---|---|---|
+| Before | +1.42 | +2.3 | 115.3 | 57.3 | 33.3 | 0 / 0 |
+| 킥아웃만(0.35, +10%p) | +1.19 | +2.0 | 115.4 | 57.3 | 35.8 | 5.9 / 0 |
+| +드라이브+스위치·샷클락 고정 | +0.79 | +1.7 | 115.7 | 57.5 | 34.8 | 5.9 / 3.2 |
+| +림 개입 고정 (0.35) | +0.54 | +0.8 | 115.7 | 57.5 | 34.8 | 5.9 / 3.2 |
+| **After (0.50)** | **+0.31±0.17** | **+0.5** | 115.9 | 57.6 | 35.4 | 8.5 / 4.6 |
+참고: 킥아웃 보너스 +5%p는 역효과(+1.51, 킥아웃이 골밑 슛보다 기대 득점 낮음). 킥아웃은 1회 한정(재킥아웃·로테이션 연쇄 없음). 잔여 +0.31 = 헬프 성공 슛 −3.3%p·스틸.
+
+**롤백 방법**: 위 Before로 6개 파일(client 3 + server 미러 3) 모두 되돌릴 것 — `HELP_KICKOUT`·`SWITCH_CONFUSION` 삭제, `SHOT_CLOCK_BASE` 0.0012 + `SHOT_CLOCK_HELP_DEF_FACTOR` 0.00024 복원, `ENGAGE_HELP_SLIDER` 0.02 복원, export 2개 원복. 미러 한쪽만 되돌리지 말 것.
+
 ## 2026-10-27 — 멀티 체력 조회를 방 단위 leagueRawSeasonInjury 캐시로 통합 (팀 화면 체력 늦게 뜸/깜빡임 해소)
 
 **배경**: 멀티 팀 화면에서 체력 칸만 다른 열보다 늦게 채워지고 깜빡였다. 원인: 체력이 `useRoomPlayerConditions`의 별도 쿼리(선수 ID 목록이 queryKey에 포함, `.in()` 200명 분할, 60초 폴링)로 따로 받아져, 응답 전까지 빈 막대가 그려지고 로스터가 바뀌면 키가 달라져 다시 빈 막대로 돌아갔다. 같은 `room_player_state` 행을 `leagueRawSeasonInjury`가 이미 방 전체 단위로 받고 있었다(중복 조회). 체력은 경기 시뮬 시점·가상 자정에만 바뀌어 자주 갱신할 필요가 없다.

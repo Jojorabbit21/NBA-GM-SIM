@@ -181,8 +181,8 @@ export const SIM_CONFIG = {
         // [2026-10-18] 5개 계수 전부 ×0.4 비례 축소 — 실리그(180경기) 팀당 경기당 1.51회로 실제 NBA
         // (~0.55회, 2006-07/2018-19 집계)의 약 2.8배였음. 슬라이더 간 비율은 유지.
         // 이전 값: BASE 0.003 / HELP 0.0006 / LOW_PACE 0.001 / HIGH_BM 0.0008 / PRESS 0.01/9
-        SHOT_CLOCK_BASE: 0.0012,
-        SHOT_CLOCK_HELP_DEF_FACTOR: 0.00024,
+        // [2026-10-27] helpDef 연동 제거 — 기존 helpDef 5 기준값(0.00024×5)을 BASE에 흡수 (이전: BASE 0.0012 + helpDef × 0.00024)
+        SHOT_CLOCK_BASE: 0.0024,
         SHOT_CLOCK_LOW_PACE_FACTOR: 0.0004,
         SHOT_CLOCK_HIGH_BM_FACTOR: 0.00032,
         // [2026-07-26] fullCourtPress 트레이드오프 — defIntensity에서 이전
@@ -418,7 +418,6 @@ export const SIM_CONFIG = {
         // 개입 확률 P_engage
         ENGAGE_BASE: 0.65,
         ENGAGE_HELP_IQ: 0.006,          // × (프로텍터 helpDefIq − 75)
-        ENGAGE_HELP_SLIDER: 0.02,       // × (helpDef 슬라이더 − 5)
         ZONE_USAGE_BONUS: 0.012,        // 지역방어 포세션(속공 제외): × (zoneUsage − 1) → 최대 +0.108. 지역방어가 자동으로 붙이는 drop은 아래 드랍 보너스 미적용(이중 부과 방지)
         DROP_ENGAGE_BONUS: 0.15,        // 맨투맨 PnR 3종 + 실제 drop 커버리지 (이전 PNR_COVERAGE.DROP_BLOCK_BONUS 0.03을 1차 수비수에서 이쪽으로 이전)
         BLITZ_ENGAGE_PENALTY: 0.10,     // 맨투맨 PnR 3종 + 실제 blitz 커버리지 (이전 PNR_COVERAGE.BLITZ_BLOCK_PENALTY 0.02를 이전)
@@ -560,6 +559,8 @@ export const SIM_CONFIG = {
         // [2026-07-30] 빈도(ATTEMPT)만 슬라이더 연동, 강도는 고정값으로 전환 (client 미러 참고)
         HITRATE_PENALTY: 0.033,
         FOUL_BONUS: 0.006,
+        // [2026-10-27] 스크린 스위치 실수 확률 — helpDef 연동 제거, 기존 helpDef 5 값((10−5)×0.02) 고정
+        SWITCH_CONFUSION: 0.10,
     },
     // [2026-07-30] PostUp 크로스매치 (client 미러 참고) — BASE 하한 + helpDef 슬라이더 가산
     POST_CROSS_MATCH: {
@@ -836,6 +837,18 @@ export const SIM_CONFIG = {
         PASSIQ_BONUS_SCALE: 0.02,
     },
     // [2026-07-31] Iso/PnR_Handler 킥아웃 (client 미러 참고) — playStyle 보정 최초 적용
+    // [2026-10-27] 헬프 킥아웃 — 골밑·페인트·미드 슛에 헬프가 붙으면 슈터가 헬퍼가 비운 선수에게 빼준다.
+    // helpDef(헬프 빈도)의 대가. 받은 선수는 존 선호도로 오픈 3점·미드(OPEN_BONUS) 또는 클로즈아웃 공략 돌파(DRIVE_BONUS).
+    // 킥아웃이 나면 헬프 슛 페널티·헬프 스틸은 적용 안 함. 기존 킥아웃 포함 킥아웃 슛에는 헬프 판정 자체를 생략.
+    HELP_KICKOUT: {
+        ENABLED: true,
+        PASSING_MIN: 40,         // (passVision + passAcc) / 2 정규화 구간
+        PASSING_MAX: 99,
+        PROB_MIN: 0,
+        PROB_MAX: 0.50,          // 패스 99에서 헬프 시도의 50%가 킥아웃
+        OPEN_BONUS: 0.10,        // 3점·미드 캐치앤슛 hitRate 가산
+        DRIVE_BONUS: 0.05,       // 클로즈아웃 공략 돌파(Rim/Paint) hitRate 가산
+    },
     ISO_KICKOUT: {
         PASSING_MIN: 40,
         PASSING_MAX: 99,

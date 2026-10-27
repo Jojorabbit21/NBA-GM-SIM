@@ -33,7 +33,7 @@ export interface PlayContext {
 //  Zone Selection Helpers
 // ==========================================================================================
 
-function selectZone(
+export function selectZone(
     zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
     actor: LivePlayer,
     sliders: TacticalSliders
@@ -86,7 +86,7 @@ function selectZone(
 
 type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
 
-function resolveFinish(
+export function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
     sliders: TacticalSliders,

@@ -53,7 +53,7 @@ export interface PlayContext {
  * @param actor  공격 주체 선수
  * @param sliders 공격팀 전술 슬라이더
  */
-function selectZone(
+export function selectZone(
     zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
     actor: LivePlayer,
     sliders: TacticalSliders
@@ -121,7 +121,7 @@ function selectZone(
  */
 type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
 
-function resolveFinish(
+export function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
     sliders: TacticalSliders,
