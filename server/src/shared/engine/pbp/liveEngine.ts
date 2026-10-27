@@ -319,7 +319,8 @@ export function createGameState(
         type: 'info',
     });
     // [2026-10-26] 팁오프 점프볼 — 연장전 스위치(overtimeEnabled)와 함께 켜진다. 꺼져 있으면 기존대로 홈 공격으로 시작.
-    if (overtimeEnabled(state)) applyJumpBall(state);
+    // [2026-10-27] 연장 스위치와 무관하게 항상 실시(사용자 결정) — 꺼진 리그는 홈팀이 늘 선공해 경기당 약 +0.6점을 얻었다.
+    applyJumpBall(state);
 
     return state;
 }

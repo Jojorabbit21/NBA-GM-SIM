@@ -3,7 +3,7 @@ import type { LeagueContext } from '../services/game/engine/pbp/leagueNormalizat
 
 export interface SimSettings {
     // 게임 환경
-    homeAdvantage: number;       // 0.00~0.05, 기본 0.02
+    homeAdvantage: number;       // 0.00~0.05, 기본 0.005
 
     // 부상
     injuriesEnabled: boolean;    // 기본 false
@@ -89,7 +89,7 @@ export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | und
 }
 
 export const DEFAULT_SIM_SETTINGS: SimSettings = {
-    homeAdvantage: 0.02,
+    homeAdvantage: 0.005,   // [2026-10-27] 0.02 → 0.005 (사용자 결정) — 홈 득실 +4.9 → 약 +0.9(경기 시작 점프볼과 함께)
     injuriesEnabled: false,
     injuryFrequency: 1.0,
     majorInjuryFrequency: 1.0,

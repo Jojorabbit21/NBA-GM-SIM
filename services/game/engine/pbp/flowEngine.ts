@@ -99,7 +99,7 @@ export function calculateHitRate(
     isSwitch: boolean = false,
     minHitRate?: number, // [New] Buzzer beater: enforce hit rate lower bound
     isHome: boolean = false,
-    homeAdvantage: number = 0.02,
+    homeAdvantage: number = 0.005,
     clutchContext?: ClutchContext,
     pnrCoverage: PnrCoverage = 'none',
     screenerDefender?: LivePlayer,

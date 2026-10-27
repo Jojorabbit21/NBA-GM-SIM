@@ -145,6 +145,46 @@ useQuery({
 
 **롤백 방법**: 두 파일을 Before로 되돌리면 됨 (git으로 `hooks/useRoomPlayerConditions.ts`, `hooks/useLeagueRawStats.ts` 이전 커밋 복원). 서버/DB 변경 없음.
 
+## 2026-10-27 — 홈 어드밴티지 0.02 → 0.005 + 경기 시작 점프볼 항상 실시
+
+**배경**: 홈 득실 +4.6(PBL 실경기 1,321경기 ±0.5)·홈 승률 60.6%, NBA 2024-25는 홈 승률 약 54.3%(669승 562패)·최근 홈 득실 +2 미만.
+원인 두 가지: ① `simSettings.homeAdvantage 0.02` = 홈팀 모든 야투 hitRate +2%p, ② 연장 스위치 off 리그는 점프볼 없이 항상 홈 선공
+(점프볼이 overtimeEnabled에 묶여 있었음). 하네스(NBA Active 실데이터·체력 누적·2시즌 2,460경기, 득실 SE ±0.4)로 분리:
+홈 선공 ≈ +0.6점, 보너스 0.005당 ≈ +1점. 사용자 결정: 0.005 + 경기 시작 점프볼 항상(NBA보다 약간 약한 홈 이점, 멀티 공정성).
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `types/simSettings.ts` (client) / `server/src/shared/types/simSettings.ts` (server) — `DEFAULT_SIM_SETTINGS.homeAdvantage`
+- `services/game/engine/pbp/flowEngine.ts` (client) / `server/src/shared/engine/pbp/flowEngine.ts` (server) — `calculateHitRate` 기본 인자
+- `services/game/engine/pbp/liveEngine.ts` (client) / `server/src/shared/engine/pbp/liveEngine.ts` (server) — `createGameState` 점프볼
+- DB: `rooms.sim_settings.homeAdvantage` 0.02 → 0.005 — 진행 중 리그 2곳(Test League `ee5f27b3…`, NBA Active `8e594b57…`)
+
+**Before**:
+```ts
+homeAdvantage: 0.02,                       // DEFAULT_SIM_SETTINGS
+homeAdvantage: number = 0.02,              // calculateHitRate 인자
+if (overtimeEnabled(state)) applyJumpBall(state);   // createGameState 끝
+```
+**After**:
+```ts
+homeAdvantage: 0.005,
+homeAdvantage: number = 0.005,
+applyJumpBall(state);                       // 연장 스위치 무관 — 연장 시작 점프볼(509행 부근)은 기존대로 연장 켜진 리그만
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(NBA Active, 2,460경기):
+| 조건 | 홈 득실 | 홈 승률 |
+|---|---|---|
+| 현행 0.02 + 홈 선공 | +4.87 | 59.7% |
+| 0 + 점프볼 | +0.12 | 51.1% |
+| **0.005 + 점프볼 (적용)** | **+0.90** | **52.4%** |
+| 0.01 + 점프볼 | +1.73 | 53.7% |
+점프볼 홈 승률 49.4%(리그 전체 편향 없음), 팀별 20~80% 범위(DET 79% ~ NYK 21%, 선공 가치 약 0.6점 → 팀당 ±0.35점).
+리그 평균 득점 110.0 → 108.3(홈 슛 보너스 감소분). DB 변경은 즉시 반영(simRunner가 경기마다 rooms.sim_settings 읽음), 점프볼은 서버 배포 후.
+
+**롤백 방법**: 코드 6파일 Before로 되돌리기 + DB
+`update rooms set sim_settings = jsonb_set(sim_settings,'{homeAdvantage}','0.02'::jsonb) where id in ('ee5f27b3-5138-4f38-b85e-e768cc2c661c','8e594b57-6b37-4cdb-81f1-b5ed3365f8ea');`
+싱글: `useGameData`가 세이브의 `sim_settings`를 기본값 위에 덮어씀(`{ ...DEFAULT_SIM_SETTINGS, ...checkpoint.sim_settings }`) → homeAdvantage가 저장된 세이브는 0.02 유지, sim_settings 없는 옛 세이브·새 게임만 0.005. 점프볼은 싱글 경기에도 적용(client 엔진).
+
 ## 2026-10-27 — 포세션 기본 시간 BASE 18 → 19 (고페이스 조정)
 
 **배경**: NBA Active 92경기 실측 팀당 포세션 108.1·득점 119.1(NBA 같은 공식 101.4·114.2). 실경기 재현 하네스

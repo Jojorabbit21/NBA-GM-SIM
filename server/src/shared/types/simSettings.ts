@@ -76,7 +76,7 @@ export function resolveMultiFatigueSettings(s: Partial<SimSettings> | null | und
 }
 
 export const DEFAULT_SIM_SETTINGS: SimSettings = {
-    homeAdvantage: 0.02,
+    homeAdvantage: 0.005,   // [2026-10-27] 0.02 → 0.005 (사용자 결정, client 미러 참조)
     injuriesEnabled: false,
     injuryFrequency: 1.0,
     majorInjuryFrequency: 1.0,

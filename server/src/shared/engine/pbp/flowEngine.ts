@@ -84,7 +84,7 @@ export function calculateHitRate(
     isSwitch: boolean = false,
     minHitRate?: number,
     isHome: boolean = false,
-    homeAdvantage: number = 0.02,
+    homeAdvantage: number = 0.005,
     clutchContext?: ClutchContext,
     pnrCoverage: PnrCoverage = 'none',
     screenerDefender?: LivePlayer,
