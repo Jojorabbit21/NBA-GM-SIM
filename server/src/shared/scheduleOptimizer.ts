@@ -62,10 +62,14 @@ const SERIES_GAP2_PROB = 0.85;
 
 const B2B_MIN = 13;
 const B2B_MAX = 16;
-const B2B_TARGET = 14.0;
-/** 휴식일(경기 사이 빈 날) 0/1/2/3+일 비율 — B2B는 위 범위로 따로 다루고 2일·3일+만 맞춘다 */
-const REST2_TARGET = 0.147 * 81;
-const REST3P_TARGET = 0.033 * 81;
+const B2B_TARGET = 13.0;
+/** 휴식일(경기 사이 빈 날) 비율 — B2B는 위 범위로 따로 다루고 2일·3일·4일+만 맞춘다.
+ *  [2026-10-26] 컵 대회가 없으므로 컵 대회 이전 시즌(2021-22·2022-23) 전체 분포 기준:
+ *  0일 17.2 / 1일 64.6 / 2일 15.3 / 3일 2.56 / 4일+ 0.39 %. (컵 시대 수치는 12월 녹아웃 공백이 섞여 4일+가 부풀어 있다) */
+const REST2_TARGET = 0.153 * 81;
+const REST3_TARGET = 0.0256 * 81;
+/** 4일+ 휴식은 팀당 시즌 0~1회 — 횟수마다 선형 벌점 + 하루 길어질 때마다 추가 */
+const REST4P_FREE = 0;
 const LONG_REST_DAYS = 6;
 const RUN_SOFT_MAX = 8;
 const ROAD_RUNS_TARGET = 18;
@@ -79,8 +83,9 @@ const W_HARD = 500;
 const W_B2B_OUT = 40;
 const W_B2B_IN = 4;
 const W_5IN7 = 8;
-const W_REST2 = 1;
-const W_REST3P = 2;
+const W_REST2 = 3;
+const W_REST3 = 8;
+const W_REST4P = 12;
 const W_LONG_REST = 50;
 const W_RUN_LONG = 60;
 const W_RUNS_5PLUS = 15;
@@ -334,7 +339,7 @@ export function assignDatesV2(input: OptimizerInput): { scheduled: { date: strin
     const dayCost = (d: number) => (kind[d] === 'open' ? W_DAY * (cnt[d] - target[d]) ** 2 : 0);
     const teamCost = (t: number): number => {
         const base = t * N;
-        let cost = 0, n = 0, b2b = 0, rest2 = 0, rest3p = 0, home41 = 0;
+        let cost = 0, n = 0, b2b = 0, rest2 = 0, rest3 = 0, rest4p = 0, home41 = 0;
         let d1 = -99, d2 = -99, d3 = -99, d4 = -99;
         let runHome = -1, runLen = 0, roadRuns = 0, runs5 = 0;
         let firstDay = -1;
@@ -355,7 +360,8 @@ export function assignDatesV2(input: OptimizerInput): { scheduled: { date: strin
                     if (xmasDay >= 0 && d1 === xmasDay && xmasTeams.has(t)) cost += W_XMAS_B2B;
                 } else if (!crossesBreak) {
                     if (gap === 2) rest2++;
-                    else if (gap >= 3) rest3p++;
+                    else if (gap === 3) rest3++;
+                    else if (gap >= 4) { rest4p++; cost += W_REST4P * (gap - 4); }
                     if (gap >= LONG_REST_DAYS) cost += W_LONG_REST * (gap - LONG_REST_DAYS + 1);
                 }
             }
@@ -383,7 +389,8 @@ export function assignDatesV2(input: OptimizerInput): { scheduled: { date: strin
         if (b2b < B2B_MIN) cost += W_B2B_OUT * (B2B_MIN - b2b) ** 2;
         else if (b2b > B2B_MAX) cost += W_B2B_OUT * (b2b - B2B_MAX) ** 2;
         cost += W_B2B_IN * (b2b - B2B_TARGET) ** 2;
-        cost += W_REST2 * (rest2 - REST2_TARGET) ** 2 + W_REST3P * (rest3p - REST3P_TARGET) ** 2;
+        cost += W_REST2 * (rest2 - REST2_TARGET) ** 2 + W_REST3 * (rest3 - REST3_TARGET) ** 2;
+        if (rest4p > REST4P_FREE) cost += W_REST4P * (rest4p - REST4P_FREE);
         if (runs5 > RUNS_5PLUS_MAX) cost += W_RUNS_5PLUS * (runs5 - RUNS_5PLUS_MAX);
         cost += W_ROAD_RUNS * (roadRuns - ROAD_RUNS_TARGET) ** 2;
         if (home41 < FIRST41_HOME_MIN) cost += W_FIRST41 * (FIRST41_HOME_MIN - home41);

@@ -33,6 +33,69 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 일정 생성기: 휴식 목표를 컵 대회 없는 시즌 기준으로 (3일·4일+ 분리, B2B 목표 14→13)
+
+**배경**: NBA Active(10-23 생성, v2 생성기)에서 "2일 이상 긴 휴식이 너무 많다"는 지적. 실측 목표값(`docs/research/nba-schedule-patterns.md` §9)이 2023-24 이후 NBA컵 시즌을 포함해 계산돼, 12월 녹아웃 공백(탈락 팀 3~4일 휴식)이 섞여 있었음. 우리는 컵 대회가 없으므로 그 공백을 시즌 곳곳에 흩뿌릴 이유가 없음. 또 벌점이 "3일+"를 한 칸으로 묶어 3일과 4일+를 구분하지 못했음.
+- 실측(컵 이전 2021-22·2022-23 전체, 올스타 제외) 휴식 0/1/2/3/4+일 = 17.2 / 64.6 / 15.3 / 2.56 / 0.39%
+- NBA Active 실제 일정 = 18.3 / 62.8 / 15.1 / 2.75 / **1.04%** (4일+ 2.7배)
+- 휴식일 총량은 달력 길이로 고정이라 3일·4일+만 누르면 서로 넘어감 → 실측보다 많던 B2B(18.4% vs 17.2%)를 줄여 남는 휴식을 1일 휴식으로 흡수
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `server/src/shared/scheduleOptimizer.ts` (server)
+- `utils/scheduleOptimizer.ts` (client 미러, 19행 미러 주석만 다름)
+
+**Before**:
+```ts
+const B2B_TARGET = 14.0;
+/** 휴식일(경기 사이 빈 날) 0/1/2/3+일 비율 — B2B는 위 범위로 따로 다루고 2일·3일+만 맞춘다 */
+const REST2_TARGET = 0.147 * 81;
+const REST3P_TARGET = 0.033 * 81;
+...
+const W_REST2 = 1;
+const W_REST3P = 2;
+...
+let cost = 0, n = 0, b2b = 0, rest2 = 0, rest3p = 0, home41 = 0;
+...
+                    if (gap === 2) rest2++;
+                    else if (gap >= 3) rest3p++;
+...
+        cost += W_REST2 * (rest2 - REST2_TARGET) ** 2 + W_REST3P * (rest3p - REST3P_TARGET) ** 2;
+```
+
+**After**:
+```ts
+const B2B_TARGET = 13.0;
+const REST2_TARGET = 0.153 * 81;
+const REST3_TARGET = 0.0256 * 81;
+/** 4일+ 휴식은 팀당 시즌 0~1회 — 횟수마다 선형 벌점 + 하루 길어질 때마다 추가 */
+const REST4P_FREE = 0;
+...
+const W_REST2 = 3;
+const W_REST3 = 8;
+const W_REST4P = 12;
+...
+let cost = 0, n = 0, b2b = 0, rest2 = 0, rest3 = 0, rest4p = 0, home41 = 0;
+...
+                    if (gap === 2) rest2++;
+                    else if (gap === 3) rest3++;
+                    else if (gap >= 4) { rest4p++; cost += W_REST4P * (gap - 4); }
+...
+        cost += W_REST2 * (rest2 - REST2_TARGET) ** 2 + W_REST3 * (rest3 - REST3_TARGET) ** 2;
+        if (rest4p > REST4P_FREE) cost += W_REST4P * (rest4p - REST4P_FREE);
+```
+(B2B_MIN 13 / B2B_MAX 16 / LONG_REST_DAYS 6 / W_LONG_REST 50은 그대로)
+
+**검증**: 20시즌(2026~2045) 생성 휴식 분포(올스타 제외)
+| | 0일 | 1일 | 2일 | 3일 | 4일+ | 팀당 3일 | 팀당 4일+ |
+|---|---|---|---|---|---|---|---|
+| 실측(컵 이전) | 17.2 | 64.6 | 15.3 | 2.56 | 0.39 | 2.05 | 0.31 |
+| Before(8시즌) | 18.7 | 62.3 | 15.1 | 2.95 | 0.96 | 2.36 | 0.77 |
+| After(20시즌) | 17.7 | 63.1 | 15.9 | 3.04 | 0.32 | 2.44 | 0.26 |
+`npx tsx scripts/schedule-research/check_v2.ts 2026 20` 멀티 20시즌 + 싱글 3시즌 all passed(B2B 13~16, 생성 1.6~2.0초). 가중치 탐색 결과: W3를 14까지 올리면 3일은 2.88%로 줄지만 4일+가 0.57%로 늘어남(휴식 총량 맞교환) → W2=3/W3=8 + B2B 13.0 채택.
+**적용 범위**: 새로 생성되는 일정만. 진행 중인 NBA Active 일정은 그대로(DB 미수정). 서버 배포 전까지 멀티 새 리그엔 반영 안 됨.
+
+**롤백 방법**: 두 파일의 Before 블록 값으로 되돌림(양쪽 동시).
+
 ## 2026-10-26 — 가비지 타임: 4Q 남은 시간 대비 점수 차로 발동 + 점수 차 좁혀지면 해제
 
 **배경**: NBA Active fkdnbmx3(PHX 127:164 POR)에서 4Q 시작부터 30점 차였는데 주전이 2:18까지 뜀. 가비지 판정이 "Q4 잔여 2:30 이내 + 15점 차" 하나뿐이었고, 그 전엔 각 팀 로테이션 표대로 주전이 재투입됨. 또 기존 일괄 교체는 코트 위 5명만 바꿔서, 벤치에 있던 주전이 표대로 다시 들어올 수 있는 구조였음(2:30 이후라 문제가 드러나지 않았을 뿐).
