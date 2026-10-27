@@ -145,6 +145,105 @@ useQuery({
 
 **롤백 방법**: 두 파일을 Before로 되돌리면 됨 (git으로 `hooks/useRoomPlayerConditions.ts`, `hooks/useLeagueRawStats.ts` 이전 커밋 복원). 서버/DB 변경 없음.
 
+## 2026-10-27 — 포세션 기본 시간 BASE 18 → 19 (고페이스 조정)
+
+**배경**: NBA Active 92경기 실측 팀당 포세션 108.1·득점 119.1(NBA 같은 공식 101.4·114.2). 실경기 재현 하네스
+(실데이터·체력 누적·정규시즌 1,230경기, `createGameState`/`stepPossession` 직접 — 하네스 107.6 vs 실측 108.1)로 조사:
+- 엔진별 PBL / NBA Active 포세션: 626595df(BASE 19) 97.3 / 100.0 → 8cd62163(10-25 템포 조정, BASE 18) 104.6 / 108.1 → HEAD 103.8 / 107.6.
+  10-25 기록의 "실제 전술 100.9"는 당시 하네스 기준점(BASE 19에서 94.2)이 이 하네스(97.3)보다 약 3 낮았던 탓.
+- 모든 슬라이더 5(중립)면 NBA Active 102.5 / PBL 102.3 → 초과분은 실제 전술(페이스 −1.8, 프레스 −0.9, 지역 −0.8, defReb −0.8,
+  ballMovement −0.6, insideOut −0.4 — 각 슬라이더를 5로 돌렸을 때 변화).
+- ORtg 109.3(NBA 112.6) → 고득점은 효율이 아니라 포세션 수 때문. 사용자 결정: 포세션을 실제에 맞추고(19), 득점 부족은 효율 쪽 별도 과제.
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server) — `POSSESSION_TIME.BASE`
+
+**Before**: `BASE: 18,`
+**After**: `BASE: 19,` (주석에 근거 추가)
+
+**검증**: 하네스(실데이터, CARRY=1, 1시즌):
+| 조건 | NBA Active 포세션/득점/ORtg | PBL 포세션/득점/ORtg |
+|---|---|---|
+| HEAD(BASE 18) | 107.6 / 117.6 / 109.3 | 103.8 / 114.3 / 110.1 |
+| BASE 18.5 | 103.5 / 112.7 / 108.9 | 100.3 / 110.2 / 109.9 |
+| BASE 19 | 100.1 / 108.4 / 108.3 | 96.9 / 106.9 / 110.2 |
+| BASE 19 + 공격리바 공격권 수정(아래 항목) = 작업 트리 | 100.1 / 109.9 / 109.7 | 97.1 / 108.5 / 111.8 |
+득점 NBA 대비 −4~−6 → 효율(ORtg) 상향 과제로 이관. 미배포. NBA Active는 시즌 중(92경기 소화)이라 배포 시점부터 템포가 바뀜.
+
+**롤백 방법**: 두 파일 `BASE: 19` → `BASE: 18`.
+
+## 2026-10-27 — 공격 리바운드 후 공격권이 상대에게 넘어가던 버그 수정 (자유투 공격리바 / 교체 직후)
+
+**배경**: NBA Active 92경기 PBP 분석에서 공격 리바운드를 잡은 팀이 기록 없이 공을 잃는 패턴 발견(PBL·Test 리그도 같은 비율 → 오래된 버그).
+- 자유투 실패 → 공격 리바운드: NBA Active 80건 중 79건, PBL 70건 중 69건 공격권 이전
+- 필드골 공격 리바운드 직후 교체: NBA Active 152건 중 39건 공격권 이전
+- 원인 1: `liveEngine` 공격권 판정이 `result.type === 'miss'`만 검사. 자유투 리바운드는 `statsMappers.applyPossessionResult`
+  내부 `handleFreeThrowRebound()`에서 판정되는데 결과가 호출부로 전달되지 않음(슈팅 파울·보너스 자유투·앤드원 3경로 모두).
+  로그·박스에는 OREB로 찍히고(포제션 종료 마커도 안 찍힘) 공격권만 넘어감.
+- 원인 2: 같은 판정이 교체 처리(긴급 교체·정기 로테이션) **뒤에** `offTeam.onCourt`로 리바운더를 찾음 → 리바운더가 그 순간 교체되면 수비 리바운드로 간주.
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `server/src/shared/engine/pbp/statsMappers.ts` (server) / `services/game/engine/pbp/statsMappers.ts` (client)
+- `server/src/shared/engine/pbp/liveEngine.ts` (server) / `services/game/engine/pbp/liveEngine.ts` (client)
+
+**Before**:
+```ts
+// statsMappers.ts
+export function applyPossessionResult(state: GameState, result: PossessionResult) {
+    ...
+    const handleFreeThrowRebound = (shooter: LivePlayer): FtRebound => {
+        const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+        rebPlayer.reb += 1;
+    ...
+    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
+}
+
+// liveEngine.ts stepPossession
+    applyPossessionResult(state, result);
+    ... (momentum / 교체 2~4번) ...
+    // 포세션 전환
+    let isOffReb = false;
+    if (result.type === 'miss' && result.rebounder) {
+        if (offTeam.onCourt.some(p => p.playerId === result.rebounder!.playerId)) {
+            isOffReb = true;
+        }
+    }
+```
+
+**After**:
+```ts
+// statsMappers.ts — 반환값 추가(마지막 자유투 미스 후 슈팅 팀 공격리바면 true)
+export function applyPossessionResult(state: GameState, result: PossessionResult): boolean {
+    ...
+    let ftOffReb = false;
+    const handleFreeThrowRebound = (shooter: LivePlayer): FtRebound => {
+        const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+        ftOffReb = rebType === 'off';
+        rebPlayer.reb += 1;
+    ...
+    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
+    return ftOffReb;
+}
+
+// liveEngine.ts — 판정을 applyPossessionResult 직후(교체 전)로 이동 + 자유투 공격리바 포함
+    const ftOffReb = applyPossessionResult(state, result);
+    const isOffReb = ftOffReb
+        || (result.type === 'miss' && !!result.rebounder
+            && offTeam.onCourt.some(p => p.playerId === result.rebounder!.playerId));
+    ...
+    // 포세션 전환 (isOffReb는 교체 전에 위에서 판정)
+```
+자유투 공격리바도 기존 `retainPossession(isOffReb)` 경로를 타므로 샷클락 14초·`lastEntryWasOffReb = true`(속공 배율 0, 풋백 가능) 적용.
+`_handleGameEnd`의 결승 공격·버저비터 호출부는 반환값 미사용(경기 종료 직후라 무관).
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(합성 13인 팀 × 300경기, offReb 9, 경기별 시드 고정, `createGameState`/`stepPossession` 직접):
+- 수정 전(HEAD 사본): 자유투 공격리바 297건 중 296건 이전, 공격리바+교체 184건 중 135건 이전, 필드골→자유투 연쇄 34건 이전
+- 수정 후 server: 이전 0건(FG 6566 / FT 272 전부 유지). client: 이전 1건 = 4Q 0:00 동점 버저비터 50/50 판정(기존 설계, 버그 아님)
+- 팀 포제션 100.7 → 100.7, 득점 99.0 → 98.6~99.2(시드 궤적 차이 수준)
+미배포.
+
+**롤백 방법**: 위 Before로 4파일 되돌리기(statsMappers 반환 타입·`ftOffReb` 3줄 삭제, liveEngine `isOffReb` 블록을 교체 뒤 원위치).
+
 ## 2026-10-26 — 일정 생성기: 휴식 목표를 컵 대회 없는 시즌 기준으로 (3일·4일+ 분리, B2B 목표 14→13)
 
 **배경**: NBA Active(10-23 생성, v2 생성기)에서 "2일 이상 긴 휴식이 너무 많다"는 지적. 실측 목표값(`docs/research/nba-schedule-patterns.md` §9)이 2023-24 이후 NBA컵 시즌을 포함해 계산돼, 12월 녹아웃 공백(탈락 팀 3~4일 휴식)이 섞여 있었음. 우리는 컵 대회가 없으므로 그 공백을 시즌 곳곳에 흩뿌릴 이유가 없음. 또 벌점이 "3일+"를 한 칸으로 묶어 3일과 4일+를 구분하지 못했음.

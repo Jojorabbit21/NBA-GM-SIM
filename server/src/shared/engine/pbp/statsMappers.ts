@@ -113,7 +113,12 @@ function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: num
     else if (type === 'turnover' || type === 'offensiveFoul' || type === 'shotClockViolation') { line.tov += 1; }
 }
 
-export function applyPossessionResult(state: GameState, result: PossessionResult) {
+/**
+ * 반환값: 마지막 자유투가 빗나가 슈팅 팀이 공격 리바운드를 잡았으면 true (client 미러 참조).
+ * [2026-10-27] 자유투 리바운드는 여기서 판정되므로 호출부(liveEngine)가 이 값으로 공격권 유지 여부를 정한다 —
+ * 이전엔 liveEngine이 result.type === 'miss'만 봐서 자유투 공격 리바운드 후에도 공격권이 상대에게 넘어갔다.
+ */
+export function applyPossessionResult(state: GameState, result: PossessionResult): boolean {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal,
             offTeam, defTeam, isAndOne, playType, isSwitch, isMismatch, isBotchedSwitch, pnrCoverage } = result;
     // [2026-10-18] 플레이타입 실적 — 이 플레이로 난 득점/자유투를 진입·종료 차이로 계산(recordPlayTypeStat)
@@ -141,9 +146,11 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     type FtRebound = { type: 'off' | 'def'; text: string; player: LivePlayer };
     const teamIdOf = (pl: LivePlayer): string =>
         state.home.onCourt.some(x => x.playerId === pl.playerId) ? state.home.id : state.away.id;
+    let ftOffReb = false;
     const handleFreeThrowRebound = (shooter: LivePlayer): FtRebound => {
         // [2026-07-31] TEAM_REB_RATE_FT 제거 (client 미러 참고)
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+        ftOffReb = rebType === 'off';
         rebPlayer.reb += 1;
         if (rebType === 'off') rebPlayer.offReb += 1;
         else rebPlayer.defReb += 1;
@@ -420,4 +427,5 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     }
 
     recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
+    return ftOffReb;
 }

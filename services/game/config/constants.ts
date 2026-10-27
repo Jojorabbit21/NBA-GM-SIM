@@ -643,7 +643,9 @@ export const SIM_CONFIG = {
     // 상한, 폭주 방지하면서도 슬라이더 체감은 유지).
     POSSESSION_TIME: {
         // [2026-10-25] 19 → 18 (사용자 결정) — 중립 pace 5에서도 포세션 95.1(NBA 같은 공식 101.4)로 6개 부족했음. 18: 실제 전술 100.9 / pace5 102.2
-        BASE: 18,
+        // [2026-10-27] 18 → 19 (사용자 결정) — 실경기 재현 하네스로 18은 NBA Active 107.6 / PBL 103.8(실측 108.1)로 과다.
+        //   19: NBA Active 100.1 / PBL 96.9. 득점 부족(ORtg ~108 vs NBA 112.6)은 효율 쪽에서 별도로 보완할 과제.
+        BASE: 19,
         PACE_NEUTRAL: 5,
         PACE_COMPRESSION: 0.2,
     },

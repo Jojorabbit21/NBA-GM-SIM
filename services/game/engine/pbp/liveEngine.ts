@@ -580,7 +580,13 @@ export function stepPossession(state: GameState): StepResult {
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
 
-    applyPossessionResult(state, result);
+    const ftOffReb = applyPossessionResult(state, result);
+
+    // [2026-10-27] 공격 리바운드 판정은 교체(아래 2~4번) 전에 — 교체가 리바운더를 벤치로 보내면 onCourt 검사가 실패해
+    // 공격권이 상대에게 넘어갔다. 자유투 실패 후 공격 리바운드(ftOffReb, statsMappers 판정)도 포함 — 이전엔 miss만 봤다. (server 미러와 동일)
+    const isOffReb = ftOffReb
+        || (result.type === 'miss' && !!result.rebounder
+            && offTeam.onCourt.some(p => p.playerId === result.rebounder!.playerId));
 
     // 득점 후 momentum 업데이트
     const currentTotalSecAfter = elapsedGameSec(state);
@@ -639,14 +645,7 @@ export function stepPossession(state: GameState): StepResult {
     checkAndApplyRotation(state, state.home, currentTotalSec);
     checkAndApplyRotation(state, state.away, currentTotalSec);
 
-    // 포세션 전환
-    let isOffReb = false;
-    if (result.type === 'miss' && result.rebounder) {
-        if (offTeam.onCourt.some(p => p.playerId === result.rebounder!.playerId)) {
-            isOffReb = true;
-        }
-    }
-
+    // 포세션 전환 (isOffReb는 교체 전에 위에서 판정)
     // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울, 보너스 전 비슈팅 파울
     const retainPossession = isOffReb
         || result.type === 'technicalFoul'
