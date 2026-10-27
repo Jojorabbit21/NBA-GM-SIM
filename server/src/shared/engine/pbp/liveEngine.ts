@@ -2,7 +2,7 @@
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate, BoxDelta, BoxTick } from '../../types.ts';
 import { LeagueCoachingData } from '../../types/coaching.ts';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../../types/simSettings.ts';
-import { GameState, TeamState, LivePlayer, ClutchContext, PossessionResult } from './pbpTypes.ts';
+import { GameState, TeamState, LivePlayer, ClutchContext, PossessionResult, isOut } from './pbpTypes.ts';
 import { initTeamState } from './initializer.ts';
 import { updateOnCourtStates } from './stateUpdater.ts';
 import { simulatePossession } from './possessionHandler.ts';
@@ -583,7 +583,8 @@ export function stepPossession(state: GameState): StepResult {
         const log = state.logs[i];
         if (log.homeScore === undefined) { log.homeScore = state.home.score; log.awayScore = state.away.score; }
     }
-    const ftOffReb = applyPossessionResult(state, result);
+    const ftReb = applyPossessionResult(state, result);   // 마지막 자유투 실패 후 리바운드('off'|'def'), 없으면 null
+    const ftOffReb = ftReb === 'off';
 
     // [2026-10-27] 공격 리바운드 판정은 교체(아래 2~4번) 전에 — 교체가 리바운더를 벤치로 보내면 onCourt 검사가 실패해
     // 공격권이 상대에게 넘어갔다. 자유투 실패 후 공격 리바운드(ftOffReb, statsMappers 판정)도 포함 — 이전엔 miss만 봤다.
@@ -624,29 +625,40 @@ export function stepPossession(state: GameState): StepResult {
     checkTemporaryReturns(state, state.home, currentMinute);
     checkTemporaryReturns(state, state.away, currentMinute);
 
-    // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
-    //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
-    updateGarbageTime(state, state.home);
-    updateGarbageTime(state, state.away);
+    // [2026-10-27] 교체는 데드볼에서만(client 미러 참조) — 라이브볼(야투 실패·마지막 자유투 실패 후 리바운드, 스틸)로 끝난 포세션은
+    //   아래 1-b~4번(가비지 판정·긴급 교체·정기 로테이션)을 다음 데드볼(야투 성공·파울·바이올레이션·데드볼 턴오버·타임아웃·쿼터 종료)까지 보류.
+    //   부상·퇴장으로 뛸 수 없는 선수가 코트에 있으면 경기가 멈춘 것으로 보고 즉시 처리. 로테이션 표는 분 단위라 다음 데드볼에서 따라잡는다.
+    const isLiveBall = state.gameClock > 0
+        && (result.type === 'miss' || (result.type === 'turnover' && !!result.isSteal) || ftReb !== null);
+    const hasStoppage = [state.home, state.away].some(t => t.onCourt.some(p => (p.health === 'Injured' && p.injuredThisGame) || isOut(p)));
+    const subsDeferred = isLiveBall && !hasStoppage;
+    const runSubstitutions = () => {
+        // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
+        //      [2026-10-27] 발동 시 즉시 일괄 교체하므로 데드볼 보류 대상에 포함.
+        //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
+        updateGarbageTime(state, state.home);
+        updateGarbageTime(state, state.away);
 
-    // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
-    //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
-    //      맵을 갱신해야 rotation 체크가 올바른 라인업을 구성함.
-    //      (이전: rotation이 먼저 실행되어 pf≥6 선수를 fallback으로 처리 → 승계 미실행 버그)
-    const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
-    const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
+        // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
+        //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
+        //      맵을 갱신해야 rotation 체크가 올바른 라인업을 구성함.
+        //      (이전: rotation이 먼저 실행되어 pf≥6 선수를 fallback으로 처리 → 승계 미실행 버그)
+        const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
+        const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
 
-    // 3. 교체 실행 (가비지타임 일괄 / 임시·영구 분기)
-    const hGarbage = hSubs.filter(r => r.benchReason === 'garbage');
-    const aGarbage = aSubs.filter(r => r.benchReason === 'garbage');
-    if (hGarbage.length > 0) executeGarbageSubstitution(state, state.home, hGarbage.map(r => r.outPlayer));
-    if (aGarbage.length > 0) executeGarbageSubstitution(state, state.away, aGarbage.map(r => r.outPlayer));
-    hSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.home, req, currentMinute));
-    aSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.away, req, currentMinute));
+        // 3. 교체 실행 (가비지타임 일괄 / 임시·영구 분기)
+        const hGarbage = hSubs.filter(r => r.benchReason === 'garbage');
+        const aGarbage = aSubs.filter(r => r.benchReason === 'garbage');
+        if (hGarbage.length > 0) executeGarbageSubstitution(state, state.home, hGarbage.map(r => r.outPlayer));
+        if (aGarbage.length > 0) executeGarbageSubstitution(state, state.away, aGarbage.map(r => r.outPlayer));
+        hSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.home, req, currentMinute));
+        aSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.away, req, currentMinute));
 
-    // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
-    checkAndApplyRotation(state, state.home, currentTotalSec);
-    checkAndApplyRotation(state, state.away, currentTotalSec);
+        // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
+        checkAndApplyRotation(state, state.home, currentTotalSec);
+        checkAndApplyRotation(state, state.away, currentTotalSec);
+    };
+    if (!subsDeferred) runSubstitutions();
 
     // 포세션 전환 (isOffReb는 교체 전에 위에서 판정)
     // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울, 보너스 전 비슈팅 파울
@@ -711,6 +723,7 @@ export function stepPossession(state: GameState): StepResult {
     const timeoutDecision = decideTimeout(state, detectRunVictimId(state));
     if (timeoutDecision) {
         applyTimeout(state, timeoutDecision.teamId, false, timeoutDecision.mandatory ? 'mandatory' : 'team');
+        if (subsDeferred) runSubstitutions();   // [2026-10-27] 타임아웃 = 데드볼 → 보류된 교체 처리
         // 타임아웃 로그 포함하여 전체 newLogs 재수집
         const allNewLogs = state.logs.slice(logsBefore);
         const sh = state.home.score, sa = state.away.score;

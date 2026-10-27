@@ -155,11 +155,12 @@ function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: num
 }
 
 /**
- * 반환값: 마지막 자유투가 빗나가 슈팅 팀이 공격 리바운드를 잡았으면 true (server 미러와 동일).
+ * 반환값: 마지막 자유투가 빗나가 생긴 리바운드 — 'off'(슈팅 팀) / 'def'(상대 팀), 자유투 리바운드가 없으면 null (server 미러와 동일).
+ * [2026-10-27] 'def'도 반환 — liveEngine이 라이브볼(리바운드) 여부로 교체 보류를 판단한다.
  * [2026-10-27] 자유투 리바운드는 여기서 판정되므로 호출부(liveEngine)가 이 값으로 공격권 유지 여부를 정한다 —
  * 이전엔 liveEngine이 result.type === 'miss'만 봐서 자유투 공격 리바운드 후에도 공격권이 상대에게 넘어갔다.
  */
-export function applyPossessionResult(state: GameState, result: PossessionResult): boolean {
+export function applyPossessionResult(state: GameState, result: PossessionResult): 'off' | 'def' | null {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne, playType } = result;
     const { isSwitch, isMismatch, isBotchedSwitch, pnrCoverage } = result;
     // [2026-10-18] 플레이타입 실적 — 이 플레이로 난 득점/자유투를 진입·종료 차이로 계산(recordPlayTypeStat)
@@ -198,12 +199,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // 항상 원정 쪽(isHome=false)에 표시되던 버그가 있었음. resolveRebound의 슈터 팀 판별과 동일 방식.
     const teamIdOf = (pl: LivePlayer): string =>
         state.home.onCourt.some(x => x.playerId === pl.playerId) ? state.home.id : state.away.id;
-    let ftOffReb = false;
+    let ftRebType: 'off' | 'def' | null = null;
     const handleFreeThrowRebound = (shooter: LivePlayer): FtRebound => {
         // [2026-07-31] TEAM_REB_RATE_FT 제거 — FG 미스와 동일한 증발 버그(possessionHandler.ts
         // 참고), 마지막 자유투 미스 시 항상 개인에게 배정하도록 단순화.
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
-        ftOffReb = rebType === 'off';
+        ftRebType = rebType;
 
         rebPlayer.reb += 1;
         if (rebType === 'off') rebPlayer.offReb += 1;
@@ -644,5 +645,5 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     }
 
     recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
-    return ftOffReb;
+    return ftRebType;
 }

@@ -145,6 +145,62 @@ useQuery({
 
 **롤백 방법**: 두 파일을 Before로 되돌리면 됨 (git으로 `hooks/useRoomPlayerConditions.ts`, `hooks/useLeagueRawStats.ts` 이전 커밋 복원). 서버/DB 변경 없음.
 
+## 2026-10-27 — 교체는 데드볼에서만: 라이브볼(리바운드·스틸) 직후 교체를 다음 데드볼까지 보류
+
+**배경**: 엔진이 포세션마다 상황과 무관하게 교체를 실행해, 리바운드·스틸 직후(공이 살아 있음) 교체가 전체의 약 37%
+(NBA Active 92경기 실측 리바운드 직후 32.5%+, 스틸 직후 3.9%). "공격 리바운드를 잡은 선수가 공을 쥔 채 교체"되는 로그.
+사용자 결정: 데드볼 = 야투 성공(공이 죽음)·파울·자유투 성공·바이올레이션·데드볼 턴오버·타임아웃·쿼터 종료에서만 교체.
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/liveEngine.ts` (client) / `server/src/shared/engine/pbp/liveEngine.ts` (server) — stepPossession 교체 블록
+- `services/game/engine/pbp/statsMappers.ts` (client) / `server/src/shared/engine/pbp/statsMappers.ts` (server) — applyPossessionResult 반환값
+
+**Before**:
+```ts
+// statsMappers
+export function applyPossessionResult(...): boolean { ... let ftOffReb = false; ... ftOffReb = rebType === 'off'; ... return ftOffReb; }
+// liveEngine.stepPossession
+const ftOffReb = applyPossessionResult(state, result);
+...
+checkTemporaryReturns(...);            // 1
+updateGarbageTime(...);                // 1-b (발동 시 즉시 5명 일괄 교체)
+const hSubs = checkSubstitutionsV2(...); ... executeGarbageSubstitution / executeSubstitution ...   // 2·3
+checkAndApplyRotation(...);            // 4
+...
+applyTimeout(state, ...);
+```
+
+**After**:
+```ts
+// statsMappers — 자유투 리바운드 종류 반환
+export function applyPossessionResult(...): 'off' | 'def' | null { ... let ftRebType = null; ... ftRebType = rebType; ... return ftRebType; }
+// liveEngine.stepPossession
+const ftReb = applyPossessionResult(state, result);
+const ftOffReb = ftReb === 'off';
+...
+checkTemporaryReturns(...);            // 1 (표·상태만 되돌림, 실제 교체 없음 → 항상)
+const isLiveBall = state.gameClock > 0
+    && (result.type === 'miss' || (result.type === 'turnover' && !!result.isSteal) || ftReb !== null);
+const hasStoppage = 코트에 (부상 && injuredThisGame) || isOut(p) 선수 존재;   // 부상·퇴장 = 경기 중단 → 즉시
+const subsDeferred = isLiveBall && !hasStoppage;
+const runSubstitutions = () => { 1-b updateGarbageTime / 2·3 긴급 교체 / 4 정기 로테이션 };
+if (!subsDeferred) runSubstitutions();
+...
+applyTimeout(state, ...);
+if (subsDeferred) runSubstitutions();  // 타임아웃 = 데드볼 → 보류분 처리
+```
+로테이션 표는 분 단위라 보류돼도 다음 데드볼의 checkAndApplyRotation이 그 분의 표대로 맞춘다.
+
+**검증**: client/server tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터, 2,460경기, 현재 배포본 ceee9d85 대비):
+- 교체 직전 상황: 라이브볼 29,373 → **0**, 데드볼 33,741 → 57,699, 타임아웃 7,647 → 9,966, 쿼터 종료 9,569 → 9,788,
+  부상·퇴장 즉시 159 → 110(의도)
+- 경기 결과 불변: 포세션 100.08 → 100.15, 득점 108.31 → 108.34, FTA 20.65 → 20.59, 속공 18.10 → 18.09, 홈 승률 53.4% → 53.9%
+- 선수별 경기당 출전시간 변화 평균 0.27분, 1분 넘게 바뀐 선수 412명 중 2명
+- 스코어 순서 검사 0 / 1,003,221줄, client 합성 300경기 공격권 이전 1건 = 4Q 0:00 동점 버저비터 50/50(기존 설계)
+
+**롤백 방법**: 위 Before로 4파일 되돌리기 — runSubstitutions 클로저를 풀어 1-b~4번을 원래 위치(1번 다음)에 무조건 실행,
+타임아웃 뒤 호출 삭제, isOut import 제거, statsMappers 반환을 boolean(ftOffReb)으로.
+
 ## 2026-10-27 — PBP 로그 스코어를 줄 생성 시점으로 (앤드원·자유투 점수가 한 줄 먼저 올라가던 표시 수정)
 
 **배경**: NBA Active 92경기 PBP에서 "레이업(+2)" 줄에 이미 +3(앤드원 자유투 포함), 슈팅 파울 줄에 자유투 점수가 미리 반영.
