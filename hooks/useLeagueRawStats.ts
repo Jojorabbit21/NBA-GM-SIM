@@ -43,6 +43,9 @@ export interface LeagueRawStatsData {
         return_date: string | null;
         season_number: number | null;
         contract: Record<string, any> | null;
+        /** 현재 체력(경기 후 값)과 마지막 경기 시작 시 체력 — useRoomPlayerConditions가 읽는다. NULL/미기록 행 가능. */
+        condition?: number | string | null;
+        pregame_condition?: number | string | null;
     }[];
 }
 
@@ -63,7 +66,8 @@ export interface LeagueRawStatsData {
 const RAW_PLAYER_COLS = 'id, name, position, draft_year, base_attributes, ovr_base, ovr_custom';
 const RAW_PBP_COLS = 'game_id, home_box, away_box, home_team_id, away_team_id, home_score, away_score, game_start_time';
 const RAW_LEAGUE_SEASON_COLS = 'player_id, season, stat_line';
-const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';
+// [2026-10-27] condition/pregame_condition 추가 — 체력을 별도 쿼리로 또 받지 않고 이 방 단위 쿼리(부트스트랩 게이트 포함)에 함께 싣는다.
+const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract, condition, pregame_condition';
 
 // game_pbp만 단독으로 필요한 곳(경기 기록/일정 탭 등)에서 직접 쓸 수 있도록 공개 export —
 // useLeagueRawStats 내부의 pbp 쿼리와 완전히 동일한 queryKey/queryFn을 써서, 한쪽에서
@@ -96,7 +100,7 @@ export function leagueRawPlayersQuery(roomId: string | undefined | null) {
     };
 }
 /** 부상/시즌 기록도 방 단위. 전엔 로스터가 바뀔 때만(=키가 바뀔 때만) 다시 받는 식이라 사실상 갱신 계기가 그것뿐이었는데,
- *  이제 5분마다(마운트 시점 기준) 갱신된다. 실시간 컨디션은 useRoomPlayerConditions가 따로 폴링한다. */
+ *  이제 5분마다(마운트 시점 기준) 갱신된다. 체력(condition/pregame_condition)도 같은 행에 실려 와 useRoomPlayerConditions가 이 캐시에서 읽는다. */
 export const LEAGUE_RAW_SEASON_INJURY_STALE_MS = 5 * 60 * 1000;
 export function leagueRawSeasonInjuryQuery(roomId: string | undefined | null) {
     return {

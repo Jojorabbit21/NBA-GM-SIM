@@ -33,6 +33,47 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-27 — 멀티 체력 조회를 방 단위 leagueRawSeasonInjury 캐시로 통합 (팀 화면 체력 늦게 뜸/깜빡임 해소)
+
+**배경**: 멀티 팀 화면에서 체력 칸만 다른 열보다 늦게 채워지고 깜빡였다. 원인: 체력이 `useRoomPlayerConditions`의 별도 쿼리(선수 ID 목록이 queryKey에 포함, `.in()` 200명 분할, 60초 폴링)로 따로 받아져, 응답 전까지 빈 막대가 그려지고 로스터가 바뀌면 키가 달라져 다시 빈 막대로 돌아갔다. 같은 `room_player_state` 행을 `leagueRawSeasonInjury`가 이미 방 전체 단위로 받고 있었다(중복 조회). 체력은 경기 시뮬 시점·가상 자정에만 바뀌어 자주 갱신할 필요가 없다.
+
+**변경 파일**:
+- `hooks/useLeagueRawStats.ts` (client) — `RAW_PLAYER_INJURY_COLS`에 `condition, pregame_condition` 추가, `playerInjuryRows` 타입에 두 필드(옵셔널) 추가, 주석 갱신
+- `hooks/useRoomPlayerConditions.ts` (client) — 전면 교체: 별도 쿼리/폴링 제거, `leagueRawSeasonInjuryQuery(roomId)` 캐시를 `select`로 읽어 Map 생성 (`buildConditionMap` export)
+
+**Before**:
+```ts
+// useLeagueRawStats.ts
+const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';
+
+// useRoomPlayerConditions.ts
+useQuery({
+    queryKey: ['roomPlayerConditions', roomId ?? null, playerIds.join(',')],
+    queryFn: () => fetchConditions(roomId!, playerIds),   // room_player_state .in(player_id) 200명씩 분할
+    enabled: !!roomId && playerIds.length > 0,
+    staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true,
+});
+```
+
+**After**:
+```ts
+// useLeagueRawStats.ts
+const RAW_PLAYER_INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract, condition, pregame_condition';
+
+// useRoomPlayerConditions.ts
+useQuery({
+    ...leagueRawSeasonInjuryQuery(roomId),      // 방 단위 키, 5분 신선도, 부트스트랩 게이트 등록됨
+    enabled: !!roomId && playerIds.length > 0,
+    select: d => buildConditionMap(d.playerInjuryRows, playerIds),
+});
+```
+반환 형태(`RoomPlayerConditionMap`, `{condition, pregame}`)와 NULL→100 규칙은 그대로라 `useMultiPlayerConditions` 및 호출부 4곳(로스터/전술/선수상세/경기PBP)은 수정 없음.
+
+**검증**: `tsc --noEmit`에서 수정·연관 파일(useRoomPlayerConditions, useLeagueRawStats, useMultiPlayerConditions, 호출부 4곳)에 신규 오류 없음(저장소의 기존 오류는 별개). 브라우저 육안 확인 전.
+- 동작 변화: 체력 갱신 주기 60초 → 5분(경기 후 최대 5분 지연 가능, 사용자 결정으로 허용). `refreshLeagueRawStateRows`(트레이드/FA 직후 부분 갱신)는 같은 상수를 써서 체력 컬럼도 함께 갱신.
+
+**롤백 방법**: 두 파일을 Before로 되돌리면 됨 (git으로 `hooks/useRoomPlayerConditions.ts`, `hooks/useLeagueRawStats.ts` 이전 커밋 복원). 서버/DB 변경 없음.
+
 ## 2026-10-26 — 일정 생성기: 휴식 목표를 컵 대회 없는 시즌 기준으로 (3일·4일+ 분리, B2B 목표 14→13)
 
 **배경**: NBA Active(10-23 생성, v2 생성기)에서 "2일 이상 긴 휴식이 너무 많다"는 지적. 실측 목표값(`docs/research/nba-schedule-patterns.md` §9)이 2023-24 이후 NBA컵 시즌을 포함해 계산돼, 12월 녹아웃 공백(탈락 팀 3~4일 휴식)이 섞여 있었음. 우리는 컵 대회가 없으므로 그 공백을 시즌 곳곳에 흩뿌릴 이유가 없음. 또 벌점이 "3일+"를 한 칸으로 묶어 3일과 4일+를 구분하지 못했음.
