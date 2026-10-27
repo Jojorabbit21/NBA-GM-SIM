@@ -118,6 +118,12 @@ export interface LivePlayer extends PlayerBoxScore {
     matchupEffectCount: number;
 }
 
+/** [2026-10-26] 가비지 타임 상태 — 발동 시 로테이션 표를 통째로 덮어쓰므로 해제 때 되돌릴 원본을 보관 */
+export interface GarbageTimeState {
+    mapSnapshot: Record<string, boolean[]>;   // 발동 직전 rotationMap 전체 복사본
+    restIds: string[];                        // 쉬게 한 선수(선발 + 발동 시 코트 위) — 대체자·승계·폴백에서 후순위
+}
+
 export interface TeamState {
     id: string;
     name: string;
@@ -133,7 +139,8 @@ export interface TeamState {
     fouls: number;
     bonus: boolean;
     acePlayerId?: string;
-    garbageApplied?: boolean;
+    // [2026-10-26] 가비지 타임 진행 중 상태(없으면 정상 로테이션). rotationLogic.updateGarbageTime 참고
+    garbage?: GarbageTimeState;
     // [2026-10-23] Time-based tactic sets (tacticSchedule.ts) — tactics.sliders = currently active set
     tacticSets?: TacticSets;
     activeTacticSet?: TacticSetId;

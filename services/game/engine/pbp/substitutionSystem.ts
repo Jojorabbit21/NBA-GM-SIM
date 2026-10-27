@@ -130,27 +130,8 @@ export function checkSubstitutionsV2(
         if (clutchRequests.length > 0) return clutchRequests;
     }
 
-    // ── 가비지 타임: Q4 잔여 2:30 이내 + 15점차 이상 → 코트 위 5명 전원 일괄 교체 ──
-    const isGarbage = state.simSettings.garbageTimeEnabled !== false
-        && state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
-        && !team.garbageApplied;   // 이미 적용된 팀은 재실행 방지
-
-    if (isGarbage) {
-        team.garbageApplied = true;
-        return team.onCourt
-            .filter(p => {
-                if (p.health === 'Injured' || isOut(p)) return false;
-                const cfg = tactics.playerTactics?.[p.playerId];
-                // 'play'(출전) → 가비지타임 멤버, 일괄 교체 대상에서 제외
-                return cfg?.garbagePolicy !== 'play';
-            })
-            .map(p => ({
-                outPlayer: p,
-                reason: '가비지 타임',
-                exitType: 'permanent' as const,
-                benchReason: 'garbage' as const,
-            }));
-    }
+    // [2026-10-26] 가비지 타임 일괄 교체·해제는 rotationLogic.updateGarbageTime(liveEngine에서 이 함수 전에 호출)으로 이관
+    //   (이전: Q4 잔여 2:30 이내 + 15점차 이상이면 코트 위 5명만 1회 교체)
 
     const requests: SubRequestV2[] = [];
 

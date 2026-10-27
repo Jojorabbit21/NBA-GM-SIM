@@ -33,6 +33,51 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+## 2026-10-26 — 가비지 타임: 4Q 남은 시간 대비 점수 차로 발동 + 점수 차 좁혀지면 해제
+
+**배경**: NBA Active fkdnbmx3(PHX 127:164 POR)에서 4Q 시작부터 30점 차였는데 주전이 2:18까지 뜀. 가비지 판정이 "Q4 잔여 2:30 이내 + 15점 차" 하나뿐이었고, 그 전엔 각 팀 로테이션 표대로 주전이 재투입됨. 또 기존 일괄 교체는 코트 위 5명만 바꿔서, 벤치에 있던 주전이 표대로 다시 들어올 수 있는 구조였음(2:30 이후라 문제가 드러나지 않았을 뿐).
+
+**공식 근거(실측)**: 멀티 최근 7일 905경기(연장 제외) — 팀 평균 109.8점, 4Q 잔여 구간 점수 차 변동 σ/√초 ≈ 0.30~0.32(일정) → 득점 인플레이션 보정 불필요. 후보 비교(9:00 / 6:00 / 4:00 필요 점수 차·발동률): 제곱근 k0.85 22.8/19.1/16.2, 빌 제임스 원식 26.2/22.0/18.5, **지수 0.6 28.9/23.3/18.9 (채택, 9:00 발동률 8.6%)**, 지수 0.7 32.4/25.1/19.7. 모든 후보 실측 역전패 0건.
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/pbpTypes.ts` / `server/src/shared/engine/pbp/pbpTypes.ts` — `TeamState.garbageApplied?: boolean` → `garbage?: GarbageTimeState`(신규 인터페이스: `mapSnapshot`, `restIds`)
+- `services/game/engine/pbp/substitutionSystem.ts` / server 미러 — `checkSubstitutionsV2`의 `isGarbage` 블록 삭제(주석으로 이관 표시). 선수별 `garbagePolicy === 'bench'` 블록·`executeGarbageSubstitution`은 그대로(선수별 전술은 initializer에서 비활성 상태)
+- `services/game/engine/pbp/rotationLogic.ts` / server 미러 — 파일 끝에 `garbageLeadThreshold` / `updateGarbageTime` / `applyGarbageTime` / `releaseGarbageTime` / `isGarbageRest` + 상수 4개 추가, 훅 4곳 추가
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — import에 `updateGarbageTime` 추가, `stepPossession`의 checkTemporaryReturns 뒤·checkSubstitutionsV2 앞에 `updateGarbageTime(state, state.home/away)` 호출(1-b)
+
+**Before** (substitutionSystem.checkSubstitutionsV2):
+```ts
+const isGarbage = state.simSettings.garbageTimeEnabled !== false
+    && state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
+    && !team.garbageApplied;
+if (isGarbage) {
+    team.garbageApplied = true;
+    return team.onCourt
+        .filter(p => { if (p.health === 'Injured' || isOut(p)) return false;
+            return tactics.playerTactics?.[p.playerId]?.garbagePolicy !== 'play'; })
+        .map(p => ({ outPlayer: p, reason: '가비지 타임', exitType: 'permanent' as const, benchReason: 'garbage' as const }));
+}
+```
+→ liveEngine 3번에서 `executeGarbageSubstitution`(코트 위 5명 ↔ 벤치 OVR 낮은 순, 해당 선수 표만 수정). 해제 없음.
+
+**After** (rotationLogic):
+```ts
+const GARBAGE_MIN_LEAD = 15;
+const GARBAGE_EXP = 0.6;
+const GARBAGE_K = (GARBAGE_MIN_LEAD - 3) / Math.pow(150, GARBAGE_EXP);   // ≈0.594, 2:30에서 15
+const GARBAGE_RELEASE_MARGIN = 5;
+// need: Q4 = max(15, 3 + K·남은초^0.6) — 12:00 33.8 / 9:00 28.9 / 6:00 23.3 / 4:00 18.9 / 2:30~ 15
+//       OT = 잔여 2:30 이내면 15, 아니면 Infinity(기존 규칙 유지), 그 외 Infinity
+// updateGarbageTime: garbage 없음 && lead >= need → apply / garbage 있음 && lead < need − 5 → release
+```
+- apply: 쉬게 할 선수 = 이 경기 선발(gs=1) + 지금 코트 위. 가비지 라인업 = 나머지 중 지금 코트 슬롯 포지션 일치 우선 OVR 낮은 순 5명(모자라면 쉬게 할 선수 중 비선발 → 선발 순, OVR 낮은 순). rotationMap 전체 사본을 `mapSnapshot`에 저장 후 [지금 분, 48)을 가비지 5명만 true로 덮어씀, 즉시 물리 교체(출전 기록 outReason 'garbage', 들어온 선수 out:-1), 로그 "가비지 타임 — 주전 휴식 (N점 차)" + "교체: IN/OUT".
+- release: [지금 분, 48)을 `mapSnapshot`으로 복원(사본에 없는 선수는 false), 부상·퇴장 선수는 `applyRotationSuccession`, 로그 "가비지 타임 해제 — 주전 복귀 (N점 차)". 실제 교체는 같은 포세션 checkAndApplyRotation. 다시 벌어지면 재발동.
+- 훅(가비지 중 `restIds` 선수는 후순위): ① `findResCandidate` — 다른 후보가 있으면 제외 ② `successionPlayers` — tier 1 ③ `checkAndApplyRotation` 폴백 1단계 필터에서 제외(완화 단계에선 허용) ④ `checkTemporaryReturns` — 해당 선수 오버라이드 복귀 판정 건너뜀(탈진 회복 주전이 가비지 중 재투입되던 경로 차단, 해제 후 재판정)
+
+**검증**: 엔진 파일 tsc 오류 0(client·server). 합성 팀 하네스(server·client 미러 각각) 전부 PASS — 4Q 시작 40점 차 30경기 양 팀 즉시 발동·가비지 중 선발 코트 0포세션 / 22점 차 고정 시 7:40 전 미발동·5:15까지 발동 / 리드 붕괴 시 해제 30/30·주전 복귀 30/30 / 임계 부근 배회 30경기 플립 356회 전부 규칙 일치 / 설정 off 미발동 / 9인 로스터 포함 200경기 항상 코트 5명. 기존 `scripts/rotationSuccessionScenarios.ts`·`rotationBuilderScenarios.ts` 통과. 첫 하네스에서 14인 로스터 시 동 OVR 선발이 가비지 라인업에 뽑히는 문제 발견 → 보충 정렬에 "선발 맨 뒤" 추가.
+
+**롤백 방법**: 두 미러 모두 — rotationLogic 끝의 가비지 블록과 훅 4곳 제거, liveEngine 1-b 호출·import 제거, substitutionSystem에 Before 블록 복원, pbpTypes `garbage?` → `garbageApplied?: boolean` 복원. 서버는 커밋 되돌린 뒤 `scripts/deploy-server.sh`로 재배포.
+
 ## 2026-10-26 — 출장정지 N경기가 N-1경기만 쉬던 off-by-one 수정
 
 **배경**: NBA Active에서 1경기 출장정지를 받은 데빈 부커가 다음 경기에 그대로 출전. `resolveReturnDate`가 안 치른 경기 중 N번째 경기 날짜를 `return_date`로 저장하는데, 출전 판정(simRunner)은 `return_date > game_date`일 때만 부상으로 봐서 복귀일 경기는 정상 출전이었다.

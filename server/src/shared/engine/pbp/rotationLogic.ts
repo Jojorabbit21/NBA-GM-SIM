@@ -74,6 +74,9 @@ function findResCandidate(team: TeamState, targetPosition: string, excludeIds: S
         !excludeIds.has(p.playerId) &&
         (allowShutdown || !p.isShutdown)
     );
+    // [2026-10-26] 가비지 타임에 쉬게 한 선수는 다른 후보가 없을 때만
+    const nonRest = candidates.filter(p => !isGarbageRest(team, p.playerId));
+    if (nonRest.length > 0 && nonRest.length < candidates.length) candidates.splice(0, candidates.length, ...nonRest);
 
     if (candidates.length === 0) return null;
 
@@ -125,6 +128,7 @@ function successionPlayers(state: GameState, team: TeamState, outId: string, cur
         let tier: 0 | 1 | 2 | 3;
         if (p.playerId === outId || isOut(p) || p.health === 'Injured') tier = 3;
         else if (p.health !== 'Healthy' || p.isShutdown || p.benchReason || p.currentCondition <= HARD_FLOOR) tier = 1;
+        else if (isGarbageRest(team, p.playerId)) tier = 1;   // [2026-10-26] 가비지 타임 휴식 중
         else if (team.tactics.playerTactics?.[p.playerId]?.foulPolicy !== 'ignore'
             && evaluateFoulTroubleAction(state, p, currentMinute).shouldBench) tier = 1;
         else tier = 0;
@@ -204,7 +208,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
         const needCount = 5 - validSelectedIds.size;
         let allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
             p.health === 'Healthy' && !isOut(p) && !p.isShutdown && !validSelectedIds.has(p.playerId)
-            && !p.benchReason && !justRested(p)
+            && !p.benchReason && !justRested(p) && !isGarbageRest(teamState, p.playerId)
         );
         if (allAvailable.length < needCount) {
             allAvailable = [...teamState.onCourt, ...teamState.bench].filter(p =>
@@ -571,6 +575,8 @@ export function checkTemporaryReturns(
 
     for (const override of state.activeOverrides) {
         if (!override.active) continue;
+        // [2026-10-26] 가비지 타임에 쉬게 한 선수는 체력이 회복돼도 복귀시키지 않음(해제되면 다시 판정)
+        if (isGarbageRest(team, override.outPlayerId)) continue;
 
         const player = team.bench.find(p => p.playerId === override.outPlayerId);
         if (!player) {
@@ -809,4 +815,148 @@ export function executeGarbageSubstitution(
             type: 'info'
         });
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [2026-10-26] 가비지 타임 — 4쿼터 남은 시간 대비 점수 차로 발동, 점수 차가 좁혀지면 해제
+//  필요 점수 차 = max(15, 3 + k·남은초^0.6), k는 2:30(150초)에서 정확히 15점이 되도록 고정(≈0.594)
+//    → 12:00 ≈ 34점, 9:00 ≈ 29점, 6:00 ≈ 23점, 4:00 ≈ 19점, 2:30 이후 15점
+//    (빌 제임스 safe lead 공식의 변형 — 지수를 0.5→0.6으로 올려 이른 시점을 엄격하게. 멀티 905경기 실측에서
+//     이 기준 이상 리드의 역전패 0건, docs/history/dev-log.md 2026-10-26)
+//  발동: 이 경기 선발 + 지금 코트 위 선수를 쉬게 하고, 나머지 중 OVR 낮은 5명을 남은 시간 내내 표에 배치(표 전체 덮어쓰기 —
+//    이전엔 코트 위 5명만 교체해서 벤치에 있던 주전이 원래 표대로 다시 들어왔다)
+//  해제: 점수 차 < 필요 점수 차 − 5 → 발동 직전 표로 복원(5점 히스테리시스로 경계 깜빡임 방지). 다시 벌어지면 재발동.
+//  연장: 기존 규칙(잔여 2:30 이내 + 15점) 유지
+// 이전: Q4 잔여 2:30 이내 + 15점차 이상이면 코트 위 5명 1회 교체(substitutionSystem), 해제 없음
+const GARBAGE_MIN_LEAD = 15;
+const GARBAGE_EXP = 0.6;
+const GARBAGE_K = (GARBAGE_MIN_LEAD - 3) / Math.pow(150, GARBAGE_EXP);
+const GARBAGE_RELEASE_MARGIN = 5;
+
+/** 지금 시점에 가비지 타임이 되는 점수 차(해당 없으면 Infinity) */
+export function garbageLeadThreshold(state: GameState): number {
+    if (state.quarter === 4) {
+        return Math.max(GARBAGE_MIN_LEAD, 3 + GARBAGE_K * Math.pow(Math.max(0, state.gameClock), GARBAGE_EXP));
+    }
+    if (state.quarter > 4 && state.gameClock < 150) return GARBAGE_MIN_LEAD;
+    return Infinity;
+}
+
+function isGarbageRest(team: TeamState, playerId: string): boolean {
+    return !!team.garbage && team.garbage.restIds.includes(playerId);
+}
+
+/** 매 포세션 교체 체크 전에 호출 — 가비지 타임 발동/해제 */
+export function updateGarbageTime(state: GameState, team: TeamState): void {
+    if (state.simSettings.garbageTimeEnabled === false || !team.tactics.rotationMap) return;
+    const lead = Math.abs(state.home.score - state.away.score);
+    const need = garbageLeadThreshold(state);
+    if (team.garbage) {
+        if (lead < need - GARBAGE_RELEASE_MARGIN) releaseGarbageTime(state, team, lead);
+    } else if (lead >= need) {
+        applyGarbageTime(state, team, lead);
+    }
+}
+
+function applyGarbageTime(state: GameState, team: TeamState, lead: number): void {
+    const map = team.tactics.rotationMap!;
+    const currentMinute = scheduleMinute(state);
+    const currentTotalSec = elapsedGameSec(state);
+    const roster = [...team.onCourt, ...team.bench];
+    const playable = (p: LivePlayer) => p.health === 'Healthy' && !isOut(p);
+    const byLowOvr = (a: LivePlayer, b: LivePlayer) =>
+        (a.isShutdown ? 1 : 0) - (b.isShutdown ? 1 : 0) || a.ovr - b.ovr || a.playerId.localeCompare(b.playerId);
+
+    const rest = new Set<string>([...roster.filter(p => p.gs === 1), ...team.onCourt].map(p => p.playerId));
+    const pool = roster.filter(p => playable(p) && !rest.has(p.playerId)).sort(byLowOvr);
+
+    // 가비지 라인업: 지금 코트 슬롯 포지션별로 OVR 낮은 같은 포지션 선수 우선(이전 executeGarbageSubstitution 규칙), 없으면 OVR 낮은 순
+    const unit: LivePlayer[] = [];
+    for (const slot of team.onCourt.map(p => p.position)) {
+        const idx = pool.findIndex(p => (p.nativePosition ?? p.position) === slot);
+        if (idx > -1) unit.push(...pool.splice(idx, 1));
+    }
+    while (unit.length < 5 && pool.length > 0) unit.push(pool.shift()!);
+    // 로스터가 얇으면 쉬게 할 선수 중에서 채움 — 선발은 맨 뒤, 그다음 OVR 낮은 순
+    if (unit.length < 5) {
+        const extra = roster.filter(p => playable(p) && rest.has(p.playerId))
+            .sort((a, b) => (a.gs === 1 ? 1 : 0) - (b.gs === 1 ? 1 : 0) || byLowOvr(a, b));
+        while (unit.length < 5 && extra.length > 0) unit.push(extra.shift()!);
+    }
+    if (unit.length < 5) return;
+
+    const unitIds = new Set(unit.map(p => p.playerId));
+    const mapSnapshot: Record<string, boolean[]> = {};
+    for (const [id, arr] of Object.entries(map)) mapSnapshot[id] = [...arr];
+    for (const p of roster) {
+        if (!map[p.playerId]) map[p.playerId] = Array(48).fill(false);
+        for (let i = currentMinute; i < 48; i++) map[p.playerId][i] = unitIds.has(p.playerId);
+    }
+    team.garbage = { mapSnapshot, restIds: [...rest].filter(id => !unitIds.has(id)) };
+
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId: team.id,
+        text: `가비지 타임 — 주전 휴식 (${lead}점 차)`,
+        type: 'info'
+    });
+
+    // 즉시 일괄 교체(출전 기록 사유 'garbage'). 부상·퇴장으로 코트에 남은 선수는 이후 교체 체크가 처리
+    const outs = team.onCourt.filter(p => !unitIds.has(p.playerId) && playable(p));
+    const ins = team.bench.filter(p => unitIds.has(p.playerId)).slice(0, outs.length);
+    if (ins.length === 0) return;
+    const slotsBefore = snapshotSlots(team);
+    const outNames: string[] = [];
+    for (const outP of outs.slice(0, ins.length)) {
+        team.onCourt.splice(team.onCourt.indexOf(outP), 1);
+        team.bench.push(outP);
+        const hist = state.rotationHistory[outP.playerId];
+        if (hist && hist.length > 0) {
+            hist[hist.length - 1].out = currentTotalSec;
+            hist[hist.length - 1].outReason = 'garbage';
+        }
+        outNames.push(outP.playerName);
+    }
+    for (const inP of ins) {
+        team.bench.splice(team.bench.indexOf(inP), 1);
+        team.onCourt.push(inP);
+        if (!state.rotationHistory[inP.playerId]) state.rotationHistory[inP.playerId] = [];
+        state.rotationHistory[inP.playerId].push({ in: currentTotalSec, out: -1 });
+        inP.lastSubInTime = state.gameClock;
+        inP.conditionAtSubIn = inP.currentCondition;
+    }
+    assignCourtSlots(team, slotsBefore);
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId: team.id,
+        text: `교체: IN [${ins.map(p => p.playerName).join(', ')}] OUT [${outNames.join(', ')}]`,
+        type: 'info'
+    });
+}
+
+function releaseGarbageTime(state: GameState, team: TeamState, lead: number): void {
+    const map = team.tactics.rotationMap!;
+    const garbage = team.garbage!;
+    const currentMinute = scheduleMinute(state);
+    team.garbage = undefined;
+
+    // 발동 직전 표로 지금 분부터 되돌림(실제 교체는 같은 포세션의 checkAndApplyRotation)
+    for (const [id, arr] of Object.entries(map)) {
+        const snap = garbage.mapSnapshot[id];
+        for (let i = currentMinute; i < 48; i++) arr[i] = snap ? snap[i] : false;
+    }
+    // 가비지 타임 중 부상·퇴장한 선수의 남은 시간은 승계로 메움
+    for (const p of [...team.onCourt, ...team.bench]) {
+        if (p.health === 'Injured' || isOut(p)) applyRotationSuccession(state, team, p, currentMinute);
+    }
+
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId: team.id,
+        text: `가비지 타임 해제 — 주전 복귀 (${lead}점 차)`,
+        type: 'info'
+    });
 }

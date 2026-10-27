@@ -7,7 +7,7 @@ import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
 import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
-import { checkAndApplyRotation, prepareOvertimeRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution } from './rotationLogic';
+import { checkAndApplyRotation, prepareOvertimeRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution, updateGarbageTime } from './rotationLogic';
 import { assignCourtSlots, snapshotSlots } from './slotAssignment';
 import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
@@ -614,6 +614,11 @@ export function stepPossession(state: GameState): StepResult {
     // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 체크에 반영)
     checkTemporaryReturns(state, state.home, currentMinute);
     checkTemporaryReturns(state, state.away, currentMinute);
+
+    // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
+    //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
+    updateGarbageTime(state, state.home);
+    updateGarbageTime(state, state.away);
 
     // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
     //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
