@@ -83,6 +83,10 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
         isPossessionEnd: possessionOutcome ? true : undefined,
         possessionOutcome,
         possessionTeamId: possessionOutcome ? (possessionTeamId ?? teamId) : undefined,
+        // [2026-10-27] 줄을 만드는 순간의 스코어 — 예전엔 liveEngine이 포세션 처리 후 같은 포세션의 모든 줄에 최종 스코어를
+        // 찍어서 "레이업(+2)" 줄에 앤드원 자유투까지, 파울 줄에 자유투 점수까지 미리 반영됐다(client 미러 참조).
+        homeScore: state.home.score,
+        awayScore: state.away.score,
     });
 }
 
@@ -347,17 +351,18 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         const foulerIsOffense = !!defender && offTeam.onCourt.some(p => p.playerId === defender.playerId);
         const ftTeam = foulerIsOffense ? defTeam : offTeam;
         const foulerTeam = foulerIsOffense ? offTeam : defTeam;
-        const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
-        const ftPct = ftShooter.attr.ft / 100;
-        ftShooter.fta += 1;
-        let ftMade = 0;
-        if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
         const isEjected = defender && (defender.techFouls || 0) >= 2;
         if (isEjected && defender) { defender.ejectionReason = 'technical'; }
         const commentaryBase = defender ? getTechnicalFoulCommentary(defender) : `테크니컬 파울이 선언됩니다!`;
         const ejectionSuffix = isEjected ? ' 2번째 테크니컬 파울로 퇴장당합니다.' : '';
         // [2026-10-07] 파울 로그 → 자유투 로그(freethrow 타입, 팀 PTS 집계 포함) 분리 (client 미러 참조)
         addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}`, 'foul');
+        // [2026-10-27] 자유투는 파울 로그 뒤에 — 파울 줄 스코어에 자유투 점수가 미리 들어가지 않도록(client 미러 참조)
+        const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+        const ftPct = ftShooter.attr.ft / 100;
+        ftShooter.fta += 1;
+        let ftMade = 0;
+        if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
         // [2026-10-08] 공격권 유지/이전 분기 (client 미러 참조)
         const possessionNote = ftTeam.id === offTeam.id
             ? `${regionOf(offTeam)}의 공격권이 유지됩니다.`
@@ -367,12 +372,6 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     } else if (type === 'flagrantFoul') {
         const fouledOut = defender ? commitFoul(defender) : false;
         const isFlagrant2 = result.isFlagrant2;
-        const ftPct = actor.attr.ft / 100;
-        actor.fta += 2;
-        let ftMade = 0;
-        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
-        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
-        updatePlusMinus(offTeam, defTeam, ftMade);
         if (defender) defender.flagrantFouls = (defender.flagrantFouls || 0) + 1;
         const commentary = defender
             ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor, playType) : getFlagrant1Commentary(defender, actor, playType))
@@ -387,6 +386,13 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
         foulLog += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
         addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+        // [2026-10-27] 자유투는 파울 로그 뒤에 (client 미러 참조)
+        const ftPct = actor.attr.ft / 100;
+        actor.fta += 2;
+        let ftMade = 0;
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        updatePlusMinus(offTeam, defTeam, ftMade);
         addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공. ${regionOf(offTeam)}의 공격권이 유지됩니다.`, 'freethrow', ftMade);  // [2026-10-08] client 미러
         if (isFlagrant2 && defender) {
             defender.ejectionReason = 'flagrant';

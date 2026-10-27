@@ -145,6 +145,56 @@ useQuery({
 
 **롤백 방법**: 두 파일을 Before로 되돌리면 됨 (git으로 `hooks/useRoomPlayerConditions.ts`, `hooks/useLeagueRawStats.ts` 이전 커밋 복원). 서버/DB 변경 없음.
 
+## 2026-10-27 — PBP 로그 스코어를 줄 생성 시점으로 (앤드원·자유투 점수가 한 줄 먼저 올라가던 표시 수정)
+
+**배경**: NBA Active 92경기 PBP에서 "레이업(+2)" 줄에 이미 +3(앤드원 자유투 포함), 슈팅 파울 줄에 자유투 점수가 미리 반영.
+자유투 성공 상황 전부 해당(일반 슈팅 파울 1,376 / 보너스 300 / 앤드원 87 / 테크니컬·플래그런트 72건 = 경기당 약 20회).
+원인: `liveEngine.stepPossession`이 포세션 처리 후 그 포세션의 모든 새 로그에 최종 스코어를 일괄 기록. 최종 점수·박스·쿼터 점수는 정상(표시 순서만).
+수정 중 함께 발견: ① 타임아웃 경로의 채우기 조건 `if (!log.homeScore)`가 홈 0점 줄을 빈 줄로 오인해 덮어씀,
+② 테크니컬·플래그런트는 자유투 점수를 파울 로그보다 먼저 더함, ③ 부상 로그(stateUpdater, 득점 처리 전 직접 push)가 처리 후 스코어를 받음.
+
+**변경 파일** (client/server 미러 쌍 — 반드시 같이 롤백):
+- `services/game/engine/pbp/statsMappers.ts` (client) / `server/src/shared/engine/pbp/statsMappers.ts` (server)
+- `services/game/engine/pbp/liveEngine.ts` (client) / `server/src/shared/engine/pbp/liveEngine.ts` (server)
+
+**Before**:
+```ts
+// statsMappers.addLog — 스코어 없음
+state.logs.push({ quarter, timeRemaining, teamId, text, type, points, foulTeamId, isPossessionEnd, possessionOutcome, possessionTeamId });
+// technicalFoul / flagrantFoul — 자유투 계산(score++) → 파울 addLog → 자유투 addLog
+// liveEngine.stepPossession
+const ftOffReb = applyPossessionResult(state, result);
+...
+newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; });                       // 포세션 최종 스코어 일괄
+allNewLogs.forEach(log => { if (!log.homeScore) { log.homeScore = sh; log.awayScore = sa; } });   // 타임아웃 경로
+// _handleGameEnd
+newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; });
+```
+
+**After**:
+```ts
+// addLog — 생성 시점 스코어
+state.logs.push({ ..., homeScore: state.home.score, awayScore: state.away.score });
+// technicalFoul / flagrantFoul — 파울 addLog → 자유투 계산 → 자유투 addLog
+// stepPossession — 처리 전에 생긴 줄(부상 등)은 처리 전 스코어
+for (let i = logsBefore; i < state.logs.length; i++) { if (state.logs[i].homeScore === undefined) { /* 현재 스코어 */ } }
+const ftOffReb = applyPossessionResult(state, result);
+...
+newLogs.forEach(log => { if (log.homeScore === undefined) { log.homeScore = sh; log.awayScore = sa; } });   // 빈 줄만
+allNewLogs.forEach(log => { if (log.homeScore === undefined) { ... } });                   // 0점 오인 수정
+// _handleGameEnd — 빈 줄만
+```
+
+**검증**: client/server tsc 수정 파일 오류 0. 각 줄의 "직전 스코어 대비 변화 = 그 줄 득점(score·freethrow) / 그 외 0" 검사:
+- 현재 배포본(d3108b10, NBA Active 실데이터 1,230경기): 불일치 46,835줄
+- 수정본 server(같은 데이터): 0 / 503,824줄. client(합성 팀 300경기): 0 / 110,942줄
+- 스코어 없는 줄(경기·쿼터 시작 안내 등, logsBefore 이전 push)은 기존과 동일하게 비어 있음(경기당 5줄)
+- 엔진 결과 불변: 4시즌(4,920경기) 포세션 100.11 → 100.06, 득점 108.28 → 108.16, 홈 승률 52.9% → 52.9%
+  (테크니컬·플래그런트 자유투 난수 순서가 바뀌어 경기 흐름만 갈라짐). 이미 저장된 game_pbp 로그는 소급되지 않음.
+
+**롤백 방법**: 위 Before로 4파일 되돌리기(addLog 스코어 2줄 삭제, 테크니컬·플래그런트 자유투 블록을 파울 addLog 앞으로,
+stepPossession 사전 채우기 루프 삭제, 세 forEach를 무조건 덮어쓰기/`!log.homeScore`로).
+
 ## 2026-10-27 — 홈 어드밴티지 0.02 → 0.005 + 경기 시작 점프볼 항상 실시
 
 **배경**: 홈 득실 +4.6(PBL 실경기 1,321경기 ±0.5)·홈 승률 60.6%, NBA 2024-25는 홈 승률 약 54.3%(669승 562패)·최근 홈 득실 +2 미만.

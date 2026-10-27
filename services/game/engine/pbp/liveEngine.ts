@@ -581,6 +581,11 @@ export function stepPossession(state: GameState): StepResult {
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
 
+    // [2026-10-27] 득점 처리 전에 생긴 줄(시간 경과 중 부상 등 직접 push)은 처리 전 스코어로(server 미러와 동일)
+    for (let i = logsBefore; i < state.logs.length; i++) {
+        const log = state.logs[i];
+        if (log.homeScore === undefined) { log.homeScore = state.home.score; log.awayScore = state.away.score; }
+    }
     const ftOffReb = applyPossessionResult(state, result);
 
     // [2026-10-27] 공격 리바운드 판정은 교체(아래 2~4번) 전에 — 교체가 리바운더를 벤치로 보내면 onCourt 검사가 실패해
@@ -683,7 +688,8 @@ export function stepPossession(state: GameState): StepResult {
 
     // 각 로그에 현재 스코어 스냅샷 기록 (포세션 결과 적용 후)
     { const sh = state.home.score, sa = state.away.score;
-      newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
+      // [2026-10-27] addLog가 만든 줄은 생성 시점 스코어를 이미 가짐 — 비어 있는 줄(교체·해설 등 직접 push)만 채운다(server 미러와 동일)
+      newLogs.forEach(log => { if (log.homeScore === undefined) { log.homeScore = sh; log.awayScore = sa; } }); }
 
     if (state.gameClock <= 0) {
         // Q4 종료 = 즉시 게임 종료 (30초 타이머 없음)
@@ -711,7 +717,8 @@ export function stepPossession(state: GameState): StepResult {
         // 타임아웃 로그 포함하여 전체 newLogs 재수집
         const allNewLogs = state.logs.slice(logsBefore);
         const sh = state.home.score, sa = state.away.score;
-        allNewLogs.forEach(log => { if (!log.homeScore) { log.homeScore = sh; log.awayScore = sa; } });
+        // [2026-10-27] `!log.homeScore`는 홈 0점 줄을 빈 줄로 오인해 덮어썼음 → undefined만 채움(server 미러와 동일)
+        allNewLogs.forEach(log => { if (log.homeScore === undefined) { log.homeScore = sh; log.awayScore = sa; } });
         return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: true, timeoutTeamId: timeoutDecision.teamId, newLogs: allNewLogs };
     }
 
@@ -829,7 +836,8 @@ function _handleGameEnd(state: GameState): StepResult {
 
     const newLogs = state.logs.slice(logsBefore);
     { const sh = state.home.score, sa = state.away.score;
-      newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
+      // [2026-10-27] addLog가 만든 줄은 생성 시점 스코어를 이미 가짐 — 비어 있는 줄(교체·해설 등 직접 push)만 채운다(server 미러와 동일)
+      newLogs.forEach(log => { if (log.homeScore === undefined) { log.homeScore = sh; log.awayScore = sa; } }); }
     return { result: null, isQuarterEnd: false, isGameEnd: true, isTimeout: false, newLogs };
 }
 
