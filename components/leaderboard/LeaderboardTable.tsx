@@ -41,6 +41,7 @@ const formatValue = (val: number, format?: string) => {
     }
     if (format === 'number') return val.toFixed(1);
     if (format === 'integer') return Math.round(val).toString();
+    if (format === 'decimal3') return val.toFixed(3).replace(/^(-?)0\./, '$1.');
     return val;
 };
 

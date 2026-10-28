@@ -34,6 +34,58 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-28 — Win Shares(OWS/DWS/WS/WS48) 추가 + PER/WS 공통 컨텍스트 리팩터링 + 로스터 탭 오계산 방지
+
+**배경**: 고급 선수 지표 계획 Phase A-3. PER 과 같은 클라이언트 계산 방식(리그 전체 선수 스탯은 이미 받아 둠). PER·WS·이후 BPM/VORP 이 같은 입력(팀 합계·리그 합계·페이스)을 쓰므로 공통 컨텍스트로 묶음(사용자가 권장안 선택).
+
+**변경 파일** (모두 client, 서버 미러 없음):
+- `utils/leagueMetricsContext.ts` (신규) — `buildLeagueMetricsContext(players, teamSummaries)`: 선수 누적에서 팀 합계·리그 합계, 팀 요약(경기 수·페이스·득점·실점·팀 포제션·상대 합계)에서 리그 페이스/득점÷포제션/경기당 득점. 팀 포제션은 요약값(멀티: 팀 어드밴스드 RPC `possTotal`) 우선, 없으면 BBRef 식(`estimateTeamPoss`).
+- `utils/winShares.ts` (신규) — `computeWinShares()`: 공개된 Oliver/BBRef 식. 공격(qAST·FG/AST/FT/ORB_Part, 팀 스코어링 포제션·ORB 가중, 개인 득점 생산 PProd·TotPoss, 한계 공격 = PProd − 0.92×리그 득점/포제션×TotPoss), 수비(스탑 1·2, 스탑%, 개인 DRtg = 팀 DRtg + 0.2×(…), 한계 수비 = 출전 비중×팀 포제션×(1.08×리그 득점/포제션 − DRtg/100)), 승수 환산 = 한계 득점 ÷ (0.32×리그 팀 경기당 득점×팀 페이스/리그 페이스). WS = OWS + DWS, WS/48 = WS/MP×48.
+- `utils/per.ts` — 입력을 `PerInput[]`+페이스 맵에서 `PlayerTotals[]`+공통 컨텍스트로 변경(계산식 동일).
+- `hooks/useLeaderboardData.ts` — 컨텍스트 1회 구성 후 `computePer`/`computeWinShares` 호출, `stats.per/ows/dws/ws/ws48` 기록, 히트맵 범위 등록. 팀 요약은 `teamStats`(경기 수·페이스·득점·실점) + `rawOppTotals` + (멀티) `teamAdvanced[].possTotal`. **한 팀만 넘어오면(`MIN_TEAMS_FOR_LEAGUE_METRICS=2` 미만) 계산 생략** — 로스터 화면은 `[team]` 한 팀만 넘겨 "리그"가 그 팀이 되어 값이 틀리기 때문(기존 PER 열도 해당, 이번에 발견·수정).
+- `data/leaderboardConfig.ts` — `ColumnDef.leagueWide`·`format 'decimal3'` 추가. Advanced 열에 PER, OWS, DWS, WS, WS/48(전부 `leagueWide`, WS/48 은 `.123` 형식). 팀 Advanced 열에서는 제외.
+- `components/leaderboard/LeaderboardTable.tsx` — `formatValue` 에 `decimal3`(소수 3자리·앞 0 생략).
+- `components/roster/RosterStatsStack.tsx`, `components/roster/PhoneRosterStats.tsx` — `PLAYER_COLUMNS` 필터에 `!c.leagueWide` 추가(로스터 선수 기록 탭에서 PER/WS 열 숨김).
+- `utils/percentileCard.ts` — Value 섹션에 WS/48 행.
+- (후속, 같은 날) `utils/percentileCard.ts` — Value 섹션에 OWS/48·DWS/48 행 추가(`ows`·`dws` 시즌 누적 ÷ 총 출전시간 × 48, `decimal3` 형식). 리더보드 열은 누적값 OWS/DWS 그대로 유지.
+
+**Before**: `stats.ows/dws/ws/ws48` 없음. PER 열이 로스터 Advanced 탭에도 나타났고(한 팀 기준 정규화 → 틀린 값), 계산 입력이 PER 전용.
+**After**: WS 4열 + PER 이 리더보드 Advanced 에만 나타남(로스터 탭 제외), 컨텍스트 공용.
+
+**검증**: `tsc --noEmit` 관련 파일 오류 0건. 합성 리그(30팀×10명·82경기·팀 강약 ±8%)로 — 스타 WS 15.6(WS/48 .261)·선발 6.4(.126)·롤 2.6(.070)·벤치 0.8(.046)·비효율 −1.7(−.101), **리그 WS 합 1278.6 vs 팀 승수 합 1230(+4%)**, 팀 WS 합과 승수 상관 1.0(합성 승수가 득실마진 선형이라 구조상 높게 나옴). PER 은 리팩터링 후에도 같은 값(27.3/16.2/10.9/8.9/0.2). **실제 리그 값·브라우저 확인은 아직 안 함.**
+
+**한계 / 후속**:
+- 멀티는 경기별 상대 박스가 없어 상대팀 합계(`opp`)가 "상대 시즌 평균 근사값" — 개인 수비 레이팅 보정(팀 DRtg 의 20%)에만 영향, 팀 DRtg 는 실제 실점/포제션.
+- 공식이 길고 기억 기반 구현이라 상수·식 오류 가능성이 있다(공식 문서 페이지는 403으로 대조 못 함) — **실제 시즌 데이터에서 팀별 WS 합 ≈ 팀 승수, 리그 가중 평균 WS/48 ≈ .100 인지 반드시 확인**.
+- 시즌 중 이적 선수의 팀 합계는 현재 소속 팀 로스터 합(PER 과 동일 한계).
+- 로스터 선수 기록 탭과 선수 비교 화면에는 PER/WS 미표시(로스터는 리그 컨텍스트를 넘겨야 가능 — 후속).
+- 싱글 리더보드에도 열이 나타남(훅·열 정의 공유).
+
+**롤백 방법**: `utils/winShares.ts`·`utils/leagueMetricsContext.ts` 삭제 + `per.ts` 를 이전 시그니처(`PerInput[]`, `teamPace` 맵)로 복원 + `useLeaderboardData.ts` 의 컨텍스트/PER/WS 블록을 PER 단독 호출로 복원 + `leaderboardConfig.ts` 의 `leagueWide`/`decimal3`/WS 열 제거 + `LeaderboardTable.tsx` 의 `decimal3` 줄·로스터 두 파일의 `!c.leagueWide` 필터 제거 + `percentileCard.ts` 의 WS/48 행 제거.
+
+## 2026-10-28 — PER(Player Efficiency Rating) 추가 (클라이언트 계산, 리더보드 Advanced 열 + 퍼센타일 카드 Value)
+
+**배경**: 고급 선수 지표 계획(`docs/plan/advanced-metrics-plan.md` Phase A-2)의 첫 지표. 계획은 "lg_aPER 를 서버 일일 스냅샷으로 저장"이었으나, 멀티 리더보드/로스터/프로필이 이미 리그 전체 선수 시즌 스탯을 RPC 1회로 받아 5분 캐시하고 있어 **같은 데이터로 클라이언트에서 계산하는 방식으로 변경(사용자 결정)** — 새 테이블·서버 작업·Fly 배포 없음. 값은 스탯 데이터가 갱신될 때 함께 갱신되고 하루 한 번 고정되지는 않는다.
+
+**변경 파일** (모두 client, 서버 미러 없음):
+- `utils/per.ts` (신규) — `computePer(players, teamPace)`: 공개된 Hollinger 식을 직접 구현. factor·VOP·DRB% 는 리그 합계에서, uPER 은 선수 누적(총 출전시간)+팀 AST/FG 비율, aPER = uPER × (리그 평균 페이스 ÷ 팀 페이스), PER = aPER × 15 ÷ lg_aPER(출전시간 가중 평균). 출전시간 0 이거나 리그 합계를 못 구하면(경기 전) 0.
+- `hooks/useLeaderboardData.ts` — `allPlayers` useMemo 끝에서 팀별 map 이 끝난 뒤 한 번 `computePer` 호출해 각 선수 `stats.per` 에 기록(stats 는 복사본이라 원본 불변). 팀 페이스는 `teamStats[].stats.pace`(멀티는 팀 어드밴스드 RPC 값으로 덮인 값). 히트맵 범위 `update('per', ...)` 추가. 정규/플레이오프 모두 같은 경로(`seasonType`).
+- `data/leaderboardConfig.ts` — `ADVANCED_COLUMNS` 맨 앞(TS% 앞)에 `per` 열(format number, 정렬·히트맵). 팀 Advanced 열(`TEAMS_ADVANCED_COLUMNS`)에서는 제외. 로스터 Advanced 스택·폰 로스터 통계는 `PLAYER_COLUMNS` 를 그대로 쓰므로 자동 반영.
+- `utils/percentileCard.ts` — Value 섹션에 PER 행 추가(`stats.per`).
+
+**Before**: 선수 `stats` 에 `per` 없음, Advanced 열 TS% 부터, 퍼센타일 카드 Value 섹션 없음.
+**After**: `stats.per` 계산됨, Advanced 열 PER 추가, 퍼센타일 카드 Value 섹션에 PER.
+
+**검증**: `tsc --noEmit` 에서 관련 파일 오류 0건. 합성 리그(30팀×10명, 82경기)로 `computePer` — 슈퍼스타 27.3 / 선발 16.2 / 롤 10.9 / 벤치 8.9 / 비효율 0.2, **출전시간 가중 리그 평균 정확히 15.000**, 빈 리그·0분 선수는 0. **브라우저 육안 확인과 실제 리그 값 점검은 아직 안 함.**
+
+**한계 / 후속**:
+- 시즌 중 이적한 선수의 팀 AST/FG 비율은 현재 소속 팀 로스터 합계를 쓴다(이전 팀 기록 분리 안 함 — 영향은 AST/FG 비율 한 항목).
+- 이 훅은 싱글 리더보드와 공유라 **싱글 리더보드에도 PER 열이 나타난다**(멀티 전용 스코프보다 넓음, 페이스는 훅이 직접 계산한 값 사용).
+- 선수 비교 화면(`MultiPlayerCompareView`)은 커리어 행(`statsToCareerRow`) 경로라 리그 컨텍스트가 없어 이번에 미반영 — 별도 작업.
+- 엔진 시뮬 결과로 PER 분포(리그 평균 15, 상위 선수 25~30 수준)가 맞는지는 실제 리그 데이터로 확인 필요.
+
+**롤백 방법**: `utils/per.ts` 삭제 + `useLeaderboardData.ts` 의 `computePer` import/호출 블록·`update('per')` 줄 제거 + `leaderboardConfig.ts` 의 `per` 열과 `TEAMS_ADVANCED_COLUMNS` 제외 목록의 `'per'` 제거 + `percentileCard.ts` 의 PER 행 제거.
+
 ## 2026-10-28 — 선수 프로필 "퍼센타일" 탭 신설 (멀티 전용 퍼센타일 랭킹 카드)
 
 **배경**: Baseball Savant 의 선수 퍼센타일 카드(섹션별 막대 + 백분위 원 + 실제 값)를 농구식으로 옮기기로 하고(`docs/plan/advanced-metrics-plan.md` §7), 노출 위치를 "선수 프로필 화면의 새 탭"으로 정함. 엔진·공식 변경 없음 — 리더보드와 같은 계산값(`useLeaderboardData`)을 읽어 리그 백분위만 계산하는 UI 추가.

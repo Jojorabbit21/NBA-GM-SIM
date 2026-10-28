@@ -43,6 +43,14 @@ const MIN_ATTEMPT_SHARE = 0.2;
 
 const pct1 = (v: number) => `${(v * 100).toFixed(1)}`;
 const num1 = (v: number) => v.toFixed(1);
+const dec3 = (v: number) => v.toFixed(3).replace(/^(-?)0\./, '$1.');   // .123 (WS/48)
+
+/** 시즌 누적 값(ows/dws)을 48분당으로 환산 — 출전시간 0 이거나 값이 아직 없으면 null. */
+const per48 = (row: PercentileRow, key: 'ows' | 'dws'): number | null => {
+    const v = row.stats[key];
+    const mp = row.stats.mp || 0;
+    return typeof v === 'number' && mp > 0 ? (v / mp) * 48 : null;
+};
 
 const ratio = (num: number, den: number): number | null => (den > 0 ? num / den : null);
 const perGame = (row: PercentileRow, total: number): number | null => {
@@ -64,9 +72,14 @@ export function calculateScreenRating(p: Pick<Player, 'strength' | 'height' | 'w
     return physique * cfg.PHYSIQUE_WEIGHT + (p.offBallMovement ?? 70) * cfg.TIMING_WEIGHT;
 }
 
-// Value(PER/TIM/XIM/BPM/VORP/WS48)·SCRN% 는 해당 지표 구현 전까지 목록에 없다 — 섹션이 비면 카드에서 숨긴다
+// Value 의 TIM/XIM/BPM/VORP·SCRN% 는 해당 지표 구현 전까지 목록에 없다 — 섹션이 비면 카드에서 숨긴다
 // (docs/plan/advanced-metrics-plan.md §7~8).
 export const PERCENTILE_METRICS: PercentileMetric[] = [
+    // 가치 — PER·WS/48·OWS/48·DWS/48 만 구현(나머지 TIM/XIM/BPM/VORP 은 advanced-metrics-plan §2~3). 값은 useLeaderboardData 가 stats.per / stats.ws48 로 채운다.
+    { key: 'per', label: 'PER', section: 'value', value: r => r.stats['per'], format: num1 },
+    { key: 'ws48', label: 'WS/48', section: 'value', value: r => r.stats['ws48'], format: dec3 },
+    { key: 'ows48', label: 'OWS/48', section: 'value', value: r => per48(r, 'ows'), format: dec3 },
+    { key: 'dws48', label: 'DWS/48', section: 'value', value: r => per48(r, 'dws'), format: dec3 },
     // 득점
     { key: 'ts%', label: 'TS%', section: 'scoring', value: r => r.stats['ts%'], attempts: r => r.stats.fga + 0.44 * r.stats.fta, format: pct1 },
     { key: 'efg%', label: 'eFG%', section: 'scoring', value: r => r.stats['efg%'], attempts: r => r.stats.fga, format: pct1 },

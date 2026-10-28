@@ -6,8 +6,14 @@ import { FilterItem, ViewMode, ATTRIBUTE_KEYS, getAttrValue as getAttrVal } from
 import { isFinal } from '../views/multi/season/multiGameReveal';
 import { useServerClockBucket } from '../utils/serverClock';
 import type { TeamAdvancedStatsMap } from './useTeamSeasonAdvancedStats';
+import { computePer } from '../utils/per';
+import { computeWinShares } from '../utils/winShares';
+import { buildLeagueMetricsContext, type PlayerTotals, type TeamSummary } from '../utils/leagueMetricsContext';
 
 export type SeasonType = 'regular' | 'playoff';
+
+/** PER·Win Shares 같은 리그 기준 지표를 계산하는 최소 팀 수 — 한 팀만 넘어오면(로스터 화면) 리그 전체가 아니라고 보고 건너뛴다. */
+const MIN_TEAMS_FOR_LEAGUE_METRICS = 2;
 
 const ZONE_KEYS = [
     'zone_rim', 'zone_paint', 
@@ -361,7 +367,7 @@ export const useLeaderboardData = (
 
     // 1. Flatten Players & Pre-calculate Zone % AND Advanced Stats
     const allPlayers = useMemo(() => {
-        return teams.flatMap(t => {
+        const rows = teams.flatMap(t => {
             // Find team stat object to get Opponent stats for context
             const tStat = teamStats.find(ts => ts.id === t.id);
             // Tm MP = 전체 선수 출전시간 합계. 실제 로스터 MP 합산 사용 (정확도).
@@ -497,6 +503,46 @@ export const useLeaderboardData = (
                 };
             });
         });
+
+        // PER / Win Shares — 리그 전체 선수·팀 합계가 모여야 정규화·기준값을 구할 수 있어 팀별 map 이 끝난 뒤 한 번에 계산한다.
+        // 선수 stats 는 위에서 복사한 객체라 직접 덧붙여도 원본(p.stats)에 영향이 없다. 입력 컨텍스트는 두 지표가 공유(utils/leagueMetricsContext.ts).
+        const playerTotals: PlayerTotals[] = rows.map(r => {
+            const s = r.stats as any;
+            return {
+                teamId: r.teamId, mp: s.mp || 0, pts: s.pts || 0, fgm: s.fgm || 0, fga: s.fga || 0, p3m: s.p3m || 0,
+                ftm: s.ftm || 0, fta: s.fta || 0, offReb: s.offReb || 0, defReb: s.defReb || 0, reb: s.reb || 0,
+                ast: s.ast || 0, stl: s.stl || 0, blk: s.blk || 0, tov: s.tov || 0, pf: s.pf || 0,
+            };
+        });
+        const teamSummaries: TeamSummary[] = teamStats.map(ts => {
+            const g = (ts.stats as any).g || 0;
+            const o = ts.rawOppTotals;
+            return {
+                teamId: ts.id,
+                g,
+                pace: (ts.stats as any).pace || 0,
+                pts: ((ts.stats as any).pts || 0) * g,
+                oppPts: ((ts.stats as any).pa || 0) * g,
+                // 멀티: 팀 어드밴스드 RPC 의 BBRef 공통 포제션 누적값. 싱글은 0 → 컨텍스트가 식으로 계산.
+                poss: teamAdvanced?.[ts.id]?.possTotal ?? 0,
+                opp: { fgm: o.oppFgm, fga: o.oppFga, ftm: o.oppFtm, fta: o.oppFta, offReb: o.oppOreb, defReb: o.oppDreb, tov: o.oppTov },
+            };
+        });
+        // 한 팀(로스터 화면)만 넘어오면 "리그" 정규화가 그 팀 기준이 되어 값이 틀리므로 계산하지 않는다(stats.per 등은 undefined).
+        if (teams.length >= MIN_TEAMS_FOR_LEAGUE_METRICS) {
+            const metricsCtx = buildLeagueMetricsContext(playerTotals, teamSummaries);
+            const perValues = computePer(playerTotals, metricsCtx);
+            const wsValues = computeWinShares(playerTotals, metricsCtx);
+            rows.forEach((r, i) => {
+                const st = r.stats as any;
+                st['per'] = perValues[i];
+                st['ows'] = wsValues[i].ows;
+                st['dws'] = wsValues[i].dws;
+                st['ws'] = wsValues[i].ws;
+                st['ws48'] = wsValues[i].ws48;
+            });
+        }
+        return rows;
     }, [teams, teamStats, seasonType, teamAdvanced]);
 
     // 3. Calculate Global Min/Max for Color Scale (Heatmap)
@@ -569,6 +615,11 @@ export const useLeaderboardData = (
                 update('dfg3%',   s['dfg3%']   || 0);
 
                 // Advanced Stats
+                update('per', s['per'] || 0);
+                update('ows', s['ows'] || 0);
+                update('dws', s['dws'] || 0);
+                update('ws', s['ws'] || 0);
+                update('ws48', s['ws48'] || 0);
                 update('efg%', s['efg%']);
                 update('tov%', s['tov%']);
                 update('usg%', s['usg%']);

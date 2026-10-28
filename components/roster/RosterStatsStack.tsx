@@ -136,7 +136,8 @@ const CategoryTable: React.FC<{
         [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true, teamAdvanced,
     );
 
-    const cols = PLAYER_COLUMNS.filter(c => c.category === category);
+    // leagueWide 열(PER·Win Shares)은 리그 전체가 필요해 한 팀만 넘기는 이 화면에서는 값이 틀리므로 제외
+    const cols = PLAYER_COLUMNS.filter(c => c.category === category && !c.leagueWide);
     const headerRow1 = buildHeaderRows(cols);
 
     // 팀 평균(단순 평균 — 정밀 가중평균 대신 각 선수 값의 산술 평균). includeZeroGamePlayers로

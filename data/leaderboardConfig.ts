@@ -24,11 +24,13 @@ export interface ColumnDef {
     sortable?: boolean;
     isHeatmap?: boolean;
     isInverse?: boolean; // Lower is better (TOV, PA, etc)
-    format?: 'number' | 'percent' | 'string' | 'custom' | 'integer';
+    format?: 'number' | 'percent' | 'string' | 'custom' | 'integer' | 'decimal3';   // decimal3 = 소수 3자리, 앞의 0 생략(.123) — WS/48
     stickyLeft?: number; // Pixel value for sticky positioning
     stickyShadow?: boolean; // Show shadow on this sticky column
     category?: StatCategory | 'Common'; // Which tab this column belongs to
     attrGroup?: string; // Attributes 탭 전용: 카테고리 그룹 (INSIDE, OUTSIDE 등)
+    /** 리그 전체 선수·팀이 모여야 계산되는 열(PER, Win Shares) — 한 팀만 넘기는 화면(로스터 선수 기록 탭)에서는 숨긴다. */
+    leagueWide?: boolean;
 }
 
 // Column Widths
@@ -181,6 +183,11 @@ const SHOOTING_COLUMNS = generateShootingColumns();
 // Advanced Columns
 const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Advanced', format: 'integer' },
+    { key: 'per', label: 'PER', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
+    { key: 'ows', label: 'OWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
+    { key: 'dws', label: 'DWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
+    { key: 'ws', label: 'WS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
+    { key: 'ws48', label: 'WS/48', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'decimal3', leagueWide: true },
     { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'efg%', label: 'eFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tov%', label: 'TOV%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
@@ -337,7 +344,7 @@ const TEAMS_ATTRIBUTES_COLUMNS: ColumnDef[] = ATTRIBUTES_COLUMNS.map(c => ({ ...
 
 // Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE/ORTG/DRTG/NRTG 추가)
 const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
-    ...ADVANCED_COLUMNS.filter(col => !['usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
+    ...ADVANCED_COLUMNS.filter(col => !['per', 'ows', 'dws', 'ws', 'ws48', 'usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
     { key: 'ortg', label: 'ORTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'drtg', label: 'DRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'number' },
     { key: 'nrtg', label: 'NRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
