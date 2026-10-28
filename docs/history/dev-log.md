@@ -34,6 +34,36 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-28 — SCRN%(스크린 판정 클린 비율) 집계 추가 — 엔진 카운터 + RPC 열 확장 + 화면 연결
+
+**배경**: 고급 지표 계획 §8. 엔진이 이미 계산하던 스크린 판정 결과(`resolveScreen` 의 clean/partial/fail)를 스크리너 박스스코어에 누적해 SCRN% = clean ÷ (clean+partial+fail) 를 만든다. **판정 로직은 바꾸지 않는다(카운트만 추가).** 선수 시즌 스탯의 유일한 클라이언트 경로인 `get_player_season_stats_league` RPC 에 합산 열만 추가(별도 RPC·훅 없음, `box_timeline` 틱에는 넣지 않음).
+
+**변경 파일** (엔진·타입은 client/server 미러 쌍 — 롤백 시 둘 다):
+- `services/game/engine/pbp/possessionHandler.ts` (client) / `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — `resolveScreen` 반환에 `screener` 추가, 호출부(`const screen = resolveScreen(...)` 바로 아래)에서 `screen.result` 가 있으면 스크리너 `scrClean/scrPartial/scrFail` +1. 판정 생략(킥아웃·스위치·미스 스위치·스크린 아닌 플레이)은 result 없음 → 미집계.
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — `extractSimResult` 박스 매핑에 값이 있을 때만 `scrClean/scrPartial/scrFail` 기록(JSON 크기 증가 최소화).
+- `types/engine.ts` / `server/src/shared/types/engine.ts` — `PlayerBoxScore` 옵셔널 필드 3개(`LivePlayer` 가 확장).
+- `types/player.ts` / `server/src/shared/types/player.ts` — `PlayerStats` 옵셔널 필드 3개. `utils/constants.ts` `INITIAL_STATS` 에 0 초기값(client 만).
+- `services/stateReplayer.ts` — 싱글 시즌 누적에 3필드 합산.
+- `migrations/add_scrn_to_player_season_stats_league_rpc.sql` (**DB 에 이미 적용, 2026-10-28**) — RPC 반환 열 `scr_clean, scr_partial, scr_fail` + `coalesce(sum(...),0)` 3줄. 현재 정의를 `pg_get_functiondef` 로 읽어 두 곳만 치환 후 DROP→재생성(같은 트랜잭션). 시그니처 `(uuid, uuid[], boolean)`·STABLE·search_path·권한(anon/authenticated/service_role) 불변, 오버로드 1개·임시 함수 잔여 0 확인.
+- `hooks/usePlayerSeasonStatsLeague.ts` — 행 타입·매핑(`row.scr_clean ?? 0` — RPC 미적용이어도 안전).
+- `hooks/useLeaderboardData.ts` — 선수별 `stats['scrn%']`·`stats['scrj'](판정 횟수)`, 히트맵 범위. `data/leaderboardConfig.ts` — Advanced `scrn%` 열(팀 Advanced 열에서는 제외). `utils/percentileCard.ts` — SCRN% 행 값 연결(판정 횟수 = 표본 기준 → 적으면 NQ).
+
+**Before**: 스크린 결과는 이벤트 `screenResult` 에만 실리고 집계·저장 없음, 퍼센타일 카드 SCRN% 행은 항상 "-".
+**After**: 배포(서버) 이후 경기부터 박스스코어에 `scrClean/scrPartial/scrFail` 저장 → RPC 합산 → 리더보드 `SCRN%` 열·퍼센타일 카드 SCRN% 행. **소급 불가**(이전 경기는 필드 없음 → 판정 0 → "-").
+
+**검증**:
+- `tsc --noEmit`(client) 관련 오류 0건. server tsc 는 기존 `Bun` 타입 오류만(무관).
+- **엔진 A/B 회귀(결정 시드 60경기, 같은 팀·같은 `Math.random` 시드)**: 카운터 포함 엔진 vs 카운터를 되돌린 엔진 — **점수 60/60 동일, 박스스코어(scr 제외 모든 필드) 60/60 동일** → 경기 결과 불변. 카운터 동작: 60경기 판정 3,464회(경기당 57.7회) clean 40.1% / partial 31.2% / fail 28.7%, 포지션별 clean% C 47% · PF 34% · SF 28% · PG 37%(표본 54) · SG 22%(표본 36), 판정 상위는 C(고베어·이디·엠비드·웸반야마 등).
+- RPC: 적용 전 롤백 트랜잭션 드라이런으로 컴파일·동일 결과 확인, 실행 시간 전 1,449/1,379ms vs 후 1,396/1,389ms(1230경기 방, 새 필드가 아직 없는 데이터라 증가분은 미반영), 적용 후 호출 300행·pts 합 동일·신규 열 0(데이터 없음).
+
+**주의 / 후속**:
+- **서버 배포 전에는 새 경기에 필드가 안 쌓인다** — `scripts/deploy-server.sh` 로만 배포(커밋·푸시 후). 클라이언트 변경은 RPC 가 이미 확장돼 있어 먼저 나가도 안전(없으면 0).
+- 필드가 쌓이면 RPC 시간·임시 파일 증가분(추정 5~10%)을 `EXPLAIN ANALYZE` 로 다시 확인할 것.
+- `SCRN%` 는 "판정된 스크린"만 대상(킥아웃·스위치 제외) — 판정 횟수가 SCR(전체 횟수)과 다르다. 오프볼 스크린은 판정 대상이 아님.
+- 이 엔진 파일들은 다른 세션의 미커밋 수정이 섞여 있으니 커밋 시 내 hunk 만(깨끗한 HEAD worktree 에 적용) — dev-log 기준.
+
+**롤백 방법**: ① 코드는 위 파일의 SCRN 관련 줄 제거(client/server 쌍). ② DB 는 마이그레이션 파일 하단 롤백 설명대로 열 3개 제거 후 DROP/재생성(클라이언트는 `?? 0` 이라 RPC 가 열을 안 줘도 동작).
+
 ## 2026-10-28 — Win Shares(OWS/DWS/WS/WS48) 추가 + PER/WS 공통 컨텍스트 리팩터링 + 로스터 탭 오계산 방지
 
 **배경**: 고급 선수 지표 계획 Phase A-3. PER 과 같은 클라이언트 계산 방식(리그 전체 선수 스탯은 이미 받아 둠). PER·WS·이후 BPM/VORP 이 같은 입력(팀 합계·리그 합계·페이스)을 쓰므로 공통 컨텍스트로 묶음(사용자가 권장안 선택).

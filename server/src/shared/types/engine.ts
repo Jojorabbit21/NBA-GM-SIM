@@ -53,6 +53,10 @@ export interface PlayerBoxScore {
     defWINGMade: number;
     defATBAttempted: number;
     defATBMade: number;
+    /** 판정된 스크린 결과 카운트(스크리너 기준, 2026-10-28~) — SCRN% = scrClean ÷ (scrClean+scrPartial+scrFail). 이전 경기 기록엔 없음 */
+    scrClean?: number;
+    scrPartial?: number;
+    scrFail?: number;
     condition: number;
     isStopper?: boolean;
     isAceTarget?: boolean;

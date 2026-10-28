@@ -370,7 +370,7 @@ function resolveScreen(
     isSwitch: boolean,
     isBotchedSwitch: boolean,
     isZone: boolean,
-): { result?: ScreenResult; bonus: number } {
+): { result?: ScreenResult; bonus: number; screener?: LivePlayer } {
     const cfg = SIM_CONFIG.SCREEN;
     if (!cfg.ENABLED || isKickout || isSwitch || isBotchedSwitch) return { bonus: 0 };
 
@@ -401,7 +401,7 @@ function resolveScreen(
     const r = Math.random();
     const result: ScreenResult = r < pClean ? 'clean' : r < 1 - pFail ? 'partial' : 'fail';
     const base = result === 'clean' ? cfg.CLEAN_BONUS : result === 'partial' ? cfg.PARTIAL_BONUS : 0;
-    return { result, bonus: base * (isZone ? cfg.ZONE_MULT : 1) };
+    return { result, bonus: base * (isZone ? cfg.ZONE_MULT : 1), screener };
 }
 
 /**
@@ -1444,6 +1444,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // [2026-10-24] 스크린 판정 (PnR 3종 + Handoff) — 슛 성공률 보너스로만 반영
     const screen = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+    // [2026-10-28] SCRN% 집계 — 판정된 스크린 결과(clean/partial/fail)를 스크리너 박스스코어에 누적한다.
+    // 판정 생략(킥아웃·스위치·미스 스위치·스크린 아닌 플레이)은 result 가 없어 집계되지 않는다. 판정 로직은 건드리지 않는다.
+    if (screen.result && screen.screener) {
+        const sc = screen.screener;
+        if (screen.result === 'clean') sc.scrClean = (sc.scrClean || 0) + 1;
+        else if (screen.result === 'partial') sc.scrPartial = (sc.scrPartial || 0) + 1;
+        else sc.scrFail = (sc.scrFail || 0) + 1;
+    }
 
     const shotContext = calculateHitRate(
         actor, defender, defTeam,

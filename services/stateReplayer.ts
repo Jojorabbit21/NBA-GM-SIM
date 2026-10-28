@@ -138,6 +138,9 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.techFouls = (target.techFouls || 0) + (statLine.techFouls || 0);
             target.flagrantFouls = (target.flagrantFouls || 0) + (statLine.flagrantFouls || 0);
             target.plusMinus += (statLine.plusMinus || 0);
+            target.scrClean = (target.scrClean || 0) + (statLine.scrClean || 0);
+            target.scrPartial = (target.scrPartial || 0) + (statLine.scrPartial || 0);
+            target.scrFail = (target.scrFail || 0) + (statLine.scrFail || 0);
             target.contestedAttempted = (target.contestedAttempted || 0) + (statLine.contestedAttempted || 0);
             target.contestedMade      = (target.contestedMade      || 0) + (statLine.contestedMade      || 0);
             target.defRimAttempted    = (target.defRimAttempted    || 0) + (statLine.defRimAttempted    || 0);

@@ -199,6 +199,8 @@ export const INITIAL_STATS = () => ({
     defCNRAttempted: 0, defCNRMade: 0,
     defWINGAttempted: 0, defWINGMade: 0,
     defATBAttempted: 0, defATBMade: 0,
+    // 스크린 판정 결과 카운트(SCRN%) — 2026-10-28 이후 경기부터 쌓임
+    scrClean: 0, scrPartial: 0, scrFail: 0,
 
     // --- New 10-Zone Shooting Data ---
     zone_rim_m: 0, zone_rim_a: 0,

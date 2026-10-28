@@ -28,6 +28,10 @@ export interface PlayerStats {
     midM: number;
     midA: number;
     plusMinus: number;
+    /** 판정된 스크린 결과 카운트(스크리너 기준, 2026-10-28~) — SCRN% = scrClean ÷ (scrClean+scrPartial+scrFail) */
+    scrClean?: number;
+    scrPartial?: number;
+    scrFail?: number;
     [key: string]: number; // for zones
 }
 

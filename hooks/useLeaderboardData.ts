@@ -482,6 +482,10 @@ export const useLeaderboardData = (
                 s['dfgMid%'] = dma > 0 ? (s.defMidMade || 0) / dma : 0;
                 const d3a = s.defThreeAttempted || 0;
                 s['dfg3%']   = d3a > 0 ? (s.defThreeMade || 0) / d3a : 0;
+                // SCRN% — 판정된 스크린 중 clean 비율(판정 횟수 scrj 는 퍼센타일 카드의 표본 기준용)
+                const scrJudged = (s.scrClean || 0) + (s.scrPartial || 0) + (s.scrFail || 0);
+                s['scrj']  = scrJudged;
+                s['scrn%'] = scrJudged > 0 ? (s.scrClean || 0) / scrJudged : 0;
                 const zones6 = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
                 for (const z of zones6) {
                     const a = (s as any)[`def${z}Attempted`] || 0;
@@ -616,6 +620,7 @@ export const useLeaderboardData = (
 
                 // Advanced Stats
                 update('per', s['per'] || 0);
+                update('scrn%', s['scrn%'] || 0);
                 update('ows', s['ows'] || 0);
                 update('dws', s['dws'] || 0);
                 update('ws', s['ws'] || 0);

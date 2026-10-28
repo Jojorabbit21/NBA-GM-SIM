@@ -103,9 +103,9 @@ export const PERCENTILE_METRICS: PercentileMetric[] = [
     { key: 'dfg%', label: 'DFG%', section: 'defense', value: r => ((r.stats.contestedAttempted || 0) > 0 ? r.stats['dfg%'] : null), attempts: r => r.stats.contestedAttempted || 0, inverse: true, format: pct1 },
     { key: 'cont', label: 'CONT', section: 'defense', value: r => r.stats['cont'], format: num1 },
     { key: 'tovf', label: 'TOVF', section: 'defense', value: r => perGame(r, r.stats.tovForced || 0), format: num1 },
-    // 스크린 — SCRN% 는 엔진 집계(scrClean/scrPartial/scrFail, advanced-metrics-plan §8) 구현 전이라 값이 없어도 행은 표시("-").
-    // 구현되면 value 만 채우면 된다. SCRN 은 능력치 합성값(엔진 resolveScreen 의 입력).
-    { key: 'scrn%', label: 'SCRN%', section: 'screening', value: () => null, format: pct1 },
+    // 스크린 — SCRN% 는 판정된 스크린 중 clean 비율(엔진이 2026-10-28 이후 경기부터 scrClean/scrPartial/scrFail 을 기록, advanced-metrics-plan §8).
+    // 판정이 없으면 "-", 판정 횟수가 적으면(자격자 중앙값의 20% 미만) NQ. SCRN 은 능력치 합성값(엔진 resolveScreen 의 입력).
+    { key: 'scrn%', label: 'SCRN%', section: 'screening', value: r => ((r.stats['scrj'] || 0) > 0 ? r.stats['scrn%'] : null), attempts: r => r.stats['scrj'] || 0, format: pct1 },
     { key: 'scrn', label: 'SCRN', section: 'screening', value: r => calculateScreenRating(r), format: v => v.toFixed(0) },
 ];
 

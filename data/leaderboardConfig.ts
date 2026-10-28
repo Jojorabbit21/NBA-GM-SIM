@@ -200,6 +200,7 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'blk%', label: 'BLK%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: '3par', label: '3PAr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'scrn%', label: 'SCRN%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tf', label: 'TF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
     { key: 'ff', label: 'FF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
 ];
@@ -344,7 +345,7 @@ const TEAMS_ATTRIBUTES_COLUMNS: ColumnDef[] = ATTRIBUTES_COLUMNS.map(c => ({ ...
 
 // Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE/ORTG/DRTG/NRTG 추가)
 const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
-    ...ADVANCED_COLUMNS.filter(col => !['per', 'ows', 'dws', 'ws', 'ws48', 'usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
+    ...ADVANCED_COLUMNS.filter(col => !['per', 'ows', 'dws', 'ws', 'ws48', 'scrn%', 'usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
     { key: 'ortg', label: 'ORTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'drtg', label: 'DRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'number' },
     { key: 'nrtg', label: 'NRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
