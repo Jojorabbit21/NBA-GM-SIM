@@ -187,8 +187,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             };
             // [2026-07-31] PostUp/PnR_Roll 킥아웃 오버라이드 (client 미러 참고)
             // [2026-10-24] PnR_Handler 비킥아웃 = 핸들러 본인 득점 — assister는 스크리너(중계 문구용)라 어시스트 아님
+            // [2026-10-28] 속공 역할: 그랩 앤 고(리바운더·스틸러) 본인 마무리 = 어시스트 없음, 러너 0.95, 트레일러 캐치앤슛 0.97
             const prob = result.isKickout ? 0.9
                 : playType === 'PnR_Handler' ? 0
+                : result.transitionRole === 'grabGo' ? 0
+                : result.transitionRole === 'runner' ? 0.95
+                : result.transitionRole === 'trailer' ? 0.97
                 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
             if (Math.random() < prob) assister.ast += 1;
         }

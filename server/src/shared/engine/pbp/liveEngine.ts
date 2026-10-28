@@ -676,6 +676,7 @@ export function stepPossession(state: GameState): StepResult {
         // technicalFoul: state.shotClock 그대로
         state.lastEntryWasDefReb = false;
         state.lastEntryWasSteal = false;
+        state.lastEntryPlayerId = undefined;
         state.lastEntryWasOffReb = isOffReb;
         state.lastEntryWasFlagrant = result.type === 'flagrantFoul';
     } else {
@@ -685,6 +686,9 @@ export function stepPossession(state: GameState): StepResult {
         state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
         // [2026-10-24] 라이브볼 스틸(프레스 트랩 스틸 포함)로 공격권이 넘어간 경우 — 다음 포세션 속공 연결(SIM_CONFIG.STEAL_TRANSITION)
         state.lastEntryWasSteal = result.type === 'turnover' && !!result.isSteal;
+        // [2026-10-28] 수비 리바운더 / 스틸러(스틸 턴오버의 defender) — 다음 포세션 속공 분기용
+        state.lastEntryPlayerId = state.lastEntryWasDefReb ? result.rebounder?.playerId
+            : state.lastEntryWasSteal ? result.defender?.playerId : undefined;
         state.possession = state.possession === 'home' ? 'away' : 'home';
         state.shotClock = 24;
     }

@@ -306,6 +306,8 @@ export interface GameState {
 
     // [2026-10-24] 직전 포세션이 상대 턴오버 중 라이브볼 스틸로 끝났는지 (스틸 후 속공 연결용)
     lastEntryWasSteal?: boolean;
+    // [2026-10-28] 이번 공격권을 만든 선수(수비 리바운더 또는 스틸러) — 속공 그랩 앤 고/아웃렛 분기용
+    lastEntryPlayerId?: string;
 
     // [2026-10-22] 타임아웃 NBA 규정화 — 피리어드별 의무 타임아웃 슬롯 진행 + 팀별 마지막 타임아웃 시각(경과초)
     timeoutPeriod: TimeoutPeriodState;
@@ -405,6 +407,10 @@ export interface PossessionResult {
     // [2026-07-31] PostUp/PnR_Roll 더블팀 유도 후 킥아웃으로 액터가 교체된 포제션인지
     // (어시스트 확률 고정치·전용 커멘터리 트리거용)
     isKickout?: boolean;
+    // [2026-10-28] 속공 마무리 역할 — grabGo(리바운더·스틸러 본인 운반·마무리, 어시스트 없음) / handler / runner(패스 받은 러너) / trailer(속공 3점 캐치앤슛)
+    transitionRole?: 'grabGo' | 'handler' | 'runner' | 'trailer';
+    // [2026-10-28] 헬프 성공(더블팀) 후 킥아웃으로 액터가 교체된 포제션 (측정·커멘터리용)
+    isHelpKickout?: boolean;
     // [2026-10-24] 블리츠 트랩 탈출 실패 턴오버
     isBlitzTrap?: boolean;
     // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션(트랩 스틸/트랩 파울/1대1 압박 턴오버/1대1 리치인) — 커멘터리 분기 + 플레이타입 PPP 집계 제외용

@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes.ts';
-import { resolvePlayAction, selectZone, resolveFinish } from './playTypes.ts';
+import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult } from './playTypes.ts';
 import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine.ts';
 import { resolveRebound } from './reboundLogic.ts';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem.ts';
@@ -191,7 +191,9 @@ function calculateTurnoverChance(
     helpSuccess: boolean = false,
     passer?: LivePlayer,
     // [2026-10-24] 핸들러가 직접 만드는 슛(PnR_Handler 비킥아웃) — 패스가 없으므로 패싱레인 스틸 대상 아님
-    selfCreated: boolean = false
+    selfCreated: boolean = false,
+    // [2026-10-28] 속공 러너·트레일러(패스를 받아 마무리) — 드리블 플레이가 아니라 캐치 플레이로 판정
+    transitionCatch: boolean = false
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
@@ -199,12 +201,12 @@ function calculateTurnoverChance(
     // [2026-10-23] fullCourtPress 일괄 스틸/레인스틸/턴오버 보너스 삭제 — 프레스는 포세션 시작 단계(resolveFullCourtPress)에서
     // 공 운반자 vs 매치업 수비수 대결로만 작동한다.
 
-    const isPassPlay = !selfCreated && (playType === 'CatchShoot' || playType === 'Handoff'
+    const isPassPlay = !selfCreated && (transitionCatch || playType === 'CatchShoot' || playType === 'Handoff'
         || playType === 'PnR_Handler' || playType === 'PnR_Roll'
         || playType === 'PnR_Pop' || playType === 'Cut'
         || playType === 'OffBallScreen' || playType === 'DriveKick');
     // [2026-08-01] 핸들러로 기능하는 플레이(라이브 드리블 창조) — A-1/B 공통 사용.
-    const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
+    const isDribblePlay = !transitionCatch && (playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler');
 
     // ================================================================
     // A-1. 온볼 스틸 (주 수비자 → 볼 핸들러 직접 탈취)
@@ -288,7 +290,7 @@ function calculateTurnoverChance(
     let contextRisk = 0;
     if (playType === 'Transition') {
         contextRisk = 0.03;
-        contextRisk += Math.max(0, (70 - actor.attr.passAcc)) * 0.001;
+        contextRisk += Math.max(0, (70 - ((transitionCatch && passer) ? passer : actor).attr.passAcc)) * 0.001;
     } else if (playType === 'Iso') contextRisk = 0.01;
     else if (playType === 'PostUp') contextRisk = 0.02;
 
@@ -783,7 +785,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             : state.lastEntryWasDefReb ? teCfg.DEF_REB_MULT
             : state.lastEntryWasOffReb ? teCfg.OFF_REB_MULT
             : teCfg.DEAD_BALL_MULT;
-        if (Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus)) {
+        // [2026-10-28] 진입 선수(수비 리바운더·스틸러)가 그랩 앤 고면 배율↑, 아웃렛이면 그 선수 패스 능력에 따라 ±(SIM_CONFIG.TRANSITION_FLOW)
+        const trEntryForFreq = (SIM_CONFIG.TRANSITION_FLOW.ENABLED && (state.lastEntryWasDefReb || state.lastEntryWasSteal) && state.lastEntryPlayerId)
+            ? offTeam.onCourt.find(p => p.playerId === state.lastEntryPlayerId) : undefined;
+        const outletFreqMult = trEntryForFreq ? transitionEntryFreqMult(offTeam.onCourt, trEntryForFreq) : 1;
+        if (Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus) * outletFreqMult) {
              selectedPlayType = 'Transition';
         } else {
             // Weighted Random Choice
@@ -799,10 +805,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
     }
 
-    const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
+    // [2026-10-28] 속공이면 진입 선수(수비 리바운더·스틸러)와 진입 방식을 넘김
+    const trEntryPlayer = (selectedPlayType === 'Transition' && (state.lastEntryWasDefReb || state.lastEntryWasSteal) && state.lastEntryPlayerId)
+        ? offTeam.onCourt.find(p => p.playerId === state.lastEntryPlayerId) : undefined;
+    const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders, undefined,
+        selectedPlayType === 'Transition'
+            ? { entryPlayer: trEntryPlayer, entry: state.lastEntryWasDefReb ? 'defReb' : state.lastEntryWasSteal ? 'steal' : 'other' }
+            : undefined);
     // [2026-10-24] let — 블리츠 패스아웃 시 수신자 컨텍스트로 교체
     let { actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
-    const { screener } = playCtx;
+    const { screener, transitionRole } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
@@ -924,11 +936,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 2.55 [2026-10-27] 헬프 킥아웃 (SIM_CONFIG.HELP_KICKOUT) — 헬퍼가 비운 선수에게 패스, 1회 한정
     let helpKicked = false;
     const hkCfg = SIM_CONFIG.HELP_KICKOUT;
-    if (hkCfg.ENABLED && helpAttempted && helpDefender && !isKickout
-        && (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid')) {
+    // [2026-10-28] 더블팀 = 헬프 "성공"일 때만(시도만으로는 안 함) + 3점은 직접 만든 풀업만 + 확률에 playStyle 마인드 반영
+    if (hkCfg.ENABLED && helpAttempted && helpDefender && helpSuccess && !isKickout
+        && (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid'
+            || (preferredZone === '3PT' && shotType === 'Pullup'))) {
         const passing = (actor.attr.passVision + actor.attr.passAcc) / 2;
         const passingNorm = Math.max(0, Math.min(1, (passing - hkCfg.PASSING_MIN) / (hkCfg.PASSING_MAX - hkCfg.PASSING_MIN)));
-        if (Math.random() < hkCfg.PROB_MIN + (hkCfg.PROB_MAX - hkCfg.PROB_MIN) * passingNorm) {
+        const hkChance = (hkCfg.PROB_MIN + (hkCfg.PROB_MAX - hkCfg.PROB_MIN) * passingNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0);
+        if (Math.random() < hkChance) {
             const others = offTeam.onCourt.filter(p => p.playerId !== actor.playerId);
             const open = others.find(p => p.position === helpDefender!.position) ?? others[Math.floor(Math.random() * others.length)];
             if (open) {
@@ -1271,7 +1286,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 턴오버(패스 능력·패싱레인 스틸)·슛 품질 보정(시야·전달)·어시스트에 스크리너를 쓰지 않는다.
     const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
     const shotPasser = isHandlerSelf ? undefined : secondaryActor;
-    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf);
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf,
+        (transitionRole === 'runner' || transitionRole === 'trailer') && !helpKicked);
 
     if (tovResult.isTurnover) {
         return {
@@ -1346,7 +1362,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // [B-4] PnR 랍패스 메카닉: PnR_Roll + Rim + Dunk/Layup → 랍 시도/성공 판정
     let lobBonus = 0;
-    if (selectedPlayType === 'PnR_Roll' && preferredZone === 'Rim'
+    // [2026-10-28] 속공 러너(패스 받은 마무리)도 앨리웁 대상 — 커버리지 항은 PnR에만 해당(속공은 'none')
+    if ((selectedPlayType === 'PnR_Roll' || (selectedPlayType === 'Transition' && transitionRole === 'runner' && !helpKicked)) && preferredZone === 'Rim'
         && (shotType === 'Dunk' || shotType === 'Layup') && secondaryActor) {
         const handler = secondaryActor;
         const roller = actor;
@@ -1582,7 +1599,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             subZone, isZone,
             helpDefenderId,
             isHelpPlay: isHelpBlock,
-            isKickout,
+            isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
             screenResult: screen.result,
         };
     }
@@ -1593,7 +1610,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
         subZone, isZone,
         helpDefenderId,
-        isKickout,
+        isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
         screenResult: screen.result,
     };
 }

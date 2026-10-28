@@ -867,6 +867,46 @@ export const SIM_CONFIG = {
         ZONE_PREF_THRESHOLD: 0.15,  // 이 값 미만의 zonePref는 selectZone에서 후보 제거가 아니라 ×0.2 가중치 페널티
         SLIDER_SENSITIVITY: 0.5,    // 전술 슬라이더가 존 선택 비중을 흔드는 폭 (0=슬라이더 무효, 1=슬라이더 최대 2배/0배)
     },
+    // [2026-10-28] 에이스 ballDominance 하한 — 코트 위 1옵션(그래비티)이 2옵션과 MIN_GAP 이상 앞서면
+    // 액터 선정 가중치의 ballDominance를 FLOOR 아래로 내리지 않는다(시드 운으로 에이스가 2옵션 수준으로 밀리는 것 방지).
+    ACE_BALL_DOMINANCE: {
+        ENABLED: true,
+        FLOOR: 0.9,
+        MIN_GAP: 25,
+    },
+    // [2026-10-28] 속공 슛 구성(사용자 목표: 속공 3점 비중 10% 미만, 대부분 림·페인트).
+    // THREE_MULT: 속공 존 선택에서 3점 가중치 배율(평소 선호에 곱함). 3점이 나오면 TRAILER_*로 먼저 뛴 동료의 캐치앤슛 여부 판정:
+    // 확률 = (TRAILER_BASE + TRAILER_PASS_SCALE × 핸들러 패스 능력 정규화) × kickoutMindset(핸들러 playStyle), 상한 TRAILER_MAX.
+    // [2026-10-28] 속공 흐름 — 볼 운반자/러너/트레일러 분리 + 진입 선수(수비 리바운더·스틸러) 분기.
+    // 그랩 앤 고: 진입 선수의 (handling+spdBall)/2 ≥ GRAB_GO_CARRY_MIN 또는 코트 최고 운반 능력과 차이 ≤ GRAB_GO_GAP → 본인이 몰고 감.
+    // 속공 전환 확률 배율: 그랩 앤 고 GRAB_GO_FREQ_MULT, 아웃렛이면 진입 선수 패스 능력에 따라 OUTLET_FREQ_MIN~MAX.
+    // 러너 패스 확률 = clamp(RUNNER_PASS_BASE × 패스 능력 배율(PASS_FACTOR_MIN~MAX) × playStyle 마인드 × (러너/운반자 마무리 점수)^FINISH_RATIO_EXP(clamp), MIN, MAX)
+    TRANSITION_FLOW: {
+        ENABLED: true,
+        GRAB_GO_CARRY_MIN: 80,
+        GRAB_GO_GAP: 5,
+        GRAB_GO_FREQ_MULT: 1.1,
+        OUTLET_FREQ_MIN: 0.8,
+        OUTLET_FREQ_MAX: 1.2,
+        RUNNER_PASS_BASE: 0.45,
+        RUNNER_PASS_MIN: 0.05,
+        RUNNER_PASS_MAX: 0.85,
+        PASS_FACTOR_MIN: 0.6,
+        PASS_FACTOR_MAX: 1.4,
+        FINISH_RATIO_EXP: 2,
+        FINISH_FACTOR_MIN: 0.5,
+        FINISH_FACTOR_MAX: 2.0,
+        // [2026-10-28] 러너 선정: 기본 점수(speed·vertical·driver) × (1 − RUNNER_PHYSIQUE_WEIGHT) + 체격 × RUNNER_PHYSIQUE_WEIGHT,
+        // 수비 리바운드 진입이면 × (1 − RUNNER_REB_PENALTY × 수비리바 슬라이더/5 × 본인 리바운드 점수/팀 최고) — 리바운드 경합한 빅맨은 늦게 출발
+        RUNNER_REB_PENALTY: 0.3,
+        RUNNER_PHYSIQUE_WEIGHT: 0.25,
+    },
+    TRANSITION_SHOT: {
+        THREE_MULT: 0.04,
+        TRAILER_BASE: 0.35,
+        TRAILER_PASS_SCALE: 0.45,
+        TRAILER_MAX: 0.9,
+    },
     // Play Selection: pickWeightedActor의 역할(슈터/패서) 기반 playStyle 배율
     PLAY_SELECTION: {
         PLAYSTYLE_SHOOTER_K: 0.25,  // 슈터 픽: weight *= (1 + ps*K) — 슛선호(+)일수록 액터로 더 자주
@@ -933,8 +973,14 @@ export const SIM_CONFIG = {
         PASSING_MAX: 99,
         PROB_MIN: 0,
         PROB_MAX: 0.50,          // 패스 99에서 헬프 시도의 50%가 킥아웃
-        OPEN_BONUS: 0.10,        // 3점·미드 캐치앤슛 hitRate 가산
-        DRIVE_BONUS: 0.05,       // 클로즈아웃 공략 돌파(Rim/Paint) hitRate 가산
+        OPEN_BONUS: 0.05,        // 3점·미드 캐치앤슛 hitRate 가산 — [2026-10-28] 0.10 → 0.05 (실현 격차 +5.6%p → +1.3~2.6%p, 헬프10 순이득 +0.31 → +0.34 유지)
+        DRIVE_BONUS: 0.025,      // 클로즈아웃 공략 돌파(Rim/Paint) hitRate 가산 — [2026-10-28] 0.05 → 0.025
+        // [2026-10-28] 킥아웃 마인드(playStyle −1 패스 ~ +1 슛): 확률 배율 = clamp(1 − ps × K, MIN, MAX)
+        MINDSET_K: 0.6,
+        MINDSET_MIN: 0.4,
+        MINDSET_MAX: 1.6,
+        // [2026-10-28] 포스트업·PnR 롤의 선택 시점 킥아웃(수비 상태를 보지 않는 판정)은 이 비율로 축소 — 나머지는 헬프 성공 킥아웃이 담당
+        PRE_ROLL_SCALE: 0.5,
     },
     ISO_KICKOUT: {
         PASSING_MIN: 40,

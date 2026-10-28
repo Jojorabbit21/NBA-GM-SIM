@@ -1,7 +1,7 @@
 
 import { PlayType, TacticalSliders } from '../../types.ts';
 import { LivePlayer, TeamState } from './pbpTypes.ts';
-import { getContextualMultiplier, getTeamOptionRanks } from './usageSystem.ts';
+import { getContextualMultiplier, getTeamOptionRanks, getTopOptionGap } from './usageSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { calculateScreenerPhysique } from './archetypeSystem.ts';
 
@@ -25,6 +25,8 @@ export interface PlayContext {
     shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number;
     isKickout?: boolean;
+    // [2026-10-28] 속공 마무리 역할 (어시스트·실책 판정·앨리웁용)
+    transitionRole?: 'grabGo' | 'handler' | 'runner' | 'trailer';
     // [2026-10-24] 블리츠 패스아웃 수신자 구분 (resolveBlitzPassOut)
     blitzTarget?: 'screener' | 'weakside';
 }
@@ -33,10 +35,56 @@ export interface PlayContext {
 //  Zone Selection Helpers
 // ==========================================================================================
 
+/** [2026-10-28] 킥아웃 마인드 배율 — playStyle(−1 패스 ~ +1 슛)이 킥아웃 확률에 곱해진다. */
+export function kickoutMindset(playStyle: number): number {
+    const c = SIM_CONFIG.HELP_KICKOUT;
+    return Math.max(c.MINDSET_MIN, Math.min(c.MINDSET_MAX, 1 - playStyle * c.MINDSET_K));
+}
+
+/** [2026-10-28] 속공 볼 운반 능력 */
+export function transitionCarry(p: LivePlayer): number {
+    return (p.attr.handling + p.attr.spdBall) / 2;
+}
+
+/** [2026-10-28] 진입 선수(리바운더·스틸러)가 직접 공을 몰고 가는지(그랩 앤 고) */
+export function isGrabAndGo(players: LivePlayer[], p: LivePlayer): boolean {
+    const c = SIM_CONFIG.TRANSITION_FLOW;
+    const carry = transitionCarry(p);
+    const best = Math.max(...players.map(transitionCarry));
+    return carry >= c.GRAB_GO_CARRY_MIN || best - carry <= c.GRAB_GO_GAP;
+}
+
+/** [2026-10-28] 진입 선수에 따른 속공 전환 확률 배율 — 그랩 앤 고 고정 배율, 아웃렛은 진입 선수 패스 능력 */
+export function transitionEntryFreqMult(players: LivePlayer[], entryPlayer: LivePlayer): number {
+    const c = SIM_CONFIG.TRANSITION_FLOW;
+    if (isGrabAndGo(players, entryPlayer)) return c.GRAB_GO_FREQ_MULT;
+    const passNorm = Math.max(0, Math.min(1, ((entryPlayer.attr.passVision + entryPlayer.attr.passAcc) / 2 - 40) / 59));
+    return c.OUTLET_FREQ_MIN + (c.OUTLET_FREQ_MAX - c.OUTLET_FREQ_MIN) * passNorm;
+}
+
+/** [2026-10-28] 속공 마무리 점수 — 림 마무리·점프·스피드 */
+function transitionFinishScore(p: LivePlayer): number {
+    return Math.max(p.attr.layup, p.attr.dunk) * 0.5 + p.attr.vertical * 0.2 + p.attr.speed * 0.3;
+}
+
+/** [2026-10-28] 운반자가 앞서 뛴 러너에게 패스할 확률 — 운반자 패스 능력·playStyle 마인드·러너 대비 본인 마무리 능력 */
+function transitionRunnerPassChance(handler: LivePlayer, runner: LivePlayer): number {
+    const c = SIM_CONFIG.TRANSITION_FLOW;
+    const passNorm = Math.max(0, Math.min(1, ((handler.attr.passVision + handler.attr.passAcc) / 2 - 40) / 59));
+    const passFactor = c.PASS_FACTOR_MIN + (c.PASS_FACTOR_MAX - c.PASS_FACTOR_MIN) * passNorm;
+    const ratio = transitionFinishScore(runner) / Math.max(1, transitionFinishScore(handler));
+    const finishFactor = Math.max(c.FINISH_FACTOR_MIN, Math.min(c.FINISH_FACTOR_MAX, Math.pow(ratio, c.FINISH_RATIO_EXP)));
+    const chance = c.RUNNER_PASS_BASE * passFactor * kickoutMindset(handler.tendencies?.playStyle ?? 0) * finishFactor;
+    return Math.max(c.RUNNER_PASS_MIN, Math.min(c.RUNNER_PASS_MAX, chance));
+}
+
+
 export function selectZone(
     zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
     actor: LivePlayer,
-    sliders: TacticalSliders
+    sliders: TacticalSliders,
+    // [2026-10-28] 플레이 타입별 존 가중치 배율(예: 속공의 3점 억제). 없으면 1.0
+    zoneMult?: Partial<Record<'3PT' | 'Mid' | 'Paint' | 'Rim', number>>
 ): 'Rim' | 'Paint' | 'Mid' | '3PT' {
     const prefMap: Record<string, number> = {
         '3PT':   actor.zonePref.three,
@@ -56,7 +104,7 @@ export function selectZone(
     const scored = zones.map(z => {
         const pref = prefMap[z] < threshold ? prefMap[z] * 0.2 : prefMap[z];
         const modifier = 1 + (sliderMap[z] - 5) / 5 * sensitivity;
-        return { zone: z, score: pref * modifier };
+        return { zone: z, score: pref * modifier * (zoneMult?.[z] ?? 1) };
     });
 
     const total = scored.reduce((s, c) => s + c.score, 0);
@@ -166,11 +214,14 @@ export function resolvePlayAction(
     team: TeamState, playType: PlayType, sliders: TacticalSliders,
     // [2026-10-24] 블리츠 트랩 탈출 성공 시 possessionHandler가 넘김 → PnR_Handler 패스아웃 컨텍스트 반환
     blitz?: { handler: LivePlayer; screener: LivePlayer },
+    // [2026-10-28] 속공 진입 정보 — 진입 선수(수비 리바운더·스틸러)와 진입 방식
+    transition?: { entryPlayer?: LivePlayer; entry: 'defReb' | 'steal' | 'other' },
 ): PlayContext {
     const players = team.onCourt;
     // [2026-09-10] 팀 전체 1~5옵션 랭킹(gravity 기반) — resolvePlayAction 호출당 1회만 계산해
     // 클로저로 재사용. STAR_USAGE_WEIGHTS와 함께 사용(아래 pickWeightedActor 참고).
     const teamRankMap = getTeamOptionRanks(team);
+    const topOption = getTopOptionGap(team); // [2026-10-28] 에이스 ballDominance 하한 판정
 
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
@@ -209,7 +260,12 @@ export function resolvePlayAction(
                 : 1.0;
             weight *= starMultiplier;
 
-            const ballDom = p.tendencies?.ballDominance ?? 1.0;
+            let ballDom = p.tendencies?.ballDominance ?? 1.0;
+            // [2026-10-28] 에이스(코트 위 1옵션, 2옵션과 그래비티 격차 MIN_GAP 이상)는 ballDominance 하한 적용 — shooter 선정에만
+            const aceCfg = SIM_CONFIG.ACE_BALL_DOMINANCE;
+            if (aceCfg.ENABLED && role === 'shooter' && topOption && topOption.playerId === p.playerId && topOption.gap >= aceCfg.MIN_GAP) {
+                ballDom = Math.max(ballDom, aceCfg.FLOOR);
+            }
             weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
 
             // [SaveTendency] playStyle: role 기반 통합 배율 (슈터 vs 패서)
@@ -292,29 +348,7 @@ export function resolvePlayAction(
         case 'Iso': {
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
 
-            // [2026-07-31] 더블팀 유도 후 킥아웃 + playStyle 보정 (client 미러 참고)
-            const ikCfg = SIM_CONFIG.ISO_KICKOUT;
-            const isoPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
-            const isoPassingNorm = Math.max(0, Math.min(1,
-                (isoPassing - ikCfg.PASSING_MIN) / (ikCfg.PASSING_MAX - ikCfg.PASSING_MIN)));
-            let isoKickChance = ikCfg.PROB_MIN + (ikCfg.PROB_MAX - ikCfg.PROB_MIN) * Math.pow(isoPassingNorm, ikCfg.CURVE_EXPONENT);
-            const isoPs = actor.tendencies?.playStyle ?? 0;
-            isoKickChance *= (1 - isoPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
-
-            if (Math.random() < isoKickChance) {
-                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
-                const passIqBonus = Math.max(0,
-                    (actor.attr.passIq - ikCfg.PASSIQ_BONUS_NEUTRAL) / 30 * ikCfg.PASSIQ_BONUS_SCALE);
-                const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], kickTarget, sliders);
-                if (koZone === 'Rim' || koZone === 'Paint') {
-                    // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
-                    // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
-                    // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
-                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
-                    return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.00 + passIqBonus, isKickout: true };
-                }
-                return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.00 + passIqBonus, isKickout: true };
-            }
+            // [2026-10-28] Iso 선택 시점 킥아웃 폐지(사용자 결정) — 더블팀(헬프 성공)일 때만 possessionHandler 2.55 헬프 킥아웃이 판정 (client 미러 참고)
 
             const passer = pickPasser(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
@@ -361,7 +395,7 @@ export function resolvePlayAction(
                 (rollPassing - prkCfg.PASSING_MIN) / (prkCfg.PASSING_MAX - prkCfg.PASSING_MIN)));
             let rollKickChance = prkCfg.PROB_MIN + (prkCfg.PROB_MAX - prkCfg.PROB_MIN) * Math.pow(rollPassingNorm, prkCfg.CURVE_EXPONENT);
             const rollPs = screener.tendencies?.playStyle ?? 0;
-            rollKickChance *= (1 - rollPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+            rollKickChance *= kickoutMindset(rollPs) * SIM_CONFIG.HELP_KICKOUT.PRE_ROLL_SCALE;
 
             if (Math.random() < rollKickChance) {
                 const kickTarget = pickWeightedActor(p => p.archetypes.spacer, screener.playerId);
@@ -432,7 +466,7 @@ export function resolvePlayAction(
                 (postPassing - pkCfg.PASSING_MIN) / (pkCfg.PASSING_MAX - pkCfg.PASSING_MIN)));
             let kickChance = pkCfg.PROB_MIN + (pkCfg.PROB_MAX - pkCfg.PROB_MIN) * Math.pow(passingNorm, pkCfg.CURVE_EXPONENT);
             const postPs = actor.tendencies?.playStyle ?? 0;
-            kickChance *= (1 - postPs * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+            kickChance *= kickoutMindset(postPs) * SIM_CONFIG.HELP_KICKOUT.PRE_ROLL_SCALE;
 
             if (Math.random() < kickChance) {
                 const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
@@ -513,19 +547,68 @@ export function resolvePlayAction(
             };
         }
         case 'Transition': {
-            const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
-            // [2026-07-30] touchdownQuality(passVision+passAcc 평균) 반영, 비중 0.3→0.5 (client 미러 참고)
-            const outletPasser = pickPasser(p => {
-                const touchdownQuality = (p.attr.passVision + p.attr.passAcc) / 2;
-                return p.archetypes.connector + touchdownQuality * 0.5;
-            }, actor.playerId);
-
-            const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders);
-            if (trZone === 'Rim' || trZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, trZone);
-                return { playType, actor, secondaryActor: outletPasser, preferredZone: zone, shotType, bonusHitRate: 0.04 };
+            // [2026-10-28] 속공 재설계 — 볼 운반자 / 러너 / 트레일러 분리 + 진입 선수(수비 리바운더·스틸러) 분기.
+            // 진입 선수가 운반 능력이 있으면 그랩 앤 고(본인이 운반), 아니면 아웃렛(진입 선수 → 볼핸들러). 진입 선수 불명(데드볼 등)이면 볼핸들러.
+            const touchdown = (p: LivePlayer) => p.archetypes.connector + ((p.attr.passVision + p.attr.passAcc) / 2) * 0.5;
+            const tsCfg = SIM_CONFIG.TRANSITION_SHOT;
+            const entryPlayer = transition?.entryPlayer && players.some(p => p.playerId === transition.entryPlayer!.playerId)
+                ? transition.entryPlayer : undefined;
+            const grabAndGo = !!entryPlayer && SIM_CONFIG.TRANSITION_FLOW.ENABLED && isGrabAndGo(players, entryPlayer);
+            let actor: LivePlayer;
+            let outletPasser: LivePlayer | undefined;
+            if (entryPlayer && grabAndGo) {
+                actor = entryPlayer;
+                // 그랩 앤 고(수비 리바운드·스틸) = 패스 없음 → 본인 마무리 시 어시스트 없음(사용자 결정)
+                outletPasser = undefined;
+            } else if (entryPlayer && SIM_CONFIG.TRANSITION_FLOW.ENABLED) {
+                actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.handler, entryPlayer.playerId);
+                outletPasser = entryPlayer;
+            } else {
+                actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.handler);
+                outletPasser = pickPasser(touchdown, actor.playerId);
             }
-            return { playType, actor, secondaryActor: outletPasser, preferredZone: trZone, shotType: 'Pullup', bonusHitRate: 0.04 };
+            const selfRole: 'grabGo' | 'handler' = grabAndGo ? 'grabGo' : 'handler';
+
+            // 속공은 림·페인트가 대부분 — 3점 가중치 TRANSITION_SHOT.THREE_MULT
+            const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders, { '3PT': tsCfg.THREE_MULT });
+            if (trZone === '3PT') {
+                // 속공 3점: 운반자 풀업 또는 먼저 뛴 동료(spacer, 리바운더 트레일 빅 포함)의 캐치앤슛
+                const trPassing = (actor.attr.passVision + actor.attr.passAcc) / 2;
+                const trPassNorm = Math.max(0, Math.min(1, (trPassing - 40) / 59));
+                const trailerChance = Math.min(tsCfg.TRAILER_MAX,
+                    (tsCfg.TRAILER_BASE + tsCfg.TRAILER_PASS_SCALE * trPassNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0));
+                if (Math.random() < trailerChance) {
+                    const trailer = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                    if (trailer.playerId !== actor.playerId) {
+                        return { playType, actor: trailer, secondaryActor: actor, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.04, transitionRole: 'trailer' };
+                    }
+                }
+                return { playType, actor, secondaryActor: outletPasser, preferredZone: '3PT', shotType: 'Pullup', bonusHitRate: 0.04, transitionRole: selfRole };
+            }
+
+            // 림·페인트: 앞서 뛴 러너(스피드·점프·드라이버, 아웃렛 리바운더는 마지막 출발이라 제외)에게 패스할지 판정
+            // [2026-10-28] 러너 = 스피드·점프·드라이버 + 체격(림 런), 수비 리바운드 진입이면 리바운드 경합 정도(리바운드 점수/팀 최고)만큼 감점
+            const tfCfg = SIM_CONFIG.TRANSITION_FLOW;
+            const rbCfg = SIM_CONFIG.REBOUND;
+            const rebScore = (p: LivePlayer) => Math.pow(Math.max(1, p.attr.defReb * rbCfg.DRB_REB_WEIGHT + p.attr.boxOut * rbCfg.DRB_BOXOUT_WEIGHT
+                + p.attr.vertical * rbCfg.DRB_VERTICAL_WEIGHT + p.attr.strength * rbCfg.DRB_STRENGTH_WEIGHT), rbCfg.SKILL_EXPONENT);
+            const rebMax = Math.max(1, ...players.map(rebScore));
+            const rebPenalty = transition?.entry === 'defReb' ? tfCfg.RUNNER_REB_PENALTY * (team.tactics.sliders.defReb / 5) : 0;
+            const physW = tfCfg.RUNNER_PHYSIQUE_WEIGHT;
+            const runner = pickWeightedActor(
+                p => ((p.attr.speed * 0.4 + p.attr.vertical * 0.3 + p.archetypes.driver * 0.3) * (1 - physW) + calculateScreenerPhysique(p.attr) * physW)
+                    * Math.max(0.1, 1 - rebPenalty * rebScore(p) / rebMax),
+                actor.playerId, 'shooter',
+                (entryPlayer && !grabAndGo) ? (p => p.playerId !== entryPlayer.playerId) : undefined,
+            );
+            if (SIM_CONFIG.TRANSITION_FLOW.ENABLED && runner.playerId !== actor.playerId
+                && Math.random() < transitionRunnerPassChance(actor, runner)) {
+                const rz = selectZone(['Paint', 'Rim'], runner, sliders);
+                const { zone, shotType } = resolveFinish(runner, 'drive', sliders, rz);
+                return { playType, actor: runner, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.04, transitionRole: 'runner' };
+            }
+            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, trZone);
+            return { playType, actor, secondaryActor: outletPasser, preferredZone: zone, shotType, bonusHitRate: 0.04, transitionRole: selfRole };
         }
         case 'Putback': {
             // [2026-07-29] reb(공수 종합) → offReb+vertical+hustle+CLD로 교체 (client 미러 참고)

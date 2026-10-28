@@ -57,6 +57,19 @@ export function getTopPlayerGravity(team: TeamState): number {
     return Math.max(...team.onCourt.map(p => calculateScoringGravity(p, insideOut)));
 }
 
+/**
+ * [2026-10-28] 코트 위 1옵션과 그래비티 격차(1옵션 − 2옵션). ACE_BALL_DOMINANCE 하한 판정용.
+ * 코트에 2명 미만이면 null.
+ */
+export function getTopOptionGap(team: TeamState): { playerId: string; gap: number } | null {
+    if (team.onCourt.length < 2) return null;
+    const insideOut = team.tactics.sliders.insideOut;
+    const sorted = team.onCourt
+        .map(p => ({ id: p.playerId, g: calculateScoringGravity(p, insideOut) }))
+        .sort((a, b) => b.g - a.g);
+    return { playerId: sorted[0].id, gap: sorted[0].g - sorted[1].g };
+}
+
 export function getContextualMultiplier(
     playerRank: number,
     playType: PlayType

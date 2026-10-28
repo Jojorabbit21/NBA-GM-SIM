@@ -259,8 +259,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             // DriveKick(0.97)급으로 취급 — 원래 playType의 assistOdds(PostUp 0.55/PnR_Roll 0.90)는
             // 엔트리패스/앨리웁 기준으로 잡힌 값이라 킥아웃엔 안 맞음. 고정 0.9로 오버라이드.
             // [2026-10-24] PnR_Handler 비킥아웃 = 핸들러 본인 득점 — assister는 스크리너(중계 문구용)라 어시스트 아님
+            // [2026-10-28] 속공 역할: 그랩 앤 고(리바운더·스틸러) 본인 마무리 = 어시스트 없음, 러너 0.95, 트레일러 캐치앤슛 0.97
             const prob = result.isKickout ? 0.9
                 : playType === 'PnR_Handler' ? 0
+                : result.transitionRole === 'grabGo' ? 0
+                : result.transitionRole === 'runner' ? 0.95
+                : result.transitionRole === 'trailer' ? 0.97
                 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
             if (Math.random() < prob) assister.ast += 1;
         }

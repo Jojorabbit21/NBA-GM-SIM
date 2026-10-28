@@ -161,6 +161,214 @@ const activeTab: ... | 'shotchart' | 'percentile' | 'news' = ...   // percentile
 
 **롤백 방법**: 신규 4파일 삭제 + `PlayerDetailView.tsx`/`MultiPlayerDetailView.tsx` 의 `percentileSlot` 관련 줄 제거(위 Before). 또는 해당 커밋 revert.
 
+## 2026-10-28 — 속공 러너 선정: 체격 가중 + 수비 리바운드 경합 감점
+
+**배경**: 속공 흐름 재설계 후 러너는 `speed·vertical·driver`로만 뽑혀 림 런 빅맨의 체격이 반영되지 않았고, 수비 리바운드를 경합하던 빅맨(골밑 깊숙이 있어 출발이 늦음)도 똑같이 러너로 뽑힘. 사용자 제안(리바운드 참가 빅맨은 러너 확률↓). 리바운드 참가 여부는 기록되지 않아 `selectRebounder`와 같은 리바운드 점수(`defReb·boxOut·vertical·strength`, ^SKILL_EXPONENT)를 관여도 대용으로 사용. 5개 조합 하네스 비교 후 사용자가 v3(감점 + 체격 0.25, 앨리웁 변경 없음) 선택.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `TRANSITION_FLOW.RUNNER_REB_PENALTY` 0.3, `RUNNER_PHYSIQUE_WEIGHT` 0.25 추가
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — `case 'Transition'`의 러너 선정 가중치
+
+**Before**:
+```ts
+const runner = pickWeightedActor(
+    p => p.attr.speed * 0.4 + p.attr.vertical * 0.3 + p.archetypes.driver * 0.3,
+    actor.playerId, 'shooter', (entryPlayer && !grabAndGo) ? (p => p.playerId !== entryPlayer.playerId) : undefined);
+```
+
+**After**:
+```ts
+const rebScore = p => Math.pow(max(1, defReb*DRB_REB_WEIGHT + boxOut*DRB_BOXOUT_WEIGHT + vertical*DRB_VERTICAL_WEIGHT + strength*DRB_STRENGTH_WEIGHT), SKILL_EXPONENT);
+const rebMax = max(1, ...onCourt.map(rebScore));
+const rebPenalty = entry === 'defReb' ? RUNNER_REB_PENALTY * (team.tactics.sliders.defReb / 5) : 0;   // 공격팀(방금 리바운드 잡은 팀)의 슬라이더
+const runner = pickWeightedActor(
+    p => ((speed*0.4 + vertical*0.3 + driver*0.3) * (1 - RUNNER_PHYSIQUE_WEIGHT) + calculateScreenerPhysique(p.attr) * RUNNER_PHYSIQUE_WEIGHT)
+         * max(0.1, 1 - rebPenalty * rebScore(p) / rebMax),
+    actor.playerId, 'shooter', (기존과 같은 아웃렛 리바운더 제외 필터));
+```
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스(NBA Active 1,230경기×4시즌, 체력 이월·점프볼), 러너 슛 포지션 SG/PG/SF/PF/C: 기준 23.3/21.8/20.3/18.7/16.0% → 감점만 24.4/23.1/19.7/18.0/14.8% → **감점+체격 0.25(채택)** 23.5/21.8/20.0/18.5/16.2%(두 효과가 거의 상쇄). 리그 득점 107.60→107.26(실행 간 표본 오차 ±0.3 범위), 포세션 100.07, 팀 턴오버 14.40, 어시스트 25.55. 저장소 코드 결과가 스크래치 v3와 수치 일치. 같이 시험한 속공 앨리웁 개선(성공 기본 0.675·실패 절반 슛 미스·스틸 +5%p, 랍 실패 턴오버 0.30→0.09/경기)은 이번에 적용하지 않음.
+
+**롤백 방법**: `RUNNER_REB_PENALTY`·`RUNNER_PHYSIQUE_WEIGHT`를 0으로 하면 이전과 동일. 완전 복원은 위 Before로 4개 파일(client 2 + server 미러 2) 되돌리고 상수 삭제. 미러 한쪽만 되돌리지 말 것.
+
+## 2026-10-28 — 속공 흐름 재설계: 볼 운반자/러너/트레일러 분리, 리바운더·스틸러 분기(그랩 앤 고/아웃렛), 러너 패스·앨리웁
+
+**배경**: 속공은 `spdBall + driver`로 뽑은 한 명이 공을 몰고 가 직접 마무리하는 구조였음(패스 없음, `outletPasser`는 어시스트 크레딧만 78%). `driver`에 인사이드 능력이 섞여 센터가 속공 림 슛의 24.7%(NBA Active DB)를 혼자 드리블해 가져감. 리바운더·스틸러 정보는 다음 포세션에 전달되지 않아 아웃렛 패서도 무작위. 사용자 결정: ① 그랩 앤 고 = 리바운더 (handling+spdBall)/2 ≥ 80 또는 코트 최고와 5 이내 ② 아웃렛이면 리바운더 패스 능력에 따라 속공 확률 ±20% ③ 스틸도 같은 분기 ④ 수비 리바운드 그랩 앤 고 본인 마무리만 어시스트 제거 ⑤ 앨리웁 포함 ⑥ 패스 비중은 단순 확률이 아니라 선수 유형에 따라.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `TRANSITION_FLOW` 신설
+- `services/game/engine/pbp/pbpTypes.ts` (client) / server 미러 — `GameState.lastEntryPlayerId?`, `PossessionResult.transitionRole?`
+- `services/game/engine/pbp/liveEngine.ts` (client) / server 미러 — 공격권 전환 시 `lastEntryPlayerId` = 수비 리바운더(`result.rebounder`) 또는 스틸러(스틸 턴오버의 `result.defender`), 공격권 유지 시 undefined
+- `services/game/engine/pbp/playTypes.ts` (client) / server 미러 — `transitionCarry`/`isGrabAndGo`/`transitionEntryFreqMult` export, `transitionFinishScore`/`transitionRunnerPassChance` 신설, `resolvePlayAction` 5번째 인자 `transition`, `PlayContext.transitionRole`, `case 'Transition'` 전면 교체
+- `services/game/engine/pbp/possessionHandler.ts` (client) / server 미러 — 속공 전환 확률에 `transitionEntryFreqMult` 곱, `resolvePlayAction`에 진입 정보 전달, `calculateTurnoverChance`에 `transitionCatch` 인자(러너·트레일러는 캐치 플레이·패서 passAcc), 랍패스 조건에 속공 러너 추가, 결과에 `transitionRole`
+- `services/game/engine/pbp/statsMappers.ts` (client) / server 미러 — 어시스트 확률: grabGo 0, runner 0.95, trailer 0.97
+
+**Before**:
+```ts
+// case 'Transition':
+const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);       // 운반자 = 마무리자
+const outletPasser = pickPasser(p => connector + (passVision+passAcc)/2*0.5, actor.playerId); // 크레딧용
+const trZone = selectZone(['3PT','Paint','Rim'], actor, sliders, { '3PT': THREE_MULT });
+// 3PT → 트레일러 캐치앤슛(isKickout 없음) 또는 운반자 풀업 / Rim·Paint → actor 본인 resolveFinish('drive')
+// possessionHandler: if (Math.random() < (pace*0.03*entryMult + defRebFreqBonus + stealFreqBonus)) → Transition
+// const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
+// calculateTurnoverChance(..., shotPasser, isHandlerSelf)  — Transition은 항상 드리블 플레이(isDribblePlay), contextRisk는 actor passAcc
+// 랍: if (selectedPlayType === 'PnR_Roll' && preferredZone === 'Rim' && ...)
+// statsMappers: prob = isKickout ? 0.9 : PnR_Handler ? 0 : assistOdds[playType]   (Transition 0.78)
+// liveEngine: lastEntryPlayerId 없음
+```
+
+**After**:
+```ts
+// TRANSITION_FLOW: { ENABLED, GRAB_GO_CARRY_MIN 80, GRAB_GO_GAP 5, GRAB_GO_FREQ_MULT 1.1, OUTLET_FREQ_MIN 0.8, OUTLET_FREQ_MAX 1.2,
+//   RUNNER_PASS_BASE 0.45, RUNNER_PASS_MIN 0.05, RUNNER_PASS_MAX 0.85, PASS_FACTOR_MIN 0.6, PASS_FACTOR_MAX 1.4,
+//   FINISH_RATIO_EXP 2, FINISH_FACTOR_MIN 0.5, FINISH_FACTOR_MAX 2.0 }
+// 진입 선수(코트 위) 있음 + 그랩 앤 고 → 운반자 = 진입 선수, outletPasser 없음 → role 'grabGo' (수비 리바운드·스틸 공통 — 같은 날 후속 결정으로 스틸도 어시스트 제거)
+// 진입 선수 있음 + 아웃렛 → 운반자 = pickWeightedActor(spdBall + handler 아키타입, 진입 선수 제외), outletPasser = 진입 선수
+// 진입 선수 없음(데드볼 등) → 운반자 = pickWeightedActor(spdBall + handler), outletPasser = pickPasser(기존)
+// 존 = selectZone(운반자, 3점 ×THREE_MULT). 3PT → 기존 트레일러/풀업(role 'trailer' / selfRole)
+// Rim·Paint → 러너 = pickWeightedActor(speed*0.4 + vertical*0.3 + driver*0.3, 운반자 제외, 아웃렛 리바운더 제외)
+//   P(러너 패스) = clamp(0.45 × (0.6 + 0.8 × 운반자 패스 정규화) × kickoutMindset(운반자 playStyle) × clamp((러너/운반자 마무리 점수)^2, 0.5, 2), 0.05, 0.85)
+//   마무리 점수 = max(layup,dunk)*0.5 + vertical*0.2 + speed*0.3
+//   패스면 러너 selectZone(['Paint','Rim']) + resolveFinish('drive'), secondaryActor = 운반자, role 'runner'. 아니면 운반자 본인(selfRole)
+// possessionHandler: 속공 확률 × transitionEntryFreqMult(그랩 앤 고 1.1 / 아웃렛 0.8~1.2 by 진입 선수 패스)
+// 턴오버: transitionCatch(runner/trailer, 헬프 킥아웃 아님) → isPassPlay=true·isDribblePlay=false, contextRisk는 패서 passAcc
+// 랍: (PnR_Roll || (Transition && role 'runner' && !helpKicked)) && Rim && Dunk/Layup — 기존 공식 그대로(실패 = 악송구 턴오버)
+// 결과 transitionRole: helpKicked ? undefined : transitionRole
+// statsMappers: ... : grabGo ? 0 : runner ? 0.95 : trailer ? 0.97 : assistOdds
+```
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스(NBA Active 1,230경기×4시즌, 체력 이월·점프볼), Before = 직전 속공 3점 변경까지 적용된 엔진:
+| 지표 | Before | After |
+|---|---|---|
+| 리그 득점 / 포세션 / ORtg | 107.76 / 100.19 / 107.56 | 107.63 / 100.12 / 107.50 |
+| 팀 턴오버 / 어시스트 | 13.93 / 26.54 | 14.36 / 26.23 |
+| 속공 포세션 수비리바/스틸/데드볼 (팀 경기당) | 12.03 / 5.65 / 3.69 | 11.53 / 5.80 / 3.65 |
+| 속공 턴오버율 수비리바/스틸/데드볼 | 10.5 / 9.9 / 10.6% | 12.8 / 11.8 / 13.2% |
+| 속공 림·페인트 포지션 PG/SG/SF/PF/C | 23.4/21.3/18.8/19.1/17.4% | 27.1/24.5/19.7/16.9/11.8% |
+수비 리바운드 속공 슛 구성: 그랩 앤 고 19%, 아웃렛 받은 운반자 37%, 러너 36.5%, 트레일러 4%, 헬프 킥아웃 3%. 러너 패스 비율(운반자별 림 마무리 중): 요키치 65%·센군 64%·돈치치 54%·커리 44%·할리버튼 40%·SGA 30%·야니스 18%·모란트 14%·팍스 9%. 돈치치 36분당 25.8→25.2점, SGA 24.2→28.1점(그랩 앤 고 마무리), 요키치 32.6→30.0점.
+
+**후속(같은 날)**: 사용자 결정으로 스틸 그랩 앤 고 본인 마무리도 어시스트 제거 — 처음엔 스틸이면 `outletPasser = pickPasser(...)`, `selfRole = (grabAndGo && entry === 'defReb') ? 'grabGo' : 'handler'`였던 것을 `outletPasser = undefined`, `selfRole = grabAndGo ? 'grabGo' : 'handler'`로 변경(client/server playTypes). 하네스 2시즌 리그 어시스트 25.6/팀경기.
+
+**롤백 방법**: `TRANSITION_FLOW.ENABLED`를 false로 하면 그랩 앤 고·아웃렛 배율·러너 패스가 꺼짐(운반자 선정 기준 spdBall+handler와 lastEntryPlayerId 기록은 남음). 완전 복원은 위 Before로 12개 파일(client 6 + server 미러 6) 되돌릴 것. 미러 한쪽만 되돌리지 말 것.
+
+## 2026-10-28 — 속공 슛 구성: 3점 가중치 ×0.04(3점 비중 49%→8%), 속공 3점은 트레일러 캐치앤슛 경로 추가
+
+**배경**: NBA Active 조사에서 속공 슛의 49%가 3점(전부 볼핸들러 풀업)이고 리그 전체 3점 시도의 21.8%가 속공 풀업 3점. 원인 = `case 'Transition'`이 선수의 평소 존 선호(`zonePref`)와 슬라이더로 [3점, 페인트, 림]을 뽑아 속공 전용 보정이 없고(미드만 제외), 3점은 항상 `Pullup`이며 패스 경로가 없음(`outletPasser`는 어시스트 크레딧용). 진입 방식(수비 리바운드/스틸/데드볼)별 존 분포도 거의 동일(림 41~42·페인트 12~13·3점 45~47%). 사용자 결정: 속공은 대부분 림·페인트, 3점 비중 10% 미만, 먼저 뛴 동료의 캐치앤슛도 가능해야 함.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `TRANSITION_SHOT` 신설 (THREE_MULT 0.04, TRAILER_BASE 0.35, TRAILER_PASS_SCALE 0.45, TRAILER_MAX 0.9)
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — `selectZone()`에 선택 인자 `zoneMult` 추가(기본 1.0), `case 'Transition'`의 존 선택에 3점 배율, 3점일 때 트레일러 캐치앤슛 분기
+
+**Before**:
+```ts
+// selectZone(zones, actor, sliders)  →  score = pref * modifier
+// case 'Transition':
+const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders);
+if (trZone === 'Rim' || trZone === 'Paint') { ...resolveFinish(actor,'drive'...) → { actor, secondaryActor: outletPasser, bonusHitRate: 0.04 } }
+return { playType, actor, secondaryActor: outletPasser, preferredZone: trZone, shotType: 'Pullup', bonusHitRate: 0.04 };
+```
+
+**After**:
+```ts
+// selectZone(zones, actor, sliders, zoneMult?)  →  score = pref * modifier * (zoneMult?.[z] ?? 1)
+// constants: TRANSITION_SHOT: { THREE_MULT: 0.04, TRAILER_BASE: 0.35, TRAILER_PASS_SCALE: 0.45, TRAILER_MAX: 0.9 }
+// case 'Transition':
+const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders, { '3PT': tsCfg.THREE_MULT });
+// Rim/Paint: 기존과 동일
+// 3PT: trailerChance = min(TRAILER_MAX, (TRAILER_BASE + TRAILER_PASS_SCALE × clamp(((passVision+passAcc)/2 − 40)/59)) × kickoutMindset(actor.playStyle))
+//      Math.random() < trailerChance → trailer = pickWeightedActor(spacer, 핸들러 제외) → { actor: trailer, secondaryActor: 핸들러, shotType: 'CatchShoot', bonusHitRate: 0.04 }
+//      아니면 기존처럼 핸들러 Pullup
+```
+(트레일러 슛의 실책/스틸 판정은 playType==='Transition'이라 여전히 액터 handling 기반 드리블 플레이로 계산됨 — 알려진 한계. 어시스트 확률은 Transition 0.78 적용.)
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스(NBA Active 1,230경기×4시즌, 체력 이월·점프볼) 속공 슛 구성, 팀 경기당: 3점 배율 1.0(Before) 림 41%·페인트 13%·3점 46% → 0.2: 림 61·페인트 17·3점 21% → 0.1: 66·19·15% → 0.06: 70·20·10% → **0.04(확정)**: 림 71·페인트 21·3점 8%(수비 리바운드·스틸·데드볼 모두 동일). 속공 3점 중 트레일러 캐치앤슛 약 61%(리그 3점 시도의 2.7% vs 풀업 1.7%). 리그: 득점 107.9→107.8(불변), 팀 3점 시도 35.2→29.0, 3점 비중 40.4→33.5%, 자유투 시도 21.0→22.1, FGA 87.2→86.6. 돈치치 36분당 25.8점(3PA 9.9), SGA 24.2점.
+
+**롤백 방법**: `TRANSITION_SHOT.THREE_MULT`를 1.0으로 하고 `TRAILER_BASE`/`TRAILER_PASS_SCALE`을 0으로 하면 이전과 동일한 구성(코드 변경 없이). 완전 복원은 위 Before로 4개 파일(client 2 + server 미러 2) 되돌리고 상수 삭제. 미러 한쪽만 되돌리지 말 것.
+
+## 2026-10-28 — 에이스 ballDominance 하한: 코트 위 1옵션(2옵션과 그래비티 격차 25+)은 0.9 아래로 내리지 않음
+
+**배경**: 킥아웃 재설계 후에도 돈치치(21.5)·SGA(23.1)의 36분당 득점이 93+ OVR 평균(약 27)보다 낮음. 원인 = 시드로 무작위 생성되는 `ballDominance`(평균 1.0, SD 0.2, 0.5~1.5)가 액터 선정 가중치에 그대로 곱해지는데, NBA Active 시드에서 돈치치 0.63·SGA 0.76(스크래치 엔진에서 1.0으로 바꾸면 돈치치 26.9점·SGA 26.2점). 돈치치는 그래비티 124 vs 2옵션 62의 압도적 1옵션인데도 가중치 격차가 거의 사라짐. 사용자 결정: 격차가 큰 에이스에게만 하한 0.9 (B안), 성향 값 자체는 그대로 두고 액터 선정 시점에서 보정.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `ACE_BALL_DOMINANCE` 신설 (ENABLED true, FLOOR 0.9, MIN_GAP 25)
+- `services/game/engine/pbp/usageSystem.ts` (client) / `server/src/shared/engine/pbp/usageSystem.ts` (server 미러) — `getTopOptionGap(team)` 신설 (코트 위 1옵션 id와 1·2옵션 그래비티 격차)
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — import에 `getTopOptionGap`, `resolvePlayAction`에서 `topOption` 1회 계산, `pickWeightedActor`의 ballDominance 적용부에 하한 추가
+
+**Before**:
+```ts
+const ballDom = p.tendencies?.ballDominance ?? 1.0;
+weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
+```
+
+**After**:
+```ts
+let ballDom = p.tendencies?.ballDominance ?? 1.0;
+const aceCfg = SIM_CONFIG.ACE_BALL_DOMINANCE;
+if (aceCfg.ENABLED && role === 'shooter' && topOption && topOption.playerId === p.playerId && topOption.gap >= aceCfg.MIN_GAP) {
+    ballDom = Math.max(ballDom, aceCfg.FLOOR);
+}
+weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
+// 1옵션 = team.onCourt 기준 calculateScoringGravity 1위(옵션 랭킹과 동일), gap = 1위 − 2위 그래비티. passer 역할(2−ballDom)에는 적용 안 함.
+```
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스(NBA Active 1,230경기×4시즌, 체력 이월·점프볼), 팀 1옵션 30명 36분당 평균 (Before → After): 득점 27.2 → 27.8, 슛 20.4 → 20.7, 어시 6.3 → 6.2, TS 59.4 → 59.6, 리그 득점 107.7 → 107.9. 돈치치 21.5 → 25.4점(슛 16.9 → 20.5), SGA 23.1 → 25.4점(슛 14.6 → 16.0). 일부 선수(라멜로 볼 +3.4, 레너드 +2.5)도 변동했는데 하한 대상이 아니라 난수 흐름 변화에 따른 표본 오차(±1~2점)로 보임.
+
+**롤백 방법**: `ACE_BALL_DOMINANCE.ENABLED`를 false로 하면 즉시 이전 동작(코드 변경 없이). 완전 복원은 위 Before로 6개 파일(client 3 + server 미러 3)의 ballDominance 블록, `getTopOptionGap`, `topOption` 줄, 상수 삭제. 미러 한쪽만 되돌리지 말 것.
+
+## 2026-10-28 — 킥아웃 재설계: Iso 선택 시점 킥아웃 폐지, 헬프 성공(더블팀) 킥아웃 + playStyle 마인드, 포스트업·롤 선택 시점 킥아웃 절반
+
+**배경**: NBA Active 조사에서 돈치치(OVR 98)·SGA(99)가 93+ OVR 20명 중 득점 19~20위. 하네스(HEAD, 실제 로스터·전술·일정 재현)로 패스 능력치만 60으로 낮추면 돈치치 36분당 18.2→21.1점·SGA 20.2→23.8점으로 오르고 다른 스타는 불변 → 원인 = Iso 킥아웃이 수비 상황과 무관하게 `패스 능력`만으로 확률 판정(최대 40%). `playStyle`(−1 패스~+1 슛, 시드 무작위 N(0,0.35))은 ×(1−ps×0.25)로만 약하게 반영, 돈치치·SGA는 NBA Active 시드에서 +0.02/+0.03(중립)이라 보정 0. 사용자 결정: ① Iso 킥아웃은 더블팀(헬프 성공)이 왔을 때만 ② 마인드(패스/슛 우선)가 가장 중요, 수비 압박이면 킥아웃↑·오픈이면 슛 ③ 성향 영향 ×0.4~×1.6 ④ 헬프 킥아웃에 3점 풀업 포함 ⑤ 킥아웃 보너스는 과하면 낮춤.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) / `server/src/shared/game/config/constants.ts` (server 미러) — `HELP_KICKOUT`: `MINDSET_K/MIN/MAX`, `PRE_ROLL_SCALE` 신설, `OPEN_BONUS` 0.10→0.05, `DRIVE_BONUS` 0.05→0.025
+- `services/game/engine/pbp/playTypes.ts` (client) / `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — Iso 선택 시점 킥아웃 블록 삭제, `kickoutMindset()` export 신설, PostUp·PnR_Roll 킥아웃 배율 교체
+- `services/game/engine/pbp/possessionHandler.ts` (client) / server 미러 — 2.55 헬프 킥아웃 조건·확률, 결과에 `isHelpKickout`, import에 `kickoutMindset`
+- `services/game/engine/pbp/pbpTypes.ts` (client) / server 미러 — `PossessionResult.isHelpKickout?: boolean`
+
+**Before**:
+```ts
+// constants.ts HELP_KICKOUT: { ..., PROB_MAX: 0.50, OPEN_BONUS: 0.10, DRIVE_BONUS: 0.05 }   // MINDSET_*/PRE_ROLL_SCALE 없음
+// playTypes.ts case 'Iso': 액터 선정 직후
+//   isoKickChance = ISO_KICKOUT(PROB_MAX 0.40) × ((passVision+passAcc)/2 정규화)^1.3 × (1 − ps × PLAYSTYLE_PASSER_K 0.25)
+//   Math.random() < isoKickChance → spacer에게 킥아웃(isKickout) 반환 (수비 상태 미반영)
+// PostUp / PnR_Roll:  kickChance *= (1 - ps * SIM_CONFIG.PLAY_SELECTION.PLAYSTYLE_PASSER_K);
+// possessionHandler 2.55:
+//   if (hkCfg.ENABLED && helpAttempted && helpDefender && !isKickout && (zone Rim/Paint/Mid)) {
+//       passingNorm = clamp(((passVision+passAcc)/2 − 40)/59);
+//       if (Math.random() < PROB_MIN + (PROB_MAX − PROB_MIN) * passingNorm) { ...킥아웃... }
+// return {..., isKickout, screenResult }   // isHelpKickout 없음
+```
+
+**After**:
+```ts
+// constants.ts HELP_KICKOUT: { ..., PROB_MAX: 0.50, OPEN_BONUS: 0.05, DRIVE_BONUS: 0.025,
+//                              MINDSET_K: 0.6, MINDSET_MIN: 0.4, MINDSET_MAX: 1.6, PRE_ROLL_SCALE: 0.5 }
+// playTypes.ts: export function kickoutMindset(ps) { return clamp(1 − ps × MINDSET_K, MINDSET_MIN, MINDSET_MAX); }
+// case 'Iso': 선택 시점 킥아웃 블록 삭제 (ISO_KICKOUT 상수는 미사용으로 남김)
+// PostUp / PnR_Roll:  kickChance *= kickoutMindset(ps) * SIM_CONFIG.HELP_KICKOUT.PRE_ROLL_SCALE;   // 수비 상태 안 보는 판정은 절반
+// possessionHandler 2.55:
+//   if (hkCfg.ENABLED && helpAttempted && helpDefender && helpSuccess && !isKickout
+//       && (zone Rim/Paint/Mid || (zone === '3PT' && shotType === 'Pullup'))) {
+//       hkChance = (PROB_MIN + (PROB_MAX − PROB_MIN) * passingNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0);
+//       if (Math.random() < hkChance) { ...기존 킥아웃(받는 선수=헬퍼 포지션 슬롯, 헬퍼가 클로즈아웃)... }
+// return {..., isKickout, isHelpKickout: helpKicked, screenResult }
+```
+PnR_Handler 돌파 킥아웃은 별도 코드 없이 2.55가 담당(핸들러의 Rim/Paint/풀업3 → 헬프 성공 시). 슛 능력은 확률에 넣지 않음(성향과 중복 + 헬프 성공 시 명중률 감소 대가가 이미 있음).
+
+**검증**: client/server tsc 해당 파일 오류 없음. 하네스(`pace.mts` 변형, NBA Active 1,230경기×N시즌, 체력 이월·점프볼, 팀당 경기 기준):
+| 지표 | Before(HEAD) | After |
+|---|---|---|
+| 킥아웃 슛 전체 | 8.9/팀경기 | 3.4 (헬프 킥아웃 1.84) |
+| 킥아웃 슛 성공률 3점 / 일반 캐치앤슛 34.5 | 39.8 | 35.6 |
+| 미드 (일반 40.5) / 인사이드 (54.4) | 45.3 / 56.2 | 42.5 / 52.3 |
+| 리그 득점 | 108.3 | 107.7 |
+| 돈치치 36분당 득점/슛/어시 | 18.2 / 14.8 / 13.0 | 21.5 / 16.9 / 11.9 |
+| SGA 36분당 득점/슛/어시 | 20.2 / 12.7 / 9.3 | 23.1 / 14.6 / 8.6 |
+헬프 수비 슬라이더 10 순이득(15팀 helpDef 10 vs 전원 5 대조군, 득실 차 변화, 8시즌, 오차 ±0.2~0.3): 보너스 0.10/0.05 = +0.31, 0.05/0.025 = +0.34(4시즌 값: 0.07/0.035 = +0.29). 요키치 36분당 27.7→32.8점·어시 10.3→8.4(포스트업 선택 시점 킥아웃 절반 영향), 다른 스타 득점 ±1~2점. 보너스 선정: 실현 킥아웃 격차를 일반 캐치앤슛 대비 +5.6%p → +1.1%p(3점)로 낮춤.
+
+**롤백 방법**: 위 Before로 8개 파일(client 4 + server 미러 4) 전부 되돌릴 것 — `HELP_KICKOUT`에서 MINDSET_*/PRE_ROLL_SCALE 삭제·보너스 0.10/0.05 복원, Iso 선택 시점 킥아웃 블록 복원, `kickoutMindset` 삭제, 2.55 조건에서 `helpSuccess`·3점 풀업 제거, `isHelpKickout` 삭제. 미러 한쪽만 되돌리지 말 것.
+
 ## 2026-10-28 — 올스타 서신 표의 시즌 스탯을 발송 시점 스냅샷으로 고정
 
 **배경**: 트레이드 서신 스냅샷(아래 항목)에 이어, 서신 카드 전수 감사 결과 시즌 스탯 열이 열 때마다 현재 값(`playerCardMap` ← `usePlayerSeasonStatsFull`)으로 바뀌는 곳이 올스타 계열 4종뿐이었다(투표 중간집계/결과, 라이징스타, 3점 챌린지). 나머지 카드는 payload에 값이 이미 있거나(어워드/부상/파워랭킹 등), 경기 박스스코어처럼 확정 후 불변이다. 선수 호버 카드는 "지금의 선수 정보"라 의도적으로 현재 값 유지.
