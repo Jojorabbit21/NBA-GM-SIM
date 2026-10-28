@@ -18,6 +18,7 @@ import { usePlayerAllStarAwards } from '../../../hooks/usePlayerAllStarAwards';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { PlayerNewsTab } from './PlayerNewsTab';
+import { PlayerPercentileTab } from './PlayerPercentileTab';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
@@ -336,6 +337,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalTeamSplits={playerTeamSplits}
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
+            percentileSlot={<PlayerPercentileTab teams={teamsWithAwards} schedule={normalizedSchedule} playerId={player.id} roomId={room?.id} seasonLabel={room?.season ?? '2025-26'} league={league} allowPlayoff={league?.type !== 'tournament'} />}
             newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} />}
             condition={playerCondition}
         />

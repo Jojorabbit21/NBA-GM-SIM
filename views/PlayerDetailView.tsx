@@ -90,6 +90,9 @@ interface PlayerDetailViewProps {
     // [2026-10-07] "뉴스" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯.
     // 뉴스 데이터(league_events)가 멀티 전용이라 뷰는 렌더만 하고 조회는 호출부가 한다.
     newsSlot?: React.ReactNode;
+    /** [2026-10-28] "퍼센타일" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯(newsSlot과 같은 패턴).
+     * 리그 전체 선수 스탯이 필요해 계산은 호출부가 한다(views/multi/season/PlayerPercentileTab.tsx). */
+    percentileSlot?: React.ReactNode;
     /** [2026-10-17] 멀티 전용 — 선수 정보 "포지션 평점" 아래 "체력" 행. number = 표시, null = 공개 전 경기라 "경기 중",
      * undefined = 행 자체를 그리지 않음(싱글·데이터 로딩 전). */
     condition?: number | null;
@@ -765,7 +768,7 @@ function expandTeamSplitRows(
     return [summary, ...subs];
 }
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, condition }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, percentileSlot, condition }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -1210,13 +1213,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const [searchParams, setSearchParams] = useSearchParams();
     const tabParam = searchParams.get('tab');
     // 'records'는 기록 탭을 커리어/게임 로그로 나누기 전 링크 호환용 — 커리어로 연다.
-    const activeTab: 'profile' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'news' =
+    const activeTab: 'profile' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'percentile' | 'news' =
         tabParam === 'records' ? 'career' :
-        tabParam === 'career' || tabParam === 'gamelog' || tabParam === 'splits' || tabParam === 'shotchart' || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
+        tabParam === 'career' || tabParam === 'gamelog' || tabParam === 'splits' || tabParam === 'shotchart' || (tabParam === 'percentile' && percentileSlot !== undefined) || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
     const setActiveTab = useCallback((tab: string) => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
-            if (tab === 'career' || tab === 'gamelog' || tab === 'splits' || tab === 'shotchart' || tab === 'news') next.set('tab', tab);
+            if (tab === 'career' || tab === 'gamelog' || tab === 'splits' || tab === 'shotchart' || tab === 'percentile' || tab === 'news') next.set('tab', tab);
             else next.delete('tab');
             return next;
         }, { replace: true });
@@ -1523,6 +1526,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     { id: 'gamelog', label: '게임 로그' },
                     { id: 'splits', label: '스플릿' },
                     { id: 'shotchart', label: '샷 차트' },
+                    ...(percentileSlot !== undefined ? [{ id: 'percentile', label: '퍼센타일' }] : []),
                     ...(newsSlot !== undefined ? [{ id: 'news', label: '뉴스' }] : []),
                 ]}
                 activeTab={activeTab}
@@ -2120,6 +2124,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         )}
                     </div>
                 )}
+
+                {activeTab === 'percentile' && percentileSlot}
 
                 {activeTab === 'news' && newsSlot}
 

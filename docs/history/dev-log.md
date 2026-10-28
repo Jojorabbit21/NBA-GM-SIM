@@ -34,6 +34,51 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-28 — 선수 프로필 "퍼센타일" 탭 신설 (멀티 전용 퍼센타일 랭킹 카드)
+
+**배경**: Baseball Savant 의 선수 퍼센타일 카드(섹션별 막대 + 백분위 원 + 실제 값)를 농구식으로 옮기기로 하고(`docs/plan/advanced-metrics-plan.md` §7), 노출 위치를 "선수 프로필 화면의 새 탭"으로 정함. 엔진·공식 변경 없음 — 리더보드와 같은 계산값(`useLeaderboardData`)을 읽어 리그 백분위만 계산하는 UI 추가.
+
+**변경 파일** (모두 client, 서버 미러 없음):
+- `utils/percentileCard.ts` (신규) — 지표 정의 `PERCENTILE_METRICS`(19개: 득점 4·슈팅 5·플레이메이킹 2·리바운드 2·수비 5·스크린 1) + `buildPercentileCard(rows, playerId)`. 모집단 = 총 출전시간 ≥ 8분 × 리그 최다 출전 경기 수(`QUALIFY_MIN_MPG`), attempts 가 있는 지표는 자격자 시도 수 중앙값의 20% 미만 선수 제외. 백분위 = (낮은 값 수 + 0.5×동점 수) ÷ 모집단(대상 제외), 1~100 클램프, `inverse`(TOV%, DFG%)는 비교 방향 반전. `calculateScreenRating()` = `SIM_CONFIG.SCREEN` 의 `PHYSIQUE_WEIGHT`/`TIMING_WEIGHT` × (`calculateScreenerPhysique` + `offBallMovement`) — 엔진 `resolveScreen` 의 `power` 와 같은 식, 피로 미반영.
+- `components/player/PercentileCard.tsx` (신규, 같은 날 프로젝트 디자인 언어로 재디자인) — 표시 전용. 프로필 화면의 평면 패널(`bg-slate-900` + `border-slate-800` 구분선, 섹션 제목 `text-base font-bold text-white`, `lg` 2열 그리드·폰 1열)에 "라벨(B2) · 막대(`h-4 rounded-full bg-slate-800` 트랙, 50% 점선) · 백분위(`font-bold tabular-nums`) · 실제 값(B3)" 행. **(2차 수정, 사용자 지시)** 능력치 색 사다리 재사용안은 폐기하고 **하위 파랑(blue-600) → 평균 회청(slate-400) → 상위 빨강(red-600) 발산 스케일**로 변경(숫자는 한 단계 밝은 blue-400/slate-300/red-400). 행은 **공용 `Table`(variant `flush`, dividers off)** 한 장 — 열 헤더(지표·리그 백분위·순위·값) + 섹션별 `TableGroupHeaderCell` 그룹 행. 안내는 공용 `InlineNotice`(info), 각주는 캡션 `text-xs text-slate-500`. **SCRN 설명 문구(태그·각주) 삭제, SCRN% 행은 엔진 집계 구현 전이라도 "-"로 표시**(`PERCENTILE_METRICS` 의 `scrn%`, value 가 항상 null). **(3차 수정, 사용자 지시)** 슬라이더 **핸들(막대 끝 원, 안에 백분위 숫자·흰 글자)** 복원 — 별도 "순위" 열은 제거하고 열은 지표·리그 백분위(슬라이더)·값 3개. 핸들 글자 대비를 위해 중간색을 slate-500으로 어둡게(숫자용 밝은 톤 제거). **`lg`(1024px) 이상은 섹션 순서를 유지한 채 행 수가 비슷해지는 지점에서 두 표로 나눠 좌우 2단**(`splitSections`, CSS `hidden lg:grid`/`lg:hidden` 분기), 폰·태블릿은 한 표. 바깥 배경은 flush 표와 맞춰 slate-950. **(4차)** 열 제목 행(지표·리그 백분위·값, `TableHead`) 제거 — 섹션 그룹 헤더만 남김. **(5차)** 자격 미달 NQ 표시 — `PercentileEntry.qualified` 추가(선수 총 출전시간 미달 또는 해당 지표 시도 수가 자격자 중앙값의 20% 미만이면 false). 백분위는 숨기지 않고 그대로 계산해 막대 위치를 유지하되 막대·핸들을 slate-600, 핸들 글자를 `NQ`로 표시(Savant NOT QUALIFIED 방식, 빗금은 미적용). 이전의 "표본 부족이면 순위 숨김"(percentile=null) 동작과 각주는 NQ 각주로 교체. 값 자체가 없는 행(SCRN% 등)은 계속 "-". **(6차)** 시즌 구분 드롭다운(정규시즌/플레이오프) — 카드 제목 옆 공용 `Dropdown`+`DropdownButton`, 리더보드와 같은 `?season=playoff` 쿼리 파라미터(새로고침·링크 공유 유지). 플레이오프 선택 시에만 `usePlayerSeasonStatsLeague(roomId, ids, true, isPlayoff)`·`useTeamSeasonAdvancedStats(roomId, true)` 호출해 `playoffStats` 덧씌움, `useLeaderboardData` 에 `seasonType` 전달. 토너먼트 리그는 `allowPlayoff=false`로 드롭다운 숨김(리더보드 `hideSeasonType` 규칙). (6차 당시 해석 — 7차에서 시즌 선택이 추가됨). **(7차)** 시즌 드롭다운 추가 — 사용자 지시: 정규/플옵 드롭다운은 유지하고 "세션에서 진행된 시즌"을 고르는 드롭다운을 별도로 둠. 신규 `hooks/useSessionSeasons.ts`(같은 `group_id`+`tier` 의 `leagues` 를 `season_number` 내림차순으로 + 각 리그 방의 `rooms.season` 라벨, 토너먼트는 현재만, 조회 전·실패여도 현재 시즌 항상 포함), `?seasonNo=` 파라미터. **DB 확인(2026-10-28)**: leagues 4개 전부 season_number 1·방 1개씩이라 지금은 항상 현재 시즌 1건만 표시. **지난 시즌 선택 시 데이터 로딩은 미구현** — 선택하면 `PercentileCard` 의 `notice` 로 안내만 표시(사용자 결정: 멀티 시즌 전환이 구현돼 실제 지난 시즌이 생긴 뒤 방/로스터 불러오기를 붙임, 검증 못 하는 코드를 미리 쓰지 않음). 카드 제목은 시즌 라벨이 드롭다운으로 옮겨가 "퍼센타일 랭킹" 고정. 폰은 라벨 폭만 줄이고 전체 표기(1차 결정: 섹션 접기 없음). `font-mono`/`uppercase`/임의 px 크기 미사용(`docs/plan/ui-typography.md` 준수).
+- `views/multi/season/PlayerPercentileTab.tsx` (신규) — `useLeaderboardData`(regular, 필터 없음) + `useTeamSeasonAdvancedStats(roomId)` 로 행 생성 → 카드. 팀 어드밴스드 RPC 로딩 끝나기 전엔 스피너.
+- `views/PlayerDetailView.tsx` — `percentileSlot?: React.ReactNode` prop 추가(newsSlot 과 같은 opt-in 패턴), 탭 id `percentile`(라벨 "퍼센타일", 샷 차트와 뉴스 사이), `?tab=percentile` 파싱·저장·렌더.
+- `hooks/useSessionSeasons.ts` (신규) — 같은 세션(group_id+tier)의 시즌 목록(아래 7차).
+- `views/multi/season/MultiPlayerDetailView.tsx` — `percentileSlot={<PlayerPercentileTab .../>}` 전달(`teamsWithAwards`, `normalizedSchedule`).
+
+**Before**:
+```tsx
+// PlayerDetailView.tsx
+const activeTab: 'profile' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'news' = ...
+{ id: 'shotchart', label: '샷 차트' },
+...(newsSlot !== undefined ? [{ id: 'news', label: '뉴스' }] : []),
+{activeTab === 'news' && newsSlot}
+// MultiPlayerDetailView.tsx: newsSlot 만 전달
+```
+
+**After**:
+```tsx
+const activeTab: ... | 'shotchart' | 'percentile' | 'news' = ...   // percentileSlot 지정 시에만 'percentile' 허용
+{ id: 'shotchart', label: '샷 차트' },
+...(percentileSlot !== undefined ? [{ id: 'percentile', label: '퍼센타일' }] : []),
+...(newsSlot !== undefined ? [{ id: 'news', label: '뉴스' }] : []),
+{activeTab === 'percentile' && percentileSlot}
+{activeTab === 'news' && newsSlot}
+// MultiPlayerDetailView.tsx: percentileSlot + newsSlot 전달
+```
+
+**검증**: `tsc --noEmit` 에서 신규/수정 파일 관련 오류 0건(프로젝트에 다른 파일의 기존 오류는 있음, 무관). 합성 행 11명으로 `buildPercentileCard` 스모크 — 값이 가장 큰 TS%·3P%·SCRN 은 100, 가장 큰(=나쁜) TOV%·DFG% 는 1(inverse 반전), 림 FG% 최저는 1로 방향 정상. **브라우저 육안 확인은 아직 안 함**(멀티 리그 로그인 필요).
+
+**한계 / 후속**:
+- 계획 §7 의 Value 섹션(PER/TIM/XIM/BPM/VORP/WS48)과 SCRN%(실적)는 해당 지표 구현 전이라 카드에 없음 — `PERCENTILE_METRICS` 에 항목만 추가하면 섹션이 자동으로 나타남(빈 섹션은 숨김).
+- 싱글 `PlayerDetailView` 호출부는 `percentileSlot` 을 안 넘기므로 탭 자체가 안 보임(범위: 멀티만).
+- 과거 시즌 값 없음(현재 정규시즌만).
+- 색은 파랑→회청→빨강 발산 스케일(`PercentileCard.tsx` 의 `BAR_STOPS`/`TEXT_STOPS`). `attrRatingColor` 와는 별개 체계.
+
+**커밋 호환 메모(2026-10-28)**: 커밋 시 HEAD 와 맞추려고 `useViewportClass` 훅(미커밋·다른 세션 모바일 작업)과 Table `density="phone"`(미커밋 Table.tsx 변경) 의존을 제거 — 폰 전용 행 높이(44px) 없이 기본 밀도, 2단 분기는 CSS `lg`. 모바일 셸 작업이 커밋되면 `density="phone"` 복원 가능.
+
+**롤백 방법**: 신규 4파일 삭제 + `PlayerDetailView.tsx`/`MultiPlayerDetailView.tsx` 의 `percentileSlot` 관련 줄 제거(위 Before). 또는 해당 커밋 revert.
+
 ## 2026-10-28 — 올스타 서신 표의 시즌 스탯을 발송 시점 스냅샷으로 고정
 
 **배경**: 트레이드 서신 스냅샷(아래 항목)에 이어, 서신 카드 전수 감사 결과 시즌 스탯 열이 열 때마다 현재 값(`playerCardMap` ← `usePlayerSeasonStatsFull`)으로 바뀌는 곳이 올스타 계열 4종뿐이었다(투표 중간집계/결과, 라이징스타, 3점 챌린지). 나머지 카드는 payload에 값이 이미 있거나(어워드/부상/파워랭킹 등), 경기 박스스코어처럼 확정 후 불변이다. 선수 호버 카드는 "지금의 선수 정보"라 의도적으로 현재 값 유지.
