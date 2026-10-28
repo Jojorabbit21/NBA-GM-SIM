@@ -6,6 +6,8 @@ import { BoxScoreTable, GameStatLeaders } from '../BoxScoreTable';
 import { AdvancedBoxScoreTable } from '../AdvancedBoxScoreTable';
 import { DefenseBoxScoreTable } from '../DefenseBoxScoreTable';
 import { Dropdown, DropdownButton } from '../../common/Dropdown';
+import { ActionSheet } from '../../mobile/ActionSheet';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 
 type StatMode = 'traditional' | 'advanced' | 'defense';
 const LOADING_SKELETON_ROWS = 13;
@@ -42,9 +44,33 @@ interface GameBoxScoreTabProps {
 
 // 팀별 헤더 우측에 들어가는 Traditional/Advanced/Defense 드롭다운 — 팀마다 독립적으로 전환 가능.
 // 공용 Dropdown/DropdownButton 컴포넌트 재사용(다른 화면들과 동일한 드롭다운 룩앤필 유지).
-const StatModeSelector: React.FC<{ value: StatMode; onChange: (m: StatMode) => void }> = ({ value, onChange }) => {
+const StatModeSelector: React.FC<{ value: StatMode; onChange: (m: StatMode) => void; teamName?: string }> = ({ value, onChange, teamName }) => {
     const [isOpen, setIsOpen] = useState(false);
     const current = STAT_MODES.find(m => m.id === value) ?? STAT_MODES[0];
+    const isPhone = useIsPhone();
+
+    // [2026-10-28] 폰(§9-7, 목업 G13): 같은 DropdownButton 트리거 → 팝오버 대신 ActionSheet(항목 48)
+    if (isPhone) {
+        return (
+            <>
+                <button type="button" onClick={() => setIsOpen(true)} className="shrink-0" aria-haspopup="listbox">
+                    <DropdownButton
+                        label={current.label}
+                        isOpen={isOpen}
+                        className="!px-3 !py-1.5 !bg-transparent !border-transparent hover:!border-transparent !shadow-none !gap-2"
+                    />
+                </button>
+                <ActionSheet<StatMode>
+                    open={isOpen}
+                    title={teamName ? `${teamName} · 스탯 모드` : '스탯 모드'}
+                    items={STAT_MODES.map(m => ({ value: m.id, label: m.label }))}
+                    value={value}
+                    onSelect={m => { onChange(m); setIsOpen(false); }}
+                    onClose={() => setIsOpen(false)}
+                />
+            </>
+        );
+    }
 
     return (
         <Dropdown
@@ -83,6 +109,7 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
     // 로딩 중(박스 비어 있음)이면 일반적인 로스터 인원수만큼 스켈레톤 행을 깔아 둔다
     const maxRows = loading ? LOADING_SKELETON_ROWS : Math.max(activeHomeBox.length, activeAwayBox.length);
 
+    const isPhone = useIsPhone();
     // 팀별로 독립적으로 전환 — 원정/홈 각자 다른 스탯 모드를 볼 수 있음
     const [awayStatMode, setAwayStatMode] = useState<StatMode>('traditional');
     const [homeStatMode, setHomeStatMode] = useState<StatMode>('traditional');
@@ -94,8 +121,9 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
         const box = side === 'away' ? activeAwayBox : activeHomeBox;
         const oppBox = side === 'away' ? activeHomeBox : activeAwayBox;
         const badge = side === 'away' ? awayBadge : homeBadge;
-        const headerRight = <StatModeSelector value={mode} onChange={setMode} />;
-        const padRows = splitLayout ? maxRows - box.length : 0;
+        const headerRight = <StatModeSelector value={mode} onChange={setMode} teamName={team.name} />;
+        // 폰은 두 팀 표가 세로로 쌓이므로 높이 맞춤용 빈 행이 필요 없다(로딩 스켈레톤 행은 유지)
+        const padRows = splitLayout && (!isPhone || loading) ? maxRows - box.length : 0;
 
         if (mode === 'advanced') {
             return <AdvancedBoxScoreTable team={team} box={box} oppBox={oppBox} mvpId={mvpId} badge={badge} standalone={splitLayout} headerRight={headerRight} getProfileHref={getPlayerHref} padRows={padRows} padSkeleton={loading} dnpLabel={dnpLabel} hideOvr={hideOvr} />;
@@ -128,7 +156,7 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                 컨테이너 해체 — 갭 없이 바디를 꽉 채움). 각 팀 헤더 우측에 Traditional/Advanced/Defense
                 셀렉터가 독립적으로 들어가 팀별로 다른 스탯 모드를 볼 수 있다. */}
             <div className={splitLayout
-                ? "grid grid-cols-1 lg:grid-cols-2 gap-0"
+                ? (isPhone ? "flex flex-col gap-4" : "grid grid-cols-1 lg:grid-cols-2 gap-0")   // 폰: 원정 → 16 띄움 → 홈(§9-7)
                 : "flex flex-col gap-0"
             }>
                 <div className={splitLayout ? "overflow-x-auto" : undefined}>

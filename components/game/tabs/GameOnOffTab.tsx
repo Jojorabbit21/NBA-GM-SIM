@@ -2,6 +2,15 @@ import React, { useMemo } from 'react';
 import { PlayerBoxScore, BoxTick, BoxDelta } from '../../../types/engine';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../common/Table';
 import { TeamMark } from '../../common/TeamMark';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+
+// [2026-10-28] 폰 조합 표기 — 성(마지막 단어)만. 접미사(Jr./Sr./II…)는 건너뛴다. 예: "게리 트렌트 Jr." → "트렌트"
+const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv)$/i;
+const lastNameOf = (name: string): string => {
+    const parts = name.trim().split(/\s+/);
+    while (parts.length > 1 && NAME_SUFFIX.test(parts[parts.length - 1])) parts.pop();
+    return parts[parts.length - 1] ?? name;
+};
 
 interface GameOnOffTabProps {
     boxTimeline?: BoxTick[];
@@ -167,6 +176,10 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
         };
     }, [hasData, boxTimeline, homeBox, awayBox]);
 
+    // [2026-10-28] 폰(§9-7, 목업 G19·G20): sticky 첫 열을 배경 있는 숫자 오프셋으로(가로 스크롤 시 뒤 글자 비침 방지),
+    // 표는 전폭(flush), 조합은 성만 + 줄바꿈(행 높이가 늘어남). 셀 글자·색·열 구성은 데스크톱 그대로.
+    const isPhone = useIsPhone();
+
     if (!hasData || !result) {
         return (
             <div className="text-center text-slate-500 py-20 font-bold bg-slate-900/30 rounded-3xl border border-slate-800">
@@ -190,7 +203,7 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
     // [2026-09-07] 사각 색상 배지(약어 텍스트)를 실제 팀 로고 이미지로 교체(사용자 요청) —
     // TeamMark가 teamId로 public/logos/teams/ 로고를 조회하므로 teamId prop 추가.
     const TeamHeader: React.FC<{ teamId: string; badge: { color: string; abbr: string }; name: string; label: string }> = ({ teamId, name, label }) => (
-        <div className="px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 border-l border-r border-slate-800">
+        <div className="px-4 py-3 md:px-6 md:py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 border-slate-800 border-b md:border-b-0 md:border-l md:border-r">
             <div className="flex items-center gap-3">
                 <TeamMark teamId={teamId} teamName={name} size="custom" className="w-8 h-8" />
                 <span className="text-sm font-black text-white">{name}</span>
@@ -202,9 +215,9 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
     const PlayerTable: React.FC<{ rows: PlayerOnOffRow[]; teamId: string; badge: { color: string; abbr: string }; name: string }> = ({ rows, teamId, badge, name }) => (
         <div className="w-full relative">
             <TeamHeader teamId={teamId} badge={badge} name={name} label="선수별 On/Off" />
-            <Table className="!rounded-none" fullHeight={false}>
+            <Table className={isPhone ? '!shadow-none' : '!rounded-none'} variant={isPhone ? 'flush' : 'card'} fullHeight={false}>
                 <TableHead>
-                    <TableHeaderCell align="left" stickyLeft>선수</TableHeaderCell>
+                    <TableHeaderCell align="left" stickyLeft={isPhone ? 0 : true} width={isPhone ? 136 : undefined}>선수</TableHeaderCell>
                     <TableHeaderCell>ON MIN</TableHeaderCell>
                     <TableHeaderCell>ON ORTG</TableHeaderCell>
                     <TableHeaderCell>ON DRTG</TableHeaderCell>
@@ -219,8 +232,8 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
                         const diff = on.net != null && off.net != null ? on.net - off.net : null;
                         return (
                             <TableRow key={r.playerId}>
-                                <TableCell align="left" stickyLeft>
-                                    <span className="text-xs font-semibold text-white truncate">{r.playerName}</span>
+                                <TableCell align="left" stickyLeft={isPhone ? 0 : true} width={isPhone ? 136 : undefined}>
+                                    <span className={`text-xs font-semibold text-white truncate ${isPhone ? 'block' : ''}`}>{r.playerName}</span>
                                 </TableCell>
                                 <TableCell align="center" className={sc}>{r.onMp.toFixed(1)}</TableCell>
                                 <TableCell align="center" className={sc}>{fmt(on.off)}</TableCell>
@@ -243,9 +256,9 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
 
     const CombinedComboTable: React.FC<{ groups: { arity: number; rows: ComboRow[] }[] }> = ({ groups }) => (
         <div className="w-full relative">
-            <Table className="!rounded-none" fullHeight={false}>
+            <Table className={isPhone ? '!shadow-none' : '!rounded-none'} variant={isPhone ? 'flush' : 'card'} fullHeight={false}>
                 <TableHead>
-                    <TableHeaderCell align="left" stickyLeft>조합</TableHeaderCell>
+                    <TableHeaderCell align="left" stickyLeft={isPhone ? 0 : true} width={isPhone ? 176 : undefined}>조합</TableHeaderCell>
                     <TableHeaderCell>MIN</TableHeaderCell>
                     <TableHeaderCell>ORTG</TableHeaderCell>
                     <TableHeaderCell>DRTG</TableHeaderCell>
@@ -265,8 +278,10 @@ export const GameOnOffTab: React.FC<GameOnOffTabProps> = ({
                                 const rt = ratingOf(r.bucket);
                                 return (
                                     <TableRow key={`${g.arity}-${r.key}`}>
-                                        <TableCell align="left" stickyLeft>
-                                            <span className="text-xs font-semibold text-white truncate">{r.names.join(' + ')}</span>
+                                        <TableCell align="left" stickyLeft={isPhone ? 0 : true} width={isPhone ? 176 : undefined} className={isPhone ? '!whitespace-normal' : ''}>
+                                            {isPhone
+                                                ? <span className="block text-xs leading-[18px] font-semibold text-white break-keep">{r.names.map(lastNameOf).join(' + ')}</span>
+                                                : <span className="text-xs font-semibold text-white truncate">{r.names.join(' + ')}</span>}
                                         </TableCell>
                                         <TableCell align="center" className={sc}>{r.mp.toFixed(1)}</TableCell>
                                         <TableCell align="center" className={sc}>{fmt(rt.off)}</TableCell>

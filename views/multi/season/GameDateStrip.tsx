@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, CalendarDays } from 'lucide-react';
 import { kstDateKey, fmtTime, groupByDay, findCurrentVirtualGame } from './multiScheduleUtils';
 import { resolveVirtualDate, type VirtualDayRow } from '../../../utils/leagueTimeline';
 import { MonthCalendarPopover } from './MonthCalendarPopover';
@@ -20,12 +20,13 @@ import { periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 
 export interface TeamStripInfo { team_name: string; team_abbr: string; color_primary?: string | null; color_text?: string | null }
 
-const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean; isFinal?: boolean; selected?: boolean }> = ({ team, teamId, score, won, isFinal, selected }) => {
+// logoClass — 폰 변형은 w-4(16px)로 한 단계 작게(2026-10-27 사용자 피드백: 폰 64px 스트립에선 20px 로고가 커 보임). 데스크톱은 w-5 그대로.
+const StripTeamRow: React.FC<{ team: TeamStripInfo | undefined; teamId: string; score?: number; won?: boolean; isFinal?: boolean; selected?: boolean; logoClass?: string }> = ({ team, teamId, score, won, isFinal, selected, logoClass = 'w-5 h-5' }) => {
     return (
     <div className="flex items-center justify-between gap-2">
         {/* 팀 로고 + 약어 — 로고 폴백은 TeamLogo 공용(리그 로고 1회 폴백) */}
         <div className="flex items-center gap-1.5 min-w-0">
-            <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className={`w-5 h-5 shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`} shadow={false} />
+            <TeamLogo teamId={teamId} teamName={team?.team_abbr ?? teamId} size="custom" className={`${logoClass} shrink-0 ${isFinal && !won ? 'opacity-40' : ''}`} shadow={false} />
             <span className={`text-sm ${won && isFinal ? 'font-bold' : 'font-semibold'} truncate ${won || selected ? 'text-white' : 'text-slate-500'}`}>
                 {(team?.team_abbr ?? teamId).slice(0, 4).toUpperCase()}
             </span>
@@ -53,11 +54,16 @@ export interface GameDateStripProps {
     timeline?: VirtualDayRow[];
     /** 경기 행이 없어도 날짜 목록에 끼워 넣을 이벤트일(올스타 브레이크의 라이징스타/본경기 등). */
     eventDates?: { dateKey: string; label: string; time?: string; awayId?: string; homeId?: string }[];
+    /** [2026-10-27] 모바일 셸 — 'phone'이면 접기·날짜 셀렉터 없이 좌측 달력 아이콘 44 + 카드 128, 바탕 slate-900(§8-3-1). 기본 'desktop'.
+     *  폰에선 접힘 상태가 없다(본문과 함께 스크롤, 2026-10-27 결정). */
+    variant?: 'desktop' | 'phone';
 }
 
 export const GameDateStrip: React.FC<GameDateStripProps> = ({
     leagueId, currentGameId, schedule, teamMap, simStart, gprd, bracketData, roomId, accessToken, getGameUrlId, preferVirtual, timeline, eventDates,
+    variant = 'desktop',
 }) => {
+    const isPhone = variant === 'phone';
     const navigate = useNavigate();
     // [2026-09-07] serverNow(1초 틱)를 MultiSeasonLayout에서 prop으로 받던 걸 여기서 직접
     // 구독하도록 변경 — 전에는 이 컴포넌트를 감싸는 레이아웃 전체가 매초 리렌더돼 <Outlet/>
@@ -267,6 +273,133 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
     if (!activeGroup) return null;
     const activeEvents = (eventDates ?? []).filter(e => e.dateKey === activeGroup.dateKey);
 
+    // [2026-10-27] 카드 리스트를 데스크톱/폰 두 렌더가 공유 — 치수·색만 variant로 바뀐다(§8-3-1: 카드 128, 바탕 slate-950, 선택 slate-800, 라이브 red-900/25).
+    const stripLogoClass = isPhone ? 'w-4 h-4' : 'w-5 h-5';
+    const cardW = isPhone ? 'w-32' : 'w-36';
+    const cardBorder = isPhone ? 'border-slate-800' : 'border-slate-700';
+    const cardBg = isPhone ? 'bg-slate-950' : 'bg-slate-900';
+    const cardHover = isPhone ? 'bg-slate-950 hover:bg-slate-900' : 'bg-slate-900 hover:bg-slate-800';
+    const cardCurrent = isPhone ? 'bg-slate-800' : 'bg-slate-700';
+    const cardLive = isPhone ? 'bg-red-900/25 hover:bg-red-900/40' : 'bg-red-900/30 hover:bg-red-900/50';
+    const cardsEl = (
+        <>
+        {/* 그 날짜의 경기 카드 — 가로 스크롤 */}
+        <div
+            ref={gameStripRef}
+            onScroll={updateScrollState}
+            onMouseDown={handleStripMouseDown}
+            onMouseMove={handleStripMouseMove}
+            onMouseUp={endStripDrag}
+            onMouseLeave={endStripDrag}
+            onClickCapture={handleStripClickCapture}
+            className={`flex-1 min-w-0 overflow-x-auto flex select-none cursor-grab active:cursor-grabbing ${isPhone ? 'snap-x snap-mandatory' : ''}`}
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+        >
+            {activeGroup.games.length === 0 && activeEvents.map(e => (
+                <div key={e.label} className={`shrink-0 ${cardW} snap-start px-3 py-1.5 flex flex-col justify-center gap-1 border-r ${cardBorder} ${cardBg}`}>
+                    <span className="text-xs font-bold text-slate-500">{e.time ?? '예정'}</span>
+                    {e.awayId && e.homeId ? (
+                        <div className="flex flex-col gap-0.5">
+                            <StripTeamRow logoClass={stripLogoClass} team={teamMap[e.awayId]} teamId={e.awayId} />
+                            <StripTeamRow logoClass={stripLogoClass} team={teamMap[e.homeId]} teamId={e.homeId} />
+                        </div>
+                    ) : (
+                        <span className="text-sm font-semibold text-slate-200 truncate ko-normal">{e.label}</span>
+                    )}
+                </div>
+            ))}
+            {activeGroup.games.map(g => {
+                const state = getGameDisplayState(g, serverNow);
+                const live = liveSummaries[g.id];
+                const isCurrent = g.id === currentGameId;
+                const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
+                const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
+                // [2026-10-26] 연장 경기 '종료 (OT)', 라이브 연장 'OT1 3:21'
+                const statusLabel = state === 'final' ? (g.otPeriods ? `종료 (${overtimeTag(g.otPeriods)})` : '종료')
+                    : state === 'live' ? (live ? `${periodShortLabel(live.quarter ?? 1, undefined, '1Q')} ${live.clock ?? ''}` : '진행 중')
+                    : fmtTime(g, preferVirtual);
+
+                return (
+                    <button
+                        key={g.id}
+                        ref={isCurrent ? currentCardRef : undefined}
+                        onClick={() => !isCurrent && navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
+                        className={`shrink-0 ${cardW} snap-start px-3 py-1.5 flex flex-col justify-center gap-1 border-r ${cardBorder} transition-[color,background-color] text-left cursor-pointer ${
+                            isCurrent ? cardCurrent : state === 'live' ? cardLive : cardHover
+                        }`}
+                    >
+                        <div className="flex items-center justify-between gap-1">
+                            <span className={`text-xs font-bold ${isCurrent ? 'text-white' : state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
+                                {statusLabel}
+                            </span>
+                            {state === 'live' && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold leading-none text-red-400">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    LIVE
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                            <StripTeamRow logoClass={stripLogoClass}
+                                team={teamMap[g.awayTeamId]}
+                                teamId={g.awayTeamId}
+                                score={state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : undefined}
+                                won={awayWon || state === 'live'}
+                                isFinal={state === 'final'}
+                                selected={isCurrent}
+                            />
+                            <StripTeamRow logoClass={stripLogoClass}
+                                team={teamMap[g.homeTeamId]}
+                                teamId={g.homeTeamId}
+                                score={state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : undefined}
+                                won={homeWon || state === 'live'}
+                                isFinal={state === 'final'}
+                                selected={isCurrent}
+                            />
+                        </div>
+                    </button>
+                );
+            })}
+        </div>
+        </>
+    );
+
+    if (isPhone) {
+        return (
+            <div className="shrink-0 relative flex items-stretch bg-slate-900 border-b border-slate-800 h-16">
+                {/* 달력 아이콘 44 — 데스크톱의 접기 ▲·‹ 연/월.일 › 셀렉터 대신(§8-3-1). 탭 → 바텀 시트 달력 */}
+                <button
+                    type="button"
+                    aria-label="날짜 선택"
+                    aria-expanded={isDateMenuOpen}
+                    onClick={() => setIsDateMenuOpen(o => !o)}
+                    className={`w-11 shrink-0 self-stretch flex items-center justify-center border-r border-slate-700 text-slate-300 active:bg-white/10 ${isDateMenuOpen ? 'bg-slate-800' : ''}`}
+                >
+                    <CalendarDays size={20} />
+                </button>
+                {cardsEl}
+                <div className="pointer-events-none absolute right-0 inset-y-0 w-6 bg-gradient-to-r from-transparent to-slate-900" />
+                {isDateMenuOpen && viewYM && (
+                    <div className="fixed inset-0 z-popover flex flex-col justify-end">
+                        <div className="absolute inset-0 bg-slate-950/80" aria-hidden="true" />
+                        {/* dateMenuRef — 바깥 mousedown 닫기 핸들러(위 useEffect)가 이 안쪽 클릭은 통과시킨다 */}
+                        <div ref={dateMenuRef} className="relative pb-safe">
+                            <MonthCalendarPopover
+                                inline
+                                position={{ x: 0, y: 0 }}
+                                viewYM={viewYM}
+                                onViewYMChange={setViewYM}
+                                selectableDates={gameDateSet}
+                                activeDateKey={activeDateKey ?? ''}
+                                onSelect={dk => { setSelectedDateKey(dk); setIsDateMenuOpen(false); }}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     if (isCollapsed) {
         return (
             <div className="shrink-0 flex items-center gap-2 bg-slate-800 border-b border-slate-700 h-8 px-1.5">
@@ -360,84 +493,7 @@ export const GameDateStrip: React.FC<GameDateStripProps> = ({
                 </IconButton>
             )}
 
-            {/* 그 날짜의 경기 카드 — 가로 스크롤 */}
-            <div
-                ref={gameStripRef}
-                onScroll={updateScrollState}
-                onMouseDown={handleStripMouseDown}
-                onMouseMove={handleStripMouseMove}
-                onMouseUp={endStripDrag}
-                onMouseLeave={endStripDrag}
-                onClickCapture={handleStripClickCapture}
-                className="flex-1 min-w-0 overflow-x-auto flex select-none cursor-grab active:cursor-grabbing"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-            >
-                {activeGroup.games.length === 0 && activeEvents.map(e => (
-                    <div key={e.label} className="shrink-0 w-36 px-3 py-1.5 flex flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900">
-                        <span className="text-xs font-bold text-slate-500">{e.time ?? '예정'}</span>
-                        {e.awayId && e.homeId ? (
-                            <div className="flex flex-col gap-0.5">
-                                <StripTeamRow team={teamMap[e.awayId]} teamId={e.awayId} />
-                                <StripTeamRow team={teamMap[e.homeId]} teamId={e.homeId} />
-                            </div>
-                        ) : (
-                            <span className="text-sm font-semibold text-slate-200 truncate ko-normal">{e.label}</span>
-                        )}
-                    </div>
-                ))}
-                {activeGroup.games.map(g => {
-                    const state = getGameDisplayState(g, serverNow);
-                    const live = liveSummaries[g.id];
-                    const isCurrent = g.id === currentGameId;
-                    const homeWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
-                    const awayWon = state === 'final' && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
-                    // [2026-10-26] 연장 경기 '종료 (OT)', 라이브 연장 'OT1 3:21'
-                    const statusLabel = state === 'final' ? (g.otPeriods ? `종료 (${overtimeTag(g.otPeriods)})` : '종료')
-                        : state === 'live' ? (live ? `${periodShortLabel(live.quarter ?? 1, undefined, '1Q')} ${live.clock ?? ''}` : '진행 중')
-                        : fmtTime(g, preferVirtual);
-
-                    return (
-                        <button
-                            key={g.id}
-                            ref={isCurrent ? currentCardRef : undefined}
-                            onClick={() => !isCurrent && navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(g.id)}`)}
-                            className={`shrink-0 w-36 px-3 py-1.5 flex flex-col justify-center gap-1 border-r border-slate-700 transition-[color,background-color] text-left cursor-pointer ${
-                                isCurrent ? 'bg-slate-700' : state === 'live' ? 'bg-red-900/30 hover:bg-red-900/50' : 'bg-slate-900 hover:bg-slate-800'
-                            }`}
-                        >
-                            <div className="flex items-center justify-between gap-1">
-                                <span className={`text-xs font-bold ${isCurrent ? 'text-white' : state === 'live' ? 'text-red-400' : 'text-slate-500'}`}>
-                                    {statusLabel}
-                                </span>
-                                {state === 'live' && (
-                                    <span className="flex items-center gap-1 text-[10px] font-bold leading-none text-red-400">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                        LIVE
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                                <StripTeamRow
-                                    team={teamMap[g.awayTeamId]}
-                                    teamId={g.awayTeamId}
-                                    score={state === 'final' ? g.awayScore : state === 'live' ? live?.awayScore : undefined}
-                                    won={awayWon || state === 'live'}
-                                    isFinal={state === 'final'}
-                                    selected={isCurrent}
-                                />
-                                <StripTeamRow
-                                    team={teamMap[g.homeTeamId]}
-                                    teamId={g.homeTeamId}
-                                    score={state === 'final' ? g.homeScore : state === 'live' ? live?.homeScore : undefined}
-                                    won={homeWon || state === 'live'}
-                                    isFinal={state === 'final'}
-                                    selected={isCurrent}
-                                />
-                            </div>
-                        </button>
-                    );
-                })}
-            </div>
+            {cardsEl}
 
             {/* 리스트가 화면 우측 끝을 넘어가도 스크롤할 방법이 없다는 피드백 — 맨 우측에
                 고정 화살표 버튼 추가, 클릭 시 스트립을 오른쪽으로 스크롤. 좌측 버튼과 동일하게

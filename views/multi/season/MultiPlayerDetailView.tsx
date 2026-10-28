@@ -30,6 +30,16 @@ import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { runAwardVoting } from '../../../utils/awardVoting';
 import { stampSeasonAwards } from '../../../utils/awardStamper';
 import type { Team, Game } from '../../../types';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { useLeaderboardData } from '../../../hooks/useLeaderboardData';
+import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
+import type { FilterItem } from '../../../data/leaderboardConfig';
+
+// [2026-10-28] 폰 헤더 PER 계산용 리더보드 고정 인자(PlayerPercentileTab과 같은 값)
+const PER_NO_FILTERS: FilterItem[] = [];
+const PER_NO_STRINGS: string[] = [];
+const PER_SORT = { key: 'ts%', direction: 'desc' as const };
+const PER_NO_TEAMS: Team[] = [];
 
 // 멀티플레이어 선수 프로필 전용 캐노니컬 라우트(/multi/leagues/:leagueId/season/player/:playerId).
 // 로스터/리더보드/인사이트 탭/헤더 검색 등 어디서 선수 이름을 클릭하든 전부 이 화면으로
@@ -300,6 +310,19 @@ const MultiPlayerDetailView: React.FC = () => {
         };
     }, [basePlayer, playerCareerHistory, playerTendencies, playerAllStarAwards]);
 
+    // [2026-10-28] 폰 헤더 "이번 시즌" 그리드의 PER — 리그 전체로 정규화하는 값이라 퍼센타일 탭과 같은 경로(useLeaderboardData + 팀 고급 스탯)로 계산.
+    // 데스크톱 헤더는 PER을 쓰지 않으므로 폰일 때만 리그 데이터를 넘긴다(아니면 빈 배열 · 조회 꺼짐).
+    const isPhone = useIsPhone();
+    const { data: perTeamAdvanced } = useTeamSeasonAdvancedStats(room?.id, false, isPhone);
+    const { sortedData: perRows } = useLeaderboardData(
+        isPhone ? teamsWithAwards : PER_NO_TEAMS, normalizedSchedule, PER_NO_FILTERS, PER_SORT, 'Players', PER_NO_STRINGS, PER_NO_STRINGS, '', 'Traditional', 'regular', false, perTeamAdvanced,
+    );
+    const headerPer = useMemo(() => {
+        if (!isPhone || !playerId) return null;
+        const row = (perRows as { id: string; stats: Record<string, number> }[]).find(r => r.id === playerId);
+        return row ? row.stats['per'] ?? null : null;
+    }, [isPhone, perRows, playerId]);
+
     if (isLoading) {
         return (
             <Spinner variant="page" />
@@ -338,8 +361,9 @@ const MultiPlayerDetailView: React.FC = () => {
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
             percentileSlot={<PlayerPercentileTab teams={teamsWithAwards} schedule={normalizedSchedule} playerId={player.id} roomId={room?.id} seasonLabel={room?.season ?? '2025-26'} league={league} allowPlayoff={league?.type !== 'tournament'} />}
-            newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} />}
+            newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} playerName={player.name} />}
             condition={playerCondition}
+            headerPer={headerPer}
         />
     );
 };

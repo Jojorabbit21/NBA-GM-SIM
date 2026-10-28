@@ -22,6 +22,9 @@ import { TeamLogo } from '../../../components/common/TeamLogo';
 import { TeamHover } from '../../../components/common/TeamHover';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
 import { useTableSort } from '../../../hooks/useTableSort';
+import { useViewportClass } from '../../../hooks/useViewportClass';
+import { SectionTabs } from '../../../components/mobile/SectionTabs';
+import { SheetSelect } from '../../../components/mobile/ActionSheet';
 import { buildRaceLedger } from './playoffRaceUtils';
 import { buildContext, rankGroup } from '../../../utils/nbaTiebreak';
 import type { Game } from '../../../types/game';
@@ -59,6 +62,15 @@ const COLS = [
     { key: 'sos',    label: 'SOS',  width: 58,  align: 'center' as const, sortable: true  },
     { key: 'po',     label: 'PO%',  width: 92,  align: 'center' as const, sortable: true  },
 ];
+
+// [2026-10-27] 폰(<768) 열 폭 — docs/ui/mobile-design-system.md §9-1-9(합 820).
+// sticky 팀 열은 160 — 로스터 탭의 136(PHONE_TEAM_COL_WIDTH)이면 순위 변동(▲1)이 붙을 때 약어가 "D…"로 잘린다(2026-10-27 사용자 지적).
+const PHONE_TEAM_COL_WIDTH = 160;
+const PHONE_COL_WIDTH: Record<string, number> = {
+    wins: 44, losses: 44, pct: 56, gb: 48, home: 60, away: 60, div: 60, conf: 60,
+    ppg: 56, oppg: 56, diff: 56, streak: 52, l10: 52, sos: 56, po: 60,
+};
+const PHONE_DATA_COLS = COLS.slice(2);
 
 const fmtRecord = (r: { w: number; l: number }) => `${r.w}-${r.l}`;
 const fmtPpg    = (v: number) => v > 0 ? v.toFixed(1) : '-';
@@ -564,6 +576,7 @@ const LeagueStandingsTable: React.FC<{
 }> = ({ leagueTeams, schedule, serverNowMs, playoffTeamsPerConf, playInEnabled }) => {
     const navigate = useNavigate();
     const { leagueId } = useParams<{ leagueId: string }>();
+    const isPhone = useViewportClass() === 'phone';
     const [mode, setMode] = useState<StandingsMode>('League');
     const { sortConfig, sortProps } = useTableSort({ key: 'pct', direction: 'desc' });
 
@@ -719,6 +732,110 @@ const LeagueStandingsTable: React.FC<{
         return { auto, last };
     }, [rankedRows, mode, playoffTeamsPerConf, playInEnabled]);
 
+    // 값 색(W/L/PPG/OPPG/DIFF/STRK/L10/SOS) — 데스크톱·폰 공용
+    const cellColorClass = (rec: MultiStandingsRecord, key: string, slug: string): string => {
+        if (key === 'wins') return trendColor(rec.wins, leagueAverages.wins);
+        if (key === 'losses') return trendColor(rec.losses, leagueAverages.losses, { inverse: true }); // 패배는 적을수록 좋음
+        if (key === 'diff') return trendColor(rec.diff, 0);
+        if (key === 'streak') return trendColor(rec.streak.startsWith('W') ? 1 : rec.streak.startsWith('L') ? -1 : 0, 0);
+        if (key === 'l10') return trendColor(rec.l10.w, rec.l10.l, { neutral: 'text-slate-300' });
+        if (key === 'ppg') return trendColor(rec.ppg, leagueAverages.ppg);
+        if (key === 'oppg') return trendColor(rec.oppg, leagueAverages.oppg, { inverse: true }); // 실점은 낮을수록 좋음
+        if (key === 'sos') return trendColor(sosMap[slug] ?? 0, leagueAverages.sos);
+        return 'text-white';
+    };
+
+    if (isPhone) {
+        // [2026-10-27] 폰 순위표 — docs/ui/mobile-design-system.md §9-1-9(캔버스 10행 T1~T4).
+        // 헤더 44 + 모드 탭 바 44(세그먼트 대신, 홈 동/서부 탭 바 패턴) + 공용 Table(flush·phone·scroll parent):
+        // sticky 팀 열 160(우측 1px slate-800 구분선 — 2026-10-27 사용자 요청) = 순번(컨퍼런스 모드에서만 컷 색: 직행 emerald · 플레이인 amber) · 로고 24 · 약어(클린치 색) · 순위 변동.
+        // 데스크톱의 1px 컷라인 행은 그리지 않고(§6 — 선 대신 순번 색), 열 헤더는 상단 sticky 1개(그룹별 반복 없음), PO%는 바 없이 색 텍스트만.
+        const autoClinchCount = playInEnabled ? Math.max(0, playoffTeamsPerConf - 2) : playoffTeamsPerConf;
+        const lastQualifyingRank = playInEnabled ? playoffTeamsPerConf + 2 : playoffTeamsPerConf;
+        const rankColor = (rank: number) => {
+            if (mode !== 'Conference') return 'text-slate-400';
+            if (rank <= autoClinchCount) return 'text-emerald-400';
+            if (playInEnabled && rank <= lastQualifyingRank) return 'text-amber-400';
+            return 'text-slate-400';
+        };
+        return (
+            <div className="flex flex-col h-full overflow-hidden">
+                {/* [2026-10-28] 순위 섹션 탭 바(리그 순위 ↔ 리더보드) + 우측 모드 셀렉터(리그/컨퍼런스/디비전 — 탭 바에서 SheetSelect로, 사용자 지시) */}
+                <SectionTabs
+                    active="standings"
+                    right={<SheetSelect<StandingsMode> title="순위 보기" items={MODE_TABS.map(t => ({ value: t.id, label: t.label }))} value={mode} onChange={setMode} />}
+                />
+                {/* 스크롤 상자 하나가 세로·가로를 다 맡는다(sticky 헤더·팀 열 기준). 우측 24px 페이드는 형제. 하단 스페이서 = 탭 바 56 + 안전영역. */}
+                <div className="relative flex-1 min-h-0 flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-auto custom-scrollbar overscroll-x-contain">
+                        <Table variant="flush" density="phone" scroll="parent" dividers={false}>
+                            <TableHead>
+                                <TableHeaderCell stickyLeft={0} width={PHONE_TEAM_COL_WIDTH} align="left" className="pl-4 border-r border-slate-800">팀</TableHeaderCell>
+                                {PHONE_DATA_COLS.map(c => (
+                                    <TableHeaderCell key={c.key} width={PHONE_COL_WIDTH[c.key]} align="center" {...(c.sortable ? sortProps(c.key) : {})}>
+                                        {c.label}
+                                    </TableHeaderCell>
+                                ))}
+                            </TableHead>
+                            <TableBody>
+                                {rankedRows.map((row) => {
+                                    const { team: t, rank, rec, gb, groupLabel, groupColor } = row;
+                                    // 데스크톱은 반투명 틴트(`${groupColor}66`)만 깔지만, 폰 그룹 머리의 sticky 라벨 셀은 반투명이면 가로 스크롤 때
+                                    // 뒤로 지나가는 colSpan 셀이 비쳐 겹친 띠가 생긴다(2026-10-27 사용자 스크린샷). 불투명 slate-900 위에 틴트를
+                                    // gradient로 얹어 두 셀 모두 불투명·같은 색으로 맞춘다.
+                                    const groupTint = groupColor
+                                        ? { backgroundColor: '#0f172a', backgroundImage: `linear-gradient(${groupColor}66, ${groupColor}66)`, borderColor: `${groupColor}b3` }
+                                        : undefined;
+                                    const clinch = clinchMap[t.team_slug];
+                                    const nameColor = clinch === 'clinched_playoff' ? 'text-emerald-400' : clinch === 'eliminated' ? 'text-slate-600' : 'text-slate-200';
+                                    return (
+                                        <React.Fragment key={`${mode}-${t.id}`}>
+                                            {groupLabel && (
+                                                <tr className="h-9 text-xs font-bold">
+                                                    <TableHeaderCell stickyLeft={0} width={PHONE_TEAM_COL_WIDTH} align="left" style={groupTint} className={`pl-4 border-r border-slate-800 ${groupColor ? 'text-white' : 'text-indigo-400'}`}>{groupLabel}</TableHeaderCell>
+                                                    <TableHeaderCell colSpan={PHONE_DATA_COLS.length} style={groupTint} className="bg-slate-900" />
+                                                </tr>
+                                            )}
+                                            <TableRow onClick={() => navigate(`/multi/leagues/${leagueId}/season/roster?rteam=${t.team_slug}`)}>
+                                                <TableCell stickyLeft={0} width={PHONE_TEAM_COL_WIDTH} align="left" className="pl-4 border-r border-slate-800">
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className={`w-[18px] shrink-0 text-center text-sm font-semibold tabular-nums ${rankColor(rank)}`}>{rank}</span>
+                                                        <TeamLogo teamId={t.team_slug} teamName={t.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
+                                                        <span className={`flex-1 min-w-0 text-sm font-semibold truncate ${nameColor}`}>{t.team_abbr}</span>
+                                                        {rankDelta && mode !== 'Division' && (
+                                                            <span className="shrink-0 text-xs">
+                                                                <RankDelta delta={(mode === 'League' ? rankDelta.league : rankDelta.conf)[t.team_slug]} />
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </TableCell>
+                                                {PHONE_DATA_COLS.map(c => {
+                                                    if (c.key === 'po') {
+                                                        const pct = Math.round((playoffOddsMap[t.team_slug] ?? 0) * 100);
+                                                        const poColor = pct >= 75 ? 'text-emerald-400' : pct >= 25 ? 'text-amber-400' : 'text-red-400';
+                                                        return <TableCell key={c.key} align="center" className={`text-sm tabular-nums ${poColor}`}>{pct}%</TableCell>;
+                                                    }
+                                                    const val = getCellValue(rec, c.key, gb, sosMap[t.team_slug] ?? 0, playoffOddsMap[t.team_slug] ?? 0);
+                                                    return (
+                                                        <TableCell key={c.key} align="center" className={`text-sm tabular-nums ${cellColorClass(rec, c.key, t.team_slug)}`}>
+                                                            {val}
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                        <div aria-hidden="true" className="h-14 pb-safe sticky left-0" />
+                    </div>
+                    <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-r from-transparent to-slate-950" />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-4 py-3 shrink-0 bg-slate-900 border-b border-slate-800">
@@ -818,15 +935,7 @@ const LeagueStandingsTable: React.FC<{
                                             }
 
                                             const val = getCellValue(rec, c.key, gb, sosMap[t.team_slug] ?? 0, playoffOddsMap[t.team_slug] ?? 0);
-                                            let colorClass = 'text-white';
-                                            if (c.key === 'wins') colorClass = trendColor(rec.wins, leagueAverages.wins);
-                                            else if (c.key === 'losses') colorClass = trendColor(rec.losses, leagueAverages.losses, { inverse: true }); // 패배는 적을수록 좋음
-                                            else if (c.key === 'diff') colorClass = trendColor(rec.diff, 0);
-                                            else if (c.key === 'streak') colorClass = trendColor(rec.streak.startsWith('W') ? 1 : rec.streak.startsWith('L') ? -1 : 0, 0);
-                                            else if (c.key === 'l10') colorClass = trendColor(rec.l10.w, rec.l10.l, { neutral: 'text-slate-300' });
-                                            else if (c.key === 'ppg') colorClass = trendColor(rec.ppg, leagueAverages.ppg);
-                                            else if (c.key === 'oppg') colorClass = trendColor(rec.oppg, leagueAverages.oppg, { inverse: true }); // 실점은 낮을수록 좋음
-                                            else if (c.key === 'sos') colorClass = trendColor(sosMap[t.team_slug] ?? 0, leagueAverages.sos);
+                                            const colorClass = cellColorClass(rec, c.key, t.team_slug);
                                             return (
                                                 <TableCell
                                                     key={c.key}

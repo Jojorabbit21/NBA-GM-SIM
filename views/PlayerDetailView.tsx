@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 import { getPositionStars } from '../utils/positionRating';
@@ -49,6 +49,9 @@ import { getLocalPopularityLabel, getNationalPopularityLabel } from '../services
 import { getMoraleLabel } from '../services/moraleService';
 import { getAttrColor, getAttrBarColor } from '../utils/attrRatingColor';
 import { CONTRACT_TYPE_LABEL } from '../utils/contractLabels';
+import { useIsPhone } from '../hooks/useViewportClass';
+import { BottomSheet, SheetGroupTitle, SheetOptionRow } from '../components/mobile/BottomSheet';
+import { MOBILE_TAB_BAR_HEIGHT } from '../components/mobile/MobileTabBar';
 
 interface PlayerDetailViewProps {
     player: Player;
@@ -90,6 +93,8 @@ interface PlayerDetailViewProps {
     // [2026-10-07] "뉴스" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯.
     // 뉴스 데이터(league_events)가 멀티 전용이라 뷰는 렌더만 하고 조회는 호출부가 한다.
     newsSlot?: React.ReactNode;
+    /** [2026-10-28] 폰 헤더 이번 시즌 그리드의 PER — 리그 전체 정규화 값이라 호출부(멀티)가 리그 데이터로 계산해 넘긴다. 없으면 '-' */
+    headerPer?: number | null;
     /** [2026-10-28] "퍼센타일" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯(newsSlot과 같은 패턴).
      * 리그 전체 선수 스탯이 필요해 계산은 호출부가 한다(views/multi/season/PlayerPercentileTab.tsx). */
     percentileSlot?: React.ReactNode;
@@ -414,30 +419,36 @@ const ShotBreakdownTable: React.FC<{
     /** 리그평균 · +/- 두 열 추가(rows[].avg 필요) */
     showLeagueAvg?: boolean;
     footer?: ShotBreakdownFooterRow[];
-}> = ({ title, headerLabel, rows, showLeagueAvg = false, footer }) => (
+    /** [2026-10-28] 폰(§9-2): 표 위 제목 라벨을 없애고 이 텍스트를 첫 열 머리 칸에(예: "구역별 기록"). 전폭 표라 첫·끝 열에 16px 여백 */
+    phoneLabel?: string;
+}> = ({ title, headerLabel, rows, showLeagueAvg = false, footer, phoneLabel }) => {
+    const phone = phoneLabel !== undefined;
+    const first = phone ? 'pl-4' : '';
+    const last = phone ? 'pr-4' : '';
+    return (
     <div>
-        <div className="text-xs text-slate-500 mb-2">{title}</div>
+        {!phone && <div className="text-xs text-slate-500 mb-2">{title}</div>}
         <Table variant="bare" dividers={false} className="text-sm">
             <TableHead>
-                <TableHeaderCell align="left">{headerLabel}</TableHeaderCell>
+                <TableHeaderCell align="left" className={first}>{phone ? phoneLabel : headerLabel}</TableHeaderCell>
                 <TableHeaderCell align="right">FGM</TableHeaderCell>
                 <TableHeaderCell align="right">FGA</TableHeaderCell>
-                <TableHeaderCell align="right">FG%</TableHeaderCell>
+                <TableHeaderCell align="right" className={showLeagueAvg ? '' : last}>FG%</TableHeaderCell>
                 {showLeagueAvg && <TableHeaderCell align="right">리그평균</TableHeaderCell>}
-                {showLeagueAvg && <TableHeaderCell align="right">+/-</TableHeaderCell>}
+                {showLeagueAvg && <TableHeaderCell align="right" className={last}>+/-</TableHeaderCell>}
             </TableHead>
             <TableBody>
                 {rows.map(r => {
                     const delta = showLeagueAvg && r.a > 0 && r.avg != null ? r.pct - r.avg : null;
                     return (
                         <TableRow key={r.key}>
-                            <TableCell align="left" className="text-white font-medium">{r.label}</TableCell>
+                            <TableCell align="left" className={`text-white font-medium ${first}`}>{r.label}</TableCell>
                             <TableCell align="right" className="text-slate-200 tabular-nums">{r.a > 0 ? r.m : '-'}</TableCell>
                             <TableCell align="right" className="text-slate-200 tabular-nums">{r.a > 0 ? r.a : '-'}</TableCell>
-                            <TableCell align="right" className="text-white tabular-nums">{fgPctText(r.m, r.a, r.pct)}</TableCell>
+                            <TableCell align="right" className={`text-white tabular-nums ${showLeagueAvg ? '' : last}`}>{fgPctText(r.m, r.a, r.pct)}</TableCell>
                             {showLeagueAvg && <TableCell align="right" className="text-slate-500 tabular-nums">{((r.avg ?? 0) * 100).toFixed(1)}%</TableCell>}
                             {showLeagueAvg && (
-                                <TableCell align="right" className={`tabular-nums ${delta == null ? 'text-slate-600' : delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                <TableCell align="right" className={`tabular-nums ${last} ${delta == null ? 'text-slate-600' : delta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     {delta == null ? '-' : `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}%p`}
                                 </TableCell>
                             )}
@@ -449,7 +460,7 @@ const ShotBreakdownTable: React.FC<{
                 <TableFoot>
                     {footer.map(f => (
                         <tr key={f.label}>
-                            <TableCell align="left" className={f.emphasis ? 'text-white' : 'text-slate-400'}>{f.label}</TableCell>
+                            <TableCell align="left" className={`${first} ${f.emphasis ? 'text-white' : 'text-slate-400'}`}>{f.label}</TableCell>
                             <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{f.m}</TableCell>
                             <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{f.a}</TableCell>
                             <TableCell align="right" className={`tabular-nums ${f.emphasis ? 'text-white' : 'text-slate-200'}`}>{fgPctText(f.m, f.a, f.pct)}</TableCell>
@@ -461,7 +472,8 @@ const ShotBreakdownTable: React.FC<{
             )}
         </Table>
     </div>
-);
+    );
+};
 
 // ── Game log cell builder ──
 function buildGameLogCells(g: any, mode: GameLogMode, avg = false): { val: string; color?: string }[] {
@@ -557,6 +569,11 @@ const OVERSCAN = 5;
 
 // 지그재그 행 배경 — 홀수 행만 살짝 밝게
 const ZEBRA_ROW_STYLE: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.02)' };
+// [2026-10-28] bare 표(커리어 · 게임 로그 · 스플릿)의 고정 첫 열 배경 — bare 변형은 sticky 본문/푸터 칸에 배경을 칠하지 않아
+// 가로 스크롤 시 뒤 칸이 비쳐 보였다(폰에서 드러남). 행이 보이는 색과 같은 불투명색: 바탕 slate-950 · 줄무늬(흰 2% 합성) · 푸터(slate-800/40 합성)
+const STICKY_CELL_BG: React.CSSProperties = { backgroundColor: '#020617' };
+const STICKY_CELL_BG_ZEBRA: React.CSSProperties = { backgroundColor: '#070b1c' };
+const STICKY_CELL_BG_FOOT: React.CSSProperties = { backgroundColor: '#0d1425' };
 
 // ── 게임 로그 탭의 스플릿 표 — 정규시즌 경기를 홈/원정·승/패·월별·상대팀별·최근 N경기로 나눈 평균 ──
 /** 스플릿 한 줄의 셀 — 게임 로그의 평균 행과 같은 계산·열(보기 방식별). GS는 평균이 아니라 선발 수. 경기가 없으면 구분만 채운다. */
@@ -567,14 +584,56 @@ function buildSplitCells(line: { label: string; games: any[]; gp: number; w: num
     return [line.label, String(line.gp), `${line.w}-${line.l}`, ...cells];
 }
 
+/** [2026-10-28] 폰 능력치 탭 묶음 제목(사용자 지시) — 공용 COMPACT_ATTR_GROUPS 라벨(INSIDE 등)은 로스터·리더보드가 같이 써서 건드리지 않고 폰 탭에서만 바꿔 쓴다 */
+const PHONE_ATTR_GROUP_LABEL: Record<'INS' | 'OUT' | 'DEF' | 'REB' | 'PLM' | 'ATH', string> = {
+    INS: '인사이드 스코어링', OUT: '아웃사이드 스코어링', DEF: '수비', REB: '리바운드', PLM: '플레이메이킹', ATH: '운동능력',
+};
+
+/** [2026-10-28] 폰 섹션 머리(§9-2, 목업 P4~P6): 제목 16/900 + "필터" 버튼 → 바텀 시트. 데스크톱 SectionHeader의 SegmentedControl·시즌 버튼을 시트로 통합.
+ *  버튼은 PhoneTeamGameLog와 같은 모양(h-8 slate-800 · 테두리 slate-700 · 12/700 · SlidersHorizontal 14), 기본값이 아니면 indigo 점. */
+const PhoneFilterHeader: React.FC<{ title: string; active: boolean; onOpen: () => void }> = ({ title, active, onOpen }) => (
+    <div className="px-4 py-2.5 flex items-center justify-between gap-3 bg-slate-900">
+        <span className="text-base font-black text-white">{title}</span>
+        <button type="button" aria-haspopup="dialog" onClick={onOpen} className="relative h-8 pl-2.5 pr-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 active:bg-slate-700">
+            <SlidersHorizontal size={14} />필터
+            {active && <span aria-hidden="true" className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-slate-950" />}
+        </button>
+    </div>
+);
+
+/** 폰 필터 시트의 라디오 그룹 — 공용 SheetGroupTitle + SheetOptionRow(고르는 즉시 반영). cols = 한 줄 칸 수 */
+function SheetRadioGroup<T extends string>({ title, first = false, cols = 1, value, options, onChange }: {
+    title: string; first?: boolean; cols?: 1 | 2 | 3; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+}) {
+    return (
+        <>
+            <SheetGroupTitle first={first}>{title}</SheetGroupTitle>
+            <div className={`grid gap-x-3 ${cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {options.map(o => <SheetOptionRow key={o.value} type="radio" label={o.label} checked={value === o.value} onChange={() => onChange(o.value)} />)}
+            </div>
+        </>
+    );
+}
+
 const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: string[] }> = React.memo(({ gameLog, opponentIds }) => {
     const [mode, setMode] = useState<GameLogMode>('trad');
+    const isPhone = useIsPhone();
+    const [sheetOpen, setSheetOpen] = useState(false);
     const groups = useMemo(() => buildGameLogSplits(gameLog, opponentIds), [gameLog, opponentIds]);
     const headers = useMemo(() => ['구분', 'G', 'W-L', ...GAME_LOG_MODE_COLS[mode].map(c => c.label)], [mode]);
     if (groups.length === 0) return <EmptyState title="스플릿을 계산할 정규시즌 경기가 없습니다" />;
     let zebra = -1; // 그룹과 상관없이 데이터 행 전체에 지그재그(커리어 표와 동일 방식)
     return (
         <div className="flex flex-col h-full min-h-0">
+            {isPhone ? (
+                <>
+                    <PhoneFilterHeader title="스플릿" active={mode !== 'trad'} onOpen={() => setSheetOpen(true)} />
+                    <BottomSheet open={sheetOpen} title="스플릿 필터" onClose={() => setSheetOpen(false)}>
+                        <SheetRadioGroup<GameLogMode> title="보기" first cols={3} value={mode} onChange={setMode}
+                            options={[{ value: 'trad', label: 'Traditional' }, { value: 'shooting', label: 'Shooting' }, { value: 'defense', label: 'Defense' }]} />
+                    </BottomSheet>
+                </>
+            ) : (
             <SectionHeader title="스플릿" className="bg-slate-900">
                 <SegmentedControl<GameLogMode>
                     size="sm"
@@ -588,6 +647,7 @@ const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: s
                     ]}
                 />
             </SectionHeader>
+            )}
             {/* 표 영역이 스스로 스크롤(남은 높이를 채움) → 헤더 행이 위에 고정된다 */}
             <Table variant="bare" density="compact" className="text-sm flex-1 min-h-0 !overflow-auto custom-scrollbar">
                 <TableHead className="sticky top-0 z-40">
@@ -600,7 +660,10 @@ const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: s
                         <React.Fragment key={grp.title}>
                             {/* 그룹 제목 행 — 커리어 표와 같은 공용 TableRow/TableCell, 배경만 헤더 톤으로 구분 */}
                             <TableRow className="hover:!bg-transparent">
-                                <TableCell align="left" colSpan={headers.length} className="font-bold text-slate-400 bg-slate-800/40">{grp.title}</TableCell>
+                                <TableCell align="left" colSpan={headers.length} className="font-bold text-slate-400 bg-slate-800/40">
+                                    {/* 행 전체를 덮는 칸이라 가로 스크롤하면 이름이 밀려 나갔다 — 글자만 왼쪽에 고정 */}
+                                    <span className="sticky left-2 inline-block">{grp.title}</span>
+                                </TableCell>
                             </TableRow>
                             {grp.lines.map(line => {
                                 zebra++;
@@ -608,6 +671,7 @@ const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: s
                                     <TableRow key={line.label} style={zebra % 2 !== 0 ? ZEBRA_ROW_STYLE : undefined}>
                                         {buildSplitCells(line, mode).map((val, ci) => (
                                             <TableCell key={ci} align="left" stickyLeft={ci === 0 ? 0 : undefined}
+                                                style={ci === 0 ? (zebra % 2 !== 0 ? STICKY_CELL_BG_ZEBRA : STICKY_CELL_BG) : undefined}
                                                 className={`tabular-nums ${ci === 0 ? 'font-bold text-slate-300' : ''}`}>
                                                 {val}
                                             </TableCell>
@@ -679,8 +743,9 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                         <Table variant="bare" density="compact" className="text-sm">
                             {/* 커리어·스플릿 표와 같은 기본 헤더 행(TableHead가 행·글자색·굵기를 제공), 왼쪽 정렬 */}
                             <TableHead className="sticky top-0 z-40">
-                                {cols.map((c, i) => (
-                                    <TableHeaderCell key={c.key} align="left" stickyLeft={i === 0 ? 0 : undefined}>
+                                {/* [2026-10-28] 게임 로그는 첫 열 고정 없음(사용자 결정) — 머리·본문·푸터 모두 가로 스크롤과 함께 이동 */}
+                                {cols.map(c => (
+                                    <TableHeaderCell key={c.key} align="left">
                                         {c.label}
                                     </TableHeaderCell>
                                 ))}
@@ -729,7 +794,6 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                             <TableCell
                                                 key={ci}
                                                 align="left"
-                                                stickyLeft={ci === 0 ? 0 : undefined}
                                                 className={`text-white tabular-nums ${ci === 0 ? 'font-bold' : ''} ${fi === 0 ? 'border-t border-t-slate-700' : ''}`}
                                             >
                                                 {cell.val}
@@ -768,7 +832,7 @@ function expandTeamSplitRows(
     return [summary, ...subs];
 }
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, percentileSlot, condition }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, percentileSlot, condition, headerPer }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -1205,6 +1269,21 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
     const [careerTab, setCareerTab] = useState<'trad' | 'adv'>('trad');
     const [careerMode, setCareerMode] = useState<'regular' | 'playoff'>('regular');
+    // [2026-10-28] 폰(<768) 분기(§9-2) — 태블릿·데스크톱은 기존 그대로
+    const isPhone = useIsPhone();
+    const [careerSheetOpen, setCareerSheetOpen] = useState(false);
+    const [gameLogSheetOpen, setGameLogSheetOpen] = useState(false);
+    const [shotSheetOpen, setShotSheetOpen] = useState(false);
+    // 폰 헤더 "이번 시즌" 어코디언 — 기본 펼침, 사용자가 바꾼 상태는 이 기기에 기억(localStorage, 실패해도 기본값으로 동작)
+    const [seasonStatsOpen, setSeasonStatsOpen] = useState<boolean>(() => {
+        try { return localStorage.getItem('playerHeaderSeasonStatsOpen') !== '0'; } catch { return true; }
+    });
+    const toggleSeasonStats = () => setSeasonStatsOpen(v => {
+        const next = !v;
+        try { localStorage.setItem('playerHeaderSeasonStatsOpen', next ? '1' : '0'); } catch { /* 저장 불가 환경 — 이번 세션만 */ }
+        return next;
+    });
+    const [attrEventSheet, setAttrEventSheet] = useState<{ label: string; events: { date: string; delta: number; oldValue: number; newValue: number }[] } | null>(null);
 
     // 프로필 내 탭 이동에도 URL 라우팅 부여 — ?tab=records 같은 쿼리 파라미터로 저장해
     // 새로고침/뒤로가기/링크 공유 시 보던 탭이 그대로 유지되게 함. 기본 탭(profile)은
@@ -1213,13 +1292,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const [searchParams, setSearchParams] = useSearchParams();
     const tabParam = searchParams.get('tab');
     // 'records'는 기록 탭을 커리어/게임 로그로 나누기 전 링크 호환용 — 커리어로 연다.
-    const activeTab: 'profile' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'percentile' | 'news' =
+    const activeTab: 'profile' | 'attrs' | 'career' | 'gamelog' | 'splits' | 'shotchart' | 'percentile' | 'news' =
         tabParam === 'records' ? 'career' :
+        tabParam === 'attrs' && isPhone ? 'attrs' :
         tabParam === 'career' || tabParam === 'gamelog' || tabParam === 'splits' || tabParam === 'shotchart' || (tabParam === 'percentile' && percentileSlot !== undefined) || (tabParam === 'news' && newsSlot !== undefined) ? tabParam : 'profile';
     const setActiveTab = useCallback((tab: string) => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
-            if (tab === 'career' || tab === 'gamelog' || tab === 'splits' || tab === 'shotchart' || tab === 'percentile' || tab === 'news') next.set('tab', tab);
+            if (tab === 'attrs' || tab === 'career' || tab === 'gamelog' || tab === 'splits' || tab === 'shotchart' || tab === 'percentile' || tab === 'news') next.set('tab', tab);
             else next.delete('tab');
             return next;
         }, { replace: true });
@@ -1290,10 +1370,126 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     const hasActionButtons = !!((!teamId && onNegotiate) || (myTeamId && teamId === myTeamId && (onExtension || onRelease)));
     const showBreadcrumbBar = !!teamId || hasActionButtons;
 
+
+    // ── [2026-10-28] 폰 능력치 탭 · 샷 차트 시트용 공용 조각 ──
+    // 능력치 라벨/시즌 증감/변동 기록 — 데스크톱 능력치 위젯과 같은 계산(아래 우열 IIFE와 동일 공식)
+    const compactAttrLabel = (item: CompactAttrItem) => {
+        if (item.krLabel) return item.krLabel;
+        if (item.sourceKeys.length === 1) return ATTR_KR_LABEL[item.sourceKeys[0]] || item.label;
+        return item.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join(' / ');
+    };
+    const attrInfo = (item: CompactAttrItem) => {
+        const val = getCompactAttrValue(player, item);
+        const deltas = player.seasonStartAttributes
+            ? item.sourceKeys.map(k => {
+                const cur = (player as any)[k] || 0;
+                return cur - (player.seasonStartAttributes![k] ?? cur);
+            })
+            : [];
+        const seasonDelta = deltas.length > 0 ? Math.round(deltas.reduce((s, d) => s + d, 0) / deltas.length) : 0;
+        const events = (seasonDelta !== 0 && player.changeLog) ? player.changeLog.filter(e => item.sourceKeys.includes(e.attribute)) : [];
+        return { val, seasonDelta, events };
+    };
+    // 샷 차트 필터 패널 — 데스크톱은 차트 왼쪽에, 폰은 바텀 시트 안에 같은 JSX를 그대로(즉시 반영)
+    const shotFilterPanel = (
+                <div className="shrink-0 self-start bg-slate-900 p-4 flex flex-col gap-3">
+                    <div className="text-sm text-slate-500 pb-3 border-b border-slate-800">
+                        {filteredShotEvents?.length ?? 0}개 표시 중
+                        {(shotMakeFilter !== 'all' || shotQuarterFilter.size > 0 || shotTypeFilter.size > 0 || shotTeamFilter.size > 0 || shotClutchOnly) && (
+                            <Button
+                                variant="link"
+                                onClick={() => { setShotMakeFilter('all'); setShotQuarterFilter(new Set()); setShotTypeFilter(new Set()); setShotTeamFilter(new Set()); setShotClutchOnly(false); }}
+                                className="ml-2 underline underline-offset-2"
+                            >
+                                초기화
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="flex">
+                        {/* ── 1열 ── */}
+                        <div className="w-40 shrink-0 pr-4 flex flex-col divide-y divide-slate-800">
+                            <CheckOptionGroup title="보기 방식" className="first:pt-0">
+                                {([['hexbin', '히트맵'], ['ox', 'O·X']] as const).map(([key, label]) => (
+                                    <CheckOption key={key} type="radio" name="shotViewMode" checked={shotViewMode === key} onChange={() => setShotViewMode(key)} label={label} />
+                                ))}
+                            </CheckOptionGroup>
+
+                            {shotViewMode === 'hexbin' && (
+                                <CheckOptionGroup
+                                    title="색상 기준"
+                                    footer={shotColorMode === 'fgPct' && (
+                                        <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
+                                            <span className="text-slate-500">평균 이하</span>
+                                            <span className="flex-1 h-1.5 rounded-full" style={{ background: 'linear-gradient(to right, #006106, #00b80c, #00ff11)' }} />
+                                            <span className="text-emerald-400">평균 이상</span>
+                                        </div>
+                                    )}
+                                >
+                                    {([['frequency', '빈도'], ['fgPct', '성공률']] as const).map(([key, label]) => (
+                                        <CheckOption key={key} type="radio" name="shotColorMode" checked={shotColorMode === key} onChange={() => setShotColorMode(key)} label={label} />
+                                    ))}
+                                </CheckOptionGroup>
+                            )}
+
+                            <CheckOptionGroup title="결과">
+                                {([['all', '전체'], ['make', '성공'], ['miss', '실패']] as const).map(([key, label]) => (
+                                    <CheckOption key={key} type="radio" name="shotMakeFilter" checked={shotMakeFilter === key} onChange={() => setShotMakeFilter(key)} label={label} />
+                                ))}
+                            </CheckOptionGroup>
+
+                            {availableQuarters.length > 0 && (
+                                <CheckOptionGroup title="시간대">
+                                    {availableQuarters.map(q => (
+                                        <CheckOption key={q} type="checkbox" checked={shotQuarterFilter.has(q)} onChange={() => setShotQuarterFilter(prev => toggleInSet(prev, q))} label={quarterLabel(q)} />
+                                    ))}
+                                    <CheckOption type="checkbox" checked={shotClutchOnly} onChange={() => setShotClutchOnly(v => !v)} label="클러치" />
+                                </CheckOptionGroup>
+                            )}
+
+                            {availableShotTypes.length > 0 && (
+                                <CheckOptionGroup title="슛 타입" className="last:pb-0">
+                                    {availableShotTypes.map(t => (
+                                        <CheckOption key={t} type="checkbox" checked={shotTypeFilter.has(t)} onChange={() => setShotTypeFilter(prev => toggleInSet(prev, t))} label={SHOT_TYPE_LABEL[t] ?? t} />
+                                    ))}
+                                </CheckOptionGroup>
+                            )}
+                        </div>
+
+                        {/* ── 2열: 상대팀 — 1열(결과/시간대/슛 타입 등)과 같은 flex row의
+                            형제라 기본 align-items:stretch로 1열 높이만큼 늘어난다. 예전엔
+                            체크박스 목록에 고정 max-h(26rem)를 줘서 팀 수가 적을 때 그 늘어난
+                            높이만큼 하단에 빈 공간이 남았음 — flex-1로 바꿔 목록 자체가 남는
+                            공간을 그대로 채우고, 넘칠 때만(팀이 많을 때) 스크롤되도록 함. */}
+                        <div className="w-40 shrink-0 pl-4 border-l border-slate-800 flex flex-col">
+                            {availableOpponentTeams.length > 0 && (
+                                <div className="flex-1 min-h-0 flex flex-col">
+                                    <div className="text-xs font-bold text-slate-500 mb-2">상대팀</div>
+                                    <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                                        {availableOpponentTeams.map(oppId => (
+                                            <CheckOption
+                                                key={oppId}
+                                                type="checkbox"
+                                                checked={shotTeamFilter.has(oppId)}
+                                                onChange={() => setShotTeamFilter(prev => toggleInSet(prev, oppId))}
+                                                label={teamById.get(oppId)?.abbr ?? oppId}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+    );
+
     return (
-        <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
-            {/* ═══ 브레드크럼 바 ═══ */}
-            {showBreadcrumbBar && (
+        <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden"
+            style={isPhone ? { paddingBottom: `calc(${MOBILE_TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))` } : undefined}>
+            {/* 폰: 공용 상단 바를 생략하는 화면이라 브레드크럼 바가 상단 바 — 안전영역만큼 위 여백(같은 slate-950) */}
+            {isPhone && <div className="pt-safe bg-slate-950 shrink-0" aria-hidden="true" />}
+            {/* ═══ 브레드크럼 바 ═══ (폰은 FA여도 뒤로 버튼이 필요해 항상 표시) */}
+            {(showBreadcrumbBar || isPhone) && (
             <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-800 bg-slate-950 shrink-0">
                 {/* 뒤로 버튼 */}
                 <IconButton
@@ -1432,7 +1628,58 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             </div>
             )}
 
+            {/* ═══ [2026-10-28] 폰 프로필 헤더(§9-2, 목업 P1) — 2줄 + 줄 사이 선(사용자 지시 2판):
+                ① 팀 로고 36 + 이름 24/900  ② OVR 배지(table 28) · POS | 나이 | 신장 | 체중(14 slate-300, 구분자 slate-600)  ③ 이번 시즌 스탯 그리드(제목 ─ 7칸 ─ 5칸 + PER).
+                등번호·수상 배지·부상 배지·팀 이름·연봉은 폰 헤더에 두지 않음(부상은 프로필 탭 "부상 현황", 수상은 "수상 내역"). 데스크톱 헤더는 아래 그대로 ═══ */}
+            {isPhone && (
+                <div className="bg-slate-900 border-b border-slate-800 shrink-0">
+                    <div className="flex items-center gap-3 min-w-0 px-4 pt-3.5 pb-3">
+                        {teamId && <TeamLogo teamId={teamId} teamName={currentTeam?.abbr ?? teamId} size="custom" className="h-9 w-9 shrink-0" shadow={false} />}
+                        <h1 className="text-2xl font-black text-white truncate">{player.name}</h1>
+                    </div>
+                    <div className="mx-4 h-px bg-slate-800" />
+                    <div className="flex items-center gap-2 px-4 pt-2.5 pb-3 text-sm text-slate-300 whitespace-nowrap overflow-hidden">
+                        <OvrBadge value={calculatedOvr} size="table" className="shrink-0" />
+                        <span>{player.position}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.age}세</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.height ? `${player.height}cm` : '-'}</span>
+                        <span className="text-slate-600">|</span>
+                        <span>{player.weight ? `${player.weight}kg` : '-'}</span>
+                    </div>
+                    {/* ③ 이번 시즌 스탯 그리드(2026-10-28 사용자 지시): "{시즌} 시즌" 제목 ─ G · MP · PTS · REB · AST · STL · BLK(7칸) ─ FG% · 3P% · FT% · TS% · PER(5칸).
+                        칸 = 라벨 위(12 slate-400, 데스크톱 미니 표 머리 톤) · 값 아래(14 흰색 tabular), 줄 사이 가로선만(칸 사이 세로선 없음). 값 형식은 데스크톱 formatHeaderStat 그대로.
+                        제목 줄이 어코디언 토글(기본 펼침, 상태는 이 기기에 기억) */}
+                    <div className="mx-4 h-px bg-slate-800" />
+                    <div className={`px-4 ${seasonStatsOpen ? 'pb-3' : 'pb-1'}`}>
+                        {/* 어코디언 머리 — 줄 전체가 토글(높이 32), 우측 Chevron 14가 펼침 시 180° */}
+                        <button type="button" onClick={toggleSeasonStats} aria-expanded={seasonStatsOpen} className="w-full h-8 flex items-center justify-between text-xs active:opacity-70">
+                            <span className="text-slate-300 font-medium">{shortenSeasonLabel(seasonShort)} 시즌</span>
+                            <ChevronDown size={14} className={`text-slate-400 transition-transform ${seasonStatsOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {seasonStatsOpen && ([
+                            HEADER_STAT_KEYS.slice(0, 7).map(sk => ({ key: sk.key, label: sk.label, value: formatHeaderStat(sk.key, simRegularRow) })),
+                            [
+                                ...HEADER_STAT_KEYS.slice(7).map(sk => ({ key: sk.key, label: sk.label, value: formatHeaderStat(sk.key, simRegularRow) })),
+                                { key: 'per', label: 'PER', value: simRegularRow && headerPer != null && headerPer > 0 ? headerPer.toFixed(1) : '-' },
+                            ],
+                        ]).map((cells, ri) => (
+                            <div key={ri} className={`grid ${ri === 0 ? 'grid-cols-7' : 'grid-cols-5 border-t border-slate-800'}`}>
+                                {cells.map(c => (
+                                    <div key={c.key} className="flex flex-col items-center gap-0.5 py-1.5 min-w-0">
+                                        <span className="text-xs text-slate-400">{c.label}</span>
+                                        <span className="text-sm text-white tabular-nums">{c.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* ═══ 프로필 헤더 — 이름/포지션/소속팀/키/체중/샐러리/등번호 요약 ═══ */}
+            {!isPhone && (
             <div className="flex items-center gap-4 px-4 py-5 bg-slate-900 border-b border-slate-800 shrink-0">
                 {teamId && (
                     // 큰 로고 자리는 TeamLogo 공용(public/logos/teams/, 리그 로고 1회 폴백).
@@ -1517,11 +1764,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     </tbody>
                 </table>
             </div>
+            )}
 
-            {/* ═══ 탭 바 ═══ */}
+            {/* ═══ 탭 바 ═══ (폰: 프로필 다음에 능력치 탭, compact = 가로 스크롤) */}
             <TabBar
                 tabs={[
                     { id: 'profile', label: '프로필' },
+                    ...(isPhone ? [{ id: 'attrs', label: '능력치' }] : []),
                     { id: 'career', label: '커리어' },
                     { id: 'gamelog', label: '게임 로그' },
                     { id: 'splits', label: '스플릿' },
@@ -1532,15 +1781,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 theme={theme}
+                compact={isPhone}
             />
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
                 {activeTab === 'profile' && (
-                <div className="grid min-h-full border border-slate-800" style={{ gridTemplateColumns: '2fr 2fr 6fr' }}>
+                <div className={`grid min-h-full ${isPhone ? 'grid-cols-1' : 'border border-slate-800'}`} style={isPhone ? undefined : { gridTemplateColumns: '2fr 2fr 6fr' }}>
 
                     {/* ══════════════ 좌열 (3fr) — 리더보드/순위표처럼 카드 여백 없이 다닥다닥 붙인 그리드 ══════════════ */}
-                    <div className="flex flex-col bg-slate-900 border-r border-slate-800">
+                    <div className={`flex flex-col bg-slate-900 ${isPhone ? '' : 'border-r border-slate-800'}`}>
 
                         {/* ── 위젯 1: 선수 정보 통합 카드 ── */}
                         {(() => {
@@ -1653,13 +1903,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     </div>{/* end 좌열 */}
 
                     {/* ══════════════ 중간열 — 계약/수상/부상 등 부가 정보 ══════════════ */}
-                    <div className="flex flex-col bg-slate-900 border-r border-slate-800">
+                    <div className={`flex flex-col bg-slate-900 ${isPhone ? '' : 'border-r border-slate-800'}`}>
 
                         {/* ── 위젯 6: 계약 정보 ── */}
                         {!hideSections?.includes('contract') && (
                             player.prevSalary != null ? (
                                 // 생성 FA 선수: 직전 계약 전체 연도 표시 — 지난 계약이라 값은 흐린 톤(slate-400)
-                                <ProfileSection title="직전 계약" first>
+                                <ProfileSection title="직전 계약" first={!isPhone}>
                                     {player.prevContract && player.prevContract.years.length > 0 ? (
                                         <>
                                             {player.prevContract.years.map((sal, i) => {
@@ -1698,7 +1948,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                 </ProfileSection>
                             ) : (
                                 // 일반 선수: 현재 계약 표시 — 현재 연차는 라벨·값 모두 emerald
-                                <ProfileSection title="계약 정보" first>
+                                <ProfileSection title="계약 정보" first={!isPhone}>
                                     {!player.contract || player.contract.years.length === 0 ? (
                                         <div className="text-sm text-slate-500">계약 정보가 없습니다</div>
                                     ) : (
@@ -1873,7 +2123,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
                     </div>{/* end 중간열 */}
 
-                    {/* ══════════════ 우열 — 능력치 ══════════════ */}
+                    {/* ══════════════ 우열 — 능력치 ══════════════ (폰은 별도 '능력치' 탭) */}
+                    {!isPhone && (
                     <div className="flex flex-col bg-slate-900">
 
                         {/* ── 위젯 A: 능력치 ── */}
@@ -1958,9 +2209,66 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             })()}
                         </div>
 
-                    </div>{/* end 우열 */}
+                    </div>
+                    )}{/* end 우열 */}
 
                 </div>
+                )}
+
+                {/* [2026-10-28] 폰 능력치 탭(§9-2, 목업 P13·P14) — 데스크톱 우열 위젯을 떼어 행 방향 3칸 + 묶음 제목 행으로.
+                    묶음 = COMPACT_ATTR_GROUPS 라벨, 순서는 데스크톱 병합 순서(INS · OUT · DEF · REB · PLM · ATH). 칸 = 라벨 13/700 → 값(schibsted 24/900, getAttrColor) + ▲▼ → 막대 10.
+                    증감(▲▼)은 호버가 없어 탭 → 변동 기록 바텀 시트(데스크톱 툴팁과 같은 내용). */}
+                {activeTab === 'attrs' && isPhone && (
+                    <div className="bg-slate-900 min-h-full pb-2">
+                        {(['INS', 'OUT', 'DEF', 'REB', 'PLM', 'ATH'] as const).map(gid => {
+                            const gr = COMPACT_ATTR_GROUPS.find(g => g.id === gid);
+                            if (!gr) return null;
+                            return (
+                                <div key={gid}>
+                                    {/* 묶음 제목 행 — 데스크톱 스플릿 그룹 행과 같은 배경(slate-800/40) · 위아래 선, 폰 전용 한국어 라벨(2026-10-28 사용자 지시) */}
+                                    <div className="px-4 py-1.5 bg-slate-800/40 border-y border-slate-800 text-xs font-bold text-slate-400">{PHONE_ATTR_GROUP_LABEL[gid]}</div>
+                                    <div className="grid grid-cols-3 px-1 pb-1">
+                                        {gr.items.map(item => {
+                                            const { val, seasonDelta, events } = attrInfo(item);
+                                            const label = compactAttrLabel(item);
+                                            return (
+                                                <div key={item.key} className="min-w-0 px-3 pt-2 pb-3.5 flex flex-col gap-1.5">
+                                                    <span className="text-[13px] leading-[18px] font-bold text-white truncate">{label}</span>
+                                                    <span className="flex items-baseline justify-between gap-1">
+                                                        <span className={`schibsted-grotesk font-black text-2xl tabular-nums ${getAttrColor(val)}`}>{val}</span>
+                                                        {seasonDelta !== 0 && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={events.length === 0}
+                                                                onClick={() => setAttrEventSheet({ label, events })}
+                                                                className={`font-black text-xs tabular-nums ${seasonDelta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+                                                            >
+                                                                {seasonDelta > 0 ? '▲' : '▼'}{Math.abs(seasonDelta)}
+                                                            </button>
+                                                        )}
+                                                    </span>
+                                                    <div className="h-2.5 bg-slate-800 overflow-hidden rounded-full">
+                                                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, val))}%`, backgroundImage: getAttrBarGradient(val) }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <BottomSheet open={!!attrEventSheet} title={attrEventSheet ? `${attrEventSheet.label} 변동` : ''} onClose={() => setAttrEventSheet(null)}>
+                            <div className="flex flex-col gap-2">
+                                {attrEventSheet?.events.map((evt, i) => (
+                                    <span key={i} className="flex items-center gap-2 text-sm font-normal">
+                                        <span className="text-slate-500">{evt.date.slice(5)}</span>
+                                        <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>{evt.delta > 0 ? '▲' : '▼'}</span>
+                                        <span className="text-slate-300">{evt.oldValue} → {evt.newValue}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </BottomSheet>
+                    </div>
                 )}
 
                 {activeTab === 'career' && (
@@ -1968,6 +2276,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {/* ── 커리어 기록(시즌 기록) — 프로필 탭에서 이동 ── */}
                         {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
                             <div className="flex flex-col flex-1 min-h-0">
+                                {isPhone ? (
+                                    <>
+                                        <PhoneFilterHeader title="기록" active={careerMode !== 'regular' || careerTab !== 'trad'} onOpen={() => setCareerSheetOpen(true)} />
+                                        <BottomSheet open={careerSheetOpen} title="커리어 필터" onClose={() => setCareerSheetOpen(false)}>
+                                            <SheetRadioGroup<'regular' | 'playoff'> title="시즌 구분" first cols={2} value={careerMode} onChange={setCareerMode}
+                                                options={[{ value: 'regular', label: 'Regular' }, ...(hasCareerPlayoff ? [{ value: 'playoff' as const, label: 'Playoffs' }] : [])]} />
+                                            <SheetRadioGroup<'trad' | 'adv'> title="기록 종류" cols={2} value={careerTab} onChange={setCareerTab}
+                                                options={[{ value: 'trad', label: 'Traditional' }, { value: 'adv', label: 'Advanced' }]} />
+                                        </BottomSheet>
+                                    </>
+                                ) : (
                                 <SectionHeader title="기록" className="bg-slate-900">
                                     <SegmentedControl<'regular' | 'playoff'>
                                         size="sm"
@@ -1987,6 +2306,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                         options={[{ value: 'trad', label: 'Traditional' }, { value: 'adv', label: 'Advanced' }]}
                                     />
                                 </SectionHeader>
+                                )}
                                 {(() => {
                                     const cols = careerTab === 'trad' ? CAREER_TRAD_COLS : CAREER_ADV_COLS;
                                     const isPlayoffMode = careerMode === 'playoff';
@@ -2027,6 +2347,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                         key={col.key}
                                                                         align="left"
                                                                         stickyLeft={isSticky ? 0 : undefined}
+                                                                        style={isSticky ? (groupIdx % 2 !== 0 ? STICKY_CELL_BG_ZEBRA : STICKY_CELL_BG) : undefined}
                                                                         className={`tabular-nums ${isSticky ? `font-bold ${stickyColor}` : ''} ${isSubRow && isSticky ? 'border-l-2 border-l-slate-800 !pl-5' : ''}`}
                                                                     >
                                                                         {isSummaryRow && col.key === 'team' ? <span className="font-black">{display}</span> : display}
@@ -2047,6 +2368,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                                                     key={col.key}
                                                                     align="left"
                                                                     stickyLeft={ci === 0 ? 0 : undefined}
+                                                                    style={ci === 0 ? STICKY_CELL_BG_FOOT : undefined}
                                                                     className={`text-white tabular-nums ${ci === 0 || isCareer ? 'font-bold' : ''} ${isCareer ? 'border-t border-t-slate-700' : ''}`}
                                                                 >
                                                                     {formatCareerCell(col.key, avgRow[col.key])}
@@ -2075,7 +2397,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                     <div className="flex flex-col gap-4">
                         {/* ── 최근 경기 ── */}
                         {!gameLogLoading && gameLog && gameLog.length > 0 ? <div>
+                            {isPhone && (
+                                <>
+                                    <PhoneFilterHeader title="게임 로그" active={selectedGameLogSeason !== seasonShort || gameLogMode !== 'trad'} onOpen={() => setGameLogSheetOpen(true)} />
+                                    <BottomSheet open={gameLogSheetOpen} title="게임 로그 필터" onClose={() => setGameLogSheetOpen(false)}>
+                                        <SheetRadioGroup<string> title="시즌" first cols={2} value={selectedGameLogSeason} onChange={setGameLogSeason}
+                                            options={gameLogSeasons.map(sn => ({ value: sn, label: `${sn} 시즌` }))} />
+                                        <SheetRadioGroup<GameLogMode> title="보기" cols={3} value={gameLogMode} onChange={setGameLogMode}
+                                            options={[{ value: 'trad', label: 'Traditional' }, { value: 'shooting', label: 'Shooting' }, { value: 'defense', label: 'Defense' }]} />
+                                    </BottomSheet>
+                                </>
+                            )}
                             {/* 제목 자리를 시즌 선택 드롭다운으로 — 세션에서 경기를 치른 시즌만 나온다 */}
+                            {!isPhone && (
                             <div className="px-6 py-3 flex items-center justify-between bg-slate-900">
                                 <Dropdown
                                     align="left"
@@ -2105,6 +2439,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     ]}
                                 />
                             </div>
+                            )}
                             {seasonGameLog.length > 0 ? (
                                 <div style={{ height: seasonGameLog.length * ROW_HEIGHT + GAME_LOG_HEADER_HEIGHT + GAME_LOG_FOOTER_ROWS * ROW_HEIGHT }} className="relative">
                                     <VirtualGameLog
@@ -2142,107 +2477,37 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             컨테스티드/논컨테스티드는 defenderName이 거의 항상 채워져 있어
                             의미 있게 구분이 안 돼 제외(엔진에 별도 필드 필요). */}
                         {externalShotEvents && externalShotEvents.length > 0 ? (
-                            <div className="flex">
+                            <div className={isPhone ? 'flex flex-col' : 'flex'}>
+                                {isPhone && (
+                                    <>
+                                        <div className="px-4 py-2.5 flex items-center justify-between gap-3 bg-slate-900">
+                                            <span className="text-xs text-slate-500 truncate">
+                                                {filteredShotEvents?.length ?? 0}개 표시 중 · <span className="text-slate-300">{shotViewMode === 'hexbin' ? `히트맵 · ${shotColorMode === 'fgPct' ? '성공률' : '빈도'}` : 'O·X'}</span>
+                                            </span>
+                                            <button type="button" aria-haspopup="dialog" onClick={() => setShotSheetOpen(true)} className="relative h-8 pl-2.5 pr-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 active:bg-slate-700 shrink-0">
+                                                <SlidersHorizontal size={14} />필터
+                                                {(shotMakeFilter !== 'all' || shotQuarterFilter.size > 0 || shotTypeFilter.size > 0 || shotTeamFilter.size > 0 || shotClutchOnly) && (
+                                                    <span aria-hidden="true" className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-slate-950" />
+                                                )}
+                                            </button>
+                                        </div>
+                                        <BottomSheet open={shotSheetOpen} title="샷 차트 필터" onClose={() => setShotSheetOpen(false)}>
+                                            {shotFilterPanel}
+                                        </BottomSheet>
+                                    </>
+                                )}
                                 {/* ── 필터 패널 — 다른 탭(기록 등)처럼 카드 컨테이너 없이 바디 좌상단에
                                     바로 밀착. 두 열: 1열(보기 방식/색상 기준/결과/시간대[쿼터+클러치]/
                                     슛 타입)은 라디오(단일 선택)+체크박스(다중 선택) 리스트, 2열(상대팀)은
                                     체크박스. 각 그룹은 divide-y로 구분선, 두 열 사이는 border-l로 구분. */}
-                                <div className="shrink-0 self-start bg-slate-900 p-4 flex flex-col gap-3">
-                                    <div className="text-sm text-slate-500 pb-3 border-b border-slate-800">
-                                        {filteredShotEvents?.length ?? 0}개 표시 중
-                                        {(shotMakeFilter !== 'all' || shotQuarterFilter.size > 0 || shotTypeFilter.size > 0 || shotTeamFilter.size > 0 || shotClutchOnly) && (
-                                            <Button
-                                                variant="link"
-                                                onClick={() => { setShotMakeFilter('all'); setShotQuarterFilter(new Set()); setShotTypeFilter(new Set()); setShotTeamFilter(new Set()); setShotClutchOnly(false); }}
-                                                className="ml-2 underline underline-offset-2"
-                                            >
-                                                초기화
-                                            </Button>
-                                        )}
-                                    </div>
-
-                                    <div className="flex">
-                                        {/* ── 1열 ── */}
-                                        <div className="w-40 shrink-0 pr-4 flex flex-col divide-y divide-slate-800">
-                                            <CheckOptionGroup title="보기 방식" className="first:pt-0">
-                                                {([['hexbin', '히트맵'], ['ox', 'O·X']] as const).map(([key, label]) => (
-                                                    <CheckOption key={key} type="radio" name="shotViewMode" checked={shotViewMode === key} onChange={() => setShotViewMode(key)} label={label} />
-                                                ))}
-                                            </CheckOptionGroup>
-
-                                            {shotViewMode === 'hexbin' && (
-                                                <CheckOptionGroup
-                                                    title="색상 기준"
-                                                    footer={shotColorMode === 'fgPct' && (
-                                                        <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
-                                                            <span className="text-slate-500">평균 이하</span>
-                                                            <span className="flex-1 h-1.5 rounded-full" style={{ background: 'linear-gradient(to right, #006106, #00b80c, #00ff11)' }} />
-                                                            <span className="text-emerald-400">평균 이상</span>
-                                                        </div>
-                                                    )}
-                                                >
-                                                    {([['frequency', '빈도'], ['fgPct', '성공률']] as const).map(([key, label]) => (
-                                                        <CheckOption key={key} type="radio" name="shotColorMode" checked={shotColorMode === key} onChange={() => setShotColorMode(key)} label={label} />
-                                                    ))}
-                                                </CheckOptionGroup>
-                                            )}
-
-                                            <CheckOptionGroup title="결과">
-                                                {([['all', '전체'], ['make', '성공'], ['miss', '실패']] as const).map(([key, label]) => (
-                                                    <CheckOption key={key} type="radio" name="shotMakeFilter" checked={shotMakeFilter === key} onChange={() => setShotMakeFilter(key)} label={label} />
-                                                ))}
-                                            </CheckOptionGroup>
-
-                                            {availableQuarters.length > 0 && (
-                                                <CheckOptionGroup title="시간대">
-                                                    {availableQuarters.map(q => (
-                                                        <CheckOption key={q} type="checkbox" checked={shotQuarterFilter.has(q)} onChange={() => setShotQuarterFilter(prev => toggleInSet(prev, q))} label={quarterLabel(q)} />
-                                                    ))}
-                                                    <CheckOption type="checkbox" checked={shotClutchOnly} onChange={() => setShotClutchOnly(v => !v)} label="클러치" />
-                                                </CheckOptionGroup>
-                                            )}
-
-                                            {availableShotTypes.length > 0 && (
-                                                <CheckOptionGroup title="슛 타입" className="last:pb-0">
-                                                    {availableShotTypes.map(t => (
-                                                        <CheckOption key={t} type="checkbox" checked={shotTypeFilter.has(t)} onChange={() => setShotTypeFilter(prev => toggleInSet(prev, t))} label={SHOT_TYPE_LABEL[t] ?? t} />
-                                                    ))}
-                                                </CheckOptionGroup>
-                                            )}
-                                        </div>
-
-                                        {/* ── 2열: 상대팀 — 1열(결과/시간대/슛 타입 등)과 같은 flex row의
-                                            형제라 기본 align-items:stretch로 1열 높이만큼 늘어난다. 예전엔
-                                            체크박스 목록에 고정 max-h(26rem)를 줘서 팀 수가 적을 때 그 늘어난
-                                            높이만큼 하단에 빈 공간이 남았음 — flex-1로 바꿔 목록 자체가 남는
-                                            공간을 그대로 채우고, 넘칠 때만(팀이 많을 때) 스크롤되도록 함. */}
-                                        <div className="w-40 shrink-0 pl-4 border-l border-slate-800 flex flex-col">
-                                            {availableOpponentTeams.length > 0 && (
-                                                <div className="flex-1 min-h-0 flex flex-col">
-                                                    <div className="text-xs font-bold text-slate-500 mb-2">상대팀</div>
-                                                    <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                                                        {availableOpponentTeams.map(oppId => (
-                                                            <CheckOption
-                                                                key={oppId}
-                                                                type="checkbox"
-                                                                checked={shotTeamFilter.has(oppId)}
-                                                                onChange={() => setShotTeamFilter(prev => toggleInSet(prev, oppId))}
-                                                                label={teamById.get(oppId)?.abbr ?? oppId}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                {!isPhone && shotFilterPanel}
 
                                 {/* ── 차트 — 히트맵(hexbin)과 O·X(개별 슛) 두 보기 방식 공용 캔버스.
                                     존별 성공률 배경 + 코트 라인은 두 모드 다 동일하게 깔고, 가운데
                                     레이어만 shotViewMode에 따라 hexbin/O·X 마커로 바뀐다. */}
-                                <div className="shrink-0 p-4 flex justify-start">
+                                <div className={isPhone ? '' : 'shrink-0 p-4 flex justify-start'}>
                                     {shotChartPoints.length > 0 ? (
-                                        <svg viewBox="0 0 435 403" className="w-[46rem] aspect-[435/403] self-start">
+                                        <svg viewBox="0 0 435 403" className={`${isPhone ? 'block w-full' : 'w-[46rem]'} aspect-[435/403] self-start`}>
                                             <defs>
                                                 {/* 헥스빈/O·X 마커는 슛 좌표를 중심으로 반경이 있는 도형이라, 베이스라인
                                                     근처 슛은 중심점은 코트 안이어도 도형 자체가 구분선(바운딩 박스) 밖으로
@@ -2306,15 +2571,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             <rect x="0.8" y="0.6" width="433" height="401" fill="none" stroke="#1e293b" strokeWidth="1.4" pointerEvents="none" />
                                         </svg>
                                     ) : (
-                                        <EmptyState title="필터 조건에 맞는 슛이 없습니다" className="w-[46rem]" />
+                                        <EmptyState title="필터 조건에 맞는 슛이 없습니다" className={isPhone ? 'w-full' : 'w-[46rem]'} />
                                     )}
                                 </div>
 
                                 {/* ── 샷 데이터 테이블 — 차트와 동일하게 filteredShotEvents(현재 활성
-                                    필터 반영) 기준 구역별 집계. 필터를 바꾸면 차트와 함께 갱신됨. */}
-                                <div className="flex-1 min-w-0 p-4 flex flex-col gap-6">
+                                    필터 반영) 기준 구역별 집계. 필터를 바꾸면 차트와 함께 갱신됨.
+                                    [2026-10-28] 폰: 필터 줄 · 차트 · 표 4개가 간격 없이 전폭으로 맞붙음(사용자 지시). */}
+                                <div className={isPhone ? 'pb-4 flex flex-col' : 'flex-1 min-w-0 p-4 flex flex-col gap-6'}>
                                 <ShotBreakdownTable
                                     title="구역별 기록"
+                                    phoneLabel={isPhone ? '구역별 기록' : undefined}
                                     headerLabel="구역"
                                     rows={filteredZoneBreakdown}
                                     showLeagueAvg
@@ -2324,9 +2591,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     ]}
                                 />
 
-                                <ShotBreakdownTable title="시간대별 기록" headerLabel="시간대" rows={filteredQuarterBreakdown} />
-                                <ShotBreakdownTable title="슛 타입별 기록" headerLabel="타입" rows={filteredShotTypeBreakdown} />
-                                <ShotBreakdownTable title="팀별 기록" headerLabel="팀" rows={filteredTeamBreakdown} />
+                                <ShotBreakdownTable title="시간대별 기록" headerLabel="시간대" rows={filteredQuarterBreakdown} phoneLabel={isPhone ? '시간대별 기록' : undefined} />
+                                <ShotBreakdownTable title="슛 타입별 기록" headerLabel="타입" rows={filteredShotTypeBreakdown} phoneLabel={isPhone ? '타입별 기록' : undefined} />
+                                <ShotBreakdownTable title="팀별 기록" headerLabel="팀" rows={filteredTeamBreakdown} phoneLabel={isPhone ? '팀별 기록' : undefined} />
                                 </div>
                             </div>
                         ) : (

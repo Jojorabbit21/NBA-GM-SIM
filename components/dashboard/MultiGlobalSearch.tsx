@@ -7,10 +7,10 @@ import { TeamLogo } from '../common/TeamLogo';
 import { IconButton } from '../common/IconButton';
 import type { Player } from '../../types';
 import type { LeagueTeamRow } from '../../services/multi/roomQueries';
+import { searchLeagueEntities, groupLeagueSearchResults, SEARCH_CATEGORY_LABELS, type LeagueSearchResult } from './leagueSearch';
 
-type SearchResult =
-    | { type: 'team';   team: LeagueTeamRow }
-    | { type: 'player'; player: Player; teamSlug: string | null; teamAbbr: string | null; teamColor: string | null };
+// [2026-10-27] 결과 타입·매칭 규칙은 leagueSearch.ts로 이동(모바일 검색 시트와 공유). 여기 동작은 동일.
+type SearchResult = LeagueSearchResult;
 
 interface MultiGlobalSearchProps {
     leagueTeams:   LeagueTeamRow[];
@@ -20,7 +20,7 @@ interface MultiGlobalSearchProps {
     onViewTeam:    (teamSlug: string) => void;
 }
 
-const CATEGORY_LABELS: Record<string, string> = { team: '팀', player: '선수' };
+const CATEGORY_LABELS = SEARCH_CATEGORY_LABELS;
 
 // 접힘(아이콘+"검색" 라벨) / 펼침(입력창) / 결과 드롭다운 폭(px).
 const COLLAPSED_W = 72;
@@ -40,47 +40,7 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef     = useRef<HTMLInputElement>(null);
 
-    // 팀 이름 역인덱스
-    const teamBySlug = useMemo(() => {
-        const m = new Map<string, LeagueTeamRow>();
-        for (const t of leagueTeams) m.set(t.team_slug, t);
-        return m;
-    }, [leagueTeams]);
-
-    const results = useMemo<SearchResult[]>(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) return [];
-        const out: SearchResult[] = [];
-
-        // 팀 검색
-        let teamCount = 0;
-        for (const t of leagueTeams) {
-            if (teamCount >= 5) break;
-            if (t.team_name.toLowerCase().includes(q) || t.team_slug.includes(q) || t.team_abbr.toLowerCase().includes(q)) {
-                out.push({ type: 'team', team: t });
-                teamCount++;
-            }
-        }
-
-        // 선수 검색
-        let playerCount = 0;
-        for (const player of poolPlayers) {
-            if (playerCount >= 20) break;
-            if (!player.name.toLowerCase().includes(q)) continue;
-            const slug  = rosterMap.get(player.id) ?? null;
-            const team  = slug ? teamBySlug.get(slug) ?? null : null;
-            out.push({
-                type:       'player',
-                player,
-                teamSlug:   slug,
-                teamAbbr:   team?.team_abbr ?? null,
-                teamColor:  team?.color_primary ?? null,
-            });
-            playerCount++;
-        }
-
-        return out;
-    }, [query, leagueTeams, poolPlayers, rosterMap, teamBySlug]);
+    const results = useMemo<SearchResult[]>(() => searchLeagueEntities(query, leagueTeams, poolPlayers, rosterMap), [query, leagueTeams, poolPlayers, rosterMap]);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -112,12 +72,7 @@ export const MultiGlobalSearch: React.FC<MultiGlobalSearchProps> = ({
         if (result.type === 'player') onViewPlayer(result.player, result.teamSlug);
     };
 
-    const grouped = useMemo(() => {
-        const order: SearchResult['type'][] = ['team', 'player'];
-        return order
-            .map(type => ({ type, items: results.filter(r => r.type === type) }))
-            .filter(g => g.items.length > 0);
-    }, [results]);
+    const grouped = useMemo(() => groupLeagueSearchResults(results), [results]);
 
     const showDropdown = isOpen && query.trim().length > 0;
 

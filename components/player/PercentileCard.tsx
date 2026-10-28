@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { InlineNotice } from '../common/InlineNotice';
 import { Table, TableBody, TableRow, TableCell } from '../common/Table';
+import { useIsPhone } from '../../hooks/useViewportClass';
 import type { PercentileCardData, PercentileEntry, PercentileSection } from '../../utils/percentileCard';
 
 // 선수 퍼센타일 랭킹 카드 — 공용 Table(flush) — 맨 왼쪽 헤더 열에 섹션 이름(rowSpan) + "지표 · 슬라이더 · 값" 행(열 제목 행·그룹 헤더 행 없음). lg 이상은 섹션을 두 표로 나눠 좌우 2단,
@@ -32,7 +33,7 @@ const NQ_COLOR = 'rgb(71, 85, 105)'; // slate-600
 /** 섹션의 첫 행에만 넘기는 헤더 열 정보 — 이름을 섹션 행 수만큼 세로로 묶어(rowSpan) 보여준다. */
 interface SectionGroup { label: string; rowSpan: number }
 
-const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup }> = ({ entry, group }) => {
+const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup; phone?: boolean }> = ({ entry, group, phone = false }) => {
     const { metric, value, percentile } = entry;
     // 자격 미달(NQ)은 백분위 위치는 그대로 두고 막대·핸들만 slate 로, 핸들 글자는 NQ
     const color = percentile !== null ? (entry.qualified ? scaleColor(percentile) : NQ_COLOR) : undefined;
@@ -43,10 +44,10 @@ const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup }> = ({
                     <span className="text-xs font-bold text-slate-300 sm:text-sm">{group.label}</span>
                 </TableCell>
             )}
-            <TableCell align="left" title={metric.inverse ? `${metric.label}은(는) 낮을수록 좋은 지표입니다` : undefined}>
-                <span className="text-sm font-medium text-slate-400">{metric.label}</span>
+            <TableCell align="left" className={phone ? 'w-[104px] max-w-[104px]' : undefined} title={metric.inverse ? `${metric.label}은(는) 낮을수록 좋은 지표입니다` : undefined}>
+                <span className={`text-sm font-medium text-slate-400 ${phone ? 'block truncate' : ''}`}>{metric.label}</span>
             </TableCell>
-            <TableCell align="left" className="w-full min-w-[128px]">
+            <TableCell align="left" className={`w-full ${phone ? 'min-w-[96px]' : 'min-w-[128px]'}`}>
                 <div style={{ paddingLeft: HANDLE / 2, paddingRight: HANDLE / 2 }}>
                     <div className="relative h-4 rounded-full bg-slate-800">
                         <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600/60" />
@@ -76,16 +77,25 @@ const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup }> = ({
     );
 };
 
-const SectionsTable: React.FC<{ sections: PercentileSection[] }> = ({ sections }) => (
+const SectionsTable: React.FC<{ sections: PercentileSection[]; phone?: boolean }> = ({ sections, phone = false }) => (
     <Table variant="flush" dividers={false} fullHeight={false}>
         <TableBody>
             {sections.map(section => (
                 <React.Fragment key={section.id}>
+                    {/* [2026-10-28] 폰(§9-2, 목업 P9·P10): 왼쪽 섹션 열(rowSpan 72)이 폰 폭에 안 들어가 섹션 이름을 그룹 행으로 */}
+                    {phone && (
+                        <TableRow>
+                            <TableCell colSpan={3} align="left" className="!py-1.5 bg-slate-900 border-y border-slate-800">
+                                <span className="text-xs font-bold text-slate-300">{section.label}</span>
+                            </TableCell>
+                        </TableRow>
+                    )}
                     {section.entries.map((entry, i) => (
                         <MetricRow
                             key={entry.metric.key}
                             entry={entry}
-                            group={i === 0 ? { label: section.label, rowSpan: section.entries.length } : undefined}
+                            phone={phone}
+                            group={!phone && i === 0 ? { label: section.label, rowSpan: section.entries.length } : undefined}
                         />
                     ))}
                 </React.Fragment>
@@ -124,12 +134,13 @@ export const PercentileCard: React.FC<PercentileCardProps> = ({ data, title, con
     const allEntries = data.sections.flatMap(s => s.entries);
     const hasInverse = allEntries.some(e => e.metric.inverse);
     const hasNq = allEntries.some(e => e.percentile !== null && !e.qualified);
+    const isPhone = useIsPhone();
 
     return (
         <div className="min-h-full w-full bg-slate-950">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-800 px-4 py-3">
-                <div className="flex items-center gap-3">
-                    <span className="text-base font-bold text-white">{title}</span>
+                <div className={`flex items-center gap-3 ${isPhone ? 'w-full justify-between' : ''}`}>
+                    <span className="text-base font-bold text-white whitespace-nowrap">{title}</span>
                     {controls}
                 </div>
                 <span className="text-xs text-slate-500">
@@ -153,7 +164,7 @@ export const PercentileCard: React.FC<PercentileCardProps> = ({ data, title, con
                         <div><SectionsTable sections={right} /></div>
                     </div>
                     <div className="lg:hidden">
-                        <SectionsTable sections={data.sections} />
+                        <SectionsTable sections={data.sections} phone={isPhone} />
                     </div>
                     {(hasInverse || hasNq) && (
                         <div className="space-y-1 px-4 py-3 text-xs text-slate-500">

@@ -32,6 +32,8 @@ import { Button } from '../../../components/common/Button';
 import { IconButton } from '../../../components/common/IconButton';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
 import { periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
+import { useViewportClass } from '../../../hooks/useViewportClass';
+import { PhoneScheduleList, type PhoneAllStarItem } from './PhoneScheduleList';
 
 const LIVE_POLL_MS = 5000;
 
@@ -494,6 +496,8 @@ const MultiScheduleView: React.FC = () => {
     // 교체해 소스 자체를 15초 단위로 낮춘다 — 5초 간격 라이브 폴링(LIVE_POLL_MS, 아래
     // liveSummaries/gameLeadersMap)은 실제로 바뀌는 데이터를 받아오는 별개 로직이라 그대로 둠.
     const serverNow = useServerClockBucket();
+    // [2026-10-27] 모바일 — 폰(<768)은 렌더만 PhoneScheduleList(카드 1줄)로, 데이터·날짜 상태·폴링은 아래 그대로.
+    const isPhone = useViewportClass() === 'phone';
 
     // 진행 중(LIVE)인 경기의 실시간 스코어/쿼터/클락 — 서버가 elapsed까지만 잘라서 계산한 값
     const [liveSummaries, setLiveSummaries] = useState<Record<string, LiveGameSummary>>({});
@@ -763,6 +767,37 @@ const MultiScheduleView: React.FC = () => {
     if (isLoading) {
         return (
             <Spinner variant="page" />
+        );
+    }
+
+    if (isPhone && activeDate) {
+        // 올스타 이벤트(경기 행 없는 날) → 폰 카드 항목. 데스크톱 AllStarEventRow와 같은 판정(past/clickable/matchup).
+        const allStarItems: PhoneAllStarItem[] = activeDayAllStarEntries.map(entry => {
+            const matchup = ALLSTAR_MATCHUP[entry.kind];
+            return {
+                key: entry.kind, label: entry.label, time: ALLSTAR_VIRTUAL_TIME[entry.kind],
+                past: !!todayKey && activeDate < todayKey, clickable: allStarClickable,
+                onClick: () => handleAllStarEntryClick(entry), away: matchup?.away, home: matchup?.home,
+            };
+        });
+        return (
+            <div className="text-slate-200 pretendard flex flex-col h-full min-h-0">
+                <PhoneScheduleList
+                    activeDate={activeDate}
+                    todayKey={todayKey}
+                    selectableDates={scheduleDateSet}
+                    onChangeDate={setSelectedDate}
+                    games={activeDayGames}
+                    stateOf={g => getGameDisplayState(g, serverNow)}
+                    teamMap={teamMap}
+                    allstarDisplay={allstarDisplay}
+                    liveSummaries={liveSummaries}
+                    roundLabelMap={roundLabelMap}
+                    preferVirtual={preferVirtual}
+                    allStarItems={allStarItems}
+                    onView={handleView}
+                />
+            </div>
         );
     }
 

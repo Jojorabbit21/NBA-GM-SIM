@@ -50,14 +50,14 @@ interface LeaderCard {
  *  fuchsia/emerald/blue 3단계 색상 컨벤션은 쓰지 않고 단일 색으로 표시. 선수명은 전부 클릭 시
  *  onPlayerClick으로 프로필 이동, hover 시 PlayerHoverCard(항상 활성 — MultiTacticsView.tsx
  *  전용 컴포넌트라 enableHoverCard 게이트 불필요, 다른 곳에서 import되지 않음). */
-export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string; schedule: Game[]; onPlayerClick?: (player: Player) => void }> = ({ leagueTeams, myTeamId, schedule, onPlayerClick }) => {
+export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string; schedule: Game[]; onPlayerClick?: (player: Player) => void; /** [2026-10-28] 폰 인사이트 — 카드 1열(기본 2열/sm 3열) */ singleColumn?: boolean }> = ({ leagueTeams, myTeamId, schedule, onPlayerClick, singleColumn = false }) => {
     const sortConfig = useMemo(() => ({ key: 'pts', direction: 'desc' as const }), []);
     const { sortedData } = useLeaderboardData(
         leagueTeams, schedule, [], sortConfig, 'Players', [], [], '', 'Traditional', 'regular',
     );
 
     const cards = useMemo((): LeaderCard[] => {
-        return LEADER_STATS.map(stat => {
+        return LEADER_STATS.map((stat): LeaderCard | null => {
             const ranked = [...sortedData].sort((a: any, b: any) => {
                 const ga = a.stats.g || 1, gb = b.stats.g || 1;
                 return stat.compute(b.stats, gb) - stat.compute(a.stats, ga);
@@ -93,7 +93,7 @@ export const TeamLeadersCards: React.FC<{ leagueTeams: Team[]; myTeamId: string;
     }
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className={`grid gap-3 ${singleColumn ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
             {cards.map(c => (
                 <InsightCard key={c.key} className="flex flex-col">
                     {/* 상단(리더) 영역 — slate-800 배경으로 아래 TOP5 리스트와 구분(구분선 대신 면적으로 분리) */}

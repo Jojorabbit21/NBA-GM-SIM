@@ -7,6 +7,7 @@ import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../ShotTooltip';
 import { TeamMark } from '../../common/TeamMark';
 import { Button } from '../../common/Button';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 
 // 선수 필터 리스트 정렬 기준: 포지션(PG→SG→SF→PF→C) 우선순위
 const POSITION_SORT_ORDER: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
@@ -357,6 +358,8 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     }, [safeEvents, homeTeam.id, awayTeam.id, selectedHomeIds, selectedAwayIds, playerNameMap]);
 
     const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave, handleClick, isPinned, closePinned } = useShotChartTooltip(displayShots, 10);
+    // [2026-10-28] 폰(§9-7, 목업 G17): 코트를 맨 위로(order-first) 좌우 여백 없이 전폭, 그 아래 원정 → 홈 패널. 코트·마커·패널 디자인은 그대로.
+    const isPhone = useIsPhone();
 
     return (
         <div className="w-full animate-in fade-in slide-in-from-right-4 duration-300">
@@ -382,7 +385,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                     </div>
 
                     {/* Center: Full Court (6 Cols) — 좌우/상단 여백을 줄이기 위해 패딩을 크게 낮춤 */}
-                    <div className="lg:col-span-6 flex flex-col items-center justify-center relative p-2 gap-2">
+                    <div className={`lg:col-span-6 flex flex-col items-center justify-center relative gap-2 ${isPhone ? 'order-first pb-2.5 border-b border-slate-800' : 'p-2'}`}>
                         <div
                             ref={containerRef}
                             className="relative w-full"

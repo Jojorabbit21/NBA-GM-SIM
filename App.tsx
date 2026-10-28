@@ -29,6 +29,7 @@ import PersonalDraftView from './views/multi/league/PersonalDraftView';
 import { LeagueLayout } from './views/multi/league/LeagueLayout';
 import MultiSeasonPage from './pages/MultiSeasonPage';
 import { MultiSeasonLayout } from './views/multi/season/MultiSeasonLayout';
+import MobileMoreView from './views/multi/season/MobileMoreView';
 import MultiStandingsView from './views/multi/season/MultiStandingsView';
 import NotFound from './components/NotFound';
 // dev 전용 목업 — 운영 빌드에서는 null이라 dynamic import 자체가 제거된다.
@@ -443,6 +444,8 @@ const App: React.FC = () => {
                                 <Route path="negotiate/:playerId" element={<MultiNegotiationView />} />
                                 <Route path="release/:playerId" element={<MultiReleaseView />} />
                                 <Route path="settings"     element={<LeagueSettingsView />} />
+                                {/* [2026-10-27] 모바일 셸 "더보기" 탭(폰·태블릿) — 사이드바와 같은 항목의 리스트 메뉴. 데스크톱에서 열어도 동작한다. */}
+                                <Route path="more"         element={<MobileMoreView />} />
                             </Route>
                         </Route>
                     </Route>

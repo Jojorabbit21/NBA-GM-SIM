@@ -60,7 +60,8 @@ const WIDE_STAT_KEYS = new Set(['fg%', '3p%', 'ft%', 'ts%']);
 const statColWidth = (key: string) => WIDE_STAT_KEYS.has(key) ? STAT_WIDTH + 10 : STAT_WIDTH;
 const TOTAL_COLS = GAME_INFO_COLS.length + STAT_COLS.length;
 
-type GameRow = {
+// [2026-10-27] 폰 카드형(PhoneTeamGameLog.tsx)과 공유 — 행 생성·평균 계산을 순수 함수로 export(동작 동일).
+export type TeamGameRow = {
     gameId: string;
     date: string;
     isHome: boolean;
@@ -72,16 +73,13 @@ type GameRow = {
     stats: Record<string, number>;
 };
 
-export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick }) => {
-    const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
-    const { sortConfig, sortProps } = useTableSort({ key: 'date', direction: 'asc' });
+type GameRow = TeamGameRow;
 
-    // Build game rows with stats from homeStats/awayStats
-    const gameRows = useMemo((): GameRow[] => {
-        return schedule
-            .filter(g => g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id))
-            .map(g => {
-                const isHome = g.homeTeamId === team.id;
+export function buildTeamGameRows(schedule: Game[], teamId: string): TeamGameRow[] {
+    return schedule
+        .filter(g => g.played && (g.homeTeamId === teamId || g.awayTeamId === teamId))
+        .map(g => {
+            const isHome = g.homeTeamId === teamId;
                 const myScore = isHome ? (g.homeScore ?? 0) : (g.awayScore ?? 0);
                 const oppScore = isHome ? (g.awayScore ?? 0) : (g.homeScore ?? 0);
                 const raw = isHome ? (g as any).homeStats : (g as any).awayStats;
@@ -123,7 +121,36 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     }
                 };
             });
-    }, [schedule, team.id]);
+}
+
+/** 섹션 평균 — 퍼센트는 합산 비율, 나머지는 산술 평균(기존 computeAvg와 동일). rows가 비면 null. */
+export function computeTeamGameAvg(rows: TeamGameRow[]): Record<string, number> | null {
+    const n = rows.length;
+    if (n === 0) return null;
+    const avg: Record<string, number> = {};
+    STAT_COLS.forEach(c => {
+        if (c.key.includes('%')) {
+            let num = 0, den = 0;
+            rows.forEach(r => {
+                if (c.key === 'fg%') { num += r.stats.fgm; den += r.stats.fga; }
+                else if (c.key === '3p%') { num += r.stats['3pm']; den += r.stats['3pa']; }
+                else if (c.key === 'ft%') { num += r.stats.ftm; den += r.stats.fta; }
+                else if (c.key === 'ts%') { if (r.stats.fga > 0) { num += r.stats.pts; den += 2 * (r.stats.fga + 0.44 * r.stats.fta); } }
+            });
+            avg[c.key] = den > 0 ? num / den : 0;
+        } else {
+            avg[c.key] = rows.reduce((sum, r) => sum + (r.stats[c.key] || 0), 0) / n;
+        }
+    });
+    return avg;
+}
+
+export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick }) => {
+    const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
+    const { sortConfig, sortProps } = useTableSort({ key: 'date', direction: 'asc' });
+
+    // Build game rows with stats from homeStats/awayStats
+    const gameRows = useMemo((): GameRow[] => buildTeamGameRows(schedule, team.id), [schedule, team.id]);
 
     // Sort
     const sortedRows = useMemo(() => {
@@ -146,27 +173,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         playoffRows: sortedRows.filter(r => r.isPlayoff),
     }), [sortedRows]);
 
-    // 평균 계산 — 정규 시즌/플레이오프를 따로 집계해야 해서 범용 헬퍼로 분리.
-    const computeAvg = (rows: GameRow[]): Record<string, number> | null => {
-        const n = rows.length;
-        if (n === 0) return null;
-        const avg: Record<string, number> = {};
-        STAT_COLS.forEach(c => {
-            if (c.key.includes('%')) {
-                let num = 0, den = 0;
-                rows.forEach(r => {
-                    if (c.key === 'fg%') { num += r.stats.fgm; den += r.stats.fga; }
-                    else if (c.key === '3p%') { num += r.stats['3pm']; den += r.stats['3pa']; }
-                    else if (c.key === 'ft%') { num += r.stats.ftm; den += r.stats.fta; }
-                    else if (c.key === 'ts%') { if (r.stats.fga > 0) { num += r.stats.pts; den += 2 * (r.stats.fga + 0.44 * r.stats.fta); } }
-                });
-                avg[c.key] = den > 0 ? num / den : 0;
-            } else {
-                avg[c.key] = rows.reduce((sum, r) => sum + (r.stats[c.key] || 0), 0) / n;
-            }
-        });
-        return avg;
-    };
+    const computeAvg = computeTeamGameAvg;
 
     const regularAvg = useMemo(() => computeAvg(regularRows), [regularRows]);
     const playoffAvg = useMemo(() => computeAvg(playoffRows), [playoffRows]);

@@ -9,6 +9,8 @@ interface RosterTabsProps {
     onTabChange: (tab: RosterTab) => void;
     hideTabs?: RosterTab[];
     theme?: { bg: string; text: string; accent: string };
+    /** [2026-10-27] 폰 치수(TabBar compact) */
+    compact?: boolean;
 }
 
 const TABS: { id: RosterTab; label: string }[] = [
@@ -26,7 +28,7 @@ const TABS: { id: RosterTab; label: string }[] = [
     { id: 'settings', label: '팀 설정' },
 ];
 
-export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange, hideTabs, theme }) => {
+export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange, hideTabs, theme, compact }) => {
     const tabs = hideTabs?.length ? TABS.filter(t => !hideTabs.includes(t.id)) : TABS;
-    return <TabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} theme={theme} />;
+    return <TabBar compact={compact} tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} theme={theme} />;
 };

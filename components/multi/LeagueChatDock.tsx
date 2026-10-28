@@ -24,6 +24,7 @@ import { UpdateBanner, UpdateToastCard } from '../UpdateToast';
 import { LeagueNotificationList } from './LeagueNotificationList';
 import { ChatSendError, type ChatMessage, type DmConversation } from '../../services/multi/chatService';
 import { CountBadge } from '../common/CountBadge';
+import { publishChatDockUnread, subscribeChatDockOpen } from './chatDockBridge';
 import { IconButton } from '../common/IconButton';
 import { InlineNotice } from '../common/InlineNotice';
 import { Button } from '../common/Button';
@@ -33,7 +34,8 @@ import { DmNewConversation } from './chat/DmNewConversation';
 import { ReportPopover, type ReportAnchor } from './chat/ReportPopover';
 
 const WIDGET_ID = 'league-chat-widget';
-const NARROW_QUERY = '(max-width: 639px)';
+// [2026-10-27] 639 → 767: 모바일 셸의 phone 경계(Tailwind md 미만)와 맞춤 — 이 폭에선 FAB 대신 상단 바 수신함으로 열고 위젯은 풀스크린.
+const NARROW_QUERY = '(max-width: 767px)';
 const NOTICE_MS = 3000;
 
 export type DockTab = 'chat' | 'notifications';
@@ -260,6 +262,12 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
     };
 
     const totalUnread = chatUnread + notif.unread;
+    // [2026-10-27] 모바일 셸 — 상단 바 수신함 배지에 안 읽은 합계를 넘기고, 수신함 탭 → 열기 요청을 받는다(chatDockBridge).
+    useEffect(() => { publishChatDockUnread(totalUnread); }, [totalUnread]);
+    useEffect(() => subscribeChatDockOpen(() => {
+        if (chatUnread === 0 && notif.unread > 0) setTab('notifications');
+        setOpen(true);
+    }), [chatUnread, notif.unread, setOpen, setTab]);
     const fabLabel = open
         ? '채팅과 알림 닫기'
         : totalUnread > 0 ? `채팅과 알림 열기, 안 읽은 항목 ${totalUnread}개` : '채팅과 알림 열기';
@@ -399,7 +407,9 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                     id={WIDGET_ID}
                     aria-label="채팅과 알림"
                     onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}
-                    className={`pointer-events-auto flex flex-col ${collapsed ? 'w-[436px]' : 'w-[600px]'} max-w-[calc(100vw-32px)] h-[min(560px,calc(100dvh-112px))] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
+                    className={narrow
+                        ? 'pointer-events-auto fixed inset-0 flex flex-col bg-slate-900 pt-safe pb-safe overflow-hidden'   // [2026-10-27] 폰: 풀스크린 페이지(§9-8)
+                        : `pointer-events-auto flex flex-col ${collapsed ? 'w-[436px]' : 'w-[600px]'} max-w-[calc(100vw-32px)] h-[min(560px,calc(100dvh-112px))] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
                 >
                     {/* 탭 + 우측 보조 동작 */}
                     <div className="flex items-center justify-between gap-2 pl-2 pr-3 border-b border-slate-800 shrink-0">
@@ -407,9 +417,17 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                             {tabBtn('chat', '채팅', chatUnread)}
                             {tabBtn('notifications', '알림', notif.unread)}
                         </div>
-                        {tab === 'notifications' && notif.items.length > 0 && (
-                            <Button variant="ghost" size="sm" onClick={notif.clear}>전체 삭제</Button>
-                        )}
+                        <div className="flex items-center gap-1">
+                            {tab === 'notifications' && notif.items.length > 0 && (
+                                <Button variant="ghost" size="sm" onClick={notif.clear}>전체 삭제</Button>
+                            )}
+                            {/* [2026-10-27] 폰 풀스크린엔 FAB(X)가 없으므로 위젯 안에 닫기 */}
+                            {narrow && (
+                                <IconButton label="채팅과 알림 닫기" tone="ghost" size="lg" onClick={close}>
+                                    <X size={18} />
+                                </IconButton>
+                            )}
+                        </div>
                     </div>
 
                     {update.available && <UpdateBanner />}
@@ -460,6 +478,8 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                 </section>
             )}
             {!open && update.available && !update.toastDismissed && <UpdateToastCard withTail />}
+            {/* [2026-10-27] 폰(<768)은 FAB 없음 — 상단 바 수신함 아이콘이 입구(모바일 셸 §8-3·§9-8) */}
+            {!narrow && (
             <div className="relative pointer-events-auto">
                 <button
                     ref={fabRef}
@@ -474,6 +494,7 @@ export const LeagueChatDock: React.FC<DockProps> = ({ roomId, userId }) => {
                 </button>
                 {!open && <CountBadge count={totalUnread} size="lg" className="absolute -top-1.5 -right-1.5 ring-2 ring-slate-950 pointer-events-none" />}
             </div>
+            )}
         </div>
     );
 };

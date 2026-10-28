@@ -40,6 +40,11 @@ import { formatRelativeTime } from '../utils/formatRelativeTime';
 import { shouldUseCustomOverrides } from '../utils/leagueOverrides';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
 import type { Player, PlayerStats } from '../types';
+import { useViewportClass } from '../hooks/useViewportClass';
+import { TeamLogo } from '../components/common/TeamLogo';
+import { getReadableTextColor } from '../utils/colorContrast';
+import { useMyNextGame } from '../hooks/useMyNextGame';
+import { SheetSelect } from '../components/mobile/ActionSheet';
 
 // 좌측 리스트 우측 날짜 — "YYYY-MM-DD" 형태인 simDate를 "YY/MM/DD"로 축약 표시.
 // MultiNewsFeedView.tsx의 로컬 함수와 동일 규칙(그 파일이 export하지 않아 그대로 복제).
@@ -122,6 +127,18 @@ const HOME_EMPTY_NO_TEAM = '참가 중인 팀이 없습니다.';
 // [2026-10-14] 밴드 2 우측은 뉴스/트랜잭션이 50:50(각 flex-1) — 순위 15행 높이의 절반에 들어가는 7행씩.
 const HOME_ROWS = { news: 7, transactions: 7, leaders: 10, injuries: 6 } as const;
 
+// ── 폰(<768) 홈 — docs/ui/mobile-design-system.md §9-0-2, 캔버스 2행 PhoneHome①~④ (2026-10-27 코드 적용)
+// 섹션 5개(순위·리더·뉴스·트랜잭션·리그 부상·징계)만, 1열 스택, 행 44(순위 40), 선택기는 패널 헤더 SheetSelect(바텀 시트).
+// 내 로스터 요약·내 팀 부상은 폰 홈에 두지 않는다(팀 탭에서). 데스크톱(≥1024) 렌더는 아래 그대로.
+// 순위는 행 제한 없음 — 컨퍼런스 전체(15팀)를 다 보인다(2026-10-27 사용자 요청, 8행 → 전체).
+const PHONE_ROWS = { leaders: 5, news: 3, transactions: 3, injuries: 4 } as const;
+/** 폰 리스트 행 — 높이 44, 좌우 12, 행 사이 slate-800 1px(마지막 행 제외). 탭 전체가 이동. */
+const PhoneRow: React.FC<{ onClick?: () => void; className?: string; children: React.ReactNode }> = ({ onClick, className = '', children }) => (
+    <button type="button" onClick={onClick} className={`w-full h-11 px-3 flex items-center gap-3 text-left border-b border-slate-800 last:border-b-0 active:bg-white/5 ${className}`}>
+        {children}
+    </button>
+);
+
 const HomeStandingsTable: React.FC<{
     teams: LeagueTeamRow[];
     statsMap: Record<string, MultiStandingsRecord>;
@@ -189,10 +206,106 @@ const HomeStandingsTable: React.FC<{
     );
 };
 
-const HomeStandingsSection: React.FC = () => {
+// [2026-10-27] 폰 홈 — 리그 순위 위 "내 팀 배지": 로고 40 + 팀명 + "W–L · 컨퍼런스 N위" / 우측 다음 경기(vs·@ 상대 + 카운트다운).
+// 카드 전체 탭 = 내 팀 로스터. 팀이 없거나 관전이면 렌더하지 않음. (2026-10-26의 "내 팀 카드 없음" 결정을 사용자가 이 형태로 되돌림)
+const HomeMyTeamBadge: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams } = useLeagueContext();
-    const { schedule } = useSeasonContext();
+    const { schedule, myTeamId } = useSeasonContext();
+    const serverNow = useServerClockBucket();
+    const navigate = useNavigate();
+    const myTeam = leagueTeams.find(t => t.team_slug === myTeamId);
+    const isTournament = league?.type === 'tournament';
+
+    const slugs = useMemo(() => leagueTeams.map(t => t.team_slug), [leagueTeams]);
+    const statsMap = useMemo(() => computeMultiStandingsStats(slugs, schedule, serverNow, {}, isTournament), [slugs, schedule, serverNow, isTournament]);
+    // 순위 = 같은 컨퍼런스(없으면 전체) 승률순 자리.
+    const rankLabel = useMemo(() => {
+        if (!myTeam) return null;
+        const conf = myTeam.conference;
+        const peers = conf ? leagueTeams.filter(t => t.conference === conf) : leagueTeams;
+        const sorted = [...peers].sort((a, b) => (statsMap[b.team_slug]?.pct ?? 0) - (statsMap[a.team_slug]?.pct ?? 0));
+        const rank = sorted.findIndex(t => t.team_slug === myTeam.team_slug) + 1;
+        const confLabel = conf === 'East' ? '동부' : conf === 'West' ? '서부' : '';
+        return rank > 0 ? `${confLabel ? confLabel + ' ' : ''}${rank}위` : null;
+    }, [myTeam, leagueTeams, statsMap]);
+    // 다음 경기 — 상단 바·탭 바와 같은 판정(useMyNextGame, MultiHeader.nextGame과 동일 규칙).
+    const next = useMyNextGame();
+
+    if (!myTeam || !myTeamId) return null;
+    const rec = statsMap[myTeamId];
+    const nextGame = next.nextGame;
+    const opp = next.opponent;
+    const oppId = next.opponentId;
+    const isAway = next.isAway;
+    // 팀색 카드 위라 헤더의 indigo 대신 글자색(여유) / amber-300 / red-300(긴박).
+    const countdownColor = next.urgency === 'warn' ? 'text-amber-300' : next.urgency === 'urgent' ? 'text-red-300' : '';
+    // 라벨 = 다음 경기의 시뮬레이션(가상) 날짜 "2026.10.28 (수)" — 연도 포함(상단 바 가상 날짜와 같은 형식), 타이머 = "1시간 23분 후 경기 시작" (2026-10-27 사용자 지시)
+    const nextDateLabel = (() => {
+        if (!nextGame) return null;
+        const d = new Date(nextGame.date.slice(0, 10) + 'T00:00:00');
+        if (Number.isNaN(d.getTime())) return nextGame.date;
+        return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} (${['일', '월', '화', '수', '목', '금', '토'][d.getDay()]})`;
+    })();
+    const countdownText = next.countdownText;
+
+    const rosterBase = `/multi/leagues/${leagueId}/season/roster?rteam=${myTeam.team_slug}`;
+    // [2026-10-27] 배지 아래 내 팀 바로가기 3개(탭 바 형식, 균등 3열 44, 세로 구분선) — 로스터 탭 overview / stats / schedule
+    const quickLinks: { label: string; tab: string }[] = [
+        { label: '로스터', tab: 'overview' },
+        { label: '기록', tab: 'stats' },
+        { label: '일정', tab: 'schedule' },
+    ];
+
+    // [2026-10-27] 카드 배경 = 팀 color_primary 단색(글로시/엠보스 그라디언트는 시도 후 제거 — 사용자 지시), 글자 = color_text.
+    const primary = myTeam.color_primary ?? '#4338ca';
+    const textColor = myTeam.color_text ?? getReadableTextColor(primary);
+    const cardStyle: React.CSSProperties = { color: textColor, backgroundColor: primary, borderColor: 'rgba(0,0,0,0.25)' };
+
+    return (
+        <section className="border rounded-lg overflow-hidden" style={cardStyle}>
+        <button
+            type="button"
+            onClick={() => navigate(rosterBase)}
+            aria-label={`내 팀 ${myTeam.team_name}, 로스터로 이동`}
+            className="w-full px-4 py-3 flex items-center gap-3 text-left active:brightness-110"
+        >
+            <TeamLogo teamId={myTeam.team_slug} teamName={myTeam.team_abbr} size="custom" className="w-10 h-10 shrink-0" />
+            <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className="text-base font-semibold truncate">{myTeam.team_name}</span>
+                <span className="text-xs tabular-nums truncate opacity-80">
+                    {rec?.wins ?? 0}–{rec?.losses ?? 0}{rankLabel ? ` · ${rankLabel}` : ''}
+                </span>
+            </span>
+            {nextGame && (
+                <span className="shrink-0 flex flex-col items-end gap-0.5">
+                    <span className="text-xs tabular-nums opacity-80">{nextDateLabel}</span>
+                    {/* 상대 로고 없이 vs·@ + 약어만(2026-10-27) */}
+                    <span className="text-sm font-semibold">{isAway ? '@' : 'vs'} {opp?.team_abbr ?? oppId}</span>
+                    {countdownText && <span className={`text-xs font-semibold tabular-nums ${countdownColor || 'opacity-90'}`}>{countdownText}</span>}
+                </span>
+            )}
+        </button>
+        <nav aria-label="내 팀 바로가기" className="grid grid-cols-3 border-t border-black/25 divide-x divide-black/25 bg-black/20">
+            {quickLinks.map(q => (
+                <button
+                    key={q.tab}
+                    type="button"
+                    onClick={() => navigate(`${rosterBase}&tab=${q.tab}`)}
+                    className="h-11 text-sm font-semibold active:bg-black/30"
+                >
+                    {q.label}
+                </button>
+            ))}
+        </nav>
+        </section>
+    );
+};
+
+const HomeStandingsSection: React.FC<{ phone?: boolean }> = ({ phone = false }) => {
+    const { leagueId } = useParams<{ leagueId: string }>();
+    const { league, leagueTeams } = useLeagueContext();
+    const { schedule, myTeamId } = useSeasonContext();
     // [2026-09-07] 경기 공개 10분 딜레이/가상 오늘 날짜 판정에만 쓰여 초 단위 정밀도가
     // 필요 없다 — useServerClock() 대신 useServerClockBucket()으로 매초 리렌더(+그 아래
     // useMemo 재계산)를 15초에 한 번으로 줄인다(React DevTools로 실측 확인된 낭비).
@@ -214,6 +327,66 @@ const HomeStandingsSection: React.FC = () => {
     const westTeams = leagueTeams.filter(t => t.conference === 'West');
     // 컨퍼런스 구분이 없는 경우(예: 토너먼트) 통합 순위표로 폴백.
     const hasConferences = eastTeams.length > 0 && westTeams.length > 0;
+
+    // 폰: 컨퍼런스 하나만(기본 = 내 팀 컨퍼런스), 표 위 탭 바로 즉시 전환. 컨퍼런스 전체 행, 컷은 선 대신 순번 색(직행 emerald · 플레이인 amber).
+    const myConf = leagueTeams.find(t => t.team_slug === myTeamId)?.conference === 'West' ? 'West' : 'East';
+    const [conf, setConf] = useState<'East' | 'West'>(myConf);
+    if (phone) {
+        const teams = hasConferences ? (conf === 'East' ? eastTeams : westTeams) : leagueTeams;
+        const sorted = [...teams].sort((a, b) => (statsMap[b.team_slug]?.pct ?? 0) - (statsMap[a.team_slug]?.pct ?? 0));
+        const leader = statsMap[sorted[0]?.team_slug];
+        const autoClinchCount = Math.min(playInEnabled ? Math.max(0, playoffCutoff - 2) : playoffCutoff, sorted.length);
+        const playInEndIdx = playInEnabled ? Math.min(autoClinchCount + 4, sorted.length) : autoClinchCount;
+        const grid = 'grid grid-cols-[24px_minmax(0,1fr)_36px_36px_48px_40px] gap-1.5 items-center px-3';
+        return (
+            <HomeSection title="리그 순위" moreTo={`/multi/leagues/${leagueId}/season/standings`} moreLabel="순위표 전체">
+                {/* 동부/서부 탭 바 — 표 헤더 위, 탭 즉시 전환(드롭다운 아님, 2026-10-27 사용자 지시). 공용 TabBar 기본 테마(활성 indigo-400 밑줄 2px)를 폰 치수 44로. */}
+                {hasConferences && (
+                    <div role="tablist" aria-label="컨퍼런스" className="h-11 px-3 flex items-center gap-5 border-b border-slate-800">
+                        {([['East', '동부'], ['West', '서부']] as const).map(([v, label]) => (
+                            <button
+                                key={v}
+                                type="button"
+                                role="tab"
+                                aria-selected={conf === v}
+                                onClick={() => setConf(v)}
+                                className={`h-full text-sm font-black tracking-tight border-b-2 ${conf === v ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <div className={`${grid} h-8 border-b border-slate-800 text-xs font-bold text-slate-400`}>
+                    <span>#</span><span>팀</span><span className="text-right">W</span><span className="text-right">L</span><span className="text-right">PCT</span><span className="text-right">GB</span>
+                </div>
+                {sorted.map((t, i) => {
+                    const rec = statsMap[t.team_slug];
+                    const gb = i === 0 || !leader || !rec ? '-' : (((leader.wins - leader.losses) - (rec.wins - rec.losses)) / 2).toFixed(1);
+                    const mine = t.team_slug === myTeamId;
+                    const rankColor = i < autoClinchCount ? 'text-emerald-400' : i < playInEndIdx ? 'text-amber-400' : 'text-slate-400';
+                    return (
+                        <button
+                            key={t.team_slug}
+                            type="button"
+                            onClick={() => onOpenTeam(t.team_slug)}
+                            className={`${grid} w-full h-10 text-left border-b border-slate-800 last:border-b-0 tabular-nums active:bg-white/5 ${mine ? 'bg-indigo-600/15' : ''}`}
+                        >
+                            <span className={`text-sm font-bold ${rankColor}`}>{i + 1}</span>
+                            <span className="flex items-center gap-2 min-w-0">
+                                <TeamMark variant="logo" teamId={t.team_slug} teamName={t.team_abbr} size="xs" />
+                                <span className={`text-sm font-bold truncate ${mine ? 'text-white' : 'text-slate-300'}`}>{t.team_name}</span>
+                            </span>
+                            <span className="text-right text-sm text-slate-200">{rec?.wins ?? 0}</span>
+                            <span className="text-right text-sm text-slate-200">{rec?.losses ?? 0}</span>
+                            <span className="text-right text-sm text-slate-400">{fmtWinPct(rec?.pct ?? 0)}</span>
+                            <span className="text-right text-sm text-slate-500">{gb}</span>
+                        </button>
+                    );
+                })}
+            </HomeSection>
+        );
+    }
 
     return (
         <HomeSection title="리그 순위" moreTo={`/multi/leagues/${leagueId}/season/standings`} moreLabel="순위표 전체" className="h-full">
@@ -258,7 +431,7 @@ const LEADER_CATEGORIES: LeaderCategoryDef[] = [
 ];
 const LEADERS_PER_CATEGORY = HOME_ROWS.leaders;
 
-const HomeLeagueLeadersSection: React.FC = () => {
+const HomeLeagueLeadersSection: React.FC<{ phone?: boolean }> = ({ phone = false }) => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
     const navigate = useNavigate();
@@ -298,6 +471,47 @@ const HomeLeagueLeadersSection: React.FC = () => {
 
     const cat = leaderGrid.find(c => c.key === activeKey) ?? leaderGrid[0];
     const isEmpty = leaderGrid.every(c => c.ranked.length === 0);
+
+    if (phone) {
+        // 폰: 카테고리는 헤더 SheetSelect. 데스크톱과 같은 열(# · OVR · 선수 · G · MP · 값) + 열 헤더 32(2026-10-27 사용자 지시). 행 44, 5명.
+        const grid = 'grid grid-cols-[20px_28px_minmax(0,1fr)_32px_44px_48px] gap-2 items-center px-3';
+        return (
+            <HomeSection
+                title="리그 리더"
+                moreTo={`/multi/leagues/${leagueId}/season/leaderboard`}
+                moreLabel="리더보드"
+                headerRight={<SheetSelect<LeaderKey> title="리더 카테고리" value={activeKey} onChange={setActiveKey} items={LEADER_CATEGORIES.map(c => ({ value: c.key, label: c.label }))} />}
+            >
+                {isEmpty ? (
+                    <HomeEmpty title="아직 경기 기록이 없습니다." />
+                ) : (
+                    <>
+                        <div className={`${grid} h-8 border-b border-slate-800 text-xs font-bold text-slate-400`}>
+                            <span>#</span><span className="text-center">OVR</span><span>선수</span><span className="text-right">G</span><span className="text-right">MP</span><span className="text-right">{cat.label}</span>
+                        </div>
+                        {cat.ranked.slice(0, PHONE_ROWS.leaders).map(({ entry, value }, i) => (
+                            <button
+                                key={entry.player.id}
+                                type="button"
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(entry.player.id)}`)}
+                                className={`${grid} w-full h-11 text-left border-b border-slate-800 last:border-b-0 tabular-nums active:bg-white/5`}
+                            >
+                                <span className="text-sm font-bold text-slate-500">{i + 1}</span>
+                                <span className="flex justify-center"><OvrBadge value={entry.player.ovr} size="sm" /></span>
+                                <span className="flex items-center gap-2 min-w-0">
+                                    <TeamMark variant="logo" teamId={entry.teamId} teamName={entry.teamAbbr} size="xs" />
+                                    <span className={`text-sm font-bold truncate ${entry.teamId === myTeamId ? 'text-white' : 'text-slate-300'}`}>{entry.player.name}</span>
+                                </span>
+                                <span className="text-right text-sm text-slate-400">{entry.player.stats.g}</span>
+                                <span className="text-right text-sm text-slate-400">{(entry.player.stats.mp / Math.max(1, entry.player.stats.g)).toFixed(1)}</span>
+                                <span className="text-right text-sm font-bold text-white">{cat.format(value)}</span>
+                            </button>
+                        ))}
+                    </>
+                )}
+            </HomeSection>
+        );
+    }
 
     return (
         <HomeSection
@@ -371,7 +585,7 @@ const HomeLeagueLeadersSection: React.FC = () => {
 // 어긋나서(아이콘 없음/카드 아님/날짜 표기) 재사용을 접고 이 섹션 전용 리스트 행을 새로
 // 작성했다. 10건을 5개씩 좌우 두 열로 나눠 배치(뉴스는 시간순이라 홀짝 인터리브 대신
 // "왼쪽에 최신 5개, 오른쪽에 다음 5개" 신문 지면 방식이 자연스러움).
-const HomeLatestNewsSection: React.FC = () => {
+const HomeLatestNewsSection: React.FC<{ phone?: boolean }> = ({ phone = false }) => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { room } = useLeagueContext();
     const { myTeamId } = useSeasonContext();
@@ -381,6 +595,20 @@ const HomeLatestNewsSection: React.FC = () => {
     const newsPath = `/multi/leagues/${leagueId}/season/news`;
     // [2026-10-14] 행 클릭은 그 뉴스로(?story=<id> 딥링크 → MultiNewsFeedView가 선택·스크롤). 제목바 "뉴스피드 →"는 목록으로.
     const openNews = (storyId: string) => navigate(`${newsPath}?story=${encodeURIComponent(storyId)}`);
+
+    if (phone) {
+        // 폰: 제목 1줄 + 날짜, 행 44, 3건.
+        return (
+            <HomeSection title="리그 최신 뉴스" moreTo={newsPath} moreLabel="뉴스피드">
+                {isLoading ? <Spinner variant="section" /> : latest.length === 0 ? <HomeEmpty title="아직 소식이 없습니다." /> : latest.slice(0, PHONE_ROWS.news).map((e: LeagueEvent) => (
+                    <PhoneRow key={e.id} onClick={() => openNews(e.id)}>
+                        <span className="flex-1 min-w-0 text-sm font-medium text-slate-200 truncate ko-normal">{e.headline}</span>
+                        <span className="text-xs text-slate-400 tabular-nums shrink-0">{e.simDate ? formatSimDateShort(e.simDate) : formatRelativeTime(e.createdAt)}</span>
+                    </PhoneRow>
+                ))}
+            </HomeSection>
+        );
+    }
 
     // [2026-10-14] 2열 5행 → 1열 10행(우측 4열 패널 폭에서 제목이 잘리지 않고, 순위표 15행과 높이를 맞춤).
     return (
@@ -459,7 +687,7 @@ const TXN_KIND_ORDER: Record<HomeTxnItem['kind'], number> = { trade: 0, fa_sign:
 const TXN_KIND_LABEL: Record<HomeTxnItem['kind'], string> = { trade: '트레이드', fa_sign: '자유 계약', waive: '웨이버' };
 
 
-const HomeTransactionsSection: React.FC = () => {
+const HomeTransactionsSection: React.FC<{ phone?: boolean }> = ({ phone = false }) => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
     const { myTeamId } = useSeasonContext();
@@ -529,6 +757,30 @@ const HomeTransactionsSection: React.FC = () => {
     // [2026-10-14] 우측 4열 패널(뉴스 아래)로 이동하며 10행 → 5행, "팀 이동" 열은 선수 이름 뒤에 작은 글자로 합침(폭 부족).
     // 리그 시작 직후 비어 있어도 패널은 유지(밴드 하단선을 맞추기 위해) — 빈 상태 문구.
     const shown = items.slice(0, HOME_ROWS.transactions);
+
+    if (phone) {
+        // 폰: 종류는 글자 대신 데스크톱과 같은 원형 아이콘(트레이드 indigo ↔ · 자유 계약 emerald + · 웨이버 red −, 2026-10-27 사용자 지시) 20px,
+        // 그 뒤 선수(트레이드면 FROM → TO) + 날짜. 행 44, 3건.
+        return (
+            <HomeSection title="트랜잭션" moreTo={txnPath} moreLabel="전체">
+                {shown.length === 0 ? <HomeEmpty title="아직 트랜잭션이 없습니다." /> : shown.slice(0, PHONE_ROWS.transactions).map(item => {
+                    const { Icon, bg } = TXN_ICON_BY_KIND[item.kind];
+                    return (
+                        <PhoneRow key={item.id} onClick={() => navigate(`${txnPath}&kind=${item.kind}`)}>
+                            <span aria-label={TXN_KIND_LABEL[item.kind]} title={TXN_KIND_LABEL[item.kind]} className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-white shrink-0 ${bg}`}>
+                                <Icon size={12} />
+                            </span>
+                            <span className="flex-1 min-w-0 text-sm truncate">
+                                <span className="font-medium text-slate-200">{item.playerName}</span>
+                                {item.fromTeam && item.toTeam && <span className="text-slate-400"> {item.fromTeam.abbr} → {item.toTeam.abbr}</span>}
+                            </span>
+                            <span className="text-xs text-slate-400 tabular-nums shrink-0">{item.dateLabel}</span>
+                        </PhoneRow>
+                    );
+                })}
+            </HomeSection>
+        );
+    }
 
     return (
         <HomeSection title="트랜잭션" moreTo={txnPath} className="flex-1 min-h-0">
@@ -606,7 +858,7 @@ interface HomeInjuryItem {
     returnDate: string | null;
 }
 
-const HomeInjurySection: React.FC = () => {
+const HomeInjurySection: React.FC<{ phone?: boolean }> = ({ phone = false }) => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, leagueTeams, room } = useLeagueContext();
     const { myTeamId } = useSeasonContext();
@@ -643,6 +895,25 @@ const HomeInjurySection: React.FC = () => {
         const active = activeInjuryByPlayer.get(item.playerId);
         return !!active && active.returnDate === item.returnDate;
     }).slice(0, HOME_ROWS.injuries), [stories, activeInjuryByPlayer]);
+
+    if (phone) {
+        // 폰: 배지(InjuryStatusBadge 16 — 부상 Grade3~5 / 출장정지 파랑) | 이름 | 부상명 | 기간 + 복귀일 "(~ YY/MM/DD)"(데스크톱 formatReturnDateSuffix 동일).
+        // 팀 약어 없음. 행 44, 4건. (2026-10-27 사용자 지시로 배지·복귀일 추가)
+        return (
+            <HomeSection title="리그 부상·징계" moreTo={`/multi/leagues/${leagueId}/season/news`} moreLabel="뉴스피드">
+                {isLoading ? <Spinner variant="section" /> : items.length === 0 ? <HomeEmpty title="최근 부상·징계 소식이 없습니다." /> : items.slice(0, PHONE_ROWS.injuries).map(item => (
+                    <PhoneRow key={item.id} onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(item.playerId)}`)}>
+                        <InjuryStatusBadge severity={item.severity} size={16} iconSize={10} strokeWidth={4} className="shrink-0" />
+                        <span className="w-[96px] shrink-0 text-sm font-medium text-white truncate">{item.playerName}</span>
+                        <span className="flex-1 min-w-0 text-sm text-slate-400 truncate">{item.typeLabel}</span>
+                        <span className={`text-sm font-semibold tabular-nums shrink-0 whitespace-nowrap ${SEVERITY_TEXT_COLOR[item.severity]}`}>
+                            {item.durationLabel}{formatReturnDateSuffix(item.returnDate)}
+                        </span>
+                    </PhoneRow>
+                ))}
+            </HomeSection>
+        );
+    }
 
     // [2026-10-14] 밴드 4 좌측(6열). 비어 있어도 패널 유지(빈 상태 문구) — 우측 "내 팀 부상·징계"와 나란히.
     return (
@@ -979,6 +1250,7 @@ function resolvePlayoffStage(
 }
 
 const MultiSeasonPage: React.FC = () => {
+    const viewport = useViewportClass();
     const { league, leagueTeams, timeline } = useLeagueContext();
     const { schedule } = useSeasonContext();
     const nowMs = useServerClockBucket();
@@ -993,6 +1265,33 @@ const MultiSeasonPage: React.FC = () => {
         if (phase === 'playoffs') return resolvePlayoffStage(league, schedule, simStart, gprd, nowMs, leagueTeams, currentVirtualDate);
         return null;
     }, [phase, schedule, simStart, gprd, nowMs, currentVirtualDate, league, leagueTeams]);
+
+    if (viewport === 'phone') {
+        // 폰 홈(§9-0-2): 데스크톱처럼 리그 로고 + 리그명 + 상태 줄을 본문 맨 위에(상단 바는 시즌 정보만 — 2026-10-27 사용자 지시) → 섹션 1열(간격 24).
+        return (
+            <div className="px-4 pt-4 pb-6 flex flex-col gap-6">
+                <div className="flex items-center gap-3 min-w-0">
+                    <img src={getLeagueLogoUrl('League')} alt={league?.name ?? 'League'} className="w-12 h-12 object-contain shrink-0" />
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                        <h1 className="text-xl font-black text-white truncate">{league?.name ?? 'PRO BASKETBALL LEAGUE'}</h1>
+                        {(statusText || subLine) && (
+                            <div className="flex items-center gap-2 min-w-0">
+                                {statusText && <span className={`text-base font-bold whitespace-nowrap ${PHASE_COLOR[phase]}`}>{statusText}</span>}
+                                {statusText && subLine && <span className="w-px h-4 bg-slate-700 shrink-0" aria-hidden="true" />}
+                                {subLine && <span className="text-base font-bold text-orange-400 tabular-nums truncate">{subLine}</span>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <HomeMyTeamBadge />
+                <HomeStandingsSection phone />
+                <HomeLeagueLeadersSection phone />
+                <HomeLatestNewsSection phone />
+                <HomeTransactionsSection phone />
+                <HomeInjurySection phone />
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 min-h-full">

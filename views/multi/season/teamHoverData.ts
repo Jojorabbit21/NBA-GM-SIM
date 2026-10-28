@@ -27,7 +27,9 @@ export interface TeamHoverData {
     losses: number;
     confRank: number | null;
     leagueRank: number;
-    /** 유저 팀이면 닉네임, AI·미배정 팀이면 "없음" */
+    /** "단장" 줄 라벨 — 유저 팀 '단장', AI 팀은 프런트 대표 직함(없으면 '단장') */
+    gmTitle: string;
+    /** 유저 팀이면 닉네임, AI 팀이면 프런트 대표 이름(사장 우선), 둘 다 없으면 "없음" */
     gmLabel: string;
     totalTeams: number;
     /** 경기 기록이 없으면 null → 카드가 "기록 없음"을 표시 */
@@ -42,6 +44,8 @@ interface BuildArgs {
     teamAdvanced: TeamAdvancedStatsMap | undefined;
     playoffTeamsPerConf: number;
     playInEnabled: boolean;
+    /** AI 팀 프런트 대표(사장 우선, 없으면 단장) — meta_gms. 사람 팀이면 쓰지 않는다 */
+    aiFront?: { title: string; name: string } | null;
 }
 
 interface Metric {
@@ -67,7 +71,7 @@ function rankOf(slug: string, slugs: string[], get: (s: string) => number | null
 }
 
 export function buildTeamHoverData(args: BuildArgs): TeamHoverData | null {
-    const { slug, leagueTeams, schedule, serverNowMs, teamAdvanced, playoffTeamsPerConf, playInEnabled } = args;
+    const { slug, leagueTeams, schedule, serverNowMs, teamAdvanced, playoffTeamsPerConf, playInEnabled, aiFront } = args;
     const row = leagueTeams.find(t => t.team_slug === slug);
     if (!row) return null;
 
@@ -97,7 +101,11 @@ export function buildTeamHoverData(args: BuildArgs): TeamHoverData | null {
         confRank = idx >= 0 ? idx + 1 : null;
     }
 
-    const gmLabel = !row.is_ai && row.user_id && row.nickname ? row.nickname : '없음';
+    const isHumanTeam = !row.is_ai && !!row.user_id;
+    const gmTitle = !isHumanTeam && aiFront ? aiFront.title : '단장';
+    const gmLabel = isHumanTeam
+        ? (row.nickname || '없음')
+        : (aiFront?.name ?? '없음');
 
     // ── 분야별 순위 ───────────────────────────────────────────────────────────
     // 전부 get_team_season_advanced_stats RPC(팀 화면 헤더·리더보드와 같은 BBRef 공통 포제션 기준) 한 건에서
@@ -129,6 +137,7 @@ export function buildTeamHoverData(args: BuildArgs): TeamHoverData | null {
         losses: rec.losses,
         confRank,
         leagueRank,
+        gmTitle,
         gmLabel,
         totalTeams: slugs.length,
         // 하나라도 빠지면(통계 미도착 등) 반쪽짜리 카드가 되므로 전부 있을 때만 표시

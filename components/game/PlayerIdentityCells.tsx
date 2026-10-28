@@ -15,9 +15,10 @@ import { PlayerHoverCard } from '../common/PlayerHoverCard';
 // 실질적 기준이라, 세 테이블 모두 이 컴포넌트를 쓰면 자동으로 행 높이가 맞춰진다).
 
 /** hideOvr: OVR 열 생략(라이브 박스스코어 탭 — 경기 중엔 능력치보다 스탯이 우선, 열 폭도 아낌). 본문 PlayerIdentityCells와 같은 값을 넘길 것 */
-export const PlayerIdentityHeaderCells: React.FC<{ hideOvr?: boolean }> = ({ hideOvr }) => (
+/** sticky: [2026-10-28] 폰 종료 화면 — PLAYER 열을 144px로 고정하고 가로 스크롤에도 남긴다(본문 PlayerIdentityCells와 같은 값) */
+export const PlayerIdentityHeaderCells: React.FC<{ hideOvr?: boolean; sticky?: boolean }> = ({ hideOvr, sticky }) => (
     <>
-        <TableHeaderCell align="left" className="px-4 w-40">PLAYER</TableHeaderCell>
+        <TableHeaderCell align="left" className="px-4 w-40" stickyLeft={sticky ? 0 : false} width={sticky ? 144 : undefined}>PLAYER</TableHeaderCell>
         <TableHeaderCell align="center" className="w-12">POS</TableHeaderCell>
         {!hideOvr && <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>}
     </>
@@ -37,13 +38,15 @@ interface PlayerIdentityCellsProps {
     teamAbbr?: string;
     /** OVR 셀 생략(헤더 PlayerIdentityHeaderCells와 짝) */
     hideOvr?: boolean;
+    /** [2026-10-28] 폰 종료 화면 — PLAYER 칸 144 sticky(헤더와 짝) */
+    sticky?: boolean;
 }
 
-export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone, profileHref, teamAbbr, hideOvr }) => {
+export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player: p, playerInfo, mvpId, standalone, profileHref, teamAbbr, hideOvr, sticky }) => {
     // standalone(멀티 좌우 분할)에선 표 본문 글자를 text-sm으로 키운다(2026-10-18)
     const textSize = standalone ? 'text-sm' : 'text-xs';
     const isMvp = p.playerId === mvpId;
-    const nameClass = `${textSize} font-semibold truncate ${standalone ? 'max-w-[140px]' : 'max-w-[100px]'} ${isMvp ? 'text-amber-200' : 'text-white'}`;
+    const nameClass = `${textSize} font-semibold truncate ${sticky ? 'max-w-[112px]' : standalone ? 'max-w-[140px]' : 'max-w-[100px]'} ${isMvp ? 'text-amber-200' : 'text-white'}`;
     // [Fix 2026-08-05] "경기 전환 시 OVR이 70으로 잠깐 보였다가 정정된다" 버그 — 멀티플레이어는
     // 실제 능력치(rosterCache) 로딩 전에 {id,name,position}만 있는 스텁을 team.roster에 채워
     // 넣는데, 이 스텁도 playerInfo 존재 자체는 truthy라 위 삼항연산자로는 못 걸러진다. 스텁엔
@@ -58,7 +61,7 @@ export const PlayerIdentityCells: React.FC<PlayerIdentityCellsProps> = ({ player
 
     return (
         <>
-            <TableCell className="px-4">
+            <TableCell className="px-4" stickyLeft={sticky ? 0 : false} width={sticky ? 144 : undefined}>
                 <div className="flex items-center gap-2">
                     {profileHref
                         // 호버카드는 멀티 종료 화면(profileHref가 있을 때)에서만, 능력치가 로드된 실제 Player일 때만 뜬다

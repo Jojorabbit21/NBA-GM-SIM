@@ -66,8 +66,9 @@ export const STRENGTH_PCT_SD = 0.08;
 export const CONTENDER_COUNT = 4;
 export const SAFE_Z = 1.0;
 
-const HIGH_COMPETITIVENESS = 0.65;
-const LOW_COMPETITIVENESS = 0.35;
+/** 승부욕 구간 경계 — 기조 라벨·카드 설명 문장이 같은 기준을 쓴다 */
+export const HIGH_COMPETITIVENESS = 0.65;
+export const LOW_COMPETITIVENESS = 0.35;
 
 /** 탈락권으로 판단하는 z 경계 — 승부욕이 높을수록 늦게 포기 (0.25 → −0.8, 0.9 → −1.84) */
 export function giveUpZ(competitiveness: number): number {

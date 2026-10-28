@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ShotEvent } from '../../types';
+import { useIsPhone } from '../../hooks/useViewportClass';
+import { SegmentedControl } from '../common/SegmentedControl';
 
 // ShotEvent.playType 값(types/engine.ts의 PlayType 유니언) → 표시 라벨
 const PLAY_TYPE_LABEL: Record<string, string> = {
@@ -103,6 +105,61 @@ export const PlayTypeStats: React.FC<PlayTypeStatsProps> = ({ shotEvents, homeTe
         return max > 0 ? max : 100;
     }, [groups]);
     const barWidthOf = (share: number) => (share / maxShare) * 100;
+
+    // [2026-10-28] 폰(§9-7, 목업 G16): 9열(비율·성공률·득점 ×2 + 막대 + 이름)이 폰 폭에 안 들어가 지표 세그먼트 하나로 고른다.
+    // 막대 길이는 항상 비율(데스크톱과 같은 maxShare 정규화), 숫자 칸만 고른 지표. 색·글자·행 톤은 데스크톱 그대로.
+    const isPhone = useIsPhone();
+    type PhoneMetric = 'share' | 'success' | 'points';
+    const [phoneMetric, setPhoneMetric] = useState<PhoneMetric>('share');
+    if (isPhone) {
+        const fmt = (agg: TeamAgg) => phoneMetric === 'share' ? `${agg.share.toFixed(1)}%`
+            : phoneMetric === 'success' ? `${successOf(agg).toFixed(1)}%` : String(agg.points);
+        const PHONE_COLS = 'grid-cols-[44px_1fr_120px_1fr_44px]';
+        const sc = 'text-xs font-semibold text-white text-center tabular-nums';
+        return (
+            <div className="flex flex-col bg-slate-900">
+                <div className="h-11 px-4 flex items-center justify-between gap-3 border-b border-slate-800">
+                    <span className="text-[13px] font-semibold text-slate-300">플레이타입</span>
+                    <SegmentedControl<PhoneMetric>
+                        size="sm"
+                        value={phoneMetric}
+                        onChange={setPhoneMetric}
+                        options={[{ value: 'share', label: '비율' }, { value: 'success', label: '성공률' }, { value: 'points', label: '득점' }]}
+                    />
+                </div>
+                {groups.length === 0 ? (
+                    <p className="text-xs text-slate-600 py-4 text-center">데이터 없음</p>
+                ) : (
+                    <>
+                        <div className={`grid ${PHONE_COLS} items-center gap-1 px-3 h-9 bg-slate-950 border-b border-slate-800`}>
+                            <span className="text-xs font-black text-slate-500 text-center truncate">{awayBadge.abbr.slice(0, 3)}</span>
+                            <span />
+                            <span className="text-xs font-black text-slate-500 text-center">플레이타입</span>
+                            <span />
+                            <span className="text-xs font-black text-slate-500 text-center truncate">{homeBadge.abbr.slice(0, 3)}</span>
+                        </div>
+                        {groups.map(g => {
+                            const away = g.away ?? EMPTY_AGG;
+                            const home = g.home ?? EMPTY_AGG;
+                            return (
+                                <div key={g.playType} className={`grid ${PHONE_COLS} items-center gap-1 px-3 py-2 border-b border-slate-800/50`}>
+                                    <span className={sc}>{fmt(away)}</span>
+                                    <div className="h-2.5 mx-0.5 flex justify-end rounded-sm overflow-hidden bg-slate-950">
+                                        {away.share > 0 && <div className="h-full rounded-sm" style={{ width: `${barWidthOf(away.share)}%`, backgroundColor: awayBadge.color }} />}
+                                    </div>
+                                    <span className="text-xs font-semibold text-white text-center truncate px-0.5">{PLAY_TYPE_LABEL[g.playType] ?? g.playType}</span>
+                                    <div className="h-2.5 mx-0.5 flex justify-start rounded-sm overflow-hidden bg-slate-950">
+                                        {home.share > 0 && <div className="h-full rounded-sm" style={{ width: `${barWidthOf(home.share)}%`, backgroundColor: homeBadge.color }} />}
+                                    </div>
+                                    <span className={sc}>{fmt(home)}</span>
+                                </div>
+                            );
+                        })}
+                    </>
+                )}
+            </div>
+        );
+    }
 
     return (
         // [Fix 2026-08-03] 이전 주석은 "align-items:stretch가 이 div까지 늘려준다"고 잘못 가정했음 —

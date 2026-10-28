@@ -27,8 +27,8 @@ interface MultiFullCourtChartProps {
     courtShowLogo?:   boolean;
     courtLogoScale?:  number;
     /** [2026-10-23] 헤더 변형 — legend(기본): 범례 점 + 선수 필터 버튼. split: 좌(원정)/우(홈) 반반을 팀 테마 컬러로 칠한
-     *  헤더, 선수 필터는 숨김(게임 센터 카드용). */
-    headerVariant?: 'legend' | 'split';
+     *  헤더, 선수 필터는 숨김(게임 센터 카드용). none[2026-10-28]: 헤더 없이 코트만(폰 게임 센터 — 팀 구분은 바로 위 스코어버그 밴드, §9-7). */
+    headerVariant?: 'legend' | 'split' | 'none';
     /** split 헤더의 글자색 — 팀 컬러 위 대비색(점보트론과 같은 awayText/homeText). 없으면 흰색 */
     awayTextColor?: string;
     homeTextColor?: string;

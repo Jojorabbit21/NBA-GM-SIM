@@ -34,6 +34,349 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-28 — BM27 선수 프로필 폰 샷 차트 탭: 차트·표 전폭 + 표 제목을 1열 머리 칸으로 + 간격 제거
+
+**배경**: 사용자 지시 "샷차트와 아래 테이블도 화면에 꽉차게, 테이블 위 작은 라벨은 1열 헤더 셀 텍스트를 구역별 기록/시간대별 기록/타입별 기록/팀별 기록으로" + "헤더와 샷차트, 샷차트와 테이블, 테이블과 테이블 사이 간격 모두 제거".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx`
+  - `ShotBreakdownTable` — prop `phoneLabel?: string` 추가(화살표 함수 본문을 `{ ... return (...) }`로). 있으면 표 위 `<div className="text-xs text-slate-500 mb-2">{title}</div>` 생략 + 1열 머리 칸 = `phoneLabel`, 첫 열 칸(머리·본문·푸터) `pl-4`, 끝 열 칸(FG% 또는 +/-) `pr-4`
+  - 호출부 4곳 `phoneLabel={isPhone ? '구역별 기록' | '시간대별 기록' | '타입별 기록' | '팀별 기록' : undefined}`
+  - 차트 상자 폰 클래스 `'px-4 pt-1 pb-2'` → `''`, svg 폰 `'w-full'` → `'block w-full'`(인라인 svg 기준선 틈 제거)
+  - 표 묶음 상자 폰 클래스: (이전) 데스크톱과 같은 `'flex-1 min-w-0 p-4 flex flex-col gap-6'` → `'pb-4 flex flex-col'`(데스크톱은 그대로)
+- `docs/ui/mobile-design-system.md` §9-2 샷 차트 탭
+- (코드 아님) 캔버스 v135 P7 — 생성기 `gen_player.py` `bd_table()`(cols[0]=title, 표 위 라벨 삭제, padding 0 16) · `shot_body`(차트 상자 패딩·테두리 삭제, 팀별 표 추가)
+
+**Before**: 폰 차트 좌우 16 · 위 4 · 아래 8 여백, 표 묶음 p-4 + 표 사이 24, 각 표 위 "구역별 기록" 등 12 slate-500 라벨 + 1열 머리 "구역/시간대/타입/팀"
+
+**After**: 필터 줄 바로 아래 전폭 차트, 바로 아래 전폭 표 4개가 간격 없이 이어짐(아래 끝 16), 1열 머리 칸 = "구역별 기록 / 시간대별 기록 / 타입별 기록 / 팀별 기록"(데스크톱 "슛 타입별 기록" 라벨은 폰에서 "타입별 기록")
+
+**검증**: `tsc` PlayerDetailView 오류 0, 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: `phoneLabel` prop·`first/last` 클래스 제거(본문을 화살표 즉시 반환으로), 호출부 `phoneLabel` 삭제, 차트 상자 `'px-4 pt-1 pb-2'`·svg `'w-full'`, 표 묶음 상자를 `'flex-1 min-w-0 p-4 flex flex-col gap-6'` 단일 클래스로, 캔버스 v134
+
+## 2026-10-28 — 선수 프로필 게임 로그 표: 첫 열 고정 제거
+
+**배경**: 사용자 결정 "게임 로그는 1열 고정 없어도 될 것 같아" — 직전 항목에서 넣은 본문 고정까지 포함해 게임 로그만 고정을 전부 뺌(커리어·스플릿은 고정 유지).
+
+**변경 파일**: `views/PlayerDetailView.tsx`(`VirtualGameLog`)
+
+**Before**: 머리 `TableHeaderCell stickyLeft={i === 0 ? 0 : undefined}`, 본문 `stickyLeft={ci === 0 ? 0 : undefined}` + `STICKY_CELL_BG(_ZEBRA)`, 푸터 `stickyLeft` + `STICKY_CELL_BG_FOOT`
+
+**After**: 세 곳 모두 stickyLeft·고정 배경 없음 — 표 전체가 함께 가로 스크롤
+
+**검증**: `tsc` 오류 0. 브라우저 미확인
+
+**롤백 방법**: 세 곳에 stickyLeft(첫 칸)와 배경 style 복원
+
+## 2026-10-28 — 선수 프로필 커리어·게임 로그·스플릿 표: 고정 첫 열 버그(뒤 칸 비침 · 본문 미고정 · 그룹 이름 밀림)
+
+**배경**: 사용자 지적(폰 스크린샷 3장) "커리어는 고정된 1열 배경 뒤로 다른 컬럼들이 투명하게 겹쳐 보이고, 게임 로그·스플릿은 1,1 셀만 고정". 원인 3가지:
+1. 세 표 모두 `Table variant="bare"` — bare는 sticky **본문/푸터** 칸에 배경을 칠하지 않아(`BARE_STICKY_BG` body/foot = '') 가로 스크롤 시 뒤 칸이 비침(스플릿·커리어는 고정은 되지만 고정 안 된 것처럼 보임)
+2. 게임 로그(`VirtualGameLog`) 본문 첫 칸에는 `stickyLeft` 자체가 없었음(머리·푸터만 고정)
+3. 스플릿 그룹 행은 colSpan 한 칸이라 가로 스크롤 시 그룹 이름이 화면 밖으로 밀림
+폰에서 드러났지만 데스크톱도 창이 좁아 가로 스크롤이 생기면 같은 버그 → 모든 폭에 적용.
+
+**변경 파일**: `views/PlayerDetailView.tsx`
+
+**Before**:
+```tsx
+// 스플릿 본문 첫 칸 / 커리어 본문 첫 칸 / 커리어·게임 로그 푸터 첫 칸
+<TableCell stickyLeft={0} …>          // 배경 없음(bare)
+// 게임 로그 본문
+<TableCell key={ci} align="left" className="tabular-nums">   // stickyLeft 없음
+// 스플릿 그룹 행
+<TableCell colSpan={headers.length} className="font-bold text-slate-400 bg-slate-800/40">{grp.title}</TableCell>
+```
+
+**After**:
+```tsx
+const STICKY_CELL_BG = { backgroundColor: '#020617' };        // slate-950 바탕
+const STICKY_CELL_BG_ZEBRA = { backgroundColor: '#070b1c' };  // 바탕 + 흰 2%(ZEBRA_ROW_STYLE) 합성
+const STICKY_CELL_BG_FOOT = { backgroundColor: '#0d1425' };   // 바탕 + slate-800/40(bare tfoot) 합성
+// 본문 첫 칸: style={줄무늬 ? STICKY_CELL_BG_ZEBRA : STICKY_CELL_BG}, 푸터 첫 칸: style={STICKY_CELL_BG_FOOT}
+// 게임 로그 본문 첫 칸: stickyLeft={0} 추가
+// 스플릿 그룹 행: <span className="sticky left-2 inline-block">{grp.title}</span>
+```
+
+**검증**: `tsc` 오류 0. 브라우저 미확인(사용자 확인 필요)
+
+**롤백 방법**: 상수 3개와 각 `style=` 제거, 게임 로그 본문 `stickyLeft` 제거, 그룹 행 span 제거
+
+## 2026-10-28 — BM27 선수 프로필 폰 능력치 탭: 묶음 제목 행 배경 + 한국어 라벨
+
+**배경**: 사용자 지시 "능력치 탭의 그룹 헤더 행에 배경색 적용 + INSIDE → 인사이드 스코어링, OUTSIDE → 아웃사이드 스코어링, DEFENSE → 수비, REBOUND → 리바운드, PLAYMAKING → 플레이메이킹, ATHLETIC → 운동능력".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 모듈 상수 `PHONE_ATTR_GROUP_LABEL` 신설, 폰 능력치 탭 묶음 래퍼의 `border-t`(첫 묶음 외) 제거, 제목 행 교체
+- `docs/ui/mobile-design-system.md` §9-2 능력치 탭
+- (코드 아님) 캔버스 v134 P13 · P14 — 생성기 `gen_player.py` `attr_grid()`
+
+**Before**: `<div className="px-4 pt-3 text-xs font-bold text-slate-500">{gr.label}</div>`(영문 COMPACT_ATTR_GROUPS 라벨), 묶음 사이 `border-t border-slate-800`
+
+**After**: `<div className="px-4 py-1.5 bg-slate-800/40 border-y border-slate-800 text-xs font-bold text-slate-400">{PHONE_ATTR_GROUP_LABEL[gid]}</div>` — 공용 `COMPACT_ATTR_GROUPS` 라벨은 그대로(로스터·리더보드 영향 없음)
+
+**검증**: `tsc` 오류 0, 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: Before 제목 행·묶음 래퍼 선 복원, `PHONE_ATTR_GROUP_LABEL` 삭제, 캔버스 v133
+
+## 2026-10-28 — BM27 선수 프로필 폰 헤더: 이번 시즌 어코디언 제목 밝게 + 굵게
+
+**배경**: 사용자 지시 "어코디언 타이틀 텍스트 색상은 밝게" + "굵기도 한 단계 키워줘".
+
+**변경 파일**: `views/PlayerDetailView.tsx`(어코디언 버튼), `docs/ui/mobile-design-system.md` §9-2 헤더 ③, (코드 아님) 캔버스 v133 P1 · P13 — 생성기 `gen_player.py` `season_table()`
+
+**Before**: `<button className="... text-xs text-slate-500 active:text-slate-300"><span>{시즌} 시즌</span><ChevronDown … /></button>`
+
+**After**: `<button className="... text-xs active:opacity-70"><span className="text-slate-300 font-medium">{시즌} 시즌</span><ChevronDown className="text-slate-400 …" /></button>` (글자 slate-500 → slate-300, 400 → 500, 화살표 slate-400)
+
+**검증**: `tsc` 오류 0. 브라우저 미확인
+
+**롤백 방법**: Before 클래스로 복원, 캔버스 v131
+
+## 2026-10-28 — BM27 선수 프로필 폰 헤더: 이번 시즌 그리드 어코디언 + 세로 구분선 제거
+
+**배경**: 사용자 지시 "시즌 스탯 영역은 어코디언으로, 시즌 스탯 테이블 각 행의 세로 구분선은 없애줘".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 상태 `seasonStatsOpen`(초기값 localStorage `playerHeaderSeasonStatsOpen` !== '0', 기본 true) + `toggleSeasonStats`(localStorage 저장, try/catch), 제목 `<div>` → `<button aria-expanded>`(h-8, ChevronDown 14 `rotate-180` when open), 그리드는 `seasonStatsOpen && (...)`, 칸 `border-l border-slate-800`(첫 칸 외) 제거
+- `docs/ui/mobile-design-system.md` §9-2 헤더 ③
+- (코드 아님) 캔버스 v131 — P1 펼친 상태, P13 접힌 상태. 생성기 `gen_player.py` `season_table()`(`HEADER_SEASON_OPEN`)
+
+**Before**: 제목 텍스트(div) + 항상 보이는 그리드, 칸 사이 세로선
+
+**After**: 제목 줄 토글(기본 펼침, 기억), 칸 사이 세로선 없음 · 두 줄 사이 가로선만
+
+**검증**: `tsc` 오류 0, 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: 버튼을 `<div className="text-xs text-slate-500 pb-1.5">`로, `seasonStatsOpen` 조건·상태 삭제, 칸에 `${ci > 0 ? 'border-l border-slate-800' : ''}` 복원, 캔버스 v130
+
+## 2026-10-28 — BM27 선수 프로필 폰 헤더: 이번 시즌 스탯 표 → 그리드(+PER)
+
+**배경**: 사용자 지시 "이번 시즌 스탯 표는 {시즌명} 시즌 ─ G | MP | PTS | REB | AST | STL | BLK ─ FG% | 3P% | FT% | TS% | PER 그리드 구조로".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — prop `headerPer?: number | null` 추가, 폰 헤더 ③을 표 → 그리드(제목 + `grid-cols-7` + `grid-cols-5`)
+- `views/multi/season/MultiPlayerDetailView.tsx` — import `useIsPhone` · `useLeaderboardData` · `useTeamSeasonAdvancedStats` · `FilterItem`, 상수 `PER_NO_FILTERS/PER_NO_STRINGS/PER_SORT/PER_NO_TEAMS`, 조기 반환 전 `headerPer` 계산(폰일 때만 리그 팀 전달 · 고급 스탯 조회), `<PlayerDetailView headerPer={headerPer} />`
+- `docs/ui/mobile-design-system.md` §9-2 프로필 헤더 ③
+- (코드 아님) 캔버스 v130 P1 · P13 — 생성기 `gen_player.py` `season_table()`
+
+**Before**: 데스크톱 미니 표 시즌 행(왼쪽 "시즌" 라벨 + 11열, 가로 스크롤)
+
+**After**:
+```tsx
+<div className="text-xs text-slate-500 pb-1.5">{시즌} 시즌</div>
+<div className="grid grid-cols-7">  // G MP PTS REB AST STL BLK
+<div className="grid grid-cols-5 border-t border-slate-800">  // FG% 3P% FT% TS% PER
+  칸: flex-col items-center py-1.5 (첫 칸 외 border-l slate-800) · 라벨 text-xs slate-400 · 값 text-sm white tabular
+```
+PER = `perRows.find(r => r.id === playerId).stats.per`(정규시즌, 퍼센타일 탭과 같은 리더보드 계산), 0/없음이면 "-"
+
+**검증**: `tsc` 두 파일 오류 0, `vite build` 성공(순환 의존 없음), 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: PlayerDetailView ③을 미니 표 시즌 행으로 복원·`headerPer` prop 제거, MultiPlayerDetailView의 PER 계산 블록·import·상수·prop 제거, 캔버스 v129
+
+## 2026-10-28 — BM27 선수 프로필 폰 헤더: 둘째 줄 아래 이번 시즌 스탯 표
+
+**배경**: 사용자 지시 "둘째 줄 하단에 선수의 이번 시즌 스탯 테이블을 넣어줘".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 폰 헤더 블록 끝(둘째 줄 다음)에 구분선 + 표 추가
+- `docs/ui/mobile-design-system.md` §9-2 프로필 헤더 ③
+- (코드 아님) 캔버스 v129 P1 · P13 — 생성기 `gen_player.py` `season_table()`
+
+**Before**: ① 로고 + 이름 ─ ② OVR · POS | 나이 | 신장 | 체중 (미니 표는 폰에서 숨김)
+
+**After**: ② 아래에 `mx-4 h-px slate-800` + `overflow-x-auto` 안 데스크톱 미니 표(같은 `HEADER_STAT_KEYS` · `formatHeaderStat` · `simRegularRow`, 시즌 행만, 셀 px-2.5)
+```tsx
+<table className="text-sm whitespace-nowrap border-collapse">
+  <thead><tr><th className="border-r border-slate-800 pr-3 pb-1" />{HEADER_STAT_KEYS → <th className="text-right font-normal text-slate-400 px-2.5 pb-1">}</tr></thead>
+  <tbody><tr><td className="text-left text-slate-500 border-r border-slate-800 pr-3 py-0.5">{시즌} 시즌</td>{… <td className="text-right text-white px-2.5 py-0.5 tabular-nums">}</tr></tbody>
+</table>
+```
+
+**검증**: `tsc` PlayerDetailView 오류 0, 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: 폰 헤더의 "③ 이번 시즌 스탯" 구분선·표 블록 삭제, 캔버스 v128
+
+## 2026-10-28 — BM27 선수 프로필 폰 헤더 3판: [팀 로고][이름] ─ [OVR][POS][나이][신장][체중]
+
+**배경**: 사용자 지시 "선수 프로필 화면 헤더의 구조 변경 — [팀로고] [선수 이름] / [ovr배지] [포지션] [나이] [신장] [체중]".
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx` — 폰 헤더 블록(`{isPhone && (...)}`, 데스크톱 헤더 바로 위) 교체
+- `docs/ui/mobile-design-system.md` §9-2 프로필 헤더 항목
+- (코드 아님) 캔버스 v128 P1 · P13 재생성 — 생성기 `gen_player.py` `profile_header()`
+
+**Before**(2판):
+```tsx
+① <OvrBadge size="header" /> <h1 text-2xl font-black>{name}</h1> {부상 배지} | #{번호}
+─ ② 수상 배지(text-sm font-bold, 없으면 생략)
+─ ③ <TeamBadge xs /> {팀 이름} | POS | 나이 | 키 | 체중 | 연봉
+```
+
+**After**(3판):
+```tsx
+① {teamId && <TeamLogo className="h-9 w-9" shadow={false} />} <h1 text-2xl font-black>{name}</h1>
+─ ② <OvrBadge size="table" /> POS | 나이 | 신장 | 체중   (text-sm slate-300, | slate-600)
+```
+등번호 · 수상 · 부상 배지 · 팀 이름 · 연봉은 폰 헤더에서 제외(지시된 요소만 — 데스크톱 헤더는 변경 없음)
+
+**검증**: `tsc` PlayerDetailView 오류 0, 목업 스크린샷 확인. 브라우저 미확인
+
+**롤백 방법**: 위 Before 구조로 폰 헤더 블록 복원(헤더 2판은 dev-log "선수 프로필 폰판 구현" 항목 참고), 캔버스 v127
+
+## 2026-10-28 — BM27 선수 프로필 폰판 구현(데스크톱 PlayerDetailView 디자인 언어)
+
+**배경**: 사용자 요청 "이대로 선수 프로필 화면 구현 — 실제 데스크톱 선수 프로필 화면의 디자인 언어와 동일하게". 목업 P1~P17, 문서 §9-2. 태블릿·데스크톱 변화 없음(`useIsPhone()` 분기).
+
+**변경 파일**:
+- `views/PlayerDetailView.tsx`
+  - import: `SlidersHorizontal`, `useIsPhone`, `BottomSheet`/`SheetGroupTitle`/`SheetOptionRow`, `MOBILE_TAB_BAR_HEIGHT`
+  - 모듈: `PhoneFilterHeader`(제목 16/900 + 필터 버튼 h-8 slate-800 · indigo 점), `SheetRadioGroup<T>`(SheetGroupTitle + SheetOptionRow 라디오, cols 1~3)
+  - `GameLogSplitsTable`: 폰 = PhoneFilterHeader + "스플릿 필터" 시트(보기 3열), 데스크톱 SectionHeader 그대로
+  - 본문: `isPhone`, 시트 상태 4개(career/gameLog/shot/attrEvent), 탭 'attrs'(폰 전용, URL `?tab=attrs`), `compactAttrLabel`/`attrInfo`(데스크톱 능력치 위젯과 같은 공식), `shotFilterPanel`(데스크톱 왼쪽 필터 패널 JSX를 변수로 추출 — 데스크톱은 `{!isPhone && shotFilterPanel}`, 폰은 시트 안)
+  - 루트 폰 `paddingBottom = 탭 바 + 안전영역`, 상단 `pt-safe` 띠, 브레드크럼 바는 폰에서 항상 표시(FA도 뒤로)
+  - 폰 헤더: ① OVR header · 이름 24/900 · 부상 배지 24 · "|" · #번호 24/700 ② 수상 배지(14/700, 툴팁 없음, 없으면 줄 생략) ③ TeamBadge xs + 팀 이름 | POS | 나이 | 키 | 체중 | 연봉(14), 줄 사이 `mx-4 h-px slate-800`. 데스크톱 헤더(로고 · 미니 표)는 `!isPhone`
+  - TabBar: 폰 탭에 '능력치'(프로필 다음) + `compact`
+  - 프로필 그리드: 폰 `grid-cols-1`(좌 → 중), 좌/중 열 우측 선 폰 제거, 계약 섹션 `first={!isPhone}`, 우열(능력치) `!isPhone`
+  - 능력치 탭(폰): 6묶음(INS · OUT · DEF · REB · PLM · ATH) 제목 행 12/700 slate-500 + `grid-cols-3` 칸(라벨 13/700 · schibsted 24/900 · ▲▼ 12/900 버튼 → "{능력치} 변동" 시트 · 막대 h-2.5 `getAttrBarGradient`)
+  - 커리어 · 게임 로그 머리: 폰 = PhoneFilterHeader + "커리어 필터"(시즌 구분 · 기록 종류) / "게임 로그 필터"(시즌 목록 · 보기) 시트
+  - 샷 차트: 폰 = 상단 줄("N개 표시 중 · 히트맵 · 빈도" + 필터 버튼 → "샷 차트 필터" 시트) + 차트 `w-full` + 표들
+- `components/common/TabBar.tsx` — compact일 때 활성 탭이 보이는 범위 밖이면 가로로 `scrollTo`(버튼에 `data-active`) — 팀·전술·경기 화면 compact 탭 바에도 적용
+- `views/multi/season/MultiSeasonLayout.tsx` — `isPlayerRoute`(season/player/:id): `hasOwnPhoneHeader`에 추가, 레이아웃 하단 여백 제외(화면 루트 padding이 담당)
+- `components/player/PercentileCard.tsx` — 폰: 섹션 이름 = 그룹 행(colSpan 3, 12/700 slate-300, slate-900 + 위아래 선), 지표 열 104 말줄임, 막대 min-w 96, 제목 줄 양끝 정렬
+- `views/multi/season/PlayerPercentileTab.tsx` — 폰 드롭다운 폭 128 → 104
+- `views/multi/season/PlayerNewsTab.tsx` — `playerName` prop, 폰: 목록 전폭(행 py-3, 선택 강조 없음) + `?story=` push → 고정 기사 화면(MobilePushHeader "선수명 · 뉴스" + StoryCard), 뒤로 = history back
+- `views/multi/season/MultiPlayerDetailView.tsx` — PlayerNewsTab에 `playerName` 전달
+
+**Before**: 폰에서도 데스크톱 레이아웃(큰 로고 + 미니 표 헤더 · 2fr/2fr/6fr 3열 프로필 · 세그먼트 머리 · 왼쪽 필터 패널 + 46rem 차트 · 30% 목록 + 본문 뉴스 · rowSpan 섹션 열 퍼센타일), 공용 상단 바 + 브레드크럼 이중
+
+**After**: 위 목록
+
+**검증**: `tsc` 수정 파일 오류 0(전체 63 — 늘어난 4건 포함 전부 이번에 안 건드린 파일: hooks/useGameData.ts · engine playTypes 등), `vite build` 성공. 브라우저·실기기 미확인(로그인 필요)
+
+**롤백 방법**: 원본 백업 = 스크래치패드 `PlayerDetailView.orig.tsx`. 나머지 파일은 `isPhone`/`phone` 분기와 TabBar 자동 스크롤 effect · `data-active`, 레이아웃 `isPlayerRoute` 두 곳 제거
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 커리어·게임 로그·스플릿 머리의 선택 요약 텍스트 삭제 (코드 변경 없음)
+
+**배경**: 사용자 지시 "기록, 게임 로그, 스플릿 우측의 작은 텍스트는 삭제".
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2 섹션 머리 문구, (코드 아님) 캔버스 v127 P4~P6 · P15~P17 재생성 — 생성기 `gen_player.py` `filt_head()`
+
+**Before**: 제목 16/900 + 요약 12 slate-500("Regular · Traditional" 등) + 필터 버튼
+
+**After**: 제목 16/900 + 필터 버튼(현재 선택은 버튼의 indigo 점으로만 — 기본값이 아닐 때)
+
+**롤백 방법**: `filt_head`에 요약 span 복원, 캔버스 v126
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 커리어·게임 로그·스플릿 셀렉터 → 필터 버튼 + 바텀 시트 (코드 변경 없음)
+
+**배경**: 사용자 지시 "커리어 탭과 게임 로그, 스플릿에 들어가는 셀렉터들은 필터 버튼으로 통합해서 바텀 시트로 관리".
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2 섹션 머리 항목, (코드 아님) 캔버스 v126 — PlayerCareer · PlayerGameLog · PlayerSplits 재생성, PlayerCareerFilter · PlayerGameLogFilter · PlayerSplitsFilter 신규. 생성기 `gen_player.py`(`filt_head` · `bottom_sheet` · `sheet_group` · `sheet_radio`)
+
+**Before**: 머리 = 제목 + SegmentedControl sm 1~2개(게임 로그는 시즌 텍스트 버튼 + 세그먼트), 폰 폭에서 컨트롤 줄 바꿈
+
+**After**: 머리 = 제목 + 현재 선택 요약 + 필터 버튼 1개, 시트에서 라디오로 선택(즉시 반영). 게임 로그 시즌도 시트 안
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-2 문구를 SegmentedControl 머리로, 캔버스 v125(시트 보드 3장은 files null)
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 능력치 탭 행 방향 묶음 + 제목 행 (코드 변경 없음)
+
+**배경**: 사용자 지적 "데스크탑처럼 수직으로 같은 그룹이라 모바일 사용자가 행이 같은 그룹인지 열이 같은 그룹인지 헷갈릴 것" → 제안 3개 중 "행 방향 + 묶음 제목 행" 선택.
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2 능력치 탭 배치 문구, (코드 아님) 캔버스 v125 PlayerAttributes · PlayerAttributes2 재생성 — 생성기 `gen_player.py` `attr_grid()`
+
+**Before**: 3열 × 7행, 열 = 데스크톱 3병합 묶음(위→아래 읽기), 묶음 제목 없음
+
+**After**: 6묶음 제목 행(INSIDE · OUTSIDE · DEFENSE · REBOUND · PLAYMAKING · ATHLETIC) + 각 묶음을 3칸씩 왼→오, 묶음 사이 선. 칸 디자인은 그대로
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-2 문구를 3×7 그리드로, 캔버스 v124
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 능력치 탭 3×7 그리드 (코드 변경 없음)
+
+**배경**: 사용자 지시 "모바일 환경 능력치는 3xn 그리드로".
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2 능력치 탭 항목, (코드 아님) 캔버스 v124 PlayerAttributes · PlayerAttributes2 재생성 — 생성기 `gen_player.py` `attr_grid()`
+
+**Before**: 1열 21행(행 px-16 py-16 · 라벨+막대 | 증감+값 24)
+
+**After**: 3열 × 7행, 열 = 데스크톱 3묶음, 칸 = 라벨 13/700 → 값 24/900 + ▲▼ 12/900 → 막대 10
+
+**검증**: Playwright 390×844 스크린샷 확인(P13 헤더 포함 4행, P14 끝 6행까지)
+
+**롤백 방법**: §9-2 문구 원복, 캔버스 v123
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 능력치 탭 신설(P13·P14) (코드 변경 없음)
+
+**배경**: 사용자 지시 "모바일에서는 능력치 탭을 신설해서 프로필 다음에, 능력치만 따로 떼서".
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2(능력치 탭 항목, 섹션 순서 문구), (코드 아님) 캔버스 v123 — PlayerAttributes · PlayerAttributes2 신규, P1~P11 탭 바 8개로 재생성, P2/P3 스크롤 구간 조정. 생성기 `gen_player.py`(탭 목록 · profile_all에서 attrs 제외 · 능력치 탭 보드)
+
+**Before**: 탭 7개, 프로필 탭 맨 끝에 능력치 섹션(제목 + 21행)
+
+**After**: 폰 탭 8개(프로필 다음 능력치), 프로필 탭은 부상 이력에서 끝, 능력치 탭 = 같은 21행(제목 생략). 태블릿·데스크톱은 기존 7탭·3열 그대로
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-2 능력치 탭 항목 삭제, 캔버스 v122(두 보드는 files null)
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업 3판: 데스크톱 디자인 언어로 정렬 + 체력 숫자 (코드 변경 없음)
+
+**배경**: 사용자 지시 "체력은 숫자로, 선수 프로필 화면에 사용되는 디자인 언어도 데스크탑 버전과 동일하게". `views/PlayerDetailView.tsx`와 목업 P1~P8을 섹션별로 대조.
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2(3판 규칙 블록 추가), (코드 아님) 캔버스 v122 P1~P12 재생성 — 생성기 `gen_player.py`(`player_topbar` · `profile_header` · `kv` · 체력 · `attr_rows` · 섹션 순서 · `seg`/`sec_head` · 표 머리/푸터/줄무늬 · `sticky_col` 재정의 · 스플릿 열 개수 버그)
+
+**Before → After(목업과 데스크톱이 달랐던 곳)**:
+- 상단 바 팀색 + ⋮ → 데스크톱 브레드크럼 바 slate-950, 팀 칩에 팀 이름, ⋮ 없음(멀티는 액션 없음)
+- 체력 막대 3칸 → "88%" 단계색 숫자(데스크톱 `showBars={false}`)
+- KeyValueRow 최소 높이 24 → 없음(행 20 + 간격 4)
+- 섹션 순서(정보 → 부상 → 능력치 → 계약 …) → 데스크톱 열 순서(좌 → 중 → 우, 능력치 맨 끝)
+- 능력치 묶음 제목 6개 · 행 py-8 · 값 800 기본 글꼴 → 묶음 제목 없음 · py-16 · 값 Schibsted Grotesk 900 · 증감 900
+- 섹션 헤더 드롭다운 → SegmentedControl sm(게임 로그 시즌은 텍스트 버튼), 제목 800 → 900
+- 표 머리 slate-950 12/700 h-36 → slate-800 14/700 h-32, 줄무늬 2.5% → 2%, 푸터 slate-950 → slate-800/40, 고정 열 그림자 → 우측 선
+- 이름 800 → 900, 수상 배지 12 → 14
+- 스플릿 행 값이 열보다 1개 많아 한 칸씩 밀리던 1판 버그 수정
+
+**검증**: Playwright 390×844 스크린샷 확인(섹션 헤더가 두 줄로 늘며 고정 열 행이 flex 축소로 찌그러지던 문제를 안쪽 상자로 해결)
+
+**롤백 방법**: §9-2 3판 블록 삭제, 캔버스 v121(스크래치패드 `gen_player.bak`이 2판 생성기)
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 헤더 2판(로고 위치 · 3줄 구분 · 미니 표 숨김) (코드 변경 없음)
+
+**배경**: 사용자 지시 "모바일에서는 헤더 좌측 로고를 정보 행의 팀 이름 좌측에 작게, [오버롤] 이름 | 등번호 ─ 수상 ─ 정보 구조로, 커리어/시즌 기록 테이블은 숨김".
+
+**변경 파일**: `docs/ui/mobile-design-system.md` §9-2 프로필 헤더 항목, (코드 아님) 캔버스 v121 P1(PlayerProfile) 재생성 — 생성기 `gen_player.py` `profile_header()`
+
+**Before**: 로고 56 | OVR 40 · 이름 · #0 / 수상 배지 → 메타 줄 → 시즌·커리어 미니 표(sticky 92 + 52×11)
+
+**After**: ① OVR 40 · 이름 · "|" · #0 ─ ② 수상 배지 ─ ③ 팀 로고 16 + 팀 이름 | SF | 27세 | 203cm | 95kg | $34.8M, 줄 사이 slate-800 구분선, 미니 표 없음(폰만)
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-2 항목을 1판 문구로, 캔버스 v120
+
+## 2026-10-28 — BM27 선수 프로필 폰 목업: 퍼센타일·뉴스 탭 추가(P9~P12) + 탭 7개 반영 (코드 변경 없음)
+
+**배경**: 사용자 요청 "선수 프로필 화면 목업 그려봐". 기존 P1~P8(10-27)은 실제 섹션 구성과 맞았으나 그 뒤 생긴 퍼센타일 탭이 없고 뉴스 탭은 이름만 있었다.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-2: 탭 구성 7개 · 퍼센타일 탭 · 뉴스 탭 규칙(옛 "뉴스 탭: newsSlot 그대로" 한 줄 교체)
+- (코드 아님) 캔버스 v120 7행: PlayerPercentile · PlayerPercentile2 · PlayerNews · PlayerNewsDetail 신규, P1~P8 탭 바 7개로 재생성. 생성기 `gen_player.py`(탭 목록) · `gen_player2.py`(신규 보드, 뉴스 본문은 gen_news의 letter_detail 재사용)
+
+**Before**: 탭 6개(퍼센타일 없음), 뉴스 탭 본문 보드 없음
+
+**After**: 탭 7개, 퍼센타일 = PercentileCard 토큰 그대로 + 섹션 이름 그룹 행(폰 변경), 뉴스 = 목록 전폭 + 상세 push
+
+**검증**: Playwright 390×844 스크린샷 확인(뉴스 보드는 탭 바를 끝까지 민 상태로 — 7탭이 폰 폭을 넘음)
+
+**롤백 방법**: §9-2 해당 항목 삭제·원문 복원, 캔버스 v119
+
 ## 2026-10-28 — SCRN%(스크린 판정 클린 비율) 집계 추가 — 엔진 카운터 + RPC 열 확장 + 화면 연결
 
 **배경**: 고급 지표 계획 §8. 엔진이 이미 계산하던 스크린 판정 결과(`resolveScreen` 의 clean/partial/fail)를 스크리너 박스스코어에 누적해 SCRN% = clean ÷ (clean+partial+fail) 를 만든다. **판정 로직은 바꾸지 않는다(카운트만 추가).** 선수 시즌 스탯의 유일한 클라이언트 경로인 `get_player_season_stats_league` RPC 에 합산 열만 추가(별도 RPC·훅 없음, `box_timeline` 틱에는 넣지 않음).
@@ -63,6 +406,108 @@
 - 이 엔진 파일들은 다른 세션의 미커밋 수정이 섞여 있으니 커밋 시 내 hunk 만(깨끗한 HEAD worktree 에 적용) — dev-log 기준.
 
 **롤백 방법**: ① 코드는 위 파일의 SCRN 관련 줄 제거(client/server 쌍). ② DB 는 마이그레이션 파일 하단 롤백 설명대로 열 3개 제거 후 DROP/재생성(클라이언트는 `?? 0` 이라 RPC 가 열을 안 줘도 동작).
+## 2026-10-28 — BM27 경기 라이브·예정 화면 폰판 구현(데스크톱 라이브 뷰 기준)
+
+**배경**: 사용자 요청 "라이브 화면도 적용 — 데스크톱 라이브 뷰와 디자인 언어가 다른 부분이 있으면 데스크톱 기준". 목업 G1~G5·G7~G9, 문서 §9-7.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx`
+  - `TimeoutDots` `size?: 'md'|'sm'`(sm = text-[8px]), `FoulBonusBadge` `size`(sm = 파울 12px · BONUS 11px, 같은 amber 배지), `MilestoneJumbotronBody` `compact`(이름 14 · 라벨 16)
+  - 데스크톱 스코어버그 가운데 2행의 인라인 점보트론 JSX → `renderJumbotronSlot(compact)` 함수로 추출(데스크톱은 `renderJumbotronSlot(false)` — 출력 동일)
+  - 폰 스코어버그 `phoneScorebug`(+ `phoneTeamBand`): 팀색 밴드 30/40/30 · slate-950 가운데 · LED 도트 · 런 주황 글로우(가운데 칸 위아래) / 1행 = TeamLogo 30 + 약어 11/900 세로 · 점수 34/900(밴드 대비색) · 가운데 쿼터 | 시계 20/900 + 🔥 런 12 / 2행(라이브만) = FoulBonusBadge sm · TimeoutDots sm 좌우 + 가운데 `renderJumbotronSlot(true)`(min-h 44). 예정은 가운데 "시작 예정" 12 + 카운트다운 18, 2행 없음. 데스크톱 스코어버그는 `!isPhone`
+  - 라이브 TabBar: 폰 `align start · compact`, DEV 리플레이 표시는 데스크톱만
+  - `pbpFeedBody`: 폰 헤더 `pl-4 pr-3 h-11` 제목 13, 열 머리(원정 약어 · 시간 · 홈 약어 · 기록, 26/50/26 간격 2), 흐름 줄 12, 행 = 가운데 3칸(점수 12/900 득점 쪽 흰색 · "2Q 7:42" 12/700 slate-500) + 팀 약어 11/900 slate-500 + 기록 12 leading-relaxed(색 규칙 데스크톱 그대로, 교체는 SubChangeBlock home형)
+  - `PlayerBoxPanel`: 폰 colgroup px(160 · 32 · 36 · 44 · 44 · 44 · 36 · 58 · 58 · 58) + `w-max`, 이름 th/td·TEAM td sticky(불투명: slate-950 / slate-900 · 코트 위 #1f2737 / #172033) + `pl-4`
+  - 탭 본문: 게임 센터 폰 블록 신설(샷차트 `headerVariant="none"` 전폭 → 피드 max-h 70vh → 원정 패널 → 16 → 홈 패널, 패널은 `bg-slate-900 border-y`), 박스스코어·샷 차트 탭 폰은 카드·p-4 없이(`pb-4`), 플레이-바이-플레이 탭 폰은 인사이트·피드 카드 없이 전폭(데스크톱과 같은 순서)
+- `views/multi/season/MultiFullCourtChart.tsx` — `headerVariant`에 `'none'` 추가(헤더 미렌더)
+
+**Before**: 폰에서도 데스크톱 라이브 뷰(가로 3열 · 30/40/30 대형 스코어버그 text-6xl/로고 96 · 가운데 정렬 탭 · 카드 p-4)
+
+**After**: 위 목록. 데스크톱·태블릿 출력은 동일(점보트론은 함수 추출만, 피드 헤더 클래스는 조건식으로 같은 값)
+
+**검증**: `tsc` 수정 파일 오류 0(전체 59 = 기존), `vite build` 성공(순환 의존 없음). 브라우저·실기기 미확인(로그인 필요)
+
+**롤백 방법**: `phoneScorebug`·`phoneTeamBand`·게임 센터 폰 블록 삭제, 각 `isPhone` 조건 제거, `renderJumbotronSlot(false)` 자리에 함수 본문 인라인 복원(동일 JSX), 작은 부품의 size/compact prop 제거, MultiFullCourtChart `'none'` 제거
+
+## 2026-10-28 — BM27 경기 종료 화면 폰: 팀 헤더와 표 머리 사이 구분선
+
+**배경**: 사용자 지적(스크린샷) "테이블 헤더 상단에 구분선이 없다". 데스크톱은 card 표의 위 테두리가 팀 헤더와 표 머리를 나누는데, 폰은 flush 표(아래 선만)라 선이 사라졌다.
+
+**변경 파일**: `components/game/BoxScoreTable.tsx` · `AdvancedBoxScoreTable.tsx` · `DefenseBoxScoreTable.tsx`(팀 헤더), `components/game/tabs/GameOnOffTab.tsx`(TeamHeader)
+
+**Before**: `border-slate-800 md:border-l md:border-r`
+
+**After**: `border-slate-800 border-b md:border-b-0 md:border-l md:border-r` — 폰만 아래 선, 태블릿·데스크톱은 그대로(card 표 위 테두리가 담당). 로테이션 카드는 안쪽 래퍼 `border-y`가 이미 선을 그려 변경 없음
+
+**검증**: `tsc` 해당 파일 오류 0. 브라우저 미확인
+
+**롤백 방법**: `border-b md:border-b-0` 제거
+
+## 2026-10-28 — BM27 경기 종료 화면 폰: 섹션 탭 바가 박스스코어 표 머리에 덮이던 문제
+
+**배경**: 사용자 지적(스크린샷) "박스스코어 스크롤다운 할 때 테이블 헤더가 탭 그룹 위로 지나간다". 폰 sticky 탭 바 래퍼가 z-40으로 표 thead(z-40)와 같아 DOM상 뒤에 오는 표 머리가 위에 그려졌고, sticky PLAYER 칸(z-50)은 그보다 높았다.
+
+**변경 파일**: `views/multi/season/MultiGamePbpView.tsx` — 폰 종료 화면 섹션 탭 래퍼
+
+**Before**: `<div className="sticky top-0 z-40">`
+
+**After**: `<div className="sticky top-0 z-[60]">` — 표 머리(40·50)보다 위, 상단 헤더(z-header 100)보다 아래. 스탯 모드 ActionSheet는 body 포탈 z-modal(500)이라 영향 없음
+
+**검증**: `tsc` 해당 파일 오류 0, `vite build` 성공. 브라우저 미확인
+
+**롤백 방법**: z-[60] → z-40
+
+## 2026-10-28 — BM27 경기 종료 화면 폰: 섹션 탭을 독립 화면으로
+
+**배경**: 사용자 요청 "모바일 환경에서는 경기 결과 화면에서 각 탭을 독립적으로". 직전 구현은 데스크톱처럼 6섹션 한 페이지 + 탭 = 스크롤 이동.
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` — `ResultSection`에 `tabMode`/`activeKey`(탭 모드면 활성 섹션만 렌더 · 제목 바 생략 · `pb-6`), 6개 사용처에 `tabMode={isPhone} activeKey={activeSection}`, 스크롤스파이 effect `if (!showBox || isPhone) return`, 딥링크 effect 폰 분기(`setActiveSection(section)`만), `phoneFinalHeaderRef`, 폰 TabBar `onTabChange` = setActiveSection + `?section=` replace + 헤더를 지나 있으면 `scrollTop = 헤더 높이`
+
+**Before**:
+```tsx
+<section ... className={`border-t border-slate-800 scroll-mt-11 md:scroll-mt-0 ${className}`}>
+    <div className="bg-slate-800 border-t border-slate-600 px-4 md:px-6 py-3"><h3 ...>{title}</h3></div>
+// 폰 TabBar: onTabChange={id => sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+```
+
+**After**:
+```tsx
+if (tabMode && activeKey !== sectionKey) return null;
+<section ... className={`${tabMode ? 'pb-6' : `border-t border-slate-800 ${className}`}`}>
+    {!tabMode && <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">...</div>}
+// 폰 TabBar: setActiveSection(id); setSearchParams(section=id, replace); if (scrollTop > headerH) scrollTop = headerH
+```
+데스크톱 섹션 제목 바·여백은 원래 값(`px-6`, scroll-mt 없음)으로 복귀.
+
+**검증**: `tsc` 수정 파일 오류 0(전체 59 = 기존), `vite build` 성공. 브라우저 미확인
+
+**롤백 방법**: ResultSection의 tabMode 분기 제거 + 사용처 props 삭제 + 폰 onTabChange를 scrollIntoView로, 두 effect의 isPhone 분기 제거
+
+## 2026-10-28 — BM27 경기 종료 화면 폰판 구현(데스크톱 컴포넌트 재사용 + 폰 분기)
+
+**배경**: 사용자 요청 "경기 종료 화면부터 화면 적용 — 데스크톱과 동일한 디자인 언어". 목업 G6 · G10 · G11~G20, 문서 §9-7. 태블릿·데스크톱은 변화 없음(분기는 `useIsPhone()` 또는 `md:` 접두로 폰에만).
+
+**변경 파일**:
+- `views/multi/season/MultiGamePbpView.tsx` — `isPhone`, `phoneHeader`(MobilePushHeader: ‹ + "날짜 · 정규시즌/플레이오프 단계 · 시리즈"), 3개 return 루트에 `phoneHeader` + `phoneRootStyle`(하단 탭 바 높이 + 안전영역 padding-bottom), `QuarterScores phoneFinal` 변형(총점 열 없음 · 12px · 연장 열 머리 11px), `PhoneFinalTeamColumn`(약어 → TeamLogo 44 → 점수 40 → TimeoutBars → 전적), `RESULT_TABS` 상수(데스크톱·폰 공용), 종료 화면: 데스크톱 헤더·탭은 `!isPhone`일 때만, 폰은 결과 스크롤 상자 안 맨 위에 3칸 헤더 + `sticky top-0` TabBar compact, `ResultSection` 제목 바 `px-4 md:px-6` + `scroll-mt-11 md:scroll-mt-0`, 인사이트 차트 마우스 → 포인터 이벤트(`onPointerMove/Down`, 마우스만 leave 시 해제, `touch-pan-y`), 인사이트 패널 `px-4 py-5 md:px-6 md:py-6` + 범례 flex-wrap
+- `views/multi/season/MultiSeasonLayout.tsx` — `hasOwnPhoneHeader`에 `/season/game/:id` 추가(공용 상단 바 생략)
+- `components/mobile/MobileTabBar.tsx` — `hidden = keyboardOpen || seg === 'game'` → `hidden = keyboardOpen`(경기 화면도 탭 바 유지, §9-7 개정)
+- `components/game/BoxScoreTable.tsx` · `AdvancedBoxScoreTable.tsx` · `DefenseBoxScoreTable.tsx` — `phoneTable = isPhone && standalone`: Table `variant flush · density phone · fullHeight false · !shadow-none`, 퍼센트 colgroup·고정 레이아웃 해제, 팀 헤더 `px-4 py-3 md:px-6 md:py-4` + 좌우 선 `md:`에서만, TEAM TOTALS 첫 칸 `sticky left-0 z-30 bg-[#172033]`
+- `components/game/PlayerIdentityCells.tsx` — `sticky` prop(헤더·본문 PLAYER 칸 `stickyLeft 0 · width 144`, 이름 max-w 112)
+- `components/game/tabs/GameBoxScoreTab.tsx` — `StatModeSelector` 폰 = 같은 DropdownButton 트리거 + `ActionSheet`("팀명 · 스탯 모드"), 폰은 높이 맞춤 빈 행 없음(로딩 스켈레톤은 유지), 두 팀 사이 `gap-4`
+- `components/game/tabs/GamePbpTab.tsx` — 폰: 루트 고정 높이 해제, 기록 영역 `h-[456px]`, 열 머리·행 = Q 28 · 시간 36 · 스코어 60 · 기록(앞에 팀 약어, 교체 로그는 접두 없음), 플레이타입은 아래 흐름
+- `components/game/PlayTypeStats.tsx` — 폰: 헤더 44("플레이타입" + SegmentedControl 비율/성공률/득점) + 5열 그리드(값 44 · 막대 · 이름 120 · 막대 · 값 44)
+- `components/game/tabs/GameShotChartTab.tsx` — 폰: 코트 칸 `order-first` + 여백 0(전폭) + 아래 선
+- `components/game/RotationChart.tsx` — `NAME_COL = var(--rot-name)`(카드 루트 `[--rot-name:104px] md:[--rot-name:120px]`), 막대 탭 → 툴팁 토글, 팀 헤더 `px-4 py-3 md:px-6 md:py-4`, 내부 테두리 `border-y md:border`
+- `components/game/tabs/GameOnOffTab.tsx` — 폰: Table flush, sticky를 숫자 오프셋(`stickyLeft 0` + width 136/176, 배경 있음)으로, 조합 이름 성만(`lastNameOf`, 접미사 건너뜀) + 줄바꿈(`!whitespace-normal` · `break-keep`), 팀 헤더 `px-4 py-3 md:px-6 md:py-4`
+
+**Before**: 폰에서도 데스크톱 종료 화면 그대로(가로 한 줄 헤더 · 고정 헤더+탭 · 퍼센트 고정 표 · 9열 플레이타입 · 호버 전용 툴팁), 경기 라우트에서 공용 상단 바 표시 · 하단 탭 바 숨김
+
+**After**: 위 변경 파일 목록 그대로. 데스크톱(≥1024)·태블릿(768~1023)은 클래스·분기상 기존과 동일(예외: 인사이트 범례 flex-wrap 추가 — 한 줄에 들어가는 폭에선 차이 없음, 차트 이벤트가 마우스 → 포인터로 바뀌었지만 마우스 동작은 동일)
+
+**검증**: `tsc --noEmit` 수정 파일 오류 0(프로젝트 전체 59 — 남은 `LiveTacticsTab.tsx(72)` 1건 포함 전부 기존 오류), `vite build` 성공(순환 의존 오류 없음, CSS 주석·vendor 청크 경고는 기존). **브라우저·실기기 확인 전**(로그인 필요)
+
+**롤백 방법**: 위 파일들의 `isPhone`/`phoneTable`/`sticky`/`phoneFinal` 분기와 `md:` 접두 클래스를 제거하면 데스크톱 원형. MobileTabBar는 `seg === 'game'` 조건 복원, MultiSeasonLayout은 `|| /\/season\/game\/[^/]+\/?$/` 제거
 
 ## 2026-10-28 — Win Shares(OWS/DWS/WS/WS48) 추가 + PER/WS 공통 컨텍스트 리팩터링 + 로스터 탭 오계산 방지
 
@@ -160,6 +605,181 @@ const activeTab: ... | 'shotchart' | 'percentile' | 'news' = ...   // percentile
 **커밋 호환 메모(2026-10-28)**: 커밋 시 HEAD 와 맞추려고 `useViewportClass` 훅(미커밋·다른 세션 모바일 작업)과 Table `density="phone"`(미커밋 Table.tsx 변경) 의존을 제거 — 폰 전용 행 높이(44px) 없이 기본 밀도, 2단 분기는 CSS `lg`. 모바일 셸 작업이 커밋되면 `density="phone"` 복원 가능.
 
 **롤백 방법**: 신규 4파일 삭제 + `PlayerDetailView.tsx`/`MultiPlayerDetailView.tsx` 의 `percentileSlot` 관련 줄 제거(위 Before). 또는 해당 커밋 revert.
+## 2026-10-28 — BM27 경기 종료 화면 폰 목업: 온오프 조합 이름 줄바꿈(G20) (코드 변경 없음)
+
+**배경**: 사용자 요청 "온오프 라인업 이름은 줄바꿈 처리해서 행이 높아지도록".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 종료 온오프 행
+- (코드 아님) 캔버스 v119: GameFinalCombos(G20) 재생성, 5인 라인업 예시 1행 추가
+
+**Before**: 조합 이름 1줄 말줄임(nowrap · ellipsis), 행 40 고정
+
+**After**: 조합 이름 줄바꿈(white-space normal · word-break keep-all · 줄 18), 행 높이 = 22 + 18 × 줄 수(1줄 40 · 2줄 58). 구현 시엔 sticky 첫 칸이 같은 `<tr>` 안에 있으므로 truncate 클래스만 빼면 행 높이가 자동으로 맞음
+
+**검증**: Playwright 390×844 스크린샷 확인(5인 라인업 3행 모두 2줄)
+
+**롤백 방법**: §9-7 문구를 "말줄임"으로, 캔버스 v118
+
+## 2026-10-28 — BM27 경기 종료 화면 폰 목업: 섹션 전 케이스 G11~G20 + G6 재작성 (코드 변경 없음)
+
+**배경**: 사용자 요청 "종료 화면의 모든 케이스에 대한 목업도 제작". 종료 화면(`MultiGamePbpView` showBox)은 섹션 6개(박스스코어·인사이트·경기 기록·샷차트·로테이션·온오프)를 이은 한 페이지.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7: 종료 화면 구조 · 박스스코어(3모드) · 인사이트 · 경기 기록 · 플레이타입 · 샷차트 · 로테이션 · 온오프 행 추가/교체
+- (코드 아님) 캔버스 v118: 15행 y=20300 노트 t17 + GameFinalAdvanced · Defense · ModeSheet · Insights · Pbp · Playtype · Shot · Rotation · OnOff · Combos(G11~G20), GameFinal(G6) 재작성. 생성기 스크래치패드 `gen_final.py`(gen_game.py 실행 후 이어 그림)
+
+**Before**: G6 = 종료 헤더 + 섹션 탭 + 별도 "박스스코어 | Traditional" 줄 + 홈 팀 표(POS·OVR 없음, "11-21" 표기, PTS 굵게 임의 강조). 나머지 5섹션 목업 없음
+
+**After**: 실제 컴포넌트 토큰 기준. 섹션 제목 바(ResultSection) · 팀 헤더 안 팀별 스탯 모드 버튼 → ActionSheet · PLAYER/POS/OVR · "14/24" · Did Not Play · TEAM TOTALS. 폰 결정 4개: ① 종료 헤더는 스크롤되어 사라지고 섹션 탭만 sticky ② 경기 기록의 원정/홈 약어 칸 → 기록 앞 약어 ③ 플레이타입 9열 → 지표 세그먼트 1개 ④ 호버 툴팁(인사이트·로테이션) → 탭
+
+**검증**: Playwright 390×844 스크린샷 11장 확인(Advanced 보드 표 머리 겹침·모드 시트가 탭 바 안에 들어간 문제 수정 후 재생성)
+
+**롤백 방법**: §9-7 종료 화면 행들을 삭제하고 "종료 박스스코어" 한 행으로, 캔버스 v117(15행 보드는 files null)
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: 종료 헤더 3칸 재구성 + 연장 타임아웃 줄 + G10 (코드 변경 없음)
+
+**배경**: 사용자 지적 "G6 종료 화면 헤더에 정보가 많아서 레이아웃이 깨진다" + 참고 이미지(팀 칸: 약어·로고·점수·타임아웃 점·연장 타임아웃 점·전적 / 가운데: 상태 + 쿼터표). "타임아웃 도트 7개 밑의 2개는 연장 타임아웃 — UI에서 고려".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 종료 헤더 행 교체, 라이브 스코어버그 2행에 연장 점 줄, 머리말 G1~G10 + 연장 타임아웃 근거
+- (코드 아님) 캔버스 v117: GameFinal(G6, 이제 연장 경기 112-115) 재생성 + GameFinalStates(G10 신규)
+
+**Before**: 종료 헤더 2행 = ① 로고 36 · 약어/전적/타임아웃 바 · 점수 36 · ▸ 승자 마커 / 가운데 날짜·"종료" ② 쿼터표(1 2 3 4 T) — 연장 열이 늘면 한 줄에 다 못 담음
+
+**After**: 3칸 = 좌/우 96(약어 → 로고 44 → 점수 40 → 바 7 → 연장 바 2 → 전적) / 가운데("종료 · 연장" + 쿼터표 1~4·OT, 총점 열 제거, 연장 열 머리 11px). ▸ 마커와 헤더 날짜 제거(날짜는 상단 줄). 라이브 스코어버그는 연장 진입 시 타임아웃 점 아래 2개 줄 + 쿼터표 OT 열
+
+**검증**: Playwright 390×844 스크린샷 확인(2차 연장 OT1·OT2 머리 붙음 → 11px·폭 23으로 조정)
+
+**롤백 방법**: §9-7 종료 헤더 행을 이전 문구로, 캔버스 v116
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: 스코어버그 2행 전적 제거 + BONUS 케이스 G9 (코드 변경 없음)
+
+**배경**: 사용자 요청 "타임아웃 도트 위에 전적이 써있는데 전적은 없어도 돼. 그리고 BONUS 칩이 표시되는 케이스도 목업".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 "라이브 스코어버그 2행" 행, 머리말 G1~G9
+- (코드 아님) 캔버스 v116: GameLiveBonus(G9 신규, 4Q 1:48 원정 파울 6 = BONUS) + 스코어버그 들어간 G2~G5·G7·G8 재생성. 피드 쿼터 세그먼트의 비활성 쿼터를 보드별로 지정(4쿼터 보드는 전부 활성)
+
+**Before**: 2행 좌/우 = "41-23 파울 2" / "파울 4 43-21"(전적 11 slate-500 + 파울), BONUS 칩 line-height 미지정
+
+**After**: 2행 좌/우 = 파울 N 또는 BONUS 칩 + 타임아웃 점만, BONUS 칩 line-height 18(leading-relaxed)
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: 2행에 전적 span 복원, G9 보드는 files null로 제거, 캔버스 v115
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: 박스스코어 전폭(6판) (코드 변경 없음)
+
+**배경**: 사용자 요청 "박스스코어도 화면에 가득차게 변경". 게임 센터 샷차트·PBP 피드에 이어 마지막 남은 카드 구역(선수 박스 패널)과, 같은 카드 구조인 종료 화면 박스스코어 표를 전폭으로.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 게임 센터·선수 패널·종료 박스스코어 행
+- (코드 아님) 캔버스 v115: GameLiveScrolled · GameFinal 재생성
+
+**Before**: 선수 패널 = p-16 `LIVE_CARD` 스택(gap 16), 이름 열 152(왼쪽 패딩 8) / 종료 박스 표 = p-16 카드, 선수 열 136(왼쪽 패딩 12)
+
+**After**: 둘 다 전폭(카드·라운드 없음, 아래 선 slate-800). 선수 패널 이름 열 160(왼쪽 패딩 16), 원정·홈 사이 16 띄움 / 종료 박스 표 선수 열 144(왼쪽 패딩 16). 경기 화면 폰에서 카드 스택은 팀 스탯 탭만 남음
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-7 해당 행을 5판 문구로, 캔버스 v114
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: PBP 점수·시간 칸 타이트하게(5판) (코드 변경 없음)
+
+**배경**: 사용자 요청(스크린샷) "이 부분의 너비를 타이트하게 줄여서 공간을 확보" — 피드 행 왼쪽 점수·시간·점수 3칸.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 피드·피드 행
+- (코드 아님) 캔버스 v112: GameScheduled · GameLive · GameLivePbp · GameLiveMilestone 재생성
+
+**Before**: 점수 28 · 시간 60 · 점수 28, 칸 간격 4(합계 124), 열 머리 약어 12/900
+
+**After**: 점수 26 · 시간 50 · 점수 26, 칸 간격 2(합계 106, 기록 칸 +18px), 열 머리 약어 11/900. 폭 근거: 세 자리 점수 12/900, "MEM" 11/900, "OT2 4:59" 12/700(목업 측정은 대체 글꼴 기준이라 Pretendard 여유분 포함)
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: 세 값을 28·60·28 / 간격 4 / 약어 12로 되돌림, 캔버스 v111
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: PBP 피드 전폭 + 글자 한 단계 축소(4판) (코드 변경 없음)
+
+**배경**: 사용자 요청 "플레이 바이 플레이 섹션도 화면에 가득 차게 만들고, 폰트 사이즈를 줄이자".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 표: 게임 센터·피드·피드 행·플레이-바이-플레이 탭 행 교체
+- (코드 아님) 캔버스 v111: GameScheduled · GameLive · GameLivePbp · GameLiveMilestone 재생성
+
+**Before**: 피드 = p-16 안쪽 `LIVE_CARD`, 헤더 40 + 제목 14, 열 머리 14/900, 행 14(leading-relaxed) · 점수 칸 32 · 시간 칸 80 · 팀 약어 12 · 흐름 줄 14 · 교체 12, 좌우 패딩 12
+
+**After**: 피드 = 전폭 섹션(카드 아님, slate-900, 아래 선 slate-800), 샷차트 바로 아래 이어 붙임. 헤더 44 + 제목 13, 열 머리 12/900, 행 12 · 점수 칸 28 · 시간 칸 60 · 팀 약어 11 · 흐름 줄 12 · 교체 11, 좌우 패딩 16. 플레이-바이-플레이 탭도 같은 전폭 피드
+
+**검증**: Playwright 390×844 스크린샷 확인(대부분 행이 한 줄에 들어감)
+
+**롤백 방법**: §9-7 해당 행을 3판 문구로, 캔버스는 v110으로 되돌림
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: 게임 센터 샷차트 전폭 + 팀명 헤더 제거(3판) (코드 변경 없음)
+
+**배경**: 사용자 요청 "샷차트는 화면에 가득 차게 해주고, 상단의 팀이름 헤더는 지워줘".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 표: 게임 센터 행·샷차트 행 교체
+- (코드 아님) 캔버스 v110: GameScheduled · GameLive · GameLiveMilestone 재생성
+
+**Before**: 샷차트 = p-16 안쪽 `LIVE_CARD`(rounded-xl 테두리) + split 팀명 헤더 40 + 코트(폭 356)
+
+**After**: 탭 바 바로 아래 코트만 전폭(390, 높이 약 207), 카드·헤더 없음, 하단 선 slate-800. 그 아래 카드 스택은 그대로
+
+**검증**: Playwright 390×844 스크린샷 확인
+
+**롤백 방법**: §9-7 두 행을 2판 문구로, 캔버스는 v109로 되돌림
+
+## 2026-10-28 — BM27 경기 화면 폰 목업: 게임 센터 카드 3종을 실제 라이브 디자인으로 교체(2판) (코드 변경 없음)
+
+**배경**: 사용자 요청 "게임 센터의 샷차트, PBP, 박스스코어에 현재 라이브 화면에 적용된 디자인 언어를 적용". 1판은 카드 내부를 임의로 그렸음(어두운 코트·"플레이 + LIVE" 헤더·흰 팀 칩·카드 헤더 "코트 위 ●"·초록 점).
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 표: 게임 센터 행 분리(샷차트 카드·피드 카드·피드 행·선수 패널·PBP 탭 행 교체)
+- (코드 아님) 캔버스 v109: GameScheduled · GameLive · GameLiveScrolled(이제 선수 패널 2장) · GameLivePbp · GameLiveMilestone 재생성
+
+**Before**: 샷차트 = 32 헤더 + slate-950 코트 + 임의 마커 / 피드 = "플레이" + LIVE, 시간 2줄 40 · 흰 팀 칩 · 스코어 56 우측, PBP 탭만 amber 흐름 줄 / 선수 패널 = 로고 헤더 40 + 초록 점 + "선수" 열 머리 + MIN "17:40" + 우측 페이드
+
+**After**: 샷차트 = `MultiFullCourtChart split`(헤더 40 16/900, 나무 코트 `CourtPreview` 경로, r6.5 원 / 투명 X) / 피드 = `pbpFeedBody`(헤더 + SegmentedControl sm, 가운데 3칸 32·80·32, 데스크톱 색 규칙, 부상 행·최신 행 플래시·IN/OUT), 폰 변경은 기록 1칸 + 팀 약어 접두 하나 / 선수 패널 = `PlayerBoxPanel`(팀 약어 머리, P·MP 정수, 체력 막대·🔥❄️, 이름 칸 white/8, 변화 틴트, TEAM .xxx), 이름 열 152 sticky
+
+**검증**: Playwright 390×844 스크린샷 확인(이름 열 128은 체력 막대+🔥로 잘려 152로 조정)
+
+**롤백 방법**: §9-7 해당 행을 이전 문구로, 캔버스는 v108로 되돌림
+
+## 2026-10-28 — BM27 경기 화면 폰 목업에 마일스톤(점보트론) 상태 추가 G7·G8 (코드 변경 없음)
+
+**배경**: 사용자 요청 "마일스톤 메세지가 표시되는 케이스도 목업에 추가". 데스크톱 `MultiGamePbpView`의 activeJumbotron은 스코어버그 가운데 2행(쿼터표 자리)을 2.2초간 교체한다.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 표에 "점보트론(마일스톤)" 행 추가, 머리말 G1~G6 → G1~G8
+- (코드 아님) 캔버스 v108: GameLiveMilestone(G7, 게임 센터 + 20득점 + 런 글로우), GameMilestoneStates(G8, 평시·스탯·콤보·부정·흐름 2행 띠 시트). G2~G4 스코어버그에도 런 글로우 반영
+
+**Before**: 폰 스코어버그 2행 가운데 = 쿼터표만, 런은 "🔥 BOS 8-0" 텍스트만
+
+**After**: 이벤트 시 쿼터표 자리 2.2초 교체(데스크톱 색·임계치 상수 그대로), 런 중 1행 가운데 주황 글로우
+
+**검증**: Playwright 390×844 스크린샷 확인(1차안 글로우가 위아래로 잘려 안 보임 → 위치 수정, 상태 시트 넘침 → 변형은 2행 띠만)
+
+**롤백 방법**: §9-7의 점보트론 행 삭제, 캔버스 두 보드는 files null로 제거
+
+## 2026-10-28 — BM27 경기 화면 폰 목업 G1~G6 + 디자인 문서 §9-7 교체 (코드 변경 없음)
+
+**배경**: 사용자 요청 "경기 화면의 목업부터 … 실제 경기 화면의 디자인 언어를 토대로". `MultiGamePbpView`(데스크톱 3단 배치)를 폰 1열로 옮기는 기준안.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-7 전면 교체
+- (코드 아님) Design 캔버스 v107 14행 y=19200: GameScheduled / GameLive / GameLiveScrolled / GameLivePbp / GameLiveTeam / GameFinal, 행 제목 t16
+
+**Before**: §9-7 = "스코어 헤더 72 고정 · 세그먼트 3개(플레이/박스스코어/팀 비교) · 플레이 로그 행 56 · 재생 컨트롤 하단 바 56(takeover, 탭 바 숨김)"
+
+**After**: 데스크톱 디자인 언어 유지 + 1열 카드 스택. 스코어버그 2행(팀색 밴드 30/40/30 + LED, 전적·파울·타임아웃·쿼터표는 2행 slate-950 띠), 라이브 5탭/종료 6탭 가로 스크롤, 피드 행은 데스크톱 좌우 분할 대신 한 줄 구조(시간 40 · 팀 칩 + 기록 · 스코어 56)로 게임 센터·PBP 탭 공용, 바텀 탭 바 유지(멀티엔 재생 컨트롤 없음).
+
+**검증**: Playwright 390×844 스크린샷 6장 육안 확인(1차안의 밴드 전적 줄바꿈·좌우 분할 피드 접힘을 고쳐 재생성).
+
+**롤백 방법**: §9-7을 Before 문장으로 되돌림. 캔버스 보드는 files에 null로 제거.
 
 ## 2026-10-28 — 속공 러너 선정: 체격 가중 + 수비 리바운드 경합 감점
 
@@ -474,6 +1094,793 @@ const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE + ...;               // he
 참고: 킥아웃 보너스 +5%p는 역효과(+1.51, 킥아웃이 골밑 슛보다 기대 득점 낮음). 킥아웃은 1회 한정(재킥아웃·로테이션 연쇄 없음). 잔여 +0.31 = 헬프 성공 슛 −3.3%p·스틸.
 
 **롤백 방법**: 위 Before로 6개 파일(client 3 + server 미러 3) 모두 되돌릴 것 — `HELP_KICKOUT`·`SWITCH_CONFUSION` 삭제, `SHOT_CLOCK_BASE` 0.0012 + `SHOT_CLOCK_HELP_DEF_FACTOR` 0.00024 복원, `ENGAGE_HELP_SLIDER` 0.02 복원, export 2개 원복. 미러 한쪽만 되돌리지 말 것.
+
+## 2026-10-28 — 모바일 리더보드: 필터 시트 구분선 중복 제거 · 시트 안 조건 칩 · 칩 슬레이트 · 순위 가운데 정렬
+
+**배경**: 사용자 스크린샷 2장 — ① "스탯 조건 추가" 위 구분선 두 줄(행 border-b + 그룹 제목 border-t), 추가한 조건이 시트에 안 보임, 칩은 indigo 틴트 대신 슬레이트로 ② 순위 숫자가 우측 정렬이라 한 자리 순위가 이름에 붙어 보임.
+
+**변경 파일**:
+- `components/leaderboard/PhoneLeaderboard.tsx` — 로컬 `PhoneChips`(슬레이트 pill, X, "모두 제거"; `wrap` 옵션) 신설 → 표 위 칩 줄(데스크톱 `FilterChips` 대체)과 필터 시트 `StatFilterBar` 아래(`activeFilters`)에 사용. `SheetGroupTitle first`로 border-t 제거. `FilterChips` import 제거.
+- `components/leaderboard/LeaderboardTable.tsx` — 폰 순위 `text-right` → `text-center`(데스크톱 # 열과 동일).
+- 목업 캔버스 v106 — L1·L3·L4 동기화. `docs/ui/mobile-design-system.md` §9-1-12.
+
+**검증**: tsc 오류 0.  **롤백 방법**: `FilterChips` 복귀, `first` 제거, 시트 칩 블록 삭제, `text-right` 복귀.
+
+## 2026-10-28 — 모바일 리더보드: 브레드크럼 글자 text-lg → text-base, 줄 52 → 44
+
+**배경**: 사용자 지시 "브레드크럼의 폰트 사이즈가 너무 큼".
+
+**변경 파일**: `components/leaderboard/PhoneLeaderboard.tsx` 선택 줄(`crumb` text-base, "/" text-base, 줄 h-11). 목업 L1~L4(v105)·`docs/ui/mobile-design-system.md` §9-1-12 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: text-lg / h-[52px] 복귀.
+
+## 2026-10-28 — 모바일: 순위 섹션 탭 바(리그 순위 ↔ 리더보드) + 순위표 모드 탭 → 셀렉터
+
+**배경**: 사용자 — "순위 메뉴 안에서 리그 순위/리더보드를 이동할 방법" → 탭 바로 구현, 순위표의 리그/컨퍼런스/디비전 탭 바는 셀렉터로.
+
+**변경 파일**:
+- 신규 `components/mobile/SectionTabs.tsx` — 탭 바 44(리그 순위 `standings` · 리더보드 `leaderboard`, `useNavigate` push), `right`·`replace` 슬롯.
+- `views/multi/season/MultiStandingsView.tsx` 폰 분기 — 제목 줄 + 3탭 모드 바 → `SectionTabs active="standings"` + 우측 `SheetSelect<StandingsMode>`(MODE_TABS 재사용).
+- `components/leaderboard/PhoneLeaderboard.tsx` — 화면 헤더 44 → `SectionTabs active="leaderboard"`(우측 검색·필터, 검색 활성 `replace`).
+- 목업 캔버스 v104 — T1(순위표)·L1~L4 헤더 동기화. `docs/ui/mobile-design-system.md` §9-1-13 신설, §9-1-9·§9-1-12 헤더 항목 개정.
+
+**검증**: tsc 오류 0, vite build 통과.  **롤백 방법**: 두 화면의 헤더 블록을 이전 마크업으로 복구, 신규 파일 삭제.
+
+## 2026-10-28 — 모바일 리더보드: OVR을 별도 정렬 열로, 순위 칸 28
+
+**배경**: 사용자 스크린샷 — 마지막 페이지(401~)에서 3자리 순위가 OVR 배지를 침범. "오버롤 배지는 데스크탑처럼 별도 컬럼으로 — OVR 기준 정렬 검색이 가능해야".
+
+**변경 파일**:
+- `components/leaderboard/LeaderboardTable.tsx` 폰 분기 — 가상 고정 열 `__phone` 168→160(순위 `w-7 text-right`, OvrBadge 제거), 선수 모드는 `PLAYER_COLUMNS`의 `ovr`을 `stickyLeft/stickyShadow` 없이 가상 열 바로 뒤에 넣음(기존 `ovr` 셀 렌더·정렬 그대로 → OVR 정렬 가능).
+- 목업 캔버스 v103 — L1·L4 동기화(sticky 160 + OVR 열 62). `docs/ui/mobile-design-system.md` §9-1-12.
+
+**검증**: tsc 오류 0.  **롤백 방법**: PHONE_COL 168 + 배지 포함 구조로 복귀.
+
+## 2026-10-28 — 모바일 리더보드: 공용 상단 바 유지 + 화면 헤더 44(순위표와 동위)
+
+**배경**: 사용자 지적 "왜 리더보드 화면만 헤더가 사라지지?" → "리그 순위 화면과 동위인 화면이므로 헤더가 있어야". 직전 구현이 뉴스피드처럼 H4 push 헤더로 공용 상단 바를 대체했던 것을 되돌림.
+
+**변경 파일**:
+- `views/multi/season/MultiSeasonLayout.tsx` — `hasOwnPhoneHeader` 정규식에서 `leaderboard` 제거(공용 상단 바 다시 표시).
+- `components/leaderboard/PhoneLeaderboard.tsx` — `MobilePushHeader` → 순위표식 화면 헤더 44(`h-11 bg-slate-900`: "리더보드" 18/700 + 검색·필터 `MobilePushHeaderButton`), 검색 활성 시 같은 줄이 pill + 취소. `onBack` prop은 남아 있으나 미사용.
+- 목업 캔버스 v101 — L1~L4 헤더를 공용 상단 바 + 화면 헤더 44로 재생성. `docs/ui/mobile-design-system.md` §9-1-12 헤더 항목·구현 메모 개정.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 정규식에 `|leaderboard` 복구 + `MobilePushHeader` 호출 복구.
+
+## 2026-10-28 — 모바일: 리더보드 폰판 구현(목업 L1~L4 §9-1-12)
+
+**배경**: 리더보드 목업 2판 승인("구현해봐").
+
+**변경 파일**:
+- 신규 `components/leaderboard/PhoneLeaderboard.tsx` — 폰 셸(H4 헤더 검색·필터, 선택 줄 52 브레드크럼 → `ActionSheet`, 칩 줄 `FilterChips` + 팀/포지션 가상 칩, 표 슬롯, `Pagination compact` 슬롯, 필터 시트: 시즌/색상 `TogglePill` · 팀/포지션 `FilterTrigger` → 체크 시트 · `StatFilterBar` 그대로 · 페이지 당 `select`; 검색 H6 = 데스크톱 pill + 취소).
+- 신규 `components/mobile/TogglePill.tsx` — PhoneNewsFeed 내부 정의를 공용으로 이동(뉴스피드 import 교체).
+- `components/leaderboard/LeaderboardTable.tsx` — `useIsPhone()`: 고정 5열 대신 가상 열 `__phone`(선수 168 / 팀 160, `stickyShadow`) + 헤더 "선수/팀" pl-3, 행 `onClick` 전체 탭. 값·히트맵·그룹 헤더 코드는 그대로.
+- `components/common/Pagination.tsx` — `compact` prop(한 줄: 범위 · ‹ · 번호 ≤5 · ›).
+- `views/LeaderboardView.tsx` — `onBack` prop, `isPhone` 분기(`clearAll`, 검색 시 1페이지).
+- `views/multi/season/MultiLeaderboardView.tsx` — `onBack`(history idx>0이면 back, 아니면 순위표).
+- `views/multi/season/MultiSeasonLayout.tsx` — `hasOwnPhoneHeader`에 leaderboard.
+- `docs/ui/mobile-design-system.md` §9-1-12 구현 메모.
+
+**Before**: 리더보드는 뷰포트 무관 데스크톱 툴바(xl 분기) + sticky 5열 표 + 절대 배치 페이지네이션.
+**After**: 폰(<768)만 위 구성. 데스크톱은 LeaderboardTable의 `phone=false` 경로·Pagination 기본 경로라 변화 없음.
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0, `vite build` 통과. 브라우저 확인은 사용자.
+
+**롤백 방법**: LeaderboardView `if (isPhone)` 블록·onBack 제거, LeaderboardTable `phone` 분기·`__phone` 셀 제거, Pagination `compact` 제거, 레이아웃 정규식에서 `|leaderboard` 제거, 신규 파일 2개 삭제(뉴스피드 TogglePill import 복구).
+
+## 2026-10-28 — 모바일 목업: 리더보드 L1~L4 2판(실제 디자인 언어 적용)
+
+**배경**: 사용자 지시 "실제 리더보드에 사용되는 디자인 언어를 목업에도 적용해야지".
+
+**변경 파일**:
+- 목업 캔버스 v100 — L1~L4 재생성: 선택 줄을 데스크톱 브레드크럼(text-lg font-black, "/" slate-700, 새로고침 pill 36)으로, 표 헤더 h-10 text-sm(정렬 indigo) + 셀 text-sm font-medium white + **히트맵 `getHeatmapStyle` 규칙(emerald/red, 리그 범위)**, 이름 text-sm 600, 페이지 바 = `Pagination` 그대로(번호 w-7 h-7 indigo-600, IconButton sm), 칩 = `FilterChips` 그대로(+ "모두 제거"), 필터 시트 컨트롤 = 토글 pill 2종·`FilterTrigger` pill(count 배지)·`StatFilterBar`·`select`. 생성기 `gen_leaderboard.py`(패치 조각 `lbpatch/*.py`).
+- `docs/ui/mobile-design-system.md` §9-1-12 2판으로 개정.
+
+**검증**: 로컬 스크린샷 4장 확인, 캔버스 발행 성공. 코드 변경 없음.
+
+**롤백 방법**: 1판은 git 이력.
+
+## 2026-10-28 — 모바일 목업: 리더보드 화면 L1~L4
+
+**배경**: 전술 3탭 완료 후 "이제 리더보드를 만들어야해" — 관례대로 목업 먼저.
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v98 — 13행(y 18100) `Leaderboard`(L1 선수·기본) · `LeaderboardTeams`(L2 팀) · `LeaderboardFilter`(L3 필터 시트) · `LeaderboardSearch`(L4 검색 + 조건 칩). 노트 `t15`. 생성기 스크래치패드 `gen_leaderboard.py`(gen_news 체인 — H4 헤더·검색 헤더 재사용), 검수 `repro/shot_lb.py`.
+- `docs/ui/mobile-design-system.md` — §9-1-12 신설(H4 헤더 + 선택 줄 + 조건 칩 줄 + sticky 1열 168/160 표(히트맵 그대로) + 페이지 바 44 + 필터 시트 구성).
+
+**검증**: 로컬 스크린샷 4장 확인, 캔버스 발행 성공. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 4개·`t15` 노트 제거 + 문서 소절 삭제.
+
+## 2026-10-28 — 모바일 인사이트: 경기 로그·샷차트 숨김, 팀 리더 1열
+
+**배경**: 사용자 지시 "모바일에서는 시즌 경기 로그 영역 숨기고, 리그 리더는 1x1 그리드로, 샷차트도 숨겨줘".
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` 폰 인사이트 — `TeamGameLogChart`·`TeamZoneChartInsight`(aspect 상자) 제거, `TeamLeadersCards singleColumn`.
+- `components/dashboard/tactics/insights/TeamLeadersCards.tsx` — `singleColumn?: boolean` prop(기본 false, `grid-cols-1`). 데스크톱 변화 없음. 덤으로 기존 타입 오류 TS2677(`filter((c): c is LeaderCard …)` — map 콜백이 null과 리터럴을 함께 돌려줘 요소 타입이 넓게 추론) 수정: 콜백 반환 타입을 `LeaderCard | null`로 명시(동작 변화 없음, 프로젝트 tsc 오류 60→59).
+- `docs/ui/mobile-design-system.md` §9-1-11 X6 항목 개정.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 두 위젯 복구, `singleColumn` 제거.
+
+## 2026-10-28 — 모바일: 전술 화면 인사이트 탭 폰판 구현(목업 X6 §9-1-11)
+
+**배경**: "이제 인사이트 탭도 구현해줘".
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` — 폰 셸의 `insights` 탭을 `insightsPanel`(데스크톱 그리드) → `p-4` 1열 스택(`TeamGameLogChart` → `TeamLeadersCards` → `TeamStatRankList` → `PlayerStatsTable` → `aspect-[435/403]` 상자 안 `TeamZoneChartInsight` → `TeamZoneStatsTable`, 하단 스페이서). 로딩 분기는 데스크톱과 같은 조건(`offenseRows`·`leagueTeamsLoading`·`myTeamWithFullStats`).
+- `components/dashboard/tactics/insights/PlayerStatsTable.tsx` — `useIsPhone()`: 이름 열 헤더/셀 `stickyLeft 0` + 본문 sticky 셀 배경(`bg-[#070d1f]`/홀수 `bg-[#121a2d]`).
+- `components/dashboard/tactics/insights/TeamZoneStatsTable.tsx` — 같은 방식으로 "존" 열 sticky.
+- `docs/ui/mobile-design-system.md` §9-1-11 구현 메모.
+
+**Before**: 폰 셸 인사이트 = 데스크톱 패널(p-8, lg/md 분기 그리드 — 폰에선 이미 세로 스택이지만 존 차트가 h-full이라 높이 0). 두 표는 가로 스크롤만.
+**After**: 폰(<768)만 위 구성. 데스크톱은 변화 없음(두 표의 sticky는 폰에서만).
+
+**검증**: `tsc --noEmit` 오류 0, `vite build` 통과. 브라우저 확인은 사용자.
+
+**롤백 방법**: 폰 분기의 인사이트 블록을 `insightsPanel`로 되돌림, 두 표의 `phone` 분기 제거.
+
+## 2026-10-28 — 모바일 팀 전술: 슬라이더 단계 눈금 점 제거
+
+**배경**: 사용자 지시 "슬라이더 티커에 있는 점은 지워줘".
+
+**변경 파일**: `components/dashboard/tactics/PhoneTeamTactics.tsx` `PhoneSlider` — 트랙 위 단계 점(steps.map span) 제거, 트랙·채움만 남김. 목업 X4·X5·X7·X8(v97)·`docs/ui/mobile-design-system.md` §9-1-11 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 점 span 복구.
+
+## 2026-10-28 — 모바일: 전술 화면 팀 전술 탭 폰판 구현(목업 X4·X5·X7·X8 §9-1-11)
+
+**배경**: 팀 전술 목업 2판 승인("구현해봐").
+
+**변경 파일**:
+- 신규 `components/dashboard/tactics/PhoneTeamTactics.tsx` — 폰 렌더러(툴바 프리셋+⋯ 시트, 세트 줄 `SheetSelect`+✎ 이름 변경 시트+안내, `TacticSetTimeline`, 슬라이더 1열 `PhoneSlider`(§7-1), `PlayTypePPP`, 설명 시트 2종). 슬라이더 갱신 규칙(mirrorKeys)은 `TacticsSlidersPanel.updateSlider`와 동일.
+- `components/dashboard/tactics/TacticSetTimeline.tsx` — import `useIsPhone`; 모든 훅 뒤 `if (isPhone) return <PhoneTacticSetTimeline …/>`; 같은 파일에 `PhoneTacticSetTimeline`(쿼터 탭 4 · 머리 전술|분|1~12 · 1번/2번 행 · 클러치 체크 행) + `PhoneQuarterPaintRow`(포인터 `setPointerCapture`·`touch-none`, 절대 분 = 쿼터×12+칸, 상대 행 칸 red 미리보기, 48분 띠) 추가. 데스크톱 표 JSX 변화 없음.
+- `views/multi/season/MultiTacticsView.tsx` — import `PhoneTeamTactics`; 폰 셸의 `team` 탭을 `teamPanel` → `PhoneTeamTactics`(onRenameSet = `withSetName` 직접, `renderPresetSelector('team')`).
+- `docs/ui/mobile-design-system.md` §9-1-11 구현 메모.
+
+**Before**: 폰 셸의 팀 전술 탭 = 데스크톱 패널(`teamPanel`) 그대로(960px 표 + 2열 슬라이더). 전술 로테이션 차트는 뷰포트 무관 마우스 전용 표.
+**After**: 폰(<768)만 위 구성. 데스크톱은 변화 없음(`teamPanel`은 데스크톱 return에서 계속 사용).
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0, `vite build` 통과. 터치 드래그·range 썸은 실기기 확인 필요.
+
+**롤백 방법**: MultiTacticsView 폰 분기의 `PhoneTeamTactics`를 `teamPanel`로 되돌리고 import 제거, TacticSetTimeline의 `if (isPhone)` 블록·폰 컴포넌트 2개·import 제거, 신규 파일 삭제.
+
+## 2026-10-28 — 모바일 목업: 팀 전술 탭 2판(X4·X5 개정 + X7·X8 신설)
+
+**배경**: 뎁스·로테이션 구현 후 "이제 전술 탭으로. 목업을 먼저".
+
+**변경 파일**:
+- 목업 캔버스 v96 — `TacticsTeam`(X4)·`TacticsTeamScrolled`(X5) 재생성: 툴바를 구현된 뎁스 탭과 동일(프리셋 선택기 + ⋯), 전술 로테이션 차트를 가로 스크롤 간트 → 로테이션 탭과 같은 쿼터 탭 틀(전술 160|분 36|12분 바|48분 띠, 클러치 체크 행)로. 신규 `TacticsSetSheet`(X7 세트 선택 시트) · `TacticsNotesSheet`(X8 슬라이더 설명 시트). X1·X3 툴바도 구현과 같은 모양으로 갱신. 생성기 `gen_tactics.py`, 검수 `repro/shot_team.py`.
+- `docs/ui/mobile-design-system.md` §9-1-11 X4·X5 항목 2판으로 개정.
+
+**검증**: 로컬 스크린샷 5장 확인, 캔버스 발행 성공. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 X7·X8 제거, X4·X5는 1판 생성기(git 이력)로.
+
+## 2026-10-28 — 모바일 로테이션: 선수 칸을 두 줄(이름 / 체력·부상)로 복귀
+
+**배경**: 사용자 지시 "로테이션 차트에서 선수열은 다시 두줄 구조로". (구분선 어긋남 건은 사용자가 "그냥 넘어가자"로 종결 — 미해결로 남김.)
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 로테이션 행 선수 칸 — 한 줄 flex → flex-col(이름 13/18 · 캡션 14: 체력 바 xs·부상 배지 12·"경기 중"). 목업 X3(v95)·`docs/ui/mobile-design-system.md` §9-1-11 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 한 줄 flex 구조로 복귀.
+
+## 2026-10-28 — 모바일 로테이션: 그룹 머리 행에도 세로 구분선 연결
+
+**배경**: 사용자가 "구분선이 어긋나 있다"고 재차 지적. 스크린샷 픽셀 측정 결과 머리·행의 선은 같은 x(250/338)였고, 끊긴 곳은 그룹 머리(주전/벤치/써드) 행 — 전폭 div라 선수|분|바 세로선이 그 행에서 끊겼음.
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 로테이션 그룹 머리 — 행과 같은 열 구조(선수 160 `border-r` + 분 36 `border-l` 빈 span + 바)로 교체. 목업 X3(v94) 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 그룹 머리를 전폭 div로 복귀.
+
+## 2026-10-28 — 모바일 로테이션: 머리 구분선 어긋남 수정 + 분 가운데 정렬
+
+**배경**: 사용자 스크린샷 — 로테이션 머리("분")의 세로선이 행과 어긋나고 분 숫자가 우측 정렬이라 어색함. 원인 = 머리 `px-3`(우 12) vs 행 `pr-2`(우 8) + 분 칸 폭/패딩 상이.
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` — 머리·행 모두 `pl-3 pr-2`, 분 칸을 `w-9 justify-center border-l`(패딩 없음)로 통일 → 선 x = 160−8−36. 목업 X3(v93) 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 이전 `pl-1.5 w-5 text-right` 구조로 복귀.
+
+## 2026-10-28 — 모바일 뎁스 차트: 그룹 머리 구분선 어긋남 수정
+
+**배경**: 사용자 스크린샷 — 그룹 머리("분" 라벨)의 세로선이 행의 선보다 왼쪽으로 몇 px 밀림. 원인 = 머리는 `justify-between + mr-[26px]`로 자리를 어림했는데 행은 `gap-2 + 셰브론 16`이라 폭이 달랐음.
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 그룹 머리 — 행과 같은 열 구조(`gap-2` · 분 칸 `pl-2 w-7` · 셰브론 자리 `w-4` 빈 span)로 교체. 목업 X1 머리 mr 26→32(v92).
+
+**검증**: tsc 오류 0.  **롤백 방법**: 이전 머리 마크업으로 복귀.
+
+## 2026-10-28 — 모바일 뎁스·로테이션: 선수 칸과 분 사이 세로 구분선
+
+**배경**: 사용자 지시 "뎁스차트, 로테이션 탭 모두 선수 열과 분 열 사이에 구분선".
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` — 뎁스 행·그룹 머리("분" 라벨), 로테이션 행·머리의 분 값을 `self-stretch border-l border-slate-800` 래퍼로 감싸 행 높이 전체 세로선. 뎁스 그룹 머리 패딩 px-4 → pl-4 pr-2 + 분 라벨 mr-[26px]로 행의 분 열과 정렬. 목업 X1·X3(v91)·`docs/ui/mobile-design-system.md` §9-1-11 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 래퍼 span 제거.
+
+## 2026-10-28 — 모바일 로테이션: 분 눈금 1~12 전부 표시
+
+**배경**: 사용자 지시 "쿼터별 분 티커를 모두 표시".
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 로테이션 머리 — 2분 간격 절대 배치 → 12칸 flex(각 칸 가운데 10px, 6·12 slate-400 굵게). 목업 X3(v90)·`docs/ui/mobile-design-system.md` §9-1-11 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 2·4·…·12 절대 배치로 복귀.
+
+## 2026-10-28 — 모바일 뎁스·로테이션: 검증 배너를 툴바 아래로(양 세그먼트 공통), 쿼터 탭 도움말 삭제
+
+**배경**: 사용자 지시 "쿼터 탭 밑 도움말 영역 삭제. 뎁스차트에만 있는 하단 얼럿을 로테이션에도 보이게 하되 모바일에선 상단(프리셋 영역 하단)으로".
+
+**변경 파일**:
+- `components/dashboard/PhoneDepthRotation.tsx` — 검증 배너 JSX를 `validationBanner` 상수로 빼서 툴바 바로 아래(세그먼트 콘텐츠 위, `shrink-0`)에 렌더(border-t → border-b), 뎁스 리스트 끝에서는 제거. 로테이션의 안내 `<p>` 삭제.
+- 목업 캔버스 v89 — X1·X3 동기화(배너 상단, 도움말 없음). `docs/ui/mobile-design-system.md` §9-1-11.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 배너를 depthList 끝으로 되돌리고 `<p>` 복구.
+
+## 2026-10-28 — 모바일 로테이션: 선수 칸에서 OVR 배지 제거
+
+**배경**: 사용자 지시 "로테이션의 선수 열에 오버롤 배지는 없애줘"(160px 안에서 이름 폭 확보).
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 로테이션 행 선수 칸 — `OvrBadge` 제거(이름·체력·부상·분만). 목업 X3·`docs/ui/mobile-design-system.md` §9-1-11 동기화.
+
+**검증**: tsc 오류 0.  **롤백 방법**: 선수 칸 앞에 `<OvrBadge value={ovrMap.get(p.id) ?? 0} size="table" />` 복구.
+
+## 2026-10-28 — 모바일 로테이션: 가로 스크롤 간트 → 쿼터 탭 12분 바, 선수 칸을 뎁스 행과 통일(160)
+
+**배경**: 사용자 지적 "393px 화면에서 로테이션 매트릭스를 수정함과 동시에 좌우 슬라이드하기가 너무 어렵다. 뎁스차트의 선수열을 로테이션에도 그대로 쓰되 너비만 좁혀 달라".
+
+**변경 파일**:
+- `components/dashboard/PhoneDepthRotation.tsx` — `rotationView` 재작성: overflow-auto + sticky 열 + 768px 간트 제거 → 쿼터 탭(`quarter` state, 4등분 40) + 세로 스크롤만. 행 = 선수 칸 `NAME_COL_W` 128→160(OVR·이름·체력·부상·분, 뎁스 행과 같은 구성) + `PhoneQuarterRow`(신규, `PhoneGanttRow`·`GanttBar` 사용 제거): 12분 바 전폭, 분 격자, 쿼터로 잘라 그린 구간(emerald/red)·드래그 미리보기, 48분 요약 띠. 포인터 → 절대 분(`quarter*12 + 칸`)으로 `onBarDown/Move`, `pointerup`에 `onBarCommit`. 우측 페이드 제거.
+- 목업 캔버스 v87 — X3 2판 재생성(`gen_tactics.py quarter_tabs/quarter_rows`), X1 행 체력·배지 한 줄 반영. `docs/ui/mobile-design-system.md` §9-1-11 X3 항목 개정.
+
+**Before**: 로테이션 = 단일 overflow-auto(세로+가로) 상자, sticky 선수 열 128(POS·이름·분), 간트 48×16=768 + GanttBar readOnly.
+**After**: 가로 스크롤 없음, 쿼터 탭 전환, 선수 칸 160(뎁스 행 구성), 12분 바.
+
+**검증**: tsc 오류 0. 터치 드래그는 실기기 확인 필요.
+
+**롤백 방법**: 이 항목 이전 커밋의 `PhoneDepthRotation.tsx`(간트 판)로 복귀.
+
+## 2026-10-28 — 모바일 뎁스 차트: 체력 바·부상 배지를 이름 우측 한 줄로
+
+**배경**: 사용자 지시 "선수 이름 열은 너비가 충분하니 이름 우측에 체력과 상태 배지를 표시해줘".
+
+**변경 파일**: `components/dashboard/PhoneDepthRotation.tsx` 뎁스 리스트 행 — 이름 아래 캡션 줄(flex-col) → 이름·ConditionBar xs·InjuryStatusBadge 14를 한 줄 flex(gap 8)로. `docs/ui/mobile-design-system.md` §9-1-11.
+
+**검증**: tsc 오류 0.
+
+**롤백 방법**: 행 본문을 flex-col 캡션 구조로 되돌림.
+
+## 2026-10-28 — 모바일: 전술 화면 폰 셸 + 뎁스 차트·로테이션 탭 구현(목업 X1~X3 §9-1-11)
+
+**배경**: 전술 목업 승인 후 "뎁스차트, 로테이션 탭부터 구현 시작해봐".
+
+**변경 파일**:
+- 신규 `components/dashboard/PhoneDepthRotation.tsx` — 폰 렌더러: 세그먼트 44(뎁스 차트 | 로테이션) · 툴바 44(프리셋 선택기 `toolbarExtra` + ⋯ → `BottomSheet` 메뉴: 포지션 자동 배정 능력치/체력, 출전시간 자동 배정 `ROTATION_ALLOCATION_OPTIONS` 3종, 전부 초기화) · 뎁스 리스트(그룹 머리 32 + 행 48 POS·OVR·이름·체력/부상·분·▾, 검증 배너 = 데스크톱 문구) · 슬롯 선수 시트(슬롯 비우기 + OVR순 로스터, 캡션 "POS · 현재 슬롯", 현재 선수 틴트) · 로테이션(단일 overflow-auto: sticky 머리 48 + sticky 선수 열 128 + 간트 48×16=768, `PhoneGanttRow` = `GanttBar readOnly` + 포인터 칠하기).
+- `components/dashboard/DepthRotationBoard.tsx` — import `useIsPhone`/`PhoneDepthRotation`; 드래그 커밋을 `commitDrag(d)`로 분리(mouseup 효과가 호출, 폰 pointerup도 호출); `sortedRoster` 선언을 위로; 모든 훅·핸들러 뒤 `if (isPhone && depthChart) return <PhoneDepthRotation …/>`. 데스크톱 JSX 변화 없음.
+- `views/multi/season/MultiTacticsView.tsx` — import 6개(useViewportClass·MobileHeaderActions·TeamLogo·getTeamTheme·getReadableTextColor·computeMultiStandingsStats); `isPhone`·`phoneTheme`(로스터 H3와 같은 색 규칙)·`phoneStanding`(컨퍼런스 승률 순위) useMemo; 팀 전술·인사이트 패널 JSX를 `teamPanel`/`insightsPanel` 상수로 추출(데스크톱 return은 상수 참조로 치환, 내용 동일); `if (isPhone)` 셸 = 팀색 H3(로고 원·팀명·"W–L · 동부 N위"·`MobileHeaderActions`) + `TabBar compact theme` + 패널 + 하단 저장 바 56(dirty/오류/저장됨일 때만, 데스크톱과 같은 Button).
+- `views/multi/season/MultiSeasonLayout.tsx` — `hasOwnPhoneHeader`에 tactics 추가(폰 상단 바 생략).
+- `docs/ui/mobile-design-system.md` §9-1-11 구현 메모.
+
+**Before**: 전술 화면은 뷰포트 무관 데스크톱 TabBar + 960px 통합 표. 드래그 커밋 로직은 mouseup 효과 안에 인라인.
+**After**: 폰(<768)만 위 셸·뎁스/로테이션 분기. 데스크톱은 커밋 로직 함수 분리·패널 상수화 외 동작 동일.
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0, `vite build` 통과. 브라우저·터치 드래그는 사용자 실기기 확인 필요.
+
+**롤백 방법**: DepthRotationBoard의 `if (isPhone…)` 블록·import 제거(commitDrag는 남겨도 무해), MultiTacticsView의 `if (isPhone)` 블록·훅 3개·import 제거(패널 상수는 유지 가능), 레이아웃 정규식에서 `|tactics` 제거, 신규 파일 삭제.
+
+## 2026-10-28 — 모바일 목업: 전술 화면 X1~X6
+
+**배경**: 뉴스피드 완료 후 "이제 전술 화면을 작업해야 해. 전술 화면 목업을 그려봐".
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v85 — 12행(y 17000) `TacticsDepth`(X1) · `TacticsDepthSheet`(X2) · `TacticsRotation`(X3) · `TacticsTeam`(X4) · `TacticsTeamScrolled`(X5) · `TacticsInsights`(X6). 노트 `t14`. 생성기 스크래치패드 `gen_tactics.py`(gen_attr_tab 체인 — 팀색 H3·tabbar·OVR·체력 바 재사용), 로컬 Playwright 검수 `repro/shot_tactics.py`.
+- `docs/ui/mobile-design-system.md` — §9-1-11 신설(팀색 H3 + 전술 탭 3 + 하단 미저장 저장 바 56 / 뎁스 차트 리스트 ↔ 로테이션 간트 세그먼트 분할, 선수 선택 시트, 가로 스크롤 간트 48×16 / 팀 전술 세트 줄 + 전술 로테이션 차트 + 슬라이더 1열 §7-1 규격 + 설명 시트 / 인사이트 1열 카드 스택).
+
+**검증**: 캔버스 발행 성공, 로컬 스크린샷 6장 확인. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 6개·`t14` 노트 제거 + 문서 소절 삭제.
+
+## 2026-10-28 — 모바일 뉴스피드: 필터 바 달력 아이콘을 날짜 범위 시트로 기능화
+
+**배경**: 사용자 지적 "뉴스피드 화면 우측 상단 날짜 아이콘이 기능하지 않아" — 10-27 구현 때 필터 바 우측에 장식용 `Calendar` 아이콘만 두고 데스크톱의 날짜 범위(from~to) pill을 폰에 안 옮겼음.
+
+**변경 파일**:
+- `views/multi/season/PhoneNewsFeed.tsx` — props `simDateFrom/simDateTo/setSimDateRange` 추가, 아이콘 → 44 버튼(범위 있으면 indigo) → `BottomSheet "날짜 범위"`(시작/종료 `type=date [color-scheme:dark]` 두 줄, 데스크톱과 같은 max/min 제약, 헤더 우측 "전체 기간" 초기화).
+- `views/multi/season/MultiNewsFeedView.tsx` — 폰 분기에 세 prop 전달. `docs/ui/mobile-design-system.md` §9-1-10.
+
+**검증**: tsc 오류 0.
+
+**롤백 방법**: 버튼·시트 블록 제거, prop 3개 제거.
+
+## 2026-10-27 — 모바일: 뉴스피드 화면 폰판 구현(목업 N1~N4 §9-1-10)
+
+**배경**: 뉴스피드 목업 2판 승인("구현해봐").
+
+**변경 파일**:
+- 신규 `components/mobile/MobilePushHeader.tsx` — H4 2단계 push 헤더(안전영역 + 56, ‹ 44, 제목 문자열/노드, 우측 액션, `replace`로 검색 헤더 교체) + `MobilePushHeaderButton`(44, indigo 점).
+- 신규 `views/multi/season/PhoneNewsFeed.tsx` — 폰 렌더러: 목록(헤더 BrandMark h-5 · 검색 · 필터 / 필터 바 = 데스크톱 날짜 스텝퍼 pill 그대로 / 행 = 데스크톱 목록 항목 클래스, py-3 / 더 보기) · 레터 상세(헤더 "리그 소식", bg-slate-900 p-4, StoryCard) · 필터 시트(정렬·빅 뉴스만 `TogglePill`(데스크톱 pill 복제) · 팀 트리거 pill → 팀 체크 시트(`SheetOptionRow` + `TeamMark`) · 소식 종류 데스크톱 체크박스 2열 · 알림 범위 `SegmentedControl sm`, 헤더 우측 초기화) · 검색 헤더(데스크톱 검색 pill + 취소).
+- `views/multi/season/MultiNewsFeedView.tsx` — `isPhone`(`useViewportClass`); `storyParam` 선언을 위로 올리고 폰 `selectedEvent` = `?story=`로만(첫 항목 폴백 없음); 딥링크 effect는 폰에서 찾아도 파라미터를 지우지 않음; `if (isPhone) return <PhoneNewsFeed …/>`(openStory = history push, back = `history.state.idx>0`이면 `navigate(-1)` 아니면 파라미터 제거/홈, `resetFilters`, `sheetFilterActive`). 데스크톱 JSX 변화 없음.
+- `views/multi/season/newsFeedCards.tsx` `TeamBoxTable` — `useIsPhone()`: 선수 열 sticky(헤더 th 팀색 inline bg, 본문 `LetterPlayerCell className` sticky+bg-slate-900(하이라이트 행은 `!bg-[#272829]`), 합계 셀 `bg-[#151e31]`), 래퍼 `-mx-4` 풀블리드. 데스크톱 변화 없음.
+- `components/mobile/BottomSheet.tsx` — `headerRight` prop(제목 줄 우측 노드).
+- `views/multi/season/MultiSeasonLayout.tsx` — `hasOwnPhoneHeader = isRosterRoute || news` → 폰 상단 바 생략 조건 교체.
+- `docs/ui/mobile-design-system.md` §9-1-10 구현 메모.
+
+**Before**: 뉴스피드는 뷰포트 무관 좌 30% 목록 + 우 70% 레터(폰에선 둘 다 좁게 겹침), `?story=`는 데스크톱에서 선택 후 즉시 제거.
+**After**: 폰(<768)만 위 분기. 데스크톱은 `storyParam` 선언 위치 이동 외 동작 동일.
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0, `vite build` 통과. 브라우저 확인은 사용자(개발 서버 + 디바이스 모드).
+
+**롤백 방법**: MultiNewsFeedView의 `if (isPhone)` 블록·isPhone·selectedEvent 분기 제거, newsFeedCards `phone` 분기 제거, 레이아웃 `hasOwnPhoneHeader`→`isRosterRoute`, 신규 파일 2개 삭제.
+
+## 2026-10-27 — 모바일 목업: 뉴스피드 N1~N4 2판(실제 화면 디자인 적용)
+
+**배경**: 사용자 지시 "목업에 실제 뉴스피드 화면 디자인을 적용해서 다시 업데이트해봐".
+
+**변경 파일**:
+- 목업 캔버스 v84 — N1~N4 재생성. 1판(자체 스타일: 제목 2줄 clamp 14/500, 본문 16/24, 라디오/체크 시트, 자리표시 마스트헤드) → 2판: `public/images/bc2.svg` 인라인 BrandMark(h-5/h-4), 데스크톱 목록 항목(1줄 truncate slate-300, 날짜 text-sm, border slate-800/50, bg slate-900; 세로 패딩만 44로), 필터 바에 날짜 스텝퍼 pill(h-30) 그대로, LetterShell·BoxScoreHeadline·QuarterScoreTable(bare compact)·TeamBoxTable(팀색 헤더·합계) 그대로(박스스코어만 sticky+가로 스크롤), 시트 컨트롤 = 데스크톱 토글 pill·드롭다운 pill·체크박스·SegmentedControl, 검색 pill(h-36) 그대로.
+- `docs/ui/mobile-design-system.md` §9-1-10 — 2판 기준으로 전면 개정.
+
+**검증**: 로컬 Playwright 스크린샷 4장 확인, 캔버스 발행 성공. 코드 변경 없음.
+
+**롤백 방법**: 1판은 git 이력(`gen_news.py` 이전 판)으로.
+
+## 2026-10-27 — 모바일 목업: 뉴스피드 화면 N1~N4
+
+**배경**: 순위표 구현 후 "이제 뉴스피드 화면 디자인해야해. 목업 만들어봐".
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v83 — 11행(y 15900) `News`(N1 목록) · `NewsLetter`(N2 레터 상세, 경기 결과) · `NewsFilterSheet`(N3 필터 시트) · `NewsSearch`(N4 검색 활성). 노트 `t13`. 생성기 스크래치패드 `gen_news.py`(H4 push 헤더·날짜 줄·행·레터·시트). 로컬 Playwright 스크린샷(`repro/shot_news.py`)으로 검수.
+- `docs/ui/mobile-design-system.md` — §9-1-10 신설(목록/레터 두 화면 push, 헤더 구성, 행 2줄 clamp, 날짜 줄, 필터 시트 항목 순서, 검색 H6, 레터 본문 16/24·표 규칙).
+
+**검증**: 캔버스 발행 성공. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 4개·`t13` 노트 제거 + 문서 소절 삭제.
+
+## 2026-10-27 — 모바일 순위표: 그룹 머리 sticky 셀 반투명 → 불투명 (가로 스크롤 때 겹쳐 보이던 띠)
+
+**배경**: 컨퍼런스 모드에서 가로 스크롤하면 "동부 컨퍼런스" 라벨 셀 오른쪽에 더 진한 띠가 생김(사용자 스크린샷 "헤더 셀끼리 겹쳐보이는 증상"). 원인 = 그룹 머리 셀의 inline `backgroundColor: ${groupColor}66`(알파 40%)가 sticky 셀의 불투명 `bg-slate-900`을 덮어써서 셀이 반투명이 되고, 뒤로 지나가는 colSpan 셀이 비쳐 이중 틴트가 됨. 스크래치패드 `repro/group.html`(Tailwind CDN + 같은 클래스)로 재현·수정 확인.
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` 폰 분기 — `groupTint`를 `{ backgroundColor: '#0f172a', backgroundImage: linear-gradient(tint, tint), borderColor }`로(불투명 slate-900 위에 틴트), colSpan 빈 셀 className `bg-slate-950` → `bg-slate-900`(두 셀 같은 색). 데스크톱 그룹 머리(반투명 틴트, sticky 없음)는 그대로.
+
+**Before**: `{ backgroundColor: `${groupColor}66`, borderColor: `${groupColor}b3` }`
+**After**: `{ backgroundColor: '#0f172a', backgroundImage: `linear-gradient(${groupColor}66, ${groupColor}66)`, borderColor: `${groupColor}b3` }`
+
+**검증**: tsc 오류 0, 재현 페이지 scrollLeft 30에서 띠 사라짐.
+
+**롤백 방법**: Before 객체로 복귀 + colSpan 셀 bg-slate-950.
+
+## 2026-10-27 — 모바일 순위표: sticky 팀 열 우측 구분선 추가
+
+**배경**: 사용자 요청 "순위팀 1열 우측에 구분선이 없어. 추가해줘."
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` 폰 분기 — sticky 팀 열 셀 3곳(헤더 "팀"·그룹 머리 라벨·행 셀) className에 `border-r border-slate-800` 추가(Table은 `dividers={false}`라 세로선이 없으므로 셀에 직접). 그룹 머리는 inline `borderColor` 틴트가 있어 그 행의 구분선만 컨퍼런스색.
+- 목업 캔버스 v82 — T1~T4 sticky 열 우측 1px 추가. `docs/ui/mobile-design-system.md` §9-1-9.
+
+**검증**: 클래스 추가만.
+
+**롤백 방법**: 세 className에서 `border-r border-slate-800` 제거.
+
+## 2026-10-27 — 공용 Table: tbody 안 sticky TableHeaderCell z-index 50 → 30 (폰 순위표 그룹 머리가 헤더를 덮던 버그)
+
+**배경**: 폰 순위표 컨퍼런스 모드에서 "동부 컨퍼런스" 그룹 머리 행이 세로 스크롤 때 상단 sticky 헤더(z-40) 위로 겹쳐 보임(사용자 스크린샷). 원인 = `TableHeaderCell`이 섹션과 무관하게 sticky 셀에 `z-50`을 붙여, tbody 안 그룹 머리의 sticky 라벨 셀이 thead(z-40)보다 위에 그려짐. 상단에 고정된 게 아니라 지나가면서 덮는 것.
+
+**변경 파일**:
+- `components/common/Table.tsx` `TableHeaderCell` — `stickyParts(..., 'z-50', ...)` → `section === 'head' ? 'z-50' : 'z-30'`(본문 섹션은 TableCell과 같은 30).
+
+**Before**: `const sticky = stickyParts(stickyLeft, section, bare, 'z-50', 'sticky left-0 z-50 bg-slate-950');`
+**After**: `const sticky = stickyParts(stickyLeft, section, bare, section === 'head' ? 'z-50' : 'z-30', 'sticky left-0 z-50 bg-slate-950');`
+
+**검증**: tsc 오류 0. thead 안 호출(로스터·능력치·순위표 헤더)은 50 그대로라 데스크톱 변화 없음. tbody 안 sticky TableHeaderCell은 폰 순위표 그룹 머리뿐.
+
+**롤백 방법**: 'z-50' 고정으로 되돌림.
+
+## 2026-10-27 — 모바일 순위표: sticky 팀 열 136 → 160 (순위 변동 붙을 때 약어 잘림)
+
+**배경**: 실기기 스크린샷 — 순위 변동 ▲1/▼1이 있는 행에서 약어가 "D…"로 말줄임(사용자 지적 "이름 컬럼의 너비가 좀 더 넓어도될듯").
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — `PHONE_STICKY_COL_WIDTH` import 제거, 로컬 `PHONE_TEAM_COL_WIDTH = 160` 신설, 폰 분기의 sticky 헤더·그룹 머리·행 셀 4곳 폭 교체.
+- 목업 캔버스 v81 — T1~T4 재생성(`gen_standings.py` STICKY_W 136→160). `docs/ui/mobile-design-system.md` §9-1-9 수치 갱신.
+
+**Before**: `width={PHONE_STICKY_COL_WIDTH}`(136)  **After**: `width={PHONE_TEAM_COL_WIDTH}`(160)
+
+**검증**: tsc 해당 파일 오류 0.
+
+**롤백 방법**: 상수 160→136.
+
+## 2026-10-27 — 모바일: 리그 순위표 화면 폰판 구현(목업 T1~T4 §9-1-9)
+
+**배경**: 순위표 목업 승인("오케이. 구현해봐").
+
+**변경 파일**:
+- `views/multi/season/MultiStandingsView.tsx` — ① import `useViewportClass`, `PHONE_STICKY_COL_WIDTH`(components/roster/PhoneRosterOverview). ② `PHONE_COL_WIDTH`(W 44 · L 44 · PCT 56 · GB 48 · HOME/AWAY/DIV/CONF 60 · PPG/OPPG/DIFF 56 · STRK/L10 52 · SOS 56 · PO% 60) + `PHONE_DATA_COLS = COLS.slice(2)`. ③ `LeagueStandingsTable`에 `isPhone` + 값 색 공용 함수 `cellColorClass`(기존 데스크톱 if/else 체인을 이 함수 호출로 치환 — 동작 동일) + `if (isPhone) return (...)` 분기(모든 훅 뒤): 헤더 44 "리그 순위" → 모드 탭 바 44(grid 3, `MODE_TABS`, 활성 indigo-400 밑줄) → `relative flex-1` 상자 안 `overflow-auto` 스크롤 상자 + 공용 `Table variant="flush" density="phone" scroll="parent" dividers={false}`: TableHead sticky "팀"(136, pl-4) + 데이터 열(sortProps) / 그룹 머리 `tr h-9 text-xs font-bold`(sticky 라벨 셀 + colSpan 빈 셀, 데스크톱 `groupTint` style) / 행 = sticky 셀(순번 18 `rankColor` — 컨퍼런스 모드만 직행 emerald·플레이인 amber, 로고 24, `team_abbr` 클린치 색, `RankDelta` 디비전 제외) + 데이터 셀(`text-sm tabular-nums` + 색, PO%는 색 텍스트만) / 행 탭 = 로스터 이동 / 하단 스페이서 `h-14 pb-safe sticky left-0` / 우측 페이드 24(형제). 컷라인 행(`CutLineRow`)은 폰에서 렌더하지 않음.
+- `docs/ui/mobile-design-system.md` §9-1-9 — 구현 메모.
+
+**Before**: `LeagueStandingsTable`은 뷰포트 무관 단일 렌더(헤더 + SegmentedControl + 17열 Table). 데스크톱 데이터 셀 색은 인라인 if/else 체인.
+**After**: 폰(<768)만 위 분기. 데스크톱 JSX는 색 계산을 `cellColorClass`로 뺀 것 외 변화 없음.
+
+**검증**: `tsc --noEmit` 해당 파일 오류 0, `vite build` 통과(순환 임포트 경고 없음). 브라우저 확인은 사용자(개발 서버 + 디바이스 모드).
+
+**롤백 방법**: `if (isPhone) {...}` 블록·`PHONE_*` 상수·두 import 제거, `cellColorClass`는 남겨도 무해.
+
+## 2026-10-27 — 모바일: 하단 탭 "리그" → "순위" 개명 + 순위표 목업을 공용 Table 디자인으로
+
+**배경**: 사용자 지시 "하단 탭 바의 리그 메뉴 이름을 순위로 바꿔줘. 그리고 목업에 공용 테이블 컴포넌트의 디자인을 적용해봐".
+
+**변경 파일**:
+- `components/mobile/MobileTabBar.tsx` L103, `components/mobile/TabletNavRail.tsx` L50 — `label: '리그'` → `label: '순위'`(id `league`·라우트 `standings`·아이콘은 그대로).
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v80 — 하단 탭 라벨이 있는 보드 전부(48개) "리그"→"순위" 치환, 순위표 T1~T4 재생성(공용 `Table` flush·phone 디자인: thead slate-950 36 / tbody slate-900 44 / 선 slate-800 / th px-2·td py-1 px-2 / sticky 열 그림자 제거 / 정렬 = ArrowDown 10 indigo, 라벨 slate-400 유지 / 약어·순번 600 / 그룹 머리 36·12/700 틴트). 생성기 `gen_home.py tabbar()`·`gen_standings.py`.
+- `docs/ui/mobile-design-system.md` — §8 탭 표 4번·D2 라벨 "순위", §9-1-9 표 항목에 공용 Table 디자인 명시.
+
+**Before**: `{ id: 'league', label: '리그', ... }` (두 파일)
+**After**: `{ id: 'league', label: '순위', ... }`
+
+**검증**: 문자열 치환만(타입 영향 없음). 캔버스 발행 성공.
+
+**롤백 방법**: 라벨 두 곳 '리그'로 되돌림.
+
+## 2026-10-27 — 모바일 목업: 리그 순위표 화면 T1~T4
+
+**배경**: 리그 경기 일정 구현 후 "순위표도 목업 만들어봐".
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v79 — 10행(y 14800) `Standings`(T1 리그 모드) · `StandingsConference`(T2 그룹 머리 + 순번 컷 색) · `StandingsDivision`(T3) · `StandingsScrolled`(T4 우측 스크롤 PPG~PO%, DIFF 정렬). 노트 `t12`. 생성기 스크래치패드 `gen_standings.py`(30팀 약어·색은 `teams30.json`, 실제 디비전 매핑). v78은 파일을 `project/` 밖 루트에 잘못 올린 판 → v79에서 루트 파일 제거·경로 정정.
+- `docs/ui/mobile-design-system.md` — §9-1-9 신설(헤더 44 + 모드 탭 바 44 + 공용 Table 폰 틀: sticky 136 순번·로고·약어·순위 변동 / 스크롤 15열 820 / 컷은 순번 색·컷라인 행 없음 / PO% 색 텍스트만 / 그룹 머리 36 틴트).
+
+**검증**: 캔버스 발행 성공(v79). 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 4개·`t12` 노트 제거 + 문서 소절 삭제.
+
+## 2026-10-27 — 모바일: 리그 경기 일정 화면(경기 탭 루트) 폰판 구현
+
+**배경**: 목업 S1~S3(§9-1-8) 확정 후 "이대로 구현해봐".
+
+**변경 파일**:
+- `views/multi/season/PhoneScheduleList.tsx` (신규) — 렌더 전용: 화면 헤더 44("시즌 일정" · "오늘" 32 · 달력 44) → 날짜 캐러셀 64(‹ 40 · 52×48 칸 5개 요일+`2.3`, 선택 indigo-600, 선택 칸 탭 = 달력 시트) → `BottomSheet` 안 `MonthCalendarPopover inline`(경기 있는 날만) → 경기 카드 1줄 56 시간순([원정 로고 28][약어 16/700][가운데 92: 스코어 18/700 또는 시각 18/600 + 캡션 11(종료 / 종료 (OT) / LIVE 점+쿼터 시계 red-400 / 라운드)][홈 약어][홈 로고]). 승자 white·패자 slate-500, LIVE만 slate-800 배경, 내 경기 틴트 없음, tabular-nums 없음. 올스타 이벤트(경기 행 없는 날)는 같은 틀(매치업 있으면 양 팀 + 시각, 없으면 ★ + 이벤트명). 빈 날 EmptyState. 카드 탭 = `onView`.
+- `views/multi/season/MultiScheduleView.tsx` — `useViewportClass()` phone이면 데스크톱 표 대신 위 컴포넌트에 기존 상태(activeDate·todayKey·scheduleDateSet·setSelectedDate·activeDayGames(시간순)·liveSummaries·roundLabelMap·teamMap·allstarDisplay·activeDayAllStarEntries→PhoneAllStarItem)를 넘김. 데이터·URL `?date=`·5초 라이브 폴링·리더 조회는 변경 없음(최우수선수는 폰에서 렌더만 안 함).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + MultiScheduleView hunk 되돌림(import 2줄·isPhone·phone 분기).
+
+## 2026-10-27 — 모바일 목업: 리그 경기 일정 화면(경기 탭 루트) S1~S3
+
+**배경**: 팀 화면 완료 후 "경기 일정 화면부터, 목업 먼저".
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v72 — 9행(y 13700) `LeagueSchedule`(S1) · `LeagueScheduleCalendar`(S2 날짜 시트) · `LeagueSchedulePlayoff`(S3 라운드 라벨). 생성기 스크래치패드 `gen_league_schedule.py`(구현된 루트 상단 바 모양 `topbar_season()` 포함).
+- `docs/ui/mobile-design-system.md` — §9-1-8 신설(화면 헤더 44 + 날짜 캐러셀 5칸 56 + 날짜 시트 + 상태별 섹션 + 경기 카드 1줄 상태·라운드/2·3줄 원정·홈 스코어, 내 경기·LIVE 틴트, 최우수선수 없음, 보기 버튼 없음).
+- (같은 날 개정, 사용자 지시) 종료/진행 중/예정 섹션 폐기 → 시간순 단일 리스트, LIVE 카드는 빨간 틴트 대신 밝은 배경(slate-800/테두리 slate-700), "내 경기" 글자 삭제(emerald 틴트만). 캔버스 v73. → 이어서 카드 1줄 56 압축(원정 로고·팀명 / 가운데 스코어+캡션 / 홈 팀명·로고). 캔버스 v74. → 내 경기 emerald 틴트도 제거(모든 카드 동일, LIVE만 밝은 배경), 스코어·시각 tabular-nums 해제. 캔버스 v75. → 날짜 캐러셀 상하 패딩 8(56→64). 캔버스 v76. → 팀명 → 약어 16/700, 로고 24→28, 스코어·시각 16→18, 캡션 10→11. 캔버스 v77.
+
+**검증**: 캔버스 발행 성공. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 3개·`t11` 노트 제거 + 문서 소절 삭제.
+
+## 2026-10-27 — 모바일 팀 화면: 팀 설정 탭은 데스크톱 패널 그대로(결정, 코드 변경 없음)
+
+**배경**: 사용자 결정 "팀 설정 탭은 그냥 그대로". `TeamSettingsPanel`은 `md:grid-cols-2`라 폰에선 이미 1열이고, RosterView phone 분기의 폴백(데스크톱 컴포넌트 + 내부 스크롤 + `pb-14`)으로 렌더된다. 목업 E16·E17 치수는 미적용. 이로써 팀 화면 7탭 폰판 1차 완료.
+
+## 2026-10-27 — 모바일 팀 화면: 재정 탭 폰판(요약 블록 고정 + 축약 금액 표)
+
+**배경**: "재정 탭은 어떻게?" → 권장안(상단 요약 블록 + 축약 금액 표, 선수 열은 로스터·능력치 탭과 동일) 승인.
+
+**변경 파일**:
+- `components/roster/TeamPayrollTable.tsx` — `capPctColor` export(동작 동일).
+- `components/roster/PhoneTeamPayroll.tsx` (신규) — 요약 블록(스크롤 밖, 2줄 12/600: "총 페이롤 · 캡 여유(Money signed)" / "사치세 · 1차 · 2차 에이프런" 켜진 항목만) → 공용 Table(flush/phone/parent, 그룹 헤더 "선수 정보 / 시즌별 페이롤"): sticky 선수 136(`PhonePlayerCell`, `showInjury=false` — 데스크톱과 동일, 체력 바는 탭 공통) · Cap% 56(`capPctColor`) · 시즌 6열 64 **축약 `formatMoney`**(현재 시즌 `bg-white/[0.04]`, 팀 옵션 sky 이탤릭·플레이어 옵션 emerald 이탤릭·연장 amber-300·만료 다음 열 UFA/RFA 칩) · 총액 72(좌측 선). 투웨이 행 opacity-60·Cap% `-`·합계 제외, 데드캡 행 playerId 묶음·red 이탤릭. 정렬 시즌 헤더(`useTableSort<number>`, 기본 0번 내림차순). 범례 32 한 줄(sticky left). 계산 함수(flattenRemainingYears·previewFAStatusAfterContract·estimatePlayerYOS·usePlayerCareerHistoryBatch)는 데스크톱과 동일.
+- `views/RosterView.tsx` — phone 분기 `tab === 'finance' && capSettings` → 위 컴포넌트.
+
+**Before**: 폰에서 데스크톱 `TeamPayrollTable`(전체 달러 표기, 열 104+, 푸터 합계·대비·범례 h-40). **After**: 위 구조. 데스크톱 불변.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + RosterView hunk 되돌림 + `capPctColor` export 제거.
+
+## 2026-10-27 — 모바일 팀 화면: 일정 탭 폰판(월 내비 + 달력 + 날짜·상대·결과 리스트)
+
+**배경**: "일정 화면은 어떻게?" → 권장안(월 내비 고정 + 달력 + 리스트 1열) 승인, 추가 지시 "최우수선수는 빼고 날짜·상대·결과만".
+
+**변경 파일**:
+- `components/roster/PhoneTeamSchedule.tsx` (신규) — 월 내비 44 고정(‹ YYYY년 M월 ›, 초기 월 규칙 데스크톱 동일) → 스크롤: 7열 달력(셀 정방형 ≈47, 라운드 6, 글자 10~11; 색 규칙 데스크톱 `TeamScheduleCalendar` 그대로 — 종료 승 emerald-500/20 · 패 red-500/20 · 예정 상대 `colorPrimary`+`getReadableTextColor` · 경기 없음 slate-800/60 · 오늘 ring yellow-400) → 그 달 리스트(행 40: 날짜 `MM/DD` · vs/@ 상대 · 종료는 W/L+스코어 밑줄 / 예정은 `-`+시각, 오늘 행 yellow-400/10). 최우수선수 없음. 셀·행 탭 = `onScoreClick`. 달 비면 EmptyState.
+- `views/RosterView.tsx` — phone 분기 `tab === 'schedule' && onScoreClick` → 위 컴포넌트(싱글은 데스크톱 폴백).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + RosterView hunk 되돌림.
+
+## 2026-10-27 — 모바일 팀 화면: 경기 기록 탭 카드형 구현
+
+**배경**: 카드 목업(G1·G2, §9-1-4) 확정 후 "구현해봐".
+
+**변경 파일**:
+- `components/roster/TeamGameLog.tsx` — 행 생성(useMemo 본문)을 `export function buildTeamGameRows(schedule, teamId)`로, 평균 계산(`computeAvg` 클로저)을 `export function computeTeamGameAvg(rows)`로 분리(`TeamGameRow` 타입 export). 데스크톱 컴포넌트는 두 함수를 호출만 — 렌더·숫자 동일.
+- `components/roster/PhoneTeamGameLog.tsx` (신규) — 섹션(플레이오프 → 정규 시즌): 머리 32("정규 시즌" slate-500 + 전적) → 카드 최신순 → 섹션 끝 평균 카드(slate-950). 카드 1줄 40(표 셀 스타일 이식: 날짜 `MM/DD` slate-400 · vs/@ · 상대 slate-300/600 · W/L · 스코어 밑줄) = 버튼(`onScoreClick` → 경기 상세), 2줄 PTS·FG%·3P%·FT% 4등분(라벨 위·값 아래). 0건이면 `EmptyState`.
+- `views/RosterView.tsx` — phone 분기 `tab === 'records' && onScoreClick` → 카드형(세로 스크롤 + 하단 여백). `onScoreClick` 없는 싱글은 데스크톱 표 폴백.
+- (같은 날 개정, 사용자 지시) **평균 카드 제거**, 상단 줄 44 추가("N경기 · 최신순" + 우측 "필터" 버튼, 기본값과 다르면 인디고 점) → `BottomSheet`: 정렬 최신순/오래된순(`SheetOptionRow` radio) · 구분 정규 시즌/플레이오프(checkbox, 기본 둘 다; 플레이오프 경기가 없으면 항목 숨김). 오래된순이면 섹션도 정규 시즌 → 플레이오프 순. 전부 끄면 "필터 조건에 맞는 경기가 없습니다". `BottomSheet.tsx`에 `SheetOptionRow`(44, CheckOption 18px 모양)·`SheetGroupTitle` 추가. `computeTeamGameAvg`는 데스크톱만 사용. 컴포넌트가 상단 줄·스크롤 상자를 포함하므로 RosterView는 직접 배치.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + RosterView hunk 되돌림 + TeamGameLog 함수 분리 원복(`git diff components/roster/TeamGameLog.tsx`).
+
+## 2026-10-27 — 모바일 목업: 경기 기록 탭을 카드형으로(G1~G3, 표 E10·E11 폐기)
+
+**배경**: 사용자 결정 "모바일에선 가로로 긴 테이블이 아니라 카드 형식" → 목업 먼저.
+
+**변경 파일**:
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT — 6행에 `TeamGameLogCards`(G1 기본) · `TeamGameLogCardsExpanded`(G2 1장 펼침) · `TeamGameLogCardsPlayoff`(G3 플레이오프 섹션) 추가, E10·E11 제목에 "[폐기 → G1 카드형]". 생성기 스크래치패드 `gen_gamelog_cards.py`(gen_team_tabs2의 경기 더미 재사용).
+- `docs/ui/mobile-design-system.md` — §9-1-4를 카드형 규칙으로 개정(평균 카드 → 섹션 머리 → 경기 카드: 헤더 44 날짜·상대·W/L 칩·스코어 / 핵심 스탯 5×2 / 전체 스탯 펼치기 32), 표 안은 "폐기" 참고로 남김.
+- (같은 날 개정, 사용자 지시 "표 구조를 그대로 이식, 1줄 날짜·상대·결과 / 2줄 득점·야투율·3점만") → 카드 2줄로 단순화: 1줄 40 = 표 셀 스타일 그대로(날짜 slate-400 · vs 상대 slate-300 · W/L · 스코어 밑줄), 2줄 = PTS·FG%·3P%·FT% 4등분, 각 칸 라벨 위·값 아래 2단(사용자 후속 지시로 3칸 인라인 → 4칸 2단, FT% 추가). 펼치기·칩·5×2 그리드 폐기, G2(펼침) 보드 삭제, 평균 카드는 섹션 끝(slate-950). 캔버스 v71.
+
+**검증**: 캔버스 발행 성공. 코드 변경 없음(구현은 승인 후).
+
+**롤백 방법**: 보드 3개 제거 + 문서 소절 원복.
+
+## 2026-10-27 — 선수 기록 탭(데스크톱·폰 공통): 정규/플레이오프 토글 + 색상 스케일 토글
+
+**배경**: 사용자 지시 — "데스크톱/모바일 공통으로 정규/플레이오프 토글과 색상 스케일 on/off 토글이 필요".
+
+**변경 파일**:
+- `components/roster/StatsToggles.tsx` (신규) — `SeasonTypeToggle`(정규 ↔ 플레이오프, `SeasonType`)과 `HeatmapToggle`(색상 스케일). 모양은 리더보드 툴바(`LeaderboardToolbar.tsx`)의 컨테이너형 토글(slate-950 박스 36 + 인디고 스위치) 그대로, `size="sm"`은 폰용 28. role="switch"·키보드(Space/Enter) 지원.
+- `components/roster/RosterStatsStack.tsx` — 상단 줄 우측(`ml-auto`)에 두 토글. 상태 `seasonType`(기본 regular)·`showHeatmap`(기본 true). `CategoryTable`에 prop으로 전달: `useLeaderboardData(..., seasonType, ...)`, 셀 `style={showHeatmap ? bgStyle : undefined}`. `key`에 seasonType 포함(전환 시 정렬 리셋).
+- `components/roster/PhoneRosterStats.tsx` — (같은 날 개정, 사용자 지시) 폰은 인라인 토글 대신 **"필터" 버튼 32 → 바텀 시트**(`components/mobile/BottomSheet.tsx` 신규: 임의 콘텐츠 시트 + `SheetToggleRow` 48). 시트 행 = "플레이오프 기록" 스위치 · "색상 스케일" 스위치(설명 문구 없음 — 사용자 지시). 카테고리 줄 우측은 "정규 시즌(또는 플레이오프) · 경기당" 보조 글자 + 필터 버튼(기본값과 다르면 인디고 점). `StatsToggles`는 데스크톱만 사용.
+
+**Before**: 선수 기록 탭은 정규 시즌 고정, 히트맵 항상 on. **After**: 두 화면 모두 토글로 전환. 기본값은 이전과 같음(정규·on).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+- 토너먼트 리그는 모든 경기가 isPlayoff라 "정규"에서 비어 보인다 — 리더보드처럼 `hideSeasonType`을 붙일지는 미결(RosterView가 리그 타입을 모름).
+
+**롤백 방법**: 신규 파일 삭제 + 두 파일 hunk 되돌림.
+
+## 2026-10-27 — 모바일 팀 화면: 선수 기록 탭 폰판
+
+**배경**: "선수 기록 탭도 디자인 작업 시작해" — 목업 §9-1-3(E5~E9).
+
+**변경 파일**:
+- `components/roster/RosterStatsStack.tsx` — 로컬이던 `CATEGORIES`→`STAT_CATEGORIES`, `formatValue`→`formatStatValue`, `getStatCellValue`, `buildHeaderRows`→`buildStatHeaderRows`(+`StatHeaderRow1Item`)를 export. 이름만 바꿨고 동작·렌더 동일.
+- `components/roster/PhoneRosterStats.tsx` (신규) — 카테고리 줄 44(스크롤 상자 밖 고정: `SheetSelect` TRADITIONAL/ADVANCED/SHOOTING/DEFENSE + "정규 시즌 · 경기당") → 공용 `Table flush/phone/parent/dividers=false`. 데이터 = `useLeaderboardData([team], …, category, 'regular', includeZeroGamePlayers=true, teamAdvanced)`(데스크톱과 동일 호출). 그룹 헤더는 `buildStatHeaderRows`가 null이 아닐 때(SHOOTING 존 10·DEFENSE 존 6)만 2단. 열 폭 55→52 · 60→56 · 66→60 · 76→64. 셀 = `getStatCellValue` 텍스트 + 히트맵(`bgStyle`, 0경기 선수는 제외). 팀 평균 `TableFoot stickyBottom`(출전 선수만 산술 평균, slate-400). 선수 칸 `PhonePlayerCell` + `playerConditions`(탭 공통). 카테고리 전환 시 `key={category}`로 정렬 리셋(데스크톱 동일).
+- `views/RosterView.tsx` — phone 분기 `tab === 'stats'` → `PhoneRosterStats`(자체 스크롤 상자·페이드·하단 여백 포함).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + RosterView hunk 되돌림 + RosterStatsStack export 이름 원복(`STAT_CATEGORIES→CATEGORIES` 등).
+
+## 2026-10-27 — 공용 Table 확장(phone 밀도 · 바깥 스크롤 · sticky 푸터) + 폰 로스터·능력치 표를 공용 Table로 재작성
+
+**배경**: 사용자 지적 "폰 표가 데스크톱 공용 Table과 많이 다른데 의도적인가?" → 의도한 치수 차이(§9-1)는 두되, 네이티브 `<table>`로 따로 그린 것은 지름길이었음. "확장하는 방향으로 가자" 결정.
+
+**변경 파일**:
+- `components/common/Table.tsx` —
+  - `density: 'phone'` 추가: 헤더 행 `h-9 text-xs font-bold`, 헤더 셀 `py-0 px-2`, 바디 셀 `py-1 px-2`, `TableRow` `h-11 active:bg-white/5`, `TableGroupHeaderCell` 글자 `text-xs`. 컨텍스트에 `phone` 플래그.
+  - `scroll: 'self' | 'parent'`(기본 self) 추가: parent면 래퍼가 `overflow`·`h-full` 없이 `w-full relative`, 테이블은 `w-max min-w-full` — 바깥 스크롤 상자가 sticky 기준.
+  - `TableFoot stickyBottom?: string | number`: `sticky z-40` + `bottom`.
+  - 기본값 경로(default/compact, self)는 클래스 문자열이 그대로라 기존 표 렌더 불변.
+- `components/roster/PhoneRosterOverview.tsx` — 네이티브 table → `Table variant="flush" density="phone" scroll="parent" dividers={false}` + `TableHead/HeaderCell(stickyLeft=0, width 136, sortProps)`/`TableBody/Row/Cell`. 정렬은 공용 `useTableSort`+`sortByConfig`(화살표는 공용 lucide 아이콘). `PhonePlayerCell`·`PHONE_STICKY_COL_WIDTH` export 유지.
+- `components/roster/PhoneRosterAttributes.tsx` — 같은 Table. 그룹 헤더 `TableGroupHeaderCell`(`<tr h-7>`), 값 `TableCell variant="attribute" colorScale`, 팀 평균 `TableFoot stickyBottom="calc(56px + env(safe-area-inset-bottom))"` + `border-b`. 군 경계 `border-r`는 className으로(dividers 끔).
+- `views/RosterView.tsx` — 우측 페이드 색 `to-slate-900`(바디가 공용 Table bg-slate-900라서).
+- (같은 날 수정) 로스터 요약 줄(정규 계약·투웨이·총 급여·캡 여유)이 가로 스크롤에 같이 밀리던 것(사용자 지적) → `PhoneRosterSummary`로 분리해 RosterView가 스크롤 상자 **밖**(탭 아래 고정, 하단 선)에 배치. `PhoneRosterOverview`는 표만.
+
+**Before → After(폰 표 외형)**: sticky 선수 열 배경 slate-950 → 공용과 같은 slate-900(호버 slate-800), 바디 bg slate-900, 정렬 화살표 글자 `↓` → lucide ArrowDown 10 indigo, 행 호버 white/5. 헤더 12px·행 44·열 폭·군 경계선·팀 평균 고정은 §9-1대로 유지. 데스크톱 표 변화 없음.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: Table.tsx hunk 되돌림 + 두 폰 표 파일을 직전 네이티브 버전(이 항목 바로 아래 항목들)으로.
+
+## 2026-10-27 — 모바일 팀 화면: 능력치 탭 폰 표
+
+**배경**: 팀 화면 1차(로스터 탭) 후 "능력치 탭 구현해" 요청. 목업 §9-1-2(E3·E4).
+
+**변경 파일**:
+- `components/roster/PhoneRosterAttributes.tsx` (신규) — 네이티브 table: 헤더 2단(그룹 28 `COMPACT_ATTR_GROUPS` 6군 colSpan + 군 사이 우측 1px / 열 36 약어, 탭 정렬·활성 indigo-400) · 능력치 21열 48 · 값 14/600 `getAttrColor` 15단계 · sticky "선수" 열 136(`PhonePlayerCell`, 체력 바 없음) · 행 44 · tfoot "팀 평균" 44 `position: sticky; bottom: calc(56px + safe)`(탭 바 위에 고정, 좌측 칸은 left+bottom 둘 다 sticky). 값·평균 = 데스크톱과 같은 `getCompactAttrValue`(콤보 평균 반올림). 기본 정렬 OVR 내림차순.
+- `views/RosterView.tsx` — phone 분기에서 `tab === 'attributes'`도 세로 스크롤 영역 + 폰 표로(overview와 같은 틀).
+- (같은 날) 능력치 탭 선수 칸에도 `playerConditions`를 넘겨 체력 바·부상·TW를 로스터 탭과 동일하게(사용자 지시 "선수 열 정보는 공통").
+- (같은 날 수정, 스크린샷 피드백) **팀 평균 행이 표 끝에서 56px 위에 떠 있던 원인** = 표를 감싼 안쪽 `overflow-x-auto` 래퍼가 sticky의 기준 스크롤 상자가 되어 `bottom: 56px`이 그 래퍼 끝 기준으로 걸림. → 안쪽 래퍼·페이드 제거, RosterView phone 분기의 세로 스크롤 영역을 `overflow-auto`(세로+가로 하나)로 바꾸고 우측 페이드는 그 형제(absolute)로. 덤으로 헤더 2단을 `sticky top-0 / top-7`로 고정, 로스터 탭 요약 줄은 `sticky left-0`. 군 경계 세로선(각 군 마지막 열 `border-r slate-800`)을 헤더뿐 아니라 본문·팀 평균 행까지(`GROUP_END_KEYS`). 팀 평균 행 하단에도 `border-b`(끝 구분, 사용자 지적). `PhoneRosterOverview`도 같은 구조(안쪽 래퍼 제거, 헤더 sticky top).
+
+**Before**: 폰에서 데스크톱 `RosterGrid`(sticky 4열 + 64px 열). **After**: 위 폰 표. 데스크톱 불변.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 파일 삭제 + RosterView hunk 되돌림.
+
+## 2026-10-27 — 모바일: 폰(<768) 스크롤바 전역 숨김
+
+**배경**: 사용자 요청 "모바일에서 스크롤바를 비활성화".
+
+**변경 파일**: `index.css` — 끝에 `@media (max-width: 767px) { * { scrollbar-width: none } *::-webkit-scrollbar { display: none } }` 추가.
+
+**Before**: 크롬 기기 모드 등에서 데스크톱식 스크롤바·`custom-scrollbar` 얇은 바가 폰 폭에서도 보임. **After**: 폰 폭에선 표시 안 됨(스크롤 동작은 동일). 768 이상 변화 없음.
+
+**롤백 방법**: 해당 블록 삭제.
+
+## 2026-10-27 — 모바일 팀 화면: 팀색 헤더에 검색·수신함(채팅 진입) 추가 — 상단 바 액션을 공용 컴포넌트로
+
+**배경**: 사용자 지적 "팀 화면에서는 채팅에 접근할 수 있는 루트가 없네?" — 폰 로스터 화면은 공용 상단 바를 생략하고 팀색 H3를 그리는데, 거기에 수신함·검색이 없었다.
+
+**변경 파일**:
+- `components/mobile/MobileHeaderActions.tsx` (신규) — 검색 버튼+시트, 수신함(배지 → 독 열기), 내 팀 로고(→ 더보기) 묶음. `inheritColor`(팀색 헤더에서 글자색 상속, 배지 링 없음) · `showTeamLogo`.
+- `components/mobile/MobileTopBar.tsx` — 우측 액션을 위 컴포넌트로 교체(검색 훅·상태·시트 제거). 렌더 결과 동일.
+- `views/RosterView.tsx` — `phoneHeaderActions?: ReactNode` 슬롯 추가, 폰 H3 우측에 배치. 이전/다음 팀 ‹ › 버튼은 제거(액션 ≤2 규칙 — 팀 이동은 제목 탭 → 팀 선택 시트).
+- `views/multi/season/MultiRosterView.tsx` — `phoneHeaderActions={<MobileHeaderActions inheritColor showTeamLogo={false} />}` 전달(싱글 RosterView는 미전달 → 슬롯 비움).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0.
+
+**롤백 방법**: 신규 파일 삭제 + 3개 파일 hunk 되돌림.
+
+## 2026-10-27 — 모바일 팀 화면 1차: 팀색 H3 헤더 + 팀 선택 시트 + compact 탭 + 로스터 탭 폰 표
+
+**배경**: 홈 적용 완료 후 "팀 화면 구현 시작" 요청. 목업 §8-3(H3)·§8-5(탭)·§9-1-1(로스터 표) 1차.
+
+**변경 파일**:
+- `components/roster/PhoneRosterOverview.tsx` (신규) — 폰 로스터 탭: 요약 줄 36("정규 계약 n/N · 투웨이 n/N · 총 급여 · 캡 여유(cap 켜진 리그만)") + 네이티브 `<table>`(첫 열 `sticky left-0` 136, 헤더 36 정렬 가능, 행 44, 우측 페이드 24). 스크롤 열 = 키 64 · 몸무게 64 · 리그 레이팅 104(`StarRating sm`) · 포지션 레이팅 104 · 급여 80(`formatMoney` 축약) · AAV 80 · 잔여 56(같은 날 사용자 지시로 급여를 AAV 왼쪽으로 이동). sticky 칸 `PhonePlayerCell`(export — 능력치·기록 탭 재사용 예정) = OvrBadge table 28 + 이름 14/500 / 캡션 "POS · 나이" + `ConditionBar xs`(숫자 없음) + 부상 배지 12 + TW 칩 9px. 방출 열·도구 줄 없음. 행 탭 = 선수 상세.
+- `views/RosterView.tsx` — `useViewportClass()` phone 분기: 팀색 H3 헤더(`theme.bg`/`theme.text`, pt-safe, 56: 검정 35% 원 28 안 로고 20(글자색 휘도 <128이면 흰 35%), 팀명 18/700 + "W–L · 동부 N위" 12 80%, 제목 탭 → `ActionSheet` 팀 선택(30팀, 내 팀 amber-200), 우측 ‹ › 이전/다음 팀 44) + `RosterTabs compact` + overview는 `PhoneRosterOverview`(세로 스크롤 영역, 하단 56+safe 여백), 나머지 탭은 데스크톱 컴포넌트 그대로(`pb-14`). 탭 콘텐츠 JSX를 `renderTabContent()`로 묶어 두 렌더가 공유(데스크톱 출력 동일).
+- `components/common/TabBar.tsx` — `compact?: boolean`(h-11 px-4 gap-5 가로 스크롤, 탭 `shrink-0 whitespace-nowrap`). 기본값 false → 기존 렌더 불변. `components/roster/RosterTabs.tsx` — `compact` 통과.
+- `components/mobile/ActionSheet.tsx` — 목록 `max-h-[70dvh] overflow-y-auto`(팀 30개).
+- `views/multi/season/MultiSeasonLayout.tsx` — 폰에서 `season/roster` 라우트는 공용 `MobileTopBar` 생략(RosterView가 H3를 그림).
+
+**Before**: 폰에서도 데스크톱 로스터 배너(px-9 py-8 큰 로고·드롭다운·5줄 정보) + h-14 탭 + sticky 4열 표.
+**After**: 폰 = H3 56 + compact 탭 44 + 요약 줄 + 폰 표. 데스크톱(≥1024) 변화 없음.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+- 알려진 1차 한계: 능력치·선수 기록·경기 기록·일정·재정·팀 설정 탭은 아직 데스크톱 컴포넌트(내부 스크롤, 폰 폭에서 가로 스크롤만 됨). 하단 탭 바 뒤에 마지막 행이 가려지지 않게 `pb-14`만 둠.
+
+**롤백 방법**: 신규 파일 삭제 + 5개 파일 이 항목 hunk 되돌림(`git diff views/RosterView.tsx components/common/TabBar.tsx components/roster/RosterTabs.tsx components/mobile/ActionSheet.tsx views/multi/season/MultiSeasonLayout.tsx`).
+
+## 2026-10-27 — 모바일 셸: 상단 바를 시즌 정보(가상 날짜·진행 아크·다음 경기·카운트다운)로, 리그 로고·이름은 홈 본문으로
+
+**배경**: 사용자 지시 — "헤더의 리그 아이콘·리그 이름을 데스크톱처럼 바디로 내리고, 헤더에는 가상 날짜·시간 트래킹 바·다음 경기 정보·카운트다운을 남겨라."
+
+**변경 파일**:
+- `hooks/useMyNextGame.ts` (신규) — 내 팀 다음 경기·라이브 경기·카운트다운(`"N시간 N분 후 경기 시작"`/`"곧 경기 시작"`)·긴급도(muted/warn/urgent) 공용 훅. 판정은 `MultiHeader`의 nextGame/myLiveGame과 동일(resolveRealAt 최소 방송 시각, getGameDisplayState live, 15초 버킷).
+  - (같은 날 수정) 카운트다운이 15초 버킷으로만 갱신돼 "1:23:45"가 멈춘 듯 보였다(사용자 리포트) → 스케줄 스캔은 버킷, 카운트다운 diffMs만 `useServerClock`(1초)로. `tick: 'bucket'` 옵션으로 탭 바(라이브 점)는 초 단위 리렌더 제외.
+  - (같은 날) 상단 바 날짜의 "가상 " 접두어 제거(`fmtVirtualDateKo` → "2026.10.27 (월)").
+  - (같은 날) `VirtualDayArc` 대신 날짜 뒤 가상 시각 텍스트 "9 PM"(`virtualDayMark().clockMin` 시 단위 내림, 12 slate-300). 제목 `tracking-tight` 제거, 날짜 줄 `tracking-normal`. 이어서 날짜·시각 둘 다 14/700(시각은 slate-300), `tabular-nums` 제거.
+- `components/mobile/MobileTopBar.tsx` — 루트 화면: 좌측 리그 로고 삭제, 제목 블록 = 1줄 "가상 2026.10.27 (월)" 14/700 + `VirtualDayArc`(84×26, 데스크톱 헤더와 같은 컴포넌트) / 2줄 LIVE(점+LIVE+상대+보기 버튼, `getGameUrlId`) 또는 "vs LAL · 1시간 23분 후 경기 시작"(색 indigo/amber/red) 또는 "예정된 경기 없음". push 화면(선수·경기 등)은 뒤로+화면명+가상 날짜 그대로. 토너먼트는 리그명 폴백.
+- `components/mobile/MobileTabBar.tsx` — 라이브 점 판정을 `useMyNextGame().liveGame`으로(로컬 계산 삭제).
+- `pages/MultiSeasonPage.tsx` — 폰 홈 본문 맨 위에 데스크톱식 리그 로고 48 + 리그명 20/800 + 상태 줄(단계 색 · 1px · Day N orange, 14/700 → 같은 날 16/700으로) 블록. 별도 상태 줄 28은 이 블록 안으로 흡수. `HomeMyTeamBadge`의 다음 경기 계산도 훅으로 교체(로컬 nextGame/countdown 삭제).
+
+**Before**: 폰 상단 바 = 리그 로고 + 리그명 + 가상 날짜; 홈 본문은 상태 줄부터.
+**After**: 폰 상단 바 = 시즌 정보 2줄 + 아크; 홈 본문 = 리그 로고·이름·상태 줄 → 내 팀 배지 → 5섹션. 데스크톱 변화 없음.
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 훅 삭제 + 세 파일을 직전 상태로(`git diff`의 이 항목 hunk만 되돌림).
+
+## 2026-10-27 — 모바일 셸: 상단 바 검색 버튼 + 풀스크린 검색 시트 (검색 매칭 로직 공용화)
+
+**배경**: 셸 1차 적용에서 뺐던 상단 바 검색을 사용자가 지적("헤더에 검색 버튼이 없어졌는데"). 목업 H6(입력 40/16px + 취소) 그대로.
+
+**변경 파일**:
+- `components/dashboard/leagueSearch.ts` (신규) — `searchLeagueEntities()`(팀 ≤5·선수 ≤20, 이름/슬러그/약어 부분 일치) + `groupLeagueSearchResults()` + `SEARCH_CATEGORY_LABELS`. MultiGlobalSearch에 인라인이던 규칙을 그대로 옮김.
+- `components/dashboard/MultiGlobalSearch.tsx` — 결과 계산·그룹화를 위 함수 호출로 교체(동작 동일, 로컬 `teamBySlug` useMemo 삭제).
+- `components/mobile/MobileSearchSheet.tsx` (신규) — `fixed inset-0 z-modal` 풀스크린: 상단 입력 40(16px, `type=text`+`inputMode=search` — `type=search`는 WebKit 기본 X가 겹쳐 두 개로 보여 같은 날 수정, 자동 포커스, 지우기 X) + "취소", 결과 그룹 헤더 32 + 행 48(팀 로고 24 / OvrBadge sm + 이름 + "약어 · POS"), 탭 = 이동 + 닫기, Esc 닫기.
+- `components/mobile/MobileTopBar.tsx` — 수신함 왼쪽에 검색 44 버튼(드래프트 완료 리그에서만 — 데스크톱 헤더와 같은 조건), `useMultiSearchData`·`usePlayerShortCodes`로 데이터·경로 연결.
+
+**Before**: 폰 상단 바 우측 = 수신함 + 내 팀 로고. **After**: 검색 + 수신함 + 내 팀 로고(액션 ≤2 규칙 안).
+
+**검증**: `npx tsc --noEmit` 관련 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 신규 2파일 삭제 + `git checkout -- components/dashboard/MultiGlobalSearch.tsx`, MobileTopBar에서 검색 블록 제거.
+
+## 2026-10-27 — 모바일 홈 적용: 폰(<768) 리그 세션 홈을 목업(§9-0-2) 5섹션 1열로
+
+**배경**: 셸 적용 후 "홈 화면 요소들을 모바일 목업대로 변경하자" 요청. 캔버스 2행 PhoneHome①~④ 기준.
+
+**변경 파일**:
+- `components/mobile/ActionSheet.tsx` (신규) — `ActionSheet`(바텀 시트, 항목 48, 선택 indigo-600/10 + 체크, z-modal, document.body 포탈) + `SheetSelect`(패널 헤더 트리거 28 = 라벨 12/700 + ChevronDown 16 slate-500).
+- `pages/MultiSeasonPage.tsx` — `useViewportClass()`로 phone 분기. 섹션 5개(`HomeStandingsSection`·`HomeLeagueLeadersSection`·`HomeLatestNewsSection`·`HomeTransactionsSection`·`HomeInjurySection`)에 `phone?: boolean` prop을 붙여 **데이터 훅은 공유하고 렌더만 분기**. 폰 전용 상수 `PHONE_ROWS = { leaders: 5, news: 3, transactions: 3, injuries: 4 }`(순위는 제한 없음), 행 컴포넌트 `PhoneRow`(44, 좌우 12, slate-800 구분선).
+  - 상태 줄 28: 단계 글자 16/600(`PHASE_COLOR`) · 1px 선 · "Day N (PP%)" orange-400 16/700. 리그 로고·리그명 헤더는 없음(상단 바가 맡음).
+  - 순위: 컨퍼런스 하나만(기본 = 내 팀 컨퍼런스) + 표 헤더 위 동부/서부 **탭 바 44**(같은 날 사용자 지시로 헤더 SheetSelect에서 교체, 활성 indigo-400 밑줄 2px). 컨퍼런스 전체 행(15팀, 같은 날 사용자 요청으로 8행 제한 제거) 40, 그리드 `24 / 1fr / 36 / 36 / 48 / 40`, 컷은 구분선 대신 순번 색(직행 emerald-400 · 플레이인 amber-400 · 그 외 slate-400), 내 팀 행 `indigo-600/15`. 행 탭 = 팀 로스터.
+  - 리더: 헤더 `SheetSelect`(6 카테고리), 열 헤더 32 + 행 44 = # · OvrBadge sm · 팀 로고+이름 · G · MP · 값(그리드 20/28/1fr/32/44/48). 5명. (같은 날 사용자 지시로 데스크톱과 같은 G·MP 열·열 헤더 추가)
+  - 뉴스: 제목 1줄 + 날짜 12, 3건. 트랜잭션: 종류 원형 아이콘 20(데스크톱 `TXN_ICON_BY_KIND` 동일, 글자 대신 — 같은 날 사용자 지시) + 선수 FROM → TO + 날짜, 3건, 더보기 라벨 "전체". 부상·징계: InjuryStatusBadge 16 | 이름 96 | 부상명 | 기간 + 복귀일 "(~ YY/MM/DD)"(심각도 색), 팀 약어 없음, 4건 (같은 날 사용자 지시로 배지·복귀일 추가).
+  - 내 로스터 요약·내 팀 부상·징계는 폰에서 렌더하지 않음.
+  - (같은 날 추가) 리그 순위 위 **내 팀 배지** `HomeMyTeamBadge`: 로고 40 + 팀명 16 + "W–L · 동부 N위" 12 / 우측 다음 경기의 가상 날짜 "2026.10.28 (수)" + vs·@ 상대 로고·약어 + "N시간 N분 후 경기 시작"(색은 헤더와 동일 1h/30m 기준; 라벨·문구는 같은 날 사용자 지시). 카드 전체 탭 = 내 팀 로스터. 팀 없음·관전이면 없음. 순위는 컨퍼런스 승률순 자리, 다음 경기는 MultiHeader.nextGame과 같은 판정. 배지 아래 **바로가기 3열 44**(로스터 `tab=overview` / 기록 `tab=stats` / 일정 `tab=schedule`, 세로 구분선 slate-800) — 같은 카드 안, 상단 선으로 구분. (같은 날 추가) 30팀 색상 검수 시트를 목업 캔버스 8행 `MyTeamCards30.dc.html`(H1, 동부/서부 15장씩, 생성기 스크래치패드 `gen_team_cards.py` ← `data/teamData.ts` TEAM_COLORS; DB `meta_teams`는 colors null이라 이 폴백이 실제 값)에 추가. (같은 날 추가) 카드 배경 = 팀 `color_primary` **단색**(글로시+엠보스 그라디언트는 한 번 적용했다가 사용자 지시로 제거), 테두리 black/25, 글자 `color_text`(없으면 getReadableTextColor), 바로가기 줄 `bg-black/20`·구분선 black/25. 카운트다운 색은 여유 = 글자색 / amber-300 / red-300. 상대 로고 제거(vs·@ + 약어만). `mixHex()` 로컬 헬퍼.
+
+**Before**: 모든 폭에서 12열 밴드 레이아웃(순위 2분할 + 뉴스/트랜잭션, 내 로스터 + 리더 세그먼트, 리그 부상 + 내 팀 부상).
+**After**: 폰만 위 구조. 1024 이상·태블릿(768~1023)은 기존 밴드 레이아웃 그대로(태블릿 2열안 §9-0-2는 다음 단계).
+
+**검증**: `npx tsc --noEmit` 수정 파일 오류 0. 브라우저 확인은 사용자 몫(개발 서버 HMR).
+
+**롤백 방법**: `git checkout -- pages/MultiSeasonPage.tsx` + `components/mobile/ActionSheet.tsx` 삭제.
+
+## 2026-10-27 — 모바일 셸: 폰 GameDateStrip 고정 해제 + 자동 접힘 폐기 (본문과 함께 스크롤)
+
+**배경**: 셸 1차 적용을 사용자가 확인한 뒤 "스크롤 내릴 때 스트립이 자동 최소화되는 게 뚝 끊겨 보여 매끄럽지 않다. sticky 해제하고 최소화시키지 마라"는 지시.
+
+**변경 파일**:
+- `views/multi/season/MultiSeasonLayout.tsx` — phone 분기에서 스트립을 스크롤 컨테이너(`#season-scroll`) **안**, 본문 위로 이동. `stripCollapsed` 상태·`onScroll` 핸들러·`expandStrip`·`useRef/useState` import 삭제.
+- `views/multi/season/GameDateStrip.tsx` — `phoneCollapsed`/`onPhoneExpand` prop과 32px 접힘 줄 렌더 삭제. phone 변형은 64px 펼침 하나만.
+
+**Before**: 폰 홈에서 스트립이 상단 바 아래 고정, 본문 스크롤 8px 초과 시 32px 줄로 접힘(접힘 줄 탭 → 최상단 스크롤).
+**After**: 스트립이 본문 첫 요소로 함께 스크롤되어 위로 사라짐. 접힘 상태 없음. 데스크톱·태블릿 변화 없음.
+
+**검증**: `npx tsc --noEmit` 두 파일 오류 0. 브라우저 확인은 사용자 몫.
+
+**롤백 방법**: 바로 아래 항목(셸 1차 적용)의 phone 분기·GameDateStrip phone props를 그대로 되돌리면 됨.
+
+## 2026-10-27 — 모바일 셸 1차 코드 적용: 뷰포트 분기 + 상단 바 + 하단 탭 바 + 태블릿 레일 + 더보기 + 스트립 폰 변형 (데스크톱 변화 0)
+
+**배경**: 목업(docs/ui/mobile-design-system.md §8) 확정 후 "글로벌 셸부터 코드 넣어볼까" 요청. 화면별 적용 전에 셸이 있어야 비교·수정이 가능.
+
+**변경 파일**:
+- `hooks/useViewportClass.ts` (신규) — matchMedia 기반 `phone(<768) | tablet(768~1023) | desktop(≥1024)`. Tailwind 기본 브레이크포인트만 사용.
+- `components/nav/navIcons.tsx` (신규) — `NavIcon`/`RosterIcon`을 MultiSidebar에서 옮김 + `MoreIcon`(sidenav 양식 2톤 3줄) 신규. `size` prop 추가(기본 28).
+- `components/nav/useSeasonNavModel.ts` (신규) — 사이드바 항목·순서·구분선·노출 조건(드래프트 완료·개인 팩 드래프트·올스타 기간·순위 경쟁·관전자·오퍼 배지)을 모델로. 사이드바 JSX는 아직 그대로(두 곳 동기화 필요).
+- `components/multi/chatDockBridge.ts` (신규) — 독 ↔ 상단 바 수신함: `publishChatDockUnread`/`useChatDockUnread`/`requestOpenChatDock`/`subscribeChatDockOpen`.
+- `components/mobile/MobileTabBar.tsx` (신규) — 5탭(홈·팀·경기·리그·더보기), 56 + `pb-safe`, `fixed bottom-0 z-header`, sidenav 아이콘 스왑·활성 #00D492, 경기 탭 라이브 점, 더보기 CountBadge(오퍼+채팅 안 읽음), 재탭 = 루트 이동 + `#season-scroll` 최상단, 입력 포커스·`game/:id`에서 숨김.
+- `components/mobile/MobileTopBar.tsx` (신규) — 56 + `pt-safe`, 좌 리그 로고(`TeamMark teamId="League"`) 또는 뒤로(player/game/negotiate/release/settings/draft-result/more/compare), 제목 2줄(리그명 또는 화면명 + "가상 YYYY.MM.DD (요일)"), 우 수신함(배지 → 독 열기) + 내 팀 로고 28(→ more). 검색은 이번 단계 미포함.
+- `components/mobile/TabletNavRail.tsx` (신규) — 72px 세로 레일, 같은 5묶음, 하단 내 팀 로고 32.
+- `views/multi/season/MobileMoreView.tsx` (신규) + `App.tsx` 라우트 `season/more` + `utils/spectatorAccess.ts` 허용 세그먼트 `'more'` — 단일 리스트(행 48·아이콘 24·조건 노트 12), 하단 프로필 블록(팀 로고/팀명/이메일) + 세션 설정(어드민)·팀 설정·홈으로·로그아웃.
+- `views/multi/season/GameDateStrip.tsx` — `variant?: 'desktop'|'phone'`, `phoneCollapsed`, `onPhoneExpand` 추가. 카드 리스트를 `cardsEl`로 분리해 두 렌더가 공유(desktop 값 그대로: w-36·slate-900·선택 slate-700·라이브 red-900/30). phone: 접기·날짜 셀렉터 없이 달력 아이콘 44 + 카드 w-32(팀 로고 w-4, `StripTeamRow logoClass` prop — 같은 날 추가; bg slate-950, 선택 slate-800, 라이브 red-900/25, 구분선 slate-800) + snap-x + 우측 페이드, 접힘 32px 줄, 달력은 바텀 시트(`MonthCalendarPopover inline`).
+- `views/multi/season/MonthCalendarPopover.tsx` — `inline?: boolean`(fixed 좌표 대신 흐름 안, 전폭·상단 선). 기본 동작 동일.
+- `components/multi/LeagueChatDock.tsx` — `NARROW_QUERY` 639 → **767**, narrow에서 FAB 숨김·위젯 `fixed inset-0` 풀스크린(`pt-safe pb-safe`)·탭 줄 우측 닫기 X, 브리지로 안 읽은 합계 발행 + 열기 요청 구독. 데스크톱(≥768) 렌더는 동일.
+- `views/multi/season/MultiSeasonLayout.tsx` — 뷰포트 3분기. phone: `h-dvh` + MobileTopBar + (홈·시즌 진행 중일 때만) 스트립 phone + 스크롤 본문(`id=season-scroll`, 스크롤 8px 초과 시 스트립 접힘, 하단 56+safe 스페이서) + MobileTabBar. tablet: 레일 + MobileTopBar + 스트립(desktop 변형) + 본문. desktop: 기존 JSX 그대로(`h-screen`).
+- `components/MultiSidebar.tsx` — 로컬 `NavIcon`/`RosterIcon` 정의 삭제 → `./nav/navIcons` import. 렌더 동일.
+- `index.html` — viewport에 `viewport-fit=cover`. `index.css` — `@layer utilities` `.pt-safe/.pb-safe/.pl-safe/.pr-safe`(env(safe-area-inset-*)).
+
+**Before**: 모든 폭에서 `MultiSidebar 40 + MultiHeader + GameDateStrip 75` 데스크톱 셸. 채팅 독 narrow 경계 639, FAB 상시.
+**After**: 위와 같이 분기. 1024 이상은 DOM·클래스 동일(사이드바 아이콘만 공용 파일에서 import).
+
+**검증**: `npx tsc --noEmit` — 신규·수정 파일 오류 0(저장소 기존 오류 91줄은 별개, App.tsx 118행 RosterMode 오류는 HEAD에도 동일). `npx vite build`(스크래치패드 outDir) 성공, 모듈 순환 없음(기존 manualChunks 경고만). 브라우저 육안·실기기 확인 전.
+
+**롤백 방법**: 신규 파일 8개 삭제 + 수정 파일 8개를 HEAD로(`git checkout -- App.tsx utils/spectatorAccess.ts index.html index.css components/MultiSidebar.tsx components/multi/LeagueChatDock.tsx views/multi/season/MonthCalendarPopover.tsx views/multi/season/GameDateStrip.tsx views/multi/season/MultiSeasonLayout.tsx`). 서버·DB 변경 없음.
+
+## 2026-10-27 — 모바일 목업: 선수 프로필 화면 P1~P8 (문서만, 코드 변경 없음)
+
+**배경**: 팀 화면 7탭 완료 후 사용자가 선수 프로필 화면의 모바일 이식을 요청.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` — §9-2 "선수 프로필 화면" 신설(상단 바 브레드크럼 칩·액션은 더보기 시트, 헤더 미니표 sticky 92+52×11, 프로필 탭 1열 섹션 순서, 능력치 1열 21개 24px 값, 커리어/게임 로그/스플릿 sticky 표 + 드롭다운, 샷 차트 1열 + 필터 바텀 시트)
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT — 7행(y 9900) 신설, 보드 `PlayerProfile`(P1 헤더+선수 정보) · `PlayerProfile2`(P2 능력치) · `PlayerProfile3`(P3 계약·수상·이동·부상 이력) · `PlayerCareer`(P4) · `PlayerGameLog`(P5) · `PlayerSplits`(P6) · `PlayerShotChart`(P7) · `PlayerShotFilter`(P8). 생성기 세션 스크래치패드 `gen_player.py`(기준 코드: `views/PlayerDetailView.tsx`, `components/common/KeyValueRow.tsx`, `filters/CheckOption.tsx`, `utils/courtZones.ts` COURT_LINES, `utils/gameLogSplits.ts`).
+
+**Before**: 선수 프로필 폰 규칙 없음.
+**After**: §9-2. 바뀐 것은 배치(3열→1열, 필터 패널→시트, 액션 버튼→더보기 시트, 세그먼트→드롭다운)와 치수뿐이고 탭 구성·색·포맷·차트 좌표계는 데스크톱 그대로. 코드 변경 없음.
+
+**검증**: 캔버스 발행 성공(라이브 canvas.json read 후 병합). 육안 확인은 사용자 몫.
+
+**롤백 방법**: 문서 §9-2 삭제 + 캔버스에서 P1~P8 보드·`t9` 노트 제거.
+
+## 2026-10-27 — 모바일 목업: 팀 화면 경기 기록·일정·재정·팀 설정 탭 E10~E17 (문서만, 코드 변경 없음)
+
+**배경**: 선수 기록 탭에 이어 사용자가 나머지 팀 화면 탭 4종 목업을 한 번에 요청.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` — §9-1-4 경기 기록 표, §9-1-5 일정(월 내비 고정 → 달력 → 리스트 1열), §9-1-6 재정 표, §9-1-7 팀 설정 1열 폼 신설
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT — 6행(y 8800) 신설, 보드 `TeamGameLog`/`TeamGameLogScrolled`(E10·E11) · `TeamSchedule`/`TeamScheduleList`(E12·E13) · `TeamFinance`/`TeamFinanceScrolled`(E14·E15) · `TeamSettings`/`TeamSettingsScrolled`(E16·E17). 생성기 세션 스크래치패드 `gen_team_tabs2.py`(기준 코드: `TeamGameLog.tsx`, `TeamScheduleCalendar.tsx`, `TeamPayrollTable.tsx`, `TeamSettingsPanel.tsx`, `ColorField.tsx`, `CourtPreview.tsx`, `formatMoney.ts`, `Money.tsx`).
+
+**Before**: 네 탭의 폰 규칙 없음.
+**After**: 위 4개 소절. 폰에서 바뀐 것은 배치(일정 2열→1열, 팀 설정 2열→1열, 재정 범례 h-40 푸터→32 고정 띠, 저장 버튼→하단 고정 바)와 치수(스탯 열 52/60, 시즌 열 104, 달력 셀 47/라운드 6/글자 10~11, 색 스와치 44, 입력 48/16px)뿐이고 색·포맷·정렬·섹션 규칙은 데스크톱 그대로. 코드 변경 없음.
+
+**검증**: 캔버스 발행 성공(라이브 canvas.json read 후 병합). 육안 확인은 사용자 몫.
+
+**롤백 방법**: 문서 §9-1-4~§9-1-7 삭제 + 캔버스에서 E10~E17 보드·`t8` 노트 제거.
+
+## 2026-10-27 — 모바일 목업: 팀 화면 선수 기록 탭 E5~E9 (문서만, 코드 변경 없음)
+
+**배경**: 능력치 탭 표 방식 확정 후 사용자가 다음 탭(선수 기록) 디자인을 요청.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` — §9-1-3 "팀 화면 · 선수 기록 탭 표" 신설(카테고리 줄 44 + Dropdown→시트, 그룹 2단 헤더 조건, 폰 열 폭 52/56/60/64, 히트맵·0경기·팀 평균 규칙)
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v63 — 5행에 `TeamStats`(E5 TRADITIONAL) · `TeamStatsSheet`(E6 카테고리 시트) · `TeamStatsAdvanced`(E7) · `TeamStatsShooting`(E8 우측 스크롤, 존 그룹 헤더) · `TeamStatsDefense`(E9) 추가, 5행 제목 노트 갱신. 생성기 세션 스크래치패드 `gen_stats_tab.py`(열 정의·포맷·히트맵 공식을 `leaderboardConfig.ts`/`heatmapUtils.ts`에서 옮김, 더미 스탯은 OVR·포지션 기반 결정론 생성).
+
+**Before**: 선수 기록 탭 폰 규칙 없음.
+**After**: 위 §9-1-3. 데스크톱 `RosterStatsStack.tsx`·`leaderboardConfig.ts`·`heatmapUtils.ts` 코드 변경 없음.
+
+**검증**: 캔버스 v63 발행 성공(라이브 canvas.json read 후 병합). 육안 확인은 사용자 몫.
+
+**롤백 방법**: 문서 §9-1-3 삭제 + 캔버스에서 E5~E9 보드 제거(`t7` 노트 문구 원복).
+
+## 2026-10-27 — 모바일 목업: 팀 화면 능력치 탭 대안 비교 F1~F4 (문서만, 코드 변경 없음)
+
+**배경**: 사용자가 폰에서 능력치 탭을 "드롭다운으로 선수 선택 → 능력치 바+값" 방식으로 바꾸는 안을 냈고, 비교를 위해 두 안을 나란히 그리기로 함("비교할 수 있게 그려봐").
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` — §9-1-2 끝에 "대안 비교(F1~F4, 결정 대기)" 소절 추가 (A안 선수 선택형 / B안 능력치 선택형·권장 / 바 스타일 = PlayerDetailView 능력치 바)
+- 목업 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT v61 — 6행(y 8800) 신설, 보드 `TeamAttrsByGroup`(F1 군 OUTSIDE 선택) · `TeamAttrsBySingle`(F2 3PT 선택, 내림차순) · `TeamAttrsSheet`(F3 능력치 선택 시트) · `TeamAttrsByPlayer`(F4 선수 선택형). 생성기는 세션 스크래치패드 `gen_attr_alt.py`(`gen_attr_tab.py`의 ATTR/GROUPS 재사용).
+
+**Before**: §9-1-2는 E3·E4 표(21열 가로 스크롤)만 기술.
+**After**: 표 + 대안 2종 기술 → **같은 날 결정: 표 방식(E3·E4) 확정**, 대안 보드 F1~F4·6행 노트는 캔버스 v62에서 제거하고 문서 소절은 결정 기록으로 축약(재제안 금지). 코드·DB·서버 변경 없음.
+
+**검증**: 캔버스 v61 발행 성공(라이브 canvas.json을 read 후 병합). 육안 확인은 사용자 몫.
+
+**롤백 방법**: 문서 소절 삭제 + 캔버스에서 F1~F4 보드·`t8` 노트 제거.
 
 ## 2026-10-27 — 멀티 체력 조회를 방 단위 leagueRawSeasonInjury 캐시로 통합 (팀 화면 체력 늦게 뜸/깜빡임 해소)
 
@@ -1177,6 +2584,22 @@ HEAD+이 변경 엔진과 측정용 하네스 엔진의 1시즌 결과 완전 �
 
 **롤백**: PlayerDetailView의 careerRegular/careerPlayoff를 Before 형태로 복원, MultiPlayerDetailView의 훅·prop 제거. RPC는 `drop function public.get_player_team_splits(uuid, text);`
 
+## 2026-10-26 — [배포] Fly v202~v204 (git 7ee9c763) + Vercel 프로덕션 — 연장전·B2B 간격·포스트시즌 휴식일
+
+**배포 내용**: 커밋 7ee9c763(연장전 P1~P4 + 세션 설정 토글, 일정 생성기 B2B 간격, 포스트시즌 휴식일). 같은 HEAD에 다른 세션의 d68271ce(라이브 박스 DREB·게임 URL 수정, 클라 전용)도 포함. 다른 세션의 미커밋 작업(AI 감독 C4 등)은 제외 — simRunner.ts는 이 세션 hunk만 스테이징.
+
+**순서**: Vercel(푸시 자동 배포, 빌드 로그 Commit 7ee9c76 확인) → 서버 배포 스크립트(scripts/deploy-server.sh)로 Fly v202(이미지 git-7ee9c763, 이전 v201 = git-24ee59a1).
+
+**사고(이 세션 실수)**: 배포 기록을 쓰는 셸 명령에서 따옴표 없는 heredoc을 써 기록 문구 안의 백틱이 명령으로 실행됨 — 서버 배포 스크립트가 두 번 더 돌아 같은 이미지로 v203·v204가 생기고(1~2분 사이 서버 재시작 2회), 롤백 예시로 적은 이미지 지정 배포 명령은 앱 이름 누락 오류로 실패해 롤백은 일어나지 않음. 최종 v204 = git-7ee9c763, 재기동 후 스케줄러·워커 정상, 복구 대상 방 없음. 재발 방지: 셸에서 문서 문구를 만들 땐 heredoc을 반드시 따옴표로('EOF') 감싸거나 파일로 쓴다.
+
+**DB**: 마이그레이션 4건(add_league_overtime_enabled, add_overtime_reveal_delay, set_league_overtime_enabled_default_true, add_overtime_enabled_to_settings_audit)은 배포 전에 이미 운영 적용.
+
+**검증**: 스테이징 트리를 따로 꺼내 vite 프로덕션 빌드 성공, client/server tsc 오류 목록이 HEAD와 동일(신규 0). Fly 재기동 후 정상 로그.
+
+**리그 상태**: PBL·NBA Active 연장전 off, Test League on(연장 테스트용 — P5 공개 시각 E2E 대상), 싱글 off.
+
+**롤백**: 7ee9c763을 revert해 푸시한 뒤 서버 배포 스크립트로 재배포(또는 Fly에서 이전 이미지 git-24ee59a1로 배포). DB는 ot_periods 0·스위치 off면 기존과 동일하게 동작하므로 되돌리지 않아도 됨.
+
 ## 2026-10-26 — 대체 샐러리 리그: 미드래프트 당해 1라운드 루키를 일반 FA로 협상
 
 **배경**: contract_mode 'alternative' 리그(Test League/NBA Active/PBL, 시즌 2026)에서 리그 드래프트에 안 뽑힌 2026 1라운드 루키(예: NBA Active 17·19·23·25~30픽 등)를 FA로 영입할 수 없다는 신고. 협상 화면이 `draftRound===1 && draftYear===현재시즌`이면 계약 유형을 루키 스케일로 강제 → 연봉은 실제 NBA 픽 스케일(17픽 2.26%×최대 120% ≈ 캡 2.7%)·4년 고정, 캡%/연수 입력 비활성화. 이 금액이 `buildMultiFADemand`의 walkAwaySalary보다 낮으면 `evaluateFAOffer`가 무조건 false, 그보다 높아도 롤 해시가 `seed+salary+years`라 같은 오퍼는 항상 같은 결과 → 한 번 거절되면 영원히 거절(배율 80~120%만 바꿀 수 있음). 실거래 로그상 루키 스케일 FA 체결은 3건뿐. 대체 리그는 실제 계약을 무시하는 리그라 루키 스케일이라는 계약 자체가 성립하지 않음.
@@ -1205,21 +2628,62 @@ const rookiePick = player && (league as any)?.contract_mode !== 'alternative'
 
 **롤백 방법**: Before 블록으로 되돌림. 'standard' 리그 동작은 변경 없음(같은 고정 금액 교착 가능성은 남아 있음, 미수정).
 
-## 2026-10-26 — [배포] Fly v202~v204 (git 7ee9c763) + Vercel 프로덕션 — 연장전·B2B 간격·포스트시즌 휴식일
+## 2026-10-26 — AI 감독 C4: 1·2옵션 역할 기준 공격 프리셋 (서버 전용, 미배포)
 
-**배포 내용**: 커밋 7ee9c763(연장전 P1~P4 + 세션 설정 토글, 일정 생성기 B2B 간격, 포스트시즌 휴식일). 같은 HEAD에 다른 세션의 d68271ce(라이브 박스 DREB·게임 URL 수정, 클라 전용)도 포함. 다른 세션의 미커밋 작업(AI 감독 C4 등)은 제외 — simRunner.ts는 이 세션 hunk만 스테이징.
+**배경**: 멀티 AI 팀은 공격 슬라이더가 전부 중간값(5)이라 로스터 성향이 전술에 반영되지 않았다(올타임 Test League 29개 AI 팀 조사). 처음 계획(C4)은 플레이별 기대 득점(`expectedPoints.ts`)으로 슬라이더를 정하는 것이었으나, 실경기 PPP(`team_playtype_stats` 약 20만 공격권)와 대조하니 EV가 슛만 재서 인사이드 플레이를 체계적으로 과대평가(PnR 롤 EV 1.165 vs 실제 1.053, 캐치앤슛 0.983 vs 1.028 — 롤–캐치앤슛 차이를 약 7배 부풀림)해 전 팀이 같은 인사이드 전술로 수렴할 위험이 있었다. 사용자 결정: **1·2옵션의 공격 역할에 따라 미리 만든 프리셋 중에서 고르는 방식**, 구조는 "기본 프리셋(1옵션 역할군 6종) + 2옵션 보정 + 특수 조합". UI OVR 아키타입 라벨(24종)은 수비가 섞여 있어(던컨·올라주원 = Rim Protecting Big, 체임벌린 = Rebounding Big) 쓰지 않고 공격 스킬 백분위로 역할 9종을 판정.
 
-**순서**: Vercel(푸시 자동 배포, 빌드 로그 Commit 7ee9c76 확인) → 서버 배포 스크립트(scripts/deploy-server.sh)로 Fly v202(이미지 git-7ee9c763, 이전 v201 = git-24ee59a1).
+**변경 파일**:
+- `server/src/shared/game/tactics/aiCoach/offensePresets.ts` (신규, 서버 전용 — 클라이언트 미러 없음)
+- `server/src/shared/game/tactics/aiCoach/aiCoachPlan.ts` — `planAiTeam(team, saved, opts?)` 3번째 인자(`opponentRoster`, `offense`), `AiCoachPlan.offense`, `compose()`가 공격 슬라이더 덮어씀
+- `server/src/simRunner.ts` — `coachAi(member, team, tactics, opponent)`(상대 로스터 전달), 끄기 스위치 `AI_OFFENSE_PRESET_DISABLED`, 공격 프리셋 실패도 경고 로그
+- `scripts/offensePresetsScenarios.ts` (신규, 26개 시나리오)
 
-**사고(이 세션 실수)**: 배포 기록을 쓰는 셸 명령에서 따옴표 없는 heredoc을 써 기록 문구 안의 백틱이 명령으로 실행됨 — 서버 배포 스크립트가 두 번 더 돌아 같은 이미지로 v203·v204가 생기고(1~2분 사이 서버 재시작 2회), 롤백 예시로 적은 이미지 지정 배포 명령은 앱 이름 누락 오류로 실패해 롤백은 일어나지 않음. 최종 v204 = git-7ee9c763, 재기동 후 스케줄러·워커 정상, 복구 대상 방 없음. 재발 방지: 셸에서 문서 문구를 만들 땐 heredoc을 반드시 따옴표로('EOF') 감싸거나 파일로 쓴다.
+**Before**:
+```ts
+// aiCoachPlan.ts
+export function planAiTeam(team: Team, saved: GameTactics | null | undefined): AiCoachResult
+function compose(saved, lineup, rotationMap): GameTactics {
+    return { ...(saved ?? {}), sliders: { ...DEFAULT_SLIDERS, ...(saved?.sliders ?? {}) }, ... };
+}
+// simRunner.ts
+const coachAi = (member: any, team: any, tactics: any) => { ... planAiTeam(team, tactics) ...
+    if (!plan || plan.source !== 'builder') console.warn(...) };
+const homePlan = coachAi(homeMember, homeTeam, homeTactics);
+const awayPlan = coachAi(awayMember, awayTeam, awayTactics);
+```
 
-**DB**: 마이그레이션 4건(add_league_overtime_enabled, add_overtime_reveal_delay, set_league_overtime_enabled_default_true, add_overtime_enabled_to_settings_audit)은 배포 전에 이미 운영 적용.
+**After**:
+```ts
+// aiCoachPlan.ts
+export function planAiTeam(team, saved, opts: { opponentRoster?: Player[]; offense?: boolean } = {}): AiCoachResult
+//   offense = buildOffensePlan(evaluateTeam(team.id, roster, opts.opponentRoster ?? []))   (예외 시 null → 저장값 유지)
+function compose(saved, lineup, rotationMap, offense: OffenseSliders | null): GameTactics {
+    return { ...(saved ?? {}), sliders: { ...DEFAULT_SLIDERS, ...(saved?.sliders ?? {}), ...(offense ?? {}) }, ... };
+}
+// simRunner.ts
+const AI_OFFENSE_PRESET_DISABLED = process.env.AI_OFFENSE_PRESET_DISABLED === '1';
+const coachAi = (member, team, tactics, opponent) => { ... planAiTeam(team, tactics, { opponentRoster: opponent.roster, offense: !AI_OFFENSE_PRESET_DISABLED }) ...
+    if (!plan || plan.source !== 'builder' || (!plan.offense && !AI_OFFENSE_PRESET_DISABLED)) console.warn(...) };
+const homePlan = coachAi(homeMember, homeTeam, homeTactics, awayTeam);
+const awayPlan = coachAi(awayMember, awayTeam, awayTactics, homeTeam);
+```
 
-**검증**: 스테이징 트리를 따로 꺼내 vite 프로덕션 빌드 성공, client/server tsc 오류 목록이 HEAD와 동일(신규 0). Fly 재기동 후 정상 로그.
+**규칙(offensePresets.ts)**:
+- 1·2옵션 = 평가기 에이스 선정과 같은 범위(가용 OVR 상위 7명) 안 gravity 원값 1·2위.
+- 역할 9종(이 경기 30명 백분위): 빅 = 포스트(post)·롤((roll+finishing)/2)·스트레치((three+spacing)/2)·허브(passing), 비빅 = 플레이메이커((passing+handling)/2)·창출((creation+handling)/2)·슈터·돌파((drive+finishing)/2)·포스트 윙(post). 역할군 6종: POST(포스트빅·포스트 윙)/ROLL/HANDLER(플레이메이커·창출)/SHOOTER(슈터·스트레치)/SLASHER/HUB.
+- 복합형: 1위 축과 `BLEND_MARGIN` 8 이내 역할군을 선형 비중으로 섞음(역할군 안은 최댓값).
+- 2옵션 보정 강도 = 2옵션/1옵션 gravity 비율 < 0.75 → 0 / 0.75~0.9 → 0.5 / ≥ 0.9 → 1.
+- 특수 조합(강도만큼 섞음): PNR_DUO(핸들러+롤빅, 순서 무관) `5/4/5/4/9/6/4/7`, TWIN_TOWERS(포스트 빅 둘) `3/5/8/2/3/3/5/8`.
+- 기본 프리셋 최종값(pace/bm/offReb/insideOut/pnr/3pt/mid/rim): POST `4/4/9/2/4/5/5/8`, ROLL `5/5/6/4/8/5/4/7`, HANDLER `5/4/6/5/7/6/5/7`, SHOOTER `5/5/5/6/5/6/5/5`, SLASHER `7/5/6/3/5/4/5/8`, HUB `4/8/6/4/4/6/5/6`. 2옵션 보정: POST io−2·oreb+1·rim+1·3pt−1 / ROLL pnr+2·rim+1 / HANDLER pnr+2·mid+1 / SHOOTER io+2·3pt+2·bm+1 / SLASHER pace+1·rim+1·bm+1 / HUB bm+2·pnr−1.
+- 초안 대비 조정(A/B 후보 비교, 같은 팀·같은 시드 짝 비교): POST oreb 7→9·3pt 4→5(+1.13±0.38) / HANDLER bm 5→4·oreb 5→6·mid 6→5·rim 6→7(+1.08±0.56) / SHOOTER 초안 `6/7/3/8/5/8/5/4` → 중간값 근처(+1.60±0.86 — 초안은 중간값보다 −1.68 손해) / SLASHER oreb 5→6·io 4→3(+1.06±0.67) / HUB 표본 부족(약 200경기)으로 유지.
 
-**리그 상태**: PBL·NBA Active 연장전 off, Test League on(연장 테스트용 — P5 공개 시각 E2E 대상), 싱글 off.
+**검증**:
+- 리그 3곳(Test League·PBL 올타임, NBA Active 현역) 90팀 × 상대 29팀 = 2,610 매치업 판정: 평균 0.78ms(평가 포함). 상대가 바뀌어도 가장 흔한 결과와 1칸 이내 92%, 2칸 이상 7%(이 경기 30명 백분위 기준이라 의도된 범위).
+- A/B 시뮬(같은 로스터, 프리셋 팀 vs 중간값 팀, 라인업·로테이션은 양쪽 AI 감독 생성기, 모든 매치업 홈·원정 1,740경기 × 3리그 × 시드 2세트 = 10,440경기): 경기당 득실 Test +1.80/+1.60, PBL +1.67/+1.88, Active +2.09/+1.49(각 ±0.45), 승률 53.0~54.3%. 기준선(중간값 vs 중간값) −0.34~−0.04. 초안 프리셋은 +0.13/+1.36/+0.15였음.
+- 부작용: 프리셋 팀 3점 시도 비율 0.325 → 0.267(현역 0.367 → 0.319) — 포스트 역할군 팀이 가장 많고 엔진상 인사이드 쪽이 이득. 프리셋 팀 득점 +1.5~2점/경기(리그 득점 인플레 작음).
+- `scripts/offensePresetsScenarios.ts` 26개 전부 통과. 기존 `aiCoachPlanScenarios`·`lineupBuilderScenarios`·`rotationBuilderScenarios` 전부 통과. server tsc: 변경 파일 오류 0(기존 Bun 타입/Supabase 제네릭 오류 45건은 무관 파일).
 
-**롤백**: 7ee9c763을 revert해 푸시한 뒤 서버 배포 스크립트로 재배포(또는 Fly에서 이전 이미지 git-24ee59a1로 배포). DB는 ot_periods 0·스위치 off면 기존과 동일하게 동작하므로 되돌리지 않아도 됨.
+**롤백 방법**: 즉시 끄기 = Fly secret `AI_OFFENSE_PRESET_DISABLED=1`(라인업·로테이션 AI 감독은 유지, 공격 슬라이더는 저장값). 코드 롤백 = 위 Before 블록으로 `aiCoachPlan.ts`(planAiTeam 시그니처·compose·offense 필드·import 2줄)와 `simRunner.ts`(coachAi 인자·스위치 상수·호출 2줄) 되돌리고 `offensePresets.ts`·`scripts/offensePresetsScenarios.ts` 삭제. 클라이언트 미러 없음.
 
 ## 2026-10-26 — 멀티 경기 URL이 짧은 코드 대신 game_id(g_chi_law_2026-10-20)로 나오던 문제 (화면)
 
@@ -1789,6 +3253,37 @@ function toGames(scheduled, opts: { enforceB2BGap?: boolean } = {}): Game[] {
 - 기존 진행 중 리그(PBL) 일정은 영향 없음(생성 시점에만 적용)
 
 **롤백 방법**: 양쪽 `scheduleGenerator.ts`에서 `enforceB2BGaps` 함수·`isB2BGapSafe` import·`toGames`의 `opts` 인자/호출 블록을 지우고 v2 `return toGames(scheduled)`로 복구 → 양쪽 `leagueTimeline.ts`에서 `MAX_OVERTIME_PERIODS`·`b2bGapCache`·`isB2BGapSafe` 삭제 → `check_v2.ts`의 `isB2BGapSafe` import·`time` 필드·`b2b gap` 검사 줄 삭제. 미러 4파일은 반드시 같이 되돌릴 것.
+
+## 2026-10-27 — 모바일 목업: 리그 안 상단 바 아바타 → 내 팀 로고 (문서만, 코드 변경 없음)
+
+**배경**: 사용자 지시 "글로벌 컴포넌트 헤더 우측의 프로필 아바타는 내 팀의 로고로 변경".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` — §8-3 상단 바 우측 요소를 "내 팀 로고 28(리그 안, 탭 → 더보기/프로필 메뉴) / 아바타(리그 밖)"로, §8-2-1 구성 규칙 동일하게 수정
+- (저장소 외) 캔버스 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT — 리그 홈 ①~④·더보기 ①②·태블릿 홈·컴포넌트 시트(H2·H7·H8)·스트립 시트 재생성, 태블릿 레일 하단 아바타도 팀 로고 32. 시작 화면(H1·AuthLoggedIn·AuthTournaments)은 리그 밖이라 아바타 유지
+
+**Before**: 리그 안 상단 바 우측 = 인디고 원 "G" 아바타 28 / **After**: 내 팀 로고 원 28(BOS), aria-label "내 팀 · 프로필 메뉴"
+
+이어서 **H3 팀 컨텍스트 헤더 개정**(사용자 지시): 하단 2px 팀색 라인 폐기 → 헤더 배경 자체를 팀 `color_primary`로, 로고는 검정 35% 원 28 안 20, 부제는 가상 날짜 대신 "41–23 · 동부 2위" — 컴포넌트 시트 H3 + `PhoneRoster` 헤더 재발행(v51), §8-3·§8-2-1 갱신. 이어서 **팀 화면 탭 그룹**을 실제 `RosterTabs`(로스터·능력치·선수 기록·경기 기록·일정·재정·팀 설정, 코칭·픽 hideTabs)와 `TabBar theme`(팀색 바탕·color_text·accent 밑줄·비활성 60%)로 교체(v52), §8-5 갱신. **팀 화면 로스터 탭 보드 3장**(`TeamRoster`·`TeamRosterCols`·`TeamRosterSorted`, 캔버스 5행): sticky "선수" 136(OVR·이름·POS·나이·체력 점) + 급여·잔여·리그/포지션 레이팅(StarRating) 우선순위 열, 요약 줄(TableFoot 슬롯 정보 위로), "열" 시트, 급여 정렬+P2 열 상태 — §9-1-1 신설(`gen_roster_tab.py`, v54). 사용자 질문("이름 아래 점은 부상?")으로 체력 색 점 폐기 → 실제 `ConditionBar xs`(3칸 바) + 부상은 실제 `InjuryStatusBadge`(원 16, orange/red/blue 십자)로 교체(v56). 이어서 부상 배지(12)·TW 칩(9px)을 이름 줄에서 캡션의 체력 바 우측으로 이동·축소(v57). 폰 기본 열을 급여·키·몸무게로 축소(리그/포지션 레이팅·AAV·잔여계약·체력 수치는 폰 숨김, "열" 시트·태블릿부터 표시)(v58). 다시 사용자 지시로 **도구 줄(정렬 안내·열 버튼) 삭제, 열 숨김 폐기 → 전 열 가로 스크롤**, "열" 시트 보드 삭제(E2→우측 스크롤 상태 보드)(v59). **능력치 탭 보드 2장**(`TeamAttrs`·`TeamAttrsScrolled`): `COMPACT_ATTR_GROUPS` 6군 21열(48px) + 그룹 헤더 28 + `attrRatingColor` 15단계 + 팀 평균 행 — §9-1-2 신설(`gen_attr_tab.py`, v60).
+
+**검증**: 생성 스크립트(`gen_home.py`·`gen_components.py`·`gen_strip.py`·`gen_more.py`) 재실행 후 발행(v50). **롤백 방법**: 문서 두 줄 되돌리고 스크립트의 `logo("BOS",28,9)`를 아바타 span으로 되돌려 재발행.
+
+## 2026-10-26 — BM27 모바일 디자인 시스템 문서 신설 (`docs/ui/mobile-design-system.md`, 코드 변경 없음)
+
+**배경**: 사용자가 BM27 모바일 UI 빌드를 시작하면서 화면별 디자인 전에 공통 규칙(Design System · Guideline · Typography Hierarchy)을 먼저 고정해 달라고 요청. 폰·태블릿 전 기기 대상.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` (신규, v0.1) — 0 전제(단일 코드베이스 반응형·멀티 리그 우선·다크 전용·slate 기준·데스크톱 픽셀 변화 0) / 1 원칙 5개 / 2 기기 분류(phone-s·phone·phone-l·tablet-p·tablet-l·desktop, Tailwind 기본 브레이크포인트 유지, 주 경계 `lg`) + 검증 매트릭스 12기기 / 3 간격·그리드·안전영역(`100dvh`, `pb-safe`, 바텀 탭 56+safe)·밀도(touch 행 44·버튼 44/48) / 4 색상 의미 토큰→slate 값 + WCAG 실측 대비표(slate-500 본문 불가 등) / 5 타이포 위계 12역할×기기(폰 본문 14, 읽기 16, 입력 16, micro 10은 탭 라벨·배지만) + 한글 `keep-all`·숫자·금지 목록 / 6 모서리·선·높낮이 / 7 터치 타깃 44·제스처 허용표·상태 표현 / 8 내비(바텀 탭 5개 매핑: 홈·팀·경기·리그·더보기, 상단 바 56, 태블릿 레일 72, TabBar 가로 스크롤) / 9 패턴(표=가로 스크롤+sticky 첫 열+열 우선순위, 모달→다이얼로그/시트/페이지 자동 전환, 호버 카드 대체, 폼, 토스트 위치, 채팅 FAB 숨김, PBP 골격) / 10 공용 컴포넌트 적응표(신규 API·훅 3종) / 11 모션 시간·이징 / 12 성능·기술 13개(backdrop-blur 금지, hoverOnlyWhenSupported 등) / 13 접근성 체크리스트 / 14 결정 대기 D1~D8 + 다음 단계
+- `docs/ui/ui-index.md` — 목록에 행 추가
+- (저장소 외) 목업 아티팩트 https://claude.ai/artifact/Tdbtn72K6Go9s65UZpCvqT — 같은 날 사용자 요청으로 Design 캔버스에 아트보드 5개(파운데이션 / 폰 홈·로스터 표·필터 시트 / 태블릿 홈) 작성, `public/fonts`의 BGM Sans·HerosBadge woff2를 에셋으로 올려 실제 서체로 렌더. 같은 날 추가로 **로그인/회원가입 전 상태 아트보드 26개**(`Auth*.dc.html`, 캔버스 3~5행): `views/auth/AuthForm.tsx` 6개 모드(login·signup·verify·forgot·recoverVerify·newPassword) × 기본/입력/오류/로딩/잠김 변형 + `NicknameModal` 최초 설정/오류 + `LoginModal`(사유) 바텀 시트 + `/auth?redirect=` 초대 컨텍스트 + 로그인 완료 시작 화면 + 작은 폰 375×667 + 태블릿 820. 목업 전제: 폰은 풀스크린 페이지(카드 없음), CTA 인디고(현행 주황 그라디언트와 다름 — 결정 대기), 오류 글자 12px(현행 10px), OTP 단일 입력 56px. 같은 날 사용자 지적으로 **둥근 카드 안쪽 좌측 액센트 바 금지** 규칙 추가(§6) — 목업 4개 보드(폰 홈·태블릿 홈·순위표 시트·로그인 완료)의 팀색 3px 바·선택 행 inset 바 제거, 선택 행은 배경 틴트만. 이어서 **시작 화면 재설계**(사용자 지시): 프로필·통산 전적 타일 제거(GM 프로필 화면으로 분리 예정), 참여 중/모집 중 두 리스트만, 참가 버튼은 데스크톱 `Button variant="cta"` 주황 그라디언트(§4-1 `cta/join`, §9-0 신설) — C3·C5·C1 보드 반영. 이어서 모집 중인 리그를 **카드 → 테이블 리스트**(헤더 36/행 64, 리그·인원·액션 열, 태블릿은 형식 열 추가)로 교체(§9-0 갱신). 다시 사용자 지시로 **섹션 분리 폐기 → 상단 탭 바 "리그/토너먼트" + 전체 리그 테이블 하나**(참여 중 행은 틴트+`입장`, 정렬 참여 중→모집 중→진행 중→마감)로 C3·C5·C1 재작성, §9-0 전면 개정. 탭 명칭 "온라인 리그 / 온라인 토너먼트"로 고정. 다시 사용자 지시로 **테이블 → 카드 복귀 + 카드 하단 "세부정보" 어코디언**(키-값 행), 리스트 하단 도움말 삭제 — C3·C5·C1 반영, §9-0 재개정. 이어서 리그명 아래 캡션을 "시뮬 날짜 · 인원 · 상태"로 재정의(상태 칩·인원 블록 제거), 세부정보 7항목 고정(시즌·상태·기간·진행 시간·플레이오프·샐러리캡·부상). 최종: 이름 아래는 상태 글자만, 세부정보 위에 "시뮬레이션 날짜 | 인원" 2열 요약 행 추가. 같은 날 **온라인 토너먼트 탭 보드 C7**(`AuthTournaments.dc.html`) 추가 — 참여 중(드래프트 중·순번·타이머)·모집 중(펼침)·시즌 진행(8강·둘러보기)·종료(우승자), 세부정보는 대진·드래프트 행 포함 8항목(이후 상태 줄은 라벨만으로 정리). **닉네임 설정 필수화**(B11·B12): 나중에 버튼·드래그 핸들 제거, 저장 전폭, 문구 "정해야 시작할 수 있습니다", §9-0-1 신설. **리그 세션 홈 목업**(2행 교체): `PhoneHome.dc.html` 재작성(리그 상태 줄·내 팀 카드·순위 6행) + `PhoneHome2`(스트립 접힘, 뉴스·트랜잭션·리더) + `PhoneHome3`(내 로스터 요약·리그/내 팀 부상) 신설, `TabletHome` 2열 재작성 — `pages/MultiSeasonPage.tsx` 밴드 2~4 패널 7개와 1:1 대응, §9-0-2 신설. **수신함(채팅) 결정+목록**: 하단 탭 미추가, 상단 바 알림 종을 "채팅·알림" 수신함 아이콘으로 합침(홈 4보드 재생성), 4행에 `ChatPublic`·`ChatKeyboard`(신고·500자 경고·보내는 중/실패)·`ChatDmList`·`ChatDmThread`(연결 끊김)·`ChatNotifications` 5보드 신설, §9-6 진입점 개정 + §9-8 신설. → 사용자 지시("현행 멀티 세션 채팅 UI를 그대로 모바일에 맞춰")로 **재디자인 폐기**, `LeagueChatDock` narrow 모드·`ChatSidebar`·`ChatThread`·`ReportPopover`·`LeagueNotificationList` 마크업을 그대로 옮긴 6보드(`ChatList`·`ChatPublic`·`ChatKeyboard`·`ChatReport`·`ChatDmThread`·`ChatNotifications`)로 교체(`ChatDmList` 삭제), §9-8 전면 재작성. 생성 스크립트 `gen_home.py`/`gen_chat2.py`. **글로벌 컴포넌트 시트** `Components.dc.html`(1행, 1240×1500): 상단 헤더 8종 + 하단 탭 바 6종 실제 크기·치수, §8-2-1 신설(`gen_components.py`). 사용자 질문("현재 사이드바 아이콘 못 쓰나")으로 **탭 바·레일 아이콘을 `public/images/sidenav/*.svg` 인라인으로 교체**(home·team·schedule·standings + 더보기 신규), 활성 색을 인디고 필 → 사이드바와 같은 emerald(#00D492) 아이콘 스왑으로 변경 — 탭 바 있는 7보드 재생성, §8-2·§8-4 갱신. 사용자 재지적(순위표 6위 아래 녹색 2px 컷라인도 같은 패턴): 컷라인 전부 제거하고 **순번 색**(1~6 emerald · 7~10 amber)으로 교체 — PhoneHome·PhoneSheet·TabletHome, §6 금지 규칙을 "방향 불문 색 선 전부"로 확장. 리그 홈 간소화(사용자 지시): 최신 뉴스 = 제목+날짜 행 44, 트랜잭션 = "종류 · 요약"+날짜 행 44(칩 제거), 내 로스터 요약 = 폰에서 OVR 상위 5명 — PhoneHome2·3·TabletHome 재생성, §9-0-2 갱신. **GameDateStrip 공용 컴포넌트 시트** `StripComponent.dc.html`(1행): 데스크톱 구조 유지·폰 64/카드 128/스냅/페이드/달력 시트, 상태 7종(펼침·접힘·이벤트·플레이오프·지난 날짜·달력·태블릿), 홈 보드 스트립을 이것으로 교체(이전 "날짜별 요약 칸" 스트립 폐기), §8-3-1 신설(`gen_strip.py`). 사용자 피드백(접기·날짜 셀렉터가 첫 화면 절반을 가림): 폰 스트립에서 접기 ▲·‹ › 제거 → 좌측 **달력 아이콘 44** 하나, 가상 날짜는 **상단 바 리그명 아래 2줄째**로 이동(날짜 칩 폐기), 리그 상태 줄 우측 "30팀 · 참가 29명" 삭제 — 홈·로스터·순위표·태블릿·컴포넌트 시트 재생성, §8-3·§8-3-1·§9-0-2 갱신. 이어서 리그 홈 **내 팀 카드 삭제**(폰·태블릿), 스트립 색 한 단계 다운(바탕 slate-900 · 카드 slate-950 · 선택 slate-800 · 구분선 slate-800 · 라이브 red-900/25). 폰 홈 섹션을 **순위·리더·뉴스·트랜잭션·리그 부상 5개로 한정**(내 로스터 요약·내 팀 부상 제거), 순위 세그먼트 줄의 "가상 10/27 기준" 삭제 — 폰 ②(리더·뉴스)·③(트랜잭션·부상) 재배치, 태블릿 좌 순위+부상 / 우 리더+뉴스+트랜잭션. 리그 부상·징계도 단순 리스트(이름 | 부상명 | 기간, 행 44)로 교체. **드리프트 교정**(사용자 지적 "실제 데스크톱 UI와 괴리"): `OvrBadge`(세로 그라디언트·radius·글자 크기·텍스트 섀도·글로우)·`HomeSection`(헤더 패널 안, r8, 더보기 12px)·`Table` 글자(헤더 bold, 팀명 bold slate-300, 수치 400)·`Button` secondary 배경·`SegmentedControl` r6/4·화면 안 `TabBar` 굵기/비활성색·`Badge`/`CountBadge`·`InlineNotice`(아이콘·라운드 제거) — 캔버스 43보드 전부 재발행, §10-1 "실제 값 vs 폰 값" 표 신설. 사용자 제안(선택기는 폰에서 공간 절약이 중요): 순위 동/서부 세그먼트 줄·리더 카테고리 칩 줄 제거 → **패널 헤더 안 Dropdown 트리거**, 열림 상태(액션 시트) 보드 `PhoneHome4.dc.html` 추가, §9-0-2 갱신. 사용자 질문("더보기 누르면?")으로 **더보기 탭 화면** `PhoneMore.dc.html` 신설(프로필 카드 + 프런트오피스/리그/앱 3그룹, sidenav 아이콘 원본 3종 + 신규 7종), §8-2-2 신설(`gen_more.py`). 사용자 지시로 **리스트형 + 데스크톱 사이드바와 동일 구조**로 개정: 그룹 카드 폐기, 사이드바 14항목 + 프로필 드롭다운 4항목을 같은 순서·구분선으로, sidenav 아이콘 원본 14종 인라인, `PhoneMore2`(스크롤 하단) 추가. 발행 시 페이지 저장본(1793004494)과 충돌 → 최신 인덱스를 읽어 병합 후 발행
+
+**Before**: 모바일 전용 디자인 규칙 문서 없음. `docs/ui/design-system.md`는 데스크톱(1280) 기준이고 색 표기도 구버전(slate-950을 `#0f172a`로 적는 등)이 남아 있음.
+
+**After**: 위 문서가 `lg` 미만 화면의 공통 기준. 코드·Tailwind 설정·CSS는 변경하지 않았음(제안된 `hoverOnlyWhenSupported`·`viewport-fit=cover`·`pb-safe` 유틸리티·`h-dvh` 교체는 D1~D8 확정 후 셸 구현 단계에서 적용).
+
+**검증**: 문서만 추가. 조사 수치는 리포 grep(slate 5,807 vs zinc 8 · 반응형 접두사 209 · `text-xs` 1,063/`text-sm` 989 · `rounded-lg` 286)과 대비 계산 스크립트(WCAG 상대 휘도 공식)로 산출.
+
+**롤백 방법**: 두 파일의 추가분 삭제(`git checkout -- docs/ui/ui-index.md`, `git rm docs/ui/mobile-design-system.md`).
 
 ## 2026-10-25 — 로스터 변경마다 전원이 선수 정보를 다시 받던 요청 폭주 완화 (leagueRaw* 방 단위 쿼리 + 팀 갱신 묶기)
 

@@ -55,7 +55,8 @@ function salaryAtCol(p: Player, colIndex: number): number {
 // Cap% 컬러 스케일 — 캡 바 임계값(플로어/캡/사치세/에이프런)과 동일한 팔레트를 재사용해
 // 계약 규모(미니멈~슈퍼맥스)를 한눈에 구분: 회색(미니멈) → 초록(롤플레이어/MLE) →
 // 주황(우수한 선발) → 오렌지(맥스 근처) → 빨강(슈퍼맥스급 캡 점유율).
-function capPctColor(pct: number): string {
+// [2026-10-27] 폰 재정 탭(PhoneTeamPayroll.tsx)과 공유.
+export function capPctColor(pct: number): string {
     if (pct < 5) return '#64748b';
     if (pct < 15) return '#10b981';
     if (pct < 25) return '#f59e0b';

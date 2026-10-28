@@ -28,6 +28,8 @@ interface PaginationProps {
     /** 좌측 "총 N명 중 a–b"의 단위 */
     unit?: string;
     className?: string;
+    /** [2026-10-28] 폰 — 한 줄(범위 텍스트 · ‹ · 번호 최대 5 · ›), 페이지 당 셀렉트 없음(필터 시트에서) */
+    compact?: boolean;
 }
 
 /**
@@ -37,11 +39,33 @@ interface PaginationProps {
  */
 export const Pagination: React.FC<PaginationProps> = ({
     page, pageSize, totalItems, onPageChange, onPageSizeChange,
-    pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS, unit = '명', className = '',
+    pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS, unit = '명', className = '', compact = false,
 }) => {
     const totalPages = Math.ceil(totalItems / pageSize);
     const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
     const to = Math.min(page * pageSize, totalItems);
+
+    if (compact) {
+        // 번호는 최대 5칸: 4페이지 이하 전부 / 앞쪽 1 2 3 ·· N / 그 외 1 ·· p ·· N
+        const nums: (number | '...')[] = totalPages <= 4
+            ? Array.from({ length: totalPages }, (_, i) => i + 1)
+            : page <= 3 ? [1, 2, 3, '...', totalPages]
+            : page >= totalPages - 2 ? [1, '...', totalPages - 2, totalPages - 1, totalPages]
+            : [1, '...', page, '...', totalPages];
+        return (
+            <div className={`flex items-center gap-1.5 px-4 h-12 bg-slate-950 border-t border-slate-800 flex-shrink-0 ${className}`}>
+                <div className="flex-1 min-w-0 text-sm font-semibold text-slate-500 tabular-nums truncate">총 {totalItems}{unit} 중 {from}–{to}</div>
+                <IconButton label="이전 페이지" size="sm" tone="subtle" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}><ChevronLeft size={14} /></IconButton>
+                {nums.map((p, idx) =>
+                    p === '...'
+                        ? <span key={`e${idx}`} className="w-7 text-center text-sm text-slate-600 font-semibold select-none">··</span>
+                        : <button key={p} type="button" aria-current={page === p ? 'page' : undefined} onClick={() => onPageChange(p)}
+                            className={`w-7 h-7 text-sm font-semibold rounded-lg tabular-nums ${page === p ? 'bg-indigo-600 text-white' : 'text-indigo-400 active:bg-slate-800'}`}>{p}</button>
+                )}
+                <IconButton label="다음 페이지" size="sm" tone="subtle" onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page >= totalPages}><ChevronRight size={14} /></IconButton>
+            </div>
+        );
+    }
 
     return (
         <div className={`relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50 ${className}`}>

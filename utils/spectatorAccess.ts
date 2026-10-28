@@ -27,6 +27,7 @@ const ALLOWED_SEGMENTS = new Set([
     'compare',     // 선수 비교
     'game',        // 경기 상세(일정에서 진입)
     'player',      // 선수 상세(로스터·리더보드에서 진입)
+    'more',        // [2026-10-27] 모바일 셸 더보기 탭(메뉴 리스트, 쓰기 항목은 화면이 isSpectator로 숨김)
 ]);
 
 /**

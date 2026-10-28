@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Spinner } from '../../../components/common/Spinner';
 import { Dropdown, DropdownButton } from '../../../components/common/Dropdown';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 import { PercentileCard } from '../../../components/player/PercentileCard';
 import { useLeaderboardData, type SeasonType } from '../../../hooks/useLeaderboardData';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
@@ -94,6 +95,8 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
         cardTeams, schedule, NO_FILTERS, SORT, 'Players', NO_STRINGS, NO_STRINGS, '', 'Traditional', seasonType, false, teamAdvanced,
     );
     const card = useMemo(() => buildPercentileCard(sortedData as PercentileRow[], playerId), [sortedData, playerId]);
+    // [2026-10-28] 폰: 시즌 · 시즌 구분 드롭다운 폭 128 → 104(제목과 한 줄에 들어가게, §9-2)
+    const isPhone = useIsPhone();
 
     if (advPending || (isPlayoff && playoffPending)) return <Spinner variant="section" />;
 
@@ -110,7 +113,7 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
                         onOpenChange={setSeasonMenuOpen}
                         align="left"
                         width="w-36"
-                        trigger={<DropdownButton isOpen={seasonMenuOpen} label={selectedSeason.label} className="h-8 w-32 !px-3 !py-0" />}
+                        trigger={<DropdownButton isOpen={seasonMenuOpen} label={selectedSeason.label} className={`h-8 ${isPhone ? 'w-[104px]' : 'w-32'} !px-3 !py-0`} />}
                         items={seasonOptions.map(o => ({
                             id: String(o.seasonNumber),
                             label: <span className="truncate">{o.label}</span>,
@@ -124,7 +127,7 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
                             onOpenChange={setMenuOpen}
                             align="left"
                             width="w-36"
-                            trigger={<DropdownButton isOpen={menuOpen} label={currentLabel} className="h-8 w-32 !px-3 !py-0" />}
+                            trigger={<DropdownButton isOpen={menuOpen} label={currentLabel} className={`h-8 ${isPhone ? 'w-[104px]' : 'w-32'} !px-3 !py-0`} />}
                             items={SEASON_TYPE_OPTIONS.map(o => ({
                                 id: o.id,
                                 label: <span className="truncate">{o.label}</span>,

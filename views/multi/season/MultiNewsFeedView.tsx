@@ -32,6 +32,8 @@ import { formatRelativeTime } from '../../../utils/formatRelativeTime';
 import { IconButton } from '../../../components/common/IconButton';
 import { Button } from '../../../components/common/Button';
 import { SegmentedControl } from '../../../components/common/SegmentedControl';
+import { useViewportClass } from '../../../hooks/useViewportClass';
+import { PhoneNewsFeed } from './PhoneNewsFeed';
 
 // [2026-09-01] 좌측 리스트 헤더 아래 타입 필터 행 — 메세지 타입별로 다중 선택 필터링.
 // 빈 배열 = 전체 타입(팀 필터와 동일한 관례). game_result를 선택해도 useLeagueNewsFeed의
@@ -130,6 +132,8 @@ const MultiNewsFeedView: React.FC = () => {
     // selectedTypes는 요청 범위 밖이라 그대로 로컬 state 유지). 필터 클릭마다 히스토리
     // 엔트리가 쌓이지 않도록 { replace: true }로 갱신.
     const [searchParams, setSearchParams] = useSearchParams();
+    // [2026-10-27] 폰(<768)은 목록/레터를 두 화면(push)으로 — 렌더는 PhoneNewsFeed, 데이터·필터·레터 조립은 아래 그대로 공유.
+    const isPhone = useViewportClass() === 'phone';
     const updateParams = (updates: Record<string, string | null>) => {
         setSearchParams(prev => {
             const next = new URLSearchParams(prev);
@@ -246,16 +250,22 @@ const MultiNewsFeedView: React.FC = () => {
     // 폴백된다(별도 리셋 이펙트 불필요, 원본과 동일한 동작). [2026-09-03] 검색어가 있을 때
     // 우측 디테일도 검색 결과 기준으로 폴백되도록 stories 대신 filteredStories 사용.
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-    const selectedEvent = filteredStories.find(e => e.id === selectedEventId) ?? filteredStories[0] ?? null;
+    // 폰: 선택 = URL `?story=` 하나뿐(목록 화면엔 선택이 없고, 파라미터가 있으면 레터 상세 화면). 첫 항목 폴백 없음.
+    const storyParam = searchParams.get('story');
+    const selectedEvent = isPhone
+        ? (storyParam ? stories.find(e => e.id === storyParam) ?? null : null)
+        : (filteredStories.find(e => e.id === selectedEventId) ?? filteredStories[0] ?? null);
 
     // [2026-10-14] 딥링크 `?story=<id>` — 홈 "리그 최신 뉴스"에서 특정 뉴스를 클릭하면 그 뉴스를 선택하고 좌측 목록을 거기로
     // 스크롤한다(이전엔 뉴스 화면으로 이동만 하고 첫 번째 뉴스가 선택됐음). 로드된 페이지에 없으면 다음 페이지를 더 받아 보고
     // (최대 STORY_DEEPLINK_MAX_SCAN건), 찾았거나 포기하면 파라미터를 지워 필터 조작 때 다시 튀지 않게 한다.
-    const storyParam = searchParams.get('story');
+    // [2026-10-27] 폰은 `?story=`가 곧 "레터 상세 열림" 상태라 찾았을 때 파라미터를 지우지 않는다(뒤로 = 파라미터 제거/히스토리 back).
+    // 못 찾으면 데스크톱과 같이 뒷페이지를 더 받아 보고, 포기하면 파라미터를 지워 목록으로.
     useEffect(() => {
         if (!storyParam || isLoading) return;
         const found = stories.find(e => e.id === storyParam);
         if (found) {
+            if (isPhone) return;
             setSelectedEventId(found.id);
             requestAnimationFrame(() => document.getElementById(`news-story-${found.id}`)?.scrollIntoView({ block: 'center' }));
             updateParams({ story: null });
@@ -339,6 +349,78 @@ const MultiNewsFeedView: React.FC = () => {
     // 동일하게 기본(올스타) 탭으로 이동.
     const openAllStar = (view?: string) => navigate(`/multi/leagues/${leagueId}/season/allstar${view ? `?view=${view}` : ''}`);
     const openDraftResult = () => navigate(`/multi/leagues/${leagueId}/season/draft-result`);
+
+    if (isPhone) {
+        // 목록 → 상세는 히스토리 push(`?story=`), 상세의 뒤로는 history back(직전이 이 앱 화면일 때) 또는 파라미터 제거.
+        const openStory = (id: string) => {
+            const next = new URLSearchParams(searchParams);
+            next.set('story', id);
+            navigate({ search: `?${next.toString()}` });
+        };
+        const canGoBack = typeof window !== 'undefined' && ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+        const back = () => {
+            if (storyParam) {
+                if (canGoBack) navigate(-1);
+                else updateParams({ story: null });
+                return;
+            }
+            if (canGoBack) navigate(-1);
+            else navigate(`/multi/leagues/${leagueId}/season`);
+        };
+        const detailOpen = !!storyParam;
+        const sheetFilterActive = selectedTeams.length > 0 || selectedTypes.length > 0 || bigNewsOnly || sortOrder !== 'latest';
+        const resetFilters = () => {
+            setSelectedTeams([]);
+            setSelectedTypes([]);
+            setBigNewsOnly(false);
+            setSortOrder('latest');
+        };
+        return (
+            <PhoneNewsFeed
+                detail={detailOpen && selectedEvent ? (
+                    <StoryCard
+                        event={selectedEvent} teamBySlug={teamBySlug} playerCardMap={playerCardMap}
+                        roomId={room?.id}
+                        onOpenGame={openGame} onPlayerClick={openPlayer} onOpenTeam={openTeam}
+                        onOpenAllStar={openAllStar} onOpenDraftResult={openDraftResult}
+                    />
+                ) : null}
+                detailLoading={detailOpen && !selectedEvent}
+                onBack={back}
+                onOpenStory={openStory}
+                isLoading={isLoading}
+                stories={filteredStories}
+                hasMore={hasMore}
+                isFetchingNextPage={isFetchingNextPage}
+                fetchNextPage={() => fetchNextPage()}
+                hasActiveFilter={hasActiveFilter}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                dateLabel={dateLabel}
+                isDefaultToday={isDefaultToday}
+                shiftDateRange={shiftDateRange}
+                resetToToday={resetToToday}
+                simDateFrom={simDateFrom}
+                simDateTo={simDateTo}
+                setSimDateRange={setSimDateRange}
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+                bigNewsOnly={bigNewsOnly}
+                setBigNewsOnly={setBigNewsOnly}
+                teams={sortedTeams}
+                selectedTeams={selectedTeams}
+                setSelectedTeams={setSelectedTeams}
+                typeOptions={NEWS_TYPE_FILTER_OPTIONS}
+                selectedTypes={selectedTypes}
+                toggleTypeGroup={toggleTypeGroup}
+                resetFilters={resetFilters}
+                sheetFilterActive={sheetFilterActive}
+                notifScope={notifScope}
+                setNotifScope={(value) => { setLeagueNotificationScope(value); setNotifScope(value); }}
+                formatSimDateShort={formatSimDateShort}
+            />
+        );
+    }
 
     return (
         <div className="h-full flex flex-col overflow-hidden text-slate-200 pretendard">

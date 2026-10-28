@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { CountBadge } from './CountBadge';
 import { StatusDot } from './StatusDot';
 import type { InlineNoticeTone } from './InlineNotice';
@@ -23,12 +23,26 @@ interface TabBarProps<T extends string> {
     bgClassName?: string;
     /** [2026-10-23] 탭 버튼 정렬 — 기본 start(좌측). center면 탭 묶음을 바 가운데에 둔다(라이브 경기 화면). rightSlot은 그대로 우측 끝 */
     align?: 'start' | 'center';
+    /** [2026-10-27] 폰(<768) 치수 — h-11 px-4 gap-5, 넘치면 가로 스크롤(스크롤바 숨김). 데스크톱 기본값 불변(§8-5). */
+    compact?: boolean;
 }
 
-export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSlot, theme, bgClassName, align = 'start' }: TabBarProps<T>) {
+export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSlot, theme, bgClassName, align = 'start', compact = false }: TabBarProps<T>) {
+    // [2026-10-28] compact(폰 가로 스크롤) — 활성 탭이 보이는 범위 밖이면 그 탭까지 가로로만 스크롤(세로 스크롤 영향 없음)
+    const barRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!compact) return;
+        const bar = barRef.current;
+        const el = bar?.querySelector<HTMLElement>('[data-active="true"]');
+        if (!bar || !el) return;
+        const left = el.offsetLeft - 16, right = el.offsetLeft + el.offsetWidth + 16;
+        if (left < bar.scrollLeft) bar.scrollTo({ left, behavior: 'smooth' });
+        else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollTo({ left: right - bar.clientWidth, behavior: 'smooth' });
+    }, [compact, activeTab]);
     return (
         <div
-            className={`px-8 border-b flex items-center gap-8 h-14 flex-shrink-0 ${align === 'center' ? 'justify-center relative' : ''} ${theme ? 'border-black/20' : `border-slate-800 ${bgClassName ?? 'bg-slate-950'}`}`}
+            ref={barRef}
+            className={`${compact ? 'px-4 gap-5 h-11 overflow-x-auto [scrollbar-width:none]' : 'px-8 gap-8 h-14'} border-b flex items-center flex-shrink-0 ${align === 'center' ? 'justify-center relative' : ''} ${theme ? 'border-black/20' : `border-slate-800 ${bgClassName ?? 'bg-slate-950'}`}`}
             style={theme ? { backgroundColor: theme.bg } : undefined}
         >
             {tabs.map(t => {
@@ -36,8 +50,9 @@ export function TabBar<T extends string>({ tabs, activeTab, onTabChange, rightSl
                 return (
                     <button
                         key={t.id}
+                        data-active={isActive ? 'true' : undefined}
                         onClick={() => onTabChange(t.id)}
-                        className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight text-sm ko-normal ${
+                        className={`flex items-center transition-all h-full border-b-2 font-black tracking-tight text-sm ko-normal ${compact ? 'shrink-0 whitespace-nowrap' : ''} ${
                             theme
                                 ? isActive ? '' : 'hover:opacity-100'
                                 : isActive ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'

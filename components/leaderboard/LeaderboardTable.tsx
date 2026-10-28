@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Player } from '../../types';
+import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableGroupHeaderCell } from '../common/Table';
@@ -9,6 +9,8 @@ import { getHeatmapStyle } from '../../utils/heatmapUtils';
 import { PlayerHoverCard } from '../common/PlayerHoverCard';
 import { TeamHover } from '../common/TeamHover';
 import { TableEmptyRow } from '../common/EmptyState';
+import { TeamMark } from '../common/TeamMark';
+import { useIsPhone } from '../../hooks/useViewportClass';
 
 interface LeaderboardTableProps {
     data: any[];
@@ -56,7 +58,20 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
     // Filter columns based on category
     // Common columns are always shown.
-    const visibleColumns = allColumns.filter(c => c.category === 'Common' || c.category === statCategory);
+    // [2026-10-28] 폰(<768, docs/ui/mobile-design-system.md §9-1-12): 고정 열 5개(#·PLAYER·TEAM·POS·OVR = 422px)를 가상 열 '__phone' 하나(168/160)로
+    // 압축 — 순위 색 · 이름 + "팀 · POS" 캡션(팀 모드: 순위 · 로고 · 팀명). OVR은 별도 열. 나머지 열·값·히트맵은 데스크톱 코드 그대로.
+    const phone = useIsPhone();
+    // [2026-10-28 개정] OVR은 가상 열에 합치지 않고 데스크톱처럼 별도 정렬 열(고정 해제)로 바로 뒤에 둔다 — OVR 기준 정렬·조회 유지(사용자 지시).
+    // 순위 칸은 3자리(401~)까지 들어가도록 28px.
+    const PHONE_COL: ColumnDef = { key: '__phone', label: mode === 'Players' ? '선수' : '팀', width: 160, stickyLeft: 0, stickyShadow: true, category: 'Common' };
+    const ovrCol = allColumns.find(c => c.key === 'ovr');
+    const visibleColumns = phone
+        ? [
+            PHONE_COL,
+            ...(mode === 'Players' && ovrCol ? [{ ...ovrCol, stickyLeft: undefined, stickyShadow: undefined }] : []),
+            ...allColumns.filter(c => c.stickyLeft === undefined && (c.category === 'Common' || c.category === statCategory)),
+        ]
+        : allColumns.filter(c => c.category === 'Common' || c.category === statCategory);
 
     // Attributes / Defense 탭: 2행 그룹 헤더 데이터 생성
     // row1 — non-grouped cols: rowSpan=2 / grouped cols: 그룹 레이블(colSpan)
@@ -87,8 +102,8 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             key={col.key}
             rowSpan={extra?.rowSpan}
             {...stickyProps(col)}
-            align={col.key === 'name' ? 'left' : 'center'}
-            className={`${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+            align={col.key === 'name' || col.key === '__phone' ? 'left' : 'center'}
+            className={`${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : col.key === '__phone' ? 'pl-3' : ''}`}
             sortable={col.sortable}
             onSort={() => col.sortable && onSort(col.key)}
             sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
@@ -152,11 +167,43 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                     const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
 
                     return (
-                        <TableRow key={mode === 'Players' ? item.id : item.id} className={mode === 'Players' ? 'h-10' : 'h-11'}>
+                        <TableRow key={mode === 'Players' ? item.id : item.id} className={mode === 'Players' ? 'h-10' : 'h-11'} onClick={phone ? () => onRowClick(item) : undefined}>
                             {visibleColumns.map((col) => {
                                 // --- Data Access ---
                                 let cellContent: React.ReactNode = null;
                                 let bgStyle = undefined;
+
+                                // 폰 가상 고정 열 — 순위·OVR·이름·팀/POS(선수) / 순위·로고·팀명(팀)
+                                if (col.key === '__phone') {
+                                    const sticky = stickyProps(col);
+                                    // 순위는 데스크톱 # 열처럼 가운데 정렬(우측 정렬은 한 자리가 이름에 붙어 보여 2026-10-28 사용자 지적)
+                                    const rankCls = `w-7 shrink-0 text-center text-[13px] font-bold tabular-nums ${rankColor}`;
+                                    return (
+                                        <TableCell key={col.key} stickyLeft={sticky.stickyLeft} width={sticky.width} style={sticky.style} align="left" className="pl-3 pr-2">
+                                            {mode === 'Players' ? (() => {
+                                                const p = item as Player & { teamAbbr?: string | null };
+                                                return (
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className={rankCls}>{rank}</span>
+                                                        <span className="flex-1 min-w-0 flex flex-col">
+                                                            <span className="text-sm leading-[18px] font-semibold text-slate-200 truncate">{p.name}</span>
+                                                            <span className="text-[11px] leading-[13px] font-medium text-white/70 truncate">{p.teamAbbr ?? ''} · {p.position}</span>
+                                                        </span>
+                                                    </span>
+                                                );
+                                            })() : (() => {
+                                                const t = item as Team;
+                                                return (
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className={rankCls}>{rank}</span>
+                                                        <TeamMark variant="logo" teamId={t.id} teamName={t.abbr ?? t.name} size="sm" />
+                                                        <span className="flex-1 min-w-0 text-sm font-semibold text-slate-200 truncate">{t.name}</span>
+                                                    </span>
+                                                );
+                                            })()}
+                                        </TableCell>
+                                    );
+                                }
 
                                 if (mode === 'Players') {
                                     const p = item as Player & {

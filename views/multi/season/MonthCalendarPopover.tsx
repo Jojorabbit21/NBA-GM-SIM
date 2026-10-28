@@ -18,10 +18,12 @@ export interface MonthCalendarPopoverProps {
     selectableDates: Set<string>;
     activeDateKey: string;
     onSelect: (dateKey: string) => void;
+    /** [2026-10-27] true면 fixed 좌표 대신 흐름 안에 그린다(모바일 바텀 시트 안). position은 무시. */
+    inline?: boolean;
 }
 
 export const MonthCalendarPopover = React.forwardRef<HTMLDivElement, MonthCalendarPopoverProps>(
-    ({ position, viewYM, onViewYMChange, selectableDates, activeDateKey, onSelect }, ref) => {
+    ({ position, viewYM, onViewYMChange, selectableDates, activeDateKey, onSelect, inline = false }, ref) => {
         const [vy, vm] = viewYM; // vm: 0-indexed
         const firstWeekday = new Date(vy, vm, 1).getDay();
         const daysInMonth = new Date(vy, vm + 1, 0).getDate();
@@ -34,8 +36,10 @@ export const MonthCalendarPopover = React.forwardRef<HTMLDivElement, MonthCalend
         return (
             <div
                 ref={ref}
-                className="fixed z-popover w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3"
-                style={{ left: position.x, top: position.y }}
+                className={inline
+                    ? 'w-full bg-slate-900 border-t border-slate-700 shadow-2xl p-3'
+                    : 'fixed z-popover w-72 bg-slate-900 border border-slate-700 shadow-2xl p-3'}
+                style={inline ? undefined : { left: position.x, top: position.y }}
             >
                 <div className="flex items-center justify-between mb-2">
                     <IconButton

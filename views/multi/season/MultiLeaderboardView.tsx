@@ -155,6 +155,7 @@ const MultiLeaderboardView: React.FC = () => {
             refreshing={fetchRefreshing}
             enableHoverCard
             includeZeroGamePlayers
+            onBack={() => { if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1); else navigate(`/multi/leagues/${leagueId}/season/standings`); }}
             teamAdvancedRegular={teamAdvancedRegular}
             teamAdvancedPlayoff={teamAdvancedPlayoff}
         />

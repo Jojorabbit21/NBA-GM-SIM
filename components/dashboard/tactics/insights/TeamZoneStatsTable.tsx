@@ -5,6 +5,7 @@ import { ZONE_CONFIG, ZONE_AVG } from '../../../../utils/courtZones';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../common/Table';
 import { PlayerNameLink } from '../../../common/PlayerNameLink';
 import { InsightCard } from './InsightCard';
+import { useIsPhone } from '../../../../hooks/useViewportClass';
 
 // TeamZoneChart.tsx의 ZONE_STAT_MAP과 동일(그쪽은 export 안 되어 있어 로컬로 재정의) — 10존
 // 각각의 원시 zone_*_m/zone_*_a 스탯 키. ZONE_CONFIG 선언 순서 그대로 테이블 행 순서로 사용.
@@ -91,11 +92,15 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string;
         });
     }, [roster]);
 
+    // [2026-10-28] 폰(<768, §9-1-11 X6): 7열 가로 스크롤 — "존" 열만 sticky(배경은 PlayerStatsTable과 같은 혼합색)
+    const phone = useIsPhone();
+    const stickyZone = (odd: boolean) => (phone ? `sticky left-0 z-30 ${odd ? 'bg-[#121a2d]' : 'bg-[#070d1f]'}` : '');
+
     return (
         <InsightCard title="존별 효율 · 리더">
             <Table variant="bare" dividers={false}>
                 <TableHead>
-                    <TableHeaderCell align="left">존</TableHeaderCell>
+                    <TableHeaderCell align="left" stickyLeft={phone ? 0 : undefined}>존</TableHeaderCell>
                     <TableHeaderCell align="left">성공/시도</TableHeaderCell>
                     <TableHeaderCell align="left">FG%</TableHeaderCell>
                     <TableHeaderCell align="left" colSpan={2}>성공개수 리더</TableHeaderCell>
@@ -107,7 +112,7 @@ export const TeamZoneStatsTable: React.FC<{ roster: Player[]; teamAbbr?: string;
                         const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
                         return (
                             <TableRow key={row.key} className={i % 2 === 1 ? 'bg-slate-700/25' : ''}>
-                                <TableCell align="left" className="text-sm text-slate-400">{row.label}</TableCell>
+                                <TableCell align="left" className={`text-sm text-slate-400 ${stickyZone(i % 2 === 1)}`}>{row.label}</TableCell>
                                 <TableCell align="left" className="text-sm text-white tabular-nums">{row.m}/{row.a}</TableCell>
                                 <TableCell align="left" className="text-sm text-white tabular-nums">
                                     {(row.pct * 100).toFixed(1)}%

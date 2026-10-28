@@ -23,6 +23,14 @@ import { getReadableTextColor } from '../utils/colorContrast';
 import { IconButton } from '../components/common/IconButton';
 import { TEAM_DATA } from '../data/teamData';
 import type { TeamAdvancedStatsWithRank } from '../hooks/useTeamSeasonAdvancedStats';
+import { useViewportClass } from '../hooks/useViewportClass';
+import { ActionSheet } from '../components/mobile/ActionSheet';
+import { PhoneRosterOverview, PhoneRosterSummary } from '../components/roster/PhoneRosterOverview';
+import { PhoneRosterAttributes } from '../components/roster/PhoneRosterAttributes';
+import { PhoneRosterStats } from '../components/roster/PhoneRosterStats';
+import { PhoneTeamGameLog } from '../components/roster/PhoneTeamGameLog';
+import { PhoneTeamSchedule } from '../components/roster/PhoneTeamSchedule';
+import { PhoneTeamPayroll } from '../components/roster/PhoneTeamPayroll';
 
 interface RosterViewProps {
   allTeams: Team[];
@@ -42,6 +50,8 @@ interface RosterViewProps {
   userNickname?: string;
   /** teamId → 담당 GM 닉네임. AI팀은 null/미포함. 지정 시 이 맵을 우선 사용(멀티플레이어) — 미지정이면 내 팀에 한해 userNickname 표시(싱글플레이어). */
   teamNicknames?: Record<string, string | null>;
+  /** 헤더 우측 영역을 직접 그린다 — teamId에 대해 null이 아닌 값을 돌려주면 위 "GM : 닉네임" 대신 그 노드를 표시(멀티플레이어 AI 팀 프런트). */
+  renderTeamFront?: (teamId: string) => React.ReactNode;
   hideTabs?: RosterTab[];
   onTabChange?: (tab: RosterTab) => void;
   /** 시뮬레이션 상의 현재 날짜(YYYY-MM-DD) — "일정" 탭 캘린더의 오늘 강조 기준 */
@@ -76,11 +86,13 @@ interface RosterViewProps {
   showTwoWaySlots?: boolean;
   /** [2026-10-17] 멀티 전용 — 로스터 탭 "체력" 열 데이터(RosterOverviewGrid.playerConditions). 미전달 시 열 없음(싱글). */
   playerConditions?: Map<string, number | null>;
+  /** [2026-10-27] 폰 팀색 헤더 우측 액션(검색·수신함) — 멀티는 MobileHeaderActions를 넘긴다(RosterView는 리그 컨텍스트를 모름). */
+  phoneHeaderActions?: React.ReactNode;
 }
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks', 'settings'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots, playerConditions }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, renderTeamFront, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots, playerConditions, phoneHeaderActions }) => {
   // 탭 상태를 URL 쿼리 파라미터(?tab=)로 관리 — 새로고침/북마크/공유 링크에서도 마지막으로
   // 보던 탭이 유지된다. 탭 전환은 히스토리를 계속 쌓지 않고 현재 항목만 갱신(replace) —
   // MultiLeaderboardView의 필터 상태 URL 동기화와 동일한 방침.
@@ -130,6 +142,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   }, [initialTeamId]);
 
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  // [2026-10-27] 모바일 팀 화면 — 폰(<768)은 아래 phone 분기(팀색 H3 헤더 + compact 탭 + 폰 표). 데스크톱 렌더 불변.
+  const isPhone = useViewportClass() === 'phone';
+  const [teamSheetOpen, setTeamSheetOpen] = useState(false);
 
   // [2026-10-12] ↑/↓ 방향키로 이전/다음 팀 이동(사용자 요청). stepTeam은 렌더마다 새로 만들어지므로
   // ref로 최신 함수를 들고 리스너는 한 번만 등록. 입력 요소에 포커스가 있거나(검색창 등) 팀 드롭다운이
@@ -258,8 +273,208 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const gmNickname = teamNicknames
     ? teamNicknames[selectedTeam?.id ?? ''] ?? null
     : (isMyTeam ? (userNickname ?? null) : null);
+  const teamFront = renderTeamFront && selectedTeam ? renderTeamFront(selectedTeam.id) : null;
+
+  // [2026-10-27] 탭 콘텐츠 — 데스크톱/폰 두 렌더가 공유(폰 1차는 overview만 전용 표, 나머지는 그대로).
+  const renderTabContent = () => {
+    if (!selectedTeam) return null;
+    return (
+      <>
+          {tab === 'overview' && (
+              <RosterOverviewGrid
+                  team={selectedTeam}
+                  allTeams={allTeams}
+                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
+                  onReleasePlayer={isMyTeam && onReleasePlayer ? (p) => onReleasePlayer(p, selectedTeam.id) : undefined}
+                  releasingId={releasingId}
+                  maxRosterSize={maxRosterSize}
+                  twoWaySlots={twoWaySlots}
+                  showTwoWaySlots={showTwoWaySlots}
+                  playerConditions={playerConditions}
+              />
+          )}
+          {tab === 'attributes' && (
+              <RosterGrid
+                  team={selectedTeam}
+                  tab="roster"
+                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
+              />
+          )}
+          {tab === 'stats' && (
+              <RosterStatsStack
+                  team={selectedTeam}
+                  schedule={schedule}
+                  onPlayerClick={onViewPlayer}
+                  enableHoverCard={enableHoverCard}
+                  teamAdvanced={advancedStatsByTeam}
+              />
+          )}
+          {tab === 'records' && (onViewGameResult || onScoreClick) && (
+              <TeamGameLog
+                  team={selectedTeam}
+                  schedule={schedule}
+                  allTeams={allTeams}
+                  onViewGameResult={onViewGameResult ?? (() => {})}
+                  onScoreClick={onScoreClick}
+                  userId={userId}
+                  onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
+              />
+          )}
+          {tab === 'schedule' && (
+              <TeamScheduleCalendar
+                  team={selectedTeam}
+                  schedule={schedule}
+                  allTeams={allTeams}
+                  onViewGameResult={onViewGameResult}
+                  onScoreClick={onScoreClick}
+                  userId={userId}
+                  currentSimDate={currentSimDate}
+                  onPlayerClick={onViewPlayer}
+                  onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
+                  enableHoverCard={enableHoverCard}
+              />
+          )}
+          {tab === 'finance' && capSettings && (
+              <TeamPayrollTable
+                  team={selectedTeam}
+                  capSettings={capSettings}
+                  baseSeasonYear={baseSeasonYear ?? new Date().getFullYear()}
+                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                  enableHoverCard={enableHoverCard}
+              />
+          )}
+          {tab === 'coaching' && (
+              <div className="h-full overflow-y-auto custom-scrollbar">
+                  {/* GM */}
+                  <GMProfileCard
+                      gmProfile={leagueGMProfiles?.[selectedTeam.id]}
+                      onGMClick={() => onGMClick?.(selectedTeam.id)}
+                  />
+
+                  {/* Coach */}
+                  <HeadCoachTable
+                      coach={headCoach}
+                      onCoachClick={() => onCoachClick?.(selectedTeam.id)}
+                  />
+              </div>
+          )}
+          {tab === 'draftPicks' && (
+              <div className="h-full overflow-y-auto custom-scrollbar">
+                  <DraftPicksPanel teamId={selectedTeam.id} leaguePickAssets={leaguePickAssets} />
+              </div>
+          )}
+          {tab === 'settings' && isMyTeam && renderTeamSettingsPanel && (
+              <div className="h-full overflow-y-auto custom-scrollbar">
+                  {renderTeamSettingsPanel()}
+              </div>
+          )}
+      </>
+    );
+  };
 
   if (!selectedTeam) return null;
+
+  if (isPhone) {
+    // §8-3 H3: 상단 바(안전영역 포함) 배경 = 팀 color_primary, 구분선 없음. 좌 로고 = 검정 35% 원 28 안에 로고 20(밝은 팀색이면 흰 35%).
+    // 제목 2줄 = 팀명 18/700 + "W–L · 동부 N위" 12(80%). 제목 탭 = 팀 선택 바텀 시트(데스크톱 드롭다운 대체). 우측 ‹ › = 이전/다음 팀.
+    const headerText = theme.text;
+    // 글자색이 어두우면(밝은 팀색) 로고 원을 흰 35%로 — 휘도로 판정(#RRGGBB가 아니면 어두운 배경으로 간주)
+    const hex = /^#([0-9a-f]{6})$/i.exec(headerText.trim())?.[1];
+    const lum = hex ? (0.2126 * parseInt(hex.slice(0, 2), 16) + 0.7152 * parseInt(hex.slice(2, 4), 16) + 0.0722 * parseInt(hex.slice(4, 6), 16)) : 255;
+    const darkText = lum < 128;
+    const circleBg = darkText ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+    const teamSheetItems = allTeams.map(t => ({
+      value: t.id,
+      label: (
+        <span className={`flex items-center gap-2 min-w-0 ${t.id === myTeamId ? 'text-amber-200' : ''}`}>
+          <TeamLogo teamId={t.id} teamName={t.abbr ?? t.id} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
+          <span className="truncate">{t.city} {t.name}</span>
+        </span>
+      ),
+    }));
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <header className="shrink-0 pt-safe" style={{ backgroundColor: theme.bg, color: headerText }}>
+          <div className="h-14 flex items-center gap-2.5 pl-4 pr-2">
+            <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center" style={{ backgroundColor: circleBg }}>
+              <TeamLogo teamId={selectedTeam.id} teamName={selectedTeam.name} size="custom" className="w-5 h-5" shadow={false} />
+            </span>
+            <button type="button" onClick={() => setTeamSheetOpen(true)} aria-haspopup="dialog" className="flex-1 min-w-0 flex flex-col text-left active:opacity-80">
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="text-lg leading-6 font-bold truncate">{selectedTeam.city} {selectedTeam.name}</span>
+                <ChevronDown size={16} className="shrink-0 opacity-70" />
+              </span>
+              <span className="text-xs leading-4 font-medium opacity-80 tabular-nums truncate">
+                {myStanding?.wins ?? 0}–{myStanding?.losses ?? 0} · {confLabel} {myStanding?.rank ?? 0}위
+              </span>
+            </button>
+            {/* 우측 = 검색·수신함(멀티가 슬롯으로 넘김, 글자색 상속). 이전/다음 팀 이동은 제목 탭 → 팀 선택 시트로(액션 ≤2 규칙, 2026-10-27). */}
+            {phoneHeaderActions}
+          </div>
+        </header>
+        <ActionSheet open={teamSheetOpen} title="팀 선택" items={teamSheetItems} value={selectedTeam.id} onSelect={id => handleTeamChange(id)} onClose={() => setTeamSheetOpen(false)} />
+        <RosterTabs activeTab={tab} onTabChange={handleTabChange} hideTabs={effectiveHideTabs} theme={theme} compact />
+        {tab === 'overview' || tab === 'attributes' ? (
+          // 폰 표는 자연 높이 — 이 영역 하나가 세로·가로 스크롤을 다 맡는다(표 안의 sticky 열·헤더·팀 평균 행이 이 상자를 기준으로 고정).
+          // 우측 24px 페이드는 스크롤 상자 밖(형제)에 두어 가로 스크롤과 무관하게 제자리.
+          <div className="relative flex-1 min-h-0 flex flex-col">
+          {/* 로스터 요약 줄은 스크롤 상자 밖(탭 아래 고정) — 가로 스크롤에 밀리지 않게(2026-10-27) */}
+          {tab === 'overview' && (
+            <PhoneRosterSummary team={selectedTeam} maxRosterSize={maxRosterSize} twoWaySlots={twoWaySlots} showTwoWaySlots={showTwoWaySlots} capSettings={capSettings} />
+          )}
+          <div className="flex-1 min-h-0 overflow-auto custom-scrollbar overscroll-x-contain">
+            {tab === 'overview' ? (
+              <PhoneRosterOverview
+                team={selectedTeam}
+                allTeams={allTeams}
+                onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                playerConditions={playerConditions}
+              />
+            ) : (
+              <PhoneRosterAttributes
+                team={selectedTeam}
+                onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+                playerConditions={playerConditions}
+              />
+            )}
+            <div aria-hidden="true" className="h-14 pb-safe sticky left-0" />
+          </div>
+          <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-r from-transparent to-slate-900" />
+          </div>
+        ) : tab === 'records' && onScoreClick ? (
+          // 폰 경기 기록 = 카드형(§9-1-4, 상단 필터 줄·스크롤 상자 포함). onScoreClick(멀티 경기 상세)이 없는 호출부(싱글)는 아래 데스크톱 표 폴백.
+          <PhoneTeamGameLog team={selectedTeam} schedule={schedule} allTeams={allTeams} onScoreClick={onScoreClick} />
+        ) : tab === 'schedule' && onScoreClick ? (
+          // 폰 일정 = 월 내비 고정 + 달력 + 리스트(날짜·상대·결과만, §9-1-5). 싱글(onScoreClick 없음)은 데스크톱 폴백.
+          <PhoneTeamSchedule team={selectedTeam} schedule={schedule} allTeams={allTeams} onScoreClick={onScoreClick} currentSimDate={currentSimDate} />
+        ) : tab === 'finance' && capSettings ? (
+          // 폰 재정 = 요약 블록 고정 + 축약 금액 표(§9-1-6).
+          <PhoneTeamPayroll
+            team={selectedTeam}
+            capSettings={capSettings}
+            baseSeasonYear={baseSeasonYear ?? new Date().getFullYear()}
+            onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+            playerConditions={playerConditions}
+          />
+        ) : tab === 'stats' ? (
+          <PhoneRosterStats
+            team={selectedTeam}
+            schedule={schedule}
+            onPlayerClick={onViewPlayer}
+            teamAdvanced={advancedStatsByTeam}
+            playerConditions={playerConditions}
+          />
+        ) : (
+          // 나머지 탭은 1차에선 데스크톱 컴포넌트 그대로(내부 스크롤) — 폰 틀은 탭별로 이어서 적용(§9-1-4~§9-1-7).
+          <div className="flex-1 min-h-0 overflow-hidden pb-14">
+            {renderTabContent()}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
@@ -382,9 +597,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               )}
           </div>
 
-          {gmNickname && (
+          {teamFront ?? (gmNickname && (
               <span className="ml-auto text-sm font-semibold self-start text-white">GM : {gmNickname}</span>
-          )}
+          ))}
       </div>
 
       {/* Tab Navigation — FrontOfficeView 스타일 */}
@@ -392,96 +607,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'overview' && (
-              <RosterOverviewGrid
-                  team={selectedTeam}
-                  allTeams={allTeams}
-                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
-                  enableHoverCard={enableHoverCard}
-                  onReleasePlayer={isMyTeam && onReleasePlayer ? (p) => onReleasePlayer(p, selectedTeam.id) : undefined}
-                  releasingId={releasingId}
-                  maxRosterSize={maxRosterSize}
-                  twoWaySlots={twoWaySlots}
-                  showTwoWaySlots={showTwoWaySlots}
-                  playerConditions={playerConditions}
-              />
-          )}
-          {tab === 'attributes' && (
-              <RosterGrid
-                  team={selectedTeam}
-                  tab="roster"
-                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
-                  enableHoverCard={enableHoverCard}
-              />
-          )}
-          {tab === 'stats' && (
-              <RosterStatsStack
-                  team={selectedTeam}
-                  schedule={schedule}
-                  onPlayerClick={onViewPlayer}
-                  enableHoverCard={enableHoverCard}
-                  teamAdvanced={advancedStatsByTeam}
-              />
-          )}
-          {tab === 'records' && (onViewGameResult || onScoreClick) && (
-              <TeamGameLog
-                  team={selectedTeam}
-                  schedule={schedule}
-                  allTeams={allTeams}
-                  onViewGameResult={onViewGameResult ?? (() => {})}
-                  onScoreClick={onScoreClick}
-                  userId={userId}
-                  onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
-              />
-          )}
-          {tab === 'schedule' && (
-              <TeamScheduleCalendar
-                  team={selectedTeam}
-                  schedule={schedule}
-                  allTeams={allTeams}
-                  onViewGameResult={onViewGameResult}
-                  onScoreClick={onScoreClick}
-                  userId={userId}
-                  currentSimDate={currentSimDate}
-                  onPlayerClick={onViewPlayer}
-                  onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
-                  enableHoverCard={enableHoverCard}
-              />
-          )}
-          {tab === 'finance' && capSettings && (
-              <TeamPayrollTable
-                  team={selectedTeam}
-                  capSettings={capSettings}
-                  baseSeasonYear={baseSeasonYear ?? new Date().getFullYear()}
-                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
-                  enableHoverCard={enableHoverCard}
-              />
-          )}
-          {tab === 'coaching' && (
-              <div className="h-full overflow-y-auto custom-scrollbar">
-                  {/* GM */}
-                  <GMProfileCard
-                      gmProfile={leagueGMProfiles?.[selectedTeam.id]}
-                      onGMClick={() => onGMClick?.(selectedTeam.id)}
-                  />
-
-                  {/* Coach */}
-                  <HeadCoachTable
-                      coach={headCoach}
-                      onCoachClick={() => onCoachClick?.(selectedTeam.id)}
-                  />
-              </div>
-          )}
-          {tab === 'draftPicks' && (
-              <div className="h-full overflow-y-auto custom-scrollbar">
-                  <DraftPicksPanel teamId={selectedTeam.id} leaguePickAssets={leaguePickAssets} />
-              </div>
-          )}
-          {tab === 'settings' && isMyTeam && renderTeamSettingsPanel && (
-              <div className="h-full overflow-y-auto custom-scrollbar">
-                  {renderTeamSettingsPanel()}
-              </div>
-          )}
+        {renderTabContent()}
       </div>
     </div>
   );

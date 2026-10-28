@@ -49,6 +49,9 @@ import { formatTime } from '../../../services/game/engine/pbp/timeEngine';
 import { toGameSeconds, shotGameSeconds } from '../../../utils/gameClock';
 import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodKoreanLabel } from '../../../utils/periodLabel';
 import { periodStartSec, periodLengthSec } from '../../../services/game/engine/pbp/periodRules';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { MobilePushHeader } from '../../../components/mobile/MobilePushHeader';
+import { MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
 
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
@@ -58,9 +61,9 @@ const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'shotchart', 'rotation', '
 
 // [Simplify 2026-08-05] 점보트론 원정/홈 슬롯에서 각각 그대로 복붙돼 있던 타임아웃 도트 렌더링을
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
-function TimeoutDots({ left }: { left: number }) {
+function TimeoutDots({ left, size = 'md' }: { left: number; size?: 'md' | 'sm' }) {
     return (
-        <span className="shrink-0 flex gap-0.5 text-base leading-none">
+        <span className={`shrink-0 flex gap-0.5 leading-none ${size === 'sm' ? 'text-[8px]' : 'text-base'}`}>
             {Array.from({ length: TEAM_TIMEOUTS_TOTAL }).map((_, i) => (
                 <span key={i} className={i < left ? 'text-amber-400' : 'text-slate-700'}>●</span>
             ))}
@@ -70,7 +73,19 @@ function TimeoutDots({ left }: { left: number }) {
 
 // [Simplify 2026-08-05] 파울/보너스 뱃지도 원정/홈 슬롯에서 정렬(text-right)만 다르고 나머지는
 // 동일하게 복붙돼 있던 걸 공용 컴포넌트로 추출.
-function FoulBonusBadge({ fouls, align }: { fouls: number; align: 'left' | 'right' }) {
+function FoulBonusBadge({ fouls, align, size = 'md' }: { fouls: number; align: 'left' | 'right'; size?: 'md' | 'sm' }) {
+    // size sm = [2026-10-28] 폰 스코어버그 2행(§9-7) — 같은 배지·문구, 글자만 12/11px
+    if (size === 'sm') {
+        return (
+            <span className={`shrink-0 ${align === 'right' ? 'text-right' : ''}`}>
+                {fouls >= 5 ? (
+                    <span className="px-1 py-0 rounded text-[11px] font-black bg-amber-500 text-slate-900 leading-[18px]">BONUS</span>
+                ) : (
+                    <span className="text-xs text-slate-400">파울 <span className="text-white font-bold tabular-nums">{fouls}</span></span>
+                )}
+            </span>
+        );
+    }
     return (
         <span className={`w-24 shrink-0 ${align === 'right' ? 'text-right' : ''}`}>
             {fouls >= 5 ? (
@@ -161,19 +176,21 @@ function FinalHeaderLogo({ teamSlug, abbr }: { teamSlug: string; abbr: string })
 
 // [Simplify 2026-08-05] 점보트론 마일스톤 카드의 combo/stat 분기가 접근색·라벨 텍스트만 다르고
 // 나머지(팀약어+선수명 줄, 라벨 줄) 구조는 완전히 동일해서 공용 컴포넌트로 추출.
-function MilestoneJumbotronBody({ teamAbbr, playerName, accentClass, label }: {
+function MilestoneJumbotronBody({ teamAbbr, playerName, accentClass, label, compact = false }: {
     teamAbbr: string;
     playerName: string;
     accentClass: string;
     label: string;
+    /** [2026-10-28] 폰 스코어버그 2행 — 이름 줄 14 · 라벨 16(데스크톱 18/18) */
+    compact?: boolean;
 }) {
     return (
         <div className="flex flex-col items-center gap-0.5 animate-in fade-in duration-300">
-            <div className="flex items-center gap-1.5 text-lg">
+            <div className={`flex items-center gap-1.5 ${compact ? 'text-sm' : 'text-lg'}`}>
                 <span className="font-black text-white">{teamAbbr}</span>
                 <span className="font-bold text-white whitespace-nowrap">{playerName}</span>
             </div>
-            <span className={`text-lg font-black ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
+            <span className={`${compact ? 'text-base' : 'text-lg'} font-black ${accentClass}`} style={{ textShadow: '0 0 8px currentColor' }}>
                 {label}
             </span>
         </div>
@@ -490,7 +507,9 @@ const QuarterScores: React.FC<{
     fullWidth?:     boolean;
     /** 종료 화면 헤더용 미니멀 표(1 2 3 4 T 헤더, 배경/음영 없음, 총합만 굵게). */
     compact?:       boolean;
-}> = ({ allLogs, homeTeamId, currentQuarter, homeAbbr, awayAbbr, fullWidth, compact }) => {
+    /** [2026-10-28] 폰 종료 헤더 가운데 칸(§9-7) — 총점 열 없음(양옆 큰 점수가 총점), 12px, 행 사이 선, 연장 열 머리 11px, 6열이면 열 폭 23. */
+    phoneFinal?:    boolean;
+}> = ({ allLogs, homeTeamId, currentQuarter, homeAbbr, awayAbbr, fullWidth, compact, phoneFinal }) => {
     // [Fix 2026-08-03] type==='score'|'freethrow' + teamId 매칭으로 직접 합산하던 방식은
     // 테크니컬 파울 자유투에서 깨짐 — 그 이벤트는 type:'foul'이라 필터에서 완전히 빠지고
     // (득점 자체가 누락), teamId도 파울한 팀(=득점 팀과 다름)이라 필터를 없애도 오귀속됨
@@ -527,6 +546,36 @@ const QuarterScores: React.FC<{
 
     const hTotal = scores.home.reduce((a, b) => a + b, 0);
     const aTotal = scores.away.reduce((a, b) => a + b, 0);
+
+    if (phoneFinal) {
+        const wide = scores.home.length > 5;
+        const row = (abbr: string, vals: number[], won: boolean) => (
+            <tr className="border-b border-slate-800">
+                <td className={`text-left pr-2 py-[5px] font-bold ${won ? 'text-white' : 'text-slate-300'}`}>{abbr}</td>
+                {vals.map((v, i) => (
+                    <td key={i} className="text-center tabular-nums text-slate-200">{i + 1 <= currentQuarter ? v : 0}</td>
+                ))}
+            </tr>
+        );
+        return (
+            <table className="text-xs leading-4 border-collapse">
+                <thead>
+                    <tr className="text-slate-400 border-b border-slate-800">
+                        <th />
+                        {scores.home.map((_, i) => (
+                            <th key={i} className={`py-1 text-center font-semibold whitespace-nowrap ${wide ? 'w-[23px]' : 'w-6'} ${i >= 4 ? 'text-[11px] tracking-tight' : ''}`}>
+                                {i < 4 ? i + 1 : `OT${i - 3}`}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {row(awayAbbr, scores.away, aTotal > hTotal)}
+                    {row(homeAbbr, scores.home, hTotal > aTotal)}
+                </tbody>
+            </table>
+        );
+    }
 
     if (compact) {
         // [2026-10-23] 점보트론용으로 더 촘촘하게 — 셀 세로 패딩 1px, 줄높이 snug(≈16.5px@text-xs), 열폭 w-7/w-8, 약어 칸 pr-2. 3행 ≈ 56px.
@@ -638,6 +687,8 @@ const PlayerBoxPanel: React.FC<{
     /** [2026-10-23] 방금 반영된 포제션의 선수별 변화분(liveStatFlashesAt) — 해당 스탯 셀 배경을 켰다가 페이드 */
     statFlashes?: Map<string, StatFlash>;
 }> = ({ players, label, onCourtIds, conditions, playerById, getPlayerHref, statFlashes }) => {
+    // [2026-10-28] 폰(§9-7, 목업 G3): 이름 열 160 sticky(불투명 배경 — 코트 위 = white/8 합성색 #1f2737) + 스탯 열 px 고정 폭, 패널 가로 스크롤
+    const isPhone = useIsPhone();
     const sorted = useMemo(
         () => [...players].sort((a, b) => (b.mp ?? 0) - (a.mp ?? 0)),
         [players],
@@ -700,7 +751,12 @@ const PlayerBoxPanel: React.FC<{
                 모든 셀 텍스트가 줄바꿈 대신 한 줄 유지) ② min-w-[600px](table-fixed 퍼센트가
                 과도하게 좁아지는 것 자체를 방지하는 바닥값) ③ 부모 div에 overflow-x-auto(그래도
                 컨테이너가 600px보다 좁으면 컬럼을 찌그러뜨리는 대신 테이블 전체를 가로 스크롤). */}
-            <table className="w-full min-w-[520px] text-sm border-collapse table-fixed whitespace-nowrap">
+            <table className={`${isPhone ? 'w-max' : 'w-full min-w-[520px]'} text-sm border-collapse table-fixed whitespace-nowrap`}>
+                {isPhone ? (
+                <colgroup>
+                    {[160, 32, 36, 44, 44, 44, 36, 58, 58, 58].map((w, i) => <col key={i} style={{ width: w }} />)}
+                </colgroup>
+                ) : (
                 <colgroup>
                     <col className="w-[22%]" />
                     <col className="w-[6%]" />
@@ -713,9 +769,10 @@ const PlayerBoxPanel: React.FC<{
                     <col className="w-[12%]" />
                     <col className="w-[12%]" />
                 </colgroup>
+                )}
                 <thead className="bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
                     <tr className="h-10 text-slate-400 text-sm font-bold">
-                        <th className="text-left px-2 font-sans">{label}</th>
+                        <th className={`text-left font-sans ${isPhone ? 'pl-4 pr-2 sticky left-0 z-20 bg-slate-950 border-r border-slate-800' : 'px-2'}`}>{label}</th>
                         <th className="text-center px-1">P</th>
                         <th className="text-right px-1">MP</th>
                         <th className="text-right px-1.5">PTS</th>
@@ -734,7 +791,9 @@ const PlayerBoxPanel: React.FC<{
                             className="transition-colors hover:bg-white/5"
                         >
                             {/* [2026-10-23] 온코트 표시는 행 전체 초록 틴트 대신 이름 셀만 밝게 — 스탯 셀 플래시 색과 섞이지 않게 */}
-                            <td className={`py-2 px-2 border-b border-slate-800 font-sans text-slate-200 ${onCourtIds?.has(p.playerId) ? 'bg-white/[0.08]' : ''}`}>
+                            <td className={`py-2 border-b border-slate-800 font-sans text-slate-200 ${isPhone
+                                ? `pl-4 pr-2 sticky left-0 z-10 border-r ${onCourtIds?.has(p.playerId) ? 'bg-[#1f2737]' : 'bg-slate-900'}`
+                                : `px-2 ${onCourtIds?.has(p.playerId) ? 'bg-white/[0.08]' : ''}`}`}>
                                 <span className="flex items-center gap-1 min-w-0">
                                     {(() => {
                                         if (!p.playerName) return <Skeleton className="h-3.5 w-24" />;
@@ -772,7 +831,7 @@ const PlayerBoxPanel: React.FC<{
                 </tbody>
                 <tfoot>
                     <tr className="bg-slate-800/50 border-t border-slate-700 text-white font-semibold">
-                        <td className="py-2 px-2 font-sans text-sm">TEAM</td>
+                        <td className={`py-2 font-sans text-sm ${isPhone ? 'pl-4 pr-2 sticky left-0 z-10 bg-[#172033] border-r border-slate-800' : 'px-2'}`}>TEAM</td>
                         <td />
                         <td />
                         <td className="text-right py-2 px-1.5 tabular-nums">{total.pts}</td>
@@ -858,21 +917,62 @@ const SubChangeBlock: React.FC<{ side: 'away' | 'home'; inPlayers: string[]; out
     );
 };
 
+/** [2026-10-28] 폰 종료 헤더(§9-7, 목업 G6·G10)의 팀 칸 96 — 약어 → 로고 44 → 점수 40(패자 slate-500) → 타임아웃 바 7 → 전적.
+ *  데스크톱 FinalTeamBlock과 같은 재료(TimeoutBars w-2, 승패 점수색, 팀 이름 → 로스터 이동)를 세로로 쌓은 것.
+ *  연장 타임아웃 바 2칸 줄은 엔진에 연장 타임아웃이 생기면(docs/plan/timeout-system.md OT_PER_PERIOD) 이 칸 TimeoutBars 아래에 추가. */
+const PhoneFinalTeamColumn: React.FC<{
+    teamSlug: string;
+    abbr: string;
+    wl?: { wins: number; losses: number };
+    score: number;
+    won: boolean;
+    timeoutsLeft: number;
+    onClick: () => void;
+}> = ({ teamSlug, abbr, wl, score, won, timeoutsLeft, onClick }) => (
+    <div className="w-24 shrink-0 flex flex-col items-center gap-1">
+        <button type="button" onClick={onClick} className="flex flex-col items-center gap-1 active:opacity-70">
+            <span className="text-[15px] leading-[18px] font-black text-slate-300 tracking-wide">{abbr}</span>
+            <TeamLogo teamId={teamSlug} teamName={abbr} size="custom" className="h-11 w-11" shadow={false} />
+        </button>
+        <span className={`mt-0.5 text-[40px] leading-10 font-black tracking-tighter tabular-nums ${won ? 'text-white' : 'text-slate-500'}`}>{score}</span>
+        <TimeoutBars left={timeoutsLeft} barWidth="w-2" className="mt-0.5" />
+        {wl && <span className="text-[11px] leading-[14px] text-slate-400 tabular-nums">{`${wl.wins}W ${wl.losses}L`}</span>}
+    </div>
+);
+
+/** 종료 결과 페이지 섹션 탭(데스크톱 헤더 아래 · 폰 sticky 공용) */
+const RESULT_TABS = [
+    { id: 'box', label: '박스스코어' },
+    { id: 'insights', label: '인사이트' },
+    { id: 'pbp', label: '경기 기록' },
+    { id: 'shotchart', label: '샷차트' },
+    { id: 'rotation', label: '로테이션' },
+    { id: 'onoff', label: '온오프' },
+];
+
 /** 종료 결과 페이지의 섹션(박스스코어/인사이트/…) — 스크롤스파이 ref + 제목 바. 6개 섹션이 같은 래퍼 3줄을 복붙하던 것. */
 const ResultSection: React.FC<{
     sectionKey: string;
     title: string;
     sectionRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
     className?: string;
+    /** [2026-10-28] 폰 = 탭별 독립 화면 — activeKey와 같은 섹션만 렌더하고 제목 바(탭 라벨과 중복)는 생략 */
+    tabMode?: boolean;
+    activeKey?: string;
     children: React.ReactNode;
-}> = ({ sectionKey, title, sectionRefs, className = '', children }) => (
-    <section ref={el => { sectionRefs.current[sectionKey] = el; }} data-section={sectionKey} className={`border-t border-slate-800 ${className}`}>
-        <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
-            <h3 className="text-sm font-bold text-white">{title}</h3>
-        </div>
-        {children}
-    </section>
-);
+}> = ({ sectionKey, title, sectionRefs, className = '', tabMode = false, activeKey, children }) => {
+    if (tabMode && activeKey !== sectionKey) return null;
+    return (
+        <section ref={el => { sectionRefs.current[sectionKey] = el; }} data-section={sectionKey} className={`${tabMode ? 'pb-6' : `border-t border-slate-800 ${className}`}`}>
+            {!tabMode && (
+                <div className="bg-slate-800 border-t border-slate-600 px-6 py-3">
+                    <h3 className="text-sm font-bold text-white">{title}</h3>
+                </div>
+            )}
+            {children}
+        </section>
+    );
+};
 
 // ─── TeamStatsCompare ─────────────────────────────────────────────────────────
 
@@ -1413,8 +1513,9 @@ const GameInsightsPanel: React.FC<{
         // 준 높이를 꽉 채우고, 차트 영역은 고정 aspect-ratio 대신 flex-1로 남는 세로 공간을 전부 차지.
         <div className="w-full h-full flex flex-col">
             {/* 바디 — 범례 + 마진/승률 통합 차트 */}
-            <div className="flex-1 min-h-0 flex flex-col gap-2 px-6 py-6 bg-slate-900">
-                <div className="flex items-center justify-center gap-6 text-[10px] font-bold text-slate-500">
+            <div className="flex-1 min-h-0 flex flex-col gap-2 px-4 py-5 md:px-6 md:py-6 bg-slate-900">
+                {/* 폰 폭에선 범례 5개가 한 줄에 안 들어가 줄바꿈 허용(§9-7) */}
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 md:gap-x-6 text-[10px] font-bold text-slate-500">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded-full bg-emerald-400" />마진</span>
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded-full bg-sky-400" />승리확률</span>
                     {hasPossessionMarkers && (
@@ -1434,9 +1535,11 @@ const GameInsightsPanel: React.FC<{
                     <div className={`${GUTTER_W} shrink-0`} />
                     <div
                         ref={chartRef}
-                        className="relative flex-1 h-full cursor-crosshair"
-                        onMouseMove={handleChartMouseMove}
-                        onMouseLeave={handleChartMouseLeave}
+                        className="relative flex-1 h-full cursor-crosshair touch-pan-y"
+                        // [2026-10-28] 포인터 이벤트 — 마우스는 기존 호버 그대로, 터치(폰)는 탭/가로 드래그로 같은 툴팁(§9-7). 터치는 손을 떼도 유지.
+                        onPointerMove={handleChartMouseMove}
+                        onPointerDown={handleChartMouseMove}
+                        onPointerLeave={e => { if (e.pointerType === 'mouse') handleChartMouseLeave(); }}
                     >
                     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
                         {/* 좌/우측 끝 실선 — 경기 시작(0분)/종료 지점을 명확히 표시 */}
@@ -1501,6 +1604,8 @@ const GameInsightsPanel: React.FC<{
 const MultiGamePbpView: React.FC = () => {
     const { leagueId, gameId } = useParams<{ leagueId: string; gameId: string }>();
     const navigate = useNavigate();
+    // [2026-10-28] 폰(<768) — 종료 화면 폰판(docs/ui/mobile-design-system.md §9-7). 태블릿·데스크톱은 기존 UX 그대로.
+    const isPhone = useIsPhone();
     // 종료 헤더 팀 이름 클릭 → 로스터 화면(일정/순위 화면의 팀 이름 링크와 동일 경로).
     // 박스스코어 선수 이름 → 선수 프로필 라우트(로스터 화면과 동일 경로)
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -1572,6 +1677,7 @@ const MultiGamePbpView: React.FC = () => {
     const [activeSection, setActiveSection] = useState<string>('box');
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const resultScrollRef = useRef<HTMLDivElement>(null);
+    const phoneFinalHeaderRef = useRef<HTMLDivElement>(null);
     // live 폴링 델타 커서 — 서버가 이미 보낸 만큼(count)을 기억해뒀다가 다음 폴링에 같이 보내면
     // 그 이후 새로 공개된 이벤트만 받아 gameData에 append한다(매번 전체 재전송 방지).
     const eventCountRef = useRef(0);
@@ -1948,6 +2054,23 @@ const MultiGamePbpView: React.FC = () => {
         const abbrOf = (slug: string) => leagueTeams.find(t => t.team_slug === slug)?.team_abbr ?? slug.toUpperCase().slice(0, 3);
         return { stage, score: `${abbrOf(series.higherSeedId)} ${hi} - ${lo} ${abbrOf(series.lowerSeedId)}` };
     }, [scheduleGame, league?.bracket_data, schedule, serverNow, leagueTeams]);
+    // [2026-10-28] 폰 상단 줄(H4) — 공용 상단 바 대신 ‹ + "날짜 · 단계"(플레이오프면 라운드 · 시리즈 스코어). 레이아웃이 game 라우트에서 상단 바를 생략한다.
+    const phoneHeaderTitle = [
+        finalHeaderDateLabel,
+        finalHeaderStage ? finalHeaderStage.stage : (isAllstar ? null : '정규시즌'),
+        finalHeaderStage?.score ?? null,
+    ].filter(Boolean).join(' · ');
+    const phoneHeader = isPhone ? (
+        <MobilePushHeader
+            title={<span className="text-sm font-semibold text-slate-300 truncate">{phoneHeaderTitle}</span>}
+            onBack={() => {
+                if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
+                else navigate(`/multi/leagues/${leagueId}/season/schedule`);
+            }}
+        />
+    ) : null;
+    // 폰은 하단 탭 바(fixed)가 화면 위에 겹치므로 루트에 그 높이만큼 아래 여백 — 안쪽 스크롤 상자들이 탭 바 위에서 끝난다.
+    const phoneRootStyle: React.CSSProperties | undefined = isPhone ? { paddingBottom: `calc(${MOBILE_TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))` } : undefined;
     // 올스타/라이징스타는 가상 팀 ID라 leagueTeams에 없다 — useAllStarTeamDisplay가 이름/테마색/
     // 로스터를 대신 제공(동부·서부는 컨퍼런스 대표색, 라이징스타는 시즌별 주장 성 기반 팀명).
     const homeAllstarInfo = homeTeamId ? allstarDisplay[homeTeamId] : undefined;
@@ -2255,7 +2378,7 @@ const MultiGamePbpView: React.FC = () => {
     // 결과 화면(6섹션 통합 페이지) 스크롤스파이 — 뷰포트 상단 30% 안에 처음 걸리는 섹션을 active로 표시.
     // showBox(경기 종료) 상태에서만 의미가 있지만, 훅은 早리턴 이전에서 무조건 호출해야 하므로 여기 둠.
     useEffect(() => {
-        if (!showBox) return;
+        if (!showBox || isPhone) return;   // 폰은 탭별 독립 화면 — 스크롤스파이 불필요
         const container = resultScrollRef.current;
         if (!container) return;
         const observer = new IntersectionObserver(
@@ -2270,7 +2393,7 @@ const MultiGamePbpView: React.FC = () => {
         );
         Object.values(sectionRefs.current).forEach(el => el && observer.observe(el));
         return () => observer.disconnect();
-    }, [showBox, gameData]);
+    }, [showBox, gameData, isPhone]);
 
     // [2026-09-01] 박스스코어 딥링크 — 뉴스피드 등 외부에서 ?section=box로 들어오면 6섹션
     // 페이지가 준비되는 즉시(showBox=true) 그 섹션으로 스크롤. deepLinkedRef로 한 번만
@@ -2281,12 +2404,17 @@ const MultiGamePbpView: React.FC = () => {
         if (!showBox || deepLinkedRef.current) return;
         const section = searchParams.get('section');
         if (!section || !VALID_PBP_SECTIONS.includes(section as (typeof VALID_PBP_SECTIONS)[number])) return;
+        if (isPhone) {
+            deepLinkedRef.current = true;
+            setActiveSection(section);
+            return;
+        }
         const el = sectionRefs.current[section];
         if (!el) return;
         deepLinkedRef.current = true;
         setActiveSection(section);
         el.scrollIntoView({ behavior: 'auto', block: 'start' });
-    }, [showBox, gameData, searchParams]);
+    }, [showBox, gameData, searchParams, isPhone]);
 
     // ── final 전용: 싱글플레이어 탭 재사용을 위한 어댑터 + 집계 ─────────────────
     // [2026-10-23] 예정 상태(gameData 없음)엔 0스탯 로스터(scheduledHomeBox)로 어댑터를 만들어 박스스코어 탭에 명단이 뜨게 한다 —
@@ -2352,7 +2480,8 @@ const MultiGamePbpView: React.FC = () => {
     // 때만 스피너를 보여준다.
     if (scheduledAt === undefined) {
         return (
-            <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
+            <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden" style={phoneRootStyle}>
+                {phoneHeader}
                 <Spinner variant="page" className="bg-slate-950" />
             </div>
         );
@@ -2366,7 +2495,8 @@ const MultiGamePbpView: React.FC = () => {
     // 위 주석과 동일한 이유로 본문이 null-safe하므로, 진짜 에러(error)일 때만 전체 화면을 대체한다.
     if (error) {
         return (
-            <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
+            <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden" style={phoneRootStyle}>
+                {phoneHeader}
                 <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
                     <InlineNotice tone={error.kind === 'preparing' ? 'info' : 'danger'} className="w-full max-w-md">{error.text}</InlineNotice>
                     {error.kind === 'preparing' && <span className="text-xs text-slate-500">5초 후 자동으로 다시 불러옵니다</span>}
@@ -2395,9 +2525,9 @@ const MultiGamePbpView: React.FC = () => {
     const pbpFeedBody = (
         <>
         {/* 헤더(좌) + 쿼터 필터(우) */}
-        <div className="shrink-0 px-3 h-10 flex items-center bg-slate-800 border-b border-slate-700">
+        <div className={`shrink-0 flex items-center bg-slate-800 border-b border-slate-700 ${isPhone ? 'pl-4 pr-3 h-11' : 'px-3 h-10'}`}>
             <div className="flex items-center justify-between gap-3 w-full">
-                <p className="text-sm text-slate-300 font-semibold">
+                <p className={`${isPhone ? 'text-[13px] whitespace-nowrap' : 'text-sm'} text-slate-300 font-semibold`}>
                     플레이-바이-플레이
                 </p>
                 <SegmentedControl
@@ -2421,6 +2551,17 @@ const MultiGamePbpView: React.FC = () => {
             {/* [Fix 2026-08-05] "원정 코멘터리 | 원정 점수 | 쿼터 | 시간 | 홈 점수 | 홈 코멘터리"
                 구조로 재편 — 이벤트가 어느 팀 소속인지에 따라 코멘터리가 좌(원정)/우(홈) 중
                 한쪽에만 채워지고 반대쪽은 비워둔다(중앙 쿼터/시계/점수 기준 좌우 대칭 레이아웃). */}
+            {isPhone ? (
+            // [2026-10-28] 폰(§9-7, 목업 G2·G4): 원정 좌/홈 우 기록 분할 → 가운데 3칸을 왼쪽에 두고 기록 1칸. 글자 12(사용자 지시), 3칸 26·50·26 간격 2
+            <div className="flex items-center gap-2 px-4 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <div className="w-[26px] text-center text-[11px] font-black text-slate-500 whitespace-nowrap">{awayAbbr}</div>
+                    <div className="w-[50px] text-center text-xs font-black text-slate-500">시간</div>
+                    <div className="w-[26px] text-center text-[11px] font-black text-slate-500 whitespace-nowrap">{homeAbbr}</div>
+                </div>
+                <div className="flex-1 text-xs font-black text-slate-500">기록</div>
+            </div>
+            ) : (
             <div className="flex items-center gap-2 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
                 <div className="flex-1 text-right text-sm font-black text-slate-500 truncate">{awayName}</div>
                 {/* [Fix 2026-08-05] "양 팀 스코어와 시간 컬럼 간격이 너무 넓다" 요청 — 이 3칸만
@@ -2433,6 +2574,7 @@ const MultiGamePbpView: React.FC = () => {
                 </div>
                 <div className="flex-1 text-sm font-black text-slate-500 truncate">{homeName}</div>
             </div>
+            )}
             {/* [2026-10-23] divide-y 대신 행마다 border-b — divide-y는 맨 위 행(첫 자식)엔 선이 없다가 새 로그가 위에
                 끼어들어 둘째 행이 되는 순간 border-top이 생기는데, 그 행의 border-color가 preflight 기본(gray-200)에서
                 slate로 바뀌는 걸 transition-colors가 150ms 동안 보간해 흰 선이 번쩍였다. 행마다 색을 마운트 때 고정하면 사라진다. */}
@@ -2459,10 +2601,38 @@ const MultiGamePbpView: React.FC = () => {
 
                     if (isFlowEvent) {
                         return (
-                            <div key={idx} className={`flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
-                                <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-sm">
+                            <div key={idx} className={`flex items-center justify-center ${isPhone ? 'py-2' : 'py-2.5'} bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
+                                <div className={`flex items-center gap-1.5 text-indigo-300 font-bold ${isPhone ? 'text-xs' : 'text-sm'}`}>
                                     <Clock size={12} />
                                     <span>{log.text}</span>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    if (isPhone) {
+                        const scoredP = isScore || isFT;
+                        const pColor = isInjury ? 'text-red-400 font-bold' : isInfo ? 'text-slate-300' : isScore ? 'text-slate-200'
+                            : isFT ? 'text-cyan-400' : isFoul ? 'text-orange-400' : isTurnover ? 'text-red-400' : isBlock ? 'text-blue-400' : 'text-slate-400';
+                        const subIn  = log.text.startsWith('교체:') ? log.text.match(/IN \[(.*?)\]/) : null;
+                        const subOut = log.text.startsWith('교체:') ? log.text.match(/OUT \[(.*?)\]/) : null;
+                        const rowBg = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : 'border-b border-slate-800/50';
+                        return (
+                            <div key={idx} className={`flex items-start py-2 px-4 gap-2 ${rowBg}${flashClass}`}>
+                                <div className="flex items-start gap-0.5 flex-shrink-0 text-xs leading-relaxed">
+                                    <div className="w-[26px] text-center">
+                                        {log.awayScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${!isHome && scoredP ? 'text-white' : 'text-slate-500'}`}>{log.awayScore}</span>}
+                                    </div>
+                                    <div className="w-[50px] text-center text-slate-500 font-bold tabular-nums whitespace-nowrap">{periodShortLabel(log.quarter, otVisible, '1Q')} {log.timeRemaining || '-'}</div>
+                                    <div className="w-[26px] text-center">
+                                        {log.homeScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${isHome && scoredP ? 'text-white' : 'text-slate-500'}`}>{log.homeScore}</span>}
+                                    </div>
+                                </div>
+                                <div className="flex-1 min-w-0 flex items-start gap-1.5 text-xs leading-relaxed">
+                                    <span className="shrink-0 text-[11px] font-black text-slate-500">{isHome ? homeAbbr : awayAbbr}</span>
+                                    {subIn && subOut
+                                        ? <SubChangeBlock side="home" inPlayers={subIn[1].split(',').map(t => t.trim())} outPlayers={subOut[1].split(',').map(t => t.trim())} />
+                                        : <span className={`min-w-0 break-words ${pColor}`}>{log.text}</span>}
                                 </div>
                             </div>
                         );
@@ -2547,8 +2717,143 @@ const MultiGamePbpView: React.FC = () => {
         </>
     );
 
+    // 스코어버그 점보트론 칸 — 이벤트(마일스톤/흐름)가 있으면 2.2초간 쿼터표 자리를 교체. 데스크톱·폰 공용(compact = 폰 글자 크기).
+    const renderJumbotronSlot = (compact: boolean) => (
+        activeJumbotron ? (
+            activeJumbotron.kind === 'flow' ? (
+                <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
+                    <span
+                        className={`${compact ? 'text-[15px]' : 'text-base'} font-black text-white text-center`}
+                        style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
+                    >
+                        {activeJumbotron.text}
+                    </span>
+                </div>
+            ) : activeJumbotron.kind === 'combo' ? (
+                <MilestoneJumbotronBody
+                    key={activeJumbotron.key}
+                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                    playerName={activeJumbotron.player.playerName}
+                    accentClass={COMBO_ACCENT[activeJumbotron.combo]}
+                    label={COMBO_LABEL[activeJumbotron.combo]}
+                    compact={compact}
+                />
+            ) : (
+                <MilestoneJumbotronBody
+                    key={activeJumbotron.key}
+                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
+                    playerName={activeJumbotron.player.playerName}
+                    accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
+                    label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
+                    compact={compact}
+                />
+            )
+        ) : (
+            <QuarterScores
+                allLogs={visibleEvents}
+                homeTeamId={(homeTeamId ?? '')}
+                currentQuarter={currentQuarter}
+                homeAbbr={homeAbbr}
+                awayAbbr={awayAbbr}
+                compact
+            />
+        )
+    );
+
+    // [2026-10-28] 폰 라이브/예정 스코어버그(§9-7, 목업 G1·G2·G7~G9) — 데스크톱과 같은 재료(팀색 밴드 30/40/30 · slate-950 가운데 ·
+    // LED 도트 · TeamLogo · 쿼터 | 시계 · 런 🔥 + 주황 글로우 · FoulBonusBadge · TimeoutDots · 점보트론 칸)를 두 줄로:
+    // 1행 = 로고·약어 세로 묶음 + 점수 / 쿼터 | 시계 + 런, 2행(slate-950 띠) = 파울/BONUS · 타임아웃 점 / 쿼터표 ↔ 마일스톤. 전적·팀 이름은 폭이 없어 생략.
+    const phoneTeamBand = (side: 'away' | 'home') => {
+        const isAway = side === 'away';
+        const slug = (isAway ? awayTeamId : homeTeamId) ?? '';
+        const abbr = isAway ? awayAbbr : homeAbbr;
+        const loading = isAway ? awayInfoLoading : homeInfoLoading;
+        const mark = (
+            <span className="flex flex-col items-center gap-0.5 shrink-0">
+                {loading
+                    ? <Skeleton className="h-[30px] w-[30px] rounded-full" />
+                    : <TeamLogo teamId={slug} teamName={abbr} size="custom" className="h-[30px] w-[30px]" shadow={false} />}
+                <span className="text-[11px] leading-3 font-black tracking-wider">{abbr}</span>
+            </span>
+        );
+        const score = <span className="text-[34px] leading-none font-black tabular-nums tracking-tighter">{isAway ? currentScore.away : currentScore.home}</span>;
+        return (
+            <div className="flex items-center gap-1 px-2.5 py-2 shrink-0" style={{ width: '30%', color: isAway ? awayText : homeText }}>
+                {isAway ? <>{mark}<span className="flex-1" />{score}</> : <>{score}<span className="flex-1" />{mark}</>}
+            </div>
+        );
+    };
+    const phoneScorebug = (
+        <div className="relative shrink-0 bg-slate-900 border-b border-slate-800 overflow-hidden">
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: '30%', backgroundColor: awayColor }} />
+                <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ width: '30%', backgroundColor: homeColor }} />
+                <div className="absolute inset-y-0 bg-slate-950 pointer-events-none" style={{ left: '30%', width: '40%' }} />
+                <div
+                    className="absolute inset-0 pointer-events-none opacity-70"
+                    style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.09) 1px, transparent 1px)', backgroundSize: '4px 4px' }}
+                />
+                {isLive && activeRun && (
+                    <>
+                        <div className="absolute top-0 h-14 pointer-events-none animate-pulse" style={{ left: '30%', width: '40%', background: 'radial-gradient(ellipse 60% 70% at 50% 0%, rgba(255,120,0,0.55) 0%, rgba(239,68,68,0.35) 45%, rgba(239,68,68,0) 75%)', filter: 'blur(6px)' }} />
+                        <div className="absolute bottom-0 h-14 pointer-events-none animate-pulse" style={{ left: '30%', width: '40%', background: 'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(255,120,0,0.55) 0%, rgba(239,68,68,0.35) 45%, rgba(239,68,68,0) 75%)', filter: 'blur(6px)' }} />
+                    </>
+                )}
+                <div className="relative z-10 flex items-stretch">
+                    {phoneTeamBand('away')}
+                    <div className="flex flex-col items-center justify-center gap-0.5 px-1 py-2 shrink-0" style={{ width: '40%' }}>
+                        {isScheduled ? (
+                            <>
+                                <span className="text-xs font-black text-white ko-tight text-center">
+                                    {scheduledStartLabel ? `${scheduledStartLabel} 시작 예정` : '경기 시작 전'}
+                                </span>
+                                {scheduledRemainingMs != null && (
+                                    <span className="text-lg font-black tabular-nums text-slate-300 leading-none">{fmtCountdown(scheduledRemainingMs)}</span>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="text-xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
+                                    {currentTimeRemaining && (
+                                        <>
+                                            <span className="text-slate-600 text-xl leading-none font-light">|</span>
+                                            <span className="text-xl font-black tabular-nums text-slate-300 leading-none">{currentTimeRemaining}</span>
+                                        </>
+                                    )}
+                                </span>
+                                {activeRun && (
+                                    <span className="text-xs font-bold text-white whitespace-nowrap">
+                                        🔥 {(activeRun.teamId === gameData?.home_team_id ? homeAbbr : awayAbbr)}{' '}
+                                        {activeRun.teamPts}-{activeRun.oppPts}
+                                    </span>
+                                )}
+                            </>
+                        )}
+                    </div>
+                    {phoneTeamBand('home')}
+                </div>
+            </div>
+            {isLive && (
+                <div className="relative z-10 flex items-center justify-between gap-2 px-3 pt-1.5 pb-2 bg-slate-950 border-t border-slate-800">
+                    <span className="flex flex-col items-start gap-1">
+                        <FoulBonusBadge fouls={awayFouls} align="left" size="sm" />
+                        <TimeoutDots left={timeoutsLeft.away} size="sm" />
+                    </span>
+                    <div className="min-h-[44px] flex items-center justify-center">{renderJumbotronSlot(true)}</div>
+                    <span className="flex flex-col items-end gap-1">
+                        <FoulBonusBadge fouls={homeFouls} align="right" size="sm" />
+                        <TimeoutDots left={timeoutsLeft.home} size="sm" />
+                    </span>
+                </div>
+            )}
+        </div>
+    );
+
     return (
-        <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden">
+        <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden" style={phoneRootStyle}>
+            {phoneHeader}
+            {!showBox && isPhone && phoneScorebug}
 
             {/* ═══ 스코어버그 헤더 — 시작 전/라이브 전용(종료 화면과 완전히 분리된 별도 블록) ═══
                 종료 화면 헤더는 아래 종료 전용 블록. 한쪽만 수정해도 다른 쪽에 영향 없음(TeamHeaderColumn만 공유). */}
@@ -2557,7 +2862,7 @@ const MultiGamePbpView: React.FC = () => {
                 헤더 높이 전체를 채움 — 그라데이션 대신 각 팀 컬러가 정확히 4/11 폭만큼 하드엣지로 채워짐),
                 중앙 3fr은 배경 없이 slate-900 그대로 노출. 단색 배경 위 텍스트는 배지와 동일한
                 대비색(awayText/homeText)을 써야 흰/밝은 팀 배경에서도 글자가 묻히지 않는다. */}
-            {!showBox && (
+            {!showBox && !isPhone && (
                 <div className="relative bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
                     {/* [Fix 2026-08-04] "헤더 좌우 섹션 너비를 바디 좌우 섹션(w-[30%])과 동일하게" 요청 —
                         바디는 좌/중/우 = 30%/40%/30%(w-[30%] + flex-1)라서 헤더도 동일 비율로 맞춤
@@ -2683,43 +2988,7 @@ const MultiGamePbpView: React.FC = () => {
                                     </div>
                                     {/* 2열 2행: 쿼터별 득점표 ↔ 점보트론 이벤트. min-h로 표 높이 예약 */}
                                     <div className="col-start-2 row-start-2 flex items-center justify-center min-h-[64px]">
-                                        {activeJumbotron ? (
-                                            activeJumbotron.kind === 'flow' ? (
-                                                <div key={activeJumbotron.key} className="flex items-center justify-center animate-in fade-in duration-300">
-                                                    <span
-                                                        className="text-base font-black text-white text-center"
-                                                        style={{ textShadow: '0 0 10px rgba(255,255,255,0.45)' }}
-                                                    >
-                                                        {activeJumbotron.text}
-                                                    </span>
-                                                </div>
-                                            ) : activeJumbotron.kind === 'combo' ? (
-                                                <MilestoneJumbotronBody
-                                                    key={activeJumbotron.key}
-                                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                                    playerName={activeJumbotron.player.playerName}
-                                                    accentClass={COMBO_ACCENT[activeJumbotron.combo]}
-                                                    label={COMBO_LABEL[activeJumbotron.combo]}
-                                                />
-                                            ) : (
-                                                <MilestoneJumbotronBody
-                                                    key={activeJumbotron.key}
-                                                    teamAbbr={activeJumbotron.isHome ? homeAbbr : awayAbbr}
-                                                    playerName={activeJumbotron.player.playerName}
-                                                    accentClass={JUMBOTRON_ACCENT[activeJumbotron.stat]}
-                                                    label={`${activeJumbotron.value}${JUMBOTRON_LABEL[activeJumbotron.stat]}`}
-                                                />
-                                            )
-                                        ) : (
-                                            <QuarterScores
-                                                allLogs={visibleEvents}
-                                                homeTeamId={(homeTeamId ?? '')}
-                                                currentQuarter={currentQuarter}
-                                                homeAbbr={homeAbbr}
-                                                awayAbbr={awayAbbr}
-                                                compact
-                                            />
-                                        )}
+                                        {renderJumbotronSlot(false)}
                                     </div>
 
                                     {/* 3열: 홈 파울/보너스 + 타임아웃 — 1열과 대칭, 3행 전체 세로 중앙 */}
@@ -2744,7 +3013,7 @@ const MultiGamePbpView: React.FC = () => {
                 [2026-10-06] 리그 공식 스코어보드 참고 레이아웃으로 단순화 — 팀 컬러 밴드/도트 텍스처 없이
                 단색 배경 한 줄: [원정 로고] [원정 이름·전적 → 점수] [종료 + 쿼터별 표] [점수 ← 홈 이름·전적] [홈 로고].
                 승리 팀 점수는 흰색+▸ 마커, 패배 팀 점수는 slate-500. 라이브 헤더는 위 라이브 전용 블록. */}
-            {showBox && (() => {
+            {showBox && !isPhone && (() => {
                 const awayWon = currentScore.away > currentScore.home;
                 const homeWon = currentScore.home > currentScore.away;
                 return (
@@ -2786,16 +3055,9 @@ const MultiGamePbpView: React.FC = () => {
             })()}
 
             {/* 탭 그룹 — 점보트론(스코어 헤더) 영역 하단 별도 그룹. 트레이드 화면과 동일한 공용 TabBar 디자인. */}
-            {showBox && (
+            {showBox && !isPhone && (
                 <TabBar
-                    tabs={[
-                        { id: 'box', label: '박스스코어' },
-                        { id: 'insights', label: '인사이트' },
-                        { id: 'pbp', label: '경기 기록' },
-                        { id: 'shotchart', label: '샷차트' },
-                        { id: 'rotation', label: '로테이션' },
-                        { id: 'onoff', label: '온오프' },
-                    ]}
+                    tabs={RESULT_TABS}
                     activeTab={activeSection}
                     onTabChange={id => sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 />
@@ -2813,9 +3075,10 @@ const MultiGamePbpView: React.FC = () => {
                     tabs={LIVE_TABS}
                     activeTab={liveTab}
                     onTabChange={setLiveTab}
-                    align="center"
+                    align={isPhone ? 'start' : 'center'}
+                    compact={isPhone}
                     bgClassName="bg-slate-900"
-                    rightSlot={devLive ? (
+                    rightSlot={devLive && !isPhone ? (
                         <span className="text-xs font-bold text-amber-400 ko-normal" title="URL ?devLive 파라미터로 켜진 개발용 리플레이 — 실제 중계가 아닙니다">
                             DEV 리플레이{devLiveFreezeSec != null ? ` · ${devLiveFreezeSec}초 정지` : ' · 반복'}
                         </span>
@@ -2823,7 +3086,41 @@ const MultiGamePbpView: React.FC = () => {
                 />
             )}
 
-            {(isLive || isScheduled) && liveTab === 'center' && (
+            {(isLive || isScheduled) && liveTab === 'center' && isPhone && (
+            // [2026-10-28] 폰 게임 센터(§9-7, 목업 G1·G2·G3): 데스크톱 3열(원정 패널 | 샷차트+피드 | 홈 패널)을 1열 전폭으로.
+            // 샷차트는 팀명 헤더 없이(위 스코어버그 밴드가 팀 구분), 피드는 데스크톱 카드처럼 최대 70vh 안 스크롤, 패널은 카드 없이 위아래 선만.
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
+                {liveWarning && <div className="p-4 pb-0"><InlineNotice tone="warning">{liveWarning}</InlineNotice></div>}
+                <div className="border-b border-slate-800">
+                    <MultiFullCourtChart
+                        homeTeamId={(homeTeamId ?? '')}
+                        homeColor={homeColor}
+                        homeAbbr={homeAbbr}
+                        awayTeamId={(awayTeamId ?? '')}
+                        awayColor={awayColor}
+                        awayAbbr={awayAbbr}
+                        shotEvents={visibleShotEvents}
+                        courtBackground={homeTeam?.court_background}
+                        courtPaint={homeTeam?.court_paint}
+                        courtLine={homeTeam?.court_line}
+                        courtThree={homeTeam?.court_three}
+                        courtShowLogo={homeTeam?.court_show_logo}
+                        courtLogoScale={homeTeam?.court_logo_scale}
+                        headerVariant="none"
+                    />
+                </div>
+                <div className="min-h-[160px] max-h-[70vh] flex flex-col bg-slate-900 border-b border-slate-800">
+                    {pbpFeedBody}
+                </div>
+                <div className="h-4" />
+                <div className="bg-slate-900 border-y border-slate-800">{renderBoxPanel('away')}</div>
+                <div className="h-4" />
+                <div className="bg-slate-900 border-y border-slate-800">{renderBoxPanel('home')}</div>
+                <div className="h-4" />
+            </div>
+            )}
+
+            {(isLive || isScheduled) && liveTab === 'center' && !isPhone && (
             // [Fix 2026-10-07] 바디 전체를 세로 스크롤 가능하게 — 바깥 래퍼가 스크롤을 맡고, 안쪽 3열
             // flex는 min-h-full로 최소 화면 높이를 채우되 컨텐츠가 길면 그만큼 늘어난다.
             // [2026-10-23] 3열을 카드화 — 바디 p-4 여백 + 열 사이 gap-4, 각 열은 공용 Table card 변형과 같은
@@ -2884,8 +3181,8 @@ const MultiGamePbpView: React.FC = () => {
             {/* [2026-10-23] 라이브 박스스코어 탭 — 종료 화면과 같은 GameBoxScoreTab(전체 컬럼·OVR·Traditional/Advanced/Defense)을
                 리플레이 시점 박스(liveHomeBox/liveAwayBox)로 그린다. 예정 상태는 0스탯 로스터(scheduledHomeBox/AwayBox). 미출전 행은 "출전 대기". */}
             {(isLive || isScheduled) && liveTab === 'box' && (
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
-                    <div className={LIVE_CARD}>
+                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide ${isPhone ? 'pb-4' : 'p-4'}`}>
+                    <div className={isPhone ? '' : LIVE_CARD}>
                         <GameBoxScoreTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -2909,8 +3206,8 @@ const MultiGamePbpView: React.FC = () => {
             {/* [2026-10-23] 라이브 샷 차트 탭 — 종료 화면과 같은 GameShotChartTab(풀코트·선수 필터 표·존별 성공률·히트맵)을 공개된 슛(visibleShotEvents)과
                 리플레이 시점 박스(POS/MP 열용)로 그린다. 예정 상태는 슛이 없어 빈 코트 + 0스탯 로스터. */}
             {(isLive || isScheduled) && liveTab === 'shot' && (
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
-                    <div className={LIVE_CARD}>
+                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide ${isPhone ? 'pb-4' : 'p-4'}`}>
+                    <div className={isPhone ? '' : LIVE_CARD}>
                         <GameShotChartTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -2927,11 +3224,11 @@ const MultiGamePbpView: React.FC = () => {
             {/* [2026-10-23] 라이브 플레이-바이-플레이 탭 — 세로 한 열 가운데 정렬(팀 스탯 탭과 동일 폭). 위: 인사이트 그래프(게임 센터 좌측 하단에서 이동,
                 고정 300px), 아래: PBP 피드(게임 센터 가운데 카드와 같은 pbpFeedBody, 여기선 더 길게 max-h-[75vh]). */}
             {(isLive || isScheduled) && liveTab === 'pbp' && (
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4 flex flex-col gap-4">
-                    {/* 인사이트 카드는 화면 좌우 꽉 채움(w-full), 아래 PBP 피드만 가운데 열(max-w-3xl).
+                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col ${isPhone ? '' : 'p-4 gap-4'}`}>
+                    {/* 인사이트 카드는 화면 좌우 꽉 채움(w-full), 아래 PBP 피드만 가운데 열(max-w-3xl). 폰은 둘 다 카드 없이 전폭(2026-10-28).
                         shrink-0 필수 — 래퍼가 flex-col이라 overflow-hidden(LIVE_CARD)인 이 카드는 세로 공간이 모자라면 min-height 0으로
                         취급돼 높이 0까지 찌그러진다(2026-10-23 실제 발생: 카드가 가는 선 하나로 보임). 축소 대신 래퍼 스크롤로 넘긴다. */}
-                    <div className={`w-full shrink-0 ${LIVE_CARD}`}>
+                    <div className={`w-full shrink-0 ${isPhone ? 'border-b border-slate-800' : LIVE_CARD}`}>
                             <div className="h-10 px-4 flex items-center bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">인사이트</div>
                             <div className="h-[300px] overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
                                 <GameInsightsPanel
@@ -2952,8 +3249,8 @@ const MultiGamePbpView: React.FC = () => {
                                 />
                             </div>
                     </div>
-                    <div className="w-full max-w-3xl mx-auto shrink-0">
-                        <div className={`min-h-[160px] max-h-[75vh] flex flex-col ${LIVE_CARD}`}>
+                    <div className={`w-full shrink-0 ${isPhone ? '' : 'max-w-3xl mx-auto'}`}>
+                        <div className={`min-h-[160px] max-h-[75vh] flex flex-col ${isPhone ? 'bg-slate-900 border-b border-slate-800' : LIVE_CARD}`}>
                             {pbpFeedBody}
                         </div>
                     </div>
@@ -3008,7 +3305,49 @@ const MultiGamePbpView: React.FC = () => {
             {showBox && (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
                 <div ref={resultScrollRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
-                    <ResultSection sectionKey="box" title="박스스코어" sectionRefs={sectionRefs}>
+                    {/* [2026-10-28] 폰(§9-7, 목업 G6·G10): 종료 헤더는 본문과 함께 스크롤되어 사라지고 섹션 탭 바만 상단 sticky —
+                        헤더(약 200)까지 고정하면 본문이 400px 남짓만 남는다. 탭은 섹션별 독립 화면(한 번에 하나만 렌더, 사용자 지시). */}
+                    {isPhone && (
+                        <>
+                            <div ref={phoneFinalHeaderRef} className="bg-slate-900 border-b border-slate-800 px-2 pt-3 pb-3.5">
+                                <div className="flex items-center gap-1">
+                                    <PhoneFinalTeamColumn teamSlug={awayTeamId ?? ''} abbr={awayAbbr} wl={isAllstar ? undefined : awayWL} score={currentScore.away} won={currentScore.away > currentScore.home} timeoutsLeft={timeoutsLeft.away} onClick={() => goTeamRoster(awayTeamId)} />
+                                    <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1.5">
+                                        <span className="text-[13px] font-bold text-slate-400 whitespace-nowrap">
+                                            {otVisible === 0 ? '종료' : otVisible === 1 ? '종료 · 연장' : `종료 · ${otVisible}차 연장`}
+                                        </span>
+                                        <QuarterScores
+                                            allLogs={visibleEvents}
+                                            homeTeamId={(homeTeamId ?? '')}
+                                            currentQuarter={currentQuarter}
+                                            homeAbbr={homeAbbr}
+                                            awayAbbr={awayAbbr}
+                                            phoneFinal
+                                        />
+                                    </div>
+                                    <PhoneFinalTeamColumn teamSlug={homeTeamId ?? ''} abbr={homeAbbr} wl={isAllstar ? undefined : homeWL} score={currentScore.home} won={currentScore.home > currentScore.away} timeoutsLeft={timeoutsLeft.home} onClick={() => goTeamRoster(homeTeamId)} />
+                                </div>
+                            </div>
+                            {/* z-[60]: 섹션 안 표 머리(thead z-40 · sticky th z-50)보다 위 — 같은 z면 뒤에 오는 표 머리가 탭 바를 덮는다(2026-10-28 지적). 상단 헤더(z-header 100)보다는 아래 */}
+                            <div className="sticky top-0 z-[60]">
+                                <TabBar
+                                    tabs={RESULT_TABS}
+                                    activeTab={activeSection}
+                                    onTabChange={id => {
+                                        // 탭별 독립 화면: 섹션 교체 + URL ?section= 보관(새로고침·공유 유지). 헤더를 이미 지나 내려와 있으면
+                                        // 새 탭이 처음부터 보이도록 탭 바가 맨 위에 붙는 위치로, 헤더가 보이는 중이면 스크롤 그대로.
+                                        setActiveSection(id);
+                                        setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('section', id); return next; }, { replace: true });
+                                        const box = resultScrollRef.current;
+                                        const headerH = phoneFinalHeaderRef.current?.offsetHeight ?? 0;
+                                        if (box && box.scrollTop > headerH) box.scrollTop = headerH;
+                                    }}
+                                    compact
+                                />
+                            </div>
+                        </>
+                    )}
+                    <ResultSection sectionKey="box" title="박스스코어" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
                         <GameBoxScoreTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -3025,7 +3364,7 @@ const MultiGamePbpView: React.FC = () => {
                         />
                     </ResultSection>
 
-                    <ResultSection sectionKey="insights" title="인사이트" sectionRefs={sectionRefs}>
+                    <ResultSection sectionKey="insights" title="인사이트" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
                         {/* [Fix 2026-08-04] 이 결과 페이지 컨텍스트에선 <section>이 일반 문서 흐름(높이 auto)이라
                             GameInsightsPanel 내부의 h-full/flex-1 체인이 참조할 확정 높이가 없음 — 이 경우
                             브라우저는 SVG의 viewBox 종횡비(800:220)로 높이를 역산해 렌더링해서 실제로는 "그래프
@@ -3052,7 +3391,7 @@ const MultiGamePbpView: React.FC = () => {
                         </div>
                     </ResultSection>
 
-                    <ResultSection sectionKey="pbp" title="경기 기록" sectionRefs={sectionRefs}>
+                    <ResultSection sectionKey="pbp" title="경기 기록" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
                         <GamePbpTab
                             logs={gameData?.events ?? []}
                             homeTeam={homeTeamAdapter}
@@ -3063,7 +3402,7 @@ const MultiGamePbpView: React.FC = () => {
                         />
                     </ResultSection>
 
-                    <ResultSection sectionKey="shotchart" title="샷차트" sectionRefs={sectionRefs}>
+                    <ResultSection sectionKey="shotchart" title="샷차트" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
                         <GameShotChartTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -3075,7 +3414,7 @@ const MultiGamePbpView: React.FC = () => {
                         />
                     </ResultSection>
 
-                    <ResultSection sectionKey="rotation" title="로테이션" sectionRefs={sectionRefs}>
+                    <ResultSection sectionKey="rotation" title="로테이션" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
                         <GameRotationTab
                             homeTeam={homeTeamAdapter}
                             awayTeam={awayTeamAdapter}
@@ -3090,7 +3429,7 @@ const MultiGamePbpView: React.FC = () => {
                         />
                     </ResultSection>
 
-                    <ResultSection sectionKey="onoff" title="온오프" sectionRefs={sectionRefs} className="pb-10">
+                    <ResultSection sectionKey="onoff" title="온오프" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection} className="pb-10">
                         <GameOnOffTab
                             boxTimeline={gameData?.box_timeline}
                             homeBox={gameData?.home_box ?? []}

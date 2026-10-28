@@ -6,6 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import { TableEmptyRow } from '../../../common/EmptyState';
 import { PlayerNameLink } from '../../../common/PlayerNameLink';
 import { InsightCard } from './InsightCard';
+import { useIsPhone } from '../../../../hooks/useViewportClass';
 
 interface PlayerStatsTableProps {
     team: Team;
@@ -57,12 +58,16 @@ export const PlayerStatsTable: React.FC<PlayerStatsTableProps> = ({ team, schedu
     const { sortedData } = useLeaderboardData(
         [team], schedule, [], sortConfig, 'Players', [], [], '', 'Traditional', 'regular',
     );
+    // [2026-10-28] 폰(<768, §9-1-11 X6): 13열이 가로 스크롤되므로 이름 열만 sticky. bare 표라 본문 sticky 셀 배경을 직접 준다
+    // (InsightCard slate-900/40 over slate-950 ≈ #070d1f, 홀수 행 slate-700/25 혼합 ≈ #121a2d).
+    const phone = useIsPhone();
+    const stickyName = (odd: boolean) => (phone ? `sticky left-0 z-30 ${odd ? 'bg-[#121a2d]' : 'bg-[#070d1f]'}` : '');
 
     return (
         <InsightCard title="선수 스탯">
             <Table variant="bare" dividers={false}>
                 <TableHead>
-                    <TableHeaderCell align="left" width={NAME_WIDTH}>이름</TableHeaderCell>
+                    <TableHeaderCell align="left" width={NAME_WIDTH} stickyLeft={phone ? 0 : undefined}>이름</TableHeaderCell>
                     <TableHeaderCell width={POS_WIDTH}>POS</TableHeaderCell>
                     {COLUMNS.map(c => <TableHeaderCell key={c.key} align="right">{c.label}</TableHeaderCell>)}
                 </TableHead>
@@ -74,7 +79,7 @@ export const PlayerStatsTable: React.FC<PlayerStatsTableProps> = ({ team, schedu
                             const g = p.stats.g || 1;
                             return (
                                 <TableRow key={p.id} className={i % 2 === 1 ? 'bg-slate-700/25' : ''}>
-                                    <TableCell align="left" width={NAME_WIDTH} className="max-w-[112px]">
+                                    <TableCell align="left" width={NAME_WIDTH} className={`max-w-[112px] ${stickyName(i % 2 === 1)}`}>
                                         <PlayerNameLink player={p as Player} teamAbbr={p.teamAbbr} onClick={onPlayerClick} className="block" />
                                     </TableCell>
                                     <TableCell width={POS_WIDTH} className="text-sm text-slate-500">{p.position}</TableCell>

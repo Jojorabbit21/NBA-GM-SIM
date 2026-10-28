@@ -6,6 +6,7 @@ import { useServerClockBucket } from '../../../utils/serverClock';
 import { TeamHoverCardBody } from '../../../components/common/TeamHoverCard';
 import { TeamHoverRendererContext, type TeamHoverRenderer } from '../../../components/common/TeamHover';
 import { buildTeamHoverData } from './teamHoverData';
+import { useAiGmProfiles } from '../../../hooks/useAiGmProfiles';
 
 // 팀 호버 카드(팀 요약+분야별 리그 순위)의 멀티플레이어용 내용 + 제공자.
 // 팝업 내용(MultiTeamHoverContent)은 호버로 열릴 때만 마운트되므로 아래 쿼리/계산은 그때 처음 돈다.
@@ -17,12 +18,17 @@ const MultiTeamHoverContent: React.FC<{ teamSlug: string }> = ({ teamSlug }) => 
     const serverNowMs = useServerClockBucket();
 
     const { data: teamAdvanced, isPending: advPending } = useTeamSeasonAdvancedStats(room?.id);
+    // [2026-10-20] AI 팀 "단장" 줄 — "없음" 대신 meta_gms 프런트 대표(사장 우선, 없으면 단장)와 실제 직함
+    const aiGmProfiles = useAiGmProfiles();
+    const aiProfile = aiGmProfiles.get(teamSlug);
+    const aiFront = aiProfile ? (aiProfile.president ?? aiProfile.gm) : null;
 
     const info = useMemo(() => buildTeamHoverData({
         slug: teamSlug, leagueTeams, schedule, serverNowMs, teamAdvanced,
         playoffTeamsPerConf: league?.playoff_team_count ?? 8,
         playInEnabled: league?.play_in_enabled ?? true,
-    }), [teamSlug, leagueTeams, schedule, serverNowMs, teamAdvanced, league?.playoff_team_count, league?.play_in_enabled]);
+        aiFront,
+    }), [teamSlug, leagueTeams, schedule, serverNowMs, teamAdvanced, league?.playoff_team_count, league?.play_in_enabled, aiFront]);
 
     if (!info) return null;
     return <TeamHoverCardBody info={info} loading={advPending} />;

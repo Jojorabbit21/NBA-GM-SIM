@@ -8,6 +8,8 @@ import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
 import { Pagination } from '../components/common/Pagination';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
 import type { TeamAdvancedStatsMap } from '../hooks/useTeamSeasonAdvancedStats';
+import { useIsPhone } from '../hooks/useViewportClass';
+import { PhoneLeaderboard } from '../components/leaderboard/PhoneLeaderboard';
 
 export interface LeaderboardFilterState {
   mode: ViewMode;
@@ -42,9 +44,11 @@ interface LeaderboardViewProps {
   /** 멀티 전용 — 팀 어드밴스드 스탯 RPC 결과(시즌 구분별). useLeaderboardData의 teamAdvanced 참고. */
   teamAdvancedRegular?: TeamAdvancedStatsMap;
   teamAdvancedPlayoff?: TeamAdvancedStatsMap;
+  /** [2026-10-28] 폰 H4 헤더의 뒤로 — 호출부(멀티)가 라우터 back을 넘긴다 */
+  onBack?: () => void;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false, includeZeroGamePlayers = false, teamAdvancedRegular, teamAdvancedPlayoff }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange, hideSeasonType = false, onRefresh, refreshing = false, enableHoverCard = false, includeZeroGamePlayers = false, teamAdvancedRegular, teamAdvancedPlayoff, onBack }) => {
   const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
   const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
@@ -151,6 +155,41 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           if (statCategory === 'Attributes') setStatCategory('Traditional');
       }
   };
+
+  const isPhone = useIsPhone();
+  const clearAll = () => {
+      setActiveFilters([]);
+      setSelectedTeams([]);
+      setSelectedPositions([]);
+      setSearchQuery('');
+  };
+  if (isPhone) {
+      // [2026-10-28] 폰(<768, docs/ui/mobile-design-system.md §9-1-12) — 상태·훅은 위 그대로, 셸만 PhoneLeaderboard. 표는 LeaderboardTable 폰 분기.
+      return (
+          <PhoneLeaderboard
+              mode={mode} setMode={handleModeChange}
+              statCategory={statCategory} setStatCategory={handleStatCategoryChange}
+              teams={teams}
+              selectedTeams={selectedTeams} setSelectedTeams={setSelectedTeams}
+              selectedPositions={selectedPositions} setSelectedPositions={setSelectedPositions}
+              searchQuery={searchQuery} setSearchQuery={(q: string) => { setSearchQuery(q); setCurrentPage(1); }}
+              seasonType={seasonType} setSeasonType={setSeasonType} hideSeasonType={hideSeasonType}
+              showHeatmap={showHeatmap} setShowHeatmap={setShowHeatmap}
+              activeFilters={activeFilters} addFilter={addFilter} removeFilter={removeFilter} clearFilters={clearAll}
+              onRefresh={onRefresh} refreshing={refreshing}
+              itemsPerPage={itemsPerPage} onItemsPerPageChange={handleItemsPerPageChange}
+              onBack={onBack}
+              table={(
+                  <LeaderboardTable
+                      data={currentData} mode={mode} statCategory={statCategory} sortConfig={sortConfig} onSort={handleSort}
+                      onRowClick={handleRowClick} statRanges={statRanges} showHeatmap={showHeatmap}
+                      currentPage={currentPage} itemsPerPage={itemsPerPage} enableHoverCard={false}
+                  />
+              )}
+              pagination={<Pagination compact page={currentPage} pageSize={itemsPerPage} totalItems={sortedData.length} onPageChange={handlePageChange} />}
+          />
+      );
+  }
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">

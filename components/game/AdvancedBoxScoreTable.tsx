@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
 import { TeamMark } from '../common/TeamMark';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { useIsPhone } from '../../hooks/useViewportClass';
 import { TEAM_DATA } from '../../data/teamData';
 import { computeTeamBoxTotals, computeAdvancedStats, computePieRaw } from '../../utils/advancedBoxStats';
 import { PlayerIdentityHeaderCells, PlayerIdentityCells } from './PlayerIdentityCells';
@@ -57,12 +58,15 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
     const statCell = statCellClass(standalone);
     const totalCell = totalCellClass(standalone);
     const teamColor = badge?.color ?? TEAM_DATA[team.id]?.colors.primary ?? '#6366f1';
+    // [2026-10-28] 폰(<768) 멀티 종료 화면(§9-7): 공용 Table 폰 틀(flush · phone 밀도) + PLAYER 열 144 sticky, 퍼센트 colgroup·고정 레이아웃 해제(가로 스크롤)
+    const isPhone = useIsPhone();
+    const phoneTable = isPhone && !!standalone;
 
     return (
         <div className={standalone ? "w-full relative" : "w-full bg-slate-900 border-y border-slate-800 relative"}>
             {!standalone && <div className="absolute top-0 left-0 right-0 h-0.5 z-10" style={{ backgroundColor: teamColor }}></div>}
 
-            <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
+            <div className={`${standalone ? 'px-4 py-3 md:px-6 md:py-4' : 'px-6 py-4'} bg-slate-950/80 flex items-center justify-between mt-0.5 ${standalone ? 'border-slate-800 border-b md:border-b-0 md:border-l md:border-r' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center gap-3">
                     <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
                     <span className="text-sm font-black text-white">{team.name}</span>
@@ -70,10 +74,10 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                 {headerRight}
             </div>
 
-            <Table className={standalone ? "!rounded-none box-compact-head" : "!rounded-none !border-0 !shadow-none"} tableStyle={standalone ? fixedBoxTableStyle(720) : undefined}>
-                {standalone && <BoxColGroup statPcts={ADV_STAT_COL_PCTS} hideOvr={hideOvr} />}
+            <Table className={phoneTable ? "!shadow-none box-compact-head" : standalone ? "!rounded-none box-compact-head" : "!rounded-none !border-0 !shadow-none"} variant={phoneTable ? 'flush' : 'card'} density={phoneTable ? 'phone' : 'default'} fullHeight={phoneTable ? false : undefined} tableStyle={standalone && !phoneTable ? fixedBoxTableStyle(720) : undefined}>
+                {standalone && !phoneTable && <BoxColGroup statPcts={ADV_STAT_COL_PCTS} hideOvr={hideOvr} />}
                 <TableHead>
-                    <PlayerIdentityHeaderCells hideOvr={hideOvr} />
+                    <PlayerIdentityHeaderCells hideOvr={hideOvr} sticky={phoneTable} />
                     <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-14">TS%</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-14">EFG%</TableHeaderCell>
@@ -91,7 +95,7 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                         const pie = totalPieRaw > 0 ? (computePieRaw(p) / totalPieRaw) * 100 : null;
                         return (
                             <TableRow key={p.playerId}>
-                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} teamAbbr={badge?.abbr} hideOvr={hideOvr} />
+                                <PlayerIdentityCells player={p} playerInfo={rosterMap.get(p.playerId)} mvpId={mvpId} standalone={standalone} profileHref={getProfileHref?.(p.playerId)} teamAbbr={badge?.abbr} hideOvr={hideOvr} sticky={phoneTable} />
                                 {!(p.mp > 0) ? <DnpCell colSpan={10} standalone={standalone} label={dnpLabel} /> : (<>
                                 <TableCell align="center" className={statCell}>{Math.round(p.mp)}</TableCell>
                                 <TableCell align="center" className={statCell}>{fmtPct(adv.tsPct)}</TableCell>
@@ -111,7 +115,7 @@ export const AdvancedBoxScoreTable: React.FC<AdvancedBoxScoreTableProps> = ({ te
                 </TableBody>
                 <tfoot>
                     <tr>
-                        <td className="py-2 px-4 leading-6 bg-slate-800/50 border-t border-slate-800">
+                        <td className={`py-2 px-4 leading-6 border-t border-slate-800 ${phoneTable ? 'sticky left-0 z-30 bg-[#172033]' : 'bg-slate-800/50'}`}>
                             <span className={`${standalone ? 'text-sm' : 'text-xs'} font-black text-white`}>TEAM TOTALS</span>
                         </td>
                         <td className={totalCell} colSpan={hideOvr ? 1 : 2}></td>

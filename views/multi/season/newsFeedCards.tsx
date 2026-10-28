@@ -25,6 +25,7 @@ import { EventLetterLogo, ClickableText, LetterShell, LetterSectionTitle, Letter
 import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
 import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick, TradeOutPlayer } from '../../../services/multi/leagueEventPayload';
 import { foldPeriodScores, periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
 // 재수출만 해서 이 모듈을 이미 import하고 있는 곳(MultiNewsFeedView.tsx 등)의 기존 import
@@ -285,16 +286,20 @@ const TeamBoxTable: React.FC<{
     // 인라인 style로 적용해 헤더 기본 글자색(text-slate-400)과 충돌 없이 항상 이김.
     const headerBg = team?.color_primary ?? '#1e293b';
     const headerFg = team?.color_text ?? getReadableTextColor(headerBg);
+    // [2026-10-27] 폰(<768, §9-1-10): 선수 열만 sticky(헤더 팀색·본문 slate-900·합계 slate-900+800/40 혼합색 불투명)로 고정하고
+    // 나머지 18열은 bare Table 래퍼(overflow-x-auto)에서 가로 스크롤, 레터 패딩 16을 뚫고 풀블리드(-mx-4). 데스크톱은 변화 없음.
+    const phone = useIsPhone();
+    const stickyPlayer = phone ? 'sticky left-0 z-30 bg-slate-900' : '';
 
     return (
-        <div className="space-y-2">
+        <div className={`space-y-2 ${phone ? '-mx-4' : ''}`}>
             <Table variant="bare" density="compact" className="text-sm text-slate-300">
                 <TableHead noRow>
                     <tr className="h-8 text-sm font-bold" style={{ backgroundColor: headerBg }}>
                         <TableHeaderCell
                             align="left"
-                            className="font-black"
-                            style={{ color: headerFg }}
+                            className={`font-black ${phone ? 'sticky left-0 z-50' : ''}`}
+                            style={phone ? { color: headerFg, backgroundColor: headerBg } : { color: headerFg }}
                             onClick={onOpenTeam ? () => onOpenTeam(teamSlug) : undefined}
                         >
                             <TeamHover teamId={onOpenTeam ? teamSlug : null}><span className={onOpenTeam ? 'cursor-pointer hover:underline' : ''}>{team?.team_name ?? teamSlug}</span></TeamHover>
@@ -329,7 +334,7 @@ const TeamBoxTable: React.FC<{
                                 onClick={onPlayerClick ? () => onPlayerClick(p.playerId) : undefined}
                                 className={isHighlighted ? 'bg-amber-400/10' : ''}
                             >
-                                <LetterPlayerCell name={p.playerName} entry={entry} muted />
+                                <LetterPlayerCell name={p.playerName} entry={entry} muted className={isHighlighted ? `${stickyPlayer} ${phone ? '!bg-[#272829]' : ''}` : stickyPlayer} />
                                 <TableCell className="text-slate-500">{p.position ?? '-'}</TableCell>
                                 <TableCell>{formatMinutesClock(p.mp) ?? Math.round(p.mp)}</TableCell>
                                 <TableCell className="font-bold text-white">{p.pts}</TableCell>
@@ -358,7 +363,7 @@ const TeamBoxTable: React.FC<{
                     마무리를 시각적으로 구분(사용자 요청 — "완결성 부여"). TableFoot(bare)이 bg-slate-800/40 제공. */}
                 <TableFoot>
                     <TableRow>
-                        <TableCell align="left" className="font-bold text-white">합계</TableCell>
+                        <TableCell align="left" className={`font-bold text-white ${phone ? 'sticky left-0 z-30 bg-[#151e31]' : ''}`}>합계</TableCell>
                         <TableCell className="font-bold text-white">-</TableCell>
                         {/* 합계 MIN(항상 5인×48분=240:00 고정값이라 정보량 없음) — 사용자 요청으로 비움 */}
                         <TableCell className="font-bold text-white" />

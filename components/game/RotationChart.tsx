@@ -90,7 +90,9 @@ const OUT_REASON_LABEL: Record<RotationOutReason, string> = {
 };
 
 // 선수 이름이 잘리지 않을 정도로만 잡은 최소 폭 — 나머지는 타임라인 컬럼에 양보.
-const NAME_COL = '120px';
+// [2026-10-28] 폰(<768)은 104px(§9-7, 목업 G18) — 카드 루트의 CSS 변수(--rot-name)로 헤더·행이 같은 폭을 쓴다.
+const NAME_COL = 'var(--rot-name)';
+const NAME_COL_VARS = '[--rot-name:104px] md:[--rot-name:120px]';
 
 const PlayerRow: React.FC<{
     player: PlayerBoxScore,
@@ -154,7 +156,9 @@ const PlayerRow: React.FC<{
                             : 'left-1/2 -translate-x-1/2';
 
                     return (
-                        <div key={i} className="absolute top-1/2 -translate-y-1/2 h-4" style={{ left: `${startPct}%`, width: `${cappedWidth}%`, minWidth: '2px' }}>
+                        // 탭(터치)으로도 툴팁 토글 — 마우스는 기존 호버 그대로
+                        <div key={i} className="absolute top-1/2 -translate-y-1/2 h-4" style={{ left: `${startPct}%`, width: `${cappedWidth}%`, minWidth: '2px' }}
+                            onClick={() => setHoverIdx(prev => (prev === i ? null : i))}>
                             <div
                                 className="absolute inset-y-0 inset-x-0 my-auto h-1.5 transition-all hover:h-2 cursor-default"
                                 style={{ backgroundColor: barColor }}
@@ -198,18 +202,18 @@ const TeamRotationCard: React.FC<{
     standalone?: boolean,
     children: React.ReactNode,
 }> = ({ team, standalone, children }) => (
-    <div className={standalone
+    <div className={`${NAME_COL_VARS} ${standalone
         ? "w-full relative"
         : "w-full bg-slate-900 border-y border-slate-800 relative"
-    }>
-        <div className={`px-6 py-4 bg-slate-950/80 flex items-center justify-between ${standalone ? 'border-l border-r border-slate-800' : 'border-b border-slate-800'}`}>
+    }`}>
+        <div className={`${standalone ? 'px-4 py-3 md:px-6 md:py-4' : 'px-6 py-4'} bg-slate-950/80 flex items-center justify-between ${standalone ? 'border-slate-800 md:border-l md:border-r' : 'border-b border-slate-800'}`}>
             <div className="flex items-center gap-3">
                 <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
                 <span className="text-sm font-black text-white">{team.name}</span>
             </div>
         </div>
 
-        <div className={standalone ? "bg-slate-900 border border-slate-800 shadow-lg" : "bg-slate-900"}>
+        <div className={standalone ? "bg-slate-900 border-y md:border border-slate-800 shadow-lg" : "bg-slate-900"}>
             <div className="grid h-10 bg-slate-950 border-b border-slate-800" style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}>
                 <div className="flex items-center px-4 text-xs font-black text-slate-500 border-r border-slate-800">선수</div>
                 <div className="grid grid-cols-4 divide-x divide-slate-800 text-xs font-black text-slate-500 text-center items-center">

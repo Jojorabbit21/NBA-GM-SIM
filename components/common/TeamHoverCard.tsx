@@ -27,6 +27,8 @@ export interface TeamHoverCardInfo {
     losses: number;
     confRank: number | null;
     leagueRank: number;
+    /** "단장" 줄의 라벨 — 사람 팀은 '단장', AI 팀은 프런트 대표의 실제 직함(사장·부사장 겸 단장 등) */
+    gmTitle: string;
     gmLabel: string;
     totalTeams: number;
     ranks: TeamHoverCardRank[] | null;
@@ -57,7 +59,7 @@ export const TeamHoverCardBody: React.FC<{ info: TeamHoverCardInfo; loading?: bo
         </div>
 
         <div className="flex items-baseline justify-between pb-2.5 mb-2.5 border-b border-slate-800">
-            <span className="text-xs text-slate-400">단장</span>
+            <span className="text-xs text-slate-400">{info.gmTitle}</span>
             <span className="text-xs font-semibold text-white truncate ml-2">{info.gmLabel}</span>
         </div>
 

@@ -5,6 +5,7 @@ import { TEAM_DATA } from '../../../data/teamData';
 import { ArrowRight, Clock } from 'lucide-react';
 import { SegmentedControl } from '../../common/SegmentedControl';
 import { PlayTypeStats } from '../PlayTypeStats';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 import { countOvertimePeriods, normalizePeriod, periodKoreanLabel, periodShortLabel, periodList } from '../../../utils/periodLabel';
 
 interface GamePbpTabProps {
@@ -26,6 +27,9 @@ interface ProcessedLog extends PbpLog {
 export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam, shotEvents, homeBadge, awayBadge }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [selectedQuarter, setSelectedQuarter] = useState<number>(0); // 0 = All
+    // [2026-10-28] 폰(§9-7, 목업 G15·G16): 기록 목록은 고정 높이 456 안 스크롤, 플레이타입은 그 아래 흐름. 행은 Q · 시간 · 스코어 · 기록 4칸
+    // (원정/홈 약어 칸을 기록 앞 팀 약어 하나로 흡수). 색·글자·네온 하이라이트·흐름 줄은 데스크톱 그대로.
+    const isPhone = useIsPhone();
 
     // [2026-08-03] ResizeObserver로 플레이타입 패널의 실제 높이를 측정해 행 높이로 쓰는 방식을
     // 시도했으나, ResizeObserver 콜백이 태생적으로 비동기라(첫 관측도 마이크로태스크 이후 발화)
@@ -151,9 +155,9 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
     );
 
     return (
-        <div className="h-[520px] w-full flex flex-col md:flex-row animate-in fade-in slide-in-from-right-4 duration-300">
+        <div className={`${isPhone ? '' : 'h-[520px] md:flex-row'} w-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300`}>
             {/* 좌측: PBP 커멘터리 — 카드(배경/테두리/라운딩/그림자) 해체, 우측 영역과의 경계만 구분선(border-r)으로 표시 (5:5 중 5) */}
-            <div className="flex-[5] min-w-0 min-h-0 flex flex-col border-b md:border-b-0 md:border-r border-slate-800">
+            <div className={`${isPhone ? 'h-[456px]' : 'flex-[5] md:border-b-0 md:border-r'} min-w-0 min-h-0 flex flex-col border-b border-slate-800`}>
                 {/* 헤더: 쿼터 필터 — 애니메이션 없이 클릭 즉시 상태 전환 */}
                 <div className="shrink-0 flex items-center gap-1 px-3 h-11 border-b border-slate-800 bg-slate-950/60 overflow-x-auto">
                     <SegmentedControl
@@ -170,6 +174,14 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                 >
                 {/* 컬럼 헤더 — 우측 플레이타입 패널(PlayTypeStats.tsx)/박스스코어(Table.tsx)와 동일 톤:
                     bg-slate-950 sticky + text-slate-500 font-black  */}
+                {isPhone ? (
+                <div className="flex items-center gap-2 px-4 h-10 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
+                    <div className="flex-shrink-0 w-7 text-center text-xs font-black text-slate-500">Q</div>
+                    <div className="flex-shrink-0 w-9 text-center text-xs font-black text-slate-500">시간</div>
+                    <div className="flex-shrink-0 w-[60px] text-center text-xs font-black text-slate-500">스코어</div>
+                    <div className="flex-1 text-xs font-black text-slate-500">기록</div>
+                </div>
+                ) : (
                 <div className="flex items-center gap-4 px-4 h-10 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
                     <div className="flex-shrink-0 w-6 text-center text-xs font-black text-slate-500">Q</div>
                     <div className="flex-shrink-0 w-12 text-center text-xs font-black text-slate-500">시간</div>
@@ -178,6 +190,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                     <div className="flex-shrink-0 w-8 flex justify-center text-xs font-black text-slate-500">홈</div>
                     <div className="flex-1 pl-2 text-xs font-black text-slate-500">기록</div>
                 </div>
+                )}
                 <div className="divide-y divide-slate-800/50">
                     {displayLogs.map((log, idx) => {
                         const isHome = log.teamId === homeTeam.id;
@@ -225,6 +238,29 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         const scoreHighlight = 'text-[#00e676] drop-shadow-[0_0_4px_rgba(0,230,118,0.65)]';
 
                         const timeDisplay = (log.timeRemaining || '-');
+
+                        if (isPhone) {
+                            // 교체 로그는 renderLogContent가 이미 "약어 선수교체" 줄을 그리므로 약어 접두를 붙이지 않는다
+                            const isSub = log.text.startsWith('교체:');
+                            const scored = awayScored || homeScored;
+                            return (
+                                <div key={idx} className="flex items-start py-2.5 px-4 gap-2">
+                                    <div className="flex-shrink-0 w-7 text-slate-300 text-xs leading-relaxed text-center">{periodShortLabel(log.quarter, otCount, '1Q')}</div>
+                                    <div className="flex-shrink-0 w-9 text-slate-300 text-xs leading-relaxed text-center tabular-nums">{timeDisplay}</div>
+                                    <div className="flex-shrink-0 w-[60px] text-center text-slate-300 text-xs leading-relaxed tracking-tight tabular-nums">
+                                        <span className={awayScored ? scoreHighlight : ''}>{log.awayScore}</span>
+                                        <span className="mx-1 text-slate-500">:</span>
+                                        <span className={homeScored ? scoreHighlight : ''}>{log.homeScore}</span>
+                                    </div>
+                                    <div className={`flex-1 min-w-0 break-words leading-relaxed ${textColor}`}>
+                                        {!isSub && (
+                                            <span className={`mr-1.5 text-xs tracking-tight ${scored ? scoreHighlight : 'text-slate-300'}`}>{isHome ? homeAbbr : awayAbbr}</span>
+                                        )}
+                                        {renderLogContent(log.text, homeTeam, awayTeam, log.teamId)}
+                                    </div>
+                                </div>
+                            );
+                        }
 
                         return (
                             <div key={idx} className={`flex items-center py-2.5 px-4 gap-4 ${bgClass}`}>
@@ -279,7 +315,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                 자동으로 받는다(min-w-0/min-h-0는 그 높이를 내용 때문에 못 줄이는 상황을 막는 안전장치).
                 실제 좌우 높이 불일치의 진짜 원인은 여기가 아니라 PlayTypeStats.tsx 내부에 있었음
                 — 자세한 설명은 그 파일의 [Fix 2026-08-03] 주석 참고. */}
-            <div className="flex-[5] min-w-0 min-h-0 overflow-y-auto custom-scrollbar">
+            <div className={isPhone ? 'min-w-0' : 'flex-[5] min-w-0 min-h-0 overflow-y-auto custom-scrollbar'}>
                 <PlayTypeStats
                     shotEvents={shotEvents}
                     homeTeamId={homeTeam.id}

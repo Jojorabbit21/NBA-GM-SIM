@@ -51,6 +51,13 @@ import { IconButton } from '../../../components/common/IconButton';
 import { TACTIC_PRESET_NAME_MAX, normalizePresetName } from '../../../services/multi/tacticPresets';
 import { isImeComposing } from '../../../utils/ime';
 import type { TacticSetId } from '../../../services/game/engine/pbp/tacticSchedule';
+import { useViewportClass } from '../../../hooks/useViewportClass';
+import { MobileHeaderActions } from '../../../components/mobile/MobileHeaderActions';
+import { TeamLogo } from '../../../components/common/TeamLogo';
+import { getTeamTheme } from '../../../utils/teamTheme';
+import { getReadableTextColor } from '../../../utils/colorContrast';
+import { computeMultiStandingsStats } from './multiSeasonUtils';
+import { PhoneTeamTactics } from '../../../components/dashboard/tactics/PhoneTeamTactics';
 
 type PresetNotice = { tone: 'info' | 'danger'; text: string };
 const PRESET_KINDS: TacticPresetKind[] = ['depth', 'team'];
@@ -562,6 +569,29 @@ const MultiTacticsView: React.FC = () => {
 
     const coachName = coachingData?.[myTeamId ?? '']?.headCoach?.name;
 
+    // [2026-10-28] 폰 셸용 — 팀 테마(로스터 H3와 같은 규칙: color_primary/color_text 없으면 TEAM_DATA 색) + "W–L · 컨퍼런스 N위" 부제
+    const isPhone = useViewportClass() === 'phone';
+    const phoneTheme = useMemo(() => {
+        const colors = myTeamRow?.color_primary
+            ? { primary: myTeamRow.color_primary, secondary: myTeamRow.color_secondary || '#64748b', text: myTeamRow.color_text || getReadableTextColor(myTeamRow.color_primary) }
+            : (TEAM_DATA[myTeamId ?? '']?.colors || null);
+        const t = getTeamTheme(myTeamRow?.color_primary ? null : (myTeamId ?? null), colors);
+        const hex = /^#([0-9a-f]{6})$/i.exec(t.text.trim())?.[1];
+        const lum = hex ? (0.2126 * parseInt(hex.slice(0, 2), 16) + 0.7152 * parseInt(hex.slice(2, 4), 16) + 0.0722 * parseInt(hex.slice(4, 6), 16)) : 255;
+        return { ...t, circleBg: lum < 128 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)' };
+    }, [myTeamRow, myTeamId]);
+    const phoneStanding = useMemo(() => {
+        if (!isPhone || !myTeamId || !myTeamRow) return null;
+        const stats = computeMultiStandingsStats(leagueTeams.map(t => t.team_slug), schedule, getServerNow(), {}, league?.type === 'tournament');
+        const mine = stats[myTeamId];
+        if (!mine) return null;
+        const conf = myTeamRow.conference;
+        const peers = leagueTeams.filter(t => t.conference === conf).map(t => stats[t.team_slug]).filter(Boolean)
+            .sort((a, b) => b.pct - a.pct || b.wins - a.wins);
+        const rank = peers.findIndex(r => r.slug === myTeamId) + 1;
+        return { wins: mine.wins, losses: mine.losses, rank: rank || peers.length, confLabel: conf === 'West' ? '서부' : '동부' };
+    }, [isPhone, myTeamId, myTeamRow, leagueTeams, schedule, league?.type]);
+
     // ── 팀 전술 탭 헤더 버튼 [2026-10-18] ─────────────────────────────────────────
     // 자동 설정: 지금 뎁스차트의 주전 5명(슬롯 1번째, 없으면 tactics.starters)으로 generateSlidersForStarters
     // (generateAutoTactics와 같은 슬라이더 계산 + 감독 성향 블렌드). 뎁스·로테이션은 건드리지 않음.
@@ -785,53 +815,15 @@ const MultiTacticsView: React.FC = () => {
         );
     }
 
-    return (
-        <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
-            <TabBar
-                tabs={[
-                    { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
-                    { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
-                    { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
-                    // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
-                ]}
-                activeTab={activeTab}
-                onTabChange={handleTabChange}
-                rightSlot={
-                    <>
-                        {saveError
-                            ? <InlineNotice tone="danger" size="sm">{saveError}</InlineNotice>
-                            : isTacticsDirty && <InlineNotice tone="warning" size="sm">저장되지 않은 변경사항이 있습니다</InlineNotice>}
-                        <Button
-                            variant={saving || !isTacticsDirty ? 'secondary' : 'success'}
-                            size="lg"
-                            onClick={handleSaveTactics}
-                            disabled={saving || !isTacticsDirty}
-                            isLoading={saving}
-                            loadingText="저장 중…"
-                            style={!saving && isTacticsDirty ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
-                        >
-                            {savedFlash
-                                ? <><Check size={13} />저장됨</>
-                                : <><Save size={13} />저장</>
-                            }
-                        </Button>
-                    </>
-                }
-            />
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                {activeTab === 'depth' && (
-                    <DepthRotationBoard
-                        team={team}
-                        tactics={userTactics!}
-                        depthChart={depthChart}
-                        onUpdateDepthChart={setDepthChart}
-                        onUpdateTactics={setUserTactics}
-                        coachName={coachName}
-                        playerConditions={playerConditions}
-                        toolbarExtra={depthPresetBar}
-                    />
-                )}
-                {activeTab === 'team' && (
+    const tacticsTabs = [
+        { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
+        { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+        { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
+        // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
+    ];
+
+    // 팀 전술·인사이트 패널 — 데스크톱/폰 셸이 같은 JSX를 쓴다(폰 전용 화면은 아직 없음, 2026-10-28)
+    const teamPanel = (
                     <div className="flex flex-col h-full overflow-hidden">
                         {/* ── Toolbar — DepthRotationBoard 툴바와 같은 구성(제목+프리셋 좌측, 자동/초기화 우측) ── */}
                         <div className="px-6 py-3 bg-slate-800 border-b border-slate-600 flex items-center justify-between flex-shrink-0 gap-4">
@@ -932,8 +924,8 @@ const MultiTacticsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                )}
-                {activeTab === 'insights' && (
+    );
+    const insightsPanel = (
                     <div className="p-8 pb-20 flex flex-col gap-4">
                         {/* 최상단 — 시즌 경기 로그(득실차 스파크라인 + 득점/실점/득실차 히스토그램 + 홈원정·승패 요약) */}
                         <TeamGameLogChart games={myTeamGameLog} onBarClick={handleViewGame} />
@@ -990,7 +982,164 @@ const MultiTacticsView: React.FC = () => {
                             </div>
                         )}
                     </div>
+    );
+
+    if (isPhone) {
+        // [2026-10-28] 폰 셸 — docs/ui/mobile-design-system.md §9-1-11: 팀색 H3 헤더(로스터와 동일 규칙, 내 팀 고정) + 전술 탭 바(compact·팀 테마)
+        // + 탭 패널 + 하단 저장 바 56(변경·오류·저장됨일 때만; 데스크톱 TabBar rightSlot 대체). 뎁스·로테이션 탭은 DepthRotationBoard가 폰 분기,
+        // 팀 전술·인사이트 탭은 아직 데스크톱 패널 그대로.
+        const showSaveBar = isTacticsDirty || !!saveError || savedFlash;
+        return (
+            <div className="h-full flex flex-col overflow-hidden">
+                <header className="shrink-0 pt-safe" style={{ backgroundColor: phoneTheme.bg, color: phoneTheme.text }}>
+                    <div className="h-14 flex items-center gap-2.5 pl-4 pr-2">
+                        <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center" style={{ backgroundColor: phoneTheme.circleBg }}>
+                            <TeamLogo teamId={myTeamId ?? ''} teamName={myTeamRow?.team_abbr ?? ''} size="custom" className="w-5 h-5" shadow={false} />
+                        </span>
+                        <span className="flex-1 min-w-0 flex flex-col">
+                            <span className="text-lg leading-6 font-bold truncate">{myTeamRow?.team_name ?? '전술'}</span>
+                            <span className="text-xs leading-4 font-medium opacity-80 tabular-nums truncate">
+                                {phoneStanding ? `${phoneStanding.wins}–${phoneStanding.losses} · ${phoneStanding.confLabel} ${phoneStanding.rank}위` : '전술'}
+                            </span>
+                        </span>
+                        <MobileHeaderActions inheritColor showTeamLogo={false} />
+                    </div>
+                </header>
+                <TabBar tabs={tacticsTabs} activeTab={activeTab} onTabChange={handleTabChange} theme={phoneTheme} compact />
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    {activeTab === 'depth' && (
+                        <DepthRotationBoard
+                            team={team}
+                            tactics={userTactics!}
+                            depthChart={depthChart}
+                            onUpdateDepthChart={setDepthChart}
+                            onUpdateTactics={setUserTactics}
+                            coachName={coachName}
+                            playerConditions={playerConditions}
+                            toolbarExtra={depthPresetBar}
+                        />
+                    )}
+                    {activeTab === 'team' && editingTactics && (
+                        <PhoneTeamTactics
+                            tactics={userTactics!}
+                            onUpdateTactics={setUserTactics}
+                            selectedSet={selectedSet}
+                            onSelectSet={setSelectedSet}
+                            editingTactics={editingTactics}
+                            onUpdateSetTactics={handleUpdateSetTactics}
+                            clutchLocked={clutchLocked}
+                            altMinutes={altMinutes}
+                            autoSetNotice={autoSetNotice}
+                            onAutoSet={handleAutoSetSliders}
+                            onReset={handleResetSliders}
+                            onRenameSet={name => { if (userTactics && selectedSet !== 'clutch' && normalizePresetName(name)) setUserTactics(withSetName(userTactics, selectedSet, name)); }}
+                            toolbarExtra={renderPresetSelector('team')}
+                            playTypeActual={playTypeActual}
+                        />
+                    )}
+                    {activeTab === 'insights' && (
+                        // [2026-10-28] 폰 인사이트(§9-1-11 X6): 데스크톱 그리드 대신 1열 스택 — 팀 리더(1열) → 팀 지표 순위 → 선수 스탯 → 존 표.
+                        // 시즌 경기 로그·존 샷차트는 폰에서 숨김(2026-10-28 사용자 지시). 위젯은 데스크톱 컴포넌트 그대로(표 2개는 폰에서 첫 열 sticky).
+                        <div className="p-4 flex flex-col gap-4">
+                            {offenseRows.length === 0 || leagueTeamsLoading || !myTeamWithFullStats ? (
+                                <Spinner variant="section" />
+                            ) : (
+                                <>
+                                    <TeamLeadersCards
+                                        leagueTeams={leagueTeamsWithStats}
+                                        myTeamId={myTeamId ?? ''}
+                                        schedule={normalizedSchedule}
+                                        onPlayerClick={handleViewPlayer}
+                                        singleColumn
+                                    />
+                                    <TeamStatRankList
+                                        pages={[
+                                            { title: '공격', rows: [...offenseRows, ...shootingRows] },
+                                            { title: '수비', rows: [...defenseRows, ...contestRows] },
+                                        ]}
+                                    />
+                                    <PlayerStatsTable team={myTeamWithFullStats} schedule={normalizedSchedule} onPlayerClick={handleViewPlayer} />
+                                    <TeamZoneStatsTable roster={myTeamWithFullStats.roster} teamAbbr={myTeamWithFullStats.abbr ?? undefined} onPlayerClick={handleViewPlayer} />
+                                </>
+                            )}
+                            <div aria-hidden="true" className="h-14 pb-safe" />
+                        </div>
+                    )}
+                </div>
+                {showSaveBar && (
+                    <div className="shrink-0 h-14 px-4 flex items-center gap-3 bg-slate-900 border-t border-slate-800">
+                        <div className="flex-1 min-w-0">
+                            {saveError
+                                ? <InlineNotice tone="danger" size="sm">{saveError}</InlineNotice>
+                                : isTacticsDirty
+                                    ? <span className="text-xs text-amber-400 ko-normal">저장되지 않은 변경사항이 있습니다</span>
+                                    : <span className="text-xs text-emerald-400 ko-normal">저장되었습니다</span>}
+                        </div>
+                        <Button
+                            variant={saving || !isTacticsDirty ? 'secondary' : 'success'}
+                            size="lg"
+                            onClick={handleSaveTactics}
+                            disabled={saving || !isTacticsDirty}
+                            isLoading={saving}
+                            loadingText="저장 중…"
+                            style={!saving && isTacticsDirty ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
+                        >
+                            {savedFlash ? <><Check size={13} />저장됨</> : <><Save size={13} />저장</>}
+                        </Button>
+                    </div>
                 )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-300">
+            <TabBar
+                tabs={[
+                    { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
+                    { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+                    { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
+                    // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
+                ]}
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+                rightSlot={
+                    <>
+                        {saveError
+                            ? <InlineNotice tone="danger" size="sm">{saveError}</InlineNotice>
+                            : isTacticsDirty && <InlineNotice tone="warning" size="sm">저장되지 않은 변경사항이 있습니다</InlineNotice>}
+                        <Button
+                            variant={saving || !isTacticsDirty ? 'secondary' : 'success'}
+                            size="lg"
+                            onClick={handleSaveTactics}
+                            disabled={saving || !isTacticsDirty}
+                            isLoading={saving}
+                            loadingText="저장 중…"
+                            style={!saving && isTacticsDirty ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
+                        >
+                            {savedFlash
+                                ? <><Check size={13} />저장됨</>
+                                : <><Save size={13} />저장</>
+                            }
+                        </Button>
+                    </>
+                }
+            />
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                {activeTab === 'depth' && (
+                    <DepthRotationBoard
+                        team={team}
+                        tactics={userTactics!}
+                        depthChart={depthChart}
+                        onUpdateDepthChart={setDepthChart}
+                        onUpdateTactics={setUserTactics}
+                        coachName={coachName}
+                        playerConditions={playerConditions}
+                        toolbarExtra={depthPresetBar}
+                    />
+                )}
+                {activeTab === 'team' && teamPanel}
+                {activeTab === 'insights' && insightsPanel}
             </div>
         </div>
     );

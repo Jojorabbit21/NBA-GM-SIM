@@ -13,7 +13,12 @@ import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvanced
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { RosterView } from '../../RosterView';
+import { useAiGmProfiles } from '../../../hooks/useAiGmProfiles';
+import { FrontOfficeHover, type FrontOfficeContext } from './FrontOfficeHoverCard';
+import { UserGmHover, type UserGmContext } from './UserGmHoverCard';
+import type { FrontOfficeMember } from '../../../services/multi/aiGmProfile';
 import { TeamSettingsPanel } from '../../../components/multi/TeamSettingsPanel';
+import { MobileHeaderActions } from '../../../components/mobile/MobileHeaderActions';
 import { shouldUseCustomOverrides, isTwoWayContractEnabled } from '../../../utils/leagueOverrides';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
@@ -207,6 +212,61 @@ const MultiRosterView: React.FC = () => {
         }));
     }, [allTeamsBase, statsFull]);
 
+    // [2026-10-20] 헤더 우측 AI 팀 프런트 — 사람이 운영하는 팀의 "GM : 닉네임"과 같은 자리·스타일로 표시하고
+    // 이름에 프런트 호버 카드를 붙인다. 사람 팀은 null을 돌려줘 RosterView의 기존 닉네임 표시를 그대로 쓴다.
+    const aiGmProfiles = useAiGmProfiles();
+    const frontOfficeCtx = useMemo((): FrontOfficeContext => {
+        const tradeDeadlineDate = league?.trade_deadline_date ?? null;
+        const deadlinePassed = !!league?.trade_deadline_enabled && !!tradeDeadlineDate
+            && !!currentSimDate && currentSimDate > tradeDeadlineDate;
+        return {
+            leagueTeams,
+            poolById: new Map(allTeams.flatMap(t => t.roster).map(p => [p.id, p])),
+            aiGmProfiles,
+            schedule,
+            playoffTeamsPerConf: league?.playoff_team_count ?? 8,
+            playInEnabled: league?.play_in_enabled ?? true,
+            showStance: !deadlinePassed,
+        };
+    }, [leagueTeams, allTeams, aiGmProfiles, schedule, league?.playoff_team_count, league?.play_in_enabled,
+        league?.trade_deadline_enabled, league?.trade_deadline_date, currentSimDate]);
+    const userGmCtx = useMemo((): UserGmContext => ({
+        leagueTeams, poolById: frontOfficeCtx.poolById, roomId: room?.id,
+    }), [leagueTeams, frontOfficeCtx.poolById, room?.id]);
+    const renderTeamFront = useCallback((teamSlug: string): React.ReactNode => {
+        const row = leagueTeams.find(lt => lt.team_slug === teamSlug);
+        if (!row) return null;
+        // 사람 팀 — 기존 "GM : 닉네임" 표시 그대로, 닉네임에만 사람 단장 카드를 붙인다.
+        if (row.user_id && !row.is_ai) {
+            if (!row.nickname) return null;
+            return (
+                <span className="ml-auto text-sm font-semibold self-start text-white">
+                    GM :{' '}
+                    <UserGmHover team={row} ctx={userGmCtx}>
+                        <span className="transition-colors hover:text-indigo-400 hover:underline">{row.nickname}</span>
+                    </UserGmHover>
+                </span>
+            );
+        }
+        const profile = aiGmProfiles.get(teamSlug);
+        const members = profile ? [profile.president, profile.gm].filter((m): m is FrontOfficeMember => !!m) : [];
+        if (!profile || members.length === 0) return null;
+        // 직함("사장 :")은 평문, 이름만 호버 대상 — 이름마다 같은 프런트 카드를 붙인다.
+        return (
+            <span className="ml-auto text-sm font-semibold self-start text-white">
+                {members.map((m, i) => (
+                    <React.Fragment key={`${m.title}-${m.name}`}>
+                        {i > 0 && ' · '}
+                        {m.title} :{' '}
+                        <FrontOfficeHover team={row} profile={profile} ctx={frontOfficeCtx}>
+                            <span className="transition-colors hover:text-indigo-400 hover:underline">{m.name}</span>
+                        </FrontOfficeHover>
+                    </React.Fragment>
+                ))}
+            </span>
+        );
+    }, [leagueTeams, aiGmProfiles, frontOfficeCtx, userGmCtx]);
+
     // "기록"/"일정" 탭만 게임 단위 원본(game_pbp)이 실제로 필요하다 — 그 탭이 열려 있을
     // 때만 지연 로딩(URL의 ?tab= 을 직접 읽어, 딥링크로 곧장 그 탭에 들어와도 놓치지 않음).
     const [searchParams] = useSearchParams();
@@ -311,6 +371,7 @@ const MultiRosterView: React.FC = () => {
                     enableHoverCard
                     hideTabs={['coaching', 'draftPicks']}
                     teamNicknames={teamNicknames}
+                    renderTeamFront={renderTeamFront}
                     capSettings={isSpectator ? undefined : capSettings}
                     baseSeasonYear={baseSeasonYear}
                     // [2026-10-19] 관전자는 방출·팀 설정 없음, 재정 탭도 숨김(capSettings 미전달 시 RosterView가 자동으로 숨김)
@@ -323,6 +384,8 @@ const MultiRosterView: React.FC = () => {
                     // CBA 규정이 꺼졌거나(즉시계약 RPC만 사용) 리그 설정에서 Two-Way 계약을 끈 리그는 슬롯 표시를 숨긴다.
                     showTwoWaySlots={isTwoWayContractEnabled(league)}
                     playerConditions={playerConditions}
+                    // [2026-10-27] 폰 팀색 헤더 우측 검색·수신함(채팅 진입) — 공용 상단 바가 이 화면에선 생략되므로 여기서 넘긴다.
+                    phoneHeaderActions={<MobileHeaderActions inheritColor showTeamLogo={false} />}
                 />
             </div>
         </div>

@@ -50,6 +50,10 @@ import {
     listMyResolvedTradeOffers, listAllResolvedTradeOffers,
     getTradeOfferThread, type TradeOfferRow, type TradeOfferAction, type TradeThreadItem,
 } from '../../../services/multi/tradeService';
+import { useAiGmProfiles } from '../../../hooks/useAiGmProfiles';
+import { FrontOfficeHover, type FrontOfficeContext } from './FrontOfficeHoverCard';
+import { UserGmHover, type UserGmContext } from './UserGmHoverCard';
+import type { FrontOfficeMember } from '../../../services/multi/aiGmProfile';
 import type { Player } from '../../../types';
 import type { DeadMoneyEntry } from '../../../types/team';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
@@ -883,6 +887,25 @@ const MultiFrontOfficeView: React.FC = () => {
         ? pickedTargetTeamId
         : (humanTargetTeams[0]?.id ?? '');
     const targetTeamRow = teamById.get(targetTeamId) ?? null;
+    // [2026-10-20] 상대 팀 헤더 우측 프런트 표시 — 사람 팀은 "단장 {닉네임}", AI 팀은 meta_gms 실제 프런트
+    // (docs/plan/multi-ai-gm-profile-plan.md G3). 근거 약한 이름은 DB에 없으므로 그대로 생략된다.
+    const aiGmProfiles = useAiGmProfiles();
+    const targetFrontOffice = useMemo((): FrontOfficeMember[] => {
+        if (!targetTeamRow) return [];
+        if (targetTeamRow.user_id && !targetTeamRow.is_ai) {
+            return targetTeamRow.nickname ? [{ title: '단장', name: targetTeamRow.nickname }] : [];
+        }
+        const profile = aiGmProfiles.get(targetTeamRow.team_slug);
+        return profile ? [profile.president, profile.gm].filter((m): m is FrontOfficeMember => !!m) : [];
+    }, [targetTeamRow, aiGmProfiles]);
+    const targetIsAiTeam = !!targetTeamRow && !(targetTeamRow.user_id && !targetTeamRow.is_ai);
+    const userGmCtx = useMemo((): UserGmContext => ({ leagueTeams, poolById, roomId }), [leagueTeams, poolById, roomId]);
+    const frontOfficeCtx = useMemo((): FrontOfficeContext => ({
+        leagueTeams, poolById, aiGmProfiles, schedule,
+        playoffTeamsPerConf: league?.playoff_team_count ?? 8,
+        playInEnabled: league?.play_in_enabled ?? true,
+        showStance: !isTradeDeadlinePassed,
+    }), [leagueTeams, poolById, aiGmProfiles, schedule, league?.playoff_team_count, league?.play_in_enabled, isTradeDeadlinePassed]);
     const targetRoster = useMemo(
         () => (targetTeamRow?.roster ?? [])
             .map(id => poolById.get(id))
@@ -1932,6 +1955,30 @@ const MultiFrontOfficeView: React.FC = () => {
                                                     },
                                                 }))}
                                             />
+                                            {targetFrontOffice.length > 0 && targetTeamRow && (
+                                                <span className="ml-auto min-w-0 truncate pr-4 text-sm ko-normal">
+                                                    {targetFrontOffice.map((m, i) => (
+                                                        <React.Fragment key={`${m.title}-${m.name}`}>
+                                                            {i > 0 && <span className="text-slate-600"> · </span>}
+                                                            <span className="text-slate-400">{m.title} </span>
+                                                            {/* 이름만 호버 대상(팀/선수 이름과 같은 hover:text-indigo-400 + 밑줄). AI 팀에만 카드가 붙는다 */}
+                                                            {targetIsAiTeam ? (
+                                                                <FrontOfficeHover
+                                                                    team={targetTeamRow}
+                                                                    profile={aiGmProfiles.get(targetTeamRow.team_slug)}
+                                                                    ctx={frontOfficeCtx}
+                                                                >
+                                                                    <span className="font-semibold text-white transition-colors hover:text-indigo-400 hover:underline">{m.name}</span>
+                                                                </FrontOfficeHover>
+                                                            ) : (
+                                                                <UserGmHover team={targetTeamRow} ctx={userGmCtx}>
+                                                                    <span className="font-semibold text-white transition-colors hover:text-indigo-400 hover:underline">{m.name}</span>
+                                                                </UserGmHover>
+                                                            )}
+                                                        </React.Fragment>
+                                                    ))}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex-1 min-h-0">
                                             <Table variant="flush" fullHeight density="compact" dividers={false} tableStyle={{ tableLayout: 'fixed' }}>

@@ -12,6 +12,8 @@ import { formatPlayerActiveInjuryLabel } from '../../services/multi/activeInjury
 import { Dropdown } from '../common/Dropdown';
 import { AlertCircle, CheckCircle2, RotateCcw, ChevronDown, GripVertical } from 'lucide-react';
 import { GanttBar, computeStints, type Stint, type DragState } from './RotationGanttChart';
+import { useIsPhone } from '../../hooks/useViewportClass';
+import { PhoneDepthRotation } from './PhoneDepthRotation';
 import {
     ROTATION_ALLOCATION_OPTIONS, EMPTY_48, computeRotationMap, computeRotationValidation, getMinutesColor,
     type RotationAllocationMode,
@@ -211,24 +213,27 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         }
     }, [depthChart, tactics.starters, onUpdateDepthChart]);
 
+    // 드래그 구간을 rotationMap에 커밋 — 데스크톱은 전역 mouseup, 폰(PhoneDepthRotation)은 pointerup에서 같은 함수를 호출 [2026-10-28]
+    const commitDrag = useCallback((d: DragState) => {
+        const t = tacticsRef.current;
+        const start = Math.min(d.startMin, d.currentMin);
+        const end = Math.max(d.startMin, d.currentMin);
+        const cur = t.rotationMap || {};
+        const newMap = { ...cur };
+        const arr = [...(cur[d.playerId] || EMPTY_48())];
+        for (let i = start; i <= end; i++) arr[i] = d.targetValue;
+        newMap[d.playerId] = arr;
+        onUpdateRef.current({ ...t, rotationMap: newMap });
+        setDragging(null);
+    }, []);
+
     // 전역 mouseup — 드래그를 rotationMap에 커밋 (RotationGanttChart와 동일 패턴)
     useEffect(() => {
         if (!dragging) return;
-        const handleMouseUp = () => {
-            const t = tacticsRef.current;
-            const start = Math.min(dragging.startMin, dragging.currentMin);
-            const end = Math.max(dragging.startMin, dragging.currentMin);
-            const cur = t.rotationMap || {};
-            const newMap = { ...cur };
-            const arr = [...(cur[dragging.playerId] || EMPTY_48())];
-            for (let i = start; i <= end; i++) arr[i] = dragging.targetValue;
-            newMap[dragging.playerId] = arr;
-            onUpdateRef.current({ ...t, rotationMap: newMap });
-            setDragging(null);
-        };
+        const handleMouseUp = () => commitDrag(dragging);
         window.addEventListener('mouseup', handleMouseUp);
         return () => window.removeEventListener('mouseup', handleMouseUp);
-    }, [dragging]);
+    }, [dragging, commitDrag]);
 
     const handleBarMouseDown = useCallback((playerId: string, minute: number) => {
         const currentMap = (tacticsRef.current.rotationMap || {})[playerId] || EMPTY_48();
@@ -397,12 +402,40 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
         [tactics.rotationMap, team.roster],
     );
 
+    // [2026-10-28] 폰(<768) — docs/ui/mobile-design-system.md §9-1-11 X1~X3: 통합 표 대신 뎁스 차트 리스트 ↔ 로테이션 간트 세그먼트.
+    // 상태·핸들러(슬롯 변경/스왑·자동 배정·초기화·드래그 커밋)는 위 그대로 공유, 렌더만 PhoneDepthRotation.
+    const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    const isPhone = useIsPhone();
+    if (isPhone && depthChart) {
+        return (
+            <PhoneDepthRotation
+                team={team}
+                tactics={tactics}
+                depthChart={depthChart}
+                sortedRoster={sortedRoster}
+                ovrMap={ovrMap}
+                validation={validation}
+                playerConditions={playerConditions}
+                coachName={coachName}
+                toolbarExtra={toolbarExtra}
+                dragging={dragging}
+                onBarDown={handleBarMouseDown}
+                onBarMove={handleBarMouseMove}
+                onBarCommit={commitDrag}
+                onSlotChange={handleSlotChange}
+                onSlotSwap={handleSlotSwap}
+                onAutoFillDepth={handleAutoFillDepth}
+                onAllocateRotation={handleAllocateRotation}
+                onResetAll={handleResetAll}
+            />
+        );
+    }
+
     const SH = 'bg-slate-950';
     const SK = 'bg-slate-900';
     const SB = 'border-r border-slate-800';
 
     if (!depthChart) return null;
-    const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     return (
         <div className="flex flex-col h-full overflow-hidden">

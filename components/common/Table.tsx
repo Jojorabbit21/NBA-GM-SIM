@@ -29,8 +29,15 @@ interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
      * 뉴스피드 레터 표 17개가 "카드형이라 raw <table>로 걷어냈다"던 이탈을 공용으로 되돌리기 위한 변형.
      */
     variant?: 'card' | 'bare' | 'flush';
-    /** compact = 헤더 h-8·셀 py-1.5 px-2(레터 표). 기본은 헤더 h-10·셀 py-2 px-3. */
-    density?: 'default' | 'compact';
+    /** compact = 헤더 h-8·셀 py-1.5 px-2(레터 표). 기본은 헤더 h-10·셀 py-2 px-3.
+     *  phone[2026-10-27] = 폰 표(docs/ui/mobile-design-system.md §9-1): 헤더 h-9·글자 12/700, 셀 px-2 py-1, 행 h-11(44). */
+    density?: 'default' | 'compact' | 'phone';
+    /**
+     * [2026-10-27] 스크롤 상자. self(기본) = 지금까지처럼 Table 래퍼가 overflow-auto. parent = 래퍼에 overflow를 두지 않고
+     * 바깥 스크롤 영역(폰 탭 콘텐츠처럼 세로+가로를 한 상자가 맡는 곳)을 sticky 기준으로 쓴다 — 표 안에 가로 스크롤 상자가 또 있으면
+     * sticky bottom(팀 평균 행)이 그 상자 끝을 기준으로 걸려 떠 보인다.
+     */
+    scroll?: 'self' | 'parent';
 }
 
 /**
@@ -76,15 +83,15 @@ const LINE_COLOR: Record<TableLineTone, string> = {
 const lineClass = (dir: 'border-r' | 'border-b' | 'border-t' | 'border', tone: TableLineTone) =>
     tone === 'none' ? '' : `${dir} ${LINE_COLOR[tone]}`;
 
-interface TableLineContextValue { dividers: boolean; v: TableLineTone; h: TableLineTone; bare: boolean; compact: boolean }
-const TableLineContext = createContext<TableLineContextValue>({ dividers: true, v: TABLE_LINE_DEFAULTS.vertical, h: TABLE_LINE_DEFAULTS.horizontal, bare: false, compact: false });
+interface TableLineContextValue { dividers: boolean; v: TableLineTone; h: TableLineTone; bare: boolean; compact: boolean; phone: boolean }
+const TableLineContext = createContext<TableLineContextValue>({ dividers: true, v: TABLE_LINE_DEFAULTS.vertical, h: TABLE_LINE_DEFAULTS.horizontal, bare: false, compact: false, phone: false });
 const useTableLines = () => {
-    const { dividers, v, h, bare, compact } = useContext(TableLineContext);
+    const { dividers, v, h, bare, compact, phone } = useContext(TableLineContext);
     return {
         vClass: dividers && v !== 'none' ? `${lineClass('border-r', v)} last:border-r-0` : '',
         hClass: lineClass('border-b', h),
         tClass: lineClass('border-t', h),
-        bare, compact,
+        bare, compact, phone,
     };
 };
 
@@ -101,6 +108,8 @@ interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
 interface TableFootProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children?: React.ReactNode;
     className?: string;
+    /** [2026-10-27] 스크롤 상자 하단에 고정(px 또는 CSS 길이). 폰 표 "팀 평균" 행 — 하단 탭 바 위에 걸리도록 `calc(56px + env(safe-area-inset-bottom))`. */
+    stickyBottom?: string | number;
 }
 
 interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
@@ -148,24 +157,27 @@ interface TableGroupHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCell
 export const Table = ({
     children, className = '', fullHeight, style, tableStyle,
     dividers = true, verticalLine = TABLE_LINE_DEFAULTS.vertical, horizontalLine = TABLE_LINE_DEFAULTS.horizontal,
-    variant = 'card', density = 'default',
+    variant = 'card', density = 'default', scroll = 'self',
     ...props
 }: TableProps) => {
     const bare = variant === 'bare';
     const compact = density === 'compact';
+    const phone = density === 'phone';
     // 컨텍스트 값을 고정해 Table 리렌더 때 셀 전체가 불필요하게 다시 그려지지 않게 한다.
-    const lines = useMemo(() => ({ dividers, v: verticalLine, h: horizontalLine, bare, compact }), [dividers, verticalLine, horizontalLine, bare, compact]);
+    const lines = useMemo(() => ({ dividers, v: verticalLine, h: horizontalLine, bare, compact, phone }), [dividers, verticalLine, horizontalLine, bare, compact, phone]);
     const fillHeight = fullHeight ?? !bare; // bare는 내용 높이만(레터 흐름 안), card는 기존처럼 h-full
     // flush[2026-10-13] = 탭 콘텐츠 영역을 꽉 채우는 풀블리드 표(로스터 탭 4개). 둥근 모서리·좌우/상단 외곽선 없이
     // 아래 외곽선·그림자만 — 예전엔 card에 `!rounded-none !border-x-0 !border-t-0 !bg-slate-950`를 덧씌워 만들던 모양.
-    const wrapClass = bare
+    const wrapClass = scroll === 'parent'
+        ? `w-full relative ${className}`   // 바깥 스크롤 상자 사용 — 표 폭은 w-max 테이블이 결정
+        : bare
         ? `w-full overflow-x-auto relative ${className}`
         : variant === 'flush'
             ? `w-full overflow-auto custom-scrollbar relative bg-slate-950 ${lineClass('border-b', horizontalLine)} shadow-lg ${fillHeight ? 'h-full' : ''} ${className}`
             : `w-full overflow-auto custom-scrollbar relative bg-slate-900 ${lineClass('border', horizontalLine)} rounded-xl shadow-lg ${fillHeight ? 'h-full' : ''} ${className}`;
     return (
         <div className={wrapClass} style={style}>
-            <table className="w-full text-left border-separate border-spacing-0" style={tableStyle} {...props}>
+            <table className={`${scroll === 'parent' ? 'w-max min-w-full' : 'w-full'} text-left border-separate border-spacing-0`} style={tableStyle} {...props}>
                 <TableLineContext.Provider value={lines}>
                     {children}
                 </TableLineContext.Provider>
@@ -175,7 +187,7 @@ export const Table = ({
 };
 
 export const TableHead = ({ children, className = '', noRow = false, ...props }: TableHeadProps) => {
-    const { hClass, bare, compact } = useTableLines();
+    const { hClass, bare, compact, phone } = useTableLines();
     // [2026-10-14] bare 헤더 bg-slate-800/60(반투명) → bg-slate-800(불투명). 반투명은 호스트 배경을 모르는 표를 한 값으로
     // 처리하려던 편의였지만, sticky 셀을 불투명으로 맞출 수 없고 화면마다 결과 색이 달라져 폐기(사용자 결정). 푸터 틴트는 유지.
     const headClass = bare ? `bg-slate-800 ${hClass}` : `bg-slate-950 sticky top-0 z-40 ${hClass} shadow-sm`;
@@ -183,7 +195,7 @@ export const TableHead = ({ children, className = '', noRow = false, ...props }:
     <thead className={`${headClass} ${className}`} {...props}>
         <TableSectionContext.Provider value="head">
             {noRow ? children : (
-                <tr className={`text-slate-400 text-sm font-bold ${compact ? 'h-8' : 'h-10'}`}>
+                <tr className={`text-slate-400 font-bold ${phone ? 'h-9 text-xs' : compact ? 'h-8 text-sm' : 'h-10 text-sm'}`}>
                     {children}
                 </tr>
             )}
@@ -195,7 +207,7 @@ export const TableHead = ({ children, className = '', noRow = false, ...props }:
 /** 그룹 헤더 행(`<tr className="h-10">` 안)에 들어가는 colSpan 셀 — "선수 정보"·"시즌별 페이롤"·존별 스탯 그룹 등.
  *  children 없이 쓰면 빈 스페이서(아래 외곽선만). 글자는 그룹 헤더 톤(slate-500, ui-typography.md 위계). */
 export const TableGroupHeaderCell = ({ children, colSpan, stickyLeft, className = '', ...props }: TableGroupHeaderCellProps) => {
-    const { vClass, hClass } = useTableLines();
+    const { vClass, hClass, phone } = useTableLines();
     const sticky = stickyLeft !== undefined;
     // 빈 스페이서(라벨 없는 열 위)는 세로선을 긋지 않는다 — 그룹 라벨이 있는 칸의 오른쪽 선만 그룹 경계로 보이게.
     const vertical = children != null ? vClass : '';
@@ -208,7 +220,7 @@ export const TableGroupHeaderCell = ({ children, colSpan, stickyLeft, className 
         >
             {children != null && (
                 <div className="h-full flex items-center justify-center">
-                    <span className="text-sm font-bold text-slate-500 ko-normal">{children}</span>
+                    <span className={`${phone ? 'text-xs' : 'text-sm'} font-bold text-slate-500 ko-normal`}>{children}</span>
                 </div>
             )}
         </th>
@@ -224,25 +236,30 @@ export const TableBody = ({ children, ...props }: TableBodyProps) => {
     );
 };
 
-export const TableFoot = ({ children, className = '', ...props }: TableFootProps) => {
+export const TableFoot = ({ children, className = '', stickyBottom, style, ...props }: TableFootProps) => {
     const { tClass, bare } = useTableLines();
+    const stickyCls = stickyBottom !== undefined ? 'sticky z-40' : '';
+    const footStyle = stickyBottom !== undefined ? { ...style, bottom: stickyBottom } : style;
     return (
-        <tfoot className={`${bare ? 'bg-slate-800/40' : 'bg-slate-950'} ${tClass} ${className}`} {...props}>
+        <tfoot className={`${bare ? 'bg-slate-800/40' : 'bg-slate-950'} ${tClass} ${stickyCls} ${className}`} style={footStyle} {...props}>
             <TableSectionContext.Provider value="foot">{children}</TableSectionContext.Provider>
         </tfoot>
     );
 };
 
 // `group`은 항상 붙인다 — sticky 셀(stickyLeft 숫자)이 행 hover를 `group-hover:`로 따라가기 위함. 스타일 자체는 없음.
-export const TableRow = ({ children, className = '', onClick, ...props }: TableRowProps) => (
+export const TableRow = ({ children, className = '', onClick, ...props }: TableRowProps) => {
+    const { phone } = useTableLines();
+    return (
     <tr
         onClick={onClick}
-        className={`hover:bg-white/5 group ${onClick ? 'cursor-pointer' : ''} ${className}`}
+        className={`hover:bg-white/5 group ${phone ? 'h-11 active:bg-white/5' : ''} ${onClick ? 'cursor-pointer' : ''} ${className}`}
         {...props}
     >
         {children}
     </tr>
-);
+    );
+};
 
 export const TableHeaderCell = ({ 
     children, 
@@ -259,14 +276,16 @@ export const TableHeaderCell = ({
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
     const section = useContext(TableSectionContext);
-    const { vClass, hClass, compact, bare } = useTableLines();
-    const sticky = stickyParts(stickyLeft, section, bare, 'z-50', 'sticky left-0 z-50 bg-slate-950');
+    const { vClass, hClass, compact, bare, phone } = useTableLines();
+    // [2026-10-27] z-index는 섹션 기준 — thead 안에서는 50(헤더 z-40 위), tbody 안(그룹 머리 행의 sticky 라벨 셀)에서는 30(TableCell과 동일).
+    // 본문 헤더 셀이 50이면 세로 스크롤 때 sticky top 헤더(z-40)를 덮고 지나간다(폰 순위표 컨퍼런스 그룹 머리에서 발견).
+    const sticky = stickyParts(stickyLeft, section, bare, section === 'head' ? 'z-50' : 'z-30', 'sticky left-0 z-50 bg-slate-950');
     // 예전 호환: width만 넘기면 width/minWidth(maxWidth 없음). sticky 숫자 열은 폭이 흔들리면 안 되므로 maxWidth까지.
     const cellStyle = { ...style, ...(typeof stickyLeft === 'number' ? widthStyle(width) : { width, minWidth: width }), ...sticky.style };
 
     return (
         <th
-            className={`${compact ? 'py-1.5 px-2' : 'py-3 px-1.5'} whitespace-nowrap ${hClass} ${vClass} ${alignClass} ${cursorClass} ${sticky.cls} ${className}`}
+            className={`${phone ? 'py-0 px-2' : compact ? 'py-1.5 px-2' : 'py-3 px-1.5'} whitespace-nowrap ${hClass} ${vClass} ${alignClass} ${cursorClass} ${sticky.cls} ${className}`}
             style={cellStyle}
             onClick={sortable ? onSort : undefined}
             {...props}
@@ -313,7 +332,7 @@ export const TableCell = ({
     const finalAlign = getAlign();
     const alignClass = finalAlign === 'left' ? 'text-left' : finalAlign === 'right' ? 'text-right' : 'text-center';
     const section = useContext(TableSectionContext);
-    const { vClass, hClass, compact, bare } = useTableLines();
+    const { vClass, hClass, compact, bare, phone } = useTableLines();
     const sticky = stickyParts(stickyLeft, section, bare, 'z-30', 'sticky left-0 z-30');
     const cellStyle = (width !== undefined || sticky.style) ? { ...style, ...widthStyle(width), ...sticky.style } : style;
     
@@ -363,7 +382,7 @@ export const TableCell = ({
     };
 
     return (
-        <td className={`${compact ? 'py-1.5 px-2' : 'py-2 px-3'} whitespace-nowrap ${hClass} ${vClass} ${alignClass} ${sticky.cls} ${className}`} style={cellStyle} {...props}>
+        <td className={`${phone ? 'py-1 px-2' : compact ? 'py-1.5 px-2' : 'py-2 px-3'} whitespace-nowrap ${hClass} ${vClass} ${alignClass} ${sticky.cls} ${className}`} style={cellStyle} {...props}>
             {renderContent()}
         </td>
     );

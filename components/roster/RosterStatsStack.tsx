@@ -10,6 +10,8 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { PLAYER_COLUMNS, ColumnDef, StatCategory } from '../../data/leaderboardConfig';
 import { getHeatmapStyle } from '../../utils/heatmapUtils';
 import { PlayerInfoColGroup, PlayerInfoHeaderCells, PlayerInfoCells, PlayerInfoFooterCells } from './PlayerInfoColumns';
+import { HeatmapToggle, SeasonTypeToggle } from './StatsToggles';
+import type { SeasonType } from '../../hooks/useLeaderboardData';
 
 interface RosterStatsStackProps {
     team: Team;
@@ -23,7 +25,8 @@ interface RosterStatsStackProps {
 
 // [2026-08-11] 4개를 세로로 붙여놓으니 산만하다는 피드백으로, 테이블 하나 + 드롭다운으로 카테고리
 // 전환하는 방식으로 변경(스택 방식 폐기).
-const CATEGORIES: { key: StatCategory; label: string; defaultSort: string }[] = [
+// [2026-10-27] 폰 선수 기록 탭(PhoneRosterStats.tsx)이 같은 카테고리·값·히트맵·그룹 헤더 규칙을 쓰도록 export(동작 변화 없음).
+export const STAT_CATEGORIES: { key: StatCategory; label: string; defaultSort: string }[] = [
     { key: 'Traditional', label: 'TRADITIONAL', defaultSort: 'pts' },
     { key: 'Advanced',    label: 'ADVANCED',    defaultSort: 'ts%' },
     { key: 'Shooting',    label: 'SHOOTING',    defaultSort: 'g' },
@@ -33,7 +36,7 @@ const CATEGORIES: { key: StatCategory; label: string; defaultSort: string }[] = 
 // ── 값/포맷/히트맵 로직 — LeaderboardTable.tsx의 Players 모드 계산과 동일한 공식을 그대로
 // 옮겨왔다(고급 스탯 공식을 새로 재구현하는 위험을 피하기 위함). 순수 함수라 화면 스타일과
 // 무관하게 안전하게 재사용 가능.
-function formatValue(val: number, format?: string): string {
+export function formatStatValue(val: number, format?: string): string {
     if (format === 'percent') {
         const pct = val * 100;
         return (pct >= 100 ? '100' : pct.toFixed(1)) + '%';
@@ -43,7 +46,7 @@ function formatValue(val: number, format?: string): string {
     return String(val);
 }
 
-function getStatCellValue(
+export function getStatCellValue(
     s: any,
     col: ColumnDef,
     statRanges: Record<string, { min: number; max: number }>,
@@ -57,7 +60,7 @@ function getStatCellValue(
         }
         if (col.key.endsWith('_pct')) {
             const val = s[col.key] || 0;
-            return { text: formatValue(val, col.format), raw: val, bgStyle: col.isHeatmap ? getHeatmapStyle(col.key, val, statRanges, true, col.isInverse) : undefined };
+            return { text: formatStatValue(val, col.format), raw: val, bgStyle: col.isHeatmap ? getHeatmapStyle(col.key, val, statRanges, true, col.isInverse) : undefined };
         }
         return { text: '', raw: 0 };
     }
@@ -93,16 +96,16 @@ function getStatCellValue(
     }
 
     return {
-        text: formatValue(rawVal, col.format),
+        text: formatStatValue(rawVal, col.format),
         raw: rawVal,
         bgStyle: col.isHeatmap ? getHeatmapStyle(col.key, rawVal, statRanges, true, col.isInverse) : undefined,
     };
 }
 
 // 2행 그룹 헤더(존별 스탯: Shooting/Defense) — LeaderboardTable.tsx와 동일한 그룹핑 알고리즘
-type Row1Item = { type: 'nogroup'; col: ColumnDef } | { type: 'group'; label: string; colSpan: number };
-function buildHeaderRows(cols: ColumnDef[]) {
-    const row1: Row1Item[] = [];
+export type StatHeaderRow1Item = { type: 'nogroup'; col: ColumnDef } | { type: 'group'; label: string; colSpan: number };
+export function buildStatHeaderRows(cols: ColumnDef[]) {
+    const row1: StatHeaderRow1Item[] = [];
     const hasGroups = cols.some(c => c.attrGroup);
     if (!hasGroups) return null;
     cols.forEach(col => {
@@ -128,17 +131,20 @@ const CategoryTable: React.FC<{
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
     enableHoverCard?: boolean;
     teamAdvanced?: TeamAdvancedStatsMap;
-}> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard, teamAdvanced }) => {
+    /** [2026-10-27] 정규/플레이오프 + 색상 스케일 토글(데스크톱·폰 공통) */
+    seasonType: SeasonType;
+    showHeatmap: boolean;
+}> = ({ team, schedule, category, defaultSort, onPlayerClick, enableHoverCard, teamAdvanced, seasonType, showHeatmap }) => {
     const { sortConfig, sortProps } = useTableSort({ key: defaultSort, direction: 'desc' });
     // includeZeroGamePlayers: true — 리더보드와 달리 "선수 기록" 탭은 아직 한 경기도
     // 못 뛴 로스터 선수도 그대로 보여줘야 한다(사용자 요청). 스탯 값은 전부 0으로 나온다.
     const { sortedData, statRanges } = useLeaderboardData(
-        [team], schedule, [], sortConfig, 'Players', [], [], '', category, 'regular', true, teamAdvanced,
+        [team], schedule, [], sortConfig, 'Players', [], [], '', category, seasonType, true, teamAdvanced,
     );
 
     // leagueWide 열(PER·Win Shares)은 리그 전체가 필요해 한 팀만 넘기는 이 화면에서는 값이 틀리므로 제외
     const cols = PLAYER_COLUMNS.filter(c => c.category === category && !c.leagueWide);
-    const headerRow1 = buildHeaderRows(cols);
+    const headerRow1 = buildStatHeaderRows(cols);
 
     // 팀 평균(단순 평균 — 정밀 가중평균 대신 각 선수 값의 산술 평균). includeZeroGamePlayers로
     // 0경기 선수도 목록엔 표시되지만, 그 선수들의 0값이 팀 평균을 실제보다 낮게 끌어내리면
@@ -200,7 +206,7 @@ const CategoryTable: React.FC<{
                                     // 표시 — getStatCellValue가 g=s.g||1로 나눗셈을 안전하게 처리해 그대로 호출해도 된다.
                                     const { text, bgStyle } = getStatCellValue(p.stats, c, statRanges);
                                     return (
-                                        <TableCell key={c.key} align="center" style={bgStyle}>
+                                        <TableCell key={c.key} align="center" style={showHeatmap ? bgStyle : undefined}>
                                             <span className="font-medium text-sm text-white tabular-nums">{text}</span>
                                         </TableCell>
                                     );
@@ -215,7 +221,7 @@ const CategoryTable: React.FC<{
                             <PlayerInfoFooterCells label="팀 평균" />
                             {cols.map(c => (
                                 <TableCell key={c.key} align="center">
-                                    <span className="font-medium text-sm text-slate-400 tabular-nums">{formatValue(averages[c.key] ?? 0, c.format)}</span>
+                                    <span className="font-medium text-sm text-slate-400 tabular-nums">{formatStatValue(averages[c.key] ?? 0, c.format)}</span>
                                 </TableCell>
                             ))}
                         </tr>
@@ -228,11 +234,14 @@ const CategoryTable: React.FC<{
 
 export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false, teamAdvanced }) => {
     const [category, setCategory] = useState<StatCategory>('Traditional');
-    const current = CATEGORIES.find(c => c.key === category) ?? CATEGORIES[0];
+    // [2026-10-27] 정규/플레이오프 토글 + 색상 스케일 토글 — 리더보드 툴바와 같은 모양(StatsToggles), 폰 PhoneRosterStats와 공통.
+    const [seasonType, setSeasonType] = useState<SeasonType>('regular');
+    const [showHeatmap, setShowHeatmap] = useState(true);
+    const current = STAT_CATEGORIES.find(c => c.key === category) ?? STAT_CATEGORIES[0];
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
-            <div className="shrink-0 px-4 py-3 border-b border-slate-800 bg-slate-950">
+            <div className="shrink-0 px-4 py-3 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
                 <Dropdown
                     trigger={
                         <button className="flex items-center gap-1 text-sm font-black text-slate-400 tracking-tight hover:text-white transition-colors group">
@@ -240,7 +249,7 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                             <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
                         </button>
                     }
-                    items={CATEGORIES.map(c => ({
+                    items={STAT_CATEGORIES.map(c => ({
                         id: c.key,
                         label: <span className="text-sm">{c.label}</span>,
                         onClick: () => setCategory(c.key),
@@ -249,9 +258,13 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                     width="w-40"
                     align="left"
                 />
+                <div className="ml-auto flex items-center gap-2">
+                    <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
+                    <HeatmapToggle value={showHeatmap} onChange={setShowHeatmap} />
+                </div>
             </div>
             <CategoryTable
-                key={category}
+                key={`${category}-${seasonType}`}
                 team={team}
                 schedule={schedule}
                 category={category}
@@ -259,6 +272,8 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                 onPlayerClick={onPlayerClick}
                 enableHoverCard={enableHoverCard}
                 teamAdvanced={teamAdvanced}
+                seasonType={seasonType}
+                showHeatmap={showHeatmap}
             />
         </div>
     );
