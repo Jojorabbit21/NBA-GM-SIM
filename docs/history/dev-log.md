@@ -34,6 +34,140 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-28 — BM27 방출 화면 폰판 구현
+
+**배경**: 사용자 지시 "구현해"(방출 목업 W1~W6, §9-1-16).
+
+**변경 파일**:
+- `views/multi/season/MultiReleaseView.tsx`
+  - 데스크톱 JSX를 화면 조각으로 추출(마크업 동일): `renderInfoPanel`, `renderChat`, `renderReleaseForm`(방출 방식 · 스트레치 · 현재 계약 · 미래 데드캡), `renderCapAndDeadCap`(CapStatusPanel · 연도별 데드캡 · 오류)
+  - 방출 방식 박스: 폰 `h-12 flex items-center text-base`(데스크톱 `py-2 text-sm`), 스트레치 라벨 폰 `h-11`
+  - 상태 `isPhone`, `phoneTab`('release' 기본)
+  - 메인 return 앞 `if (isPhone)`: MobilePushHeader("{이름} 방출", 뒤로 = handleExit) + TabBar compact(방출 · 선수 정보) / 방출 탭 = (완료 후) 대화 → 폼 → 캡 · 데드캡(완료 시 opacity 40), 하단 "확인" danger xl(완료 전) / 최종 확인 = createPortal 다이얼로그(max 360 · 버튼 세로 스택, 실행 방식 라벨 위)
+  - import: `createPortal`, `TabBar`, `useIsPhone`, `MobilePushHeader`, `MOBILE_TAB_BAR_HEIGHT`
+- `views/multi/season/MultiSeasonLayout.tsx` — `isTransactionRoute` 정규식 `(transaction|(negotiate|release)\/[^/]+)`
+- `docs/ui/mobile-design-system.md` §9-1-16 상태
+
+**Before**: 폰에서 데스크톱 3단 그대로, 확인은 가운데 Modal(가로 2버튼)
+
+**After**: 폰 탭 2개 + 하단 확인 + 세로 스택 확인 다이얼로그. 태블릿 · 데스크톱 변화 없음
+
+**검증**: `tsc` 수정 파일 오류 0, `vite build` 성공. 브라우저 미확인
+
+**롤백 방법**: scratchpad `tradeimpl/MultiReleaseView.orig.tsx`로 복원, 레이아웃 정규식에서 `release` 제거
+
+## 2026-10-28 — BM27 방출 화면 폰 목업 W1~W6 (코드 변경 없음)
+
+**배경**: 사용자 지시 "방출 화면의 목업 만들어봐". 데스크톱 `MultiReleaseView` 디자인 그대로, 레이아웃만 폰으로.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-1-16 신설
+- (코드 아님) 캔버스 v140 18행(y=24700) W1~W6 + 행 제목 t21 — 생성기 scratchpad `gen_release.py`(gen_nego 헬퍼 재사용)
+
+**Before**: 방출 화면 폰 목업 없음
+
+**After**: 탭 2개(방출 · 선수 정보), 대화는 완료 후 방출 탭 맨 위, 하단 "확인" 고정, 최종 확인은 세로 스택 다이얼로그
+
+**검증**: 목업 스크린샷 6장 확인
+
+**롤백 방법**: §9-1-16 삭제, 캔버스 v139
+
+## 2026-10-28 — BM27 계약 협상 화면 폰판 구현
+
+**배경**: 사용자 지시 "계약 협상 화면 구현해줘". 목업 C1~C7(§9-1-15).
+
+**변경 파일**:
+- `views/multi/season/MultiNegotiationView.tsx`
+  - 데스크톱 JSX를 화면 조각 함수로 추출(마크업 동일): `renderInfoPanel`(PlayerInfoSidePanel + 요구 조건), `renderStatusHeader(phone)`(폰 = h-11 px-4, 데스크톱 = p-4), `renderChat`, `renderOfferForm`(계약 유형 ~ 총 계약액/AAV), `renderCapAndNotices`(CapStatusPanel + 경고 3종), `renderSubmitButton(onClick)` — 데스크톱 ContractThreePane은 이 함수들을 호출
+  - select 2개 · 루키 배율 입력: 폰이면 `h-12 text-base`(데스크톱 `py-2 text-sm` 그대로)
+  - 상태 `isPhone`, `phoneTab`('chat' 기본) + 대화 탭 복귀 시 맨 아래로 스크롤하는 effect
+  - 메인 return 앞 `if (isPhone)` 블록: MobilePushHeader("{이름}와 협상", 뒤로 → 자유 계약) + TabBar compact(대화 · 오퍼 · 선수 정보) + 공용 상태 줄 / 대화 = 채팅 + 하단 "오퍼 작성" xl(협상 가능할 때) / 오퍼 = 폼 + 캡 현황 · 경고(잠금 시 opacity 40) + 하단 "오퍼 제출"(제출 후 대화 탭으로) / 선수 정보 = 패널
+- `views/multi/season/contractScreenParts.tsx` — `ContractStepper` 폰: 버튼 `!h-11 !px-0`, 입력 `h-12 text-base`
+- `views/multi/season/MultiSeasonLayout.tsx` — `isTransactionRoute` 정규식에 `negotiate/:id` 추가(상단 바 · spacer 생략, 루트 padding)
+- `docs/ui/mobile-design-system.md` §9-1-15 상태
+
+**Before**: 폰에서 데스크톱 3단(flex 2/3/5) 그대로
+
+**After**: 폰 탭 3개 + 상태 줄. 태블릿 · 데스크톱은 같은 조각을 그대로 렌더(변화 없음)
+
+**검증**: `tsc` 수정 파일 오류 0, `vite build` 성공. 브라우저 미확인
+
+**롤백 방법**: scratchpad `tradeimpl/MultiNegotiationView.orig.tsx` · `contractScreenParts.orig.tsx`로 복원, 레이아웃 정규식을 `/\/season\/transaction\/?$/`로
+
+## 2026-10-28 — BM27 선수 이동(트레이드 · 자유 계약) 화면 폰판 구현
+
+**배경**: 사용자 지시 "트레이드 모바일 UI 구현을 시작해줘". 목업 R1~R22(§9-1-14) 기준, 데스크톱 데이터·핸들러는 그대로 두고 폰(<768) 레이아웃만 분기.
+
+**변경 파일**:
+- `views/multi/season/MultiSeasonLayout.tsx` — `isTransactionRoute`(`/season/transaction`)를 `hasOwnPhoneHeader`에 추가, 하단 spacer 조건에서 제외
+- `views/multi/season/MultiFrontOfficeView.tsx`
+  - import: `AlertTriangle` · `ArrowLeftRight` · `SlidersHorizontal`, `useIsPhone`, `MobilePushHeader`, `BottomSheet`/`SheetGroupTitle`/`SheetOptionRow`, `ActionSheet`, `MOBILE_TAB_BAR_HEIGHT`
+  - `TeamAssetList` prop `phone`(머리 줄 POS·PTS·REB·AST·연봉 + 단위 없는 숫자 w-7/w-10/w-16)
+  - 모듈 부품 신설: `PHONE_ROOT_STYLE`, `PHONE_COL`, `PhonePlayerRow`(PlayerChip 폰판, 앞 3칸 stickyLeft 0/36/72), `PhonePlayerListHeader`, `PhoneFilterButton`
+  - 상태: `isPhone`, `phoneSide`, `phoneReviewOpen`, `phoneTeamSheetOpen`, `phoneInboxFilterOpen`, `phoneHistoryFilterOpen`, `phoneOfferId(?offer=)`, `useEffect(counterOf → phoneSide 'target')`
+  - `renderOfferListRow(offer, phone = false)` — 폰이면 h-12 행 + 탭 시 `setSearchParams({ tab: 'inbox', offer })`(push). 데스크톱 호출부 `.map(renderOfferListRow)` → `.map(o => renderOfferListRow(o))`(index가 phone으로 들어가지 않게)
+  - `renderOfferLetter`: 폰이면 래퍼 `space-y-7`, 발신/수신 · 자산 `grid-cols-1`, 캡 여유분 전폭, 대기 중 버튼 · 확인 블록 미렌더(결과 문장은 그대로)
+  - 메인 return 앞 `if (isPhone) { ... }` 블록: H4(선수 이동 + 데드라인 / 제안서 상세는 "트레이드 제안서") + `TabBar compact`, 제안(팀 전환 바 · 프런트 줄 · 데드라인 경고 · 로스터 표 · 캡 요약 · 제안 바), 블록(도구 줄 · 팀별 묶음), 메세지함(목록 · 상세 + 하단 바), 자유 계약(embedded), 히스토리(세그먼트 · 건별 묶음 · FA/웨이버 폰 표), 시트 5개(제안 · 상대 팀 · 메세지함 필터 · 수락/거절/취소 확인 · 히스토리 필터) + `MyTradeBlockModal`
+- `views/multi/season/MyTradeBlockModal.tsx` — 요구 조건 4섹션 JSX를 `renderRequestSections(phone)`로 추출(데스크톱 = `false`, 클래스 동일), 폰 = `createPortal` 풀스크린(상단 바 slate-800 · 저장 상태 InlineNotice sm 띠 · 한 목록 토글 행 h-11)
+- `views/multi/season/MultiFreeAgentView.tsx` — 폰 분기(검색 16px + 필터 버튼, 슬레이트 칩 줄, 로스터 가득 경고, Table flush phone + sticky 선수 136, Pagination compact, 필터 시트 + 포지션/아키타입 체크 시트), 상태 `isPhone`/`phoneFilterOpen`/`phonePosSheetOpen`/`phoneArchSheetOpen`
+- `docs/ui/mobile-design-system.md` §9-1-14 구현 메모
+
+**Before**: 폰에서 데스크톱 3열 · 2열 레이아웃 그대로(가로로 넘침), 공용 상단 바 + 데스크톱 제목 줄
+
+**After**: §9-1-14 폰판. 태블릿 · 데스크톱 렌더는 변화 없음(분기 · 기본값 false)
+
+**검증**: `tsc` 수정 파일 오류 0, `vite build` 성공(기존 경고만). 브라우저 · 실기기 미확인
+
+**롤백 방법**: scratchpad 백업(`tradeimpl/*.orig.tsx`) 또는 위 항목 역순 — MultiFrontOfficeView의 `if (isPhone)` 블록 · 폰 부품 · 상태 · 3곳 분기 제거, `renderOfferListRow` 시그니처 원복, MyTradeBlockModal 폰 블록 제거(`renderRequestSections`는 남겨도 데스크톱 동일), MultiFreeAgentView 폰 블록 · 상태 · import 제거, 레이아웃 `isTransactionRoute` 제거
+
+## 2026-10-28 — BM27 선수 이동 화면 폰 목업 추가 케이스 R13~R22 (코드 변경 없음)
+
+**배경**: 사용자 "트레이드 화면에서 빠진 케이스가 없을까?" → 데스크톱 코드 대조로 누락 9종 + 변형 규칙 정리, "권장사항대로 진행".
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-1-14 — 추가 케이스 + "보드 없이 규칙만" 항목
+- (코드 아님) 캔버스 v139 16-B행(y=23600) R13~R22 + 행 제목 t20, R10 칩을 슬레이트 PhoneChips로 갱신 — 생성기 scratchpad `gen_trade2.py`(gen_trade.py 전체 실행 후 추가), `gen_trade.py` `pchip()`
+
+**Before**: 기본 상태 12보드(R1~R12)만
+
+**After**: 역제안 작성 · 데드라인 지남 · 보낸 제안 · 처리된 제안 · 결과 문장 7종 · 역제안 스레드 · 어드민 보기 · 메세지함/FA 필터 시트 · 블록 검색/저장 상태 보드 + 규칙 문서화
+
+**검증**: 목업 스크린샷 11장 확인
+
+**롤백 방법**: §9-1-14 추가 케이스 · 규칙 항목 삭제, 캔버스 v138
+
+## 2026-10-28 — BM27 계약 협상 화면 폰 목업 C1~C7 (코드 변경 없음)
+
+**배경**: 사용자 지시 "협상 화면의 목업도 만들어봐". 데스크톱 `MultiNegotiationView` 3단 레이아웃을 폰 탭 3개로 변환, 부품(contractScreenParts)은 그대로.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-1-15 신설
+- (코드 아님) 캔버스 v138 17행(y=22500) C1~C7 + 행 제목 t19 — 생성기 scratchpad `gen_nego.py`, 보드 `Nego*.dc.html` 7개
+
+**Before**: 협상 화면 폰 목업 없음
+
+**After**: 탭(대화 · 오퍼 · 선수 정보) + 공용 상태 줄(계약 가능성 · 기분) + 대화 하단 "오퍼 작성" / 오퍼 하단 "오퍼 제출" 고정, 체결·결렬 시 오퍼 탭 잠금
+
+**검증**: 목업 스크린샷 7장 확인
+
+**롤백 방법**: §9-1-15 삭제, 캔버스 v137
+
+## 2026-10-28 — BM27 선수 이동(트레이드) 화면 폰 목업 R1~R12 (코드 변경 없음)
+
+**배경**: 사용자 지시 "트레이드 화면의 목업을 만들어봐". 데스크톱 `MultiFrontOfficeView`(5탭)의 디자인 언어 그대로 폰 레이아웃만 변환.
+
+**변경 파일**:
+- `docs/ui/mobile-design-system.md` §9-1-14 신설
+- (코드 아님) 캔버스 v137 16행(y=21400) R1~R12 + 행 제목 t18 — 생성기 scratchpad `gen_trade.py`, 보드 `Trade*.dc.html` 12개
+
+**Before**: 선수 이동 화면 폰 목업 없음(폰에서 데스크톱 3열 그대로)
+
+**After**: 팀 전환 바 + 로스터 표 + 하단 제안 바 → 제안 시트 / 블록 팀별 묶음 + 블록 수정 풀스크린 / 메세지함 목록 → 제안서 push + 하단 수락·거절 바 + 거절 시트 / FA 표 + 필터 / 히스토리 건별 묶음 + 필터 시트
+
+**검증**: 목업 스크린샷 12장 확인
+
+**롤백 방법**: §9-1-14 삭제, 캔버스 v135
+
 ## 2026-10-28 — BM27 선수 프로필 폰 샷 차트 탭: 차트·표 전폭 + 표 제목을 1열 머리 칸으로 + 간격 제거
 
 **배경**: 사용자 지시 "샷차트와 아래 테이블도 화면에 꽉차게, 테이블 위 작은 라벨은 1열 헤더 셀 텍스트를 구역별 기록/시간대별 기록/타입별 기록/팀별 기록으로" + "헤더와 샷차트, 샷차트와 테이블, 테이블과 테이블 사이 간격 모두 제거".

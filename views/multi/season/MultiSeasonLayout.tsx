@@ -71,7 +71,9 @@ export function MultiSeasonLayout() {
     // [2026-10-28] 경기 화면(season/game/:id)도 ‹ + 날짜·단계 H4를 MultiGamePbpView가 직접 그린다(§9-7).
     // [2026-10-28] 선수 프로필(season/player/:id)도 브레드크럼 바가 폰 상단 바(§9-2) — 하단 여백도 화면이 직접(루트 padding)
     const isPlayerRoute = /\/season\/player\/[^/]+\/?$/.test(location.pathname);
-    const hasOwnPhoneHeader = isRosterRoute || isPlayerRoute || /\/season\/(news|tactics)\/?$/.test(location.pathname) || /\/season\/game\/[^/]+\/?$/.test(location.pathname);
+    // [2026-10-28] 선수 이동(season/transaction)도 H4 push 헤더 + 하단 고정 바(제안 바 · 수락/거절 바)를 화면이 직접 — 루트 padding으로 하단 여백(§9-1-14)
+    const isTransactionRoute = /\/season\/(transaction|(negotiate|release)\/[^/]+)\/?$/.test(location.pathname);
+    const hasOwnPhoneHeader = isRosterRoute || isPlayerRoute || isTransactionRoute || /\/season\/(news|tactics)\/?$/.test(location.pathname) || /\/season\/game\/[^/]+\/?$/.test(location.pathname);
 
     const gameData = useSeasonContext();
     const { room, league, leagueTeams , timeline } = useLeagueContext();
@@ -149,7 +151,7 @@ export function MultiSeasonLayout() {
                 <div id={SEASON_SCROLL_ID} className="flex-1 overflow-y-auto custom-scrollbar">
                     {showStrip && <GameDateStrip {...stripProps} variant="phone" />}
                     {body}
-                    {!isGameRoute && !isPlayerRoute && <div aria-hidden="true" className="pb-safe" style={{ height: MOBILE_TAB_BAR_HEIGHT }} />}
+                    {!isGameRoute && !isPlayerRoute && !isTransactionRoute && <div aria-hidden="true" className="pb-safe" style={{ height: MOBILE_TAB_BAR_HEIGHT }} />}
                 </div>
                 <MobileTabBar />
                 <TournamentChampionModal />

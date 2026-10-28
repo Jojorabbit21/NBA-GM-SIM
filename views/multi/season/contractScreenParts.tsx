@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '../../../components/common/Button';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
 import { KeyValueRow } from '../../../components/common/KeyValueRow';
@@ -280,8 +281,10 @@ interface ContractStepperProps {
 export const ContractStepper: React.FC<ContractStepperProps> = ({
     label, hint, value, onChange, onBlur, inputMode, suffix, disabled, leftSteps, rightSteps, gap = 'sm', className = 'pt-1.5 space-y-1', footer,
 }) => {
+    // [2026-10-28] 폰(§9-1-15): 버튼 44 · 입력 48 · 16px(iOS 자동 줌 방지)
+    const phone = useIsPhone();
     const renderStep = (s: StepSpec, i: number) => (
-        <Button key={i} variant="secondary" className="flex-1" onClick={s.onClick} disabled={s.disabled ?? disabled}>
+        <Button key={i} variant="secondary" className={`flex-1 ${phone ? '!h-11 !px-0' : ''}`} onClick={s.onClick} disabled={s.disabled ?? disabled}>
             {s.label}
         </Button>
     );
@@ -301,7 +304,7 @@ export const ContractStepper: React.FC<ContractStepperProps> = ({
                         onChange={onChange}
                         onBlur={onBlur}
                         disabled={disabled}
-                        className="w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        className={`w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 ${phone ? 'h-12 text-base' : 'py-2 text-sm'} text-center font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">{suffix}</span>
                 </div>

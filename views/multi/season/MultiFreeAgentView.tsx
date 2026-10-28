@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { InlineNotice } from '../../../components/common/InlineNotice';
-import { Search, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
@@ -37,6 +37,9 @@ import { Pagination } from '../../../components/common/Pagination';
 import { CheckboxFilterDropdown } from '../../../components/common/filters/CheckboxFilterDropdown';
 import { StatFilterBar, FilterChips, type StatFilterDraft } from '../../../components/common/filters/StatFilterBar';
 import { compareOperator, type Operator } from '../../../utils/statFilter';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { BottomSheet, SheetGroupTitle, SheetOptionRow } from '../../../components/mobile/BottomSheet';
+import { FilterTrigger } from '../../../components/common/filters/FilterTrigger';
 
 interface StatFilterItem {
     id: string;
@@ -171,6 +174,11 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
     };
 
     const [nameQuery, setNameQuery] = useState('');
+    // [2026-10-28] 폰(§9-1-14 R10 · R21): 필터 시트(포지션 · 아키타입 → 체크 시트, 능력치 조건 StatFilterBar) — 리더보드 폰 시트와 같은 구성
+    const isPhone = useIsPhone();
+    const [phoneFilterOpen, setPhoneFilterOpen] = useState(false);
+    const [phonePosSheetOpen, setPhonePosSheetOpen] = useState(false);
+    const [phoneArchSheetOpen, setPhoneArchSheetOpen] = useState(false);
     const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
     const [selectedArchetypes, setSelectedArchetypes] = useState<string[]>([]);
 
@@ -280,6 +288,149 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
         );
     }
 
+    // ════ [2026-10-28] 폰(<768) — docs/ui/mobile-design-system.md §9-1-14 R10 · R21 ════
+    // 검색(16px) + "필터" 버튼 → 시트, 조건 칩(슬레이트 pill · 리더보드 폰과 동일) 줄, 표 = sticky 선수 136 + 데스크톱 열 그대로, Pagination compact.
+    // CBA 꺼진 리그에서 로스터가 가득 차 "계약"이 비활성이면 이유를 표 위 경고로(폰엔 title 툴팁이 없음).
+    if (isPhone) {
+        const chips = [
+            ...selectedPositions.map(v => ({ id: `pos:${v}`, label: v, remove: () => setSelectedPositions(prev => prev.filter(x => x !== v)) })),
+            ...selectedArchetypes.map(v => ({ id: `arch:${v}`, label: v, remove: () => setSelectedArchetypes(prev => prev.filter(x => x !== v)) })),
+            ...statFilters.map(f => ({ id: f.id, label: f.label, remove: () => setStatFilters(prev => prev.filter(x => x.id !== f.id)) })),
+        ];
+        const clearAll = () => { setSelectedPositions([]); setSelectedArchetypes([]); setStatFilters([]); };
+        const renderChip = (c: { id: string; label: string; remove: () => void }) => (
+            <span key={c.id} className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 whitespace-nowrap">
+                {c.label}
+                <button type="button" onClick={c.remove} aria-label={`${c.label} 제거`} className="w-5 h-5 flex items-center justify-center rounded-full text-slate-400 active:bg-white/10"><X size={12} /></button>
+            </span>
+        );
+        const rosterFullBlocked = !league?.cba_rules_enabled && isMyRosterFull;
+        const checkSheet = (open: boolean, title: string, options: readonly string[], selected: string[], set: (v: string[]) => void, close: () => void) => (
+            <BottomSheet open={open} title={title} onClose={close}
+                headerRight={<button type="button" onClick={() => set([])} disabled={selected.length === 0} className="h-8 px-2 text-sm font-semibold text-indigo-400 disabled:text-slate-600">전체</button>}>
+                <div className="grid grid-cols-2 gap-x-3">
+                    {options.map(o => (
+                        <SheetOptionRow key={o} type="checkbox" label={o} checked={selected.includes(o)}
+                            onChange={() => set(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o])} />
+                    ))}
+                </div>
+            </BottomSheet>
+        );
+        return (
+            <div className="flex flex-col h-full min-h-0">
+                <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-slate-900 border-b border-slate-800">
+                    <div className="relative flex-1 min-w-0 h-9 bg-slate-950 rounded-lg border border-slate-800">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input type="text" placeholder="이름으로 검색" value={nameQuery} onChange={e => setNameQuery(e.target.value)}
+                            className="h-full w-full bg-transparent pl-9 pr-8 text-base font-bold text-white outline-none placeholder:text-slate-600" />
+                        {nameQuery && (
+                            <IconButton label="검색어 지우기" size="xs" tone="ghost" onClick={() => setNameQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={12} /></IconButton>
+                        )}
+                    </div>
+                    <button type="button" aria-haspopup="dialog" onClick={() => setPhoneFilterOpen(true)}
+                        className="relative h-8 pl-2.5 pr-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 active:bg-slate-700 shrink-0">
+                        <SlidersHorizontal size={14} />필터
+                        {chips.length > 0 && <span aria-hidden="true" className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-slate-950" />}
+                    </button>
+                </div>
+                {chips.length > 0 && (
+                    <div className="shrink-0 overflow-x-auto px-4 py-2 bg-slate-900 border-b border-slate-800 [scrollbar-width:none]">
+                        <div className="flex items-center gap-2 min-w-max">
+                            {chips.map(renderChip)}
+                            {chips.length > 1 && <button type="button" onClick={clearAll} className="h-7 px-2 text-xs font-semibold text-slate-400 whitespace-nowrap">모두 제거</button>}
+                        </div>
+                    </div>
+                )}
+                {rosterFullBlocked && (
+                    <div className="shrink-0 px-4 py-2 bg-slate-900 border-b border-slate-800">
+                        <InlineNotice tone="warning">로스터 정원({(league as any)?.max_roster_size ?? 15}명)이 가득 찼습니다. 선수를 방출한 뒤 다시 시도하세요.</InlineNotice>
+                    </div>
+                )}
+                {signError && <InlineNotice tone="danger" className="shrink-0">{signError}</InlineNotice>}
+                <div className="flex-1 min-h-0 overflow-auto bg-slate-900">
+                    <Table variant="flush" density="phone" dividers={false} scroll="parent">
+                        <TableHead noRow>
+                            <tr className="h-9 text-xs font-bold text-slate-400 whitespace-nowrap">
+                                <TableHeaderCell align="left" stickyLeft={0} width={136} className="pl-4">선수</TableHeaderCell>
+                                <TableHeaderCell align="center">포지션</TableHeaderCell>
+                                <TableHeaderCell align="center">나이</TableHeaderCell>
+                                <TableHeaderCell align="center">키</TableHeaderCell>
+                                <TableHeaderCell align="center">몸무게</TableHeaderCell>
+                                <TableHeaderCell align="center">OVR</TableHeaderCell>
+                                {ATTR_ITEMS.map(item => <TableHeaderCell key={item.key}>{item.label}</TableHeaderCell>)}
+                                <TableHeaderCell align="center">연봉</TableHeaderCell>
+                                <TableHeaderCell align="center">가능성</TableHeaderCell>
+                                <TableHeaderCell align="center" className="pr-4">계약</TableHeaderCell>
+                            </tr>
+                        </TableHead>
+                        <TableBody>
+                            {pagedPlayers.length === 0 ? (
+                                <tr>
+                                    <TableCell colSpan={6 + ATTR_ITEMS.length + 3} align="left" className="pl-4 text-slate-500 text-sm py-10">조건에 맞는 자유 계약 선수가 없습니다.</TableCell>
+                                </tr>
+                            ) : pagedPlayers.map(p => {
+                                const likelihood = likelihoodByPlayerId.get(p.id);
+                                return (
+                                    <tr key={p.id} className="h-11">
+                                        <TableCell align="left" stickyLeft={0} width={136} className="pl-4">
+                                            <span onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(p.id)}`)}
+                                                className="block truncate text-slate-200 ko-normal text-sm font-semibold active:text-indigo-400">{p.name}</span>
+                                        </TableCell>
+                                        <TableCell align="center" className="text-sm text-slate-400">{p.position}</TableCell>
+                                        <TableCell align="center" className="text-sm text-slate-400">{p.age}</TableCell>
+                                        <TableCell align="center" className="text-sm text-slate-400">{p.height}</TableCell>
+                                        <TableCell align="center" className="text-sm text-slate-400">{p.weight}</TableCell>
+                                        <TableCell align="center"><div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none" /></div></TableCell>
+                                        {ATTR_ITEMS.map(item => (
+                                            <TableCell key={item.key} align="center" className="font-semibold text-sm" value={getCompactAttrValue(p, item)} variant="attribute" colorScale />
+                                        ))}
+                                        <TableCell align="right" className="text-sm text-slate-200 tabular-nums">{formatMoneyFull(p.salary)}</TableCell>
+                                        <TableCell align="center" className="text-sm">
+                                            {likelihood ? <span className={`font-bold ${likelihood.color}`}>{likelihood.text}</span> : <span className="text-slate-600">-</span>}
+                                        </TableCell>
+                                        <TableCell align="center" className="pr-4">
+                                            <Button size="sm" shape="md"
+                                                onClick={() => {
+                                                    if (league?.cba_rules_enabled) navigate(`/multi/leagues/${leagueId}/season/negotiate/${getPlayerUrlId(p.id)}`);
+                                                    else handleSign(p.id, p.name);
+                                                }}
+                                                disabled={!myTeamRow || signingId !== null || rosterFullBlocked}>
+                                                계약
+                                            </Button>
+                                        </TableCell>
+                                    </tr>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Pagination compact page={currentPage} pageSize={itemsPerPage} totalItems={filteredPlayers.length} onPageChange={setCurrentPage} onPageSizeChange={handleItemsPerPageChange} />
+
+                <BottomSheet open={phoneFilterOpen} title="필터" onClose={() => setPhoneFilterOpen(false)}
+                    headerRight={<button type="button" onClick={clearAll} disabled={chips.length === 0} className="h-8 px-2 text-sm font-semibold text-indigo-400 disabled:text-slate-600">초기화</button>}>
+                    <div className="min-h-[48px] py-1.5 flex items-center justify-between gap-3 border-b border-slate-800">
+                        <span className="text-sm font-semibold text-slate-200">포지션</span>
+                        <FilterTrigger label="포지션" count={selectedPositions.length} onClick={() => setPhonePosSheetOpen(true)} />
+                    </div>
+                    <div className="min-h-[48px] py-1.5 flex items-center justify-between gap-3 border-b border-slate-800">
+                        <span className="text-sm font-semibold text-slate-200">아키타입</span>
+                        <FilterTrigger label="아키타입" count={selectedArchetypes.length} onClick={() => setPhoneArchSheetOpen(true)} />
+                    </div>
+                    <SheetGroupTitle first>능력치 조건 추가</SheetGroupTitle>
+                    <div className="pb-2 [&>div]:w-full [&_input]:flex-1 [&_input]:min-w-0">
+                        <StatFilterBar options={ATTR_FILTER_OPTIONS} onAdd={handleAddStatFilter} />
+                    </div>
+                    {statFilters.length > 0 && (
+                        <div className="pb-3 flex flex-wrap items-center gap-2">
+                            {chips.filter(c => !c.id.startsWith('pos:') && !c.id.startsWith('arch:')).map(renderChip)}
+                        </div>
+                    )}
+                </BottomSheet>
+                {checkSheet(phonePosSheetOpen, '포지션', POSITIONS, selectedPositions, setSelectedPositions, () => setPhonePosSheetOpen(false))}
+                {checkSheet(phoneArchSheetOpen, '아키타입', archetypeOptions, selectedArchetypes, setSelectedArchetypes, () => setPhoneArchSheetOpen(false))}
+            </div>
+        );
+    }
     return (
         <div className="flex flex-col h-full">
             <div className="flex flex-col shrink-0 bg-slate-900 border-b border-slate-800">

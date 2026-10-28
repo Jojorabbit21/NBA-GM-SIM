@@ -16,7 +16,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { InlineNotice } from '../../../components/common/InlineNotice';
-import { Check, GripVertical, RotateCcw, X } from 'lucide-react';
+import { Check, GripVertical, Plus, RotateCcw, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useIsPhone } from '../../../hooks/useViewportClass';
 import { Modal } from '../../../components/common/Modal';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
@@ -85,6 +87,7 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
     // 체크(드래그)는 로컬 선택 상태만 바꾸고, "업데이트" 버튼을 눌러야 서버에 일괄 반영된다
     // (선수 한 명 클릭할 때마다 refreshTradeData()가 통째로 다시 돌아 화면이 리로드되는
     // 문제가 있었음). [2026-08-24] 체크 = "트레이드 가능"(opt-in), 기본값(미체크)은 불가.
+    const isPhone = useIsPhone();
     const [pendingTradeableIds, setPendingTradeableIds] = useState<Set<string>>(() => new Set(myTradeableIds));
     const [savingBlocks, setSavingBlocks] = useState(false);
     const [blockSaveSuccess, setBlockSaveSuccess] = useState(false);
@@ -245,6 +248,186 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
         </div>
     );
 
+    // [2026-10-28] 요구 조건 4섹션(메모 · 포지션 · 아키타입 · 특정 선수) — 데스크톱 모달과 폰 풀스크린(§9-1-14 R6·R22)이 공유.
+    // phone: 전폭(px-4) · 입력 16px(iOS 줌 방지) · 검색 결과는 입력 아래 흐름 배치(행 44)
+    const renderRequestSections = (phone: boolean) => (
+        <div className="py-4 border-t border-slate-800 space-y-6 divide-y divide-slate-800 shrink-0 pb-6">
+            <div className={phone ? 'px-4' : 'w-1/2 px-6'}>
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-white ko-normal">요구사항 메모</span>
+                        <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestNote('')}>
+                                초기화
+                        </Button>
+                    </div>
+                    <span className="text-sm text-slate-600">{teamRequestNote.length}/200</span>
+                </div>
+                <textarea
+                    value={teamRequestNote}
+                    onChange={e => setTeamRequestNote(e.target.value.slice(0, 200))}
+                    placeholder="트레이드 시장에서 원하는 요구사항을 입력하세요."
+                    rows={3}
+                    className={`w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 ${phone ? 'text-base' : 'text-sm'} text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal`}
+                />
+            </div>
+
+            <div className={phone ? 'px-4 pt-4' : 'px-6 pt-4'}>
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-base font-bold text-white ko-normal">원하는 포지션</span>
+                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestPositions(new Set())}>
+                            초기화
+                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                    {DESIRED_POSITIONS.map(pos => (
+                        <button
+                            key={pos}
+                            onClick={() => toggleTeamRequestPosition(pos)}
+                            className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
+                                teamRequestPositions.has(pos) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
+                            }`}
+                        >
+                            {pos}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className={phone ? 'px-4 pt-4' : 'px-6 pt-4'}>
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-base font-bold text-white ko-normal">원하는 아키타입</span>
+                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestArchetypes(new Set())}>
+                            초기화
+                    </Button>
+                </div>
+                <div className="space-y-2.5">
+                    {ARCHETYPE_GROUPS.map(group => (
+                        <div key={group.label} className="flex items-start gap-3">
+                            <span className="text-sm font-bold text-slate-300 ko-normal w-8 pt-1 shrink-0">{group.label}</span>
+                            <div className="flex flex-wrap gap-1.5">
+                                {group.keys.map(key => (
+                                    <button
+                                        key={key}
+                                        onClick={() => toggleTeamRequestArchetype(key)}
+                                        className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
+                                            teamRequestArchetypes.has(key) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
+                                        }`}
+                                    >
+                                        {ARCHETYPE_LABEL[key]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className={phone ? 'px-4 pt-4' : 'px-6 pt-4'}>
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-base font-bold text-white ko-normal">원하는 특정 선수</span>
+                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => { setTeamRequestPlayerIds(new Set()); setTeamRequestPlayerQuery(''); }}>
+                            초기화
+                    </Button>
+                </div>
+                <div className={phone ? '' : 'max-w-md relative'}>
+                    <input
+                        value={teamRequestPlayerQuery}
+                        onChange={e => setTeamRequestPlayerQuery(e.target.value)}
+                        placeholder="선수 이름 검색"
+                        className={`w-full bg-slate-950 border border-slate-700 rounded-lg px-3 ${phone ? 'h-12 text-base' : 'py-1.5 text-sm'} text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 ko-normal`}
+                    />
+                    {teamRequestPlayerMatches.length > 0 && (
+                        // 오버레이로 띄워서 아래 콘텐츠(저장 버튼 등)를 밀어내지 않게 함 — absolute + z-index.
+                        <div className={`${phone ? 'mt-1' : 'absolute left-0 right-0 top-full mt-1 z-20'} bg-slate-950 border border-slate-700 rounded-lg shadow-xl overflow-hidden`}>
+                            {teamRequestPlayerMatches.map(mp => (
+                                <button
+                                    key={mp.id}
+                                    onClick={() => addTeamRequestPlayer(mp.id)}
+                                    className={`w-full flex items-center gap-2 px-3 text-left hover:bg-white/5 ${phone ? 'h-11 border-b border-slate-800 last:border-b-0' : 'py-1.5'}`}
+                                >
+                                    <span className="text-sm text-white truncate flex-1">{mp.name}</span>
+                                    <span className="text-sm text-slate-500 shrink-0">{mp.position}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                {teamRequestPlayerIds.size > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-4">
+                        {[...teamRequestPlayerIds].map(id => (
+                            <span key={id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-500 bg-indigo-600/30 text-sm font-bold text-white ko-normal">
+                                {poolById.get(id)?.name ?? id}
+                                <IconButton label="제외" size="xs" tone="inherit" onClick={() => removeTeamRequestPlayer(id)} className="text-white/70">
+                                    <X size={11} />
+                                </IconButton>
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+
+    // [2026-10-28] 폰(<768): Modal lg → 풀스크린 페이지(§9-3 · §9-1-14 R6). 상단 바 slate-800(X · 제목 · 업데이트) + 저장 상태 띠,
+    // 좌우 DnD 2열 → 한 목록(트레이드 블록 / 내 선수 목록) + 행 우측 토글, 아래 요구 조건 4섹션은 데스크톱과 공유(renderRequestSections).
+    // 닫아도 이 컴포넌트는 마운트 유지 — 저장하지 않은 편집은 데스크톱처럼 남는다.
+    if (isPhone) {
+        if (!isOpen) return null;
+        const toggleRow = (p: Player, on: boolean) => (
+            <button key={p.id} type="button" onClick={() => togglePendingTradeable(p.id)}
+                className="w-full h-11 flex items-center gap-2.5 px-4 bg-slate-900 border-b border-slate-800/50 text-left active:bg-white/5">
+                <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!shadow-none shrink-0" />
+                <span className="text-sm font-semibold text-white flex-1 min-w-0 truncate">{p.name}</span>
+                <span className="text-sm text-slate-500 shrink-0 w-7">{p.position}</span>
+                <span aria-hidden="true" className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center ${on ? 'bg-emerald-600 text-white' : 'bg-slate-800 border border-slate-700 text-slate-300'}`}>
+                    {on ? <Check size={12} /> : <Plus size={12} />}
+                </span>
+            </button>
+        );
+        const status: { tone: 'danger' | 'success' | 'warning'; text: string } | null = blockSaveError ? { tone: 'danger', text: blockSaveError }
+            : blockSaveSuccess ? { tone: 'success', text: '저장 완료' }
+            : (tradeableDirty || teamRequestDirty) ? { tone: 'warning', text: '저장되지 않은 변경사항이 있습니다.' } : null;
+        return createPortal(
+            <div role="dialog" aria-modal="true" aria-label="내 트레이드 블록 설정" className="fixed inset-0 z-modal flex flex-col bg-slate-900">
+                <header className="shrink-0 pt-safe bg-slate-800 border-b border-slate-700">
+                    <div className="h-14 flex items-center gap-2 pl-1 pr-3">
+                        <button type="button" aria-label="닫기" onClick={onClose} className="w-11 h-11 shrink-0 flex items-center justify-center rounded-lg text-slate-300 active:bg-white/10">
+                            <X size={20} />
+                        </button>
+                        <h1 className="flex-1 min-w-0 text-base font-black text-slate-300 truncate ko-normal">내 트레이드 블록 설정</h1>
+                        {myTeamRow && (
+                            <Button size="lg" onClick={handleSaveTradeable} disabled={(!tradeableDirty && !teamRequestDirty) || savingBlocks} isLoading={savingBlocks} icon={<Check size={15} />}>
+                                업데이트
+                            </Button>
+                        )}
+                    </div>
+                </header>
+                {status && (
+                    <div className="shrink-0 px-4 py-1.5 bg-slate-900 border-b border-slate-800">
+                        <InlineNotice tone={status.tone} size="sm">{status.text}</InlineNotice>
+                    </div>
+                )}
+                <div className="flex-1 min-h-0 overflow-y-auto pb-safe">
+                    {!myTeamRow ? (
+                        <p className="text-sm text-slate-500 ko-normal py-8 text-center">소속 팀이 있어야 트레이드 블록을 설정할 수 있습니다.</p>
+                    ) : (
+                        <>
+                            <div className="px-4 py-2 bg-slate-950 text-sm font-black text-emerald-500 border-b border-slate-800">트레이드 블록 ({myRosterTradeable.length})</div>
+                            {myRosterTradeable.length === 0 && <p className="text-sm text-slate-600 ko-normal text-center py-5">선수를 누르면 트레이드 블록에 올라갑니다.</p>}
+                            {myRosterTradeable.map(p => toggleRow(p, true))}
+                            <div className="px-4 py-2 bg-slate-950 text-sm font-black text-slate-500 border-b border-slate-800">내 선수 목록 ({myRosterAvailable.length})</div>
+                            {myRosterAvailable.length === 0 && <p className="text-sm text-slate-600 ko-normal text-center py-5">전원 트레이드 블록에 있습니다.</p>}
+                            {myRosterAvailable.map(p => toggleRow(p, false))}
+                            {renderRequestSections(true)}
+                        </>
+                    )}
+                </div>
+            </div>,
+            document.body,
+        );
+    }
+
     return (
         <Modal
             isOpen={isOpen}
@@ -320,121 +503,7 @@ export const MyTradeBlockModal = React.memo(function MyTradeBlockModal({
                         </div>
 
                         {/* 트레이드 블록(선수 목록)과는 별개 — 팀 단위로 "원하는 대가"를 공개하는 위시리스트. */}
-                        <div className="py-4 border-t border-slate-800 space-y-6 divide-y divide-slate-800 shrink-0 pb-6">
-                            <div className="w-1/2 px-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-base font-bold text-white ko-normal">요구사항 메모</span>
-                                        <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestNote('')}>
-                                                초기화
-                                        </Button>
-                                    </div>
-                                    <span className="text-sm text-slate-600">{teamRequestNote.length}/200</span>
-                                </div>
-                                <textarea
-                                    value={teamRequestNote}
-                                    onChange={e => setTeamRequestNote(e.target.value.slice(0, 200))}
-                                    placeholder="트레이드 시장에서 원하는 요구사항을 입력하세요."
-                                    rows={3}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 resize-none ko-normal"
-                                />
-                            </div>
-
-                            <div className="px-6 pt-4">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <span className="text-base font-bold text-white ko-normal">원하는 포지션</span>
-                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestPositions(new Set())}>
-                                            초기화
-                                    </Button>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {DESIRED_POSITIONS.map(pos => (
-                                        <button
-                                            key={pos}
-                                            onClick={() => toggleTeamRequestPosition(pos)}
-                                            className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
-                                                teamRequestPositions.has(pos) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
-                                            }`}
-                                        >
-                                            {pos}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="px-6 pt-4">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <span className="text-base font-bold text-white ko-normal">원하는 아키타입</span>
-                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => setTeamRequestArchetypes(new Set())}>
-                                            초기화
-                                    </Button>
-                                </div>
-                                <div className="space-y-2.5">
-                                    {ARCHETYPE_GROUPS.map(group => (
-                                        <div key={group.label} className="flex items-start gap-3">
-                                            <span className="text-sm font-bold text-slate-300 ko-normal w-8 pt-1 shrink-0">{group.label}</span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {group.keys.map(key => (
-                                                    <button
-                                                        key={key}
-                                                        onClick={() => toggleTeamRequestArchetype(key)}
-                                                        className={`px-2.5 py-1 rounded-lg border text-sm font-bold transition-colors ${
-                                                            teamRequestArchetypes.has(key) ? 'bg-indigo-600/30 border-indigo-500 text-white' : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-white/5'
-                                                        }`}
-                                                    >
-                                                        {ARCHETYPE_LABEL[key]}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="px-6 pt-4">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <span className="text-base font-bold text-white ko-normal">원하는 특정 선수</span>
-                                    <Button size="xs" shape="md" icon={<RotateCcw size={12} />} onClick={() => { setTeamRequestPlayerIds(new Set()); setTeamRequestPlayerQuery(''); }}>
-                                            초기화
-                                    </Button>
-                                </div>
-                                <div className="max-w-md relative">
-                                    <input
-                                        value={teamRequestPlayerQuery}
-                                        onChange={e => setTeamRequestPlayerQuery(e.target.value)}
-                                        placeholder="선수 이름 검색"
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 ko-normal"
-                                    />
-                                    {teamRequestPlayerMatches.length > 0 && (
-                                        // 오버레이로 띄워서 아래 콘텐츠(저장 버튼 등)를 밀어내지 않게 함 — absolute + z-index.
-                                        <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-slate-950 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
-                                            {teamRequestPlayerMatches.map(mp => (
-                                                <button
-                                                    key={mp.id}
-                                                    onClick={() => addTeamRequestPlayer(mp.id)}
-                                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
-                                                >
-                                                    <span className="text-sm text-white truncate flex-1">{mp.name}</span>
-                                                    <span className="text-sm text-slate-500 shrink-0">{mp.position}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                {teamRequestPlayerIds.size > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mt-4">
-                                        {[...teamRequestPlayerIds].map(id => (
-                                            <span key={id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-500 bg-indigo-600/30 text-sm font-bold text-white ko-normal">
-                                                {poolById.get(id)?.name ?? id}
-                                                <IconButton label="제외" size="xs" tone="inherit" onClick={() => removeTeamRequestPlayer(id)} className="text-white/70">
-                                                    <X size={11} />
-                                                </IconButton>
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                        {renderRequestSections(false)}
                     </>
                 )}
             </div>

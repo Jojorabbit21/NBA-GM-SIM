@@ -23,6 +23,11 @@ import { countYosFromCareerHistory } from '../../../utils/constants';
 import { formatMoney, formatMoneyFull } from '../../../utils/formatMoney';
 import { Money } from '../../../components/common/Money';
 import { Button } from '../../../components/common/Button';
+import { createPortal } from 'react-dom';
+import { TabBar } from '../../../components/common/TabBar';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { MobilePushHeader } from '../../../components/mobile/MobilePushHeader';
+import { MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
 import { KeyValueRow } from '../../../components/common/KeyValueRow';
 import { generateScoutReport } from '../../../utils/scoutReport';
 import { assignArchetypes } from '../../../services/playerDevelopment/archetypeEvaluator';
@@ -287,6 +292,9 @@ const MultiReleaseView: React.FC = () => {
     };
     const chatEndRef = useRef<HTMLDivElement>(null);
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+    // [2026-10-28] 폰(§9-1-16): 3단 → 탭 2개(방출 · 선수 정보). 대화는 방출 전엔 비어 있어 탭 없이 완료 후 방출 탭 맨 위에.
+    const isPhone = useIsPhone();
+    const [phoneTab, setPhoneTab] = useState<'release' | 'info'>('release');
 
     // 방출 완료 여부 — true가 되면 우측 폼은 잠그고(MultiNegotiationView.tsx의
     // isOfferPanelDisabled와 동일 패턴) 채팅 하단에 "나가기"만 보여준다.
@@ -366,36 +374,199 @@ const MultiReleaseView: React.FC = () => {
     const displayDeadCapRows = releaseSnapshot?.deadCapRows ?? deadCapRows;
     const displayCapInfo = releaseSnapshot?.capInfo ?? capInfo;
 
+
+    // [2026-10-28] 화면 조각 — 데스크톱 3단(ContractThreePane)과 폰 탭 2개(docs/ui/mobile-design-system.md §9-1-16)가 공유한다.
+    const renderInfoPanel = () => (
+        <PlayerInfoSidePanel
+            player={player}
+            playerYos={playerYos}
+            onViewProfile={handleViewProfile}
+            archetypeState={playerArchetypeState}
+            tendencies={tendencies}
+            moraleScore={moraleScore}
+            scoutReport={scoutReport}
+        />
+    );
+    const renderChat = () => (
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+            {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} />)}
+            {released && (
+                <div className="flex justify-center">
+                    <Button variant="link" onClick={handleExit}>
+                        나가기
+                    </Button>
+                </div>
+            )}
+            <div ref={chatEndRef} />
+        </div>
+    );
+    const renderReleaseForm = () => (
+        <>
+            <div className="flex-shrink-0 space-y-1.5">
+                <div className="text-sm font-bold text-slate-400">방출 방식</div>
+                <div className={`w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 font-bold text-slate-400 ${isPhone ? 'h-12 flex items-center text-base' : 'py-2 text-sm'}`}>
+                    웨이브
+                </div>
+            </div>
+
+            {/* 스트레치 프로비전 체크박스 — MultiNegotiationView.tsx의 "팀 옵션/플레이어 옵션"
+                체크박스와 동일한 스타일(accent-indigo-500 네이티브 체크박스, 라벨에
+                opacity로 비활성 표시). */}
+            <div className="flex-shrink-0 space-y-1.5">
+                <label className={`flex items-center gap-2 text-sm text-slate-300 ${isPhone ? 'h-11' : ''} ${isStretchEligible ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
+                    <input
+                        type="checkbox"
+                        checked={stretchChecked && isStretchEligible}
+                        disabled={!isStretchEligible}
+                        onChange={e => setStretchChecked(e.target.checked)}
+                        className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    스트레치 프로비전
+                </label>
+                {!isStretchEligible && stretchReason && (
+                    <InlineNotice tone="warning" size="sm">{stretchReason}</InlineNotice>
+                )}
+            </div>
+
+            {/* 현재 계약 구조(잔여분) — 옵션은 색상뿐 아니라 금액 좌측에 텍스트로도 표기 */}
+            {displayContractRows.length > 0 && (
+                <div className="flex-shrink-0 space-y-1">
+                    <div className="text-sm font-bold text-slate-400 mb-1">현재 계약</div>
+                    {displayContractRows.map(({ season, amount, opt }, i) => (
+                        <div key={season} className="flex justify-between items-center text-sm py-0.5">
+                            <span className={i === 0 ? 'text-slate-200 font-semibold' : 'text-slate-500'}>{season}</span>
+                            <span className="flex items-center gap-1.5">
+                                {opt?.type === 'team' && <span className="text-sky-400">팀 옵션</span>}
+                                {opt?.type === 'player' && <span className="text-emerald-400">플레이어 옵션</span>}
+                                <span className={`font-medium ${
+                                    opt?.type === 'team' ? 'italic text-sky-400'
+                                        : opt?.type === 'player' ? 'italic text-emerald-400'
+                                        : i === 0 ? 'text-white font-bold' : 'text-slate-300'
+                                }`}>{formatMoneyFull(amount)}</span>
+                            </span>
+                        </div>
+                    ))}
+                    <KeyValueRow label="총 잔여 계약액" numeric className="pt-1.5 mt-1 border-t border-slate-800" labelClassName="font-semibold" valueClassName="font-bold">
+                        {formatMoneyFull(totalRemaining)}
+                    </KeyValueRow>
+                </div>
+            )}
+
+            {/* 이 선수의 연도별 데드캡 — 우측의 "연도별 데드캡"(팀 기존 데드캡과 합산된 값)과
+                달리, 이 방출 하나가 만드는 금액만 보여준다(deadCapRows의 addition 열 그대로). */}
+            {displayDeadCapRows.length > 0 && (
+                <div className="flex-shrink-0 space-y-1">
+                    <div className="text-sm font-bold text-slate-400 mb-1">미래 데드캡</div>
+                    {displayDeadCapRows.map(({ season, addition }, i) => (
+                        <div key={season} className="flex justify-between items-center text-sm py-0.5">
+                            <span className={i === 0 ? 'text-slate-200 font-semibold' : 'text-slate-500'}>{season}</span>
+                            <span className={`font-medium ${i === 0 ? 'text-white font-bold' : 'text-slate-300'}`}>{formatMoneyFull(addition)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </>
+    );
+    const renderCapAndDeadCap = () => (
+        <>
+            {displayCapInfo && <CapStatusPanel capInfo={displayCapInfo} afterLabel="방출 후 예상 페이롤" />}
+
+            {/* 연도별 데드캡 테이블 — waive/stretch 둘 다 표시(웨이브는 1행, 스트레치는
+                분산 연수만큼). "방출 후 예상 페이롤" 바로 아래에 배치. */}
+            {displayDeadCapRows.length > 0 && (
+                <div className="flex-shrink-0 space-y-1">
+                    <div className="text-sm font-bold text-slate-400 mb-1">연도별 데드캡</div>
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-sm text-slate-500 pb-1.5 border-b border-slate-800">
+                        <span>시즌</span>
+                        <span className="text-right w-16">기존</span>
+                        <span className="text-right w-16">추가분</span>
+                        <span className="text-right w-16">합계</span>
+                    </div>
+                    {displayDeadCapRows.map(({ season, existing, addition, total }, i) => (
+                        <div key={season} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-sm items-center py-0.5 ${i < displayDeadCapRows.length - 1 ? 'border-b border-slate-800/50' : ''}`}>
+                            <span className={i === 0 ? 'text-slate-200' : 'text-slate-500'}>{season}</span>
+                            <span className="text-right w-16 text-slate-500 tabular-nums">{existing > 0 ? formatMoney(existing) : '—'}</span>
+                            <Money value={addition} signed goodWhenPositive={false} className="font-bold text-right w-16" />
+                            <span className={`font-bold text-right w-16 tabular-nums ${i === 0 ? 'text-white' : 'text-slate-300'}`}>{formatMoney(total)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {actionError && (
+                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
+            )}
+        </>
+    );
+
+    // ════ [2026-10-28] 폰(<768) — docs/ui/mobile-design-system.md §9-1-16, 목업 캔버스 18행 W1~W6 ════
+    if (isPhone) {
+        return (
+            <div className="h-full flex flex-col overflow-hidden bg-slate-950 text-slate-200"
+                style={{ paddingBottom: `calc(${MOBILE_TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))` }}>
+                <MobilePushHeader title={`${player.name} 방출`} onBack={handleExit} />
+                <TabBar
+                    tabs={[{ id: 'release', label: '방출' }, { id: 'info', label: '선수 정보' }]}
+                    activeTab={phoneTab}
+                    onTabChange={t => setPhoneTab(t as 'release' | 'info')}
+                    compact
+                />
+                {phoneTab === 'release' ? (
+                    <>
+                        <div className="flex-1 min-h-0 overflow-y-auto bg-slate-900">
+                            {/* 방출이 끝나면 대화(GM 한마디 + "방출 완료" + 나가기)를 맨 위에 */}
+                            {chatMessages.length > 0 && (
+                                <div className="border-b border-slate-800 flex flex-col">{renderChat()}</div>
+                            )}
+                            <div className={`transition-opacity duration-300 ${released ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                                <div className="p-4 flex flex-col gap-5">{renderReleaseForm()}</div>
+                                <div className="p-4 border-t border-slate-800 flex flex-col gap-5">{renderCapAndDeadCap()}</div>
+                            </div>
+                        </div>
+                        {!released && (
+                            <div className="shrink-0 px-4 py-2 bg-slate-900 border-t border-slate-800">
+                                <Button variant="danger" size="xl" shape="xl" fullWidth onClick={() => setShowConfirmModal(true)} disabled={submitting}>
+                                    {submitting ? '처리 중...' : '확인'}
+                                </Button>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div className="flex-1 min-h-0 flex flex-col bg-slate-900">{renderInfoPanel()}</div>
+                )}
+
+                {/* 최종 확인 — 데스크톱 Modal sm → 폰 다이얼로그(§9-3: 버튼 세로 스택 48, 주 버튼 위) */}
+                {showConfirmModal && createPortal(
+                    <div className="fixed inset-0 z-modal flex items-center justify-center px-4">
+                        <div className="absolute inset-0 bg-slate-950/60" aria-hidden="true" onClick={() => setShowConfirmModal(false)} />
+                        <div role="alertdialog" aria-modal="true" className="relative w-full max-w-[360px] bg-slate-900 border border-slate-700 rounded-md shadow-2xl p-5 flex flex-col items-center text-center">
+                            <AlertTriangle className="text-red-500 mb-3" size={28} />
+                            <p className="text-slate-300 font-bold text-sm leading-relaxed mb-5 ko-normal">이 작업은 되돌릴 수 없습니다. 진행할까요?</p>
+                            <div className="w-full flex flex-col gap-2">
+                                <Button variant="danger" size="xl" shape="xl" fullWidth disabled={submitting}
+                                    onClick={() => { setShowConfirmModal(false); handleConfirm(); }}>
+                                    {RELEASE_MODE_LABEL[effectiveMode]}
+                                </Button>
+                                <Button variant="secondary" size="xl" shape="xl" fullWidth disabled={submitting} onClick={() => setShowConfirmModal(false)}>
+                                    취소
+                                </Button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body,
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200">
             <SubPageBar title={`${player.name} 방출`} onBack={handleExit} />
 
             <ContractThreePane
                 rightClassName={`transition-opacity duration-300 ${released ? 'opacity-40 pointer-events-none select-none' : ''}`}
-                left={(
-                    <PlayerInfoSidePanel
-                        player={player}
-                        playerYos={playerYos}
-                        onViewProfile={handleViewProfile}
-                        archetypeState={playerArchetypeState}
-                        tendencies={tendencies}
-                        moraleScore={moraleScore}
-                        scoutReport={scoutReport}
-                    />
-                )}
-                center={(
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                        {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} />)}
-                        {released && (
-                            <div className="flex justify-center">
-                                <Button variant="link" onClick={handleExit}>
-                                    나가기
-                                </Button>
-                            </div>
-                        )}
-                        <div ref={chatEndRef} />
-                    </div>
-                )}
+                left={renderInfoPanel()}
+                center={renderChat()}
                 right={(
                     <div className="flex-1 flex divide-x divide-slate-800 overflow-hidden min-h-0">
 
@@ -404,100 +575,12 @@ const MultiReleaseView: React.FC = () => {
                             스트레치 프로비전은 그 웨이브를 어떻게 처리할지 고르는 체크박스다(실제
                             CBA상으로도 stretch는 waive의 한 방식이지 독립된 방출 유형이 아님). */}
                         <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-sm font-bold text-slate-400">방출 방식</div>
-                                <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-400">
-                                    웨이브
-                                </div>
-                            </div>
-
-                            {/* 스트레치 프로비전 체크박스 — MultiNegotiationView.tsx의 "팀 옵션/플레이어 옵션"
-                                체크박스와 동일한 스타일(accent-indigo-500 네이티브 체크박스, 라벨에
-                                opacity로 비활성 표시). */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <label className={`flex items-center gap-2 text-sm text-slate-300 ${isStretchEligible ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
-                                    <input
-                                        type="checkbox"
-                                        checked={stretchChecked && isStretchEligible}
-                                        disabled={!isStretchEligible}
-                                        onChange={e => setStretchChecked(e.target.checked)}
-                                        className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
-                                    />
-                                    스트레치 프로비전
-                                </label>
-                                {!isStretchEligible && stretchReason && (
-                                    <InlineNotice tone="warning" size="sm">{stretchReason}</InlineNotice>
-                                )}
-                            </div>
-
-                            {/* 현재 계약 구조(잔여분) — 옵션은 색상뿐 아니라 금액 좌측에 텍스트로도 표기 */}
-                            {displayContractRows.length > 0 && (
-                                <div className="flex-shrink-0 space-y-1">
-                                    <div className="text-sm font-bold text-slate-400 mb-1">현재 계약</div>
-                                    {displayContractRows.map(({ season, amount, opt }, i) => (
-                                        <div key={season} className="flex justify-between items-center text-sm py-0.5">
-                                            <span className={i === 0 ? 'text-slate-200 font-semibold' : 'text-slate-500'}>{season}</span>
-                                            <span className="flex items-center gap-1.5">
-                                                {opt?.type === 'team' && <span className="text-sky-400">팀 옵션</span>}
-                                                {opt?.type === 'player' && <span className="text-emerald-400">플레이어 옵션</span>}
-                                                <span className={`font-medium ${
-                                                    opt?.type === 'team' ? 'italic text-sky-400'
-                                                        : opt?.type === 'player' ? 'italic text-emerald-400'
-                                                        : i === 0 ? 'text-white font-bold' : 'text-slate-300'
-                                                }`}>{formatMoneyFull(amount)}</span>
-                                            </span>
-                                        </div>
-                                    ))}
-                                    <KeyValueRow label="총 잔여 계약액" numeric className="pt-1.5 mt-1 border-t border-slate-800" labelClassName="font-semibold" valueClassName="font-bold">
-                                        {formatMoneyFull(totalRemaining)}
-                                    </KeyValueRow>
-                                </div>
-                            )}
-
-                            {/* 이 선수의 연도별 데드캡 — 우측의 "연도별 데드캡"(팀 기존 데드캡과 합산된 값)과
-                                달리, 이 방출 하나가 만드는 금액만 보여준다(deadCapRows의 addition 열 그대로). */}
-                            {displayDeadCapRows.length > 0 && (
-                                <div className="flex-shrink-0 space-y-1">
-                                    <div className="text-sm font-bold text-slate-400 mb-1">미래 데드캡</div>
-                                    {displayDeadCapRows.map(({ season, addition }, i) => (
-                                        <div key={season} className="flex justify-between items-center text-sm py-0.5">
-                                            <span className={i === 0 ? 'text-slate-200 font-semibold' : 'text-slate-500'}>{season}</span>
-                                            <span className={`font-medium ${i === 0 ? 'text-white font-bold' : 'text-slate-300'}`}>{formatMoneyFull(addition)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            {renderReleaseForm()}
                         </div>
 
                         {/* 우측 단: 팀 샐러리캡 현황 + 확인 버튼 — MultiNegotiationView.tsx의 capInfo 블록과 동일한 구성 */}
                         <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
-                            {displayCapInfo && <CapStatusPanel capInfo={displayCapInfo} afterLabel="방출 후 예상 페이롤" />}
-
-                            {/* 연도별 데드캡 테이블 — waive/stretch 둘 다 표시(웨이브는 1행, 스트레치는
-                                분산 연수만큼). "방출 후 예상 페이롤" 바로 아래에 배치. */}
-                            {displayDeadCapRows.length > 0 && (
-                                <div className="flex-shrink-0 space-y-1">
-                                    <div className="text-sm font-bold text-slate-400 mb-1">연도별 데드캡</div>
-                                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-sm text-slate-500 pb-1.5 border-b border-slate-800">
-                                        <span>시즌</span>
-                                        <span className="text-right w-16">기존</span>
-                                        <span className="text-right w-16">추가분</span>
-                                        <span className="text-right w-16">합계</span>
-                                    </div>
-                                    {displayDeadCapRows.map(({ season, existing, addition, total }, i) => (
-                                        <div key={season} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-sm items-center py-0.5 ${i < displayDeadCapRows.length - 1 ? 'border-b border-slate-800/50' : ''}`}>
-                                            <span className={i === 0 ? 'text-slate-200' : 'text-slate-500'}>{season}</span>
-                                            <span className="text-right w-16 text-slate-500 tabular-nums">{existing > 0 ? formatMoney(existing) : '—'}</span>
-                                            <Money value={addition} signed goodWhenPositive={false} className="font-bold text-right w-16" />
-                                            <span className={`font-bold text-right w-16 tabular-nums ${i === 0 ? 'text-white' : 'text-slate-300'}`}>{formatMoney(total)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {actionError && (
-                                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
-                            )}
+                            {renderCapAndDeadCap()}
 
                             <div className="flex-shrink-0 mt-auto pt-2">
                                 <Button

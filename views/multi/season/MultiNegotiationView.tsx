@@ -9,6 +9,10 @@ import { useSeasonContext } from './seasonContext';
 import { KeyValueRow } from '../../../components/common/KeyValueRow';
 import { SubPageBar, ContractThreePane, PlayerInfoSidePanel, SidePanelSection, CapStatusPanel, ChatBubble, ContractStepper } from './contractScreenParts';
 import { Button } from '../../../components/common/Button';
+import { TabBar } from '../../../components/common/TabBar';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { MobilePushHeader } from '../../../components/mobile/MobilePushHeader';
+import { MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
 import { gwa } from '../../../services/multi/newsBlurb';
 import { useGame } from '../../../hooks/useGameContext';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
@@ -576,6 +580,11 @@ const MultiNegotiationView: React.FC = () => {
     };
     const chatEndRef = useRef<HTMLDivElement>(null);
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+    // [2026-10-28] 폰(§9-1-15): 3단 → 탭 3개(대화 · 오퍼 · 선수 정보). 진입 = 대화, 오퍼 제출 후 대화로 자동 이동.
+    const isPhone = useIsPhone();
+    const [phoneTab, setPhoneTab] = useState<'chat' | 'offer' | 'info'>('chat');
+    // 대화 탭이 다시 마운트되면(다른 탭에서 돌아옴) 최신 메시지로
+    useEffect(() => { if (phoneTab === 'chat') chatEndRef.current?.scrollIntoView(); }, [phoneTab]);
 
     const [round, setRound] = useState(0);
     const [result, setResult] = useState<{ accepted: boolean } | null>(null);
@@ -944,6 +953,375 @@ const MultiNegotiationView: React.FC = () => {
         );
     }
 
+    // [2026-10-28] 화면 조각 — 데스크톱 3단(ContractThreePane)과 폰 탭 3개(docs/ui/mobile-design-system.md §9-1-15)가 공유한다.
+    // demand가 있을 때만 호출한다.
+    const renderInfoPanel = () => (
+        <PlayerInfoSidePanel
+            player={player}
+            playerYos={playerYos}
+            onViewProfile={handleViewProfile}
+            archetypeState={playerArchetypeState}
+            tendencies={tendencies}
+            moraleScore={moraleScore}
+            scoutReport={scoutReport}
+            extraSections={(
+                <SidePanelSection title="요구 조건">
+                    {expectedTeamRole && (
+                        <KeyValueRow label="희망 역할">{expectedTeamRole.text}</KeyValueRow>
+                    )}
+                    {/* [2026-09-17] "최저 수락선"(walkAwaySalary)은 삭제 — 실제 GM은
+                        선수의 진짜 마지노선을 알 수 없어야 한다는 사용자 지적. 화면에
+                        안 보여줄 뿐 evaluateFAOffer/estimateAcceptProbability 등
+                        협상 판정 로직 내부에서는 계속 히든 트레잇으로 그대로 쓰인다
+                        (demand.walkAwaySalary 자체는 삭제 안 함 — 표시만 제거). */}
+                    <KeyValueRow label="시작 요구가">{formatMoneyFull(demand.askingSalary)}</KeyValueRow>
+                    <KeyValueRow label="희망 연수">{demand.askingYears}년</KeyValueRow>
+                    <KeyValueRow label="희망 변동률">{(demand.askingRaisePercent ?? 0) >= 0 ? '+' : ''}{demand.askingRaisePercent ?? 0}%</KeyValueRow>
+                </SidePanelSection>
+            )}
+        />
+    );
+    const renderStatusHeader = (phone: boolean) => (
+        <div className={`flex-shrink-0 border-b border-slate-800 bg-slate-800/50 flex items-center gap-4 ${phone ? 'h-11 px-4' : 'p-4'}`}>
+            {acceptProbability !== null && (() => {
+                const { text, color } = getAcceptLikelihoodLabel(acceptProbability);
+                return (
+                    <div className="flex items-center gap-1.5 text-sm">
+                        <span className="text-slate-400">계약 가능성</span>
+                        <span className={`font-bold ${color}`}>{text}</span>
+                    </div>
+                );
+            })()}
+            <div className="flex items-center gap-1.5 text-sm">
+                <span className="text-slate-400">현재 기분</span>
+                <span className="text-lg leading-none">{mood.emoji}</span>
+                <span className="font-bold text-slate-300">{mood.label}</span>
+            </div>
+        </div>
+    );
+    const renderChat = () => (
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+            {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} playerName={player.name} />)}
+            {(isOnCooldown || isRefusingNegotiation || isSigned) && (
+                <div className="flex justify-center">
+                    <Button variant="link" onClick={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)}>
+                        나가기
+                    </Button>
+                </div>
+            )}
+            <div ref={chatEndRef} />
+        </div>
+    );
+    const renderOfferForm = () => (
+        <>
+
+            {/* 계약 유형 — [2026-09-17] ContractType(free_agent/rookie_scale/two_way,
+                extension은 이 화면에 안 나옴 — FA 신규 서명 전용)을 직접 고른다.
+                이번 시즌 드래프트된 1라운드 픽(rookiePick)이면 루키 스케일로 자동
+                고정되고 선택 자체가 막힌다(위 useEffect). "예외 조항"은 완전히
+                별개 드롭다운(signingType)으로 분리 — 캡 스페이스는 그 드롭다운의
+                "없음"(signingType=undefined)으로 표현한다. */}
+            <div className="flex-shrink-0 space-y-1.5">
+                <div className="text-sm font-bold text-slate-400">계약 유형</div>
+                {rookiePick !== null ? (
+                    <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-400">
+                        {CONTRACT_TYPE_LABEL.rookie_scale} (이번 시즌 1라운드 픽 — 자동 지정)
+                    </div>
+                ) : (
+                    <select
+                        value={contractType}
+                        onChange={e => setContractType(e.target.value as 'free_agent' | 'two_way')}
+                        disabled={isOnCooldown}
+                        className={`w-full bg-slate-800 border border-slate-700 rounded-lg px-3 ${isPhone ? 'h-12 text-base' : 'py-2 text-sm'} font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                        <option value="free_agent">{CONTRACT_TYPE_LABEL.free_agent}</option>
+                        {isTwoWayEligible && <option value="two_way">{CONTRACT_TYPE_LABEL.two_way}</option>}
+                    </select>
+                )}
+            </div>
+
+            {/* 예외 조항 — 계약 유형에 따라 허용되는 값이 다르다(admin 에디터와 동일한
+                getAllowedSigningTypes 필터 재사용). two_way는 예외 조항이 없어 목록이
+                비고, 그러면 드롭다운 자체를 숨긴다. */}
+            {getAllowedSigningTypes(contractType).length > 0 && (
+                <div className="flex-shrink-0 space-y-1.5">
+                    <div className="text-sm font-bold text-slate-400">예외 조항</div>
+                    <select
+                        value={signingType ?? ''}
+                        onChange={e => setSigningType((e.target.value || undefined) as SigningType | undefined)}
+                        disabled={isOnCooldown}
+                        className={`w-full bg-slate-800 border border-slate-700 rounded-lg px-3 ${isPhone ? 'h-12 text-base' : 'py-2 text-sm'} font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                        <option value="">없음 (캡 스페이스)</option>
+                        {getAllowedSigningTypes(contractType).map(t => (
+                            <option key={t} value={t}>{SIGNING_TYPE_LABEL[t]}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {/* 계약 연수 — 투웨이 계약은 단년 계약만 가능해 이 섹션(연수 스테퍼 +
+                캡%/변동률 입력) 자체를 숨긴다(연수는 위 useEffect가 항상 1로 고정). */}
+            <div className="flex-shrink-0 space-y-1.5">
+                {!isTwoWay && (
+                    <>
+                        <ContractStepper
+                            className="space-y-1.5"
+                            gap="md"
+                            label="계약 연수"
+                            value={yearsInputText}
+                            onChange={handleYearsInputChange}
+                            onBlur={handleYearsBlur}
+                            inputMode="numeric"
+                            suffix="년"
+                            disabled={isOnCooldown || isRookieScale}
+                            leftSteps={[
+                                { label: '최소', onClick: () => setYears(MIN_CONTRACT_YEARS) },
+                                { label: <Minus size={14} />, onClick: () => setYears(y => Math.max(MIN_CONTRACT_YEARS, y - 1)) },
+                            ]}
+                            rightSteps={[
+                                { label: <Plus size={14} />, onClick: () => setYears(y => Math.min(effectiveMaxYears, y + 1)) },
+                                { label: '최대', onClick: () => setYears(effectiveMaxYears) },
+                            ]}
+                        />
+                        {isMinSalary && (
+                            <div className="text-sm text-slate-600">Minimum Salary Exception은 최대 2년까지만 계약할 수 있습니다.</div>
+                        )}
+
+                        {/* 1년차 연봉(캡%) + 변동률 — 실제 CBA 계약 구조: 이후 연차는
+                            1년차 연봉 × (1 + 변동률 × n)으로 자동 계산(복리 아님).
+                            Minimum Salary Exception/루키 스케일이면 이 두 입력은
+                            의미가 없어져 비활성화하고, 대신 각각의 자동 계산 안내를
+                            보여준다. */}
+                        <ContractStepper
+                            label="캡%"
+                            hint={!isMinSalary && !isRookieScale && (
+                                <span className="text-sm text-green-500">최대 가능 캡% : {maxCapPct}%</span>
+                            )}
+                            value={capPercentInput}
+                            onChange={handlePercentInput(setCapPercentInput)}
+                            inputMode="decimal"
+                            suffix="%"
+                            disabled={isOnCooldown || isMinSalary || isRookieScale}
+                            leftSteps={[
+                                { label: '최소', onClick: () => adjustCapPercent('min') },
+                                { label: '-1%', onClick: () => adjustCapPercent(-1) },
+                            ]}
+                            rightSteps={[
+                                { label: '+1%', onClick: () => adjustCapPercent(1) },
+                                { label: '최대', onClick: () => adjustCapPercent('max') },
+                            ]}
+                            footer={maxCapResult.reason === 'rose_rule' && !isMinSalary && !isRookieScale && (
+                                <div className="text-sm text-slate-600">데릭 로즈 룰 자격(YOS {playerYos}년, 루키 3시즌 내 수상)으로 최대 30%까지 가능합니다.</div>
+                            )}
+                        />
+
+                        <ContractStepper
+                            label={`변동률 (최대 ±${maxRaisePercent}%)`}
+                            value={raisePercentInput}
+                            onChange={handlePercentInput(setRaisePercentInput)}
+                            inputMode="decimal"
+                            suffix="%"
+                            disabled={isOnCooldown || isMinSalary || isRookieScale}
+                            leftSteps={[
+                                { label: '최소', onClick: () => adjustRaisePercent('min') },
+                                { label: '-1%', onClick: () => adjustRaisePercent(-1) },
+                            ]}
+                            rightSteps={[
+                                { label: '+1%', onClick: () => adjustRaisePercent(1) },
+                                { label: '최대', onClick: () => adjustRaisePercent('max') },
+                            ]}
+                        />
+                    </>
+                )}
+
+                {/* 루키 스케일 배율(80~120%) — Minimum Salary Exception일 때는
+                    안 뜨고, 루키 스케일일 때만 노출. */}
+                {isRookieScale && (
+                    <div className="pt-1.5 space-y-1">
+                        <span className="text-sm text-slate-500">루키 스케일 배율 (80~120%)</span>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                value={rookieMultiplierInput}
+                                onChange={handlePercentInput(setRookieMultiplierInput)}
+                                onBlur={handleRookieMultiplierBlur}
+                                disabled={isOnCooldown}
+                                className={`w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 ${isPhone ? 'h-12 text-base' : 'py-2 text-sm'} font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">%</span>
+                        </div>
+                    </div>
+                )}
+
+                {isMinSalary ? (
+                    <div className="text-sm text-slate-500">선수의 YOS(서비스타임) 기준으로 시즌별 미니멈 샐러리가 자동 계산됩니다.</div>
+                ) : isRookieScale ? (
+                    rookiePick !== null && (
+                        <div className="text-sm text-slate-500">{rookiePick}픽 기준 스케일의 {rookieMultiplierInput || 0}%로 자동 계산됩니다.</div>
+                    )
+                ) : null}
+            </div>
+
+            {/* 계약 예상액 — 위 캡%/인상률로 자동 계산된 연차별 금액(읽기 전용) */}
+            <div className="flex-shrink-0 space-y-1.5">
+                <div className="text-sm font-bold text-slate-400">계약 예상액</div>
+                <div className="space-y-1">
+                    {salaries.map((sal, i) => {
+                        const seasonStartYear = currentSeasonYear + i;
+                        const seasonLabel = `${seasonStartYear}-${String((seasonStartYear + 1) % 100).padStart(2, '0')}`;
+                        const isLastYear = i === salaries.length - 1;
+                        return (
+                            <div key={i} className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500">{seasonLabel}</span>
+                                <span className="flex items-center gap-1.5">
+                                    {isLastYear && optionType && (
+                                        <span className="italic font-bold text-yellow-400">
+                                            {optionType === 'team' ? '(TO)' : '(PO)'}
+                                        </span>
+                                    )}
+                                    <span className="font-bold text-white">{formatMoneyFull(sal)}</span>
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* 추가 사항 — 팀 옵션/플레이어 옵션(계약 마지막 해에만, 2년 이상 계약부터
+                설정 가능). 체크박스 2개지만 배타적으로 동작(하나 켜면 다른 하나는 꺼짐).
+                투웨이 계약은 옵션을 쓸 수 없어(단년 계약뿐) 섹션 자체를 숨긴다. */}
+            {!isTwoWay && (
+                <div className="flex-shrink-0 space-y-1.5">
+                    <div className="text-sm font-bold text-slate-400">추가 사항</div>
+                    <div className="flex items-center gap-4">
+                        <label className={`flex items-center gap-2 text-sm text-slate-300 ${years < 2 || isRookieScale ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input
+                                type="checkbox"
+                                checked={optionType === 'team'}
+                                disabled={years < 2 || isOnCooldown || isRookieScale}
+                                onChange={() => setOptionType(prev => prev === 'team' ? null : 'team')}
+                                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            팀 옵션
+                        </label>
+                        <label className={`flex items-center gap-2 text-sm text-slate-300 ${years < 2 || isRookieScale ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input
+                                type="checkbox"
+                                checked={optionType === 'player'}
+                                disabled={years < 2 || isOnCooldown || isRookieScale}
+                                onChange={() => setOptionType(prev => prev === 'player' ? null : 'player')}
+                                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            플레이어 옵션
+                        </label>
+                    </div>
+                    {years < 2 && !isRookieScale && (
+                        <div className="text-sm text-slate-600">2년 이상 계약부터 마지막 해에 옵션을 설정할 수 있습니다.</div>
+                    )}
+                </div>
+            )}
+
+            {/* 총액 요약 — "체결 가능성"은 중앙 채팅 헤더와 중복이라 여기서는 뺌 */}
+            <div className="flex-shrink-0 space-y-1 pt-2 border-t border-slate-700/50">
+                <KeyValueRow label="총 계약액" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(totalSalary)}</KeyValueRow>
+                <KeyValueRow label="AAV" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(avgSalary)}</KeyValueRow>
+            </div>
+
+        </>
+    );
+    const renderCapAndNotices = () => (
+        <>
+            {/* 팀 샐러리캡 현황 — 계약 전/후 페이롤을 모두 보여준다.
+                calcTeamPayroll()은 singleplayer FA 엔진(faMarketBuilder.ts)이
+                이미 쓰는 함수 재사용(로스터 연봉 합 + 데드머니). "계약 후"는
+                1년차 연봉만 이번 시즌 캡에 더해진다고 가정. */}
+            {capInfo && <CapStatusPanel capInfo={capInfo} afterLabel="계약 후 예상 페이롤" />}
+
+            {/* [2026-10-13] 사전 차단(warning)·서버 거절(danger)은 InlineNotice(에러 표시 정책 0-7).
+                투웨이 정원도 같은 자리에서 설명 — 예전엔 버튼 라벨로만 알렸음. */}
+            {isRosterFull && !result?.accepted && !walkedAway && (
+                <InlineNotice tone="warning" className="flex-shrink-0">
+                    로스터 정원({(league as any)?.max_roster_size ?? 15}명)이 가득 찼습니다. 선수를 방출한 뒤 다시 시도하세요.
+                </InlineNotice>
+            )}
+            {isTwoWaySlotsFull && !result?.accepted && !walkedAway && (
+                <InlineNotice tone="warning" className="flex-shrink-0">
+                    투웨이 슬롯({(league as any)?.two_way_slots ?? 3}개)이 가득 찼습니다. 투웨이 계약을 방출하거나 정규 계약으로 제안하세요.
+                </InlineNotice>
+            )}
+
+            {actionError && (
+                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
+            )}
+
+        </>
+    );
+    const renderSubmitButton = (onClick: () => void) => (
+        <Button
+            size="xl"
+            shape="xl"
+            fullWidth
+            onClick={onClick}
+            disabled={submitting || salaries.length === 0 || salaries.some(s => s <= 0) || isLocked}
+        >
+            {submitting ? '처리 중...' : '오퍼 제출'}
+        </Button>
+    );
+
+
+    // ════ [2026-10-28] 폰(<768) — docs/ui/mobile-design-system.md §9-1-15, 목업 캔버스 17행 C1~C7 ════
+    // H4(뒤로 → 자유 계약) + 탭 3개 + 공용 상태 줄(계약 가능성은 폼 값으로 실시간이라 세 탭 모두) — 조각(render*)은 데스크톱과 공유.
+    if (isPhone) {
+        const goFa = () => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`);
+        const offerOpen = !isOfferPanelDisabled && !walkedAway && !isOnCooldown && !result?.accepted;
+        return (
+            <div className="h-full flex flex-col overflow-hidden bg-slate-950 text-slate-200"
+                style={{ paddingBottom: `calc(${MOBILE_TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom))` }}>
+                <MobilePushHeader title={`${gwa(player.name)} 협상`} onBack={goFa} />
+                {!myTeamRow ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-slate-500 ko-normal">소속 팀이 있어야 협상할 수 있습니다.</div>
+                ) : !demand ? (
+                    <Spinner variant="page" />
+                ) : (
+                    <>
+                        <TabBar
+                            tabs={[{ id: 'chat', label: '대화' }, { id: 'offer', label: '오퍼' }, { id: 'info', label: '선수 정보' }]}
+                            activeTab={phoneTab}
+                            onTabChange={t => setPhoneTab(t as 'chat' | 'offer' | 'info')}
+                            compact
+                        />
+                        {renderStatusHeader(true)}
+                        {phoneTab === 'chat' && (
+                            <>
+                                <div className="flex-1 min-h-0 flex flex-col bg-slate-900">{renderChat()}</div>
+                                {offerOpen && (
+                                    <div className="shrink-0 px-4 py-2 bg-slate-900 border-t border-slate-800">
+                                        <Button size="xl" fullWidth onClick={() => setPhoneTab('offer')}>오퍼 작성</Button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        {phoneTab === 'offer' && (
+                            <>
+                                {/* 체결 · 협상 거부면 데스크톱 오퍼 패널처럼 흐리게 잠금 */}
+                                <div className={`flex-1 min-h-0 overflow-y-auto bg-slate-900 ${isOfferPanelDisabled ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                                    <div className="p-4 flex flex-col gap-5">{renderOfferForm()}</div>
+                                    <div className="p-4 border-t border-slate-800 flex flex-col gap-5">{renderCapAndNotices()}</div>
+                                </div>
+                                <div className="shrink-0 px-4 py-2 bg-slate-900 border-t border-slate-800">
+                                    {renderSubmitButton(() => { handleSubmit(); setPhoneTab('chat'); })}
+                                </div>
+                            </>
+                        )}
+                        {phoneTab === 'info' && <div className="flex-1 min-h-0 flex flex-col bg-slate-900">{renderInfoPanel()}</div>}
+                    </>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full bg-slate-950 text-slate-200">
             <SubPageBar title={`${gwa(player.name)} 협상`} onBack={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)} />
@@ -957,283 +1335,18 @@ const MultiNegotiationView: React.FC = () => {
             ) : (
                 <ContractThreePane
                     rightClassName={`relative transition-opacity duration-300 ${isOfferPanelDisabled ? 'opacity-40 pointer-events-none select-none' : ''}`}
-                    left={(
-                        <PlayerInfoSidePanel
-                            player={player}
-                            playerYos={playerYos}
-                            onViewProfile={handleViewProfile}
-                            archetypeState={playerArchetypeState}
-                            tendencies={tendencies}
-                            moraleScore={moraleScore}
-                            scoutReport={scoutReport}
-                            extraSections={(
-                                <SidePanelSection title="요구 조건">
-                                    {expectedTeamRole && (
-                                        <KeyValueRow label="희망 역할">{expectedTeamRole.text}</KeyValueRow>
-                                    )}
-                                    {/* [2026-09-17] "최저 수락선"(walkAwaySalary)은 삭제 — 실제 GM은
-                                        선수의 진짜 마지노선을 알 수 없어야 한다는 사용자 지적. 화면에
-                                        안 보여줄 뿐 evaluateFAOffer/estimateAcceptProbability 등
-                                        협상 판정 로직 내부에서는 계속 히든 트레잇으로 그대로 쓰인다
-                                        (demand.walkAwaySalary 자체는 삭제 안 함 — 표시만 제거). */}
-                                    <KeyValueRow label="시작 요구가">{formatMoneyFull(demand.askingSalary)}</KeyValueRow>
-                                    <KeyValueRow label="희망 연수">{demand.askingYears}년</KeyValueRow>
-                                    <KeyValueRow label="희망 변동률">{(demand.askingRaisePercent ?? 0) >= 0 ? '+' : ''}{demand.askingRaisePercent ?? 0}%</KeyValueRow>
-                                </SidePanelSection>
-                            )}
-                        />
-                    )}
+                    left={renderInfoPanel()}
                     center={(
                         <>
-                        <div className="flex-shrink-0 p-4 border-b border-slate-800 bg-slate-800/50 flex items-center gap-4">
-                            {acceptProbability !== null && (() => {
-                                const { text, color } = getAcceptLikelihoodLabel(acceptProbability);
-                                return (
-                                    <div className="flex items-center gap-1.5 text-sm">
-                                        <span className="text-slate-400">계약 가능성</span>
-                                        <span className={`font-bold ${color}`}>{text}</span>
-                                    </div>
-                                );
-                            })()}
-                            <div className="flex items-center gap-1.5 text-sm">
-                                <span className="text-slate-400">현재 기분</span>
-                                <span className="text-lg leading-none">{mood.emoji}</span>
-                                <span className="font-bold text-slate-300">{mood.label}</span>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                            {chatMessages.map(msg => <ChatBubble key={msg.id} msg={msg} playerName={player.name} />)}
-                            {(isOnCooldown || isRefusingNegotiation || isSigned) && (
-                                <div className="flex justify-center">
-                                    <Button variant="link" onClick={() => navigate(`/multi/leagues/${leagueId}/season/transaction?tab=fa`)}>
-                                        나가기
-                                    </Button>
-                                </div>
-                            )}
-                            <div ref={chatEndRef} />
-                        </div>
-
+                        {renderStatusHeader(false)}
+                        {renderChat()}
                         </>
                     )}
                     right={(
                         <div className="flex-1 flex divide-x divide-slate-800 overflow-hidden min-h-0">
                             <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
-
-                            {/* 계약 유형 — [2026-09-17] ContractType(free_agent/rookie_scale/two_way,
-                                extension은 이 화면에 안 나옴 — FA 신규 서명 전용)을 직접 고른다.
-                                이번 시즌 드래프트된 1라운드 픽(rookiePick)이면 루키 스케일로 자동
-                                고정되고 선택 자체가 막힌다(위 useEffect). "예외 조항"은 완전히
-                                별개 드롭다운(signingType)으로 분리 — 캡 스페이스는 그 드롭다운의
-                                "없음"(signingType=undefined)으로 표현한다. */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-sm font-bold text-slate-400">계약 유형</div>
-                                {rookiePick !== null ? (
-                                    <div className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-400">
-                                        {CONTRACT_TYPE_LABEL.rookie_scale} (이번 시즌 1라운드 픽 — 자동 지정)
-                                    </div>
-                                ) : (
-                                    <select
-                                        value={contractType}
-                                        onChange={e => setContractType(e.target.value as 'free_agent' | 'two_way')}
-                                        disabled={isOnCooldown}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        <option value="free_agent">{CONTRACT_TYPE_LABEL.free_agent}</option>
-                                        {isTwoWayEligible && <option value="two_way">{CONTRACT_TYPE_LABEL.two_way}</option>}
-                                    </select>
-                                )}
+                                {renderOfferForm()}
                             </div>
-
-                            {/* 예외 조항 — 계약 유형에 따라 허용되는 값이 다르다(admin 에디터와 동일한
-                                getAllowedSigningTypes 필터 재사용). two_way는 예외 조항이 없어 목록이
-                                비고, 그러면 드롭다운 자체를 숨긴다. */}
-                            {getAllowedSigningTypes(contractType).length > 0 && (
-                                <div className="flex-shrink-0 space-y-1.5">
-                                    <div className="text-sm font-bold text-slate-400">예외 조항</div>
-                                    <select
-                                        value={signingType ?? ''}
-                                        onChange={e => setSigningType((e.target.value || undefined) as SigningType | undefined)}
-                                        disabled={isOnCooldown}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        <option value="">없음 (캡 스페이스)</option>
-                                        {getAllowedSigningTypes(contractType).map(t => (
-                                            <option key={t} value={t}>{SIGNING_TYPE_LABEL[t]}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {/* 계약 연수 — 투웨이 계약은 단년 계약만 가능해 이 섹션(연수 스테퍼 +
-                                캡%/변동률 입력) 자체를 숨긴다(연수는 위 useEffect가 항상 1로 고정). */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                {!isTwoWay && (
-                                    <>
-                                        <ContractStepper
-                                            className="space-y-1.5"
-                                            gap="md"
-                                            label="계약 연수"
-                                            value={yearsInputText}
-                                            onChange={handleYearsInputChange}
-                                            onBlur={handleYearsBlur}
-                                            inputMode="numeric"
-                                            suffix="년"
-                                            disabled={isOnCooldown || isRookieScale}
-                                            leftSteps={[
-                                                { label: '최소', onClick: () => setYears(MIN_CONTRACT_YEARS) },
-                                                { label: <Minus size={14} />, onClick: () => setYears(y => Math.max(MIN_CONTRACT_YEARS, y - 1)) },
-                                            ]}
-                                            rightSteps={[
-                                                { label: <Plus size={14} />, onClick: () => setYears(y => Math.min(effectiveMaxYears, y + 1)) },
-                                                { label: '최대', onClick: () => setYears(effectiveMaxYears) },
-                                            ]}
-                                        />
-                                        {isMinSalary && (
-                                            <div className="text-sm text-slate-600">Minimum Salary Exception은 최대 2년까지만 계약할 수 있습니다.</div>
-                                        )}
-
-                                        {/* 1년차 연봉(캡%) + 변동률 — 실제 CBA 계약 구조: 이후 연차는
-                                            1년차 연봉 × (1 + 변동률 × n)으로 자동 계산(복리 아님).
-                                            Minimum Salary Exception/루키 스케일이면 이 두 입력은
-                                            의미가 없어져 비활성화하고, 대신 각각의 자동 계산 안내를
-                                            보여준다. */}
-                                        <ContractStepper
-                                            label="캡%"
-                                            hint={!isMinSalary && !isRookieScale && (
-                                                <span className="text-sm text-green-500">최대 가능 캡% : {maxCapPct}%</span>
-                                            )}
-                                            value={capPercentInput}
-                                            onChange={handlePercentInput(setCapPercentInput)}
-                                            inputMode="decimal"
-                                            suffix="%"
-                                            disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                            leftSteps={[
-                                                { label: '최소', onClick: () => adjustCapPercent('min') },
-                                                { label: '-1%', onClick: () => adjustCapPercent(-1) },
-                                            ]}
-                                            rightSteps={[
-                                                { label: '+1%', onClick: () => adjustCapPercent(1) },
-                                                { label: '최대', onClick: () => adjustCapPercent('max') },
-                                            ]}
-                                            footer={maxCapResult.reason === 'rose_rule' && !isMinSalary && !isRookieScale && (
-                                                <div className="text-sm text-slate-600">데릭 로즈 룰 자격(YOS {playerYos}년, 루키 3시즌 내 수상)으로 최대 30%까지 가능합니다.</div>
-                                            )}
-                                        />
-
-                                        <ContractStepper
-                                            label={`변동률 (최대 ±${maxRaisePercent}%)`}
-                                            value={raisePercentInput}
-                                            onChange={handlePercentInput(setRaisePercentInput)}
-                                            inputMode="decimal"
-                                            suffix="%"
-                                            disabled={isOnCooldown || isMinSalary || isRookieScale}
-                                            leftSteps={[
-                                                { label: '최소', onClick: () => adjustRaisePercent('min') },
-                                                { label: '-1%', onClick: () => adjustRaisePercent(-1) },
-                                            ]}
-                                            rightSteps={[
-                                                { label: '+1%', onClick: () => adjustRaisePercent(1) },
-                                                { label: '최대', onClick: () => adjustRaisePercent('max') },
-                                            ]}
-                                        />
-                                    </>
-                                )}
-
-                                {/* 루키 스케일 배율(80~120%) — Minimum Salary Exception일 때는
-                                    안 뜨고, 루키 스케일일 때만 노출. */}
-                                {isRookieScale && (
-                                    <div className="pt-1.5 space-y-1">
-                                        <span className="text-sm text-slate-500">루키 스케일 배율 (80~120%)</span>
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={rookieMultiplierInput}
-                                                onChange={handlePercentInput(setRookieMultiplierInput)}
-                                                onBlur={handleRookieMultiplierBlur}
-                                                disabled={isOnCooldown}
-                                                className="w-full bg-slate-950 border border-slate-600 rounded-lg pl-3 pr-7 py-2 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                            />
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-300 pointer-events-none">%</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {isMinSalary ? (
-                                    <div className="text-sm text-slate-500">선수의 YOS(서비스타임) 기준으로 시즌별 미니멈 샐러리가 자동 계산됩니다.</div>
-                                ) : isRookieScale ? (
-                                    rookiePick !== null && (
-                                        <div className="text-sm text-slate-500">{rookiePick}픽 기준 스케일의 {rookieMultiplierInput || 0}%로 자동 계산됩니다.</div>
-                                    )
-                                ) : null}
-                            </div>
-
-                            {/* 계약 예상액 — 위 캡%/인상률로 자동 계산된 연차별 금액(읽기 전용) */}
-                            <div className="flex-shrink-0 space-y-1.5">
-                                <div className="text-sm font-bold text-slate-400">계약 예상액</div>
-                                <div className="space-y-1">
-                                    {salaries.map((sal, i) => {
-                                        const seasonStartYear = currentSeasonYear + i;
-                                        const seasonLabel = `${seasonStartYear}-${String((seasonStartYear + 1) % 100).padStart(2, '0')}`;
-                                        const isLastYear = i === salaries.length - 1;
-                                        return (
-                                            <div key={i} className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500">{seasonLabel}</span>
-                                                <span className="flex items-center gap-1.5">
-                                                    {isLastYear && optionType && (
-                                                        <span className="italic font-bold text-yellow-400">
-                                                            {optionType === 'team' ? '(TO)' : '(PO)'}
-                                                        </span>
-                                                    )}
-                                                    <span className="font-bold text-white">{formatMoneyFull(sal)}</span>
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* 추가 사항 — 팀 옵션/플레이어 옵션(계약 마지막 해에만, 2년 이상 계약부터
-                                설정 가능). 체크박스 2개지만 배타적으로 동작(하나 켜면 다른 하나는 꺼짐).
-                                투웨이 계약은 옵션을 쓸 수 없어(단년 계약뿐) 섹션 자체를 숨긴다. */}
-                            {!isTwoWay && (
-                                <div className="flex-shrink-0 space-y-1.5">
-                                    <div className="text-sm font-bold text-slate-400">추가 사항</div>
-                                    <div className="flex items-center gap-4">
-                                        <label className={`flex items-center gap-2 text-sm text-slate-300 ${years < 2 || isRookieScale ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={optionType === 'team'}
-                                                disabled={years < 2 || isOnCooldown || isRookieScale}
-                                                onChange={() => setOptionType(prev => prev === 'team' ? null : 'team')}
-                                                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
-                                            />
-                                            팀 옵션
-                                        </label>
-                                        <label className={`flex items-center gap-2 text-sm text-slate-300 ${years < 2 || isRookieScale ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={optionType === 'player'}
-                                                disabled={years < 2 || isOnCooldown || isRookieScale}
-                                                onChange={() => setOptionType(prev => prev === 'player' ? null : 'player')}
-                                                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
-                                            />
-                                            플레이어 옵션
-                                        </label>
-                                    </div>
-                                    {years < 2 && !isRookieScale && (
-                                        <div className="text-sm text-slate-600">2년 이상 계약부터 마지막 해에 옵션을 설정할 수 있습니다.</div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* 총액 요약 — "체결 가능성"은 중앙 채팅 헤더와 중복이라 여기서는 뺌 */}
-                            <div className="flex-shrink-0 space-y-1 pt-2 border-t border-slate-700/50">
-                                <KeyValueRow label="총 계약액" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(totalSalary)}</KeyValueRow>
-                                <KeyValueRow label="AAV" labelClassName="font-semibold" valueClassName="font-bold">{formatMoneyFull(avgSalary)}</KeyValueRow>
-                            </div>
-
-                        </div>
 
                         {/* 우측 단: 팀 샐러리캡 현황 + 로스터/액션 경고 + 오퍼 제출 버튼.
                             [2026-09-17] 원래 좌측 단(오퍼 폼) 맨 아래에 있던 이 4개 블록을
@@ -1241,39 +1354,9 @@ const MultiNegotiationView: React.FC = () => {
                             순수 계약 조건 입력(유형/예외/연수/캡%/변동률/예상액)만 남기고,
                             결과 확인·제출은 우측 단에서 하도록 역할 분리. */}
                         <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 flex flex-col gap-5">
-                            {/* 팀 샐러리캡 현황 — 계약 전/후 페이롤을 모두 보여준다.
-                                calcTeamPayroll()은 singleplayer FA 엔진(faMarketBuilder.ts)이
-                                이미 쓰는 함수 재사용(로스터 연봉 합 + 데드머니). "계약 후"는
-                                1년차 연봉만 이번 시즌 캡에 더해진다고 가정. */}
-                            {capInfo && <CapStatusPanel capInfo={capInfo} afterLabel="계약 후 예상 페이롤" />}
-
-                            {/* [2026-10-13] 사전 차단(warning)·서버 거절(danger)은 InlineNotice(에러 표시 정책 0-7).
-                                투웨이 정원도 같은 자리에서 설명 — 예전엔 버튼 라벨로만 알렸음. */}
-                            {isRosterFull && !result?.accepted && !walkedAway && (
-                                <InlineNotice tone="warning" className="flex-shrink-0">
-                                    로스터 정원({(league as any)?.max_roster_size ?? 15}명)이 가득 찼습니다. 선수를 방출한 뒤 다시 시도하세요.
-                                </InlineNotice>
-                            )}
-                            {isTwoWaySlotsFull && !result?.accepted && !walkedAway && (
-                                <InlineNotice tone="warning" className="flex-shrink-0">
-                                    투웨이 슬롯({(league as any)?.two_way_slots ?? 3}개)이 가득 찼습니다. 투웨이 계약을 방출하거나 정규 계약으로 제안하세요.
-                                </InlineNotice>
-                            )}
-
-                            {actionError && (
-                                <InlineNotice tone="danger" className="flex-shrink-0">{actionError}</InlineNotice>
-                            )}
-
+                            {renderCapAndNotices()}
                             <div className="flex-shrink-0 mt-auto pt-2">
-                                <Button
-                                    size="xl"
-                                    shape="xl"
-                                    fullWidth
-                                    onClick={handleSubmit}
-                                    disabled={submitting || salaries.length === 0 || salaries.some(s => s <= 0) || isLocked}
-                                >
-                                    {submitting ? '처리 중...' : '오퍼 제출'}
-                                </Button>
+                                {renderSubmitButton(handleSubmit)}
                             </div>
                         </div>
                     </div>
