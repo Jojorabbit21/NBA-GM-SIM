@@ -33,6 +33,42 @@
 - 상수/설정값 변경은 값 자체(이전 값 → 이후 값)를 명시.
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
+
+## 2026-10-28 — 올스타 서신 표의 시즌 스탯을 발송 시점 스냅샷으로 고정
+
+**배경**: 트레이드 서신 스냅샷(아래 항목)에 이어, 서신 카드 전수 감사 결과 시즌 스탯 열이 열 때마다 현재 값(`playerCardMap` ← `usePlayerSeasonStatsFull`)으로 바뀌는 곳이 올스타 계열 4종뿐이었다(투표 중간집계/결과, 라이징스타, 3점 챌린지). 나머지 카드는 payload에 값이 이미 있거나(어워드/부상/파워랭킹 등), 경기 박스스코어처럼 확정 후 불변이다. 선수 호버 카드는 "지금의 선수 정보"라 의도적으로 현재 값 유지.
+
+**변경 파일**:
+- `server/src/postAllStarVoteNews.ts` (server) — `makeStatSnapper(teams)`로 `stats`(g,mp,pts,reb,ast,stl,blk,tov,fgm,fga)를 투표 엔트리·올스타 로스터·라이징스타 payload에 추가. 3점 챌린지는 존 슛차트까지 필요해 `fetchThreePointStatSnapshots()`가 `get_player_season_stats_full` RPC로 조회해 `stats`에 저장
+- `services/multi/leagueEventPayload.ts` (client) — `LetterStatSnapshot` 타입, 4개 엔트리 타입에 `stats?`, 파서 `parseStatSnapshot`
+- `views/multi/season/newsFeedCards.tsx` (client) — `AllstarVoteSection`/`AllstarRosterTable`/`ThreePointContestTable`에 `frozenStats` prop. 서신 카드가 넘기면 `entry.stats` 우선, 없으면 현재 값 폴백. `MultiAllStarView`(올스타 페이지)는 안 넘겨 기존대로 현재 값
+
+**Before**: 표의 G/MP/PTS 등은 항상 `playerCardMap.get(id).player.stats`(현재 시즌 누적).
+
+**After**: 서신 카드는 payload `stats`(발송일 기준) 우선. 올스타 페이지는 변화 없음.
+
+**검증**: client/server tsc 해당 파일 오류 없음. **서버는 미배포**(배포 전엔 새로 게시되는 서신도 스냅샷 없이 현재 값 폴백으로 동작).
+
+**롤백 방법**: server 파일 되돌리면 payload에서 stats 제거(클라이언트는 폴백으로 정상 동작). 클라이언트는 frozenStats 호출부 제거.
+
+## 2026-10-28 — 트레이드 서신 값을 체결 시점 스냅샷으로 고정
+
+**배경**: 대체 샐러리 리그에서 트레이드 서신 연봉이 DB 원본으로 표시됨. 원인은 서신이 열 때마다 현재 계약/시즌 스탯을 조회(poolPlayers=meta_players 원본, 스탯은 현재 누적)해서 발송 후에도 값이 변하는 구조. 서신은 발송일 기준 기록이므로 payload에 체결 시점 값을 저장하도록 변경.
+
+**변경 파일**:
+- `migrations/respond_trade_offer_letter_snapshot_v5.sql` (DB) — `trade_letter_players()` 신설, `respond_trade_offer` aOut/bOut 생성부 교체. 기준은 live 정의(v4 파일은 구버전)
+- `services/multi/leagueEventPayload.ts` (client) — `TradeOutPlayer` 타입, `parseTradeOutPlayer`
+- `views/multi/season/newsFeedCards.tsx` (client) — `TradePlayerTable`이 payload 값 우선, 없으면 현재 값 폴백
+- `hooks/usePlayerInjuryRowsBatch.ts`, `services/multi/activeInjuryStatus.ts`, `views/multi/season/MultiNewsFeedView.tsx` (client) — 옛 서신 폴백용 계약 오버라이드 병합
+
+**Before**: aOut/bOut = `{id, name}`. 표는 playerCardMap(현재 값)에서 salary/years/stats 읽음.
+
+**After**: aOut/bOut = `{id, name, salary, contractYears, stats:{g,pts,reb,ast}}` (체결 시점, 합계값). 표는 payload 우선.
+
+**검증**: tsc 관련 파일 오류 없음. SQL 적용·실서버 확인은 별도 기록.
+
+**롤백 방법**: respond_trade_offer를 aOut/bOut 2필드 버전으로 재적용(trade_letter_players는 남겨도 무해), 클라이언트는 git revert. 옛 서신 폴백 덕에 클라이언트만 먼저 롤백해도 동작.
+
 ## 2026-10-27 — 도움 수비 대가 신설: 헬프 킥아웃 + 클로즈아웃 드라이브, helpDef 부수 효과 연결 제거
 
 **배경**: AI 감독 C5 수비 연구(`docs/plan/ai-coach-plan.md` 2-12)에서 helpDef 10이 대가 없는 지배 전략(+1.31)으로 나옴. 하네스 분해(HEAD a0d87aa9, PBL, 8시즌·체력 이월, 10팀×3묶음): helpDef 5→10 net +1.42 = 헬프 슛 −3.3%p +0.59 / 헬프 스틸 +0.42 / 림 프로텍터 개입 ENGAGE_HELP_SLIDER +0.38 / 스위치 실수 감소 +0.20 / 샷클락 +0.13, 대가(헬프 파울) 0. 헬프 판정이 슛 확정 후라 "비운 슈터로 킥아웃" 경로가 없었음.

@@ -7,6 +7,8 @@ export interface PlayerInjuryStateRow {
     health: string | null;
     return_date: string | null;
     season_number: number | null;
+    /** room_player_state.contract — 리그별 계약 오버라이드(일부 조회에선 select 안 함). */
+    contract?: Record<string, any> | null;
 }
 
 /** 배지/호버카드가 필요로 하는 "지금 활성 부상/출장정지" 요약 — Player.activeInjurySeverity/

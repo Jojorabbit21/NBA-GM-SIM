@@ -15,6 +15,17 @@
 // 순환 없이 DAG로 유지된다(CLAUDE.md 순환 임포트 금지 규칙).
 
 import type { LeagueEventType } from '../../hooks/useLeagueHeadlines';
+import type { PlayerStats } from '../../types/player';
+
+/** 서신 발송 시점 시즌 스탯 스냅샷(2026-10-28~, 서버 postAllStarVoteNews.ts가 저장). 이전 서신엔 없어 화면이 현재 값으로 폴백한다. */
+export type LetterStatSnapshot = Partial<PlayerStats>;
+
+function parseStatSnapshot(v: unknown): LetterStatSnapshot | undefined {
+    if (!v || typeof v !== 'object') return undefined;
+    const out: Record<string, number> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) if (typeof val === 'number') out[k] = val;
+    return Object.keys(out).length ? out as LetterStatSnapshot : undefined;
+}
 
 export interface StatEntry { label: string; value: number }
 
@@ -97,8 +108,17 @@ export interface TradeDetail {
     kind: 'trade';
     teamA: { slug: string };
     teamB: { slug: string };
-    aOut: { id: string; name: string }[];
-    bOut: { id: string; name: string }[];
+    aOut: TradeOutPlayer[];
+    bOut: TradeOutPlayer[];
+}
+
+/** 트레이드 체결 시점 스냅샷(respond_trade_offer v5, 2026-10-28~). 이전 서신엔 salary/contractYears/stats가 없다(undefined → 화면이 현재 값으로 폴백). */
+export interface TradeOutPlayer {
+    id: string;
+    name: string;
+    salary?: number;
+    contractYears?: number;
+    stats?: { g: number; pts: number; reb: number; ast: number };
 }
 
 export interface LegacyDetail { kind: 'legacy' }
@@ -232,6 +252,7 @@ export interface AllstarVoteEntry {
     posGroup: 'G' | 'FC';
     votes: number;
     pct: number;
+    stats?: LetterStatSnapshot;
 }
 export interface AllstarVoteConference {
     guards: AllstarVoteEntry[];
@@ -281,6 +302,7 @@ export interface AllstarRosterPlayer {
     /** 0~1, 같은 포지션 그룹 내 팬 득표율 — 스타터만 있음(팬 투표로 뽑히므로). 리저브는 코치
      *  투표라 이 개념이 없어 undefined. */
     pct?: number;
+    stats?: LetterStatSnapshot;
 }
 export interface AllstarConferenceRoster {
     /** 5명: 백코트 2 + 프론트코트 3 (팬 투표 최종 결과) */
@@ -297,6 +319,7 @@ export interface RisingStarsRosterPlayer {
     ovr: number;
     /** [2026-09-08] 팀 내 최고 스코어러(전체 1·2위) — 팀 주장, teamAName/teamBName의 출처. */
     isCaptain: boolean;
+    stats?: LetterStatSnapshot;
 }
 export interface RisingStarsRosterResult {
     /** 10명씩 — 소속 실제 팀과 무관한 임의 라벨(컨퍼런스 구분 없음) */
@@ -364,6 +387,7 @@ export interface ThreePointContestParticipantEntry {
     position: string; ovr: number;
     /** threeCorner/three45/threeTop 평균값(원점수, 선정용 노이즈 반영 전) — 참고/표시용. */
     threePointRating: number;
+    stats?: LetterStatSnapshot;
 }
 export interface AllstarThreePointContestDetail {
     kind: 'allstar_three_point_contest';
@@ -715,6 +739,19 @@ function parseGameRef(raw: any): GameRef | undefined {
     return { homeSlug: raw.homeSlug, awaySlug: raw.awaySlug, homeScore: raw.homeScore, awayScore: raw.awayScore };
 }
 
+function parseTradeOutPlayer(p: any): TradeOutPlayer {
+    const num = (v: unknown) => typeof v === 'number' ? v : undefined;
+    const st = p?.stats;
+    return {
+        id: p.id, name: p.name,
+        salary: num(p.salary),
+        contractYears: num(p.contractYears),
+        stats: st && typeof st === 'object'
+            ? { g: num(st.g) ?? 0, pts: num(st.pts) ?? 0, reb: num(st.reb) ?? 0, ast: num(st.ast) ?? 0 }
+            : undefined,
+    };
+}
+
 function parsePowerRankingEntry(raw: any): PowerRankingEntry | undefined {
     if (!raw || !isNonEmptyString(raw.teamSlug) || !isNonEmptyString(raw.teamName)) return undefined;
     if (typeof raw.rank !== 'number' || typeof raw.powerScore !== 'number') return undefined;
@@ -745,6 +782,7 @@ export function parseAllstarVotePayload(payload: any): AllstarVoteUpdateDetail |
                 playerId: e.playerId, playerName: e.playerName, teamSlug: e.teamSlug,
                 posGroup: e.posGroup === 'FC' ? 'FC' : 'G',
                 votes: num(e.votes), pct: num(e.pct),
+                stats: parseStatSnapshot(e.stats),
             }))
         : [];
     const east: AllstarVoteConference = { guards: parseGroup(payload.east.guards), frontcourt: parseGroup(payload.east.frontcourt) };
@@ -767,6 +805,7 @@ export function parseAllstarRosterPayload(raw: any): AllstarRosterResult | null 
                 ovr: typeof p.ovr === 'number' ? p.ovr : 0,
                 votes: typeof p.votes === 'number' ? p.votes : 0,
                 pct: typeof p.pct === 'number' ? p.pct : undefined,
+                stats: parseStatSnapshot(p.stats),
             }))
         : [];
     const east: AllstarConferenceRoster = { starters: parsePlayers(raw.east.starters), reserves: parsePlayers(raw.east.reserves) };
@@ -798,6 +837,7 @@ function parseRisingStarsPlayers(arr: any): RisingStarsRosterPlayer[] {
                 position: isNonEmptyString(p.position) ? p.position : '',
                 ovr: typeof p.ovr === 'number' ? p.ovr : 0,
                 isCaptain: p.isCaptain === true,
+                stats: parseStatSnapshot(p.stats),
             }))
         : [];
 }
@@ -837,6 +877,7 @@ export function parseAllstarThreePointContestPayload(payload: any): AllstarThree
                 position: isNonEmptyString(p.position) ? p.position : '',
                 ovr: typeof p.ovr === 'number' ? p.ovr : 0,
                 threePointRating: typeof p.threePointRating === 'number' ? p.threePointRating : 0,
+                stats: parseStatSnapshot(p.stats),
             }))
         : [];
     if (participants.length === 0) return null;
@@ -1019,8 +1060,8 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                     kind: 'trade',
                     teamA: { slug: payload.teamA.slug },
                     teamB: { slug: payload.teamB.slug },
-                    aOut: Array.isArray(payload.aOut) ? payload.aOut : [],
-                    bOut: Array.isArray(payload.bOut) ? payload.bOut : [],
+                    aOut: Array.isArray(payload.aOut) ? payload.aOut.map(parseTradeOutPlayer) : [],
+                    bOut: Array.isArray(payload.bOut) ? payload.bOut.map(parseTradeOutPlayer) : [],
                 };
             }
             case 'power_ranking': {

@@ -25,6 +25,7 @@ import { StoryCard, extractEventPlayerIds } from './newsFeedCards';
 import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap, mergeInjuryIntoPlayerCardMap } from '../../../components/common/PlayerHoverCard';
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
 import { usePlayerInjuryRowsBatch } from '../../../hooks/usePlayerInjuryRowsBatch';
+import { applyContractOverride } from '../../../services/multi/buildLeagueTeams';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate, addDaysToKey } from './multiScheduleUtils';
 import { formatRelativeTime } from '../../../utils/formatRelativeTime';
@@ -315,8 +316,18 @@ const MultiNewsFeedView: React.FC = () => {
     );
     const playerCardMap = useMemo(() => {
         const withStats = selectedEventStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, selectedEventStats) : basePlayerCardMap;
-        return mergeInjuryIntoPlayerCardMap(withStats, activeInjuryByPlayer);
-    }, [basePlayerCardMap, selectedEventStats, activeInjuryByPlayer]);
+        const withInjury = mergeInjuryIntoPlayerCardMap(withStats, activeInjuryByPlayer);
+        // [2026-10-28 Fix] poolPlayers는 meta_players 원본 연봉이라, 대체 샐러리(contract_mode 'alternative') 등
+        // room_player_state.contract 오버라이드가 있는 선수는 서신(트레이드 표)에 실제 DB 연봉이 떴다.
+        const rows = (selectedEventInjuryRows ?? []).filter(r => r.contract);
+        if (rows.length === 0) return withInjury;
+        const merged = new Map(withInjury);
+        for (const r of rows) {
+            const entry = merged.get(r.player_id);
+            if (entry) merged.set(r.player_id, { ...entry, player: applyContractOverride(entry.player, r.contract) });
+        }
+        return merged;
+    }, [basePlayerCardMap, selectedEventStats, activeInjuryByPlayer, selectedEventInjuryRows]);
 
     const openGame = (gameId: string) => navigate(`/multi/leagues/${leagueId}/season/game/${getGameUrlId(gameId)}`);
     const openPlayer = (playerId: string) => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(playerId)}`);

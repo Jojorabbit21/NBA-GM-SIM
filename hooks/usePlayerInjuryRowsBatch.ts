@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import type { PlayerInjuryStateRow } from '../services/multi/activeInjuryStatus';
 
-const INJURY_COLS = 'player_id, injury_history, health, return_date, season_number';
+// [2026-10-28] contract 추가 — 뉴스 서신 연봉이 meta_players 원본 대신 리그별 계약(대체 샐러리 포함)을 보이도록.
+const INJURY_COLS = 'player_id, injury_history, health, return_date, season_number, contract';
 
 // room_player_state는 이미 player_id 단위로 행이 나뉜 일반 테이블이라(게임PBP JSONB를
 // 서버에서 스캔·집계해야 하는 usePlayerSeasonStatsBatch의 시즌 스탯과 달리), 화면에 뜬

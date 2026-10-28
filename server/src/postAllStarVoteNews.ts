@@ -56,15 +56,35 @@ function zeroStats(): PlayerStats {
 // 백코트/프론트코트 나눠서 후보를 좀 많이(25명까지) 보여주자" 요청을 정식 반영.
 const DISPLAY_LIMIT = 25;
 
-function trimEntries(entries: AllStarVoteEntry[]): { playerId: string; playerName: string; teamSlug: string; posGroup: 'G' | 'FC'; votes: number; pct: number }[] {
+// [2026-10-28] 서신은 발송일 기준 기록이라 표에 보이는 시즌 스탯을 payload에 스냅샷으로 저장한다.
+// 예전엔 클라이언트가 서신을 열 때마다 "현재" 시즌 누적을 조회해 발송 후에도 값이 바뀌었다.
+const SNAP_KEYS = ['g', 'mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'fgm', 'fga'] as const;
+type StatSnap = Record<typeof SNAP_KEYS[number], number>;
+type StatSnapper = (playerId: string) => StatSnap | undefined;
+
+/** buildTeamsForRoom()이 만든 Team[]의 선수 시즌 스탯에서 서신용 스냅샷을 뽑는 함수를 만든다. */
+function makeStatSnapper(teams: Team[]): StatSnapper {
+    const byId = new Map<string, PlayerStats>();
+    for (const t of teams) for (const p of t.roster) byId.set(p.id, p.stats);
+    return id => {
+        const st = byId.get(id) as unknown as Record<string, number> | undefined;
+        if (!st) return undefined;
+        const out = {} as StatSnap;
+        for (const k of SNAP_KEYS) out[k] = Number(st[k] ?? 0);
+        return out;
+    };
+}
+
+function trimEntries(entries: AllStarVoteEntry[], snap: StatSnapper) {
     return entries.slice(0, DISPLAY_LIMIT).map(e => ({
         playerId: e.playerId, playerName: e.playerName, teamSlug: e.teamId,
         posGroup: e.posGroup, votes: e.votes, pct: e.pct,
+        stats: snap(e.playerId),
     }));
 }
 
-function conferencePayload(c: ConferenceVoteLeaderboard) {
-    return { guards: trimEntries(c.guards), frontcourt: trimEntries(c.frontcourt) };
+function conferencePayload(c: ConferenceVoteLeaderboard, snap: StatSnapper) {
+    return { guards: trimEntries(c.guards, snap), frontcourt: trimEntries(c.frontcourt, snap) };
 }
 
 // [2026-09-08] votes/pct는 스타터·리저브 구분 없이 항상 "올스타 팬 투표" 득표수/득표율을
@@ -73,11 +93,12 @@ function conferencePayload(c: ConferenceVoteLeaderboard) {
 // result(최종 투표 리더보드, computeAndStoreAllStarVotes에서 이미 계산된 값)에서
 // playerId로 찾은 voteInfo를 우선 사용 — 후보 풀(buildCandidates)이 스타터/리저브 선정과
 // 완전히 동일해서 조회는 항상 성공한다(재계산이 아니라 조회일 뿐).
-function rosterPlayerPayload(p: AllStarPlayer, voteInfo?: { votes: number; pct: number }) {
+function rosterPlayerPayload(p: AllStarPlayer, voteInfo: { votes: number; pct: number } | undefined, snap: StatSnapper) {
     return {
         playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamId,
         posGroup: p.posGroup, position: p.position, ovr: p.ovr,
         votes: voteInfo?.votes ?? p.votes, pct: voteInfo?.pct,
+        stats: snap(p.playerId),
     };
 }
 
@@ -85,10 +106,11 @@ function rosterPlayerPayload(p: AllStarPlayer, voteInfo?: { votes: number; pct: 
 // 달리 팬 투표 리더보드 조회가 아예 필요 없음(runRisingStarsSelection() 결과를 그대로 매핑).
 // isCaptain은 팀명(teamAName/teamBName) 산출에 쓰인 주장 여부를 그대로 실어 클라이언트에서도
 // (예: 목록에 주장 배지) 재사용할 수 있게 한다.
-function risingStarPlayerPayload(p: RisingStarPlayer) {
+function risingStarPlayerPayload(p: RisingStarPlayer, snap: StatSnapper) {
     return {
         playerId: p.playerId, playerName: p.playerName, teamSlug: p.teamId,
         posGroup: p.posGroup, position: p.position, ovr: p.ovr, isCaptain: p.isCaptain,
+        stats: snap(p.playerId),
     };
 }
 
@@ -211,6 +233,7 @@ export async function computeAndStoreAllStarVotes(
     if (!built) return;
     const { teams, season, seasonNumber, leagueName } = built;
     const seed = `${roomId}_${season}_allstar`;
+    const snap = makeStatSnapper(teams);
 
     const keyDates = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
     const windowLen = daysBetween(keyDates.allStarVoteStart, keyDates.allStarVoteEnd);
@@ -227,8 +250,8 @@ export async function computeAndStoreAllStarVotes(
         v: 1,
         roundLabel: `${virtualDate} 집계`,
         voteProgress,
-        east: conferencePayload(result.east),
-        west: conferencePayload(result.west),
+        east: conferencePayload(result.east, snap),
+        west: conferencePayload(result.west, snap),
     };
 
     // 투표 마감일에만 최종 명단(스타터/리저브)을 함께 계산해 저장 — runAllStarSelection()이
@@ -254,16 +277,16 @@ export async function computeAndStoreAllStarVotes(
         );
         return {
             east: {
-                starters: selection.east.starters.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId))),
-                reserves: selection.east.reserves.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId))),
+                starters: selection.east.starters.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
+                reserves: selection.east.reserves.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
             },
             west: {
-                starters: selection.west.starters.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId))),
-                reserves: selection.west.reserves.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId))),
+                starters: selection.west.starters.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
+                reserves: selection.west.reserves.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
             },
             risingStars: {
-                teamA: risingStars.teamA.map(risingStarPlayerPayload),
-                teamB: risingStars.teamB.map(risingStarPlayerPayload),
+                teamA: risingStars.teamA.map(p => risingStarPlayerPayload(p, snap)),
+                teamB: risingStars.teamB.map(p => risingStarPlayerPayload(p, snap)),
                 teamAName: risingStars.teamAName, teamBName: risingStars.teamBName,
             },
         };
@@ -486,6 +509,9 @@ export async function computeAndPostThreePointContestNews(
         return;
     }
 
+    // 3점 챌린지 표는 존별(코너/45도/탑) 성공률까지 보여줘 get_player_season_stats_full(존 슛차트 포함, snake_case)로 스냅샷.
+    const zoneStats = await fetchThreePointStatSnapshots(roomId, participants.map(p => p.playerId));
+
     const { error } = await supabase.from('league_events').insert({
         room_id: roomId, league_id: leagueId, type: 'allstar_three_point_contest',
         sim_date: virtualDate, season_number: seasonNumber,
@@ -493,12 +519,35 @@ export async function computeAndPostThreePointContestNews(
             v: 1,
             headline: `${season}시즌 3점 챌린지 참가자 명단이 확정됐습니다`,
             seasonLabel: season,
-            participants: participants.map(threePointParticipantPayload),
+            participants: participants.map(p => ({ ...threePointParticipantPayload(p), stats: zoneStats.get(p.playerId) })),
             contestDate,
         },
     });
     if (error) console.error(`[allstarVote] room=${roomId} allstar_three_point_contest insert 실패:`, error.message);
     else console.log(`[allstarVote] room=${roomId} — 3점 챌린지 참가자 명단 뉴스 게시`);
+}
+
+// 클라이언트 ThreePointContestTable이 읽는 키 그대로(PlayerStats 필드명) 저장한다.
+const THREE_POINT_SNAP_COLS: [string, string][] = [
+    ['g', 'g'], ['mp', 'mp'], ['pts', 'pts'], ['p3m', 'p3m'], ['p3a', 'p3a'], ['fga', 'fga'], ['fta', 'fta'],
+    ['zone_c3_l_m', 'zone_c3_l_m'], ['zone_c3_l_a', 'zone_c3_l_a'], ['zone_c3_r_m', 'zone_c3_r_m'], ['zone_c3_r_a', 'zone_c3_r_a'],
+    ['zone_atb3_l_m', 'zone_atb3_l_m'], ['zone_atb3_l_a', 'zone_atb3_l_a'],
+    ['zone_atb3_c_m', 'zone_atb3_c_m'], ['zone_atb3_c_a', 'zone_atb3_c_a'],
+    ['zone_atb3_r_m', 'zone_atb3_r_m'], ['zone_atb3_r_a', 'zone_atb3_r_a'],
+];
+async function fetchThreePointStatSnapshots(roomId: string, playerIds: string[]): Promise<Map<string, Record<string, number>>> {
+    const out = new Map<string, Record<string, number>>();
+    const { data, error } = await supabase.rpc('get_player_season_stats_full', { p_room_id: roomId, p_player_ids: playerIds });
+    if (error) {
+        console.error(`[allstarVote] room=${roomId} 3점 챌린지 스탯 스냅샷 조회 실패(스냅샷 없이 게시):`, error.message);
+        return out;
+    }
+    for (const r of (data ?? []) as any[]) {
+        const o: Record<string, number> = {};
+        for (const [src, dst] of THREE_POINT_SNAP_COLS) o[dst] = Number(r[src] ?? 0);
+        out.set(String(r.player_id), o);
+    }
+    return out;
 }
 
 function threePointParticipantPayload(p: ThreePointContestParticipant) {

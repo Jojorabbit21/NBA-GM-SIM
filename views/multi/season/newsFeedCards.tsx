@@ -23,7 +23,7 @@ import type { GameBoxScoreData } from '../../../services/multi/gameQueries';
 import { formatMoney } from '../../../utils/formatMoney';
 import { EventLetterLogo, ClickableText, LetterShell, LetterSectionTitle, LetterLink, LetterHero, BoxScoreWaitNote, LetterPlayerCell, LetterTeamCell, LetterRankCell } from './newsFeedLetter';
 import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
-import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick } from '../../../services/multi/leagueEventPayload';
+import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick, TradeOutPlayer } from '../../../services/multi/leagueEventPayload';
 import { foldPeriodScores, periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
@@ -710,7 +710,7 @@ export const WinStreakCard: React.FC<{
 // 새 조회를 직접 하지 않고, 이미 병합되어 내려오는 playerCardMap의 player.stats를
 // 그대로 읽어 PTS/REB/AST 평균만 계산.
 const TradePlayerTable: React.FC<{
-    team: LeagueTeamRow | undefined; teamSlug: string; players: { id: string; name: string }[];
+    team: LeagueTeamRow | undefined; teamSlug: string; players: TradeOutPlayer[];
     playerCardMap: PlayerCardMap; onPlayerClick?: (playerId: string) => void; onOpenTeam?: (teamSlug: string) => void;
 }> = ({ team, teamSlug, players, playerCardMap, onPlayerClick, onOpenTeam }) => {
     if (players.length === 0) return null;
@@ -719,7 +719,9 @@ const TradePlayerTable: React.FC<{
     // 선수 카드 정보가 없는(방출/은퇴 등으로 poolPlayers에서 사라진) 선수는 0으로 취급 —
     // 합계 행이 조용히 실제보다 낮게 나올 수 있지만, 트레이드 시점엔 항상 로스터에 있던
     // 선수라 이론상만 발생.
-    const totalSalary = players.reduce((sum, p) => sum + (playerCardMap.get(p.id)?.player?.salary ?? 0), 0);
+    // [2026-10-28] 서신은 발송 시점 기록 — payload 스냅샷(salary/contractYears/stats)을 우선, 없는 옛 서신만 현재 값 폴백.
+    const salaryOf = (p: TradeOutPlayer) => p.salary ?? playerCardMap.get(p.id)?.player?.salary ?? 0;
+    const totalSalary = players.reduce((sum, p) => sum + salaryOf(p), 0);
     const avgStat = (total: number, g: number) => g > 0 ? (total / g).toFixed(1) : '-';
 
     return (
@@ -747,9 +749,9 @@ const TradePlayerTable: React.FC<{
                 <TableBody>
                     {players.map(p => {
                         const entry = playerCardMap.get(p.id);
-                        const salary = entry?.player?.salary;
-                        const years = entry?.player?.contractYears;
-                        const stats = entry?.player?.stats;
+                        const salary = p.salary ?? entry?.player?.salary;
+                        const years = p.contractYears ?? entry?.player?.contractYears;
+                        const stats = p.stats ?? entry?.player?.stats;
                         const g = stats?.g ?? 0;
                         return (
                             <TableRow key={p.id} onClick={onPlayerClick ? () => onPlayerClick(p.id) : undefined}>
@@ -1472,6 +1474,8 @@ type RosterTablePlayer = {
     votes?: number; pct?: number;
     /** [2026-09-08] 라이징스타 팀 주장 표시용 — 본올스타 선수(votes/pct 있는 쪽)엔 없는 개념. */
     isCaptain?: boolean;
+    /** 서신 발송 시점 시즌 스탯 스냅샷(frozenStats일 때 우선 사용). */
+    stats?: Partial<PlayerStats>;
 };
 
 export const AllstarRosterTable: React.FC<{
@@ -1502,7 +1506,9 @@ export const AllstarRosterTable: React.FC<{
      *  "스타터"/"리저브"가 아니라 실제 팀명("팀 ○○○")인 라이징스타 표에서만 넘겨준다.
      *  전달되면 label 왼쪽에 작은 로고를 붙인다. */
     logoSrc?: string;
-}> = ({ label, players, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showOvr, showVotes, showStats, logoSrc }) => (
+    /** true면 서신 발송 시점 스냅샷(entry.stats)을 우선 사용하고 없는 옛 서신만 현재 값으로 폴백(2026-10-28). 올스타 페이지는 항상 현재 값이라 안 넘김. */
+    frozenStats?: boolean;
+}> = ({ label, players, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showOvr, showVotes, showStats, logoSrc, frozenStats }) => (
     <div className="space-y-2">
         <LetterSectionTitle logoSrc={logoSrc}>{label}</LetterSectionTitle>
         <Table variant="bare" density="compact" className="text-sm text-slate-300">
@@ -1534,7 +1540,7 @@ export const AllstarRosterTable: React.FC<{
             <TableBody>
                 {players.map(p => {
                     const entry = playerCardMap.get(p.playerId);
-                    const stats = entry?.player?.stats;
+                    const stats: Partial<PlayerStats> | undefined = (frozenStats ? p.stats : undefined) ?? entry?.player?.stats;
                     const g = stats?.g ?? 0;
                     const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
                     const shootPct = (made: number | undefined, att: number | undefined) =>
@@ -1595,6 +1601,7 @@ type VoteSectionEntry = {
     playerId: string; playerName: string; teamSlug: string;
     posGroup: 'G' | 'FC';
     votes?: number; pct?: number;
+    stats?: Partial<PlayerStats>;
 };
 
 export const AllstarVoteSection: React.FC<{
@@ -1618,7 +1625,9 @@ export const AllstarVoteSection: React.FC<{
      *  호출부(본올스타 후보 명단/중간집계 서신)는 전부 득표 데이터를 보여줘야 하므로
      *  기본값 true. */
     showVotes?: boolean;
-}> = ({ label, entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showStats, hideLabel, scrollable, showVotes = true }) => (
+    /** true면 서신 발송 시점 스냅샷(entry.stats)을 우선 사용하고 없는 옛 서신만 현재 값으로 폴백(2026-10-28). 올스타 페이지는 항상 현재 값이라 안 넘김. */
+    frozenStats?: boolean;
+}> = ({ label, entries, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, showStats, hideLabel, scrollable, showVotes = true, frozenStats }) => (
     <div className="space-y-2">
         {!hideLabel && <LetterSectionTitle>{label}</LetterSectionTitle>}
         <Table variant="bare" density="compact" className={`text-sm text-slate-300 ${scrollable ? 'overflow-y-auto max-h-96' : ''}`}>
@@ -1649,7 +1658,7 @@ export const AllstarVoteSection: React.FC<{
             <TableBody>
                 {entries.map((e, idx) => {
                     const entry = playerCardMap.get(e.playerId);
-                    const stats = entry?.player?.stats;
+                    const stats: Partial<PlayerStats> | undefined = (frozenStats ? e.stats : undefined) ?? entry?.player?.stats;
                     const g = stats?.g ?? 0;
                     const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
                     const shootPct = (made: number | undefined, att: number | undefined) =>
@@ -1703,13 +1712,13 @@ export const AllstarVoteUpdateCard: React.FC<{
             <EventLetterLogo src={getLeagueLogoUrl('AllStar')} alt="올스타" />
             <div className="space-y-4">
                 <h2 className="text-base font-black text-indigo-400">동부 컨퍼런스</h2>
-                <AllstarVoteSection label="백코트" entries={east.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
-                <AllstarVoteSection label="프론트코트" entries={east.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+                <AllstarVoteSection label="백코트" entries={east.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable frozenStats />
+                <AllstarVoteSection label="프론트코트" entries={east.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable frozenStats />
             </div>
             <div className="space-y-4">
                 <h2 className="text-base font-black text-indigo-400">서부 컨퍼런스</h2>
-                <AllstarVoteSection label="백코트" entries={west.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
-                <AllstarVoteSection label="프론트코트" entries={west.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable />
+                <AllstarVoteSection label="백코트" entries={west.guards} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable frozenStats />
+                <AllstarVoteSection label="프론트코트" entries={west.frontcourt} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showStats scrollable frozenStats />
             </div>
             {onOpenAllStar && (
                 <LetterLink onClick={() => onOpenAllStar()}>
@@ -1803,16 +1812,16 @@ export const AllstarVoteResultCard: React.FC<{
                     <img src={getLeagueLogoUrl('East')} alt="" className="h-6 w-6" />
                     동부 컨퍼런스
                 </h2>
-                <AllstarRosterTable label="스타터" players={east.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
-                <AllstarRosterTable label="리저브" players={east.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+                <AllstarRosterTable label="스타터" players={east.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats frozenStats />
+                <AllstarRosterTable label="리저브" players={east.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats frozenStats />
             </div>
             <div className="space-y-4">
                 <h2 className="flex items-center gap-1.5 text-base font-black text-indigo-400">
                     <img src={getLeagueLogoUrl('West')} alt="" className="h-6 w-6" />
                     서부 컨퍼런스
                 </h2>
-                <AllstarRosterTable label="스타터" players={west.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
-                <AllstarRosterTable label="리저브" players={west.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats />
+                <AllstarRosterTable label="스타터" players={west.starters} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats frozenStats />
+                <AllstarRosterTable label="리저브" players={west.reserves} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showVotes showStats frozenStats />
             </div>
             {onOpenAllStar && (
                 <LetterLink onClick={() => onOpenAllStar()}>
@@ -1862,8 +1871,8 @@ export const AllstarRisingStarsCard: React.FC<{
                 </p>
             </div>
             <div className="space-y-4">
-                <AllstarRosterTable label={`팀 ${teamAName}`} players={teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingA')} />
-                <AllstarRosterTable label={`팀 ${teamBName}`} players={teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingB')} />
+                <AllstarRosterTable label={`팀 ${teamAName}`} players={teamA} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingA')} frozenStats />
+                <AllstarRosterTable label={`팀 ${teamBName}`} players={teamB} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} showOvr showStats logoSrc={getLeagueLogoUrl('RisingB')} frozenStats />
             </div>
             {onOpenAllStar && (
                 <LetterLink onClick={() => onOpenAllStar('risingstars')}>
@@ -1879,7 +1888,7 @@ export const AllstarRisingStarsCard: React.FC<{
 // ShotZones 인터페이스가 이미 이 3분류(cnr/p45/atb)를 "코너 3 / 45도 윙 3 / 브레이크 위(탑) 3"로
 // 정의해두고 있어 그 관례를 그대로 따름 — PlayerStats에 인덱스 시그니처([key: string]: number)가
 // 있어 선언 안 된 zone_* 필드도 타입 에러 없이 읽을 수 있다.
-function threePointZonePct(stats: PlayerStats | undefined, made: string[], att: string[]): number {
+function threePointZonePct(stats: Partial<PlayerStats> | undefined, made: string[], att: string[]): number {
     const s = (stats ?? {}) as Record<string, number>;
     const m = made.reduce((sum, k) => sum + (s[k] ?? 0), 0);
     const a = att.reduce((sum, k) => sum + (s[k] ?? 0), 0);
@@ -1893,7 +1902,9 @@ export const ThreePointContestTable: React.FC<{
     participants: ThreePointContestParticipantEntry[];
     teamBySlug: Map<string, LeagueTeamRow>; playerCardMap: PlayerCardMap;
     onOpenTeam?: (teamSlug: string) => void; onPlayerClick?: (playerId: string) => void;
-}> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick }) => (
+    /** true면 서신 발송 시점 스냅샷(entry.stats)을 우선 사용하고 없는 옛 서신만 현재 값으로 폴백(2026-10-28). 올스타 페이지는 항상 현재 값이라 안 넘김. */
+    frozenStats?: boolean;
+}> = ({ participants, teamBySlug, playerCardMap, onOpenTeam, onPlayerClick, frozenStats }) => (
     <Table variant="bare" density="compact" className="text-sm text-slate-300">
         <TableHead>
             <TableHeaderCell>순위</TableHeaderCell>
@@ -1914,7 +1925,7 @@ export const ThreePointContestTable: React.FC<{
         <TableBody>
             {participants.map((p, idx) => {
                 const entry = playerCardMap.get(p.playerId);
-                const stats = entry?.player?.stats;
+                const stats: Partial<PlayerStats> | undefined = (frozenStats ? p.stats : undefined) ?? entry?.player?.stats;
                 const g = stats?.g ?? 0;
                 const perGame = (total: number | undefined) => (g > 0 ? ((total ?? 0) / g).toFixed(1) : '0.0');
                 const cnrPct = threePointZonePct(stats, ['zone_c3_l_m', 'zone_c3_r_m'], ['zone_c3_l_a', 'zone_c3_r_a']);
@@ -1937,7 +1948,7 @@ export const ThreePointContestTable: React.FC<{
                         <TableCell className="tabular-nums">{perGame(stats?.pts)}</TableCell>
                         <TableCell className="tabular-nums">{perGame(stats?.p3m)}</TableCell>
                         <TableCell className="tabular-nums">{perGame(stats?.p3a)}</TableCell>
-                        <TableCell className="tabular-nums">{(stats?.p3a ?? 0) > 0 ? formatAwardPct((stats?.p3m ?? 0) / (stats!.p3a)) : '-'}</TableCell>
+                        <TableCell className="tabular-nums">{(stats?.p3a ?? 0) > 0 ? formatAwardPct((stats?.p3m ?? 0) / (stats?.p3a ?? 1)) : '-'}</TableCell>
                         <TableCell className="tabular-nums">{formatAwardPct(cnrPct)}</TableCell>
                         <TableCell className="tabular-nums">{formatAwardPct(p45Pct)}</TableCell>
                         <TableCell className="tabular-nums">{formatAwardPct(atbPct)}</TableCell>
@@ -1987,7 +1998,7 @@ export const AllstarThreePointContestCard: React.FC<{
             </div>
             <div className="space-y-2">
                 <LetterSectionTitle>참가자</LetterSectionTitle>
-                <ThreePointContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} />
+                <ThreePointContestTable participants={participants} teamBySlug={teamBySlug} playerCardMap={playerCardMap} onOpenTeam={onOpenTeam} onPlayerClick={onPlayerClick} frozenStats />
             </div>
             {onOpenAllStar && (
                 <LetterLink onClick={() => onOpenAllStar('threept')}>
