@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { InlineNotice } from '../common/InlineNotice';
-import { Table, TableBody, TableRow, TableCell, TableGroupHeaderCell } from '../common/Table';
+import { Table, TableBody, TableRow, TableCell } from '../common/Table';
 import type { PercentileCardData, PercentileEntry, PercentileSection } from '../../utils/percentileCard';
 
-// 선수 퍼센타일 랭킹 카드 — 공용 Table(flush)에 섹션별 그룹 헤더 + "지표 · 슬라이더 · 값" 행(열 제목 행 없음). lg 이상은 섹션을 두 표로 나눠 좌우 2단,
+// 선수 퍼센타일 랭킹 카드 — 공용 Table(flush) — 맨 왼쪽 헤더 열에 섹션 이름(rowSpan) + "지표 · 슬라이더 · 값" 행(열 제목 행·그룹 헤더 행 없음). lg 이상은 섹션을 두 표로 나눠 좌우 2단,
 // 그보다 좁으면(폰·태블릿) 한 표. 슬라이더는 막대 끝 핸들(원) 안에 백분위 숫자를 넣는다.
 // 낮을수록 좋은 지표(TOV%, DFG%)는 계산 단계에서 이미 뒤집혀 있어 "막대가 길수록 리그 상위"가 모든 행에서 성립한다.
 // 색은 하위(파랑) → 평균(회청) → 상위(빨강) 발산 스케일 — 핸들 안 흰 글자가 읽히도록 중간색도 어두운 톤(slate-500).
@@ -29,12 +29,20 @@ function scaleColor(p: number): string {
 const HANDLE = 26;
 const NQ_COLOR = 'rgb(71, 85, 105)'; // slate-600
 
-const MetricRow: React.FC<{ entry: PercentileEntry }> = ({ entry }) => {
+/** 섹션의 첫 행에만 넘기는 헤더 열 정보 — 이름을 섹션 행 수만큼 세로로 묶어(rowSpan) 보여준다. */
+interface SectionGroup { label: string; rowSpan: number }
+
+const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup }> = ({ entry, group }) => {
     const { metric, value, percentile } = entry;
     // 자격 미달(NQ)은 백분위 위치는 그대로 두고 막대·핸들만 slate 로, 핸들 글자는 NQ
     const color = percentile !== null ? (entry.qualified ? scaleColor(percentile) : NQ_COLOR) : undefined;
     return (
         <TableRow>
+            {group && (
+                <TableCell rowSpan={group.rowSpan} align="left" className="min-w-[72px] bg-slate-900 align-middle">
+                    <span className="text-xs font-bold text-slate-300 sm:text-sm">{group.label}</span>
+                </TableCell>
+            )}
             <TableCell align="left" title={metric.inverse ? `${metric.label}은(는) 낮을수록 좋은 지표입니다` : undefined}>
                 <span className="text-sm font-medium text-slate-400">{metric.label}</span>
             </TableCell>
@@ -73,20 +81,23 @@ const SectionsTable: React.FC<{ sections: PercentileSection[] }> = ({ sections }
         <TableBody>
             {sections.map(section => (
                 <React.Fragment key={section.id}>
-                    <tr className="h-10">
-                        <TableGroupHeaderCell colSpan={3}>{section.label}</TableGroupHeaderCell>
-                    </tr>
-                    {section.entries.map(entry => <MetricRow key={entry.metric.key} entry={entry} />)}
+                    {section.entries.map((entry, i) => (
+                        <MetricRow
+                            key={entry.metric.key}
+                            entry={entry}
+                            group={i === 0 ? { label: section.label, rowSpan: section.entries.length } : undefined}
+                        />
+                    ))}
                 </React.Fragment>
             ))}
         </TableBody>
     </Table>
 );
 
-/** 섹션 순서를 유지한 채 두 표의 높이(행 수 + 그룹 헤더 1행)가 가장 비슷해지는 지점에서 나눈다. */
+/** 섹션 순서를 유지한 채 두 표의 높이(행 수)가 가장 비슷해지는 지점에서 나눈다. */
 function splitSections(sections: PercentileSection[]): [PercentileSection[], PercentileSection[]] {
     if (sections.length < 2) return [sections, []];
-    const weights = sections.map(s => s.entries.length + 1);
+    const weights = sections.map(s => s.entries.length);
     const total = weights.reduce((a, b) => a + b, 0);
     let best = 1;
     let bestDiff = Infinity;
