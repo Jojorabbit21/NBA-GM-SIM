@@ -10,6 +10,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { applyDepthPreset, applyTeamPreset } from '../../../utils/tacticPresetData';
 import { generateAutoTactics } from '../../../services/gameEngine';
+import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
 import { OFFENSE_SLIDER_GROUPS, DEFENSE_SLIDER_GROUPS, PNR_STEPS } from '../../dashboard/tactics/tacticsSliderConfig';
 import {
     TRAINING_OFFENSE_PRESETS, TRAINING_DEFENSE_PRESETS, TRAINING_SESSIONS_PER_REST_DAY,
@@ -280,6 +281,8 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
     }, [opponent, unavailableIds]);
 
     const offense = TRAINING_OFFENSE_PRESETS.find(p => p.id === offenseId)!;
+    // '자동'도 실제로 쓰이는 값을 보여 준다 — 서버(practiceRunner)는 AI 감독 공격 프리셋(C4) 배포 전까지 자동 = DEFAULT_SLIDERS(중립) 공격
+    const offenseSliders: Partial<TacticalSliders> = offense.sliders ?? DEFAULT_SLIDERS;
     const defense = TRAINING_DEFENSE_PRESETS.find(p => p.id === defenseId)!;
     const canStart = available && remaining > 0 && !!opponent && !running;
 
@@ -369,7 +372,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                         <div className="flex flex-col min-w-0 border-r border-slate-800">
                             <SubHeader title="공격 전술" />
                             <div className="px-4 pt-2.5 pb-1"><SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} /></div>
-                            {offense.sliders && <SliderReadout sliders={offense.sliders} kind="offense" padX="px-4" />}
+                            <SliderReadout sliders={offenseSliders} kind="offense" padX="px-4" />
                         </div>
                         <div className="flex flex-col min-w-0">
                             <SubHeader title="수비 전술" />
@@ -385,7 +388,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                                 <SelectRow label="공격 프리셋" divider={false}>
                                     <SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} />
                                 </SelectRow>
-                                {offense.sliders && <SliderReadout sliders={offense.sliders} kind="offense" />}
+                                <SliderReadout sliders={offenseSliders} kind="offense" />
                             </div>
                             <div className="flex flex-col min-w-0">
                                 <SelectRow label="수비 프리셋" divider={false}>
