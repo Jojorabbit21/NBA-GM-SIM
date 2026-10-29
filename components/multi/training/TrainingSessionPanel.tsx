@@ -51,11 +51,12 @@ interface TrainingSessionPanelProps {
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 const SAVED_KEY = 'saved';
 
-interface LineupRow { player: Player; pos: string; minutes: number }
+interface LineupRow { player: Player; pos: string; minutes: number; rotation: boolean[] }
 
 /** 뎁스차트 주전 5명(포지션 순) + 나머지(출전 시간 → OVR 순) */
 function buildLineup(roster: Player[], depthChart: DepthChart | null | undefined, rotationMap: Record<string, boolean[]> | undefined) {
-    const minutesOf = (id: string) => (rotationMap?.[id] ?? []).filter(Boolean).length;
+    const rotationOf = (id: string) => Array.from({ length: 48 }, (_, i) => !!rotationMap?.[id]?.[i]);
+    const minutesOf = (id: string) => rotationOf(id).filter(Boolean).length;
     const byId = new Map(roster.map(p => [p.id, p]));
     const starters: LineupRow[] = [];
     const used = new Set<string>();
@@ -64,11 +65,11 @@ function buildLineup(roster: Player[], depthChart: DepthChart | null | undefined
         const p = id ? byId.get(id) : undefined;
         if (!p || used.has(p.id)) continue;
         used.add(p.id);
-        starters.push({ player: p, pos, minutes: minutesOf(p.id) });
+        starters.push({ player: p, pos, minutes: minutesOf(p.id), rotation: rotationOf(p.id) });
     }
     const bench = roster
         .filter(p => !used.has(p.id))
-        .map(p => ({ player: p, pos: p.position, minutes: minutesOf(p.id) }))
+        .map(p => ({ player: p, pos: p.position, minutes: minutesOf(p.id), rotation: rotationOf(p.id) }))
         .sort((a, b) => b.minutes - a.minutes || calculatePlayerOvr(b.player) - calculatePlayerOvr(a.player));
     return { starters, bench };
 }
@@ -109,8 +110,21 @@ function SimpleSelect<T extends string>({ value, options, onChange, disabled }: 
     );
 }
 
-const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditions?: Map<string, number | null> }> = ({ starters, bench, conditions }) => {
-    const colSpan = conditions ? 5 : 4;
+/** 48분 로테이션 막대 — 분당 1칸, 쿼터 사이 2px 간격(로테이션 탭과 같은 의미: 칸이 채워지면 그 분에 코트) */
+const RotationStrip: React.FC<{ cells: boolean[]; starter: boolean }> = ({ cells, starter }) => (
+    <span className="flex h-2.5 w-full gap-[2px]" aria-hidden="true">
+        {[0, 1, 2, 3].map(q => (
+            <span key={q} className="flex-1 flex gap-px">
+                {cells.slice(q * 12, q * 12 + 12).map((on, i) => (
+                    <span key={i} className={`flex-1 rounded-[1px] ${on ? (starter ? 'bg-indigo-500' : 'bg-amber-500/80') : 'bg-slate-800'}`} />
+                ))}
+            </span>
+        ))}
+    </span>
+);
+
+const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditions?: Map<string, number | null>; showRotation?: boolean }> = ({ starters, bench, conditions, showRotation = false }) => {
+    const colSpan = 4 + (conditions ? 1 : 0) + (showRotation ? 1 : 0);
     const renderRow = (r: LineupRow, starter: boolean) => (
         <TableRow key={r.player.id} className="h-10">
             <TableCell align="center" className="text-sm font-bold text-white">{r.pos}</TableCell>
@@ -120,6 +134,9 @@ const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditi
                 <TableCell align="left">
                     <ConditionBar value={conditions.get(r.player.id) ?? r.player.condition ?? 100} size="xs" />
                 </TableCell>
+            )}
+            {showRotation && (
+                <TableCell align="left" className="!px-3"><RotationStrip cells={r.rotation} starter={starter} /></TableCell>
             )}
             <TableCell align="right" className={`pr-4 text-sm font-semibold tabular-nums ${r.minutes === 0 ? 'text-slate-500' : starter ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {r.minutes === 0 ? '–' : r.minutes}
@@ -135,16 +152,22 @@ const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditi
         <Table variant="flush" dividers={false} fullHeight={false} tableStyle={{ tableLayout: 'fixed' }}>
             <colgroup>
                 <col style={{ width: 52 }} />
-                <col style={{ width: 40 }} />
-                <col />
+                <col style={{ width: 48 }} />
+                <col style={showRotation ? { width: 168 } : undefined} />
                 {conditions && <col style={{ width: 88 }} />}
-                <col style={{ width: 56 }} />
+                {showRotation && <col />}
+                <col style={{ width: 48 }} />
             </colgroup>
             <TableHead>
                 <TableHeaderCell>POS</TableHeaderCell>
                 <TableHeaderCell>OVR</TableHeaderCell>
                 <TableHeaderCell align="left">선수</TableHeaderCell>
                 {conditions && <TableHeaderCell align="left">체력</TableHeaderCell>}
+                {showRotation && (
+                    <th className="px-3 bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">
+                        <span className="flex gap-[2px]">{['1Q', '2Q', '3Q', '4Q'].map(q => <span key={q} className="flex-1 text-left">{q}</span>)}</span>
+                    </th>
+                )}
                 <TableHeaderCell align="right" className="pr-4">분</TableHeaderCell>
             </TableHead>
             <TableBody>
@@ -271,9 +294,10 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                 {error && <div className="sm:hidden px-4 pb-3"><InlineNotice tone="danger" size="sm">{error}</InlineNotice></div>}
             </div>
 
-            <div className={`grid grid-cols-1 lg:grid-cols-3 border-b border-slate-700 ${running ? 'pointer-events-none opacity-60' : ''}`}>
+            {/* 2단: 우리 팀(로테이션 매트릭스 포함) | 상대(좁은 로스터 + 전술 선택) */}
+            <div className={`grid grid-cols-1 xl:grid-cols-2 border-b border-slate-700 ${running ? 'pointer-events-none opacity-60' : ''}`}>
                 {/* 우리 팀 */}
-                <section className="flex flex-col min-w-0 lg:border-r border-slate-700">
+                <section className="flex flex-col min-w-0 xl:border-r border-slate-700">
                     <PanelToolbar title="우리 팀" />
                     <SelectRow label="뎁스 · 로테이션">
                         <SimpleSelect value={depthKey} options={presetOptions(depthPresets)} onChange={setDepthKey} />
@@ -281,11 +305,11 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                     <SelectRow label="팀 전술">
                         <SimpleSelect value={teamKey} options={presetOptions(teamPresets)} onChange={setTeamKey} />
                     </SelectRow>
-                    <LineupTable starters={myLineup.starters} bench={myLineup.bench} conditions={conditions} />
+                    <LineupTable starters={myLineup.starters} bench={myLineup.bench} conditions={conditions} showRotation />
                 </section>
 
                 {/* 상대 — 팀 선택 · 전술 선택 2단 */}
-                <section className="flex flex-col min-w-0 lg:col-span-2">
+                <section className="flex flex-col min-w-0">
                     <PanelToolbar title="상대">
                         <div className="ml-auto w-60">
                             <SimpleSelect
@@ -303,7 +327,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                             />
                         </div>
                     </PanelToolbar>
-                    <div className="grid grid-cols-1 md:grid-cols-2 flex-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] flex-1">
                         <div className="flex flex-col min-w-0 md:border-r border-slate-700">
                             <SubHeader title="팀 선택" />
                             {oppLineup && <LineupTable starters={oppLineup.starters} bench={oppLineup.bench} />}
