@@ -183,7 +183,7 @@ const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditi
 const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offense' | 'defense' }> = ({ sliders, kind }) => {
     const items = (kind === 'offense' ? OFFENSE_SLIDER_GROUPS : DEFENSE_SLIDER_GROUPS).flatMap(g => g.items);
     return (
-        <div className="px-6 pt-1 pb-2 bg-slate-900 border-b border-slate-700">
+        <div className="px-6 pt-1 pb-4 flex flex-col">
             {items.map(item => {
                 const v = Number(sliders[item.key] ?? 0);
                 const isPnr = item.key === 'pnrDefense';
@@ -191,15 +191,57 @@ const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offens
                 const step = steps.reduce((best, s) => (Math.abs(s.value - v) < Math.abs(best.value - v) ? s : best), steps[0]);
                 const pct = isPnr ? ((v + 1) / 3) * 100 : v * 10;
                 return (
-                    <div key={item.key} className="h-[34px] flex items-center gap-3">
-                        <span className="w-28 shrink-0 text-sm font-semibold text-white truncate">{item.label}</span>
-                        <span className="flex-1 relative h-1.5 rounded-full bg-slate-800">
+                    <div key={item.key} className="py-1.5 flex flex-col gap-1.5">
+                        <span className="flex items-center justify-between gap-3 text-sm font-semibold">
+                            <span className="text-white truncate">{item.label}</span>
+                            <span className="text-slate-400 truncate">{step?.label}</span>
+                        </span>
+                        <span className="relative h-1.5 rounded-full bg-slate-800">
                             <span className="absolute inset-y-0 left-0 rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
                         </span>
-                        <span className="w-28 shrink-0 text-right text-sm font-semibold text-slate-400 truncate">{step?.label}</span>
                     </div>
                 );
             })}
+        </div>
+    );
+};
+
+/** 상대 로스터 요약 — 주전 5명 카드 + 로테이션 선수 칩(분) + 미출전 선수 칩 */
+const OpponentRoster: React.FC<{ starters: LineupRow[]; bench: LineupRow[] }> = ({ starters, bench }) => {
+    const rotation = bench.filter(r => r.minutes > 0);
+    const reserves = bench.filter(r => r.minutes === 0);
+    const chip = (r: LineupRow, dim: boolean) => (
+        <span key={r.player.id} className={`h-9 pl-1.5 pr-2.5 inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 min-w-0 ${dim ? 'opacity-60' : ''}`}>
+            <OvrBadge value={calculatePlayerOvr(r.player)} size="sm" className="!shadow-none" />
+            <span className="text-xs font-bold text-slate-400">{r.pos}</span>
+            <span className="text-sm font-semibold text-slate-200 truncate max-w-32">{r.player.name}</span>
+            {!dim && <span className="text-sm font-semibold tabular-nums text-amber-400">{r.minutes}</span>}
+        </span>
+    );
+    return (
+        <div className="px-6 py-4 flex flex-col gap-4 border-b border-slate-700">
+            <div className="grid grid-cols-5 gap-2">
+                {starters.map(r => (
+                    <div key={r.player.id} className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 px-2 py-2.5 flex flex-col items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-400">{r.pos}</span>
+                        <OvrBadge value={calculatePlayerOvr(r.player)} size="md" className="!shadow-none" />
+                        <span className="w-full text-center text-sm font-semibold text-slate-200 truncate">{r.player.name}</span>
+                        <span className="text-sm font-semibold tabular-nums text-emerald-400">{r.minutes}분</span>
+                    </div>
+                ))}
+            </div>
+            {rotation.length > 0 && (
+                <div className="flex flex-col gap-2">
+                    <span className="text-sm font-black text-slate-500">벤치</span>
+                    <div className="flex flex-wrap gap-2">{rotation.map(r => chip(r, false))}</div>
+                </div>
+            )}
+            {reserves.length > 0 && (
+                <div className="flex flex-col gap-2">
+                    <span className="text-sm font-black text-slate-500">미출전</span>
+                    <div className="flex flex-wrap gap-2">{reserves.map(r => chip(r, true))}</div>
+                </div>
+            )}
         </div>
     );
 };
@@ -308,7 +350,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                     <LineupTable starters={myLineup.starters} bench={myLineup.bench} conditions={conditions} showRotation />
                 </section>
 
-                {/* 상대 — 팀 선택 · 전술 선택 2단 */}
+                {/* 상대 — 로스터 요약(주전 카드 · 벤치/미출전 칩) + 전술(공격 | 수비) */}
                 <section className="flex flex-col min-w-0">
                     <PanelToolbar title="상대">
                         <div className="ml-auto w-60">
@@ -327,23 +369,23 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                             />
                         </div>
                     </PanelToolbar>
-                    <div className="grid grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] flex-1">
-                        <div className="flex flex-col min-w-0 md:border-r border-slate-700">
-                            <SubHeader title="팀 선택" />
-                            {oppLineup && <LineupTable starters={oppLineup.starters} bench={oppLineup.bench} />}
-                        </div>
-                        <div className="flex flex-col min-w-0 bg-slate-900">
-                            <SubHeader title="전술 선택" />
-                            <SelectRow label="공격 프리셋" divider={false}>
-                                <SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} />
-                            </SelectRow>
-                            {offense.sliders
-                                ? <SliderReadout sliders={offense.sliders} kind="offense" />
-                                : <div className="border-b border-slate-700" />}
-                            <SelectRow label="수비 프리셋" divider={false}>
-                                <SimpleSelect<TrainingDefensePresetId> value={defenseId} options={TRAINING_DEFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setDefenseId} />
-                            </SelectRow>
-                            <SliderReadout sliders={defense.sliders} kind="defense" />
+                    <div className="flex-1 flex flex-col bg-slate-900">
+                        <SubHeader title="로스터" />
+                        {oppLineup && <OpponentRoster starters={oppLineup.starters} bench={oppLineup.bench} />}
+                        <SubHeader title="전술" />
+                        <div className="grid grid-cols-1 md:grid-cols-2">
+                            <div className="flex flex-col min-w-0 md:border-r border-slate-800">
+                                <SelectRow label="공격 프리셋" divider={false}>
+                                    <SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} />
+                                </SelectRow>
+                                {offense.sliders && <SliderReadout sliders={offense.sliders} kind="offense" />}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                                <SelectRow label="수비 프리셋" divider={false}>
+                                    <SimpleSelect<TrainingDefensePresetId> value={defenseId} options={TRAINING_DEFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setDefenseId} />
+                                </SelectRow>
+                                <SliderReadout sliders={defense.sliders} kind="defense" />
+                            </div>
                         </div>
                     </div>
                 </section>
