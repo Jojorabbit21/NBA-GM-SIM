@@ -27,6 +27,7 @@ import { buildWindowedViewSince, buildLiveSummary, maxReplayLengthMs, type GameP
 import { getRoomReplayMs } from './replayConfig';
 import { verifyTokenCached, canReadRoomCached, createSharedLoader, LIVE_QUERY_TIMEOUT_MS } from './liveCache';
 import { preloadGameConfig } from './shared/services/admin/gameConfigService';
+import type { PracticeRequest } from './practiceRunner';
 
 const PORT = parseInt(Bun.env.PORT ?? '3001', 10);
 
@@ -212,6 +213,11 @@ const server = Bun.serve<WsData>({
             return handleSimOverride(req);
         }
 
+        // 트레이닝 세션(휴식일 연습 경기) 1회 실행 — 팀 소유자 JWT (practiceRunner.ts)
+        if (url.pathname === '/practice' && req.method === 'POST') {
+            return handlePractice(req);
+        }
+
         // 브라켓/스케줄 강제 초기화 (schedule null 복구용)
         if (url.pathname === '/finalize-room' && req.method === 'POST') {
             return handleFinalizeRoom(req);
@@ -312,6 +318,45 @@ async function handleSimOverride(req: Request): Promise<Response> {
     // 관리자 수동 시뮬 오버라이드는 항상 "지금 바로 시작"으로 처리 (원래 예정 시각 무시)
     const result = await simWorkerPool.runSimulationInWorker(roomId, gameId, true);
     return json(result, result.ok ? 200 : 500);
+}
+
+async function handlePractice(req: Request): Promise<Response> {
+    const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+            status,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' },
+        });
+
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const userId = token ? await verifyToken(token) : null;
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+
+    let body: Partial<PracticeRequest>;
+    try {
+        body = await req.json();
+    } catch {
+        return json({ error: 'invalid json' }, 400);
+    }
+    const slot = (v: unknown) => (v === 1 || v === 2 || v === 3 ? v : null);
+    if (!body.roomId || !body.opponentTeamId || !body.offensePreset || !body.defensePreset) {
+        return json({ error: 'roomId, opponentTeamId, offensePreset, defensePreset required' }, 400);
+    }
+    try {
+        // 워커에서 실행(실경기 큐 뒤) — 메인 스레드는 시뮬 동안에도 WS·HTTP를 계속 처리
+        const result = await simWorkerPool.runPracticeInWorker(userId, {
+            roomId: body.roomId,
+            opponentTeamId: body.opponentTeamId,
+            offensePreset: body.offensePreset,
+            defensePreset: body.defensePreset,
+            depthPresetSlot: slot(body.depthPresetSlot),
+            teamPresetSlot: slot(body.teamPresetSlot),
+        });
+        return 'error' in result ? json({ error: result.error }, result.status) : json(result);
+    } catch (e) {
+        console.error('[practice] 예외:', e);
+        return json({ error: 'internal error' }, 500);
+    }
 }
 
 /** [2026-10-19] 리그 관리 권한 — service_role 키, 해당 리그의 admin_user_id, 전역 어드민만 true.

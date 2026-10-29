@@ -6,6 +6,7 @@
  * docs/plan/worker-thread-sim-plan.md 참조.
  */
 import { runSimulation } from '../simRunner';
+import { runPractice } from '../practiceRunner';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 
 addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
@@ -24,6 +25,17 @@ addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
             // runSimulation()은 내부적으로 이미 try/catch해서 { ok:false, error } 를 반환하므로
             // 여기까지 throw가 올라오는 건 예상 밖의 상황(예: 모듈 로드 실패)이다. 그래도 워커가
             // 응답 없이 죽어버리면 풀의 타임아웃(60초)에 걸려서야 감지되니, 잡히는 대로 즉시 보고한다.
+            postMessage({ type: 'failure', id: msg.id, error: String(err) } satisfies WorkerResponse);
+        }
+        return;
+    }
+
+    // [2026-10-29] 트레이닝 세션 — runPractice도 실패를 { ok:false, status, error }로 돌려주므로 throw는 예상 밖 상황만
+    if (msg.type === 'practice') {
+        try {
+            const result = await runPractice(msg.userId, msg.req);
+            postMessage({ type: 'success', id: msg.id, result } satisfies WorkerResponse);
+        } catch (err) {
             postMessage({ type: 'failure', id: msg.id, error: String(err) } satisfies WorkerResponse);
         }
         return;

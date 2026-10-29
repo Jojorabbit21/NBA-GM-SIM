@@ -6,6 +6,7 @@
  */
 import { supabase } from '../supabaseAdmin';
 import type { SimResult } from '../simRunner';
+import type { PracticeRequest, PracticeResult } from '../practiceRunner';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 
 const WORKER_URL = new URL('./simWorker.ts', import.meta.url);
@@ -20,23 +21,21 @@ interface Slot {
     busy: boolean;
 }
 
-interface QueuedTask {
-    id: string;
-    roomId: string;
-    gameId: string;
-    forceStartNow?: boolean;
-    resolve: (r: SimResult) => void;
-    reject: (e: Error) => void;
-}
+// [2026-10-29] 작업 종류 2개 — 실경기(game)와 트레이닝 세션(practice). 같은 워커를 쓰되 실경기 큐가 비었을 때만 트레이닝을 꺼낸다
+// (실경기는 늦으면 중계 시작이 밀리고, 트레이닝은 사용자 대기만 길어진다).
+type QueuedTask =
+    | { kind: 'game'; id: string; roomId: string; gameId: string; forceStartNow?: boolean; resolve: (r: SimResult) => void; reject: (e: Error) => void }
+    | { kind: 'practice'; id: string; userId: string; req: PracticeRequest; resolve: (r: PracticeResult) => void; reject: (e: Error) => void };
 
-interface InFlightTask extends QueuedTask {
+type InFlightTask = QueuedTask & {
     slotIndex: number;
     timeoutHandle: ReturnType<typeof setTimeout>;
-}
+};
 
 class SimWorkerPool {
     private slots: Slot[] = [];
     private queue: QueuedTask[] = [];
+    private practiceQueue: QueuedTask[] = [];
     private inFlight = new Map<string, InFlightTask>();
     private readonly poolSize: number;
     private initialized = false;
@@ -67,7 +66,15 @@ class SimWorkerPool {
     /** 기존 runSimulation(roomId, gameId, forceStartNow)과 동일한 시그니처 — 호출부 diff 최소화. */
     runSimulationInWorker(roomId: string, gameId: string, forceStartNow = false): Promise<SimResult> {
         return new Promise((resolve, reject) => {
-            this.queue.push({ id: crypto.randomUUID(), roomId, gameId, forceStartNow, resolve, reject });
+            this.queue.push({ kind: 'game', id: crypto.randomUUID(), roomId, gameId, forceStartNow, resolve, reject });
+            this.dispatch();
+        });
+    }
+
+    /** 트레이닝 세션 1회(practiceRunner.runPractice) — 실경기 큐 뒤에서 처리 */
+    runPracticeInWorker(userId: string, req: PracticeRequest): Promise<PracticeResult> {
+        return new Promise((resolve, reject) => {
+            this.practiceQueue.push({ kind: 'practice', id: crypto.randomUUID(), userId, req, resolve, reject });
             this.dispatch();
         });
     }
@@ -150,7 +157,7 @@ class SimWorkerPool {
         if (slot) slot.busy = false;
 
         if ('error' in msg) task.reject(new Error(msg.error));
-        else task.resolve(msg.result);
+        else (task.resolve as (r: SimResult | PracticeResult) => void)(msg.result);
 
         this.dispatch();
     }
@@ -168,7 +175,7 @@ class SimWorkerPool {
             if (task.slotIndex !== slotIndex) continue;
             clearTimeout(task.timeoutHandle);
             this.inFlight.delete(id);
-            await this.deleteClaim(task.roomId, task.gameId);
+            if (task.kind === 'game') await this.deleteClaim(task.roomId, task.gameId);   // 트레이닝은 클레임 없음
             task.reject(new Error('worker crashed'));
         }
 
@@ -186,29 +193,26 @@ class SimWorkerPool {
     }
 
     private dispatch(): void {
-        while (this.queue.length > 0) {
+        while (this.queue.length > 0 || this.practiceQueue.length > 0) {
             const idleIndex = this.slots.findIndex(s => s?.ready && !s.busy);
             if (idleIndex === -1) return;
 
-            const task = this.queue.shift()!;
+            const task = (this.queue.length > 0 ? this.queue : this.practiceQueue).shift()!;
             const slot = this.slots[idleIndex];
             slot.busy = true;
 
+            const label = task.kind === 'game' ? `room=${task.roomId} game=${task.gameId}` : `practice room=${task.req.roomId} user=${task.userId}`;
             const timeoutHandle = setTimeout(() => {
-                console.error(
-                    `[simPool] task ${task.id} (room=${task.roomId} game=${task.gameId}) timed out — restarting worker#${idleIndex}`,
-                );
+                console.error(`[simPool] task ${task.id} (${label}) timed out — restarting worker#${idleIndex}`);
                 this.handleCrash(idleIndex);
             }, TASK_TIMEOUT_MS);
 
-            this.inFlight.set(task.id, { ...task, slotIndex: idleIndex, timeoutHandle });
-            slot.worker.postMessage({
-                type: 'run',
-                id: task.id,
-                roomId: task.roomId,
-                gameId: task.gameId,
-                forceStartNow: task.forceStartNow,
-            } satisfies WorkerRequest);
+            this.inFlight.set(task.id, { ...task, slotIndex: idleIndex, timeoutHandle } as InFlightTask);
+            slot.worker.postMessage(
+                task.kind === 'game'
+                    ? { type: 'run', id: task.id, roomId: task.roomId, gameId: task.gameId, forceStartNow: task.forceStartNow } satisfies WorkerRequest
+                    : { type: 'practice', id: task.id, userId: task.userId, req: task.req } satisfies WorkerRequest,
+            );
         }
     }
 }

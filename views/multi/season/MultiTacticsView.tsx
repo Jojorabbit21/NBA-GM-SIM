@@ -58,14 +58,20 @@ import { getTeamTheme } from '../../../utils/teamTheme';
 import { getReadableTextColor } from '../../../utils/colorContrast';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { PhoneTeamTactics } from '../../../components/dashboard/tactics/PhoneTeamTactics';
+import { TrainingSessionPanel, type TrainingOpponent } from '../../../components/multi/training/TrainingSessionPanel';
+import { TrainingLogPanel } from '../../../components/multi/training/TrainingLogPanel';
+import { TrainingResultView, type TrainingTeamInfo } from '../../../components/multi/training/TrainingResultView';
+import { startTrainingSession, type TrainingStartRequest } from '../../../services/multi/trainingService';
+import { useTrainingStatus, useTrainingLog, trainingStatusKey, trainingLogKey } from '../../../hooks/useTraining';
+import { useQueryClient } from '@tanstack/react-query';
 
 type PresetNotice = { tone: 'info' | 'danger'; text: string };
 const PRESET_KINDS: TacticPresetKind[] = ['depth', 'team'];
 import type { Team, Game, Player, GameTactics, DepthChart } from '../../../types';
 
-type MultiTacticsTab = 'depth' | 'team' | 'insights';
+type MultiTacticsTab = 'depth' | 'team' | 'training' | 'trainingLog' | 'insights';
 // [2026-10-17] 'player' removed: per-player tactics disabled (deep link ?tab=player now falls back to 'depth').
-const MULTI_TACTICS_TABS: MultiTacticsTab[] = ['depth', 'team', 'insights'];
+const MULTI_TACTICS_TABS: MultiTacticsTab[] = ['depth', 'team', 'training', 'trainingLog', 'insights'];
 
 // 팀 전술 탭의 슈팅 존 히트맵(TeamZoneChart)은 roster[].stats.zone_rim_m 등을 합산해서
 // 그리는데, 드래프트 직후 새로 매핑한 Player는 stats가 전부 0(defaultStats)이라 항상
@@ -798,6 +804,57 @@ const MultiTacticsView: React.FC = () => {
         [presetsByKind.depth, presetSlots.depth, presetsLoading, saving, presetNotices.depth, canRevert.depth, handleSelectPreset, handleCreatePreset, handleRenamePreset, handleDeletePreset, handleRevertPreset],
     );
 
+    // ── 트레이닝 세션 / 기록 탭 [2026-10-29] — docs/plan/practice-scrimmage-plan.md ──────────────
+    // 상대 후보 = 우리 팀을 뺀 리그 팀(로스터는 buildLeagueTeams 결과 — 인사이트 탭과 같은 캐시). 기본 상대 = 다음 경기 상대.
+    const trainingOpponents = useMemo<TrainingOpponent[]>(
+        () => leagueTeamsWithStats
+            .filter(t => t.id !== myTeamId)
+            .map(t => ({ id: t.id, name: t.name, roster: t.roster }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+        [leagueTeamsWithStats, myTeamId],
+    );
+    const nextOpponentId = useMemo(() => {
+        if (!myTeamId) return undefined;
+        const now = getServerNow();
+        const next = normalizedSchedule
+            .filter(g => (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId) && !isFinal(g, now))
+            .sort((a, b) => (a.scheduledAt ?? '').localeCompare(b.scheduledAt ?? ''))[0];
+        return next ? (next.homeTeamId === myTeamId ? next.awayTeamId : next.homeTeamId) : undefined;
+    }, [normalizedSchedule, myTeamId]);
+    const unavailableIds = useMemo(() => new Set(activeInjuryByPlayer.keys()), [activeInjuryByPlayer]);
+    // 오늘 훈련 가능 여부·횟수는 서버 판정(get_my_practice_status — 휴식일 + 가상 자정 전 + 하루 3회)
+    const queryClient = useQueryClient();
+    const { data: trainingStatus } = useTrainingStatus(preferVirtual ? room?.id : null);
+    const { data: trainingRows = [], isPending: trainingLogPending } = useTrainingLog(room?.id, myTeamId);
+    const trainingSessionId = searchParams.get('session');
+    const openTrainingResult = useCallback((id: string | null) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', 'trainingLog');
+            if (id) next.set('session', id); else next.delete('session');
+            return next;
+        }, { replace: !id });
+    }, [setSearchParams]);
+    const handleStartTraining = useCallback(async (req: TrainingStartRequest): Promise<string | null> => {
+        const res = await startTrainingSession(req);
+        // 성공·실패 모두 상태를 다시 읽는다(실패 사유가 시간대 종료·횟수 소진일 수 있음)
+        queryClient.invalidateQueries({ queryKey: trainingStatusKey(room?.id) });
+        if ('error' in res) return res.error;
+        queryClient.invalidateQueries({ queryKey: trainingLogKey(room?.id, myTeamId) });
+        queryClient.invalidateQueries({ queryKey: ['leagueRawSeasonInjury', room?.id] });   // 체력(room_player_state)
+        openTrainingResult(res.practiceGameId);
+        return null;
+    }, [queryClient, room?.id, myTeamId, openTrainingResult]);
+    const resolveTrainingTeam = useCallback((teamId: string): TrainingTeamInfo => {
+        const row = leagueTeams.find(t => t.team_slug === teamId);
+        return {
+            id: teamId,
+            name: row?.team_name ?? teamId,
+            abbr: row?.team_abbr ?? teamId.toUpperCase().slice(0, 3),
+            color: row?.color_primary ?? TEAM_DATA[teamId]?.colors?.primary ?? '#4f46e5',
+        };
+    }, [leagueTeams]);
+
     // tactics가 없는 신규 유저: 로스터 로드 완료 후 자동 생성
     // preserveDraftOrder=true — 드래프트에서 먼저 뽑은 선수가 선발을 유지하고,
     // 같은 포지션을 나중에 뽑은 선수(OVR이 더 높아도)는 벤치로 배정되도록 한다.
@@ -818,6 +875,8 @@ const MultiTacticsView: React.FC = () => {
     const tacticsTabs = [
         { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
         { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+        { id: 'training' as MultiTacticsTab,  label: '트레이닝 세션' },
+        { id: 'trainingLog' as MultiTacticsTab, label: '트레이닝 기록' },
         { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
         // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
     ];
@@ -924,6 +983,36 @@ const MultiTacticsView: React.FC = () => {
                             </div>
                         </div>
                     </div>
+    );
+    const trainingPanel = leagueTeamsLoading || !myTeamId ? (
+        <Spinner variant="section" />
+    ) : (
+        <TrainingSessionPanel
+            roomId={room?.id ?? ''}
+            myTeamId={myTeamId}
+            myRoster={team.roster}
+            savedTactics={lastSavedTactics ?? userTactics!}
+            savedDepthChart={lastSavedTactics ? lastSavedDepthChart : depthChart}
+            depthPresets={presetsByKind.depth}
+            teamPresets={presetsByKind.team}
+            conditions={playerConditions}
+            opponents={trainingOpponents}
+            unavailableIds={unavailableIds}
+            defaultOpponentId={nextOpponentId}
+            available={!!trainingStatus?.available}
+            remaining={trainingStatus ? Math.max(0, trainingStatus.limit - trainingStatus.used) : 0}
+            onStart={handleStartTraining}
+        />
+    );
+    const trainingLogPanel = trainingSessionId && myTeamId ? (
+        <TrainingResultView
+            resultId={trainingSessionId}
+            myTeam={resolveTrainingTeam(myTeamId)}
+            resolveTeam={resolveTrainingTeam}
+            onBack={() => openTrainingResult(null)}
+        />
+    ) : (
+        <TrainingLogPanel myTeam={team} allTeams={leagueTeamsWithStats} rows={trainingRows} loading={trainingLogPending} onOpenResult={openTrainingResult} />
     );
     const insightsPanel = (
                     <div className="p-8 pb-20 flex flex-col gap-4">
@@ -1037,6 +1126,8 @@ const MultiTacticsView: React.FC = () => {
                             playTypeActual={playTypeActual}
                         />
                     )}
+                    {activeTab === 'training' && trainingPanel}
+                    {activeTab === 'trainingLog' && trainingLogPanel}
                     {activeTab === 'insights' && (
                         // [2026-10-28] 폰 인사이트(§9-1-11 X6): 데스크톱 그리드 대신 1열 스택 — 팀 리더(1열) → 팀 지표 순위 → 선수 스탯 → 존 표.
                         // 시즌 경기 로그·존 샷차트는 폰에서 숨김(2026-10-28 사용자 지시). 위젯은 데스크톱 컴포넌트 그대로(표 2개는 폰에서 첫 열 sticky).
@@ -1098,6 +1189,8 @@ const MultiTacticsView: React.FC = () => {
                 tabs={[
                     { id: 'depth' as MultiTacticsTab,     label: '뎁스 차트 · 로테이션' },
                     { id: 'team' as MultiTacticsTab,      label: '팀 전술' },
+                    { id: 'training' as MultiTacticsTab,  label: '트레이닝 세션' },
+                    { id: 'trainingLog' as MultiTacticsTab, label: '트레이닝 기록' },
                     { id: 'insights' as MultiTacticsTab,  label: '인사이트' },
                     // 개인 전술 비활성화(2026-10-17) — 탭/딥링크/패널 렌더 모두 제거. 복구는 dev-log 참조.
                 ]}
@@ -1139,6 +1232,8 @@ const MultiTacticsView: React.FC = () => {
                     />
                 )}
                 {activeTab === 'team' && teamPanel}
+                {activeTab === 'training' && trainingPanel}
+                {activeTab === 'trainingLog' && trainingLogPanel}
                 {activeTab === 'insights' && insightsPanel}
             </div>
         </div>

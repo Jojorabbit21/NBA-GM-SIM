@@ -34,6 +34,49 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-29 — 트레이닝 세션 서버·DB·클라이언트 연결 (DB 적용 완료, 서버·클라 미배포)
+
+**배경**: 탭 화면(아래 항목)에 실제 기능 연결. 설계 `docs/plan/practice-scrimmage-plan.md`.
+
+**변경 파일**:
+- `migrations/add_practice_games.sql` (신규, **2026-10-29 운영 DB 적용** — apply_migration `add_practice_games`) — `practice_games`(UNIQUE room·team·virtual_date·slot, RLS 본인 팀 select만) · `practice_status(room, team)`(service_role) · `get_my_practice_status(room)`(authenticated) · `apply_practice_result(room, team, row, drains)`(service_role: 가능 여부 재확인 → insert(slot = used+1) → room_player_state 체력 감소량 반영, 회복 기준일 NULL이면 날짜−1)
+- `server/src/practiceRunner.ts` (신규) — 입력 준비(loadRoomPlayers·recoverPlayersThrough·상태 오버레이·정규화·체력 설정)는 simRunner와 같은 모듈 사용. 우리 팀 = 저장 전술 + 프리셋(서버가 room_member_tactic_presets 직접 읽음, 로스터 밖 id 제거), 상대 = 부상 제외·체력 100·프리셋 슬라이더 + `planAiTeam(team, base)`(커밋본 2인자 시그니처) 뎁스·로테이션. 연장·부상·출장정지 off. 체력 = `PRACTICE_FATIGUE_K(20) × mp / 48`. 결과는 practice_games에만(games/game_pbp/통계 쓰기 없음). **워커 실행**: `workers/protocol.ts`에 `practice` 요청 추가, `simWorker.ts`가 runPractice 실행, `simWorkerPool.ts`에 별도 `practiceQueue` + `runPracticeInWorker` — dispatch는 실경기 큐가 비었을 때만 트레이닝을 꺼냄(Fly cpus=1·워커 1개, 실경기 평균 약 2초). 워커 크래시 시 game_sim_claims 정리는 실경기 작업만
+- `server/src/index.ts` — `POST /practice` 라우트 + `handlePractice`(JWT → simWorkerPool.runPracticeInWorker)
+- `services/multi/trainingService.ts` — fetchTrainingStatus/Log/Result 추가, `hooks/useTraining.ts` (신규) — 상태(30초 폴링)·기록·결과 쿼리
+- `components/multi/training/TrainingResultView.tsx` (신규) — 종료 화면(점수·쿼터·상대 전술·체력 감소·탭 5개: 박스스코어/경기 기록/샷차트/로테이션/온오프, 기존 탭 컴포넌트 재사용)
+- `components/multi/training/TrainingLogPanel.tsx` — practice_games 행 → TeamGameLog
+- `views/multi/season/MultiTacticsView.tsx` — 가능 여부·남은 횟수를 서버 상태로, 시작 성공 시 상태·기록·체력(leagueRawSeasonInjury) 캐시 무효화 후 `?tab=trainingLog&session=<id>` 결과 화면, 클라 휴식일 계산 삭제
+
+**Before**: 남은 횟수 상수 3, 기록 빈 목록, 시작 → 404.
+
+**After**: 위와 같음. 공격 '자동'은 C4 커밋 전까지 중립(DEFAULT_SLIDERS) 공격.
+
+**검증**: 클라 `tsc` 신규 오류 0(63 유지), `vite build` 통과, 서버 `tsc` 신규 오류 0(Bun 타입 선언 등 기존 47). DB 미적용·Fly 미배포라 실동작 미확인.
+
+**롤백 방법**: 마이그레이션 상단 주석의 DROP 4줄, `practiceRunner.ts`·`useTraining.ts`·`TrainingResultView.tsx` 삭제, index.ts의 라우트·핸들러·import 제거, workers 3파일의 practice 분기·practiceQueue 제거(실경기 경로는 kind==='game' 분기 그대로), MultiTacticsView는 아래 항목 상태로.
+
+## 2026-10-29 — 멀티 전술 화면: 트레이닝 세션 · 트레이닝 기록 탭 추가 (화면만, 서버 미연결)
+
+**배경**: 휴식일 연습 경기(트레이닝 세션) 기능 — 설계 `docs/plan/practice-scrimmage-plan.md`, 목업 https://claude.ai/artifact/Q8noraocakoTWxTMLC1ufA. 서버(`POST /practice`, `practice_games`, 체력 반영)보다 화면 먼저.
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` — 탭 `training`·`trainingLog` 추가(순서 뎁스 · 팀 전술 · 트레이닝 세션 · 트레이닝 기록 · 인사이트, 데스크톱·폰 공통), 상대 후보(`leagueTeamsWithStats`에서 우리 팀 제외)·다음 상대·부상자 Set·휴식일 판정(`currentSimDate`에 우리 팀 경기 없음 + main_league)·`handleStartTraining`
+- `components/multi/training/TrainingSessionPanel.tsx` (신규) — 시작 바(훈련 가능/불가능 칩 · 남은 훈련 블록 · [훈련 시작]) + 우리 팀(뎁스·팀 전술 프리셋 드롭다운, 미선택 = 저장된 전술) + 상대(팀 드롭다운 → `generateAutoTactics` 미리보기 표 / 공격·수비 프리셋 + 슬라이더 읽기 전용)
+- `components/multi/training/TrainingLogPanel.tsx` (신규) — `TeamGameLog` 재사용, 기록 → Game 변환
+- `components/roster/TeamGameLog.tsx` — 선택 prop 2개 추가: `emptyTitle`, `oppSubLabelByGameId`(상대 이름 옆 12px slate-500). 기존 호출부 동작 불변
+- `services/multi/trainingPresets.ts` (신규) — 공격 9(자동 포함)·수비 6 프리셋 값, `TRAINING_SESSIONS_PER_REST_DAY = 3`. 공격 값은 서버 C4 `offensePresets.ts`와 동일(공용화는 C4 커밋 후 P0)
+- `services/multi/trainingService.ts` (신규) — `startTrainingSession` → Fly `POST /practice`(엔드포인트 미구현이라 지금은 실패 → InlineNotice)
+
+**Before**: 전술 탭 3개(`'depth' | 'team' | 'insights'`), `TeamGameLog` 빈 상태 문구 고정("경기 기록이 없습니다.").
+
+**After**: 탭 5개. 트레이닝 기록은 `records={[]}`(P3에서 `practice_games` 조회로 교체). 남은 횟수는 상수 3 고정, 가상 자정 이후 시간대 판정 없음(서버 연결 때). 상대 미리보기 뎁스는 클라 `generateAutoTactics` — 실제 경기는 서버 AI 감독 `planAiTeam`이 정하므로 다를 수 있음.
+
+**검증**: `tsc --noEmit` 신규 오류 0(기존 63건 그대로), `vite build` 통과(순환 임포트 없음). 브라우저 확인은 미실시.
+
+**후속(같은 날)**: 폰에서 시작 바가 줄바꿈으로 뭉개짐("훈련 가\n능", "3 /\n3") → 칩·라벨·숫자·버튼 `whitespace-nowrap`/`shrink-0`, 폰(<640) 좌우 패딩 32→16·간격 16→12, 횟수 블록 숨김(숫자만), 실패 안내는 폰에서 바 아래 줄로.
+
+**롤백 방법**: 신규 4파일 삭제 + `MultiTacticsView.tsx`의 탭 타입·배열·트레이닝 블록·렌더 4줄 제거 + `TeamGameLog.tsx`의 prop 2개 제거(빈 상태 문구 원복).
+
 ## 2026-10-29 — 클라이언트 능력치 합성값(ins/out/ath 등)을 서버 정의로 통일
 
 **배경**: 엔진 전수 조사(`docs/engine/engine-anatomy.md`) 중 클라이언트와 서버 dataMapper의 합성값 정의 불일치 발견. 엔진에서 `ins`는 driver·roller 아키타입, `out`은 DriveKick 슈터 선정에 쓰여 싱글(클라)과 멀티(서버)의 선수 선정이 미세하게 달랐다. 화면(드래프트 풀·스카우팅·계약 탭 INS/OUT/ATH), 뎁스 자동 정렬, 싱글 AI 전술 생성, CPU 트레이드·드래프트의 "3점 필요" 판단도 클라 정의를 쓴다. 사용자 결정: 멀티가 쓰는 서버 정의로 통일.

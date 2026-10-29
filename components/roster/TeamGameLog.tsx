@@ -19,6 +19,9 @@ interface TeamGameLogProps {
     onScoreClick?: (gameId: string) => void;
     // 상대팀 이름 클릭 시 그 팀 로스터로 전환
     onTeamClick?: (teamId: string) => void;
+    // [2026-10-29] 트레이닝 기록 탭 재사용 — 빈 상태 문구, 상대 이름 옆 보조 표기(상대 전술 프리셋)
+    emptyTitle?: string;
+    oppSubLabelByGameId?: Record<string, string>;
 }
 
 // Column definitions for game log table
@@ -145,7 +148,7 @@ export function computeTeamGameAvg(rows: TeamGameRow[]): Record<string, number> 
     return avg;
 }
 
-export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick }) => {
+export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick, emptyTitle, oppSubLabelByGameId }) => {
     const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
     const { sortConfig, sortProps } = useTableSort({ key: 'date', direction: 'asc' });
 
@@ -250,6 +253,9 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                                 {oppTeam?.name || row.oppId}
                             </span>
                         </TeamHover>
+                        {oppSubLabelByGameId?.[row.gameId] && (
+                            <span className="text-xs text-slate-500 truncate">{oppSubLabelByGameId[row.gameId]}</span>
+                        )}
                     </div>
                 </TableCell>
                 {/* 결과 */}
@@ -294,7 +300,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
     if (gameRows.length === 0) {
         return (
             <div className="h-full flex items-center justify-center">
-                <EmptyState title="경기 기록이 없습니다." />
+                <EmptyState title={emptyTitle ?? '경기 기록이 없습니다.'} />
             </div>
         );
     }
