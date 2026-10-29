@@ -34,6 +34,41 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-29 — 클라이언트 능력치 합성값(ins/out/ath 등)을 서버 정의로 통일
+
+**배경**: 엔진 전수 조사(`docs/engine/engine-anatomy.md`) 중 클라이언트와 서버 dataMapper의 합성값 정의 불일치 발견. 엔진에서 `ins`는 driver·roller 아키타입, `out`은 DriveKick 슈터 선정에 쓰여 싱글(클라)과 멀티(서버)의 선수 선정이 미세하게 달랐다. 화면(드래프트 풀·스카우팅·계약 탭 INS/OUT/ATH), 뎁스 자동 정렬, 싱글 AI 전술 생성, CPU 트레이드·드래프트의 "3점 필요" 판단도 클라 정의를 쓴다. 사용자 결정: 멀티가 쓰는 서버 정의로 통일.
+
+**변경 파일**:
+- `services/dataMapper.ts` — `mapRawPlayerToRuntimePlayer`의 calculatedIns/Out/Ath
+- `hooks/useGameData.ts` — 싱글 커스텀 모드 `applyCustomMode`의 ins/out/plm/reb/ath 재계산
+- `server/src/shared/dataMapper.ts` — `CATEGORY_ATTRS` 위에 세 곳 동기화 주석만 추가(로직 변경 없음, 배포 불필요)
+
+**Before**:
+```ts
+// services/dataMapper.ts
+const avg3pt = Math.round((threeCorner + three45 + threeTop) / 3);
+ins = round((layup + dunk + postPlay + drawFoul + hands) / 5)
+out = round((closeShot + midRange + avg3pt + ft + shotIq + offConsist) / 6)
+ath = round((speed + agility + strength + vertical + stamina + hustle + durability) / 7)
+// hooks/useGameData.ts applyCustomMode — 위와 같고 추가로
+plm = round((passAcc + handling + spdBall + passIq + passVision) / 5)
+reb = round((offReb + defReb) / 2)
+```
+
+**After** (서버 `CATEGORY_ATTRS`와 동일):
+```ts
+ins = round((closeShot + layup + dunk + postPlay + drawFoul) / 5)
+out = round((midRange + threeCorner + three45 + threeTop + shotIq + offConsist) / 6)
+plm = round((passAcc + handling + spdBall + passIq + passVision + offBallMovement) / 6)
+def = round((intDef + perDef + steal + blk + helpDefIq + passPerc + defConsist) / 7)   // 변화 없음
+reb = round((offReb + defReb + boxOut) / 3)
+ath = round((speed + agility + strength + vertical + stamina + hustle) / 6)
+```
+
+**검증**: tsc 해당 파일 오류 없음. NBA Active 로스터 421명 × (오버라이드 적용/미적용) 842건을 클라·서버 매퍼에 넣어 ins/out/plm/def/reb/ath 전부 일치. 화면 값 변화(이전 클라 대비, NBA Active 로스터): OUT 평균 −0.9(3점 약한 빅맨 최대 −18: 아담스 64→46, 고베어 54→39, 야니스 74→59 / 슈터 상승: 돈치치 90→96, 커리 93→96), INS 평균 +0.75(−6~+10, 고베어 74→81), ATH 평균 −0.2. OVR은 개별 능력치가 있으면 합성값을 쓰지 않아(ovrUtils 폴백 전용) 영향 없음. 서버(멀티) 결과는 불변.
+
+**롤백 방법**: 위 Before 식으로 두 파일(services/dataMapper.ts, hooks/useGameData.ts) 되돌리기. 서버는 주석만 바뀌어 되돌릴 필요 없음.
+
 ## 2026-10-29 — Vercel Edge Request 절감(Hobby 월 1M 한도 초과로 서비스 정지)
 
 **배경**: 2026-10-29 Vercel "Paused · Edge Requests"(CDN Requests 1.2M / 1M). 대시보드 경로별 집계에서 `/version.json` 2.3K, `/logos/teams/*.svg` 30개 각 1.6~2.1K(합계 약 5만, Cached 100% — CDN 캐시 적중도 요청 1건으로 집계). 원인 = 정적 파일에 캐시 헤더가 없어(Vercel 기본 `max-age=0, must-revalidate`) 페이지 로드마다 로고 · 아이콘 · JS를 전부 재검증 + 5분 버전 폴링 + Speed Insights 전송.

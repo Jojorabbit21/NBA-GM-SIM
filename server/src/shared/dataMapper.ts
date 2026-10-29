@@ -9,6 +9,7 @@ import { calculateOvrWithArchetype } from './utils/ovrUtils.ts';
 
 // ── 카테고리 속성 정의 ────────────────────────────────────────────────────────
 
+// [2026-10-29] 클라이언트 services/dataMapper.ts·hooks/useGameData.ts(applyCustomMode)도 이 정의로 통일됨 — 바꿀 때 세 곳을 같이 바꿀 것.
 const CATEGORY_ATTRS: Record<string, string[]> = {
     ins: ['closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul'],
     out: ['midRange', 'threeCorner', 'three45', 'threeTop', 'shotIq', 'offConsist'],

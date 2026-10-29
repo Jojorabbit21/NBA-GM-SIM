@@ -299,13 +299,15 @@ export const mapRawPlayerToRuntimePlayer = (
     const id = dbId ? String(dbId) : generateStableId(name, teamId);
 
     // [New] Dynamic Calculation of Category Averages
-    const avg3pt = Math.round((statsObj.threeCorner + statsObj.three45 + statsObj.threeTop) / 3);
-    const calculatedIns = Math.round((statsObj.layup + statsObj.dunk + statsObj.postPlay + statsObj.drawFoul + statsObj.hands) / 5);
-    const calculatedOut = Math.round((statsObj.closeShot + statsObj.midRange + avg3pt + statsObj.ft + statsObj.shotIq + statsObj.offConsist) / 6);
+    // [2026-10-29] ins/out/ath를 server/src/shared/dataMapper.ts의 CATEGORY_ATTRS와 같은 정의로 통일 —
+    // 이전 클라 정의(ins에 hands, out에 closeShot·ft·3점 평균 1칸, ath에 durability)가 서버와 달라 싱글/멀티 엔진의
+    // driver·roller 아키타입과 DriveKick 슈터 선정이 어긋났다. 두 파일을 같이 바꿀 것.
+    const calculatedIns = Math.round((statsObj.closeShot + statsObj.layup + statsObj.dunk + statsObj.postPlay + statsObj.drawFoul) / 5);
+    const calculatedOut = Math.round((statsObj.midRange + statsObj.threeCorner + statsObj.three45 + statsObj.threeTop + statsObj.shotIq + statsObj.offConsist) / 6);
     const calculatedPlm = Math.round((statsObj.passAcc + statsObj.handling + statsObj.spdBall + statsObj.passIq + statsObj.passVision + statsObj.offBallMovement) / 6);
     const calculatedDef = Math.round((statsObj.intDef + statsObj.perDef + statsObj.steal + statsObj.blk + statsObj.helpDefIq + statsObj.passPerc + statsObj.defConsist) / 7);
     const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb + statsObj.boxOut) / 3);
-    const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
+    const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle) / 6);
 
     // 3. Determine OVR — 항상 능력치 기반 동적 계산 (성장/퇴화 반영)
     const manualOvr = Number(getCol(p, ['ovr', 'OVR']));

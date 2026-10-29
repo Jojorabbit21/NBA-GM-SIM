@@ -13,6 +13,7 @@ PBP(Play-by-Play) 경기 시뮬레이션 엔진의 구성요소.
 
 | 문서 | 설명 | 핵심 파일 |
 |------|------|----------|
+| [engine-anatomy.md](engine-anatomy.md) | **엔진 전체 해부도(2026-10-29)** — 경기 루프·포세션 판정 순서·성공률 수식·체력·교체·영향 지도(슬라이더/능력치/성향)·측정치·알려진 이슈. 엔진 작업 시 먼저 열 것 | 엔진 전체 |
 | [pbp-engine.md](pbp-engine.md) | PBP 엔진 내부 구조 (포세션 8단계) | possessionHandler.ts, flowEngine.ts, playTypes.ts |
 
 ---

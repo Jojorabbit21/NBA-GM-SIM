@@ -149,13 +149,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         }
 
         // 3. 카테고리 평균 재계산
-        const avg3pt = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
-        const ins = Math.round((p.layup + p.dunk + p.postPlay + p.drawFoul + p.hands) / 5);
-        const out = Math.round((p.closeShot + p.midRange + avg3pt + p.ft + p.shotIq + p.offConsist) / 6);
-        const plm = Math.round((p.passAcc + p.handling + p.spdBall + p.passIq + p.passVision) / 5);
+        // [2026-10-29] server/src/shared/dataMapper.ts CATEGORY_ATTRS·services/dataMapper.ts와 같은 정의로 통일
+        //   (이전: ins에 hands, out에 closeShot·ft·3점 평균 1칸, plm에 offBallMovement 없음, reb에 boxOut 없음, ath에 durability)
+        const ins = Math.round((p.closeShot + p.layup + p.dunk + p.postPlay + p.drawFoul) / 5);
+        const out = Math.round((p.midRange + p.threeCorner + p.three45 + p.threeTop + p.shotIq + p.offConsist) / 6);
+        const plm = Math.round((p.passAcc + p.handling + p.spdBall + p.passIq + p.passVision + p.offBallMovement) / 6);
         const def = Math.round((p.intDef + p.perDef + p.steal + p.blk + p.helpDefIq + p.passPerc + p.defConsist) / 7);
-        const reb = Math.round((p.offReb + p.defReb) / 2);
-        const ath = Math.round((p.speed + p.agility + p.strength + p.vertical + p.stamina + p.hustle + p.durability) / 7);
+        const reb = Math.round((p.offReb + p.defReb + p.boxOut) / 3);
+        const ath = Math.round((p.speed + p.agility + p.strength + p.vertical + p.stamina + p.hustle) / 6);
 
         // 4. OVR — 항상 능력치 기반 동적 계산 (성장/퇴화 반영)
         const customOvr = player.customOverrides?.ovr;
