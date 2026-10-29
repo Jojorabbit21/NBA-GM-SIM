@@ -13,6 +13,7 @@
  * 워커 스레드에서 실행된다(simWorker 'practice' 메시지 ← simWorkerPool.runPracticeInWorker). 풀은 실경기 큐가 비었을 때만 트레이닝을 꺼낸다.
  */
 import { supabase } from './supabaseAdmin.ts';
+import { isGlobalAdmin } from './auth.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
 import { recoverPlayersThrough } from './fatigueRecovery.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
@@ -101,7 +102,9 @@ export async function runPractice(userId: string, req: PracticeRequest): Promise
     if (!teamId) return { ok: false, status: 403, error: 'Forbidden' };
     if (opponentTeamId === teamId) return { ok: false, status: 400, error: 'invalid opponent' };
 
-    const { data: status, error: statusErr } = await supabase.rpc('practice_status', { p_room_id: roomId, p_team_id: teamId });
+    // ⚠️ 테스트용: 전역 어드민은 가상 자정 시간대 제한만 건너뛴다(경기일·하루 3회는 그대로) — migrations/add_practice_admin_window_bypass.sql, 정식 오픈 전 제거
+    const ignoreWindow = await isGlobalAdmin(userId);
+    const { data: status, error: statusErr } = await supabase.rpc('practice_status', { p_room_id: roomId, p_team_id: teamId, p_ignore_window: ignoreWindow });
     if (statusErr) return { ok: false, status: 500, error: statusErr.message };
     if (!status?.available) return { ok: false, status: 409, error: `practice unavailable: ${status?.reason ?? 'unknown'}` };
     const virtualDate: string = status.virtual_date;
@@ -258,7 +261,7 @@ export async function runPractice(userId: string, req: PracticeRequest): Promise
         },
     };
     const { data: applied, error: applyErr } = await supabase.rpc('apply_practice_result', {
-        p_room_id: roomId, p_team_id: teamId, p_row: row, p_drains: drains,
+        p_room_id: roomId, p_team_id: teamId, p_row: row, p_drains: drains, p_ignore_window: ignoreWindow,
     });
     if (applyErr) {
         const conflict = /practice unavailable|duplicate key/i.test(applyErr.message);
