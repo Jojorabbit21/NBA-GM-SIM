@@ -19,9 +19,9 @@ interface TeamGameLogProps {
     onScoreClick?: (gameId: string) => void;
     // 상대팀 이름 클릭 시 그 팀 로스터로 전환
     onTeamClick?: (teamId: string) => void;
-    // [2026-10-29] 트레이닝 기록 탭 재사용 — 빈 상태 문구, 상대 이름 옆 보조 표기(상대 전술 프리셋)
+    // [2026-10-29] 트레이닝 기록 탭 재사용 — 빈 상태 문구, flat = 정규 시즌/플레이오프 섹션 머리와 평균 푸터 없이 행만
     emptyTitle?: string;
-    oppSubLabelByGameId?: Record<string, string>;
+    flat?: boolean;
 }
 
 // Column definitions for game log table
@@ -148,7 +148,7 @@ export function computeTeamGameAvg(rows: TeamGameRow[]): Record<string, number> 
     return avg;
 }
 
-export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick, emptyTitle, oppSubLabelByGameId }) => {
+export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId, onScoreClick, onTeamClick, emptyTitle, flat = false }) => {
     const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
     const { sortConfig, sortProps } = useTableSort({ key: 'date', direction: 'asc' });
 
@@ -253,9 +253,6 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                                 {oppTeam?.name || row.oppId}
                             </span>
                         </TeamHover>
-                        {oppSubLabelByGameId?.[row.gameId] && (
-                            <span className="text-xs text-slate-500 truncate">{oppSubLabelByGameId[row.gameId]}</span>
-                        )}
                     </div>
                 </TableCell>
                 {/* 결과 */}
@@ -349,13 +346,14 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
             </TableHead>
 
             <TableBody>
-                {regularRows.length > 0 && (
+                {flat && sortedRows.map(renderGameRow)}
+                {!flat && regularRows.length > 0 && (
                     <>
                         {renderSectionHeader('정규 시즌')}
                         {regularRows.map(renderGameRow)}
                     </>
                 )}
-                {playoffRows.length > 0 && (
+                {!flat && playoffRows.length > 0 && (
                     <>
                         {renderSectionHeader('플레이오프')}
                         {playoffRows.map(renderGameRow)}
@@ -363,7 +361,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 )}
             </TableBody>
 
-            {(regularAvg || playoffAvg) && (
+            {!flat && (regularAvg || playoffAvg) && (
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800">
                     {regularAvg && (
                         <tr>

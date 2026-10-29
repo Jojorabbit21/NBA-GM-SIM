@@ -23,6 +23,7 @@ import { useServerClock } from '../../../utils/serverClock';
 import { getReplayDurationMs, getGameDisplayState, resolveRealAt, isFinal } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
+import { fetchTrainingResult, type TrainingResultRow } from '../../../services/multi/trainingService';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 import { TimeoutBars, TEAM_TIMEOUTS_TOTAL } from '../../../components/game/TimeoutBars';
@@ -1601,7 +1602,8 @@ const GameInsightsPanel: React.FC<{
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const MultiGamePbpView: React.FC = () => {
+// [2026-10-29] practice=true — 트레이닝 세션 결과(practice_games)를 일반 경기 종료 화면 그대로 보여 준다(route season/practice/:gameId, gameId = practice_games.id).
+const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }) => {
     const { leagueId, gameId } = useParams<{ leagueId: string; gameId: string }>();
     const navigate = useNavigate();
     // [2026-10-28] 폰(<768) — 종료 화면 폰판(docs/ui/mobile-design-system.md §9-7). 태블릿·데스크톱은 기존 UX 그대로.
@@ -1639,7 +1641,7 @@ const MultiGamePbpView: React.FC = () => {
     const [resolvedGameId, setResolvedGameId] = useState<string | undefined>(gameId);
     useEffect(() => {
         setResolvedGameId(gameId);
-        if (!room?.id || !gameId) return;
+        if (practice || !room?.id || !gameId) return;
         let cancelled = false;
         supabase
             .from('game_short_codes')
@@ -1654,6 +1656,7 @@ const MultiGamePbpView: React.FC = () => {
     }, [room?.id, gameId]);
 
     const [gameData,      setGameData]      = useState<GamePbpRow | null>(null);
+    const [practiceRow,   setPracticeRow]   = useState<TrainingResultRow | null>(null);
     const [isLoading,     setIsLoading]     = useState(true);
     // [2026-10-13] 원인별 5상태(에러 표시 정책 0-7): preparing(404)=자동 재시도 info / failed=다시 시도 / forbidden(403)=뒤로가기.
     //   라이브 폴링 중 일시 실패는 error가 아니라 liveWarning(데이터 유지, 연속 2회부터 표시).
@@ -1752,6 +1755,27 @@ const MultiGamePbpView: React.FC = () => {
     useEffect(() => {
         if (!room?.id || !resolvedGameId) return;
         let cancelled = false;
+        if (practice) {
+            // 트레이닝 결과 — 이미 끝난 경기로 취급(공개 시각을 과거로 두면 displayState = final)
+            fetchTrainingResult(resolvedGameId).then(row => {
+                if (cancelled) return;
+                if (!row) {
+                    setError({ kind: 'failed', text: '트레이닝 결과를 불러오지 못했습니다.' });
+                    setIsLoading(false);
+                    return;
+                }
+                setPracticeRow(row);
+                setGamePlayed(true);
+                setGameOtPeriods(0);
+                setIsAllstarGame(false);
+                setScheduledAt('2000-01-01T00:00:00.000Z');
+            }).catch(() => {
+                if (cancelled) return;
+                setError({ kind: 'failed', text: '트레이닝 결과를 불러오지 못했습니다.' });
+                setIsLoading(false);
+            });
+            return () => { cancelled = true; };
+        }
         (async () => {
             const game = await loadGame(room.id, resolvedGameId);
             if (cancelled) return;
@@ -1793,6 +1817,27 @@ const MultiGamePbpView: React.FC = () => {
         // effect가 아무것도 안 하고 return해서 isLoading(초기값 true)이 영원히 false로 안 내려갔음.
         // scheduled 화면(카운트다운)은 gameData가 필요 없으므로 여기서 명시적으로 로딩을 끝낸다.
         if (displayState === 'scheduled') { setIsLoading(false); return; }
+        if (practice) {
+            if (!practiceRow) return;
+            const r = practiceRow.result;
+            setGameData({
+                game_id:         practiceRow.id,
+                home_team_id:    r.homeTeamId,
+                away_team_id:    r.awayTeamId,
+                home_score:      r.homeScore,
+                away_score:      r.awayScore,
+                game_start_time: '2000-01-01T00:00:00.000Z',
+                events:          r.events ?? [],
+                shot_events:     r.shotEvents ?? [],
+                home_box:        r.homeBox ?? [],
+                away_box:        r.awayBox ?? [],
+                box_timeline:    r.boxTimeline,
+                rotation_data:   r.rotationData,
+            });
+            setError(null);
+            setIsLoading(false);
+            return;
+        }
         let cancelled = false;
         let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1871,7 +1916,7 @@ const MultiGamePbpView: React.FC = () => {
         // devLive(개발용 리플레이)는 종료 경기 전체 데이터를 한 번에 받으므로 폴링하지 않는다(폴링하면 이벤트가 중복 누적됨)
         const timer = displayState === 'live' && !devLive ? setInterval(() => load(false), LIVE_POLL_MS) : null;
         return () => { cancelled = true; if (timer) clearInterval(timer); if (retryTimer) clearTimeout(retryTimer); };
-    }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt, retryTick]);
+    }, [room?.id, resolvedGameId, displayState, session?.access_token, scheduledAt, retryTick, practice, practiceRow]);
 
     // ── live/final: 박스스코어(OVR/포지션/호버카드)에 쓸 실제 선수 능력치 조회 ──────
     // PlayerBoxScore엔 이름/포지션/스탯만 있고 OVR이 없어서, BoxScoreTable이 team.roster에서
@@ -2031,10 +2076,13 @@ const MultiGamePbpView: React.FC = () => {
     // n차전/시리즈 스코어는 TournamentBracketView의 seriesTallies와 같은 방식 — 같은 시리즈의
     // 공개된(isFinal) 경기를 날짜순으로 누적해 "이 경기까지의" 전적을 계산한다(스포일러 방지:
     // 이 경기 이후의 결과는 포함하지 않음).
-    const finalHeaderDateLabel = scheduleGame
-        ? fmtFullDate(kstDateKey(scheduleGame, league?.type === 'main_league'))
-        : null;
+    const finalHeaderDateLabel = practice
+        ? (practiceRow ? fmtFullDate(practiceRow.virtual_date) : null)
+        : scheduleGame
+            ? fmtFullDate(kstDateKey(scheduleGame, league?.type === 'main_league'))
+            : null;
     const finalHeaderStage = useMemo<{ stage: string; score: string | null } | null>(() => {
+        if (practice) return { stage: '트레이닝', score: null };
         if (!scheduleGame?.isPlayoff || !scheduleGame.seriesId) return null;
         const seriesList: any[] = (league?.bracket_data as any)?.series ?? [];
         const series = seriesList.find(sr => sr.id === scheduleGame.seriesId);
@@ -2053,7 +2101,7 @@ const MultiGamePbpView: React.FC = () => {
         }
         const abbrOf = (slug: string) => leagueTeams.find(t => t.team_slug === slug)?.team_abbr ?? slug.toUpperCase().slice(0, 3);
         return { stage, score: `${abbrOf(series.higherSeedId)} ${hi} - ${lo} ${abbrOf(series.lowerSeedId)}` };
-    }, [scheduleGame, league?.bracket_data, schedule, serverNow, leagueTeams]);
+    }, [practice, scheduleGame, league?.bracket_data, schedule, serverNow, leagueTeams]);
     // [2026-10-28] 폰 상단 줄(H4) — 공용 상단 바 대신 ‹ + "날짜 · 단계"(플레이오프면 라운드 · 시리즈 스코어). 레이아웃이 game 라우트에서 상단 바를 생략한다.
     const phoneHeaderTitle = [
         finalHeaderDateLabel,
@@ -2065,7 +2113,7 @@ const MultiGamePbpView: React.FC = () => {
             title={<span className="text-sm font-semibold text-slate-300 truncate">{phoneHeaderTitle}</span>}
             onBack={() => {
                 if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
-                else navigate(`/multi/leagues/${leagueId}/season/schedule`);
+                else navigate(practice ? `/multi/leagues/${leagueId}/season/tactics?tab=trainingLog` : `/multi/leagues/${leagueId}/season/schedule`);
             }}
         />
     ) : null;

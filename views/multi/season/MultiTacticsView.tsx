@@ -60,7 +60,6 @@ import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { PhoneTeamTactics } from '../../../components/dashboard/tactics/PhoneTeamTactics';
 import { TrainingSessionPanel, type TrainingOpponent } from '../../../components/multi/training/TrainingSessionPanel';
 import { TrainingLogPanel } from '../../../components/multi/training/TrainingLogPanel';
-import { TrainingResultView, type TrainingTeamInfo } from '../../../components/multi/training/TrainingResultView';
 import { startTrainingSession, type TrainingStartRequest } from '../../../services/multi/trainingService';
 import { useTrainingStatus, useTrainingLog, trainingStatusKey, trainingLogKey } from '../../../hooks/useTraining';
 import { useQueryClient } from '@tanstack/react-query';
@@ -826,15 +825,10 @@ const MultiTacticsView: React.FC = () => {
     const queryClient = useQueryClient();
     const { data: trainingStatus } = useTrainingStatus(preferVirtual ? room?.id : null);
     const { data: trainingRows = [], isPending: trainingLogPending } = useTrainingLog(room?.id, myTeamId);
-    const trainingSessionId = searchParams.get('session');
-    const openTrainingResult = useCallback((id: string | null) => {
-        setSearchParams(prev => {
-            const next = new URLSearchParams(prev);
-            next.set('tab', 'trainingLog');
-            if (id) next.set('session', id); else next.delete('session');
-            return next;
-        }, { replace: !id });
-    }, [setSearchParams]);
+    // 결과 = 일반 경기 종료 화면과 같은 MultiGamePbpView(practice 모드, route season/practice/:id)
+    const openTrainingResult = useCallback((id: string) => {
+        navigate(`/multi/leagues/${leagueId}/season/practice/${id}`);
+    }, [navigate, leagueId]);
     const handleStartTraining = useCallback(async (req: TrainingStartRequest): Promise<string | null> => {
         const res = await startTrainingSession(req);
         // 성공·실패 모두 상태를 다시 읽는다(실패 사유가 시간대 종료·횟수 소진일 수 있음)
@@ -845,15 +839,6 @@ const MultiTacticsView: React.FC = () => {
         openTrainingResult(res.practiceGameId);
         return null;
     }, [queryClient, room?.id, myTeamId, openTrainingResult]);
-    const resolveTrainingTeam = useCallback((teamId: string): TrainingTeamInfo => {
-        const row = leagueTeams.find(t => t.team_slug === teamId);
-        return {
-            id: teamId,
-            name: row?.team_name ?? teamId,
-            abbr: row?.team_abbr ?? teamId.toUpperCase().slice(0, 3),
-            color: row?.color_primary ?? TEAM_DATA[teamId]?.colors?.primary ?? '#4f46e5',
-        };
-    }, [leagueTeams]);
 
     // tactics가 없는 신규 유저: 로스터 로드 완료 후 자동 생성
     // preserveDraftOrder=true — 드래프트에서 먼저 뽑은 선수가 선발을 유지하고,
@@ -1004,14 +989,7 @@ const MultiTacticsView: React.FC = () => {
             onStart={handleStartTraining}
         />
     );
-    const trainingLogPanel = trainingSessionId && myTeamId ? (
-        <TrainingResultView
-            resultId={trainingSessionId}
-            myTeam={resolveTrainingTeam(myTeamId)}
-            resolveTeam={resolveTrainingTeam}
-            onBack={() => openTrainingResult(null)}
-        />
-    ) : (
+    const trainingLogPanel = (
         <TrainingLogPanel myTeam={team} allTeams={leagueTeamsWithStats} rows={trainingRows} loading={trainingLogPending} onOpenResult={openTrainingResult} />
     );
     const insightsPanel = (

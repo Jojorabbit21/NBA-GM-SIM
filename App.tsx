@@ -440,6 +440,7 @@ const App: React.FC = () => {
                                 {/* [2026-10-22] 드래프트 결과 — 헤더 "리그" 드롭다운에서만 진입(사이드바 메뉴 없음) */}
                                 <Route path="draft-result" element={<MultiDraftResultView />} />
                                 <Route path="game/:gameId" element={<MultiGamePbpView />} />
+                                <Route path="practice/:gameId" element={<MultiGamePbpView practice />} />
                                 <Route path="player/:playerId" element={<MultiPlayerDetailView />} />
                                 <Route path="negotiate/:playerId" element={<MultiNegotiationView />} />
                                 <Route path="release/:playerId" element={<MultiReleaseView />} />
