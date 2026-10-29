@@ -34,6 +34,23 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-29 — Vercel Edge Request 절감(Hobby 월 1M 한도 초과로 서비스 정지)
+
+**배경**: 2026-10-29 Vercel "Paused · Edge Requests"(CDN Requests 1.2M / 1M). 대시보드 경로별 집계에서 `/version.json` 2.3K, `/logos/teams/*.svg` 30개 각 1.6~2.1K(합계 약 5만, Cached 100% — CDN 캐시 적중도 요청 1건으로 집계). 원인 = 정적 파일에 캐시 헤더가 없어(Vercel 기본 `max-age=0, must-revalidate`) 페이지 로드마다 로고 · 아이콘 · JS를 전부 재검증 + 5분 버전 폴링 + Speed Insights 전송.
+
+**변경 파일**:
+- `vercel.json` — headers 3개 추가: `/assets/(.*)` `public, max-age=31536000, immutable`(해시 파일명), `/logos/(.*)` · `/images/(.*)` `public, max-age=604800, stale-while-revalidate=86400`. index.html은 그대로(max-age=0 — 배포 즉시 반영)
+- `hooks/useUpdateChecker.ts` — `CHECK_INTERVAL` 5분 → 30분, `checkForUpdate`는 `document.visibilityState !== 'visible'`이면 건너뜀, 탭 복귀 체크는 모듈 변수 `lastCheckedAt` 기준 5분(`MIN_GAP`) 이상일 때만
+- `index.tsx` — `injectSpeedInsights` import · 호출 제거(패키지 의존성과 vite manualChunks 항목은 남겨 둠)
+
+**Before**: 로고/아이콘/JS 매 로드 재검증, 버전 체크 5분마다(백그라운드 탭 포함) + 탭 복귀마다, Speed Insights 스크립트 + 측정값 전송
+
+**After**: 정적 파일은 기간 내 요청 없음(로고 교체 시 최대 1주 옛 이미지 — 파일명/쿼리 변경으로 무효화), 버전 체크 30분 · 보이는 탭만 · 복귀 시 5분 간격, Speed Insights 없음
+
+**검증**: `tsc` 오류 0(수정 파일), `vite build` 성공. 실제 헤더는 서비스 재개 후 `curl -I`로 확인 필요
+
+**롤백 방법**: vercel.json headers 3개 삭제, useUpdateChecker를 `CHECK_INTERVAL = 5 * 60 * 1000` · 가시성/간격 조건 제거, index.tsx에 `import { injectSpeedInsights } from '@vercel/speed-insights'; injectSpeedInsights();` 복원
+
 ## 2026-10-28 — BM27 방출 화면 폰판 구현
 
 **배경**: 사용자 지시 "구현해"(방출 목업 W1~W6, §9-1-16).

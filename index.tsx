@@ -6,13 +6,12 @@ import { PersistQueryClientProvider, removeOldestQuery } from '@tanstack/react-q
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { NotificationCenter } from './components/common/NotificationCenter';
 import { installGlobalErrorHandlers, reportQueryError, resolveHeldQueryError } from './services/notifications/errorCollector';
-import { injectSpeedInsights } from '@vercel/speed-insights';
 import './index.css'; // Tailwind CSS Import
 import App from './App';
 import { applyEditorToTeamData } from './utils/editorManager';
 
-// Vercel Speed Insights 초기화
-injectSpeedInsights();
+// [2026-10-29] Vercel Speed Insights 제거 — 스크립트 로드 + 페이지/라우트마다 측정값 전송이 전부 Edge Request로 집계돼
+// Hobby 한도(월 1M) 초과의 한 원인이었다(docs/history/dev-log.md 2026-10-29). 다시 켜려면 injectSpeedInsights({ sampleRate }) 권장.
 
 // 유저 에디터 적용 (React 렌더링 전에 TEAM_DATA 뮤테이트)
 applyEditorToTeamData();

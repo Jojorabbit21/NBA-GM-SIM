@@ -1,7 +1,11 @@
 import { useEffect, useCallback } from 'react';
 import { setUpdateAvailable } from '../services/notifications/updateNoticeStore';
 
-const CHECK_INTERVAL = 5 * 60 * 1000; // 5분
+// [2026-10-29] 5분 → 30분, 백그라운드 탭은 건너뜀, 탭 복귀 체크는 직전 체크 후 5분 이상일 때만 —
+// /version.json 요청이 전부 Vercel Edge Request로 집계돼 Hobby 한도(월 1M) 초과 원인 중 하나였다.
+const CHECK_INTERVAL = 30 * 60 * 1000; // 30분
+const MIN_GAP = 5 * 60 * 1000;          // 탭 복귀 시 최소 간격
+let lastCheckedAt = 0;
 
 declare const __BUILD_VERSION__: string;
 
@@ -9,6 +13,8 @@ declare const __BUILD_VERSION__: string;
 export function useUpdateChecker(): void {
     const checkForUpdate = useCallback(async () => {
         if (import.meta.env.DEV) return;
+        if (document.visibilityState !== 'visible') return;
+        lastCheckedAt = Date.now();
 
         try {
             const res = await fetch('/version.json', {
@@ -32,7 +38,7 @@ export function useUpdateChecker(): void {
 
         // 탭 복귀 시에도 체크
         const handleVisibility = () => {
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible' && Date.now() - lastCheckedAt >= MIN_GAP) {
                 checkForUpdate();
             }
         };
