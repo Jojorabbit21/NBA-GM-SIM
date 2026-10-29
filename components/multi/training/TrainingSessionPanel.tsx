@@ -180,10 +180,10 @@ const LineupTable: React.FC<{ starters: LineupRow[]; bench: LineupRow[]; conditi
     );
 };
 
-const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offense' | 'defense' }> = ({ sliders, kind }) => {
+const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offense' | 'defense'; padX?: string }> = ({ sliders, kind, padX = 'px-6' }) => {
     const items = (kind === 'offense' ? OFFENSE_SLIDER_GROUPS : DEFENSE_SLIDER_GROUPS).flatMap(g => g.items);
     return (
-        <div className="px-6 pt-1 pb-4 flex flex-col">
+        <div className={`${padX} pt-1 pb-4 flex flex-col`}>
             {items.map(item => {
                 const v = Number(sliders[item.key] ?? 0);
                 const isPnr = item.key === 'pnrDefense';
@@ -203,6 +203,37 @@ const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offens
                 );
             })}
         </div>
+    );
+};
+
+/** 상대 로스터 단순 리스트(데스크톱 3칸 배치의 왼쪽) — 출전 선수만, 주전→벤치 순. 분 색: 주전 초록 · 벤치 주황 */
+const RosterList: React.FC<{ starters: LineupRow[]; bench: LineupRow[] }> = ({ starters, bench }) => {
+    const rows = [...starters.map(r => ({ r, starter: true })), ...bench.filter(r => r.minutes > 0).map(r => ({ r, starter: false }))];
+    return (
+        <Table variant="flush" dividers={false} fullHeight={false} tableStyle={{ tableLayout: 'fixed' }}>
+            <colgroup>
+                <col style={{ width: 40 }} />
+                <col style={{ width: 36 }} />
+                <col />
+                <col style={{ width: 40 }} />
+            </colgroup>
+            <TableHead>
+                <TableHeaderCell>POS</TableHeaderCell>
+                <TableHeaderCell>OVR</TableHeaderCell>
+                <TableHeaderCell align="left">선수</TableHeaderCell>
+                <TableHeaderCell align="right" className="pr-3">분</TableHeaderCell>
+            </TableHead>
+            <TableBody>
+                {rows.map(({ r, starter }) => (
+                    <TableRow key={r.player.id} className="h-10">
+                        <TableCell align="center" className="text-xs font-bold text-slate-400">{r.pos}</TableCell>
+                        <TableCell align="center"><OvrBadge value={calculatePlayerOvr(r.player)} size="sm" className="!shadow-none inline-flex" /></TableCell>
+                        <TableCell align="left" className="text-sm font-semibold text-slate-200 truncate">{r.player.name}</TableCell>
+                        <TableCell align="right" className={`pr-3 text-sm font-semibold tabular-nums ${starter ? 'text-emerald-400' : 'text-amber-400'}`}>{r.minutes}</TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
     );
 };
 
@@ -310,7 +341,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                     <LineupTable starters={myLineup.starters} bench={myLineup.bench} conditions={conditions} showRotation />
                 </section>
 
-                {/* 상대 — 전술(공격 | 수비) 위, 로스터 표(우리 팀과 같은 형식) 아래 */}
+                {/* 상대 — 데스크톱: 로스터 리스트 | 공격 | 수비 / 폰: 전술 위 · 로스터 표 아래 */}
                 <section className="flex flex-col min-w-0">
                     <PanelToolbar title="상대">
                         <div className="ml-auto w-60">
@@ -329,7 +360,25 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                             />
                         </div>
                     </PanelToolbar>
-                    <div className="flex-1 flex flex-col bg-slate-900">
+                    {/* 데스크톱(lg+): 로스터 리스트 | 공격 전술 | 수비 전술 — 세 칸 높이가 비슷해 아래가 비지 않는다 */}
+                    <div className="hidden lg:grid flex-1 grid-cols-[232px_minmax(0,1fr)_minmax(0,1fr)] bg-slate-900">
+                        <div className="flex flex-col min-w-0 border-r border-slate-800">
+                            <SubHeader title="로스터" />
+                            {oppLineup && <RosterList starters={oppLineup.starters} bench={oppLineup.bench} />}
+                        </div>
+                        <div className="flex flex-col min-w-0 border-r border-slate-800">
+                            <SubHeader title="공격 전술" />
+                            <div className="px-4 pt-2.5 pb-1"><SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} /></div>
+                            {offense.sliders && <SliderReadout sliders={offense.sliders} kind="offense" padX="px-4" />}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                            <SubHeader title="수비 전술" />
+                            <div className="px-4 pt-2.5 pb-1"><SimpleSelect<TrainingDefensePresetId> value={defenseId} options={TRAINING_DEFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setDefenseId} /></div>
+                            <SliderReadout sliders={defense.sliders} kind="defense" padX="px-4" />
+                        </div>
+                    </div>
+                    {/* 폰·태블릿(<lg): 전술(공격 | 수비) 위, 로스터 표 아래 — 기존 배치 유지 */}
+                    <div className="lg:hidden flex-1 flex flex-col bg-slate-900">
                         <SubHeader title="전술" />
                         <div className="grid grid-cols-1 md:grid-cols-2 border-b border-slate-700">
                             <div className="flex flex-col min-w-0 md:border-r border-slate-800">
