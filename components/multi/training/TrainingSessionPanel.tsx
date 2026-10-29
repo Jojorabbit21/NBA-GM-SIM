@@ -206,46 +206,6 @@ const SliderReadout: React.FC<{ sliders: Partial<TacticalSliders>; kind: 'offens
     );
 };
 
-/** 상대 로스터 요약 — 주전 5명 카드 + 로테이션 선수 칩(분) + 미출전 선수 칩 */
-const OpponentRoster: React.FC<{ starters: LineupRow[]; bench: LineupRow[] }> = ({ starters, bench }) => {
-    const rotation = bench.filter(r => r.minutes > 0);
-    const reserves = bench.filter(r => r.minutes === 0);
-    const chip = (r: LineupRow, dim: boolean) => (
-        <span key={r.player.id} className={`h-9 pl-1.5 pr-2.5 inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 min-w-0 ${dim ? 'opacity-60' : ''}`}>
-            <OvrBadge value={calculatePlayerOvr(r.player)} size="sm" className="!shadow-none" />
-            <span className="text-xs font-bold text-slate-400">{r.pos}</span>
-            <span className="text-sm font-semibold text-slate-200 truncate max-w-32">{r.player.name}</span>
-            {!dim && <span className="text-sm font-semibold tabular-nums text-amber-400">{r.minutes}</span>}
-        </span>
-    );
-    return (
-        <div className="px-6 py-4 flex flex-col gap-4 border-b border-slate-700">
-            <div className="grid grid-cols-5 gap-2">
-                {starters.map(r => (
-                    <div key={r.player.id} className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 px-2 py-2.5 flex flex-col items-center gap-1.5">
-                        <span className="text-xs font-bold text-slate-400">{r.pos}</span>
-                        <OvrBadge value={calculatePlayerOvr(r.player)} size="md" className="!shadow-none" />
-                        <span className="w-full text-center text-sm font-semibold text-slate-200 truncate">{r.player.name}</span>
-                        <span className="text-sm font-semibold tabular-nums text-emerald-400">{r.minutes}분</span>
-                    </div>
-                ))}
-            </div>
-            {rotation.length > 0 && (
-                <div className="flex flex-col gap-2">
-                    <span className="text-sm font-black text-slate-500">벤치</span>
-                    <div className="flex flex-wrap gap-2">{rotation.map(r => chip(r, false))}</div>
-                </div>
-            )}
-            {reserves.length > 0 && (
-                <div className="flex flex-col gap-2">
-                    <span className="text-sm font-black text-slate-500">미출전</span>
-                    <div className="flex flex-wrap gap-2">{reserves.map(r => chip(r, true))}</div>
-                </div>
-            )}
-        </div>
-    );
-};
-
 export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
     roomId, myRoster, savedTactics, savedDepthChart, depthPresets, teamPresets, conditions,
     opponents, unavailableIds, defaultOpponentId, available, remaining, onStart,
@@ -350,7 +310,7 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                     <LineupTable starters={myLineup.starters} bench={myLineup.bench} conditions={conditions} showRotation />
                 </section>
 
-                {/* 상대 — 로스터 요약(주전 카드 · 벤치/미출전 칩) + 전술(공격 | 수비) */}
+                {/* 상대 — 전술(공격 | 수비) 위, 로스터 표(우리 팀과 같은 형식) 아래 */}
                 <section className="flex flex-col min-w-0">
                     <PanelToolbar title="상대">
                         <div className="ml-auto w-60">
@@ -370,10 +330,8 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                         </div>
                     </PanelToolbar>
                     <div className="flex-1 flex flex-col bg-slate-900">
-                        <SubHeader title="로스터" />
-                        {oppLineup && <OpponentRoster starters={oppLineup.starters} bench={oppLineup.bench} />}
                         <SubHeader title="전술" />
-                        <div className="grid grid-cols-1 md:grid-cols-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-slate-700">
                             <div className="flex flex-col min-w-0 md:border-r border-slate-800">
                                 <SelectRow label="공격 프리셋" divider={false}>
                                     <SimpleSelect<TrainingOffensePresetId> value={offenseId} options={TRAINING_OFFENSE_PRESETS.map(p => ({ id: p.id, label: p.label }))} onChange={setOffenseId} />
@@ -387,6 +345,8 @@ export const TrainingSessionPanel: React.FC<TrainingSessionPanelProps> = ({
                                 <SliderReadout sliders={defense.sliders} kind="defense" />
                             </div>
                         </div>
+                        <SubHeader title="로스터" />
+                        {oppLineup && <LineupTable starters={oppLineup.starters} bench={oppLineup.bench} />}
                     </div>
                 </section>
             </div>
