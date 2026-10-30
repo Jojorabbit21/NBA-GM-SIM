@@ -368,8 +368,8 @@ export interface CareerSeasonStat {
     age:      number;
     // Traditional per game
     gp:  number;  gs:  number;
-    min: number;  pts: number;
-    oreb: number | null;  dreb: number | null;  reb: number;  // oreb/dreb: ~1973-74 이전 null
+    min: number | null;  pts: number;  // min: 1950-51 이전 null
+    oreb: number | null;  dreb: number | null;  reb: number | null;  // oreb/dreb: ~1973-74 이전 null, reb: 1949-50 이전 null
     ast: number;
     stl: number | null;   // ~1973-74 이전 null
     blk: number | null;   // ~1973-74 이전 null

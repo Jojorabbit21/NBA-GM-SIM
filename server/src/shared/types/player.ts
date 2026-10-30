@@ -304,8 +304,8 @@ export interface CareerSeasonStat {
     team:     string;
     age:      number;
     gp:  number;  gs:  number;
-    min: number;  pts: number;
-    oreb: number | null;  dreb: number | null;  reb: number;
+    min: number | null;  pts: number;
+    oreb: number | null;  dreb: number | null;  reb: number | null;
     ast: number;
     stl: number | null;
     blk: number | null;

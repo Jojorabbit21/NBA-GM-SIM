@@ -34,6 +34,58 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-30 — 레전드 풀 확장(+DB 정리) · 커리어 평균 null 처리 (코드 4줄 + DB 데이터 작업)
+
+**배경**: 레전드 풀이 빈약하다는 요청에서 시작. 은퇴자 75명 전환 + 신규 레전드 40명 추가 + `career_history` 보충·정리를 진행했고, 정리 중 (1) 1946~50년대 행의 빈 열이 0.0으로 저장된 문제 (2) `name_mapping.csv` 오매칭으로 다른 선수의 경력이 들어간 문제를 발견해 같이 정리. (1)을 `null`로 바꾸면 커리어 평균이 null을 0으로 계산해 개선이 안 되므로 코드 4줄을 수정.
+
+**변경 파일 (코드, client/server 타입은 미러 — 같이 롤백)**:
+- `utils/careerStats.ts` (client) — `computeCareerAvg`
+- `types/player.ts` (client) — `CareerSeasonStat`
+- `server/src/shared/types/player.ts` (server 미러) — `CareerSeasonStat`
+
+**Before**:
+```ts
+// utils/careerStats.ts
+min: wavg('min'), pts: wavg('pts'),
+oreb: wavgNullable('oreb'), dreb: wavgNullable('dreb'), reb: wavg('reb'),
+// types/player.ts
+min: number;  pts: number;
+oreb: number | null;  dreb: number | null;  reb: number;  // oreb/dreb: ~1973-74 이전 null
+// server/src/shared/types/player.ts
+min: number;  pts: number;
+oreb: number | null;  dreb: number | null;  reb: number;
+```
+
+**After**:
+```ts
+// utils/careerStats.ts
+min: wavgNullable('min'), pts: wavg('pts'),
+oreb: wavgNullable('oreb'), dreb: wavgNullable('dreb'), reb: wavgNullable('reb'),
+// types/player.ts
+min: number | null;  pts: number;  // min: 1950-51 이전 null
+oreb: number | null;  dreb: number | null;  reb: number | null;  // oreb/dreb: ~1973-74 이전 null, reb: 1949-50 이전 null
+// server/src/shared/types/player.ts
+min: number | null;  pts: number;
+oreb: number | null;  dreb: number | null;  reb: number | null;
+```
+시즌 표(`formatCareerCell`)는 원래 null을 `-`로 표시하므로 별도 수정 없음. `min`/`reb`를 숫자 연산하는 다른 소비처 없음(grep 확인).
+
+**DB 변경 (모두 `meta_players`, 코드 아님)**:
+1. 은퇴자 75명 `include_alltime=true` 전환 (이상 데이터 7명 제외: `base_team_id`가 있는 현역).
+2. `career_history` 비어 있던 레전드 24명 보충(스탯 + 개인상, BAA 포함·2026-27 제외). 마크 프라이스 `ovr_base/ovr_custom` 82로 직접 지정.
+3. 신규 레전드 40명 INSERT(평가는 sonnet 에이전트, `ovr_base/ovr_custom`은 `scripts/backfill_meta_players_ovr.ts --only-null --apply`로 채움, 이후 사용자가 OVR·tendencies·이름 직접 수정): 1차 16명(페트로비치·디박·길모어·맥아두·톰프슨·윌켄스·듀마스·오클리·프라이스·칙스·레임비어·스프리웰·휴스턴·프랜시스·맥다이스·엘리엇), 2차 12명(굿리치·워커·거스 존슨·레이니어·머피·월터 데이비스·웨스트팔·루카스·톰자노비치·마퀴스 존슨·로버트슨·이튼), 3차 12명(존스턴·믹켈슨·밥 러브·맥스웰·커밍스·도허티·스콧·스미츠·하퍼·제이슨 윌리엄스·제메인 오닐·일가우스카스). 백필 시 `ovr_custom`이 NULL이던 `이현중` 행이 같이 걸려 매번 (80, NULL)로 복구.
+4. **`0.0` → `null`**: 1946~50년대 선수 13명, 1946-47~1950-51 행의 출전 시간 64행, 1946-47~1949-50 행의 리바운드 39행. 백업 `scripts/output/career_history_backups_2026-10-30/zero_fix_backup.json`(13명 전체 `career_history`, id 키).
+5. **오염 정리**: 드래프트 연도보다 이른 시즌 행이 있던 68명을 bbref 진짜 시즌과 행 단위로 대조 → 65명 수정(오염 행 519개 삭제, 진짜 시즌 291행 추가, 정상 행 166개 유지·개인상 보정·기존 CHM/RCHM 보존). 오탐 3명(글렌 라이스·조지 맥기니스·스펜서 헤이우드, ABA 등 진짜 기록)은 무변경, 헤이우드의 "Did not play" 안내 행은 보존. 원인은 `scripts/data/name_mapping.csv` 오매칭(예: 코디 젤러→Jon Leuer) — 매핑 파일 자체는 미수정. 백업 `.../contam_backup.json`(68명 전체 `career_history`, id 키).
+6. `글렌 라이스`: `draft_year` 2013→1989, `base_attributes.draft_round` 2→1, `draft_pick` 35→4 (기존 값은 아들 Glen Rice Jr.의 2013 R2 #35; bbref 시니어 1989 R1 #4 확인).
+
+**검증**: tsc `--noEmit` client 63건·server 47건 모두 기존 오류(`hooks/useGameData.ts`, `PlayerEditorPage.tsx` 등) — `careerStats`/`CareerSeasonStat`/`null` 관련 신규 오류 0건. DB: 반영 후 드래프트 이전 행 잔존은 오탐 3명(26행)뿐, 에릭 고든 2008-09~2025-26(통산 15.1점)·카일 라우리 2006-07~2025-26(13.8점)·자이언 윌리엄슨 2019-20~2025-26(23.9점) 등 샘플 확인.
+
+**롤백 방법**:
+- 코드: 위 Before 블록으로 되돌림(3개 파일 같이).
+- DB 4번/5번: 백업 JSON의 `{id: career_history}`를 해당 id의 `career_history`로 되돌려 쓰기(`supabase.table('meta_players').update({'career_history': backup[id]}).eq('id', id)`). 6번: 위 이전 값 복원.
+- DB 1·2·3번: 신규 40명은 이름으로 `DELETE`, 75명은 `include_alltime=false`로 복원.
+- 한계: 새로 추가된 시즌 행에는 팀상(CHM/RCHM)이 없다(전체 보정 별도 예정).
+
 ## 2026-10-30 — 엔진 묶음: 림·덩크 성공률 현실화 + 포스트업 3점 몫 미드 + 존 페널티 3점 한정 + 속공 3점(배율 0.5·트레일러) + 컷 림 90%
 
 **배경**: 엔진 림 성공률 58%(실제 70%)·덩크 과다·스트레치 빅 포스트업 림 쏠림·속공 3점 7%(실제 40~45%)·컷 미드 풀업 20%(실제 컷 FG 66.7%) 등을 하네스(scratch `eng_fold`/`eng_tr`)로 측정·확정한 묶음. 같은 날 현역 전 포지션 존 성향을 bbref 실측으로 DB 교체(아래 항목들)했는데, 성향만 바뀐 현행 엔진은 림 비중이 44→31%로 줄면서 림 FG 58%가 그대로라 NBA Active 득점 107.3→103.8로 떨어짐 → 묶음이 짝. NBA Active는 리그 설정 정규화 끔(`rooms.sim_settings.normalization = {k:0, enabled:false}`, 사용자가 이미 설정).
