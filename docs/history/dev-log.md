@@ -34,6 +34,27 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-30 — 멀티 헤더 시뮬레이션 타임테이블(호버 툴팁 / 폰 바텀 시트)
+
+**배경**: 오늘(현실 날짜) 시뮬 시간대에 가상 날짜가 어디부터 어디까지 진행되는지 확인할 방법이 없었음. 별도 페이지 없이 헤더에서 제공.
+
+**변경 파일**:
+- `utils/simTimetable.ts` (신규) — `buildSimTimetable(timeline)`: VirtualDayRow를 realStartAt의 KST 날짜로 묶어 {현실 날짜, 시뮬 시간대, 가상 날짜 from~to}. 표기 헬퍼 2개.
+- `components/SimTimetableList.tsx` (신규) — 공용 목록(오늘 행 강조·과거 흐리게·열릴 때 오늘 행으로 스크롤).
+- `components/MultiHeader.tsx` — 가상 날짜 라벨을 hover 래퍼로 감싸 툴팁(`timetableOpen` 상태, 호버 동안만 마운트, z-tooltip).
+- `components/mobile/MobileTopBar.tsx` — 루트 화면 가상 시각 우측에 HelpCircle 버튼 → `BottomSheet`에 목록.
+
+**Before**: 날짜 라벨은 `<span>` 단독, 폰 상단 바에 도움말 버튼 없음.
+**After**: 위와 같음. 엔진·DB·서버 변경 없음(기존 `timeline` 컨텍스트만 사용).
+
+**후속(같은 날, 데스크톱 변경)**: 호버 툴팁 → 클릭 팝업으로 교체. 라벨은 `<button>`(호버=밑줄만, 흰색 유지), 팝업은 브라켓 SeriesWindow와 같은 껍데기(`components/SimTimetablePopup.tsx` 신규: 포털+fixed+뷰포트 클램핑, 헤더 바+X, 공용 Table compact), 클릭 좌표에서 열림, 바깥 클릭/Esc로 닫힘, 한 줄 = 현실 날짜 · 가상 시작 · 가상 종료 · 시뮬 시각. MultiHeader는 `timetableOpen`(boolean) → `timetableAnchor`({x,y}|null). 폰 바텀 시트는 기존 `SimTimetableList` 유지.
+
+**후속 2(같은 날)**: 데스크톱 팝업 z-50 → `z-popover`(헤더 z-header 100에 가려져 잘리던 문제), 오늘 행 틴트 indigo → emerald, 제목 "시뮬레이션 일정" → "일정"(데스크톱/모바일 공통). 모바일 목록: "오늘" 텍스트 제거, 가상 날짜 요일 제거(`fmtVirtualRange(..., withWeekday=false)`).
+
+**검증**: tsc 해당 파일 오류 없음.
+
+**롤백 방법**: 신규 파일 2개 삭제 + MultiHeader/MobileTopBar의 위 변경 되돌리기(커밋 해시 참조).
+
 ## 2026-10-29 — 트레이닝 세션 서버·DB·클라이언트 연결 (DB 적용 완료, 서버·클라 미배포)
 
 **배경**: 탭 화면(아래 항목)에 실제 기능 연결. 설계 `docs/plan/practice-scrimmage-plan.md`.

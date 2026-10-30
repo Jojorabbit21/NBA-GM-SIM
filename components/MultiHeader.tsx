@@ -22,6 +22,7 @@ import { useLeagueDraft } from '../hooks/useLeagueDraft';
 import { getReadableTextColor } from '../utils/colorContrast';
 import { TeamLogo } from './common/TeamLogo';
 import { VirtualDayArc } from './VirtualDayArc';
+import { SimTimetablePopup } from './SimTimetablePopup';
 import { Button } from './common/Button';
 import { getSeriesRoundLabel } from '../utils/playoffLogic';
 import type { Player } from '../types';
@@ -57,6 +58,7 @@ export const MultiHeader: React.FC = () => {
     // 시각을 쓰는데 헤더만 로컬 시계라, 로컬 시계가 어긋난 사용자에게 헤더 날짜와 스트립 상태가
     // 서로 다른 순간에 넘어가는 문제가 있었다.
     const nowMs = useServerClock();
+    const [timetableAnchor, setTimetableAnchor] = useState<{ x: number; y: number } | null>(null);
 
     // [2026-09-07] nowMs는 1초마다 바뀌지만, 아래 스케줄 전체를 순회하는 계산들(순위/라이브
     // 경기/시리즈 전적/우승팀 판정)은 그렇게 자주 다시 스캔할 필요가 없다 — 실제 경기
@@ -356,7 +358,24 @@ export const MultiHeader: React.FC = () => {
                 </div>
 
                 {dateLabel && (
-                    <span className="text-sm text-white font-semibold shrink-0 whitespace-nowrap pl-3">{dateLabel}</span>
+                    // 클릭 시 시뮬레이션 타임테이블(현실 날짜 → 가상 날짜 구간) 팝업을 클릭 지점에 띄운다.
+                    <div className="h-full flex items-center shrink-0 pl-3">
+                        {timeline?.length ? (
+                            <button
+                                type="button"
+                                data-sim-timetable-trigger
+                                onClick={e => setTimetableAnchor(prev => prev ? null : { x: e.clientX, y: e.clientY })}
+                                className="text-sm text-white font-semibold whitespace-nowrap cursor-pointer hover:underline"
+                            >
+                                {dateLabel}
+                            </button>
+                        ) : (
+                            <span className="text-sm text-white font-semibold whitespace-nowrap">{dateLabel}</span>
+                        )}
+                        {timetableAnchor && timeline?.length ? (
+                            <SimTimetablePopup timeline={timeline} nowMs={nowMs} anchor={timetableAnchor} onClose={() => setTimetableAnchor(null)} />
+                        ) : null}
+                    </div>
                 )}
 
                 {currentVirtualDate && timeline?.length ? (

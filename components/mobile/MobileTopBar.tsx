@@ -2,8 +2,8 @@
 // docs/ui/mobile-design-system.md §8-3, 캔버스 Components.dc.html H1~H8.
 // 좌 = 리그 로고(탭 루트) 또는 뒤로(2단계 화면) · 중 = 제목 2줄(리그명 또는 화면명 18/700 + "가상 2026.10.27 (월)" 12/500)
 // · 우 = MobileHeaderActions(검색 · 수신함 · 내 팀 로고). 팀 화면 H3는 RosterView가 같은 액션 묶음을 슬롯으로 받아 그린다.
-import React from 'react';
-import { ArrowLeft, Tv } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, HelpCircle, Tv } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useSeasonContext } from '../../views/multi/season/seasonContext';
@@ -13,6 +13,8 @@ import { useMyNextGame } from '../../hooks/useMyNextGame';
 import { useServerClockBucket } from '../../utils/serverClock';
 import { useGameShortCodes } from '../../hooks/useGameShortCodes';
 import { MobileHeaderActions } from './MobileHeaderActions';
+import { BottomSheet } from './BottomSheet';
+import { SimTimetableList } from '../SimTimetableList';
 
 export const MOBILE_TOP_BAR_HEIGHT = 56;
 
@@ -44,6 +46,7 @@ export const MobileTopBar: React.FC = () => {
     const { leagueId } = useParams<{ leagueId: string }>();
     const { league, room, leagueTeams, timeline, isSpectator } = useLeagueContext();
     const nowMs = useServerClockBucket();
+    const [timetableOpen, setTimetableOpen] = useState(false);
     const { getGameUrlId } = useGameShortCodes(room?.id);
     const next = useMyNextGame();
     const { schedule } = useSeasonContext();
@@ -89,6 +92,11 @@ export const MobileTopBar: React.FC = () => {
                         <div className="flex items-baseline gap-1.5 min-w-0 tracking-normal">
                             <span className="text-sm leading-5 font-bold text-white truncate">{dateLabel}</span>
                             {clockLabel && <span className="text-sm leading-5 font-bold text-slate-300 shrink-0">{clockLabel}</span>}
+                            {currentVirtualDate && timeline?.length ? (
+                                <button type="button" onClick={() => setTimetableOpen(true)} aria-label="일정" className="self-center w-6 h-6 -my-1 flex items-center justify-center rounded-full text-slate-400 active:bg-white/10 shrink-0">
+                                    <HelpCircle size={16} />
+                                </button>
+                            ) : null}
                         </div>
                         <div className="flex items-center gap-1.5 text-xs leading-4 min-w-0 truncate">
                             {next.liveGame ? (
@@ -116,6 +124,11 @@ export const MobileTopBar: React.FC = () => {
                 )}
                 <MobileHeaderActions />
             </div>
+            {timeline?.length ? (
+                <BottomSheet open={timetableOpen} title="일정" onClose={() => setTimetableOpen(false)}>
+                    <SimTimetableList timeline={timeline} nowMs={nowMs} maxHeightClass="max-h-[60dvh]" />
+                </BottomSheet>
+            ) : null}
         </header>
     );
 };
