@@ -1484,7 +1484,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         calcCoverage,
         screenerDefender,
         shotType,
-        subZone
+        subZone,
+        // [2026-10-30] 먼저 뛴 오픈 트레일러의 속공 3점은 풀업 수준 견제(이전 CatchShoot 1.0 — 트레일러가 풀업보다 낮았음)
+        (transitionRole === 'trailer' && !helpKicked && preferredZone === '3PT') ? SIM_CONFIG.TRANSITION_SHOT.TRAILER_CONTEST : undefined
     );
 
     // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---

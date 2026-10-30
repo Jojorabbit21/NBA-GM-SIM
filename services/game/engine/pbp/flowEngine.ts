@@ -104,7 +104,9 @@ export function calculateHitRate(
     pnrCoverage: PnrCoverage = 'none',
     screenerDefender?: LivePlayer,
     shotType?: PlayContext['shotType'],
-    threeSubZone?: string
+    threeSubZone?: string,
+    // [2026-10-30] 슛 타입 기본 견제 계수(SHOT_DEFENSE.CONTEST) 대신 쓸 값 — 속공 트레일러 3점(TRANSITION_SHOT.TRAILER_CONTEST)
+    contestOverride?: number
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -200,7 +202,7 @@ export function calculateHitRate(
     const intensityMod = (defTeam.tactics.sliders.defIntensity - 5.5) * 0.006 * intensityMatchup;
 
     // shotType별 컨테스트 효과: 수비자의 defRating 영향력 스케일링
-    let contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
+    let contestFactor = contestOverride ?? SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
 
     // B-7. Deadeye: 3PT 존 엘리트 슈터의 컨테스트 저항
     if (SIM_CONFIG.ZONE_SHOOTING.ENABLED && preferredZone === '3PT' &&

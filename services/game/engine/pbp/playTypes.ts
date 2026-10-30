@@ -104,12 +104,14 @@ export function selectZone(
     actor: LivePlayer,
     sliders: TacticalSliders,
     // [2026-10-28] 플레이 타입별 존 가중치 배율(예: 속공의 3점 억제). 없으면 1.0
-    zoneMult?: Partial<Record<'3PT' | 'Mid' | 'Paint' | 'Rim', number>>
+    zoneMult?: Partial<Record<'3PT' | 'Mid' | 'Paint' | 'Rim', number>>,
+    // [2026-10-30] 3점 성향 몫을 미드로 접는 비율(포스트업 마무리 — SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID). 기본 0
+    threeFoldToMid = 0
 ): 'Rim' | 'Paint' | 'Mid' | '3PT' {
     // 선수 DNA: tendencies.zones → 4존 선호도 (RA/ITP/Mid/3PT, 초기화 시 정규화 완료)
     const prefMap: Record<string, number> = {
         '3PT':   actor.zonePref.three,
-        'Mid':   actor.zonePref.mid,
+        'Mid':   actor.zonePref.mid + actor.zonePref.three * threeFoldToMid,
         'Paint': actor.zonePref.itp,
         'Rim':   actor.zonePref.ra,
     };
@@ -122,9 +124,11 @@ export function selectZone(
 
     // [Soft Threshold] 임계값 미만 존은 가중치 대폭 감소 (완전 제거 X)
     // 임계값 이상: 정상 가중치 / 미만: ×0.2 페널티 (극소량 시도는 허용)
-    const threshold = SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD;
+    // [2026-10-30] 소량 선호 페널티는 3점만(THREE_PREF_THRESHOLD), 나머지 존은 SELECT_THRESHOLD(0 = 페널티 없음)
+    const zsCfg = SIM_CONFIG.ZONE_SELECTION;
     const sensitivity = SIM_CONFIG.ZONE_SELECTION.SLIDER_SENSITIVITY;
     const scored = zones.map(z => {
+        const threshold = z === '3PT' ? zsCfg.THREE_PREF_THRESHOLD : zsCfg.SELECT_THRESHOLD;
         const pref = prefMap[z] < threshold ? prefMap[z] * 0.2 : prefMap[z];
         const modifier = 1 + (sliderMap[z] - 5) / 5 * sensitivity;
         return { zone: z, score: pref * modifier * (zoneMult?.[z] ?? 1) };
@@ -187,7 +191,7 @@ export function resolveFinish(
         // 단계(DUNK_STR_RESIST 블락 저항, calculateMatchupGap 몸싸움)에서 반영됨(docs/history/dev-log.md).
         const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
         if (dunkReach >= F.DUNK_VERT_MIN) {
-            options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
+            options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - F.DUNK_BASELINE) * F.DUNK_WEIGHT });
         }
         // Layup (Rim) — 항상 가능
         options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
@@ -649,7 +653,7 @@ export function resolvePlayAction(
 
             // 기존 로직: 포스트 선수 본인이 마무리 (엔트리 패서는 이 경로에서만 어시스트 후보)
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
-            const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
+            const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, undefined, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
             if (postZone === 'Rim' || postZone === 'Paint') {
                 const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone);
                 return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
@@ -696,19 +700,10 @@ export function resolvePlayAction(
             // Best Driver/Cutter
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);
             const passer = pickPasser(p => p.archetypes.connector, actor.playerId);
-            const cutZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
-            if (cutZone === 'Rim' || cutZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone);
-                return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.03 };
-            }
-            return {
-                playType,
-                actor,
-                secondaryActor: passer,
-                preferredZone: 'Mid',
-                shotType: 'Pullup',
-                bonusHitRate: 0.03
-            };
+            // [2026-10-30] 컷 = 림으로 최단거리 돌격 — 개인 존 성향 대신 고정 비율(림 CUT.RIM_SHARE, 나머지 페인트), 미드 풀업 없음
+            const cutZone: 'Rim' | 'Paint' = Math.random() < SIM_CONFIG.CUT.RIM_SHARE ? 'Rim' : 'Paint';
+            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone);
+            return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.03 };
         }
         case 'Handoff': {
             // Shooter getting ball from Big
@@ -775,7 +770,8 @@ export function resolvePlayAction(
                 const trailerChance = Math.min(tsCfg.TRAILER_MAX,
                     (tsCfg.TRAILER_BASE + tsCfg.TRAILER_PASS_SCALE * trPassNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0));
                 if (Math.random() < trailerChance) {
-                    const trailer = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                    // [2026-10-30] 진짜 슈터 우선 — spacer 하한 초과분의 거듭제곱 가중(이전 spacer 선형: 트레일러 3점의 22%가 센터)
+                    const trailer = pickWeightedActor(p => Math.pow(Math.max(0, p.archetypes.spacer - tsCfg.TRAILER_SPACER_FLOOR), tsCfg.TRAILER_SPACER_POW), actor.playerId);
                     if (trailer.playerId !== actor.playerId) {
                         return { playType, actor: trailer, secondaryActor: actor, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.04, transitionRole: 'trailer' };
                     }

@@ -69,9 +69,11 @@ export const SIM_CONFIG = {
         // [2026-10-25] 2점 과효율 보정(사용자 결정 "림 +5") — 엔진 2P% .577 vs NBA .545, 페인트 .575 vs 3~10ft .452, 미드 .494 vs .41~.45.
         // INSIDE/MID_BASE_PCT(사용자 잠금)는 그대로, 커브만 이동. 결과(하네스): 2P% .550 · 림 .630 · 페인트 .444 · 미드 .432 · TS .577.
         // 레이업 전 구간 +0.05 (이전: [25,-.135] [40,-.105] [55,-.075] [70,-.045] [85,-.005] [90,+.015] [95,+.075] [99,+.135])
+        // [2026-10-30] 림 성공률 현실화(엔진 묶음) — 중간 기울기안(능력치 폭 ~10%p, 사용자 선택). 림 FG 58→70%.
+        // 이전: [25,-.085] [40,-.055] [55,-.025] [70,+.005] [85,+.045] [90,+.065] [95,+.125] [99,+.185]
         LAYUP_OFF_CURVE: [
-            [25, -0.085], [40, -0.055], [55, -0.025], [70, +0.005],
-            [85, +0.045], [90, +0.065], [95, +0.125], [99, +0.185],
+            [25, +0.095], [40, +0.125], [55, +0.155], [70, +0.185],
+            [85, +0.215], [90, +0.235], [95, +0.265], [99, +0.285],
         ] as [number, number][],
 
         // [Dunk] 60.5%→85% (균일 상승, 수비 영향 최대)
@@ -80,9 +82,11 @@ export const SIM_CONFIG = {
         // INSIDE_BASE_PCT는 Layup/Floater/Hook엔 문제없어(최대치도 캡까지 여유 충분) 그대로 두고,
         // 유독 폭이 큰 Dunk 커브만 약 60% 스케일로 압축 — dunk=99 기준 수비 반영 전 85%로 하향.
         // x=0 기준점 추가: dunk 능력이 낮은 선수는 페널티 적용
+        // [2026-10-30] 전 구간 +0.20(엔진 묶음, 덩크 FG ~88%) — 덩크는 95% 상한에 걸려 성공률은 BLOCK_MULT.Dunk가 좌우.
+        // 이전: [0,+.035] [40,+.119] [55,+.161] [70,+.202] [80,+.232] [90,+.256] [99,+.280]
         DUNK_OFF_CURVE: [
-            [0, +0.035], [40, +0.119], [55, +0.161], [70, +0.202], [80, +0.232],
-            [90, +0.256], [99, +0.280],
+            [0, +0.235], [40, +0.319], [55, +0.361], [70, +0.402], [80, +0.432],
+            [90, +0.456], [99, +0.480],
         ] as [number, number][],
 
         // [Mid] Pullup/Jumper/Fadeaway 공통: 23%→41%(plateau@92)→50%
@@ -94,23 +98,26 @@ export const SIM_CONFIG = {
 
         // [2026-10-25] 페인트 점퍼 전용 — 이전엔 MID_OFF_CURVE를 INSIDE_BASE_PCT(57%) 위에 얹어 기대 63.7%(림 레이업보다 높음).
         // = 이전 MID_OFF_CURVE − 0.177 (기대 약 46%)
+        // [2026-10-30] 페인트계 전 구간 +0.05(엔진 묶음) — 이전: [25,-.260] [40,-.210] [55,-.170] [70,-.130] [85,-.100] [92,-.080] [95,-.040] [99,+.010]
         PAINT_JUMPER_OFF_CURVE: [
-            [25, -0.260], [40, -0.210], [55, -0.170], [70, -0.130],
-            [85, -0.100], [92, -0.080], [95, -0.040], [99, +0.010],
+            [25, -0.210], [40, -0.160], [55, -0.120], [70, -0.080],
+            [85, -0.050], [92, -0.030], [95, +0.010], [99, +0.060],
         ] as [number, number][],
 
         // [Floater] 33%→52% (완만 가속, breakpoint 없음)
         // [2026-10-25] 전 구간 −0.10 (이전: [50,-.177] [60,-.147] [70,-.107] [80,-.067] [85,-.047] [90,-.027] [95,-.007] [99,+.013])
+        // [2026-10-30] 페인트계 전 구간 +0.05(엔진 묶음) — 이전: [50,-.277] [60,-.247] [70,-.207] [80,-.167] [85,-.147] [90,-.127] [95,-.107] [99,-.087]
         FLOATER_OFF_CURVE: [
-            [50, -0.277], [60, -0.247], [70, -0.207], [80, -0.167],
-            [85, -0.147], [90, -0.127], [95, -0.107], [99, -0.087],
+            [50, -0.227], [60, -0.197], [70, -0.157], [80, -0.117],
+            [85, -0.097], [90, -0.077], [95, -0.057], [99, -0.037],
         ] as [number, number][],
 
         // [Hook] 30%→55% (키 큰 센터 전용)
         // [2026-10-25] 전 구간 −0.11 (이전: [50,-.217] [60,-.167] [70,-.107] [80,-.037] [85,-.017] [90,+.003] [95,+.023] [99,+.033])
+        // [2026-10-30] 페인트계 전 구간 +0.05(엔진 묶음) — 이전: [50,-.327] [60,-.277] [70,-.217] [80,-.147] [85,-.127] [90,-.107] [95,-.087] [99,-.077]
         HOOK_OFF_CURVE: [
-            [50, -0.327], [60, -0.277], [70, -0.217], [80, -0.147],
-            [85, -0.127], [90, -0.107], [95, -0.087], [99, -0.077],
+            [50, -0.277], [60, -0.227], [70, -0.167], [80, -0.097],
+            [85, -0.077], [90, -0.057], [95, -0.037], [99, -0.027],
         ] as [number, number][],
 
         // shotIq + offConsist 일관성 시스템 (모든 존)
@@ -761,7 +768,9 @@ export const SIM_CONFIG = {
         // [2026-10-18] DUNK_STR_MIN(65) 제거 — strength는 덩크 결과 단계에서만 반영
         DUNK_HEIGHT_BASE: 200,      // cm, 이 키를 넘는 만큼 reach 가산
         DUNK_HEIGHT_VERT_BONUS: 1.0,
-        DUNK_WEIGHT: 1.5,
+        // [2026-10-30] 덩크 빈도 현실화(엔진 묶음): 가중치 1.5 → 0.65, 기준선 BASELINE(60) → DUNK_BASELINE(65)
+        DUNK_WEIGHT: 0.65,
+        DUNK_BASELINE: 65,
         LAYUP_WEIGHT: 1.0,
         FLOATER_CLOSESHOT_MIN: 80,
         FLOATER_WEIGHT: 0.7,
@@ -785,7 +794,8 @@ export const SIM_CONFIG = {
     // Shot Defense: shotType별 수비 차등 (flowEngine + possessionHandler)
     SHOT_DEFENSE: {
         CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 1.0 } as Record<string, number>,
-        BLOCK_MULT: { Dunk: 0.85, Layup: 1.0, Floater: 0.35, Hook: 0.55, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.25, CatchShoot: 1.0 } as Record<string, number>,
+        // [2026-10-30] Dunk 0.85 → 0.45(엔진 묶음)
+        BLOCK_MULT: { Dunk: 0.45, Layup: 1.0, Floater: 0.35, Hook: 0.55, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.25, CatchShoot: 1.0 } as Record<string, number>,
         AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.15, Jumper: 0.10, Fadeaway: 0.10, CatchShoot: 0.08 } as Record<string, number>,
         DUNK_STR_RESIST: 0.001,
         DUNK_VERT_RESIST: 0.0005,
@@ -864,7 +874,11 @@ export const SIM_CONFIG = {
     // Foul Trouble Logic
     // Zone Selection: selectZone 임계값 필터 (존 선호도 기반 플레이 리다이렉트)
     ZONE_SELECTION: {
-        ZONE_PREF_THRESHOLD: 0.15,  // 이 값 미만의 zonePref는 selectZone에서 후보 제거가 아니라 ×0.2 가중치 페널티
+        ZONE_PREF_THRESHOLD: 0.15,  // CatchShoot·PnR_Pop 슈터 선정 분모 등(selectZone 밖)에서 사용 — 0으로 두면 NaN
+        // [2026-10-30] selectZone 소량 선호 페널티(×0.2)는 3점에만(엔진 묶음) — 림·페인트·미드는 성향 그대로.
+        // 원래 목적(3점 성향이 극소량인 빅맨의 3점 남발 방지)만 유지. 이전: 모든 존 ZONE_PREF_THRESHOLD(0.15)
+        SELECT_THRESHOLD: 0,
+        THREE_PREF_THRESHOLD: 0.15,
         SLIDER_SENSITIVITY: 0.5,    // 전술 슬라이더가 존 선택 비중을 흔드는 폭 (0=슬라이더 무효, 1=슬라이더 최대 2배/0배)
     },
     // [2026-10-28] 에이스 ballDominance 하한 — 코트 위 1옵션(그래비티)이 2옵션과 MIN_GAP 이상 앞서면
@@ -901,8 +915,14 @@ export const SIM_CONFIG = {
         RUNNER_REB_PENALTY: 0.3,
         RUNNER_PHYSIQUE_WEIGHT: 0.25,
     },
+    // [2026-10-30] THREE_MULT 0.04 → 0.5(사용자 결정, 10-28 "10% 미만" 번복 — 실제 속공 3점 비중 Synergy 역산 40~45%, 속공 3점 ~36%).
+    // 트레일러: 선정 가중 max(0, spacer − TRAILER_SPACER_FLOOR)^TRAILER_SPACER_POW(이전 spacer 선형 → 빅맨 22%·3점 능력 80.5),
+    // 3점 수비 견제 TRAILER_CONTEST(이전 CatchShoot 1.0 — 오픈 트레일러가 풀업보다 견제를 더 받았음).
     TRANSITION_SHOT: {
-        THREE_MULT: 0.04,
+        THREE_MULT: 0.5,
+        TRAILER_SPACER_FLOOR: 50,
+        TRAILER_SPACER_POW: 2,
+        TRAILER_CONTEST: 0.8,
         TRAILER_BASE: 0.35,
         TRAILER_PASS_SCALE: 0.45,
         TRAILER_MAX: 0.9,
@@ -926,9 +946,17 @@ export const SIM_CONFIG = {
         // [2026-10-24] PnR_Roll/Pop 전용(Handoff·PnR_Handler 스크리너는 SIM_CONFIG.SCREEN.ELIGIBLE_PHYSIQUE_MIN 체격 자격으로 이전).
         PNR_ROLL: { C: 0.5, PF: 0.3, SF: 0.15, SG: 0, PG: 0 } as Record<string, number>,
     },
+    // [2026-10-30] 컷 마무리 존 — 림으로 최단거리 돌격하는 플레이라 개인 존 성향 대신 고정 비율(사용자 결정).
+    // 림 RIM_SHARE, 나머지 페인트, 미드 풀업 없음. 컷 FG 58.9 → 66.9%(실제 Synergy 66.7%). 이전: selectZone(['Rim','Paint','Mid']) 성향 기반
+    CUT: {
+        RIM_SHARE: 0.9,
+    },
     // [2026-10-24] PostUp 액터 선정 = postScorer × (1 − w) + 체격(calculateScreenerPhysique) × w (playTypes.ts)
     POST_SELECTION: {
         PHYSIQUE_WEIGHT: 0.4,
+        // [2026-10-30] 포스트업 마무리 존(림·페인트·미드)에서 3점 성향 몫을 미드로 접는 비율(엔진 묶음).
+        // 이전엔 3점 후보를 빼고 재정규화 → 스트레치 빅의 포스트업이 림으로 쏠렸음.
+        THREE_FOLD_TO_MID: 1.0,
     },
     // [2026-07-31] PostUp 킥아웃 — 더블팀 유도 후 오픈 슈터에게 패스할지 결정. postScorer와
     // postPassing(passVision+passAcc 평균)을 1:1 비율로 경쟁시키는 방식은 둘 다 같은 0~99 스케일이라

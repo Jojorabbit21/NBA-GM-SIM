@@ -89,7 +89,9 @@ export function calculateHitRate(
     pnrCoverage: PnrCoverage = 'none',
     screenerDefender?: LivePlayer,
     shotType?: PlayContext['shotType'],
-    threeSubZone?: string
+    threeSubZone?: string,
+    // [2026-10-30] 슛 타입 기본 견제 계수(SHOT_DEFENSE.CONTEST) 대신 쓸 값 — 속공 트레일러 3점(TRANSITION_SHOT.TRAILER_CONTEST)
+    contestOverride?: number
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -169,7 +171,7 @@ export function calculateHitRate(
     const intensityMatchup = interpolateCurve(matchupDiff, matchupCurve);
     const intensityMod = (defTeam.tactics.sliders.defIntensity - 5.5) * 0.006 * intensityMatchup;
 
-    let contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
+    let contestFactor = contestOverride ?? SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
 
     if (SIM_CONFIG.ZONE_SHOOTING.ENABLED && preferredZone === '3PT' &&
         actor.attr.shotIq >= SIM_CONFIG.ZONE_SHOOTING.DEADEYE_SHOTIQ_THRESHOLD &&
