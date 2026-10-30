@@ -34,6 +34,29 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+## 2026-10-30 — 폰 라이브 스코어버그 3자리 점수 밴드 이탈
+
+**배경:** 폰 라이브 스코어버그에서 점수가 100점 이상이면 팀 밴드(폭 30%)를 넘어 로고·약어(MIL 등)가 화면 밖으로 잘림.
+
+**변경 파일:** `views/multi/season/MultiGamePbpView.tsx` (`phoneTeamBand`)
+
+**Before:** 점수 `text-[34px]`, 밴드 `px-2.5` 고정
+**After:** 점수 ≥100이면 `text-[28px]` + 밴드 `px-2`. 2자리 이하는 동일.
+
+**롤백:** `scoreValue`/`threeDigits` 제거, 점수 span을 `text-[34px]`, 밴드를 `px-2.5`로 복원.
+
+## 2026-10-30 — 폰 검색 시트가 화면 오른쪽으로 넘침 (visualViewport 기준 크기)
+
+**배경:** 안드로이드 Chrome에서 검색 시트의 입력창이 오른쪽으로 잘리고 "취소"가 안 보임. 페이지에 가로 오버플로가 있으면 레이아웃 뷰포트가 넓어져 `fixed inset-0`이 화면보다 커짐.
+
+**변경 파일:** `components/mobile/MobileSearchSheet.tsx`
+
+**Before:** 루트 `className="fixed inset-0 z-modal ..."`
+**After:** `window.visualViewport`의 offsetLeft/Top·width·height를 state(`box`)로 동기화해 inline style로 적용(`resize`/`scroll` 구독). visualViewport 미지원이면 기존 `inset-0` 폴백. `overflow-hidden` 추가.
+
+**검증:** tsc 오류 없음. 실기기 확인 필요.
+**롤백:** `box` state·두 번째 useEffect 제거, 루트 className을 `fixed inset-0 z-modal flex flex-col bg-slate-950`로 복원.
+
 ## 2026-10-30 — 멀티 헤더 시뮬레이션 타임테이블(호버 툴팁 / 폰 바텀 시트)
 
 **배경**: 오늘(현실 날짜) 시뮬 시간대에 가상 날짜가 어디부터 어디까지 진행되는지 확인할 방법이 없었음. 별도 페이지 없이 헤더에서 제공.

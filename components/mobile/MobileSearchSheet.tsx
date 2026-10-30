@@ -24,6 +24,19 @@ interface MobileSearchSheetProps {
 export const MobileSearchSheet: React.FC<MobileSearchSheetProps> = ({ open, onClose, leagueTeams, poolPlayers, rosterMap, onViewPlayer, onViewTeam }) => {
     const [query, setQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
+    // 페이지에 가로 오버플로가 있으면 안드로이드 Chrome의 레이아웃 뷰포트가 넓어져 fixed inset-0이 화면 밖으로 나간다 → 보이는 영역(visualViewport)에 맞춤.
+    const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const sync = () => setBox({ left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height });
+        sync();
+        vv.addEventListener('resize', sync);
+        vv.addEventListener('scroll', sync);
+        return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); setBox(null); };
+    }, [open]);
 
     useEffect(() => {
         if (!open) { setQuery(''); return; }
@@ -46,7 +59,7 @@ export const MobileSearchSheet: React.FC<MobileSearchSheetProps> = ({ open, onCl
 
     if (!open) return null;
     return createPortal(
-        <div role="dialog" aria-modal="true" aria-label="팀, 선수 검색" className="fixed inset-0 z-modal flex flex-col bg-slate-950">
+        <div role="dialog" aria-modal="true" aria-label="팀, 선수 검색" className={`fixed z-modal flex flex-col bg-slate-950 overflow-hidden ${box ? '' : 'inset-0'}`} style={box ?? undefined}>
             <div className="shrink-0 pt-safe border-b border-slate-800">
                 <div className="h-14 flex items-center gap-2 px-3">
                     <label className="flex-1 h-10 flex items-center gap-2 px-3 rounded-lg bg-slate-900 border border-slate-700 focus-within:border-slate-500">

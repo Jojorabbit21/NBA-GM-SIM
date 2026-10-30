@@ -2824,9 +2824,12 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                 <span className="text-[11px] leading-3 font-black tracking-wider">{abbr}</span>
             </span>
         );
-        const score = <span className="text-[34px] leading-none font-black tabular-nums tracking-tighter">{isAway ? currentScore.away : currentScore.home}</span>;
+        const scoreValue = isAway ? currentScore.away : currentScore.home;
+        // 3자리(100+)는 30% 밴드 안에 로고·약어와 같이 안 들어가 밖으로 나감 → 글자·여백 축소
+        const threeDigits = scoreValue >= 100;
+        const score = <span className={`${threeDigits ? 'text-[28px]' : 'text-[34px]'} leading-none font-black tabular-nums tracking-tighter`}>{scoreValue}</span>;
         return (
-            <div className="flex items-center gap-1 px-2.5 py-2 shrink-0" style={{ width: '30%', color: isAway ? awayText : homeText }}>
+            <div className={`flex items-center gap-1 py-2 shrink-0 ${threeDigits ? 'px-2' : 'px-2.5'}`} style={{ width: '30%', color: isAway ? awayText : homeText }}>
                 {isAway ? <>{mark}<span className="flex-1" />{score}</> : <>{score}<span className="flex-1" />{mark}</>}
             </div>
         );
