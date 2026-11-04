@@ -34,6 +34,36 @@
 - 이 문서는 git으로 버전 관리되므로 최악의 경우 `git log -- docs/history/dev-log.md`로도 시점별 상태 추적 가능.
 
 
+
+## 2026-11-04 — 멀티 팀 전술 프리셋 [+]: 현재 값 복사 → 새 전술 세트로 시작
+
+**배경**: 팀 프리셋을 추가하면 이전 프리셋의 전술 로테이션(sliderSchedule)·2번 전술·클러치·세트 이름이 그대로 복사돼 보였음. 새 프리셋은 1·2번 전술이 새로 생겨야 함.
+
+**변경 파일**:
+- `views/multi/season/MultiTacticsView.tsx` (client) — `handleCreatePreset`
+
+**Before**:
+```ts
+const data = kind === 'depth' ? buildDepthPresetData(t, d) : buildTeamPresetData(t);
+const { error } = await savePreset(kind, slot, name, data);
+if (error) { ...return error; }
+```
+
+**After**:
+```ts
+const freshTeam = kind === 'team' ? applyTeamPreset(t, { sliders: { ...DEFAULT_SLIDERS } }) : null;
+if (freshTeam && !confirmOverwriteDirty('team')) return null;
+const data = freshTeam ? buildTeamPresetData(freshTeam) : buildDepthPresetData(t, d);
+const { error } = await savePreset(kind, slot, name, data);
+if (error) { ...return error; }
+if (freshTeam) setUserTactics(freshTeam);
+```
+- 팀 프리셋만 변경. 뎁스(로테이션 분 단위) 프리셋은 기존대로 현재 값 스냅샷.
+
+**검증**: tsc 해당 파일 오류 없음. 화면 E2E 미확인.
+
+**롤백 방법**: After 블록을 Before로 되돌림.
+
 ## 2026-10-30 — 레전드 풀 확장(+DB 정리) · 커리어 평균 null 처리 (코드 4줄 + DB 데이터 작업)
 
 **배경**: 레전드 풀이 빈약하다는 요청에서 시작. 은퇴자 75명 전환 + 신규 레전드 40명 추가 + `career_history` 보충·정리를 진행했고, 정리 중 (1) 1946~50년대 행의 빈 열이 0.0으로 저장된 문제 (2) `name_mapping.csv` 오매칭으로 다른 선수의 경력이 들어간 문제를 발견해 같이 정리. (1)을 `null`로 바꾸면 커리어 평균이 null을 0으로 계산해 개선이 안 되므로 코드 4줄을 수정.

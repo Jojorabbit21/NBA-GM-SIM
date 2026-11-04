@@ -705,16 +705,21 @@ const MultiTacticsView: React.FC = () => {
     const handleCreatePreset = useCallback(async (kind: TacticPresetKind, slot: TacticPresetSlot, name: string): Promise<string | null> => {
         const { userTactics: t, depthChart: d } = presetStateRef.current;
         if (!t) return 'tactics not ready';
-        const data = kind === 'depth' ? buildDepthPresetData(t, d) : buildTeamPresetData(t);
+        // 팀 프리셋은 현재 값 복사가 아니라 새 전술 세트(1·2번 기본값, 타임라인·클러치·이름 없음)로 시작한다.
+        const freshTeam = kind === 'team' ? applyTeamPreset(t, { sliders: { ...DEFAULT_SLIDERS } }) : null;
+        if (freshTeam && !confirmOverwriteDirty('team')) return null;
+        const data = freshTeam ? buildTeamPresetData(freshTeam) : buildDepthPresetData(t, d);
         const { error } = await savePreset(kind, slot, name, data);
         if (error) {
             setPresetNotice(kind, { tone: 'danger', text: '프리셋 추가에 실패했습니다' });
             return error;
         }
+        if (freshTeam) setUserTactics(freshTeam);
         const slotRes = await commitPresetSlot(kind, slot);
         setPresetNotice(kind, slotRes.error ? { tone: 'danger', text: '프리셋 선택 저장에 실패했습니다' } : null);
         return null;
-    }, [savePreset, commitPresetSlot, setPresetNotice]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [savePreset, commitPresetSlot, setPresetNotice, setUserTactics]);
 
     const handleRenamePreset = useCallback(async (kind: TacticPresetKind, name: string): Promise<string | null> => {
         const active = findActivePreset(kind);
