@@ -983,7 +983,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 const koZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], open, sliders);
                 if (koZone === 'Rim' || koZone === 'Paint') {
                     // 클로즈아웃 공략 돌파
-                    const fin = resolveFinish(open, 'drive', sliders, koZone);
+                    const fin = resolveFinish(open, 'drive', sliders, koZone, 'created');
                     preferredZone = fin.zone;
                     shotType = fin.shotType;
                     bonusHitRate = hkCfg.DRIVE_BONUS;

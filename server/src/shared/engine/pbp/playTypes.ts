@@ -138,11 +138,30 @@ export function selectZone(
 
 type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
 
+// [2026-11-04] Rim finish situation for dunk share (client mirror): open = roll/cut/putback/transition runner,
+// transitionPush = transition ball-handler self finish, created = half-court self-created finishes
+export type RimFinishSituation = 'open' | 'transitionPush' | 'created';
+
+function rimDunkShare(actor: LivePlayer, situation: RimFinishSituation): number {
+    const F = SIM_CONFIG.FINISH;
+    const ds = F.DUNK_SHARE;
+    const a = actor.attr;
+    const reach = a.vertical + Math.max(0, a.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
+    const reachMult = Math.max(0, Math.min(1, (reach - ds.REACH_FLOOR) / ds.REACH_SPAN));
+    if (reachMult <= 0) return 0;
+    const base = ds.BASE
+        + ds.HEIGHT * (a.height - ds.HEIGHT_REF)
+        + ds.DUNK * (a.dunk - ds.ATTR_REF)
+        + ds.LAYUP * (a.layup - ds.ATTR_REF);
+    return Math.max(0, Math.min(ds.CAP, base * reachMult * (ds.SITUATION_MULT[situation] ?? 1)));
+}
+
 export function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
     sliders: TacticalSliders,
-    zone?: 'Rim' | 'Paint'
+    zone: 'Rim' | 'Paint' | undefined,
+    situation: RimFinishSituation,
 ): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'] } {
     const F = SIM_CONFIG.FINISH;
     const B = F.BASELINE;
@@ -150,12 +169,14 @@ export function resolveFinish(
 
     // Rim 옵션
     if (!zone || zone === 'Rim') {
-        // [2026-10-18] reach(vertical + height bonus) gate, strength hard cut removed (client mirror)
-        const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
-        if (dunkReach >= F.DUNK_VERT_MIN) {
-            options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - F.DUNK_BASELINE) * F.DUNK_WEIGHT });
+        // [2026-11-04] direct dunk share instead of dunk/layup weighted draw (client mirror)
+        const dunkShare = rimDunkShare(actor, situation);
+        if (zone === 'Rim') {
+            return { zone: 'Rim', shotType: Math.random() < dunkShare ? 'Dunk' : 'Layup' };
         }
-        options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
+        const rimWeight = Math.max(1, Math.max(actor.attr.layup, actor.attr.dunk) - B);
+        options.push({ zone: 'Rim', shotType: 'Dunk', weight: rimWeight * dunkShare });
+        options.push({ zone: 'Rim', shotType: 'Layup', weight: rimWeight * (1 - dunkShare) });
     }
 
     // Paint 옵션
@@ -328,7 +349,7 @@ export function resolvePlayAction(
         if (others.length === 0 || Math.random() < bCfg.SCREENER_SHARE) {
             const sZone = selectZone(['Rim', 'Paint', 'Mid', '3PT'], screenerP, sliders);
             if (sZone === 'Rim' || sZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(screenerP, 'roll', sliders, sZone);
+                const { zone, shotType } = resolveFinish(screenerP, 'roll', sliders, sZone, 'open');
                 return { playType, actor: screenerP, secondaryActor: handler, preferredZone: zone, shotType,
                     bonusHitRate: SIM_CONFIG.PNR_COVERAGE.BLITZ_ROLL_BONUS + passIqBonus, isKickout: true, blitzTarget: 'screener' };
             }
@@ -339,7 +360,7 @@ export function resolvePlayAction(
         const target = pickWeightedActor(p => p.archetypes.spacer, handler.playerId, 'shooter', p => p.playerId !== screenerP.playerId);
         const tZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], target, sliders);
         if (tZone === 'Rim' || tZone === 'Paint') {
-            const { zone, shotType } = resolveFinish(target, 'post', sliders, tZone);
+            const { zone, shotType } = resolveFinish(target, 'post', sliders, tZone, 'created');
             return { playType, actor: target, secondaryActor: handler, preferredZone: zone, shotType,
                 bonusHitRate: bCfg.OPEN_BONUS + passIqBonus, isKickout: true, blitzTarget: 'weakside' };
         }
@@ -358,7 +379,7 @@ export function resolvePlayAction(
 
             const isoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (isoZone === 'Rim' || isoZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, isoZone);
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, isoZone, 'created');
                 return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00 };
             }
             return {
@@ -377,7 +398,7 @@ export function resolvePlayAction(
 
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (zone === 'Rim' || zone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone);
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone, 'created');
                 return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0.01 };
             }
             return { playType, actor, secondaryActor: screener, preferredZone: zone, shotType: 'Pullup', bonusHitRate: 0.01 };
@@ -411,7 +432,7 @@ export function resolvePlayAction(
                     // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
                     // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
                     // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
-                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone, 'created');
                     return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return { playType, actor: kickTarget, secondaryActor: screener, preferredZone: koZone, shotType: koZone === '3PT' ? 'CatchShoot' : 'Jumper', bonusHitRate: 0.01 + passIqBonus, isKickout: true };
@@ -420,7 +441,7 @@ export function resolvePlayAction(
             const handler = pickPasser(p => p.archetypes.handler, screener.playerId);
             const rollZone = selectZone(['Rim', 'Paint', 'Mid'], screener, sliders);
             if (rollZone === 'Rim' || rollZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(screener, 'roll', sliders, rollZone);
+                const { zone, shotType } = resolveFinish(screener, 'roll', sliders, rollZone, 'open');
                 return { playType, actor: screener, secondaryActor: handler, preferredZone: zone, shotType, bonusHitRate: 0.03 };
             }
             return { playType, actor: screener, secondaryActor: handler, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0.03 };
@@ -482,7 +503,7 @@ export function resolvePlayAction(
                     // [2026-08-03] client 미러(playTypes.ts) 참고 — 킥아웃 마무리 context를 'drive'로
                     // 고정하면 훅슛이 gating 조건(post/roll)을 못 넘어 킥아웃에서만 훅슛이 원천
                     // 봉쇄되는 문제가 있었음. 4개 playType 전부 'post'로 통일.
-                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone);
+                    const { zone, shotType } = resolveFinish(kickTarget, 'post', sliders, koZone, 'created');
                     return { playType, actor: kickTarget, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.01 + passIqBonus, isKickout: true };
                 }
                 return {
@@ -497,7 +518,7 @@ export function resolvePlayAction(
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
             const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, undefined, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
             if (postZone === 'Rim' || postZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone);
+                const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone, 'created');
                 return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
             }
             return { playType, actor, secondaryActor: entryPasser, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0.01 };
@@ -522,7 +543,7 @@ export function resolvePlayAction(
             const passer = pickPasser(p => p.archetypes.connector, actor.playerId);
             // [2026-10-30] 컷 = 림으로 최단거리 돌격 — 개인 존 성향 대신 고정 비율(림 CUT.RIM_SHARE, 나머지 페인트), 미드 풀업 없음
             const cutZone: 'Rim' | 'Paint' = Math.random() < SIM_CONFIG.CUT.RIM_SHARE ? 'Rim' : 'Paint';
-            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone);
+            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone, 'open');
             return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.03 };
         }
         case 'Handoff': {
@@ -540,7 +561,7 @@ export function resolvePlayAction(
 
             const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (hoZone === 'Rim' || hoZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, hoZone);
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, hoZone, 'created');
                 return { playType, actor, secondaryActor: big, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
             }
             return {
@@ -607,10 +628,10 @@ export function resolvePlayAction(
             if (SIM_CONFIG.TRANSITION_FLOW.ENABLED && runner.playerId !== actor.playerId
                 && Math.random() < transitionRunnerPassChance(actor, runner)) {
                 const rz = selectZone(['Paint', 'Rim'], runner, sliders);
-                const { zone, shotType } = resolveFinish(runner, 'drive', sliders, rz);
+                const { zone, shotType } = resolveFinish(runner, 'drive', sliders, rz, 'open');
                 return { playType, actor: runner, secondaryActor: actor, preferredZone: zone, shotType, bonusHitRate: 0.04, transitionRole: 'runner' };
             }
-            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, trZone);
+            const { zone, shotType } = resolveFinish(actor, 'drive', sliders, trZone, 'transitionPush');
             return { playType, actor, secondaryActor: outletPasser, preferredZone: zone, shotType, bonusHitRate: 0.04, transitionRole: selfRole };
         }
         case 'Putback': {
@@ -621,7 +642,7 @@ export function resolvePlayAction(
                 p.attr.hustle * 0.20 +
                 (((p.attr.closeShot + p.attr.layup + p.attr.dunk) / 3) * 0.10)
             );
-            const { zone: pbZone, shotType: pbShotType } = resolveFinish(actor, 'putback', sliders);
+            const { zone: pbZone, shotType: pbShotType } = resolveFinish(actor, 'putback', sliders, undefined, 'open');
             return { playType, actor, preferredZone: pbZone, shotType: pbShotType, bonusHitRate: 0.05 };
         }
         case 'OffBallScreen': {
@@ -638,7 +659,7 @@ export function resolvePlayAction(
 
             const obsZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (obsZone === 'Rim' || obsZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, obsZone);
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, obsZone, 'created');
                 return { playType, actor, secondaryActor: passer, screener, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + screenBonus };
             }
             return {
@@ -664,13 +685,13 @@ export function resolvePlayAction(
             const keepChance = penetration / (penetration + kickPass);
             if (Math.random() < keepChance) {
                 const driveZone = selectZone(['Rim', 'Paint'], driver, sliders) as 'Rim' | 'Paint';
-                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, driveZone);
+                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, driveZone, 'created');
                 return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
             }
 
             const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (dkZone === 'Rim' || dkZone === 'Paint') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, dkZone);
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, dkZone, 'created');
                 return { playType, actor, secondaryActor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
             }
             return {

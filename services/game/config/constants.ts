@@ -764,14 +764,28 @@ export const SIM_CONFIG = {
     // Finish System: resolveFinish에서 마무리 타입 결정 (playTypes.ts)
     FINISH: {
         BASELINE: 60,
-        DUNK_VERT_MIN: 70,          // reach(vertical + height bonus) threshold
         // [2026-10-18] DUNK_STR_MIN(65) 제거 — strength는 덩크 결과 단계에서만 반영
         DUNK_HEIGHT_BASE: 200,      // cm, 이 키를 넘는 만큼 reach 가산
         DUNK_HEIGHT_VERT_BONUS: 1.0,
-        // [2026-10-30] 덩크 빈도 현실화(엔진 묶음): 가중치 1.5 → 0.65, 기준선 BASELINE(60) → DUNK_BASELINE(65)
-        DUNK_WEIGHT: 0.65,
-        DUNK_BASELINE: 65,
-        LAYUP_WEIGHT: 1.0,
+        // [2026-11-04] 림 슛 덩크/레이업 = 덩크 비율 직접 판정 (DUNK_WEIGHT·DUNK_BASELINE·DUNK_VERT_MIN·LAYUP_WEIGHT 가중 추첨 대체).
+        // 옛 가중 추첨은 레이업≤60이면 덩크 100%, 덩크≤65면 0%인 절벽이 있었고 키·상황을 무시했다.
+        // 계수 = bbref 2024-26 덩크÷0-3ft 실측(림 100+ 285명)에 선수별 Synergy 플레이 구성을 넣어 회귀(r 0.76).
+        // share = clamp((BASE + HEIGHT·(h−200) + DUNK·(dunk−70) + LAYUP·(layup−70)) × reach배율 × SITUATION_MULT, 0, CAP).
+        // reach배율: 같은 키에서 점프력이 낮으면 덩크가 적다(실측, 213cm+ 점프력 상관 +0.56) — 너키치·올리닉·요키치형.
+        // 상황: Synergy상 포스트업·온볼·스팟업 돌파는 덩크 ≈0, 덩크는 롤·컷·풋백·속공에서 나옴(docs/history/dev-log.md).
+        DUNK_SHARE: {
+            BASE: 0.303,
+            HEIGHT_REF: 200,
+            HEIGHT: 0.008,
+            ATTR_REF: 70,
+            DUNK: 0.010,
+            LAYUP: -0.005,
+            CAP: 0.75,
+            // reach(vertical + max(0, h−DUNK_HEIGHT_BASE)) 배율: FLOOR 이하 0 → FLOOR+SPAN 이상 1, 사이는 선형
+            REACH_FLOOR: 56,
+            REACH_SPAN: 20,
+            SITUATION_MULT: { open: 1.0, transitionPush: 0.8, created: 0.3 } as Record<string, number>,
+        },
         FLOATER_CLOSESHOT_MIN: 80,
         FLOATER_WEIGHT: 0.7,
         // [2026-10-18] HOOK_HEIGHT_MIN(208) 삭제 → 연속 키 배율 clamp((h-BASE)/SPAN, 0, CAP)^POW, HOOK_WEIGHT 0.8 → 1.6

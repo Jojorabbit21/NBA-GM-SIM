@@ -693,14 +693,23 @@ export const SIM_CONFIG = {
     // Finish System: resolveFinish에서 마무리 타입 결정 (playTypes.ts)
     FINISH: {
         BASELINE: 60,
-        DUNK_VERT_MIN: 70,          // reach(vertical + height bonus) threshold
         // [2026-10-18] DUNK_STR_MIN(65) removed — strength applies only at dunk resolution
         DUNK_HEIGHT_BASE: 200,      // cm
         DUNK_HEIGHT_VERT_BONUS: 1.0,
-        // [2026-10-30] 덩크 빈도 현실화(엔진 묶음): 가중치 1.5 → 0.65, 기준선 BASELINE(60) → DUNK_BASELINE(65)
-        DUNK_WEIGHT: 0.65,
-        DUNK_BASELINE: 65,
-        LAYUP_WEIGHT: 1.0,
+        // [2026-11-04] Rim dunk/layup = direct dunk share (replaces DUNK_WEIGHT/DUNK_BASELINE/DUNK_VERT_MIN/LAYUP_WEIGHT; client mirror)
+        DUNK_SHARE: {
+            BASE: 0.303,
+            HEIGHT_REF: 200,
+            HEIGHT: 0.008,
+            ATTR_REF: 70,
+            DUNK: 0.010,
+            LAYUP: -0.005,
+            CAP: 0.75,
+            // reach(vertical + max(0, h−DUNK_HEIGHT_BASE)) 배율: FLOOR 이하 0 → FLOOR+SPAN 이상 1, 사이는 선형
+            REACH_FLOOR: 56,
+            REACH_SPAN: 20,
+            SITUATION_MULT: { open: 1.0, transitionPush: 0.8, created: 0.3 } as Record<string, number>,
+        },
         FLOATER_CLOSESHOT_MIN: 80,
         FLOATER_WEIGHT: 0.7,
         // [2026-10-18] HOOK_HEIGHT_MIN(208) 삭제 → 연속 키 배율 clamp((h-BASE)/SPAN, 0, CAP)^POW, HOOK_WEIGHT 0.8 → 1.6

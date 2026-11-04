@@ -508,8 +508,9 @@ resolveFinish(actor, context, sliders) → { zone, shotType }
 context = 'drive' | 'post' | 'roll' | 'putback'
 
 후보 옵션 (weight = max(0, 능력치 - 60) × 가중치):
-  Dunk  (Rim)   → reach(vertical + max(0, height-200)×1.0)≥70일 때만, weight=(dunk-60)×1.5 (strength 하드컷은 2026-10-18 제거)
-  Layup (Rim)   → 항상 가능, weight=(layup-60)×1.0
+  Dunk/Layup (Rim) → [2026-11-04] 가중 추첨 아님. 덩크 비율 = clamp((0.303 + 0.008·(h−200) + 0.010·(dunk−70) − 0.005·(layup−70)) × reach배율 × 상황배율, 0, 0.75),
+                     reach배율 = clamp((vertical + max(0, height-200)×1.0 − 56) / 20, 0, 1). zone='Rim'이면 이 비율로 바로 판정, 풋백(zone 미지정)은 림 몫을 비율대로 분할.
+                     상황배율(5번째 인자 situation): open 1.0 / transitionPush 0.8 / created 0.3
   Floater(Paint)→ closeShot≥80, putback 제외, weight=(closeShot-60)×0.7
   Hook  (Paint) → closeShot≥80, putback 제외 전 상황, weight=(postPlay-60)×1.6×clamp((height-200)/15, 0, 1.5)² (2026-10-18: 208cm 커트라인·post/roll 한정 폐지)
   Pullup (Mid)  → mid≥72, drive만, weight=(mid-60)×0.5×(shot_mid/5)
@@ -1355,8 +1356,9 @@ GAME_ENV: {
 
 FINISH: {
   BASELINE: 60,
-  DUNK_VERT_MIN: 70, DUNK_HEIGHT_BASE: 200, DUNK_HEIGHT_VERT_BONUS: 1.0, DUNK_WEIGHT: 1.5,
-  LAYUP_WEIGHT: 1.0,
+  DUNK_HEIGHT_BASE: 200, DUNK_HEIGHT_VERT_BONUS: 1.0,
+  DUNK_SHARE: { BASE: 0.303, HEIGHT_REF: 200, HEIGHT: 0.008, ATTR_REF: 70, DUNK: 0.010, LAYUP: -0.005,
+                CAP: 0.75, REACH_FLOOR: 56, REACH_SPAN: 20, SITUATION_MULT: { open: 1.0, transitionPush: 0.8, created: 0.3 } },
   FLOATER_CLOSESHOT_MIN: 80, FLOATER_WEIGHT: 0.7,
   HOOK_CLOSESHOT_MIN: 80, HOOK_WEIGHT: 1.6, HOOK_HEIGHT_BASE: 200, HOOK_HEIGHT_SPAN: 15, HOOK_HEIGHT_CAP: 1.5, HOOK_HEIGHT_POW: 2,
   MID_MIN: 72, MID_DRIVE_WEIGHT: 0.5, MID_POST_WEIGHT: 0.7,

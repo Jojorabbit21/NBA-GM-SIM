@@ -35,6 +35,93 @@
 
 
 
+## 2026-11-04 — 엔진: 림 슛 덩크/레이업 선택을 덩크 비율 공식 + 상황 배율로 교체
+
+**배경**: "NBA Active 센터 덩크 비중이 너무 높다"(예: 스티븐 아담스 FGA의 39%가 덩크, 실제 13~14%). 조사해 보니 포지션 평균(림 슛 중 덩크 C 40/PF 30/SF 25/SG 19/PG 11%)은 bbref 2024-26 실측(40/32/27/17/10)과 이미 같았고, 문제는 분포였다.
+- 옛 `resolveFinish` 림 분기 = 덩크 `(dunk−65)×0.65` vs 레이업 `(layup−60)×1.0` 가중 추첨 → 절벽 2개: 레이업≤60이면 덩크 100%(이디·리차즈·칼크브레너·미시), 덩크≤65면 0%(허프 실측 67%·코넷 44%·로페즈 30%·요키치 8%). 실측 대비 r 0.61·MAE 12.2%p.
+- 실측과 가장 상관 높은 능력치는 키(0.63)인데 옛 공식은 키를 덩크 가능 관문에만 썼다.
+- 상황 무시: 림 슛 중 덩크 비율이 포스트업·롤·컷 모두 ~40%. Synergy 2024-25 선수별 플레이타입 FGA × bbref 덩크 회귀(437명) → 포스트업·온볼·스팟업 돌파는 FGA당 덩크 ≈0, 덩크는 롤·컷·풋백·속공에서 나옴.
+- 사용자 결정: 선수별 덩크 성향 데이터(B안)는 1996-97 이전 레전드 실측이 없어 비대칭 → 기각. 능력치를 빈도 맞추기 손잡이로 쓰지 않음(아담스 덩크 하향 철회). 자기 창출 배율 0.3, 속공 본인 마무리 0.8, 상한 75%, 남는 개인 차이는 수용.
+- 사용자 지적("키가 커도 점프력이 낮으면 덩크 안 하지?") 반영: 같은 키 대에서 점프력↔실측 덩크 비율 상관 +0.38~+0.56(213cm+ +0.56, 덩크 능력치 +0.37보다 큼) — 너키치·올리닉·요키치·엠비드형. 선형 항으로는 덩크 능력치와 겹쳐 계수 ≈0이라, reach 관문(≥60이면 1)을 선형 배율(56→0, 76→1)로 교체.
+
+**계수 근거**: bbref 리그 슈팅표(덩크 %FGA ÷ 0-3ft %FGA, 2024-25+2025-26, 림 100+ 285명, `scripts/data/bbref_id_worksheet_verified.csv`로 DB 매칭) + 선수별 Synergy 플레이 구성(오픈/자기창출 비율)을 넣어 가중 최소제곱. 자기창출 0.3·reach 배율(56/20, 그리드 탐색) 기준 BASE 0.303·HEIGHT 0.008·LAYUP −0.005, DUNK 0.010은 능력치 반응을 남기려고 고정(자유 적합 0.003~0.006 대비 MAE +0.3%p). r 0.77·MAE 8.2%p(211cm+ 9.5), 포지션 평균 유지. (reach 관문 60 버전: r 0.76·MAE 8.5·211cm+ 10.1)
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `FINISH`: `DUNK_VERT_MIN`·`DUNK_WEIGHT`·`DUNK_BASELINE`·`LAYUP_WEIGHT` 삭제, `DUNK_SHARE` 추가
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `services/game/engine/pbp/playTypes.ts` (client) — `RimFinishSituation` 타입·`rimDunkShare()` 추가, `resolveFinish` 5번째 인자 `situation` 필수화 + 림 분기 교체, 호출부 16곳 상황 지정
+- `server/src/shared/engine/pbp/playTypes.ts` (server 미러) — 동일
+- `services/game/engine/pbp/possessionHandler.ts` / `server/src/shared/engine/pbp/possessionHandler.ts` — 헬프 킥아웃 돌파 `resolveFinish(open, 'drive', sliders, koZone, 'created')`
+
+**Before** (constants `FINISH`, client/server 같은 값):
+```ts
+BASELINE: 60,
+DUNK_VERT_MIN: 70,          // reach(vertical + height bonus) threshold
+// [2026-10-18] DUNK_STR_MIN(65) 제거 — strength는 덩크 결과 단계에서만 반영
+DUNK_HEIGHT_BASE: 200,
+DUNK_HEIGHT_VERT_BONUS: 1.0,
+// [2026-10-30] 덩크 빈도 현실화(엔진 묶음): 가중치 1.5 → 0.65, 기준선 BASELINE(60) → DUNK_BASELINE(65)
+DUNK_WEIGHT: 0.65,
+DUNK_BASELINE: 65,
+LAYUP_WEIGHT: 1.0,
+```
+
+**Before** (`resolveFinish` 림 분기, client/server 같은 로직):
+```ts
+export function resolveFinish(actor, context, sliders, zone?: 'Rim' | 'Paint') {
+    ...
+    if (!zone || zone === 'Rim') {
+        const dunkReach = actor.attr.vertical + Math.max(0, actor.attr.height - F.DUNK_HEIGHT_BASE) * F.DUNK_HEIGHT_VERT_BONUS;
+        if (dunkReach >= F.DUNK_VERT_MIN) {
+            options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - F.DUNK_BASELINE) * F.DUNK_WEIGHT });
+        }
+        options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
+    }
+```
+호출부는 4개 인자(`resolveFinish(x, ctx, sliders, zone)`, 풋백은 3개).
+
+**After** (constants):
+```ts
+BASELINE: 60,
+DUNK_HEIGHT_BASE: 200,
+DUNK_HEIGHT_VERT_BONUS: 1.0,
+DUNK_SHARE: {
+    BASE: 0.303, HEIGHT_REF: 200, HEIGHT: 0.008, ATTR_REF: 70, DUNK: 0.010, LAYUP: -0.005,
+    CAP: 0.75, REACH_FLOOR: 56, REACH_SPAN: 20,
+    SITUATION_MULT: { open: 1.0, transitionPush: 0.8, created: 0.3 },
+},
+```
+
+**After** (playTypes):
+```ts
+export type RimFinishSituation = 'open' | 'transitionPush' | 'created';
+function rimDunkShare(actor, situation) {
+    reach = vertical + max(0, height − DUNK_HEIGHT_BASE) × DUNK_HEIGHT_VERT_BONUS;
+    reachMult = clamp((reach − REACH_FLOOR) / REACH_SPAN, 0, 1); if (reachMult <= 0) return 0;
+    base = BASE + HEIGHT·(h−200) + DUNK·(dunk−70) + LAYUP·(layup−70);
+    return clamp(base × reachMult × SITUATION_MULT[situation], 0, CAP);
+}
+// resolveFinish(actor, context, sliders, zone, situation)
+if (!zone || zone === 'Rim') {
+    const dunkShare = rimDunkShare(actor, situation);
+    if (zone === 'Rim') return { zone: 'Rim', shotType: Math.random() < dunkShare ? 'Dunk' : 'Layup' };
+    // zone 미지정(풋백): rimWeight = max(1, max(layup, dunk) − BASELINE)을 덩크/레이업으로 분할
+}
+```
+상황 지정: **open** = PnR 롤(블리츠 스크리너 포함)·컷·속공 러너·풋백 / **transitionPush** = 속공 본인(핸들러·그랩앤고) / **created** = 포스트업·아이솔·PnR 핸들러·핸드오프·오프볼 스크린·드라이브킥(드라이버·수신자)·킥아웃 돌파(블리츠 위크사이드·롤 킥아웃·포스트 킥아웃·헬프 킥아웃). 기존 `context` 인자(페인트 슛 자격용)는 그대로.
+
+**검증**:
+- 클라·서버 `rimDunkShare`/`resolveFinish` 본문 diff 동일(주석 제외). tsc: 새 오류 없음(속공 `rz`/`trZone` 존 타입 TS2345 2건은 기존부터 있던 것).
+- 하네스(HEAD 서버 스냅샷 vs HEAD+이 변경, NBA Active 로스터·전술·일정 1,230경기 × 4시즌, 경기별 시드 고정, 체력 이월·부상 없음 — 기준 하네스가 실경기 C 덩크 비율 40.0% vs 39.9% 재현):
+  - 득점 109.4 → 108.8, FG% 48.1 → 47.8, TS% 57.9 → 57.6
+  - 림 슛 중 덩크 C 40.6→28.9 / PF 29.2→24.4 / SF 24.4→21.2 / SG 15.6→13.8 / PG 9.9→8.5. 림 FG C 73.8→70.7
+  - C가 실측(40)보다 낮은 건 NBA Active 센터 림 슛의 45%가 자기 창출(포스트업 22%)이라서 — 오픈 상황(롤·컷·풋백) 덩크 비율은 43~44%로 실측 수준. 전술 몫.
+  - 덩크 비율 최고 47%(이디), 75% 초과 0명. 덩크 0% C/PF(림 150+) 32명 → 1명(카일 앤더슨)
+  - 아담스 66→31%(림 FG 82.2→73.1), 이디 100→47, 미시 100→40, 케슬러 86→30, 허프 0→27, 웸반야마 38→33, 홈그렌 34→36
+  - 점프력 낮은 빅맨(reach 배율 효과, 관문 60 버전 대비): 너키치 32→17, 사보니스 18→6, 호포드 23→10, 발렌슈나스 16→10, 요키치 11→6, 엠비드 25→19
+
+**롤백 방법**: client/server 5개 파일 모두 Before로 되돌림 — constants `FINISH`에 Before 4개 상수 복원·`DUNK_SHARE`(REACH_FLOOR·REACH_SPAN 포함) 삭제, playTypes `RimFinishSituation`·`rimDunkShare` 삭제 및 `resolveFinish` 시그니처 `zone?: 'Rim' | 'Paint'`로 복원, 호출부 17곳의 마지막 인자(`'open'`/`'created'`/`'transitionPush'`, 풋백은 `undefined, 'open'`) 제거. 반드시 client/server 함께.
+
 ## 2026-11-04 — 멀티 팀 전술 프리셋 [+]: 현재 값 복사 → 새 전술 세트로 시작
 
 **배경**: 팀 프리셋을 추가하면 이전 프리셋의 전술 로테이션(sliderSchedule)·2번 전술·클러치·세트 이름이 그대로 복사돼 보였음. 새 프리셋은 1·2번 전술이 새로 생겨야 함.
