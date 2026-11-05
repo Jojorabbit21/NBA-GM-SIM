@@ -104,6 +104,12 @@ export function regionOf(team: { name: string; city?: string }): string {   // [
     return first || team.name;
 }
 
+/** [2026-11-05] 방금 남긴 줄에 플레이 표시(PbpLog.event) — 안내 종류로 기록되는 리바운드·싸움 줄을 화면 색 규칙에서 플레이로 분류 */
+function markLastLog(state: GameState, event: NonNullable<PbpLog['event']>): void {
+    const last = state.logs[state.logs.length - 1];
+    if (last) last.event = event;
+}
+
 function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string, possessionOutcome?: PbpLog['possessionOutcome'], possessionTeamId?: string) {
     state.logs.push({
         quarter: state.quarter,
@@ -319,7 +325,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             }
             // 야투가 이미 들어간 포제션이므로 자유투 결과와 무관하게 scoring
             addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? 'scoring' : undefined);
-            if (ftReb) addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info');
+            if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
         }
 
     } else if (type === 'miss') {
@@ -367,6 +373,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (rebType === 'off') state.pendingOffReb = { playerId: rebounder.playerId, close: !!offClose };
             const rebText = getReboundCommentary(rebounder, rebType, actor, zone, offClose);
             addLog(state, teamIdOf(rebounder), rebText, 'info');
+            markLastLog(state, 'rebound');
         }
 
     } else if (type === 'turnover') {
@@ -438,7 +445,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 ftEndsPossession = ftReb.type !== 'off';
             }
             addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
-            if (ftReb) addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info');
+            if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
         }
 
     } else if (type === 'freethrow') {
@@ -480,7 +487,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             ftEndsPossession = ftReb.type !== 'off';
         }
         addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
-        if (ftReb) addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info');
+        if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
 
     } else if (type === 'offensiveFoul') {
         // 오펜시브 파울: 공격자에게 PF + TOV, 수비팀 공 넘김
@@ -640,8 +647,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (fighter && opponent) {
             addLog(state, defTeam.id,
                 // [2026-11-05] 공을 가진 팀이 공격권 유지(NBA Rule 12A VI.3, liveEngine retainPossession) — 재개 안내 (server 미러 참조)
-                `${fighter.playerName}이(가) ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. ${regionOf(offTeam)}의 공격으로 재개됩니다.`,
+                `${iGa(fighter.playerName)} ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. ${regionOf(offTeam)}의 공격으로 재개됩니다.`,
                 'info');
+            markLastLog(state, 'fight');
         }
 
         // SuspensionEvent 기록 (liveEngine에서 수거)

@@ -12,7 +12,7 @@ import { assignCourtSlots, snapshotSlots } from './slotAssignment.ts';
 import { formatTime, calculatePossessionTime } from './timeEngine.ts';
 import { applyPossessionResult, dampenHotCold, resetHotCold, regionOf } from './statsMappers.ts';
 import { trackTeamMisc, emptyTeamMisc } from './teamMisc.ts';
-import { getClockManagementCommentary, getFoulStrategyCommentary } from '../commentary/textGenerator.ts';
+import { getClockManagementCommentary, getGarbageTimeCommentary } from '../commentary/textGenerator.ts';
 import { decideFoulStrategy, type FoulStrategyPlan } from './foulStrategy.ts';
 import { decideEndOfPeriodShot, type EndShotPlan } from './endOfPeriodShot.ts';
 import { calculateRecovery } from '../fatigueSystem.ts';
@@ -212,11 +212,13 @@ export function applyTimeout(
     state.lastPossessionLiveBall = false;
 
     // 로그
+    // [2026-11-05] 어느 팀의 타임아웃인지 앞에 표시(지역명 — 클락 운영 안내 줄과 같은 regionOf) (client 미러 참조)
+    const who = regionOf(team);
     const text = (kind === 'mandatory'
-        ? `의무 타임아웃 (잔여: ${team.timeouts}회)`
+        ? `${who} 의무 타임아웃 (잔여: ${team.timeouts}회)`
         : isUserCall
-            ? `⏸ 타임아웃 선언 (잔여: ${team.timeouts}회)`
-            : `타임아웃 (잔여: ${team.timeouts}회)`)
+            ? `⏸ ${who} 타임아웃 선언 (잔여: ${team.timeouts}회)`
+            : `${who} 타임아웃 (잔여: ${team.timeouts}회)`)
         + (advance ? ' — 프런트코트에서 인바운드' : '');   // [2026-11-04] 마지막 2분 전진 옵션
     state.logs.push({
         quarter: state.quarter,
@@ -414,7 +416,8 @@ function pushPeriodEndCommentary(state: GameState, result: PossessionResult, bef
     const finalStretch = q >= REGULATION_PERIODS;
     const goesOvertime = shouldPlayOvertime(state);
     const nextOt = q - REGULATION_PERIODS + 1;   // 다음 연장 차수
-    const push = (teamId: string, text: string) => state.logs.push({ quarter: q, timeRemaining: '0:00', teamId, text, type: 'info' });
+    // [2026-11-05] 팀 줄(버저비터 해설)은 플레이 표시(event 'highlight'), SYSTEM 줄(N쿼터 종료)은 안내
+    const push = (teamId: string, text: string) => state.logs.push({ quarter: q, timeRemaining: '0:00', teamId, text, type: 'info', ...(teamId !== 'SYSTEM' ? { event: 'highlight' as const } : {}) });
 
     if (scorerSide) {
         const team = state[scorerSide];
@@ -456,6 +459,7 @@ function pushWinningShotCommentary(state: GameState): void {
         teamId: state[g.side].id,
         text: `위닝샷 — 종료 ${formatTime(g.gameClock)} 전 ${g.playerName}의 결승 득점이 그대로 승부를 갈랐습니다.`,
         type: 'info',
+        event: 'highlight',   // [2026-11-05] 위닝샷 해설 = 플레이
     });
 }
 
@@ -526,7 +530,7 @@ function buildInboundExpireResult(state: GameState): PossessionResult {
 /**
  * [2026-11-05] A-9-4 — 같은 데드볼(같은 팀·피리어드·시각)의 연달아 붙은 교체 줄에서 들어왔다 바로 나간(또는 나갔다 바로 들어온)
  * 선수가 있으면 실제 변화만 남긴 한 줄로 합친다. 예: 6반칙 퇴장 교체 직후 가비지 일괄 교체가 그 대체 선수를 다시 빼는 경우.
- * 사이에 플레이 줄(자유투 등)이 있으면 그 선수가 실제로 뛴 것이라 합치지 않는다("가비지 타임" 안내 줄만 건너뜀). 합친 줄은 사유 표기를 뺀다. (client 미러 참조)
+ * 사이에 플레이 줄(자유투 등)이 있으면 그 선수가 실제로 뛴 것이라 합치지 않는다(가비지 타임 안내 줄(garbageEvent)만 건너뜀). 합친 줄은 사유 표기를 뺀다. (client 미러 참조)
  */
 const SUB_LOG_RE = /^교체: IN \[(.*?)\] OUT \[(.*?)\]/;
 function mergeSubChurnLogs(state: GameState, from: number): void {
@@ -539,7 +543,7 @@ function mergeSubChurnLogs(state: GameState, from: number): void {
         for (let k = i + 1; k < logs.length; k++) {
             if (logs[k].quarter !== logs[i].quarter || logs[k].timeRemaining !== logs[i].timeRemaining) break;
             if (isSub(k)) { if (logs[k].teamId !== logs[i].teamId) break; idx.push(k); continue; }
-            if (!logs[k].text.startsWith('가비지 타임')) break;
+            if (!logs[k].garbageEvent) break;
         }
         if (idx.length < 2) continue;
         const ins: string[] = [], outs: string[] = [];
@@ -561,6 +565,23 @@ function mergeSubChurnLogs(state: GameState, from: number): void {
     }
 }
 
+/**
+ * [2026-11-05] 양 팀이 같은 순간 가비지 타임에 들어가거나(또는 함께 해제) 각자 안내 줄을 찍으면, 두 줄을 양 팀 공통 한 줄(SYSTEM)로
+ * 합쳐 일괄 교체 줄들 앞에 둔다. 전: 안내(A) → 교체(A) → 안내(B) → 교체(B) / 후: 안내(공통) → 교체(A) → 교체(B) (client 미러 참조)
+ */
+function mergeGarbageNotices(state: GameState, from: number): void {
+    const logs = state.logs;
+    for (const kind of ['start', 'end'] as const) {
+        const idx: number[] = [];
+        for (let i = from; i < logs.length; i++) if (logs[i].garbageEvent === kind) idx.push(i);
+        if (idx.length !== 2 || logs[idx[0]].teamId === logs[idx[1]].teamId) continue;
+        const lead = Math.abs(state.home.score - state.away.score);
+        const first = logs[idx[0]];
+        logs.splice(idx[1], 1);
+        logs.splice(idx[0], 1, { ...first, teamId: 'SYSTEM', text: getGarbageTimeCommentary(kind, lead) });
+    }
+}
+
 /** [2026-11-05] 쿼터 사이 라인업 정리 중 생긴 교체 줄·"복귀 준비" 줄 제거(그 외 안내 줄은 유지) */
 function silenceLineupLogs(state: GameState, from: number): void {
     state.logs.push(...state.logs.splice(from).filter(l => !l.text.startsWith('교체:') && !l.text.includes('복귀 준비')));
@@ -572,8 +593,10 @@ function runSubstitutionCycle(state: GameState, currentMinute: number, currentTo
     // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
     //      [2026-10-27] 발동 시 즉시 일괄 교체하므로 데드볼 보류 대상에 포함.
     //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
+    const garbageLogStart = state.logs.length;
     updateGarbageTime(state, state.home);
     updateGarbageTime(state, state.away);
+    mergeGarbageNotices(state, garbageLogStart);
 
     // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
     //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
@@ -751,38 +774,20 @@ export function stepPossession(state: GameState): StepResult {
         : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
     if (isNonBonusFoul && !result.isIntentional) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
 
-    // [2026-11-05] 상황별 클락 운영 안내 줄(2-for-1·마지막 슛·샷클락 끝까지·서두르기·시간 끌기) — 포세션 시작 시각(시간 차감 전)으로 기록 (client 미러 참조).
-    //   같은 공격권 안의 같은 안내(비보너스 파울·공격 리바운드로 이어진 공격)는 한 번만.
+    // [2026-11-05] 상황별 클락 운영(2-for-1·마지막 공격·샷클락 끝까지·서두르기·시간 끌기) — 별도 안내 줄 대신 이번 공격의 플레이 줄 앞에
+    //   운영 문장을 이어 붙여 한 줄로("브루클린, 리드를 지키며 샷클락을 길게 씁니다. 케빈 듀란트, …", 사용자 결정 — 구어체, 아래 applyPossessionResult 뒤). 같은 공격권 안의 같은 운영(비보너스 파울·공격 리바운드로 이어진 공격)은 한 번만 (client 미러 참조)
     const clockMode = state.clockMode;
     state.clockMode = undefined;
-    if (clockMode && !decisive && !isTechnical && result.type !== 'clockExpire') {
-        const key = `${offTeam.id}:${clockMode}`;
-        if (state.clockModeLogged !== key) {
-            state.clockModeLogged = key;
-            state.logs.push({
-                quarter: state.quarter,
-                timeRemaining: formatTime(state.gameClock),
-                teamId: offTeam.id,
-                text: getClockManagementCommentary(clockMode, regionOf(offTeam)),
-                type: 'info',
-            });
-        }
+    let clockTag: string | undefined;
+    const clockKey = clockMode ? `${offTeam.id}:${clockMode}` : undefined;
+    // 시간을 쓰는 운영(마지막 공격·샷클락 끝까지·시간 끌기)인데 속공으로 끝난 공격은 문장이 모순이라 붙이지 않음
+    const slowClock = clockMode === 'lastShot' || clockMode === 'fullClock' || clockMode === 'milk' || clockMode === 'milkMax';
+    if (clockMode && !decisive && !isTechnical && !result.isIntentional && result.type !== 'clockExpire' && state.clockModeLogged !== clockKey
+        && !(slowClock && result.playType === 'Transition')) {
+        clockTag = getClockManagementCommentary(clockMode, regionOf(offTeam));   // 실제로 붙인 경우에만 clockModeLogged 기록(아래) — 파울로 끊긴 공격은 다음 공격에
     }
-    // [2026-11-05] 파울 작전 시작 안내 — 팀·종류·피리어드당 한 번, 포세션 시작 시각 (client 미러 참조)
-    if (result.isIntentional) {
-        const fgKey = `${result.defTeam.id}:${result.intentionalKind}:${state.quarter}`;
-        state.foulGameLogged = state.foulGameLogged ?? [];
-        if (!state.foulGameLogged.includes(fgKey)) {
-            state.foulGameLogged.push(fgKey);
-            state.logs.push({
-                quarter: state.quarter,
-                timeRemaining: formatTime(state.gameClock),
-                teamId: result.defTeam.id,
-                text: getFoulStrategyCommentary(result.intentionalKind ?? 'trailing', regionOf(result.defTeam)),
-                type: 'info',
-            });
-        }
-    }
+    const clockTagFrom = state.logs.length;
+    // [2026-11-05] 파울 작전 시작 안내 줄은 삭제(사용자 결정) — 고의 파울 줄 자체가 상황을 설명한다
 
     // 포세션 시간 누적 (평균 샷클락 소모 추적) — 보너스 전 파울은 포세션이 이어지므로 시간만 더하고 횟수는 제외
     if (!isTechnical) {
@@ -818,7 +823,17 @@ export function stepPossession(state: GameState): StepResult {
         }
     };
     const ftReb = applyPossessionResult(state, result, replaceDisqualified);   // 마지막 자유투 실패 후 리바운드('off'|'def'), 없으면 null
-    const playLogsEnd = state.logs.length;   // [2026-11-05] 피리어드 종료 해설을 끼워 넣을 자리 — 플레이 줄 바로 뒤(부상·교체 줄 앞)
+    const playLogsEnd = state.logs.length;
+    if (clockTag) {   // 이번 공격 팀의 첫 결과 줄(득점·슛 실패·턴오버)에 운영 표시 — 슈팅 파울·고의 파울로 끊긴 공격은 붙이지 않음
+        for (let i = clockTagFrom; i < playLogsEnd; i++) {
+            const l = state.logs[i];
+            if (l.teamId === offTeam.id && (l.type === 'score' || l.type === 'miss' || l.type === 'turnover')) {
+                l.text = `${clockTag} ${l.text}`;
+                state.clockModeLogged = clockKey;
+                break;
+            }
+        }
+    }   // [2026-11-05] 피리어드 종료 해설을 끼워 넣을 자리 — 플레이 줄 바로 뒤(부상·교체 줄 앞)
     for (const log of injuryLogs) {
         log.homeScore = state.home.score; log.awayScore = state.away.score;
         state.logs.push(log);
@@ -980,7 +995,12 @@ export function stepPossession(state: GameState): StepResult {
     const timeoutDecision = decideTimeout(state, detectRunVictimId(state));
     state.foulGameTimeoutTeamId = undefined;
     if (timeoutDecision) {
+        const timeoutLogStart = state.logs.length;
         applyTimeout(state, timeoutDecision.teamId, false, timeoutDecision.mandatory ? 'mandatory' : 'team');
+        // [2026-11-05] 같은 데드볼에서 이미 찍힌 교체·가비지·복귀 안내 줄보다 타임아웃 줄을 앞으로(타임아웃을 부른 뒤 교체하는 흐름) (client 미러 참조)
+        if (!subsDeferred && timeoutLogStart > subLogStart) {
+            state.logs.splice(subLogStart, 0, ...state.logs.splice(timeoutLogStart));
+        }
         if (subsDeferred) runSubstitutions();   // [2026-10-27] 타임아웃 = 데드볼 → 보류된 교체 처리
         // 타임아웃 로그 포함하여 전체 newLogs 재수집
         mergeSubChurnLogs(state, logsBefore);

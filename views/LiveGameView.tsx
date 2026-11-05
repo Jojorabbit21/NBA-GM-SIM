@@ -17,6 +17,7 @@ import { CourtBackground } from '../components/game/CourtBackground';
 import { TeamStatsCompare } from '../components/game/TeamStatsCompare';
 import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodList } from '../utils/periodLabel';
 import { scheduleMinute } from '../services/game/engine/pbp/periodRules';
+import { pbpLogCategory, PBP_TEXT_COLOR, PBP_SUB_COLOR, PBP_SCORE_HIGHLIGHT, pbpScored, pbpDisplayText } from '../utils/pbpLogStyle';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -1161,13 +1162,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             // '경기 시작'/'종료'/'하프 타임'을 포함하지 않는 로그를 놓쳤음 (GamePbpTab.tsx 동일 수정 참고)
                                             const isFlowEvent = log.teamId === 'SYSTEM';
 
+                                            // [2026-11-05] 공통 줄(SYSTEM) = 안내 — 가운데 배치, 배너 배경·아이콘·굵게 없음 (utils/pbpLogStyle)
                                             if (isFlowEvent) {
                                                 return (
-                                                    <div key={i} className="flex items-center justify-center py-2.5 bg-indigo-500/10 border-y border-indigo-500/20">
-                                                        <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs uppercase tracking-widest">
-                                                            <Clock size={12} />
-                                                            <span>{log.text}</span>
-                                                        </div>
+                                                    <div key={i} className={`flex items-center justify-center py-2 px-3 text-xs text-center leading-relaxed ${PBP_TEXT_COLOR.system}`}>
+                                                        {log.text}
                                                     </div>
                                                 );
                                             }
@@ -1188,19 +1187,19 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                                 {log.timeRemaining || '-'}
                                                             </div>
                                                             <div className="flex-1 flex flex-col gap-0.5 text-xs">
-                                                                <div className="text-slate-400">
+                                                                <div className={PBP_SUB_COLOR.header}>
                                                                     {(isHome ? homeTeam.id : awayTeam.id).toUpperCase().slice(0, 3)} 선수교체
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 text-emerald-400">
+                                                                <div className={`flex items-center gap-1.5 ${PBP_SUB_COLOR.in}`}>
                                                                     <span>IN:</span>
                                                                     <div className="flex flex-wrap gap-1.5">
-                                                                        {inPlayers.map((p, j) => <span key={j} className="font-bold">{p}</span>)}
+                                                                        {inPlayers.map((p, j) => <span key={j}>{p}</span>)}
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 text-red-400">
+                                                                <div className={`flex items-center gap-1.5 ${PBP_SUB_COLOR.out}`}>
                                                                     <span>OUT:</span>
                                                                     <div className="flex flex-wrap gap-1.5">
-                                                                        {outPlayers.map((p, j) => <span key={j} className="font-bold opacity-80">{p}</span>)}
+                                                                        {outPlayers.map((p, j) => <span key={j}>{p}</span>)}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1209,16 +1208,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                 }
                                             }
 
-                                            let textColor = 'text-slate-400';
-                                            if (isInjury) textColor = 'text-red-400 font-bold';
-                                            else if (isInfo) textColor = 'text-slate-300';
-                                            else if (isScore) textColor = 'text-slate-200';
-                                            else if (isFT) textColor = 'text-cyan-400';
-                                            else if (isFoul) textColor = 'text-orange-400';
-                                            else if (isTurnover) textColor = 'text-red-400';
-                                            else if (isBlock) textColor = 'text-blue-400';
-
-                                            const bgClass = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : 'hover:bg-white/5 transition-colors';
+                                            // [2026-11-05] 세 화면 공통 규칙(utils/pbpLogStyle) — 플레이 slate-200 / 부상 red-400, 배경 없음, 득점 팀 점수만 흰색
+                                            const textColor = pbpLogCategory(log) === 'injury' ? PBP_TEXT_COLOR.injury : PBP_TEXT_COLOR.play;
+                                            const scored = pbpScored(log);
+                                            const bgClass = 'hover:bg-white/5 transition-colors';
 
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
@@ -1238,9 +1231,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     <div className="flex-shrink-0 w-12 text-center">
                                                         {log.awayScore !== undefined && (
                                                             <div className="font-black text-slate-500 text-xs tracking-tight">
-                                                                <span className={!isHome && (isScore || isFT) ? 'text-white' : ''}>{log.awayScore}</span>
+                                                                <span className={!isHome && scored ? PBP_SCORE_HIGHLIGHT : ''}>{log.awayScore}</span>
                                                                 <span className="mx-0.5 text-slate-700">:</span>
-                                                                <span className={isHome && (isScore || isFT) ? 'text-white' : ''}>{log.homeScore}</span>
+                                                                <span className={isHome && scored ? PBP_SCORE_HIGHLIGHT : ''}>{log.homeScore}</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -1250,7 +1243,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     </div>
                                                     {/* 메시지 */}
                                                     <div className={`flex-1 break-words leading-relaxed text-xs ${textColor}`}>
-                                                        {log.text}
+                                                        {pbpDisplayText(log.text)}
                                                     </div>
                                                 </div>
                                             );

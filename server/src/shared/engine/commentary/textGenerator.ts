@@ -1218,27 +1218,27 @@ export function generateCommentary(
                 if (isInterior) {
                     return pick([
                         `위크사이드에서 넘어온 ${defender.playerName}, 완벽한 타이밍의 헬프 블락!`,
-                        `${actor.playerName}의 골밑 시도, 헬프로 나온 ${defender.playerName}에게 걸립니다!`,
+                        `헬프로 나온 ${defender.playerName}, ${actor.playerName}의 골밑 시도를 막아냅니다!`,
                         `${defender.playerName}, 자기 매치업을 버리고 넘어와 블락을 만들어냅니다!`,
                     ]);
                 }
                 return pick([
                     `${defender.playerName}, 위크사이드에서 반응해 ${actor.playerName}의 점퍼를 그대로 쳐냅니다!`,
-                    `${actor.playerName}의 미드레인지 슛, 헬프로 나온 ${defender.playerName}에게 걸립니다!`,
+                    `헬프로 나온 ${defender.playerName}, ${actor.playerName}의 미드레인지 슛을 쳐냅니다!`,
                     `${defender.playerName}, 자기 매치업을 버리고 넘어와 점퍼를 블락해냅니다!`,
                 ]);
             }
             if (isInterior) {
                 return pick([
-                    `${actor.playerName}의 슛, ${defender.playerName}에게 가로막힙니다! (블록)`,
+                    `${defender.playerName}, ${actor.playerName}의 슛을 가로막습니다! (블록)`,
                     `${defender.playerName}, ${actor.playerName}의 시도를 완벽하게 블록해냅니다!`,
-                    `${actor.playerName} 골밑 돌파... ${defender.playerName}의 높이를 넘지 못합니다!`,
+                    `${defender.playerName}, 높이로 ${actor.playerName}의 골밑 돌파를 막아섭니다! (블록)`,
                 ]);
             }
             return pick([
-                `${actor.playerName}의 점퍼, ${iGa(defender.playerName)} 그대로 걷어냅니다! (블록)`,
+                `${defender.playerName}, ${actor.playerName}의 점퍼를 그대로 걷어냅니다! (블록)`,
                 `${defender.playerName}, ${actor.playerName}의 슛 타이밍을 완벽하게 읽고 블록!`,
-                `${actor.playerName}, 컨테스트당한 슛이 ${defender.playerName}에게 걸립니다!`,
+                `${defender.playerName}, 끝까지 따라붙어 ${actor.playerName}의 슛을 쳐냅니다! (블록)`,
             ]);
         }
         // [2026-08-03] client 미러 참고 — assister 데이터가 없어 슈터 단독 묘사만.
@@ -1420,8 +1420,8 @@ export function generateCommentary(
         if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
             if (isSteal && defender) {
                 return pick([
-                    `${defender.playerName}, 블리츠 더블팀에서 ${actor.playerName}의 공을 빼앗습니다!`,
-                    `${actor.playerName}, 트랩에 걸려 패스 미스! ${defender.playerName}의 스틸!`,
+                    `${actor.playerName}, 블리츠 더블팀에 갇혀 공을 놓칩니다. (${defender.playerName}의 스틸)`,
+                    `${actor.playerName}, 트랩에서 빼낸 패스가 끊깁니다. (${defender.playerName}의 스틸)`,
                 ]);
             }
             return pick([
@@ -1432,15 +1432,15 @@ export function generateCommentary(
         if (isSteal && defender) {
             if (isHelpPlay) {
                 return pick([
-                    `헬프로 나온 ${defender.playerName}, 드리블하는 ${actor.playerName}의 공을 그대로 걷어냅니다!`,
-                    `${defender.playerName}, 도와주러 왔다가 아예 공을 뺏어버립니다!`,
-                    `자기 매치업이 아닌데도, ${defender.playerName}의 손이 먼저 나갔습니다! 스틸!`,
+                    `${actor.playerName}, 드리블 도중 헬프 수비에 공을 털립니다. (${defender.playerName}의 스틸)`,
+                    `${actor.playerName}, 도움 수비에 걸려 공을 놓칩니다. (${defender.playerName}의 스틸)`,
+                    `${actor.playerName}, 뒤에서 들어온 손에 공을 놓칩니다. (${defender.playerName}의 스틸)`,
                 ]);
             }
             return pick([
-                `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다!`,
-                `${defender.playerName}의 손질, 스틸에 성공합니다!`,
-                `${actor.playerName}, 패스 길을 읽혔습니다. ${defender.playerName}의 스틸.`,
+                `${actor.playerName}, 공을 놓칩니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, 드리블하다 공을 빼앗깁니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, 패스 길을 읽혔습니다. (${defender.playerName}의 스틸)`,
             ]);
         }
         // [2026-08-03] client 미러 참고 — "24초 바이얼레이션"/"오펜스 파울" 문구는 실제로
@@ -1466,21 +1466,21 @@ export function generateCommentary(
         if (playType === 'Iso' || playType === 'PnR_Handler' || playType === 'DriveKick') {
             return pick([
                 `${defender?.playerName}, 돌파하는 ${eulReul(actor.playerName)} 막다가 리치인 파울을 범합니다.`,
-                `${actor.playerName}의 돌파를 막아서던 ${defender?.playerName}, 손이 먼저 나가며 파울!`,
+                `${defender?.playerName}, ${actor.playerName}의 돌파를 막아서다 손이 먼저 나가며 파울!`,
                 `${defender?.playerName}, 드라이브 저지 과정에서 몸이 부딪히며 파울이 선언됩니다.`,
             ]);
         }
         if (playType === 'PostUp' || playType === 'PnR_Roll') {
             return pick([
                 `${defender?.playerName}, 포스트에서 몸싸움하다 파울을 범합니다.`,
-                `${eulReul(actor.playerName)} 막던 ${defender?.playerName}, 골밑에서 미는 파울로 걸립니다.`,
+                `${defender?.playerName}, ${eulReul(actor.playerName)} 막다가 골밑에서 미는 파울로 걸립니다.`,
                 `${defender?.playerName}, 골밑 경합 중 무리한 접촉으로 파울이 선언됩니다.`,
             ]);
         }
         if (playType === 'CatchShoot') {
             return pick([
                 `${defender?.playerName}, 클로즈아웃하다 ${actor.playerName}에게 파울을 범합니다.`,
-                `${actor.playerName}에게 급하게 다가선 ${defender?.playerName}, 파울성 접촉!`,
+                `${defender?.playerName}, ${actor.playerName}에게 급하게 다가서다 파울성 접촉!`,
                 `${defender?.playerName}, 슛 컨테스트 과정에서 몸이 부딪히며 파울이 선언됩니다.`,
             ]);
         }
@@ -1695,7 +1695,7 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
     if (isAndOne) {
         return pick([
             `${d}, 득점을 막지 못한 채 ${a}에게 파울까지 범합니다. 바스켓 카운트!`,
-            `${a}의 슛이 들어가는 순간 ${d}의 접촉 — 앤드원이 선언됩니다.`,
+            `${d}, ${a}의 슛이 들어가는 순간 접촉 — 앤드원이 선언됩니다.`,
             `${d}, 뒤늦은 컨테스트로 ${a}에게 파울. 득점 인정에 추가 자유투까지 내줍니다.`,
         ]);
     }
@@ -1714,13 +1714,13 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
         if (shotType === 'Pullup') {
             return pick([
                 `${d}, 풀업 3점을 올라가는 ${a}의 팔을 치며 슈팅 파울!`,
-                `${a}의 스텝백 3점에 손을 뻗은 ${d}, 슈팅 파울이 선언됩니다.`,
+                `${d}, ${a}의 스텝백 3점에 손을 뻗다 슈팅 파울이 선언됩니다.`,
                 `${d}, 드리블 후 던지는 ${a}의 3점 슛 동작에 접촉 — 슈팅 파울!`,
             ]);
         }
         return pick([
             `${d}, 클로즈아웃하다 3점 슛 동작 중인 ${a}에게 파울을 범합니다.`,
-            `${a}의 3점슛에 급하게 달려든 ${d}, 착지 공간을 침범하며 슈팅 파울!`,
+            `${d}, ${a}의 3점슛에 급하게 달려들다 착지 공간을 침범하며 슈팅 파울!`,
             `${d}, 3점 슛 컨테스트 과정에서 슈터의 팔을 건드리며 슈팅 파울이 선언됩니다.`,
         ]);
     }
@@ -1728,17 +1728,17 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
         if (playType === 'PostUp') {
             return pick([
                 `${d}, 포스트에서 돌아서며 점퍼를 던지는 ${a}의 팔을 치며 슈팅 파울!`,
-                `${a}의 페이드어웨이를 막던 ${d}, 손이 먼저 나가며 슈팅 파울.`,
+                `${d}, ${a}의 페이드어웨이를 막다가 손이 먼저 나가며 슈팅 파울.`,
             ]);
         }
         if (shotType === 'Pullup') {
             return pick([
                 `${d}, 풀업 점퍼를 올라가는 ${a}의 팔을 치며 슈팅 파울!`,
-                `${a}의 미드레인지 풀업을 막던 ${d}, 손이 먼저 나가며 슈팅 파울.`,
+                `${d}, ${a}의 미드레인지 풀업을 막다가 손이 먼저 나가며 슈팅 파울.`,
             ]);
         }
         return pick([
-            `${a}의 미드레인지 점퍼에 급하게 달려든 ${d}, 착지 공간을 침범하며 슈팅 파울!`,
+            `${d}, ${a}의 미드레인지 점퍼에 급하게 달려들다 착지 공간을 침범하며 슈팅 파울!`,
             `${d}, 점퍼 컨테스트 과정에서 슈터의 팔을 건드리며 슈팅 파울이 선언됩니다.`,
         ]);
     }
@@ -1746,82 +1746,82 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
         if (shotType === 'Hook') {
             return pick([
                 `${d}, 훅슛을 올리는 ${a}의 팔을 내리치며 슈팅 파울!`,
-                `${a}의 훅슛을 막던 ${d}, 무리한 접촉으로 슈팅 파울이 선언됩니다.`,
+                `${d}, ${a}의 훅슛을 막다가 무리한 접촉으로 슈팅 파울이 선언됩니다.`,
             ]);
         }
         if (shotType === 'Jumper') {
             return pick([
                 `${d}, 페인트 점퍼를 올라가는 ${a}의 팔에 걸리며 슈팅 파울.`,
-                `${a}의 페인트 점퍼를 막던 ${d}, 몸이 부딪히며 슈팅 파울!`,
+                `${d}, ${a}의 페인트 점퍼를 막다가 몸이 부딪히며 슈팅 파울!`,
             ]);
         }
         return pick([
             `${d}, 플로터를 띄우는 ${a}의 팔을 치며 슈팅 파울!`,
-            `${a}의 플로터를 막아서던 ${d}, 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
+            `${d}, ${a}의 플로터를 막아서다 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
         ]);
     }
     if (zone === 'Rim') {
         if (playType === 'PostUp' || playType === 'PnR_Roll') {
             return pick([
                 `${d}, 포스트에서 올라가는 ${eulReul(a)} 잡아채며 슈팅 파울을 범합니다.`,
-                `${a}의 골밑 슛을 막던 ${d}, 팔을 내리치며 파울로 걸립니다.`,
+                `${d}, ${a}의 골밑 슛을 막다가 팔을 내리치며 파울로 걸립니다.`,
                 `${d}, 골밑 슛 컨테스트 중 무리한 접촉으로 슈팅 파울이 선언됩니다.`,
             ]);
         }
         if (shotType === 'Dunk') {
             return pick([
                 `${d}, 덩크를 시도하는 ${a}의 팔을 내리치며 슈팅 파울!`,
-                `${a}의 덩크를 막으려던 ${d}, 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
+                `${d}, ${a}의 덩크를 막으려다 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
             ]);
         }
         if (playType === 'Transition') {
             return pick([
-                `${a}의 속공 레이업을 뒤쫓아 막던 ${d}, 슈팅 파울!`,
+                `${d}, ${a}의 속공 레이업을 뒤쫓아 막다가 슈팅 파울!`,
                 `${d}, 속공 마무리를 올라가는 ${gwaWa(a)} 충돌하며 슈팅 파울이 선언됩니다.`,
             ]);
         }
         if (playType === 'Putback') {
             return pick([
                 `${d}, 풋백을 올리는 ${gwaWa(a)} 엉키며 슈팅 파울!`,
-                `${a}의 세컨드 찬스 마무리를 막던 ${d}, 팔에 걸리며 슈팅 파울.`,
+                `${d}, ${a}의 세컨드 찬스 마무리를 막다가 팔에 걸리며 슈팅 파울.`,
             ]);
         }
         if (playType === 'Cut') {
             return pick([
                 `${d}, 컷인해 레이업을 올리는 ${gwaWa(a)} 부딪히며 슈팅 파울!`,
-                `${a}의 레이업을 막아서던 ${d}, 팔에 걸리며 슈팅 파울!`,
+                `${d}, ${a}의 레이업을 막아서다 팔에 걸리며 슈팅 파울!`,
             ]);
         }
         return pick([
             `${d}, 돌파 후 올라가는 ${eulReul(a)} 막다가 슈팅 파울을 범합니다.`,
-            `${a}의 레이업을 막아서던 ${d}, 팔에 걸리며 슈팅 파울!`,
+            `${d}, ${a}의 레이업을 막아서다 팔에 걸리며 슈팅 파울!`,
             `${d}, 드라이브 피니시 과정에서 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
         ]);
     }
     if (playType === 'Iso' || playType === 'PnR_Handler' || playType === 'DriveKick') {
         return pick([
             `${d}, 돌파 후 올라가는 ${eulReul(a)} 막다가 슈팅 파울을 범합니다.`,
-            `${a}의 레이업을 막아서던 ${d}, 팔에 걸리며 슈팅 파울!`,
+            `${d}, ${a}의 레이업을 막아서다 팔에 걸리며 슈팅 파울!`,
             `${d}, 드라이브 피니시 과정에서 몸이 부딪히며 슈팅 파울이 선언됩니다.`,
         ]);
     }
     if (playType === 'PostUp' || playType === 'PnR_Roll') {
         return pick([
             `${d}, 포스트에서 올라가는 ${eulReul(a)} 잡아채며 슈팅 파울을 범합니다.`,
-            `${a}의 골밑 슛을 막던 ${d}, 팔을 내리치며 파울로 걸립니다.`,
+            `${d}, ${a}의 골밑 슛을 막다가 팔을 내리치며 파울로 걸립니다.`,
             `${d}, 골밑 슛 컨테스트 중 무리한 접촉으로 슈팅 파울이 선언됩니다.`,
         ]);
     }
     if (playType === 'CatchShoot' || playType === 'PnR_Pop' || playType === 'OffBallScreen') {
         return pick([
             `${d}, 클로즈아웃하다 슛 동작 중인 ${a}에게 파울을 범합니다.`,
-            `${a}의 점퍼에 급하게 달려든 ${d}, 착지 공간을 침범하며 슈팅 파울!`,
+            `${d}, ${a}의 점퍼에 급하게 달려들다 착지 공간을 침범하며 슈팅 파울!`,
             `${d}, 슛 컨테스트 과정에서 슈터의 팔을 건드리며 슈팅 파울이 선언됩니다.`,
         ]);
     }
     return pick([
         `${d}, 슛 동작 중인 ${a}에게 슈팅 파울을 범합니다.`,
-        `${a}의 슛을 막아서던 ${d}, 파울.`,
+        `${d}, ${a}의 슛을 막아서다 파울.`,
         `${d}의 슈팅 파울이 선언됩니다.`,
     ]);
 }
@@ -1832,12 +1832,13 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
  */
 export function getPressCommentary(event: 'trapSteal' | 'trapFoul' | 'pressTurnover' | 'pressFoul', actor: LivePlayer, defender: LivePlayer | undefined, isSteal: boolean): string {
     const d = defender?.playerName ?? '수비';
+    const stealTag = defender ? ` (${d}의 스틸)` : '';   // [2026-11-05] 스틸은 공 잃은 선수 주어 + 끝에 (X의 스틸)
     switch (event) {
         case 'trapSteal':
             return pick([
-                `풀코트 트랩에 갇힌 ${actor.playerName}, ${d}에게 공을 빼앗깁니다!`,
-                `사이드라인 트랩! ${d}, ${actor.playerName}의 공을 낚아챕니다.`,
-                `${actor.playerName}, 하프라인을 넘기 전에 더블팀에 걸려 ${d}에게 스틸을 허용합니다.`,
+                `${actor.playerName}, 풀코트 트랩에 갇혀 공을 놓칩니다.${stealTag}`,
+                `${actor.playerName}, 사이드라인 트랩에 걸려 공을 빼앗깁니다.${stealTag}`,
+                `${actor.playerName}, 하프라인을 넘기 전에 더블팀에 걸려 공을 놓칩니다.${stealTag}`,
             ]);
         case 'trapFoul':
             return pick([
@@ -1847,11 +1848,11 @@ export function getPressCommentary(event: 'trapSteal' | 'trapFoul' | 'pressTurno
         case 'pressTurnover':
             return isSteal
                 ? pick([
-                    `${d}의 끈질긴 전방 압박! ${actor.playerName}의 드리블을 털어냅니다.`,
-                    `${actor.playerName}, 백코트에서 ${d}에게 공을 빼앗깁니다.`,
+                    `${actor.playerName}, 끈질긴 전방 압박에 드리블을 털립니다.${stealTag}`,
+                    `${actor.playerName}, 백코트에서 공을 빼앗깁니다.${stealTag}`,
                 ])
                 : pick([
-                    `${d}의 전방 압박에 쫓긴 ${actor.playerName}, 공을 흘리며 턴오버.`,
+                    `${actor.playerName}, ${d}의 전방 압박에 쫓겨 공을 흘리며 턴오버.`,
                     `${actor.playerName}, 프레스를 피하려다 패스가 라인 밖으로 나갑니다.`,
                 ]);
         case 'pressFoul':
@@ -1984,16 +1985,49 @@ export function getInjuryCommentary(playerName: string, injuryType: string, seve
     const lower = !!part && LOWER_BODY_PARTS.has(part);
     switch (severity) {
         case 'Grade1':
-            return `🚨 ${playerName} 선수가 ${eulReul(at)} 붙잡고 잠시 쓰러졌다가, 스스로 걸어서 벤치로 향합니다.`;
+            return `${playerName} 선수가 ${eulReul(at)} 붙잡고 잠시 쓰러졌다가, 스스로 걸어서 벤치로 향합니다.`;
         case 'Grade2':
-            return `🚨 ${playerName} 선수가 ${part ? `${at} 통증` : '통증'}을 호소하며 벤치로 물러납니다. 트레이너가 상태를 살핍니다.`;
+            return `${playerName} 선수가 ${part ? `${at} 통증` : '통증'}을 호소하며 벤치로 물러납니다. 트레이너가 상태를 살핍니다.`;
         case 'Grade3':
             return lower
-                ? `🚨 ${playerName} 선수가 ${eulReul(at)} 붙잡고 절뚝이며 라커룸으로 향합니다.`
-                : `🚨 ${playerName} 선수가 ${eulReul(at)} 감싼 채 라커룸으로 향합니다.`;
+                ? `${playerName} 선수가 ${eulReul(at)} 붙잡고 절뚝이며 라커룸으로 향합니다.`
+                : `${playerName} 선수가 ${eulReul(at)} 감싼 채 라커룸으로 향합니다.`;
         case 'Grade4':
-            return `🚨 ${playerName} 선수가 ${eulReul(at)} 부여잡고 일어나지 못합니다. 트레이너의 부축을 받아 코트를 떠납니다.`;
+            return `${playerName} 선수가 ${eulReul(at)} 부여잡고 일어나지 못합니다. 트레이너의 부축을 받아 코트를 떠납니다.`;
         default:
-            return `🚨 ${playerName} 선수가 ${eulReul(at)} 움켜쥔 채 쓰러져 일어나지 못합니다. 장내가 숙연해진 가운데 부축을 받아 코트를 빠져나갑니다.`;
+            return `${playerName} 선수가 ${eulReul(at)} 움켜쥔 채 쓰러져 일어나지 못합니다. 장내가 숙연해진 가운데 부축을 받아 코트를 빠져나갑니다.`;
+    }
+}
+
+/**
+ * [2026-11-05] 가비지 타임 발동/해제 안내(구어체) — region이 없으면 양 팀 공통(같은 순간 두 팀이 함께 발동·해제, liveEngine.mergeGarbageNotices).
+ * 이전: "가비지 타임 — 주전 휴식 (N점 차)" / "가비지 타임 해제 — 주전 복귀 (N점 차)"
+ */
+export function getGarbageTimeCommentary(kind: 'start' | 'end', lead: number, region?: string): string {
+    if (!region) {
+        return kind === 'start'
+            ? `점수 차가 ${lead}점으로 벌어지자 양 팀 모두 주전들을 벤치로 불러들입니다.`
+            : `점수 차가 ${lead}점으로 좁혀지자 양 팀 모두 주전들을 다시 코트에 내보냅니다.`;
+    }
+    return kind === 'start'
+        ? pick([
+            `${region}, 점수 차가 ${lead}점으로 벌어지자 주전들을 벤치로 불러들입니다.`,
+            `${region}, ${lead}점 차로 승부가 기울자 주전들에게 휴식을 줍니다.`,
+        ])
+        : pick([
+            `${region}, 점수 차가 ${lead}점으로 좁혀지자 주전들을 다시 코트에 내보냅니다.`,
+            `${region}, ${lead}점 차까지 따라붙자 주전들을 다시 불러냅니다.`,
+        ]);
+}
+
+/** [2026-11-05] 클락 운영 표시 — 별도 안내 줄 대신 그 공격의 플레이 줄 앞에 "표시 · 문장"으로 붙는다(liveEngine) */
+export function getClockManagementTag(mode: 'lastShot' | 'fullClock' | 'twoForOne' | 'hurry' | 'milk' | 'milkMax'): string {
+    switch (mode) {
+        case 'lastShot': return '마지막 공격';
+        case 'fullClock': return '샷클락 끝까지';
+        case 'twoForOne': return '2-for-1';
+        case 'hurry': return '서두른 공격';
+        case 'milk':
+        case 'milkMax': return '시간 끌기';
     }
 }

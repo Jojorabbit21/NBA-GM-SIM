@@ -3,15 +3,16 @@
 // 그룹 카드 없는 단일 리스트. 항목·순서·구분선은 데스크톱 MultiSidebar와 동일(useSeasonNavModel) — 탭으로 이미 갈 수 있는
 // 항목(홈·로스터·순위표 등)도 전부 노출(구조 동일성 우선, 2026-10-26 사용자 지시). 행 48, 좌 아이콘 24, 라벨 14/600,
 // 조건부 항목은 노출 조건을 12px slate-500 보조 글자로. 하단 프로필 블록 + 사이드바 프로필 드롭다운 항목 그대로.
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, LogOut, Palette, Settings2, CircleUser } from 'lucide-react';
+import { ChevronRight, ChevronLeft, LogOut, Palette, Settings2, CircleUser, ScrollText } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGame } from '../../../hooks/useGameContext';
 import { useSeasonNavModel, type SeasonNavItem } from '../../../components/nav/useSeasonNavModel';
 import { NavIcon, RosterIcon } from '../../../components/nav/navIcons';
 import { CountBadge } from '../../../components/common/CountBadge';
 import { TeamLogo } from '../../../components/common/TeamLogo';
+import { PatchNotesModal } from '../../../components/common/PatchNotesModal';
 
 const Divider: React.FC = () => <div className="mx-4 h-px bg-slate-800" role="separator" />;
 
@@ -44,6 +45,7 @@ export default function MobileMoreView() {
     const { handleLogout } = useAuth();
     const { session } = useGame();
     const { base, items, isAdmin, isSpectator, myTeam } = useSeasonNavModel();
+    const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 — 데스크톱 사이드바와 같은 모달, 날짜별 아코디언
 
     const iconFor = (it: SeasonNavItem) => it.icon === 'team'
         ? <RosterIcon active={it.active} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} size={24} />
@@ -77,9 +79,11 @@ export default function MobileMoreView() {
                 <Row icon={<Palette size={18} className="text-slate-400" />} label="팀 설정" onClick={() => navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`)} />
             )}
             <Divider />
+            <Row icon={<ScrollText size={18} className="text-slate-400" />} label="패치노트" onClick={() => setIsPatchNotesOpen(true)} />
             <Row icon={<ChevronLeft size={18} className="text-slate-400" />} label="홈으로" note="시작 화면" onClick={() => navigate('/')} />
             <Divider />
             <Row icon={<LogOut size={18} className="text-red-400" />} label="로그아웃" danger chevron={false} onClick={() => { void handleLogout(); }} />
+            <PatchNotesModal isOpen={isPatchNotesOpen} onClose={() => setIsPatchNotesOpen(false)} layout="accordion" />
         </div>
     );
 }

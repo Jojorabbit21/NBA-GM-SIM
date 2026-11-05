@@ -35,6 +35,116 @@
 
 
 
+## 2026-11-05 — UI: PBP 로그 색 규칙 세 화면 통일(플레이 / 안내 / 교체 / 부상) + 부상 아이콘 제거
+
+**배경**: 사용자 요청 — 세 화면(멀티 라이브·게임 센터 / 경기 기록 탭 / 싱글 라이브)의 PBP 색이 제각각(파울 주황/빨강, 블록 파랑/회색, 자유투 청록/득점색, 교체 회색/초록빨강, 공통 줄 인디고/앰버 배너, 득점 강조 흰색/네온 초록/없음). 목업(https://claude.ai/artifact/JCi3Yq2npKP8iR4DVhojRD) 확인 후 결정: 놓이는 자리 기준 4갈래, 모든 로그 글씨 굵기 통일(보통), 부상 아이콘·붉은 배경 제거, 교체는 별도 카테고리로 IN 초록·OUT 빨강.
+
+**변경 파일**:
+- `utils/pbpLogStyle.ts` (신규) — `pbpLogCategory(log)`(SYSTEM→system / "교체:"→sub / injury→injury / 그 외→play), `PBP_TEXT_COLOR`(play slate-200·system slate-400·injury red-400), `PBP_SUB_COLOR`(머리 slate-400·IN emerald-400·OUT red-400), `PBP_SCORE_HIGHLIGHT`(text-white), `pbpScored`(야투 득점 또는 1개 이상 성공 자유투), `pbpDisplayText`(옛 로그 앞 "🚨 " 제거)
+- `views/multi/season/MultiGamePbpView.tsx` — 공통 줄 인디고 배너+시계 아이콘+굵게 → 가운데 slate-400 보통 / 일반 줄 종류별 7색 → 헬퍼 / 부상 붉은 배경·굵게 제거 / 점수 강조 기준 `pbpScored` / `SubChangeBlock` IN slate-300·OUT slate-500·text-xs·라벨 굵게 → 초록·빨강·부모 크기·보통, 데스크톱은 "약어 선수교체" 머리 추가(prop `abbr`)
+- `components/game/tabs/GamePbpTab.tsx` — 공통 줄 앰버 배너 → 가운데 slate-400 / 파울·턴오버 빨강·자유투 조건색 → 헬퍼 / 득점 강조 네온 초록(약어+점수) → 점수만 흰색 / 교체 이름 굵게 제거
+- `views/LiveGameView.tsx` — 공통 줄 인디고 배너(대문자·자간) → 가운데 slate-400 / 일반 줄 7색·부상 배경 → 헬퍼 / 교체 이름 굵게 제거 / 점수 강조 `pbpScored`
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — `getInjuryCommentary` 문장 앞 "🚨 " 제거(6곳)
+
+**Before**: 위 배경 참조. **After**: 플레이(팀 칸의 모든 줄 — 득점·실패·리바운드·파울·자유투·턴오버·블록·테크니컬·플래그런트·싸움·버저비터 해설·타임아웃·점프볼) slate-200 / 안내(가운데 공통 줄) slate-400 / 교체 머리 회색·IN 초록·OUT 빨강 / 부상 red-400, 전부 보통 굵기·배경 없음, 득점 팀 점수만 흰색. 쿼터·시간·점수 숫자 칸 굵기는 그대로.
+
+**검증**: tsc 변경 파일 오류 0, vite build 통과.
+
+**롤백 방법**: 세 화면을 git diff 기준으로 되돌리고 `utils/pbpLogStyle.ts` 삭제, textGenerator 두 파일의 부상 문장에 "🚨 " 복원.
+
+## 2026-11-05 — PBP: 시간 운영 안내를 플레이 줄 앞 표시로 합침 + 복귀 준비·파울 작전 안내 삭제 + 플레이 표시(event) + 싸움 조사
+
+**배경**: PBP 색 규칙(플레이/안내/교체/부상) 정리 중 사용자 결정 — 버저비터 해설은 플레이로, 복귀 준비·파울 작전 안내는 로그에서 제외, 시간 운영 안내는 단독 줄 대신 플레이 로그에 병합.
+
+**변경 파일**:
+- `types/engine.ts` / server 미러 — `PbpLog.event?: 'rebound' | 'fight' | 'highlight'`(안내 종류로 기록되지만 플레이인 줄, 화면 색 분류용)
+- `services/game/engine/pbp/statsMappers.ts` / server 미러 — `markLastLog()` 신설, 야투·자유투 리바운드 줄 `event: 'rebound'`, 싸움 줄 `event: 'fight'` + 조사 `이(가)` → `iGa()`
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 —
+  ① 클락 운영: 별도 info 줄 push 삭제 → `getClockManagementTag(mode)`를 이번 공격 팀의 첫 득점·슛 실패·턴오버 줄 앞에 `"표시 · 원문"`으로(슈팅 파울·고의 파울로 끊긴 공격·드리블 아웃·결승 공격은 생략, 붙였을 때만 `clockModeLogged` 기록). 4쿼터 제한 해제(줄이 늘지 않으므로 모든 쿼터)
+  ② 파울 작전 시작 안내 줄(`getFoulStrategyCommentary`) push 블록 삭제
+  ③ 버저비터 해설(pushPeriodEndCommentary 팀 줄)·위닝샷 해설에 `event: 'highlight'`
+- `services/game/engine/pbp/rotationLogic.ts` / server 미러 — checkTemporaryReturns의 "OO 복귀 준비 (…)" 줄 push 3곳 삭제
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — `getClockManagementTag()` 신설(마지막 공격·샷클락 끝까지·2-for-1·서두른 공격·시간 끌기). `getClockManagementCommentary`·`getFoulStrategyCommentary`는 호출부 없음(남겨 둠)
+
+**Before → After**:
+```
+애틀랜타, 서두르지 않고 샷클락을 모두 사용합니다.     (info 줄)
+드레이먼드 그린, 3점 적중! (+3)
+→ 샷클락 끝까지 · 드레이먼드 그린, 3점 적중! (+3)
+
+켈렐 웨어 복귀 준비 (파울 트러블 해소)  → (줄 없음)
+애틀랜타, 시간을 멈추기 위해 파울 작전에 들어갑니다. → (줄 없음, 고의 파울 줄은 그대로)
+알렉스 카루소이(가) 이현중에게 주먹을… → 알렉스 카루소가 이현중에게 주먹을…
+```
+
+- [후속, 사용자 요청 — 구어체] "표시 · 문장" 대신 기존 운영 문장(`getClockManagementCommentary(mode, regionOf(offTeam))`)을 플레이 문장 앞에 이어 붙여 한 줄로: "브루클린, 리드를 지키며 샷클락을 길게 씁니다. 케빈 듀란트, 점퍼 타이밍이 아쉽게 어긋납니다." `getClockManagementTag`는 호출부 없음. 시간을 쓰는 운영(lastShot·fullClock·milk·milkMax)인데 속공(Transition)으로 끝난 공격은 모순이라 생략.
+
+**검증**: tsc client·server 신규 오류 0. 하네스 978경기: 옛 안내 줄(클락·복귀 준비·파울 작전) 0, 시간 운영 표시 11.8/g(득점·슛 실패·턴오버 줄에만, 1~3쿼터 6.3·4쿼터+ 5.4), event 'rebound' 95.1/g·'highlight' 0.24/g. 경기 지표 동일 계열(득점 115.53).
+
+**롤백 방법**: 위 파일들에서 클락 info 줄 push·파울 작전 안내 블록·복귀 준비 push를 git diff 기준으로 복원, clockTag 블록·markLastLog·event 필드·getClockManagementTag 제거. 클라·서버 동시에.
+
+## 2026-11-05 — PBP: 가비지 타임 안내 구어체 + 안내 줄 표시 필드(garbageEvent)
+
+**배경**: 사용자 요청 — 가비지 타임 로그도 다른 중계 문장처럼 구어체로.
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — `getGarbageTimeCommentary(kind, lead, region?)` 신설(파일 끝). region 없으면 양 팀 공통 문장
+- `services/game/engine/pbp/rotationLogic.ts` / server 미러 — 발동·해제 안내 문구를 위 함수로(`regionOf(team)`), 줄에 `garbageEvent: 'start' | 'end'`; import 추가(textGenerator, statsMappers.regionOf — 순환 없음, vite build 통과)
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — `mergeGarbageNotices`를 문구 접두어 대신 `garbageEvent`로 찾고 합친 줄은 `getGarbageTimeCommentary(kind, lead)`, `mergeSubChurnLogs`의 건너뛰기 조건도 `garbageEvent`로
+- `types/engine.ts` / `server/src/shared/types/engine.ts` — `PbpLog.garbageEvent?`
+
+**Before → After**:
+```
+가비지 타임 — 주전 휴식 (26점 차)            → 애틀랜타, 점수 차가 26점으로 벌어지자 주전들을 벤치로 불러들입니다. (또는 "26점 차로 승부가 기울자 주전들에게 휴식을 줍니다.")
+가비지 타임 해제 — 주전 복귀 (9점 차)        → 애틀랜타, 점수 차가 9점으로 좁혀지자 주전들을 다시 코트에 내보냅니다. (또는 "9점 차까지 따라붙자 …")
+가비지 타임 — 양 팀 주전 휴식 (26점 차)     → 점수 차가 26점으로 벌어지자 양 팀 모두 주전들을 벤치로 불러들입니다.
+```
+
+**검증**: tsc client·server 신규 오류 0, vite build 통과(순환 참조 없음). 하네스 978경기: 가비지 안내 전부 양 팀 공통 줄(발동 0.51/g·해제 0.01/g — 두 팀이 같은 점수 차 기준이라 항상 함께), 옛 형식 줄 0.
+
+**롤백 방법**: rotationLogic 두 파일의 text를 Before 문자열로 되돌리고 garbageEvent·import 제거, liveEngine의 mergeGarbageNotices·mergeSubChurnLogs를 문구 접두어('가비지 타임 — 주전 휴식' 등, startsWith('가비지 타임')) 방식으로 되돌림, textGenerator 함수·PbpLog 필드 삭제.
+
+## 2026-11-05 — PBP 가독성: 스틸·블록·파울 행동자 기준 문장 + 같은 시각 줄 정리 + 타임아웃 팀명
+
+**배경**: 사용자 지적 — ① 우리 팀 선수의 행동(스틸 등)이 상대 칸에 뜸 ② 여러 줄이 질서 없이 쌓임. 측정(하네스 978경기): 수비수가 주어인 스틸 줄이 공 잃은 팀 칸에 9.4/g(스틸 줄의 63%), 블록 54%·파울 24%가 상대(슈터) 이름으로 시작, 같은 데드볼 교체→타임아웃 순서 3.57/g, 양 팀 가비지 안내 중복 0.49/g, 클락 운영 안내 14.2/g. 사용자 결정: 스틸 = 공 잃은 선수 주어 + "(X의 스틸)", 블록·파울 = 행동자 이름 먼저, 쌓임은 제안대로(타임아웃 먼저·가비지 한 줄·안내는 4쿼터·연장만), 타임아웃 줄에 팀 표시.
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — 문구 치환 39종(스틸 14·블록 6·파울 19), `getPressCommentary`에 `stealTag`(수비수 없으면 생략)
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — `applyTimeout` 문구에 `regionOf(team)`, `mergeGarbageNotices()` 신설(runSubstitutionCycle의 updateGarbageTime 직후), 클락 안내 조건에 `state.quarter >= REGULATION_PERIODS`, 타임아웃 경로에서 타임아웃 줄을 `subLogStart`(교체·복귀·가비지 줄 앞)로 이동(보류 교체 경로는 원래 타임아웃 → 교체)
+
+**Before → After (예)**:
+```
+"${defender}, ${actor}의 공을 가로챕니다!"            → "${actor}, 공을 놓칩니다. (${defender}의 스틸)"
+"${defender}의 손질, 스틸에 성공합니다!"               → "${actor}, 드리블하다 공을 빼앗깁니다. (${defender}의 스틸)"
+"사이드라인 트랩! ${d}, ${actor}의 공을 낚아챕니다."    → "${actor}, 사이드라인 트랩에 걸려 공을 빼앗깁니다. (${d}의 스틸)"
+"${actor}의 슛, ${defender}에게 가로막힙니다! (블록)"   → "${defender}, ${actor}의 슛을 가로막습니다! (블록)"
+"${a}의 레이업을 막아서던 ${d}, 팔에 걸리며 슈팅 파울!" → "${d}, ${a}의 레이업을 막아서다 팔에 걸리며 슈팅 파울!"
+"타임아웃 (잔여: N회)" / "의무 타임아웃 (잔여: N회)"   → "애틀랜타 타임아웃 (잔여: N회)" / "애틀랜타 의무 타임아웃 (잔여: N회)"
+가비지: 안내(A) → 교체(A) → 안내(B) → 교체(B)          → "가비지 타임 — 양 팀 주전 휴식 (N점 차)"(SYSTEM) → 교체(A) → 교체(B)
+득점 → 교체 → 타임아웃                                 → 득점 → 타임아웃 → 교체
+```
+전체 치환표는 git diff 참조(문자열 단위 1:1).
+
+**검증**: tsc client·server 신규 오류 0. 하네스(978경기, SEED=7): 첫 등장 선수가 칸과 다른 팀인 줄 — 턴오버 9.5→0, 파울 9.2→0, 블록 5.0→0(남은 0.5/g는 점프볼 "A vs B" 줄). 교체→타임아웃 3.57→0.02/g(타임아웃→교체 3.73/g). 가비지 중복 0.49→0(합친 줄 0.51/g). 클락 안내 14.2→6.5/g(1~3쿼터 0). 조사 오류 0. 경기 지표는 미세 변동(득점 115.53→115.32) — 문구 선택용 난수 호출 수가 바뀌어(1~3쿼터 안내 생략) 같은 시드의 난수 흐름이 달라진 것, 엔진 로직 변경 없음.
+
+**롤백 방법**: textGenerator 두 파일의 치환을 되돌리고(`stealTag` 제거), liveEngine 두 파일의 `who`·`mergeGarbageNotices`(정의·호출·garbageLogStart)·클락 조건의 quarter 비교·타임아웃 이동 블록(timeoutLogStart) 제거. 클라·서버 동시에.
+
+## 2026-11-05 — 모바일 "더보기"에 패치노트(날짜별 아코디언) + 패치노트 7/27~9/6 구간 추가
+
+**배경**: 사용자 요청 — 모바일에서도 패치노트를 보도록 "더보기"의 "홈으로" 위에 같은 버튼, 날짜 목록 대신 아코디언으로 나열. 함께 PATCH_NOTES.md에 dev-log 시작(7/27)~9/6 구간 5개 업데이트 추가(총 14구간).
+
+**변경 파일**:
+- `components/common/PatchNotesModal.tsx` — prop `layout?: 'list' | 'accordion'`(기본 list = 기존 데스크톱). accordion = `## ` 구역마다 h-12 머리(날짜 라벨 + ChevronDown 회전) + 펼치면 본문(첫 "## 제목" 줄 제거한 마크다운), 여러 개 동시 펼침 가능, 처음엔 최신 구역만 펼침(`expanded` null → 최신 1개)
+- `views/multi/season/MobileMoreView.tsx` — "홈으로" 바로 위 "패치노트" 행(ScrollText 아이콘) + `<PatchNotesModal layout="accordion">`
+- `PATCH_NOTES.md` — 2026년 9월 1~6일 / 8월 24~31일 / 8월 11~18일 / 8월 1~9일 / 7월 27~31일 업데이트 추가
+
+**Before**: 모바일 더보기에 패치노트 없음, 패치노트는 9/7~11/5만.
+**After**: 위와 같음.
+
+**검증**: tsc 변경 파일 오류 0, 구역 분리·본문 제목 제거 node로 확인(14구간).
+
+**롤백 방법**: MobileMoreView의 행·모달·import 제거, PatchNotesModal의 `layout`·accordion 분기·`expanded`/`sectionBody` 제거. PATCH_NOTES.md는 "2026년 9월 1~6일 업데이트"부터 끝까지 삭제.
+
 ## 2026-11-05 — 패치노트 모달 + 프로필 아이콘(닉네임 첫 글자·배경색 선택) + 사이드바 프로필 메뉴 배경 한 단계 밝게
 
 **배경**: 사용자 요청 — ① 사이드바 하단 프로필 메뉴의 "홈으로" 아래 "패치노트" → 모달에서 레포의 패치노트 md를 그대로 표시 ② 프로필 아이콘·드롭다운 배경이 사이드바와 같은 색이라 안 보임 → 아이콘은 닉네임 첫 글자, 배경색은 로비 닉네임 설정에서 선택, 드롭다운은 한 단계 밝은 slate. 패치노트 파일은 개발용 `docs/history/patch-notes.md`가 아니라 유저용 새 파일(사용자 선택).

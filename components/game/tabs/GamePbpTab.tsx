@@ -7,6 +7,7 @@ import { SegmentedControl } from '../../common/SegmentedControl';
 import { PlayTypeStats } from '../PlayTypeStats';
 import { useIsPhone } from '../../../hooks/useViewportClass';
 import { countOvertimePeriods, normalizePeriod, periodKoreanLabel, periodShortLabel, periodList } from '../../../utils/periodLabel';
+import { pbpLogCategory, PBP_TEXT_COLOR, PBP_SUB_COLOR, PBP_SCORE_HIGHLIGHT, pbpScored, pbpDisplayText } from '../../../utils/pbpLogStyle';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -102,18 +103,19 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                 const subTeamAbbr = teamId === homeTeam.id ? homeAbbr : awayAbbr;
 
                 return (
-                    <div className="flex flex-col gap-1 text-xs">
-                        <div className="text-slate-400">{subTeamAbbr} 선수교체</div>
-                        <div className="flex items-center gap-2 text-emerald-400">
+                    // [2026-11-05] 교체 블록 — 색·굵기는 utils/pbpLogStyle(머리 회색·IN 초록·OUT 빨강·보통 굵기), 글자 크기는 줄을 따른다
+                    <div className="flex flex-col gap-1">
+                        <div className={PBP_SUB_COLOR.header}>{subTeamAbbr} 선수교체</div>
+                        <div className={`flex items-center gap-2 ${PBP_SUB_COLOR.in}`}>
                             <span>IN:</span>
                             <div className="flex flex-wrap gap-2">
-                                {inPlayers.map((p, i) => <span key={i} className="font-bold">{p}</span>)}
+                                {inPlayers.map((p, i) => <span key={i}>{p}</span>)}
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 text-red-400">
+                        <div className={`flex items-center gap-2 ${PBP_SUB_COLOR.out}`}>
                             <span>OUT:</span>
                             <div className="flex flex-wrap gap-2">
-                                {outPlayers.map((p, i) => <span key={i} className="font-bold opacity-80">{p}</span>)}
+                                {outPlayers.map((p, i) => <span key={i}>{p}</span>)}
                             </div>
                         </div>
                     </div>
@@ -122,7 +124,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
         }
 
         // Standard formatting for other logs
-        let cleanText = text.replace(/^\[\d+-\d+\]\s*/, '');
+        let cleanText = pbpDisplayText(text).replace(/^\[\d+-\d+\]\s*/, '');
         cleanText = cleanText.replace(/^[-\.]+\s*(.*?)\s*[-\.]+$/, '$1');
         cleanText = cleanText.replace(/\s*\(\d+\s*:\s*\d+\)$/, '');
 
@@ -210,34 +212,22 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         // 있어서 일반 행으로 새어나갔음 — teamId 기준이 문구 변경에도 안전함.
                         const isFlowEvent = log.teamId === 'SYSTEM';
 
+                        // [2026-11-05] 공통 줄(SYSTEM) = 안내 — 가운데 배치, 배너 배경·아이콘·굵게 없음 (utils/pbpLogStyle)
                         if (isFlowEvent) {
                              return (
-                                <div key={idx} className="flex items-center justify-center py-3 bg-amber-500/10 border-y border-amber-500/20">
-                                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
-                                        <Clock size={14} />
-                                        <span>{log.text}</span>
-                                    </div>
+                                <div key={idx} className={`flex items-center justify-center py-2.5 ${isPhone ? 'px-4' : 'px-4'} text-xs text-center leading-relaxed ${PBP_TEXT_COLOR.system}`}>
+                                    {log.text}
                                 </div>
                              );
                         }
                         
-                        // Text Color
-                        let textColor = 'text-slate-400';
-                        if (isInjury) textColor = 'text-red-400 font-bold';
-                        else if (isImportant) textColor = 'text-slate-300';
-                        // 자유투는 "성공"(points > 0)한 경우만 일반 득점과 동일한 색상 — 전부 실패면 기본색 유지
-                        else if (isScore || (isFT && (log.points ?? 0) > 0)) textColor = 'text-slate-200';
-                        else if (isFoul || isTurnover) textColor = 'text-red-400';
-
-                        // Background — 모든 일반 행은 배경 통일(호버만 강조). 배경 구분은 쿼터 시작/종료 등
-                        // 흐름 이벤트(위 isFlowEvent, 별도 배너 렌더링)에만 적용.
+                        // [2026-11-05] 글자색·점수 강조는 세 화면 공통 규칙(utils/pbpLogStyle) — 플레이 slate-200 / 부상 red-400, 득점 팀 점수만 흰색
+                        const textColor = pbpLogCategory(log) === 'injury' ? PBP_TEXT_COLOR.injury : PBP_TEXT_COLOR.play;
                         const bgClass = 'hover:bg-white/5 transition-colors';
-
-                        // 이 로그에서 득점이 발생했으면(자유투는 성공만) 득점팀의 약어/스코어를 네온 그린으로 하이라이트
-                        const didScore = isScore || (isFT && (log.points ?? 0) > 0);
+                        const didScore = pbpScored(log);
                         const awayScored = didScore && !isHome;
                         const homeScored = didScore && isHome;
-                        const scoreHighlight = 'text-[#00e676] drop-shadow-[0_0_4px_rgba(0,230,118,0.65)]';
+                        const scoreHighlight = PBP_SCORE_HIGHLIGHT;
 
                         const timeDisplay = (log.timeRemaining || '-');
 
@@ -256,7 +246,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                                     </div>
                                     <div className={`flex-1 min-w-0 break-words leading-relaxed ${textColor}`}>
                                         {!isSub && (
-                                            <span className={`mr-1.5 text-xs tracking-tight ${scored ? scoreHighlight : 'text-slate-300'}`}>{isHome ? homeAbbr : awayAbbr}</span>
+                                            <span className="mr-1.5 text-xs tracking-tight text-slate-300">{isHome ? homeAbbr : awayAbbr}</span>
                                         )}
                                         {renderLogContent(log.text, homeTeam, awayTeam, log.teamId)}
                                     </div>
@@ -278,7 +268,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 3. Away Abbr */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <span className={`text-xs tracking-tight ${awayScored ? scoreHighlight : 'text-slate-300'}`}>{awayAbbr}</span>
+                                    <span className="text-xs tracking-tight text-slate-300">{awayAbbr}</span>
                                 </div>
 
                                 {/* 4. Score (Text Only) */}
@@ -292,7 +282,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 5. Home Abbr */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <span className={`text-xs tracking-tight ${homeScored ? scoreHighlight : 'text-slate-300'}`}>{homeAbbr}</span>
+                                    <span className="text-xs tracking-tight text-slate-300">{homeAbbr}</span>
                                 </div>
 
                                 {/* 6. Message */}

@@ -79,6 +79,9 @@ export interface PbpLog {
     runHomePts?: number;
     runAwayPts?: number;
     timeoutKind?: 'team' | 'mandatory'; // [2026-10-22] 일반/의무 타임아웃 구분(optional — 과거 로그 호환)
+    /** [2026-11-05] 안내 종류(type 'info')지만 실제로는 플레이인 줄 — PBP 색 규칙에서 플레이로 분류(과거 로그엔 없음, 화면은 문구로 보충 판별) */
+    event?: 'rebound' | 'fight' | 'highlight';
+    garbageEvent?: 'start' | 'end';     // [2026-11-05] 가비지 타임 발동/해제 안내 줄 표시(문구 대신 이 표시로 찾는다, 과거 로그엔 없음)
     timeoutsLeft?: number;
     foulTeamId?: string;
     isPossessionEnd?: boolean;

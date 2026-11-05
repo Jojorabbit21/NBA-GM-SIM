@@ -6,6 +6,8 @@ import { evaluateFoulTroubleAction, SHUTDOWN_MIN_GAIN, HARD_FLOOR } from './subs
 import { assignCourtSlots, snapshotSlots, pickBestFive, vacancyFit } from './slotAssignment';
 import { planSuccession, type SuccessionPlayer } from './rotationSuccession';
 import { elapsedGameSec, scheduleMinute, isOvertimeClutch } from './periodRules';
+import { getGarbageTimeCommentary } from '../commentary/textGenerator';
+import { regionOf } from './statsMappers';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -682,13 +684,7 @@ export function checkTemporaryReturns(
             player.benchedAtMinute = undefined;
             player.benchedAtQuarter = undefined;
             player.scheduledReturnMinute = undefined;
-            state.logs.push({
-                quarter: state.quarter,
-                timeRemaining: formatTime(state.gameClock),
-                teamId: team.id,
-                text: `${player.playerName} 복귀 준비 (파울 트러블 해소)`,
-                type: 'info'
-            });
+            // [2026-11-05] "복귀 준비" 안내 줄 삭제(사용자 결정) — 실제 투입은 교체 줄로 보인다
             continue;
         }
         if (override.reason === 'shutdown') {
@@ -712,13 +708,7 @@ export function checkTemporaryReturns(
                     player.benchedAtMinute = undefined;
                     player.benchedAtQuarter = undefined;
                     player.scheduledReturnMinute = undefined;
-                    state.logs.push({
-                        quarter: state.quarter,
-                        timeRemaining: formatTime(state.gameClock),
-                        teamId: team.id,
-                        text: `${player.playerName} 복귀 준비 (체력 회복)`,
-                        type: 'info'
-                    });
+                    // [2026-11-05] "복귀 준비" 안내 줄 삭제(사용자 결정) — 실제 투입은 교체 줄로 보인다
                     continue;
                 }
             }
@@ -736,13 +726,7 @@ export function checkTemporaryReturns(
         player.benchedAtQuarter = undefined;
         player.scheduledReturnMinute = undefined;
 
-        state.logs.push({
-            quarter: state.quarter,
-            timeRemaining: formatTime(state.gameClock),
-            teamId: team.id,
-            text: `${player.playerName} 복귀 준비 (체력 회복)`,
-            type: 'info'
-        });
+        // [2026-11-05] "복귀 준비" 안내 줄 삭제(사용자 결정) — 실제 투입은 교체 줄로 보인다
         // 실제 물리적 투입은 checkAndApplyRotation이 맵 기반으로 처리
     }
 }
@@ -1006,8 +990,9 @@ function applyGarbageTime(state: GameState, team: TeamState, lead: number): void
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
         teamId: team.id,
-        text: `가비지 타임 — 주전 휴식 (${lead}점 차)`,
-        type: 'info'
+        text: getGarbageTimeCommentary('start', lead, regionOf(team)),   // [2026-11-05] 구어체
+        type: 'info',
+        garbageEvent: 'start'
     });
 
     // 즉시 일괄 교체(출전 기록 사유 'garbage'). 부상·퇴장으로 코트에 남은 선수는 이후 교체 체크가 처리
@@ -1064,7 +1049,8 @@ function releaseGarbageTime(state: GameState, team: TeamState, lead: number): vo
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
         teamId: team.id,
-        text: `가비지 타임 해제 — 주전 복귀 (${lead}점 차)`,
-        type: 'info'
+        text: getGarbageTimeCommentary('end', lead, regionOf(team)),   // [2026-11-05] 구어체
+        type: 'info',
+        garbageEvent: 'end'
     });
 }

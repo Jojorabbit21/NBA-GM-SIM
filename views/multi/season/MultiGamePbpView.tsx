@@ -54,6 +54,7 @@ import { periodStartSec, periodLengthSec } from '../../../services/game/engine/p
 import { useIsPhone } from '../../../hooks/useViewportClass';
 import { MobilePushHeader } from '../../../components/mobile/MobilePushHeader';
 import { MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
+import { pbpLogCategory, PBP_TEXT_COLOR, PBP_SUB_COLOR, PBP_SCORE_HIGHLIGHT, pbpScored, pbpDisplayText } from '../../../utils/pbpLogStyle';
 
 const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
@@ -901,20 +902,22 @@ const FinalTeamBlock: React.FC<{
     );
 };
 
-/** PBP 교체 행의 IN/OUT 두 줄 — 원정은 이름→라벨(우측 정렬), 홈은 라벨→이름 */
-const SubChangeBlock: React.FC<{ side: 'away' | 'home'; inPlayers: string[]; outPlayers: string[] }> = ({ side, inPlayers, outPlayers }) => {
+/** PBP 교체 행 — "약어 선수교체" 머리 + IN/OUT 두 줄. 원정은 이름→라벨(우측 정렬), 홈은 라벨→이름.
+ *  [2026-11-05] 색·굵기는 utils/pbpLogStyle(IN 초록·OUT 빨강·보통 굵기), 글자 크기는 부모 줄을 따른다 */
+const SubChangeBlock: React.FC<{ side: 'away' | 'home'; abbr?: string; inPlayers: string[]; outPlayers: string[] }> = ({ side, abbr, inPlayers, outPlayers }) => {
     const isAway = side === 'away';
     const line = (players: string[], label: 'IN' | 'OUT') => {
         const names = <span>{players.join(', ')}</span>;
-        const tag = <span className={`shrink-0 text-xs font-bold ${label === 'IN' ? 'text-slate-500' : ''}`}>{label}</span>;
+        const tag = <span className="shrink-0">{label}</span>;
         return (
-            <div className={`flex items-baseline gap-1.5 leading-relaxed text-xs ${label === 'IN' ? 'text-slate-300' : 'text-slate-500'}`}>
+            <div className={`flex items-baseline gap-1.5 leading-relaxed ${label === 'IN' ? PBP_SUB_COLOR.in : PBP_SUB_COLOR.out}`}>
                 {isAway ? <>{names}{tag}</> : <>{tag}{names}</>}
             </div>
         );
     };
     return (
         <div className={`flex flex-col gap-0.5 ${isAway ? 'items-end' : ''}`}>
+            {abbr && <div className={`leading-relaxed ${PBP_SUB_COLOR.header}`}>{abbr} 선수교체</div>}
             {line(inPlayers, 'IN')}
             {line(outPlayers, 'OUT')}
         </div>
@@ -2705,40 +2708,38 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                     // 매번 처음부터 재생된다(포지션 기반 key였다면 노드가 재사용돼 재생 안 됨).
                     const flashClass = i === 0 ? ' animate-pbp-row-flash' : '';
 
+                    // [2026-11-05] 공통 줄(SYSTEM) = 안내 — 가운데 배치, 배너 배경·아이콘·굵게 없음 (utils/pbpLogStyle)
                     if (isFlowEvent) {
                         return (
-                            <div key={idx} className={`flex items-center justify-center ${isPhone ? 'py-2' : 'py-2.5'} bg-indigo-500/10 border-y border-indigo-500/20${flashClass}`}>
-                                <div className={`flex items-center gap-1.5 text-indigo-300 font-bold ${isPhone ? 'text-xs' : 'text-sm'}`}>
-                                    <Clock size={12} />
-                                    <span>{log.text}</span>
-                                </div>
+                            <div key={idx} className={`flex items-center justify-center ${isPhone ? 'py-2 px-4 text-xs' : 'py-2 px-3 text-sm'} border-b border-slate-800/50 leading-relaxed text-center ${PBP_TEXT_COLOR.system}${flashClass}`}>
+                                {log.text}
                             </div>
                         );
                     }
+                    const category = pbpLogCategory(log);
+                    const scored = pbpScored(log);
+                    const lineColor = category === 'injury' ? PBP_TEXT_COLOR.injury : PBP_TEXT_COLOR.play;
+                    const lineText = pbpDisplayText(log.text);
 
                     if (isPhone) {
-                        const scoredP = isScore || isFT;
-                        const pColor = isInjury ? 'text-red-400 font-bold' : isInfo ? 'text-slate-300' : isScore ? 'text-slate-200'
-                            : isFT ? 'text-cyan-400' : isFoul ? 'text-orange-400' : isTurnover ? 'text-red-400' : isBlock ? 'text-blue-400' : 'text-slate-400';
                         const subIn  = log.text.startsWith('교체:') ? log.text.match(/IN \[(.*?)\]/) : null;
                         const subOut = log.text.startsWith('교체:') ? log.text.match(/OUT \[(.*?)\]/) : null;
-                        const rowBg = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : 'border-b border-slate-800/50';
                         return (
-                            <div key={idx} className={`flex items-start py-2 px-4 gap-2 ${rowBg}${flashClass}`}>
+                            <div key={idx} className={`flex items-start py-2 px-4 gap-2 border-b border-slate-800/50${flashClass}`}>
                                 <div className="flex items-start gap-0.5 flex-shrink-0 text-xs leading-relaxed">
                                     <div className="w-[26px] text-center">
-                                        {log.awayScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${!isHome && scoredP ? 'text-white' : 'text-slate-500'}`}>{log.awayScore}</span>}
+                                        {log.awayScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${!isHome && scored ? PBP_SCORE_HIGHLIGHT : 'text-slate-500'}`}>{log.awayScore}</span>}
                                     </div>
                                     <div className="w-[50px] text-center text-slate-500 font-bold tabular-nums whitespace-nowrap">{periodShortLabel(log.quarter, otVisible, '1Q')} {log.timeRemaining || '-'}</div>
                                     <div className="w-[26px] text-center">
-                                        {log.homeScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${isHome && scoredP ? 'text-white' : 'text-slate-500'}`}>{log.homeScore}</span>}
+                                        {log.homeScore !== undefined && <span className={`font-black tracking-tight tabular-nums ${isHome && scored ? PBP_SCORE_HIGHLIGHT : 'text-slate-500'}`}>{log.homeScore}</span>}
                                     </div>
                                 </div>
                                 <div className="flex-1 min-w-0 flex items-start gap-1.5 text-xs leading-relaxed">
                                     <span className="shrink-0 text-[11px] font-black text-slate-500">{isHome ? homeAbbr : awayAbbr}</span>
                                     {subIn && subOut
                                         ? <SubChangeBlock side="home" inPlayers={subIn[1].split(',').map(t => t.trim())} outPlayers={subOut[1].split(',').map(t => t.trim())} />
-                                        : <span className={`min-w-0 break-words ${pColor}`}>{log.text}</span>}
+                                        : <span className={`min-w-0 break-words ${lineColor}`}>{lineText}</span>}
                                 </div>
                             </div>
                         );
@@ -2748,7 +2749,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                         <div className="flex items-center gap-1 flex-shrink-0">
                             <div className="w-8 text-center pt-0.5 overflow-hidden">
                                 {log.awayScore !== undefined && (
-                                    <span className={`text-sm font-black tracking-tight tabular-nums ${!isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
+                                    <span className={`text-sm font-black tracking-tight tabular-nums ${!isHome && scored ? PBP_SCORE_HIGHLIGHT : 'text-slate-500'}`}>
                                         {log.awayScore}
                                     </span>
                                 )}
@@ -2758,7 +2759,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             </div>
                             <div className="w-8 text-center pt-0.5 overflow-hidden">
                                 {log.homeScore !== undefined && (
-                                    <span className={`text-sm font-black tracking-tight tabular-nums ${isHome && (isScore || isFT) ? 'text-white' : 'text-slate-500'}`}>
+                                    <span className={`text-sm font-black tracking-tight tabular-nums ${isHome && scored ? PBP_SCORE_HIGHLIGHT : 'text-slate-500'}`}>
                                         {log.homeScore}
                                     </span>
                                 )}
@@ -2774,40 +2775,27 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             const outPlayers = outMatch[1].split(',').map(s => s.trim());
                             const isSubHome  = log.teamId === (homeTeamId ?? '');
                             return (
-                                <div key={idx} className={`flex items-start py-2 px-3 gap-2 border-b border-slate-800/50 hover:bg-white/5 transition-colors${flashClass}`}>
+                                <div key={idx} className={`flex items-start py-2 px-3 gap-2 border-b border-slate-800/50 hover:bg-white/5 transition-colors text-sm${flashClass}`}>
                                     <div className="flex-1 min-w-0">
-                                        {!isSubHome && <SubChangeBlock side="away" inPlayers={inPlayers} outPlayers={outPlayers} />}
+                                        {!isSubHome && <SubChangeBlock side="away" abbr={awayAbbr} inPlayers={inPlayers} outPlayers={outPlayers} />}
                                     </div>
                                     {centerCols}
                                     <div className="flex-1 min-w-0">
-                                        {isSubHome && <SubChangeBlock side="home" inPlayers={inPlayers} outPlayers={outPlayers} />}
+                                        {isSubHome && <SubChangeBlock side="home" abbr={homeAbbr} inPlayers={inPlayers} outPlayers={outPlayers} />}
                                     </div>
                                 </div>
                             );
                         }
                     }
 
-                    let textColor = 'text-slate-400';
-                    if (isInjury) textColor = 'text-red-400 font-bold';
-                    else if (isInfo) textColor = 'text-slate-300';
-                    else if (isScore) textColor = 'text-slate-200';
-                    else if (isFT) textColor = 'text-cyan-400';
-                    else if (isFoul) textColor = 'text-orange-400';
-                    else if (isTurnover) textColor = 'text-red-400';
-                    else if (isBlock) textColor = 'text-blue-400';
-
-                    const bgClass = isInjury
-                        ? 'bg-red-900/20 border-y border-red-900/30'
-                        : 'border-b border-slate-800/50 hover:bg-white/5 transition-colors';
-
                     return (
-                        <div key={idx} className={`flex items-center py-2 px-3 gap-2 ${bgClass}${flashClass}`}>
-                            <div className={`flex-1 min-w-0 text-right break-words leading-relaxed text-sm ${textColor}`}>
-                                {!isHome ? log.text : ''}
+                        <div key={idx} className={`flex items-center py-2 px-3 gap-2 border-b border-slate-800/50 hover:bg-white/5 transition-colors${flashClass}`}>
+                            <div className={`flex-1 min-w-0 text-right break-words leading-relaxed text-sm ${lineColor}`}>
+                                {!isHome ? lineText : ''}
                             </div>
                             {centerCols}
-                            <div className={`flex-1 min-w-0 break-words leading-relaxed text-sm ${textColor}`}>
-                                {isHome ? log.text : ''}
+                            <div className={`flex-1 min-w-0 break-words leading-relaxed text-sm ${lineColor}`}>
+                                {isHome ? lineText : ''}
                             </div>
                         </div>
                     );

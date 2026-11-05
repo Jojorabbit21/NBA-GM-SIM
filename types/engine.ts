@@ -79,6 +79,9 @@ export interface PbpLog {
     runHomePts?: number;  // 현재 에포크 내 홈팀 누적 득점
     runAwayPts?: number;  // 현재 에포크 내 원정팀 누적 득점
     timeoutKind?: 'team' | 'mandatory'; // [2026-10-22] 일반/의무 타임아웃 구분(optional — 과거 로그 호환)
+    /** [2026-11-05] 안내 종류(type 'info')지만 실제로는 플레이인 줄 — PBP 색 규칙에서 플레이로 분류(과거 로그엔 없음, 화면은 문구로 보충 판별) */
+    event?: 'rebound' | 'fight' | 'highlight';
+    garbageEvent?: 'start' | 'end';     // [2026-11-05] 가비지 타임 발동/해제 안내 줄 표시(문구 대신 이 표시로 찾는다, 과거 로그엔 없음)
     timeoutsLeft?: number; // 타임아웃 로그(teamId=부른 팀)일 때: 그 팀의 잔여 타임아웃 수 (멀티플레이어 리플레이용)
     foulTeamId?: string;   // 이 로그가 팀파울(보너스 대상: 비슈팅/슈팅/플래그런트) 발생 시점이면 파울한 팀 ID.
                             // freethrow 타입(슈팅파울)은 teamId가 공격팀이라 별도 필드로 파울팀을 남긴다.
