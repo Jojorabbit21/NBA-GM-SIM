@@ -28,6 +28,8 @@ interface LeaderboardTableProps {
     enableHoverCard?: boolean;
     /** 멀티 전용 열(ColumnDef.multiOnly: POTV/FBPS/PITP/SPTS) 표시 — 싱글은 데이터가 없어 기본 false. */
     showMultiColumns?: boolean;
+    /** true(기본) = 부모 높이를 채우고 표 안에서 세로 스크롤(머리 고정). false = 행 수만큼 펼침 — 페이지 전체가 스크롤하는 데스크톱 리더보드(LeaderboardView). */
+    fillHeight?: boolean;
 }
 
 // 고정 열(stickyLeft 숫자)은 Table이 position/left/배경/z-index를 붙인다(2026-10-13). 여기선 폭과,
@@ -52,7 +54,7 @@ const formatValue = (val: number, format?: string) => {
 const contentTextClass = "text-sm font-medium text-white tabular-nums";
 
 export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
-    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage, enableHoverCard = false, showMultiColumns = false
+    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage, enableHoverCard = false, showMultiColumns = false, fillHeight = true
 }) => {
 
     // Select column config based on mode
@@ -146,8 +148,8 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
     if (data.length === 0) {
         return (
-            <div className="relative h-full">
-                <Table variant="flush" className="custom-scrollbar-hide" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
+            <div className={`relative ${fillHeight ? 'h-full' : ''}`}>
+                <Table variant="flush" className="custom-scrollbar-hide" fullHeight={fillHeight} tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                     {colGroup}
                     {renderHead()}
                     <TableBody>
@@ -159,7 +161,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     }
 
     return (
-        <Table variant="flush" className="custom-scrollbar-hide" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
+        <Table variant="flush" className="custom-scrollbar-hide" fullHeight={fillHeight} tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
             {colGroup}
             {renderHead()}
 

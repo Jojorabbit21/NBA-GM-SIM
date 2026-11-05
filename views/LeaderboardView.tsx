@@ -5,6 +5,7 @@ import { BarChart2 } from 'lucide-react';
 import { useLeaderboardData, SeasonType } from '../hooks/useLeaderboardData';
 import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar';
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
+import { LeaderboardGlossary } from '../components/leaderboard/LeaderboardGlossary';
 import { Pagination } from '../components/common/Pagination';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
 import type { TeamAdvancedStatsMap } from '../hooks/useTeamSeasonAdvancedStats';
@@ -192,9 +193,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   }
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
-      {/* Toolbar (sticky top) */}
-      <div className="flex-shrink-0">
+    // [2026-11-05] 페이지 전체 스크롤 — 표를 행 수만큼 펼치고 그 아래 페이지네이션(고정 해제)·용어집이 이어진다.
+    //   표 머리는 표 자체의 가로 스크롤 상자 때문에 페이지 스크롤에 sticky로 붙지 않는다(사용자 결정 11-05).
+    <div className="h-full overflow-y-auto custom-scrollbar animate-in fade-in duration-500 ko-normal">
+      {/* Toolbar */}
+      <div>
           <LeaderboardToolbar
               mode={mode}
               setMode={handleModeChange}
@@ -237,8 +240,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           />
       </div>
 
-      {/* Table Area (fills remaining space) */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Table Area */}
+      <div>
           <LeaderboardTable
               data={currentData}
               mode={mode}
@@ -252,6 +255,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               itemsPerPage={itemsPerPage}
               enableHoverCard={enableHoverCard}
               showMultiColumns={!!teamAdvancedRegular}
+              fillHeight={false}
           />
       </div>
 
@@ -262,6 +266,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           onPageChange={handlePageChange}
           onPageSizeChange={handleItemsPerPageChange}
       />
+
+      <LeaderboardGlossary mode={mode} statCategory={statCategory} showMultiColumns={!!teamAdvancedRegular} />
     </div>
   );
 };

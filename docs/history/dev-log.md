@@ -348,6 +348,20 @@ G5: ['전방십자인대 파열', '후방십자인대 파열', '아킬레스건 
   `components/game/tabs/GamePbpTab.tsx` — `hidePlayTypes` prop(기본 false): true면 우측 플레이타입 패널을 그리지 않고 PBP 로그가 가로 100%(`flex-1`, 구분선 제거). 멀티 종료 화면만 true로 전달 — 싱글 경기 기록 탭은 그대로(플레이타입 5:5 유지).
   Before: 경기 기록 = PBP 5 : 플레이타입 5, 종료 화면에 팀 스탯 비교 없음. After: 경기 기록 = PBP 100%, 팀 기록 탭 = 플레이타입 + 팀 스탯 비교. 롤백: 섹션 `team` 블록·탭/목록 항목 제거, 경기 기록의 `hidePlayTypes` 제거(+GamePbpTab prop 삭제).
 
+## 2026-11-05 — UI: 리더보드 데스크톱 페이지 전체 스크롤 + 하단 용어집
+
+**배경**: 사용자 요청 — 리더보드 푸터(페이지네이션) 고정 해제, 푸터 아래 용어집. 결정: 페이지 전체 스크롤(표 머리 고정 포기), 용어는 현재 탭 열만, 데스크톱만(폰 PhoneLeaderboard 그대로).
+
+**변경 파일**:
+- `views/LeaderboardView.tsx` — 데스크톱 루트 `flex flex-col h-full overflow-hidden` → `h-full overflow-y-auto`(블록), 표 영역 `flex-1 min-h-0 overflow-hidden` 제거, `LeaderboardTable fillHeight={false}`, 페이지네이션 뒤 `<LeaderboardGlossary>`. 싱글(LeaderboardPage)·멀티 공통 적용
+- `components/leaderboard/LeaderboardTable.tsx` — `fillHeight` prop(기본 true = 기존 동작). false면 `Table fullHeight={false}`·빈 상태 래퍼 `h-full` 제거 → 행 수만큼 펼침
+- `components/leaderboard/LeaderboardGlossary.tsx`(신규) — 모드 × 카테고리의 보이는 열(Common 포함, multiOnly는 showMultiColumns일 때만) 라벨·그룹 헤더를 사전(STAT_TERMS / 능력치 탭 ATTRIBUTE_TERMS)에서 찾아 `dl` 그리드로 표시. 사전에 없는 식별 열(#·PLAYER·TEAM·POS·TEAM NAME)은 제외
+
+**Before**: 툴바 고정 + 표가 남은 높이를 채우고 안에서 세로 스크롤(머리 sticky) + 페이지네이션 하단 고정.
+**After**: 툴바 → 표(전체 행) → 페이지네이션 → 용어집이 한 번에 스크롤. 표 머리는 가로 스크롤 상자 때문에 페이지 스크롤에 붙지 않음.
+
+**롤백 방법**: LeaderboardView 루트·표 영역 클래스 원복 + `fillHeight={false}`와 `<LeaderboardGlossary>` 제거(LeaderboardTable의 prop은 기본 true라 남겨도 무해), 신규 파일 삭제.
+
 **Before**: team_misc 컬럼 없음, 틱에 팀 미스크 델타 없음, 팀 스탯·리더보드·인사이트에 4종 없음.
 **After**: 위와 같음. 틱 `m`의 합 = 엔진 teamMisc(하네스 978경기 전부 일치). 라이브 화면은 틱 합으로 시점별 점진 공개, 값이 없는 경기는 4행 숨김.
 
