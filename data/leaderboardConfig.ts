@@ -31,6 +31,8 @@ export interface ColumnDef {
     attrGroup?: string; // Attributes 탭 전용: 카테고리 그룹 (INSIDE, OUTSIDE 등)
     /** 리그 전체 선수·팀이 모여야 계산되는 열(PER, Win Shares) — 한 팀만 넘기는 화면(로스터 선수 기록 탭)에서는 숨긴다. */
     leagueWide?: boolean;
+    /** 멀티 전용 열 — 싱글 리더보드엔 데이터가 없어 숨긴다(LeaderboardTable showMultiColumns). */
+    multiOnly?: boolean;
 }
 
 // Column Widths
@@ -351,6 +353,11 @@ const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'nrtg', label: 'NRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'poss', label: 'POSS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'pace', label: 'PACE', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+    // [2026-11-05] 팀 미스크 득점 4종 경기당(멀티 전용) — game_pbp.team_misc (POTV=턴오버 직후 첫 공격 득점 / FBPS=속공 / PITP=페인트 / SPTS=공격 리바운드 이후 득점)
+    { key: 'potv', label: 'POTV', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', multiOnly: true },
+    { key: 'fbps', label: 'FBPS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', multiOnly: true },
+    { key: 'pitp', label: 'PITP', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', multiOnly: true },
+    { key: 'spts', label: 'SPTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', multiOnly: true },
 ];
 
 // Column Definitions for Teams

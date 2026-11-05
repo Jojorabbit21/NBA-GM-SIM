@@ -26,6 +26,8 @@ interface LeaderboardTableProps {
     /** 선수 이름에 hover 시 능력치+스탯 요약 팝업 표시 — 멀티플레이어 전용 기능이라
      *  호출부에서 명시적으로 켜야 함(싱글플레이어는 미지정 시 기본 false). */
     enableHoverCard?: boolean;
+    /** 멀티 전용 열(ColumnDef.multiOnly: POTV/FBPS/PITP/SPTS) 표시 — 싱글은 데이터가 없어 기본 false. */
+    showMultiColumns?: boolean;
 }
 
 // 고정 열(stickyLeft 숫자)은 Table이 position/left/배경/z-index를 붙인다(2026-10-13). 여기선 폭과,
@@ -50,11 +52,11 @@ const formatValue = (val: number, format?: string) => {
 const contentTextClass = "text-sm font-medium text-white tabular-nums";
 
 export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
-    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage, enableHoverCard = false
+    data, mode, statCategory, sortConfig, onSort, onRowClick, statRanges, showHeatmap, currentPage, itemsPerPage, enableHoverCard = false, showMultiColumns = false
 }) => {
 
     // Select column config based on mode
-    const allColumns = mode === 'Players' ? PLAYER_COLUMNS : TEAM_COLUMNS;
+    const allColumns = (mode === 'Players' ? PLAYER_COLUMNS : TEAM_COLUMNS).filter(c => !c.multiOnly || showMultiColumns);
 
     // Filter columns based on category
     // Common columns are always shown.

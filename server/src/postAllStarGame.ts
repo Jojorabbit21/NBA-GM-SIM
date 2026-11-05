@@ -339,6 +339,7 @@ export async function computeAndRunAllStarGame(
         box_timeline: result.boxTimeline ?? [], rotation_data: result.rotationData ?? {},
         quarter_scores: computeQuarterScoresFromEvents(result.pbpLogs ?? []),
         ot_periods: countOvertimePeriods(result.pbpLogs ?? []),   // [2026-10-26] 공개 시각(game_reveal_at)
+        team_misc: result.teamMisc ?? null,   // [2026-11-05] 팀 미스크 득점 4종
     }, { onConflict: 'room_id,game_id' });
 
     await supabase.from('games')

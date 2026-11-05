@@ -299,6 +299,8 @@ export function resolvePlayAction(
     blitz?: { handler: LivePlayer; screener: LivePlayer },
     // [2026-10-28] 속공 진입 정보 — 진입 선수(수비 리바운더·스틸러)와 진입 방식
     transition?: { entryPlayer?: LivePlayer; entry: 'defReb' | 'steal' | 'other' },
+    // [2026-11-04] 풋백 슈터 = 근거리 공격 리바운더 (possessionHandler가 넘김, server 미러 참조)
+    putbackActor?: LivePlayer,
 ): PlayContext {
     const players = team.onCourt;
     // [2026-09-10] 팀 전체 1~5옵션 랭킹(gravity 기반) — resolvePlayAction 호출당 1회만 계산해
@@ -834,7 +836,8 @@ export function resolvePlayAction(
             // 상황에 수비리바운드 능력까지 섞여서 부정확했다(실측: 알 호포드 offReb 35인데 reb종합
             // 61.3으로 과대평가). 공격 리바운드(offReb)만 쓰고, 점프력(vertical)·허슬을 반영해서
             // 로드먼/벤 월리스/조쉬 하트 같은 허슬형도 정당하게 평가되도록 재정의.
-            const actor = pickWeightedActor(p =>
+            // [2026-11-04] 리바운더 본인이 슛(putbackActor). 미지정 시(구 호출부) 기존 가중 추첨.
+            const actor = putbackActor ?? pickWeightedActor(p =>
                 p.attr.offReb * 0.40 +
                 p.attr.vertical * 0.30 +
                 p.attr.hustle * 0.20 +
@@ -846,7 +849,7 @@ export function resolvePlayAction(
                 actor,
                 preferredZone: pbZone,
                 shotType: pbShotType,
-                bonusHitRate: 0.05 // Putback: 세컨드찬스 이점 (57+5=62%)
+                bonusHitRate: SIM_CONFIG.PUTBACK.HIT_MOD, // [2026-11-04] 이전 0.05 고정
             };
         }
         case 'OffBallScreen': {

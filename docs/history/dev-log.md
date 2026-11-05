@@ -35,6 +35,902 @@
 
 
 
+## 2026-11-05 — PBP: 피리어드 막판 밀고 올라가기(데드볼 인바운드 시작)는 속공 대신 막판 문구
+
+**배경**: 최종 감사 재실행에서 타임아웃 직후 "속공 상황에서 띄워주는 패스 — … 덩크!" 문구(978경기 3건). 원인 — endOfPeriodShot이 백코트 5~6초 공격을 Transition으로 고정하는데, 문구는 일반 속공 풀을 그대로 씀. 수비가 서 있는 데드볼 인바운드(타임아웃·득점·파울 후)에서 시작한 공격은 속공이 아니라 시간에 쫓긴 공격. 사용자 결정: 수정.
+
+**변경 파일**:
+- `services/game/engine/pbp/pbpTypes.ts` / server 미러 — `PossessionResult.isEndRush?: boolean`
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — 결과 생성 직후 `endShot.kind === 'rush' && result.playType === 'Transition' && !lastEntryWasDefReb && !lastEntryWasSteal`이면 `result.isEndRush = true`
+- `services/game/engine/pbp/statsMappers.ts` / server 미러 — score·miss `generateCommentary` flags에 `isEndRush`, 슈팅 파울 문구(앤드원·일반)는 isEndRush면 playType 없이(속공 마무리 충돌 문구 회피, 존·슛타입 기준 일반 문구)
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — `generateCommentary` flags에 `isEndRush`, Transition 분기 앞에 막판 전용 세트(SCORE `endRushScore`·MISS `endRushMiss`, mid/3점/레이업/덩크/플로터/훅/점퍼)
+
+**Before**:
+```ts
+// liveEngine — 막판 rush도 일반 Transition 결과 그대로
+// textGenerator — playType === 'Transition'이면 속공 문구("속공 상황에서…", "아웃렛 패스…")
+```
+
+**After**:
+```ts
+if (endShot?.kind === 'rush' && result.playType === 'Transition' && !state.lastEntryWasDefReb && !state.lastEntryWasSteal) result.isEndRush = true;
+// textGenerator
+if (playType === 'Transition' && isEndRush) { … `${a}, 남은 시간이 없어 몰고 올라가 던진 3점! 들어갑니다!` … }
+```
+- 수비 리바운드·스틸 직후 막판 공격은 실제 속공이라 기존 속공 문구 유지.
+
+**검증**: tsc client·server 신규 오류 0. 하네스(978경기, SEED=7): 막판 문구 190줄, 타임아웃 직후 속공 문구 3 → 0. 경기 지표 변경 전과 동일(문구만 변경). 참고: 7초 이상 남은 득점 후 일반 Transition(엔진 기존 동작, 득점 후 속공 진입)은 이번 규칙 밖이라 "속공" 문구 유지(5건).
+
+**롤백 방법**: 네 파일 쌍에서 `isEndRush` 필드·표시 줄·flags 전달·막판 문구 블록 제거, 슈팅 파울 호출의 `result.isEndRush ? undefined : playType`를 `playType`으로. 클라·서버 동시에.
+
+## 2026-11-05 — PBP: 이름 뒤 조사 자동 선택(A-9-5) + 같은 데드볼 교체 번복 줄 합치기(A-9-4)
+
+**배경**: PBP 감사 A-9 남은 두 건. ① 문구 틀에 조사가 고정돼 받침 있는 이름에 "가/를/와"가 붙음(경기당 5.1회 — 가→이 2,866·를→을 1,640·와→과 495·을→를 4, 978경기). ② 6반칙 퇴장 교체 직후 같은 데드볼의 가비지 일괄 교체가 그 대체 선수를 바로 빼서 IN→OUT이 연달아 찍힘(978경기 2건). 사용자 결정: ① 받침 판정 함수 적용(부담 문의 → O(1) 판정이라 적용), ② 줄 합치기.
+
+**변경 파일**:
+- `services/game/engine/commentary/josa.ts` (신규, client) / `server/src/shared/engine/commentary/josa.ts` (신규, server 미러) — `iGa`·`eulReul`·`eunNeun`·`gwaWa`·`euroRo`. 마지막 글자 문자 코드로 판정(한글 (코드−0xAC00)%28, 숫자는 읽는 소리, 그 외 받침 없음).
+- `services/game/engine/commentary/textGenerator.ts` / server 미러 — 고정 조사 57곳 → 함수 호출(`${actor.playerName}가` → `${iGa(actor.playerName)}`, `${a}을|를` → `${eulReul(a)}`, `${a}와|과` → `${gwaWa(a)}`, 부상 문구 `${at}를` 포함)
+- `services/game/engine/pbp/statsMappers.ts` / server 미러 — 1곳(`iGa(actor.playerName)`)
+- `services/game/engine/pbp/liveEngine.ts` / server 미러 — 1곳(`${eulReul(periodLabel(state.quarter))} 시작합니다`), `mergeSubChurnLogs()` 신설 + stepPossession의 newLogs 수집 직전·타임아웃 경로 allNewLogs 직전 호출
+
+**Before**:
+```ts
+`${actor.playerName}, ${assister.playerName}가 포스트에서 만들어준 오픈 찬스! …`
+`${d}, 돌파 후 올라가는 ${a}를 막다가 슈팅 파울을 범합니다.`
+// liveEngine — 교체 줄은 생성된 그대로
+```
+
+**After**:
+```ts
+`${actor.playerName}, ${iGa(assister.playerName)} 포스트에서 만들어준 오픈 찬스! …`
+`${d}, 돌파 후 올라가는 ${eulReul(a)} 막다가 슈팅 파울을 범합니다.`
+// liveEngine
+function mergeSubChurnLogs(state, from) {
+    // 같은 팀·피리어드·시각의 교체 줄 묶음(사이 "가비지 타임" 안내 줄만 허용)에서 IN→OUT/OUT→IN 번복이 있으면
+    // 순변화만 남긴 한 줄을 마지막 교체 줄 자리에 두고 나머지 교체 줄 제거(사유 표기 제외). 플레이 줄이 끼면 합치지 않음.
+}
+```
+예: "교체: IN [요나스 발렌슈나스] OUT [워커 케슬러] (6반칙 퇴장)" + "가비지 타임 — 주전 휴식" + "교체: IN [롭 딜링엄 외 4] OUT [브리지스, 맥코넬, 영, 듀란트, 발렌슈나스]" → "가비지 타임 — 주전 휴식" + "교체: IN [롭 딜링엄 외 4] OUT [워커 케슬러, 마일스 브리지스, T.J. 맥코넬, 트레이 영, 케빈 듀란트]"
+
+**검증**: tsc client·server 신규 오류 0. 하네스(978경기, SEED=7): 조사 오류 5,005 → 0, 같은 데드볼 번복 묶음 2 → 0(퇴장 교체 뒤 자유투가 이어진 경우는 그대로 — 대체 선수가 실제로 뜀), 교체 줄 24,569 → 24,567. 경기 지표 변경 전과 동일.
+
+**롤백 방법**: josa.ts 두 파일 삭제, textGenerator·statsMappers·liveEngine의 함수 호출을 고정 조사로 되돌림(`${iGa(X)}` → `${X}가` 등, 원래 조사는 git diff 참조), liveEngine의 `mergeSubChurnLogs` 정의·호출 2곳 제거. 클라·서버 동시에.
+
+## 2026-11-05 — 엔진: 쿼터 사이 라인업 변경은 교체 줄로 기록하지 않음(피리어드 종료 0:00 교체·연장 선발 투입)
+
+**배경**: A-9-3 수정 뒤 로그에서 "전반 종료" 다음에 "교체: IN […] OUT […]"가 찍히는 게 부자연스럽다는 사용자 지적. 원인 — 로테이션 표는 분 단위 48칸이고 0:00(경과 24분)에는 24번 칸(3쿼터 첫 1분)을 읽어 다음 쿼터 라인업으로 바꾸면서 교체 줄을 남김(1~3쿼터 종료의 84%, 경기당 ~3.5줄). 사용자 결정: 쿼터가 끝날 때도, 시작할 때도 교체로 기록하지 않고 그 시간에 뛸 선수가 코트에 있는 흐름.
+- 라인업 변경 시점 자체는 그대로 피리어드 종료 직후(휴식 중 라이브 화면·수동 교체가 다음 쿼터 라인업 기준으로 동작하도록 — 시작 시점으로 옮기면 휴식 중엔 끝난 쿼터 5명이 보이다 재개 순간 바뀜).
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` (client)
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러)
+
+**Before**:
+```ts
+    checkTemporaryReturns(state, state.home, currentMinute);
+    checkTemporaryReturns(state, state.away, currentMinute);
+    ...
+    const runSubstitutions = () => { /* 가비지 판정 → 긴급 교체 → 정기 로테이션 */ };
+    if (!subsDeferred) runSubstitutions();
+    ...
+    // A 블록 연장
+        if (isOvertimePeriod(state.quarter)) { prepareOvertimeRotation…; checkAndApplyRotation…; applyJumpBall(state); }
+```
+
+**After**:
+```ts
+function silenceLineupLogs(state, from) {   // 교체 줄·"복귀 준비" 줄만 제거, 그 외 안내 줄 유지
+    state.logs.push(...state.logs.splice(from).filter(l => !l.text.startsWith('교체:') && !l.text.includes('복귀 준비')));
+}
+function runSubstitutionCycle(state, currentMinute, currentTotalSec) { /* 기존 클로저 본문 그대로 */ }
+    ...
+    const subLogStart = state.logs.length;
+    checkTemporaryReturns(state, state.home, currentMinute);
+    checkTemporaryReturns(state, state.away, currentMinute);
+    ...
+    const runSubstitutions = () => runSubstitutionCycle(state, currentMinute, currentTotalSec);
+    if (!subsDeferred) runSubstitutions();
+    if (state.gameClock <= 0) silenceLineupLogs(state, subLogStart);
+    ...
+    // A 블록
+        const lineupLogStart = state.logs.length;
+        if (isOvertimePeriod(state.quarter)) { …; applyJumpBall(state); }
+        silenceLineupLogs(state, lineupLogStart);
+```
+- 실격(6반칙·퇴장) 교체는 자유투 전에 applyPossessionResult 안에서 일어나므로(subLogStart 이전) 그대로 기록. 부상 줄은 남고 그 대체 교체 줄만 쿼터 사이면 사라짐.
+
+**검증**: tsc client·server 신규 오류 0. 하네스(978경기, SEED=7): 쿼터 종료 2,934회 — 종료 줄과 다음 쿼터 첫 플레이 사이 교체·"복귀 준비" 줄 0, 전체 교체 줄 28,004 → 24,569(−3,435). 연장 강제 실행(overtimeEnabled true) 29회 — 연장 시작 전후 교체 줄 0, 순서 "4쿼터 종료 — 동점! 1차 연장으로 갑니다" → "1차 연장 시작" → 점프볼. 경기 지표(득점 115.53·포세션 102.42 등) 변경 전과 동일. 클라 PBP 화면은 교체 줄을 표시에만 쓰고, 코트 위 선수(onCourtIds)·온오프 탭은 boxTimeline 기반이라 영향 없음.
+
+**롤백 방법**: 두 파일에서 `silenceLineupLogs` 호출 2곳과 `subLogStart`·`lineupLogStart` 줄 제거(함수 정의·runSubstitutionCycle 분리는 남겨도 동작 동일). 클라·서버 동시에.
+
+## 2026-11-05 — 엔진: 피리어드 종료 해설(버저비터·N쿼터 종료) 줄을 플레이 줄 바로 뒤로(A-9-3)
+
+**배경**: PBP 감사 A-9-3. 0:00 득점 뒤 "교체" 줄이 먼저 찍히고 그다음에 "버저비터! …" 해설이 나왔다(버저비터 205건 중 166건, 경기당 0.17회). 피리어드 종료 해설을 교체 처리 뒤에 만들기 때문.
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` (client)
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러)
+
+**Before** (stepPossession):
+```ts
+    const ftReb = applyPossessionResult(state, result, replaceDisqualified);
+    ...
+    if (state.gameClock <= 0) pushPeriodEndCommentary(state, result, scoreBefore);
+```
+
+**After**:
+```ts
+    const ftReb = applyPossessionResult(state, result, replaceDisqualified);
+    const playLogsEnd = state.logs.length;   // 플레이 줄 바로 뒤(부상·교체 줄 앞)
+    ...
+    if (state.gameClock <= 0) {
+        const commentaryStart = state.logs.length;
+        pushPeriodEndCommentary(state, result, scoreBefore);
+        state.logs.splice(playLogsEnd, 0, ...state.logs.splice(commentaryStart));
+    }
+```
+- 해설 생성 시점은 그대로(trackGoAhead로 lastGoAhead를 갱신한 뒤라야 위닝샷 버저 판정이 맞음), 줄 위치만 이동. 순서: 득점 → 버저비터 → "N쿼터 종료" → 부상 → 교체.
+
+**검증**: tsc client·server 신규 오류 0. 하네스(978경기, SEED=7): 버저비터 205건 중 교체 줄 뒤 166 → 0, 직전 줄이 플레이(score/freethrow)가 아닌 경우 0, "N쿼터/전반 종료" 2,934줄 앞에 교체 줄 0. 경기 지표(득점 115.53·포세션 102.42 등) 수정 전과 동일 — 로직 변화 없음.
+
+**롤백 방법**: 두 파일의 `playLogsEnd` 줄과 splice 블록을 Before의 한 줄 호출로 되돌림. 클라·서버 동시에.
+
+## 2026-11-05 — 멀티: 경기 사이 부상·개인 사유 결장(가상 자정 판정) + 내 팀 부상·결장 알림(injury_notice)
+
+**배경**: 부상 재설계 D. 사용자 결정 — 경기 중 생길 수 없는 질병·만성 부상을 경기 사이에 발생, 빈도 선수당 시즌 약 0.2회, 종류 확장(질병·과사용) + 개인 사유 결장, 기간은 제안대로(감기·식중독 1~3일, 독감 3일~1주, 허리·목 경직 1일~1주, 족저근막염 1~3주). 추가 요청: 내 팀 부상자 발생 시 알림 위젯 알림.
+
+**변경 파일**:
+- `server/src/shared/multi/offCourtInjuries.ts` (신규, 순수) — `OFF_COURT_TYPES` 12종(질병 5: 감기·독감·식중독·편도선염·편두통 / 과사용 5: 허리 경직·목 경직·무릎 건염·아킬레스건염·족저근막염 / 개인 사유 2: 가족 사정·자녀 출산), `OFF_COURT_PER_SEASON = 0.2`, `OFF_COURT_SEASON_DAYS = 170`, `offCourtChance(days, injuryFrequency)`, `pickOffCourtEvent(durability)`(질병·과사용 기간은 내구도 가중, 1주 이하 Grade1·이상 Grade2, 개인 사유 'Personal')
+- `server/src/offCourtInjuries.ts` (신규) — `rollOffCourtInjuries(roomId, newDay, days)`: `sim_settings.injuriesEnabled`일 때만, 방 로스터 전원 판정 → 이미 결장 중이면 건너뜀 → room_player_state upsert(history entry `offCourt: true`·teamId·playerName, health 'Injured', return_date = newDay + 기간) + `injury_notice` 이벤트(game_id null)
+- `server/src/shared/leagueEvents.ts` — `InjuryNoticePayload`, `DetectedEvent.type`에 `'injury_notice'`, `detectInjuryNoticeEvent()`(score 0)
+- `server/src/simRunner.ts` — 경기 중 부상 전 등급에 `injury_notice`(진단 전이면 "무릎 부상"/"보류 중"/returnDate null) 추가 — game_id가 붙어 중계 종료 후 공개
+- `server/src/fatigueRecovery.ts` — `processRoomMidnights` 반환에 `previousThrough`(전진 전 날짜)
+- `server/src/scheduler.ts` — `runFatigueMidnights`에서 날짜 전진 시 진단 발표 다음에 `rollOffCourtInjuries(room.id, throughDate + 1, 밀린 날수)`, `daysBetween()` 추가
+- `types/player.ts` — `InjuryHistoryEntry.severity`·`activeInjurySeverity`에 `'Personal'`
+- `components/common/InjuryStatusBadge.tsx` — `Personal: 'bg-slate-400'`/`'text-slate-400'`, 아이콘 마이너스
+- `services/multi/activeInjuryStatus.ts` — `formatActiveInjuryLabel` Personal → "개인 사유 · 가족 사정 · 1일"
+- `components/common/PlayerHoverCard.tsx` — 라벨 '개인 사유'
+- `hooks/useLeagueHeadlines.ts` — `LeagueEventType`에 `'injury_notice'`(STORY_TYPES엔 미포함 → 피드 비노출)
+- `services/multi/leagueEventPayload.ts` — `InjuryNoticeDetail` + 파서
+- `services/multi/newsBlurb.ts` — `buildNewsTitle` 'injury_notice': "부상자 발생: 이름 (독감, 5일)" / 진단 전 "(무릎 부상)" / "개인 사유 결장: 이름 (자녀 출산, 1일)"
+- `hooks/useLeagueNotifications.ts` — `TOASTED_EVENT_TYPES`·`GATED_POLL_TYPES`에 'injury_notice', `shouldToast()`(통지는 수신 범위와 무관하게 내 팀만, 내 팀 '검사 예정' 뉴스는 통지와 중복이라 생략), 링크 → 로스터
+- `views/multi/season/newsFeedCards.tsx` — 아이콘 Record에 injury_notice(완전성용)
+
+**Before**:
+```ts
+// useLeagueNotifications.ts
+const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp'];
+const TOASTED_EVENT_TYPES = new Set([... 'injury', 'suspension', 'playoff_series_result', 'playoff_champion', 'finals_mvp']);
+const rest = events.filter(ev => TOASTED_EVENT_TYPES.has(ev.type) && (scope === 'all' || ev.involvesMyTeam) && !notified.has(String(ev.id)));
+// scheduler.runFatigueMidnights — 체력 회복 + (C) 진단 발표만
+```
+
+**After**:
+```ts
+const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp', 'injury_notice'];
+function shouldToast(ev, scope) {
+    if (!TOASTED_EVENT_TYPES.has(ev.type)) return false;
+    if (ev.type === 'injury_notice') return ev.involvesMyTeam;
+    if (ev.type === 'injury' && ev.involvesMyTeam && ev.detail.kind === 'injury' && ev.detail.stage === 'exam') return false;
+    return scope === 'all' || ev.involvesMyTeam;
+}
+// scheduler — 날짜 전진 시 announceInjuryDiagnoses → rollOffCourtInjuries(room.id, throughDate + 1, days)
+```
+
+**검증**: tsc(client) 신규 오류 0, server 신규 오류 0(기존 SupabaseClient 제네릭·scheduler 589/632 등만). 스크래치 시뮬(450명 × 170일 × 200시즌): 선수당 시즌 0.197회, 평균 결장 4.16일, Grade1 69% / Personal 22% / Grade2 9%, 종류 비율 감기 20%·가족 사정 15%·허리 경직 10%…족저근막염 3%. 알림 문구 4종 확인. DB: 진행 중 방 2개 모두 injuriesEnabled true(injuryFrequency 1.0 / 0.5), room_replay_interval 10분(폴링 lookback 1시간 안). 실서버 E2E 미실시.
+
+**롤백 방법**: 신규 2파일 삭제, scheduler의 rollOffCourtInjuries 호출·import·daysBetween 제거, 나머지 파일 Before로. 이미 생긴 결장은 return_date가 지나면 자동 해제. 'Personal' 타입을 되돌리면 저장된 Personal entry의 배지 색 조회가 undefined가 되므로 타입·색 맵은 데이터 정리(`injury_history`의 offCourt entry) 후에 되돌릴 것. 통지 이벤트 정리: `delete from league_events where type='injury_notice'`.
+
+## 2026-11-05 — 멀티: 부상 진단 지연 공개(진단 전 "부위 부상 · 부상 기간 보류 중", 초록 배지) + 검사 예정/진단 발표 뉴스 분리
+
+**배경**: 부상 재설계 C. 사용자 결정 — 진단은 경기 후 1~2일 안에 랜덤 공개, 그동안 부상 기간 "보류 중", 진단 전에는 중립 색(초록)으로 통일, 멀티만 먼저.
+
+**변경 파일**:
+- `server/src/simRunner.ts` — 부상 이력 entry에 `diagnosisDate`(경기일 +1 또는 +2일, 복귀일보다 늦으면 복귀일)·`bodyPart`·`teamId`·`playerName` 추가(타임라인 있는 방만). 뉴스는 `detectInjuryExamEvent`(검사 예정)로. 타임라인 없는 방·부위 모르는 부상은 기존대로 즉시 진단 뉴스.
+- `server/src/shared/leagueEvents.ts` — `InjuryPayload.severity` optional, `stage?: 'exam'` 추가, `detectInjuryExamEvent()` 신설(GRADE3+, score 15 고정)
+- `server/src/injuryDiagnosis.ts` (신규) — `announceInjuryDiagnoses(roomId, newDay)`: 부상 중 선수 중 `diagnosisDate <= newDay`이고 미발표인 마지막 entry → 진단 발표 뉴스(`detectInjuryEvent`, sim_date = diagnosisDate, game_id null) insert 후 `diagnosisAnnounced: true` 표시
+- `server/src/fatigueRecovery.ts` — `processRoomMidnights` 반환에 `advanced: true`(날짜를 실제로 전진시킨 경우만)
+- `server/src/scheduler.ts` — `runFatigueMidnights`에서 `advanced`면 `announceInjuryDiagnoses(room.id, throughDate + 1)`(실패는 로그만, 다음 자정에 재포착)
+- `types/player.ts` — `activeInjurySeverity`에 `'Pending'` 추가
+- `components/common/InjuryStatusBadge.tsx` — `InjuryBadgeSeverity` 타입, `Pending: 'bg-green-500'` / `'text-green-500'`
+- `services/multi/activeInjuryStatus.ts` — `isInjuryDiagnosisPending()`·`pendingInjuryLabel()`·`PENDING_INJURY_DURATION` 추가, `buildActiveInjurySeverityMap`이 진단 전이면 `{ severity: 'Pending', injuryType: '무릎 부상', duration: '보류 중', returnDate: null, pending: true }`, `formatActiveInjuryLabel` Pending → "부상 · 무릎 부상 · 부상 기간 보류 중"
+- `services/multi/leagueEventPayload.ts` — `InjuryDetail.severity`에 `'Pending'`, `stage?: 'exam'`; 파서가 exam이면 severity 없이 통과(→ 'Pending', returnDate null)
+- `services/multi/newsBlurb.ts` — `INJURY_EXAM_TITLES`·`INJURY_EXAM_OPENERS`·`INJURY_EXAM_FOLLOW`, exam이면 그 풀 사용
+- `views/PlayerDetailView.tsx` — 부상 이력 최신 항목이 Pending이면 진단명·복귀일 대신 "무릎 부상 보류 중"
+- `pages/MultiSeasonPage.tsx` — 홈 "리그 부상·징계": 진단 전엔 검사 예정 뉴스만, 진단 후엔 진단 발표 뉴스만(같은 부상 중복 방지)
+
+**Before**:
+```ts
+// simRunner.ts — entry
+{ injuryType, severity, duration, date: game.game_date, returnDate, isTraining: false }
+const newsEvent = detectInjuryEvent(inj.playerId, inj.playerName, inj.teamId, inj.severity, inj.injuryType, inj.durationDesc, returnDate);
+// activeInjuryStatus.ts — 마지막 entry 그대로 노출
+// MultiSeasonPage.tsx HomeInjurySection filter
+return !!active && active.returnDate === item.returnDate;
+```
+
+**After**:
+```ts
+// simRunner.ts — 타임라인 방
+diagnosisDate = addDays(game.game_date, Math.random() < 0.5 ? 1 : 2); if (returnDate && returnDate < diagnosisDate) diagnosisDate = returnDate;
+{ ...entry, diagnosisDate, bodyPart, teamId, playerName }
+newsEvent = detectInjuryExamEvent(...)   // 진단 발표는 자정 처리(injuryDiagnosis.ts)
+// activeInjuryStatus.ts — currentSimDate < diagnosisDate면 Pending으로 가림
+// MultiSeasonPage.tsx
+if (item.severity === 'Pending' || active.pending) return item.severity === 'Pending' && !!active.pending;
+return active.returnDate === item.returnDate;
+```
+
+**검증**: tsc(client) 신규 오류 0, server는 기존 SupabaseClient 제네릭 오류(simRunner 468 등 resolveReturnDate 호출 — 기존과 같은 패턴)만. 스크래치 번들 테스트: 12/01 부상·12/03 진단 entry → 12/01·12/02 Pending("부상 · 무릎 부상 · 부상 기간 보류 중"), 12/03 Grade4 반월판 파열 4개월. 검사 예정 뉴스 제목 "르브론 제임스, 무릎 부상으로 정밀 검사 예정"(score 15), 진단 발표 뉴스 기존 형식(score 20). DB: league_virtual_days 3개 방 모두 날짜 공백 0(매일 자정 처리 보장), league_events.game_id nullable 확인. 실서버 E2E 미실시.
+
+**롤백 방법**: 위 파일 전부 Before로(신규 `server/src/injuryDiagnosis.ts` 삭제, scheduler import·호출 제거). 이미 저장된 entry의 diagnosisDate 등 추가 필드는 남아도 무해(롤백 후 클라는 무시 → 즉시 진단명 노출). 검사 예정 뉴스(payload.stage 'exam', severity 없음)는 롤백된 파서에서 LEGACY로 떨어지므로 필요하면 `delete from league_events where type='injury' and payload->>'stage'='exam'`.
+
+## 2026-11-05 — 엔진: 경기 중 부상 목록 재편 + 부상 문구(부위·중증도 암시) + 부상 줄 순서(A-9-2)
+
+**배경**: PBP 감사 A-9-2(부상 줄이 플레이 줄보다 먼저, 처리 전 스코어로 찍힘)에서 시작. 경기 중 쓰러진 순간 "족저근막염 수술"·"식중독" 같은 진단명이 바로 뜨는 게 어색하다는 사용자 지적 → 경기 중엔 진단명 대신 부위 + 중증도 암시만, 진단은 경기 후 1~2일 뒤 공개(진단 공개·경기 사이 부상은 후속 작업). 이번 항목은 엔진 쪽(목록·문구·순서)만.
+
+**변경 파일**:
+- `services/game/engine/injuryGrades.ts` (client) / `server/src/shared/engine/injuryGrades.ts` (server 미러) — `GRADE_CONFIG.injuries` 재편, `INJURY_BODY_PART`·`LOWER_BODY_PARTS`·`getInjuryBodyPart()` 추가
+- `services/game/engine/commentary/textGenerator.ts` / `server/src/shared/engine/commentary/textGenerator.ts` — `getInjuryCommentary()` 추가(파일 끝), injuryGrades import 추가
+- `services/game/engine/pbp/stateUpdater.ts` / `server/src/shared/engine/pbp/stateUpdater.ts` — 부상 로그 text를 `getInjuryCommentary(p.playerName, type, severity)`로
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — stepPossession에서 부상 줄을 빼 두었다가 `applyPossessionResult` 직후 플레이 후 스코어로 다시 붙임
+
+**Before** (`GRADE_CONFIG.injuries`, 기간·가중치는 변경 없음):
+```ts
+G1: ['무릎 통증', '타박상', '팔꿈치 타박상', '정강이 타박상', '허벅지 타박상', '안면 타박상', '열상', '감기']
+G2: ['발목 염좌', '허리 경직', '손가락 염좌', '손목 염좌', '고관절 타박상', '갈비뼈 타박상', '발가락 염좌', '목 경직', '식중독']
+G3: ['햄스트링 염좌', '종아리 염좌', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 염좌', '무릎 내측인대 염좌', '대퇴사두근 염좌', '질병']
+G4: ['코뼈 골절', '안와골절', '족저근막염 수술', '근육 파열', '인대 파열']
+G5: ['전방십자인대 파열', '후방십자인대 파열', '아킬레스건 파열', '골절', '반월판 파열']
+```
+```ts
+// stateUpdater.ts — client
+text: `🚨 ${p.playerName} 선수가 고통을 호소하며 쓰러졌습니다. (${type})`,
+// stateUpdater.ts — server
+text: `부상: ${p.playerName} (${type})`,
+```
+```ts
+// liveEngine.ts stepPossession
+    updateOnCourtStates(state, timeTaken);
+    ...
+    const ftReb = applyPossessionResult(state, result, replaceDisqualified);
+```
+
+**After**:
+```ts
+G1: ['무릎 통증', '팔꿈치 타박상', '정강이 타박상', '허벅지 타박상', '안면 타박상', '무릎 타박상', '어깨 타박상', '손 타박상', '발 타박상', '눈가 열상']
+G2: ['발목 염좌', '무릎 염좌', '손가락 염좌', '손목 염좌', '고관절 타박상', '갈비뼈 타박상', '발가락 염좌', '손가락 골절', '코뼈 골절']
+G3: ['햄스트링 염좌', '종아리 염좌', '발목 인대 손상', '허리 경련', '어깨 탈구', '사타구니 염좌', '무릎 내측인대 염좌', '대퇴사두근 염좌', '안와골절', '엄지 인대 파열', '복사근 파열']
+G4: ['손목 골절', '발 골절', '족저근막 파열', '햄스트링 파열', '종아리 근육 파열', '대퇴사두근 파열', '사타구니 근육 파열', '무릎 내측인대 파열', '발목 인대 파열', '리스프랑 인대 파열', '어깨 관절와순 파열', '반월판 파열']
+G5: ['전방십자인대 파열', '후방십자인대 파열', '아킬레스건 파열', '정강이뼈 골절']
+```
+- 제외: 감기·식중독·질병·허리 경직·목 경직(경기 사이 부상으로 분리 예정), 뭉뚱그린 이름(타박상·열상·근육 파열·인대 파열·골절·어깨 부상)은 부위별로 세분화, 족저근막염 수술 → 족저근막 파열.
+- 코뼈 골절 G4→G2, 안와골절 G4→G3, 반월판 파열 G5→G4(실제 이탈 기간에 맞춤 — 반월판 봉합 4~6개월). 등급 가중치는 그대로라 등급 분포는 불변.
+- `INJURY_BODY_PART`: 부상명→부위(무릎·햄스트링·발바닥 등), 옛 이름(허리 경직·어깨 부상·족저근막염 수술·열상 등)도 포함.
+- 문구(`getInjuryCommentary`): G1 "부위를 붙잡고 잠시 쓰러졌다가, 스스로 걸어서 벤치로" / G2 "부위 통증을 호소하며 벤치로 물러납니다" / G3 하체 "절뚝이며 라커룸으로"·상체 "감싼 채 라커룸으로" / G4 "일어나지 못합니다. 트레이너의 부축을 받아 코트를 떠납니다" / G5 "장내가 숙연해진 가운데 부축을 받아". 진단명은 문구에 없음(`state.injuries`·`p.injuryType`에는 그대로 저장).
+```ts
+// liveEngine.ts stepPossession
+    const injuryLogStart = state.logs.length;
+    updateOnCourtStates(state, timeTaken);
+    const injuryLogs = state.logs.splice(injuryLogStart);
+    ...
+    const ftReb = applyPossessionResult(state, result, replaceDisqualified);
+    for (const log of injuryLogs) {
+        log.homeScore = state.home.score; log.awayScore = state.away.score;
+        state.logs.push(log);
+    }
+```
+
+**검증**: tsc(client·server) — 기존 오류(playTypes 827/830·633/636 등) 외 신규 없음. 하네스(NBA Active 978경기, SEED=7): 부상 63건 — 진단명 괄호 노출 0, 63/63 부상 줄 바로 다음이 부상 교체 줄, 직전 줄과 같은 시각이면 스코어 일치(불일치 0). 문구 분포 G1 28·G2 26·G3 6·G4 3.
+
+**롤백 방법**: 네 파일 쌍을 Before로. `getInjuryCommentary`·`INJURY_BODY_PART` 등은 다른 곳에서 안 쓰면 삭제해도 무방. 클라·서버 동시에.
+
+## 2026-11-05 — 팀 미스크 득점 4종 멀티 연결: DB 저장 + 박스 틱 델타 + 백필 + RPC + 화면(POTV/FBPS/PITP/SPTS)
+
+**배경**: 위 항목(엔진 집계)의 후속. 사용자 결정: A안(DB 저장), 멀티만, 이미 끝난 경기는 백필. 표시 위치 — 라이브 팀 스탯 탭(TeamStatsCompare PF 아래), 리더보드 팀 > Advanced(4열), 전술 인사이트 공격 위젯(ORTG … TOV% 아래).
+
+**변경 파일**:
+- `migrations/game_pbp_team_misc.sql` (DB, 적용 완료) — `game_pbp.team_misc jsonb` 추가. `{"home":{"potv","fbps","pitp","spts"},"away":{...}}`
+- `migrations/team_season_advanced_stats_team_misc.sql` (DB, 적용 완료) — `get_team_season_advanced_stats` 반환에 potv/fbps/pitp/spts(경기당 평균, team_misc NULL 경기는 평균 제외) 추가. DROP 후 재생성. 기준은 **배포본**(공개 조건 `game_reveal_at`) — 기존 `unify_team_season_advanced_stats_rpc.sql` 파일은 `room_replay_interval` 조건으로 이미 배포본과 어긋나 있었음
+- `services/game/engine/pbp/liveEngine.ts` / `server/src/shared/engine/pbp/liveEngine.ts` — ① `retainPossession` 계산과 `trackTeamMisc` 호출을 `recordBoxTick` 앞(득점 처리 직후)으로 이동, 델타를 `recordBoxTick(..., miscDelta)`에 전달해 틱 `m`으로 기록 ② 피리어드 시작 때 `state.miscTracker = undefined`(직전 피리어드 턴오버·공격 리바운드 상태를 잇지 않음 — 이전엔 피리어드 첫 공격이 POTV로 잡힐 수 있었음)
+- `services/game/engine/pbp/teamMisc.ts` / `server/.../teamMisc.ts` — `trackTeamMisc`가 공격팀 기준 델타 `[potv,fbps,pitp,spts]`(변화 없으면 null) 반환
+- `types/engine.ts` / `server/src/shared/types/engine.ts` — `BoxTick.m?: [n,n,n,n]` 추가
+- `server/src/simRunner.ts`, `server/src/postAllStarGame.ts` — game_pbp upsert에 `team_misc: result.teamMisc ?? null`
+- `server/src/liveGameView.ts`, `server/src/index.ts` — GamePbpSource/WindowedGameView에 team_misc(final일 때만 teamMisc로 내려줌, 현재 소비처 없음), 라이브 조회 select에 `team_misc` 추가. BoxTick.m은 틱을 그대로 전달하므로 라이브 점진 공개에 별도 수정 불필요
+- `hooks/useTeamSeasonAdvancedStats.ts` — potv/fbps/pitp/spts(nullable) 매핑
+- `hooks/useLeaderboardData.ts` — teamAdvanced 덮어쓰기 블록에서 값이 있을 때만 `stats.potv` 등 설정
+- `data/leaderboardConfig.ts` — `ColumnDef.multiOnly`, TEAMS_ADVANCED_COLUMNS에 4열(multiOnly)
+- `components/leaderboard/LeaderboardTable.tsx` — `showMultiColumns`(기본 false)로 multiOnly 열 필터, `views/LeaderboardView.tsx`가 `!!teamAdvancedRegular`(멀티)로 전달
+- `views/multi/season/MultiTacticsView.tsx` — OFFENSE_STATS에 4항목
+- `views/multi/season/MultiGamePbpView.tsx` — `TEAM_MISC_ROWS`, `buildLiveMisc`(틱 m을 리플레이 시점까지 누적), TeamStatsCompare `misc` prop(없으면 4행 숨김), 라이브 팀 스탯 탭에서 전달
+- `scripts/team_misc_lib.py`, `scripts/backfillTeamMisc.py` — 백필
+- **[종료 화면 팀 기록 탭, 사용자 요청 11-05]** `views/multi/season/MultiGamePbpView.tsx` — 종료 결과 페이지에 섹션 `team`(라벨 "팀 기록", 경기 기록 다음) 추가(`RESULT_TABS`·`VALID_PBP_SECTIONS`·`ResultSection`). 내용 = 좌 `PlayTypeStats`(기존 경기 기록 우측에서 이동) + 우 팀 스탯 비교(`TeamStatsCompare` card + 약어 범례 헤더, POTV/FBPS/PITP/SPTS 포함, 폰은 세로 스택). 최종 misc는 `finalMisc` = 틱 m 전체 합 → 없으면 `gameData.team_misc`(서버 final 응답 `teamMisc`) → 없으면 4행 숨김. `GamePbpData`/`GamePbpRow`에 `team_misc`, `services/multi/liveGameService.ts` WindowedGameView에 `teamMisc?`.
+  `components/game/tabs/GamePbpTab.tsx` — `hidePlayTypes` prop(기본 false): true면 우측 플레이타입 패널을 그리지 않고 PBP 로그가 가로 100%(`flex-1`, 구분선 제거). 멀티 종료 화면만 true로 전달 — 싱글 경기 기록 탭은 그대로(플레이타입 5:5 유지).
+  Before: 경기 기록 = PBP 5 : 플레이타입 5, 종료 화면에 팀 스탯 비교 없음. After: 경기 기록 = PBP 100%, 팀 기록 탭 = 플레이타입 + 팀 스탯 비교. 롤백: 섹션 `team` 블록·탭/목록 항목 제거, 경기 기록의 `hidePlayTypes` 제거(+GamePbpTab prop 삭제).
+
+**Before**: team_misc 컬럼 없음, 틱에 팀 미스크 델타 없음, 팀 스탯·리더보드·인사이트에 4종 없음.
+**After**: 위와 같음. 틱 `m`의 합 = 엔진 teamMisc(하네스 978경기 전부 일치). 라이브 화면은 틱 합으로 시점별 점진 공개, 값이 없는 경기는 4행 숨김.
+
+**백필 방식**: 엔진 로그가 아니라 `box_timeline`(포세션별 공격팀 off + 선수 델타 d)로 엔진 추적을 재현 — 팀 턴오버 = 공격팀 tov 증가, 공격 리바운드 = 공격팀 offReb 증가, 공격권 유지 = 다음 틱 off 동일, 피리어드 경계(t가 피리어드 종료 시각)는 새 공격권. FBPS·PITP는 shot_events 성공 슛(Transition / Rim·Paint) 합. 틱에 off가 없는 구버전 경기는 복원 불가(team_misc NULL 유지 → 화면에서 숨김). `team_misc IS NULL` 행만 PATCH.
+**검증**: 하네스 978경기(1,956 팀경기) — 백필 복원값 vs 엔진 teamMisc: POTV 100%, SPTS 100%, FBPS 99.85%, PITP 99.8%(나머지는 엔진이 집계하지 않는 경기 종료 결승 공격 득점 차이, 합계 오차 +7/+8점). NBA Active 실경기 20경기 샘플 — 로그 사후 분석과 비교해 FBPS·PITP 100%, SPTS 97.5%, POTV 85%(사후 분석 쪽이 근사). tsc client·server 변경 파일 오류 0.
+
+**롤백 방법**: 화면(MultiGamePbpView·LeaderboardTable/View·leaderboardConfig·MultiTacticsView·훅 2개) 원복 → RPC를 `unify_team_season_advanced_stats_rpc.sql`에서 반환 컬럼 4개 뺀 버전(+game_reveal_at 조건)으로 DROP/재생성 → 서버 저장 줄 제거 → liveEngine 2파일의 이동한 블록·`miscDelta`·피리어드 리셋 원복 → `ALTER TABLE game_pbp DROP COLUMN team_misc`. 필드가 전부 optional/nullable이라 일부만 남아도 동작한다.
+
+## 2026-11-05 — 엔진: 팀 미스크 득점 4종 경기 중 집계(POTV / FBPS / PITP / SPTS)
+
+**배경**: NBA Active 경기 데이터를 PBP 로그 사후 분석으로 NBA 실제와 비교한 결과(턴오버 득점·속공·페인트·세컨찬스), 이 4종이 엔진에 집계되지 않아 매번 로그를 재구성해야 했음. 사용자 결정: 엔진 집계 + `SimulationResult` 필드까지만(DB 컬럼·UI 표시 없음, 저장은 이후 필요 시).
+정의(사용자 결정, NBA 공식 정의는 모호): `potv` = 상대 턴오버 직후 **첫 공격**의 득점(공격 리바운드 이후 득점 제외, 슈팅 파울 자유투·앤드원 포함), `spts` = 공격 리바운드 이후 같은 공격권 득점(풋백·자유투 포함), `fbps` = 속공(playType Transition) 야투 득점(자유투 제외), `pitp` = 림·페인트 존 야투 득점(자유투 제외). 팀 턴오버 = turnover / offensiveFoul / shotClockViolation(recordPlayTypeStat의 tov 기준, clockExpire 제외).
+
+**변경 파일**:
+- `services/game/engine/pbp/teamMisc.ts` (client, 신규) / `server/src/shared/engine/pbp/teamMisc.ts` (server 미러, 신규) — `emptyTeamMisc()`, `trackTeamMisc(state, result, scoreBefore, isOffReb, retained)`
+- `services/game/engine/pbp/liveEngine.ts` (client) / `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — import 추가, stepPossession의 `retainPossession` 계산 직후·`if (retainPossession)` 직전에 `trackTeamMisc(...)` 호출, extractSimResult에 `teamMisc: state.teamMisc ?? emptyTeamMisc()`
+- `services/game/engine/pbp/pbpTypes.ts` (client) / `server/src/shared/engine/pbp/pbpTypes.ts` (server 미러) — GameState에 `teamMisc?`, `miscTracker?`, import에 TeamMiscByGame
+- `types/engine.ts` (client) / `server/src/shared/types/engine.ts` (server 미러) — `TeamMiscStats`, `TeamMiscByGame` 신규, `SimulationResult.teamMisc?`
+
+**필드명**: potv · fbps · pitp · spts (서비스 약칭, 사용자 결정 11-05: NBA의 PTS OFF TO→POTV, 2nd PTS→SPTS로 변경. FBPS·PITP는 NBA와 동일).
+
+**Before**: 4종 집계 없음(SimulationResult에 필드 없음).
+**After**: 공격권마다 `miscTracker`(side·fromTov·orb)를 두고 결과마다 득점 차이(자유투 포함)를 orb면 spts, fromTov면 potv에 누적. 득점 야투는 존 Rim/Paint → pitp, playType Transition → fbps. 공격권 유지(공격 리바운드·파울 이어짐)면 orb만 갱신, 전환이면 상대 공격권을 새로 시작(fromTov = 이번 결과가 팀 턴오버인지). 추적 팀이 공격팀과 다르면(경기·쿼터 시작, 결승 공격 등) 일반 공격권으로 시작.
+
+**검증**: tsc 오류 0(client·server). 하네스 978경기(1,954 팀경기, 현 작업 트리 엔진·방 설정)에서 엔진 집계 vs PBP 로그 사후 재구성 비교 — fbps·pitp 99.8% 일치, spts 93.7%, potv 81.5%. 불일치는 사후 분석 쪽 근사(자유투 소유 팀 귀속, 문구 키워드)에서 발생함을 로그 추적으로 확인(엔진 값이 더 정확). 하네스 평균(팀경기당): potv 14.5 · fbps 16.2 · pitp 54.9 · spts 10.5.
+※ 사후 분석 스크립트의 "시작" 키워드 제외 버그(공격 리바운드 문구 "다시 공격을 시작합니다")도 이 과정에서 발견·수정 — NBA Active 실경기 결과(세컨찬스 9.8)는 해당 문구 이전 버전이라 영향 없음을 재계산으로 확인.
+
+**롤백 방법**: 신규 teamMisc.ts 2개 삭제 + liveEngine 2파일의 import·`trackTeamMisc` 호출·`teamMisc:` 필드 제거 + pbpTypes 2파일의 `teamMisc?`·`miscTracker?`·import 제거 + types/engine 2파일의 `TeamMiscStats`·`TeamMiscByGame`·`SimulationResult.teamMisc` 제거. 필드가 전부 optional이라 일부만 남아도 동작에는 영향 없음.
+
+## 2026-11-05 — 엔진: 실격(6반칙·퇴장) 선수 자유투 전 즉시 교체(A-9-1)
+
+**배경**: NBA Active PBP 감사 A-9-1 — 6반칙 선수가 자기 파울로 준 자유투의 리바운드를 잡음(하네스 978경기 3건). 엔진은 파울·자유투를 applyPossessionResult 한 번에 처리하고 교체는 그 뒤(runSubstitutions)라, 실격 선수가 자유투 리바운드 후보로 남고 로그도 "파울 → 자유투 → 리바운드 → 교체". NBA Rule 3 Section I.1(6번째 개인 파울 = 실격), Section V.9(자유투 중 교체 시점 제한은 "실격·부상·퇴장 등 불가피한 경우" 예외) → 실격 선수는 자유투 전에 바로 교체. 사용자 결정: 교체 선수도 자유투 리바운드 후보에 포함(= 실제로 자유투 전에 교체).
+
+**변경 파일**:
+- `services/game/engine/pbp/substitutionSystem.ts` / `server/.../substitutionSystem.ts` — `buildEjectionSubRequest(p)` export(퇴장 사유 문구 = 기존 EJECTION_REASON_TEXT)
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — `applyPossessionResult(state, result, onDisqualified?)`, 수비 파울 줄(앤드원·비슈팅·슈팅·플래그런트) 직후 `onDisqualified(defTeam, defender)`, 테크니컬 2회 퇴장 직후 `onDisqualified(foulerTeam, defender)`, 플래그런트 2 퇴장(`ejectionReason = 'flagrant'`)을 파울 줄 직후로 앞당김(뒤쪽 기존 대입은 유지, 동일 값)
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — `replaceDisqualified` 콜백(isOut이고 코트에 있으면 `executeSubstitution(buildEjectionSubRequest)`, 새 로그에 그 시점 스코어) → applyPossessionResult에 전달
+
+**Before**: 파울(6반칙 퇴장) → 자유투(실격 선수가 리바운드 후보) → 리바운드 → 교체(runSubstitutions)
+**After**: 파울(6반칙 퇴장) → **교체(6반칙 퇴장)** → 자유투(교체 선수가 리바운드 후보) → 리바운드. 오펜시브 파울 실격·싸움은 자유투가 없어 기존 교체 경로.
+
+**검증**: tsc 수정 파일 오류 0. 하네스(978경기×2): 실격 파울 207건 중 206건 바로 다음 줄이 퇴장 교체(나머지 1건 = 오펜시브 파울 실격, 자유투 없음 → 기존 경로), 실격 직후 자유투 리바운드 25건 중 교체 투입 선수 5건, 실격 선수 리바운드 0. 예: `4Q 5:46 루카 돈치치, … 6반칙으로 파울 아웃됩니다.` → `교체: IN [스쿳 헨더슨] OUT [루카 돈치치] (6반칙 퇴장)` → `조쉬 기디, 팀 파울로 얻은 자유투 2/2 성공`.
+
+**롤백 방법**: 위 3개 파일 쌍 Before로. liveEngine에서 콜백을 안 넘기면 이전 동작.
+
+## 2026-11-05 — PBP 문구: 슛 문구↔실제 슛 불일치(A-7) + 블록 문구 누락(A-8)
+
+**배경**: NBA Active PBP 감사 A-7·A-8(사용자 요청으로 동시 수정). 최신 하네스(978경기) 슛 문구 불일치 2,273건(경기당 2.32): ① 미스매치 골밑·페인트 문구가 슛 종류를 무시하고 "레이업"·"골밑"(플로터·훅·페인트 점퍼·덩크에도) 2,041건, ② 픽앤롤 롤맨 3점에 미드레인지 문구 131건(`pickCoverageRollText`가 골밑·페인트 외엔 mid), ③ 속공 미드레인지에 3점 문구 "(+2)" 94건(TransitionTextSet에 mid 없음, 호출부가 Mid를 undefined로 넘겨 threept로), ④ 풋백 뒤 킥아웃 미드 점퍼에 풋백 문구 7건. A-8: 블록 이벤트의 ~20%가 픽앤롤 커버리지 실패 문구(블록 언급 없음) — miss 분기에서 커버리지 분기가 블록 분기보다 앞.
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) / `server/src/shared/engine/commentary/textGenerator.ts` (server 미러):
+  - `CoverageRollSet`에 `threept?`, `pickCoverageRollText`에 3점 분기 + 롤 득점/실패 세트 6개에 팝아웃 3점 문구
+  - `TransitionTextSet`에 `mid?`, `pickTransitionText` zone에 'Mid' + Mid 분기, 호출부 2곳 `zone === 'Mid' ? undefined : zone` → `zone`, 속공 득점/실패 세트에 미드 문구
+  - 득점·실패 골밑/페인트 미스매치 분기를 슛 종류별(골밑 덩크 / 골밑 레이업 / 페인트 훅 / 페인트 점퍼 / 페인트 플로터)로 분리
+  - generateCommentary 안 Putback 분기에 `zone === 'Rim' || zone === 'Paint'` 조건
+  - miss 분기의 `pnrCoverage === 'drop'/'hedge'/'blitz'` 3곳에 `&& !isBlock`
+
+**Before / After** (요지):
+```ts
+// 미스매치(골밑·페인트): 공통 3문장("골밑 득점 성공"·"미스매치를 공략하여 레이업을…"·"골밑 마무리") → zone·shotType별 2~3문장
+// pickCoverageRollText: Rim/Paint → rimPaint, 그 외 → mid    →  3PT && set.threept → threept 추가
+// pickTransitionText: Mid 없음(→ threept)                     →  Mid && set.mid → mid
+// if (playType === 'Putback')                                 →  if (playType === 'Putback' && (Rim || Paint))
+// miss: if (pnrCoverage === 'drop') {…}                       →  if (pnrCoverage === 'drop' && !isBlock) {…} (hedge·blitz 동일)
+```
+
+**검증**: tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터 978경기) PBP 로그에 감사 스크립트 재실행: 슛 문구↔위치·종류 불일치 2,273 → **0**, 블록 이벤트 중 블록 언급 없는 문구 1,915 → **0**, 박스스코어↔PBP 불일치 0. 새 문구 출현: 미스매치 덩크 337·훅 261·롤맨 팝아웃 3점 75·속공 미드레인지 101. 엔진 결과(확률·기록) 불변(문구만).
+
+**롤백 방법**: textGenerator 두 파일 Before로(client/server 함께).
+
+## 2026-11-05 — 엔진: 막판 타임아웃 운영(한 포제션 ATO 전진·다득점 시 파울 작전용 보존·8초 이하 전진) + 의미 없는 막판 타임아웃 금지 + 1분 전 보존
+
+**배경**: 사용자 논의 — 점수 차가 적으면 파울 작전용으로 아끼지 않고 타임아웃으로 ATO 후 상대 진영 사이드라인에서 시작, 점수 차가 좀 나면 빠르게 슛 → 파울 작전 → 다시 공격. 하네스 측정(4Q 1:00 1~9점 차 750경기): 지는 팀이 1:00에 타임아웃 0개 43%·1개 45%·2개 12%(2:59 이후 상한 2 + 2:30부터 전략 타임아웃 소진), 앞선 팀은 "마지막 1분 남은 타임아웃 전부 소진" 규칙으로 자기 팀 득점 직후 199·자유투 후(전진 없음) 162건. 사용자 결정: 1번(0~3점 사용 / 4~9점 보존 / 8초 이하 백코트 무조건) 그대로, 2번 의미 없는 상황 금지, 3번 1분 전 보존 추가, 4번 ATO 보너스 없음.
+
+**변경 파일**:
+- `services/game/engine/pbp/timeoutPolicy.ts` (client) / `server/src/shared/engine/pbp/timeoutPolicy.ts` (server 미러):
+  - `TIMEOUT_RULES`에 LATE_CLOCK 60, LATE_CLOSE_MAX 3, LATE_MAX_DEFICIT 9, LATE_SHORT_CLOCK 8, RESERVE_MARGIN 9, RESERVE_TRAILING 2, RESERVE_LEADING 1, RESERVE_OT 1
+  - 신규 `inBackcourtWithBall`, `lateReserve`, `lateGameOwned`, `decideLateGameTimeout`(decideFoulGameTimeout 다음, 유저 팀 포함·간격 무시)
+  - 전략 타임아웃·런 대응(정규·연장)에 `lateReserve` 예비량, callable에서 `lateGameOwned` 제외(막판 지는 팀은 전용 규칙만), 마지막 1분 소진(정규·연장)은 `inBackcourtWithBall`일 때만
+- `docs/engine/engine-anatomy.md` — 10-2 갱신
+
+**Before**:
+```ts
+decideTimeout: foulGame → (OT 분기) → strategic(≤150초, 공 가진 지는 팀) → surplus → runVictim(runReserve) → FINAL_SPEND(≤60초, gap 20이면 아무 팀이나) → 의무
+```
+
+**After**:
+```ts
+decideTimeout: foulGame → lateGame → (OT 분기) → strategic(+ timeouts−1 ≥ lateReserve) → surplus → runVictim(max(runReserve, lateReserve)) → FINAL_SPEND(+ inBackcourtWithBall) → 의무
+callable = ... && !lateGameOwned(state, t)   // 4Q+ 60초 이하 지거나 동점인 팀
+decideLateGameTimeout: 4Q+ 0 < gameClock ≤ 60, 공 가진 팀 백코트, 열세 0~9, timeouts > 0, canCallTimeout
+  → gameClock ≤ 8 || (열세 ≤ 3 && (gameClock ≤ shotClock || timeouts ≥ 2))
+lateReserve: 4Q+ gameClock > 60 && |점수 차| ≤ 9 → 연장 1 / 지거나 동점 2 / 앞선 팀 1
+```
+
+**검증**: tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터 978경기×2, Before = 버저비터 적용본, 4Q 1:00 1~9점 차 경기):
+| | Before | After |
+|---|---|---|
+| 지는 팀 1:00 남은 타임아웃 0 / 1 / 2개 | 43% / 45% / 12% | 0% / 4% / 96% |
+| 지는 팀 4~9점 마지막 60초 타임아웃 | 자유투 후 175·리바운드 후 113·상대 득점 후 54 | 자유투 후 811·리바운드 후 139(파울 작전 자유투 실패 리바운드·8초 이하)·상대 득점 후 2 |
+| 지는 팀 0~3점 | 상대 득점 후 72·리바운드 후 56 | 상대 득점 후 232·리바운드 후 175 (전부 프런트코트 전진) |
+| 앞선 팀 자기 팀 득점 직후 / 자유투 후 전진 없음 | 199 / 162 | 0 / 0 |
+| 4Q 1:00 리드 팀 승률 1~3 / 4~6 / 7~9점 | 82.4 / 95.8 / 99.6% | 75.7 / 96.7 / 100% (n≈250, ±2.7%p) |
+| 팀 득점 / 포세션 / ORtg | 115.19 / 102.18 / 112.74 | 115.18 / 102.27 / 112.63 |
+- PBP 감사 재실행: 라이브볼 타임아웃 0, 박스스코어↔PBP 불일치 0, 공격권 흐름 위반 0.
+
+**롤백 방법**: timeoutPolicy 두 파일 Before로(client/server 함께).
+
+## 2026-11-05 — 엔진: 피리어드 막판 버저비터(히브·하프라인 장거리 슛·밀고 올라가기) + 마지막 슛 홀드 남김 0~2초
+
+**배경**: 사용자 지적 — 타임아웃 없이 자유투가 다 들어가는 등 시간이 거의 없을 때 실제로는 하프라인 전에도 던지거나 히브를 던지는데 엔진엔 없음. 하네스(978경기×2): 남은 1~2초에 시작한 공격 경기당 1.98개를 평소 하프코트 공격(픽앤롤·컷인 레이업 등)으로 처리, 야투율 50.2%. NBA: 하프라인 너머 슛 2013-14 이후 6,413개 중 239개(3.7%), 2024-25 집계 대상 장거리 버저 슛 경기당 ~0.48개. 사용자 결정: 구간·성공률 제안대로, 마지막 슛 홀드 남김 1~4초 → 0~2초(상대 자투리 공격 경기당 3.37 → 1.41, 포세션 −1.0), NBA 히브 룰(개인 야투 제외)은 미반영(일반 3점 시도).
+
+**변경 파일**:
+- `services/game/engine/pbp/endOfPeriodShot.ts` / `server/src/shared/engine/pbp/endOfPeriodShot.ts` — **신규** `decideEndOfPeriodShot(state)`
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.END_OF_PERIOD`(MAX_CLOCK 6, FAR_MAX 2, HALF_MAX 4, FAR_HIT 0.02, HALF_HIT 0.055, EXPIRE_AT_ONE 0.4, FAR_DIST [55,80], HALF_DIST [36,45]), `CLOCK_MGMT.LAST_SHOT_LEFT` [1,4] → [0,2]
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — 파울 작전·드리블 아웃 다음에 판정, `buildHeaveResult`(3점 score/miss, 리바운드 없음)·`buildInboundExpireResult`(clockExpire, expireKind 'inbound'), rush/catchShoot은 `state.forcedPlayType`·`endShotRush` 설정 후 simulatePossession, 히브·만료 timeTaken = 남은 시간, 1~3Q 일반 버저비터 해설은 히브 제외(자체 문구), 드리블 아웃에 expireKind 'dribbleOut'
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — `forcedPlayType`이면 플레이 고정(가중치·속공 판정 생략), `endShotRush`면 막판 슛 페널티 최대(`getLateShotClockPenalty(actor, 0)`)
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — score/miss에서 isHeave면 히브 문구·핫콜드 미반영, clockExpire 문구 expireKind 분기
+- `services/game/engine/commentary/textGenerator.ts` / `server/.../textGenerator.ts` — `getHeaveCommentary`, `getInboundExpireCommentary`
+- `services/game/engine/pbp/handlers/visUtils.ts` / `server/.../handlers/visUtils.ts` — 히브 좌표 `generateHeaveCoordinate` + ShotEvent `isHeave`/`distanceFt`
+- `utils/courtCoordinates.ts` / `server/src/shared/utils/courtCoordinates.ts` — `generateHeaveCoordinate(distFt, side)`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts`, `types/engine.ts` / `server/src/shared/types/engine.ts` — PossessionResult `isHeave`/`heaveFt`/`expireKind`, GameState `forcedPlayType`/`endShotRush`, ShotEvent `isHeave`/`distanceFt`
+- `components/game/ShotTooltip.tsx` — 거리 = `distanceFt ?? calcShotDistance`(가까운 골대 기준이라 히브가 짧게 표시되던 것 방지)
+- `components/game/tabs/LiveTacticsTab.tsx` — 반코트 차트에서 히브는 하프라인 위치에 표시
+- `docs/engine/engine-anatomy.md` — 8장 갱신
+
+**Before**: 남은 시간·시작 위치와 무관하게 일반 공격(1~2초 남은 백코트 인바운드도 픽앤롤 레이업). 마지막 슛 홀드 1~4초 남기고 슛.
+
+**After**:
+```ts
+// 샷클락 꺼짐(T ≤ shotClock) && 0 < T ≤ 6, 4Q+ 앞선 팀 제외
+frontcourt(inbound.spot frontcourt || 공격 리바운드 || 플래그런트) ? (T ≤ 2 ? CatchShoot 고정 + 최대 페널티 : 기존)
+: T > 4 ? Transition 고정 + 최대 페널티
+: T ≤ 1 && rand < 0.4 ? 인바운드 중 시간 만료
+: { heave, band: T ≤ 2 ? far(55~80ft, 2%) : half(36~45ft, 5.5%), shooter: 최고 핸들러 }
+```
+- 예시(하네스): `1Q 0:02 케이슨 월러스 투핸드 슬램(+2)` → `0:00 제이든 아이비, 하프라인 뒤에서 버저와 함께 던진 슛이 빗나갑니다.` → `1쿼터 종료`.
+
+**검증**: tsc 수정 파일 오류 0(LiveTacticsTab 72줄 `includes` 타입 오류·playTypes 오류는 기존). 하네스(NBA Active 실데이터 978경기×2, Before = 파울 작전 적용본):
+| | Before | After |
+|---|---|---|
+| 1~2초 시작 슛 | 1.99/경기, FG 50.2% (3점·골밑·페인트 혼합) | 0.88/경기, FG 5.5% (3점 히브 1,647 + 풋백 등) |
+| 3~4초 시작 슛 | 0.79/경기, FG 47.6% | 0.28/경기, FG 9.6% |
+| 5~6초 시작 슛 | 0.32/경기, FG 48.4% | 0.34/경기, FG 45.2% (Transition) |
+| 히브 | — | 경기당 1.09, 하프라인 뒤 1.8%·하프라인 직후 5.5%·전체 2.7%, 평균 61피트 |
+| 인바운드 중 시간 만료 | — | 경기당 0.34 |
+| 팀 득점 / 포세션 / ORtg | 117.23 / 103.41 / 113.36 | 115.19 / 102.18 / 112.74 |
+- PBP 감사 재실행: 박스스코어↔PBP 불일치 0, 1초 이하 포세션 396 → 9. 새로 잡힌 속공 8건(타임아웃·비보너스 파울 후)은 백코트 5~6초 "밀고 올라가기"를 Transition으로 고정한 것(의도).
+
+**롤백 방법**: endOfPeriodShot.ts 두 파일 삭제 + 위 파일 Before로(client/server 쌍, UI 2파일 함께). liveEngine에서 `endShot`을 null로 고정하면 즉시 이전 동작(LAST_SHOT_LEFT는 별도로 [1,4] 복원).
+
+## 2026-11-05 — 엔진: 파울 작전·역파울 작전 + 자유투 뒤 즉시 타임아웃 + 다득점 필요 시 빠른 슛 + 서두르기 중 샷클락 바이올레이션 제거
+
+**배경**: 사용자 요청·결정 — 파울 작전 신설. 전제: 4Q·연장 종료 1분 전부터, 쓰리 포제션(9점) 이내, 점수 차가 크면 안 함, 가비지 타임이면 안 함(해제돼 주전이 돌아오면 가능). 파울 vs 수비 = 샷클락 꺼지면 무조건, 켜져 있으면 3점 이상 뒤질 때만(1~2점은 정상 수비). 최소 시간 없음 — 자유투 뒤 즉시 타임아웃 → 상대 진영 인바운드 → 빠른 슛. 팀 파울 규정은 기존(정규 5번째부터, 마지막 2분 면제 없음). 유저 팀도 파울 작전·자유투 뒤 타임아웃 자동. 3점 앞선 팀의 역파울 작전도 추가. 이전엔 파울 작전 자체가 없어 지는 팀이 남은 시간을 그대로 흘려보냈음(드리블 아웃).
+
+**변경 파일**:
+- `services/game/engine/pbp/foulStrategy.ts` / `server/src/shared/engine/pbp/foulStrategy.ts` — **신규** `decideFoulStrategy(state)`: 판정 + 받는 선수(자유투^6 가중) + 파울하는 선수(파울 수 최소, 5반칙은 최후, 동률 OVR 낮은 순) + 소요 1~4초
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.FOUL_STRATEGY`(CLOCK 60, MAX_DEFICIT 9, CLOCK_ON_MIN_DEFICIT 3, UP_THREE {LEAD 3, CLOCK 6}, TIME [1,4], RECEIVER_FT_EXP 6, TIMEOUT_AFTER_FT_CLOCK 60), `CLOCK_MGMT.HURRY.MULTI_POSSESSION_DEFICIT 4` / `MULTI_POSSESSION_SHARE 0.4`
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — 공격 시작 시 `decideFoulStrategy`(드리블 아웃보다 먼저) → `buildIntentionalFoulResult`(type 'foul', isIntentional), timeTaken = intentionalTime(비보너스 25~75% 축소 미적용), 작전 시작 안내 줄(팀·종류·피리어드당 1회), 비보너스 고의 파울 재개 = 백코트, 자유투 뒤 공을 받은 지는 팀을 `state.foulGameTimeoutTeamId`로 timeoutPolicy에 전달
+- `services/game/engine/pbp/timeoutPolicy.ts` / `server/.../timeoutPolicy.ts` — `decideFoulGameTimeout`(타임아웃 보유 + canCallTimeout이면 isAutoTeam·간격 무시하고 즉시), `decideTimeout` 맨 앞에서 호출
+- `services/game/engine/pbp/timeEngine.ts` / `server/.../timeEngine.ts` — 서두르기 중 4점+ 뒤지면 `min(t, max(1, 남은 시간 × 0.4))`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 샷클락 바이올레이션 판정에 `clockMode !== 'hurry' && !== 'twoForOne'`
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — foul 분기에서 isIntentional이면 고의 파울 문구
+- `services/game/engine/commentary/textGenerator.ts` / `server/.../textGenerator.ts` — `getFoulStrategyCommentary(kind, region)`, `getIntentionalFoulCommentary(defender, actor, kind)`
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — PossessionResult `isIntentional?`, `intentionalKind?`, `intentionalTime?`; GameState `foulGameLogged?`, `foulGameTimeoutTeamId?`
+- `docs/engine/engine-anatomy.md` — 8장 갱신
+
+**Before**: 파울 작전 없음(4Q 막판 지는 팀은 정상 수비 → 샷클락 꺼지면 앞선 팀 드리블 아웃). 서두르기 = min(t, 5~9초). 서두르기 중에도 샷클락 바이올레이션 확률 그대로.
+
+**After**:
+```ts
+// liveEngine 공격 시작
+const foulPlan = !decisive ? decideFoulStrategy(state) : null;          // trailing / upThree
+const dribbleOut = !decisive && !foulPlan && ...;
+result = foulPlan ? { type: 'foul', actor: 받는 선수, defender: 파울 선수, isIntentional: true, intentionalKind, intentionalTime } : ...
+// trailing: Q4+ && 0 < gameClock <= 60 && 1 <= 수비 팀 열세 <= 9 && !def.garbage && (gameClock <= shotClock || 열세 >= 3)
+// upThree : 수비 팀 정확히 3점 리드 && gameClock <= 6
+// 자유투 뒤: isIntentional && 공격권 전환 && gameClock <= 60 && 파울한 팀 열세 → decideFoulGameTimeout → 즉시 타임아웃(→ 프런트코트 전진)
+```
+- 예시(하네스): `4Q 0:23 애틀랜타, 시간을 멈추기 위해 파울 작전에 들어갑니다.` → `0:19 애런 니스미스, 시간을 멈추려 케빈 포터 주니어에게 고의로 파울합니다. (1반칙, 팀 5반칙)` → `자유투 2/2` → `애틀랜타, 시간이 없습니다 — 빠르게 공격을 전개합니다.` → `0:11 3점 성공` → … → `0:03 인바운드 패스를 받은 칼-앤서니 타운스에게 곧장 파울합니다.`
+
+**검증**: tsc 수정 파일 오류 0(기존 playTypes 오류만). 하네스(NBA Active 실데이터 978경기 × 2시드):
+- 고의 파울 경기당 1.73회(파울 작전 3,322 / 역파울 71), 조건 위반 0(점수 차·쿼터).
+- 자유투 뒤 타임아웃 → 프런트코트 전진 경기당 0.25회(이전 0.04), 전진 후 첫 플레이까지 평균 6.9초.
+- 서두르기·2-for-1 안내 뒤 첫 플레이가 샷클락 바이올레이션: 40/6,898 → 0/8,363.
+- 4Q 1:00 시점 리드 팀 승률: 1~3점 77.0% → 75.8%, 4~6점 97.3% → 98.4%, 7~9점 100% → 100% (각 n≈250, 표본 오차 ±2~3%p).
+- 팀 득점 / 포세션 / FTA: 115.95 / 102.55 / 22.28 → 117.07 / 103.29 / 23.62.
+- PBP 감사 스크립트 전체 재실행: 박스스코어↔PBP 불일치 0, 공격권 흐름 위반 0, 샷클락 초과 0. 남은 항목은 범위 밖(슛·블록 문구) 또는 감사 스크립트 오판(쿼터 시작 문구 변경).
+
+**롤백 방법**: foulStrategy.ts 두 파일 삭제 + 위 파일 Before로(client/server 쌍 함께). liveEngine에서 `foulPlan`을 null로 고정하면 즉시 이전 동작.
+
+## 2026-11-05 — 엔진: 싸움(fight) 후 공격권 유지·샷클락·재개 위치 + 교체 사유 "(싸움 퇴장)" + 테크니컬 1개
+
+**배경**: PBP 감사 회귀 점검 중 발견 — 싸움(수비 선수가 거는 이벤트, 실경기 875경기 중 1건)이 `retainPossession` 목록에 없어 일반 공격 종료처럼 공격권이 상대(싸움을 건 팀)에게 넘어가고 샷클락 24초 리셋. 실경기 예: 4Q 5:52 보스턴 알렉스 사르가 뉴욕 데빈 부커에게 주먹 → 다음 공격 보스턴. 퇴장 선수는 출장정지 이월용으로 health='Injured'라 교체 줄이 "(부상)", 가해자 테크니컬 2개.
+- NBA Rule 12A Section VI(Fighting Fouls): 참가자 테크니컬·자유투 없음·즉시 퇴장, 라이브/데드볼 무관, **공을 가진 팀이 공격권 유지**(중단 지점 가장 가까운 사이드라인, 자유투 라인 연장선보다 엔드라인 쪽은 아님), 아무도 공을 안 가졌으면 점프볼. Rule 7 Section IV.5.c: 수비 팀 테크니컬이면 샷클락 중단 시점 유지 또는 14초 중 큰 값.
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — `retainPossession`에 `fight`, 재개 위치 `inbound = frontcourt`, 샷클락 `max(14, 잔여)`
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — 가해자 테크니컬 +2 → +1, 싸움 로그 끝에 "○○의 공격으로 재개됩니다."
+- `services/game/engine/pbp/substitutionSystem.ts` / `server/.../substitutionSystem.ts` — 부상 교체 조건에 `p.ejectionReason !== 'fight'` → 퇴장 사유 "싸움 퇴장"으로 표시
+
+**Before**:
+```ts
+retainPossession = isOffReb || technicalFoul || flagrantFoul || isNonBonusFoul;   // fight → 공격권 전환·샷클락 24
+fighter.techFouls += 2;  로그: "A이(가) B에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다."
+if (p.health === 'Injured' && p.injuredThisGame) → reason '부상'
+```
+
+**After**:
+```ts
+retainPossession = ... || result.type === 'fight' || isNonBonusFoul;
+inbound: fight → { spot: 'frontcourt' };  shotClock: (isNonBonusFoul || fight) → max(14, shotClock − timeTaken)
+fighter.techFouls += 1;  로그 끝에 " ${regionOf(offTeam)}의 공격으로 재개됩니다."
+if (p.health === 'Injured' && p.injuredThisGame && p.ejectionReason !== 'fight') → '부상', 아니면 isOut → '싸움 퇴장'
+```
+
+**검증**: tsc 수정 파일 오류 0. 하네스 978경기에 싸움 확률을 100배(`FOUL_EVENTS.FIGHT_BASE_CHANCE` 0.003)로 올려 156건 발생: 156건 모두 공격 팀이 다음 공격(블록 줄 1건은 검사 스크립트 오판), 교체 사유 156건 전부 "(싸움 퇴장)", 가해자 박스 테크니컬 1개(7건은 경기 중 기존 테크니컬 1개가 있어 2개). 예: `3Q 7:43 재럿 앨런이(가) 조쉬 기디에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. 애틀랜타의 공격으로 재개됩니다.` → `교체 ... (싸움 퇴장)` → `7:30 애틀랜타 공격`.
+
+**롤백 방법**: 위 3개 파일 쌍 Before로.
+
+## 2026-11-05 — 엔진·PBP: 드리블 아웃 + 클락 운영 안내 줄(2-for-1·마지막 슛·서두르기·시간 끌기)
+
+**배경**: 사용자 요청 — 드리블 아웃 추가, 그리고 이번에 바꾼 시간 운영이 전부 PBP 로그에 드러나야 함. 직전까지 4Q·연장 샷클락 꺼진 구간의 앞선 팀은 0~1초 남기고 슛(드리블 아웃 없음), 상황 규칙은 소요 시간만 바뀌고 로그엔 흔적 없음.
+
+**변경 파일**:
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — PossessionResult.type에 `'clockExpire'`, `expireSeconds?`; GameState `clockMode?`, `clockModeLogged?`
+- `services/game/engine/pbp/timeEngine.ts` / `server/.../timeEngine.ts` — 분기마다 `state.clockMode` 설정(2-for-1은 실제로 평소보다 서두를 때만, 마지막 슛은 8초+ 남았을 때만), ① 4Q 11점+ 뒤진 팀은 홀드 없이 평소대로, 앞선 팀 샷클락 꺼짐 분기 제거(드리블 아웃이 처리)
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — `buildDribbleOutResult` 추가, 포세션 시작 시 드리블 아웃 판정(4Q+·남은 시간 ≤ 샷클락·공격 팀 리드·결승 공격 아님), clockExpire면 timeTaken = 남은 시간, 클락 모드 안내 줄(포세션 시작 시각, 같은 공격권 같은 모드 1회), 공격권 전환·피리어드 시작 때 `clockModeLogged` 초기화, `regionOf`·`getClockManagementCommentary` import
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — `regionOf` export, `clockExpire` 분기(info 줄, possessionOutcome nonScoring, 기록 없음)
+- `services/game/engine/commentary/textGenerator.ts` / `server/.../textGenerator.ts` — `getClockManagementCommentary(mode, region)`, `getDribbleOutCommentary(region, handler, seconds)`
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `HURRY.MAX_MARGIN` 15 → 10(가비지 타임에 서두르기 안내가 찍혔음), `LAST_SHOT_LOG_MIN: 8` 추가, `MILK.LAST_CLOCK_OFF_LEFT` 삭제(드리블 아웃으로 대체)
+- `docs/engine/engine-anatomy.md` — 8장 갱신
+
+**Before**:
+```ts
+// liveEngine: result = decisive ? simulateDecisivePossession : simulatePossession  (앞선 팀도 샷클락 꺼지면 슛)
+// timeEngine ①: left = milkMax ? MILK.LAST_CLOCK_OFF_LEFT [0,1] : late && lead < 0 ? [3,7] : [1,4]
+// HURRY.MAX_MARGIN: 15, 안내 로그 없음
+```
+
+**After**:
+```ts
+dribbleOut = !decisive && quarter >= 4 && 0 < gameClock <= shotClock && 공격 팀 리드 >= 1
+result = dribbleOut ? { type: 'clockExpire', actor: 최고 핸들러, expireSeconds: ceil(gameClock) } : (기존)
+timeTaken = clockExpire ? gameClock : ...
+// 안내: clockMode && !decisive && !technical && !clockExpire && clockModeLogged !== `${team}:${mode}` → info 줄(포세션 시작 시각)
+// ①: clockOff && !(late && -lead > HURRY.MAX_MARGIN) → left = late && lead < 0 ? [3,7] : [1,4]; gameClock >= 8이면 clockMode 'lastShot'
+```
+- 예시(하네스): `1Q 0:37 브루클린, 2-for-1을 노리고 빠르게 공격합니다.` → `0:32 애틀랜타, 샷클락을 끝까지 쓰며 공격을 전개합니다.` → `0:09 브루클린, 마지막 슛을 노리며 시간을 흘려보냅니다.` → `0:02 3점 적중`, `4Q 0:00 브루클린, 공을 돌리며 남은 5초를 그대로 흘려보냅니다.`
+
+**검증**: tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터 978경기):
+- 드리블 아웃 경기당 0.63회(흘려보낸 시간 평균 10.7초). 4Q 샷클락 꺼진 구간 앞선 팀의 슛·턴오버·파울 15건 — 전부 공격 리바운드 후 샷클락 14초 리셋으로 다시 샷클락이 켜진 경우(규정상 정상).
+- 안내 줄 경기당: 샷클락 끝까지 3.89 / 마지막 슛 2.61 / 2-for-1 2.47 / 시간 끌기 2.13 / 최대 소모 1.23 / 서두르기 1.08.
+- PBP 감사 스크립트 전체를 하네스 로그에 재실행: 박스스코어↔PBP 불일치 0, 샷클락 초과 0, 공격권 흐름 위반 2(싸움 이벤트 후 공격권 전환 — 기존 동작), 라이브볼 타임아웃 0, 세트 인바운드 후 속공 0. 남은 항목은 이번 범위 밖(슛 문구 불일치·블록 문구)과 감사 스크립트 문구 목록 미갱신.
+- 팀 득점 / 포세션 / ORtg: 115.24 / 102.53 / 112.40 (직전 116.54 / 103.44 / 112.67 — 드리블 아웃으로 마지막 공격 슛이 사라진 몫)
+
+**롤백 방법**: 위 파일 Before로(client/server 쌍 함께). PossessionResult 'clockExpire'를 쓰는 곳은 liveEngine·statsMappers뿐.
+
+## 2026-11-05 — 엔진: 앞선 팀 시간 끌기 세분화(4Q 2분 이내 최대 소모) + 시간 끄는 앞선 팀 속공 차단
+
+**배경**: 사용자 요청 — "4쿼터 2분 이내에서 10점 차 이하로 리드하면 시간을 최대한 소모". 직전(11-04) 규칙은 4Q·연장 5분 이내 1~10점 리드면 샷클락 2~5초 남길 때까지(2분 이내도 동일), 샷클락 꺼지면 1~4초 남기고 슛. 또 클러치 가중치의 `weights['Transition'] = 0`("속공 자제")은 속공 무작위 판정(pace × 0.03 × 진입배율)을 거치지 않아 효과가 없었음 → 앞선 팀이 속공으로 분류된 공격에 시간 끌기가 겹침(하네스 978경기×2: 5분 이내 958건).
+
+**변경 파일**:
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `CLOCK_MGMT.MILK`에 `LAST_CLOCK: 120`, `LAST_LEFT_ON_SHOT_CLOCK: [0.5, 2]`, `LAST_CLOCK_OFF_LEFT: [0, 1]`
+- `services/game/engine/pbp/timeEngine.ts` / `server/.../timeEngine.ts` — `milkMax`(milk && gameClock ≤ 120): ① 샷클락 꺼짐 → `LAST_CLOCK_OFF_LEFT`, ② 36초 미만 구간 → `LAST_LEFT_ON_SHOT_CLOCK`, ⑤ → `LAST_LEFT_ON_SHOT_CLOCK`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 속공 판정 앞에 `isMilking`(4Q+·5분 이내·1~10점 리드)이면 속공 시도 안 함
+- `docs/engine/engine-anatomy.md` — 8장 ⑤ 갱신
+
+**Before**:
+```ts
+MILK: { CLOCK: 300, MAX_LEAD: 10, LEFT_ON_SHOT_CLOCK: [2, 5] }
+① left = late && lead < 0 ? [3,7] : [1,4];   ② shotClock − rand(1,3);   ⑤ max(t, shotClock − rand(2,5))
+if (Math.random() < (pace × 0.03 × entryMult + ...) × outletFreqMult) selectedPlayType = 'Transition';
+```
+
+**After**:
+```ts
+MILK: { CLOCK: 300, MAX_LEAD: 10, LEFT_ON_SHOT_CLOCK: [2, 5], LAST_CLOCK: 120, LAST_LEFT_ON_SHOT_CLOCK: [0.5, 2], LAST_CLOCK_OFF_LEFT: [0, 1] }
+milkMax = milk && gameClock <= 120;
+① left = milkMax ? [0,1] : (기존);   ② shotClock − rand(milkMax ? [0.5,2] : [1,3]);   ⑤ max(t, shotClock − rand(milkMax ? [0.5,2] : [2,5]))
+if (!isMilking && Math.random() < ...) selectedPlayType = 'Transition';
+```
+
+**검증**: tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터 978경기 × 2시드, PBP 로그 구간 분석, 직전 = 11-04 클락 운영 적용본):
+| 4Q·연장, 1~10점 리드 팀 | Before | After |
+|---|---|---|
+| 2분 이내 새 공격(24초): 소요 / 슛 시 샷클락 잔여(≤2초 비율) | 20.0초 / 3.8초(21%) | 21.8초 / 1.9초(86%) |
+| 2분 이내 공격 리바운드 리셋(14초): 샷클락 잔여(≤2초) | 1.8초(64%) | 1.0초(100%) |
+| 샷클락 꺼짐(≤24초): 슛 시 경기 잔여 | 2.6초 | 1.1초 |
+| 2:01~5:00 새 공격 샷클락 잔여 | 3.9초 | 4.0초(불변, 의도) |
+| 5분 이내 속공 슛 | 958 | 0 |
+| 2분 이내 야투율 | 49.4% | 46.8%(막판 슛 페널티) |
+| 4Q 2:00 시점 1~10점 리드 팀 승률 | 86.0% | 87.3% (n≈800) |
+| 팀 득점 / 포세션 / ORtg | 116.90 / 103.56 / 112.89 | 116.54 / 103.44 / 112.67 |
+
+**롤백 방법**: 위 파일 Before로(client/server 쌍 함께). MILK 추가 필드는 남겨도 무해.
+
+## 2026-11-04 — 엔진: 상황별 클락 운영(샷클락 상한 맨 마지막 + 리셋·2-for-1·마지막 슛·지는 팀·앞선 팀 규칙)
+
+**배경**: NBA Active PBP 감사 A-6 + 사용자 지적("지는 팀이 공격 리바운드 후 14초를 다 씀", "2-for-1 상황에서 퀵샷 없이 시간을 다 씀").
+- A-6: `calculatePossessionTime`이 상한 min(23, 샷클락) 뒤에 ±1.5초 노이즈와 "4Q 5분·10점 이내 리드 팀 최소 18초"를 적용 → 샷클락 초과(하네스 978경기: 노이즈 1초 초과 2,699 + 클러치 292, 평균 3.7초 초과) — 바이올레이션 없이 지나가고 막판 슛 페널티(잔여 음수 → 6%)만 붙음.
+- 실경기 475경기 구간 분석: 공격 리바운드 후 비풋백 리셋 평균 13.4초(93%가 12초+, 4Q 지는 팀도 13.0) vs NBA 공격 리바운드 후 다음 슛까지 3.4초(inpredictable 2019-20). 4Q 2분 내 지는 팀 12.5초 = 동점과 같음. 1~3Q 19~24초에 시작한 공격이 8.8초 남기고 슛(94%가 4초+ 남김), 25~29초 시작도 13.5초 남김. 2-for-1 규칙(30~45초 → ≤6초)은 하한 8초가 뒤에 적용돼 실제 8초.
+- 사용자 결정: 범위 = A-6 + ①~⑥, 템포 재보정은 수정 후 측정만, 드리블 아웃·고의 파울은 별도 과제.
+
+**변경 파일**:
+- `services/game/engine/pbp/timeEngine.ts` (client) — `calculatePossessionTime` 재작성
+- `server/src/shared/engine/pbp/timeEngine.ts` (server 미러) — 동일
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.CLOCK_MGMT` 신설
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 마지막 2분 전진 시간 차감(같은 날 추가분)을 timeEngine으로 이동(2줄 삭제)
+- `docs/engine/engine-anatomy.md` — 8장 시간 갱신
+
+**Before** (`calculatePossessionTime`):
+```ts
+if (playType === 'Putback') return 2~4;
+t = BASE − compressedPace; 플레이타입 ±;
+if (gameClock <= 45 && gameClock >= 30) t = min(t, 6);
+t = max(t, Transition ? 4 : 8);
+t = min(t, min(23, shotClock));
+t += rand(−1.5, 1.5);
+if (Q4+ && gameClock <= 300 && 리드 1~10) t = max(t, 18);
+t = max(t, 3); t = min(t, gameClock); return round(t);
+```
+
+**After**:
+```ts
+if (Putback) return 1~3 (CLOCK_MGMT.PUTBACK_TIME);
+t = BASE − compressedPace; 플레이타입 ±;
+if (lastEntryWasOffReb && !inbound) t *= 0.45 (OREB_RESET_SCALE);   if (inbound.advanced) t −= 3;
+t = max(t, Transition ? 4 : 리셋 ? 3 : 8);   t += rand(−1.5, 1.5);
+if (hurry: Q4+ && 15점 차 이하 && (≤120초 & 4점+ 뒤짐 || ≤60초 & 3점+ 뒤짐)) t = min(t, rand(5, 9));
+else if (gameClock ≤ shotClock) t = gameClock − rand(Q4+ 뒤짐 ? [3,7] : [1,4]);   // ① 마지막 슛
+else if (gameClock < 36) t = shotClock − rand(1, 3);                              // ② 샷클락 끝까지
+else if (milk: Q4+ && ≤300초 && 리드 1~10) t = max(t, shotClock − rand(2, 5));    // ⑤
+else if (gameClock ≤ 47) t = min(t, max(3, gameClock − rand(30, 33)));            // ③ 2-for-1
+t = min(t, min(23, shotClock)); t = max(t, 1); t = min(t, gameClock); return round(t);
+```
+
+**검증**: tsc 수정 파일 오류 0(기존 playTypes 오류만). 하네스(NBA Active 실데이터 978경기, PBP 로그를 실경기와 같은 구간 분석으로 측정, 직전 = 타임아웃·인바운드 적용본):
+| | Before | After |
+|---|---|---|
+| 샷클락 초과 포세션 | 2,991 | **0** |
+| 공격 리바운드 후 리셋 공격 | 11.6초(12초+ 77%) | 6.4초(11%) |
+| 공격 리바운드 후 다음 슛까지(풋백 포함) | 7.4초 | 4.3초 (NBA 3.4) |
+| 4Q 2분 내 지는 팀 4~10점 | 12.0초 | 7.3초 |
+| 4Q 2분 내 앞선 팀 1~10점 | 17.9초 | 19.5초 |
+| 4Q 5분 공격 리바운드 리셋: 지는 팀 4+ / 앞선 팀 | 11.7 / 15.7초 | 6.9 / 10.7초 |
+| 1~3Q 36~45초 시작 → 슛 시점 잔여 | 32.1초 | 31.5초 |
+| 1~3Q 19~24초 시작 → 슛 시점 잔여(4초+ 남긴 비율) | 8.8초(94%) | 2.6초(22%) |
+| 4Q 샷클락 꺼짐: 앞선 팀 / 4+ 뒤진 팀 소요 | 10.6 / 10.8초 | 9.4 / 6.4초 |
+| 팀 득점 / 포세션 / ORtg | 113.40 / 100.79 / 112.51 | 116.51 / 103.53 / 112.53 |
+- 템포(사용자 결정 = 측정만): BASE 19 → 103.6 / 19.5 → 100.2 / 20 → 97.1 / 20.5 → 94.2 / 21 → 91.5포세션(각 2회 평균), ORtg 112.6~113.2로 불변. **BASE는 19 그대로 — 재보정 결정 대기.**
+
+**롤백 방법**: timeEngine 두 파일 Before 함수로, possessionHandler 두 파일에 `if (state.inbound?.advanced) t = Math.max(Math.min(state.gameClock, 3), t - SIM_CONFIG.TIMEOUT_ADVANCE.TIME_SAVED);`를 `state.preSampledPossessionTime = t;` 바로 앞에 복원, `CLOCK_MGMT`는 남겨도 무해.
+
+## 2026-11-04 — 엔진: 타임아웃 요청 자격·의무 타임아웃 데드볼 보류 + 세트 인바운드(타임아웃·파울 후 재개 위치, 속공·프레스 차단) + 마지막 2분 프런트코트 전진
+
+**배경**: NBA Active PBP 감사 A-4/A-5.
+- A-4: 타임아웃 결정(`decideTimeout`)이 라이브볼 여부·공격권을 안 봄 → 의무 타임아웃의 50%가 리바운드·스틸 직후(경기당 2.6회), 공 없는 팀의 팀 타임아웃 15%(경기당 1.2회, 4쿼터 소진 로직 위주).
+- A-5: 타임아웃 뒤에도 직전 수비 리바운드·스틸 진입 상태가 남아 속공(경기당 1.44회), 비보너스 파울(프런트코트 인바운드) 뒤 속공 0.48·프레스 0.32, 테크니컬·플래그런트 뒤 속공·프레스.
+- NBA 규정(official.nba.com Rule 5): VI.4 타임아웃은 "데드볼이거나 요청 팀 선수가 공을 잡고 있을 때만". VI.3 6:59 의무 타임아웃은 "첫 데드볼"에 기록원이 선언(2:59도 기록원 선언). VII.4 재개는 "중단 지점에서 가장 가까운 곳, 라이브볼이었으면 사이드라인". VI.7 4쿼터·연장 마지막 2분, 백코트에서 공을 확보한(아웃 오브 바운드·리바운드·공격권 전환) 공격 팀의 타임아웃 → 프런트코트 28피트 해시마크 인바운드 옵션, 게임·샷클락 그대로.
+- 사용자 요청: A-5 동시 수정 + 타임아웃 재개 위치(우리/상대 진영) 규정 반영.
+
+**변경 파일**:
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — GameState `inbound?: { spot: 'backcourt'|'frontcourt'; advanced? }`, `lastPossessionLiveBall?`. (같은 날 추가했던 `lastEntryWasPeriodStart`는 `inbound`로 대체·삭제)
+- `services/game/engine/pbp/timeoutPolicy.ts` / `server/.../timeoutPolicy.ts` — `canCallTimeout(state, teamId)` 신설, `decideTimeout`·`decideOvertimeTimeout`의 callable 필터에 추가, 의무 타임아웃 due 이후 `lastPossessionLiveBall`이면 null
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — `lastPossessionLiveBall = isLiveBall`, 공격권 유지 분기에서 `inbound` 설정(테크니컬=중단 지점, 플래그런트=프런트코트, 비보너스 파울=프레스 파울이면 백코트·그 외 프런트코트, 공격 리바운드=없음), 공격권 전환 분기 `inbound = undefined`, 피리어드 시작 `inbound = 정규 ? backcourt : undefined` + `lastPossessionLiveBall = false`, `applyTimeout`에 재개 위치·마지막 2분 전진·라이브볼 진입 효과 제거(+로그 "— 프런트코트에서 인바운드")
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 속공 `entryMult`: `state.inbound ? 0`, `pressActive`에 `inbound.spot !== 'frontcourt'`, 전진 시 포세션 시간 −`TIMEOUT_ADVANCE.TIME_SAVED`
+- `services/game/config/constants.ts` / `server/src/shared/game/config/constants.ts` — `SIM_CONFIG.TIMEOUT_ADVANCE = { TIME_SAVED: 3 }`(추정치)
+- `hooks/useLiveGame.ts` — 표시 상태 `timeoutCallable`, `callTimeout`에 `canCallTimeout` 가드
+- `views/LiveGameView.tsx` — 타임아웃 버튼 2곳 `disabled`에 `!userTimeoutCallable`
+- `docs/engine/engine-anatomy.md` — 10-2 타임아웃 절 갱신
+
+**Before**:
+```ts
+// timeoutPolicy: const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t));  (의무 due면 바로 반환)
+// applyTimeout: 차감·모멘텀·핫콜드·체력·로그만 — 진입 상태(lastEntryWasDefReb/Steal 등) 그대로
+// possessionHandler: entryMult = steal / defReb / offReb / DEAD_BALL_MULT(0.35) (+ 같은 날 추가한 lastEntryWasPeriodStart ? 0)
+//                    pressActive = !lastEntryWasOffReb && !lastEntryWasSteal
+// useLiveGame.callTimeout: timeouts > 0 && 위임 아님 && pause 아님
+```
+
+**After**:
+```ts
+canCallTimeout = !state.lastPossessionLiveBall || 공 가진 팀 === teamId
+callable = ... && canCallTimeout(state, t.id);  의무: if (state.lastPossessionLiveBall) return null;
+applyTimeout: inFrontcourt = inbound.spot==='frontcourt' || lastEntryWasOffReb || lastEntryWasFlagrant
+              advance = !inFrontcourt && kind==='team' && team===공 가진 팀 && quarter>=4 && gameClock<=120
+              inbound = { spot: inFrontcourt||advance ? 'frontcourt' : 'backcourt', advanced }
+              lastEntryWasDefReb/Steal=false, lastEntryPlayerId=undefined, lastOffRebClose=false, lastPossessionLiveBall=false
+entryMult: state.inbound ? 0 : (기존)    pressActive: ... && inbound?.spot !== 'frontcourt'
+advanced: t = max(min(gameClock,3), t − 3)
+```
+
+**검증**: tsc 수정 파일 오류 0(기존 playTypes 오류만). 하네스(NBA Active 실데이터 978경기×3, 직전 = 풋백·쿼터 공격권 적용본):
+| | Before | After |
+|---|---|---|
+| 의무 타임아웃 라이브볼 중 | 7,504 / 15,101 | 0 / 14,770 |
+| 공 없는 팀 라이브볼 팀 타임아웃 | 3,572 | 0 |
+| 팀 타임아웃 총수 | 23,479 | 23,675 (소멸 증가 없음) |
+| 속공: 타임아웃 후 / 비보너스 파울 후 / 테크니컬 후 / 플래그런트 후 | 4,296 / 1,355 / 85 / 15 | 0 / 0 / 0 / 0 |
+| 프레스: 플래그런트 후 / 파울 후 | 4 / 841 | 0 / 233(전부 백코트 프레스 파울 후 — 백코트 인바운드라 정상) |
+| 마지막 2분 프런트코트 전진 | — | 5,167 (팀경기당 0.88) |
+| 팀 득점 / 포세션 / ORtg | 113.89 / 101.01 / 112.75 | 113.27 / 100.89 / 112.27 |
+- 남은 쿼터 시작 속공 ~110건은 1쿼터 점프볼·연장 점프볼(라이브볼, 의도) 뒤.
+
+**롤백 방법**: 위 파일 전부 Before로(client/server 쌍 + useLiveGame·LiveGameView 함께). `inbound`/`lastPossessionLiveBall`은 optional이라 소비부(possessionHandler·timeoutPolicy)만 되돌려도 이전 동작.
+
+## 2026-11-04 — 엔진: 쿼터 시작 공격권 NBA 규정(Rule 6) + 쿼터 첫 공격 진입 상태 초기화 + 시작 로그에 공격 팀 표시
+
+**배경**: NBA Active PBP 감사 — 2~4쿼터 시작 공격권 규칙이 없어 직전 쿼터 마지막 공격 결과를 그대로 이어감(실경기 2~4쿼터 시작의 52%가 규정과 다름). 직전 쿼터의 수비 리바운드·스틸 진입 상태도 넘어와 쿼터 첫 공격이 속공(실경기 경기당 0.38회). NBA Rule 6: 경기 첫 점프볼로 공격권을 얻은 팀이 4쿼터, 상대가 2·3쿼터를 상대 엔드라인 인바운드로 시작(연장은 점프볼).
+
+**변경 파일**:
+- `services/game/engine/pbp/liveEngine.ts` (client) — `applyJumpBall`에서 1쿼터 승자 저장, 쿼터 전환 블록에서 공격권 지정·진입 상태 초기화·시작 로그 문구, 포세션 종료 두 분기에서 `lastEntryWasPeriodStart` 해제
+- `server/src/shared/engine/pbp/liveEngine.ts` (server 미러) — 동일
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — GameState `openingTipWinner`, `lastEntryWasPeriodStart`
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 속공 `entryMult`에 `lastEntryWasPeriodStart ? 0` 추가
+- `docs/engine/engine-anatomy.md` — 경기 루프·점프볼 절 갱신
+
+**Before**:
+```ts
+// 쿼터 전환: 시계·샷클락·팀파울·타임아웃·모멘텀·체력만 처리, state.possession·lastEntry* 그대로
+text: isOvertimePeriod(q) ? `${periodLabel(q)} 시작` : q === 3 ? '하프타임 종료 — 3쿼터 시작' : `${q}쿼터 시작`,
+// applyJumpBall: state.possession = jb.winner (승자 저장 없음)
+// entryMult: steal → STEAL_MULT / defReb → DEF_REB_MULT / offReb → OFF_REB_MULT / 그 외 DEAD_BALL_MULT(0.35)
+```
+
+**After**:
+```ts
+// applyJumpBall: if (state.quarter === 1) state.openingTipWinner = jb.winner;
+// 쿼터 전환(정규 2~4쿼터, openingTipWinner 있을 때): possession = q === 4 ? tip : 상대
+// 모든 피리어드 시작: lastEntryWasDefReb/Steal/OffReb/Flagrant = false, lastEntryPlayerId·lastOffRebounderId·lastOffRebClose = undefined,
+//   lastEntryWasPeriodStart = !isOvertimePeriod(q) (연장은 점프볼 라이브볼이라 제외) → 첫 포세션 종료 시 false
+text: 연장 그대로 / 정규 `${q === 3 ? '하프타임 종료 — 3쿼터 시작' : `${q}쿼터 시작`} (${팀명} 공격)`
+// entryMult: lastEntryWasPeriodStart ? 0 : (기존)
+```
+- 시작 로그 문구를 읽는 UI 코드 없음 확인(전부 `teamId === 'SYSTEM'` 기준, 연장 정규식 `^(\d+차 연장|연장 \d+) 시작`은 연장 문구 불변이라 무관).
+- 점프볼 승자 정보가 없는 상태(배포 전에 시작된 라이브 경기)는 기존처럼 이어감.
+
+**검증**: tsc 수정 파일 오류 0. 하네스(NBA Active 실데이터 978경기×3, 풋백 재설계 적용본 대비):
+| | Before | After |
+|---|---|---|
+| 2~4쿼터 시작 공격권 규정 위반 | 4,416 / 8,802 (50%) | 6* |
+| 쿼터 첫 공격 속공 | 1,213 | 0 |
+| 팀 득점 / 포세션 / ORtg | 114.13 / 101.06 / 112.94 | 113.61 / 100.99 / 112.50 |
+\* 6건은 쿼터 시작 직후 공격 팀 선수 테크니컬 → 상대 자유투가 첫 이벤트라 검사 스크립트가 오판한 것(공격권은 정상).
+
+**롤백 방법**: 위 파일 Before로(client/server 쌍 함께). 추가 필드는 optional이라 제거해도 다른 경로 영향 없음.
+
+## 2026-11-04 — 엔진: 풋백 재설계 — 근거리 공격 리바운드의 리바운더 본인 즉시 슛 + NBA 빈도·효율 보정
+
+**배경**: NBA Active PBP 감사 — 풋백 슈터의 81%가 직전 공격 리바운더와 다른 선수(센터가 잡은 공을 가드가 "팁인"). 원인: 공격 리바운더 정보가 다음 포세션으로 안 넘어가고(liveEngine이 비움), Putback 케이스가 코트 5명 중 `offReb .4 + vertical .3 + hustle .2 + 마무리 .1` 가중 추첨(+주 득점원 배율)으로 새로 뽑음 → 포지션 거의 균등(C 21%·PG 18%). 또 풋백 확률이 미스 위치와 무관(3점 미스 뒤 18% = 골밑 미스 뒤 19%).
+- 사용자 원칙: 풋백은 리바운더의 즉시 슛이지만, 멀리서 잡으면 공격 재세팅, 림 밑에서 잡으면 바로 올라가는 경우가 훨씬 많다.
+- NBA 기준(사용자 결정 = (나) NBA 수준 + 효율 동시 보정): Synergy 2024-25 Putbacks 5.2 poss/팀경기(316명 합, 하한) ÷ ORB ~11 ≈ **ORB의 47%**, **PPP 1.10, FG 56.4%**. pbpstats 2023-24 풋백 득점 5.1/팀경기. 출처 github gabriel1200/site_Data(2025_playtype.csv, pbp_totals.csv). 엔진(실경기 475경기): 풋백 = ORB의 19%, FG 68.8%, 슛당 1.38점.
+
+**변경 파일**:
+- `services/game/config/constants.ts` (client) — `SIM_CONFIG.PUTBACK` 신설
+- `server/src/shared/game/config/constants.ts` (server 미러) — 동일
+- `services/game/engine/pbp/reboundLogic.ts` / `server/src/shared/engine/pbp/reboundLogic.ts` — `rollCloseOffRebound(rebounder, missZone, forceLong)` 추가
+- `services/game/engine/pbp/pbpTypes.ts` / `server/.../pbpTypes.ts` — GameState `pendingOffReb`, `lastOffRebounderId`, `lastOffRebClose`
+- `services/game/engine/pbp/statsMappers.ts` / `server/.../statsMappers.ts` — 진입 시 `pendingOffReb` 초기화, 야투·자유투 공격 리바운드 때 근거리 판정 → `pendingOffReb` 기록 + 리바운드 문구에 close 전달
+- `services/game/engine/pbp/liveEngine.ts` / `server/.../liveEngine.ts` — 공격권 유지 분기에서 `pendingOffReb` → `lastOffRebounderId/lastOffRebClose`, 그 외 분기에서 초기화
+- `services/game/engine/pbp/possessionHandler.ts` / `server/.../possessionHandler.ts` — 풋백 판정 교체 + `resolvePlayAction` 6번째 인자로 리바운더 전달
+- `services/game/engine/pbp/playTypes.ts` / `server/.../playTypes.ts` — `resolvePlayAction(..., putbackActor?)`, Putback 슈터 = putbackActor(미지정 시 기존 추첨), `bonusHitRate` 0.05 → `SIM_CONFIG.PUTBACK.HIT_MOD`
+- `services/game/engine/commentary/textGenerator.ts` / `server/.../textGenerator.ts` — `getReboundCommentary(..., close?)`, `getFreeThrowReboundCommentary(..., close?)` 근거리/장거리 문구 분기(장거리엔 "풋백 찬스" 류 제외, "다시 정비" 류 추가). close 미지정이면 기존 문구
+- `docs/engine/engine-anatomy.md` — 풋백 판정·Putback 행·offReb 슬라이더 설명 갱신
+
+**Before**:
+```ts
+// possessionHandler
+if (state.lastEntryWasOffReb === true && state.shotClock === 14 && state.gameClock < 720) {
+    const putbackChance = 0.15 + (sliders.offReb * 0.02);
+    if (Math.random() < putbackChance) { selectedPlayType = 'Putback'; isSecondChance = true; }
+}
+// playTypes Putback
+const actor = pickWeightedActor(p => p.attr.offReb * 0.40 + p.attr.vertical * 0.30 + p.attr.hustle * 0.20 + ((closeShot + layup + dunk) / 3) * 0.10);
+... bonusHitRate: 0.05
+// liveEngine: 공격 리바운더 정보 저장 없음
+```
+
+**After**:
+```ts
+SIM_CONFIG.PUTBACK = {
+    CLOSE_BASE: { Rim: 0.88, Paint: 0.80, Mid: 0.56, '3PT': 0.36, FT: 0.82 },
+    CLOSE_POS_MULT: { C: 1.15, PF: 1.08, SF: 0.95, SG: 0.85, PG: 0.80 }, CLOSE_MAX: 0.95,
+    CHANCE: 0.88, CHANCE_PER_SLIDER: 0.01, HIT_MOD: -0.15,
+};
+// 근거리 = min(CLOSE_MAX, CLOSE_BASE[미스 위치] × CLOSE_POS_MULT[리바운더 포지션]) 확률. 자유투 슈터 본인·미드/3점 슈터 본인 리바운드는 항상 장거리.
+// 풋백 = 직전 진입 공격 리바운드 && 샷클락 14 && 근거리 && 리바운더 코트 위 → CHANCE + (offReb−5)×0.01 확률, 슈터 = 리바운더
+```
+
+**검증**: tsc 수정 파일 오류 0(playTypes 633·636줄 transition `resolveFinish` 타입 오류 4건은 2bd389e9부터 있던 것). 하네스 = NBA Active 실데이터(league_teams·meta_players·room_members, AI 감독 계획 포함) 978경기, 3회 평균, 기준선이 실경기 재현(풋백/ORB 19.5% vs 실경기 19.0%, FG 70.8% vs 68.8%):
+| | Before | After | NBA |
+|---|---|---|---|
+| 풋백 poss / ORB | 0.240 | 0.484 | ~0.47 |
+| 풋백 FG% | 71.9% | 56.4% | 56.4% |
+| 풋백 PPP | 1.364 | 1.089 | 1.10 |
+| 풋백 득점/팀경기 | 3.19 | 5.26 | 5.1 |
+| 풋백 슈터 포지션 C/PF/SF/SG/PG | 22/20/21/20/18% | 36/25/17/12/10% | — |
+| 팀 득점 | 112.03 | 113.85 | |
+| 포세션 | 99.36 | 101.20 | |
+| ORtg | 112.76 | 112.49 | |
+- PBP 로그 점검(978경기): 풋백 슛의 97%가 직전 공격 리바운더 본인, 나머지 3%는 리바운더의 헬프 킥아웃(기존 로직, 의도), 장거리 리바운드 문구 뒤 풋백 0건.
+- **부수 효과: 포세션 +1.8**(풋백 2~4초가 14초 하프코트 공격을 대체) → 팀 득점 +1.8, ORtg는 −0.3(불변 수준). 템포 목표(~100) 대비 소폭 상승 — 보정 여부는 사용자 결정 대기.
+
+**롤백 방법**: 위 파일 전부 Before로(client/server 쌍 함께). 급하면 `SIM_CONFIG.PUTBACK`만 남긴 채 possessionHandler 풋백 판정 블록과 playTypes `bonusHitRate`를 Before로 되돌리면 이전 동작(statsMappers/liveEngine 추가 필드는 무해).
+
+## 2026-11-04 — PBP 문구: 테크니컬 파울 공격권 안내 통일 + 공 다루는 문구는 공 가진 팀에게만
+
+**배경**: NBA Active 현 엔진 테크니컬 258건 분석.
+- 공격 팀 선수가 테크니컬을 받으면 안내가 "`offTeam`에게 공격권이 넘어갑니다"로 찍힘(~41%) — 테크니컬 뒤엔 항상 offTeam이 공격 재개(liveEngine `retainPossession`)라 이미 공을 가진 팀에게 "넘어가는" 것처럼 보였다(예: 마이애미 수비 리바운드 직후 마이애미 선수 테크니컬 → "마이애미에게 공격권이 넘어갑니다").
+- "공을 바닥에 내리치다/공을 걷어차/골대를 향해 공을 내던지며" 3문장이 공 없는 팀 선수에게도 붙음(~12%, 예: 스틸당한 직후 상대 선수).
+- 테크니컬이 라이브볼(리바운드·스틸) 직후 48% 발생하는 점은 사용자 판단으로 유지(라이브볼 중에도 선언 가능).
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) — `getTechnicalFoulCommentary(defender, foulerTeamHasBall?)`
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — 동일
+- `services/game/engine/pbp/statsMappers.ts` (client) — technicalFoul 분기: 호출부에 `foulerIsOffense` 전달, possessionNote 통일
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+getTechnicalFoulCommentary(defender)   // 15문장 전체에서 무작위
+const possessionNote = ftTeam.id === offTeam.id
+    ? `${regionOf(offTeam)}의 공격권이 유지됩니다.`
+    : `${regionOf(offTeam)}에게 공격권이 넘어갑니다.`;
+```
+
+**After**:
+```ts
+getTechnicalFoulCommentary(defender, foulerIsOffense)   // false면 공 다루는 3문장 제외(12문장), 미지정이면 15문장
+const possessionNote = `${regionOf(offTeam)}의 공격으로 재개됩니다.`;
+```
+
+**검증**: tsc(server·client) 수정 파일 오류 0. `applyPossessionResult` 직접 호출 3,000회×2(client·server 각각): 공격 팀 선수 테크니컬의 공 문구 비율 0.20(3/15), 수비 팀 선수 0.000, 안내 문구는 두 경우 모두 "마이애미의 공격으로 재개됩니다." 구 문구를 파싱하는 UI 코드 없음(grep).
+
+**롤백 방법**: 4개 파일 Before로(client/server 쌍 함께). 문구 함수는 두 번째 인자 미지정 시 기존 동작.
+
+## 2026-11-04 — PBP 문구: 슈팅 파울·플래그런트 1·2 문구를 슛 위치·종류로 선택
+
+**배경**: 버그 리포트 "데미안 릴라드 자유투 3/3 — 마커스 새서, 골밑 슛 컨테스트 중 무리한 접촉으로 슈팅 파울". NBA Active PBP 전수 감사(875경기) 결과 현 엔진 자유투 3구의 29%(경기당 0.84회)에 골밑·드라이브 문구가 붙음.
+- 원인: 자유투 개수는 `zone === '3PT' ? 3 : 2`(실제 슛 위치, 킥아웃 반영)인데 `getShootingFoulCommentary`는 playType만 보고 문구를 고름. 실측(현 엔진 475경기) Iso/PnR_Handler/DriveKick 슛의 49%가 3점·미드, PostUp/PnR_Roll의 26%가 미드·3점(킥아웃·페이드어웨이), CatchShoot/Pop/OffBallScreen의 12%가 림·페인트(클로즈아웃 돌파) → 2구 자유투에서도 "미드 풀업에 레이업 문구" 같은 반대 방향 오류(로그로는 검출 불가).
+- `getFlagrant1Commentary`·`getFlagrant2Commentary`도 같은 구조(아이솔 3점 시도에 "레이업을 막으려다"/"레이업 중인") → 사용자 요청으로 같이 수정.
+- 엔진 결과(확률·자유투 수·박스스코어)는 불변, 문구만 바뀜. 저장된 경기 로그는 그대로, 이후 경기부터 적용.
+
+**변경 파일**:
+- `services/game/engine/commentary/textGenerator.ts` (client) — `getShootingFoulCommentary`·`getFlagrant1Commentary`·`getFlagrant2Commentary`에 `zone?`·`shotType?` 인자 추가 + 분기 재구성
+- `server/src/shared/engine/commentary/textGenerator.ts` (server 미러) — 동일
+- `services/game/engine/pbp/possessionHandler.ts` (client) — 슈팅 파울 결과(`type: 'freethrow'`)에 `shotType`, 플래그런트 결과(`type: 'flagrantFoul'`)에 `zone: preferredZone, shotType` 추가
+- `server/src/shared/engine/pbp/possessionHandler.ts` (server 미러) — 동일
+- `services/game/engine/pbp/statsMappers.ts` (client) — 세 호출부(슈팅 파울·플래그런트 1·2)에 `zone, result.shotType` 전달
+- `server/src/shared/engine/pbp/statsMappers.ts` (server 미러) — 동일
+
+**Before**:
+```ts
+// statsMappers (freethrow / flagrantFoul 분기)
+getShootingFoulCommentary(defender, actor, playType, !!result.isHelpPlay, false)
+getFlagrant1Commentary(defender, actor, playType)
+getFlagrant2Commentary(defender, actor, playType)
+// possessionHandler
+type: 'freethrow', ..., zone: preferredZone, helpDefenderId, isHelpPlay: isHelpFoul
+type: 'flagrantFoul', ..., isFlagrant2, isZone, helpDefenderId
+// textGenerator — 앤드원 → 헬프 → playType(Iso·PnR_Handler·DriveKick=드라이브 / PostUp·PnR_Roll=골밑 / CatchShoot·PnR_Pop·OffBallScreen=점퍼) → 기본
+// getFlagrant1Commentary — playType(드라이브 / 포스트·스크린 / 속공) → 기본 6문장
+// getFlagrant2Commentary — playType(드라이브) → 기본 8문장("리바운드 경합 중" 포함)
+```
+
+**After**:
+```ts
+getShootingFoulCommentary(defender, actor, playType, !!result.isHelpPlay, false, zone, result.shotType)
+getFlagrant1Commentary(defender, actor, playType, zone, result.shotType)
+getFlagrant2Commentary(defender, actor, playType, zone, result.shotType)
+type: 'freethrow', ..., zone: preferredZone, shotType, helpDefenderId, ...
+type: 'flagrantFoul', ..., isFlagrant2, isZone, zone: preferredZone, shotType, helpDefenderId
+```
+- 슈팅 파울: 앤드원·헬프 문구는 그대로(위치 무관 표현). 그 다음 zone 우선 — 3PT(Pullup=풀업/스텝백, 그 외=클로즈아웃, 전부 "3점" 포함) / Mid(PostUp=페이드어웨이, Pullup=풀업 점퍼, 그 외=점퍼 컨테스트) / Paint(Hook·Jumper·Floater) / Rim(PostUp·PnR_Roll=기존 골밑 문구, Dunk, Transition, Putback, Cut, 그 외=기존 드라이브 문구). zone 없으면 기존 playType 분기 그대로.
+- 플래그런트 1: Transition 저지 문구 우선(위치 무관) → zone별(3PT 착지 공간 / Mid 점퍼 / Rim·Paint는 PostUp·Roll=포스트, Dunk, Paint, 림=드라이브·비드라이브) + 위치 무관 3문장 공통. zone 없으면 기존 분기.
+- 플래그런트 2: zone별(속공 / 3PT 착지 공간 / Mid 점퍼 / PostUp·Roll 골밑 / Dunk / Paint / 림 레이업) + 위치 무관 6문장 공통. 플레이 시작 시점 판정이라 "리바운드 경합 중"은 zone 경로에서 제외. zone 없으면 기존 분기.
+- 부수 효과: 플래그런트 결과에 zone이 생겨 `computeCourtPositions` 코트 스냅샷이 기본 'Mid' 대신 실제 슛 위치 포메이션을 씀(표시만).
+
+**검증**: tsc(server·client) 수정 파일 오류 0(기존 무관 오류만). 문구 함수 조합 시험(9 zone/shotType × 12 playType × 40회 × 3함수 = 12,960건, client·server 각각) — 3점에 골밑·드라이브·플로터 단어, 림에 3점·점퍼 단어 등 위치 모순 0건, 3점 슈팅 파울 전부 "3점" 포함. `applyPossessionResult` 직접 호출(client·server)로 zone·shotType이 문구까지 전달되는 것 확인(포스트업 킥아웃 3점 → 클로즈아웃 3점 문구 + 자유투 3/3).
+
+**롤백 방법**: 6개 파일을 Before로 되돌림(client/server 쌍 함께). textGenerator 세 함수는 새 인자를 안 넘기면 기존 분기로 동작하므로, 급하면 statsMappers 세 호출부만 Before로 돌려도 문구는 원복됨.
+
 ## 2026-11-04 — 엔진: 림 슛 덩크/레이업 선택을 덩크 비율 공식 + 상황 배율로 교체
 
 **배경**: "NBA Active 센터 덩크 비중이 너무 높다"(예: 스티븐 아담스 FGA의 39%가 덩크, 실제 13~14%). 조사해 보니 포지션 평균(림 슛 중 덩크 C 40/PF 30/SF 25/SG 19/PG 11%)은 bbref 2024-26 실측(40/32/27/17/10)과 이미 같았고, 문제는 분포였다.

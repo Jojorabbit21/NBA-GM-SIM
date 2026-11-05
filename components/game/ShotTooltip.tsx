@@ -23,7 +23,7 @@ function formatGameClock(seconds: number): string {
 
 /** Single shot detail row (primary) */
 function PrimaryShotInfo({ shot }: { shot: ShotEvent }) {
-    const dist = calcShotDistance(shot.x, shot.y);
+    const dist = shot.distanceFt ?? calcShotDistance(shot.x, shot.y);   // [2026-11-05] 히브는 기록된 거리
     const isMake = shot.isMake;
 
     return (
@@ -72,7 +72,7 @@ function PrimaryShotInfo({ shot }: { shot: ShotEvent }) {
 
 /** Compact cluster shot row */
 function ClusterShotRow({ shot }: { shot: ShotEvent }) {
-    const dist = calcShotDistance(shot.x, shot.y);
+    const dist = shot.distanceFt ?? calcShotDistance(shot.x, shot.y);   // [2026-11-05] 히브는 기록된 거리
     return (
         <div className="flex items-center gap-1.5 text-[11px]">
             <span className={shot.isMake ? 'text-emerald-400' : 'text-red-400'}>

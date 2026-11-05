@@ -122,6 +122,8 @@ export interface ShotEvent {
     points?: 0 | 2 | 3;
     isBlock?: boolean;
     subZone?: string;
+    isHeave?: boolean;      // [2026-11-05] 피리어드 막판 장거리 슛(히브) (server 미러 참조)
+    distanceFt?: number;    // 히브 거리(피트) — 좌표로 재면 가까운 골대 기준이 돼 틀림
 }
 
 export interface InjuryEvent {
@@ -150,6 +152,7 @@ export interface BoxTick {
     mp: number;                    // 이 포세션이 소비한 분 (timeTaken/60)
     d:  Record<string, BoxDelta>;  // playerId → 변화분 (변한 선수만)
     shot?: { p: string; m: boolean }; // 이 포세션 FG 시도 결과 (있었던 경우만): p=playerId, m=성공여부 — 핫/콜드 스트릭 재구성용
+    m?: [number, number, number, number]; // [2026-11-05] 공격팀(off)에 가산된 팀 미스크 득점 델타 [potv, fbps, pitp, spts] — 변화 없는 포세션은 생략. 라이브 중계 점진 공개용(이전 저장 데이터엔 없음)
     c?: Record<string, number>;    // [2026-10-17] 체력(5 단위 양자화) — 첫 틱은 양 팀 전원, 이후엔 값이 바뀐 선수만. 라이브 중계 체력 배지 재구성용(이전 저장 데이터엔 없음)
 }
 
@@ -169,6 +172,8 @@ export interface SimulationResult {
     boxTimeline?: BoxTick[];
     /** [2026-10-18] 팀별 플레이타입 실적 — 멀티 PPP 집계용(TeamPlayTypeStats) */
     playTypeStats?: TeamPlayTypeStats;
+    /** [2026-11-05] 팀 미스크 득점 4종(홈/원정) — 엔진 집계, 저장·표시는 아직 안 함(TeamMiscByGame) */
+    teamMisc?: TeamMiscByGame;
 }
 
 /** [2026-10-18] 플레이타입별 실적(팀 단위, 한 경기) — 플레이 1회 = 그 플레이타입으로 끝난 슛/턴오버/슈팅·보너스 자유투 1건.
@@ -177,5 +182,12 @@ export interface SimulationResult {
 export interface PlayTypeStatLine { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number; }
 /** teamId → playType → 집계 */
 export type TeamPlayTypeStats = Record<string, Record<string, PlayTypeStatLine>>;
+
+/** [2026-11-05] 팀 미스크 득점 4종(서비스 약칭: POTV / FBPS / PITP / SPTS — NBA 약칭은 PTS OFF TO / FBPS / PITP / 2nd PTS) — 팀 단위, 한 경기, 엔진이 경기 중 누적(pbp/teamMisc.ts).
+ *  potv = 상대 턴오버 직후 첫 공격 득점(공격 리바운드 이후 득점 제외, 자유투 포함), fbps = 속공(Transition) 야투 득점(자유투 제외),
+ *  pitp = 림·페인트 존 야투 득점(자유투 제외), spts = 공격 리바운드 이후 같은 공격권 득점(풋백·자유투 포함).
+ *  client(types/engine.ts) ↔ server(server/src/shared/types/engine.ts) 미러 */
+export interface TeamMiscStats { potv: number; fbps: number; pitp: number; spts: number; }
+export interface TeamMiscByGame { home: TeamMiscStats; away: TeamMiscStats; }
 
 export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition' | 'Putback' | 'OffBallScreen' | 'DriveKick';

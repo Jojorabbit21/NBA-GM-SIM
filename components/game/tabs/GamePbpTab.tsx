@@ -17,6 +17,8 @@ interface GamePbpTabProps {
     /** 제공되면 원형 로고 대신 사각형 색상 배지 렌더링(멀티플레이어 전용 스타일) */
     homeBadge?: { color: string; abbr: string };
     awayBadge?: { color: string; abbr: string };
+    /** true면 우측 플레이타입 패널을 그리지 않고 PBP 로그가 가로 100%를 차지한다(멀티 종료 화면 — 플레이타입은 팀 기록 탭으로 이동). 기본 false = 싱글 그대로. */
+    hidePlayTypes?: boolean;
 }
 
 interface ProcessedLog extends PbpLog {
@@ -24,7 +26,7 @@ interface ProcessedLog extends PbpLog {
     awayScore: number;
 }
 
-export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam, shotEvents, homeBadge, awayBadge }) => {
+export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam, shotEvents, homeBadge, awayBadge, hidePlayTypes = false }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [selectedQuarter, setSelectedQuarter] = useState<number>(0); // 0 = All
     // [2026-10-28] 폰(§9-7, 목업 G15·G16): 기록 목록은 고정 높이 456 안 스크롤, 플레이타입은 그 아래 흐름. 행은 Q · 시간 · 스코어 · 기록 4칸
@@ -157,7 +159,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
     return (
         <div className={`${isPhone ? '' : 'h-[520px] md:flex-row'} w-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300`}>
             {/* 좌측: PBP 커멘터리 — 카드(배경/테두리/라운딩/그림자) 해체, 우측 영역과의 경계만 구분선(border-r)으로 표시 (5:5 중 5) */}
-            <div className={`${isPhone ? 'h-[456px]' : 'flex-[5] md:border-b-0 md:border-r'} min-w-0 min-h-0 flex flex-col border-b border-slate-800`}>
+            <div className={`${isPhone ? 'h-[456px]' : hidePlayTypes ? 'flex-1' : 'flex-[5] md:border-b-0 md:border-r'} min-w-0 min-h-0 flex flex-col ${hidePlayTypes ? '' : 'border-b border-slate-800'}`}>
                 {/* 헤더: 쿼터 필터 — 애니메이션 없이 클릭 즉시 상태 전환 */}
                 <div className="shrink-0 flex items-center gap-1 px-3 h-11 border-b border-slate-800 bg-slate-950/60 overflow-x-auto">
                     <SegmentedControl
@@ -315,7 +317,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                 자동으로 받는다(min-w-0/min-h-0는 그 높이를 내용 때문에 못 줄이는 상황을 막는 안전장치).
                 실제 좌우 높이 불일치의 진짜 원인은 여기가 아니라 PlayTypeStats.tsx 내부에 있었음
                 — 자세한 설명은 그 파일의 [Fix 2026-08-03] 주석 참고. */}
-            <div className={isPhone ? 'min-w-0' : 'flex-[5] min-w-0 min-h-0 overflow-y-auto custom-scrollbar'}>
+            {!hidePlayTypes && <div className={isPhone ? 'min-w-0' : 'flex-[5] min-w-0 min-h-0 overflow-y-auto custom-scrollbar'}>
                 <PlayTypeStats
                     shotEvents={shotEvents}
                     homeTeamId={homeTeam.id}
@@ -323,7 +325,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                     homeBadge={{ color: homeColor, abbr: homeAbbr }}
                     awayBadge={{ color: awayColor, abbr: awayAbbr }}
                 />
-            </div>
+            </div>}
         </div>
     );
 };

@@ -441,6 +441,23 @@ const INJURY_TITLES: ((v: { player: string; injuryType: string }) => string)[] =
     v => `${v.player}, 끝내 ${euro(v.injuryType)} 코트를 떠나다`,
 ];
 
+// [2026-11-05] 검사 예정 뉴스(stage 'exam') — 경기 당일엔 부위만("무릎 부상"), 진단명·기간은 1~2일 뒤 진단 발표 뉴스에서.
+const INJURY_EXAM_TITLES: ((v: { player: string; injuryType: string }) => string)[] = [
+    v => `${v.player}, ${euro(v.injuryType)} 정밀 검사 예정`,
+    v => `${v.player}, ${v.injuryType}… 검사 결과 주목`,
+    v => `${euro(v.injuryType)} 코트 떠난 ${v.player}, 정밀 검사 받는다`,
+];
+const INJURY_EXAM_OPENERS: ((v: InjuryVars) => string)[] = [
+    v => `${i(v.player)} 경기 도중 ${eul(v.injuryType)} 입고 코트를 떠났다.`,
+    v => `${v.team}에 불안한 소식이 전해졌다. ${i(v.player)} 경기 중 ${euro(v.injuryType)} 벤치로 물러났다.`,
+    v => `${i(v.player)} ${euro(v.injuryType)} 남은 경기를 소화하지 못했다.`,
+];
+const INJURY_EXAM_FOLLOW: ((v: InjuryVars) => string)[] = [
+    v => `${eun(v.team)} 정밀 검사를 거쳐 정확한 진단명과 결장 기간을 발표할 예정이다.`,
+    v => `구단은 검사 결과가 나오는 대로 상태를 공개하겠다는 입장이다.`,
+    v => `정확한 부상 정도는 정밀 검사 이후에 알려질 전망이다.`,
+];
+
 function formatShortDate(dateStr: string): string {
     const [y, m, d] = dateStr.split('-');
     return `${y.slice(2)}/${m}/${d}`;
@@ -448,6 +465,10 @@ function formatShortDate(dateStr: string): string {
 
 function buildInjuryBlurb(d: Extract<LeagueEvent['detail'], { kind: 'injury' }>, seed: string, teamBySlug: Map<string, LeagueTeamRow>): string[] {
     const team = teamName(d.teamSlug, teamBySlug);
+    if (d.stage === 'exam') {
+        const v = { player: d.player.name, team, injuryType: d.injuryType };
+        return [pick(seed, 'opener', INJURY_EXAM_OPENERS)(v), pick(seed, 'follow', INJURY_EXAM_FOLLOW)(v)];
+    }
     const returnLine = d.returnDate
         ? `예상 결장 기간은 ${d.duration}, 복귀 목표는 ${formatShortDate(d.returnDate)} 전후로 알려졌다.`
         : `예상 결장 기간은 ${d.duration}으로 알려졌다.`;
@@ -680,10 +701,17 @@ export function buildNewsTitle(event: LeagueEvent, teamBySlug: Map<string, Leagu
             return team + pick(seed, 'title', WIN_STREAK_TITLES)({ streak: d.streak });
         }
         case 'injury': {
-            return pick(seed, 'title', INJURY_TITLES)({ player: d.player.name, injuryType: d.injuryType });
+            return pick(seed, 'title', d.stage === 'exam' ? INJURY_EXAM_TITLES : INJURY_TITLES)({ player: d.player.name, injuryType: d.injuryType });
         }
         case 'suspension': {
             return pick(seed, 'title', SUSPENSION_TITLES)({ fighter: d.fighter.name, opponent: d.opponent.name });
+        }
+        case 'injury_notice': {
+            // [2026-11-05] 알림 위젯 전용 — 경기 중 진단 전이면 "(무릎 부상)"만, 그 외는 기간까지
+            const detail = d.duration && d.duration !== '보류 중' ? `${d.injuryType}, ${d.duration}` : d.injuryType;
+            return d.origin === 'personal'
+                ? `개인 사유 결장: ${d.player.name} (${detail})`
+                : `부상자 발생: ${d.player.name} (${detail})`;
         }
         default:
             return null;

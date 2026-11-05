@@ -12,6 +12,7 @@ import {
     applyManualSubstitution,
 } from '../services/game/engine/pbp/liveEngine';
 import { formatTime } from '../services/game/engine/pbp/timeEngine';
+import { canCallTimeout } from '../services/game/engine/pbp/timeoutPolicy';
 import { elapsedGameSec, scheduleMinute } from '../services/game/engine/pbp/periodRules';
 import { countOvertimePeriods, normalizePeriod } from '../utils/periodLabel';
 
@@ -36,6 +37,8 @@ export interface LiveDisplayState {
     pauseReason: PauseReason | null;
     isGameEnd: boolean;
     timeoutsLeft: { home: number; away: number };
+    // [2026-11-04] 지금 타임아웃을 부를 수 있는지 — 라이브볼(리바운드·스틸 직후)엔 공을 가진 팀만 (NBA Rule 5 VI.4)
+    timeoutCallable: { home: boolean; away: boolean };
     homeOnCourt: LivePlayer[];
     awayOnCourt: LivePlayer[];
     homeBench: LivePlayer[];
@@ -268,6 +271,7 @@ export function useLiveGame(
         if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         if (userTeam.timeouts <= 0) return;
+        if (!canCallTimeout(state, userTeam.id)) return; // [2026-11-04] 라이브볼 중 상대 공 — 요청 불가(NBA Rule 5 VI.4)
         if (pauseReasonRef.current !== null) return; // 이미 pause 중
 
         clearInterval(intervalRef.current!);
@@ -430,6 +434,7 @@ function _buildDisplay(
         pauseReason,
         isGameEnd,
         timeoutsLeft: { home: state.home.timeouts, away: state.away.timeouts },
+        timeoutCallable: { home: canCallTimeout(state, state.home.id), away: canCallTimeout(state, state.away.id) },
         homeOnCourt: [...state.home.onCourt],
         awayOnCourt: [...state.away.onCourt],
         homeBench: [...state.home.bench] as LivePlayer[],

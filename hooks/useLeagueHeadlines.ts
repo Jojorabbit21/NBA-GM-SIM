@@ -19,7 +19,9 @@ export type LeagueEventType = 'game_result' | 'player_feat' | 'player_streak' | 
     // [2026-09-15] 플레이오프 서신 6종(+파이널 MVP) — utils/allStarSelection.ts 패턴과 동일하게
     // "플레이오프" 카테고리 하나로 묶임(MultiNewsFeedView.tsx의 NEWS_TYPE_FILTER_OPTIONS).
     | 'play_in_bracket' | 'play_in_result' | 'playoff_bracket_confirmed'
-    | 'playoff_game_result' | 'playoff_series_result' | 'playoff_champion' | 'finals_mvp';
+    | 'playoff_game_result' | 'playoff_series_result' | 'playoff_champion' | 'finals_mvp'
+    // [2026-11-05] 소속 팀 알림 전용 부상·결장 통지 — STORY_TYPES엔 넣지 않는다(피드 비노출, useLeagueNotifications만)
+    | 'injury_notice';
 
 export interface LeagueEvent {
     id: string;

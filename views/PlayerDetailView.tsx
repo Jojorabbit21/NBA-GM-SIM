@@ -2110,9 +2110,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                             // 그대로 둔다(로그는 변하면 안 됨).
                                             const isCurrentActive = idx === 0 && !!player.activeInjurySeverity;
                                             const duration = isCurrentActive ? (player.activeInjuryDuration ?? entry.duration) : entry.duration;
+                                            // [2026-11-05] 진단 전(멀티 Pending)엔 진단명·복귀일 대신 "무릎 부상 보류 중"
+                                            const isPending = isCurrentActive && player.activeInjurySeverity === 'Pending';
                                             return (
                                                 <KeyValueRow key={idx} label={dateStr} tone="muted" valueClassName="font-normal">
-                                                    {entry.injuryType} {duration}{formatReturnDateSuffix(entry.returnDate)}
+                                                    {isPending ? player.injuryType : entry.injuryType} {duration}{isPending ? '' : formatReturnDateSuffix(entry.returnDate)}
                                                 </KeyValueRow>
                                             );
                                         })}

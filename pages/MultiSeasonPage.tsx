@@ -852,7 +852,7 @@ interface HomeInjuryItem {
     playerId: string;
     playerName: string;
     teamSlug: string;
-    severity: 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
+    severity: 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension' | 'Pending';
     typeLabel: string;
     durationLabel: string;
     returnDate: string | null;
@@ -892,8 +892,11 @@ const HomeInjurySection: React.FC<{ phone?: boolean }> = ({ phone = false }) => 
         return [];
     }).filter(item => {
         // 같은 선수의 옛 이벤트(이미 복귀 후 재부상 등)가 겹치지 않도록 returnDate까지 일치해야 활성으로 인정.
+        // [2026-11-05] 진단 전엔 검사 예정 뉴스(Pending)만, 진단 후엔 진단 발표 뉴스만 — 같은 부상의 두 뉴스가 겹치지 않게.
         const active = activeInjuryByPlayer.get(item.playerId);
-        return !!active && active.returnDate === item.returnDate;
+        if (!active) return false;
+        if (item.severity === 'Pending' || active.pending) return item.severity === 'Pending' && !!active.pending;
+        return active.returnDate === item.returnDate;
     }).slice(0, HOME_ROWS.injuries), [stories, activeInjuryByPlayer]);
 
     if (phone) {

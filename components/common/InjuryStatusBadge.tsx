@@ -5,32 +5,39 @@ import type { InjuryHistoryEntry } from '../../types/player';
 
 /** 로스터 등 테이블에서 선수 이름 옆에 붙는 부상/출장정지 상태 배지 — 원 안에 흰 아이콘.
  *  GRADE1~2(경증)는 주황+십자가, GRADE3~5(중증~시즌아웃급)는 빨강+십자가, 출장정지
- *  (Suspension)는 파랑+마이너스(-). 다른 테이블(전술/트레이드 등)에서도 재사용할 공통
+ *  (Suspension)는 파랑+마이너스(-), 진단 전 부상(Pending, 멀티)은 초록+십자가(등급 비공개), 개인 사유 결장(Personal)은 회색+마이너스. 다른 테이블(전술/트레이드 등)에서도 재사용할 공통
  *  에셋이므로 표시 여부/색상 로직만 담당하고, "지금 활성 상태인지" 판정은 호출부
  *  (MultiRosterView.tsx 등)에서 한다. */
 
-const SEVERITY_COLOR: Record<InjuryHistoryEntry['severity'], string> = {
+/** 배지가 받는 상태 — 저장 등급 + 진단 전(Pending, services/multi/activeInjuryStatus.ts). */
+export type InjuryBadgeSeverity = InjuryHistoryEntry['severity'] | 'Pending';
+
+const SEVERITY_COLOR: Record<InjuryBadgeSeverity, string> = {
     Grade1: 'bg-orange-500',
     Grade2: 'bg-orange-500',
     Grade3: 'bg-red-500',
     Grade4: 'bg-red-500',
     Grade5: 'bg-red-500',
     Suspension: 'bg-blue-500',
+    Pending: 'bg-green-500',
+    Personal: 'bg-slate-400',
 };
 
 /** 배지 배경색과 짝을 이루는 텍스트 색상 — 호버카드 등에서 "부상"/"출장정지" 라벨을
  *  배지와 같은 색으로 맞출 때 재사용(PlayerHoverCard.tsx 참고). */
-export const SEVERITY_TEXT_COLOR: Record<InjuryHistoryEntry['severity'], string> = {
+export const SEVERITY_TEXT_COLOR: Record<InjuryBadgeSeverity, string> = {
     Grade1: 'text-orange-500',
     Grade2: 'text-orange-500',
     Grade3: 'text-red-500',
     Grade4: 'text-red-500',
     Grade5: 'text-red-500',
     Suspension: 'text-blue-500',
+    Pending: 'text-green-500',
+    Personal: 'text-slate-400',
 };
 
 interface InjuryStatusBadgeProps {
-    severity: InjuryHistoryEntry['severity'];
+    severity: InjuryBadgeSeverity;
     /** 마우스 오버 시 표시할 텍스트(부상명/복귀일 등) — 없으면 툴팁 생략 */
     title?: string;
     size?: number;
@@ -60,7 +67,7 @@ export const InjuryStatusBadge: React.FC<InjuryStatusBadgeProps> = ({
     strokeWidth = 3,
     className = '',
 }) => {
-    const Icon = severity === 'Suspension' ? Minus : Plus;
+    const Icon = severity === 'Suspension' || severity === 'Personal' ? Minus : Plus;
     const anchorRef = useRef<HTMLSpanElement>(null);
     const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 

@@ -4,6 +4,7 @@ import { calculateIncrementalFatigue, calculateRecovery } from '../fatigueSystem
 import { formatTime } from './timeEngine';
 import { SIM_CONFIG } from '../../config/constants';
 import { pickWeighted, pickInjuryGrade } from '../injuryGrades';
+import { getInjuryCommentary } from '../commentary/textGenerator';
 
 /**
  * Updates fatigue, injury checks, and minutes played for all players on court.
@@ -70,7 +71,7 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                     quarter: state.quarter,
                     timeRemaining: timeStr,
                     teamId: team.id,
-                    text: `🚨 ${p.playerName} 선수가 고통을 호소하며 쓰러졌습니다. (${type})`,
+                    text: getInjuryCommentary(p.playerName, type, severity),   // [2026-11-05] 진단명 대신 부위 + 중증도 암시 (liveEngine이 플레이 줄 뒤로 옮김)
                     type: 'injury'
                 });
 

@@ -99,6 +99,11 @@ const OFFENSE_STATS: RankStatConfig[] = [
     { key: 'oreb', label: 'OREB' },
     { key: 'tov', label: 'TOV', isInverse: true },
     { key: 'tov%', label: 'TOV%', format: 'percent', isInverse: true },
+    // [2026-11-05] 팀 미스크 득점 4종(경기당, game_pbp.team_misc) — 전부 높을수록 좋음
+    { key: 'potv', label: 'POTV' },
+    { key: 'fbps', label: 'FBPS' },
+    { key: 'pitp', label: 'PITP' },
+    { key: 'spts', label: 'SPTS' },
 ];
 
 const SHOOTING_STATS: RankStatConfig[] = [

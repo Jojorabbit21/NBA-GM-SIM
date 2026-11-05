@@ -165,7 +165,7 @@ export const PlayerRatingsStatsPopup = React.forwardRef<HTMLDivElement, { player
                     <div className="flex items-center gap-1.5 mt-1 min-w-0">
                         <InjuryStatusBadge severity={player.activeInjurySeverity} size={14} iconSize={10} strokeWidth={4} />
                         <span className={`text-xs font-semibold shrink-0 ${SEVERITY_TEXT_COLOR[player.activeInjurySeverity]}`}>
-                            {player.activeInjurySeverity === 'Suspension' ? '출장정지' : '부상'}
+                            {player.activeInjurySeverity === 'Suspension' ? '출장정지' : player.activeInjurySeverity === 'Personal' ? '개인 사유' : '부상'}
                         </span>
                         {player.activeInjurySeverity !== 'Suspension' && player.injuryType && (
                             <span className={`text-xs font-semibold truncate ${SEVERITY_TEXT_COLOR[player.activeInjurySeverity]}`}>{player.injuryType}</span>

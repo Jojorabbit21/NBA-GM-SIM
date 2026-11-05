@@ -44,6 +44,13 @@ interface BoxTick {
     mp: number;
     d: Record<string, Record<string, number>>;
     shot?: { p: string; m: boolean };
+    m?: [number, number, number, number];   // [2026-11-05] 팀 미스크 득점 델타(공격팀 기준 potv/fbps/pitp/spts) — 그대로 클라이언트에 전달
+}
+
+/** [2026-11-05] 팀 미스크 득점 4종(home/away) — shared/types/engine.ts TeamMiscByGame와 같은 모양 */
+interface TeamMiscByGame {
+    home: { potv: number; fbps: number; pitp: number; spts: number };
+    away: { potv: number; fbps: number; pitp: number; spts: number };
 }
 
 interface PlayerBoxScore {
@@ -141,6 +148,7 @@ export interface GamePbpSource {
     box_timeline?:   BoxTick[];
     rotation_data?:  Record<string, RotationEntry[]>;
     ot_periods?:     number | null;   // [2026-10-26] 연장 수 — 종료(final) 판정이 그만큼 늦어진다
+    team_misc?:      TeamMiscByGame | null;   // [2026-11-05] 팀 미스크 득점 4종 — final일 때만 내려준다(라이브 중엔 박스 틱 m으로 점진 공개)
 }
 
 export type LiveGameState = 'not_started' | 'live' | 'final';
@@ -160,6 +168,7 @@ export interface WindowedGameView {
     homeScore?:      number; // final일 때만 포함 (스포일러 방지)
     awayScore?:      number;
     rotationData?:   Record<string, RotationEntry[]>; // final일 때만 포함
+    teamMisc?:       TeamMiscByGame | null;   // [2026-11-05] final일 때만 포함 — 틱에 m이 없는 구버전 경기의 최종값(스포일러 방지)
 }
 
 export function computeGameState(gameStartTime: string, nowMs: number, replayDurationMs: number = REPLAY_DURATION_MS, otPeriods: number | null = 0): { state: LiveGameState; elapsedMs: number } {
@@ -184,6 +193,7 @@ export function buildWindowedView(row: GamePbpSource, nowMs: number, replayDurat
             homeBox: row.home_box ?? [], awayBox: row.away_box ?? [],
             homeScore: row.home_score, awayScore: row.away_score,
             rotationData: row.rotation_data ?? {},
+            teamMisc: row.team_misc ?? null,
         };
     }
 

@@ -30,7 +30,8 @@ import { roundLabel, computeFinalsMvp, flushPendingLeagueEvents, type PendingLea
 import { insertGameShortCodes, insertGames } from './finalize.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
 import { countOvertimePeriods } from './shared/engine/pbp/periodRules.ts';
-import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, detectInjuryEvent, detectSuspensionEvent, type DetectedEvent } from './shared/leagueEvents.ts';
+import { detectGameResult, detectPlayerFeats, detectPlayerStatStreaks, detectWinStreak, detectInjuryEvent, detectInjuryExamEvent, detectInjuryNoticeEvent, detectSuspensionEvent, type DetectedEvent } from './shared/leagueEvents.ts';
+import { getInjuryBodyPart } from './shared/engine/injuryGrades.ts';
 import { resolveReturnDate } from './shared/injuryDuration.ts';
 
 export interface SimResult {
@@ -350,6 +351,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 // 훑지 않도록, 쿼터별 점수는 시뮬레이션 완료 시 한 번만 계산해 별도 컬럼에 저장.
                 quarter_scores:  computeQuarterScoresFromEvents(result.pbpLogs ?? []),
                 ot_periods:      otPeriods,
+                team_misc:       result.teamMisc ?? null,   // [2026-11-05] POTV/FBPS/PITP/SPTS — 엔진 집계(migrations/game_pbp_team_misc.sql)
             }, { onConflict: 'room_id,game_id' });
 
             // ── 5-1. 팀별 플레이타입 실적(멀티 전술 화면 PPP) [2026-10-18] ─────────────
@@ -447,26 +449,56 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 // (b) 부상/출장정지 이력 — 이번 경기에서 새로 발생한 것만.
                 //     severity/quarter/timeRemaining이 담긴 result.injuries/result.suspensions가
                 //     rosterUpdates(health/injuryType/returnDate만 있음)보다 정보가 풍부하다.
+                // [2026-11-05] 진단 지연 공개 — diagnosisDate 전까지 클라는 "부위 부상 · 부상 기간 보류 중"으로 가린다
+                //   (services/multi/activeInjuryStatus.ts). 진단 발표 뉴스는 가상 자정 처리(injuryDiagnosis.ts)가 낸다.
+                //   teamId·playerName은 그 뉴스용, diagnosisAnnounced는 발표 완료 표시.
                 type HistoryEntry = {
                     injuryType: string; severity: string; duration: string;
                     date: string; returnDate: string | null; isTraining: boolean;
+                    diagnosisDate?: string; bodyPart?: string; teamId?: string; playerName?: string;
                 };
                 const affected = new Map<string, { teamId: string; entry: HistoryEntry }>();
 
+                // 가상 자정 처리가 없는 방(타임라인 없는 토너먼트·구 리그)은 진단 발표를 낼 곳이 없어 기존처럼 즉시 진단.
+                let hasTimeline: boolean | null = null;
                 for (const inj of (result.injuries ?? []) as any[]) {
                     const returnDate = await resolveReturnDate(supabase, roomId, inj.teamId, game.game_date, inj.durationDesc);
+                    if (hasTimeline === null) {
+                        const { count } = await supabase
+                            .from('league_virtual_days').select('virtual_date', { count: 'exact', head: true })
+                            .eq('room_id', roomId);
+                        hasTimeline = (count ?? 0) > 0;
+                    }
+                    const bodyPart = getInjuryBodyPart(inj.injuryType);
+                    const delayed = hasTimeline && !!bodyPart;
+                    let diagnosisDate: string | undefined;
+                    if (delayed) {
+                        diagnosisDate = addDays(game.game_date, Math.random() < 0.5 ? 1 : 2);
+                        if (returnDate && returnDate < diagnosisDate) diagnosisDate = returnDate;   // 진단 전에 복귀하는 경증은 복귀일에 공개
+                    }
                     affected.set(inj.playerId, {
                         teamId: inj.teamId,
                         entry: {
                             injuryType: inj.injuryType, severity: inj.severity, duration: inj.durationDesc,
                             date: game.game_date, returnDate, isTraining: false,
+                            ...(delayed ? { diagnosisDate, bodyPart: bodyPart!, teamId: inj.teamId, playerName: inj.playerName } : {}),
                         },
                     });
-                    const newsEvent = detectInjuryEvent(
-                        inj.playerId, inj.playerName, inj.teamId,
-                        inj.severity, inj.injuryType, inj.durationDesc, returnDate,
-                    );
+                    const newsEvent = delayed
+                        ? detectInjuryExamEvent(inj.playerId, inj.playerName, inj.teamId, inj.severity, bodyPart!)
+                        : detectInjuryEvent(
+                            inj.playerId, inj.playerName, inj.teamId,
+                            inj.severity, inj.injuryType, inj.durationDesc, returnDate,
+                        );
                     if (newsEvent) injuryNewsEvents.push(newsEvent);
+                    // [2026-11-05] 소속 팀 알림(모든 등급) — game_id가 붙어 중계 종료 후 공개(RLS), 클라는 폴링으로 받는다
+                    injuryNewsEvents.push(detectInjuryNoticeEvent(
+                        inj.playerId, inj.playerName, inj.teamId,
+                        delayed ? `${bodyPart} 부상` : inj.injuryType,
+                        delayed ? '보류 중' : inj.durationDesc,
+                        delayed ? null : returnDate,
+                        'in_game',
+                    ));
                 }
                 for (const susp of (result.suspensions ?? []) as any[]) {
                     const [fighterReturn, opponentReturn] = await Promise.all([

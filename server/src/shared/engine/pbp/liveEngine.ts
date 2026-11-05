@@ -6,11 +6,15 @@ import { GameState, TeamState, LivePlayer, ClutchContext, PossessionResult, isOu
 import { initTeamState } from './initializer.ts';
 import { updateOnCourtStates } from './stateUpdater.ts';
 import { simulatePossession } from './possessionHandler.ts';
-import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem.ts';
+import { checkSubstitutionsV2, SubRequestV2, buildEjectionSubRequest } from './substitutionSystem.ts';
 import { checkAndApplyRotation, prepareOvertimeRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution, updateGarbageTime } from './rotationLogic.ts';
 import { assignCourtSlots, snapshotSlots } from './slotAssignment.ts';
 import { formatTime, calculatePossessionTime } from './timeEngine.ts';
-import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers.ts';
+import { applyPossessionResult, dampenHotCold, resetHotCold, regionOf } from './statsMappers.ts';
+import { trackTeamMisc, emptyTeamMisc } from './teamMisc.ts';
+import { getClockManagementCommentary, getFoulStrategyCommentary } from '../commentary/textGenerator.ts';
+import { decideFoulStrategy, type FoulStrategyPlan } from './foulStrategy.ts';
+import { decideEndOfPeriodShot, type EndShotPlan } from './endOfPeriodShot.ts';
 import { calculateRecovery } from '../fatigueSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { computeCourtPositions } from './handlers/courtPositions.ts';
@@ -18,6 +22,7 @@ import { startTimeoutPeriod, recordTimeoutTaken, decideTimeout } from './timeout
 import { applyTacticSchedule } from './tacticSchedule.ts';
 import { elapsedGameSec, scheduleMinute, periodLengthSec, periodStartSec, isOvertimePeriod, teamFoulLimit, overtimeEnabled, shouldPlayOvertime, isDecisivePossession, resolveJumpBall, REGULATION_PERIODS, periodLabel } from './periodRules.ts';
 import { updatePlusMinus } from './handlers/statUtils.ts';
+import { eulReul } from '../commentary/josa.ts';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -106,7 +111,7 @@ function diffBoxStats(cur: BoxDelta, prev: BoxDelta | undefined): BoxDelta | nul
  */
 const CONDITION_TICK_STEP = 5;
 
-function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: number, result: PossessionResult): void {
+function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: number, result: PossessionResult, miscDelta: BoxTick['m'] | null = null): void {
     const onIds = [...state.home.onCourt, ...state.away.onCourt].map(p => p.playerId);
     const allPlayers = [
         ...state.home.onCourt, ...state.home.bench,
@@ -133,7 +138,7 @@ function recordBoxTick(state: GameState, currentTotalSec: number, timeTaken: num
         shot = { p: result.actor.playerId, m: result.type === 'score' };
     }
 
-    state.boxTimeline.push({ t: currentTotalSec, on: onIds, off: state.possession, mp: timeTaken / 60, d, ...(shot ? { shot } : {}), ...(Object.keys(c).length ? { c } : {}) });
+    state.boxTimeline.push({ t: currentTotalSec, on: onIds, off: state.possession, mp: timeTaken / 60, d, ...(shot ? { shot } : {}), ...(miscDelta ? { m: miscDelta } : {}), ...(Object.keys(c).length ? { c } : {}) });
 }
 
 /**
@@ -191,12 +196,28 @@ export function applyTimeout(
     // 체력 회복 (타임아웃 휴식)
     recoverAllPlayers(state, SIM_CONFIG.FATIGUE.TIMEOUT_RECOVERY);
 
+    // [2026-11-04] 재개 위치 — NBA Rule 5 VII.4: 중단된 지점에서 가장 가까운 곳(라이브볼이었으면 사이드라인)에서 인바운드 (client 미러 참조).
+    //   공격 리바운드·프런트코트 인바운드 후면 프런트코트, 그 외(수비 리바운드·스틸·득점 후 등 새 공격권)는 백코트.
+    //   Rule 5 VI.7: 4쿼터·연장 마지막 2분에 백코트에서 공을 가진 공격 팀이 부른 타임아웃은 프런트코트 28피트 해시마크로 전진(advanced).
+    //   어느 경우든 세트 인바운드라 수비가 정돈됨 → 속공·풋백 없음(직전 라이브볼 진입 효과 소멸).
+    const holderId = state.possession === 'home' ? state.home.id : state.away.id;
+    const inFrontcourt = state.inbound?.spot === 'frontcourt' || state.lastEntryWasOffReb === true || state.lastEntryWasFlagrant === true;
+    const lastTwoMin = state.quarter >= REGULATION_PERIODS && state.gameClock <= 120;
+    const advance = !inFrontcourt && kind === 'team' && team.id === holderId && lastTwoMin;
+    state.inbound = { spot: inFrontcourt || advance ? 'frontcourt' : 'backcourt', advanced: advance || undefined };
+    state.lastEntryWasDefReb = false;
+    state.lastEntryWasSteal = false;
+    state.lastEntryPlayerId = undefined;
+    state.lastOffRebClose = false;
+    state.lastPossessionLiveBall = false;
+
     // 로그
-    const text = kind === 'mandatory'
+    const text = (kind === 'mandatory'
         ? `의무 타임아웃 (잔여: ${team.timeouts}회)`
         : isUserCall
             ? `⏸ 타임아웃 선언 (잔여: ${team.timeouts}회)`
-            : `타임아웃 (잔여: ${team.timeouts}회)`;
+            : `타임아웃 (잔여: ${team.timeouts}회)`)
+        + (advance ? ' — 프런트코트에서 인바운드' : '');   // [2026-11-04] 마지막 2분 전진 옵션
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
@@ -329,12 +350,14 @@ export function createGameState(
 function applyJumpBall(state: GameState): void {
     const jb = resolveJumpBall(state);
     state.possession = jb.winner;
+    // [2026-11-04] 경기 첫 점프볼 승자 — 4쿼터 공격권, 진 팀은 2·3쿼터 공격권 (NBA Rule 6, client 미러 참조)
+    if (state.quarter === 1) state.openingTipWinner = jb.winner;
     const winnerTeam = jb.winner === 'home' ? state.home : state.away;
     const won  = jb.winner === 'home' ? jb.homeJumper : jb.awayJumper;
     const lost = jb.winner === 'home' ? jb.awayJumper : jb.homeJumper;
     // [2026-10-26] 센터 서클 점프볼 — 누가 나섰고 누가 따냈는지, 어느 팀 공격으로 시작하는지
     const homeJ = jb.homeJumper?.playerName, awayJ = jb.awayJumper?.playerName;
-    const opening = state.quarter === 1 ? '경기를 시작합니다' : `${periodLabel(state.quarter)}을 시작합니다`;
+    const opening = state.quarter === 1 ? '경기를 시작합니다' : `${eulReul(periodLabel(state.quarter))} 시작합니다`;
     state.logs.push({
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
@@ -400,7 +423,7 @@ function pushPeriodEndCommentary(state: GameState, result: PossessionResult, bef
         const ledBefore = scorerSide === 'home' ? before.home > before.away : before.away > before.home;
         if (!finalStretch) {
             // 1~3쿼터는 마지막 공격이 남은 시간을 다 쓰는 구조라 0:00 득점이 흔하다(쿼터의 ~37%) — 3점만 버저비터로 부른다
-            if (result.zone === '3PT') push(team.id, `버저비터! ${name}, 종료 버저와 함께 3점슛을 꽂으며 ${label}${q === 2 ? '을' : '를'} 마칩니다.`);
+            if (result.zone === '3PT' && !result.isHeave) push(team.id, `버저비터! ${name}, 종료 버저와 함께 3점슛을 꽂으며 ${label}${q === 2 ? '을' : '를'} 마칩니다.`);
         } else if (tied) {
             push(team.id, goesOvertime
                 ? `버저비터! ${name}, 종료 버저와 함께 동점을 만들어 경기를 ${nextOt}차 연장으로 끌고 갑니다!`
@@ -456,6 +479,122 @@ function executeSubstitution(
 // ② 포세션 1회 처리 (쿼터 경계 포함)
 // ─────────────────────────────────────────────────────────────
 
+/** [2026-11-05] 고의 파울 결과(파울 작전) — 비슈팅 파울로 처리(팀 파울·보너스 자유투·보너스 전 사이드 인바운드는 기존 경로) (client 미러 참조) */
+function buildIntentionalFoulResult(state: GameState, plan: FoulStrategyPlan): PossessionResult {
+    const offTeam = state.possession === 'home' ? state.home : state.away;
+    const defTeam = offTeam === state.home ? state.away : state.home;
+    return {
+        type: 'foul', offTeam, defTeam, actor: plan.target, defender: plan.fouler, points: 0, isAndOne: false,
+        isSwitch: false, isZone: false, isIntentional: true, intentionalKind: plan.kind, intentionalTime: plan.time,
+    } as PossessionResult;
+}
+
+/** [2026-11-05] 드리블 아웃 결과 — 슛·기록 없이 남은 시간 소멸. 공을 쥐는 선수 = 코트 위 최고 핸들러 (client 미러 참조) */
+function buildDribbleOutResult(state: GameState): PossessionResult {
+    const offTeam = state.possession === 'home' ? state.home : state.away;
+    const defTeam = offTeam === state.home ? state.away : state.home;
+    const handler = [...offTeam.onCourt].sort((a, b) => b.archetypes.handler - a.archetypes.handler)[0];
+    return {
+        type: 'clockExpire', offTeam, defTeam, actor: handler, points: 0, isAndOne: false,
+        isSwitch: false, isZone: false, expireSeconds: Math.ceil(state.gameClock), expireKind: 'dribbleOut',
+    } as PossessionResult;
+}
+
+/** [2026-11-05] 피리어드 막판 히브 결과 — 3점 시도, 리바운드 없음(버저), 성공 확률은 endOfPeriodShot (client 미러 참조) */
+function buildHeaveResult(state: GameState, plan: Extract<EndShotPlan, { kind: 'heave' }>): PossessionResult {
+    const offTeam = state.possession === 'home' ? state.home : state.away;
+    const defTeam = offTeam === state.home ? state.away : state.home;
+    const made = Math.random() < plan.hitProb;
+    return {
+        type: made ? 'score' : 'miss', offTeam, defTeam, actor: plan.shooter, points: made ? 3 : 0, isAndOne: false,
+        isSwitch: false, isZone: false, zone: '3PT', subZone: 'zone_atb3_c', shotType: 'Pullup',
+        isHeave: true, heaveFt: plan.distanceFt,
+    } as PossessionResult;
+}
+
+/** [2026-11-05] 백코트 1초 — 인바운드 받는 사이 시간 만료(슛 없음) (client 미러 참조) */
+function buildInboundExpireResult(state: GameState): PossessionResult {
+    const offTeam = state.possession === 'home' ? state.home : state.away;
+    const defTeam = offTeam === state.home ? state.away : state.home;
+    const handler = [...offTeam.onCourt].sort((a, b) => b.archetypes.handler - a.archetypes.handler)[0];
+    return {
+        type: 'clockExpire', offTeam, defTeam, actor: handler, points: 0, isAndOne: false,
+        isSwitch: false, isZone: false, expireSeconds: Math.ceil(state.gameClock), expireKind: 'inbound',
+    } as PossessionResult;
+}
+
+/**
+ * [2026-11-05] A-9-4 — 같은 데드볼(같은 팀·피리어드·시각)의 연달아 붙은 교체 줄에서 들어왔다 바로 나간(또는 나갔다 바로 들어온)
+ * 선수가 있으면 실제 변화만 남긴 한 줄로 합친다. 예: 6반칙 퇴장 교체 직후 가비지 일괄 교체가 그 대체 선수를 다시 빼는 경우.
+ * 사이에 플레이 줄(자유투 등)이 있으면 그 선수가 실제로 뛴 것이라 합치지 않는다("가비지 타임" 안내 줄만 건너뜀). 합친 줄은 사유 표기를 뺀다. (client 미러 참조)
+ */
+const SUB_LOG_RE = /^교체: IN \[(.*?)\] OUT \[(.*?)\]/;
+function mergeSubChurnLogs(state: GameState, from: number): void {
+    const logs = state.logs;
+    const isSub = (k: number) => SUB_LOG_RE.test(logs[k].text);
+    for (let i = Math.max(0, from); i < logs.length; i++) {
+        if (!isSub(i)) continue;
+        // 같은 팀·시각의 교체 줄 묶음 — 사이의 "가비지 타임" 안내 줄만 건너뛴다(플레이 줄이 끼면 실제로 뛴 것)
+        const idx = [i];
+        for (let k = i + 1; k < logs.length; k++) {
+            if (logs[k].quarter !== logs[i].quarter || logs[k].timeRemaining !== logs[i].timeRemaining) break;
+            if (isSub(k)) { if (logs[k].teamId !== logs[i].teamId) break; idx.push(k); continue; }
+            if (!logs[k].text.startsWith('가비지 타임')) break;
+        }
+        if (idx.length < 2) continue;
+        const ins: string[] = [], outs: string[] = [];
+        let churn = false;
+        for (const k of idx) {
+            const m = logs[k].text.match(SUB_LOG_RE)!;
+            const kIn = m[1].split(',').map(t => t.trim()).filter(Boolean);
+            const kOut = m[2].split(',').map(t => t.trim()).filter(Boolean);
+            for (const n of kOut) { const at = ins.indexOf(n); if (at >= 0) { ins.splice(at, 1); churn = true; } else outs.push(n); }
+            for (const n of kIn) { const at = outs.indexOf(n); if (at >= 0) { outs.splice(at, 1); churn = true; } else ins.push(n); }
+        }
+        if (!churn) continue;
+        // 마지막 교체 줄 자리에 합친 한 줄(안내 줄 뒤), 나머지 교체 줄은 제거
+        const last = idx[idx.length - 1];
+        if (ins.length > 0 && outs.length > 0) logs[last] = { ...logs[last], text: `교체: IN [${ins.join(', ')}] OUT [${outs.join(', ')}]` };
+        else idx.push(last);
+        for (const k of idx.slice(0, -1).sort((x, y) => y - x)) logs.splice(k, 1);
+        i -= 1;   // 같은 자리부터 다시(다른 팀 묶음)
+    }
+}
+
+/** [2026-11-05] 쿼터 사이 라인업 정리 중 생긴 교체 줄·"복귀 준비" 줄 제거(그 외 안내 줄은 유지) */
+function silenceLineupLogs(state: GameState, from: number): void {
+    state.logs.push(...state.logs.splice(from).filter(l => !l.text.startsWith('교체:') && !l.text.includes('복귀 준비')));
+}
+
+/** 데드볼 교체 한 사이클 — 가비지 판정 → 긴급 교체(퇴장·부상·파울 트러블·탈진) → 정기 로테이션.
+ *  [2026-11-05] stepPossession 클로저에서 분리 — 쿼터 사이 라인업(A 블록)도 같은 사이클을 쓴다. */
+function runSubstitutionCycle(state: GameState, currentMinute: number, currentTotalSec: number): void {
+    // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
+    //      [2026-10-27] 발동 시 즉시 일괄 교체하므로 데드볼 보류 대상에 포함.
+    //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
+    updateGarbageTime(state, state.home);
+    updateGarbageTime(state, state.away);
+
+    // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
+    //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
+    //      맵을 갱신해야 rotation 체크가 올바른 라인업을 구성함.
+    //      (이전: rotation이 먼저 실행되어 pf≥6 선수를 fallback으로 처리 → 승계 미실행 버그)
+    const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
+    const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
+
+    // 3. 교체 실행 (가비지타임 일괄 / 임시·영구 분기)
+    const hGarbage = hSubs.filter(r => r.benchReason === 'garbage');
+    const aGarbage = aSubs.filter(r => r.benchReason === 'garbage');
+    if (hGarbage.length > 0) executeGarbageSubstitution(state, state.home, hGarbage.map(r => r.outPlayer));
+    if (aGarbage.length > 0) executeGarbageSubstitution(state, state.away, aGarbage.map(r => r.outPlayer));
+    hSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.home, req, currentMinute));
+    aSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.away, req, currentMinute));
+
+    // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
+    checkAndApplyRotation(state, state.home, currentTotalSec);
+    checkAndApplyRotation(state, state.away, currentTotalSec);
+}
+
 export function stepPossession(state: GameState): StepResult {
     // ── A. 쿼터 전환 처리 (이전 스텝에서 gameClock가 0이 됐을 때 진입) ──
     // resume 후 첫 call: 새 쿼터 셋업만 하고 B로 fall-through → 첫 포세션까지 한 번에 실행
@@ -475,6 +614,7 @@ export function stepPossession(state: GameState): StepResult {
         state.home.fouls = 0;
         state.away.fouls = 0;
         startTimeoutPeriod(state); // [2026-10-22] 의무 타임아웃 슬롯 리셋 + 4Q 진입 시 보유 4회 상한
+        state.miscTracker = undefined;   // [2026-11-05] 피리어드 시작은 새 공격권 — 직전 피리어드의 턴오버·공격 리바운드 상태를 잇지 않는다(teamMisc.ts)
 
         const transitionTotalSec = periodStartSec(state.quarter);
         resetMomentum(state, transitionTotalSec);
@@ -492,14 +632,36 @@ export function stepPossession(state: GameState): StepResult {
             recoverAllPlayers(state, C.QUARTER_BREAK_RECOVERY);
         }
 
+        // [2026-11-04] 쿼터 시작 공격권 — NBA Rule 6: 경기 첫 점프볼 승자가 4쿼터, 상대가 2·3쿼터를 엔드라인 인바운드로 시작 (client 미러 참조).
+        //   이전엔 직전 쿼터 마지막 공격 결과를 그대로 이어가 2~4쿼터 시작의 ~52%가 규정과 달랐다. 연장은 아래 점프볼.
+        //   점프볼 승자 정보가 없는 상태(배포 전에 시작된 라이브 경기)는 기존처럼 이어간다.
+        if (!isOvertimePeriod(state.quarter) && state.openingTipWinner) {
+            const tip = state.openingTipWinner;
+            state.possession = state.quarter === 4 ? tip : (tip === 'home' ? 'away' : 'home');
+        }
+        // [2026-11-04] 피리어드 시작 = 데드볼 인바운드 — 직전 쿼터의 수비 리바운드·스틸·공격 리바운드 진입 상태를 비워
+        //   쿼터 첫 공격이 속공·풋백으로 이어지지 않게 한다(이전엔 경기당 ~0.4회 쿼터 첫 공격 속공)
+        state.lastEntryWasDefReb = false;
+        state.lastEntryWasSteal = false;
+        state.lastEntryWasOffReb = false;
+        state.lastEntryWasFlagrant = false;
+        state.lastEntryPlayerId = undefined;
+        state.lastOffRebounderId = undefined;
+        state.lastOffRebClose = undefined;
+        state.inbound = isOvertimePeriod(state.quarter) ? undefined : { spot: 'backcourt' };   // 연장은 점프볼(라이브볼) 시작
+        state.lastPossessionLiveBall = false;
+        state.clockModeLogged = undefined;
+        const periodStartTeam = state.possession === 'home' ? state.home : state.away;
         state.logs.push({
             quarter: state.quarter,
             timeRemaining: formatTime(state.gameClock),
             teamId: 'SYSTEM',
+            // [2026-11-04] 정규 쿼터는 공격 팀 표시 — "2쿼터 시작 (시카고 차저스 공격)". 연장은 점프볼 로그가 공격 팀을 알린다.
             text: isOvertimePeriod(state.quarter) ? `${periodLabel(state.quarter)} 시작`
-                : state.quarter === 3 ? '하프타임 종료 — 3쿼터 시작' : `${state.quarter}쿼터 시작`,
+                : `${state.quarter === 3 ? '하프타임 종료 — 3쿼터 시작' : `${state.quarter}쿼터 시작`} (${periodStartTeam.name} 공격)`,
             type: 'info',
         });
+        const lineupLogStart = state.logs.length;   // [2026-11-05] 연장 선발 투입도 교체 줄을 남기지 않는다(쿼터 사이 라인업과 같은 원칙)
         // [2026-10-26] 연장은 선발 5명으로 시작(표 43~47칸 재구성 후 바로 투입) → 점프볼
         //   (체력 회복·팀파울/모멘텀 리셋·Hot/Cold 반감은 위 쿼터 휴식과 동일)
         if (isOvertimePeriod(state.quarter)) {
@@ -509,6 +671,7 @@ export function stepPossession(state: GameState): StepResult {
             }
             applyJumpBall(state);
         }
+        silenceLineupLogs(state, lineupLogStart);
         // return하지 않고 B로 진행 → 새 쿼터의 첫 포세션을 이 step에서 실행
     }
 
@@ -542,7 +705,29 @@ export function stepPossession(state: GameState): StepResult {
 
     // [2026-10-26] 마지막 연장 동점·24초 이내 공격 = 결승 공격(시간을 끝까지 쓰고 반드시 득점)
     const decisive = isDecisivePossession(state);
-    const result = (decisive ? simulateDecisivePossession(state, clutchContext) : null) ?? simulatePossession(state, { clutchContext });
+    // [2026-11-05] 드리블 아웃 — 4Q·연장, 샷클락이 꺼진 구간(남은 시간 ≤ 샷클락)에서 앞선 팀은 슛 없이 남은 시간을 흘려보낸다 (client 미러 참조).
+    //   지는 팀의 고의 파울(시간 멈추기)은 아직 없음(별도 과제) — 그래서 리드 폭과 무관하게 경기가 그대로 끝난다.
+    const offLeadNow = state.possession === 'home' ? state.home.score - state.away.score : state.away.score - state.home.score;
+    // [2026-11-05] 파울 작전·역파울 작전(foulStrategy) — 드리블 아웃보다 먼저: 지는 팀은 시계를 세우려 공을 잡은 선수에게 바로 파울 (client 미러 참조)
+    const foulPlan = !decisive ? decideFoulStrategy(state) : null;
+    const dribbleOut = !decisive && !foulPlan && state.quarter >= REGULATION_PERIODS && state.gameClock > 0 && state.gameClock <= state.shotClock && offLeadNow >= 1;
+    state.clockMode = undefined;   // [2026-11-05] timeEngine이 이번 포세션에 적용한 상황 규칙 — 아래에서 안내 줄로 사용
+    // [2026-11-05] 피리어드 막판 슛(endOfPeriodShot) — 샷클락 꺼진 6초 이하: 히브·인바운드 중 시간 만료는 여기서 결과를 만들고,
+    //   밀고 올라가기(Transition)·프런트코트 캐치앤슛은 플레이를 고정해 simulatePossession에 넘긴다 (client 미러 참조)
+    const endShot = !decisive && !foulPlan && !dribbleOut ? decideEndOfPeriodShot(state) : null;
+    if (endShot && (endShot.kind === 'rush' || endShot.kind === 'catchShoot')) {
+        state.forcedPlayType = endShot.kind === 'rush' ? 'Transition' : 'CatchShoot';
+        state.endShotRush = true;
+    }
+    const result = foulPlan ? buildIntentionalFoulResult(state, foulPlan)
+        : dribbleOut ? buildDribbleOutResult(state)
+        : endShot?.kind === 'heave' ? buildHeaveResult(state, endShot)
+        : endShot?.kind === 'expire' ? buildInboundExpireResult(state)
+        : (decisive ? simulateDecisivePossession(state, clutchContext) : null) ?? simulatePossession(state, { clutchContext });
+    state.forcedPlayType = undefined;
+    state.endShotRush = undefined;
+    // [2026-11-05] 막판 밀고 올라가기가 데드볼 인바운드(타임아웃·득점·파울 후)에서 시작됐으면 속공이 아님 — 문구용 표시(수비 리바운드·스틸 직후는 실제 속공) (client 미러 참조)
+    if (endShot?.kind === 'rush' && result.playType === 'Transition' && !state.lastEntryWasDefReb && !state.lastEntryWasSteal) result.isEndRush = true;
     state.courtSnapshot = computeCourtPositions(result, state.home.id);
     // [2026-10-07] 테크니컬 파울은 데드볼 중 발생하는 독립 이벤트 — 시간 차감 없이(중단 시점 그대로) 자유투만
     // 처리하고 같은 팀 공격을 재개한다. 평균 샷클락 소모 통계에서도 제외. 플래그런트는 플레이 중 발생하므로
@@ -557,12 +742,47 @@ export function stepPossession(state: GameState): StepResult {
     const fouledTeam = state.possession === 'home' ? state.away : state.home;
     const isNonBonusFoul = result.type === 'foul' && fouledTeam.fouls < teamFoulLimit(state.quarter);   // [2026-10-26] 연장은 3
     let timeTaken = decisive ? state.gameClock
+        : result.type === 'clockExpire' || result.isHeave ? state.gameClock   // [2026-11-05] 드리블 아웃·인바운드 만료·버저 히브 = 남은 시간 전부
+        : result.isIntentional ? Math.min(state.gameClock, result.intentionalTime ?? 2)   // [2026-11-05] 고의 파울 = 인바운드~파울 1~4초
         : isTechnical ? 0
         : result.type === 'shotClockViolation' ? Math.min(state.shotClock, state.gameClock)
         // [2026-10-23] simulatePossession이 미리 뽑은 값이 있으면 그대로(프레스 시간·샷클락 막판 페널티와 일치), 없으면 기존 계산
         : state.preSampledPossessionTime !== undefined ? Math.min(state.gameClock, state.preSampledPossessionTime)
         : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
-    if (isNonBonusFoul) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
+    if (isNonBonusFoul && !result.isIntentional) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
+
+    // [2026-11-05] 상황별 클락 운영 안내 줄(2-for-1·마지막 슛·샷클락 끝까지·서두르기·시간 끌기) — 포세션 시작 시각(시간 차감 전)으로 기록 (client 미러 참조).
+    //   같은 공격권 안의 같은 안내(비보너스 파울·공격 리바운드로 이어진 공격)는 한 번만.
+    const clockMode = state.clockMode;
+    state.clockMode = undefined;
+    if (clockMode && !decisive && !isTechnical && result.type !== 'clockExpire') {
+        const key = `${offTeam.id}:${clockMode}`;
+        if (state.clockModeLogged !== key) {
+            state.clockModeLogged = key;
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: formatTime(state.gameClock),
+                teamId: offTeam.id,
+                text: getClockManagementCommentary(clockMode, regionOf(offTeam)),
+                type: 'info',
+            });
+        }
+    }
+    // [2026-11-05] 파울 작전 시작 안내 — 팀·종류·피리어드당 한 번, 포세션 시작 시각 (client 미러 참조)
+    if (result.isIntentional) {
+        const fgKey = `${result.defTeam.id}:${result.intentionalKind}:${state.quarter}`;
+        state.foulGameLogged = state.foulGameLogged ?? [];
+        if (!state.foulGameLogged.includes(fgKey)) {
+            state.foulGameLogged.push(fgKey);
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: formatTime(state.gameClock),
+                teamId: result.defTeam.id,
+                text: getFoulStrategyCommentary(result.intentionalKind ?? 'trailing', regionOf(result.defTeam)),
+                type: 'info',
+            });
+        }
+    }
 
     // 포세션 시간 누적 (평균 샷클락 소모 추적) — 보너스 전 파울은 포세션이 이어지므로 시간만 더하고 횟수는 제외
     if (!isTechnical) {
@@ -573,17 +793,36 @@ export function stepPossession(state: GameState): StepResult {
 
     // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
     state.gameClock = Math.max(0, state.gameClock - timeTaken);
+    // [2026-11-05] 부상 줄은 시간 경과 중에 생기지만, 플레이 줄(슛·파울·자유투) 뒤·교체 줄 앞에 찍히도록 잠시 빼 두었다가
+    //   applyPossessionResult 직후 플레이 후 스코어로 다시 붙인다
+    const injuryLogStart = state.logs.length;
     updateOnCourtStates(state, timeTaken);
+    const injuryLogs = state.logs.splice(injuryLogStart);
 
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
 
-    // [2026-10-27] 득점 처리 전에 생긴 줄(시간 경과 중 부상 등 직접 push)은 처리 전 스코어로(client 미러 참조)
+    // [2026-10-27] 득점 처리 전에 생긴 줄(직접 push한 줄, 부상 줄은 위에서 따로 뺌)은 처리 전 스코어로(client 미러 참조)
     for (let i = logsBefore; i < state.logs.length; i++) {
         const log = state.logs[i];
         if (log.homeScore === undefined) { log.homeScore = state.home.score; log.awayScore = state.away.score; }
     }
-    const ftReb = applyPossessionResult(state, result);   // 마지막 자유투 실패 후 리바운드('off'|'def'), 없으면 null
+    // [2026-11-05] 실격(6반칙·퇴장) 선수는 파울 줄 직후·자유투 전에 바로 교체(NBA Rule 3 I.1·V.9) — 교체 선수가 자유투 리바운드 후보 (client 미러 참조)
+    const replaceDisqualified = (team: TeamState, player: LivePlayer) => {
+        if (!isOut(player) || !team.onCourt.some(p => p.playerId === player.playerId)) return;
+        const before = state.logs.length;
+        executeSubstitution(state, team, buildEjectionSubRequest(player), scheduleMinute(state));
+        for (let i = before; i < state.logs.length; i++) {
+            const log = state.logs[i];
+            if (log.homeScore === undefined) { log.homeScore = state.home.score; log.awayScore = state.away.score; }
+        }
+    };
+    const ftReb = applyPossessionResult(state, result, replaceDisqualified);   // 마지막 자유투 실패 후 리바운드('off'|'def'), 없으면 null
+    const playLogsEnd = state.logs.length;   // [2026-11-05] 피리어드 종료 해설을 끼워 넣을 자리 — 플레이 줄 바로 뒤(부상·교체 줄 앞)
+    for (const log of injuryLogs) {
+        log.homeScore = state.home.score; log.awayScore = state.away.score;
+        state.logs.push(log);
+    }
     const ftOffReb = ftReb === 'off';
 
     // [2026-10-27] 공격 리바운드 판정은 교체(아래 2~4번) 전에 — 교체가 리바운더를 벤치로 보내면 onCourt 검사가 실패해
@@ -591,6 +830,18 @@ export function stepPossession(state: GameState): StepResult {
     const isOffReb = ftOffReb
         || (result.type === 'miss' && !!result.rebounder
             && offTeam.onCourt.some(p => p.playerId === result.rebounder!.playerId));
+
+    // 포세션 전환 판정 (isOffReb는 교체 전에 판정) — [2026-11-05] 팀 미스크 득점 집계·박스 틱 기록이 먼저 필요해 득점 처리 직후로 올림
+    // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울, 보너스 전 비슈팅 파울
+    const retainPossession = isOffReb
+        || result.type === 'technicalFoul'
+        || result.type === 'flagrantFoul'
+        || result.type === 'fight'   // [2026-11-05] 싸움 — 공을 가진 팀이 공격권 유지(NBA Rule 12A VI.3), 이전엔 상대에게 넘어갔다 (client 미러 참조)
+        || isNonBonusFoul;
+
+    // [2026-11-05] 팀 미스크 득점 4종 누적(teamMisc.ts) — 공격권 전환 전에 호출해 이번 결과의 진입 상태(턴오버 직후·공격 리바운드 이후)로 판정.
+    //   반환 델타는 박스 틱(m)에 실어 라이브 중계가 시점별로 점진 공개하게 한다.
+    const miscDelta = trackTeamMisc(state, result, scoreBefore, isOffReb, retainPossession);
 
     // 득점 후 momentum 업데이트
     const currentTotalSecAfter = elapsedGameSec(state);
@@ -619,9 +870,10 @@ export function stepPossession(state: GameState): StepResult {
     const currentMinute = scheduleMinute(state);
 
     // 박스스코어 점진 공개용 델타 타임라인 기록 (교체 전 코트 라인업 기준)
-    recordBoxTick(state, currentTotalSec, timeTaken, result);
+    recordBoxTick(state, currentTotalSec, timeTaken, result, miscDelta);
 
     // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 체크에 반영)
+    const subLogStart = state.logs.length;   // [2026-11-05] 피리어드 종료 시 아래 교체 줄을 지우는 기준
     checkTemporaryReturns(state, state.home, currentMinute);
     checkTemporaryReturns(state, state.away, currentMinute);
 
@@ -632,55 +884,42 @@ export function stepPossession(state: GameState): StepResult {
         && (result.type === 'miss' || (result.type === 'turnover' && !!result.isSteal) || ftReb !== null);
     const hasStoppage = [state.home, state.away].some(t => t.onCourt.some(p => (p.health === 'Injured' && p.injuredThisGame) || isOut(p)));
     const subsDeferred = isLiveBall && !hasStoppage;
-    const runSubstitutions = () => {
-        // 1-b. [2026-10-26] 가비지 타임 발동/해제 — 4Q 남은 시간 대비 점수 차(rotationLogic.updateGarbageTime).
-        //      [2026-10-27] 발동 시 즉시 일괄 교체하므로 데드볼 보류 대상에 포함.
-        //      발동 시 로테이션 표 전체를 가비지 라인업으로 덮어쓰고, 해제 시 원래 표로 복원(실제 투입은 아래 4번).
-        updateGarbageTime(state, state.home);
-        updateGarbageTime(state, state.away);
-
-        // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
-        //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
-        //      맵을 갱신해야 rotation 체크가 올바른 라인업을 구성함.
-        //      (이전: rotation이 먼저 실행되어 pf≥6 선수를 fallback으로 처리 → 승계 미실행 버그)
-        const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
-        const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
-
-        // 3. 교체 실행 (가비지타임 일괄 / 임시·영구 분기)
-        const hGarbage = hSubs.filter(r => r.benchReason === 'garbage');
-        const aGarbage = aSubs.filter(r => r.benchReason === 'garbage');
-        if (hGarbage.length > 0) executeGarbageSubstitution(state, state.home, hGarbage.map(r => r.outPlayer));
-        if (aGarbage.length > 0) executeGarbageSubstitution(state, state.away, aGarbage.map(r => r.outPlayer));
-        hSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.home, req, currentMinute));
-        aSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.away, req, currentMinute));
-
-        // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
-        checkAndApplyRotation(state, state.home, currentTotalSec);
-        checkAndApplyRotation(state, state.away, currentTotalSec);
-    };
+    state.lastPossessionLiveBall = isLiveBall;   // [2026-11-04] 타임아웃 요청 자격·의무 타임아웃 보류 판정용 (timeoutPolicy.canCallTimeout, client 미러 참조)
+    const runSubstitutions = () => runSubstitutionCycle(state, currentMinute, currentTotalSec);
     if (!subsDeferred) runSubstitutions();
-
-    // 포세션 전환 (isOffReb는 교체 전에 위에서 판정)
-    // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울, 보너스 전 비슈팅 파울
-    const retainPossession = isOffReb
-        || result.type === 'technicalFoul'
-        || result.type === 'flagrantFoul'
-        || isNonBonusFoul;
+    // [2026-11-05] 피리어드가 끝난 0:00의 교체 = 쿼터 사이 라인업 — 다음 피리어드 첫 칸 선수를 코트에 세우되(휴식 중 화면도 그 라인업)
+    //   교체 줄·"복귀 준비" 줄은 남기지 않는다(사용자 결정: 그 시간에 뛸 선수가 코트에 있을 뿐, 교체로 기록하지 않음) (client 미러 참조)
+    if (state.gameClock <= 0) silenceLineupLogs(state, subLogStart);
 
     if (retainPossession) {
+        // [2026-11-04] 재개 위치(세트 인바운드, client 미러 참조) — 공격 리바운드는 라이브볼이라 해당 없음. 테크니컬은 중단 지점(이번 공격의 진입 기준),
+        //   플래그런트는 프런트코트(샷클락 14와 같은 전제), 비보너스 파울은 파울 지점(프레스 파울 = 백코트, 그 외 하프코트 = 프런트코트)
+        const wasFrontcourt = state.inbound?.spot === 'frontcourt' || state.lastEntryWasOffReb === true || state.lastEntryWasFlagrant === true;
+        state.inbound = isOffReb ? undefined
+            : result.type === 'technicalFoul' ? { spot: wasFrontcourt ? 'frontcourt' : 'backcourt' }
+            : result.type === 'flagrantFoul' ? { spot: 'frontcourt' }
+            : result.type === 'fight' ? { spot: 'frontcourt' }   // 공격 도중(하프코트) 중단 — 사이드라인, 자유투 라인 연장선보다 엔드라인 쪽은 아님(Rule 12A VI.3)
+            : { spot: result.pressEvent || result.isIntentional ? 'backcourt' : 'frontcourt' };   // [2026-11-05] 고의 파울은 인바운드 직후(백코트)
         // [2026-10-07] 오펜시브 리바운드 14 / 플래그런트 14(프런트코트 인바운드 규정) / 테크니컬은 중단 시점 샷클락 유지
         // [2026-10-23] 보너스 전 비슈팅 파울: 잔여 샷클락이 14초 미만이면 14초로(NBA 킥볼/수비 파울 규정)
         if (isOffReb) state.shotClock = 14;
         else if (result.type === 'flagrantFoul') state.shotClock = 14;
-        else if (isNonBonusFoul) state.shotClock = Math.max(14, state.shotClock - timeTaken);
+        else if (isNonBonusFoul || result.type === 'fight') state.shotClock = Math.max(14, state.shotClock - timeTaken);   // [2026-11-05] 싸움 = 수비 팀 테크니컬 규정(Rule 7 IV.5.c: 중단 시점 유지, 14초 미만이면 14초)
         // technicalFoul: state.shotClock 그대로
         state.lastEntryWasDefReb = false;
         state.lastEntryWasSteal = false;
         state.lastEntryPlayerId = undefined;
         state.lastEntryWasOffReb = isOffReb;
+        // [2026-11-04] 공격 리바운더·근거리 여부(statsMappers.pendingOffReb) → 다음 포세션 풋백 판정·슈터 (client 미러 참조)
+        state.lastOffRebounderId = isOffReb ? state.pendingOffReb?.playerId : undefined;
+        state.lastOffRebClose = isOffReb ? !!state.pendingOffReb?.close : undefined;
         state.lastEntryWasFlagrant = result.type === 'flagrantFoul';
     } else {
         state.lastEntryWasOffReb = false;
+        state.lastOffRebounderId = undefined;
+        state.inbound = undefined;   // [2026-11-04] 공격권 전환 = 라이브볼(리바운드·스틸) 또는 일반 데드볼(득점·자유투·턴오버) 진입
+        state.clockModeLogged = undefined;
+        state.lastOffRebClose = undefined;
         state.lastEntryWasFlagrant = false;
         // [New 2026-07] 수비 리바운드로 공격권이 넘어간 경우만 true — defReb 속공 트레이드오프용
         state.lastEntryWasDefReb = result.type === 'miss' && !isOffReb;
@@ -695,8 +934,15 @@ export function stepPossession(state: GameState): StepResult {
 
     // [2026-10-26] 피리어드 종료 해설 — 버저비터(동점·위닝샷 포함)와 "N쿼터 종료/전반 종료/연장 돌입" 안내.
     // 경기가 끝나는 경우의 마무리(위닝샷·경기 종료)는 _handleGameEnd.
-    if (state.gameClock <= 0) pushPeriodEndCommentary(state, result, scoreBefore);
+    // [2026-11-05] A-9-3 — 해설은 lastGoAhead 갱신 뒤라 여기서 만들지만, 줄은 플레이 줄 바로 뒤로 옮긴다
+    //   (전: 득점 → 교체 → 버저비터 / 후: 득점 → 버저비터·쿼터 종료 → 부상·교체)
+    if (state.gameClock <= 0) {
+        const commentaryStart = state.logs.length;
+        pushPeriodEndCommentary(state, result, scoreBefore);
+        state.logs.splice(playLogsEnd, 0, ...state.logs.splice(commentaryStart));
+    }
 
+    mergeSubChurnLogs(state, logsBefore);
     const newLogs = state.logs.slice(logsBefore);
 
     // 각 로그에 현재 스코어 스냅샷 기록 (포세션 결과 적용 후)
@@ -724,11 +970,20 @@ export function stepPossession(state: GameState): StepResult {
 
     // 타임아웃 체크 (포세션 완료 후, 쿼터 중간에만) — 런 대응/초과분 소진/4Q 전략/의무를 정책 모듈이 통합 판단.
     // 의무 타임아웃도 일반 타임아웃과 동일하게 isTimeout=true (라이브 UI 일시정지).
+    // [2026-11-05] 파울 작전 자유투가 끝나 파울한(지는) 팀이 공을 받았으면 즉시 타임아웃 후보(timeoutPolicy.decideFoulGameTimeout) (client 미러 참조)
+    {
+        const fouling = result.defTeam;
+        const other = fouling === state.home ? state.away : state.home;
+        state.foulGameTimeoutTeamId = (result.isIntentional && !retainPossession
+            && state.gameClock <= SIM_CONFIG.FOUL_STRATEGY.TIMEOUT_AFTER_FT_CLOCK && fouling.score < other.score) ? fouling.id : undefined;
+    }
     const timeoutDecision = decideTimeout(state, detectRunVictimId(state));
+    state.foulGameTimeoutTeamId = undefined;
     if (timeoutDecision) {
         applyTimeout(state, timeoutDecision.teamId, false, timeoutDecision.mandatory ? 'mandatory' : 'team');
         if (subsDeferred) runSubstitutions();   // [2026-10-27] 타임아웃 = 데드볼 → 보류된 교체 처리
         // 타임아웃 로그 포함하여 전체 newLogs 재수집
+        mergeSubChurnLogs(state, logsBefore);
         const allNewLogs = state.logs.slice(logsBefore);
         const sh = state.home.score, sa = state.away.score;
         // [2026-10-27] `!log.homeScore`는 홈 0점 줄을 빈 줄로 오인해 덮어썼음 → undefined만 채움(client 미러 참조)
@@ -958,6 +1213,7 @@ export function extractSimResult(state: GameState): SimulationResult {
         rotationData: state.rotationHistory,
         pbpShotEvents: state.shotEvents,
         playTypeStats: state.playTypeStats,
+        teamMisc: state.teamMisc ?? emptyTeamMisc(),   // [2026-11-05] 팀 미스크 득점 4종 (teamMisc.ts)
         injuries: state.injuries,
         suspensions: state.suspensions,
         boxTimeline: state.boxTimeline,

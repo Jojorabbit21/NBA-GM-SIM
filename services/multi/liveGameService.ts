@@ -26,6 +26,8 @@ export interface WindowedGameView {
     homeScore?:    number;
     awayScore?:    number;
     rotationData?: RotationData; // final일 때만 포함
+    /** [2026-11-05] 팀 미스크 득점 4종(POTV/FBPS/PITP/SPTS) — final일 때만 포함. 저장 전 경기는 null */
+    teamMisc?:    { home: { potv: number; fbps: number; pitp: number; spts: number }; away: { potv: number; fbps: number; pitp: number; spts: number } } | null;
 }
 
 /** live 폴링 시 이미 받은 만큼(count)을 서버에 알려 그 이후 새로 공개된 구간만 받기 위한 커서. */

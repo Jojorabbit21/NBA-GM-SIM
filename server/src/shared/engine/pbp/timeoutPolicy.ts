@@ -25,6 +25,15 @@ export const TIMEOUT_RULES = {
     FINAL_SPEND_CLOCK: 60,      // 4쿼터 마지막 1분 — 남은 타임아웃 전부 소진
     FINAL_GAP_SEC: 20,
     RUN_DIFF: 8,                // 상대 런 판정(기존 checkAITimeout 기준 유지)
+    // [2026-11-05] 4Q·연장 막판 운영 (client 미러 참조) — decideLateGameTimeout·lateReserve·hasAdvancePurpose
+    LATE_CLOCK: 60,             // 막판 공격 타임아웃 판정 구간(남은 초 이하)
+    LATE_CLOSE_MAX: 3,          // 0~3점 열세 = 한 포제션 → 타임아웃 써서 ATO·프런트코트 인바운드
+    LATE_MAX_DEFICIT: 9,        // 4~9점 = 일반 공격엔 안 쓰고 파울 작전 자유투 뒤 전진용으로 보존
+    LATE_SHORT_CLOCK: 8,        // 이 시간 이하 백코트면 점수 차(0~9)와 무관하게 타임아웃(히브 대신 프런트코트 슛)
+    RESERVE_MARGIN: 9,          // 1분 전 보존: 점수 차 이내 접전이면
+    RESERVE_TRAILING: 2,        //   지거나 동점인 팀은 마지막 1분용으로 이만큼 남김(2:59 이후 보유 상한이 2)
+    RESERVE_LEADING: 1,         //   앞선 팀
+    RESERVE_OT: 1,              //   연장(피리어드당 2개)
 } as const;
 
 type Side = 'home' | 'away';
@@ -37,6 +46,17 @@ export interface TimeoutDecision {
 const teamsOf = (state: GameState): TeamState[] => [state.home, state.away];
 const sideOf = (state: GameState, team: TeamState): Side => (team.id === state.home.id ? 'home' : 'away');
 const elapsedSec = (state: GameState): number => elapsedGameSec(state);
+
+/**
+ * [2026-11-04] 타임아웃 요청 가능 여부 — NBA Rule 5 VI.4: "공이 데드볼이거나 요청한 팀 선수가 공을 잡고 있을 때만" (client 미러 참조).
+ * 직전 포세션이 라이브볼(리바운드·스틸)로 끝났으면 지금 공을 가진 팀(state.possession)만 부를 수 있다.
+ * 유저 타임아웃(useLiveGame)과 AI 판정(decideTimeout) 공용.
+ */
+export function canCallTimeout(state: GameState, teamId: string): boolean {
+    if (!state.lastPossessionLiveBall) return true;
+    const holder = state.possession === 'home' ? state.home.id : state.away.id;
+    return holder === teamId;
+}
 
 /** 유저가 직접 조작하는 팀(라이브 싱글, 위임 안 함)은 자동 자발 타임아웃 대상이 아님 */
 function isAutoTeam(state: GameState, team: TeamState): boolean {
@@ -131,29 +151,93 @@ function wantsStrategic(state: GameState, team: TeamState): boolean {
  * runVictimId: 상대 런을 맞고 있는 팀 ID(없으면 null) — 기존 checkAITimeout 의 런 판정 결과.
  * 우선순위: 4Q 전략 → 초과분 소진 → 런 대응 → 마지막 1분 소진 → 의무 타임아웃.
  */
+/** [2026-11-05] 공을 가진 팀이 백코트에서 새 공격을 시작하는지(타임아웃 = 마지막 2분 프런트코트 전진 대상) (client 미러 참조) */
+function inBackcourtWithBall(state: GameState, team: TeamState): boolean {
+    if (state.possession !== sideOf(state, team)) return false;
+    return !(state.inbound?.spot === 'frontcourt' || state.lastEntryWasOffReb === true || state.lastEntryWasFlagrant === true);
+}
+
+/** [2026-11-05] 1분 전 보존 — 4Q·연장 60초 전, 접전이면 마지막 1분용 예비량 (client 미러 참조) */
+function lateReserve(state: GameState, team: TeamState): number {
+    const R = TIMEOUT_RULES;
+    if (state.quarter < 4 || state.gameClock <= R.LATE_CLOCK) return 0;
+    const side = sideOf(state, team);
+    const mine = side === 'home' ? state.home.score : state.away.score;
+    const theirs = side === 'home' ? state.away.score : state.home.score;
+    if (Math.abs(mine - theirs) > R.RESERVE_MARGIN) return 0;
+    if (isOvertimePeriod(state.quarter)) return R.RESERVE_OT;
+    return theirs >= mine ? R.RESERVE_TRAILING : R.RESERVE_LEADING;
+}
+
+/** [2026-11-05] 4Q·연장 60초 이하 지거나 동점인 팀 — 타임아웃은 막판 공격·파울 작전 전용 규칙만 판단(전략·런·소진 규칙 제외) (client 미러 참조) */
+function lateGameOwned(state: GameState, team: TeamState): boolean {
+    if (state.quarter < 4 || state.gameClock > TIMEOUT_RULES.LATE_CLOCK) return false;
+    const side = sideOf(state, team);
+    return (side === 'home' ? state.home.score : state.away.score) <= (side === 'home' ? state.away.score : state.home.score);
+}
+
+/**
+ * [2026-11-05] 막판 공격 타임아웃 (client 미러 참조, 사용자 결정) — 4Q·연장 60초 이하, 지거나 동점인 팀이 백코트에서 공을 잡았을 때:
+ *  - 0~3점(한 포제션): 샷클락 꺼짐(마지막 공격)이면 무조건, 그 전이면 타임아웃 2개 이상일 때만(마지막 공격용 1개 보존)
+ *    → 작전 타임(ATO) 후 마지막 2분 프런트코트 전진(applyTimeout). ATO 자체 보너스는 없음(사용자 결정).
+ *  - 4~9점: 일반 공격엔 안 씀 — 빠르게 슛 → 파울 작전 → 자유투 뒤 전진(decideFoulGameTimeout)용으로 보존.
+ *  - 공통: 8초 이하 백코트면 무조건(히브 대신 프런트코트 슛).
+ * 유저 팀도 자동(파울 작전과 같은 기준), 간격 제한 없음.
+ */
+function decideLateGameTimeout(state: GameState): TimeoutDecision | null {
+    const R = TIMEOUT_RULES;
+    if (state.quarter < 4 || state.gameClock <= 0 || state.gameClock > R.LATE_CLOCK) return null;
+    const team = state.possession === 'home' ? state.home : state.away;
+    if (team.timeouts <= 0 || !canCallTimeout(state, team.id) || !inBackcourtWithBall(state, team)) return null;
+    const side = sideOf(state, team);
+    const deficit = (side === 'home' ? state.away.score : state.home.score) - (side === 'home' ? state.home.score : state.away.score);
+    if (deficit < 0 || deficit > R.LATE_MAX_DEFICIT) return null;
+    const call = state.gameClock <= R.LATE_SHORT_CLOCK
+        || (deficit <= R.LATE_CLOSE_MAX && (state.gameClock <= state.shotClock || team.timeouts >= 2));
+    return call ? { teamId: team.id, mandatory: false } : null;
+}
+
+/**
+ * [2026-11-05] 파울 작전 자유투 뒤 즉시 타임아웃 (client 미러 참조) — 고의 파울 자유투가 끝나 지는 팀이 공을 받으면(liveEngine이
+ * state.foulGameTimeoutTeamId로 지정) 타임아웃이 남아 있는 한 바로 부른다. 마지막 2분 프런트코트 전진(applyTimeout)과 이어져
+ * 상대 진영에서 빠른 슛을 노린다. 유저 팀도 자동(사용자 결정)이라 isAutoTeam·간격 제한을 보지 않는다.
+ */
+function decideFoulGameTimeout(state: GameState): TimeoutDecision | null {
+    const id = state.foulGameTimeoutTeamId;
+    if (!id) return null;
+    const team = state.home.id === id ? state.home : state.away;
+    if (team.timeouts <= 0 || !canCallTimeout(state, id)) return null;
+    return { teamId: id, mandatory: false };
+}
+
 export function decideTimeout(state: GameState, runVictimId: string | null): TimeoutDecision | null {
+    const foulGame = decideFoulGameTimeout(state);
+    if (foulGame) return foulGame;
+    const lateGame = decideLateGameTimeout(state);
+    if (lateGame) return lateGame;
     if (isOvertimePeriod(state.quarter)) return decideOvertimeTimeout(state, runVictimId);
     applyLateCapIfDue(state);
     const R = TIMEOUT_RULES;
 
     // 보유량 많은 팀부터 평가(동률이면 홈 우선) — 소진 압박을 균등하게
     const order = teamsOf(state).sort((a, b) => b.timeouts - a.timeouts);
-    const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t));
+    const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t) && canCallTimeout(state, t.id) && !lateGameOwned(state, t));   // [2026-11-05] 막판 지는 팀은 전용 규칙만
 
     for (const t of callable) {
-        if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && wantsStrategic(state, t)) return { teamId: t.id, mandatory: false };
+        if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && wantsStrategic(state, t) && t.timeouts - 1 >= lateReserve(state, t)) return { teamId: t.id, mandatory: false };   // [2026-11-05] 1분 전 보존
     }
     for (const t of callable) {
         if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && mustSpendSurplus(state, t)) return { teamId: t.id, mandatory: false };
     }
     for (const t of callable) {
-        if (t.id === runVictimId && gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && t.timeouts - 1 >= runReserve(state, t)) {
+        if (t.id === runVictimId && gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && t.timeouts - 1 >= Math.max(runReserve(state, t), lateReserve(state, t))) {   // [2026-11-05] 1분 전 보존
             return { teamId: t.id, mandatory: false };
         }
     }
     if (state.quarter === 4 && state.gameClock <= R.FINAL_SPEND_CLOCK) {
         for (const t of callable) {
-            if (gapOk(state, t, R.FINAL_GAP_SEC, R.FINAL_GAP_SEC)) return { teamId: t.id, mandatory: false };
+            // [2026-11-05] 의미 있는 상황만 — 공을 가진 팀이 백코트에서 시작해 프런트코트로 전진할 수 있을 때. 이전엔 자기 팀 득점 직후·자유투 후 등 아무 데드볼에나 소진(client 미러 참조)
+            if (gapOk(state, t, R.FINAL_GAP_SEC, R.FINAL_GAP_SEC) && inBackcourtWithBall(state, t)) return { teamId: t.id, mandatory: false };
         }
     }
 
@@ -162,6 +246,8 @@ export function decideTimeout(state: GameState, runVictimId: string | null): Tim
     const due = (p.slots === 0 && state.gameClock <= R.MANDATORY_FIRST_CLOCK)
         || (p.slots === 1 && state.gameClock <= R.MANDATORY_SECOND_CLOCK);
     if (!due) return null;
+    // [2026-11-04] 의무 타임아웃은 기록원이 "첫 데드볼"에 선언(NBA Rule 5 VI.3) — 라이브볼이면 다음 데드볼까지 보류 (client 미러 참조)
+    if (state.lastPossessionLiveBall) return null;
     const preferred = p.slots === 0 ? state.home : (p.firstTeamId === state.home.id ? state.away : state.home);
     const fallback = preferred === state.home ? state.away : state.home;
     const payer = preferred.timeouts > 0 ? preferred : (fallback.timeouts > 0 ? fallback : null);
@@ -180,19 +266,20 @@ export function decideTimeout(state: GameState, runVictimId: string | null): Tim
 function decideOvertimeTimeout(state: GameState, runVictimId: string | null): TimeoutDecision | null {
     const R = TIMEOUT_RULES;
     const order = teamsOf(state).sort((a, b) => b.timeouts - a.timeouts);
-    const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t));
+    const callable = order.filter(t => t.timeouts > 0 && isAutoTeam(state, t) && canCallTimeout(state, t.id) && !lateGameOwned(state, t));   // [2026-11-05] 막판 지는 팀은 전용 규칙만
     for (const t of callable) {
-        if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && wantsStrategic(state, t)) return { teamId: t.id, mandatory: false };
+        if (gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && wantsStrategic(state, t) && t.timeouts - 1 >= lateReserve(state, t)) return { teamId: t.id, mandatory: false };   // [2026-11-05] 1분 전 보존
     }
     for (const t of callable) {
         const reserve = state.gameClock > R.STRATEGIC_CLOCK ? 1 : 0;
-        if (t.id === runVictimId && gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && t.timeouts - 1 >= reserve) {
+        if (t.id === runVictimId && gapOk(state, t, R.MIN_GAP_SEC, R.ANY_TEAM_GAP_SEC) && t.timeouts - 1 >= Math.max(reserve, lateReserve(state, t))) {   // [2026-11-05] 1분 전 보존
             return { teamId: t.id, mandatory: false };
         }
     }
     if (state.gameClock <= R.FINAL_SPEND_CLOCK) {
         for (const t of callable) {
-            if (gapOk(state, t, R.FINAL_GAP_SEC, R.FINAL_GAP_SEC)) return { teamId: t.id, mandatory: false };
+            // [2026-11-05] 의미 있는 상황만 — 공을 가진 팀이 백코트에서 시작해 프런트코트로 전진할 수 있을 때. 이전엔 자기 팀 득점 직후·자유투 후 등 아무 데드볼에나 소진(client 미러 참조)
+            if (gapOk(state, t, R.FINAL_GAP_SEC, R.FINAL_GAP_SEC) && inBackcourtWithBall(state, t)) return { teamId: t.id, mandatory: false };
         }
     }
     return null;

@@ -270,6 +270,8 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
             let x = shot.x;
             let y = shot.y;
             if (x > COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = 50 - y; }
+            // [2026-11-05] 하프라인 너머 히브는 반코트 차트에 그릴 수 없어 하프라인 근처에 표시(좌표를 뒤집으면 골대 가까운 슛처럼 보임)
+            if (shot.isHeave) x = COURT_WIDTH / 2 - 1;
             return { ...shot, x, y };
         }),
     [userShots]);

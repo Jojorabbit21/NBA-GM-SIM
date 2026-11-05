@@ -18,8 +18,22 @@ export interface ActiveInjuryStatus {
     injuryType: string;
     /** injury_history의 duration 원본 문자열 — 부상은 '3일'/'2주'/'시즌아웃', 출장정지는 'N경기'. */
     duration: string;
-    /** injury_history의 returnDate(YYYY-MM-DD) — 시즌아웃은 null. formatReturnDateSuffix로 표시. */
+    /** injury_history의 returnDate(YYYY-MM-DD) — 시즌아웃은 null. formatReturnDateSuffix로 표시. 진단 전엔 null(기간 비공개). */
     returnDate: string | null;
+    /** [2026-11-05] 진단 전 부상 — severity 'Pending', injuryType "무릎 부상", duration "보류 중"으로 가려짐. */
+    pending?: boolean;
+}
+
+/** [2026-11-05] 진단 전 부상 판정 — simRunner가 injury_history entry에 diagnosisDate·bodyPart를 붙인다(타임라인 있는 방만).
+ *  진단일 당일부터 공개. 옛 entry(diagnosisDate 없음)는 항상 공개. */
+export function isInjuryDiagnosisPending(entry: Record<string, any> | null | undefined, currentSimDate: string): boolean {
+    return !!entry?.diagnosisDate && !!entry.bodyPart && currentSimDate < entry.diagnosisDate;
+}
+
+/** 진단 전 표시용 부상명/기간 — 프로필 부상 이력 등 이력 entry를 직접 그리는 곳도 같은 문구를 쓰도록. */
+export const PENDING_INJURY_DURATION = '보류 중';
+export function pendingInjuryLabel(bodyPart: string): string {
+    return `${bodyPart} 부상`;
 }
 
 /** "N경기" 재계산에 필요한 팀별 스케줄 조회 — 스케줄 원본을 매번 넘기지 않도록 얇게 추상화. */
@@ -76,6 +90,17 @@ export function buildActiveInjurySeverityMap(
         const last = history[history.length - 1];
         if (!last?.severity) continue;
 
+        if (last.severity !== 'Suspension' && isInjuryDiagnosisPending(last, currentSimDate)) {
+            map.set(row.player_id, {
+                severity: 'Pending',
+                injuryType: pendingInjuryLabel(last.bodyPart),
+                duration: PENDING_INJURY_DURATION,
+                returnDate: null,
+                pending: true,
+            });
+            continue;
+        }
+
         let duration: string = last.duration ?? '';
         if (last.severity === 'Suspension' && last.returnDate && suspensionContext) {
             const teamId = suspensionContext.getTeamId(row.player_id);
@@ -100,6 +125,12 @@ export function buildActiveInjurySeverityMap(
 export function formatActiveInjuryLabel(injuryStatus: ActiveInjuryStatus): string {
     if (injuryStatus.severity === 'Suspension') {
         return `출장정지 · ${injuryStatus.duration || '기간 미정'}`;
+    }
+    if (injuryStatus.severity === 'Personal') {
+        return `개인 사유 · ${injuryStatus.injuryType || '개인 사유'} · ${injuryStatus.duration || '기간 미정'}`;
+    }
+    if (injuryStatus.severity === 'Pending') {
+        return `부상 · ${injuryStatus.injuryType || '부상'} · 부상 기간 ${PENDING_INJURY_DURATION}`;
     }
     return `부상 · ${injuryStatus.injuryType || '부상'} · ${injuryStatus.duration || '기간 미정'}`;
 }

@@ -338,6 +338,78 @@ export const SIM_CONFIG = {
     // Defensive Rebound 속공 트레이드오프 (2026-07 신규) — defReb 낮게 설정 시 속공 전환 이점 + 체력 대가
     // [2026-10-25] pace 속공 확률(pace × 0.03)을 공격권이 넘어온 방식에 따라 배율 — 라이브볼(수비 리바운드·스틸)↑, 데드볼↓,
     // 공격 리바운드(풋백 아닌 경우)는 이미 하프코트라 0. 가중평균 ≈ 1.0이 되도록 잡은 초안(측정 튜닝).
+    // [2026-11-04] 풋백 재설계 (client 미러 참조) — 공격 리바운드를 잡은 위치(근거리/장거리)로 풋백 여부를 가르고, 풋백 슈터 = 리바운더.
+    // 이전: 진입이 공격 리바운드면 0.15 + offReb×0.02 확률로 풋백, 슈터는 코트 5명 중 새로 뽑음(실경기 81%가 리바운더와 다른 선수),
+    // 미스 위치와 무관(3점 미스 뒤 18% = 골밑 미스 뒤 19%), 풋백/ORB 19%·FG 68.8%·PPP 1.34.
+    // 목표(NBA): Synergy 2024-25 Putbacks 5.2 poss/팀경기(ORB ~11 → ORB의 ~47%), PPP 1.10, FG 56.4%.
+    PUTBACK: {
+        // 근거리 공격 리바운드 확률 — 미스 위치 기준(3점 미스는 장거리 리바운드가 많음), 자유투는 레인 안쪽 경합
+        CLOSE_BASE: { Rim: 0.88, Paint: 0.80, Mid: 0.56, '3PT': 0.36, FT: 0.82 } as Record<string, number>,
+        // 리바운더 포지션 배율(빅맨은 림 근처, 가드는 바깥에서 잡는 경우가 많음) — 결과는 CLOSE_MAX로 상한
+        CLOSE_POS_MULT: { C: 1.15, PF: 1.08, SF: 0.95, SG: 0.85, PG: 0.80 } as Record<string, number>,
+        CLOSE_MAX: 0.95,
+        // 근거리 리바운드 → 리바운더 즉시 풋백 확률(공격 리바운드 슬라이더 5 기준) + 슬라이더 1단계당 가감
+        CHANCE: 0.88,
+        CHANCE_PER_SLIDER: 0.01,
+        // 풋백 명중률 보정(이전 +0.05 고정) — 혼전 속 마무리라 일반 림 슛보다 낮게.
+        // 하네스(NBA Active 실데이터 978경기×3): 풋백 poss/ORB 0.24→0.48, FG 71.9→56.4%, PPP 1.36→1.09
+        HIT_MOD: -0.15,
+    },
+    // [2026-11-04] 4쿼터·연장 마지막 2분, 백코트에서 공을 가진 공격 팀의 타임아웃 → 프런트코트 28피트 해시마크 인바운드(NBA Rule 5 VI.7, client 미러 참조).
+    //   공을 하프라인 너머로 운반하는 시간을 포세션 소요 시간에서 뺀다(추정치 — 실측 자료 없음).
+    TIMEOUT_ADVANCE: {
+        TIME_SAVED: 3,
+    },
+    // [2026-11-04] 상황별 클락 운영 (timeEngine.calculatePossessionTime, client 미러 참조). 값 = 초.
+    CLOCK_MGMT: {
+        PUTBACK_TIME: [1, 3] as [number, number],          // 풋백(이전 2~4초)
+        OREB_RESET_SCALE: 0.45,                             // 공격 리바운드 후 리셋 공격 = 기본 시간 × 배율(이전 기본 그대로 → 리셋 샷클락 14초를 거의 다 씀)
+        OREB_RESET_FLOOR: 3,
+        LAST_SHOT_LEFT: [0, 2] as [number, number],        // ① 샷클락 꺼진 마지막 공격 — 슛 시점 남은 시간 ([11-05] 1~4 → 0~2: 상대 자투리 공격 3.37→1.41/경기, 사용자 결정)
+        LAST_SHOT_LEFT_TRAILING_CLOSE: [3, 7] as [number, number], // ① 4Q·연장 1점 이상 뒤진 팀(서두르기 대상 아님)
+        LAST_SHOT_LOG_MIN: 8,                               // ① 이 시간(초) 이상 남았을 때만 '마지막 슛' 안내 줄(그보다 짧으면 사실상 바로 던짐)
+        FULL_CLOCK_WINDOW: 36,                              // ② 샷클락 < 남은 시간 < 36초 → 샷클락 끝까지
+        FULL_CLOCK_LEFT: [1, 3] as [number, number],
+        TWO_FOR_ONE: { MAX_CLOCK: 47, TARGET_LEFT: [30, 33] as [number, number] }, // ③ 36~47초 시작 → 30~33초에 슛
+        HURRY: {                                            // ④ 4Q·연장 지는 팀
+            TIERS: [{ clock: 120, margin: 4 }, { clock: 60, margin: 3 }],
+            MAX_MARGIN: 10,                                 // 이보다 크게 지면 승부가 기울어 평소대로(마지막 슛 홀드도 안 함) — [11-05] 15 → 10(가비지 타임에 '서두르기' 안내가 찍혔음)
+            TIME: [5, 9] as [number, number],
+            // [11-05] 두 번 이상 득점해야 하면(4점+ 뒤짐) 남은 시간의 이 비율 안에 슛 — 다시 파울할 시간을 남긴다(7초 남으면 ~3초)
+            MULTI_POSSESSION_DEFICIT: 4,
+            MULTI_POSSESSION_SHARE: 0.4,
+        },
+        // ⑤ 앞선 팀(이전 최소 18초 고정). 4Q·연장 5분 이내 1~10점 리드 → 샷클락 2~5초 남길 때까지,
+        //   [11-05] 2분 이내는 최대한 소모 — 샷클락 0.5~2초 남기고 슛. 샷클락이 꺼지면 슛 없이 드리블 아웃(liveEngine clockExpire).
+        //   이 구간 앞선 팀은 속공도 시도하지 않음(possessionHandler 속공 판정).
+        MILK: {
+            CLOCK: 300, MAX_LEAD: 10, LEFT_ON_SHOT_CLOCK: [2, 5] as [number, number],
+            LAST_CLOCK: 120,
+            LAST_LEFT_ON_SHOT_CLOCK: [0.5, 2] as [number, number],
+        },
+    },
+    // [2026-11-05] 파울 작전·역파울 작전 (engine/pbp/foulStrategy.ts, client 미러 참조)
+    FOUL_STRATEGY: {
+        CLOCK: 60,                  // 4Q·연장 남은 시간 이하부터
+        MAX_DEFICIT: 9,             // 수비 팀이 이만큼까지 뒤질 때(쓰리 포제션)
+        CLOCK_ON_MIN_DEFICIT: 3,    // 샷클락이 켜져 있으면 이 점수 이상 뒤질 때만(1~2점 차는 정상 수비)
+        UP_THREE: { LEAD: 3, CLOCK: 6 },   // 역파울: 정확히 3점 앞서고 이 시간 이하
+        TIME: [1, 4] as [number, number],   // 인바운드~파울까지(초)
+        RECEIVER_FT_EXP: 6,         // 공 받는 선수 = (자유투/100)^지수 가중
+        TIMEOUT_AFTER_FT_CLOCK: 60, // 고의 파울 자유투 뒤 공을 받은 지는 팀이 이 시간 이하면 즉시 타임아웃(→ 마지막 2분 프런트코트 전진)
+    },
+    // [2026-11-05] 피리어드 막판 슛 (engine/pbp/endOfPeriodShot.ts, client 미러 참조). 샷클락 꺼진 구간에서 남은 시간·시작 위치로 결정.
+    //   NBA: 하프라인 너머 슛 2013-14 이후 6,413개 중 239개(3.7%), 2024-25 집계 대상 장거리 버저 슛 경기당 ~0.48개.
+    END_OF_PERIOD: {
+        MAX_CLOCK: 6,               // 이 시간(초) 이하일 때만
+        FAR_MAX: 2,                 // 백코트 시작 ≤ 2초 → 하프라인 뒤 히브
+        HALF_MAX: 4,                // 백코트 시작 3~4초 → 하프라인을 막 넘긴 장거리 슛, 5~6초 → 밀고 올라가 빠른 공격
+        FAR_HIT: 0.02,
+        HALF_HIT: 0.055,
+        EXPIRE_AT_ONE: 0.4,         // 백코트 1초 — 인바운드 받는 사이 시간 만료(슛 없음) 확률
+        FAR_DIST: [55, 80] as [number, number],   // 피트
+        HALF_DIST: [36, 45] as [number, number],
+    },
     TRANSITION_ENTRY: {
         ENABLED: true,
         DEF_REB_MULT: 2.0,

@@ -102,3 +102,16 @@ export function resolveRebound(homeTeam: TeamState, awayTeam: TeamState, shooter
 
     return { player, type };
 }
+
+/**
+ * [2026-11-04] 공격 리바운드를 림 근처에서 잡았는지(근거리) 판정 (client 미러 참조).
+ * 근거리면 리바운더가 바로 풋백을 노리고, 장거리면 공격을 다시 세팅한다(possessionHandler 풋백 판정).
+ * missZone: 빗나간 슛 위치('FT' = 마지막 자유투). forceLong: 자유투 슈터 본인·미드/3점 슈터 본인 리바운드처럼 바깥에서 잡는 경우(항상 장거리).
+ */
+export function rollCloseOffRebound(rebounder: LivePlayer, missZone: 'Rim' | 'Paint' | 'Mid' | '3PT' | 'FT' | undefined, forceLong = false): boolean {
+    if (forceLong) return false;
+    const cfg = SIM_CONFIG.PUTBACK;
+    const base = cfg.CLOSE_BASE[missZone ?? 'Mid'] ?? cfg.CLOSE_BASE.Mid;
+    const p = Math.min(cfg.CLOSE_MAX, base * (cfg.CLOSE_POS_MULT[rebounder.position] ?? 1));
+    return Math.random() < p;
+}

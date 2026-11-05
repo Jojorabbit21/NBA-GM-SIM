@@ -241,6 +241,8 @@ export function resolvePlayAction(
     blitz?: { handler: LivePlayer; screener: LivePlayer },
     // [2026-10-28] 속공 진입 정보 — 진입 선수(수비 리바운더·스틸러)와 진입 방식
     transition?: { entryPlayer?: LivePlayer; entry: 'defReb' | 'steal' | 'other' },
+    // [2026-11-04] 풋백 슈터 = 근거리 공격 리바운더 (possessionHandler가 넘김, client 미러 참조)
+    putbackActor?: LivePlayer,
 ): PlayContext {
     const players = team.onCourt;
     // [2026-09-10] 팀 전체 1~5옵션 랭킹(gravity 기반) — resolvePlayAction 호출당 1회만 계산해
@@ -636,14 +638,15 @@ export function resolvePlayAction(
         }
         case 'Putback': {
             // [2026-07-29] reb(공수 종합) → offReb+vertical+hustle+CLD로 교체 (client 미러 참고)
-            const actor = pickWeightedActor(p =>
+            // [2026-11-04] 리바운더 본인이 슛(putbackActor). 미지정 시(구 호출부) 기존 가중 추첨.
+            const actor = putbackActor ?? pickWeightedActor(p =>
                 p.attr.offReb * 0.40 +
                 p.attr.vertical * 0.30 +
                 p.attr.hustle * 0.20 +
                 (((p.attr.closeShot + p.attr.layup + p.attr.dunk) / 3) * 0.10)
             );
             const { zone: pbZone, shotType: pbShotType } = resolveFinish(actor, 'putback', sliders, undefined, 'open');
-            return { playType, actor, preferredZone: pbZone, shotType: pbShotType, bonusHitRate: 0.05 };
+            return { playType, actor, preferredZone: pbZone, shotType: pbShotType, bonusHitRate: SIM_CONFIG.PUTBACK.HIT_MOD };   // [2026-11-04] 이전 0.05 고정
         }
         case 'OffBallScreen': {
             const actor = pickWeightedActor(

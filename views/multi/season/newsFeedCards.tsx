@@ -2821,6 +2821,7 @@ const HEADLINE_ICON: Record<LeagueEventType, LucideIcon> = {
     all_def_team: Shield,
     injury: HeartPulse,
     suspension: Swords,
+    injury_notice: HeartPulse,   // 피드 비노출 타입(알림 전용) — Record 완전성용
     allstar_vote_update: BarChart3,
     allstar_vote_start: Vote,
     allstar_vote_result: Trophy,

@@ -10,6 +10,11 @@ const EJECTION_REASON_TEXT: Record<EjectionReason, string> = {
     flagrant:  '플래그런트 퇴장',
     fight:     '싸움 퇴장',
 };
+/** [2026-11-05] 실격(6반칙·테크니컬 2회·플래그런트·싸움) 선수 즉시 교체 요청 — liveEngine이 자유투 전에 실행 (client 미러 참조) */
+export function buildEjectionSubRequest(p: LivePlayer): SubRequestV2 {
+    return { outPlayer: p, reason: EJECTION_REASON_TEXT[p.ejectionReason ?? 'foul_out'], exitType: 'permanent', benchReason: 'foul_out' };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
@@ -152,7 +157,8 @@ export function checkSubstitutionsV2(
 
         const playerConfig = tactics.playerTactics?.[p.playerId];
 
-        if (p.health === 'Injured' && p.injuredThisGame) {
+        // [2026-11-05] 싸움 퇴장 선수도 출장정지 이월용으로 health='Injured'라 '(부상)'으로 찍혔다 — 퇴장 사유로 넘김 (client 미러 참조)
+        if (p.health === 'Injured' && p.injuredThisGame && p.ejectionReason !== 'fight') {
             requests.push({ outPlayer: p, reason: '부상', exitType: 'permanent', benchReason: 'injury' });
             return;
         }

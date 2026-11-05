@@ -691,14 +691,25 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let isSecondChance = false;
 
     // [2026-10-07] shotClock===14는 플래그런트 후에도 설정되므로 "직전 진입이 오펜시브 리바운드"인 경우에만 풋백 후보
-    if (state.lastEntryWasOffReb === true && state.shotClock === 14 && state.gameClock < 720) {
-        // High OffReb slider increases immediate putback chance
-        // [Fix] Reduced: was 0.5+(offReb*0.03) → max 80%. Now realistic 25-35%.
-        const putbackChance = 0.15 + (sliders.offReb * 0.02);
-        if (Math.random() < putbackChance) {
+    // [2026-11-04] 풋백 = 근거리 공격 리바운드를 잡은 리바운더의 즉시 슛 (client 미러 참조, SIM_CONFIG.PUTBACK).
+    //   장거리 리바운드는 공격 재세팅(일반 하프코트 플레이). 리바운더가 코트에 없으면(부상·퇴장 교체) 풋백 없음.
+    //   이전: 0.15 + offReb×0.02 확률, 슈터는 코트 5명 중 새로 뽑음.
+    let putbackActor: LivePlayer | undefined;
+    if (state.lastEntryWasOffReb === true && state.shotClock === 14 && state.gameClock < 720 && state.lastOffRebClose) {
+        const rebounder = offTeam.onCourt.find(p => p.playerId === state.lastOffRebounderId);
+        const pbCfg = SIM_CONFIG.PUTBACK;
+        const putbackChance = pbCfg.CHANCE + (sliders.offReb - 5) * pbCfg.CHANCE_PER_SLIDER;
+        if (rebounder && Math.random() < putbackChance) {
             selectedPlayType = 'Putback';
             isSecondChance = true;
+            putbackActor = rebounder;
         }
+    }
+
+    // [2026-11-05] 피리어드 막판(endOfPeriodShot) — liveEngine이 고정한 플레이(백코트 5~6초 = Transition, 프런트코트 ≤2초 = CatchShoot) (client 미러 참조)
+    if (state.forcedPlayType && !isSecondChance) {
+        selectedPlayType = state.forcedPlayType;
+        isSecondChance = true;   // 아래 가중치·속공 판정 건너뜀
     }
 
     if (!isSecondChance) {
@@ -780,7 +791,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const stealFreqBonus = (SIM_CONFIG.STEAL_TRANSITION.ENABLED && state.lastEntryWasSteal) ? SIM_CONFIG.STEAL_TRANSITION.FREQ_BONUS : 0;
         // [2026-10-25] pace 속공 확률을 공격권 진입 방식에 따라 배율(SIM_CONFIG.TRANSITION_ENTRY) — 이전엔 상대 득점·자유투 직후에도 동일
         const teCfg = SIM_CONFIG.TRANSITION_ENTRY;
+        // [2026-11-04] 세트 인바운드(쿼터 시작·타임아웃·비보너스 파울·테크니컬·플래그런트 후)는 수비가 정돈된 상태 — 속공 없음 (client 미러 참조)
         const entryMult = !teCfg.ENABLED ? 1
+            : state.inbound ? 0
             : state.lastEntryWasSteal ? teCfg.STEAL_MULT
             : state.lastEntryWasDefReb ? teCfg.DEF_REB_MULT
             : state.lastEntryWasOffReb ? teCfg.OFF_REB_MULT
@@ -789,7 +802,12 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const trEntryForFreq = (SIM_CONFIG.TRANSITION_FLOW.ENABLED && (state.lastEntryWasDefReb || state.lastEntryWasSteal) && state.lastEntryPlayerId)
             ? offTeam.onCourt.find(p => p.playerId === state.lastEntryPlayerId) : undefined;
         const outletFreqMult = trEntryForFreq ? transitionEntryFreqMult(offTeam.onCourt, trEntryForFreq) : 1;
-        if (Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus) * outletFreqMult) {
+        // [2026-11-05] 4Q·연장 5분 이내 1~10점 리드 팀은 시간을 끄는 중 — 속공 시도 안 함 (client 미러 참조).
+        //   위 클러치 가중치의 weights['Transition'] = 0은 이 무작위 판정을 거치지 않아 효과가 없었다(속공 + 시간 끌기 = 20초짜리 속공).
+        const milkCfg = SIM_CONFIG.CLOCK_MGMT.MILK;
+        const offLead = state.possession === 'home' ? state.home.score - state.away.score : state.away.score - state.home.score;
+        const isMilking = state.quarter >= 4 && state.gameClock <= milkCfg.CLOCK && offLead >= 1 && offLead <= milkCfg.MAX_LEAD;
+        if (!isMilking && Math.random() < (sliders.pace * 0.03 * entryMult + defRebFreqBonus + stealFreqBonus) * outletFreqMult) {
              selectedPlayType = 'Transition';
         } else {
             // Weighted Random Choice
@@ -811,7 +829,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders, undefined,
         selectedPlayType === 'Transition'
             ? { entryPlayer: trEntryPlayer, entry: state.lastEntryWasDefReb ? 'defReb' : state.lastEntryWasSteal ? 'steal' : 'other' }
-            : undefined);
+            : undefined,
+        putbackActor);
     // [2026-10-24] let — 블리츠 패스아웃 시 수신자 컨텍스트로 교체
     let { actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
     const { screener, transitionRole } = playCtx;
@@ -839,7 +858,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // 2.3 [2026-10-23] 풀코트 프레스 (상대 공격 리바운드로 이어진 포세션 제외)
     // [2026-10-24] 스틸 직후도 제외 — 공을 뺏긴 팀은 프레스를 설 시간이 없음
-    const pressActive = !state.lastEntryWasOffReb && !state.lastEntryWasSteal;
+    // [2026-11-04] 프런트코트 인바운드(비보너스 파울·플래그런트·마지막 2분 타임아웃 전진 등)도 제외 — 백코트를 거치지 않음 (client 미러 참조)
+    const pressActive = !state.lastEntryWasOffReb && !state.lastEntryWasSteal && state.inbound?.spot !== 'frontcourt';
     state.pressActiveThisPossession = pressActive && getPressFactor(defTeam) > 0;
     const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType) : null;
     if (press?.result) return press.result;
@@ -886,6 +906,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         state.preSampledPossessionTime = t;
         // 게임클락이 샷클락보다 적게 남으면 샷클락이 꺼진 상태 — 페널티 없음
         if (state.gameClock > state.shotClock) lateClockPenalty = getLateShotClockPenalty(actor, state.shotClock - t);
+        if (state.endShotRush) lateClockPenalty = getLateShotClockPenalty(actor, 0);   // [2026-11-05] 피리어드 막판 급한 슛 — 막판 슛 페널티 최대 (client 미러 참조)
     }
 
     // 2.5 Help Defense Resolution (통합 판정 — 파울/턴오버/hitRate/블락 공통 사용)
@@ -1069,6 +1090,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             type: 'freethrow',
             offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             zone: preferredZone,
+            shotType,   // [2026-11-04] 슈팅 파울 문구를 슛 종류로 고르기 위해 (client 미러 참조)
             helpDefenderId,
             isHelpPlay: isHelpFoul,
         };
@@ -1203,6 +1225,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 offTeam, defTeam, actor, defender: ffFouler, points: 0 as const,
                 isAndOne: false, playType: selectedPlayType, isSwitch,
                 isFlagrant2, isZone,
+                zone: preferredZone, shotType,   // [2026-11-04] 플래그런트 1 문구를 슛 위치·종류로 고르기 위해 (client 미러 참조)
                 helpDefenderId,
             };
         }
@@ -1272,7 +1295,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         + pressShotClockBonus;
 
     // [2026-10-18] 게임클락이 샷클락보다 적게 남으면 샷클락이 꺼지므로 바이올레이션 불가
-    if (state.gameClock > state.shotClock && Math.random() < shotClockChance) {
+    // [2026-11-05] 서두르기·2-for-1 공격(timeEngine clockMode)은 일찍 슛하므로 샷클락 바이올레이션 없음 (client 미러 참조) — 이전: '시간이 없습니다' 직후 24초 바이올레이션
+    if (state.gameClock > state.shotClock && state.clockMode !== 'hurry' && state.clockMode !== 'twoForOne' && Math.random() < shotClockChance) {
         return {
             type: 'shotClockViolation' as const,
             offTeam, defTeam, actor,

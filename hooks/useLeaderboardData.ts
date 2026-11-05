@@ -301,6 +301,11 @@ export const useLeaderboardData = (
                 stats.nrtg      = adv.netRtg;
                 stats['tov%']   = adv.tovPct;
                 stats['stl%']   = adv.stlPct;
+                // [2026-11-05] 팀 미스크 득점 4종(경기당) — 멀티 전용, team_misc가 없으면 설정하지 않음(0으로 오인 방지)
+                if (adv.potv != null) stats.potv = adv.potv;
+                if (adv.fbps != null) stats.fbps = adv.fbps;
+                if (adv.pitp != null) stats.pitp = adv.pitp;
+                if (adv.spts != null) stats.spts = adv.spts;
             }
 
             // Calculate per-zone Percentages and Per-Game averages

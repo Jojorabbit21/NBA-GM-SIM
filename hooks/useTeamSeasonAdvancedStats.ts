@@ -25,6 +25,11 @@ export interface TeamAdvancedStats {
     fga: number;
     fta: number;
     tov: number;
+    /** [2026-11-05] 팀 미스크 득점 4종 경기당 평균(game_pbp.team_misc) — team_misc가 없는 시즌/방은 null. POTV=턴오버 직후 첫 공격 득점, FBPS=속공, PITP=페인트, SPTS=공격 리바운드 이후 득점. */
+    potv: number | null;
+    fbps: number | null;
+    pitp: number | null;
+    spts: number | null;
 }
 
 export interface TeamAdvancedStatsWithRank extends TeamAdvancedStats {
@@ -55,6 +60,10 @@ interface RpcRow {
     fga: string | number;
     fta: string | number;
     tov: string | number;
+    potv: string | number | null;
+    fbps: string | number | null;
+    pitp: string | number | null;
+    spts: string | number | null;
 }
 
 function buildRank(entries: { id: string; value: number }[], descending: boolean): Record<string, number> {
@@ -85,6 +94,8 @@ export function useTeamSeasonAdvancedStats(roomId: string | undefined | null, is
                     tovPct: Number(r.tov_pct), stlPct: Number(r.stl_pct),
                     possTotal: Number(r.poss_total), mpTotal: Number(r.mp_total),
                     fga: Number(r.fga), fta: Number(r.fta), tov: Number(r.tov),
+                    potv: r.potv == null ? null : Number(r.potv), fbps: r.fbps == null ? null : Number(r.fbps),
+                    pitp: r.pitp == null ? null : Number(r.pitp), spts: r.spts == null ? null : Number(r.spts),
                 };
             }
 

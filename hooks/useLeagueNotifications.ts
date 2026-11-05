@@ -25,7 +25,8 @@ import type { TradeOfferRow } from '../services/multi/tradeService';
 export type LeagueNotificationScope = 'my_team' | 'all' | 'off';
 const SCOPE_KEY = 'nba-gm-sim-notif-league-scope';
 const BUNDLE_WINDOW_MS = 400;
-const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp'];
+// [2026-11-05] injury_notice — 경기 중 부상 통지는 game_id가 붙어 중계 종료 전엔 RLS로 숨겨지므로 폴링으로 보충
+const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp', 'injury_notice'];
 const POLL_INTERVAL_MS = 30_000;
 const POLL_LOOKBACK_MS = 60 * 60 * 1000;
 
@@ -43,8 +44,17 @@ export function setLeagueNotificationScope(scope: LeagueNotificationScope): void
  *  기록·경기 결과·수상 4종·올스타 10종·로터리·플레이인/플레이오프 대진·플레이오프 경기 결과)은 뉴스피드에만 남기고
  *  토스트는 보내지 않는다. 시리즈 결과·우승·파이널 MVP·부상·징계만 알림. */
 const TOASTED_EVENT_TYPES = new Set<LeagueEvent['type']>([
-    'injury', 'suspension', 'playoff_series_result', 'playoff_champion', 'finals_mvp',
+    'injury', 'suspension', 'playoff_series_result', 'playoff_champion', 'finals_mvp', 'injury_notice',
 ]);
+
+/** [2026-11-05] 부상·결장 통지(injury_notice)는 수신 범위와 무관하게 내 팀 것만. 내 팀 부상의 '검사 예정' 뉴스는
+ *  통지와 같은 사건이라 알리지 않는다(다른 팀 것은 범위 'all'일 때 기존대로, 진단 발표는 내 팀도 알림). */
+function shouldToast(ev: LeagueEvent, scope: LeagueNotificationScope): boolean {
+    if (!TOASTED_EVENT_TYPES.has(ev.type)) return false;
+    if (ev.type === 'injury_notice') return ev.involvesMyTeam;
+    if (ev.type === 'injury' && ev.involvesMyTeam && ev.detail.kind === 'injury' && ev.detail.stage === 'exam') return false;
+    return scope === 'all' || ev.involvesMyTeam;
+}
 
 /** 이벤트 종류별 이동 링크. 선수 페이지는 short code 훅이 필요해 뉴스피드로 보낸다. */
 function eventLink(ev: LeagueEvent, base: string): { to: string; label?: string } {
@@ -52,6 +62,7 @@ function eventLink(ev: LeagueEvent, base: string): { to: string; label?: string 
         return { to: `${base}/game/${ev.gameId}`, label: '경기 보기' };
     }
     if (ev.type === 'trade') return { to: `${base}/transaction?tab=history`, label: '트레이드 히스토리' };
+    if (ev.type === 'injury_notice') return { to: `${base}/roster`, label: '로스터' };
     return { to: `${base}/news`, label: '뉴스피드' };
 }
 
@@ -105,7 +116,7 @@ export function useLeagueNotifications(params: {
             const teamBySlug = new Map(teams.map(t => [t.team_slug, t]));
             const mySlug = myTeamRef.current?.team_slug ?? null;
             const events = rows.map(r => mapRow(r, mySlug));
-            const rest = events.filter(ev => TOASTED_EVENT_TYPES.has(ev.type) && (scope === 'all' || ev.involvesMyTeam) && !notified.has(String(ev.id)));
+            const rest = events.filter(ev => shouldToast(ev, scope) && !notified.has(String(ev.id)));
             for (const ev of rest) {
                 notified.add(String(ev.id));
                 let title: string | null = null;

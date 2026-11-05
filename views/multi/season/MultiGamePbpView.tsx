@@ -28,6 +28,7 @@ import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { MultiFullCourtChart } from './MultiFullCourtChart';
 import { TimeoutBars, TEAM_TIMEOUTS_TOTAL } from '../../../components/game/TimeoutBars';
 import { GameBoxScoreTab } from '../../../components/game/tabs/GameBoxScoreTab';
+import { PlayTypeStats } from '../../../components/game/PlayTypeStats';
 import { GameShotChartTab } from '../../../components/game/tabs/GameShotChartTab';
 import { GamePbpTab } from '../../../components/game/tabs/GamePbpTab';
 import { GameRotationTab } from '../../../components/game/tabs/GameRotationTab';
@@ -58,7 +59,7 @@ const TOTAL_GAME_SECONDS  = 2880;
 const LIVE_POLL_MS        = 5000;
 // [2026-09-01] ?section= 딥링크 검증용 — 6섹션 탭 배열(아래 렌더 안, ~2100줄 근방)의 id와
 // 동일한 값 목록. 그 배열은 JSX 안에서 렌더 시점에 만들어져 재사용이 번거로워 별도로 둠.
-const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'shotchart', 'rotation', 'onoff'] as const;
+const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'team', 'shotchart', 'rotation', 'onoff'] as const;
 
 // [Simplify 2026-08-05] 점보트론 원정/홈 슬롯에서 각각 그대로 복붙돼 있던 타임아웃 도트 렌더링을
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
@@ -303,6 +304,8 @@ interface GamePbpRow {
     away_box:        PlayerBoxScore[];
     box_timeline?:   BoxTick[];
     rotation_data?:  RotationData;
+    /** [2026-11-05] 팀 미스크 득점 4종 — final일 때만 채워짐(서버가 스포일러 방지로 final에서만 내려줌) */
+    team_misc?:      { home: { potv: number; fbps: number; pitp: number; spts: number }; away: { potv: number; fbps: number; pitp: number; spts: number } } | null;
 }
 
 interface TeamStats {
@@ -946,6 +949,7 @@ const RESULT_TABS = [
     { id: 'box', label: '박스스코어' },
     { id: 'insights', label: '인사이트' },
     { id: 'pbp', label: '경기 기록' },
+    { id: 'team', label: '팀 기록' },
     { id: 'shotchart', label: '샷차트' },
     { id: 'rotation', label: '로테이션' },
     { id: 'onoff', label: '온오프' },
@@ -997,6 +1001,28 @@ const TEAM_STAT_ROWS = [
     { key: 'pf',    label: 'PF',  fmt: (v: number) => String(v)      },
 ] as const;
 
+// [2026-11-05] 팀 미스크 득점 4종 — PF 아래에 이어붙임. 값이 없는 경기(구버전·team_misc 없음)는 misc=null로 행 자체를 숨긴다.
+const TEAM_MISC_ROWS = [
+    { key: 'potv', label: 'POTV', fmt: (v: number) => String(v) },
+    { key: 'fbps', label: 'FBPS', fmt: (v: number) => String(v) },
+    { key: 'pitp', label: 'PITP', fmt: (v: number) => String(v) },
+    { key: 'spts', label: 'SPTS', fmt: (v: number) => String(v) },
+] as const;
+
+/** 박스 틱 m(공격팀 기준 [potv, fbps, pitp, spts])을 elapsed(리플레이 ms)까지 팀별로 누적 — buildLiveBox와 같은 공개 기준. m이 하나도 없는 구버전 경기는 null. */
+function buildLiveMisc(timeline: BoxTick[], elapsed: number): { home: number[]; away: number[] } | null {
+    if (!timeline.some(t => t.m)) return null;
+    const out = { home: [0, 0, 0, 0], away: [0, 0, 0, 0] };
+    for (const tick of timeline) {
+        const replayMs = (tick.t / TOTAL_GAME_SECONDS) * getReplayDurationMs();
+        if (replayMs > elapsed) break;
+        if (!tick.m || !tick.off) continue;
+        const side = out[tick.off];
+        for (let i = 0; i < 4; i++) side[i] += tick.m[i];
+    }
+    return out;
+}
+
 const TeamStatsCompare: React.FC<{
     home:      TeamStats;
     away:      TeamStats;
@@ -1006,11 +1032,13 @@ const TeamStatsCompare: React.FC<{
     awayColor: string;
     /** [2026-10-23] panel(기본) = 사이드 카드용 작은 글자(text-[10px])·자체 "팀 스탯" 캡션·border-t. card = 팀 스탯 탭 카드 본문용 — 캡션/상단선 없이 text-sm·굵은 막대 */
     variant?:  'panel' | 'card';
-}> = ({ home, away, homeBox, awayBox, homeColor, awayColor, variant = 'panel' }) => {
+    /** [2026-11-05] 팀 미스크 득점(POTV/FBPS/PITP/SPTS) — 없으면 4행을 그리지 않는다 */
+    misc?:     { home: number[]; away: number[] } | null;
+}> = ({ home, away, homeBox, awayBox, homeColor, awayColor, variant = 'panel', misc = null }) => {
     const card = variant === 'card';
     const derived = useMemo(() => {
         const sum = (box: PlayerBoxScore[], fn: (p: PlayerBoxScore) => number) => box.reduce((s, p) => s + fn(p), 0);
-        const mk = (s: TeamStats, box: PlayerBoxScore[]) => ({
+        const mk = (s: TeamStats, box: PlayerBoxScore[], m: number[] | null): Record<string, number> => ({
             pts:   s.pts,
             fgm:   s.fgm,
             fga:   s.fga,
@@ -1028,15 +1056,17 @@ const TeamStatsCompare: React.FC<{
             tov:   s.tov,
             blk:   s.blk,
             pf:    s.pf,
+            ...(m ? { potv: m[0], fbps: m[1], pitp: m[2], spts: m[3] } : {}),
         });
-        return { home: mk(home, homeBox), away: mk(away, awayBox) };
-    }, [home, away, homeBox, awayBox]);
+        return { home: mk(home, homeBox, misc?.home ?? null), away: mk(away, awayBox, misc?.away ?? null) };
+    }, [home, away, homeBox, awayBox, misc]);
+    const rows: ReadonlyArray<{ key: string; label: string; fmt: (v: number) => string }> = misc ? [...TEAM_STAT_ROWS, ...TEAM_MISC_ROWS] : TEAM_STAT_ROWS;
 
     return (
         <div className={card ? 'px-4 py-3' : 'shrink-0 px-3 py-2 border-t border-slate-800'}>
             {!card && <p className="text-[10px] text-slate-500 font-semibold mb-1.5">팀 스탯</p>}
             <div className={`flex flex-col ${card ? 'gap-2' : 'gap-1'}`}>
-                {TEAM_STAT_ROWS.map(({ key, label, fmt }) => {
+                {rows.map(({ key, label, fmt }) => {
                     const h = derived.home[key];
                     const a = derived.away[key];
                     const total = h + a;
@@ -1893,6 +1923,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                         away_box:        result.awayBox as PlayerBoxScore[],
                         box_timeline:    result.boxTimeline,
                         rotation_data:   result.rotationData,
+                        team_misc:       result.teamMisc ?? null,
                     };
                 }
                 return {
@@ -1905,6 +1936,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                     home_box:      result.homeBox as PlayerBoxScore[],
                     away_box:      result.awayBox as PlayerBoxScore[],
                     rotation_data: result.rotationData ?? prev.rotation_data,
+                    team_misc:     result.teamMisc ?? prev.team_misc,
                 };
             });
             setError(null);
@@ -2227,6 +2259,32 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
         const startMs = gameStartMs;
         return buildLiveBox(gameData?.box_timeline ?? [], serverNow - startMs, gameData?.away_box ?? []);
     }, [gameData, serverNow, displayState, hasBoxTimeline, gameStartMs]);
+
+    // [2026-11-05] 팀 미스크 득점 4종(POTV/FBPS/PITP/SPTS) — 라이브는 박스 틱 m을 리플레이 시점까지 누적(스포일러 없음). 틱에 m이 없는 구버전 경기는 null(행 숨김).
+    const liveMisc = useMemo(() => {
+        if (!gameData || displayState !== 'live') return null;
+        return buildLiveMisc(gameData.box_timeline ?? [], serverNow - gameStartMs);
+    }, [gameData, serverNow, displayState, gameStartMs]);
+
+    // 종료 화면 팀 기록 탭용 최종값 — 틱 m이 있으면 전체 합, 없는 구버전은 저장된 team_misc. 둘 다 없으면 null(4행 숨김).
+    // 서버 응답(final)에 team_misc가 없을 때(서버 배포 전·구버전 응답)는 game_pbp에서 team_misc 한 컬럼만 직접 조회 — RLS가 공개(+지연) 뒤 멤버에게 허용.
+    const [fetchedTeamMisc, setFetchedTeamMisc] = useState<GamePbpRow['team_misc']>(null);
+    const needsMiscFetch = displayState === 'final' && !!gameData && !practice
+        && !(gameData.box_timeline ?? []).some(t => t.m) && !gameData.team_misc;
+    useEffect(() => {
+        if (!needsMiscFetch || !room?.id || !resolvedGameId) return;
+        let cancelled = false;
+        supabase.from('game_pbp').select('team_misc').eq('room_id', room.id).eq('game_id', resolvedGameId).maybeSingle()
+            .then(({ data }) => { if (!cancelled) setFetchedTeamMisc((data?.team_misc as GamePbpRow['team_misc']) ?? null); });
+        return () => { cancelled = true; };
+    }, [needsMiscFetch, room?.id, resolvedGameId]);
+    const finalMisc = useMemo(() => {
+        if (!gameData || displayState !== 'final') return null;
+        const fromTicks = buildLiveMisc(gameData.box_timeline ?? [], Infinity);
+        if (fromTicks) return fromTicks;
+        const m = gameData.team_misc ?? fetchedTeamMisc;
+        return m ? { home: [m.home.potv, m.home.fbps, m.home.pitp, m.home.spts], away: [m.away.potv, m.away.fbps, m.away.pitp, m.away.spts] } : null;
+    }, [gameData, displayState, fetchedTeamMisc]);
 
     // ── 체력 배지 (docs/plan/multiplayer-fatigue.md 5장) ───────────────────────────
     // 예정: 현재 체력(공용 훅) / 라이브: box_timeline tick.c를 리플레이 시점까지 누적(없는 옛 경기는 훅 = 경기 전 체력) /
@@ -3343,6 +3401,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                                 homeColor={homeColor}
                                 awayColor={awayColor}
                                 variant="card"
+                                misc={liveMisc}
                             />
                         </div>
                     </div>
@@ -3450,7 +3509,42 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             shotEvents={gameData?.shot_events ?? []}
                             homeBadge={{ color: homeColor, abbr: homeAbbr }}
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                            hidePlayTypes
                         />
+                    </ResultSection>
+
+                    {/* [2026-11-05] 팀 기록 탭 — 경기 기록 우측에 있던 플레이타입 차트 + 팀 스탯 비교(POTV/FBPS/PITP/SPTS 포함)를 한 영역으로 묶음 */}
+                    <ResultSection sectionKey="team" title="팀 기록" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>
+                        <div className={`${isPhone ? '' : 'md:flex-row'} flex flex-col`}>
+                            <div className={`${isPhone ? '' : 'flex-1'} min-w-0 border-b border-slate-800 md:border-b-0 md:border-r`}>
+                                <PlayTypeStats
+                                    shotEvents={gameData?.shot_events ?? []}
+                                    homeTeamId={(homeTeamId ?? '')}
+                                    awayTeamId={(awayTeamId ?? '')}
+                                    homeBadge={{ color: homeColor, abbr: homeAbbr }}
+                                    awayBadge={{ color: awayColor, abbr: awayAbbr }}
+                                />
+                            </div>
+                            <div className={`${isPhone ? '' : 'flex-1'} min-w-0 bg-slate-900`}>
+                                <div className="h-11 px-4 flex items-center justify-between border-b border-slate-800 text-sm font-bold text-slate-400">
+                                    <span>팀 스탯 비교</span>
+                                    <span className="flex items-center gap-3 text-xs">
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: awayColor }} />{awayAbbr}</span>
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: homeColor }} />{homeAbbr}</span>
+                                    </span>
+                                </div>
+                                <TeamStatsCompare
+                                    home={homeStats}
+                                    away={awayStats}
+                                    homeBox={gameData?.home_box ?? []}
+                                    awayBox={gameData?.away_box ?? []}
+                                    homeColor={homeColor}
+                                    awayColor={awayColor}
+                                    variant="card"
+                                    misc={finalMisc}
+                                />
+                            </div>
+                        </div>
                     </ResultSection>
 
                     <ResultSection sectionKey="shotchart" title="샷차트" sectionRefs={sectionRefs} tabMode={isPhone} activeKey={activeSection}>

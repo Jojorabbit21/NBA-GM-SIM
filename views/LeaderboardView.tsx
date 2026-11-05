@@ -183,7 +183,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   <LeaderboardTable
                       data={currentData} mode={mode} statCategory={statCategory} sortConfig={sortConfig} onSort={handleSort}
                       onRowClick={handleRowClick} statRanges={statRanges} showHeatmap={showHeatmap}
-                      currentPage={currentPage} itemsPerPage={itemsPerPage} enableHoverCard={false}
+                      currentPage={currentPage} itemsPerPage={itemsPerPage} enableHoverCard={false} showMultiColumns={!!teamAdvancedRegular}
                   />
               )}
               pagination={<Pagination compact page={currentPage} pageSize={itemsPerPage} totalItems={sortedData.length} onPageChange={handlePageChange} />}
@@ -251,6 +251,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               currentPage={currentPage}
               itemsPerPage={itemsPerPage}
               enableHoverCard={enableHoverCard}
+              showMultiColumns={!!teamAdvancedRegular}
           />
       </div>
 

@@ -92,10 +92,14 @@ export interface WinStreakPayload {
 export interface InjuryPayload {
     player: { id: string; name: string };
     teamSlug: string;
-    severity: 'Grade3' | 'Grade4' | 'Grade5';
+    /** 'exam'(검사 예정) 뉴스엔 없음 — 진단 전 등급을 드러내지 않는다. */
+    severity?: 'Grade3' | 'Grade4' | 'Grade5';
     injuryType: string;
     duration: string;
     returnDate: string | null;
+    /** [2026-11-05] 'exam' = 경기 당일 "부위 부상·정밀 검사 예정"(injuryType은 "무릎 부상", duration "보류 중").
+     *  없으면 진단 발표(기존 형식). 클라 미러: services/multi/leagueEventPayload.ts InjuryDetail. */
+    stage?: 'exam';
 }
 /** [2026-09-03] "출장정지도 한 뉴스에 양쪽 다 담자" 요청 — 싸움(fight)은 항상 두 선수
  * 모두에게 동시에 발생하므로(possessionHandler.ts의 Fight Check — fighter는 defTeam에서
@@ -114,10 +118,21 @@ export interface SuspensionPayload {
     quarter: number;
     timeRemaining: string;
 }
-export type LeagueEventPayloadData = GameResultPayload | PlayerFeatPayload | PlayerStreakPayload | WinStreakPayload | InjuryPayload | SuspensionPayload;
+/** [2026-11-05] 소속 팀 알림 전용 부상·결장 통지 — 리그 뉴스피드(STORY_TYPES)엔 안 나오고 알림 위젯만 쓴다
+ *  (hooks/useLeagueNotifications.ts). 모든 등급의 경기 중 부상(진단 전이면 "무릎 부상"/"보류 중") + 경기 사이 부상·개인 사유.
+ *  클라 미러: services/multi/leagueEventPayload.ts InjuryNoticeDetail. */
+export interface InjuryNoticePayload {
+    player: { id: string; name: string };
+    teamSlug: string;
+    injuryType: string;
+    duration: string;
+    returnDate: string | null;
+    origin: 'in_game' | 'off_court' | 'personal';
+}
+export type LeagueEventPayloadData = GameResultPayload | PlayerFeatPayload | PlayerStreakPayload | WinStreakPayload | InjuryPayload | SuspensionPayload | InjuryNoticePayload;
 
 export interface DetectedEvent {
-    type: 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'injury' | 'suspension';
+    type: 'game_result' | 'player_feat' | 'player_streak' | 'win_streak' | 'injury' | 'suspension' | 'injury_notice';
     headline: string;
     score: number;
     teamIds: string[];
@@ -650,6 +665,56 @@ export function detectSuspensionEvent(
             opponent: { id: opponentId, name: opponentName },
             opponentTeamSlug, opponentSuspensionGames, opponentReturnDate,
             quarter, timeRemaining,
+        },
+    };
+}
+
+/** [2026-11-05] 소속 팀 알림용 부상·결장 통지(InjuryNoticePayload) — score 0(피드 비노출 타입이라 의미 없음). */
+export function detectInjuryNoticeEvent(
+    playerId: string,
+    playerName: string,
+    teamSlug: string,
+    injuryType: string,
+    duration: string,
+    returnDate: string | null,
+    origin: InjuryNoticePayload['origin'],
+): DetectedEvent {
+    return {
+        type: 'injury_notice',
+        headline: origin === 'personal' ? `개인 사유 결장: ${playerName} (${injuryType})` : `부상자 발생: ${playerName} (${injuryType})`,
+        score: 0,
+        teamIds: [teamSlug],
+        playerIds: [playerId],
+        payload: { player: { id: playerId, name: playerName }, teamSlug, injuryType, duration, returnDate, origin },
+    };
+}
+
+/**
+ * [2026-11-05] 경기 당일 부상 뉴스(검사 예정) — 진단명·기간은 진단일(1~2일 뒤)에 detectInjuryEvent로 따로 발표
+ * (server/src/injuryDiagnosis.ts). GRADE3+만, score는 등급과 무관하게 15(빅뉴스 여부로 중증도가 새지 않게).
+ */
+export function detectInjuryExamEvent(
+    playerId: string,
+    playerName: string,
+    teamSlug: string,
+    severity: string,
+    bodyPart: string,
+): DetectedEvent | null {
+    const gradeNum = Number(severity.replace('Grade', ''));
+    if (!Number.isFinite(gradeNum) || gradeNum < INJURY_NEWS_MIN_GRADE) return null;
+    return {
+        type: 'injury',
+        headline: `${playerName}, ${bodyPart} 부상으로 정밀 검사 예정`,
+        score: 15,
+        teamIds: [teamSlug],
+        playerIds: [playerId],
+        payload: {
+            player: { id: playerId, name: playerName },
+            teamSlug,
+            injuryType: `${bodyPart} 부상`,
+            duration: '보류 중',
+            returnDate: null,
+            stage: 'exam',
         },
     };
 }

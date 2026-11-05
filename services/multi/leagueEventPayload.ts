@@ -217,10 +217,25 @@ export interface InjuryDetail {
     kind: 'injury';
     player: { id: string; name: string };
     teamSlug: string;
-    severity: 'Grade3' | 'Grade4' | 'Grade5';
+    /** 'Pending' = 검사 예정 뉴스(stage 'exam', 서버 payload엔 severity 없음) */
+    severity: 'Grade3' | 'Grade4' | 'Grade5' | 'Pending';
     injuryType: string;
     duration: string;
     returnDate: string | null;
+    /** [2026-11-05] 'exam' = 경기 당일 "부위 부상·정밀 검사 예정"(injuryType "무릎 부상", duration "보류 중"), 없으면 진단 발표 */
+    stage?: 'exam';
+}
+
+/** [2026-11-05] 소속 팀 알림 전용 부상·결장 통지 — 서버 미러: server/src/shared/leagueEvents.ts InjuryNoticePayload/
+ * detectInjuryNoticeEvent(). 경기 중 부상은 진단 전이면 injuryType "무릎 부상"/duration "보류 중". */
+export interface InjuryNoticeDetail {
+    kind: 'injury_notice';
+    player: { id: string; name: string };
+    teamSlug: string;
+    injuryType: string;
+    duration: string;
+    returnDate: string | null;
+    origin: 'in_game' | 'off_court' | 'personal';
 }
 
 /** [2026-09-03] "출장정지도 한 뉴스에 양쪽 다" 요청 — 서버 미러:
@@ -649,6 +664,7 @@ export type LeagueEventDetail =
     | PlayoffSeriesResultDetail
     | PlayoffChampionDetail
     | FinalsMvpDetail
+    | InjuryNoticeDetail
     | LegacyDetail;
 
 const LEGACY: LegacyDetail = { kind: 'legacy' };
@@ -1207,15 +1223,31 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
             case 'injury': {
                 if (!payload.player || !isNonEmptyString(payload.player.id) || !isNonEmptyString(payload.player.name)) return LEGACY;
                 if (!isNonEmptyString(payload.teamSlug) || !isNonEmptyString(payload.injuryType) || !isNonEmptyString(payload.duration)) return LEGACY;
-                if (payload.severity !== 'Grade3' && payload.severity !== 'Grade4' && payload.severity !== 'Grade5') return LEGACY;
+                const isExam = payload.stage === 'exam';
+                if (!isExam && payload.severity !== 'Grade3' && payload.severity !== 'Grade4' && payload.severity !== 'Grade5') return LEGACY;
                 return {
                     kind: 'injury',
                     player: { id: payload.player.id, name: payload.player.name },
                     teamSlug: payload.teamSlug,
-                    severity: payload.severity,
+                    severity: isExam ? 'Pending' : payload.severity,
                     injuryType: payload.injuryType,
                     duration: payload.duration,
+                    returnDate: isExam ? null : (isNonEmptyString(payload.returnDate) ? payload.returnDate : null),
+                    ...(isExam ? { stage: 'exam' as const } : {}),
+                };
+            }
+            case 'injury_notice': {
+                if (!payload.player || !isNonEmptyString(payload.player.id) || !isNonEmptyString(payload.player.name)) return LEGACY;
+                if (!isNonEmptyString(payload.teamSlug) || !isNonEmptyString(payload.injuryType)) return LEGACY;
+                if (payload.origin !== 'in_game' && payload.origin !== 'off_court' && payload.origin !== 'personal') return LEGACY;
+                return {
+                    kind: 'injury_notice',
+                    player: { id: payload.player.id, name: payload.player.name },
+                    teamSlug: payload.teamSlug,
+                    injuryType: payload.injuryType,
+                    duration: isNonEmptyString(payload.duration) ? payload.duration : '',
                     returnDate: isNonEmptyString(payload.returnDate) ? payload.returnDate : null,
+                    origin: payload.origin,
                 };
             }
             case 'suspension': {

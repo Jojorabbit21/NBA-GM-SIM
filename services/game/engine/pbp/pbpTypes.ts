@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats, TeamMiscByGame } from '../../../../types';
 import { SimSettings } from '../../../../types/simSettings';
 import type { ArchetypeRatings } from './archetypeSystem';
 import type { PlayContext } from './playTypes';
@@ -168,6 +168,8 @@ export interface ShotEvent {
     points?: 0 | 2 | 3;
     isBlock?: boolean;
     subZone?: string;
+    isHeave?: boolean;      // [2026-11-05] 피리어드 막판 장거리 슛 (server 미러 참조)
+    distanceFt?: number;    // 히브 거리(피트) — 툴팁이 가까운 골대 기준으로 재지 않도록
 }
 
 // [New] Structured Injury Event
@@ -264,6 +266,10 @@ export interface GameState {
     // [2026-10-18] 팀별 플레이타입 실적(statsMappers.recordPlayTypeStat이 누적) — 멀티 PPP 집계용
     playTypeStats: TeamPlayTypeStats;
 
+    // [2026-11-05] 팀 미스크 득점 4종 누적(teamMisc.trackTeamMisc, server 미러 참조) + 현재 공격권 추적(턴오버 직후/공격 리바운드 여부). 미설정 = 첫 호출 때 생성
+    teamMisc?: TeamMiscByGame;
+    miscTracker?: { side: 'home' | 'away'; fromTov: boolean; orb: boolean };
+
     // [New] Injury Tracking
     injuries: InjuryEvent[];
 
@@ -308,6 +314,30 @@ export interface GameState {
     lastEntryWasSteal?: boolean;
     // [2026-10-28] 이번 공격권을 만든 선수(수비 리바운더 또는 스틸러) — 속공 그랩 앤 고/아웃렛 분기용
     lastEntryPlayerId?: string;
+    // [2026-11-04] 공격 리바운드 정보 — statsMappers가 리바운드 처리 때 pendingOffReb(리바운더·근거리 여부)를 남기고,
+    //   liveEngine이 공격권 유지 시 lastOffRebounderId/lastOffRebClose로 옮긴다 → 다음 포세션 풋백 판정·슈터 지정 (server 미러 참조)
+    pendingOffReb?: { playerId: string; close: boolean };
+    lastOffRebounderId?: string;
+    lastOffRebClose?: boolean;
+    // [2026-11-04] 경기 첫 점프볼 승자 — 2·3쿼터는 상대, 4쿼터는 이 팀이 공격권 (NBA Rule 6, liveEngine 쿼터 전환, server 미러 참조)
+    openingTipWinner?: 'home' | 'away';
+    // [2026-11-04] 다음 공격이 세트 인바운드로 시작(쿼터 시작·타임아웃·비보너스 파울·테크니컬·플래그런트 후) — 수비가 정돈돼 속공 없음,
+    //   frontcourt면 프레스도 없음, advanced = 4Q·연장 마지막 2분 타임아웃 후 프런트코트 전진(NBA Rule 5 VI.7) (server 미러 참조).
+    //   liveEngine이 포세션 종료 때 설정/해제, applyTimeout이 덮어씀. 미설정 = 라이브볼·일반 데드볼(득점 후 등) 진입.
+    inbound?: { spot: 'backcourt' | 'frontcourt'; advanced?: boolean };
+    // [2026-11-04] 직전 포세션이 라이브볼(야투 실패·스틸·마지막 자유투 실패 리바운드)로 끝났는지 — 이때 타임아웃은
+    //   공을 가진 팀만 가능, 의무 타임아웃은 다음 데드볼로 보류(NBA Rule 5 VI) (timeoutPolicy.canCallTimeout)
+    lastPossessionLiveBall?: boolean;
+    // [2026-11-05] 이번 포세션 공격 시간에 적용된 상황 규칙(timeEngine.calculatePossessionTime) — liveEngine이 PBP 안내 줄로 남기고 비움 (server 미러 참조)
+    clockMode?: 'lastShot' | 'fullClock' | 'twoForOne' | 'hurry' | 'milk' | 'milkMax';
+    // [2026-11-05] 같은 공격권에서 같은 안내 반복 방지(비보너스 파울로 이어진 공격) — 공격권이 바뀌거나 피리어드가 시작되면 비움
+    clockModeLogged?: string;
+    // [2026-11-05] 파울 작전 — 안내 줄 기록 여부(`팀:종류:피리어드`), 고의 파울 자유투 뒤 즉시 타임아웃을 부를 팀(liveEngine → timeoutPolicy) (server 미러 참조)
+    foulGameLogged?: string[];
+    foulGameTimeoutTeamId?: string;
+    // [2026-11-05] 피리어드 막판(endOfPeriodShot) — liveEngine이 이번 포세션 플레이를 고정(밀고 올라가기=Transition, 프런트코트 캐치앤슛)하고 막판 슛 페널티 최대 (server 미러 참조)
+    forcedPlayType?: PlayType;
+    endShotRush?: boolean;
 
     // [2026-10-22] 타임아웃 NBA 규정화 — 피리어드별 의무 타임아웃 슬롯 진행 + 팀별 마지막 타임아웃 시각(경과초)
     timeoutPeriod: TimeoutPeriodState;
@@ -341,7 +371,8 @@ export interface CourtSnapshot {
 
 export interface PossessionResult {
     type: 'score' | 'miss' | 'turnover' | 'foul' | 'freethrow' | 'rebound'
-        | 'offensiveFoul' | 'technicalFoul' | 'flagrantFoul' | 'shotClockViolation' | 'fight';
+        | 'offensiveFoul' | 'technicalFoul' | 'flagrantFoul' | 'shotClockViolation' | 'fight'
+        | 'clockExpire';   // [2026-11-05] 드리블 아웃 — 4Q·연장 샷클락 꺼진 구간에서 앞선 팀이 슛 없이 남은 시간을 흘려보냄 (server 미러 참조)
     
     // Actors
     offTeam: TeamState;
@@ -350,6 +381,14 @@ export interface PossessionResult {
     defender?: LivePlayer; // The primary defender (or stealer/blocker)
     assister?: LivePlayer; // If scored
     rebounder?: LivePlayer; // If missed
+    expireSeconds?: number; // [2026-11-05] clockExpire(드리블 아웃)로 흘려보낸 시간(초) (server 미러 참조)
+    isIntentional?: boolean;                 // [2026-11-05] 파울 작전 고의 파울 (server 미러 참조)
+    intentionalKind?: 'trailing' | 'upThree';
+    intentionalTime?: number;                // 인바운드~파울까지(초)
+    isHeave?: boolean;                       // [2026-11-05] 피리어드 막판 장거리 슛 (server 미러 참조)
+    isEndRush?: boolean;                     // [2026-11-05] 피리어드 막판 백코트 5~6초 밀고 올라가기(데드볼 인바운드 시작) — 속공 문구 대신 막판 문구 (server 미러 참조)
+    heaveFt?: number;
+    expireKind?: 'dribbleOut' | 'inbound';  // clockExpire 사유 — 드리블 아웃 / 인바운드 중 시간 만료
     reboundType?: 'off' | 'def'; // resolveRebound에서 결정된 리바운드 타입
 
     // Details

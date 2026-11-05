@@ -127,7 +127,8 @@ export interface SaveTendencies {
 // [New] 부상 이력 기록 (부상 발생 시마다 push)
 export interface InjuryHistoryEntry {
     injuryType: string;
-    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
+    /** 'Personal' = 개인 사유 결장(멀티 경기 사이, 부상 아님 — server/src/shared/multi/offCourtInjuries.ts) */
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension' | 'Personal';
     duration: string;
     date: string;
     returnDate: string;
@@ -266,8 +267,9 @@ export interface Player {
      *  참고), health와 별개 필드라 두 값이 항상 동기화되진 않음 — 배지/호버카드 렌더링 외 용도로
      *  쓰지 말 것. 활성일 때는 `injuryType`(부상명)/`activeInjuryDuration`(기간, '3일'~'시즌아웃'
      *  또는 출장정지 'N경기')도 함께 채워짐.
+     *  [2026-11-05] 'Pending' = 진단 전 부상(멀티) — 등급을 감추고 injuryType "무릎 부상"/기간 "보류 중"으로 채움.
      */
-    activeInjurySeverity?: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
+    activeInjurySeverity?: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension' | 'Pending' | 'Personal';
     activeInjuryDuration?: string;
     condition?: number;
     conditionDelta?: number; // [New] Tracks daily change (e.g., +15, -10)

@@ -4,6 +4,7 @@ import { calculateIncrementalFatigue, calculateRecovery } from '../fatigueSystem
 import { formatTime } from './timeEngine.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { pickWeighted, pickInjuryGrade } from '../injuryGrades.ts';
+import { getInjuryCommentary } from '../commentary/textGenerator.ts';
 
 export function updateOnCourtStates(state: GameState, timeTaken: number) {
     const teams = [state.home, state.away];
@@ -53,7 +54,7 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                     quarter: state.quarter,
                     timeRemaining: timeStr,
                     teamId: team.id,
-                    text: `부상: ${p.playerName} (${type})`,
+                    text: getInjuryCommentary(p.playerName, type, severity),   // [2026-11-05] 진단명 대신 부위 + 중증도 암시 (liveEngine이 플레이 줄 뒤로 옮김)
                     type: 'injury',
                 });
                 state.injuries.push({

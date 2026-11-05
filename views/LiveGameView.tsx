@@ -685,7 +685,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const {
         homeScore, awayScore, quarter, gameClock,
         allLogs, pauseReason, isGameEnd,
-        timeoutsLeft, homeOnCourt, awayOnCourt,
+        timeoutsLeft, timeoutCallable, homeOnCourt, awayOnCourt,
         homeBench, awayBench,
         activeRun, speed,
         shotEvents, homeBox, awayBox,
@@ -709,6 +709,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const awayColor = awayData?.colors.primary || '#f59e0b';
     const userTeam = isUserHome ? homeTeam : awayTeam;
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
+    const userTimeoutCallable = isUserHome ? timeoutCallable.home : timeoutCallable.away;
     const currentMinute = scheduleMinute({ quarter, gameClock });   // [2026-10-26] 연장 k분째 = 4쿼터 마지막 5분(43+k)
     // [2026-10-26] 연장 수 = "N차 연장 시작" 로그 수(옛 경기의 5쿼터 종료·버저비터 로그는 연장 아님 — utils/periodLabel)
     const otCount = useMemo(() => countOvertimePeriods(allLogs), [allLogs]);
@@ -938,7 +939,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     {!hideTimeout && (
                                         <button
                                             onClick={callTimeout}
-                                            disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
+                                            disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated || !userTimeoutCallable}
                                             className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
                                                        disabled:opacity-40 disabled:cursor-not-allowed
                                                        text-white text-xs font-bold transition-colors"
@@ -1016,7 +1017,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             {!hideTimeout && (
                                 <button
                                     onClick={callTimeout}
-                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated}
+                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated || !userTimeoutCallable}
                                     className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
                                                disabled:opacity-40 disabled:cursor-not-allowed
                                                text-white text-xs font-bold transition-colors"

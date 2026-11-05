@@ -125,7 +125,7 @@ export async function recoverPlayersThrough(
  * 스케줄러용: real_midnight_at이 지난 가장 최근 가상 날짜까지 방 전체 회복 후 rooms.fatigue_recovered_through 전진.
  * 타임라인(league_virtual_days)이 없는 방은 아무것도 하지 않는다 — 그런 방은 경기 직전 따라잡기만 쓴다(D7).
  */
-export async function processRoomMidnights(roomId: string, now: Date = new Date()): Promise<{ throughDate: string | null } & RecoveryResult> {
+export async function processRoomMidnights(roomId: string, now: Date = new Date()): Promise<{ throughDate: string | null; advanced?: boolean; previousThrough?: string | null } & RecoveryResult> {
     const { data: room, error: roomErr } = await supabase
         .from('rooms').select('fatigue_recovered_through').eq('id', roomId).single();
     if (roomErr || !room) throw new Error(`[fatigueRecovery] room ${roomId}: ${roomErr?.message ?? 'not found'}`);
@@ -154,5 +154,5 @@ export async function processRoomMidnights(roomId: string, now: Date = new Date(
     const { error: upErr } = await q;
     if (upErr) throw new Error(`[fatigueRecovery] rooms.fatigue_recovered_through: ${upErr.message}`);
 
-    return { throughDate, ...result };
+    return { throughDate, advanced: true, previousThrough: done, ...result };
 }

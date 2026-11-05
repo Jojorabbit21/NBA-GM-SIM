@@ -527,7 +527,7 @@ async function handleLiveGame(req: Request, url: URL): Promise<Response> {
     const row = await loadLiveGameRow(`${roomId}:${gameId}`, async () => {
         const { data, error } = await supabase
             .from('game_pbp')
-            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data,ot_periods')
+            .select('game_id,home_team_id,away_team_id,home_score,away_score,game_start_time,events,shot_events,home_box,away_box,box_timeline,rotation_data,ot_periods,team_misc')
             .eq('room_id', roomId)
             .eq('game_id', gameId)
             .abortSignal(AbortSignal.timeout(LIVE_QUERY_TIMEOUT_MS))

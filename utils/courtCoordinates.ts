@@ -157,6 +157,16 @@ export function generateShotCoordinate(zone: ShotZone, side: CourtSide = 'Left')
 /**
  * Helper to determine zone based on distance (for stats consistency)
  */
+/** [2026-11-05] 장거리 버저 슛(히브) 좌표 — 골대에서 distFt 떨어진 정면 부근(하프라인 너머 가능, server 미러 참조) */
+export function generateHeaveCoordinate(distFt: number, side: CourtSide = 'Left'): Point {
+    const theta = (Math.random() * 0.5) - 0.25;
+    let x = HOOP_X_LEFT + distFt * Math.cos(theta);
+    const y = Math.max(2, Math.min(COURT_HEIGHT - 2, HOOP_Y_CENTER + distFt * Math.sin(theta)));
+    x = Math.min(COURT_WIDTH - 2, x);
+    if (side === 'Right') x = COURT_WIDTH - x;
+    return { x, y };
+}
+
 export function categorizeZone(dist: number): ShotZone {
     if (dist < 4) return 'Rim';
     if (dist < 16) return 'Paint'; // Rough approximation
