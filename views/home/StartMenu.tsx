@@ -5,7 +5,9 @@ import { NicknameModal } from '../lobby/NicknameModal';
 import { MyLeagues } from './MyLeagues';
 import { MultiplayerHistory } from './MultiplayerHistory';
 import { AuthForm } from '../auth/AuthForm';
-import { LogOut, Settings, User } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
+import { ProfileAvatar } from '../../components/common/ProfileAvatar';
+import { useMyProfile } from '../../hooks/useMyProfile';
 import { APP_NAME, getLeagueLogoUrl } from '../../utils/constants';
 
 interface StartMenuProps {
@@ -30,7 +32,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     session, nickname, onLogout, onLoginSuccess, forceNicknameSetup = false, onNicknameChange,
 }) => {
     const email = session?.user.email ?? '';
-    const initial = (nickname || email).charAt(0).toUpperCase();
+    // [2026-11-05] 프로필 색(profiles.avatar_color) — 사이드바 프로필 아이콘과 같은 조회
+    const { data: myProfile } = useMyProfile(session?.user.id);
 
     const [nicknameModalOpen, setNicknameModalOpen] = useState(false);
     const [modalIsFirstSetup, setModalIsFirstSetup] = useState(false);
@@ -59,9 +62,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {/* 계정 영역 */}
             {session ? (
                 <div className="shrink-0 flex items-center gap-4 pb-5 border-b border-slate-700/50">
-                    <div className="w-11 h-11 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-lg shrink-0 select-none">
-                        {initial || <User size={20} />}
-                    </div>
+                    <ProfileAvatar nickname={nickname} email={email} colorKey={myProfile?.avatar_color} size={44} />
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-white truncate">{nickname || 'GM'}</p>
                         <p className="text-xs text-slate-500 truncate">{email}</p>
@@ -106,6 +107,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     userId={session.user.id}
                     email={email}
                     currentNickname={nickname}
+                    currentAvatarColor={myProfile?.avatar_color}
                     isFirstSetup={modalIsFirstSetup}
                     onClose={() => setNicknameModalOpen(false)}
                     onSaved={(newNickname) => onNicknameChange?.(newNickname)}

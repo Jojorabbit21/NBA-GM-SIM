@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
-    CircleUser, LogOut, ChevronLeft, Settings2, Palette,
+    LogOut, ChevronLeft, Settings2, Palette, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeagueContext } from '../views/multi/league/LeagueLayout';
@@ -16,6 +16,9 @@ import { usePlayoffRaceOpen } from '../hooks/usePlayoffRaceOpen';
 import { CountBadge } from './common/CountBadge';
 import { Dropdown } from './common/Dropdown';
 import { NavIcon, RosterIcon } from './nav/navIcons';
+import { ProfileAvatar } from './common/ProfileAvatar';
+import { PatchNotesModal } from './common/PatchNotesModal';
+import { useMyProfile } from '../hooks/useMyProfile';
 
 const NavItem: React.FC<{
     active: boolean;
@@ -98,6 +101,9 @@ export const MultiSidebar: React.FC = () => {
     // 하위 라우트(season/settings)로 이동해 사이드바/헤더를 유지한 채 바디만 스왑한다(2026-09-04/05 요청).
     // 팀을 아직 선점 안 했으면 "팀 설정"은 숨김.
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 모달(PATCH_NOTES.md)
+    // [2026-11-05] 프로필 아이콘 = 닉네임 첫 글자 + 로비에서 고른 배경색(profiles.avatar_color)
+    const { data: myProfile } = useMyProfile(session?.user?.id);
     const menuLabel = (icon: React.ReactNode, text: string) => (
         <span className="flex items-center gap-3">{icon}{text}</span>
     );
@@ -105,6 +111,7 @@ export const MultiSidebar: React.FC = () => {
         ...(isAdmin ? [{ id: 'settings', label: menuLabel(<Settings2 size={14} />, '세션 설정'), onClick: () => navigate(`${base}/settings`) }] : []),
         ...(myTeam  ? [{ id: 'team',     label: menuLabel(<Palette size={14} />, '팀 설정'),    onClick: () => navigate(`${base}/roster?rteam=${myTeam.team_slug}&tab=settings`) }] : []),
         { id: 'home',   label: menuLabel(<ChevronLeft size={14} />, '홈으로'), onClick: () => navigate('/'), dividerBefore: !!(isAdmin || myTeam) },
+        { id: 'patchnotes', label: menuLabel(<ScrollText size={14} />, '패치노트'), onClick: () => setIsPatchNotesOpen(true) },
         { id: 'logout', label: menuLabel(<LogOut size={14} />, '로그아웃'),    onClick: handleLogout, dividerBefore: true },
     ];
 
@@ -246,12 +253,22 @@ export const MultiSidebar: React.FC = () => {
                     className="w-full"
                     side="right"
                     width="w-48"
+                    surface="raised"
                     isOpen={isMenuOpen}
                     onOpenChange={setIsMenuOpen}
                     items={profileMenuItems}
-                    trigger={<NavItem active={isMenuOpen} icon={<CircleUser size={24} />} label="프로필" />}
+                    trigger={<NavItem active={isMenuOpen} icon={
+                        <ProfileAvatar
+                            nickname={myProfile?.nickname ?? myTeam?.nickname}
+                            email={session?.user?.email}
+                            colorKey={myProfile?.avatar_color}
+                            size={24}
+                            className={isMenuOpen ? 'ring-2 ring-white/70' : ''}
+                        />
+                    } label="프로필" />}
                 />
             </div>
+            <PatchNotesModal isOpen={isPatchNotesOpen} onClose={() => setIsPatchNotesOpen(false)} />
         </aside>
     );
 };

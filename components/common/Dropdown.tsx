@@ -21,6 +21,9 @@ interface DropdownProps {
     /** 패널이 열리는 방향. 기본 'bottom'(트리거 아래). 'right'는 트리거 오른쪽에 붙어 위로 자라는
      *  형태 — 화면 왼쪽 하단의 40px 사이드바 프로필 버튼처럼 아래 공간이 없는 트리거용. [2026-10-13] */
     side?: 'bottom' | 'right';
+    /** 패널 배경 단계. 기본 'default'(slate-900), 'raised'는 한 단계 밝은 slate-800 — 같은 slate-900 배경(사이드바 등) 위에 열려
+     *  구분이 안 될 때. [2026-11-05] 사이드바 프로필 메뉴 */
+    surface?: 'default' | 'raised';
     className?: string;
     width?: string;
     // Controlled props
@@ -56,6 +59,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
     children,
     align = 'right',
     side = 'bottom',
+    surface = 'default',
     className = '',
     width = 'w-64',
     isOpen: controlledIsOpen,
@@ -134,7 +138,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             {isExpanded && pos && createPortal(
                 <div
                     ref={panelRef}
-                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl ${pos.kind === 'bottom' && pos.maxHeight !== undefined ? 'overflow-y-auto custom-scrollbar' : 'overflow-hidden'} z-popover animate-in fade-in duration-100`}
+                    className={`fixed ${width} ${surface === 'raised' ? 'bg-slate-800 border-slate-700' : 'bg-slate-900 border-slate-800'} border rounded-xl shadow-2xl ${pos.kind === 'bottom' && pos.maxHeight !== undefined ? 'overflow-y-auto custom-scrollbar' : 'overflow-hidden'} z-popover animate-in fade-in duration-100`}
                     style={
                         pos.kind === 'right'
                             ? { bottom: pos.bottom, left: pos.left }
@@ -149,7 +153,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                         <div className="p-1 max-h-80 overflow-y-auto custom-scrollbar">
                             {items.map((item) => (
                                 <React.Fragment key={item.id}>
-                                    {item.dividerBefore && <div className="my-1 border-t border-slate-800" />}
+                                    {item.dividerBefore && <div className={`my-1 border-t ${surface === 'raised' ? 'border-slate-700' : 'border-slate-800'}`} />}
                                     <button
                                         onClick={() => {
                                             item.onClick();
@@ -158,7 +162,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                                         className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
                                             item.active
                                                 ? 'bg-indigo-600/10 text-indigo-400'
-                                                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                                : `${surface === 'raised' ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-400 hover:bg-slate-800'} hover:text-slate-200`
                                         }`}
                                     >
                                         {item.label}

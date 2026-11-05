@@ -35,6 +35,31 @@
 
 
 
+## 2026-11-05 — 패치노트 모달 + 프로필 아이콘(닉네임 첫 글자·배경색 선택) + 사이드바 프로필 메뉴 배경 한 단계 밝게
+
+**배경**: 사용자 요청 — ① 사이드바 하단 프로필 메뉴의 "홈으로" 아래 "패치노트" → 모달에서 레포의 패치노트 md를 그대로 표시 ② 프로필 아이콘·드롭다운 배경이 사이드바와 같은 색이라 안 보임 → 아이콘은 닉네임 첫 글자, 배경색은 로비 닉네임 설정에서 선택, 드롭다운은 한 단계 밝은 slate. 패치노트 파일은 개발용 `docs/history/patch-notes.md`가 아니라 유저용 새 파일(사용자 선택).
+
+**변경 파일**:
+- `PATCH_NOTES.md` (신규, 레포 루트) — 유저용 패치노트(첫 항목 2026-11-05 배포분)
+- `components/common/PatchNotesModal.tsx` (신규) — PATCH_NOTES.md를 읽어(아래 후속: 앱 빌드 사본) → react-markdown + remark-gfm로 렌더(공용 Modal size md·`rounded="rounded-lg"` — 서비스 모달 패널 공통 반경, 기본 rounded-[2rem]은 과함, 로딩 Spinner, 실패 InlineNotice)
+  - [후속, 사용자 요청] 헤더를 공용 Modal 제목(px-8 py-6 text-xl) 대신 간결한 자체 헤더(px-5 py-3, text-sm font-black, IconButton sm 닫기 — DraftPoolModal과 같은 형식, `hideCloseButton`)로. 로딩 중 size md → 내용 로드 후 xl(max-w-6xl)·높이 80vh. 좌측 날짜 목록(`## ` 구역 단위로 분리, 라벨은 "업데이트" 뗀 제목, 폰은 가로 스크롤 한 줄) — 누르면 그 구역만, 다시 누르면 해제되어 전체. 선택 바뀌면 본문 맨 위로.
+  - [후속, 사용자 결정] GitHub raw fetch 폐지 → 앱 빌드에 묶인 사본만 표시(`import('../../PATCH_NOTES.md?raw')`, 모달 열 때 별도 청크로 지연 로드). 이유: main 푸시 = Vercel 재배포라 GitHub에서 읽는 이점이 없고, GitHub 캐시 5분 지연·장애·푸시 전 404(실제 발생)를 없앰. 롤백: fetch(raw.githubusercontent.com/…/main/PATCH_NOTES.md)로 되돌림.. 파일만 푸시하면 재배포 없이 반영(GitHub raw 캐시 max-age 300, CORS `*`)
+- `migrations/profiles_avatar_color.sql` (DB, 적용 완료) — `profiles.avatar_color text` 추가, `set_my_nickname(p_nickname, p_email, p_avatar_color default null)`로 교체(NULL이면 기존 색 유지, 소문자 1~16자 검증 `invalid_avatar_color`, 2인자 호출 호환)
+- `utils/avatarColors.ts` (신규) — 팔레트 10색(indigo·blue·sky·teal·emerald·amber·orange·rose·fuchsia·violet, -600), 기본 indigo, `avatarBgClass`·`avatarInitial`
+- `components/common/ProfileAvatar.tsx` (신규) — 원형 아바타(첫 글자, 없으면 User 아이콘)
+- `hooks/useMyProfile.ts` (신규) — profiles(nickname, avatar_color) 조회, `MY_PROFILE_KEY`
+- `views/lobby/NicknameModal.tsx` — 헤더 아이콘을 미리보기 아바타로, "프로필 색" 팔레트 선택 추가, RPC에 `p_avatar_color`, 저장 후 `MY_PROFILE_KEY` 무효화, prop `currentAvatarColor`
+- `views/home/StartMenu.tsx` — 로비 계정 아바타를 ProfileAvatar(선택 색)로, 모달에 현재 색 전달
+- `components/common/Dropdown.tsx` — prop `surface?: 'default' | 'raised'`(raised = 패널 bg-slate-800·border-slate-700, 항목 hover bg-slate-700, 구분선 slate-700). 기본값은 기존 그대로
+- `components/MultiSidebar.tsx` — 트리거 아이콘 CircleUser → ProfileAvatar(24px, 열림 시 ring), 드롭다운 `surface="raised"`, "홈으로" 다음 "패치노트" 항목 + PatchNotesModal
+
+**Before**: 사이드바 프로필 = CircleUser 아이콘, 드롭다운 bg-slate-900(사이드바와 동일), 로비 아바타 bg-indigo-600 고정, 패치노트 화면 없음.
+**After**: 위와 같음.
+
+**검증**: tsc 변경 파일 오류 0. DB 마이그레이션 적용 확인. raw GitHub CORS/캐시 헤더 확인. PATCH_NOTES.md는 main에 푸시돼야 모달에 내용이 뜸(그 전엔 404 → "패치노트를 불러오지 못했습니다").
+
+**롤백 방법**: 신규 파일 5개 삭제, Dropdown `surface` 제거, MultiSidebar·NicknameModal·StartMenu 원복. DB는 `set_my_nickname(text,text,text)` drop 후 이전 2인자 정의(마이그레이션 파일 주석 참조) 재생성, 필요하면 `alter table profiles drop column avatar_color`.
+
 ## 2026-11-05 — PBP: 피리어드 막판 밀고 올라가기(데드볼 인바운드 시작)는 속공 대신 막판 문구
 
 **배경**: 최종 감사 재실행에서 타임아웃 직후 "속공 상황에서 띄워주는 패스 — … 덩크!" 문구(978경기 3건). 원인 — endOfPeriodShot이 백코트 5~6초 공격을 Transition으로 고정하는데, 문구는 일반 속공 풀을 그대로 씀. 수비가 서 있는 데드볼 인바운드(타임아웃·득점·파울 후)에서 시작한 공격은 속공이 아니라 시간에 쫓긴 공격. 사용자 결정: 수정.
