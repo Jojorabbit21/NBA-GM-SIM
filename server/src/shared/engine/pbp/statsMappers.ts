@@ -290,6 +290,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
                 isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
                 isHelpPlay: !!result.isHelpPlay,
+                isTrap: !!result.isBlitzTrap,   // [2026-11-06] 트랩 턴오버(블리츠·헤지 실패) 구분 — 헤지 트랩 전용 해설 (client 미러 참조)
             });
         if (isSteal && defender) { defender.stl += 1; defender.tovForced += 1; }
         addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');

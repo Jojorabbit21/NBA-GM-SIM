@@ -403,9 +403,10 @@ export function resolvePlayAction(
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (zone === 'Rim' || zone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone, 'created');
-                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0.01 };
+                // [2026-11-06] 플레이 보너스 0.01 제거 — 스크린 판정(resolveScreen)과 이중 가산 (client 미러 참조). 이전: bonusHitRate: 0.01
+                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0 /* 0.01 */ };
             }
-            return { playType, actor, secondaryActor: screener, preferredZone: zone, shotType: 'Pullup', bonusHitRate: 0.01 };
+            return { playType, actor, secondaryActor: screener, preferredZone: zone, shotType: 'Pullup', bonusHitRate: 0 /* 0.01 */ };
         }
         case 'PnR_Roll': {
             // [2026-07-29] 포지션 가중치로 롤맨을 프론트코트로 제한 (client 미러 참고)

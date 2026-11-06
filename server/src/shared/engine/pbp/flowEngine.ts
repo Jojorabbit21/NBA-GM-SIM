@@ -91,7 +91,10 @@ export function calculateHitRate(
     shotType?: PlayContext['shotType'],
     threeSubZone?: string,
     // [2026-10-30] 슛 타입 기본 견제 계수(SHOT_DEFENSE.CONTEST) 대신 쓸 값 — 속공 트레일러 3점(TRANSITION_SHOT.TRAILER_CONTEST)
-    contestOverride?: number
+    contestOverride?: number,
+    // [2026-11-06] PnR 핸들러 본인 슛의 스크린 판정 결과 — 드롭 풀업 보너스는 클린·부분만, 헤지 감점은 부분만
+    // (클린 = 헤지 무력화, 실패 = 트랩으로 넘어가 핸들러 슛 없음). undefined = 이전 동작 (client 미러 참조)
+    handlerScreen?: 'clean' | 'partial' | 'fail'
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -267,15 +270,15 @@ export function calculateHitRate(
             const scale = screenerDefender
                 ? 0.7 + (screenerDefender.attr.intDef - 70) * 0.01
                 : 1.0;
-            if (isPnrHandler && preferredZone === 'Mid') hitRate += pCfg.DROP_HANDLER_MID_BONUS * scale;
-            if (isPnrHandler && preferredZone === '3PT') hitRate += pCfg.DROP_HANDLER_3PT_BONUS * scale;
+            if (isPnrHandler && preferredZone === 'Mid' && handlerScreen !== 'fail') hitRate += pCfg.DROP_HANDLER_MID_BONUS * scale;
+            if (isPnrHandler && preferredZone === '3PT' && handlerScreen !== 'fail') hitRate += pCfg.DROP_HANDLER_3PT_BONUS * scale;
             if (isPnrRoll) hitRate -= pCfg.DROP_ROLL_PENALTY * scale;
             if (isPnrPop) hitRate += pCfg.DROP_POP_BONUS * scale;
         }
 
         if (pnrCoverage === 'hedge') {
             const bigSpeed = screenerDefender?.attr.speed ?? 70;
-            if (isPnrHandler) hitRate -= pCfg.HEDGE_HANDLER_PENALTY;
+            if (isPnrHandler && (handlerScreen === undefined || handlerScreen === 'partial')) hitRate -= pCfg.HEDGE_HANDLER_PENALTY;
             if (isPnrRoll) {
                 hitRate += pCfg.HEDGE_ROLL_BONUS;
                 if (bigSpeed < pCfg.HEDGE_SLOW_BIG_THRESHOLD) hitRate += pCfg.HEDGE_SLOW_BIG_EXTRA;

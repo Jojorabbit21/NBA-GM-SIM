@@ -63,7 +63,8 @@ export const SIM_CONFIG = {
             [75, -0.030], [80, +0.008], [85, +0.024], [90, +0.042],
             [95, +0.060], [99, +0.072],
         ] as [number, number][],
-        THREE_CORNER_BONUS: 0.015,
+        // [2026-11-06] 0.015 → 0.035 — 같은 캐치앤슛 안에서 실제 코너 이점 +2.7%p인데 엔진은 +1.2(코너 슈터 능력치가 낮아 보너스가 상쇄). 측정: 코너 캐치앤슛 36.0→39.0(실제 39.0) (server 미러)
+        THREE_CORNER_BONUS: 0.035,
 
         // [Layup] 33%→48%(plateau@90)→60%(steep 91-99)
         // [2026-10-25] 2점 과효율 보정(사용자 결정 "림 +5") — 엔진 2P% .577 vs NBA .545, 페인트 .575 vs 3~10ft .452, 미드 .494 vs .41~.45.
@@ -91,9 +92,12 @@ export const SIM_CONFIG = {
 
         // [Mid] Pullup/Jumper/Fadeaway 공통: 23%→41%(plateau@92)→50%
         // [2026-10-25] 전 구간 −0.06 (이전: [25,-.083] [40,-.033] [55,+.007] [70,+.047] [85,+.077] [92,+.097] [95,+.137] [99,+.187])
+        // [2026-11-06] 전 구간 +0.02 — PnR 핸들러 이중 보너스(플레이 +1·스크린 바닥 플러스) 제거 후 미드 기본선이 드러남(아이솔 미드 풀업 41 vs 실제 43.4).
+        //   NBA Active 하네스: 리그 미드 40.5→42.5(실제 42.8), 미드 풀업 PnR/아이솔 43.2/43.3(43.4). 10-25 하향은 PBL(레전드) 기준이었음 (server 미러)
+        //   이전: [25,-.143] [40,-.093] [55,-.053] [70,-.013] [85,+.017] [92,+.037] [95,+.077] [99,+.127]
         MID_OFF_CURVE: [
-            [25, -0.143], [40, -0.093], [55, -0.053], [70, -0.013],
-            [85, +0.017], [92, +0.037], [95, +0.077], [99, +0.127],
+            [25, -0.123], [40, -0.073], [55, -0.033], [70, +0.007],
+            [85, +0.037], [92, +0.057], [95, +0.097], [99, +0.147],
         ] as [number, number][],
 
         // [2026-10-25] 페인트 점퍼 전용 — 이전엔 MID_OFF_CURVE를 INSIDE_BASE_PCT(57%) 위에 얹어 기대 63.7%(림 레이업보다 높음).
@@ -879,7 +883,9 @@ export const SIM_CONFIG = {
     },
     // Shot Defense: shotType별 수비 차등 (flowEngine + possessionHandler)
     SHOT_DEFENSE: {
-        CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 1.0 } as Record<string, number>,
+        // [2026-11-06] CatchShoot 1.0 → 0.8 (풀업과 같게) — 1.0이면 캐치앤슛이 풀업보다 수비 감점을 더 받아 실제(캐치앤슛 +3.3%p)와 반대였음.
+        //   속공 트레일러 3점(TRANSITION_SHOT.TRAILER_CONTEST 0.8, 10-30)과 같은 논리. 측정: 캐치앤슛 35.1→36.4 (server 미러)
+        CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 0.8 } as Record<string, number>,
         // [2026-10-30] Dunk 0.85 → 0.45(엔진 묶음)
         BLOCK_MULT: { Dunk: 0.45, Layup: 1.0, Floater: 0.35, Hook: 0.55, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.25, CatchShoot: 1.0 } as Record<string, number>,
         AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.15, Jumper: 0.10, Fadeaway: 0.10, CatchShoot: 0.08 } as Record<string, number>,
@@ -936,6 +942,13 @@ export const SIM_CONFIG = {
         CLEAN_BONUS: 0.05,      // 클린 스크린: 슈터 성공률 +5%p
         PARTIAL_BONUS: 0.02,    // 부분 성공: +2%p
         ZONE_MULT: 0.5,         // 지역 방어: 수비가 사람을 따라가지 않아 스크린 효과 절반
+        // [2026-11-06] PnR 핸들러 본인 슛 전용(판정은 커버리지 결정 직후, possessionHandler 2.34) — 실패는 감점이라 스크리너가 나쁘면
+        // PnR이 아이솔보다 불리. 판정 분포(클린 39 / 부분 32 / 실패 29%)에서 평균 ≈ 0. 롤·팝·핸드오프는 위 CLEAN/PARTIAL_BONUS 그대로 (server 미러).
+        HANDLER_CLEAN_BONUS: 0.03,
+        HANDLER_PARTIAL_BONUS: 0,
+        HANDLER_FAIL_PENALTY: 0.04,
+        // [2026-11-06] 블리츠 트랩 탈출 격차 보정 — 클린 +, 실패 − (BLITZ.ESCAPE_CURVE 입력 격차에 더함). 헤지 실패 트랩엔 미적용(이중 부과 방지)
+        BLITZ_ESCAPE_SHIFT: 10,
     },    // [2026-10-24] 블리츠 재설계 (possessionHandler.ts resolveBlitzTrap / playTypes.ts resolveBlitzPassOut)
     // PnR_Handler + 블리츠: 트랩 탈출 판정 → 성공 = 패스아웃(노마크), 실패 = 턴오버/스틸(STEAL_TRANSITION으로 속공 연결).
     // 기존 커버리지 무관 PnR_Handler 킥아웃(PNR_HANDLER_KICKOUT 확률부)은 폐지, 블리츠 핸들러 슛 감점(PNR_COVERAGE.BLITZ_HANDLER_PENALTY/

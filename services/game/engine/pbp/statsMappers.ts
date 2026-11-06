@@ -386,7 +386,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             : generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
                  isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
                  isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
-                 isHelpPlay: !!result.isHelpPlay
+                 isHelpPlay: !!result.isHelpPlay,
+                 isTrap: !!result.isBlitzTrap   // [2026-11-06] 트랩 턴오버(블리츠·헤지 실패) 구분 — 헤지 트랩 전용 해설 (server 미러)
             });
         
         if (isSteal && defender) {

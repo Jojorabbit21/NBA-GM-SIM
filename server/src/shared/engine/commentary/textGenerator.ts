@@ -210,12 +210,12 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean },
+    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean; isTrap?: boolean },
     // [2026-08-03] client 미러(services/game/engine/commentary/textGenerator.ts)와 동일 — 슛타입별
     // 세분화 코멘터리 콘텐츠 작업을 위한 배선만 먼저 반영, 콘텐츠는 다음 작업에서 채움.
     shotType?: PlayContext['shotType'],
 ): string {
-    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage, isHelpPlay, isKickout, isEndRush } = flags;
+    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage, isHelpPlay, isKickout, isEndRush, isTrap } = flags;
 
     if (type === 'score') {
         const scoreTag = ` (+${points})`;
@@ -1445,6 +1445,19 @@ export function generateCommentary(
     }
 
     if (type === 'turnover') {
+        // [2026-11-06] 헤지 + 스크린 실패 트랩(더블팀) 턴오버 — 일반 헤지 턴오버와 구분(isTrap) (client 미러 참조)
+        if (isTrap && pnrCoverage === 'hedge' && playType === 'PnR_Handler') {
+            if (isSteal && defender) {
+                return pick([
+                    `${actor.playerName}, 스크린이 막힌 사이 헤지 나온 빅맨에게 갇혀 공을 뺏깁니다. (${defender.playerName}의 스틸)`,
+                    `${actor.playerName}, 스크린을 제대로 못 받고 더블팀에 걸려 공을 놓칩니다. (${defender.playerName}의 스틸)`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 스크린이 막히며 헤지 수비에 갇혀 턴오버를 범합니다.`,
+                `${actor.playerName}, 빅맨과 수비수 사이에 갇혀 무리하게 빼준 패스가 빗나갑니다.`,
+            ]);
+        }
         if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
             if (isSteal && defender) {
                 return pick([

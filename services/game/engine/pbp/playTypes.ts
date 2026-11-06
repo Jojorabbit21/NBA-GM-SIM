@@ -502,7 +502,9 @@ export function resolvePlayAction(
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (zone === 'Rim' || zone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone, 'created');
-                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0.01 };
+                // [2026-11-06] 플레이 보너스 0.01 제거 — 원래 의도("스크린 풀업 소폭")를 2026-10-24 스크린 판정(resolveScreen)이
+                // 직접 계산하므로 이중 가산이었음 (server 미러). 이전: bonusHitRate: 0.01
+                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0 /* 0.01 */ };
             }
             return {
                 playType,
@@ -510,7 +512,8 @@ export function resolvePlayAction(
                 secondaryActor: screener,
                 preferredZone: zone,
                 shotType: 'Pullup',
-                bonusHitRate: 0.01
+                // [2026-11-06] 플레이 보너스 제거(위와 같은 이유) — 이전: bonusHitRate: 0.01
+                bonusHitRate: 0 /* 0.01 */
             };
         }
         case 'PnR_Roll': {

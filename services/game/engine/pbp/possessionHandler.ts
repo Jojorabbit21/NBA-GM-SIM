@@ -200,7 +200,10 @@ function calculateTurnoverChance(
     // [2026-10-24] 핸들러가 직접 만드는 슛(PnR_Handler 비킥아웃) — 패스가 없으므로 패싱레인 스틸 대상 아님
     selfCreated: boolean = false,
     // [2026-10-28] 속공 러너·트레일러(패스를 받아 마무리) — 드리블 플레이가 아니라 캐치 플레이로 판정
-    transitionCatch: boolean = false
+    transitionCatch: boolean = false,
+    // [2026-11-06] PnR 핸들러 본인 슛의 스크린 판정 결과 — 헤지 턴오버 가산은 부분 성공일 때만(클린 = 헤지 무력화, 실패 = 트랩으로 따로 처리).
+    // undefined = 판정 없음(이전 동작) (server 미러)
+    handlerScreen?: ScreenResult
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
@@ -318,7 +321,7 @@ function calculateTurnoverChance(
     if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
         contextRisk += pnrCfg.BLITZ_TOV_BONUS;
     }
-    if (pnrCoverage === 'hedge' && playType === 'PnR_Handler') {
+    if (pnrCoverage === 'hedge' && playType === 'PnR_Handler' && (handlerScreen === undefined || handlerScreen === 'partial')) {
         contextRisk += pnrCfg.HEDGE_TOV_BONUS;
     }
 
@@ -431,7 +434,8 @@ function resolveScreen(
  * 핸들러(핸들링 주력 + 패스 시야·IQ) vs 트랩 수비 2명(핸들러 수비수 + 스크리너 수비수, perDef·stl·agility 평균) 격차로 탈출 확률.
  * 탈출 실패 = 턴오버(FAIL_STEAL_SHARE 비율은 트랩 수비수 stl 가중 스틸 → 스틸 후 속공 연결), 성공 = 패스아웃(호출부).
  */
-function resolveBlitzTrap(handler: LivePlayer, onBall: LivePlayer, helper?: LivePlayer): { escaped: boolean; stealer?: LivePlayer } {
+// [2026-11-06] gapShift — 스크린 판정 결과에 따른 탈출 격차 보정(SCREEN.BLITZ_ESCAPE_SHIFT, 블리츠만) (server 미러)
+function resolveBlitzTrap(handler: LivePlayer, onBall: LivePlayer, helper?: LivePlayer, gapShift = 0): { escaped: boolean; stealer?: LivePlayer } {
     const c = SIM_CONFIG.BLITZ;
     const skill = handler.attr.handling * c.HANDLER_HANDLING_W
         + handler.attr.passVision * c.HANDLER_PASSVISION_W
@@ -439,7 +443,7 @@ function resolveBlitzTrap(handler: LivePlayer, onBall: LivePlayer, helper?: Live
     const trappers = helper && helper.playerId !== onBall.playerId ? [onBall, helper] : [onBall];
     const trapScore = (p: LivePlayer) => p.attr.perDef * c.TRAP_PERDEF_W + p.attr.stl * c.TRAP_STL_W + p.attr.agility * c.TRAP_AGILITY_W;
     const trap = trappers.reduce((s, p) => s + trapScore(p), 0) / trappers.length;
-    if (Math.random() < interpolateCurve(skill - trap, c.ESCAPE_CURVE)) return { escaped: true };
+    if (Math.random() < interpolateCurve(skill - trap + gapShift, c.ESCAPE_CURVE)) return { escaped: true };
     if (Math.random() >= c.FAIL_STEAL_SHARE) return { escaped: false };
     const totalStl = trappers.reduce((s, p) => s + Math.max(1, p.attr.stl), 0);
     let r = Math.random() * totalStl;
@@ -889,11 +893,34 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType) : null;
     if (press?.result) return press.result;
 
+    // 2.34 [2026-11-06] PnR 핸들러 스크린 판정을 슛 순간 → 커버리지 결정 직후로 (server 미러). 결과가 트랩·턴오버·슛으로 이어진다.
+    //   클린: 헤지 무력화(감점 없음)·드롭 풀업 보너스 유지·블리츠 트랩 탈출 쉬움 / 부분: 헤지 감점 그대로·드롭 보너스 유지
+    //   실패: 헤지 = 더블팀 트랩 / 드롭 풀업 보너스 없음 / 블리츠 트랩 탈출 어려움. 핸들러 본인 슛 성공률은 SCREEN.HANDLER_*.
+    //   (이전: 판정은 슛 순간에만, 보너스 클린 +5 / 부분 +2 / 실패 0 — 스크리너가 나빠도 항상 이득). 스위치·미스 스위치는 판정 없음(그대로).
+    let handlerScreen: ScreenResult | undefined;
+    if (selectedPlayType === 'PnR_Handler' && !isKickout && defender) {
+        const hs = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, false, isSwitch, isBotchedSwitch, isZone);
+        handlerScreen = hs.result;
+        // [2026-10-28] SCRN% 집계 — 핸들러 스크린은 여기서 한 번만(턴오버·트랩으로 끝난 포세션 포함)
+        if (hs.result && hs.screener) {
+            const sc = hs.screener;
+            if (hs.result === 'clean') sc.scrClean = (sc.scrClean || 0) + 1;
+            else if (hs.result === 'partial') sc.scrPartial = (sc.scrPartial || 0) + 1;
+            else sc.scrFail = (sc.scrFail || 0) + 1;
+        }
+    }
+
     // 2.35 [2026-10-24] 블리츠 트랩 (PnR_Handler + 블리츠) — 실패 = 턴오버/스틸(스틸이면 STEAL_TRANSITION 속공 연결),
     // 성공 = 패스아웃(스크리너 4대3 또는 위크사이드 노마크). 패스아웃 이후엔 커버리지 보정을 적용하지 않음(calcCoverage).
+    // [2026-11-06] 헤지 + 스크린 실패도 트랩(빅맨과 핸들러 수비수가 함께 볼에 붙음). 블리츠는 스크린 결과로 탈출 격차 ±BLITZ_ESCAPE_SHIFT,
+    //   헤지 실패 트랩은 이미 실패의 결과라 탈출 보정 없음(이중 부과 방지) (server 미러)
     let calcCoverage: PnrCoverage = pnrCoverage;
-    if (SIM_CONFIG.BLITZ.ENABLED && selectedPlayType === 'PnR_Handler' && pnrCoverage === 'blitz' && !isKickout && secondaryActor && defender) {
-        const trap = resolveBlitzTrap(actor, defender, screenerDefender);
+    const isBlitzTrapPlay = pnrCoverage === 'blitz';
+    const isHedgeTrapPlay = pnrCoverage === 'hedge' && handlerScreen === 'fail';
+    if (SIM_CONFIG.BLITZ.ENABLED && selectedPlayType === 'PnR_Handler' && (isBlitzTrapPlay || isHedgeTrapPlay) && !isKickout && secondaryActor && defender) {
+        const shiftCfg = SIM_CONFIG.SCREEN.BLITZ_ESCAPE_SHIFT;
+        const gapShift = isBlitzTrapPlay ? (handlerScreen === 'clean' ? shiftCfg : handlerScreen === 'fail' ? -shiftCfg : 0) : 0;
+        const trap = resolveBlitzTrap(actor, defender, screenerDefender, gapShift);
         if (!trap.escaped) {
             return {
                 type: 'turnover',
@@ -901,7 +928,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 defender: trap.stealer ?? defender,
                 isSteal: !!trap.stealer,
                 points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
-                pnrCoverage: 'blitz',
+                pnrCoverage,
                 isBlitzTrap: true,
             };
         }
@@ -910,6 +937,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         ({ actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = passCtx);
         defender = pickRotationDefender(defTeam, actor, trapIds);
         calcCoverage = 'none';
+        handlerScreen = undefined;   // 패스아웃 — 이후 슛은 수신자
     }
     if (!defender) {
         return {
@@ -1371,7 +1399,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
     const shotPasser = isHandlerSelf ? undefined : secondaryActor;
     const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf,
-        (transitionRole === 'runner' || transitionRole === 'trailer') && !helpKicked);
+        (transitionRole === 'runner' || transitionRole === 'trailer') && !helpKicked,
+        isHandlerSelf ? handlerScreen : undefined);
 
     if (tovResult.isTurnover) {
         return {
@@ -1544,7 +1573,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // [2026-10-24] 스크린 판정 (PnR 3종 + Handoff) — 슛 성공률 보너스로만 반영
-    const screen = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+    // [2026-11-06] PnR_Handler는 위(2.34)에서 이미 판정·집계 — 핸들러 본인 슛이면 HANDLER 보너스(실패는 감점), 패스아웃·킥아웃 슛은 0 (server 미러)
+    const sCfg = SIM_CONFIG.SCREEN;
+    const screen: { result?: ScreenResult; bonus: number; screener?: LivePlayer } = selectedPlayType === 'PnR_Handler'
+        ? { bonus: (!isKickout && handlerScreen)
+            ? (handlerScreen === 'clean' ? sCfg.HANDLER_CLEAN_BONUS : handlerScreen === 'partial' ? sCfg.HANDLER_PARTIAL_BONUS : -sCfg.HANDLER_FAIL_PENALTY) * (isZone ? sCfg.ZONE_MULT : 1)
+            : 0 }
+        : resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
     // [2026-10-28] SCRN% 집계 — 판정된 스크린 결과(clean/partial/fail)를 스크리너 박스스코어에 누적한다.
     // 판정 생략(킥아웃·스위치·미스 스위치·스크린 아닌 플레이)은 result 가 없어 집계되지 않는다. 판정 로직은 건드리지 않는다.
     if (screen.result && screen.screener) {
@@ -1570,7 +1605,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         shotType,
         subZone,
         // [2026-10-30] 먼저 뛴 오픈 트레일러의 속공 3점은 풀업 수준 견제(이전 CatchShoot 1.0 — 트레일러가 풀업보다 낮았음)
-        (transitionRole === 'trailer' && !helpKicked && preferredZone === '3PT') ? SIM_CONFIG.TRANSITION_SHOT.TRAILER_CONTEST : undefined
+        (transitionRole === 'trailer' && !helpKicked && preferredZone === '3PT') ? SIM_CONFIG.TRANSITION_SHOT.TRAILER_CONTEST : undefined,
+        // [2026-11-06] PnR 핸들러 본인 슛의 스크린 결과 — 드롭 풀업 보너스·헤지 감점 연동 (server 미러)
+        (selectedPlayType === 'PnR_Handler' && !isKickout) ? handlerScreen : undefined
     );
 
     // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---
