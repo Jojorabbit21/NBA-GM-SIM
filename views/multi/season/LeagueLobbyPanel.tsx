@@ -31,6 +31,17 @@ function fmtDate(iso: string | null): string {
     });
 }
 
+// 메인리그(Legend 등)는 tournament_start_at 대신 real_start_date(KST 날짜) + daily_window_start_min(KST 자정 기준 분)로
+// 시작 시각을 정한다. 토너먼트 값이 없으면 이 조합으로 계산한다.
+function resolveStartIso(league: { tournament_start_at: string | null; real_start_date: string | null; daily_window_start_min: number | null }): string | null {
+    if (league.tournament_start_at) return league.tournament_start_at;
+    if (!league.real_start_date) return null;
+    const [y, m, d] = league.real_start_date.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const ms = Date.UTC(y, m - 1, d) - 9 * 3600_000 + (league.daily_window_start_min ?? 0) * 60_000;
+    return new Date(ms).toISOString();
+}
+
 function fmtSeconds(sec: number): string {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -331,7 +342,7 @@ const LeagueLobbyPanel: React.FC = () => {
                                         : '')}
                             </KeyValueRow>
                         )}
-                        <KeyValueRow padding="sm" label="토너먼트 시작 일시">{fmtDate(league.tournament_start_at)}</KeyValueRow>
+                        <KeyValueRow padding="sm" label="토너먼트 시작 일시">{fmtDate(resolveStartIso(league))}</KeyValueRow>
                         {isPersonalDraft && (
                             <KeyValueRow padding="sm" label="참가/드래프트 마감 일시">{league.draft_deadline_at ? fmtDate(league.draft_deadline_at) : '마감 없음'}</KeyValueRow>
                         )}

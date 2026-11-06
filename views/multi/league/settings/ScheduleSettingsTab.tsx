@@ -291,6 +291,10 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
     const { session } = useGame();
     const isMainLeague = league.type === 'main_league';
     const hasTimeline = timeline.length > 0;
+    // 모집/드래프트 중에는 타임라인이 아직 없다(드래프트 종료 시 finalize가 생성) — 구 구조가 아니라 시작 전 상태.
+    // 이때는 생성 시 저장한 컬럼(real_start_date 등)을 그대로 편집·저장할 수 있고, finalize가 그 값으로 타임라인을 만든다.
+    const preStart = isMainLeague && !hasTimeline && (league.status === 'recruiting' || league.status === 'drafting');
+    const editable = hasTimeline || preStart;
     const serverNow = useServerClockBucket();
 
     // ── 스케줄 로드 ───────────────────────────────────────────────────────────
@@ -328,20 +332,23 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [timeline]);
     const [startDate, setStartDate]     = useState(defaultStartDate);
+    const savedRealStart = league.real_start_date ?? msToKstDateStr(Date.now());
+    const [realStart, setRealStart]     = useState(savedRealStart);
+    useEffect(() => { setRealStart(savedRealStart); }, [savedRealStart]);
     useEffect(() => { setStartDate(defaultStartDate); }, [defaultStartDate]);
     useEffect(() => { setDayLength(savedDayLength); setWindowStart(minToHHMM(savedWindowStart)); setEndDate(savedEndDate); setReplayMin(savedReplay); }, [savedDayLength, savedWindowStart, savedEndDate, savedReplay]);
     const windowStartMin = hhmmToMin(windowStart, DEFAULT_WINDOW_START_MIN);
-    const settingsDirty = dayLength !== savedDayLength || windowStartMin !== savedWindowStart || endDate !== savedEndDate || replayMin !== savedReplay;
+    const settingsDirty = dayLength !== savedDayLength || windowStartMin !== savedWindowStart || endDate !== savedEndDate || replayMin !== savedReplay || (preStart && realStart !== savedRealStart);
     const lateGameClamped = lateGameClampsAt(dayLength, replayMin);
 
     const [savingSettings, setSavingSettings] = useState(false);
     const [settingsMsg, setSettingsMsg] = useState<{ ok: boolean; text: string } | null>(null);
     const handleSaveSettingsOnly = async () => {
         setSavingSettings(true); setSettingsMsg(null);
-        const { error } = await updateLeagueSettings({ leagueId: league.id, dayLengthMin: dayLength, dailyWindowStartMin: windowStartMin, realEndDate: endDate, replayMinutes: replayMin });
+        const { error } = await updateLeagueSettings({ leagueId: league.id, dayLengthMin: dayLength, dailyWindowStartMin: windowStartMin, realEndDate: endDate, replayMinutes: replayMin, ...(preStart ? { realStartDate: realStart } : {}) });
         setSavingSettings(false);
         if (error) { setSettingsMsg({ ok: false, text: error }); return; }
-        setSettingsMsg({ ok: true, text: replayMin !== savedReplay
+        setSettingsMsg({ ok: true, text: preStart ? '설정을 저장했습니다. 드래프트가 끝나 일정이 만들어질 때 이 값으로 적용됩니다.' : replayMin !== savedReplay
             ? '설정을 저장했습니다. 리플레이 길이는 즉시 모든 화면의 결과 공개 시점에 반영됩니다(서버는 최대 1분 지연). 타임라인과 경기 시각은 그대로이며, 늦은 경기의 클램프를 다시 맞추려면 "남은 날짜 재배치"를 실행하세요.'
             : '설정을 저장했습니다. 타임라인과 경기 시각은 그대로이며 "남은 날짜 재배치"를 눌러야 반영됩니다.' });
         onLeagueSaved();
@@ -564,26 +571,26 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                             <CalendarDays size={14} className="text-indigo-400" />
                             타임라인 설정
                         </h2>
-                        {!hasTimeline && (
+                        {!hasTimeline && !preStart && (
                             <InlineNotice tone="warning">이 리그는 고정 길이 가상 하루 타임라인이 없는 구 구조라 재배치를 지원하지 않습니다. 아래 일정표에서 경기별 시각만 수정할 수 있습니다.</InlineNotice>
                         )}
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">가상 하루 길이 (분) <span className="text-slate-600">{MIN_DAY_LENGTH_MIN}–{MAX_DAY_LENGTH_MIN}</span></label>
-                                <input type="number" min={MIN_DAY_LENGTH_MIN} max={MAX_DAY_LENGTH_MIN} step={1} value={dayLength} disabled={!hasTimeline}
+                                <input type="number" min={MIN_DAY_LENGTH_MIN} max={MAX_DAY_LENGTH_MIN} step={1} value={dayLength} disabled={!editable}
                                     onChange={e => setDayLength(Math.min(MAX_DAY_LENGTH_MIN, Math.max(MIN_DAY_LENGTH_MIN, Number(e.target.value) || MIN_DAY_LENGTH_MIN)))}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">시뮬 시간대 시작 (KST)</label>
-                                <input type="time" value={windowStart} disabled={!hasTimeline} onChange={e => setWindowStart(e.target.value)}
+                                <input type="time" value={windowStart} disabled={!editable} onChange={e => setWindowStart(e.target.value)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
                             </div>
                             <div className="col-span-2">
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">경기 리플레이 길이 (결과 공개 지연)</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {REPLAY_MINUTE_OPTIONS.map(m => (
-                                        <button key={m} type="button" disabled={!hasTimeline} onClick={() => setReplayMin(m)}
+                                        <button key={m} type="button" disabled={!editable} onClick={() => setReplayMin(m)}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${replayMin === m ? 'bg-indigo-600 text-white' : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'}`}>
                                             {m}분
                                         </button>
@@ -595,13 +602,13 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                                 {lateGameClamped && <InlineNotice tone="warning" size="sm" className="mt-1">이 조합에서는 22:00·22:30 경기 시작이 하루 안에 끝나도록 앞당겨집니다.</InlineNotice>}
                             </div>
                             <div>
-                                <label className="text-xs text-slate-400 ko-normal block mb-1">재배치 시작일 (KST)</label>
-                                <input type="date" value={startDate} min={todayKey} disabled={!hasTimeline} onChange={e => setStartDate(e.target.value || defaultStartDate)}
+                                <label className="text-xs text-slate-400 ko-normal block mb-1">{preStart ? '실제 시작일 (KST)' : '재배치 시작일 (KST)'}</label>
+                                <input type="date" value={preStart ? realStart : startDate} min={todayKey} disabled={!editable} onChange={e => preStart ? setRealStart(e.target.value || savedRealStart) : setStartDate(e.target.value || defaultStartDate)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400 ko-normal block mb-1">실제 종료일 (KST)</label>
-                                <input type="date" value={endDate} min={todayKey} disabled={!hasTimeline} onChange={e => setEndDate(e.target.value || savedEndDate)}
+                                <input type="date" value={endDate} min={todayKey} disabled={!editable} onChange={e => setEndDate(e.target.value || savedEndDate)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
                                 <p className="text-xs text-slate-600 ko-normal mt-1">
                                     재배치 시작일은 남은 날짜를 깔기 시작할 날(시작 시각은 위 시간대 시작)이며 저장되지 않고 재배치에만 쓰입니다. 리그 생성 시작일({league.real_start_date ?? '—'})과 플레이오프 경기 간격({league.playoff_game_interval_days === 2 ? '격일' : '매일'})은 생성 시에만 정할 수 있습니다. 일일 시뮬 시간대 길이는 기간과 하루 길이에서 계산됩니다.
@@ -622,7 +629,7 @@ export const ScheduleSettingsTab: React.FC<Props> = ({ league, room, leagueTeams
                         )}
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            <Button variant="secondary" size="sm" onClick={handleSaveSettingsOnly} disabled={!hasTimeline || !settingsDirty}
+                            <Button variant="secondary" size="sm" onClick={handleSaveSettingsOnly} disabled={!editable || !settingsDirty}
                                 isLoading={savingSettings} icon={<Save size={12} />}>
                                 설정만 저장
                             </Button>

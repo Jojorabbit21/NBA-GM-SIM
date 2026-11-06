@@ -487,6 +487,7 @@ export interface UpdateLeagueSettingsParams {
     dailyWindowStartMin?: number;
     dailyWindowEndMin?:   number;
     dayLengthMin?:        number;
+    realStartDate?:       string;
     realEndDate?:         string;
     /** [2026-09-18 2단계] 리플레이 길이(분). 값만 저장 — 이미 배정된 경기 시각의 클램프는 재배치 때 다시 계산된다. */
     replayMinutes?:       number;
@@ -552,6 +553,7 @@ export const updateLeagueSettings = async (
     if (p.dailyWindowStartMin  !== undefined) payload.daily_window_start_min  = p.dailyWindowStartMin;
     if (p.dailyWindowEndMin    !== undefined) payload.daily_window_end_min    = p.dailyWindowEndMin;
     if (p.dayLengthMin         !== undefined) payload.day_length_min          = p.dayLengthMin;
+    if (p.realStartDate        !== undefined) payload.real_start_date         = p.realStartDate;
     if (p.realEndDate          !== undefined) payload.real_end_date           = p.realEndDate;
     if (p.replayMinutes        !== undefined) payload.replay_minutes          = p.replayMinutes;
     if (p.allstarSchedule      !== undefined) payload.allstar_schedule        = p.allstarSchedule;
