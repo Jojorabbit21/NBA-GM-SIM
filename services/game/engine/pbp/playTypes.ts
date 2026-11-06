@@ -169,7 +169,7 @@ export function selectZone(
  * 존별 shotType:
  *   Rim   → Dunk, Layup (피지컬 피니시)
  *   Paint → Floater, Hook, Jumper (closeShot 기반 스킬 피니시)
- *   Mid   → Pullup, Jumper, Fadeaway (zone 미지정 시에만)
+ *   Mid   → Pullup, Jumper, Fadeaway (zone 미지정 또는 'Mid' — 'Mid'는 PostUp 미드)
  */
 type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
 
@@ -201,7 +201,7 @@ export function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
     sliders: TacticalSliders,
-    zone: 'Rim' | 'Paint' | undefined,
+    zone: 'Rim' | 'Paint' | 'Mid' | undefined,
     situation: RimFinishSituation,
 ): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'] } {
     const F = SIM_CONFIG.FINISH;
@@ -244,8 +244,10 @@ export function resolveFinish(
         }
     }
 
-    // ── Mid 옵션 (zone 미지정일 때만 — selectZone에서 이미 존 확정 시 제외) ──
-    if (!zone) {
+    // ── Mid 옵션 (zone 미지정 또는 'Mid') ──
+    // [2026-11-06] zone 'Mid' 허용 — PostUp 미드가 selectZone으로 존을 정한 뒤(2026-03-07 cdef06a1)
+    // 'Jumper'로 고정돼 Fadeaway가 한 번도 안 나왔음. 이제 PostUp 미드도 여기서 Jumper/Fadeaway를 고른다(server 미러).
+    if (!zone || zone === 'Mid') {
         // Pullup (Mid) — drive 컨텍스트만
         if (context === 'drive' && actor.attr.mid >= F.MID_MIN) {
             const w = Math.max(0, actor.attr.mid - B) * F.MID_DRIVE_WEIGHT * (sliders.shot_mid / 5);
@@ -270,6 +272,7 @@ export function resolveFinish(
     const total = options.reduce((s, o) => s + o.weight, 0);
     if (total <= 0) {
         // fallback: 존 제한에 따라 적절한 기본값
+        if (zone === 'Mid') return { zone: 'Mid', shotType: 'Jumper' };
         return zone === 'Paint'
             ? { zone: 'Paint', shotType: 'Floater' }
             : { zone: 'Rim', shotType: 'Layup' };
@@ -685,12 +688,14 @@ export function resolvePlayAction(
                 const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone, 'created');
                 return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
             }
+            // [2026-11-06] 미드도 resolveFinish로 — 자격 선수(postPlay·mid·closeShot)는 Jumper/Fadeaway 추첨, 나머지는 Jumper (server 미러)
+            const { zone: midZone, shotType: midShot } = resolveFinish(actor, 'post', sliders, 'Mid', 'created');
             return {
                 playType,
                 actor,
                 secondaryActor: entryPasser,
-                preferredZone: 'Mid',
-                shotType: 'Jumper',
+                preferredZone: midZone,
+                shotType: midShot,
                 bonusHitRate: 0.01
             };
         }

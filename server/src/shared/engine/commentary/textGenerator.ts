@@ -792,6 +792,20 @@ export function generateCommentary(
 
         // [2026-08-03] client 미러 참고 — shotType(Jumper/Pullup) 기준 세분화.
         // [2026-08-03] isMismatch가 SCORE에만 있고 미드는 안 봐서 신규 추가.
+        // [2026-11-06] Fadeaway 전용 문구 — PostUp 미드 Fadeaway 경로 복구와 함께 추가 (client 미러 참조)
+        if (shotType === 'Fadeaway') {
+            if (isMismatch) {
+                return pick([
+                    `${actor.playerName}, 작은 수비수 위로 페이드어웨이를 꽂습니다!${scoreTag}`,
+                    `${actor.playerName}, 미스매치를 살려 뒤로 물러서며 던진 슛이 들어갑니다.${scoreTag}`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 뒤로 물러서며 던진 페이드어웨이! 그물을 가릅니다.${scoreTag}`,
+                `${actor.playerName}, 포스트에서 돌아서며 페이드어웨이 점퍼 성공!${scoreTag}`,
+                `${actor.playerName}, 수비수를 등지고 턴어라운드 페이드어웨이! 들어갑니다.${scoreTag}`,
+            ]);
+        }
         if (isMismatch) {
             return pick([
                 `${actor.playerName}, 미스매치를 활용해 미드레인지 점퍼를 성공시킵니다!${scoreTag}`,
@@ -1396,6 +1410,20 @@ export function generateCommentary(
         }
         // [2026-08-03] client 미러 참고 — shotType(Jumper/Pullup) 기준 세분화.
         // [2026-08-03] isMismatch가 SCORE에만 있고 MISS엔 없어서 신규 추가.
+        // [2026-11-06] Fadeaway 전용 문구 (client 미러 참조)
+        if (shotType === 'Fadeaway') {
+            if (isMismatch) {
+                return pick([
+                    `${actor.playerName}, 미스매치에서 페이드어웨이를 골랐지만 빗나갑니다.`,
+                    `${actor.playerName}, 작은 수비수를 앞에 두고 던진 페이드어웨이가 짧습니다.`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 페이드어웨이를 시도했지만 림을 맞고 나옵니다.`,
+                `${actor.playerName}, 뒤로 물러서며 던진 슛이 짧습니다.`,
+                `${actor.playerName}, 턴어라운드 페이드어웨이가 빗나갑니다.`,
+            ]);
+        }
         if (isMismatch) {
             return pick([
                 `${actor.playerName}, 미스매치를 살리지 못하고 미드레인지 슛이 빗나갑니다.`,
@@ -1725,10 +1753,17 @@ export function getShootingFoulCommentary(defender: LivePlayer, actor: LivePlaye
         ]);
     }
     if (zone === 'Mid') {
+        // [2026-11-06] Fadeaway와 일반 포스트 점퍼 분리 — 이전엔 PostUp 미드(전부 Jumper)에 페이드어웨이 문구가 섞여 나왔음 (client 미러 참조)
+        if (shotType === 'Fadeaway') {
+            return pick([
+                `${d}, ${a}의 페이드어웨이를 막다가 손이 먼저 나가며 슈팅 파울.`,
+                `${d}, 뒤로 물러서며 슛을 올리는 ${a}의 팔을 치며 슈팅 파울!`,
+            ]);
+        }
         if (playType === 'PostUp') {
             return pick([
                 `${d}, 포스트에서 돌아서며 점퍼를 던지는 ${a}의 팔을 치며 슈팅 파울!`,
-                `${d}, ${a}의 페이드어웨이를 막다가 손이 먼저 나가며 슈팅 파울.`,
+                `${d}, ${a}의 턴어라운드 점퍼를 막다가 팔을 건드리며 슈팅 파울.`,
             ]);
         }
         if (shotType === 'Pullup') {

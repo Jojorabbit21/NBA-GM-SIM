@@ -160,7 +160,7 @@ export function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
     sliders: TacticalSliders,
-    zone: 'Rim' | 'Paint' | undefined,
+    zone: 'Rim' | 'Paint' | 'Mid' | undefined,
     situation: RimFinishSituation,
 ): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'] } {
     const F = SIM_CONFIG.FINISH;
@@ -199,7 +199,8 @@ export function resolveFinish(
     }
 
     // Mid 옵션
-    if (!zone) {
+    // [2026-11-06] zone 'Mid' 허용 — PostUp 미드의 Fadeaway 경로 복구 (client 미러 참조)
+    if (!zone || zone === 'Mid') {
         if (context === 'drive' && actor.attr.mid >= F.MID_MIN) {
             const w = Math.max(0, actor.attr.mid - B) * F.MID_DRIVE_WEIGHT * (sliders.shot_mid / 5);
             options.push({ zone: 'Mid', shotType: 'Pullup', weight: w });
@@ -219,6 +220,7 @@ export function resolveFinish(
 
     const total = options.reduce((s, o) => s + o.weight, 0);
     if (total <= 0) {
+        if (zone === 'Mid') return { zone: 'Mid', shotType: 'Jumper' };
         return zone === 'Paint'
             ? { zone: 'Paint', shotType: 'Floater' }
             : { zone: 'Rim', shotType: 'Layup' };
@@ -523,7 +525,9 @@ export function resolvePlayAction(
                 const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone, 'created');
                 return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
             }
-            return { playType, actor, secondaryActor: entryPasser, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0.01 };
+            // [2026-11-06] 미드도 resolveFinish로 — Jumper/Fadeaway 추첨 (client 미러 참조)
+            const { zone: midZone, shotType: midShot } = resolveFinish(actor, 'post', sliders, 'Mid', 'created');
+            return { playType, actor, secondaryActor: entryPasser, preferredZone: midZone, shotType: midShot, bonusHitRate: 0.01 };
         }
         case 'CatchShoot': {
             // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)
