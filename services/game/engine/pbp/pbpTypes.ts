@@ -452,6 +452,11 @@ export interface PossessionResult {
     isHelpKickout?: boolean;
     // [2026-10-24] 블리츠 트랩 탈출 실패 턴오버
     isBlitzTrap?: boolean;
+    // [2026-11-07] 패싱레인 스틸 턴오버 — actor = 패서(턴오버 기록), passTarget = 받으려던 선수(해설용) (server 미러)
+    isLaneSteal?: boolean;
+    passTarget?: LivePlayer;
+    // [2026-11-07] 플레이타입 집계(recordPlayTypeStat)용 플레이 — undefined면 playType, null이면 집계 제외(패스 차단 중 패서의 플레이가 없는 경우) (server 미러)
+    statPlayType?: PlayType | null;
     // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션(트랩 스틸/트랩 파울/1대1 압박 턴오버/1대1 리치인) — 커멘터리 분기 + 플레이타입 PPP 집계 제외용
     pressEvent?: 'trapSteal' | 'trapFoul' | 'pressTurnover' | 'pressFoul';
 }

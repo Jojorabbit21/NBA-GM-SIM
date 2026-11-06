@@ -230,13 +230,13 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean; isTrap?: boolean },
+    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean; isTrap?: boolean; isLaneSteal?: boolean; passTargetName?: string },
     // [2026-08-03] 킥아웃 등 슛타입별(레이업/덩크/플로터/훅슛 등) 세분화 코멘터리 콘텐츠 작업을 위한
     // 배선 — 엔진은 이미 resolveFinish()에서 shotType을 결정하지만 지금까지 커멘터리에 전달되지
     // 않았음. 콘텐츠는 아직 미반영(다음 작업), 여기선 파라미터만 열어둠.
     shotType?: PlayContext['shotType']
 ): string {
-    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points, pnrCoverage, isHelpPlay, isKickout, isEndRush, isTrap } = flags;
+    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points, pnrCoverage, isHelpPlay, isKickout, isEndRush, isTrap, isLaneSteal, passTargetName } = flags;
 
     // --- 1. SCORING ---
     if (type === 'score') {
@@ -1521,6 +1521,14 @@ export function generateCommentary(
             ]);
         }
 
+        // [2026-11-07] 패스 차단 — actor = 패서(턴오버 기록 대상), 받으려던 선수는 passTargetName (server 미러)
+        if (isLaneSteal && isSteal && defender && passTargetName) {
+            return pick([
+                `${actor.playerName}, ${passTargetName}에게 건넨 패스가 끊깁니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, ${eulReul(passTargetName)} 노린 패스가 읽혔습니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, 패스 길을 읽혔습니다. (${defender.playerName}의 스틸)`
+            ]);
+        }
         if (isSteal && defender) {
             if (isHelpPlay) {
                 return pick([

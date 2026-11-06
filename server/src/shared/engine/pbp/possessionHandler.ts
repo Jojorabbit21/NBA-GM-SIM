@@ -196,8 +196,10 @@ function calculateTurnoverChance(
     transitionCatch: boolean = false,
     // [2026-11-06] PnR 핸들러 본인 슛의 스크린 판정 결과 — 헤지 턴오버 가산은 부분 성공일 때만(클린 = 헤지 무력화, 실패 = 트랩으로 따로 처리).
     // undefined = 판정 없음(이전 동작) (client 미러 참조)
-    handlerScreen?: ScreenResult
-): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean } {
+    handlerScreen?: ScreenResult,
+    // [2026-11-07] 온볼 스틸 노출 — 공을 가진 선수가 직접 드리블·포스트업할 때만 true(호출부 onBallExposed). 캐치 후 처리는 온볼 스틸 없음 (client 미러 참조)
+    onBallExposed: boolean = true
+): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer, isHelpPlay?: boolean, isLaneSteal?: boolean } {
 
     const stlCfg = SIM_CONFIG.STEAL;
     const sliders = offTeam.tactics.sliders;
@@ -223,9 +225,10 @@ function calculateTurnoverChance(
     // PnR 블리츠: 더블팀 압박으로 온볼 스틸 확률 증가
     const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
     const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
-    const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus);
+    // [2026-11-07] × ONBALL_EXPOSED_MULT — 온볼 스틸 노출을 드리블·포스트·아이솔로 한정하면서 리그 총량 유지 (client 미러 참조)
+    const onballProb = Math.max(0.005, onballBase - ballSkillResist + blitzBonus) * stlCfg.ONBALL_EXPOSED_MULT;
 
-    if (Math.random() < onballProb) {
+    if (onBallExposed && Math.random() < onballProb) {
         return { isTurnover: true, isSteal: true, stealer: defender };
     }
 
@@ -246,7 +249,7 @@ function calculateTurnoverChance(
             const laneProb = Math.max(0.001, laneBase - passResist);
 
             if (Math.random() < laneProb) {
-                return { isTurnover: true, isSteal: true, stealer: helper };
+                return { isTurnover: true, isSteal: true, stealer: helper, isLaneSteal: true };
             }
         }
     }
@@ -1338,20 +1341,42 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 턴오버(패스 능력·패싱레인 스틸)·슛 품질 보정(시야·전달)·어시스트에 스크리너를 쓰지 않는다.
     const isHandlerSelf = selectedPlayType === 'PnR_Handler' && !isKickout;
     const shotPasser = isHandlerSelf ? undefined : secondaryActor;
+    // [2026-11-07] 온볼 스틸은 공을 가진 선수가 직접 드리블·포스트업할 때만 — PnR 핸들러 본인·아이솔·포스트업·속공 볼 운반자·드라이브킥 직접 마무리.
+    //   캐치 후 처리(캐치앤슛·롤·팝·컷·오프스크린·핸드오프 수신·풋백·킥아웃/패스아웃 수신·속공 러너/트레일러)는 온볼 스틸 없음 (client 미러 참조)
+    const transitionCatchNow = (transitionRole === 'runner' || transitionRole === 'trailer') && !helpKicked;
+    const onBallExposed = !isKickout && (
+        selectedPlayType === 'PnR_Handler' || selectedPlayType === 'Iso' || selectedPlayType === 'PostUp'
+        || (selectedPlayType === 'Transition' && !transitionCatchNow)
+        || (selectedPlayType === 'DriveKick' && !secondaryActor));
     const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, calcCoverage, helpDefender, helpSuccess && !helpKicked, shotPasser, isHandlerSelf,
-        (transitionRole === 'runner' || transitionRole === 'trailer') && !helpKicked,
-        isHandlerSelf ? handlerScreen : undefined);
+        transitionCatchNow,
+        isHandlerSelf ? handlerScreen : undefined,
+        onBallExposed);
 
     if (tovResult.isTurnover) {
+        // [2026-11-07] 패스 차단 턴오버는 패스한 선수의 턴오버(기록 규칙) — 이전엔 받으려던 선수(actor)에게 기록됐음.
+        //   받으려던 선수는 passTarget으로 해설에만 쓴다. 패서가 없으면(드라이브 직접 마무리 등) 그대로 actor (client 미러 참조)
+        const laneToPasser = !!tovResult.isLaneSteal && !!shotPasser;
+        // [2026-11-07] 플레이타입 집계도 패서의 플레이로 — 킥아웃·패스아웃은 킥한 선수의 플레이 그대로(selectedPlayType), 롤·팝 피드는 PnR 핸들러,
+        //   캐치앤슛·컷·오프스크린 피드는 패서가 따로 하는 플레이가 없어 플레이타입 집계에서 제외(null — Synergy 기타와 같은 취급).
+        //   드라이브킥(드라이버)·핸드오프(빅)·속공(볼 운반자)은 패서의 플레이가 그 플레이 자체라 그대로 (client 미러 참조)
+        let statPlayType: PlayType | null | undefined;
+        if (laneToPasser && !isKickout) {
+            if (selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') statPlayType = 'PnR_Handler';
+            else if (selectedPlayType === 'CatchShoot' || selectedPlayType === 'Cut' || selectedPlayType === 'OffBallScreen') statPlayType = null;
+        }
         return {
             type: 'turnover',
-            offTeam, defTeam, actor,
+            offTeam, defTeam, actor: laneToPasser && shotPasser ? shotPasser : actor,
             defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
             isSteal: tovResult.isSteal,
             isHelpPlay: tovResult.isHelpPlay,
             points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
             helpDefenderId,
+            isLaneSteal: tovResult.isLaneSteal,
+            passTarget: laneToPasser ? actor : undefined,
+            statPlayType,
         };
     }
 

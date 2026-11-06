@@ -210,12 +210,12 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean; isTrap?: boolean },
+    flags: { isSwitch?: boolean; isMismatch?: boolean; isBotchedSwitch?: boolean; isBlock?: boolean; isSteal?: boolean; points?: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz'; isHelpPlay?: boolean; isKickout?: boolean; isEndRush?: boolean; isTrap?: boolean; isLaneSteal?: boolean; passTargetName?: string },
     // [2026-08-03] client 미러(services/game/engine/commentary/textGenerator.ts)와 동일 — 슛타입별
     // 세분화 코멘터리 콘텐츠 작업을 위한 배선만 먼저 반영, 콘텐츠는 다음 작업에서 채움.
     shotType?: PlayContext['shotType'],
 ): string {
-    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage, isHelpPlay, isKickout, isEndRush, isTrap } = flags;
+    const { isMismatch, isBotchedSwitch, isBlock, isSteal, points = 0, pnrCoverage, isHelpPlay, isKickout, isEndRush, isTrap, isLaneSteal, passTargetName } = flags;
 
     if (type === 'score') {
         const scoreTag = ` (+${points})`;
@@ -1468,6 +1468,14 @@ export function generateCommentary(
             return pick([
                 `${actor.playerName}, 블리츠 수비에 갇혀 턴오버를 범합니다.`,
                 `${actor.playerName}, 더블팀 압박에 공을 넘겨주고 맙니다.`,
+            ]);
+        }
+        // [2026-11-07] 패스 차단 — actor = 패서(턴오버 기록 대상), 받으려던 선수는 passTargetName (client 미러 참조)
+        if (isLaneSteal && isSteal && defender && passTargetName) {
+            return pick([
+                `${actor.playerName}, ${passTargetName}에게 건넨 패스가 끊깁니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, ${eulReul(passTargetName)} 노린 패스가 읽혔습니다. (${defender.playerName}의 스틸)`,
+                `${actor.playerName}, 패스 길을 읽혔습니다. (${defender.playerName}의 스틸)`,
             ]);
         }
         if (isSteal && defender) {

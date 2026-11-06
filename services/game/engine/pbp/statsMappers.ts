@@ -145,7 +145,9 @@ const PLAY_TYPE_COUNTED_RESULTS = new Set<PossessionResult['type']>([
     'score', 'miss', 'turnover', 'offensiveFoul', 'shotClockViolation', 'freethrow', 'foul',
 ]);
 function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: number, fta: number): void {
-    const { type, playType, offTeam } = result;
+    const { type, offTeam } = result;
+    // [2026-11-07] 패스 차단 턴오버는 패서의 플레이로 집계(statPlayType), null이면 집계 제외 (server 미러)
+    const playType = result.statPlayType !== undefined ? result.statPlayType : result.playType;
     if (!playType || !PLAY_TYPE_COUNTED_RESULTS.has(type)) return;
     if (type === 'foul' && fta <= 0) return; // 비보너스 파울 — 공격이 이어지므로 플레이 미종료
     if (result.pressEvent) return; // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션 — 하프코트 플레이가 실행되지 않음
@@ -387,7 +389,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                  isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
                  isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
                  isHelpPlay: !!result.isHelpPlay,
-                 isTrap: !!result.isBlitzTrap   // [2026-11-06] 트랩 턴오버(블리츠·헤지 실패) 구분 — 헤지 트랩 전용 해설 (server 미러)
+                 isTrap: !!result.isBlitzTrap,   // [2026-11-06] 트랩 턴오버(블리츠·헤지 실패) 구분 — 헤지 트랩 전용 해설 (server 미러)
+                 isLaneSteal: !!result.isLaneSteal, passTargetName: result.passTarget?.playerName   // [2026-11-07] 패스 차단 — 패서 주어 해설 (server 미러)
             });
         
         if (isSteal && defender) {
