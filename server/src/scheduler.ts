@@ -100,6 +100,11 @@ async function sweepExpiredTradeOffers(): Promise<void> {
     // (accept)가 이미 검사하는 조건(migrations/expire_trade_offers_past_deadline.sql)과 동일.
     const { error: deadlineErr } = await supabase.rpc('expire_trade_offers_past_deadline');
     if (deadlineErr) console.error('[scheduler] expire_trade_offers_past_deadline RPC error:', deadlineErr.message);
+
+    // [2026-11-07] Safety net for leagues with the trade deadline off: once the regular season has
+    // ended (regular_season_ended_at stamped), expire every offer still pending from before that time.
+    const { error: seasonEndErr } = await supabase.rpc('expire_trade_offers_at_regular_season_end');
+    if (seasonEndErr) console.error('[scheduler] expire_trade_offers_at_regular_season_end RPC error:', seasonEndErr.message);
 }
 
 // [2026-09-18] 개인 팩 드래프트 픽 타이머 만료 스윕 — 클라이언트가 떠나 있어도
@@ -305,6 +310,9 @@ async function checkSeasonCompletions(): Promise<void> {
             await supabase.from('leagues')
                 .update({ regular_season_ended_at: new Date().toISOString() })
                 .eq('id', league.id).is('regular_season_ended_at', null);
+            // Expire live trade offers right away instead of waiting for the 10-minute sweep.
+            const { error: expErr } = await supabase.rpc('expire_trade_offers_at_regular_season_end');
+            if (expErr) console.error('[scheduler:season] expire_trade_offers_at_regular_season_end RPC error:', expErr.message);
         }
 
         console.log(`[scheduler:season] league=${league.id} — regular season complete, starting postseason`);
