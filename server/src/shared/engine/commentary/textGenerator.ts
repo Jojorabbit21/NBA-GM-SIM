@@ -1900,65 +1900,65 @@ export function getPressCommentary(event: 'trapSteal' | 'trapFoul' | 'pressTurno
 
 /**
  * [2026-11-05] 상황별 클락 운영 안내 줄 (client 미러 참조) — timeEngine이 정한 clockMode를 liveEngine이 포세션 시작 시각으로 기록.
- * region = 팀 연고지(statsMappers.regionOf).
+ * teamName = 팀 이름(statsMappers.teamNameOf, 11-06 연고지→팀 이름).
  */
 export function getClockManagementCommentary(
     mode: 'lastShot' | 'fullClock' | 'twoForOne' | 'hurry' | 'milk' | 'milkMax',
-    region: string,
+    teamName: string,
 ): string {
     switch (mode) {
         case 'lastShot':
             return pick([
-                `${region}, 마지막 슛을 노리며 시간을 흘려보냅니다.`,
-                `${region}, 공을 돌리며 마지막 공격을 준비합니다.`,
+                `${teamName}, 마지막 슛을 노리며 시간을 흘려보냅니다.`,
+                `${teamName}, 공을 돌리며 마지막 공격을 준비합니다.`,
             ]);
         case 'fullClock':
             return pick([
-                `${region}, 샷클락을 끝까지 쓰며 공격을 전개합니다.`,
-                `${region}, 서두르지 않고 샷클락을 모두 사용합니다.`,
+                `${teamName}, 샷클락을 끝까지 쓰며 공격을 전개합니다.`,
+                `${teamName}, 서두르지 않고 샷클락을 모두 사용합니다.`,
             ]);
         case 'twoForOne':
             return pick([
-                `${region}, 2-for-1을 노리고 빠르게 공격합니다.`,
-                `${region}, 한 번 더 공격하기 위해 서둘러 슛 기회를 찾습니다.`,
+                `${teamName}, 2-for-1을 노리고 빠르게 공격합니다.`,
+                `${teamName}, 한 번 더 공격하기 위해 서둘러 슛 기회를 찾습니다.`,
             ]);
         case 'hurry':
             return pick([
-                `${region}, 시간이 없습니다 — 빠르게 공격을 전개합니다.`,
-                `${region}, 쫓기는 입장에서 서둘러 공격합니다.`,
+                `${teamName}, 시간이 없습니다 — 빠르게 공격을 전개합니다.`,
+                `${teamName}, 쫓기는 입장에서 서둘러 공격합니다.`,
             ]);
         case 'milk':
             return pick([
-                `${region}, 리드를 지키며 샷클락을 길게 씁니다.`,
-                `${region}, 서두르지 않고 시간을 소모하며 공격합니다.`,
+                `${teamName}, 리드를 지키며 샷클락을 길게 씁니다.`,
+                `${teamName}, 서두르지 않고 시간을 소모하며 공격합니다.`,
             ]);
         case 'milkMax':
             return pick([
-                `${region}, 샷클락을 끝까지 소모하며 시간을 지웁니다.`,
-                `${region}, 공을 돌리며 샷클락을 마지막까지 씁니다.`,
+                `${teamName}, 샷클락을 끝까지 소모하며 시간을 지웁니다.`,
+                `${teamName}, 공을 돌리며 샷클락을 마지막까지 씁니다.`,
             ]);
     }
 }
 
 /** [2026-11-05] 드리블 아웃 — 4Q·연장 샷클락 꺼진 구간, 앞선 팀이 슛 없이 남은 시간을 흘려보냄 (client 미러 참조) */
-export function getDribbleOutCommentary(region: string, handlerName: string, seconds: number): string {
+export function getDribbleOutCommentary(teamName: string, handlerName: string, seconds: number): string {
     return pick([
-        `${region}, 공을 돌리며 남은 ${seconds}초를 그대로 흘려보냅니다.`,
+        `${teamName}, 공을 돌리며 남은 ${seconds}초를 그대로 흘려보냅니다.`,
         `${handlerName}, 하프라인 부근에서 공을 지키며 남은 ${seconds}초를 흘려보냅니다.`,
-        `${region}, 슛을 던지지 않고 남은 ${seconds}초를 지워 승리를 굳힙니다.`,
+        `${teamName}, 슛을 던지지 않고 남은 ${seconds}초를 지워 승리를 굳힙니다.`,
     ]);
 }
 
 /** [2026-11-05] 파울 작전 시작 안내 줄 (client 미러 참조) — trailing = 지는 팀 파울 작전, upThree = 3점 앞선 팀 역파울 작전 */
-export function getFoulStrategyCommentary(kind: 'trailing' | 'upThree', region: string): string {
+export function getFoulStrategyCommentary(kind: 'trailing' | 'upThree', teamName: string): string {
     return kind === 'upThree'
         ? pick([
-            `${region}, 동점 3점을 막기 위해 파울로 끊습니다.`,
-            `${region}, 3점 리드를 지키려 슛 전에 파울을 선택합니다.`,
+            `${teamName}, 동점 3점을 막기 위해 파울로 끊습니다.`,
+            `${teamName}, 3점 리드를 지키려 슛 전에 파울을 선택합니다.`,
         ])
         : pick([
-            `${region}, 시간을 멈추기 위해 파울 작전에 들어갑니다.`,
-            `${region}, 시계를 세우려 고의 파울 작전을 시작합니다.`,
+            `${teamName}, 시간을 멈추기 위해 파울 작전에 들어갑니다.`,
+            `${teamName}, 시계를 세우려 고의 파울 작전을 시작합니다.`,
         ]);
 }
 
@@ -2003,10 +2003,10 @@ export function getHeaveCommentary(actor: LivePlayer, band: 'far' | 'half', made
 }
 
 /** [2026-11-05] 백코트 1초 — 인바운드 받는 사이 시간 만료 (client 미러 참조) */
-export function getInboundExpireCommentary(region: string): string {
+export function getInboundExpireCommentary(teamName: string): string {
     return pick([
-        `${region}, 인바운드 패스를 받는 사이 시간이 모두 흘러갑니다.`,
-        `${region}, 공을 잡았지만 슛을 던지기 전에 버저가 울립니다.`,
+        `${teamName}, 인바운드 패스를 받는 사이 시간이 모두 흘러갑니다.`,
+        `${teamName}, 공을 잡았지만 슛을 던지기 전에 버저가 울립니다.`,
     ]);
 }
 
@@ -2035,23 +2035,23 @@ export function getInjuryCommentary(playerName: string, injuryType: string, seve
 }
 
 /**
- * [2026-11-05] 가비지 타임 발동/해제 안내(구어체) — region이 없으면 양 팀 공통(같은 순간 두 팀이 함께 발동·해제, liveEngine.mergeGarbageNotices).
+ * [2026-11-05] 가비지 타임 발동/해제 안내(구어체) — teamName이 없으면 양 팀 공통(같은 순간 두 팀이 함께 발동·해제, liveEngine.mergeGarbageNotices).
  * 이전: "가비지 타임 — 주전 휴식 (N점 차)" / "가비지 타임 해제 — 주전 복귀 (N점 차)"
  */
-export function getGarbageTimeCommentary(kind: 'start' | 'end', lead: number, region?: string): string {
-    if (!region) {
+export function getGarbageTimeCommentary(kind: 'start' | 'end', lead: number, teamName?: string): string {
+    if (!teamName) {
         return kind === 'start'
             ? `점수 차가 ${lead}점으로 벌어지자 양 팀 모두 주전들을 벤치로 불러들입니다.`
             : `점수 차가 ${lead}점으로 좁혀지자 양 팀 모두 주전들을 다시 코트에 내보냅니다.`;
     }
     return kind === 'start'
         ? pick([
-            `${region}, 점수 차가 ${lead}점으로 벌어지자 주전들을 벤치로 불러들입니다.`,
-            `${region}, ${lead}점 차로 승부가 기울자 주전들에게 휴식을 줍니다.`,
+            `${teamName}, 점수 차가 ${lead}점으로 벌어지자 주전들을 벤치로 불러들입니다.`,
+            `${teamName}, ${lead}점 차로 승부가 기울자 주전들에게 휴식을 줍니다.`,
         ])
         : pick([
-            `${region}, 점수 차가 ${lead}점으로 좁혀지자 주전들을 다시 코트에 내보냅니다.`,
-            `${region}, ${lead}점 차까지 따라붙자 주전들을 다시 불러냅니다.`,
+            `${teamName}, 점수 차가 ${lead}점으로 좁혀지자 주전들을 다시 코트에 내보냅니다.`,
+            `${teamName}, ${lead}점 차까지 따라붙자 주전들을 다시 불러냅니다.`,
         ]);
 }
 

@@ -129,7 +129,7 @@ export interface TeamState {
     id: string;
     name: string;
     // [2026-10-08] 연고지명(PBP 공격권 안내용). 싱글은 Team.city, 멀티는 빈 문자열로 들어오므로
-    // 소비처(statsMappers regionOf)가 비어 있으면 name 첫 어절로 폴백한다.
+    // 소비처(statsMappers teamNameOf, 11-06)는 city가 있으면 name을 팀 이름으로, 비어 있으면 name 첫 어절(연고지)을 뗀 나머지를 쓴다.
     city?: string;
     score: number;
     tactics: GameTactics;

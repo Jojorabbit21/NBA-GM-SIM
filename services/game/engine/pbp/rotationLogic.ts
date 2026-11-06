@@ -7,7 +7,7 @@ import { assignCourtSlots, snapshotSlots, pickBestFive, vacancyFit } from './slo
 import { planSuccession, type SuccessionPlayer } from './rotationSuccession';
 import { elapsedGameSec, scheduleMinute, isOvertimeClutch } from './periodRules';
 import { getGarbageTimeCommentary } from '../commentary/textGenerator';
-import { regionOf } from './statsMappers';
+import { teamNameOf } from './statsMappers';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -540,13 +540,14 @@ function swapForTemporaryBench(
         filler.lastSubInTime = state.gameClock;
         filler.conditionAtSubIn = filler.currentCondition;
 
-        const reasonText = reason === 'foul_trouble'
-            ? `파울 트러블 (${outPlayer.pf}반칙)` : '탈진(Shutdown)';
+        // [2026-11-06] 탈진 교체는 사유 표기 없이 일반 교체와 같은 줄(사용자 결정) — 같은 데드볼의 다른 교체 줄과 한 줄로 합쳐진다(liveEngine.mergeSubChurnLogs).
+        //   이전: 끝에 " (탈진(Shutdown))". 파울 트러블은 사유 유지. (server 미러 참조)
+        const reasonSuffix = reason === 'foul_trouble' ? ` (파울 트러블 (${outPlayer.pf}반칙))` : '';
         state.logs.push({
             quarter: state.quarter,
             timeRemaining: formatTime(state.gameClock),
             teamId: team.id,
-            text: `교체: IN [${filler.playerName}] OUT [${outPlayer.playerName}] (${reasonText})`,
+            text: `교체: IN [${filler.playerName}] OUT [${outPlayer.playerName}]${reasonSuffix}`,
             type: 'info'
         });
     }
@@ -990,7 +991,7 @@ function applyGarbageTime(state: GameState, team: TeamState, lead: number): void
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
         teamId: team.id,
-        text: getGarbageTimeCommentary('start', lead, regionOf(team)),   // [2026-11-05] 구어체
+        text: getGarbageTimeCommentary('start', lead, teamNameOf(team)),   // [2026-11-05] 구어체
         type: 'info',
         garbageEvent: 'start'
     });
@@ -1049,7 +1050,7 @@ function releaseGarbageTime(state: GameState, team: TeamState, lead: number): vo
         quarter: state.quarter,
         timeRemaining: formatTime(state.gameClock),
         teamId: team.id,
-        text: getGarbageTimeCommentary('end', lead, regionOf(team)),   // [2026-11-05] 구어체
+        text: getGarbageTimeCommentary('end', lead, teamNameOf(team)),   // [2026-11-05] 구어체
         type: 'info',
         garbageEvent: 'end'
     });

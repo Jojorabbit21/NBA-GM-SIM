@@ -62,14 +62,15 @@ export function resetHotCold(team: { onCourt: LivePlayer[]; bench: LivePlayer[] 
 }
 
 
-// [2026-10-08] PBP 공격권 안내용 연고지명. 싱글은 TeamState.city("밀워키"), 멀티는 city가 비어 있고
-// name이 "밀워키 스태그스" 형태(leagueService가 `${city} ${name}`으로 생성, 유저 개명 가능)라
-// 첫 어절을 연고지로 간주. 어절이 하나뿐이면 이름 전체를 사용.
-export function regionOf(team: { name: string; city?: string }): string {   // [2026-11-05] export — liveEngine 클락 운영 안내 줄에서도 사용
-    const city = team.city?.trim();
-    if (city) return city;
-    const first = team.name.trim().split(/\s+/)[0];
-    return first || team.name;
+// [2026-11-06] PBP 팀 호칭 — 연고지 대신 팀 이름(닉네임). 연고지는 "LA"처럼 두 팀이 같을 수 있어 바꿈 (이전: regionOf = 연고지) (client 미러 참조).
+// 싱글은 TeamState.city("LA")가 따로 있고 name이 닉네임("미라지")이라 name 그대로. 멀티는 city가 비어 있고
+// name이 "LA 세이커스"(연고지 + 닉네임, leagueService가 `${city} ${name}`으로 생성, 유저 개명 가능)라 첫 어절을 뗀 나머지.
+// 어절이 하나뿐이면 이름 전체를 사용.
+export function teamNameOf(team: { name: string; city?: string }): string {
+    const name = team.name.trim();
+    if (team.city?.trim()) return name || team.name;
+    const words = name.split(/\s+/);
+    return words.length > 1 ? words.slice(1).join(' ') : (name || team.name);
 }
 
 /** [2026-11-05] 방금 남긴 줄에 플레이 표시(PbpLog.event) — 안내 종류로 기록되는 리바운드·싸움 줄을 화면 색 규칙에서 플레이로 분류 (client 미러 참조) */
@@ -396,7 +397,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
         // [2026-11-04] 테크니컬 후엔 항상 offTeam이 공격을 재개(liveEngine retainPossession) — 공격 팀 선수가 받은 경우
         //   "offTeam에게 공격권이 넘어갑니다"가 찍혀 이미 공을 가진 팀에게 넘어가는 것처럼 보였다(~41%). 한 문구로 통일 (client 미러 참조)
-        const possessionNote = `${regionOf(offTeam)}의 공격으로 재개됩니다.`;
+        const possessionNote = `${teamNameOf(offTeam)}의 공격으로 재개됩니다.`;
         addLog(state, ftTeam.id, `${ftShooter.playerName}, 테크니컬 자유투 ${ftMade}/1 성공. ${possessionNote}`, 'freethrow', ftMade);
 
     } else if (type === 'flagrantFoul') {
@@ -425,7 +426,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
         if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
         updatePlusMinus(offTeam, defTeam, ftMade);
-        addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공. ${regionOf(offTeam)}의 공격권이 유지됩니다.`, 'freethrow', ftMade);  // [2026-10-08] client 미러
+        addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공. ${teamNameOf(offTeam)}의 공격권이 유지됩니다.`, 'freethrow', ftMade);  // [2026-10-08] client 미러
         if (isFlagrant2 && defender) {
             defender.ejectionReason = 'flagrant';
         }
@@ -444,8 +445,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     } else if (type === 'clockExpire') {
         // [2026-11-05] 드리블 아웃 (client 미러 참조) — 슛·기록 없이 남은 시간 소멸(줄 시각은 0:00, 문구에 흘려보낸 시간). 공격 종료는 득점 없음.
         addLog(state, offTeam.id, result.expireKind === 'inbound'   // [2026-11-05] 백코트 1초 인바운드 중 시간 만료
-            ? getInboundExpireCommentary(regionOf(offTeam))
-            : getDribbleOutCommentary(regionOf(offTeam), actor.playerName, result.expireSeconds ?? 0), 'info', undefined, undefined, 'nonScoring');
+            ? getInboundExpireCommentary(teamNameOf(offTeam))
+            : getDribbleOutCommentary(teamNameOf(offTeam), actor.playerName, result.expireSeconds ?? 0), 'info', undefined, undefined, 'nonScoring');
 
     } else if (type === 'fight') {
         const fighter  = result.fighter;
@@ -459,7 +460,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (fighter && opponent) {
             // [2026-10-07] 출장정지 줄 제거(경기 후 뉴스피드가 전달) — 클라이언트 statsMappers.ts 미러
             // [2026-11-05] 공을 가진 팀이 공격권 유지(NBA Rule 12A VI.3, liveEngine retainPossession) — 재개 안내 (client 미러 참조)
-            addLog(state, defTeam.id, `${iGa(fighter.playerName)} ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. ${regionOf(offTeam)}의 공격으로 재개됩니다.`, 'info');
+            addLog(state, defTeam.id, `${iGa(fighter.playerName)} ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. ${teamNameOf(offTeam)}의 공격으로 재개됩니다.`, 'info');
             markLastLog(state, 'fight');
             state.suspensions.push({
                 playerId: fighter.playerId, playerName: fighter.playerName, teamId: defTeam.id,

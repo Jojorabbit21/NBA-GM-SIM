@@ -10,7 +10,7 @@ import { checkSubstitutionsV2, SubRequestV2, buildEjectionSubRequest } from './s
 import { checkAndApplyRotation, prepareOvertimeRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution, updateGarbageTime } from './rotationLogic.ts';
 import { assignCourtSlots, snapshotSlots } from './slotAssignment.ts';
 import { formatTime, calculatePossessionTime } from './timeEngine.ts';
-import { applyPossessionResult, dampenHotCold, resetHotCold, regionOf } from './statsMappers.ts';
+import { applyPossessionResult, dampenHotCold, resetHotCold, teamNameOf } from './statsMappers.ts';
 import { trackTeamMisc, emptyTeamMisc } from './teamMisc.ts';
 import { getClockManagementCommentary, getGarbageTimeCommentary } from '../commentary/textGenerator.ts';
 import { decideFoulStrategy, type FoulStrategyPlan } from './foulStrategy.ts';
@@ -212,8 +212,8 @@ export function applyTimeout(
     state.lastPossessionLiveBall = false;
 
     // 로그
-    // [2026-11-05] 어느 팀의 타임아웃인지 앞에 표시(지역명 — 클락 운영 안내 줄과 같은 regionOf) (client 미러 참조)
-    const who = regionOf(team);
+    // [2026-11-05] 어느 팀의 타임아웃인지 앞에 표시(팀 이름 — 클락 운영 안내 줄과 같은 teamNameOf, 11-06 연고지→팀 이름) (client 미러 참조)
+    const who = teamNameOf(team);
     const text = (kind === 'mandatory'
         ? `${who} 의무 타임아웃 (잔여: ${team.timeouts}회)`
         : isUserCall
@@ -528,24 +528,19 @@ function buildInboundExpireResult(state: GameState): PossessionResult {
 }
 
 /**
- * [2026-11-05] A-9-4 — 같은 데드볼(같은 팀·피리어드·시각)의 연달아 붙은 교체 줄에서 들어왔다 바로 나간(또는 나갔다 바로 들어온)
+ * [2026-11-05] A-9-4 — 같은 데드볼(같은 팀·피리어드·시각)의 교체 줄에서 들어왔다 바로 나간(또는 나갔다 바로 들어온)
  * 선수가 있으면 실제 변화만 남긴 한 줄로 합친다. 예: 6반칙 퇴장 교체 직후 가비지 일괄 교체가 그 대체 선수를 다시 빼는 경우.
- * 사이에 플레이 줄(자유투 등)이 있으면 그 선수가 실제로 뛴 것이라 합치지 않는다(가비지 타임 안내 줄(garbageEvent)만 건너뜀). 합친 줄은 사유 표기를 뺀다. (client 미러 참조)
+ * 사이에 플레이 줄(자유투 등)이 있으면 그 선수가 실제로 뛴 것이라 합치지 않는다(가비지 타임 안내 줄(garbageEvent)만 건너뜀). 합친 줄은 사유 표기를 뺀다.
+ * [2026-11-06] 사이에 낀 상대 팀 교체 줄도 건너뛴다 — 이전엔 거기서 묶음이 끊겨 "탈진 교체(A) → 상대 팀 교체(B) → 정기 교체(A)"의
+ *   들락거림을 못 합쳤다. 들락거림이 없어도 사유 표기 없는 교체 줄(정기·탈진 등)이 같은 팀에 2줄 이상이면 한 줄로 합친다
+ *   (탈진 교체를 일반 교체와 같게 — 사용자 결정). 사유가 붙은 줄(파울 트러블·퇴장·부상)은 들락거림이 없으면 그대로 둔다. (client 미러 참조)
  */
 const SUB_LOG_RE = /^교체: IN \[(.*?)\] OUT \[(.*?)\]/;
+const SUB_REASON_RE = /\] \(.+\)$/;   // "교체: IN [..] OUT [..] (사유)"
 function mergeSubChurnLogs(state: GameState, from: number): void {
     const logs = state.logs;
     const isSub = (k: number) => SUB_LOG_RE.test(logs[k].text);
-    for (let i = Math.max(0, from); i < logs.length; i++) {
-        if (!isSub(i)) continue;
-        // 같은 팀·시각의 교체 줄 묶음 — 사이의 "가비지 타임" 안내 줄만 건너뛴다(플레이 줄이 끼면 실제로 뛴 것)
-        const idx = [i];
-        for (let k = i + 1; k < logs.length; k++) {
-            if (logs[k].quarter !== logs[i].quarter || logs[k].timeRemaining !== logs[i].timeRemaining) break;
-            if (isSub(k)) { if (logs[k].teamId !== logs[i].teamId) break; idx.push(k); continue; }
-            if (!logs[k].garbageEvent) break;
-        }
-        if (idx.length < 2) continue;
+    const combine = (idx: number[]) => {
         const ins: string[] = [], outs: string[] = [];
         let churn = false;
         for (const k of idx) {
@@ -555,13 +550,33 @@ function mergeSubChurnLogs(state: GameState, from: number): void {
             for (const n of kOut) { const at = ins.indexOf(n); if (at >= 0) { ins.splice(at, 1); churn = true; } else outs.push(n); }
             for (const n of kIn) { const at = outs.indexOf(n); if (at >= 0) { outs.splice(at, 1); churn = true; } else ins.push(n); }
         }
-        if (!churn) continue;
-        // 마지막 교체 줄 자리에 합친 한 줄(안내 줄 뒤), 나머지 교체 줄은 제거
+        return { ins, outs, churn };
+    };
+    for (let i = Math.max(0, from); i < logs.length; i++) {
+        if (!isSub(i)) continue;
+        // 같은 팀·시각의 교체 줄 묶음 — 상대 팀 교체 줄과 "가비지 타임" 안내 줄은 건너뛴다(플레이 줄이 끼면 실제로 뛴 것)
+        const group = [i];
+        for (let k = i + 1; k < logs.length; k++) {
+            if (logs[k].quarter !== logs[i].quarter || logs[k].timeRemaining !== logs[i].timeRemaining) break;
+            if (isSub(k)) { if (logs[k].teamId === logs[i].teamId) group.push(k); continue; }
+            if (!logs[k].garbageEvent) break;
+        }
+        if (group.length < 2) continue;
+        let idx = group;
+        let merged = combine(idx);
+        if (!merged.churn) {
+            // 들락거림 없음 — 사유 없는 줄끼리만 합친다
+            idx = group.filter(k => !SUB_REASON_RE.test(logs[k].text));
+            if (idx.length < 2) continue;
+            merged = combine(idx);
+        }
+        // 마지막 교체 줄 자리에 합친 한 줄, 나머지 교체 줄은 제거(들락거림만 있어 실제 변화가 없으면 전부 제거)
         const last = idx[idx.length - 1];
-        if (ins.length > 0 && outs.length > 0) logs[last] = { ...logs[last], text: `교체: IN [${ins.join(', ')}] OUT [${outs.join(', ')}]` };
-        else idx.push(last);
-        for (const k of idx.slice(0, -1).sort((x, y) => y - x)) logs.splice(k, 1);
-        i -= 1;   // 같은 자리부터 다시(다른 팀 묶음)
+        const remove = idx.slice(0, -1);
+        if (merged.ins.length > 0 && merged.outs.length > 0) logs[last] = { ...logs[last], text: `교체: IN [${merged.ins.join(', ')}] OUT [${merged.outs.join(', ')}]` };
+        else remove.push(last);
+        for (const k of remove.sort((x, y) => y - x)) logs.splice(k, 1);
+        i -= 1;   // 같은 자리부터 다시(남은 줄·다른 팀 묶음)
     }
 }
 
@@ -784,7 +799,7 @@ export function stepPossession(state: GameState): StepResult {
     const slowClock = clockMode === 'lastShot' || clockMode === 'fullClock' || clockMode === 'milk' || clockMode === 'milkMax';
     if (clockMode && !decisive && !isTechnical && !result.isIntentional && result.type !== 'clockExpire' && state.clockModeLogged !== clockKey
         && !(slowClock && result.playType === 'Transition')) {
-        clockTag = getClockManagementCommentary(clockMode, regionOf(offTeam));   // 실제로 붙인 경우에만 clockModeLogged 기록(아래) — 파울로 끊긴 공격은 다음 공격에
+        clockTag = getClockManagementCommentary(clockMode, teamNameOf(offTeam));   // 실제로 붙인 경우에만 clockModeLogged 기록(아래) — 파울로 끊긴 공격은 다음 공격에
     }
     const clockTagFrom = state.logs.length;
     // [2026-11-05] 파울 작전 시작 안내 줄은 삭제(사용자 결정) — 고의 파울 줄 자체가 상황을 설명한다
