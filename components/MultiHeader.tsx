@@ -9,7 +9,7 @@ import { useMultiSearchData } from '../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../hooks/usePlayerShortCodes';
 import { useGameShortCodes } from '../hooks/useGameShortCodes';
 import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
-import { resolveRealAt, isFinal, getGameDisplayState } from '../views/multi/season/multiGameReveal';
+import { resolveRealAt, isFinal, getGameDisplayState, makeUpcomingGameFilter } from '../views/multi/season/multiGameReveal';
 import { computeSeriesWins, seriesWinsFor } from '../views/multi/season/seasonPhase';
 import { fmtRemaining } from '../utils/formatRemaining';
 import { seasonShortFromDate } from '../utils/seasonShortFromDate';
@@ -91,15 +91,19 @@ export const MultiHeader: React.FC = () => {
         return { wins: myWL.w, losses: myWL.l };
     }, [schedule, myTeamId, league, simStart, gprd, dateBucket]);
 
+    // [2026-11-07] "다음 경기" 후보 = 공개상 시작 전 + (플레이오프면) 대진 공개·미종료 시리즈 — makeUpcomingGameFilter 참고(스포일러 방지).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const isUpcoming = useMemo(() => makeUpcomingGameFilter((league?.bracket_data as any)?.series, schedule as any, nowMs), [league?.bracket_data, schedule, dateBucket]);
+
     // 내 팀 다음 경기
     const nextGame = useMemo(() => {
         if (!myTeamId || !simStart) return null;
         return [...schedule]
-            .filter(g => !g.played && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId))
+            .filter(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
             .map(g => ({ ...g, resolvedAt: resolveRealAt(g, simStart, gprd) }))
-            .filter(g => g.resolvedAt != null)
+            .filter(g => g.resolvedAt != null && isUpcoming({ ...g, scheduledAt: g.resolvedAt }))
             .sort((a, b) => new Date(a.resolvedAt!).getTime() - new Date(b.resolvedAt!).getTime())[0] ?? null;
-    }, [schedule, myTeamId, simStart, gprd]);
+    }, [schedule, myTeamId, simStart, gprd, isUpcoming]);
 
     // 메인리그(main_league) 세션에서 표시할 "현재 시뮬레이션 날짜" — 가상 NBA 캘린더 기준.
     // 실제 실행 시각(scheduledAt)은 노출 금지이므로, 리그 전체 일정 중 지금(nowMs)과 가장
@@ -184,8 +188,10 @@ export const MultiHeader: React.FC = () => {
         const allSeries: any[] = (league?.bracket_data as any)?.series ?? [];
 
         if (!allSeries.length) {
-            const hasRemaining = schedule.some(g => !g.played && !g.isPlayoff
-                && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
+            // [2026-11-07] played 대신 공개 여부 — 시뮬~시작 전 0~60초에 "정규시즌 종료"가 먼저 뜨지 않게.
+            const hasRemaining = schedule.some(g => !g.isPlayoff
+                && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
+                && !isFinal({ ...g, scheduledAt: resolveRealAt(g, simStart, gprd) }, nowMs));
             return hasRemaining ? null : '정규시즌 종료 · 포스트시즌 대기';
         }
 
@@ -214,7 +220,8 @@ export const MultiHeader: React.FC = () => {
             return last.s.round === 0 ? '플레이인 통과 · 1라운드 대기' : `${label} 승리 · 다음 라운드 대기`;
         }
         return last.s.round === 0 ? '플레이인 탈락 · 시즌 종료' : `${label} 탈락 · 시즌 종료`;
-    }, [league, schedule, myTeamId, winsFor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [league, schedule, myTeamId, winsFor, simStart, gprd, dateBucket]);
 
     // 리그 전체에서 아직 안 치른 경기 중 가장 빠른 방송 시각 = "다음 경기일"까지의 목표 시각.
     // 내 팀 경기가 없는 날(정규시즌 종료 후 타팀 대기, 탈락 후 등)에 seasonStatus 옆 타이머로 쓴다.
@@ -223,14 +230,14 @@ export const MultiHeader: React.FC = () => {
         if (!simStart) return null;
         let min: number | null = null;
         for (const g of schedule) {
-            if (g.played) continue;
             const at = resolveRealAt(g, simStart, gprd);
             if (!at) continue;
+            if (!isUpcoming({ ...g, scheduledAt: at })) continue;   // [2026-11-07] played 대신 공개 상태·공개된 대진 기준
             const t = new Date(at).getTime();
             if (min === null || t < min) min = t;
         }
         return min;
-    }, [schedule, simStart, gprd]);
+    }, [schedule, simStart, gprd, isUpcoming]);
 
     // 토너먼트 종료 여부 + 우승팀 (다음 경기가 없을 때 대체 표시용)
     // league.status==='finished'는 서버가 마지막 경기 시뮬 직후 즉시 세팅하므로, 그 경기의

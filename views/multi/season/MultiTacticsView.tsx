@@ -37,7 +37,8 @@ import { getCoachPreferences } from '../../../services/coachingStaff/coachGenera
 import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
 import { jsonEqual } from '../../../utils/jsonEqual';
 import { getServerNow } from '../../../utils/serverClock';
-import { isFinal, resolveRealAt } from './multiGameReveal';
+import { useUnrevealedGamesKey } from '../../../hooks/useUnrevealedGamesKey';
+import { isFinal, resolveRealAt, makeRevealedSeriesGameFilter } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { TacticPresetSelector } from '../../../components/multi/TacticPresetSelector';
@@ -362,12 +363,16 @@ const MultiTacticsView: React.FC = () => {
     // 뎁스차트 부상/출장정지 배지 — playerInjuryRows는 room 전체 fetch(useLeagueRawStats)에서
     // 오므로 selectTacticsData의 반환값을 거쳐야 하고, 그 select 함수 자체는 currentSimDate
     // 변경 시 재실행할 필요가 없어(react-query select와 무관하게) 여기서 별도로 merge한다.
+    // [2026-11-07] 공개 전 경기에서 생긴 부상·출장정지 숨김 — 갱신 시점은 unrevealedKey(시뮬·공개 순간에만 바뀜).
+    const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const activeInjuryByPlayer = useMemo(
         () => buildActiveInjurySeverityMap(tacticsRawData?.playerInjuryRows, currentSimDate, room?.season_number, {
-            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            schedule: schedule as any,
             getTeamId: () => myTeamId ?? undefined,
+            nowMs: getServerNow(),
         }),
-        [tacticsRawData?.playerInjuryRows, currentSimDate, room?.season_number, schedule, myTeamId],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [tacticsRawData?.playerInjuryRows, currentSimDate, room?.season_number, schedule, myTeamId, unrevealedKey],
     );
 
     const rosterWithZoneStats = useMemo(() => {
@@ -446,8 +451,10 @@ const MultiTacticsView: React.FC = () => {
     const myTeamGameLog: GameLogEntry[] = useMemo(() => {
         if (!myTeamId) return [];
         const now = getServerNow();
+        // [2026-11-07] 대진 미공개 시리즈 경기(다음 라운드 상대 선노출) 제외 — 일정 화면과 같은 규칙.
+        const isRevealedSeriesGame = makeRevealedSeriesGameFilter((league?.bracket_data as any)?.series, normalizedSchedule as any, now);
         return normalizedSchedule
-            .filter(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
+            .filter(g => (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId) && isRevealedSeriesGame(g as any))
             .sort((a, b) => (a.scheduledAt ?? '').localeCompare(b.scheduledAt ?? ''))
             .map(g => {
                 const isHome = g.homeTeamId === myTeamId;
@@ -474,7 +481,7 @@ const MultiTacticsView: React.FC = () => {
                     vsDivision: !!myDivision && !!oppDivision && myDivision === oppDivision,
                 };
             });
-    }, [normalizedSchedule, myTeamId, roundLabelMap, teamAbbrMap, teamConfMap, myDivision]);
+    }, [normalizedSchedule, myTeamId, roundLabelMap, teamAbbrMap, teamConfMap, myDivision, league?.bracket_data]);
 
     // 1. 팀 공격/수비 지표 + 리그 순위 — leagueTeamsWithStats(30팀)를 useLeaderboardData에 태워
     // 팀 단위 경기당 평균 스탯을 얻은 뒤, 스탯별로 직접 재정렬해 우리 팀의 리그 순위를 계산한다

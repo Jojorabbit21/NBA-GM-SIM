@@ -321,8 +321,9 @@ const MultiNewsFeedView: React.FC = () => {
         () => buildActiveInjurySeverityMap(selectedEventInjuryRows, todaySimDate, room?.season_number, {
             schedule,
             getTeamId: id => rosterMap.get(id),
+            nowMs: serverNow,   // [2026-11-07] 공개 전 경기분 부상·출장정지 숨김
         }),
-        [selectedEventInjuryRows, todaySimDate, room?.season_number, schedule, rosterMap],
+        [selectedEventInjuryRows, todaySimDate, room?.season_number, schedule, rosterMap, serverNow],
     );
     const playerCardMap = useMemo(() => {
         const withStats = selectedEventStats ? mergeStatsIntoPlayerCardMap(basePlayerCardMap, selectedEventStats) : basePlayerCardMap;

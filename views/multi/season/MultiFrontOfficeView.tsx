@@ -24,6 +24,7 @@ import { checkSalaryMatch, formatSalaryMatchMessage, describeSalaryMatchBracket,
 import { useSeasonContext } from './seasonContext';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
+import { useUnrevealedGamesKey } from '../../../hooks/useUnrevealedGamesKey';
 import { TabBar } from '../../../components/common/TabBar';
 import { MyTradeBlockModal } from './MyTradeBlockModal';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../components/common/Table';
@@ -1101,12 +1102,16 @@ const MultiFrontOfficeView: React.FC = () => {
     // 부상/출장정지 배지용 — statsRequestIds가 탭마다 이미 적절한 범위(새 제안=양 팀 로스터,
     // 히스토리=과거 트레이드에 등장한 선수 전체 등)로 분기돼 있어 그대로 재사용.
     const { data: injuryRows } = usePlayerInjuryStatus(roomId ?? undefined, statsRequestIds);
+    // [2026-11-07] 공개 전 경기에서 생긴 부상·출장정지 숨김 — 갱신 시점은 unrevealedKey(시뮬·공개 순간에만 바뀜).
+    const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const activeInjuryByPlayer = useMemo(
         () => buildActiveInjurySeverityMap(injuryRows, currentSimDate, room?.season_number, {
-            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            schedule: schedule as any,
             getTeamId: id => rosterMap.get(id),
+            nowMs: getServerNow(),
         }),
-        [injuryRows, currentSimDate, room?.season_number, schedule, rosterMap],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [injuryRows, currentSimDate, room?.season_number, schedule, rosterMap, unrevealedKey],
     );
     const poolByIdWithStats = useMemo(() => {
         if ((!seasonStatsBatch || Object.keys(seasonStatsBatch).length === 0) && activeInjuryByPlayer.size === 0) {

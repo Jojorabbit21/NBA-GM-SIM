@@ -23,7 +23,6 @@ import {
     type PlayoffSeries as BPLSeries,
     type TournamentGame,
 } from './shared/tournamentBracket.ts';
-import { archiveTournament } from './shared/tournamentArchiver.ts';
 import { handlePlayInAdvance, type HandlePlayInAdvanceResult } from './shared/playInSeeder.ts';
 import { seasonLabelFor } from './shared/playoffSeeder.ts';
 import { roundLabel, computeFinalsMvp, flushPendingLeagueEvents, type PendingLeagueEvent } from './shared/multi/playoffNews.ts';
@@ -80,6 +79,14 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             .maybeSingle();
         if (!game) return { ok: false, error: 'Game not found in schedule' };
         if (game.played) return { ok: true, skipped: true, reason: 'already played' };
+
+        // [2026-11-07] 조기 확정된 시리즈의 남은 예정 경기 — 삭제를 확정 경기 공개 이후로 미뤘으므로
+        // (postRevealTransitions.ts, 스포일러 방지) 그 사이에 이 경기 시각이 와도 시뮬하지 않는다.
+        if (game.series_id) {
+            const { data: bracketRow } = await supabase.from('leagues').select('bracket_data').eq('id', room.league_id).maybeSingle();
+            const seriesState = (((bracketRow as any)?.bracket_data?.series ?? []) as any[]).find(s => s.id === game.series_id);
+            if (seriesState?.finished) return { ok: true, skipped: true, reason: 'series already decided' };
+        }
 
         // ── 원자적 클레임 ──────────────────────────────────────────────────
         // 스케줄러 tick이 겹치거나(설정 폴링 간격보다 처리 시간이 길어지는 경우) 서버 인스턴스가
@@ -800,20 +807,10 @@ async function tryAdvanceTournamentOnce(
     }
 
     if (seriesObj.finished) {
-        // 시리즈가 조기 확정되면(예: Bo3에서 2-0) 아직 실행되지 않은 잔여 예정 경기는
-        // 무의미하므로 제거한다 — 해당 슬롯은 경기 없이 그냥 지나가는 휴식 기간이 된다.
-        // (games 테이블은 게임별 row라 여기선 경합 걱정 없이 그대로 둔다 — 재시도해도 멱등.)
-        const { data: pruned } = await supabase
-            .from('games')
-            .delete()
-            .eq('room_id', roomId).eq('series_id', seriesId).eq('played', false)
-            .select('game_id');
-        if (pruned?.length) {
-            // [migration 부수 수정] prune된 경기의 short_code가 기존엔 영구 고아로 남아
-            // 존재하지 않는 game_id로 라우팅됐다 — 함께 정리.
-            await supabase.from('game_short_codes').delete()
-                .eq('room_id', roomId).in('game_id', pruned.map(g => g.game_id));
-        }
+        // [2026-11-07] 조기 확정 시리즈(예: 4-0)의 잔여 예정 경기 삭제는 여기서 하지 않는다 — 시뮬 즉시 지우면
+        // 이 경기 중계가 끝나기 전에 일정·브라켓에서 5~7차전이 사라져 결과가 샌다. 확정 경기 공개 후
+        // scheduler → postRevealTransitions.runPostRevealTransitions()가 지우고, 그 사이 시각이 와도
+        // runSimulation()이 "이미 끝난 시리즈"로 건너뛴다.
 
         // advanceTournamentState는 순수 함수 — "이미 존재하는 시리즈인지" 체크(seriesId만 읽음)와
         // "신규 라운드 경기 push"만 한다. 현재 games 행들로 최소 stub 배열을 만들어 넘기고,
@@ -859,7 +856,10 @@ async function tryAdvanceTournamentOnce(
             roomId, series, seriesId, homeTeamId, awayTeamId, homeScore, awayScore,
         ).catch((err): HandlePlayInAdvanceResult => { console.error(`[simRunner] handlePlayInAdvance 실패(${leagueRow.id}):`, err); return { pendingEvents: [] }; });
         extraFields = { tournament_start_at: playInResult.tournamentStartAt, sim_real_start_at: playInResult.simRealStartAt };
-        pendingEvents.push(...playInResult.pendingEvents);
+        // [2026-11-07] spoiler gate — play_in_result and the playoff_bracket_confirmed letter that this game may
+        // complete both reveal this game's winner, so tie them to this game_id: RLS then hides them until the
+        // replay ends (same as playoff_series_result). Without it they went out with game_id NULL ~10 min early.
+        pendingEvents.push(...playInResult.pendingEvents.map(e => ({ ...e, gameId: e.gameId ?? gameId })));
     }
 
     // bracket_version이 내가 읽은 값 그대로일 때만 쓴다 — 그 사이 다른 워커가 먼저 썼다면
@@ -877,7 +877,7 @@ async function tryAdvanceTournamentOnce(
     const realSeries = series.filter(s => s.lowerSeedId !== 'BYE');
     const allDone    = realSeries.length > 0 && realSeries.every(s => s.finished);
     if (allDone) {
-        console.log(`[simRunner] tournament complete — archiving league=${leagueId}`);
+        console.log(`[simRunner] tournament complete — league=${leagueId} (archive/finish deferred until the final game is revealed)`);
 
         // "플레이오프 우승팀"/"파이널 MVP" 서신 — 파이널(최고 라운드) 시리즈의 승자를 우승팀으로,
         // 그 시리즈의 game_pbp를 집계해 MVP를 뽑는다.
@@ -919,19 +919,9 @@ async function tryAdvanceTournamentOnce(
             }
         }
 
-        const { error: archiveErr } = await archiveTournament(supabase, leagueId, roomId);
-        if (archiveErr) console.error('[simRunner] archive error:', archiveErr);
-        await supabase.from('leagues').update({ status: 'finished' }).eq('id', leagueId);
-
-        // [2026-09-18] 개인 팩 드래프트 룸 — 아카이빙이 끝난 뒤에만 룸 스코프 선수 인스턴스/상태/진행 행을
-        // 지운다(아카이브 테이블은 이름·포지션을 비정규화 저장하므로 삭제 후에도 과거 기록 조회는 영향 없음).
-        // 아카이브가 실패했으면 다음 재시도 때 박스스코어를 다시 읽어야 하므로 지우지 않는다.
-        // 공유풀 드래프트 룸에선 지울 행이 없어 no-op. migrations/add_personal_draft_room_ops.sql 참조.
-        if (!archiveErr) {
-            const { data: cleaned, error: cleanErr } = await supabase.rpc('personal_draft_cleanup_room', { p_room_id: roomId });
-            if (cleanErr) console.error('[simRunner] personal_draft_cleanup_room error:', cleanErr.message);
-            else if (cleaned && (cleaned as any).instances > 0) console.log(`[simRunner] personal draft cleanup room=${roomId}: ${JSON.stringify(cleaned)}`);
-        }
+        // [2026-11-07] 아카이브 + status='finished' + 개인 팩 정리는 결승 경기 공개 후로 미룬다 — 시뮬 즉시 하면
+        // 중계가 끝나기 전에 리그 "종료" 표시·프로필 우승 기록으로 결과가 샌다. scheduler →
+        // postRevealTransitions.runPostRevealTransitions()가 같은 순서로 처리한다.
     }
 
     await flushPendingLeagueEvents(roomId, leagueId, pendingEvents);

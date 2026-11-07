@@ -176,6 +176,8 @@ export interface HandlePlayInAdvanceResult {
  * [2026-09-15] pendingEvents는 "플레이인 결과"/"플레이오프 대진 확정" 서신 — 호출부
  * (simRunner.ts의 tryAdvanceTournamentOnce)가 bracket_version CAS write 성공 직후에만
  * 실제로 발행해야 재시도 시 중복 발행을 막을 수 있다(playoffNews.ts 헤더 주석 참고).
+ * [2026-11-07] gameId는 여기서 채우지 않는다 — 호출부가 방금 끝난 플레이인 경기 id를 일괄로 붙여
+ * RLS가 그 경기 중계 종료 전까지 숨기게 한다(스포일러 게이트).
  *
  * homeTeamId/awayTeamId/homeScore/awayScore — 방금 끝난 플레이인 게임의 실제 스코어(플레이인은
  * 항상 단판이라 이 경기 자체가 곧 시리즈 결과). "플레이인 결과" 서신에 승/패 스코어를 그대로

@@ -32,6 +32,20 @@ export async function announceInjuryDiagnoses(roomId: string, newDay: string): P
         .from('rooms').select('league_id, season_number').eq('id', roomId).single();
     if (roomErr || !room) throw new Error(`[injuryDiagnosis] room ${roomId}: ${roomErr?.message ?? 'not found'}`);
 
+    // [2026-11-07] 스포일러 게이트 — 진단 뉴스에 부상이 난 경기의 game_id를 붙여 RLS가 그 경기 공개 전까지 숨기게 한다.
+    // 가상 하루(예: 20분)보다 리플레이(10분)가 길게 걸치는 늦은 경기는 자정 발표가 공개보다 먼저 나갔다(11-06·07 실측 68~274초).
+    // diagnosisDate는 경기 중 부상(simRunner)에만 붙으므로 부상 날짜(entry.date) + 소속 팀으로 그 경기를 찾는다.
+    const injuryDates = [...new Set(due.map(d => d.entry.date as string | undefined).filter((d): d is string => !!d))];
+    const { data: injuryGames } = injuryDates.length > 0
+        ? await supabase.from('games').select('game_id, game_date, home_team_id, away_team_id')
+            .eq('room_id', roomId).eq('played', true).in('game_date', injuryDates)
+        : { data: [] as any[] };
+    const injuryGameId = (entry: any): string | null => {
+        if (entry.isTraining || entry.offCourt || !entry.date || !entry.teamId) return null;
+        return (injuryGames ?? []).find((g: any) => g.game_date === entry.date
+            && (g.home_team_id === entry.teamId || g.away_team_id === entry.teamId))?.game_id ?? null;
+    };
+
     const events = due.flatMap(({ playerId, entry }) => {
         if (!entry.teamId || !entry.playerName) return [];
         const e = detectInjuryEvent(playerId, entry.playerName, entry.teamId, entry.severity, entry.injuryType, entry.duration, entry.returnDate ?? null);
@@ -40,7 +54,7 @@ export async function announceInjuryDiagnoses(roomId: string, newDay: string): P
             room_id: roomId,
             league_id: (room as any).league_id ?? '',
             season_number: (room as any).season_number ?? null,
-            game_id: null,
+            game_id: injuryGameId(entry),
             sim_date: entry.diagnosisDate,
             type: e.type,
             team_ids: e.teamIds,

@@ -21,10 +21,11 @@ import { PlayerNewsTab } from './PlayerNewsTab';
 import { PlayerPercentileTab } from './PlayerPercentileTab';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
-import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
+import { buildActiveInjurySeverityMap, buildUnrevealedGameKeys, isInjuryEntryFromUnrevealedGame } from '../../../services/multi/activeInjuryStatus';
 import { resolveRealAt, isFinal } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
+import { useUnrevealedGamesKey } from '../../../hooks/useUnrevealedGamesKey';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
 import { computeMultiStandingsStats } from './multiSeasonUtils';
 import { runAwardVoting } from '../../../utils/awardVoting';
@@ -130,18 +131,27 @@ const MultiPlayerDetailView: React.FC = () => {
     // 경기" 위젯(selectPlayerGameLog, 아래)은 경기 단위 원본이 그대로 필요해 그쪽은
     // includePbp 기본값(true)을 그대로 유지.
     const { data: statsByPlayer, isPending: statsLoading } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
+    const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const selectLeagueTeams = useCallback(
         (raw: LeagueRawStatsData): Team[] => {
             const builtTeams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer);
             const teamIdByPlayer = new Map<string, string>();
             for (const lt of leagueTeams) for (const id of (lt.roster ?? [])) teamIdByPlayer.set(id, lt.team_slug);
+            // [2026-11-07] 공개 전 경기에서 생긴 부상·출장정지는 배지와 "부상 이력" 목록 모두에서 숨김(스포일러 방지) —
+            // 재계산 시점은 unrevealedKey(시뮬·공개 순간에만 바뀜).
+            const nowMs = getServerNow();
             const activeInjuryByPlayer = buildActiveInjurySeverityMap(raw.playerInjuryRows, currentSimDate, room?.season_number, {
-                schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+                schedule: schedule as any,
                 getTeamId: id => teamIdByPlayer.get(id),
+                nowMs,
             });
+            const unrevealedKeys = buildUnrevealedGameKeys(schedule as any, nowMs);
             return builtTeams.map(t => ({
                 ...t,
-                roster: t.roster.map(p => {
+                roster: t.roster.map(p0 => {
+                    const p = unrevealedKeys.size > 0 && p0.injuryHistory?.length
+                        ? { ...p0, injuryHistory: p0.injuryHistory.filter(e => !isInjuryEntryFromUnrevealedGame(e as any, [teamIdByPlayer.get(p0.id)], unrevealedKeys)) }
+                        : p0;
                     const injuryStatus = activeInjuryByPlayer.get(p.id);
                     if (!injuryStatus) return p;
                     return {
@@ -154,7 +164,8 @@ const MultiPlayerDetailView: React.FC = () => {
                 }),
             }));
         },
-        [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule, statsByPlayer],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule, statsByPlayer, unrevealedKey],
     );
 
     const { data: teams = [], isPending: fetchLoading } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams, { includePbp: false });

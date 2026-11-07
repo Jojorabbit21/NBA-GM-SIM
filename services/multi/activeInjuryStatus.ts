@@ -1,4 +1,5 @@
 import type { Player } from '../../types';
+import { isFinal } from '../../views/multi/season/multiGameReveal';
 
 /** room_player_state 한 행 — hooks/useLeagueRawStats.ts의 playerInjuryRows와 동일 shape. */
 export interface PlayerInjuryStateRow {
@@ -36,26 +37,59 @@ export function pendingInjuryLabel(bodyPart: string): string {
     return `${bodyPart} 부상`;
 }
 
+type InjuryScheduleGame = { homeTeamId: string; awayTeamId: string; date: string; played: boolean; scheduledAt?: string; otPeriods?: number | null };
+
 /** "N경기" 재계산에 필요한 팀별 스케줄 조회 — 스케줄 원본을 매번 넘기지 않도록 얇게 추상화. */
 export interface SuspensionScheduleContext {
-    /** roomId 전체 스케줄(모든 팀) — home/away/date/played만 있으면 됨. */
-    schedule: { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[];
+    /** roomId 전체 스케줄(모든 팀) — home/away/date/played(+공개 판정용 scheduledAt/otPeriods). */
+    schedule: InjuryScheduleGame[];
     /** playerId → 소속 team_slug. 못 찾으면(방출 등) 재계산을 건너뛰고 원본 duration 유지. */
     getTeamId: (playerId: string) => string | undefined;
+    /** [2026-11-07] 서버 보정 현재 시각 — 주어지면 시뮬됐지만 공개 전(played && !isFinal)인 경기를 "아직 안 치른 경기"로 본다:
+     *  그 경기에서 생긴 부상·출장정지는 숨기고(스포일러 방지 — 서버는 시뮬 즉시 room_player_state를 쓰고 이 테이블엔 공개 지연
+     *  RLS가 없다), 출장정지 남은 경기 수에도 포함한다. 생략하면 예전처럼 played 기준. */
+    nowMs?: number;
+}
+
+/** [2026-11-07] 시뮬됐지만 아직 공개 전인 경기의 `팀|가상날짜` 키 — injury_history entry(date=game_date)와 맞춰 본다.
+ *  scheduledAt이 없는 구 리그 경기는 isFinal이 played로 폴백하므로 숨김 대상이 아니다. */
+export function buildUnrevealedGameKeys(schedule: InjuryScheduleGame[] | undefined, nowMs: number | undefined): Set<string> {
+    const keys = new Set<string>();
+    if (nowMs == null) return keys;
+    for (const g of schedule ?? []) {
+        if (!g.played || isFinal(g, nowMs)) continue;
+        const d = g.date.slice(0, 10);
+        keys.add(`${g.homeTeamId}|${d}`);
+        keys.add(`${g.awayTeamId}|${d}`);
+    }
+    return keys;
+}
+
+/** 이 이력 entry가 공개 전 경기에서 생긴 것인가 — 경기 밖 부상(offCourt)·연습경기(isTraining)는 경기와 무관해 제외.
+ *  teamIds = 선수의 현 소속 + entry.teamId(공개 창 사이 이적 대비). */
+export function isInjuryEntryFromUnrevealedGame(
+    entry: Record<string, any> | null | undefined,
+    teamIds: (string | undefined)[],
+    unrevealedKeys: Set<string>,
+): boolean {
+    if (!entry?.date || entry.offCourt || entry.isTraining || unrevealedKeys.size === 0) return false;
+    const d = String(entry.date).slice(0, 10);
+    return [...teamIds, entry.teamId].some(t => !!t && unrevealedKeys.has(`${t}|${d}`));
 }
 
 /** 출장정지 발부 시점에 고정된 duration("7경기") 대신, 그 팀이 return_date까지(포함) 아직
  *  치르지 않은 경기 수를 세어 "지금 기준 남은 경기 수"를 돌려준다. 부상(일수 기반)은 이미
  *  returnDate 자체가 "언제까지"를 정확히 말해주므로 재계산 대상이 아니다 — 출장정지만
- *  적용한다. */
+ *  적용한다. [2026-11-07] nowMs가 있으면 공개 전 경기도 "아직 안 치른 경기"로 센다. */
 function computeSuspensionGamesRemaining(
     teamId: string,
     returnDate: string,
     schedule: SuspensionScheduleContext['schedule'],
+    nowMs: number | undefined,
 ): number {
     return schedule.filter(g =>
         (g.homeTeamId === teamId || g.awayTeamId === teamId) &&
-        !g.played &&
+        !(g.played && (nowMs == null || isFinal(g, nowMs))) &&
         g.date <= returnDate,
     ).length;
 }
@@ -80,6 +114,7 @@ export function buildActiveInjurySeverityMap(
     suspensionContext?: SuspensionScheduleContext,
 ): Map<string, ActiveInjuryStatus> {
     const map = new Map<string, ActiveInjuryStatus>();
+    const unrevealedKeys = buildUnrevealedGameKeys(suspensionContext?.schedule, suspensionContext?.nowMs);
     for (const row of rows ?? []) {
         const isActive = row.health === 'Injured' && (
             (row.return_date != null && row.return_date > currentSimDate) ||
@@ -89,6 +124,9 @@ export function buildActiveInjurySeverityMap(
         const history = row.injury_history ?? [];
         const last = history[history.length - 1];
         if (!last?.severity) continue;
+        // [2026-11-07] 공개 전 경기에서 생긴 부상·출장정지는 그 경기 공개 전까지 숨김. 경기에 뛴 선수는 직전까지 건강했으므로
+        // (부상 중이면 출전하지 않음) 이 entry를 숨기면 곧 "활성 부상 없음"이다.
+        if (isInjuryEntryFromUnrevealedGame(last, [suspensionContext?.getTeamId(row.player_id)], unrevealedKeys)) continue;
 
         if (last.severity !== 'Suspension' && isInjuryDiagnosisPending(last, currentSimDate)) {
             map.set(row.player_id, {
@@ -105,7 +143,7 @@ export function buildActiveInjurySeverityMap(
         if (last.severity === 'Suspension' && last.returnDate && suspensionContext) {
             const teamId = suspensionContext.getTeamId(row.player_id);
             if (teamId) {
-                const remaining = computeSuspensionGamesRemaining(teamId, last.returnDate, suspensionContext.schedule);
+                const remaining = computeSuspensionGamesRemaining(teamId, last.returnDate, suspensionContext.schedule, suspensionContext.nowMs);
                 duration = `${remaining}경기`;
             }
         }

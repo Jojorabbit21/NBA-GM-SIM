@@ -19,7 +19,8 @@ import { fetchMetaPlayersByRosterIds } from '../../../services/multi/instancePla
 import { calculateWinProbability } from '../../../utils/simulationMath';
 import type { PbpLog, PlayerBoxScore, BoxTick, BoxDelta, RotationData } from '../../../types/engine';
 import type { Game, ShotEvent, Team, Player } from '../../../types';
-import { useServerClock } from '../../../utils/serverClock';
+import { useServerClock, getServerNow } from '../../../utils/serverClock';
+import { useUnrevealedGamesKey } from '../../../hooks/useUnrevealedGamesKey';
 import { getReplayDurationMs, getGameDisplayState, resolveRealAt, isFinal } from './multiGameReveal';
 import { fetchLiveGameView } from '../../../services/multi/liveGameService';
 import { loadGame } from '../../../services/multi/gameQueries';
@@ -1990,6 +1991,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
     // 메인리그는 injury_history 날짜가 가상 캘린더라 currentSimDate(실제 KST) 대신 가상 날짜를 써야 한다.
     const virtualToday = useCurrentVirtualDate(schedule, league?.type, simStart, gprd, timeline);
     const { data: injuryRows } = usePlayerInjuryRowsBatch(room?.id, displayState === 'final' ? boxPlayerIds : []);
+    const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const activeInjuryByPlayer = useMemo(() => {
         const teamByPlayer = new Map<string, string>();
         for (const b of gameData?.home_box ?? []) teamByPlayer.set(b.playerId, gameData!.home_team_id);
@@ -1997,8 +1999,10 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
         return buildActiveInjurySeverityMap(injuryRows, virtualToday ?? currentSimDate, room?.season_number, {
             schedule,
             getTeamId: id => teamByPlayer.get(id),
+            nowMs: getServerNow(),   // [2026-11-07] 다른 공개 전 경기에서 생긴 부상·출장정지 숨김 — 갱신 시점은 unrevealedKey
         });
-    }, [injuryRows, virtualToday, currentSimDate, room?.season_number, schedule, gameData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [injuryRows, virtualToday, currentSimDate, room?.season_number, schedule, gameData, unrevealedKey]);
     const rosterCacheWithStats = useMemo(() => {
         if (!seasonStatsBatch && activeInjuryByPlayer.size === 0) return rosterCache;
         const out: Record<string, Player> = {};

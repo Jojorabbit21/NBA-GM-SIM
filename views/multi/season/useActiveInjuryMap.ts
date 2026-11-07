@@ -46,11 +46,12 @@ export function useActiveInjuryMap(opts: Options = {}) {
         return m;
     }, [leagueTeams]);
 
+    // [2026-11-07] nowMs — 공개 전 경기에서 생긴 부상·출장정지 숨김(스포일러 방지). 15초 버킷이 이미 있어 그대로 쓴다.
     const activeInjuryByPlayer = useMemo(
         () => buildActiveInjurySeverityMap(injuryRows, todaySimDate, room?.season_number, {
-            schedule, getTeamId: id => teamIdByPlayer.get(id),
+            schedule, getTeamId: id => teamIdByPlayer.get(id), nowMs: serverNow,
         }),
-        [injuryRows, todaySimDate, room?.season_number, schedule, teamIdByPlayer],
+        [injuryRows, todaySimDate, room?.season_number, schedule, teamIdByPlayer, serverNow],
     );
 
     return { activeInjuryByPlayer, todaySimDate, teamIdByPlayer, allRosterIds };

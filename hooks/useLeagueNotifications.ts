@@ -26,7 +26,8 @@ export type LeagueNotificationScope = 'my_team' | 'all' | 'off';
 const SCOPE_KEY = 'nba-gm-sim-notif-league-scope';
 const BUNDLE_WINDOW_MS = 400;
 // [2026-11-05] injury_notice — 경기 중 부상 통지는 game_id가 붙어 중계 종료 전엔 RLS로 숨겨지므로 폴링으로 보충
-const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp', 'injury_notice'];
+// [2026-11-07] injury — 진단 발표 뉴스도 부상 경기 game_id가 붙어(스포일러 게이트) 공개 전 삽입분은 Realtime으로 안 온다
+const GATED_POLL_TYPES = ['playoff_series_result', 'playoff_champion', 'finals_mvp', 'injury_notice', 'injury'];
 const POLL_INTERVAL_MS = 30_000;
 const POLL_LOOKBACK_MS = 60 * 60 * 1000;
 
@@ -158,6 +159,7 @@ export function useLeagueNotifications(params: {
                     .eq('room_id', roomId)
                     .in('type', GATED_POLL_TYPES)
                     .gte('created_at', since)
+                    .order('created_at', { ascending: false })
                     .limit(20);
                 if (stopped || !data) return;
                 if (!seeded) {

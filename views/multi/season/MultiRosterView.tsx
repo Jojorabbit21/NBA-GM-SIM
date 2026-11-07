@@ -26,7 +26,8 @@ import { getTeamDeadMoney } from '../../../services/multi/teamFinances';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow, useServerClockBucket } from '../../../utils/serverClock';
-import { isFinal, resolveRealAt } from './multiGameReveal';
+import { useUnrevealedGamesKey } from '../../../hooks/useUnrevealedGamesKey';
+import { isFinal, resolveRealAt, makeRevealedSeriesGameFilter } from './multiGameReveal';
 import { computeGameLeaders, type GameLeaders } from '../../../services/multi/gameLeadersCache';
 import type { Team, Player, Game } from '../../../types';
 import type { PlayerStats } from '../../../types/player';
@@ -143,6 +144,7 @@ const MultiRosterView: React.FC = () => {
     // 포함)이 로스터 탭에는 반영되지 않는 버그가 있었다(다른 화면 8곳은 전부
     // buildLeagueTeams()를 통해 이미 정상 반영). buildLeagueTeams()로 교체하고, 이 화면만
     // 필요한 "활성 부상 상태(severity/타입/기간/복귀일)" 오버레이만 그 결과 위에 얹는다.
+    const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const selectRosterIdentity = useCallback((raw: LeagueRawStatsData): Team[] => {
         const teams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides);
 
@@ -153,8 +155,9 @@ const MultiRosterView: React.FC = () => {
         const teamIdByPlayer = new Map<string, string>();
         for (const lt of leagueTeams) for (const id of (lt.roster ?? [])) teamIdByPlayer.set(id, lt.team_slug);
         const activeInjuryByPlayer = buildActiveInjurySeverityMap(raw.playerInjuryRows, currentSimDate, room?.season_number, {
-            schedule: schedule as { homeTeamId: string; awayTeamId: string; date: string; played: boolean }[],
+            schedule: schedule as any,
             getTeamId: id => teamIdByPlayer.get(id),
+            nowMs: getServerNow(),   // [2026-11-07] 공개 전 경기분 부상·출장정지 숨김 — 재계산 시점은 unrevealedKey
         });
 
         // 방출된 선수의 전체 Player 객체(호버카드/바로가기/포지션/나이/오버롤용) — 이미
@@ -190,7 +193,8 @@ const MultiRosterView: React.FC = () => {
                 };
             }),
         }));
-    }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, room?.team_finances, deadPlayerIds, schedule]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, room?.team_finances, deadPlayerIds, schedule, unrevealedKey]);
 
     const {
         data: allTeamsBase = [],
@@ -291,8 +295,10 @@ const MultiRosterView: React.FC = () => {
     // may only be shown once the replay ends (isFinal). Live/not-yet-final games are downgraded
     // to unplayed with scores and stats stripped, so game log, record and calendar stay consistent.
     const serverNow = useServerClockBucket();
-    const scheduleWithStats = useMemo(
-        () => schedule.map(g => {
+    // [2026-11-07] 대진 미공개 시리즈 경기(다른 시리즈 결정 경기 시뮬 즉시 생성되는 다음 라운드)는 제외 — 일정 화면과 같은 규칙.
+    const scheduleWithStats = useMemo(() => {
+        const isRevealedSeriesGame = makeRevealedSeriesGameFilter((league?.bracket_data as any)?.series, schedule as any, serverNow);
+        return schedule.filter(g => isRevealedSeriesGame(g as any)).map(g => {
             const scheduledAt = resolveRealAt(g, simStart, gprd) ?? g.scheduledAt;
             const gated = scheduledAt && scheduledAt !== g.scheduledAt ? { ...g, scheduledAt } : g;
             if (gated.played && !isFinal(gated, serverNow)) {
@@ -303,9 +309,8 @@ const MultiRosterView: React.FC = () => {
             return (st || leaders)
                 ? ({ ...gated, homeStats: st?.homeStats, awayStats: st?.awayStats, leaders } as Game)
                 : gated;
-        }),
-        [schedule, gameTeamStatsMap, gameLeadersMap, simStart, gprd, serverNow],
-    );
+        });
+    }, [schedule, gameTeamStatsMap, gameLeadersMap, simStart, gprd, serverNow, league?.bracket_data]);
 
     // 로스터 탭 "체력" 열 (docs/plan/multiplayer-fatigue.md 5장) — 공개 전 경기 선수 가리기 포함, 선수 프로필과 공용 훅.
     // 방출 후 데드캡만 남은 선수(deadPlayerIds)는 로스터 행이 아니므로 조회하지 않는다.

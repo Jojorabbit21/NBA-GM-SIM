@@ -154,6 +154,23 @@ export function computeRevealedSeries(
         gatedById.set(s.id, gateWins(s, loser78, winner910));
     }
 
+    // [2026-11-07] 1라운드의 플레이인 몫 슬롯(2시드 상대 = 7-8위전 승자, 1시드 상대 = 8번 시드 결정전 승자) —
+    // 서버 resolveRoundOneFromPlayIn()이 그 플레이인 경기를 시뮬한 즉시(중계 종료 전) 채워 넣고 1라운드 경기까지
+    // 만들어서, 원본을 그대로 쓰면 브라켓·일정에 플레이인 승자가 먼저 드러났다. 브라켓 화면은 round 0을 걸러서
+    // 넘기므로(PostseasonBracket) 시리즈가 아니라 일정의 PI_* 경기로 판정한다: 플레이인 참가팀은 자기 7v8/8th 승리가
+    // 공개된 뒤에만 1라운드 슬롯에 보인다.
+    const playInTeams = new Set<string>();
+    const playInQualified = new Set<string>();
+    for (const g of schedule) {
+        if (!g.seriesId?.startsWith('PI_')) continue;
+        playInTeams.add(g.homeTeamId);
+        playInTeams.add(g.awayTeamId);
+        if (!g.seriesId.endsWith('_7v8') && !g.seriesId.endsWith('_8th')) continue;
+        if (!g.played || g.homeScore == null || g.awayScore == null || !isFinal(g, serverNowMs)) continue;
+        playInQualified.add(g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId);
+    }
+    const gatePlayInSlot = (slug: string) => (playInTeams.has(slug) && !playInQualified.has(slug) ? 'TBD' : slug);
+
     for (let round = 1; round <= maxRound; round++) {
         const roundSeries = series
             .filter(s => s.round === round)
@@ -166,7 +183,10 @@ export function computeRevealedSeries(
             let higherSeedId = s.higherSeedId;
             let lowerSeedId  = s.lowerSeedId;
 
-            if (round > 1) {
+            if (round === 1) {
+                higherSeedId = gatePlayInSlot(higherSeedId);
+                lowerSeedId  = gatePlayInSlot(lowerSeedId);
+            } else {
                 const mIdx = seriesMatchIndex(s.id);
                 const feederHigher = gatedById.get(`T_R${round - 1}_M${2 * mIdx}`);
                 const feederLower  = gatedById.get(`T_R${round - 1}_M${2 * mIdx + 1}`);
@@ -187,4 +207,45 @@ export function computeRevealedSeries(
     }
 
     return gatedById;
+}
+
+/**
+ * [2026-11-07] "다음 경기" 후보 판정 — 헤더(MultiHeader)·모바일(useMyNextGame)·리그 다음 경기일 타이머 공용.
+ *
+ * - played가 아니라 공개 상태로 본다: 서버는 시작 0~60초 전에 시뮬해 played=true로 바꾸므로, `!played`로 고르면 그 사이
+ *   이 경기를 건너뛰어 그다음 경기(시리즈를 끝낸 경기라면 다음 라운드 상대)가 먼저 보였다.
+ * - 플레이오프 경기는 computeRevealedSeries 기준으로 대진이 공개됐고(양쪽 시드 ≠ TBD) 공개상 아직 끝나지 않은 시리즈만:
+ *   서버는 다른 시리즈 결정 경기를 시뮬하는 즉시 다음 라운드 경기를 상대 팀까지 채워 만들고, 조기 확정 시리즈의 남은 경기는
+ *   공개 후에야 지운다.
+ * 반환 함수에는 scheduledAt이 확정된(resolveRealAt 적용) 경기를 넘길 것.
+ */
+export function makeUpcomingGameFilter(
+    series: PlayoffSeries[] | null | undefined,
+    schedule: SeriesGameLike[],
+    serverNowMs: number,
+): (g: SeriesGameLike) => boolean {
+    const revealed = series?.length ? computeRevealedSeries(series, schedule, serverNowMs) : null;
+    return (g) => {
+        if (getGameDisplayState(g, serverNowMs) !== 'scheduled') return false;
+        if (!g.seriesId || !revealed) return true;
+        const s = revealed.get(g.seriesId);
+        return !!s && s.higherSeedId !== 'TBD' && s.lowerSeedId !== 'TBD' && !s.finished;
+    };
+}
+
+/**
+ * [2026-11-07] 대진이 아직 공개되지 않은(어느 한쪽 시드가 TBD인) 플레이오프 시리즈의 경기를 걸러낸다 — 일정 화면·날짜 스트립과
+ * 같은 규칙을 팀 일정 탭(MultiRosterView)·전술 화면 경기 로그(MultiTacticsView)에도 적용(다음 라운드 상대 선노출 방지).
+ */
+export function makeRevealedSeriesGameFilter(
+    series: PlayoffSeries[] | null | undefined,
+    schedule: SeriesGameLike[],
+    serverNowMs: number,
+): (g: SeriesGameLike) => boolean {
+    const revealed = series?.length ? computeRevealedSeries(series, schedule, serverNowMs) : null;
+    return (g) => {
+        if (!g.seriesId || !revealed) return true;
+        const s = revealed.get(g.seriesId);
+        return !!s && s.higherSeedId !== 'TBD' && s.lowerSeedId !== 'TBD';
+    };
 }

@@ -32,6 +32,7 @@ import { processRoomMidnights } from './fatigueRecovery.ts';
 import { announceInjuryDiagnoses } from './injuryDiagnosis.ts';
 import { rollOffCourtInjuries } from './offCourtInjuries.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
+import { isRegularSeasonRevealed, runPostRevealTransitions } from './postRevealTransitions.ts';
 
 // 정규시즌 종료 후 어워드를 발표하기까지의 지연 — "종료 즉시"가 아니라 하루 뒤 발표되도록
 // leagues.regular_season_ended_at + 이 값을 기준으로 runScheduledSeasonAwards()가 트리거한다.
@@ -197,6 +198,7 @@ async function tick(): Promise<void> {
         runScheduledDraftStarts(now),
         runSimGames(now),
         checkSeasonCompletions(),
+        runPostRevealTransitions(),
         runScheduledSeasonAwards(now),
         runAllStarVoteUpdates(),
         runThreePointContestNews(),
@@ -302,6 +304,10 @@ async function checkSeasonCompletions(): Promise<void> {
 
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
+
+        // [2026-11-07] 마지막 정규시즌 경기들이 "공개"(리플레이 종료)된 뒤에만 진행 — 시뮬 즉시 포스트시즌을 만들면
+        // 대진 뉴스·플레이오프 메뉴·브라켓·탈락 문구로 최종 순위가 중계 종료 전에 샌다. 공개 전이면 다음 tick에 재확인.
+        if (!(await isRegularSeasonRevealed(league.id, room.id))) continue;
 
         // 정규시즌 종료 시각 1회 스탬프 — runScheduledSeasonAwards()가 "이 시각+1일"을 기준으로
         // 어워드 발표를 트리거한다. bracket_data가 채워지기 전까지는 이 함수가 매 틱 재실행되므로
