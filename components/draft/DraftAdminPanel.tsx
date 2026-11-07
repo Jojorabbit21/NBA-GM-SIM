@@ -15,6 +15,8 @@ interface Props {
 
     /** WS 어드민 메시지 전송 (useLeagueDraft에서 받아옴) */
     sendAdmin:            (action: string, params?: { targetPickIndex?: number; targetUserId?: string; enabled?: boolean }) => void;
+    /** [2026-11-08] 폰: 우상단 고정 "Admin" 버튼·우측 고정 패널 대신 본문만 렌더(호출부가 BottomSheet 안에 넣는다) */
+    embedded?:            boolean;
 }
 
 type Action = 'pause' | 'resume' | 'reset-timer' | 'skip-turn' | 'autocomplete' | 'rollback' | 'toggle-autopick';
@@ -29,6 +31,7 @@ export const DraftAdminPanel: React.FC<Props> = ({
     draftState,
     onOptimisticPause,
     sendAdmin,
+    embedded = false,
 }) => {
     const [open,          setOpen]          = useState(false);
     const [loading,       setLoading]       = useState<Action | null>(null);
@@ -97,36 +100,8 @@ export const DraftAdminPanel: React.FC<Props> = ({
     const btnAmber = `${btnBase} bg-amber-700/60 hover:bg-amber-600/60 text-amber-200`;
     const btnRed   = `${btnBase} bg-red-700/60 hover:bg-red-600/60 text-red-200`;
 
-    return (
-        <>
-            {/* 토글 버튼 */}
-            <button
-                onClick={() => setOpen(o => !o)}
-                className="fixed top-3 right-3 z-50 flex items-center gap-1.5 px-2.5 py-1.5
-                           bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg
-                           text-slate-300 text-xs font-bold backdrop-blur-sm transition-colors"
-            >
-                <Settings size={13} />
-                Admin
-            </button>
-
-            {/* 오버레이 패널 */}
-            {open && (
-                <div className="fixed top-0 right-0 h-full w-72 z-40 bg-slate-900 border-l border-slate-700
-                                flex flex-col shadow-2xl">
-
-                    {/* 헤더 */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-                        <div className="flex items-center gap-2">
-                            <Settings size={14} className="text-slate-400" />
-                            <span className="text-sm font-black text-white">드래프트 관리</span>
-                        </div>
-                        <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-white">
-                            <X size={16} />
-                        </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+    const panelBody = (
+        <div className={embedded ? 'space-y-4' : 'flex-1 overflow-y-auto px-4 py-3 space-y-4'}>
 
                         {/* 상태 표시 */}
                         <div className="bg-slate-800/60 rounded-xl p-3 space-y-1.5">
@@ -336,6 +311,39 @@ export const DraftAdminPanel: React.FC<Props> = ({
                             </div>
                         )}
                     </div>
+    );
+    if (embedded) return panelBody;
+
+    return (
+        <>
+            {/* 토글 버튼 */}
+            <button
+                onClick={() => setOpen(o => !o)}
+                className="fixed top-3 right-3 z-50 flex items-center gap-1.5 px-2.5 py-1.5
+                           bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg
+                           text-slate-300 text-xs font-bold backdrop-blur-sm transition-colors"
+            >
+                <Settings size={13} />
+                Admin
+            </button>
+
+            {/* 오버레이 패널 */}
+            {open && (
+                <div className="fixed top-0 right-0 h-full w-72 z-40 bg-slate-900 border-l border-slate-700
+                                flex flex-col shadow-2xl">
+
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+                        <div className="flex items-center gap-2">
+                            <Settings size={14} className="text-slate-400" />
+                            <span className="text-sm font-black text-white">드래프트 관리</span>
+                        </div>
+                        <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-white">
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    {panelBody}
                 </div>
             )}
         </>

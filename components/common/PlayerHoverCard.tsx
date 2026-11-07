@@ -88,13 +88,14 @@ const VIEWPORT_MARGIN = 8;
 // PlayerDetailView.tsx의 능력치 위젯(MERGED_GROUPS)과 동일한 3열 배치 — 6개 카테고리(3/4/3/5/2/4개)를
 // 7개씩 균등한 3묶음(인사이드+아웃사이드, 수비+리바운드, 패스+운동능력)으로 합쳐서 표시.
 const byId = (id: string) => COMPACT_ATTR_GROUPS.find(g => g.id === id)!;
-const RATING_COLUMNS: CompactAttrItem[][] = [
+/** [2026-11-08] 폰 드래프트 선수 팝업(DraftPlayerPopup)도 같은 3열 배치를 쓴다 */
+export const RATING_COLUMNS: CompactAttrItem[][] = [
     [...byId('INS').items, ...byId('OUT').items],
     [...byId('DEF').items, ...byId('REB').items],
     [...byId('PLM').items, ...byId('ATH').items],
 ];
 
-const compactLabel = (item: CompactAttrItem): string => {
+export const compactLabel = (item: CompactAttrItem): string => {
     if (item.krLabel) return item.krLabel;
     if (item.sourceKeys.length === 1) return ATTR_KR_LABEL[item.sourceKeys[0]] || item.label;
     return item.sourceKeys.map(k => ATTR_KR_LABEL[k] || k).join(' / ');

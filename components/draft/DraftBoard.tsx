@@ -37,6 +37,10 @@ interface DraftBoardProps {
     teamMeta?: RoomTeamMetaMap;
     onlineTeamIds?: Set<string>;
     autoPickTeamIds?: Set<string>;
+    /** [2026-11-08] 폰 치수(docs/ui/mobile-design-system.md §9-0-4): 라운드 열 48 · 팀 열 96 · 머리 36(abbr 16) · 셀 64. 기본 false = 데스크톱 그대로 */
+    phone?: boolean;
+    /** [2026-11-08] 방금 지명된 셀 `${teamId}:${round}` — 폰은 발표 문구가 없어 셀에 emerald 링으로 알린다(호출부가 2초 뒤 해제) */
+    highlightPickKey?: string | null;
 }
 
 const DraftBoardComponent: React.FC<DraftBoardProps> = ({
@@ -50,6 +54,8 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
     teamMeta,
     onlineTeamIds,
     autoPickTeamIds,
+    phone = false,
+    highlightPickKey = null,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -94,8 +100,8 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
     const currentTeamId = draftOrder[currentPickIndex] || '';
     const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
 
-    const ROUND_COL_W = 90;   // px — 라운드 열 고정 너비
-    const MIN_TEAM_W  = 120;  // px — 팀 열 최소 너비 (이보다 좁아지지 않음)
+    const ROUND_COL_W = phone ? 48 : 90;   // px — 라운드 열 고정 너비
+    const MIN_TEAM_W  = phone ? 96 : 120;  // px — 팀 열 최소 너비 (이보다 좁아지지 않음)
 
     return (
         <div
@@ -138,7 +144,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                             return (
                                 <th
                                     key={teamId}
-                                    className="relative overflow-hidden px-1 h-12 text-center text-xs font-bold"
+                                    className={`relative overflow-hidden px-1 ${phone ? 'h-9' : 'h-12'} text-center text-xs font-bold`}
                                     title={td.name}
                                     style={{
                                         backgroundColor: td.colorPrimary,
@@ -161,7 +167,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                 <RefreshCw size={11} />
                                             </span>
                                         )}
-                                        <span className="text-lg">{td.abbr}</span>
+                                        <span className={phone ? 'text-base' : 'text-lg'}>{td.abbr}</span>
                                     </div>
                                     {/* [2026-09-11 Fix] 온라인 외곽선을 th 자체의 box-shadow로 걸면, 뒤이어
                                         그려지는 TeamLogoWatermark(반투명 이미지)가 그 위를 덮어 색이 탁해
@@ -187,7 +193,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                         const isCurrentRound = round === currentRound;
 
                         return (
-                            <tr key={round} className="h-[76px]">
+                            <tr key={round} className={phone ? 'h-16' : 'h-[76px]'}>
                                 {/* Round label (sticky left) */}
                                 <td
                                     className={`sticky left-0 px-2 py-1 z-10 text-center ${
@@ -221,6 +227,7 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                     const isUserCol = teamId === userTeamId;
                                     const posColor = pick ? (positionColors[pick.position] || '#64748b') : undefined;
                                     const pickNum = pickNumberMap[teamId]?.[round];
+                                    const isJustPicked = !!pick && highlightPickKey === `${teamId}:${round}`;
 
                                     return (
                                         <td
@@ -232,7 +239,10 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                 className="absolute inset-[3px] rounded-md"
                                                 style={{
                                                     ...(pick
-                                                        ? { backgroundColor: isUserCol ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
+                                                        ? {
+                                                            backgroundColor: isUserCol ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20`,
+                                                            ...(isJustPicked ? { boxShadow: 'inset 0 0 0 2px rgba(52,211,153,0.9), 0 0 10px rgba(16,185,129,0.5)' } : {}),
+                                                        }
                                                         : isCurrent
                                                             ? { backgroundColor: 'rgba(16,185,129,0.10)', boxShadow: 'inset 0 0 0 2px rgba(16,185,129,0.6)' }
                                                             : isUserCol
@@ -242,22 +252,22 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                 }}
                                             >
                                                 {pick ? (
-                                                    <div className="h-full flex flex-col items-center justify-center gap-0.5 px-1.5">
+                                                    <div className={`h-full flex flex-col items-center justify-center gap-0.5 px-1.5 ${isJustPicked ? 'animate-pulse' : ''}`}>
                                                         <div className="flex items-center justify-center gap-1.5">
                                                             {pickNum != null && (
-                                                                <span className="text-sm opacity-40 font-bold text-slate-300">
+                                                                <span className={`${phone ? 'text-[11px]' : 'text-sm'} opacity-40 font-bold text-slate-300`}>
                                                                     #{pickNum}
                                                                 </span>
                                                             )}
                                                             <span
-                                                                className="text-sm font-bold opacity-60"
+                                                                className={`${phone ? 'text-[11px]' : 'text-sm'} font-bold opacity-60`}
                                                                 style={{ color: posColor }}
                                                             >
                                                                 {pick.position}
                                                             </span>
                                                         </div>
                                                         <span
-                                                            className="text-sm font-bold text-center leading-tight break-words line-clamp-2"
+                                                            className={`${phone ? 'text-xs' : 'text-sm'} font-bold text-center leading-tight break-words line-clamp-2`}
                                                             style={{ color: posColor }}
                                                         >
                                                             {pick.playerName}
@@ -266,17 +276,17 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                 ) : isCurrent ? (
                                                     <div className="h-full flex flex-col items-center justify-center gap-0.5 animate-pulse">
                                                         {pickNum != null && (
-                                                            <span className="text-sm opacity-40 font-bold text-slate-300">
+                                                            <span className={`${phone ? 'text-[11px]' : 'text-sm'} opacity-40 font-bold text-slate-300`}>
                                                                 #{pickNum}
                                                             </span>
                                                         )}
-                                                        <span className="text-sm font-bold text-emerald-400">
+                                                        <span className={`${phone ? 'text-xs' : 'text-sm'} font-bold text-emerald-400`}>
                                                             선택 중...
                                                         </span>
                                                     </div>
                                                 ) : pickNum != null ? (
                                                     <div className="h-full flex items-end justify-center pb-1.5">
-                                                        <span className="text-sm opacity-25 font-bold text-slate-400">
+                                                        <span className={`${phone ? 'text-[11px]' : 'text-sm'} opacity-25 font-bold text-slate-400`}>
                                                             #{pickNum}
                                                         </span>
                                                     </div>

@@ -12,6 +12,7 @@ import { virtualDayMark } from '../VirtualDayArc';
 import { useMyNextGame } from '../../hooks/useMyNextGame';
 import { useServerClockBucket } from '../../utils/serverClock';
 import { useGameShortCodes } from '../../hooks/useGameShortCodes';
+import { STATUS_LABEL } from '../../views/multi/league/leagueConstants';
 import { MobileHeaderActions } from './MobileHeaderActions';
 import { BottomSheet } from './BottomSheet';
 import { SimTimetableList } from '../SimTimetableList';
@@ -116,6 +117,9 @@ export const MobileTopBar: React.FC = () => {
                                     <span className="font-semibold text-slate-300">{next.isAway ? '@' : 'vs'} {next.opponent?.team_abbr ?? next.opponentId}</span>
                                     {next.countdownText && <span className={`font-semibold tabular-nums ${urgencyClass}`}>· {next.countdownText}</span>}
                                 </>
+                            ) : !currentVirtualDate && (league?.status === 'recruiting' || league?.status === 'drafting') ? (
+                                // 드래프트 전 로비: 가상 날짜가 없으므로 2줄은 리그 상태 라벨
+                                <span className={`font-semibold ${league.status === 'recruiting' ? 'text-emerald-400' : 'text-amber-400'}`}>{STATUS_LABEL[league.status]}</span>
                             ) : (
                                 <span className="text-slate-500">{isSpectator ? '관전 중' : league?.type === 'tournament' ? '토너먼트' : '예정된 경기 없음'}</span>
                             )}

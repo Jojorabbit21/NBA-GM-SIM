@@ -28,6 +28,20 @@ import { Button } from '../../../components/common/Button';
 import { Spinner } from '../../../components/common/Spinner';
 import { IconButton } from '../../../components/common/IconButton';
 import { DraftAdminPanel } from '../../../components/draft/DraftAdminPanel';
+// [2026-11-08] 폰판(docs/ui/mobile-design-system.md §9-0-4, 캔버스 21행 E1~E15) — 셸·탭·팝업은 phone/ 부품, 상태·핸들러·WS 훅은 데스크톱과 공유
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { TabBar } from '../../../components/common/TabBar';
+import { BottomSheet } from '../../../components/mobile/BottomSheet';
+import { PhoneDraftHeader } from '../../../components/draft/phone/PhoneDraftHeader';
+import { PhoneDraftBoardStrip } from '../../../components/draft/phone/PhoneDraftBoardStrip';
+import { PhoneDraftPool } from '../../../components/draft/phone/PhoneDraftPool';
+import { PhoneDraftQueue } from '../../../components/draft/phone/PhoneDraftQueue';
+import { PhoneDraftHistory } from '../../../components/draft/phone/PhoneDraftHistory';
+import { PhoneDraftRoster } from '../../../components/draft/phone/PhoneDraftRoster';
+import { DraftPlayerPopup } from '../../../components/draft/phone/DraftPlayerPopup';
+import { OvrBadge } from '../../../components/common/OvrBadge';
+
+type PhoneDraftTab = 'pool' | 'queue' | 'history' | 'roster';
 
 const POSITION_COLORS: Record<string, string> = {
     PG: '#22d3ee', SG: '#34d399', SF: '#fbbf24', PF: '#fb7185', C: '#a78bfa',
@@ -63,6 +77,7 @@ const MultiDraftView: React.FC = () => {
     } = useLeagueDraft(room?.id ?? null, session);
 
     const myAutoPick = !!(userId && draftState?.autoPickUserIds?.includes(userId));
+    const isPhone = useIsPhone();
 
     const onlineUserIds = useDraftPresence(room?.id ?? null, userId);
 
@@ -350,6 +365,32 @@ const MultiDraftView: React.FC = () => {
         setQueueSaveError(null);
         setQueue(ids);
     }, [setQueue]);
+
+    // ── [2026-11-08] 폰 전용 상태 ───────────────────────────────────────────
+    const [phoneTab, setPhoneTab] = useState<PhoneDraftTab | null>(null);     // null = 기본(진행 중 풀 / 완료 후 내 로스터)
+    const [popupPlayerId, setPopupPlayerId] = useState<string | null>(null);
+    const [adminOpen, setAdminOpen] = useState(false);
+    // 지명된 선수 포함 전체 풀 — 기록·로스터에서 이름을 탭해도 같은 팝업을 띄우기 위해
+    const allPlayersById = useMemo((): Map<string, Player> => {
+        if (!isPhone) return new Map();
+        return new Map(poolPlayers.map(p => [p.id, toPlayer(p, useCustomOverrides)]));
+    }, [isPhone, poolPlayers, useCustomOverrides]);
+    // 방금 지명된 셀 강조(폰은 발표 문구가 없어 보드 셀 emerald 링 2초) — 픽 수가 "늘어났을 때"만
+    const picksLen = draftState?.picks.length ?? 0;
+    const lastPick = picksLen > 0 ? draftState!.picks[picksLen - 1] : undefined;
+    const [highlightPickKey, setHighlightPickKey] = useState<string | null>(null);
+    const prevPicksLenRef = useRef<number | null>(null);
+    useEffect(() => {
+        const prev = prevPicksLenRef.current;
+        prevPicksLenRef.current = picksLen;
+        if (!isPhone || prev === null || picksLen <= prev || !lastPick) return;
+        setHighlightPickKey(`${lastPick.teamId}:${lastPick.round}`);
+        const t = setTimeout(() => setHighlightPickKey(null), 2000);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isPhone, picksLen]);
+    const handleOpenPlayer = useCallback((id: string) => setPopupPlayerId(id), []);
+    const handleClosePopup = useCallback(() => setPopupPlayerId(null), []);
     const renderLeftPanel = () => (
         leftTab === 'queue' && draftState ? (
             <DraftQueuePanel
@@ -394,6 +435,190 @@ const MultiDraftView: React.FC = () => {
                 >
                     리그 홈으로 돌아가기
                 </Button>
+            </div>
+        );
+    }
+
+    if (isPhone) {
+        const isWaitingP   = draftState.status === 'waiting';
+        const isCompletedP = draftState.status === 'completed';
+        const completionP  = isCompletedP ? seasonReady : null;
+        const navLocked    = isCompletedP && !seasonReady.ready;
+        const canDraft     = isMyTurn && !isSubmitting && connectionState === 'connected';
+        const currentTeamIdP = currentPickEntry?.teamId ?? lastPick?.teamId ?? '';
+        const selectedPlayer = selectedPlayerId ? adaptedPlayers.find(p => p.id === selectedPlayerId) ?? null : null;
+        const popupPlayer = popupPlayerId ? allPlayersById.get(popupPlayerId) ?? null : null;
+        const popupPick = popupPlayerId ? draftState.picks.find(p => p.playerId === popupPlayerId) : undefined;
+        const summary = isCompletedP ? '완료' : isWaitingP ? '시작 전' : `R${currentRound} · #${draftState.currentPickIndex + 1} 선택 중`;
+        const tabs: { id: PhoneDraftTab; label: string; dot?: { tone: 'warning'; label: string } }[] = [
+            { id: 'pool', label: '선수 풀' },
+            ...(isDraftParticipant ? [{ id: 'queue' as const, label: '큐', dot: queueDirty ? { tone: 'warning' as const, label: '저장 안 됨' } : undefined }] : []),
+            { id: 'history', label: '기록' },
+            { id: 'roster', label: '내 로스터' },
+        ];
+        const tab: PhoneDraftTab = (phoneTab === 'queue' && !isDraftParticipant) ? 'pool' : (phoneTab ?? (isCompletedP ? 'roster' : 'pool'));
+        const showDraftBar = !isCompletedP && (tab === 'pool' || tab === 'queue');
+        const openPlayerObj = (p: Player) => handleOpenPlayer(p.id);
+        const draftFromPopup = async (p: Player) => { await handleDraft(p); setPopupPlayerId(null); };
+        const draftFromQueue = (id: string) => { const p = adaptedPlayers.find(x => x.id === id); if (p) void handleDraft(p); };
+
+        const content = tab === 'pool' ? (
+            <PhoneDraftPool
+                players={adaptedPlayers}
+                selectedPlayerId={selectedPlayerId}
+                onSelectPlayer={handleSelectPlayer}
+                onOpenPlayer={openPlayerObj}
+                positionColors={POSITION_COLORS}
+            />
+        ) : tab === 'queue' ? (
+            <PhoneDraftQueue
+                queue={myQueue}
+                playersById={queuePlayersById}
+                draftedIds={draftedSet}
+                onChange={handleQueueChange}
+                selectedPlayerId={selectedPlayerId}
+                onSelect={handleSelectQueuePlayer}
+                onOpenPlayer={handleOpenPlayer}
+                canDraft={canDraft}
+                onDraft={draftFromQueue}
+                disabled={connectionState !== 'connected'}
+                dirty={queueDirty}
+                saving={queueSaving}
+                saveError={queueSaveError}
+                onSave={handleSaveQueue}
+            />
+        ) : tab === 'history' ? (
+            <PhoneDraftHistory picks={boardPicks} totalRounds={draftState.totalRounds} userTeamId={myTeamId ?? ''} teamMeta={teamMeta} onOpenPlayer={handleOpenPlayer} />
+        ) : (
+            <PhoneDraftRoster
+                players={myRosterPlayers}
+                salaries={myRosterSalaries}
+                myAutoPick={myAutoPick}
+                onToggleAutoPick={myTeamId && !isCompletedP ? (next) => toggleAutoPick(next) : undefined}
+                autoPickDisabled={connectionState !== 'connected'}
+                onOpenPlayer={openPlayerObj}
+            />
+        );
+
+        return (
+            <div className="flex flex-col h-dvh overflow-hidden bg-slate-950">
+                <PhoneDraftHeader
+                    currentTeamId={currentTeamIdP}
+                    teamMeta={teamMeta}
+                    currentRound={currentRound}
+                    currentPickInRound={currentPickInRound}
+                    salaryLabel={isCompletedP ? undefined : salaryLabel}
+                    isMyTurn={isMyTurn}
+                    isPaused={draftState.status === 'paused'}
+                    timeRemaining={displayTimeRemaining}
+                    pickDurationSec={draftState.pickDurationSec}
+                    isCurrentTeamAutoPick={isCurrentTeamAutoPick}
+                    onBack={() => navigate(`/multi/leagues/${leagueId}/season`)}
+                    navLocked={navLocked}
+                    isAdmin={isAdmin}
+                    onAdmin={() => setAdminOpen(true)}
+                    completion={completionP}
+                    waitingCountdown={isWaitingP ? (countdown ?? '--:--:--') : undefined}
+                />
+                <PhoneDraftBoardStrip summary={summary}>
+                    <DraftBoard
+                        phone
+                        teamIds={teamIds}
+                        totalRounds={draftState.totalRounds}
+                        picks={boardPicks}
+                        currentPickIndex={draftState.currentPickIndex}
+                        draftOrder={draftOrder}
+                        userTeamId={myTeamId ?? ''}
+                        positionColors={POSITION_COLORS}
+                        teamMeta={teamMeta}
+                        onlineTeamIds={onlineTeamIds}
+                        autoPickTeamIds={autoPickTeamIds}
+                        highlightPickKey={highlightPickKey}
+                    />
+                </PhoneDraftBoardStrip>
+                <TabBar<PhoneDraftTab> compact tabs={tabs} activeTab={tab} onTabChange={t => setPhoneTab(t)} bgClassName="bg-slate-900" />
+                <div className="flex-1 min-h-0 flex flex-col">{content}</div>
+
+                {showDraftBar && (
+                    <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-2 pb-safe">
+                        <div className="h-14 flex items-center gap-3">
+                            {connectionState !== 'connected' ? (
+                                <InlineNotice tone="danger" size="sm" className="flex-1 min-w-0">
+                                    연결이 끊겨 지명을 보낼 수 없습니다. 다시 연결 중…{reconnectAttempt > 0 ? ` (${reconnectAttempt}회)` : ''}
+                                </InlineNotice>
+                            ) : pickError ? (
+                                <InlineNotice tone="danger" size="sm" className="flex-1 min-w-0">{pickError}</InlineNotice>
+                            ) : selectedPlayer ? (
+                                <button type="button" onClick={() => handleOpenPlayer(selectedPlayer.id)} className="flex-1 min-w-0 flex items-center gap-2.5 text-left">
+                                    <OvrBadge value={selectedPlayer.ovr} size="md" className="shrink-0" />
+                                    <span className="flex flex-col min-w-0">
+                                        <span className="text-[15px] leading-5 font-bold text-white truncate">{selectedPlayer.name}</span>
+                                        <span className="text-xs leading-4 text-slate-400 truncate">{selectedPlayer.position} · {selectedPlayer.archetype ?? '—'}</span>
+                                    </span>
+                                </button>
+                            ) : (
+                                <span className="flex-1 min-w-0 text-sm text-slate-500">선수를 선택하세요</span>
+                            )}
+                            <Button
+                                variant="success"
+                                size="xl"
+                                shape="lg"
+                                className="!h-12 !px-6 shrink-0"
+                                disabled={!canDraft || !selectedPlayer}
+                                style={canDraft && selectedPlayer ? { boxShadow: '0 0 12px rgba(16,185,129,0.5)' } : undefined}
+                                onClick={() => selectedPlayer && handleDraft(selectedPlayer)}
+                            >
+                                드래프트
+                            </Button>
+                        </div>
+                    </div>
+                )}
+                {isCompletedP && (
+                    <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3 pb-safe">
+                        {seasonReady.timedOut ? (
+                            <Button variant="secondary" size="xl" shape="xl" fullWidth className="!h-14 !text-[17px] font-bold mb-3" onClick={() => window.location.reload()}>새로고침</Button>
+                        ) : (
+                            <Button
+                                variant="primary"
+                                size="xl"
+                                shape="xl"
+                                fullWidth
+                                className="!h-14 !text-[17px] font-bold mb-3"
+                                onClick={() => navigate(`/multi/leagues/${leagueId}/season`)}
+                                disabled={!seasonReady.ready}
+                                isLoading={!seasonReady.ready}
+                                loadingText={`일정 생성 중 ${seasonReady.progress}%`}
+                            >
+                                시즌 대시보드로
+                            </Button>
+                        )}
+                    </div>
+                )}
+
+                <DraftPlayerPopup
+                    player={popupPlayer}
+                    onClose={handleClosePopup}
+                    teamMeta={teamMeta}
+                    drafted={popupPick ? { teamId: popupPick.teamId, round: popupPick.round, pickNumber: popupPick.pickIndex + 1 } : null}
+                    queued={!!popupPlayerId && queuedIds.has(popupPlayerId)}
+                    onToggleQueue={isDraftParticipant ? handleToggleQueue : undefined}
+                    showQueue={isDraftParticipant}
+                    canDraft={canDraft}
+                    onDraft={draftFromPopup}
+                />
+                {isAdmin && leagueId && room?.id && (
+                    <BottomSheet open={adminOpen} title="드래프트 관리" onClose={() => setAdminOpen(false)}>
+                        <DraftAdminPanel
+                            embedded
+                            draftState={draftState}
+                            leagueId={leagueId}
+                            roomId={room.id}
+                            onOptimisticPause={handleOptimisticPause}
+                            onOptimisticRevert={handleOptimisticRevert}
+                            sendAdmin={sendAdmin}
+                        />
+                    </BottomSheet>
+                )}
             </div>
         );
     }

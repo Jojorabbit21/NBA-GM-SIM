@@ -1,6 +1,6 @@
 
-import React, { useState, useCallback } from 'react';
-import { GripVertical, X, ListX } from 'lucide-react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { GripVertical, X } from 'lucide-react';
 import { OvrBadge } from '../common/OvrBadge';
 import { IconButton } from '../common/IconButton';
 import { Button } from '../common/Button';
@@ -14,7 +14,9 @@ export interface QueuePlayerInfo {
 }
 
 interface DraftQueuePanelProps {
-    /** 희망 순서 playerId[] — 지명된 선수도 그대로 남아 있음(D5), 여기선 라디오 disabled + 이름/OVR 흐리게 */
+    /** 희망 순서 playerId[] — 저장본엔 지명된 선수가 남아 있을 수 있지만(D5 저장 목록 불변) 화면엔 보이지 않는다.
+     *  [2026-11-08] 사용자 결정: 지명된 선수는 큐에서 숨김(데스크톱·폰 공통). 편집(정렬·제거)은 보이는 목록 기준으로 onChange 되므로
+     *  한 번이라도 편집하면 지명된 id는 저장본에서도 빠진다. 편집 전까지는 서버 resolveAutoPickId가 지명된 id를 건너뛴다. */
     queue: string[];
     playersById: Map<string, QueuePlayerInfo>;
     draftedIds: Set<string>;
@@ -38,6 +40,7 @@ interface DraftQueuePanelProps {
  * (docs/plan/draft-queue-plan.md D5/D7/D8). 헤더 h-10(PickHistory/MyRoster 와 동일), 행은 h-10(사용자 요청으로 풀/기록의 h-8 보다 높게).
  * 정렬은 네이티브 HTML5 드래그(↑/↓ 버튼은 사용자 요청으로 제거), 라이브러리 없음. 행 라디오/클릭은 풀과 선택 상태를 공유해 큐에서 바로 지명 가능.
  * 헤더 아래 서브헤더(h-8)에 남은 큐 선수의 포지션별 수를 표시.
+ * [2026-11-08] 지명된 선수 행은 렌더하지 않는다(옛 D5의 취소선·흐림 표시 + "정리" 버튼 폐기). 목록·인덱스는 전부 `visible`(미지명) 기준.
  */
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
 
@@ -48,36 +51,29 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
 
-    const remaining    = queue.filter(id => !draftedIds.has(id)).length;
-    const draftedCount = queue.length - remaining;
+    // 보이는 목록 = 미지명 선수만. 정렬·제거는 이 목록을 기준으로 onChange 한다(지명된 id는 그때 저장본에서도 빠진다).
+    const visible = useMemo(() => queue.filter(id => !draftedIds.has(id)), [queue, draftedIds]);
 
     // 서브헤더용 — 남은(미지명) 큐 선수의 포지션별 수
     const posCounts: Record<string, number> = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0 };
-    for (const id of queue) {
-        if (draftedIds.has(id)) continue;
+    for (const id of visible) {
         const pos = playersById.get(id)?.position;
         if (pos && pos in posCounts) posCounts[pos] += 1;
     }
 
     const move = useCallback((from: number, to: number) => {
-        if (from === to || from < 0 || to < 0 || from >= queue.length || to >= queue.length) return;
-        const next = [...queue];
+        if (from === to || from < 0 || to < 0 || from >= visible.length || to >= visible.length) return;
+        const next = [...visible];
         const [item] = next.splice(from, 1);
         next.splice(to, 0, item);
         onChange(next);
-    }, [queue, onChange]);
+    }, [visible, onChange]);
 
     const remove = useCallback((idx: number) => {
-        onChange(queue.filter((_, i) => i !== idx));
-    }, [queue, onChange]);
-
-    const clearDrafted = useCallback(() => {
-        onChange(queue.filter(id => !draftedIds.has(id)));
-    }, [queue, draftedIds, onChange]);
+        onChange(visible.filter((_, i) => i !== idx));
+    }, [visible, onChange]);
 
     const endDrag = () => { setDragIdx(null); setOverIdx(null); };
-
-    let rank = 0;
 
     return (
         <div className="flex flex-col h-full">
@@ -85,18 +81,6 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
                 {headerLeft ?? <span className="text-sm font-black text-indigo-400">드래프트 큐</span>}
                 <div className="flex items-center gap-1.5">
-                    {draftedCount > 0 && (
-                        <IconButton
-                            label={`지명된 선수 ${draftedCount}명 정리`}
-                            size="sm"
-                            tone="danger"
-                            shape="md"
-                            onClick={clearDrafted}
-                            disabled={disabled}
-                        >
-                            <ListX size={13} />
-                        </IconButton>
-                    )}
                     {/* 저장 — 미저장 편집이 있을 때만 활성(primary). 저장 전까지 오토픽은 옛 저장본을 쓴다 */}
                     <Button
                         variant={dirty ? 'primary' : 'secondary'}
@@ -131,19 +115,17 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
 
             {/* Scroll Area */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
-                {queue.length === 0 && (
+                {visible.length === 0 && (
                     <div className="px-3 py-4 text-sm text-slate-600 italic text-center ko-normal">
                         선수 풀에서 + 를 눌러 큐에 추가하세요
                     </div>
                 )}
-                {queue.map((id, idx) => {
+                {visible.map((id, idx) => {
                     const info    = playersById.get(id);
-                    const drafted = draftedIds.has(id);
-                    if (!drafted) rank += 1;
                     const isDragging = dragIdx === idx;
                     const isOver     = overIdx === idx && dragIdx !== null && dragIdx !== idx;
-                    const canEdit    = !disabled && !drafted;
-                    const isSelected = !drafted && selectedPlayerId === id;
+                    const canEdit    = !disabled;
+                    const isSelected = selectedPlayerId === id;
 
                     return (
                         <div
@@ -153,38 +135,34 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                             onDragOver={(e) => { if (dragIdx === null) return; e.preventDefault(); if (overIdx !== idx) setOverIdx(idx); }}
                             onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) move(dragIdx, idx); endDrag(); }}
                             onDragEnd={endDrag}
-                            onClick={drafted ? undefined : () => onSelect(id)}
-                            className={`group h-10 min-h-10 max-h-10 px-2 border-b border-slate-700/50 flex items-center gap-1.5 transition-colors ${
-                                drafted ? '' : 'cursor-pointer'
-                            } ${isDragging ? 'opacity-40' : ''} ${
-                                isOver ? 'bg-indigo-500/10' : isSelected ? 'bg-amber-500/[0.06]' : drafted ? '' : 'hover:bg-white/[0.03]'
+                            onClick={() => onSelect(id)}
+                            className={`group h-10 min-h-10 max-h-10 px-2 border-b border-slate-700/50 flex items-center gap-1.5 transition-colors cursor-pointer ${isDragging ? 'opacity-40' : ''} ${
+                                isOver ? 'bg-indigo-500/10' : isSelected ? 'bg-amber-500/[0.06]' : 'hover:bg-white/[0.03]'
                             }`}
                         >
-                            {/* 라디오 — 풀(PlayerPool)과 같은 스타일, 선택 상태 공유. 지명된 선수는 disabled */}
+                            {/* 라디오 — 풀(PlayerPool)과 같은 스타일, 선택 상태 공유 */}
                             <span className="w-4 shrink-0 flex items-center justify-center">
                                 <input
                                     type="radio"
                                     name="draft-player-queue"
                                     checked={isSelected}
-                                    disabled={drafted}
                                     onChange={() => onSelect(id)}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="block w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="block w-3.5 h-3.5 cursor-pointer appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
                                 />
                             </span>
                             {/* 핸들 */}
                             <span className={`w-4 shrink-0 flex items-center justify-center ${canEdit ? 'cursor-grab text-slate-600 group-hover:text-slate-400' : 'text-slate-800'}`}>
                                 <GripVertical size={12} />
                             </span>
-                            {/* 순번 — 남은 선수만 매김 */}
+                            {/* 순번 */}
                             <span className="text-sm font-bold w-5 shrink-0 text-slate-500 text-center">
-                                {drafted ? '—' : rank}
+                                {idx + 1}
                             </span>
-                            {/* 지명된 선수: 이름·OVR 배지만 흐리게(행 전체는 그대로) */}
-                            <span className={`shrink-0 flex items-center ${drafted ? 'opacity-40' : ''}`}>
+                            <span className="shrink-0 flex items-center">
                                 {info ? <OvrBadge value={info.ovr} size="sm" /> : <span className="w-7 shrink-0" />}
                             </span>
-                            <span className={`text-sm font-semibold truncate flex-1 text-slate-200 ${drafted ? 'opacity-40' : ''}`}>
+                            <span className="text-sm font-semibold truncate flex-1 text-slate-200">
                                 {info?.name ?? id}
                             </span>
                             {/* 포지션 — 이름 뒤, 텍스트 좌측 정렬 */}

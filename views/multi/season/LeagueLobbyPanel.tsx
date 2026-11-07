@@ -22,6 +22,9 @@ import { getReadableTextColor } from '../../../utils/colorContrast';
 import { getLeagueLogoUrl } from '../../../utils/constants';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { useIsPhone } from '../../../hooks/useViewportClass';
+import { BottomSheet } from '../../../components/mobile/BottomSheet';
+import { MoreHorizontal, Pencil, LogOut, UserX } from 'lucide-react';
 
 function fmtDate(iso: string | null): string {
     if (!iso) return '미정';
@@ -118,6 +121,8 @@ const LeagueLobbyPanel: React.FC = () => {
     const [actionErr,      setActionErr]      = useState<string | null>(null);
     const [poolCount,      setPoolCount]      = useState<number | null>(null);
     const [lotteryCountdown, setLotteryCountdown] = useState<string | null>(null);
+    const isPhone = useIsPhone();
+    const [sheetTeam, setSheetTeam] = useState<LeagueTeamRow | null>(null); // 폰 ⋯ 액션 시트 대상
 
     // 드래프트 풀 선수 수 — DraftPoolSettings.tsx의 fetchStats()와 동일한 조회 규칙(draft_year
     // 범위 + OVR 범위 필터)을 총원 카운트만 필요하므로 축약해서 재사용.
@@ -275,6 +280,332 @@ const LeagueLobbyPanel: React.FC = () => {
         if (b.draft_order === null) return -1;
         return a.draft_order - b.draft_order;
     });
+
+    // 팀 프로필 편집 모달 (데스크톱·폰 공용)
+    const editModal = room && userId && editTarget && (
+            <TeamSetupModal
+                open={!!editTarget}
+                roomId={room.id}
+                userId={userId}
+                fixedCity={TEAM_DATA[editTarget.team_slug]?.city ?? VIRTUAL_TEAMS.find(t => t.team_slug === editTarget.team_slug)?.city}
+                existingTeamIds={leagueTeams
+                    .filter(t => t.id !== editTarget.id)
+                    .map(t => t.team_slug)}
+                initial={{
+                    name:           editTarget.team_name,
+                    abbr:           editTarget.team_abbr,
+                    colorPrimary:   editTarget.color_primary,
+                    colorSecondary: editTarget.color_secondary,
+                    colorText:      editTarget.color_text ?? getReadableTextColor(editTarget.color_primary),
+                }}
+                onClose={() => setEditTarget(null)}
+                onSaved={reload}
+                saveOverride={async (values) => {
+                    // [2026-08-05] "팀 설정"(TeamSettingsModal)에서 신설된 써드 컬러/코트 색상
+                    // 3종은 이 로비 모달(TeamSetupModal)엔 입력 필드가 없으므로 기존 저장값을
+                    // 그대로 유지 전송(RPC 시그니처가 11-arg로 늘어나 전부 채워야 함).
+                    const { error } = await updateTeamProfile(
+                        editTarget.id, userId,
+                        values.name, values.abbr, values.colorPrimary, values.colorSecondary,
+                        editTarget.color_tertiary, values.colorText,
+                        editTarget.court_background, editTarget.court_paint, editTarget.court_line,
+                    );
+                    return { error };
+                }}
+            />
+        );
+
+    // ── 폰 레이아웃 (docs/ui/mobile-design-system.md §9-0-3) ─────────────────────
+    if (isPhone) {
+        const CARD = 'bg-slate-900 border border-slate-800 rounded-lg overflow-hidden';
+        const CTA_CLS = '!h-14 !text-[17px] font-bold';   // Button size/shape 클래스와 충돌하지 않게 important
+        const SHEET_ROW = 'w-full h-12 px-4 rounded-lg flex items-center gap-3 text-left text-sm font-bold active:bg-white/5 disabled:opacity-50';
+        const MORE_BTN = 'w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-slate-400 active:bg-white/10 shrink-0';
+        const showPersonalCta = isPersonalDraft && !!myTeam && league.status === 'recruiting';
+        const showRoomCta = !isPersonalDraft && lotteryDone;
+        const sheetIsMine = !!sheetTeam && sheetTeam.user_id === userId;
+
+        return (
+            <>
+                <div className="p-4 space-y-6">
+
+                    {/* 마스트헤드 + 입장 CTA + 안내 */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                            <img src={getLeagueLogoUrl('League')} alt="PRO BASKETBALL LEAGUE" className="w-12 h-12 object-contain shrink-0" />
+                            <span className="text-xl font-extrabold text-white truncate">{league.name}</span>
+                        </div>
+                        {showPersonalCta ? (
+                            myPersonalDraftDone ? (
+                                <div className="h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-sm font-bold text-emerald-300 flex items-center justify-center">
+                                    드래프트 완료 · 토너먼트 시작 대기
+                                </div>
+                            ) : (
+                                <Button variant="cta" size="xl" shape="xl" fullWidth className={CTA_CLS} onClick={() => navigate(personalDraftPath)}>
+                                    팩 드래프트 입장
+                                </Button>
+                            )
+                        ) : showRoomCta ? (
+                            <Button variant="cta" size="xl" shape="xl" fullWidth className={CTA_CLS} onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}>
+                                드래프트 룸 입장
+                            </Button>
+                        ) : null}
+                        {isRecruiting && lotteryDone && !isMember && !isPersonalDraft && (
+                            <InlineNotice tone="warning">드래프트 순서 추첨이 완료되어 더 이상 새로 참가할 수 없습니다.</InlineNotice>
+                        )}
+                        {actionErr && (
+                            <InlineNotice tone={/마감|추첨 후/.test(actionErr) ? 'warning' : 'danger'}>{actionErr}</InlineNotice>
+                        )}
+                    </div>
+
+                    {/* 드래프트 진행 중 */}
+                    {isDrafting && (
+                        <section className="space-y-3">
+                            <h3 className="text-lg font-extrabold text-emerald-400 animate-pulse">현재 드래프트가 진행중입니다.</h3>
+                            <div className={`${CARD} p-4 space-y-3`}>
+                                {draftState && currentPickEntry ? (() => {
+                                    const teamCount   = Math.max(draftState.teamCount, 1);
+                                    const round       = Math.floor(draftState.currentPickIndex / teamCount) + 1;
+                                    const pickInRound = (draftState.currentPickIndex % teamCount) + 1;
+                                    const overallPick = draftState.currentPickIndex + 1;
+                                    const currentTeam = leagueTeams.find(t => t.team_slug === currentPickEntry.teamId);
+                                    const next        = draftState.pickOrder[draftState.currentPickIndex + 1];
+                                    const nextTeam    = next ? leagueTeams.find(t => t.team_slug === next.teamId) : null;
+                                    const timerPct = draftState.pickDurationSec > 0
+                                        ? Math.min(100, Math.round((timeRemaining / draftState.pickDurationSec) * 100))
+                                        : 100;
+                                    return (
+                                        <>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="text-sm font-bold text-white ko-normal">
+                                                    {round}라운드 {pickInRound}픽 (오버롤 {overallPick}픽)
+                                                </span>
+                                                <span className="text-sm font-bold text-white ko-normal shrink-0">
+                                                    남은 시간{' '}
+                                                    <span className={`tabular-nums ${
+                                                        timerPct <= 15 ? 'text-red-400' : timerPct <= 40 ? 'text-amber-400' : 'text-white'
+                                                    }`}>
+                                                        {fmtSeconds(timeRemaining)}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-sm ko-normal">
+                                                    <span className="text-slate-400">현재 차례</span>{' '}
+                                                    <span className="font-bold text-white">
+                                                        {currentTeam?.team_name ?? currentPickEntry.teamId.toUpperCase()}
+                                                    </span>
+                                                    {isMyTurn && (
+                                                        <span className="ml-1 text-indigo-400 font-bold ko-normal">(내 차례)</span>
+                                                    )}
+                                                </p>
+                                                <p className="text-sm ko-normal">
+                                                    <span className="text-slate-400">다음 차례</span>{' '}
+                                                    <span className="font-bold text-white">
+                                                        {nextTeam?.team_name ?? next?.teamId.toUpperCase() ?? '—'}
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        </>
+                                    );
+                                })() : (
+                                    <Spinner variant="section" />
+                                )}
+                                <Button variant="cta" size="xl" shape="xl" fullWidth className={CTA_CLS} onClick={() => navigate(`/multi/leagues/${leagueId}/draft`)}>
+                                    드래프트 룸 입장
+                                </Button>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 드래프트 순서 추첨 / 참가·드래프트 마감 */}
+                    {!isPersonalDraft ? (
+                        <section className="space-y-3">
+                            <h3 className="text-lg font-extrabold text-white">드래프트 순서 추첨</h3>
+                            <div className={CARD}>
+                                {!lotteryDone ? (
+                                    <div className="h-12 flex items-center justify-between px-4">
+                                        <span className="text-sm text-slate-400">추첨까지</span>
+                                        <span className="text-base font-bold text-white tabular-nums">{lotteryCountdown ?? '--:--:--'}</span>
+                                    </div>
+                                ) : (
+                                    Array.from({ length: totalSlots }, (_, i) => i + 1).map(rank => {
+                                        const team = sortedTeams.find(t => t.draft_order === rank);
+                                        return (
+                                            <div key={rank} className="flex items-center gap-2 h-11 px-4 border-b border-slate-800/60 last:border-b-0">
+                                                <span className="w-8 text-sm font-bold text-slate-500 tabular-nums shrink-0">{rank}</span>
+                                                {team ? (
+                                                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                                        <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-6 h-6 shrink-0" shadow={false} />
+                                                        <span className="text-sm font-bold text-white truncate">{team.team_name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex-1 h-5 bg-slate-800/40 rounded" />
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </section>
+                    ) : (
+                        <section className="space-y-3">
+                            <h3 className="text-lg font-extrabold text-white">참가/드래프트 마감</h3>
+                            <div className={CARD}>
+                                {!league.draft_deadline_at ? (
+                                    <p className="px-4 py-4 text-sm text-slate-500 ko-normal">마감 없음 — 토너먼트 시작 전까지 언제든 참가할 수 있습니다.</p>
+                                ) : draftDeadlinePassed ? (
+                                    <div className="px-4 py-4 space-y-1">
+                                        <p className="text-sm font-bold text-red-400 ko-normal">참가/팀 변경 마감</p>
+                                        <p className="text-xs text-slate-500 ko-normal">아직 드래프트를 끝내지 못한 참가자는 자동으로 강퇴되며, 빈 팀은 토너먼트 시작 시 AI가 대신 채웁니다.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="h-12 flex items-center justify-between px-4">
+                                            <span className="text-sm text-slate-400">마감까지</span>
+                                            <span className="text-base font-bold text-white tabular-nums">{draftDeadlineCountdown ?? '--:--:--'}</span>
+                                        </div>
+                                        {myTeam && !myPersonalDraftDone && (
+                                            <div className="px-4 pb-3">
+                                                <InlineNotice tone="warning" size="sm">이 시각까지 드래프트를 끝내지 못하면 자동으로 강퇴됩니다.</InlineNotice>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 참가 팀 */}
+                    {sortedTeams.length > 0 && (
+                        <section className="space-y-3">
+                            <h3 className="text-lg font-extrabold text-white">참가 팀</h3>
+                            <div className={CARD}>
+                                <div className="h-8 flex items-center px-4 text-xs font-bold text-slate-600 border-b border-slate-800">팀 · GM</div>
+                                {sortedTeams.map(team => {
+                                    const isMyTeam   = team.user_id === userId;
+                                    const isHuman    = !team.is_ai && team.user_id !== null;
+                                    const isEmpty    = team.user_id === null;
+                                    const isClaiming = claiming === team.id;
+                                    const canSelect  = isEmpty && canClaim && isMember;
+                                    const canChange  = isMyTeam && canChangePre;
+                                    const adminOther = isAdmin && !isMyTeam && isHuman;
+                                    return (
+                                        <div
+                                            key={team.id}
+                                            className={`min-h-[56px] flex items-center gap-2.5 px-4 border-b border-slate-800/60 last:border-b-0 ${isMyTeam ? 'bg-indigo-500/5' : ''}`}
+                                        >
+                                            <div className="relative w-7 h-7 shrink-0">
+                                                <TeamLogo teamId={team.team_slug} teamName={team.team_abbr} size="custom" className="w-7 h-7 shrink-0" shadow={false} />
+                                                {isClaiming && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/70 rounded">
+                                                        <Spinner variant="inline" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0 flex flex-col">
+                                                <span className="text-sm font-bold text-white truncate">{team.team_name}</span>
+                                                <span className="text-xs font-semibold truncate">
+                                                    <span className="text-slate-500 font-medium">GM </span>
+                                                    {isMyTeam
+                                                        ? <span className="text-indigo-400">{team.nickname ?? '—'}</span>
+                                                        : isHuman
+                                                        ? <span className="text-slate-200">{team.nickname ?? '—'}</span>
+                                                        : <span className="text-slate-500">없음</span>}
+                                                </span>
+                                            </div>
+                                            {/* 행 액션은 하나만 */}
+                                            {isEmpty && canClaim && !isMember ? (
+                                                <Button variant="primary" size="sm" className="shrink-0" onClick={() => handleJoinAndClaim(team)} disabled={!!claiming} isLoading={claiming === team.id}>
+                                                    참가
+                                                </Button>
+                                            ) : canSelect ? (
+                                                <Button variant="secondary" size="sm" className="shrink-0" onClick={() => handleClaim(team)} disabled={!!claiming}>
+                                                    {myTeam ? '변경' : '선택'}
+                                                </Button>
+                                            ) : canChange ? (
+                                                <button type="button" aria-label="내 팀 관리" className={MORE_BTN} onClick={() => setSheetTeam(team)}>
+                                                    <MoreHorizontal size={20} />
+                                                </button>
+                                            ) : adminOther ? (
+                                                <button type="button" aria-label={`${team.team_name} 관리`} className={MORE_BTN} onClick={() => setSheetTeam(team)}>
+                                                    <MoreHorizontal size={20} />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 토너먼트 정보 */}
+                    <section className="space-y-3">
+                        <h3 className="text-lg font-extrabold text-white">토너먼트 정보</h3>
+                        <div className={`${CARD} px-4 divide-y divide-slate-800/60`}>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="참가팀 수">{`${humanCount} / ${totalSlots}팀`}</KeyValueRow>
+                            {league.type === 'tournament' && league.tournament_format && (
+                                <KeyValueRow padding="sm" className="min-h-[44px]" label="대진 방식">
+                                    {league.tournament_format === 'single_elim' ? 'Single Elimination' : 'Round-Robin'}
+                                </KeyValueRow>
+                            )}
+                            {league.type === 'tournament' && league.match_format && (
+                                <KeyValueRow padding="sm" className="min-h-[44px]" label="경기 방식">
+                                    {fmtMatchFormat(league.match_format) +
+                                        (league.finals_match_format && league.finals_match_format !== league.match_format
+                                            ? ` / Final ${fmtMatchFormat(league.finals_match_format)}`
+                                            : '')}
+                                </KeyValueRow>
+                            )}
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="토너먼트 시작 일시">{fmtDate(resolveStartIso(league))}</KeyValueRow>
+                            {isPersonalDraft && (
+                                <KeyValueRow padding="sm" className="min-h-[44px]" label="참가/드래프트 마감 일시">{league.draft_deadline_at ? fmtDate(league.draft_deadline_at) : '마감 없음'}</KeyValueRow>
+                            )}
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 순서 추첨 일시">{fmtDate(league.lottery_scheduled_at)}</KeyValueRow>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 일시">{fmtDate(league.draft_scheduled_at)}</KeyValueRow>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 형식">{fmtDraftStrategy(league.draft_pool_strategy)}</KeyValueRow>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 라운드 수">{`${league.draft_total_rounds}라운드`}</KeyValueRow>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 라운드 당 시간">{`${league.draft_pick_duration_sec}초`}</KeyValueRow>
+                            <KeyValueRow padding="sm" className="min-h-[44px]" label="드래프트 대상">
+                                {poolCount === null
+                                    ? '불러오는 중…'
+                                    : (
+                                        <Button variant="link" underline onClick={() => navigate(`/multi/leagues/${leagueId}/season/pool`)}>
+                                            {poolCount}명
+                                        </Button>
+                                    )}
+                            </KeyValueRow>
+                        </div>
+                    </section>
+                </div>
+
+                {/* 팀 관리 액션 시트 */}
+                <BottomSheet open={!!sheetTeam} title={sheetTeam?.team_name ?? ''} onClose={() => setSheetTeam(null)}>
+                    {sheetTeam && (sheetIsMine ? (
+                        <div className="space-y-1">
+                            <button type="button" className={`${SHEET_ROW} text-slate-200`} onClick={() => { setEditTarget(sheetTeam); setSheetTeam(null); }}>
+                                <Pencil size={18} />팀 편집
+                            </button>
+                            <button type="button" className={`${SHEET_ROW} text-red-400`} disabled={leaving} onClick={() => { setSheetTeam(null); handleLeave(); }}>
+                                <LogOut size={18} />리그 탈퇴
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            className={`${SHEET_ROW} text-red-400`}
+                            disabled={kickingId === sheetTeam.user_id}
+                            onClick={() => { const uid = sheetTeam.user_id; setSheetTeam(null); if (uid) handleKick(uid); }}
+                        >
+                            <UserX size={18} />강퇴
+                        </button>
+                    ))}
+                </BottomSheet>
+
+                {editModal}
+            </>
+        );
+    }
 
     return (
         <>
@@ -597,39 +928,7 @@ const LeagueLobbyPanel: React.FC = () => {
                 </div>
             </div>
 
-            {/* 팀 프로필 편집 모달 */}
-            {room && userId && editTarget && (
-                <TeamSetupModal
-                    open={!!editTarget}
-                    roomId={room.id}
-                    userId={userId}
-                    fixedCity={TEAM_DATA[editTarget.team_slug]?.city ?? VIRTUAL_TEAMS.find(t => t.team_slug === editTarget.team_slug)?.city}
-                    existingTeamIds={leagueTeams
-                        .filter(t => t.id !== editTarget.id)
-                        .map(t => t.team_slug)}
-                    initial={{
-                        name:           editTarget.team_name,
-                        abbr:           editTarget.team_abbr,
-                        colorPrimary:   editTarget.color_primary,
-                        colorSecondary: editTarget.color_secondary,
-                        colorText:      editTarget.color_text ?? getReadableTextColor(editTarget.color_primary),
-                    }}
-                    onClose={() => setEditTarget(null)}
-                    onSaved={reload}
-                    saveOverride={async (values) => {
-                        // [2026-08-05] "팀 설정"(TeamSettingsModal)에서 신설된 써드 컬러/코트 색상
-                        // 3종은 이 로비 모달(TeamSetupModal)엔 입력 필드가 없으므로 기존 저장값을
-                        // 그대로 유지 전송(RPC 시그니처가 11-arg로 늘어나 전부 채워야 함).
-                        const { error } = await updateTeamProfile(
-                            editTarget.id, userId,
-                            values.name, values.abbr, values.colorPrimary, values.colorSecondary,
-                            editTarget.color_tertiary, values.colorText,
-                            editTarget.court_background, editTarget.court_paint, editTarget.court_line,
-                        );
-                        return { error };
-                    }}
-                />
-            )}
+            {editModal}
         </>
     );
 };
