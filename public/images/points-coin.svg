@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- 포인트(재화) 아이콘 — 금화 + 농구공 솔기. 수상 자산(mvp/hof)의 금+검정 톤과 맞춤. 2026-11-08 -->
+  <defs>
+    <!-- 두께(옆면): 아래로 갈수록 어두운 금 -->
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b8821a"/>
+      <stop offset="0.6" stop-color="#7a4f0a"/>
+      <stop offset="1" stop-color="#4a2e05"/>
+    </linearGradient>
+    <!-- 앞면 베이스: 좌상단 밝음 → 우하단 깊은 금 -->
+    <radialGradient id="face" cx="0.35" cy="0.3" r="0.85">
+      <stop offset="0" stop-color="#fff1b8"/>
+      <stop offset="0.35" stop-color="#f3c54a"/>
+      <stop offset="0.75" stop-color="#d49a1e"/>
+      <stop offset="1" stop-color="#9a6410"/>
+    </radialGradient>
+    <!-- 테두리 베벨: 좌상단 하이라이트, 우하단 그림자 -->
+    <linearGradient id="bevel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff6cf"/>
+      <stop offset="0.45" stop-color="#e8b63a"/>
+      <stop offset="0.55" stop-color="#c68d18"/>
+      <stop offset="1" stop-color="#6e4408"/>
+    </linearGradient>
+    <!-- 안쪽 면: 살짝 오목한 느낌(가장자리 어둡게) -->
+    <radialGradient id="inner" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#ffe59a"/>
+      <stop offset="0.6" stop-color="#e9b733"/>
+      <stop offset="1" stop-color="#b57a14"/>
+    </radialGradient>
+    <!-- 스페큘러 -->
+    <radialGradient id="spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+    <clipPath id="innerClip"><circle cx="128" cy="118" r="80"/></clipPath>
+  </defs>
+
+  <!-- 바닥 그림자 -->
+  <ellipse cx="128" cy="240" rx="88" ry="11" fill="#000" opacity="0.45" filter="url(#shadow)"/>
+
+  <!-- 옆면(두께) -->
+  <circle cx="128" cy="135" r="100" fill="url(#edge)"/>
+  <!-- 옆면 리딩(톱니) 느낌의 얇은 줄 -->
+  <path d="M30 143 A100 100 0 0 0 226 143" fill="none" stroke="#3a2404" stroke-width="2" opacity="0.6"/>
+  <path d="M31 149 A100 100 0 0 0 225 149" fill="none" stroke="#d9a53a" stroke-width="1.5" opacity="0.35"/>
+
+  <!-- 앞면 -->
+  <circle cx="128" cy="118" r="100" fill="url(#face)"/>
+  <circle cx="128" cy="118" r="100" fill="none" stroke="#5a3806" stroke-width="2" opacity="0.8"/>
+  <!-- 베벨 링 -->
+  <circle cx="128" cy="118" r="92" fill="none" stroke="url(#bevel)" stroke-width="14"/>
+  <!-- 베벨 안쪽 경계선(어두운 홈) -->
+  <circle cx="128" cy="118" r="84" fill="none" stroke="#5b3807" stroke-width="2.5" opacity="0.75"/>
+  <circle cx="128" cy="118" r="81.5" fill="none" stroke="#fff0bf" stroke-width="1.2" opacity="0.55"/>
+
+  <!-- 안쪽 면 -->
+  <circle cx="128" cy="118" r="80" fill="url(#inner)"/>
+
+  <!-- 농구공 솔기 (음각: 어두운 선 + 아래쪽 밝은 선) -->
+  <g clip-path="url(#innerClip)" fill="none" stroke-linecap="round">
+    <!-- 밝은 엣지(음각 아래쪽) -->
+    <g stroke="#fff0bf" stroke-width="3" opacity="0.7" transform="translate(0 3)">
+      <line x1="128" y1="38" x2="128" y2="198"/>
+      <line x1="48" y1="118" x2="208" y2="118"/>
+      <path d="M78 46 Q118 118 78 190"/>
+      <path d="M178 46 Q138 118 178 190"/>
+    </g>
+    <!-- 어두운 솔기 -->
+    <g stroke="#3a2306" stroke-width="9">
+      <line x1="128" y1="38" x2="128" y2="198"/>
+      <line x1="48" y1="118" x2="208" y2="118"/>
+      <path d="M78 46 Q118 118 78 190"/>
+      <path d="M178 46 Q138 118 178 190"/>
+    </g>
+    <!-- 솔기 속 미세 하이라이트 -->
+    <g stroke="#8a5a14" stroke-width="2.5" opacity="0.8">
+      <line x1="128" y1="38" x2="128" y2="198"/>
+      <line x1="48" y1="118" x2="208" y2="118"/>
+      <path d="M78 46 Q118 118 78 190"/>
+      <path d="M178 46 Q138 118 178 190"/>
+    </g>
+  </g>
+
+  <!-- 스페큘러 하이라이트 -->
+  <ellipse cx="92" cy="66" rx="42" ry="20" fill="url(#spec)" transform="rotate(-32 92 66)" filter="url(#soft)"/>
+  <!-- 베벨 상단 반짝임 -->
+  <path d="M52 70 A92 92 0 0 1 120 28" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.5" stroke-linecap="round" filter="url(#soft)"/>
+  <!-- 하단 반사광(바닥 반사) -->
+  <path d="M70 196 A92 92 0 0 0 190 194" fill="none" stroke="#ffd98a" stroke-width="2" opacity="0.35" stroke-linecap="round" filter="url(#soft)"/>
+</svg>

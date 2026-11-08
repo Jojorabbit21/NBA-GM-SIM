@@ -17,6 +17,8 @@ import { CountBadge } from './common/CountBadge';
 import { Dropdown } from './common/Dropdown';
 import { NavIcon, RosterIcon } from './nav/navIcons';
 import { ProfileAvatar } from './common/ProfileAvatar';
+import { useWallet } from '../hooks/usePoints';
+import { POINTS_ICON_URL, formatPoints } from '../services/points/pointsService';
 import { PatchNotesModal } from './common/PatchNotesModal';
 import { useMyProfile } from '../hooks/useMyProfile';
 
@@ -104,6 +106,15 @@ export const MultiSidebar: React.FC = () => {
     const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 모달(PATCH_NOTES.md)
     // [2026-11-05] 프로필 아이콘 = 닉네임 첫 글자 + 로비에서 고른 배경색(profiles.avatar_color)
     const { data: myProfile } = useMyProfile(session?.user?.id);
+    // [2026-11-08] BP 잔액 — 계정 자산이라 리그 헤더가 아니라 프로필 메뉴 상단에 둔다(로비 계정 블록과 같은 자리 논리)
+    const { data: wallet } = useWallet(session?.user?.id);
+    const bpHeader = (
+        <span className="flex items-center gap-2">
+            <img src={POINTS_ICON_URL} alt="" width={16} height={16} className="shrink-0" />
+            <span className="text-xs text-slate-400 flex-1">BP</span>
+            <span className="text-xs font-bold text-white tabular-nums">{wallet ? formatPoints(wallet.balance) : '—'}</span>
+        </span>
+    );
     const menuLabel = (icon: React.ReactNode, text: string) => (
         <span className="flex items-center gap-3">{icon}{text}</span>
     );
@@ -256,6 +267,7 @@ export const MultiSidebar: React.FC = () => {
                     surface="raised"
                     isOpen={isMenuOpen}
                     onOpenChange={setIsMenuOpen}
+                    header={bpHeader}
                     items={profileMenuItems}
                     trigger={<NavItem active={isMenuOpen} icon={
                         <ProfileAvatar

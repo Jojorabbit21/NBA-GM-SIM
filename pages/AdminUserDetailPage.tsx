@@ -8,6 +8,7 @@ import {
     type AdminUserRow, type AdminUserEditableFields,
     type AdminLeagueHistoryRow, type AdminTournamentHistoryRow,
 } from '../services/admin/userAdminService';
+import { AdminUserPointsSection } from '../components/admin/AdminUserPointsSection';
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div>
@@ -305,6 +306,9 @@ const AdminUserDetailPage: React.FC = () => {
                     }
                 </button>
             </section>
+
+            {/* [2026-11-08] 포인트(재화) — 잔액·지급/회수·원장. 계획: docs/plan/points-system-plan.md */}
+            {userId && <AdminUserPointsSection userId={userId} />}
 
             <section className="bg-slate-800/60 border border-slate-700/40 rounded-2xl p-6 space-y-4">
                 <div className="flex items-center justify-between">

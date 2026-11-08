@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Trash2 } from 'lucide-react';
 import { adminListUsers, adminDeleteUser, type AdminUserRow } from '../services/admin/userAdminService';
+import { adminFetchAllWallets, adminGrantPointsAll } from '../services/admin/pointsAdminService';
+import { PointsGrantForm } from '../components/admin/PointsGrantForm';
+import type { WalletRow } from '../types/points';
 
 const TH: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
     <th className={`px-3 py-2 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap ${className}`}>
@@ -25,15 +28,26 @@ const AdminUserManagerPage: React.FC = () => {
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
     const [deleting,    setDeleting]    = useState(false);
     const [deleteErr,   setDeleteErr]   = useState<string | null>(null);
+    // [2026-11-08] 포인트 열 — user_wallets 는 전역 어드민에게 SELECT 가 열려 있어 직접 읽는다. 행 없음 = 0 P
+    const [wallets,     setWallets]     = useState<Record<string, WalletRow>>({});
 
     const load = useCallback(() => {
         setIsLoading(true);
-        adminListUsers().then(({ data, error }) => {
-            setUsers(data);
-            setLoadErr(error);
-            setIsLoading(false);
-        });
+        Promise.all([adminListUsers(), adminFetchAllWallets().catch(() => ({} as Record<string, WalletRow>))])
+            .then(([{ data, error }, w]) => {
+                setUsers(data);
+                setLoadErr(error);
+                setWallets(w);
+                setIsLoading(false);
+            });
     }, []);
+
+    const handleGrantAll = async (amount: number, note: string) => {
+        const { error } = await adminGrantPointsAll(amount, note);
+        if (error) return error;
+        load();
+        return null;
+    };
 
     useEffect(() => { load(); }, [load]);
 
@@ -49,7 +63,18 @@ const AdminUserManagerPage: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <p className="text-sm text-slate-400">총 {users.length}명</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-400">총 {users.length}명</p>
+                {/* 전체 지급/회수 — 전원 대상. 회수는 각자 잔액까지만(잔액 0 은 건너뜀) */}
+                <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">전체 BP</span>
+                    <PointsGrantForm
+                        onSubmit={handleGrantAll}
+                        confirmText={{ grant: `전원에게 {n} BP 지급할까요?`, revoke: `전원에게서 {n} BP 회수할까요?` }}
+                        successText={a => a > 0 ? `전원에게 ${a.toLocaleString('ko-KR')} BP 지급했습니다.` : `전원에게서 최대 ${(-a).toLocaleString('ko-KR')} BP 회수했습니다.`}
+                    />
+                </div>
+            </div>
 
             {(loadErr || deleteErr) && (
                 <p className="text-xs text-red-400 ko-normal bg-red-900/20 border border-red-700/30 rounded-lg px-3 py-2">
@@ -73,6 +98,7 @@ const AdminUserManagerPage: React.FC = () => {
                                 <TH>이름</TH>
                                 <TH>국적</TH>
                                 <TH>생년</TH>
+                                <TH className="text-right">BP</TH>
                                 <TH>가입일</TH>
                                 <TH className="pr-4 text-right">관리</TH>
                             </tr>
@@ -95,6 +121,7 @@ const AdminUserManagerPage: React.FC = () => {
                                         <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{fullName || '—'}</td>
                                         <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{u.nationality ?? '—'}</td>
                                         <td className="px-3 py-2.5 text-slate-400 tabular-nums whitespace-nowrap">{u.birth_year ?? '—'}</td>
+                                        <td className="px-3 py-2.5 text-white font-bold tabular-nums whitespace-nowrap text-right">{(wallets[u.id]?.balance ?? 0).toLocaleString('ko-KR')} BP</td>
                                         <td className="px-3 py-2.5 text-slate-500 tabular-nums whitespace-nowrap">{fmtDate(u.created_at)}</td>
                                         <td className="pl-2 pr-4 py-2.5 text-right" onClick={e => e.stopPropagation()}>
                                             {isProtectedAdmin ? (

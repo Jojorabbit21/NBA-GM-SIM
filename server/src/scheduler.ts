@@ -33,6 +33,9 @@ import { announceInjuryDiagnoses } from './injuryDiagnosis.ts';
 import { rollOffCourtInjuries } from './offCourtInjuries.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
 import { isRegularSeasonRevealed, runPostRevealTransitions } from './postRevealTransitions.ts';
+import { runDailyPointSettlements } from './pointsSettlement.ts';
+import { runAllStarPointSettlements } from './pointsAllStar.ts';
+import { runAchievementSweeps } from './pointsAchievements.ts';
 
 // 정규시즌 종료 후 어워드를 발표하기까지의 지연 — "종료 즉시"가 아니라 하루 뒤 발표되도록
 // leagues.regular_season_ended_at + 이 값을 기준으로 runScheduledSeasonAwards()가 트리거한다.
@@ -199,6 +202,9 @@ async function tick(): Promise<void> {
         runSimGames(now),
         checkSeasonCompletions(),
         runPostRevealTransitions(),
+        runDailyPointSettlements(),      // [2026-11-08] BP 경기 정산 — 공개된 정규시즌·플레이인·플레이오프 경기 + 플옵 사건 보상
+        runAllStarPointSettlements(),    // [2026-11-08] BP 올스타·어워드 정산 — league_events.points_settled_at 표식
+        runAchievementSweeps(),          // [2026-11-08] BP 도전 과제 — 시즌 종료형(league_user_history) + 운영(5분 간격)
         runScheduledSeasonAwards(now),
         runAllStarVoteUpdates(),
         runThreePointContestNews(),

@@ -13,6 +13,8 @@ import { NavIcon, RosterIcon } from '../../../components/nav/navIcons';
 import { CountBadge } from '../../../components/common/CountBadge';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { PatchNotesModal } from '../../../components/common/PatchNotesModal';
+import { useWallet } from '../../../hooks/usePoints';
+import { POINTS_ICON_URL, formatPoints } from '../../../services/points/pointsService';
 
 const Divider: React.FC = () => <div className="mx-4 h-px bg-slate-800" role="separator" />;
 
@@ -46,6 +48,7 @@ export default function MobileMoreView() {
     const { session } = useGame();
     const { base, items, isAdmin, isSpectator, myTeam } = useSeasonNavModel();
     const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 — 데스크톱 사이드바와 같은 모달, 날짜별 아코디언
+    const { data: wallet } = useWallet(session?.user?.id);              // [2026-11-08] BP 잔액 — 데스크톱 프로필 메뉴 상단과 같은 자리
 
     const iconFor = (it: SeasonNavItem) => it.icon === 'team'
         ? <RosterIcon active={it.active} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} size={24} />
@@ -71,6 +74,14 @@ export default function MobileMoreView() {
                     <span className="text-sm font-semibold text-white truncate">{isSpectator ? '관전 중' : (myTeam?.team_name ?? '팀 미선택')}</span>
                     <span className="text-xs text-slate-500 truncate">{session?.user?.email ?? ''}</span>
                 </div>
+            </div>
+            {/* BP 잔액 — Row와 같은 48 높이·좌 아이콘 24 자리, 클릭 없음 */}
+            <div className="h-12 px-4 flex items-center gap-3">
+                <span className="w-6 h-6 shrink-0 flex items-center justify-center">
+                    <img src={POINTS_ICON_URL} alt="" width={20} height={20} />
+                </span>
+                <span className="flex-1 min-w-0 text-sm font-semibold text-slate-200">BP</span>
+                <span className="text-sm font-bold text-white tabular-nums">{wallet ? formatPoints(wallet.balance) : '—'}</span>
             </div>
             {isAdmin && (
                 <Row icon={<Settings2 size={18} className="text-slate-400" />} label="세션 설정" note="어드민" onClick={() => navigate(`${base}/settings`)} />

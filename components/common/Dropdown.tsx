@@ -16,6 +16,8 @@ interface DropdownItem {
 interface DropdownProps {
     trigger: React.ReactNode;
     items?: DropdownItem[];
+    /** items 모드에서 목록 위에 고정으로 그리는 비클릭 영역(아래 구분선 포함). [2026-11-08] 사이드바 프로필 메뉴 BP 잔액 */
+    header?: React.ReactNode;
     children?: React.ReactNode; // For custom content instead of items
     align?: 'left' | 'right';
     /** 패널이 열리는 방향. 기본 'bottom'(트리거 아래). 'right'는 트리거 오른쪽에 붙어 위로 자라는
@@ -56,6 +58,7 @@ export function fitDropdownPanel(h: number, triggerTop: number, triggerBottom: n
 export const Dropdown: React.FC<DropdownProps> = ({
     trigger,
     items,
+    header,
     children,
     align = 'right',
     side = 'bottom',
@@ -151,6 +154,12 @@ export const Dropdown: React.FC<DropdownProps> = ({
                 >
                     {items ? (
                         <div className="p-1 max-h-80 overflow-y-auto custom-scrollbar">
+                            {header && (
+                                <>
+                                    <div className="px-3 py-2.5">{header}</div>
+                                    <div className={`my-1 border-t ${surface === 'raised' ? 'border-slate-700' : 'border-slate-800'}`} />
+                                </>
+                            )}
                             {items.map((item) => (
                                 <React.Fragment key={item.id}>
                                     {item.dividerBefore && <div className={`my-1 border-t ${surface === 'raised' ? 'border-slate-700' : 'border-slate-800'}`} />}

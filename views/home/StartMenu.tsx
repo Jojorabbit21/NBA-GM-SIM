@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import { NicknameModal } from '../lobby/NicknameModal';
 import { MyLeagues } from './MyLeagues';
 import { MultiplayerHistory } from './MultiplayerHistory';
+import { PointsWallet } from './PointsWallet';
 import { AuthForm } from '../auth/AuthForm';
 import { LogOut, Settings } from 'lucide-react';
 import { ProfileAvatar } from '../../components/common/ProfileAvatar';
@@ -61,26 +62,30 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             {/* 계정 영역 */}
             {session ? (
-                <div className="shrink-0 flex items-center gap-4 pb-5 border-b border-slate-700/50">
-                    <ProfileAvatar nickname={nickname} email={email} colorKey={myProfile?.avatar_color} size={44} />
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-white truncate">{nickname || 'GM'}</p>
-                        <p className="text-xs text-slate-500 truncate">{email}</p>
+                <div className="shrink-0 pb-5 border-b border-slate-700/50">
+                    <div className="flex items-center gap-4">
+                        <ProfileAvatar nickname={nickname} email={email} colorKey={myProfile?.avatar_color} size={44} />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-white truncate">{nickname || 'GM'}</p>
+                            <p className="text-xs text-slate-500 truncate">{email}</p>
+                        </div>
+                        <button
+                            onClick={openNicknameSettings}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 shrink-0"
+                        >
+                            <Settings size={13} />
+                            <span className="ko-normal">설정</span>
+                        </button>
+                        <button
+                            onClick={onLogout}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10 shrink-0"
+                        >
+                            <LogOut size={13} />
+                            <span className="ko-normal">로그아웃</span>
+                        </button>
                     </div>
-                    <button
-                        onClick={openNicknameSettings}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 shrink-0"
-                    >
-                        <Settings size={13} />
-                        <span className="ko-normal">설정</span>
-                    </button>
-                    <button
-                        onClick={onLogout}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10 shrink-0"
-                    >
-                        <LogOut size={13} />
-                        <span className="ko-normal">로그아웃</span>
-                    </button>
+                    {/* [2026-11-08] 포인트(재화) 잔액 — 계정 행 아래 한 줄, 누르면 누적·최근 내역 */}
+                    <PointsWallet userId={session.user.id} />
                 </div>
             ) : (
                 <div className="shrink-0">
