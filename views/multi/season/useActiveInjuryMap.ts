@@ -6,9 +6,10 @@
 // 날짜 기준은 반드시 가상 캘린더 날짜(findCurrentVirtualDate)여야 한다 — rooms.sim_date(실제 KST 날짜)를 그대로
 // 쓰면 메인리그에서 몇 달 뒤 복귀일까지 계속 "활성"으로 남는 버그가 있었다(2026-09-05 수정분 그대로 유지).
 import { useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
-import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { leagueRawSeasonInjuryQuery } from '../../../hooks/useLeagueRawStats';
 import { useServerClockBucket } from '../../../utils/serverClock';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { buildActiveInjurySeverityMap } from '../../../services/multi/activeInjuryStatus';
@@ -25,14 +26,20 @@ export function useActiveInjuryMap(opts: Options = {}) {
     const serverNow = useServerClockBucket();
     const { playerIds } = opts;
 
-    // 리그 전체 로스터 id — useLeagueRawStats의 queryKey라 다른 홈 위젯/로스터/리더보드 화면과 캐시를 공유한다.
+    // 리그 전체 로스터 id — 호출부(홈 위젯)가 useLeagueRawStats/시즌 스탯 조회 키로 그대로 쓴다.
     const allRosterIds = useMemo(() => [...new Set(leagueTeams.flatMap(t => t.roster ?? []))], [leagueTeams]);
-    // playerInjuryRows만 필요하고 game_pbp는 전혀 안 쓰므로 includePbp:false(빼먹으면 room 전체 game_pbp 수 MB를 또 받는다).
+    // [2026-11-08] 방 단위 room_player_state 캐시(leagueRawSeasonInjury — useLeagueRawStats·부트스트랩 게이트와 같은 키)를 직접 읽는다.
+    // 전엔 useLeagueRawStats(allRosterIds)를 거쳐 "현재 로스터 선수" 행만 남았기 때문에, 웨이버·방출로 로스터를 떠난 선수는
+    // 부상 중이어도 홈 최근 거래 호버카드 등에서 배지가 사라졌다. 조회 자체는 원래 방 전체라 추가 요청은 없다.
     const selectInjuryRows = useCallback(
-        (raw: LeagueRawStatsData) => playerIds ? raw.playerInjuryRows.filter(r => playerIds.has(r.player_id)) : raw.playerInjuryRows,
+        (d: { playerInjuryRows: any[] }) => playerIds ? d.playerInjuryRows.filter(r => playerIds.has(r.player_id)) : d.playerInjuryRows,
         [playerIds],
     );
-    const { data: injuryRows = [] } = useLeagueRawStats(room?.id, allRosterIds, selectInjuryRows, { includePbp: false });
+    const { data: injuryRows = [] } = useQuery({
+        ...leagueRawSeasonInjuryQuery(room?.id),
+        enabled: !!room?.id && allRosterIds.length > 0,
+        select: selectInjuryRows,
+    });
 
     const isMainLeague = league?.type === 'main_league';
     const todaySimDate = useMemo(() => {

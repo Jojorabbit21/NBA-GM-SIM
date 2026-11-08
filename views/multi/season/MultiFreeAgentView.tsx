@@ -19,6 +19,8 @@ import { Table, TableHead, TableBody, TableHeaderCell, TableCell } from '../../.
 import { Button } from '../../../components/common/Button';
 import { OvrBadge } from '../../../components/common/OvrBadge';
 import { PlayerHoverCard } from '../../../components/common/PlayerHoverCard';
+import { useActiveInjuryMap } from './useActiveInjuryMap';
+import { applyActiveInjury } from '../../../services/multi/activeInjuryStatus';
 import { calculatePlayerOvr, INITIAL_STATS } from '../../../utils/constants';
 import { formatMoneyFull } from '../../../utils/formatMoney';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
@@ -82,6 +84,8 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
     const queryClient = useQueryClient();
     const { tendencySeed, currentSeason, schedule } = useSeasonContext();
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
+    // [2026-11-08] 이름 호버카드의 부상/출장정지 배지 — poolPlayers(meta_players 원본)엔 부상 상태가 없어 웨이버된 부상 선수도 건강하게 보였다.
+    const { activeInjuryByPlayer } = useActiveInjuryMap();
     const { getPlayerUrlId } = usePlayerShortCodes();
     const { session } = useGame();
     const navigate = useNavigate();
@@ -507,7 +511,7 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
                         ) : pagedPlayers.map(p => (
                             <tr key={p.id}>
                                 <TableCell align="left" className="pl-4 py-2">
-                                    <PlayerHoverCard player={p}>
+                                    <PlayerHoverCard player={applyActiveInjury(p, activeInjuryByPlayer.get(p.id))}>
                                         <span
                                             onClick={() => navigate(`/multi/leagues/${leagueId}/season/player/${getPlayerUrlId(p.id)}`)}
                                             className="text-slate-200 ko-normal text-sm font-semibold cursor-pointer hover:underline hover:text-indigo-400 whitespace-nowrap"

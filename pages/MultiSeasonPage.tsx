@@ -29,7 +29,7 @@ import { seasonShortFromDate } from '../utils/seasonShortFromDate';
 import { daysBetweenDateStr } from '../utils/leagueTimeline';
 import type { Game } from '../types';
 import { computeMultiStandingsStats, fmtWinPct, type MultiStandingsRecord } from '../views/multi/season/multiSeasonUtils';
-import { formatReturnDateSuffix, type ActiveInjuryStatus } from '../services/multi/activeInjuryStatus';
+import { applyActiveInjury, formatReturnDateSuffix } from '../services/multi/activeInjuryStatus';
 import { buildLeagueTeams } from '../services/multi/buildLeagueTeams';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
 import { TeamMark } from '../components/common/TeamMark';
@@ -39,7 +39,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 import { shouldUseCustomOverrides } from '../utils/leagueOverrides';
 import type { LeagueTeamRow } from '../services/multi/roomQueries';
-import type { Player, PlayerStats } from '../types';
+import type { PlayerStats } from '../types';
 import { useViewportClass } from '../hooks/useViewportClass';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { getReadableTextColor } from '../utils/colorContrast';
@@ -66,17 +66,8 @@ function formatSimDateShort(simDate: string): string {
 // 의도적으로 현재 진행 중인 부상 상태(activeInjurySeverity 등)를 채우지 않음(이력만 채움,
 // buildLeagueTeams.ts 주석 참고). PlayerHoverCard/mergeInjuryIntoPlayerCardMap은 PlayerCardMap
 // (poolPlayers 기반)에 병합하는 헬퍼만 있고, buildLeagueTeams()가 만든 완전한 Player 객체를
-// 직접 쓰는 화면(리그 리더/내 로스터 요약)엔 대응하는 헬퍼가 없어서 이 함수로 보완.
-function applyActiveInjury<T extends Player | null | undefined>(player: T, status: ActiveInjuryStatus | undefined): T {
-    if (!status || !player) return player;
-    return {
-        ...player,
-        activeInjurySeverity: status.severity,
-        injuryType: status.injuryType,
-        activeInjuryDuration: status.duration,
-        returnDate: status.returnDate ?? undefined,
-    };
-}
+// 직접 쓰는 화면(리그 리더/내 로스터 요약)엔 대응하는 헬퍼가 없어서 applyActiveInjury로 보완.
+// [2026-11-08] applyActiveInjury는 services/multi/activeInjuryStatus.ts로 옮겼다(FA 화면·선수 프로필도 사용).
 
 // [2026-10-14] 홈 4밴드 레이아웃(시안 https://claude.ai/artifact/FmLLWQXjnwGFGmPs4LSGSg). 섹션은 "제목바(40px, 우측 더보기 링크) +
 // 표"가 한 패널(bg-slate-900, 1px 테두리, 8px 라운드)로 묶인다 — 예전엔 제목이 표 밖 여백에 떠 있고 표마다 섬처럼 떨어져 있었음.
@@ -709,7 +700,7 @@ const HomeTransactionsSection: React.FC<{ phone?: boolean }> = ({ phone = false 
     );
     // [2026-09-05 버그 수정] "호버 카드에 부상 정보가 안 뜬다" — poolPlayers(meta_players)엔
     // 부상 컬럼이 없어 별도로 room_player_state를 조회해 병합해야 한다(useActiveInjuryMap).
-    // 방출된 지 오래된 선수는 allRosterIds(현재 로스터)에 없어 병합 대상에서 빠질 수 있음 — 알려진 한계.
+    // [2026-11-08] 예전엔 현재 로스터 선수만 병합돼 웨이버·방출 선수 배지가 빠졌다 — useActiveInjuryMap이 방 전체 행을 쓰도록 수정.
     const { activeInjuryByPlayer } = useActiveInjuryMap();
     const playerCardMap = useMemo(
         () => mergeInjuryIntoPlayerCardMap(basePlayerCardMap, activeInjuryByPlayer),

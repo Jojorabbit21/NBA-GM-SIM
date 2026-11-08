@@ -1091,13 +1091,16 @@ const MultiFrontOfficeView: React.FC = () => {
         if (activeTab === 'history') {
             const ids = new Set<string>();
             for (const o of history) for (const p of o.league_trade_offer_players) ids.add(p.player_id);
+            // [2026-11-08] 자유 계약·웨이버 기록 행 선수도 — 웨이버된 부상 선수 호버카드에 배지·스탯이 비어 있었다.
+            // 검색·날짜 필터 결과(filteredTxn)가 아니라 현재 종류 전체로 — 입력할 때마다 조회 키가 바뀌지 않게.
+            if (historyKind !== 'trade') for (const r of txnRows) if (r.type === historyKind) ids.add(r.player_id);
             return [...ids];
         }
         if (activeTab === 'inbox' && selectedOffer) {
             return selectedOffer.league_trade_offer_players.map(p => p.player_id);
         }
         return [];
-    }, [activeTab, statsRosterIds, tradeableByTeam, leagueTeams, history, selectedOffer]);
+    }, [activeTab, statsRosterIds, tradeableByTeam, leagueTeams, history, selectedOffer, historyKind, txnRows]);
     const { data: seasonStatsBatch } = usePlayerSeasonStatsBatch(roomId ?? undefined, statsRequestIds);
     // 부상/출장정지 배지용 — statsRequestIds가 탭마다 이미 적절한 범위(새 제안=양 팀 로스터,
     // 히스토리=과거 트레이드에 등장한 선수 전체 등)로 분기돼 있어 그대로 재사용.
@@ -2014,7 +2017,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                     <TableBody>
                                         {filteredTxn.map(r => {
                                             const team = teamById.get(r.team_id);
-                                            const player = poolById.get(r.player_id);
+                                            const player = poolByIdWithStats.get(r.player_id);
                                             const firstYear = r.details?.contract?.years?.[0];
                                             return (
                                                 <TableRow key={r.id}>
@@ -2821,7 +2824,7 @@ const MultiFrontOfficeView: React.FC = () => {
                                 </TableEmptyRow>
                             ) : filteredTxn.map(r => {
                                 const team = teamById.get(r.team_id);
-                                const player = poolById.get(r.player_id);
+                                const player = poolByIdWithStats.get(r.player_id);
                                 const firstYear = r.details?.contract?.years?.[0];
                                 return (
                                     <TableRow key={r.id}>

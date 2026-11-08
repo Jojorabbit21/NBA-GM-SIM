@@ -1,11 +1,12 @@
 
 import React, { useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Spinner } from '../../../components/common/Spinner';
 
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLeagueContext } from '../league/LeagueLayout';
 import { useSeasonContext } from './seasonContext';
-import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
+import { useLeagueRawStats, leagueRawSeasonInjuryQuery, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -21,7 +22,7 @@ import { PlayerNewsTab } from './PlayerNewsTab';
 import { PlayerPercentileTab } from './PlayerPercentileTab';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
-import { buildActiveInjurySeverityMap, buildUnrevealedGameKeys, isInjuryEntryFromUnrevealedGame } from '../../../services/multi/activeInjuryStatus';
+import { applyActiveInjury, buildActiveInjurySeverityMap, buildUnrevealedGameKeys, isInjuryEntryFromUnrevealedGame, type PlayerInjuryStateRow } from '../../../services/multi/activeInjuryStatus';
 import { resolveRealAt, isFinal } from './multiGameReveal';
 import { findCurrentVirtualDate } from './multiScheduleUtils';
 import { getServerNow } from '../../../utils/serverClock';
@@ -295,6 +296,34 @@ const MultiPlayerDetailView: React.FC = () => {
         [found, poolPlayers, playerId],
     );
 
+    // [2026-11-08] 로스터 밖 선수(웨이버·방출·FA)의 부상 이력과 헤더 배지 — 위 selectLeagueTeams(buildLeagueTeams)는 로스터 선수만
+    // room_player_state를 얹어서, 웨이버된 부상 선수 프로필은 이력·배지가 비어 보였다(NBA Active 조나단 아이작). 방 단위
+    // room_player_state 캐시(useLeagueRawStats와 같은 키 — 추가 요청 없음)에서 이 선수 행만 골라 로스터 경로와 같은 규칙으로 얹는다.
+    const selectFaInjuryRow = useCallback(
+        (d: { playerInjuryRows: PlayerInjuryStateRow[] }) => d.playerInjuryRows.find(r => r.player_id === playerId) ?? null,
+        [playerId],
+    );
+    const { data: faInjuryRow } = useQuery({
+        ...leagueRawSeasonInjuryQuery(room?.id),
+        enabled: !!room?.id && !!faPlayer,
+        select: selectFaInjuryRow,
+    });
+    const faPlayerWithInjury = useMemo(() => {
+        if (!faPlayer || !faInjuryRow) return faPlayer;
+        // 공개 전 경기에서 생긴 부상은 이력·배지 모두 숨김(로스터 경로와 동일). 소속 팀이 없어 entry.teamId로만 대조한다.
+        const nowMs = getServerNow();
+        const unrevealedKeys = buildUnrevealedGameKeys(schedule as any, nowMs);
+        const history = (faInjuryRow.injury_history ?? []).filter(e => !isInjuryEntryFromUnrevealedGame(e, [], unrevealedKeys));
+        const status = buildActiveInjurySeverityMap([faInjuryRow], currentSimDate, room?.season_number, {
+            schedule: schedule as any,
+            getTeamId: () => undefined,
+            nowMs,
+        }).get(faPlayer.id);
+        const withHistory = history.length ? { ...faPlayer, injuryHistory: history as any } : faPlayer;
+        return applyActiveInjury(withHistory, status);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [faPlayer, faInjuryRow, currentSimDate, room?.season_number, schedule, unrevealedKey]);
+
     // found(로스터 선수)/faPlayer(FA) 구분 없이 위에서 targeted로 조회한
     // career_history/tendencies를 여기서 한 번에 덧씌운다.
     //
@@ -306,7 +335,7 @@ const MultiPlayerDetailView: React.FC = () => {
     // 보이는" 문제가 생겼다. useMemo로 참조를 안정시키는 것만으로는 그 자체 버그를 못
     // 고치지만(참조가 바뀌어야 재동기화되므로), PlayerDetailView.tsx 쪽 effect 의존성도
     // 함께 고쳐서(playerProp 전체를 보게) 두 수정이 합쳐져야 완전히 해결된다.
-    const basePlayer = found?.player ?? faPlayer;
+    const basePlayer = found?.player ?? faPlayerWithInjury;
     const playerWithTargetedFields = useMemo(() => {
         if (!basePlayer) return basePlayer;
         if (!playerCareerHistory?.length && !playerTendencies && !playerAllStarAwards?.length) return basePlayer;

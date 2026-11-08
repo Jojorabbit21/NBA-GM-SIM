@@ -158,6 +158,19 @@ export function buildActiveInjurySeverityMap(
     return map;
 }
 
+/** buildActiveInjurySeverityMap()의 한 선수 요약을 Player 필드(activeInjurySeverity/injuryType/activeInjuryDuration/returnDate)로 얹는다.
+ *  활성 부상이 없거나 선수가 없으면 원본 그대로(불변 — 새 객체만 생성). [2026-11-08] MultiSeasonPage 로컬 헬퍼를 공용으로 옮김. */
+export function applyActiveInjury<T extends Player | null | undefined>(player: T, status: ActiveInjuryStatus | undefined): T {
+    if (!status || !player) return player;
+    return {
+        ...player,
+        activeInjurySeverity: status.severity,
+        injuryType: status.injuryType,
+        activeInjuryDuration: status.duration,
+        returnDate: status.returnDate ?? undefined,
+    };
+}
+
 /** 배지 hover 툴팁 / 프로필 카드용 한 줄 요약 — "부상 · 발목 염좌 · 3일" 또는 "출장정지 · 7경기".
  *  출장정지는 injuryType("출장정지 (싸움)")이 앞의 라벨과 겹치므로 생략한다. */
 export function formatActiveInjuryLabel(injuryStatus: ActiveInjuryStatus): string {
