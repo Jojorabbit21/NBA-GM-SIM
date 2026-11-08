@@ -41,7 +41,14 @@ export interface SimSettings {
     // 공개 시각) 완료와 함께 2026-10-26 true로 변경(새 리그부터, 이전 리그는 false 유지). 싱글은 미지정(off) — P4 표시 작업 후 검토.
     // docs/plan/overtime-system.md
     overtimeEnabled?: boolean;
+
+    // [2026-11-08] 시대별 플레이타입 기본 비율 — 세션(리그) 규칙, rooms.sim_settings에 저장. 미지정 = 엔진 폴백 '2020s'.
+    // 값 표는 game/config/playTypeProfiles.ts (client 미러 types/simSettings.ts 참조)
+    playTypeEra?: PlayTypeEra;
 }
+
+/** 시대별 플레이타입 프리셋 키 — '1990s' = 클래식(1990년대 이전 포함). */
+export type PlayTypeEra = '2020s' | '2010s' | '2000s' | '1990s';
 
 // ── Multiplayer fatigue defaults/ranges (mirror of types/simSettings.ts) ──
 export const MULTI_FATIGUE_DEFAULTS = {

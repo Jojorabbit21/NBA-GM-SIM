@@ -8,6 +8,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, HelpCircle, Minus, MoreHorizontal, PenLine, Plus } from 'lucide-react';
 import type { GameTactics, TacticalSliders } from '../../../types';
+import type { PlayTypeEra } from '../../../types/simSettings';
 import type { TacticSetId } from '../../../services/game/engine/pbp/tacticSchedule';
 import { getSetLabel } from '../../../utils/tacticSetEdit';
 import { TACTIC_PRESET_NAME_MAX, normalizePresetName } from '../../../services/multi/tacticPresets';
@@ -39,6 +40,8 @@ interface PhoneTeamTacticsProps {
     /** 프리셋 선택기(데스크톱과 같은 TacticPresetSelector) */
     toolbarExtra?: React.ReactNode;
     playTypeActual?: PlayTypeActual;
+    /** [2026-11-08] 세션 시대 프리셋(미지정 = 2020s) */
+    playTypeEra?: PlayTypeEra | null;
 }
 
 const SET_IDS: TacticSetId[] = ['main', 'alt', 'clutch'];
@@ -51,7 +54,7 @@ const MenuRow: React.FC<{ label: string; sub?: string; danger?: boolean; onClick
 
 export const PhoneTeamTactics: React.FC<PhoneTeamTacticsProps> = ({
     tactics, onUpdateTactics, selectedSet, onSelectSet, editingTactics, onUpdateSetTactics, clutchLocked, altMinutes,
-    autoSetNotice, onAutoSet, onReset, onRenameSet, toolbarExtra, playTypeActual,
+    autoSetNotice, onAutoSet, onReset, onRenameSet, toolbarExtra, playTypeActual, playTypeEra,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
@@ -116,7 +119,7 @@ export const PhoneTeamTactics: React.FC<PhoneTeamTacticsProps> = ({
                         </div>
                     ))}
                     <div className="px-4 pt-4 pb-2 border-t border-slate-700">
-                        <PlayTypePPP sliders={sliders} actual={playTypeActual} />
+                        <PlayTypePPP sliders={sliders} actual={playTypeActual} playTypeEra={playTypeEra} />
                     </div>
                 </div>
 

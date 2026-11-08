@@ -741,7 +741,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     if (!isSecondChance) {
         // 3개 추상 슬라이더(insideOut/pnrFreq/ballMovement) → 10개 하프코트 플레이타입 가중치 산출
-        const weights = computePlayTypeWeights(sliders);
+        // [2026-11-08] 세션 시대 프리셋(simSettings.playTypeEra, 미지정 = 2020s)이 슬라이더 5의 기본 비율을 정함
+        const weights = computePlayTypeWeights(sliders, state.simSettings?.playTypeEra);
 
         // Star Gravity: 1옵션의 공격력이 높을수록 Hero 플레이 비중 증가
         // 현실 NBA에서 에이스가 코트에 있으면 팀 전술 자체가 스타 중심으로 변하는 것을 반영

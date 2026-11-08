@@ -5,6 +5,7 @@ import { DefensiveStats } from '../../../utils/defensiveStats';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
+import type { PlayTypeEra } from '../../../types/simSettings';
 
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
@@ -16,9 +17,11 @@ interface TacticsDataPanelProps {
     /** true면 "슈팅 존 히트맵"도 아예 안 그린다(별도 "인사이트" 탭으로 이동).
      *  MultiTacticsView.tsx 전용 — 기본 false로 싱글플레이어/관리자 에디터는 그대로. */
     hideZoneChart?: boolean;
+    /** [2026-11-08] 세션 시대 프리셋(미지정 = 2020s) */
+    playTypeEra?: PlayTypeEra | null;
 }
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats, hideRadar, hideZoneChart }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats, hideRadar, hideZoneChart, playTypeEra }) => {
     const [showOpponentZone, setShowOpponentZone] = useState(false);
     const hasOpponentData = defensiveStats && defensiveStats.gamesPlayed > 0 && Object.keys(defensiveStats.oppZoneStats).length > 0;
 
@@ -69,7 +72,7 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
 
             {/* Section 2: Play Type Analysis */}
             <div className="pb-5">
-                <PlayTypePPP sliders={sliders} />
+                <PlayTypePPP sliders={sliders} playTypeEra={playTypeEra} />
             </div>
         </div>
     );

@@ -53,7 +53,15 @@ export interface SimSettings {
     // 공개 시각) 완료와 함께 2026-10-26 true로 변경(새 리그부터, 이전 리그는 false 유지). 싱글은 미지정(off) — P4 표시 작업 후 검토.
     // docs/plan/overtime-system.md
     overtimeEnabled?: boolean;
+
+    // [2026-11-08] 시대별 플레이타입 기본 비율(슬라이더 5일 때의 하프코트 플레이 호출 비율) — 세션(리그) 규칙.
+    // 멀티는 rooms.sim_settings에 저장(세션 설정 엔진 탭·리그 생성), 미지정이면 엔진 폴백 '2020s'.
+    // 싱글은 미지정 → '2020s'(시작 시즌 2025-26 기준). 값 표는 services/game/config/playTypeProfiles.ts.
+    playTypeEra?: PlayTypeEra;
 }
+
+/** 시대별 플레이타입 프리셋 키 — '1990s' = 클래식(1990년대 이전 포함). */
+export type PlayTypeEra = '2020s' | '2010s' | '2000s' | '1990s';
 
 // ── 멀티플레이어 체력 설정 기본값/범위 (server/src/shared/types/simSettings.ts 미러) ──
 // 근거: 정규시즌 1,230경기 시뮬(docs/plan/multiplayer-fatigue.md 3-8).

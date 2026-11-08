@@ -19,7 +19,8 @@ import { DraftSalaryScaleSettings } from '../../../components/multi/DraftSalaryS
 import {
     type ContractMode, type DraftSalaryScale, normalizeDraftSalaryScale, validateDraftSalaryScale,
 } from '../../../services/contracts/draftSalaryScale';
-import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, MULTI_FATIGUE_DEFAULTS, MULTI_FATIGUE_RANGES, resolveMultiFatigueSettings } from '../../../types/simSettings';
+import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, MULTI_FATIGUE_DEFAULTS, MULTI_FATIGUE_RANGES, resolveMultiFatigueSettings, type PlayTypeEra } from '../../../types/simSettings';
+import { PLAY_TYPE_ERAS, PLAY_TYPE_ERA_LABELS, DEFAULT_PLAY_TYPE_ERA, resolvePlayTypeEra } from '../../../services/game/config/playTypeProfiles';
 
 // 체력 회복 설정은 "남는 부족분 비율(keep)"로 저장하지만 화면에는 "회복률(%) = (1 − keep) × 100"으로 보여준다.
 const keepToRecoveryPct = (keep: number) => Math.round((1 - keep) * 100);
@@ -204,6 +205,8 @@ const LeagueSettingsView: React.FC = () => {
     // [2026-10-26] 연장전 — sim_settings가 아니라 리그 칼럼(leagues.overtime_enabled). 서버 simRunner가 엔진에 주입
     const [overtimeEnabled,    setOvertimeEnabled]    = useState(false);
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
+    // [2026-11-08] 시대별 플레이타입 기본 비율(sim_settings.playTypeEra, 미지정 = 2020s)
+    const [playTypeEra, setPlayTypeEra] = useState<PlayTypeEra>(DEFAULT_PLAY_TYPE_ERA);
     // 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) — 회복률은 % 정수로 편집
     const [overnightRecoveryPct, setOvernightRecoveryPct] = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep));
     const [restDayRecoveryPct,   setRestDayRecoveryPct]   = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep));
@@ -370,6 +373,7 @@ const LeagueSettingsView: React.FC = () => {
         setSuspensionFrequency(room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency);
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
+        setPlayTypeEra(resolvePlayTypeEra(room?.sim_settings?.playTypeEra));
         const fatigueSettings = resolveMultiFatigueSettings(room?.sim_settings);
         setOvernightRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueOvernightKeep));
         setRestDayRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueRestDayKeep));
@@ -533,6 +537,7 @@ const LeagueSettingsView: React.FC = () => {
                 suspensionsEnabled,
                 suspensionFrequency,
                 garbageTimeEnabled,
+                playTypeEra,
                 normalization: {
                     ...(room?.sim_settings?.normalization ?? {}),
                     enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
@@ -951,6 +956,7 @@ const LeagueSettingsView: React.FC = () => {
         garbageTimeEnabled !== (room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled) ||
         overtimeEnabled !== ((league as any)?.overtime_enabled ?? false) ||
         normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
+        playTypeEra !== resolvePlayTypeEra(room?.sim_settings?.playTypeEra) ||
         overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
         restDayRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueRestDayKeep) ||
         b2bMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueB2BMultiplier ||
@@ -1552,6 +1558,20 @@ const LeagueSettingsView: React.FC = () => {
                             <span className="ml-2 text-xs text-slate-500 ko-normal">4쿼터 동점 시 5분 연장(최대 2회, 그래도 동점이면 결승 공격). 경기 시작·연장은 점프볼로 시작하고, 연장 경기는 결과가 연장 길이만큼 늦게 공개됩니다. 다음 경기부터 적용</span>
                         </div>
                     </label>
+
+                    {/* [2026-11-08] 시대별 플레이타입 기본 비율 — 다음 경기부터 적용 */}
+                    <div className="flex items-center justify-between px-1">
+                        <span className="text-xs font-bold text-slate-300">플레이타입 시대</span>
+                        <select
+                            value={playTypeEra}
+                            onChange={e => setPlayTypeEra(resolvePlayTypeEra(e.target.value))}
+                            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                        >
+                            {PLAY_TYPE_ERAS.map(era => (
+                                <option key={era} value={era}>{PLAY_TYPE_ERA_LABELS[era]}</option>
+                            ))}
+                        </select>
+                    </div>
 
                     <div>
                         <div className="flex items-center justify-between px-1">

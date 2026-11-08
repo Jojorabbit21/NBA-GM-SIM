@@ -401,7 +401,7 @@ export const TeamTacticsTab: React.FC<Props> = ({ room, leagueTeams }) => {
                                 <RotationGanttChart team={editTeam} tactics={draftTactics!} depthChart={draftDepth} healthySorted={healthySorted} onUpdateTactics={handleUpdateTactics} onViewPlayer={noopViewPlayer} />
                             )}
                             {editTab === 'team' && (
-                                <div className="p-8 pb-16"><TacticsSlidersPanel tactics={draftTactics!} onUpdateTactics={handleUpdateTactics} roster={rosterPlayers} /></div>
+                                <div className="p-8 pb-16"><TacticsSlidersPanel tactics={draftTactics!} onUpdateTactics={handleUpdateTactics} roster={rosterPlayers} playTypeEra={room?.sim_settings?.playTypeEra} /></div>
                             )}
                         </div>
                     </div>

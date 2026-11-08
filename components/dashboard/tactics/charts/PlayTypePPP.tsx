@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { TacticalSliders } from '../../../../types';
+import type { PlayTypeEra } from '../../../../types/simSettings';
 import { PLAY_TYPES_WITH_TRANSITION, getFullPlayTypeDistribution } from './playTypeConstants';
 import type { TeamPlayTypeTotals } from '../../../../hooks/useTeamPlayTypeStats';
 import { Spinner } from '../../../common/Spinner';
@@ -17,6 +18,8 @@ export interface PlayTypeActual {
 interface PlayTypePPPProps {
     sliders: TacticalSliders;
     actual?: PlayTypeActual;
+    /** [2026-11-08] 세션 시대 프리셋 — 엔진과 같은 기본 비율로 예상 비중을 그림(미지정 = 2020s) */
+    playTypeEra?: PlayTypeEra | null;
 }
 
 // PPP 표시 기준 — 리그 평균 대비 ±0.03 이상이면 초록/빨강, 포제션 20회 미만은 흐리게 + "표본 적음",
@@ -56,15 +59,15 @@ function distributionColor(ratio: number): string {
     return `rgb(${lerpChannel(r1, r2, segT)}, ${lerpChannel(g1, g2, segT)}, ${lerpChannel(b1, b2, segT)})`;
 }
 
-export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, actual }) => {
+export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, actual, playTypeEra }) => {
     // [2026-10-18] 속공 포함 11종 — 속공은 pace로 정해지는 것일 뿐 다른 플레이타입과 같은 목록(구분선 없음)
     const data = useMemo(() => {
-        const distribution = getFullPlayTypeDistribution(sliders);
+        const distribution = getFullPlayTypeDistribution(sliders, playTypeEra);
         return PLAY_TYPES_WITH_TRANSITION.map((pt, i) => ({
             ...pt,
             distribution: distribution[i],
         }));
-    }, [sliders]);
+    }, [sliders, playTypeEra]);
 
     // 최댓값 기준 정규화 — 가장 긴 막대가 가로폭을 꽉 채우도록
     const maxDistribution = useMemo(() => Math.max(1, ...data.map(d => d.distribution)), [data]);

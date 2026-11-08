@@ -1,5 +1,6 @@
 
 import { TacticalSliders } from '../../../../types';
+import type { PlayTypeEra } from '../../../../types/simSettings';
 import { computePlayTypeWeights } from '../../../../services/game/config/playTypeProfiles';
 
 // 10개 하프코트 플레이타입 (차트/UI 표시용)
@@ -30,9 +31,9 @@ export const PLAY_ATTR_MAP: Record<string, { attrs: string[]; weights: number[] 
     Handoff:       { attrs: ['out', 'handling', 'shotIq'], weights: [0.4, 0.3, 0.3] },
 };
 
-// 슬라이더 → 플레이타입 분포 (%) 산출
-export const getPlayTypeDistribution = (sliders: TacticalSliders): number[] => {
-    const weights = computePlayTypeWeights(sliders);
+// 슬라이더 → 플레이타입 분포 (%) 산출 — era = 세션 시대 프리셋(미지정 = 2020s, 엔진과 같은 폴백)
+export const getPlayTypeDistribution = (sliders: TacticalSliders, era?: PlayTypeEra | null): number[] => {
+    const weights = computePlayTypeWeights(sliders, era);
     const ordered = PLAY_TYPES.map(pt => weights[pt.key] || 0);
     const total = ordered.reduce((s, v) => s + v, 0);
     return ordered.map(w => total > 0 ? (w / total) * 100 : 10);
@@ -46,8 +47,8 @@ export const TRANSITION_PLAY_TYPE = { key: 'Transition', label: '속공', color:
 export const PLAY_TYPES_WITH_TRANSITION = [TRANSITION_PLAY_TYPE, ...PLAY_TYPES];
 
 /** 슬라이더 → 11종 예상 비중(%) — 속공 = pace × 3%, 나머지 10종 = 하프코트 비중 × (1 − 속공) */
-export const getFullPlayTypeDistribution = (sliders: TacticalSliders): number[] => {
+export const getFullPlayTypeDistribution = (sliders: TacticalSliders, era?: PlayTypeEra | null): number[] => {
     const transition = Math.max(0, Math.min(1, sliders.pace * 0.03));
-    const halfCourt = getPlayTypeDistribution(sliders);
+    const halfCourt = getPlayTypeDistribution(sliders, era);
     return [transition * 100, ...halfCourt.map(p => p * (1 - transition))];
 };

@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { GameTactics, TacticalSliders, Player } from '../../../types';
+import type { PlayTypeEra } from '../../../types/simSettings';
 import { TacticsDataPanel } from './TacticsDataPanel';
 import { PlayTypePPP, type PlayTypeActual } from './charts/PlayTypePPP';
 import { SliderControl } from '../../common/SliderControl';
@@ -27,6 +28,8 @@ interface TacticsSlidersPanelProps {
     offenseDefenseSplit?: boolean;
     /** [2026-10-18] split 레이아웃 전용 — 실제 경기 기반 플레이타입 PPP(멀티). 지정 시 "플레이타입 분석" 아래 PPP 섹션 */
     playTypeActual?: PlayTypeActual;
+    /** [2026-11-08] 세션 시대 프리셋 — 플레이타입 예상 비중 차트가 엔진과 같은 기본 비율을 쓰도록(미지정 = 2020s) */
+    playTypeEra?: PlayTypeEra | null;
 }
 
 /** 슬라이더 그룹 묶음 한 열(그룹 사이 구분선). split 레이아웃은 열 오른쪽에 경계선. */
@@ -56,7 +59,7 @@ const SliderColumn: React.FC<{
     </div>
 );
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly, hideRadar, hideZoneChart, offenseDefenseSplit, playTypeActual }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats, slidersOnly, hideRadar, hideZoneChart, offenseDefenseSplit, playTypeActual, playTypeEra }) => {
 
     const sliders = { ...DEFAULT_SLIDERS, ...tactics.sliders };
 
@@ -79,7 +82,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,4fr)_minmax(0,4fr)_minmax(0,2fr)] gap-8">
                     <SliderColumn groups={OFFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
                     <SliderColumn groups={DEFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
-                    <PlayTypePPP sliders={sliders} actual={playTypeActual} />
+                    <PlayTypePPP sliders={sliders} actual={playTypeActual} playTypeEra={playTypeEra} />
                 </div>
                 {/* [2026-10-18] 멀티 전술 화면은 슬라이더별 설명을 라벨 옆 ? 클릭 툴팁(SliderControl tooltip)으로 옮겨
                     하단 설명 표(SliderGroupNotes)를 뺐다. 싱글/어드민(비-split) 레이아웃은 표 유지. */}
@@ -93,7 +96,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
             {/* Left: Data Charts (7/12) — slidersOnly 모드에서는 숨김 */}
             {!slidersOnly && (
             <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
-                <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} hideRadar={hideRadar} hideZoneChart={hideZoneChart} />
+                <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} hideRadar={hideRadar} hideZoneChart={hideZoneChart} playTypeEra={playTypeEra} />
             </div>
             )}
 

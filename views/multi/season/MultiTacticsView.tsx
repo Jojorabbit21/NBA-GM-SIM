@@ -981,6 +981,7 @@ const MultiTacticsView: React.FC = () => {
                                     roster={rosterWithZoneStats}
                                     offenseDefenseSplit
                                     playTypeActual={playTypeActual}
+                                    playTypeEra={room?.sim_settings?.playTypeEra}
                                 />
                             </div>
                         </div>
@@ -1119,6 +1120,7 @@ const MultiTacticsView: React.FC = () => {
                             onRenameSet={name => { if (userTactics && selectedSet !== 'clutch' && normalizePresetName(name)) setUserTactics(withSetName(userTactics, selectedSet, name)); }}
                             toolbarExtra={renderPresetSelector('team')}
                             playTypeActual={playTypeActual}
+                            playTypeEra={room?.sim_settings?.playTypeEra}
                         />
                     )}
                     {activeTab === 'training' && trainingPanel}

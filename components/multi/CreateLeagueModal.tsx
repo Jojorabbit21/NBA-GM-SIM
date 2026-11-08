@@ -26,7 +26,8 @@ import {
     buildFixedDeclineCurve, buildPersonalDraftFormat, computeRosterSize,
     PICK_TIMER_SEC_DEFAULT, PERSONAL_DRAFT_OVR_MAX, type PersonalDraftRoundInput, type PersonalDraftFormat, type PositionTargets,
 } from '../../services/multi/personalDraftFormat';
-import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL } from '../../types/simSettings';
+import { NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, type PlayTypeEra } from '../../types/simSettings';
+import { PLAY_TYPE_ERAS, PLAY_TYPE_ERA_LABELS, DEFAULT_PLAY_TYPE_ERA, resolvePlayTypeEra } from '../../services/game/config/playTypeProfiles';
 import { TEAM_DATA } from '../../data/teamData';
 import { getDefaultTradeDeadline, getTradeDeadlineBounds, clampTradeDeadline } from '../../utils/tradeDeadline';
 import {
@@ -264,6 +265,8 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
 
     // ── 엔진 설정 ──────────────────────────────────────────────────────────────
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
+    // [2026-11-08] 시대별 플레이타입 기본 비율 — 세션 설정 엔진 탭에서도 변경 가능
+    const [playTypeEra, setPlayTypeEra] = useState<PlayTypeEra>(DEFAULT_PLAY_TYPE_ERA);
 
     const [saving, setSaving] = useState(false);
     // err = 입력 하나에 귀속되지 않는 것(어드민 아님·타임라인 불가·서버 생성 실패) → 푸터 md 슬롯.
@@ -530,6 +533,7 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
                         enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
                         k:       NORMALIZATION_LEVELS[normalizationLevel].k,
                     },
+                    playTypeEra,
                     // 개인 팩 드래프트 토너먼트는 부상 비활성(설계 결정) — 세션 설정 엔진 탭에서도 잠긴다.
                     ...(isPersonalDraft ? { injuriesEnabled: false } : {}),
                 } as any,
@@ -1251,6 +1255,18 @@ const CreateLeagueModal: React.FC<CreateLeagueModalProps> = ({ userId, isAdmin, 
 
                         {/* 엔진 설정 */}
                         <p className="text-xs font-bold text-slate-500">엔진 설정</p>
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-300">플레이타입 시대</span>
+                            <select
+                                value={playTypeEra}
+                                onChange={e => setPlayTypeEra(resolvePlayTypeEra(e.target.value))}
+                                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                            >
+                                {PLAY_TYPE_ERAS.map(era => (
+                                    <option key={era} value={era}>{PLAY_TYPE_ERA_LABELS[era]}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div>
                             <div className="flex items-center justify-between px-1">
                                 <span className="text-xs font-bold text-slate-300">리그 상대 정규화 강도</span>
