@@ -317,6 +317,32 @@ function initRoundRobin(
 // ── 상태 전진 ─────────────────────────────────────────────────────────────────
 
 /**
+ * [2026-11-08] 팀별 시드 번호(작을수록 상위) — R1 시리즈의 브라켓 위치에서 역산한다.
+ * R1 슬롯 i(0-indexed, higher=2m / lower=2m+1)는 컨퍼런스(전체 크기/2)별 표준 시드 순서
+ * [1,8,4,5,2,7,3,6]의 같은 위치 시드다. 컨퍼런스 파이널 이하에서 홈코트(상위 시드) 판정에 사용.
+ */
+function r1SeedMap(series: PlayoffSeries[], maxRound: number): Record<string, number> {
+    const size = Math.pow(2, maxRound);
+    const group = Math.max(2, size / 2);
+    let order = [1];
+    while (order.length < group) {
+        const total = order.length * 2 + 1;
+        const nx: number[] = [];
+        for (const s of order) nx.push(s, total - s);
+        order = nx;
+    }
+    const map: Record<string, number> = {};
+    for (const s of series) {
+        if (s.round !== 1) continue;
+        const m = parseInt(s.id.split('_M')[1], 10);
+        if (!Number.isFinite(m)) continue;
+        if (s.higherSeedId && s.higherSeedId !== 'TBD' && s.higherSeedId !== 'BYE') map[s.higherSeedId] = order[(2 * m) % group];
+        if (s.lowerSeedId && s.lowerSeedId !== 'TBD' && s.lowerSeedId !== 'BYE') map[s.lowerSeedId] = order[(2 * m + 1) % group];
+    }
+    return map;
+}
+
+/**
  * 완료된 시리즈 승자를 다음 라운드 TBD 슬롯에 채워 넣는다.
  * 양쪽 슬롯이 모두 결정되면 해당 라운드 전체 경기를, 지금까지 배정된 슬롯 바로 다음부터
  * 이어서(한 경기씩 순차) 생성한다.
@@ -330,6 +356,9 @@ export function advanceTournamentState(
     intervalMinutes: number = DEFAULT_INTERVAL_MIN,
     simRealStartAt?: string | null,
     roundRestDays: number = 0,
+    // [2026-11-08] 파이널 홈코트 판정 — (a, b) → 홈코트 팀 slug(정규시즌 성적이 더 좋은 팀). null/미지정이면 기존 위치 규칙(짝수 피더 = higher).
+    // 정규시즌이 있는 메인리그만 simRunner가 넘긴다(playoffSeeder.betterRegularSeasonTeam). 토너먼트 리그는 미지정.
+    finalsHomeCourt?: (a: string, b: string) => string | null,
 ): void {
     // [2026-10-26] roundRestDays — 라운드 사이 휴식일(타임라인 메인리그 = season_calendar.postseasonRestDays).
     // r+1라운드 시작 날짜를 r·roundRestDays일 뒤로 민다(2라운드 +1, 3라운드 +2, 파이널 +3). 기본 0 = 토너먼트·구 리그 그대로.
@@ -338,17 +367,36 @@ export function advanceTournamentState(
     const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
     const roundBaseSlots = computeRoundBaseSlots(maxRound, targetWins, finalsTargetWins);
 
+    const seedOf = r1SeedMap(series, maxRound);
+
     for (let round = 1; round < maxRound; round++) {
         for (const s of series) {
             if (s.round !== round || !s.finished || !s.winnerId) continue;
 
-            const mIdx  = parseInt(s.id.split('_M')[1], 10);
+            const mIdx   = parseInt(s.id.split('_M')[1], 10);
             const nextId = `T_R${round + 1}_M${Math.floor(mIdx / 2)}`;
             const next   = byId[nextId];
             if (!next || next.finished) continue;
 
-            if (mIdx % 2 === 0) next.higherSeedId = s.winnerId;
-            else                next.lowerSeedId  = s.winnerId;
+            // [2026-11-08] 홈코트 = 상위 시드. 예전엔 피더 위치(짝수 M = higher)로만 채워 8시드가 1시드를 꺾으면
+            // 하위 시드가 홈코트를 받았다. 경기가 이미 생성된 시리즈는 건드리지 않는다(멱등 — 이 함수는 매번 전체를 재순회).
+            if (!schedule.some(g => g.seriesId === nextId)) {
+                const feederA = byId[`T_R${round}_M${Math.floor(mIdx / 2) * 2}`];
+                const feederB = byId[`T_R${round}_M${Math.floor(mIdx / 2) * 2 + 1}`];
+                const a = feederA?.finished ? feederA.winnerId : undefined;
+                const b = feederB?.finished ? feederB.winnerId : undefined;
+                // 결승: 컨퍼런스 간 시드 비교 불가 → 정규시즌 성적(finalsHomeCourt), 없으면 기존 위치 규칙
+                const isFinalsNext = round + 1 === maxRound;
+                const bFirst = a && b
+                    ? (isFinalsNext ? finalsHomeCourt?.(a, b) === b : (seedOf[b] ?? 99) < (seedOf[a] ?? 99))
+                    : false;
+                if (a && b && bFirst) {
+                    next.higherSeedId = b; next.lowerSeedId = a;
+                } else {
+                    if (a) next.higherSeedId = a;
+                    if (b) next.lowerSeedId = b;
+                }
+            }
 
             // 양쪽 팀 확정 → 전체 경기 생성 — 시작 슬롯은 다음 라운드 고정 슬롯(모든 매치 동시 시작)
             if (next.higherSeedId !== 'TBD' && next.lowerSeedId !== 'TBD') {

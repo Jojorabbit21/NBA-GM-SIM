@@ -25,7 +25,7 @@ import { initializeTournamentBracket, type LeagueTeamRow } from './tournamentIni
 import { insertGames, insertGameShortCodes } from '../finalize';
 import { kstMidnightPlusDays } from './kst';
 import { insertLeagueEvent, type PendingLeagueEvent } from './multi/playoffNews';
-import { buildLedger, buildContext, rankConference, type TiebreakTeam } from './nbaTiebreak';
+import { buildLedger, buildContext, rankConference, compareTied, type TiebreakTeam, type Ledger, type TiebreakContext } from './nbaTiebreak';
 import { TEAM_DATA } from './teamData';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './timelineStore';
 import { DEFAULT_PLAYOFF_INTERVAL_DAYS, postseasonDayOffsets } from './leagueTimeline';
@@ -52,10 +52,38 @@ export interface StandingRow {
 export async function computeStandingsByConference(
     leagueId: string, roomId: string,
 ): Promise<{ East: StandingRow[]; West: StandingRow[] }> {
-    const { data: games } = await supabase
-        .from('games')
-        .select('home_team_id, away_team_id, home_score, away_score')
-        .eq('league_id', leagueId).eq('is_playoff', false).eq('played', true);
+    const { ledger, ctx } = await loadRegularSeasonTiebreak(leagueId, roomId);
+
+    const rows = (conf: 'East' | 'West'): StandingRow[] =>
+        rankConference(ledger, conf, ctx).order.map(slug => ({
+            team_slug: slug, conference: conf,
+            wins: ledger.wins.get(slug) ?? 0, losses: ledger.losses.get(slug) ?? 0, pointDiff: ledger.pd.get(slug) ?? 0,
+        }));
+    return { East: rows('East'), West: rows('West') };
+}
+
+/** 정규시즌(is_playoff=false, played) 경기를 1000행 단위로 끝까지 읽는다 — PostgREST 응답 행 상한에 잘리지 않게. */
+async function loadRegularSeasonGames(leagueId: string): Promise<any[]> {
+    const PAGE = 1000;
+    const out: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+            .from('games')
+            .select('game_id, home_team_id, away_team_id, home_score, away_score')
+            .eq('league_id', leagueId).eq('is_playoff', false).eq('played', true)
+            .order('game_id')
+            .range(from, from + PAGE - 1);
+        if (error) throw new Error(`regular-season games load failed: ${error.message}`);
+        out.push(...(data ?? []));
+        if (!data || data.length < PAGE) return out;
+    }
+}
+
+/** 정규시즌 원장 + 타이브레이커 컨텍스트 — 시딩(computeStandingsByConference)과 파이널 홈코트 판정 공용. */
+export async function loadRegularSeasonTiebreak(
+    leagueId: string, roomId: string,
+): Promise<{ ledger: Ledger; ctx: TiebreakContext }> {
+    const games = await loadRegularSeasonGames(leagueId);
 
     const { data: teamRows } = await supabase
         .from('league_teams').select('team_slug, conference').eq('room_id', roomId);
@@ -75,13 +103,21 @@ export async function computeStandingsByConference(
         homeSlug: g.home_team_id, awaySlug: g.away_team_id, homeScore: g.home_score ?? 0, awayScore: g.away_score ?? 0,
     })));
     const ctx = buildContext(ledger, { eligibleCount, drawSeed: leagueId });
+    return { ledger, ctx };
+}
 
-    const rows = (conf: 'East' | 'West'): StandingRow[] =>
-        rankConference(ledger, conf, ctx).order.map(slug => ({
-            team_slug: slug, conference: conf,
-            wins: ledger.wins.get(slug) ?? 0, losses: ledger.losses.get(slug) ?? 0, pointDiff: ledger.pd.get(slug) ?? 0,
-        }));
-    return { East: rows('East'), West: rows('West') };
+/**
+ * [2026-11-08] 파이널 홈코트 — 정규시즌 승률이 더 좋은 팀(NBA: 1~3라운드는 시드, 파이널은 정규시즌 성적).
+ * 승률이 같으면 시딩과 같은 2팀 타이브레이커(맞대결 → 디비전 우승 → … → 추첨)로 가른다 — NBA 공식 파이널 동률 규정은
+ * 확인하지 못해 시딩 규칙을 그대로 쓴다. 어느 한 팀이라도 정규시즌 경기가 없으면 null(호출부가 기존 위치 규칙으로 폴백).
+ */
+export function betterRegularSeasonTeam(ledger: Ledger, ctx: TiebreakContext, a: string, b: string): string | null {
+    const wa = ledger.wins.get(a) ?? 0, la = ledger.losses.get(a) ?? 0;
+    const wb = ledger.wins.get(b) ?? 0, lb = ledger.losses.get(b) ?? 0;
+    if (wa + la === 0 || wb + lb === 0) return null;
+    const pa = wa / (wa + la), pb = wb / (wb + lb);
+    if (pa !== pb) return pa > pb ? a : b;
+    return compareTied(a, b, ctx).winner;
 }
 
 /** 표준 브라켓 시드 순서(1-indexed, size는 2의 거듭제곱). 8강 예시: [1,8,4,5,2,7,3,6]. */

@@ -5,7 +5,7 @@
  */
 import { supabase } from './supabaseAdmin.ts';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineStore';
-import { postseasonIntervalDays, postseasonRestDays } from './shared/playoffSeeder';
+import { postseasonIntervalDays, postseasonRestDays, loadRegularSeasonTiebreak, betterRegularSeasonTeam } from './shared/playoffSeeder';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
@@ -702,7 +702,7 @@ async function tryAdvanceTournamentOnce(
     // games UPDATE가 이미 기록했다 — 여기서는 시리즈 진행(series)과 다음 라운드 경기 생성만 담당.
     const { data: leagueRow } = await supabase
         .from('leagues')
-        .select('id, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year, season_calendar, playoff_game_interval_days, day_length_min, replay_minutes')
+        .select('id, type, bracket_data, bracket_version, season_start_date, match_format, finals_match_format, tournament_format, tournament_start_at, games_per_real_day, sim_real_start_at, playoff_team_count, virtual_season_year, season_calendar, playoff_game_interval_days, day_length_min, replay_minutes')
         .eq('id', leagueId)
         .maybeSingle();
 
@@ -821,10 +821,24 @@ async function tryAdvanceTournamentOnce(
         const stub: TournamentGame[] = (existing ?? []).map(r => ({ id: r.game_id, seriesId: r.series_id ?? undefined } as any));
         const before = stub.length;
 
+        // [2026-11-08] 파이널 홈코트 = 정규시즌 성적이 더 좋은 팀(NBA 규정). 컨퍼런스 파이널이 끝났을 때만(파이널 대진이
+        // 정해질 수 있는 시점) 정규시즌 원장을 읽는다. 정규시즌이 없는 토너먼트 리그·로드 실패는 기존 위치 규칙(동부 = higher)으로 폴백.
+        let finalsHomeCourt: ((a: string, b: string) => string | null) | undefined;
+        const maxRound = series.reduce((mx, s) => Math.max(mx, s.round), 0);
+        if ((leagueRow as any).type === 'main_league' && maxRound >= 2 && seriesObj.round === maxRound - 1) {
+            try {
+                const { ledger, ctx } = await loadRegularSeasonTiebreak(leagueId, roomId);
+                finalsHomeCourt = (a, b) => betterRegularSeasonTeam(ledger, ctx, a, b);
+            } catch (err) {
+                console.warn(`[simRunner] 파이널 홈코트용 정규시즌 성적 로드 실패(${leagueId}) — 위치 규칙으로 폴백:`, err);
+            }
+        }
+
         advanceTournamentState(
             series, stub, seriesObj.targetWins, finalsTargetWins, startDate, intervalMinutes,
             usesTimeline ? null : (leagueRow.sim_real_start_at as string | null),
             usesTimeline ? postseasonRestDays(leagueRow as any) : 0,   // [2026-10-26] 라운드 사이 휴식일
+            finalsHomeCourt,
         );
 
         const newGames = usesTimeline
