@@ -34,6 +34,10 @@ import { unlockAchievement } from './pointsAchievements.ts';
 /** tick 한 번에 방당 최대 처리 경기 수 — 하루 15경기 × 며칠치 밀려도 몇 tick 안에 따라잡는다. */
 const BATCH_LIMIT = 200;
 
+/** 워터마크(>= 비교) 시각에 이미 정산한 경기 id — 같은 마지막 경기를 매 tick 다시 읽어 빈 호출(granted:false) 5건을 내던 것을 막는다.
+ *  room → { watermark, gameIds }. 워터마크가 전진하면 초기화. 프로세스 재시작 시 비어도 멱등 키가 중복을 막으므로 안전. */
+const settledAtWatermark = new Map<string, { watermark: string; gameIds: Set<string> }>();
+
 interface GameRow {
     game_id: string;
     game_date: string;
@@ -155,8 +159,11 @@ async function settleLeague(leagueId: string, bracket: Bracket | null, regularSe
 
     let lastSettledAt: string | null = null;
     let granted = 0;
+    const seen = settledAtWatermark.get(roomId);
+    const alreadyDone = seen && seen.watermark === watermark ? seen.gameIds : new Set<string>();
 
     for (const g of games as GameRow[]) {
+        if (alreadyDone.has(g.game_id)) continue;                                      // 워터마크 시각의 이미 정산한 경기
         const startMs = Date.parse(g.scheduled_at!);
         if (startMs + replayLengthMs(ctx.replayMs, g.ot_periods) > ctx.now) break;   // 첫 미공개 경기에서 멈춤
         if (g.home_score == null || g.away_score == null) break;                      // 비정상 행 — 다음 tick 재시도
@@ -165,11 +172,17 @@ async function settleLeague(leagueId: string, bracket: Bracket | null, regularSe
         if (!ok) break;                                                               // 지급 실패 → 워터마크 고정, 재시도
         granted++;
         lastSettledAt = g.scheduled_at;
+        if (lastSettledAt === watermark) alreadyDone.add(g.game_id);
     }
 
     const effectiveWatermark = lastSettledAt ?? watermark;
     if (lastSettledAt && lastSettledAt !== watermark) {
         await supabase.from('rooms').update({ points_settled_through: lastSettledAt }).eq('id', roomId);
+        // 새 워터마크 시각의 경기들만 다음 tick 의 건너뛰기 대상
+        const ids = new Set((games as GameRow[]).filter(g => g.scheduled_at === lastSettledAt && Date.parse(g.scheduled_at!) + replayLengthMs(ctx.replayMs, g.ot_periods) <= ctx.now).map(g => g.game_id));
+        settledAtWatermark.set(roomId, { watermark: lastSettledAt, gameIds: ids });
+    } else if (watermark) {
+        settledAtWatermark.set(roomId, { watermark, gameIds: alreadyDone });
     }
     if (granted > 0 && ctx.owners.size > 0) console.log(`[points] league=${leagueId} 경기 정산 ${granted}경기 (through ${lastSettledAt})`);
 
