@@ -202,9 +202,6 @@ async function tick(): Promise<void> {
         runSimGames(now),
         checkSeasonCompletions(),
         runPostRevealTransitions(),
-        runDailyPointSettlements(),      // [2026-11-08] BP 경기 정산 — 공개된 정규시즌·플레이인·플레이오프 경기 + 플옵 사건 보상
-        runAllStarPointSettlements(),    // [2026-11-08] BP 올스타·어워드 정산 — league_events.points_settled_at 표식
-        runAchievementSweeps(),          // [2026-11-08] BP 도전 과제 — 시즌 종료형(league_user_history) + 운영(5분 간격)
         runScheduledSeasonAwards(now),
         runAllStarVoteUpdates(),
         runThreePointContestNews(),
@@ -219,6 +216,26 @@ async function tick(): Promise<void> {
         sweepPersonalDraftDeadlines(now),
         runFatigueMidnights(),
     ]);
+
+    kickPointsJobs();
+}
+
+// ── BP 정산 — tick 과 분리해 비동기로 ──────────────────────────────────────────
+// [2026-11-08 핫픽스] 소급 정산(200경기 배치 ≈ 2.5분)이 tick 안에서 await 되자 tickRunning 가드 때문에 다음 tick 들이 전부
+// 건너뛰어져 플레이오프 경기 시뮬이 지연됐다(T_R3_M1_G6 52초 지연). 정산은 경기 시뮬과 독립이므로 기다리지 않고 띄우되,
+// 자체 가드로 겹치지 않게 한다(원장 키·게임 표식이 멱등이라 중복 실행도 안전하지만 DB 부하를 피한다).
+let pointsJobsRunning = false;
+
+function kickPointsJobs(): void {
+    if (pointsJobsRunning) return;
+    pointsJobsRunning = true;
+    Promise.allSettled([
+        runDailyPointSettlements(),      // 경기 정산 — 공개된 정규시즌·플레이인·플레이오프 경기 + 플옵 사건 보상 + 선수 스탯 마일스톤
+        runAllStarPointSettlements(),    // 올스타·어워드 정산 — league_events.points_settled_at 표식
+        runAchievementSweeps(),          // 도전 과제 — 시즌 종료형(league_user_history) + 운영(5분 간격)
+    ])
+        .catch(e => console.error('[scheduler] points jobs error:', e))
+        .finally(() => { pointsJobsRunning = false; });
 }
 
 // ── 멀티 경기 간 체력 회복: 가상 자정 처리 (docs/plan/multiplayer-fatigue.md 3-3, 7단계) ──────
