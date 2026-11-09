@@ -5,6 +5,7 @@ import { BoardPick } from './DraftBoard';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
 import { formatMoney } from '../../utils/formatMoney';
+import { DraftPlayerHover } from './DraftPlayerHover';
 
 interface PickHistoryProps {
     picks: BoardPick[];
@@ -101,8 +102,12 @@ const PickHistoryComponent: React.FC<PickHistoryProps> = ({ picks, totalRounds, 
                                 {resolveTeamDisplay(pick.teamId, teamMeta).abbr}
                             </span>
                             {/* Player name */}
-                            <span className={`text-sm font-semibold truncate flex-1 ${isUserPick ? 'text-emerald-300' : 'text-slate-200'}`}>
-                                {pick.playerName}
+                            <span className="flex-1 min-w-0 truncate">
+                                <DraftPlayerHover playerId={pick.playerId}>
+                                    <span className={`text-sm font-semibold ${isUserPick ? 'text-emerald-300' : 'text-slate-200'}`}>
+                                        {pick.playerName}
+                                    </span>
+                                </DraftPlayerHover>
                             </span>
                             {/* 생성 연봉 — alternative 계약 모드에서만 값이 있음 */}
                             {pick.salary != null && (

@@ -5,6 +5,7 @@ import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { Button } from '../common/Button';
 import { formatMoney } from '../../utils/formatMoney';
+import { DraftPlayerHover } from './DraftPlayerHover';
 
 interface MyRosterProps {
     players: Player[];
@@ -115,7 +116,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                             {player ? (
                                 <>
                                     <OvrBadge value={player.ovr} size="sm" />
-                                    <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
+                                    <DraftPlayerHover playerId={player.id}><span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span></DraftPlayerHover>
                                     {salaryOf(player.id)}
                                 </>
                             ) : (
@@ -142,7 +143,7 @@ const MyRosterComponent: React.FC<MyRosterProps> = ({ players, existingRoster, m
                                         {player.position}
                                     </span>
                                     <OvrBadge value={player.ovr} size="sm" />
-                                    <span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span>
+                                    <DraftPlayerHover playerId={player.id}><span className={`text-sm font-semibold truncate ${isNewPick ? 'text-emerald-300' : newPickIds ? 'text-slate-500' : 'text-slate-200'}`}>{player.name}</span></DraftPlayerHover>
                                     {salaryOf(player.id)}
                                 </>
                             ) : (

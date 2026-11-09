@@ -33,6 +33,7 @@ import { useIsPhone } from '../../../hooks/useViewportClass';
 import { TabBar } from '../../../components/common/TabBar';
 import { BottomSheet } from '../../../components/mobile/BottomSheet';
 import { PhoneDraftHeader } from '../../../components/draft/phone/PhoneDraftHeader';
+import { DraftPlayerHoverContext, type DraftPlayerHoverLookup } from '../../../components/draft/DraftPlayerHover';
 import { PhoneDraftBoardStrip } from '../../../components/draft/phone/PhoneDraftBoardStrip';
 import { PhoneDraftPool } from '../../../components/draft/phone/PhoneDraftPool';
 import { PhoneDraftQueue } from '../../../components/draft/phone/PhoneDraftQueue';
@@ -53,7 +54,7 @@ const POSITION_COLORS: Record<string, string> = {
  */
 function toPlayer(p: DraftPoolPlayer, applyCustomOverrides = false): Player {
     return mapRawPlayerToRuntimePlayer(
-        { id: p.id, name: p.name, position: p.position, salary: p.salary, base_attributes: p.base_attributes, ovr_base: p.ovr_base, ovr_custom: p.ovr_custom },
+        { id: p.id, name: p.name, position: p.position, salary: p.salary, base_attributes: p.base_attributes, tendencies: p.tendencies, ovr_base: p.ovr_base, ovr_custom: p.ovr_custom },
         applyCustomOverrides,
         true,
     );
@@ -371,10 +372,22 @@ const MultiDraftView: React.FC = () => {
     const [popupPlayerId, setPopupPlayerId] = useState<string | null>(null);
     const [adminOpen, setAdminOpen] = useState(false);
     // 지명된 선수 포함 전체 풀 — 기록·로스터에서 이름을 탭해도 같은 팝업을 띄우기 위해
+    // [2026-11-09] 데스크톱 이름 호버 카드도 같은 맵을 쓴다(폰 전용 가드 제거)
     const allPlayersById = useMemo((): Map<string, Player> => {
-        if (!isPhone) return new Map();
         return new Map(poolPlayers.map(p => [p.id, toPlayer(p, useCustomOverrides)]));
-    }, [isPhone, poolPlayers, useCustomOverrides]);
+    }, [poolPlayers, useCustomOverrides]);
+    const draftPicksForHover = draftState?.picks;
+    const hoverLookup = useMemo((): DraftPlayerHoverLookup => {
+        const pickById = new Map((draftPicksForHover ?? []).map(p => [p.playerId, p]));
+        return {
+            getPlayer: (id) => allPlayersById.get(id),
+            getDrafted: (id) => {
+                const pk = pickById.get(id);
+                return pk ? { teamId: pk.teamId, round: pk.round, pickNumber: pk.pickIndex + 1 } : null;
+            },
+            teamMeta,
+        };
+    }, [allPlayersById, draftPicksForHover, teamMeta]);
     // 방금 지명된 셀 강조(폰은 발표 문구가 없어 보드 셀 emerald 링 2초) — 픽 수가 "늘어났을 때"만
     const picksLen = draftState?.picks.length ?? 0;
     const lastPick = picksLen > 0 ? draftState!.picks[picksLen - 1] : undefined;
@@ -625,6 +638,7 @@ const MultiDraftView: React.FC = () => {
 
     if (draftState.status === 'waiting') {
         return (
+            <DraftPlayerHoverContext.Provider value={hoverLookup}>
             <div className="pretendard flex flex-col h-screen bg-slate-950">
 
                 {/* ── 드래프트 룸 헤더 (시작까지 남은 시간 표시) ── */}
@@ -707,6 +721,7 @@ const MultiDraftView: React.FC = () => {
                     </div>
                 </div>
             </div>
+            </DraftPlayerHoverContext.Provider>
         );
     }
 
@@ -721,6 +736,7 @@ const MultiDraftView: React.FC = () => {
     } : undefined;
 
     return (
+        <DraftPlayerHoverContext.Provider value={hoverLookup}>
         <div ref={containerRef} className="pretendard flex flex-col h-screen bg-slate-950">
 
             {/* ── 어드민 패널 (admin_user_id 일치 시만 표시) ── */}
@@ -825,6 +841,7 @@ const MultiDraftView: React.FC = () => {
                 </div>
             </div>
         </div>
+        </DraftPlayerHoverContext.Provider>
     );
 };
 

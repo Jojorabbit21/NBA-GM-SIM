@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import type { RoomTeamMetaMap } from '../../types/multiDraft';
 import { resolveTeamDisplay } from './teamMetaLookup';
 import { TeamLogo } from '../common/TeamLogo';
+import { DraftPlayerHover } from './DraftPlayerHover';
 
 // [2026-09-11] "배경에 로고를 크게 클리핑되게" 요청 — DraftHeader.tsx의 배경 워터마크
 // 패턴(overflow-hidden 컨테이너 + 확대된 저투명도 로고)을 팀 헤더 카드에도 적용. 부모(th)가
@@ -266,12 +267,18 @@ const DraftBoardComponent: React.FC<DraftBoardProps> = ({
                                                                 {pick.position}
                                                             </span>
                                                         </div>
-                                                        <span
-                                                            className={`${phone ? 'text-xs' : 'text-sm'} font-bold text-center leading-tight break-words line-clamp-2`}
-                                                            style={{ color: posColor }}
-                                                        >
-                                                            {pick.playerName}
-                                                        </span>
+                                                        {(() => {
+                                                            const nameEl = (
+                                                                <span
+                                                                    className={`${phone ? 'text-xs' : 'text-sm'} font-bold text-center leading-tight break-words line-clamp-2`}
+                                                                    style={{ color: posColor }}
+                                                                >
+                                                                    {pick.playerName}
+                                                                </span>
+                                                            );
+                                                            // 폰은 탭이 mouseenter로 에뮬레이션되므로 호버 카드를 붙이지 않는다(폰은 탭 팝업)
+                                                            return phone ? nameEl : <DraftPlayerHover playerId={pick.playerId}>{nameEl}</DraftPlayerHover>;
+                                                        })()}
                                                     </div>
                                                 ) : isCurrent ? (
                                                     <div className="h-full flex flex-col items-center justify-center gap-0.5 animate-pulse">

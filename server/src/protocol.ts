@@ -59,6 +59,8 @@ export interface DraftPoolPlayer {
     position: string;
     salary: number;
     base_attributes: Record<string, unknown>;
+    /** [2026-11-09] meta_players.tendencies(zones/lateral_bias) — 스카우팅 리포트 습관 문장용. 클라 types/multiDraft.ts 미러 */
+    tendencies?: Record<string, unknown> | null;
     /** [2026-10-22] 고정 OVR 컬럼 — 클라이언트가 매퍼에 그대로 넘겨 서버와 같은 OVR을 쓰도록 스냅샷에 실어 보낸다. */
     ovr_base?: number | null;
     ovr_custom?: number | null;

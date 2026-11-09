@@ -7,6 +7,7 @@ import { Button } from '../common/Button';
 import { IconButton } from '../common/IconButton';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { getAttrColor } from '../../utils/attrRatingColor';
+import { DraftPlayerHover } from './DraftPlayerHover';
 
 // 가상 스크롤 — 올타임 풀 기준 800명 이상이 한 번에 DOM에 마운트되던 걸,
 // 실제로 화면에 보이는 행 근처만 렌더링하도록 줄인다(행 높이 고정 h-8=32px 전제).
@@ -234,7 +235,7 @@ const PlayerPoolComponent: React.FC<PlayerPoolProps> = ({
                                     <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>
-                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate">{player.name}</td>
+                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate"><DraftPlayerHover playerId={player.id}><span>{player.name}</span></DraftPlayerHover></td>
                                     <td
                                         className="px-1 py-0.5 text-left text-slate-400 truncate"
                                         title={player.secondaryArchetype ? `${player.archetype} / ${player.secondaryArchetype}` : player.archetype}

@@ -5,6 +5,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { IconButton } from '../common/IconButton';
 import { Button } from '../common/Button';
 import { InlineNotice } from '../common/InlineNotice';
+import { DraftPlayerHover } from './DraftPlayerHover';
 
 /** 큐 행에 표시할 최소 정보 — 미지명 선수는 풀에서, 이미 지명된 선수는 draft picks 에서 채운다(MultiDraftView). */
 export interface QueuePlayerInfo {
@@ -163,7 +164,7 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                                 {info ? <OvrBadge value={info.ovr} size="sm" /> : <span className="w-7 shrink-0" />}
                             </span>
                             <span className="text-sm font-semibold truncate flex-1 text-slate-200">
-                                {info?.name ?? id}
+                                <DraftPlayerHover playerId={id}><span>{info?.name ?? id}</span></DraftPlayerHover>
                             </span>
                             {/* 포지션 — 이름 뒤, 텍스트 좌측 정렬 */}
                             <span className="text-sm font-bold w-7 shrink-0 text-slate-400 text-left">

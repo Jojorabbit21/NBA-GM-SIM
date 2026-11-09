@@ -235,6 +235,8 @@ interface PlayerHoverCardProps {
     enabled?: boolean;
     /** true면 팝업에서 시즌 스탯 섹션을 통째로 숨긴다(능력치만) — 라이브 박스스코어처럼 시즌 스탯을 조회하지 않는 곳 */
     hideStats?: boolean;
+    /** 지정하면 기본 능력치+스탯 팝업 대신 이 팝업을 그린다(드래프트 룸 호버 카드 등). 위치 계산·딜레이는 그대로 */
+    renderPopup?: (ref: React.Ref<HTMLDivElement>, style: React.CSSProperties) => React.ReactNode;
     /** 자식은 반드시 단일 엘리먼트(기존 클릭 가능한 이름 span 등) — 별도 wrapper 없이
      *  cloneElement로 이벤트 핸들러만 얹어 기존 레이아웃(truncate/shrink-0 등)을 그대로 보존한다. */
     children: React.ReactElement;
@@ -244,7 +246,7 @@ interface PlayerHoverCardProps {
  *  기존 onClick(프로필 이동)은 children에 그대로 남아있어 클릭 동작은 변경되지 않는다.
  *  player가 없거나 enabled=false면 children을 그대로 반환 — 호출부는 항상 이 컴포넌트로
  *  감싸기만 하면 되고, 조건부 렌더링(삼항연산자/IIFE)을 매번 반복할 필요가 없다. */
-export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAbbr, enabled = true, hideStats, children }) => {
+export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAbbr, enabled = true, hideStats, renderPopup, children }) => {
     const [visible, setVisible] = useState(false);
     const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -347,7 +349,9 @@ export const PlayerHoverCard: React.FC<PlayerHoverCardProps> = ({ player, teamAb
         <>
             {child}
             {visible && coords && createPortal(
-                <PlayerRatingsStatsPopup ref={popupRef} player={player} teamAbbr={teamAbbr} hideStats={hideStats} style={{ position: 'fixed', top: coords.top, left: coords.left }} />,
+                renderPopup
+                    ? renderPopup(popupRef, { position: 'fixed', top: coords.top, left: coords.left })
+                    : <PlayerRatingsStatsPopup ref={popupRef} player={player} teamAbbr={teamAbbr} hideStats={hideStats} style={{ position: 'fixed', top: coords.top, left: coords.left }} />,
                 document.body,
             )}
         </>
