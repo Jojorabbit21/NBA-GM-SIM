@@ -52,6 +52,9 @@ export interface UserItemRow {
     acquired_at: string;
 }
 
+/** 코트 바닥 질감(상점 court_texture 상품 data.texture) — 렌더링은 components/multi/CourtPreview.tsx */
+export type CourtTexture = 'plank' | 'herringbone' | 'parquet' | 'gloss';
+
 export interface PurchaseResult {
     item_id: string;
     balance: number;

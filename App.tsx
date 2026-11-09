@@ -54,6 +54,7 @@ import AdminSimView from './views/multi/league/AdminSimView';
 
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
+import ShopPage from './pages/ShopPage';
 import LeagueInvitePage from './pages/LeagueInvitePage';
 import QuickPlayPage from './pages/QuickPlayPage';
 import ModeSelectPage from './pages/ModeSelectPage';
@@ -401,6 +402,7 @@ const App: React.FC = () => {
                     {/* ── 비보호 라우트 ── */}
                     <Route path="/" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/auth" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
+                    <Route path="/shop" element={<ShopPage />} />
                     <Route path="/quick" element={<QuickPlayPage />} />
                     <Route path="/multi/invite/:token" element={<LeagueInvitePage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />

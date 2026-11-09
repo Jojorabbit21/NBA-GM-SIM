@@ -7,7 +7,7 @@
  */
 import { supabase } from '../supabaseClient';
 import { actionFailure } from '../notifications/actionErrorCatalog';
-import type { LedgerRow, PurchaseResult, ShopItemRow, UserItemRow, WalletRow } from '../../types/points';
+import type { CourtTexture, LedgerRow, PurchaseResult, Rarity, ShopItemRow, UserItemRow, WalletRow } from '../../types/points';
 
 export const LEDGER_PAGE_SIZE = 50;
 
@@ -28,6 +28,28 @@ export const formatPoints = (n: number) => `${n.toLocaleString('ko-KR')} ${POINT
 
 /** 포인트 아이콘(금화+농구공 솔기, 3D 음영 SVG). 14px 이상에서 사용 — 2026-11-08 */
 export const POINTS_ICON_URL = '/images/points-coin.svg';
+
+/** 등급 표기(상점·도전 과제 공용) — 2026-11-09 */
+export const RARITY_LABEL: Record<Rarity, string> = { common: '커먼', rare: '레어', unique: '유니크', epic: '에픽' };
+export const RARITY_BADGE_CLASS: Record<Rarity, string> = {
+    common: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+    rare:   'bg-sky-500/15 text-sky-300 border-sky-500/30',
+    unique: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+    epic:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
+};
+export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'unique', 'epic'];
+
+/** 상점 상품 종류 표기 — 1차는 코트 디자인만 */
+export const ITEM_TYPE_LABEL: Record<string, string> = {
+    court_palette: '코트 팔레트',
+    court_texture: '바닥 질감',
+    court_rim:     '림 · 백보드',
+};
+
+/** 상품 data 스키마 (shop_items.data) */
+export interface CourtPaletteData { background: string; three: string; paint: string; line: string }
+export interface CourtRimData { rim: string; backboard: string }
+export interface CourtTextureData { texture: CourtTexture }
 
 /** 지갑이 아직 없는 유저(한 번도 지급받지 않음)는 0 으로 본다. */
 export async function fetchWallet(userId: string): Promise<WalletRow> {
