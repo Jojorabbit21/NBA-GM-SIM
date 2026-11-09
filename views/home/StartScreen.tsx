@@ -1,7 +1,9 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { StartMenu } from './StartMenu';
+import { LEGAL_PATHS, LEGAL_TABS, LegalContent } from './LegalContent';
 import { InlineLeagueList } from './InlineLeagueList';
 import { LoginModal } from '../../components/auth/LoginModal';
 import { supabase } from '../../services/supabaseClient';
@@ -11,7 +13,13 @@ import { APP_NAME, APP_YEAR, getLeagueLogoUrl } from '../../utils/constants';
 const BACKGROUND_IMAGE = '/images/background/background.webp';
 const APP_VERSION = 'v1.0.7';
 // 클릭해도 아직 아무 동작 없음(리다이렉트 미구현) — 추후 실제 페이지 연결 예정
-const FOOTER_LINKS = ['About', 'Terms of Use', 'Privacy', 'Discord'];
+// [2026-11-09] About/Terms/Privacy 는 pages/LegalPage.tsx 라우트로 연결. Discord 는 아직 초대 링크가 없어 경로 없음(표시만).
+const FOOTER_LINKS: { label: string; path: string | null }[] = [
+    { label: 'About',        path: '/about' },
+    { label: 'Terms of Use', path: '/terms' },
+    { label: 'Privacy',      path: '/privacy' },
+    { label: 'Discord',      path: null },
+];
 
 interface StartScreenProps {
     session:    Session | null;
@@ -26,6 +34,9 @@ interface StartScreenProps {
 export const StartScreen: React.FC<StartScreenProps> = ({
     session, nickname, onContinue, onNewGame, onLogout, onQuickPlay, quickplayOnly = false,
 }) => {
+    const navigate = useNavigate();
+    // [2026-11-09] /about·/terms·/privacy 로 들어오면 로고·푸터는 그대로 두고 가운데 컨텐츠(두 패널)만 법적 문서 패널로 스왑
+    const legalKind = LEGAL_PATHS[useLocation().pathname.replace(/\/+$/, '')] ?? null;
     const [loginModalOpen, setLoginModalOpen] = useState(false);
     const [loginReason, setLoginReason]       = useState<string | undefined>(undefined);
     const [pendingAction, setPendingAction]   = useState<(() => void) | null>(null);
@@ -80,6 +91,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                 <div className="shrink-0 flex justify-center mb-6">
                     <img src={getLeagueLogoUrl('Main')} alt={APP_NAME} className="h-16 w-auto select-none" draggable={false} />
                 </div>
+                {legalKind ? (
+                <div className="flex-1 min-h-0">
+                    <LegalContent
+                        kind={legalKind}
+                        onBack={() => navigate('/')}
+                        onSelect={(k) => navigate(LEGAL_TABS.find(t => t.kind === k)!.path)}
+                    />
+                </div>
+                ) : (
                 <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
                     {/* 좌측 — 로그인 상태면 우측과 같은 높이로 늘어나(self-stretch) 내부 "참여 중인 리그"가
                         flex-1+스크롤로 동작할 수 있게 하고, 비로그인(로그인 폼만 있을 때)은 자연 높이 유지 */}
@@ -103,6 +123,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                         <InlineLeagueList session={session} onRequireLogin={handleRequireLogin} />
                     </div>
                 </div>
+                )}
                 </div>
             </div>
 
@@ -112,9 +133,10 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                     {/* 좌측 50% — 링크 그룹 + 그 아래 카피라이트/버전 */}
                     <div className="text-center sm:text-left space-y-1">
                         <div className="flex items-center justify-center sm:justify-start gap-4">
-                            {FOOTER_LINKS.map(label => (
+                            {FOOTER_LINKS.map(({ label, path }) => (
                                 <button
                                     key={label}
+                                    onClick={() => { if (path) navigate(path); }}
                                     className="text-xs text-white hover:text-white/70 transition-colors"
                                 >
                                     {label}

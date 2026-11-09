@@ -403,6 +403,10 @@ const App: React.FC = () => {
                     <Route path="/" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/auth" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/shop" element={<ShopPage />} />
+                    {/* [2026-11-09] About/Terms/Privacy — 홈 화면(로고·푸터)은 그대로 두고 가운데 컨텐츠만 스왑(StartScreen 이 pathname 으로 분기) */}
+                    <Route path="/about" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
+                    <Route path="/terms" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
+                    <Route path="/privacy" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/quick" element={<QuickPlayPage />} />
                     <Route path="/multi/invite/:token" element={<LeagueInvitePage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
