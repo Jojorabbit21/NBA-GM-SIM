@@ -5,6 +5,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { IconButton } from '../common/IconButton';
 import { Button } from '../common/Button';
 import { InlineNotice } from '../common/InlineNotice';
+import { SegmentedControl } from '../common/SegmentedControl';
 import { DraftPlayerHover } from './DraftPlayerHover';
 
 /** 큐 행에 표시할 최소 정보 — 미지명 선수는 풀에서, 이미 지명된 선수는 draft picks 에서 채운다(MultiDraftView). */
@@ -40,10 +41,12 @@ interface DraftQueuePanelProps {
  * [2026-10-23] 멀티 드래프트 큐 패널 — 좌측 "드래프트 기록" 패널과 탭으로 자리를 나눠 쓴다
  * (docs/plan/draft-queue-plan.md D5/D7/D8). 헤더 h-10(PickHistory/MyRoster 와 동일), 행은 h-10(사용자 요청으로 풀/기록의 h-8 보다 높게).
  * 정렬은 네이티브 HTML5 드래그(↑/↓ 버튼은 사용자 요청으로 제거), 라이브러리 없음. 행 라디오/클릭은 풀과 선택 상태를 공유해 큐에서 바로 지명 가능.
- * 헤더 아래 서브헤더(h-8)에 남은 큐 선수의 포지션별 수를 표시.
+ * 헤더 아래 필터 줄(py-2)에 포지션 필터 + 저장 실패/미저장 안내. (포지션별 인원 수 행은 2026-11-09 제거)
  * [2026-11-08] 지명된 선수 행은 렌더하지 않는다(옛 D5의 취소선·흐림 표시 + "정리" 버튼 폐기). 목록·인덱스는 전부 `visible`(미지명) 기준.
  */
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
+
+const POS_FILTERS = ['All', ...POSITION_ORDER] as const;
 
 const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
     queue, playersById, draftedIds, onChange, selectedPlayerId, onSelect, disabled = false, headerLeft,
@@ -51,16 +54,16 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
 }) => {
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
+    // [2026-11-09] 포지션 필터 — 보기만 거른다. 순번·드래그 이동·제거는 전체(visible) 인덱스 기준 그대로
+    const [posFilter, setPosFilter] = useState<string>('All');
 
     // 보이는 목록 = 미지명 선수만. 정렬·제거는 이 목록을 기준으로 onChange 한다(지명된 id는 그때 저장본에서도 빠진다).
     const visible = useMemo(() => queue.filter(id => !draftedIds.has(id)), [queue, draftedIds]);
 
-    // 서브헤더용 — 남은(미지명) 큐 선수의 포지션별 수
-    const posCounts: Record<string, number> = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0 };
-    for (const id of visible) {
-        const pos = playersById.get(id)?.position;
-        if (pos && pos in posCounts) posCounts[pos] += 1;
-    }
+    const rows = useMemo(
+        () => visible.map((id, idx) => ({ id, idx })).filter(r => posFilter === 'All' || playersById.get(r.id)?.position === posFilter),
+        [visible, posFilter, playersById],
+    );
 
     const move = useCallback((from: number, to: number) => {
         if (from === to || from < 0 || to < 0 || from >= visible.length || to >= visible.length) return;
@@ -97,14 +100,14 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                 </div>
             </div>
 
-            {/* Sub-header — 포지션별 남은 큐 수 (MyRoster 헤더의 포지션 카운트와 같은 표기) + 저장 실패/미저장 안내 */}
-            <div className="shrink-0 px-3 h-8 flex items-center gap-2 border-b border-slate-800/50 bg-slate-800/15">
-                {POSITION_ORDER.map(pos => (
-                    <span key={pos} className="flex items-center gap-0.5">
-                        <span className="text-xs font-bold text-slate-400">{pos}</span>
-                        <span className="text-xs text-white">{posCounts[pos]}</span>
-                    </span>
-                ))}
+            {/* 포지션 필터 — 선수 풀 툴바와 같은 SegmentedControl */}
+            <div className="shrink-0 px-3 py-2 flex items-center border-b border-slate-800/50">
+                <SegmentedControl
+                    size="sm"
+                    value={posFilter}
+                    onChange={setPosFilter}
+                    options={POS_FILTERS.map(pos => ({ value: pos as string, label: pos }))}
+                />
                 <span className="ml-auto min-w-0 truncate">
                     {saveError ? (
                         <InlineNotice tone="danger" size="sm">{saveError}</InlineNotice>
@@ -121,7 +124,12 @@ const DraftQueuePanelComponent: React.FC<DraftQueuePanelProps> = ({
                         선수 풀에서 + 를 눌러 큐에 추가하세요
                     </div>
                 )}
-                {visible.map((id, idx) => {
+                {visible.length > 0 && rows.length === 0 && (
+                    <div className="px-3 py-4 text-sm text-slate-600 italic text-center ko-normal">
+                        해당 포지션 선수가 없습니다
+                    </div>
+                )}
+                {rows.map(({ id, idx }) => {
                     const info    = playersById.get(id);
                     const isDragging = dragIdx === idx;
                     const isOver     = overIdx === idx && dragIdx !== null && dragIdx !== idx;
