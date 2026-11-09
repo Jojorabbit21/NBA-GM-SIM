@@ -255,7 +255,8 @@ export type LeagueLogoName =
     | 'League' | 'AllStar' | 'East' | 'West'
     | 'RisingStar' | 'RisingA' | 'RisingB'
     | 'ThreeContest' | 'DunkContest'
-    | 'Main';   // 앱 워드마크(시작 메뉴·리그 로딩 화면) — 예전 public/logos/main.svg, 2026-10-13 league/Main.svg로 이동
+    | 'Main'    // 앱 워드마크 가로형(시작 화면 상단·리그 로딩 화면) — 예전 public/logos/main.svg, 2026-10-13 league/Main.svg로 이동, 2026-11-09 새 디자인으로 교체
+    | 'MainVert'; // 앱 워드마크 세로형(310×274) — 폰 뷰포트 리그 로딩 화면용 [2026-11-09]
 
 export const getLeagueLogoUrl = (name: LeagueLogoName): string => `/logos/league/${name}.svg`;
 

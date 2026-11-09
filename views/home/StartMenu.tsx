@@ -6,10 +6,10 @@ import { MyLeagues } from './MyLeagues';
 import { MultiplayerHistory } from './MultiplayerHistory';
 import { PointsWallet } from './PointsWallet';
 import { AuthForm } from '../auth/AuthForm';
-import { LogOut, Settings } from 'lucide-react';
+import { ChevronRight, LogOut, Settings, ShoppingBag } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { ProfileAvatar } from '../../components/common/ProfileAvatar';
 import { useMyProfile } from '../../hooks/useMyProfile';
-import { APP_NAME, getLeagueLogoUrl } from '../../utils/constants';
 
 interface StartMenuProps {
     session:    Session | null;
@@ -33,6 +33,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     session, nickname, onLogout, onLoginSuccess, forceNicknameSetup = false, onNicknameChange,
 }) => {
     const email = session?.user.email ?? '';
+    const navigate = useNavigate();
     // [2026-11-05] 프로필 색(profiles.avatar_color) — 사이드바 프로필 아이콘과 같은 조회
     const { data: myProfile } = useMyProfile(session?.user.id);
 
@@ -55,10 +56,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     return (
         <div className="w-full h-full bg-slate-800/60 border border-slate-700/50 rounded-2xl p-5 flex flex-col gap-5 animate-in fade-in zoom-in-95 duration-300 pretendard">
 
-            {/* 로고 */}
-            <div className="shrink-0 flex justify-center py-2">
-                <img src={getLeagueLogoUrl('Main')} alt={APP_NAME} className="h-9 w-auto" />
-            </div>
+            {/* 로고는 [2026-11-09] 패널 밖 화면 상단 중앙(StartScreen)으로 이동 */}
 
             {/* 계정 영역 */}
             {session ? (
@@ -86,6 +84,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
                     {/* [2026-11-08] 포인트(재화) 잔액 — 계정 행 아래 한 줄, 누르면 누적·최근 내역 */}
                     <PointsWallet userId={session.user.id} />
+                    {/* [2026-11-09] 상점 — 코스메틱은 계정 귀속이라 리그 밖(홈)에서 진입. 처음엔 계정 행 우측
+                        아이콘 버튼이었으나 사용자 요청으로 BP 행과 같은 형식의 목록 행으로 이동 */}
+                    <button
+                        onClick={() => navigate('/shop')}
+                        className="w-full flex items-center gap-2 text-left pt-3 group"
+                    >
+                        <ShoppingBag size={16} className="shrink-0 text-slate-400 group-hover:text-white transition-colors" />
+                        <span className="text-xs text-slate-400 group-hover:text-white ko-normal flex-1 transition-colors">상점</span>
+                        <ChevronRight size={14} className="text-slate-500" />
+                    </button>
                 </div>
             ) : (
                 <div className="shrink-0">

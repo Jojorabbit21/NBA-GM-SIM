@@ -20,12 +20,6 @@ interface InlineLeagueListProps {
     onRequireLogin: (opts?: { reason?: string; after?: () => void }) => void;
 }
 
-const TH: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-    <th className={`px-3 py-2 text-left text-sm font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap ${className}`}>
-        {children}
-    </th>
-);
-
 // 홈 화면 우측 패널에 바로 내장하는 리그 목록 — 기존 /multi(LeagueListView) 전체 페이지로 이동하지
 // 않고 여기서 바로 조회·참가할 수 있게 한다. 비로그인 조회 허용 여부는 LeagueListView와 동일하게
 // listLeaguesWithStats(userId)의 RLS 정책을 그대로 따른다.
@@ -76,6 +70,10 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
     }, [entries]);
 
     const filtered = entries.filter(e => e.league.type === activeTab);
+    // [2026-11-09] 진행 중(모집/드래프트/시즌) 세션과 종료된 세션을 한 표 안에서 그룹으로 나눠 보여준다.
+    // 종료 리그는 둘러보기용으로만 남으므로 아래쪽에 모아 둔다.
+    const ongoing = filtered.filter(e => e.league.status !== 'finished');
+    const ended   = filtered.filter(e => e.league.status === 'finished');
 
     const enterLeague = (leagueId: string, shortCode: string | null) => {
         navigate(`/multi/leagues/${shortCode ?? leagueId}/season`);
@@ -148,17 +146,21 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
                     </p>
                 ) : (
                     <table className="w-full text-sm">
-                        <thead className="bg-slate-900/60 sticky top-0">
-                            <tr>
-                                <TH className="pl-4">이름</TH>
-                                <TH>상태</TH>
-                                <TH>현재 날짜</TH>
-                                <TH>참여인원</TH>
-                                <TH className="pr-4 text-right">입장</TH>
-                            </tr>
-                        </thead>
                         <tbody className="divide-y divide-slate-800">
-                            {filtered.map((entry) => {
+                            {([
+                                { key: 'ongoing', label: '진행 중', rows: ongoing },
+                                { key: 'ended',   label: '종료',    rows: ended },
+                            ]).filter(g => g.rows.length > 0).map((group) => (
+                            <React.Fragment key={group.key}>
+                            {/* 종료 세션이 하나라도 있을 때만 그룹 라벨 행을 끼워 둘을 구분 — 진행 중만 있으면 기존 모양 그대로 */}
+                            {ended.length > 0 && (
+                                <tr className="bg-slate-900/50">
+                                    <td colSpan={5} className="pl-4 pr-3 pt-2.5 pb-1.5 text-sm font-bold text-slate-400 ko-normal whitespace-nowrap">
+                                        {group.label} <span className="tabular-nums text-slate-600">{group.rows.length}</span>
+                                    </td>
+                                </tr>
+                            )}
+                            {group.rows.map((entry) => {
                                 const { league, roomId, memberCount, maxPlayers, isJoined } = entry;
                                 const memberDisplay = (!userId && roomId === null) ? '—' : `${memberCount}/${maxPlayers}`;
                                 const virtualDate = roomId ? (virtualDates[roomId] ?? null) : null;
@@ -230,6 +232,8 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
                                     </tr>
                                 );
                             })}
+                            </React.Fragment>
+                            ))}
                         </tbody>
                     </table>
                 )}

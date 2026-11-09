@@ -5,7 +5,7 @@ import { StartMenu } from './StartMenu';
 import { InlineLeagueList } from './InlineLeagueList';
 import { LoginModal } from '../../components/auth/LoginModal';
 import { supabase } from '../../services/supabaseClient';
-import { APP_NAME, APP_YEAR } from '../../utils/constants';
+import { APP_NAME, APP_YEAR, getLeagueLogoUrl } from '../../utils/constants';
 
 // 라커룸 배경 이미지 — 파일이 없어도 아래 그라데이션 폴백 레이어가 항상 깔려있어 화면이 깨지지 않는다.
 const BACKGROUND_IMAGE = '/images/background/background.webp';
@@ -73,8 +73,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                 맞추면 로그인/회원가입 폼 높이나 리그 목록 로딩 상태에 따라 블록 높이가 바뀔 때마다
                 모달의 y좌표가 같이 흔들렸다. 화면이 넘치면(작은 뷰포트 + 긴 회원가입 폼 등) 이 영역
                 자체가 스크롤된다. */}
-            <div className="relative z-10 flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-4 pt-[12vh] pb-6">
-                <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-6 h-full">
+            <div className="relative z-10 flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-4 pt-[8vh] pb-6">
+                <div className="w-full max-w-5xl h-full flex flex-col">
+                {/* [2026-11-09] 서비스 로고 — 예전엔 좌측 패널(StartMenu) 안 최상단에 있었음. 두 패널 위, 화면 상단 중앙으로 이동.
+                    상단 오프셋을 12vh→8vh로 줄여 로고 행이 추가된 만큼 패널이 아래로 밀리는 걸 상쇄. */}
+                <div className="shrink-0 flex justify-center mb-6">
+                    <img src={getLeagueLogoUrl('Main')} alt={APP_NAME} className="h-16 w-auto select-none" draggable={false} />
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
                     {/* 좌측 — 로그인 상태면 우측과 같은 높이로 늘어나(self-stretch) 내부 "참여 중인 리그"가
                         flex-1+스크롤로 동작할 수 있게 하고, 비로그인(로그인 폼만 있을 때)은 자연 높이 유지 */}
                     <div className={`w-full lg:w-[420px] lg:shrink-0 ${session ? 'lg:self-stretch' : 'lg:self-start'}`}>
@@ -96,6 +102,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                     <div className="flex-1 min-h-0 min-w-0">
                         <InlineLeagueList session={session} onRequireLogin={handleRequireLogin} />
                     </div>
+                </div>
                 </div>
             </div>
 
