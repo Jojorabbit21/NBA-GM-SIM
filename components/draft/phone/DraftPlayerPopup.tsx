@@ -30,19 +30,22 @@ export interface DraftPlayerPopupProps {
     onDraft?: (p: Player) => void;
     /** 큐 버튼 노출 여부(참가자만) */
     showQueue?: boolean;
+    /** 방 히든 텐던시 시드(rooms.tendency_seed) — 선수 상세·엔진과 같은 리포트 */
+    tendencySeed?: string;
 }
 
-/** 스카우팅 리포트 줄 목록(긍정→부정→중립 순). 폰 아코디언과 데스크톱 호버 카드가 공유. */
-export function useScoutReport(player: Player | null) {
+/** 스카우팅 리포트 줄 목록(긍정→부정→중립 순). 폰 아코디언과 데스크톱 호버 카드가 공유.
+ *  [2026-11-10] 시드 = 방 시드(rooms.tendency_seed) — 예전 player.id 시드는 엔진과 무관한 성향을 보여줬다. */
+export function useScoutReport(player: Player | null, tendencySeed?: string) {
     return useMemo(() => {
         if (!player) return [];
         const order = { positive: 0, negative: 1, neutral: 2 } as const;
-        return [...generateScoutReport(player, player.id)].sort((a, b) => order[a.sentiment] - order[b.sentiment]);
-    }, [player]);
+        return [...generateScoutReport(player, tendencySeed)].sort((a, b) => order[a.sentiment] - order[b.sentiment]);
+    }, [player, tendencySeed]);
 }
 
-export const DraftPlayerScoutLines: React.FC<{ player: Player; className?: string }> = ({ player, className = '' }) => {
-    const report = useScoutReport(player);
+export const DraftPlayerScoutLines: React.FC<{ player: Player; tendencySeed?: string; className?: string }> = ({ player, tendencySeed, className = '' }) => {
+    const report = useScoutReport(player, tendencySeed);
     return (
         <div className={`flex flex-col gap-1 ${className}`}>
             {report.map((s, i) => (
@@ -126,7 +129,7 @@ export const DraftPlayerCardBody: React.FC<{
     );
 };
 
-export const DraftPlayerPopup: React.FC<DraftPlayerPopupProps> = ({ player, onClose, teamMeta, drafted, queued = false, onToggleQueue, canDraft = false, onDraft, showQueue = true }) => {
+export const DraftPlayerPopup: React.FC<DraftPlayerPopupProps> = ({ player, onClose, teamMeta, drafted, queued = false, onToggleQueue, canDraft = false, onDraft, showQueue = true, tendencySeed }) => {
     const [reportOpen, setReportOpen] = useState(false);
     useEffect(() => { setReportOpen(false); }, [player?.id]);
     useEffect(() => {
@@ -136,7 +139,7 @@ export const DraftPlayerPopup: React.FC<DraftPlayerPopupProps> = ({ player, onCl
         return () => document.removeEventListener('keydown', onKey);
     }, [player, onClose]);
 
-    const hasReport = useScoutReport(player).length > 0;
+    const hasReport = useScoutReport(player, tendencySeed).length > 0;
     if (!player) return null;
 
     return createPortal(
@@ -164,7 +167,7 @@ export const DraftPlayerPopup: React.FC<DraftPlayerPopupProps> = ({ player, onCl
                             <ChevronDown size={16} className={`text-slate-400 transition-transform ${reportOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {reportOpen && (
-                            <DraftPlayerScoutLines player={player} className={drafted ? 'pb-4' : 'pb-3'} />
+                            <DraftPlayerScoutLines player={player} tendencySeed={tendencySeed} className={drafted ? 'pb-4' : 'pb-3'} />
                         )}
                     </>
                 )}

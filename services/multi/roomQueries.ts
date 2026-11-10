@@ -307,6 +307,8 @@ export interface RoomRow {
      *  (team_finances[team_slug].deadMoney[]). 싱글플레이어 SavedTeamFinances와 동일 형태 —
      *  migrations/add_release_player_waive_dead_money.sql 참고. */
     team_finances: SavedTeamFinances | null;
+    /** [2026-11-10] 히든 텐던시 시드(방 생성 시 발급) — 드래프트 룸 스카우팅 리포트가 선수 상세·엔진과 같은 시드를 쓰도록 */
+    tendency_seed: string | null;
     schema_version: number;
     created_at: string;
     updated_at: string;
@@ -335,7 +337,7 @@ export interface RoomMemberRow {
 export const loadRoomByLeague = async (leagueId: string): Promise<RoomRow | null> => {
     const { data, error } = await supabase
         .from('rooms')
-        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, schema_version, created_at, updated_at')
+        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, tendency_seed, schema_version, created_at, updated_at')
         .eq('league_id', leagueId)
         .eq('status', 'active')
         .maybeSingle();
@@ -383,7 +385,7 @@ export const listUserActiveRooms = async (userId: string): Promise<RoomRow[]> =>
     const roomIds = memberships.map(m => m.room_id);
     const { data, error } = await supabase
         .from('rooms')
-        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, schema_version, created_at, updated_at')
+        .select('id, league_id, name, max_players, status, season, season_number, sim_date, offseason_phase, sim_settings, team_finances, tendency_seed, schema_version, created_at, updated_at')
         .in('id', roomIds)
         .eq('status', 'active');
 

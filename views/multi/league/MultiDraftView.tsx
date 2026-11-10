@@ -377,6 +377,8 @@ const MultiDraftView: React.FC = () => {
         return new Map(poolPlayers.map(p => [p.id, toPlayer(p, useCustomOverrides)]));
     }, [poolPlayers, useCustomOverrides]);
     const draftPicksForHover = draftState?.picks;
+    // [2026-11-10] 스카우팅 리포트 시드 = 방 시드(선수 상세 화면·엔진과 동일)
+    const tendencySeed = room?.tendency_seed ?? undefined;
     const hoverLookup = useMemo((): DraftPlayerHoverLookup => {
         const pickById = new Map((draftPicksForHover ?? []).map(p => [p.playerId, p]));
         return {
@@ -386,8 +388,9 @@ const MultiDraftView: React.FC = () => {
                 return pk ? { teamId: pk.teamId, round: pk.round, pickNumber: pk.pickIndex + 1 } : null;
             },
             teamMeta,
+            tendencySeed,
         };
-    }, [allPlayersById, draftPicksForHover, teamMeta]);
+    }, [allPlayersById, draftPicksForHover, teamMeta, tendencySeed]);
     // 방금 지명된 셀 강조(폰은 발표 문구가 없어 보드 셀 emerald 링 2초) — 픽 수가 "늘어났을 때"만
     const picksLen = draftState?.picks.length ?? 0;
     const lastPick = picksLen > 0 ? draftState!.picks[picksLen - 1] : undefined;
@@ -618,6 +621,7 @@ const MultiDraftView: React.FC = () => {
                     showQueue={isDraftParticipant}
                     canDraft={canDraft}
                     onDraft={draftFromPopup}
+                    tendencySeed={tendencySeed}
                 />
                 {isAdmin && leagueId && room?.id && (
                     <BottomSheet open={adminOpen} title="드래프트 관리" onClose={() => setAdminOpen(false)}>

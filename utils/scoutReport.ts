@@ -1,6 +1,33 @@
 
 import { Player } from '../types';
 import { generateHiddenTendencies, generateSaveTendencies, stringToHash } from './hiddenTendencies';
+import { calculateScreenerPhysique } from '../services/game/engine/pbp/archetypeSystem';
+
+/**
+ * [2026-11-10] PF/C 스크린 문구 — 엔진 resolveScreen의 두 입력을 따로 본다:
+ * 체격 = calculateScreenerPhysique(근력·키·몸무게, 엔진 가중 0.7) / 위치선정 = offBallMovement(엔진 "타이밍", 가중 0.3).
+ * 기준 ≈ 멀티 풀 PF/C 305명 사분위(체격 p25 57.7·p75 70.8 / offBallMovement p25 62·p75 78).
+ */
+const SCREEN_PHYS_HIGH_MIN = 70;
+const SCREEN_PHYS_LOW_BELOW = 58;
+const SCREEN_POS_GOOD_MIN = 78;
+const SCREEN_POS_POOR_BELOW = 62;
+
+type Tier = 0 | 1 | 2; // 0 = 상/좋음, 1 = 보통, 2 = 하/나쁨
+const SCREEN_LINES = {
+    elite:      { text: '스크린 능력이 탁월함', sentiment: 'positive' },
+    posOnly:    { text: '체격은 평범하나 스크린 위치선정 능력이 좋음', sentiment: 'positive' },
+    average:    { text: '평범한 스크린 능력을 보유함', sentiment: 'neutral' },
+    physOnly:   { text: '체격은 좋으나 스크린 위치선정이 좋지 않음', sentiment: 'neutral' },
+    weakBody:   { text: '스크린 능력은 좋으나 힘이 약해 스크린이 단단하지 않음', sentiment: 'neutral' },
+    poor:       { text: '스크린 능력이 좋지 않음', sentiment: 'negative' },
+} as const satisfies Record<string, { text: string; sentiment: ScoutReportSentiment }>;
+// [체격][위치선정] — 정의된 6칸 외 3칸: 상·보통 → physOnly, 중·나쁨 → average, 하·보통 → poor
+const SCREEN_GRID: (keyof typeof SCREEN_LINES)[][] = [
+    ['elite',   'physOnly', 'physOnly'],
+    ['posOnly', 'average',  'average'],
+    ['weakBody', 'poor',    'poor'],
+];
 
 export type ScoutReportSentiment = 'positive' | 'negative' | 'neutral';
 
@@ -86,6 +113,19 @@ export function generateScoutReport(player: Player, tendencySeed?: string): Scou
 
         if (st.foulProneness >= 0.5) push('파울하는 것에 대해 개의치 않는 경향이 있음', 'negative');
         else if (st.foulProneness <= -0.5) push('최대한 파울을 적게 하려고 노력함', 'positive');
+    }
+
+    // ── 스크린 (PF/C만) — 능력치 기반이라 시드 없이도 가능 ──
+    const isBig = (player.position ?? '').split(/[\/-]/).some(pos => pos.trim() === 'PF' || pos.trim() === 'C');
+    if (isBig) {
+        const phys = calculateScreenerPhysique({ strength: player.strength, height: player.height, weight: player.weight });
+        const pos = player.offBallMovement ?? 70;
+        if (Number.isFinite(phys) && Number.isFinite(pos)) {
+            const physTier: Tier = phys >= SCREEN_PHYS_HIGH_MIN ? 0 : phys < SCREEN_PHYS_LOW_BELOW ? 2 : 1;
+            const posTier: Tier = pos >= SCREEN_POS_GOOD_MIN ? 0 : pos < SCREEN_POS_POOR_BELOW ? 2 : 1;
+            const line = SCREEN_LINES[SCREEN_GRID[physTier][posTier]];
+            push(line.text, line.sentiment);
+        }
     }
 
     // ── 습관 (lateralBias + zone pref) — 시드 없이도 가능, 순수 스타일 묘사 → 중립 ──

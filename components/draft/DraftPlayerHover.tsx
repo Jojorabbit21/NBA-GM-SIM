@@ -11,6 +11,8 @@ export interface DraftPlayerHoverLookup {
     getPlayer: (playerId: string) => Player | undefined;
     getDrafted: (playerId: string) => { teamId: string; round: number; pickNumber: number } | null;
     teamMeta?: RoomTeamMetaMap;
+    /** 방 히든 텐던시 시드(rooms.tendency_seed) — 스카우팅 리포트용 */
+    tendencySeed?: string;
 }
 
 export const DraftPlayerHoverContext = createContext<DraftPlayerHoverLookup | null>(null);
@@ -34,7 +36,7 @@ export const DraftPlayerHover: React.FC<{ playerId: string; children: React.Reac
                 >
                     <DraftPlayerCardBody player={player} teamMeta={lookup.teamMeta} drafted={drafted} />
                     <div className="border-t border-slate-800 pt-2 text-[13px] font-bold text-slate-200">스카우팅 리포트</div>
-                    <DraftPlayerScoutLines player={player} className="pt-1 pb-3" />
+                    <DraftPlayerScoutLines player={player} tendencySeed={lookup.tendencySeed} className="pt-1 pb-3" />
                 </div>
             )}
         >
