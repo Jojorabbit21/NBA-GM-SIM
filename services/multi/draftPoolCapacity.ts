@@ -15,6 +15,8 @@ export interface DraftPoolFilterParams {
     draftYearMax:       number;
     /** [2026-10-22] 은퇴 필터 — 미지정이면 'all'. 서버 startDraft.ts와 같은 필터. */
     retiredFilter?:     DraftRetiredFilter;
+    /** [2026-11-10] true면 올타임 풀(include_alltime=true)만 — 미지정이면 false. 서버 startDraft.ts와 같은 필터. */
+    alltimeOnly?:       boolean;
     ovrMin:             number;
     ovrMax:             number;
     useCustomOverrides: boolean;
@@ -40,7 +42,7 @@ export async function fetchDraftPoolPlayers(params: DraftPoolFilterParams): Prom
     let query = supabase
         .from('meta_players')
         .select('id, position, base_attributes, tendencies, draft_year, ovr_base, ovr_custom');
-    query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax, params.retiredFilter);
+    query = applyMetaPlayerPoolFilter(query as any, params.draftYearMin, params.draftYearMax, params.retiredFilter, params.alltimeOnly);
 
     const { data, error } = await query;
     if (error) throw new Error(`드래프트 풀 조회 실패: ${error.message}`);

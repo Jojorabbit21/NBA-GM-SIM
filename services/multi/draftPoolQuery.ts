@@ -15,6 +15,9 @@
 // 제외되는데, 이는 필터 설계 문제가 아니라 해당 선수들의 draft_year 데이터 자체가 없어서다.
 // [2026-10-22] 은퇴 필터 추가 — meta_players.retired(boolean)와 leagues.draft_retired_filter.
 // 'all'=필터 없음(기본, 기존 동작), 'active'=현역만, 'retired'=은퇴 선수만. 연도 범위와 AND.
+// [2026-11-10] 올타임 풀 필터 추가 — leagues.draft_alltime_only(boolean, 기본 false). true면
+// meta_players.include_alltime=true만. 09-16에 신뢰 불가로 뺐던 컬럼이지만 이후 데이터가 정리돼
+// (10-30 은퇴자 75명 true 전환 등) 사용자 선택 옵션으로 복귀. 다른 필터와 AND.
 export type DraftRetiredFilter = 'all' | 'active' | 'retired';
 
 export function applyMetaPlayerPoolFilter<Q extends { eq: any; gte: any; lte: any }>(
@@ -22,11 +25,13 @@ export function applyMetaPlayerPoolFilter<Q extends { eq: any; gte: any; lte: an
     draftYearMin: number,
     draftYearMax: number,
     retiredFilter: DraftRetiredFilter | null | undefined = 'all',
+    alltimeOnly: boolean | null | undefined = false,
 ): Q {
     const min = Number.isFinite(draftYearMin) ? Math.trunc(draftYearMin) : 1946;
     const max = Number.isFinite(draftYearMax) ? Math.trunc(draftYearMax) : 2025;
     let q = query.eq('in_multi_pool', true).gte('draft_year', min).lte('draft_year', max);
     if (retiredFilter === 'active') q = q.eq('retired', false);
     else if (retiredFilter === 'retired') q = q.eq('retired', true);
+    if (alltimeOnly) q = q.eq('include_alltime', true);
     return q;
 }

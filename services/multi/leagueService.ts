@@ -89,6 +89,8 @@ export interface CreateLeagueParams {
         draftYearMax:         number;
         /** [2026-10-22] 풀 은퇴 필터 — 'all'(기본)/'active'(현역만)/'retired'(은퇴만). */
         draftRetiredFilter?:  'all' | 'active' | 'retired';
+        /** [2026-11-10] true면 올타임 풀(meta_players.include_alltime=true)만. 미지정 시 DB 기본값(false). */
+        draftAlltimeOnly?:    boolean;
         /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. 미지정 시 DB 기본값(false). */
         useCustomOverrides:   boolean;
         /** [2026-09-22] 드래프트 계약 생성 규칙 — 'standard'(실제 계약 유지+유효계약/신인 풀 제한) | 'alternative'(전원 라운드 스케일 재생성). */
@@ -201,6 +203,7 @@ export const createLeague = async (
     if (opts.draftYearMin         !== undefined) payload.draft_year_min          = opts.draftYearMin;
     if (opts.draftYearMax         !== undefined) payload.draft_year_max          = opts.draftYearMax;
     if (opts.draftRetiredFilter   !== undefined) payload.draft_retired_filter    = opts.draftRetiredFilter;
+    if (opts.draftAlltimeOnly     !== undefined) payload.draft_alltime_only      = opts.draftAlltimeOnly;
     if (opts.useCustomOverrides   !== undefined) payload.use_custom_overrides    = opts.useCustomOverrides;
     if (opts.contractMode         !== undefined) payload.contract_mode           = opts.contractMode;
     if (opts.draftSalaryScale     !== undefined) payload.draft_salary_scale      = opts.draftSalaryScale;
@@ -427,6 +430,8 @@ export interface UpdateLeagueSettingsParams {
     draftYearMin?:       number;
     draftYearMax?:       number;
     draftRetiredFilter?: 'all' | 'active' | 'retired';
+    /** [2026-11-10] true면 올타임 풀(meta_players.include_alltime=true)만. */
+    draftAlltimeOnly?:   boolean;
     /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부. */
     useCustomOverrides?: boolean;
     /** [2026-09-22] 드래프트 계약 생성 규칙 — 드래프트 시작 후엔 변경 불가(이미 적용됨). */
@@ -516,6 +521,7 @@ export const updateLeagueSettings = async (
     if (p.draftYearMin         !== undefined) payload.draft_year_min          = p.draftYearMin;
     if (p.draftYearMax         !== undefined) payload.draft_year_max          = p.draftYearMax;
     if (p.draftRetiredFilter   !== undefined) payload.draft_retired_filter    = p.draftRetiredFilter;
+    if (p.draftAlltimeOnly     !== undefined) payload.draft_alltime_only      = p.draftAlltimeOnly;
     if (p.useCustomOverrides   !== undefined) payload.use_custom_overrides    = p.useCustomOverrides;
     if (p.contractMode         !== undefined) payload.contract_mode           = p.contractMode;
     if (p.draftSalaryScale     !== undefined) payload.draft_salary_scale      = p.draftSalaryScale;

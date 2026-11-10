@@ -134,11 +134,12 @@ const LeagueLobbyPanel: React.FC = () => {
         const draftYearMin = league.draft_year_min ?? 2001;
         const draftYearMax = league.draft_year_max ?? 2025;
         const retiredFilter = league.draft_retired_filter ?? 'all';
+        const alltimeOnly = league.draft_alltime_only ?? false;
         const useCustomOverrides = shouldUseCustomOverrides(league);
 
         (async () => {
             let query = supabase.from('meta_players').select('id, base_attributes, ovr_base, ovr_custom');
-            query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax, retiredFilter);
+            query = applyMetaPlayerPoolFilter(query as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
             const { data } = await query;
             let count = 0;
             for (const raw of (data as any[]) ?? []) {
@@ -149,7 +150,7 @@ const LeagueLobbyPanel: React.FC = () => {
         })();
 
         return () => { cancelled = true; };
-    }, [league?.draft_ovr_min, league?.draft_ovr_max, league?.draft_year_min, league?.draft_year_max, league?.draft_retired_filter, league?.use_custom_overrides]);
+    }, [league?.draft_ovr_min, league?.draft_ovr_max, league?.draft_year_min, league?.draft_year_max, league?.draft_retired_filter, league?.draft_alltime_only, league?.use_custom_overrides]);
 
     // 로터리 추첨까지 남은 시간(큰 글씨 카운트다운) — 추첨이 끝나면(lotteryDone) 더 이상
     // 표시할 필요가 없어 정지.

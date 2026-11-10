@@ -25,9 +25,10 @@ export function multiSearchPoolQuery(league: LeagueRow | null) {
     const draftYearMin = league?.draft_year_min ?? 2001;
     const draftYearMax = league?.draft_year_max ?? 2025;
     const retiredFilter = league?.draft_retired_filter ?? 'all';
+    const alltimeOnly = league?.draft_alltime_only ?? false;
     const useCustomOverrides = shouldUseCustomOverrides(league);
     return {
-        queryKey: ['multiSearchPool', league?.id, ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, useCustomOverrides] as const,
+        queryKey: ['multiSearchPool', league?.id, ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, alltimeOnly, useCustomOverrides] as const,
         staleTime: Infinity,
         gcTime: Infinity,
         queryFn: async (): Promise<Player[]> => {
@@ -42,7 +43,7 @@ export function multiSearchPoolQuery(league: LeagueRow | null) {
             let q = supabase
                 .from('meta_players')
                 .select('id, name, position, draft_year, base_attributes, tendencies, ovr_base, ovr_custom');
-            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
+            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
             const { data, error } = await q;
             console.timeEnd('[perf] multiSearchPool: fetch');
             // [2026-10-01] 조회 실패(401 토큰 만료, 네트워크 중단 등)를 빈 배열로 삼키던 버그 수정.

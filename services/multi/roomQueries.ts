@@ -83,6 +83,8 @@ export interface LeagueRow {
     draft_year_min: number;
     draft_year_max: number;
     draft_retired_filter?: 'all' | 'active' | 'retired';
+    /** [2026-11-10] true면 meta_players.include_alltime=true 선수만 풀에 포함. */
+    draft_alltime_only?: boolean;
     /** [2026-09-16] custom_overrides(선수 피크시즌 스탯 오버라이드) 적용 여부 — 기본 false.
      *  utils/leagueOverrides.ts의 shouldUseCustomOverrides() 참조. */
     use_custom_overrides: boolean;

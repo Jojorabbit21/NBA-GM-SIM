@@ -31,6 +31,9 @@ interface Props {
     /** [2026-10-22] 은퇴 필터 — 둘 다 넘긴 호출부에서만 선택 UI를 표시한다(개인 팩 드래프트는 카드 풀이라 미전달). */
     retiredFilter?:          DraftRetiredFilter;
     onRetiredFilterChange?:  (v: DraftRetiredFilter) => void;
+    /** [2026-11-10] 올타임 풀 필터(include_alltime=true만) — 둘 다 넘긴 호출부에서만 선택 UI를 표시한다. */
+    alltimeOnly?:            boolean;
+    onAlltimeOnlyChange?:    (v: boolean) => void;
     draftFormat:          DraftFormat;
     onDraftFormatChange:  (v: DraftFormat) => void;
     useCustomOverrides:      boolean;
@@ -64,6 +67,11 @@ const RETIRED_OPTIONS: { value: DraftRetiredFilter; label: string; desc: string 
     { value: 'retired', label: '은퇴만',   desc: '은퇴한 선수만 풀에 포함' },
 ];
 
+const ALLTIME_OPTIONS: { value: boolean; label: string }[] = [
+    { value: false, label: '전체' },
+    { value: true,  label: '올타임만' },
+];
+
 const POS_ORDER = ['PG', 'SG', 'SF', 'PF', 'C'];
 
 export const DraftPoolSettings: React.FC<Props> = ({
@@ -72,6 +80,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
     draftYearMin, onDraftYearMinChange,
     draftYearMax, onDraftYearMaxChange,
     retiredFilter = 'all', onRetiredFilterChange,
+    alltimeOnly = false, onAlltimeOnlyChange,
     draftFormat, onDraftFormatChange,
     useCustomOverrides, onUseCustomOverridesChange,
     teamCount, totalRounds,
@@ -122,14 +131,14 @@ export const DraftPoolSettings: React.FC<Props> = ({
         timerRef.current = setTimeout(fetchStats, 400);
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, alltimeOnly, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear]);
 
     const fetchStats = async () => {
         setStatsLoading(true);
         try {
             // 저장 시 용량 검증(checkDraftPoolCapacity)과 정확히 같은 조회 경로 — 여기 표시되는
             // "총 선수"가 곧 검증에 쓰이는 풀 크기다.
-            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, retiredFilter, ovrMin, ovrMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear });
+            const all = await fetchDraftPoolPlayers({ draftYearMin, draftYearMax, retiredFilter, alltimeOnly, ovrMin, ovrMax, useCustomOverrides, contractMode, seasonStartYear, rookieClassYear });
 
             const byPos: Record<string, number> = {};
             for (const p of all) {
@@ -241,6 +250,29 @@ export const DraftPoolSettings: React.FC<Props> = ({
                 </div>
             )}
 
+            {/* 올타임 풀 필터 — meta_players.include_alltime 기준, 위 필터들과 AND */}
+            {onAlltimeOnlyChange && (
+                <div>
+                    <label className="text-xs text-slate-400 ko-normal block mb-2">올타임 풀</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {ALLTIME_OPTIONS.map(o => (
+                            <button
+                                key={String(o.value)}
+                                type="button"
+                                onClick={() => onAlltimeOnlyChange(o.value)}
+                                className={`py-2 rounded-xl text-xs font-bold transition-colors ${
+                                    alltimeOnly === o.value
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* custom_overrides(피크시즌 스탯) 적용 여부 */}
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
                 useCustomOverrides ? 'bg-indigo-600/20 border border-indigo-600/50' : 'bg-slate-900/60 border border-transparent'
@@ -319,6 +351,7 @@ export const DraftPoolSettings: React.FC<Props> = ({
                     draftYearMin={draftYearMin}
                     draftYearMax={draftYearMax}
                     retiredFilter={retiredFilter}
+                    alltimeOnly={alltimeOnly}
                     useCustomOverrides={useCustomOverrides}
                     onClose={() => setShowModal(false)}
                 />

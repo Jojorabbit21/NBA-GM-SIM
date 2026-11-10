@@ -191,6 +191,7 @@ const LeagueSettingsView: React.FC = () => {
     const [draftYearMin,      setDraftYearMin]      = useState(2001);
     const [draftYearMax,      setDraftYearMax]      = useState(2025);
     const [retiredFilter,      setRetiredFilter]     = useState<DraftRetiredFilter>('all');
+    const [alltimeOnly,        setAlltimeOnly]       = useState(false);
     const [useCustomOverrides, setUseCustomOverrides] = useState(false);
     const [draftFormat,       setDraftFormat]       = useState<DraftFormat>('snake');
     const [matchFormat,      setMatchFormat]      = useState('best_of_1');
@@ -357,6 +358,7 @@ const LeagueSettingsView: React.FC = () => {
         setDraftYearMin(league.draft_year_min ?? 2001);
         setDraftYearMax(league.draft_year_max ?? 2025);
         setRetiredFilter(league.draft_retired_filter ?? 'all');
+        setAlltimeOnly(league.draft_alltime_only ?? false);
         setUseCustomOverrides((league as any).use_custom_overrides ?? false);
         setDraftFormat((league.draft_pool_strategy ?? 'snake') as DraftFormat);
         setMatchFormat(league.match_format ?? 'best_of_1');
@@ -473,7 +475,7 @@ const LeagueSettingsView: React.FC = () => {
         if (isInProgress) return null;
         return checkDraftPoolCapacity({
             teamCount: maxTeams, totalRounds,
-            draftYearMin, draftYearMax, retiredFilter, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
+            draftYearMin, draftYearMax, retiredFilter, alltimeOnly, ovrMin: draftOvrMin, ovrMax: draftOvrMax, useCustomOverrides,
             contractMode, seasonStartYear: (league as any)?.virtual_season_year ?? new Date().getFullYear(), rookieClassYear: draftYearMax,
         });
     };
@@ -503,6 +505,7 @@ const LeagueSettingsView: React.FC = () => {
             draftYearMin,
             draftYearMax,
             draftRetiredFilter: retiredFilter,
+            draftAlltimeOnly:   alltimeOnly,
             useCustomOverrides,
             // [2026-10-24] 경기 포맷은 토너먼트만 — 메인리그는 "플레이오프" 탭이 관리(예전엔 여기서 단판으로 덮어썼음)
             ...(league?.type === 'tournament'
@@ -836,6 +839,7 @@ const LeagueSettingsView: React.FC = () => {
         draftYearMin !== (league.draft_year_min ?? 2001) ||
         draftYearMax !== (league.draft_year_max ?? 2025) ||
         retiredFilter !== (league.draft_retired_filter ?? 'all') ||
+        alltimeOnly !== (league.draft_alltime_only ?? false) ||
         useCustomOverrides !== ((league as any).use_custom_overrides ?? false) ||
         draftFormat !== (league.draft_pool_strategy ?? 'snake') ||
         (league.type === 'tournament' && (
@@ -2336,6 +2340,8 @@ const LeagueSettingsView: React.FC = () => {
                     draftYearMax={draftYearMax}
                     retiredFilter={retiredFilter}
                     onRetiredFilterChange={setRetiredFilter}
+                    alltimeOnly={alltimeOnly}
+                    onAlltimeOnlyChange={setAlltimeOnly}
                     onDraftYearMaxChange={setDraftYearMax}
                     draftFormat={draftFormat}
                     onDraftFormatChange={setDraftFormat}

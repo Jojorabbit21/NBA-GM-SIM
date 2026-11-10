@@ -243,6 +243,7 @@ async function computeDraftPoolIds(league: any): Promise<string[]> {
     const draftYearMin    = league.draft_year_min          ?? 2001;
     const draftYearMax    = league.draft_year_max          ?? 2025;
     const retiredFilter   = league.draft_retired_filter    ?? 'all';
+    const alltimeOnly     = league.draft_alltime_only      ?? false;
     const useCustomOverrides = shouldUseCustomOverrides(league);
 
     // 풀 구성 — draft_year_min~draft_year_max 범위 하나로 통일(2026-09-16, 'standard'/
@@ -251,7 +252,7 @@ async function computeDraftPoolIds(league: any): Promise<string[]> {
     // 꺼둔 리그에서 드래프트 풀만 오버라이드된 OVR로 보이면 드래프트 후 로스터/트레이드
     // 화면과 불일치하는 버그로 이어지므로 항상 이 값을 따라야 한다).
     let q = supabase.from('meta_players').select('id, position, base_attributes, draft_year, ovr_base, ovr_custom');
-    q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
+    q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
     const { data: poolData } = await q;
     // [2026-09-22] contract_mode 'standard' — 실제 계약을 그대로 쓰는 리그라 "룸 시즌 유효 계약이 없는
     // 선수(은퇴 레전드 등)"는 풀에서 제외하고 당해 클래스(draft_year ≥ draft_year_max) 신인만 예외.

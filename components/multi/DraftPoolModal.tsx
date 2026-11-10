@@ -16,6 +16,7 @@ interface Props {
     ovrMax:             number;
     draftYearMin:       number;
     retiredFilter?:     DraftRetiredFilter;
+    alltimeOnly?:       boolean;
     draftYearMax:       number;
     useCustomOverrides: boolean;
     onClose:            () => void;
@@ -37,7 +38,7 @@ const getStatColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter = 'all', useCustomOverrides, onClose }) => {
+export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter = 'all', alltimeOnly = false, useCustomOverrides, onClose }) => {
     const [players,   setPlayers]   = useState<Player[]>([]);
     const [loading,   setLoading]   = useState(true);
     const [search,    setSearch]    = useState('');
@@ -54,7 +55,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
         const fetch = async () => {
             setLoading(true);
             let q = supabase.from('meta_players').select('id, position, base_attributes, tendencies, ovr_base, ovr_custom');
-            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter);
+            q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
 
             const { data, error } = await (q as any);
             if (error) console.error('[DraftPoolModal] query error:', error.message);
@@ -67,7 +68,7 @@ export const DraftPoolModal: React.FC<Props> = ({ ovrMin, ovrMax, draftYearMin, 
 
         fetch();
         return () => { cancelled = true; };
-    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, useCustomOverrides]);
+    }, [ovrMin, ovrMax, draftYearMin, draftYearMax, retiredFilter, alltimeOnly, useCustomOverrides]);
 
     const sorted = useMemo(() => {
         let list = players;
