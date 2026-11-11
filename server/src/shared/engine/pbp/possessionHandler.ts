@@ -10,6 +10,8 @@ import { computePlayTypeWeights } from '../../game/config/playTypeProfiles.ts';
 import { SPACING_RESPONSE, computeSpacingIndex, computeSpacingDev, spacingHelpMult, spacingSag } from './spacingResponse.ts';
 import { POST_MATCHUP, computePostBattle, postZoneMult, postHelpMult, forcedFadeawayProb, postOffensiveFoulMult } from './postMatchup.ts';
 import type { PostBattle } from './postMatchup.ts';
+import { buildMatchupTable, findAssignedAttacker } from './matchupAssign.ts';
+import type { MatchupTable } from './matchupAssign.ts';
 import { resolveDynamicZone } from '../shotDistribution.ts';
 import { calculatePossessionTime } from './timeEngine.ts';
 
@@ -20,6 +22,7 @@ type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
  */
 function identifyDefender(
     defTeam: TeamState,
+    matchupTable: MatchupTable,  // [2026-11-11] 매치업 배정 표 (matchupAssign.ts, client 미러 참조)
     actor: LivePlayer,
     secondaryActor: LivePlayer | undefined,
     playType: PlayType,
@@ -91,8 +94,9 @@ function identifyDefender(
         if (stopper) return { defender: stopper, isSwitch: false, isBotchedSwitch: false, pnrCoverage: 'none' };
     }
 
-    // 2. Default Defender
-    let defender = defTeam.onCourt.find(p => p.position === actor.position);
+    // 2. Default Defender — [2026-11-11] 매치업 배정 표(기본 = 같은 슬롯, 대인방어는 상대 1옵션 배정 반영) (client 미러 참조)
+    //    이전: defTeam.onCourt.find(p => p.position === actor.position)
+    let defender = matchupTable.get(actor.playerId);
     if (!defender && defTeam.onCourt.length > 0) {
         defender = defTeam.onCourt[Math.floor(Math.random() * defTeam.onCourt.length)];
     }
@@ -134,8 +138,8 @@ function identifyDefender(
             : sliders.switchFreq * 0.05;
 
         if (Math.random() < switchChance) {
-            // Find screener's defender
-            let switchDef = defTeam.onCourt.find(p => p.position === screenPlayer.position);
+            // Find screener's defender — [2026-11-11] 매치업 배정 표 (이전: 같은 슬롯 조회)
+            let switchDef = matchupTable.get(screenPlayer.playerId);
             if (!switchDef) switchDef = defTeam.onCourt.find(p => p.playerId !== defender!.playerId);
 
             if (switchDef) {
@@ -162,7 +166,8 @@ function identifyDefender(
             else coverage = 'blitz';
 
             // 빅맨(스크리너 수비수) 식별
-            const screenerDef = defTeam.onCourt.find(p => p.position === screenPlayer.position)
+            // [2026-11-11] 스크리너의 수비수 = 매치업 배정 표 (이전: 같은 슬롯 조회), 없으면 C → PF
+            const screenerDef = matchupTable.get(screenPlayer.playerId)
                              || defTeam.onCourt.find(p => p.position === 'C')
                              || defTeam.onCourt.find(p => p.position === 'PF');
 
@@ -377,6 +382,7 @@ function resolveScreen(
     secondaryActor: LivePlayer | undefined,
     defender: LivePlayer,
     defTeam: TeamState,
+    matchupTable: MatchupTable,  // [2026-11-11] 매치업 배정 표
     isKickout: boolean,
     isSwitch: boolean,
     isBotchedSwitch: boolean,
@@ -395,9 +401,13 @@ function resolveScreen(
         // actor 본인이 스크리너 — 스크린을 받는 건 핸들러(secondaryActor)의 수비수
         screener = actor;
         const handler = secondaryActor;
-        screened = handler
-            ? defTeam.onCourt.find(p => p.position === handler.position && p.playerId !== defender.playerId)
-            : undefined;
+        // [2026-11-11] 핸들러의 수비수 = 매치업 배정 표 (이전: 같은 슬롯 조회, 표에 없으면 그대로)
+        const assigned = handler ? matchupTable.get(handler.playerId) : undefined;
+        screened = assigned && assigned.playerId !== defender.playerId
+            ? assigned
+            : handler
+                ? defTeam.onCourt.find(p => p.position === handler.position && p.playerId !== defender.playerId)
+                : undefined;
     } else {
         return { bonus: 0 };
     }
@@ -438,9 +448,12 @@ function resolveBlitzTrap(handler: LivePlayer, onBall: LivePlayer, helper?: Live
 }
 
 /** [2026-10-24] 블리츠 패스아웃 수신자의 수비수 — 트랩에 가담하지 않은 수비수 중 같은 슬롯, 없으면 helpDefIq 최고(로테이션). */
-function pickRotationDefender(defTeam: TeamState, receiver: LivePlayer, excludeIds: (string | undefined)[]): LivePlayer | undefined {
+// [2026-11-11] 수신자의 매치업 배정 수비수가 트랩에 가담하지 않았으면 그 수비수 (이전: 같은 슬롯부터) (client 미러 참조)
+function pickRotationDefender(defTeam: TeamState, matchupTable: MatchupTable, receiver: LivePlayer, excludeIds: (string | undefined)[]): LivePlayer | undefined {
     const pool = defTeam.onCourt.filter(p => !excludeIds.includes(p.playerId));
     if (pool.length === 0) return defTeam.onCourt[0];
+    const assigned = matchupTable.get(receiver.playerId);
+    if (assigned && !excludeIds.includes(assigned.playerId)) return assigned;
     return pool.find(p => p.position === receiver.position)
         ?? pool.reduce((best, p) => p.attr.helpDefIq > best.attr.helpDefIq ? p : best, pool[0]);
 }
@@ -484,7 +497,7 @@ interface PressOutcome {
  * fullCourtPress ≥ TRAP_MIN_LEVEL이면 getTrapRate() 확률로 트랩(보조 = 남은 1~3번 자리 중 도움 수비 점수 1위).
  * 상대 공격 리바운드로 이어진 포세션은 프레스를 설 수 없으므로 호출하지 않는다.
  */
-function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: TeamState, playType: PlayType): PressOutcome {
+function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: TeamState, playType: PlayType, matchupTable: MatchupTable): PressOutcome {
     const none: PressOutcome = { beaten: false, hitBonus: 0, shootingFoulBonus: 0, extraTime: 0 };
     const f = getPressFactor(defTeam);
     if (f <= 0 || offTeam.onCourt.length === 0 || defTeam.onCourt.length === 0) return none;
@@ -506,7 +519,8 @@ function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: Te
     if (carrier.playerId === offTeam.acePlayerId && defTeam.tactics.stopperId) {
         pressDef = defTeam.onCourt.find(p => p.playerId === defTeam.tactics.stopperId);
     }
-    if (!pressDef) pressDef = defTeam.onCourt.find(p => p.position === carrier.position);
+    // [2026-11-11] 운반자의 매치업 배정 수비수 (이전: 같은 슬롯 조회) (client 미러 참조)
+    if (!pressDef) pressDef = matchupTable.get(carrier.playerId);
     if (!pressDef) pressDef = defTeam.onCourt[Math.floor(Math.random() * defTeam.onCourt.length)];
 
     const end = (type: 'turnover' | 'foul', who: LivePlayer, isSteal: boolean, pressEvent: PossessionResult['pressEvent']): PressOutcome => {
@@ -867,8 +881,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     if (playCtx.postPending && isZone) {
         ({ zone: preferredZone, shotType } = finishPostUp(actor, sliders));
     }
+    // [2026-11-11] 매치업 배정 — 이 공격권의 "누가 누구를 막나" 표. 1차·스크리너·스위치·스크린·블리츠 패스아웃·프레스·헬프 킥아웃이
+    //   모두 이 표를 읽는다. 지역방어 공격은 같은 슬롯만(위치 수비), 대인방어는 상대 1옵션 배정 반영 (matchupAssign.ts, client 미러 참조)
+    const matchupTable = buildMatchupTable(offTeam, defTeam, isZone);
     let { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
-        defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
+        defTeam, matchupTable, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
 
     // [Safety] defender가 undefined면 턴오버로 처리 (크래시 방지)
@@ -901,7 +918,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-11-04] 프런트코트 인바운드(비보너스 파울·플래그런트·마지막 2분 타임아웃 전진 등)도 제외 — 백코트를 거치지 않음 (client 미러 참조)
     const pressActive = !state.lastEntryWasOffReb && !state.lastEntryWasSteal && state.inbound?.spot !== 'frontcourt';
     state.pressActiveThisPossession = pressActive && getPressFactor(defTeam) > 0;
-    const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType) : null;
+    const press = pressActive ? resolveFullCourtPress(state, offTeam, defTeam, selectedPlayType, matchupTable) : null;
     if (press?.result) return press.result;
 
     // 2.34 [2026-11-06] PnR 핸들러 스크린 판정을 슛 순간 → 커버리지 결정 직후로 (client 미러 참조). 결과가 트랩·턴오버·슛으로 이어진다.
@@ -910,7 +927,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     //   (이전: 판정은 슛 순간에만, 보너스 클린 +5 / 부분 +2 / 실패 0 — 스크리너가 나빠도 항상 이득). 스위치·미스 스위치는 판정 없음(그대로).
     let handlerScreen: ScreenResult | undefined;
     if (selectedPlayType === 'PnR_Handler' && !isKickout && defender) {
-        const hs = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, false, isSwitch, isBotchedSwitch, isZone);
+        const hs = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, matchupTable, false, isSwitch, isBotchedSwitch, isZone);
         handlerScreen = hs.result;
         // [2026-10-28] SCRN% 집계 — 핸들러 스크린은 여기서 한 번만(턴오버·트랩으로 끝난 포세션 포함)
         if (hs.result && hs.screener) {
@@ -946,7 +963,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const trapIds = [defender.playerId, screenerDefender?.playerId];
         const passCtx = resolvePlayAction(offTeam, 'PnR_Handler', sliders, { handler: actor, screener: secondaryActor });
         ({ actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = passCtx);
-        defender = pickRotationDefender(defTeam, actor, trapIds);
+        defender = pickRotationDefender(defTeam, matchupTable, actor, trapIds);
         calcCoverage = 'none';
         handlerScreen = undefined;   // 패스아웃 — 이후 슛은 수신자
     }
@@ -1036,7 +1053,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const hkChance = (hkCfg.PROB_MIN + (hkCfg.PROB_MAX - hkCfg.PROB_MIN) * passingNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0);
         if (Math.random() < hkChance) {
             const others = offTeam.onCourt.filter(p => p.playerId !== actor.playerId);
-            const open = others.find(p => p.position === helpDefender!.position) ?? others[Math.floor(Math.random() * others.length)];
+            // [2026-11-11] 헬퍼가 비운 선수 = 매치업 배정 표에서 헬퍼가 막던 공격수 (이전: 헬퍼와 같은 슬롯의 공격수) (client 미러 참조)
+            const open = findAssignedAttacker(matchupTable, others, helpDefender)
+                ?? others.find(p => p.position === helpDefender!.position) ?? others[Math.floor(Math.random() * others.length)];
             if (open) {
                 secondaryActor = actor;
                 actor = open;
@@ -1626,7 +1645,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         ? { bonus: (!isKickout && handlerScreen)
             ? (handlerScreen === 'clean' ? sCfg.HANDLER_CLEAN_BONUS : handlerScreen === 'partial' ? sCfg.HANDLER_PARTIAL_BONUS : -sCfg.HANDLER_FAIL_PENALTY) * (isZone ? sCfg.ZONE_MULT : 1)
             : 0 }
-        : resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+        : resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, matchupTable, !!isKickout, isSwitch, isBotchedSwitch, isZone);
     // [2026-10-28] SCRN% 집계 — 판정된 스크린 결과(clean/partial/fail)를 스크리너 박스스코어에 누적한다.
     // 판정 생략(킥아웃·스위치·미스 스위치·스크린 아닌 플레이)은 result 가 없어 집계되지 않는다. 판정 로직은 건드리지 않는다.
     if (screen.result && screen.screener) {

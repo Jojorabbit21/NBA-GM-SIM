@@ -85,6 +85,18 @@ export function calculateMatchupGap(
 
 // 매치업 격차를 -1~+1로 정규화하는 스케일 — 실측(실제 선수 매치업 시뮬레이션)으로 확정한 값.
 export const MATCHUP_GAP_SCALE = 60;
+/** [2026-11-11] 매치업 격차(gap / MATCHUP_GAP_SCALE, ±1로 자름)의 성공률 가중치(±12%p) — 매치업 배정 적합도와 공유 (server 미러 동일) */
+export const MATCHUP_GAP_HIT_WEIGHT = 0.12;
+
+/**
+ * [2026-11-11] 슛 수비 등급(무작위 수비 이완 제외) — calculateHitRate와 매치업 배정(matchupAssign.ts) 적합도가
+ * 같은 규칙을 읽도록 분리. 3점 = perDef, 그 외 = intDef, + defensiveMotor×10 + (defConsist−70)×0.3.
+ * 계산 순서는 이전 calculateHitRate 안의 식과 같아 값이 동일하다 (server 미러 동일).
+ */
+export function shotDefenseRating(defender: LivePlayer, zone: 'Rim' | 'Paint' | 'Mid' | '3PT'): number {
+    const base = zone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
+    return base + (defender.tendencies?.defensiveMotor ?? 0) * 10 + ((defender.attr?.defConsist ?? 50) - 70) * 0.3;
+}
 
 export function calculateHitRate(
     actor: LivePlayer,
@@ -174,19 +186,18 @@ export function calculateHitRate(
     hitRate -= (fatigueDef - 0.30) * 0.05;
 
     const offRating = zoneOffRating;
-    const baseDefRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
+    // [2026-11-11] 등급 계산은 shotDefenseRating()으로 분리(매치업 배정 적합도와 공유) — 이전: base(3PT perDef / 그 외 intDef)
+    //   + defensiveMotor×10, 이어서 += (defConsist−70)×0.3. 같은 순서라 값 동일 (server 미러 동일).
     // [2026-09-10] defensiveMotor(히든 트레잇 "수비 의지") 계수 3 → 10. 기존 계수(3)는 이론상
     // 최대 효과가 ±0.45%p 수준이라 체감 불가한 장식용 수치였음(intDef의 ±8.85%p와 20배 격차).
     // 400경기 실측(tendencySeed 정상 전달 확인 후) 기준 전체 인구 구간 스프레드 ~2.9%p,
     // 극단 선수(motor≤-0.8 vs ≥0.8) 간 6.4%p로 확인 — intDef보다는 작지만 체감 가능한 수준으로
     // 사용자 확정(docs/history/dev-log.md 참고). 파울 계산과는 무관(defensiveMotor는 이 hitRate
     // 계산에만 쓰임 — grep 검증 완료).
-    let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 10;
-
     // [defConsist] 수비 일관성 반영
-    // 1. Flat modifier: defConsist 70 기준 ±0.3/pt
+    // 1. Flat modifier: defConsist 70 기준 ±0.3/pt — shotDefenseRating() 안에 포함
+    let defRating = shotDefenseRating(defender, preferredZone);
     const defConsist = (defender.attr?.defConsist ?? 50);
-    defRating += (defConsist - 70) * 0.3;
     // 2. Defensive lapse: defConsist 낮을수록 간헐적 집중력 저하
     const lapseChance = Math.max(0, (70 - defConsist) * 0.003);
     if (lapseChance > 0 && Math.random() < lapseChance) {
@@ -356,7 +367,7 @@ export function calculateHitRate(
     const MISMATCH_THRESHOLD_NORM = 0.3; // |정규화 격차|가 이 이상이면 "유의미한 미스매치"로 표시
     const isMismatch = Math.abs(gapNormalized) >= MISMATCH_THRESHOLD_NORM;
 
-    hitRate += gapNormalized * 0.12; // -12% ~ +12%, 기존 상한 유지 + 양방향 + 스위치 무관
+    hitRate += gapNormalized * MATCHUP_GAP_HIT_WEIGHT; // -12% ~ +12%, 기존 상한 유지 + 양방향 + 스위치 무관
 
     if (!isMismatch && isSwitch) {
         // 스위치는 났지만 미스매치가 안 날 만큼 수비자가 포지션을 잘 잡은 경우만
