@@ -65,7 +65,7 @@ docs/
 │   └── inbox/
 │       └── inbox-index.md    Inbox 시스템 구조
 │
-├── infra/                ← 인프라/배포 (3개)
+├── infra/                ← 인프라/배포 (4개)
 │   ├── version-update.md     버전 업데이트 알림 시스템
 │   ├── supabase-monitoring.md Supabase 모니터링
 │   └── client-cache.md       클라이언트 캐시 계층(react-query 영속·경기 리더·localStorage 한도) 현황과 개선 과제
@@ -136,7 +136,7 @@ NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가
 **필수 참조**: UI 수정 전 [design-system.md](ui/design-system.md) 확인 (다크 테마, 컬러, 라운딩 규칙).
 
 ### [infra/](infra/) — 인프라/배포
-Vercel 배포, 캐시 전략, 버전 관리, Supabase 모니터링.
+Vercel 배포, 캐시 전략, 버전 관리, [릴리스 버전 체계](infra/release-versioning.md), Supabase 모니터링.
 
 ### [plan/](plan/plan-index.md) — 개발 계획
 멀티플레이어, 드래프트, 오프시즌 등 미래 기능 설계 문서.
