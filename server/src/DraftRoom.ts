@@ -8,7 +8,7 @@
  */
 import type { ServerWebSocket } from 'bun';
 import { supabase } from './supabaseAdmin';
-import { getBestAvailableId, getQueuedAvailableId } from './shared/multiDraftEngine';
+import { getBestAvailableId, getQueuedAvailableId, type AutoPickPlayer } from './shared/multiDraftEngine';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper';
 import {
     encode,
@@ -80,7 +80,7 @@ export class DraftRoom {
     private draftedIds = new Set<string>();
 
     // ── 풀 캐시 (방 생성 시 1회 로드) ────────────────────────────────────────
-    private pool: { id: string; ovr: number; position: string }[] = [];     // AI 픽용 정렬본
+    private pool: AutoPickPlayer[] = [];     // AI 픽용 정렬본 (+ 오토픽 팀 구성 가점용 능력치 묶음)
     private poolPlayers: DraftPoolPlayer[] = [];           // 스냅샷용
 
     // ── 인프라 ────────────────────────────────────────────────────────────────
@@ -181,6 +181,8 @@ export class DraftRoom {
         // 그대로 스냅샷/CPU 랭킹에 쓰면 부정확했다(버그) — 클라이언트가 렌더링마다 재계산하던 것도
         // 이 시점 1회 계산으로 옮겨서 클라이언트 쪽 계산 자체를 없앤다(성능 개선 겸).
         const applyCustomOverrides = this.config.applyCustomOverrides ?? false;
+        // [2026-11-11] 자동 지명 팀 구성 가점용 능력치 묶음 — 같은 매퍼 결과에서 꺼낸다(추가 조회 없음, multiDraftEngine AUTO_PICK_RULE)
+        const fitStats = new Map<string, Pick<AutoPickPlayer, 't3' | 'def' | 'plm' | 'archetypes'>>();
         for (const p of rows) {
             const mapped = mapRawPlayerToRuntimePlayer(p, applyCustomOverrides);
             (p.base_attributes as any).ovr = mapped.ovr;
@@ -188,11 +190,17 @@ export class DraftRoom {
             // 별도 계산 없이 이미 계산된 결과에서 필드 하나 더 꺼내는 것뿐이라 추가 비용 없음.
             (p.base_attributes as any).archetype = mapped.archetype;
             (p.base_attributes as any).secondaryArchetype = mapped.secondaryArchetype;
+            fitStats.set(p.id, {
+                t3: Math.round((mapped.threeCorner + mapped.three45 + mapped.threeTop) / 3),
+                def: Math.round(mapped.def),
+                plm: Math.round(mapped.plm),
+                archetypes: `${mapped.archetype ?? ''}${mapped.secondaryArchetype ?? ''}`,
+            });
         }
 
         this.poolPlayers = rows;
         this.pool = rows
-            .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0, position: p.position }))
+            .map(p => ({ id: p.id, ovr: (p.base_attributes as any)?.ovr ?? 0, position: p.position, ...fitStats.get(p.id) }))
             .sort((a, b) => b.ovr - a.ovr);
     }
 
@@ -404,9 +412,21 @@ export class DraftRoom {
         }
     }
 
-    /** 해당 팀이 이미 드래프트한 선수들의 포지션 목록 (오토픽 포지션 정합성 판단용) */
-    private teamPositions(teamId: string): string[] {
-        return this.picks.filter(p => p.teamId === teamId).map(p => p.position);
+    /** 해당 팀이 이미 드래프트한 선수들 (오토픽 포지션 필요·팀 구성 판단용) — 포지션은 픽 기록 기준, 풀에 없으면 능력치 묶음 없이 */
+    private teamRoster(teamId: string): AutoPickPlayer[] {
+        const byId = new Map(this.pool.map(p => [p.id, p]));
+        return this.picks
+            .filter(p => p.teamId === teamId)
+            .map(p => ({ ...(byId.get(p.playerId) ?? { id: p.playerId, ovr: p.ovr }), position: p.position }));
+    }
+
+    /** [2026-11-11] 현재 픽 다음부터 이 팀의 다음 차례 전까지 다른 팀 픽 수 (다음 차례가 없으면 0) — 오토픽 "기다리면 손해" 계산용 */
+    private picksUntilNextTurn(teamId: string): number {
+        const order = this.config.pickOrder;
+        for (let i = this.currentPickIndex + 1; i < order.length; i++) {
+            if (order[i].teamId === teamId) return i - this.currentPickIndex - 1;
+        }
+        return 0;
     }
 
     // [2026-10-23] 자동 지명 대상 선정 — 오토픽/타임아웃/skip-turn/autocomplete 4곳 공용.
@@ -420,7 +440,7 @@ export class DraftRoom {
                 if (fromQueue) return { id: fromQueue, source: 'queue' };
             }
         }
-        const bestId = getBestAvailableId(this.pool, [...this.draftedIds], this.teamPositions(entry.teamId));
+        const bestId = getBestAvailableId(this.pool, this.draftedIds, this.teamRoster(entry.teamId), this.picksUntilNextTurn(entry.teamId));
         return bestId ? { id: bestId, source: 'bpa' } : null;
     }
 
