@@ -7,6 +7,7 @@ import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem.ts';
 import { PlayType } from '../../types.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { computePlayTypeWeights } from '../../game/config/playTypeProfiles.ts';
+import { SPACING_RESPONSE, computeSpacingIndex, computeSpacingDev, spacingHelpMult, spacingSag } from './spacingResponse.ts';
 import { resolveDynamicZone } from '../shotDistribution.ts';
 import { calculatePossessionTime } from './timeEngine.ts';
 
@@ -579,6 +580,7 @@ function foulTroubleProbMod(pf: number): number {
 function resolveRimProtector(
     defTeam: TeamState, defender: LivePlayer, preferredZone: string,
     playType: PlayType, pnrCoverage: PnrCoverage, isZone: boolean,
+    protectorShift = 0,   // [2026-11-11] 스페이싱 반응 ② 프로텍터 체류 — spacingDev × PROTECTOR_SHIFT (맨투맨 하프코트 외는 0)
 ): LivePlayer | undefined {
     if (preferredZone !== 'Rim' && preferredZone !== 'Paint') return undefined;
     const cfg = SIM_CONFIG.RIM_PROTECTION;
@@ -599,7 +601,8 @@ function resolveRimProtector(
 
     const sliders = defTeam.tactics.sliders;
     let engage = cfg.ENGAGE_BASE
-        + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ; // [2026-10-27] helpDef 슬라이더 항 제거 — 헬프 빈도의 대가(킥아웃)가 닿지 않는 이득이었음
+        + (protector.attr.helpDefIq - 75) * cfg.ENGAGE_HELP_IQ // [2026-10-27] helpDef 슬라이더 항 제거 — 헬프 빈도의 대가(킥아웃)가 닿지 않는 이득이었음
+        + protectorShift; // [2026-11-11] 스페이싱 반응 ② 프로텍터 체류
     const isHalfCourt = playType !== 'Transition';
     if (isZone) {
         if (isHalfCourt) engage += (sliders.zoneUsage - 1) * cfg.ZONE_USAGE_BONUS;
@@ -945,7 +948,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [New 2026-07] 코트 전 구역 적용, 헬퍼 명시적 지정(존별 포지션 풀 + 랜덤), IQ×신체 이중 게이트
     const helpCfg = SIM_CONFIG.HELP_DEFENSE;
     const helpDefLevel = defTeam.tactics.sliders.helpDef;
-    const helpAttemptChance = helpCfg.ATTEMPT_BASE + (helpDefLevel - 1) * helpCfg.ATTEMPT_PER_LEVEL;
+    // [2026-11-11] 스페이싱 반응 — 오프볼 4명의 외곽 위협이 시대 기준보다 낮으면 헬프·프로텍터·세깅이 강해지고 높으면 약해진다
+    // (맨투맨 하프코트만, 3점 미적용). 산식·근거는 spacingResponse.ts / docs/plan/spacing-help-plan.md
+    const spacingDev = computeSpacingDev(computeSpacingIndex(offTeam, actor, sliders), state.simSettings?.playTypeEra, !isZone && selectedPlayType !== 'Transition');
+    const helpAttemptChance = Math.min(SPACING_RESPONSE.HELP_ATTEMPT_CAP,
+        (helpCfg.ATTEMPT_BASE + (helpDefLevel - 1) * helpCfg.ATTEMPT_PER_LEVEL) * spacingHelpMult(spacingDev));
     // [2026-10-27] 킥아웃 슛(이미 헬프를 끌어낸 뒤의 패스)에는 헬프 판정 생략 — 2차 로테이션 없음
     const helpAttempted = Math.random() < helpAttemptChance && !isKickout;
 
@@ -1023,7 +1030,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const helpHitRatePenalty = (helpAttempted && helpSuccess && !helpKicked) ? -helpCfg.HITRATE_PENALTY : 0;
 
     // 2.6 [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint) — 파울(개입 대가)·블락 공통 사용, 상세는 resolveRimProtector
-    const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone);
+    const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone, spacingDev * SPACING_RESPONSE.PROTECTOR_SHIFT);
+    // [2026-11-11] 스페이싱 반응 ③ 세깅 — 림·페인트 성공률 이동(킥아웃 슛 제외), 아래 calculateHitRate 합산에 들어감
+    const spacingSagMod = spacingSag(spacingDev, preferredZone, isKickout);
 
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
@@ -1559,7 +1568,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + defRebSuccessBonus + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + defRebSuccessBonus + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus + spacingSagMod,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
