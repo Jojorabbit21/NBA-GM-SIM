@@ -252,6 +252,23 @@ export const SIM_CONFIG = {
             [80, -0.012], [86, -0.022], [92, -0.035], [97, -0.045],
         ] as [number, number][],
 
+        // [2026-11-11] 자유투 패키지 ③ 골밑 2점 파울 (client·server 미러) — 실제 C 36분당 파울 3.54·FTr .333인데 엔진은 3.09·.250이었음
+        //   (09-14 빅맨 파울 축소가 실제보다 과함, bbref 2025-26). 상세 dev-log 2026-11-11 "자유투 패키지".
+        //   INTERIOR_SKILL_SCALE: 골밑 수비 실력 할인(INTERIOR_SKILL_CURVE × zoneScale)에 곱함 — 할인폭 25% 축소, 수비 실력 차이는 유지.
+        //   RIM_CONTACT_ADD: 림 슛 접촉 가산(킥아웃 슛 포함).
+        //   PLAYTYPE_CONTACT: 본인 마무리(킥아웃 슛 제외) 골밑 슛의 플레이별 접촉 가산 — Synergy 2024-25 플레이별 자유투 빈도(포스트업 16.2·
+        //   아이솔 13.3·속공 12.5·PnR 핸들러 9.9%)에서 엔진이 모자랐던 플레이만. 포스트업은 별도 예외 없이 이 가산 하나로 맞춤 →
+        //   포스트 수비 실력이 파울에도 남음(상대 골밑 수비 55대 17.8% → 95대 12.3%).
+        INTERIOR_SKILL_SCALE: 0.75,
+        RIM_CONTACT_ADD: 0.004,
+        PLAYTYPE_CONTACT: {
+            'PostUp': 0.075,
+            'Iso': 0.035,
+            'Transition': 0.02,
+            'PnR_Handler': 0.012,
+            'DriveKick': 0.012,
+        } as Partial<Record<string, number>>,
+
         // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
         // 기존 max(0,(x-5))*0.006(10단계 기준 5*0.006=3.0%p)의 최댓값을 그대로 유지하며
         // 대칭화 — 새 center(5.5)까지 거리(4.5)로 나눠 동일한 3.0%p 최댓값을 재현한다.
@@ -263,7 +280,29 @@ export const SIM_CONFIG = {
         MANIPULATOR_BONUS: 0.03,
 
         // And-1 drawFoul 커브 스케일 (DRAW_FOUL_CURVE × 이 값)
-        AND1_CURVE_SCALE: 0.15,
+        // [2026-11-11] 자유투 패키지 ② 앤드원 (client·server 미러) — 0.15 → 0.35, 기본 확률(이전 하드코딩 골밑 0.03·그 외 0.012) 상향.
+        //   실제 팀경기당 앤드원 자유투 2.38(pbpstats 2025-26) vs 이전 엔진 0.71 → 2.29.
+        AND1_CURVE_SCALE: 0.35,
+        AND1_BASE_INTERIOR: 0.10,   // Rim/Paint
+        AND1_BASE_OTHER: 0.03,      // Mid/3PT
+
+        // [2026-11-11] 자유투 패키지 ① 3점 슈팅 파울 전용 공식 (client·server 미러) — 위 존 공통 공식을 3점에서는 이걸로 교체:
+        //   DRAW_CURVE(슈터 drFoul, 가파름) + DEF_CURVE(수비수 perDef×0.65+defConsist×0.35, 약할수록 소폭 ↑) + (defIntensity−5.5)×DEF_INTENSITY_FACTOR
+        //   + foulProneness×FOUL_PRONENESS_FACTOR + 트랩 탈출 보너스. 파울 트러블·퍼리미터 미스매치 배수는 공통 적용, 클램프 하한은 공통 1% 대신 MIN_RATE.
+        //   근거: 실제 3점 시도 중 슈팅 파울 1.06%(팀경기당 자유투 1.20, pbpstats 2025-26) vs 이전 엔진 4.14%(4.59). 공통 하한 1%가 대부분 슈터를
+        //   실제(0~1%)보다 높게 묶던 숨은 원인. 파울 유도 스타는 유지(하든 실제 ~8.2% → 8.0%, 커리 ~3.8% → 3.1%).
+        THREE_PT: {
+            DRAW_CURVE: [
+                [40, 0.0003], [55, 0.0009], [64, 0.0022], [75, 0.0042], [85, 0.0082],
+                [90, 0.0145], [94, 0.026], [97, 0.046], [99, 0.085],
+            ] as [number, number][],
+            DEF_CURVE: [
+                [45, 0.003], [55, 0.0015], [71, 0], [86, -0.001], [97, -0.0015],
+            ] as [number, number][],
+            DEF_INTENSITY_FACTOR: 0.0004,
+            FOUL_PRONENESS_FACTOR: 0.001,
+            MIN_RATE: 0,
+        },
 
         // 클램프
         MIN_RATE: 0.01,
@@ -273,24 +312,33 @@ export const SIM_CONFIG = {
     NON_SHOOTING_FOUL: {
         // [2026-10-25] 0.025 → 0.05, MAX 0.06 → 0.12 (사용자 결정 C1) — 하네스: 파울 14.3→16.7, FTA 18.5→19.8, FTr .222→.241(NBA .244),
         // 파울아웃 0.032→0.055/팀경기, 포세션 95.3→94.4(보너스 전 파울이 시간 소모)
-        BASE_RATE: 0.05,
-        // defIntensity 보정: 5.5 기준 대칭(1단계 -2.0%p ~ 10단계 +2.0%p)
-        // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 그대로 유지
-        DEF_INTENSITY_FACTOR: (5 * 0.004) / 4.5,
+        // [2026-11-11] 자유투 패키지 ④ (client·server 미러) — BASE_RATE·DEF_INTENSITY_FACTOR·PLAYTYPE_MOD 전부 ×0.9(0.05→0.045 등), 그리고 절반(OFF_BALL_SHARE)은
+        //   공 없는 자리싸움 파울로 바꿈: 당하는 쪽 = 공 가진 선수 외 공격 코트 선수 중 리바운드 존재감((offReb+boxOut+strength)/3 − OFF_BALL_PRESENCE_BASE,
+        //   최소 1)^OFF_BALL_FOULED_POW 가중, 범하는 쪽 = 수비 코트 5명 중 (defReb 기준 같은 식)^OFF_BALL_FOULER_POW 가중. 플레이 종류 집계 제외(Synergy Misc처럼).
+        //   근거: 보너스 자유투 36분당 실제 C 0.83·PG 0.69 vs 이전 엔진 C 0.40·PG 0.89(pbpstats 2025-26) — 실제는 C가 비슈팅 파울을 가장 많이 얻음.
+        BASE_RATE: 0.045,
+        // defIntensity 보정: 5.5 기준 대칭(1단계 -1.8%p ~ 10단계 +1.8%p)
+        // 기존 max(0,(x-5))*0.004(10단계 기준 5*0.004=2.0%p)의 최댓값을 유지하던 (5*0.004)/4.5에 [2026-11-11] ×0.9
+        DEF_INTENSITY_FACTOR: 0.004,
         MAX_RATE: 0.12,
+        OFF_BALL_SHARE: 0.5,
+        OFF_BALL_PRESENCE_BASE: 40,
+        OFF_BALL_FOULED_POW: 2.5,
+        OFF_BALL_FOULER_POW: 0.5,
         // [2026-07-30] PostUp 1.5%p→0.6%p 재조정 (client 미러 참고) — PnR_Roll(1.0%p)은 유지
         // [2026-09-10] PostUp/PnR_Roll 추가 완화 — 이 엔진에서 두 플레이타입은 거의 전적으로
         // 빅맨이 액터(PostUp)/스크리너-롤맨(PnR_Roll)이라, 여기 모디파이어가 곧 빅맨 파울
         // 누적으로 직결된다. Iso/PnR_Handler/DriveKick/Cut은 대부분 가드가 액터라 그대로 둠
         // (빅맨 파울 트러블 조사 후속 조치, docs/history/dev-log.md 참고).
+        // [2026-11-11] 자유투 패키지 ④ — 전부 ×0.9 (이전 0.003/0.012/0.006/0.008/0.008/0.006/-0.010)
         PLAYTYPE_MOD: {
-            'PostUp': 0.003,
-            'Iso': 0.012,
-            'PnR_Roll': 0.006,
-            'PnR_Handler': 0.008,
-            'DriveKick': 0.008,
-            'Cut': 0.006,
-            'CatchShoot': -0.010,
+            'PostUp': 0.0027,
+            'Iso': 0.0108,
+            'PnR_Roll': 0.0054,
+            'PnR_Handler': 0.0072,
+            'DriveKick': 0.0072,
+            'Cut': 0.0054,
+            'CatchShoot': -0.009,
         } as Partial<Record<string, number>>,
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
@@ -522,6 +570,21 @@ export const SIM_CONFIG = {
         ] as [number, number][],
         FOUL_PAINT_MULT: 0.75,
         FOUL_PRONENESS_FACTOR: 0.01,    // × foulProneness(−1~+1)
+        // [2026-11-11] 블록 외 견제 (client·server 미러) — 개입한 프로텍터가 블록하지 못한 림·페인트 슛도 성공률이 깎인다:
+        //   감점 = clamp(CONTEST_BASE + (프로텍터 intDef − CONTEST_REF) × CONTEST_SLOPE, CONTEST_MIN, CONTEST_MAX), 페인트 × CONTEST_PAINT_MULT.
+        //   아무도 개입하지 않은 림·페인트 슛은 OPEN_BONUS(페인트 × OPEN_PAINT_MULT) — 리그 골밑 성공률은 그대로, 누가 골밑을 지키느냐로 갈린다.
+        //   개입 시 도움 수비 성공 감점(HELP_DEFENSE.HITRATE_PENALTY)은 이 감점으로 대체(이중 부과 방지, 파울의 helpBonusRate 생략과 같은 원칙).
+        // 근거: NBA 트래킹 2024-25 림 6ft 이내 상대 FG − 평소 FG(300회+ 100명) 평균 −2.9·p10 −9.4·최고 −13~−14. 이전엔 개입 효과가 블록뿐이라
+        //   블록 안 된 슛 성공률이 개입 유무와 같았고(63.8 vs 63.9%) 최고 수비수가 −10에 윙 선수가 섞였음. NBA Active 하네스 3시즌: 최고 −12~−13
+        //   (웸반야마·야니스), 득점 117.3→117.1·TS 58.64→58.53. 상세 dev-log 2026-11-11 "림 프로텍터 블록 외 견제".
+        CONTEST_REF: 70,
+        CONTEST_BASE: 0.04,
+        CONTEST_SLOPE: 0.004,
+        CONTEST_MIN: 0,
+        CONTEST_MAX: 0.16,
+        CONTEST_PAINT_MULT: 0.75,
+        OPEN_BONUS: 0.097,
+        OPEN_PAINT_MULT: 0.98,
     },
     // Steal System (커브 기반 재설계)
     STEAL: {

@@ -572,6 +572,17 @@ function foulTroubleProbMod(pf: number): number {
     return pf >= 5 ? ft.PROB_MOD[5] : pf >= 4 ? ft.PROB_MOD[4] : pf >= 3 ? ft.PROB_MOD[3] : 1.0;
 }
 
+// [2026-11-11] 자유투 패키지 ④ 공 없는 자리싸움 파울 대상 추첨 (client 미러 참조) — 리바운드 존재감
+// ((offReb 또는 defReb + boxOut + strength)/3 − OFF_BALL_PRESENCE_BASE, 최소 1)^지수 가중. 상수는 SIM_CONFIG.NON_SHOOTING_FOUL.OFF_BALL_*
+function pickByReboundPresence(pool: LivePlayer[], offense: boolean): LivePlayer {
+    const ns = SIM_CONFIG.NON_SHOOTING_FOUL;
+    const pow = offense ? ns.OFF_BALL_FOULED_POW : ns.OFF_BALL_FOULER_POW;
+    const w = pool.map(p => Math.pow(Math.max(1, ((offense ? p.attr.offReb : p.attr.defReb) + p.attr.boxOut + p.attr.strength) / 3 - ns.OFF_BALL_PRESENCE_BASE), pow));
+    let r = Math.random() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) return pool[i]; }
+    return pool[pool.length - 1];
+}
+
 /**
  * [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint 슛 전용) — 기존 헬프 블락 대체.
  * 1차 수비수를 뺀 코트 위 4명 중 rimProtector(blk·intDef·점프·키, 체력 반영) 가중 룰렛으로 1명 선정 → P_engage 판정.
@@ -1051,6 +1062,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // 2.6 [2026-10-25] 림 프로텍터 개입 판정 (Rim/Paint) — 파울(개입 대가)·블락 공통 사용, 상세는 resolveRimProtector
     const rimProtector = resolveRimProtector(defTeam, defender, preferredZone, selectedPlayType, pnrCoverage, isZone, spacingDev * SPACING_RESPONSE.PROTECTOR_SHIFT);
+    // [2026-11-11] 블록 외 견제 (client·server 미러) — 개입 = 프로텍터 intDef 비례 감점(도움 수비 감점 대체), 비개입 림·페인트 = 오픈 보너스.
+    //   산식·근거는 SIM_CONFIG.RIM_PROTECTION.CONTEST_* 주석.
+    let rimContestMod = 0;
+    if (preferredZone === 'Rim' || preferredZone === 'Paint') {
+        const rc = SIM_CONFIG.RIM_PROTECTION;
+        if (rimProtector) {
+            const contest = Math.max(rc.CONTEST_MIN, Math.min(rc.CONTEST_MAX,
+                rc.CONTEST_BASE + (rimProtector.attr.intDef - rc.CONTEST_REF) * rc.CONTEST_SLOPE));
+            rimContestMod = -contest * (preferredZone === 'Paint' ? rc.CONTEST_PAINT_MULT : 1);
+            if (helpHitRatePenalty !== 0) rimContestMod += helpCfg.HITRATE_PENALTY;   // 도움 수비 감점 대체
+        } else {
+            rimContestMod = rc.OPEN_BONUS * (preferredZone === 'Paint' ? rc.OPEN_PAINT_MULT : 1);
+        }
+    }
     // [2026-11-11] 스페이싱 반응 ③ 세깅 — 림·페인트 성공률 이동(킥아웃 슛 제외), 아래 calculateHitRate 합산에 들어감
     const spacingSagMod = spacingSag(spacingDev, preferredZone, isKickout);
 
@@ -1077,7 +1102,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35
         : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
     const defenderSkillCurve = isInteriorZone ? sFoulCfg.INTERIOR_SKILL_CURVE : sFoulCfg.PERIMETER_SKILL_CURVE;
-    shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale;
+    // [2026-11-11] 자유투 패키지 ③ — 골밑 수비 실력 할인 ×INTERIOR_SKILL_SCALE, 림 접촉 가산, 본인 마무리 골밑 슛은 플레이별 접촉 가산
+    //   (SIM_CONFIG.SHOOTING_FOUL 주석 참조, client 미러)
+    shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale * (isInteriorZone ? sFoulCfg.INTERIOR_SKILL_SCALE : 1);
+    if (preferredZone === 'Rim') shootingFoulRate += sFoulCfg.RIM_CONTACT_ADD;
+    if (isInteriorZone && !isKickout) shootingFoulRate += sFoulCfg.PLAYTYPE_CONTACT[selectedPlayType] ?? 0;
 
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
@@ -1120,6 +1149,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const isInteriorZoneForFoul = preferredZone === 'Rim' || preferredZone === 'Paint';
     const matchupFoulMult = isInteriorZoneForFoul ? 1 : (1 + gapNormalized * 0.5);
 
+    // [2026-11-11] 자유투 패키지 ① — 3점 슈팅 파울은 위 존 공통 합산 대신 전용 공식(파울 유도 스타만 높고 대부분 0~1%).
+    //   파울 트러블·미스매치 배수는 아래 공통 식 그대로. 근거는 SIM_CONFIG.SHOOTING_FOUL.THREE_PT 주석 (client 미러)
+    if (preferredZone === '3PT') {
+        const t3 = sFoulCfg.THREE_PT;
+        shootingFoulRate = interpolateCurve(actor.attr.drFoul, t3.DRAW_CURVE) + interpolateCurve(defenderSkill, t3.DEF_CURVE)
+            + (defIntensity - 5.5) * t3.DEF_INTENSITY_FACTOR + (defender.tendencies?.foulProneness ?? 0) * t3.FOUL_PRONENESS_FACTOR + (press?.shootingFoulBonus ?? 0);
+        shootingFoulRate = Math.max(0, shootingFoulRate);
+    }
     shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
     // [2026-10-25] 림 프로텍터 개입 대가 — 수비 정교함(intDef×0.65+defConsist×0.35)이 낮을수록 파울 몫 증가, 본인 파울 트러블 반영
     let protectorFoulRate = 0;
@@ -1134,8 +1171,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
-    // 클램프
-    shootingFoulRate = Math.max(sFoulCfg.MIN_RATE, Math.min(sFoulCfg.MAX_RATE, shootingFoulRate));
+    // 클램프 — [2026-11-11] 3점은 공통 하한(1%) 대신 THREE_PT.MIN_RATE
+    shootingFoulRate = Math.max(preferredZone === '3PT' ? sFoulCfg.THREE_PT.MIN_RATE : sFoulCfg.MIN_RATE, Math.min(sFoulCfg.MAX_RATE, shootingFoulRate));
 
     if (Math.random() < shootingFoulRate) {
         // 헬프 보너스가 기여한 비율만큼 확률적으로 실제 헬퍼에게 파울 귀속(전체 파울 확률 자체는 불변)
@@ -1166,10 +1203,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
 
     if (Math.random() < nonShootingFoulRate) {
+        // [2026-11-11] 자유투 패키지 ④ — OFF_BALL_SHARE만큼은 공 없는 자리싸움 파울: 당하는 쪽·범하는 쪽을 리바운드 존재감으로 다시 고르고,
+        //   플레이 종류 집계에서는 뺀다(statPlayType null). 상수·근거는 SIM_CONFIG.NON_SHOOTING_FOUL 주석 (client 미러)
+        let nsActor = actor, nsDefender = defender;
+        if (Math.random() < nsFoulCfg.OFF_BALL_SHARE) {
+            const offPool = offTeam.onCourt.filter(p => p.playerId !== actor.playerId);
+            if (offPool.length) {
+                nsActor = pickByReboundPresence(offPool, true);
+                nsDefender = pickByReboundPresence(defTeam.onCourt, false);
+            }
+        }
         return {
             type: 'foul',
-            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
-            helpDefenderId,
+            offTeam, defTeam, actor: nsActor, defender: nsDefender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
+            helpDefenderId, ...(nsActor !== actor ? { statPlayType: null } : {}),
         };
     }
 
@@ -1593,7 +1640,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + defRebSuccessBonus + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus + spacingSagMod,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus + ((actor.morale - 50) / 50) * 0.018 + helpHitRatePenalty + rimContestMod + defRebSuccessBonus + stealTransitionBonus + transitionEntryBonus + transitionSpeedBonus + (press?.hitBonus ?? 0) - lateClockPenalty + screen.bonus + spacingSagMod,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
@@ -1690,7 +1737,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let isAndOne = false;
     if (isScore) {
         // [Fix 2026-07-26] defIntensity 연동 제거 — defIntensity는 FG%/파울/체력에만 관여
-        const andOneBase = (preferredZone === 'Rim' || preferredZone === 'Paint') ? 0.03 : 0.012;
+        // [2026-11-11] 자유투 패키지 ② — 기본 확률 상수화·상향(이전 골밑 0.03·그 외 0.012), AND1_CURVE_SCALE 0.15→0.35 (client 미러)
+        const andOneBase = (preferredZone === 'Rim' || preferredZone === 'Paint') ? sFoulCfg.AND1_BASE_INTERIOR : sFoulCfg.AND1_BASE_OTHER;
         const drawFoulAndOneMod = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE) * sFoulCfg.AND1_CURVE_SCALE;
         const and1Mult = SIM_CONFIG.SHOT_DEFENSE.AND1_MULT[shotType ?? 'Layup'] ?? 1.0;
         if (Math.random() < Math.max(0, (andOneBase + drawFoulAndOneMod) * and1Mult)) {
