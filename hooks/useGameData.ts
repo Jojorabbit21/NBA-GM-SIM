@@ -56,9 +56,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // 선수 프로필 특성 태그가 어드민(항상 preload됨)과 멀티플레이어(항상 하드코딩 폴백)
     // 사이에서 서로 다른 값을 보여주는 원인이 되었다. fetchArchetypeConfig/fetchTagConfig는
     // 내부적으로 캐시되어 있어 중복 호출해도 안전하다.
+    // [2026-11-11] 의존성에 로그인 사용자 ID 추가 — archetypes는 RLS가 authenticated 전용이라
+    // 로그아웃 상태로 앱을 연 뒤 로그인하면 첫 호출이 빈 결과였다. 이제 빈 결과는 캐시되지 않고,
+    // 사용자 ID가 바뀔 때(로그인) 한 번 더 호출한다. 캐시가 이미 차 있으면 네트워크 요청 없이
+    // 즉시 반환되고, 토큰 갱신은 ID가 같아 effect가 다시 돌지 않는다.
+    const sessionUserId: string | null = session?.user?.id ?? null;
     useEffect(() => {
         preloadGameConfig().catch(() => {});
-    }, []);
+    }, [sessionUserId]);
 
     // --- State ---
     const [myTeamId, _setMyTeamId] = useState<string | null>(null);

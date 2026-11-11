@@ -216,35 +216,47 @@ type PlayerDataEntry = {
 
 type CoPlayerDataEntry = PlayerDataEntry & { position: string; team: string; age: number | null };
 
+// [2026-11-11] 태그 산출 단일 경로 — 표(computePlayerDataEntry)와 실시간 미리보기(livePreview)가
+// 같은 기준을 쓰도록 통일. 미리보기만 하드코딩 폴백을 항상 써서 DB 기준과 어긋나던 문제 수정.
+// DB 태그 설정이 있으면 DB 조건, 아직 로딩 전(빈 배열)일 때만 하드코딩 폴백.
+function calcEditorTagIds(
+    m: Record<string, number>,
+    ri: Record<string, number>,
+    tagCfg?: import('../types/gameConfig').TagConfigList,
+): string[] {
+    const tags: string[] = [];
+    if (tagCfg && tagCfg.length > 0) {
+        for (const entry of tagCfg) {
+            if (evalTagConditionOvr(entry.condition as any, ri as any, m as any)) tags.push(entry.id);
+        }
+        return tags;
+    }
+    if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
+    if (ri.drawFoul >= 88)                                 tags.push('foul_merchant');
+    if (m.shotCreation >= 85)                              tags.push('shotmaker');
+    if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
+    if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
+    if (m.playmaking >= 82)                                tags.push('plus_playmaker');
+    if (m.poaDefense >= 84)                                tags.push('poa_stopper');
+    if (m.teamDefense >= 84)                               tags.push('team_defender');
+    if (m.rimProtection >= 85)                             tags.push('rim_protector');
+    if (m.rebounding >= 84)                                tags.push('glass_cleaner');
+    if (m.motorAvailability >= 85)                         tags.push('high_motor');
+    if (ri.durability >= 90 && ri.stamina >= 85)           tags.push('ironman');
+    if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && ri.offensiveConsistency <= 65)
+                                                           tags.push('streaky_scorer');
+    if (ri.offensiveConsistency >= 75 && ri.defensiveConsistency >= 75)
+                                                           tags.push('reliable_two_way');
+    return tags;
+}
+
 function computePlayerDataEntry(attrs: Record<string, any>, posOverride?: string, tagCfg?: import('../types/gameConfig').TagConfigList): PlayerDataEntry {
     const pos = posOverride ?? (attrs.position as string | undefined) ?? 'SF';
     const input = adaptPlayerToInput(attrs, pos);
     const result = evaluatePlayerRawOVR(input);
     const m = result.modules;
     const ri = input.ratings;
-    const tags: string[] = [];
-    if (tagCfg && tagCfg.length > 0) {
-        for (const entry of tagCfg) {
-            if (evalTagConditionOvr(entry.condition as any, ri as any, m as any)) tags.push(entry.id);
-        }
-    } else {
-        if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
-        if (ri.drawFoul >= 88)                                 tags.push('foul_merchant');
-        if (m.shotCreation >= 85)                              tags.push('shotmaker');
-        if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
-        if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
-        if (m.playmaking >= 82)                                tags.push('plus_playmaker');
-        if (m.poaDefense >= 84)                                tags.push('poa_stopper');
-        if (m.teamDefense >= 84)                               tags.push('team_defender');
-        if (m.rimProtection >= 85)                             tags.push('rim_protector');
-        if (m.rebounding >= 84)                                tags.push('glass_cleaner');
-        if (m.motorAvailability >= 85)                         tags.push('high_motor');
-        if (ri.durability >= 90 && ri.stamina >= 85)           tags.push('ironman');
-        if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && ri.offensiveConsistency <= 65)
-                                                               tags.push('streaky_scorer');
-        if (ri.offensiveConsistency >= 75 && ri.defensiveConsistency >= 75)
-                                                               tags.push('reliable_two_way');
-    }
+    const tags = calcEditorTagIds(m as any, ri as any, tagCfg);
     const avg3pt = (ri.cornerThree + ri.fortyFiveThree + ri.topThree) / 3;
     return {
         archetype: result.primaryArchetype.archetype,
@@ -665,23 +677,7 @@ const PlayerEditorPage: React.FC = () => {
                 const displayOvr = Math.round(result.rawCurrentOVR);
                 const m = result.modules;
                 const r = input.ratings;
-                const tags: string[] = [];
-                if (m.rimFinishing >= 85)                              tags.push('elite_finisher');
-                if (r.drawFoul >= 88)                                  tags.push('foul_merchant');
-                if (m.shotCreation >= 85)                              tags.push('shotmaker');
-                if (m.spotUpShooting >= 85)                            tags.push('floor_spacer');
-                if (m.offballAttack >= 82 && m.spotUpShooting >= 82)   tags.push('off_ball_mover');
-                if (m.playmaking >= 82)                                tags.push('plus_playmaker');
-                if (m.poaDefense >= 84)                                tags.push('poa_stopper');
-                if (m.teamDefense >= 84)                               tags.push('team_defender');
-                if (m.rimProtection >= 85)                             tags.push('rim_protector');
-                if (m.rebounding >= 84)                                tags.push('glass_cleaner');
-                if (m.motorAvailability >= 85)                         tags.push('high_motor');
-                if (r.durability >= 90 && r.stamina >= 85)             tags.push('ironman');
-                if ((m.shotCreation >= 72 || m.spotUpShooting >= 72) && r.offensiveConsistency <= 65)
-                                                                       tags.push('streaky_scorer');
-                if (r.offensiveConsistency >= 75 && r.defensiveConsistency >= 75)
-                                                                       tags.push('reliable_two_way');
+                const tags = calcEditorTagIds(m as any, r as any, tagConfig);
                 return { displayOvr, rawOvr: result.rawCurrentOVR, primaryArchetype: result.primaryArchetype, secondaryArchetype: result.secondaryArchetype, modules: m, tags };
             } catch {
                 return null;
@@ -694,7 +690,7 @@ const PlayerEditorPage: React.FC = () => {
             base: computePreview(draft),
             co: hasStatCo ? computePreview({ ...draft, ...co }) : null,
         };
-    }, [draft, selected]);
+    }, [draft, selected, tagConfig]);
 
     // 초기 진입 시 전체 목록 자동 로드
     useEffect(() => {

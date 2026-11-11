@@ -35,7 +35,12 @@ export async function fetchArchetypeConfig(): Promise<ArchetypeConfig> {
             if (error.code === 'PGRST116') { archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG }; return archetypeCache; }
             throw error;
         }
-        archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data?.value ?? {}) } as ArchetypeConfig;
+        // [2026-11-11] 행이 없는 응답(data == null)은 캐시하지 않는다. archetypes는 RLS가 authenticated
+        // 전용이라 로그인 전 요청은 에러 없이 빈 결과가 오는데, 이걸 캐시하면 로그인 후에도 영구히
+        // 하드코딩 폴백으로 굳어 세션마다 아키타입/태그 기준이 달라졌다(샤킬 오닐 특성 태그 제보).
+        // 캐시하지 않으므로 다음 preloadGameConfig()(로그인 직후)에서 다시 시도된다.
+        if (!data) return { ...EMPTY_ARCHETYPE_CONFIG };
+        archetypeCache = { ...EMPTY_ARCHETYPE_CONFIG, ...(data.value ?? {}) } as ArchetypeConfig;
         return archetypeCache;
     })();
     try {
@@ -68,7 +73,9 @@ export async function fetchTagConfig(): Promise<TagConfigList> {
             if (error.code === 'PGRST116') { tagCache = []; return tagCache; }
             throw error;
         }
-        tagCache = (data?.value ?? []) as TagConfigList;
+        // [2026-11-11] 위 archetypes와 같은 이유 — 빈 응답은 캐시하지 않는다.
+        if (!data) return [];
+        tagCache = (data.value ?? []) as TagConfigList;
         return tagCache;
     })();
     try {
