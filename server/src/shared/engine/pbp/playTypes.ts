@@ -4,6 +4,7 @@ import { LivePlayer, TeamState } from './pbpTypes.ts';
 import { getContextualMultiplier, getTeamOptionRanks, getTopOptionGap } from './usageSystem.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
 import { calculateScreenerPhysique } from './archetypeSystem.ts';
+import { POST_MATCHUP } from './postMatchup.ts';
 
 // ==========================================================================================
 //  PLAY TYPE SYSTEM
@@ -25,6 +26,8 @@ export interface PlayContext {
     shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number;
     isKickout?: boolean;
+    // [2026-11-11] 포스트업 본인 마무리 — 위치·슛 종류 미확정(자리표시값), 호출부가 finishPostUp()으로 확정 (client 미러 참조)
+    postPending?: boolean;
     // [2026-10-28] 속공 마무리 역할 (어시스트·실책 판정·앨리웁용)
     transitionRole?: 'grabGo' | 'handler' | 'runner' | 'trailer';
     // [2026-10-24] 블리츠 패스아웃 수신자 구분 (resolveBlitzPassOut)
@@ -231,6 +234,22 @@ export function resolveFinish(
         if (r <= 0) return { zone: opt.zone, shotType: opt.shotType };
     }
     return options[options.length - 1];
+}
+
+/** [2026-11-11] 포스트업 본인 마무리의 위치·슛 종류 결정 — zoneMult = 포스트 대결 배율(없으면 1),
+ *  forcedProb = 미드일 때 몰린 페이더웨이 확률(forced = true) (POST_MATCHUP, client 미러 참조) */
+export function finishPostUp(
+    actor: LivePlayer,
+    sliders: TacticalSliders,
+    zoneMult?: Partial<Record<'Rim' | 'Paint' | 'Mid', number>>,
+    forcedProb = 0,
+): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'], forced?: boolean } {
+    const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, zoneMult, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
+    if (forcedProb > 0 && postZone !== 'Rim' && postZone !== 'Paint' && Math.random() < forcedProb) {
+        return { zone: 'Mid', shotType: 'Fadeaway', forced: true };
+    }
+    // [2026-11-06] 미드도 resolveFinish로 — Jumper/Fadeaway 추첨
+    return resolveFinish(actor, 'post', sliders, postZone === '3PT' ? 'Mid' : postZone, 'created');
 }
 
 // ==========================================================================================
@@ -521,14 +540,12 @@ export function resolvePlayAction(
             }
 
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
-            const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, undefined, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
-            if (postZone === 'Rim' || postZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone, 'created');
-                return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
+            // [2026-11-11] 포스트업 매치업 — 위치는 수비수가 정해진 뒤 호출부가 finishPostUp()으로 확정 (client 미러 참조)
+            if (POST_MATCHUP.ENABLED) {
+                return { playType, actor, secondaryActor: entryPasser, preferredZone: 'Paint', shotType: 'Hook', bonusHitRate: 0.01, postPending: true };
             }
-            // [2026-11-06] 미드도 resolveFinish로 — Jumper/Fadeaway 추첨 (client 미러 참조)
-            const { zone: midZone, shotType: midShot } = resolveFinish(actor, 'post', sliders, 'Mid', 'created');
-            return { playType, actor, secondaryActor: entryPasser, preferredZone: midZone, shotType: midShot, bonusHitRate: 0.01 };
+            const { zone, shotType } = finishPostUp(actor, sliders);
+            return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
         }
         case 'CatchShoot': {
             // [2026-07-31] zonePref.three 페널티 적용 (client 미러 참고)

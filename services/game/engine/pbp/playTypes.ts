@@ -4,6 +4,7 @@ import { LivePlayer, TeamState } from './pbpTypes';
 import { getContextualMultiplier, getTeamOptionRanks, getTopOptionGap } from './usageSystem';
 import { SIM_CONFIG } from '../../config/constants';
 import { calculateScreenerPhysique } from './archetypeSystem';
+import { POST_MATCHUP } from './postMatchup';
 
 // [2026-09-10] 팀 전체 1~5옵션(gravity 기반, getTeamOptionRanks) 배율 — 가드 1옵션 실제 기능 문제
 // 대응. 로컬 플레이타입 criteria(usageMultiplier, 최대 7.3배 스프레드)를 압도하지 않도록 완만하게
@@ -28,6 +29,9 @@ export interface PlayContext {
     bonusHitRate: number; // Tactic success bonus
     // [2026-07-31] PostUp/PnR_Roll 더블팀 유도 후 킥아웃으로 actor가 교체됐는지
     isKickout?: boolean;
+    // [2026-11-11] 포스트업 본인 마무리 — 위치·슛 종류 미확정(preferredZone·shotType은 자리표시값).
+    // 호출부가 수비수를 정한 뒤 finishPostUp()으로 확정한다 (POST_MATCHUP, server 미러)
+    postPending?: boolean;
     // [2026-10-28] 속공 마무리 역할 (어시스트·실책 판정·앨리웁용)
     transitionRole?: 'grabGo' | 'handler' | 'runner' | 'trailer';
     // [2026-10-24] 블리츠 패스아웃 수신자 구분 (resolveBlitzPassOut)
@@ -283,6 +287,27 @@ export function resolveFinish(
         if (r <= 0) return { zone: opt.zone, shotType: opt.shotType };
     }
     return options[options.length - 1];
+}
+
+/**
+ * [2026-11-11] 포스트업 본인 마무리의 위치·슛 종류 결정 (POST_MATCHUP, server 미러).
+ * 위치는 존 성향 × 슬라이더(3점 몫은 미드로 접음) × zoneMult(포스트 대결 배율, 없으면 1), 슛 종류는 resolveFinish.
+ * 맨투맨은 possessionHandler가 수비수를 정한 뒤 대결 배율과 함께, 지역방어는 수비수보다 먼저 배율 없이 부른다.
+ * forcedProb(맨투맨, postMatchup.forcedFadeawayProb): 위치가 미드면 이 확률로 '몰린 페이더웨이'(자격 없음, forced = true —
+ * 호출부가 수비 방해 계수를 FORCED_FADE_CONTEST로 덮어씀). 위치 분포는 그대로.
+ */
+export function finishPostUp(
+    actor: LivePlayer,
+    sliders: TacticalSliders,
+    zoneMult?: Partial<Record<'Rim' | 'Paint' | 'Mid', number>>,
+    forcedProb = 0,
+): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'], forced?: boolean } {
+    const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, zoneMult, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
+    if (forcedProb > 0 && postZone !== 'Rim' && postZone !== 'Paint' && Math.random() < forcedProb) {
+        return { zone: 'Mid', shotType: 'Fadeaway', forced: true };
+    }
+    // [2026-11-06] 미드도 resolveFinish로 — 자격 선수(postPlay·mid·closeShot)는 Jumper/Fadeaway 추첨, 나머지는 Jumper
+    return resolveFinish(actor, 'post', sliders, postZone === '3PT' ? 'Mid' : postZone, 'created');
 }
 
 // ==========================================================================================
@@ -686,21 +711,13 @@ export function resolvePlayAction(
 
             // 기존 로직: 포스트 선수 본인이 마무리 (엔트리 패서는 이 경로에서만 어시스트 후보)
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
-            const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders, undefined, SIM_CONFIG.POST_SELECTION.THREE_FOLD_TO_MID);
-            if (postZone === 'Rim' || postZone === 'Paint') {
-                const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone, 'created');
-                return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
+            // [2026-11-11] 포스트업 매치업 — 위치는 수비수가 정해진 뒤 호출부가 finishPostUp()으로 확정한다
+            // (맨투맨 = 포스트 대결 배율, 지역방어 = 배율 없이 수비수보다 먼저). 꺼져 있으면 이전처럼 여기서 바로 정함 (server 미러)
+            if (POST_MATCHUP.ENABLED) {
+                return { playType, actor, secondaryActor: entryPasser, preferredZone: 'Paint', shotType: 'Hook', bonusHitRate: 0.01, postPending: true };
             }
-            // [2026-11-06] 미드도 resolveFinish로 — 자격 선수(postPlay·mid·closeShot)는 Jumper/Fadeaway 추첨, 나머지는 Jumper (server 미러)
-            const { zone: midZone, shotType: midShot } = resolveFinish(actor, 'post', sliders, 'Mid', 'created');
-            return {
-                playType,
-                actor,
-                secondaryActor: entryPasser,
-                preferredZone: midZone,
-                shotType: midShot,
-                bonusHitRate: 0.01
-            };
+            const { zone, shotType } = finishPostUp(actor, sliders);
+            return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
         }
         case 'CatchShoot': {
             // Best Spacer

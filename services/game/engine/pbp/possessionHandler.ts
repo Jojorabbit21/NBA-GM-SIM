@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
-import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult } from './playTypes';
+import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult, finishPostUp } from './playTypes';
 import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
@@ -8,6 +8,8 @@ import { PlayType } from '../../../../types';
 import { SIM_CONFIG } from '../../config/constants';
 import { computePlayTypeWeights } from '../../config/playTypeProfiles';
 import { SPACING_RESPONSE, computeSpacingIndex, computeSpacingDev, spacingHelpMult, spacingSag } from './spacingResponse';
+import { POST_MATCHUP, computePostBattle, postZoneMult, postHelpMult, forcedFadeawayProb, postOffensiveFoulMult } from './postMatchup';
+import type { PostBattle } from './postMatchup';
 import { resolveDynamicZone } from '../shotDistribution';
 import { calculatePossessionTime } from './timeEngine';
 
@@ -875,6 +877,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 2. Identify Defender
     // zoneFreq=1: 8% 발동, zoneFreq=5: 40%, zoneFreq=10: 80%
     const isZone = Math.random() < defTeam.tactics.sliders.zoneFreq * 0.08;
+    // [2026-11-11] 포스트업 매치업 (postMatchup.ts) — 본인 마무리 포스트업은 위치가 미정(postPending)으로 온다.
+    // 지역방어는 위치가 수비수(골밑 앵커/포지션)를 정하므로 이전처럼 위치를 먼저 정한다(대결 없음). (server 미러 참조)
+    if (playCtx.postPending && isZone) {
+        ({ zone: preferredZone, shotType } = finishPostUp(actor, sliders));
+    }
     let { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
         defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
@@ -890,6 +897,19 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             points: 0, isAndOne: false, playType: selectedPlayType,
             isSwitch: false, isZone: false,
         };
+    }
+
+    // [2026-11-11] 맨투맨 포스트업: 수비수가 정해진 뒤 포스트 대결(postPlay·근력 vs intDef·근력, 평소 수비수 대비)로 위치를 확정한다.
+    // 맨투맨 경로의 identifyDefender는 위치를 쓰지 않는다(위 자리표시값 무관). 대결 결과는 아래 헬프 시도(더블팀)에도 쓰인다.
+    // 미드로 정해지면 대결에 진 만큼 '몰린 페이더웨이'(활로가 막혀 던지는 슛, 자격 없음) — 아래 성공률에서 수비 방해 계수를 덮어씀
+    let postBattle: PostBattle | undefined;
+    let forcedFade = false;
+    if (playCtx.postPending && !isZone) {
+        postBattle = computePostBattle(actor, defender, state.simSettings?.playTypeEra);
+        const postFinish = finishPostUp(actor, sliders, postZoneMult(postBattle), forcedFadeawayProb(postBattle));
+        preferredZone = postFinish.zone;
+        shotType = postFinish.shotType;
+        forcedFade = !!postFinish.forced;
     }
 
     // 2.3 [2026-10-23] 풀코트 프레스 (상대 공격 리바운드로 이어진 포세션 제외)
@@ -976,8 +996,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-11-11] 스페이싱 반응 — 오프볼 4명의 외곽 위협이 시대 기준보다 낮으면 헬프·프로텍터·세깅이 강해지고 높으면 약해진다
     // (맨투맨 하프코트만, 3점 미적용). 산식·근거는 spacingResponse.ts / docs/plan/spacing-help-plan.md
     const spacingDev = computeSpacingDev(computeSpacingIndex(offTeam, actor, sliders), state.simSettings?.playTypeEra, !isZone && selectedPlayType !== 'Transition');
+    // [2026-11-11] 포스트업 매치업 — 맨투맨 포스트업은 포스트 대결 우위만큼 더블팀(헬프 시도)이 몰린다(총량은 helpDef 그대로).
+    // 스페이싱 배율과 곱하고 상한은 한 번만 적용
     const helpAttemptChance = Math.min(SPACING_RESPONSE.HELP_ATTEMPT_CAP,
-        (helpCfg.ATTEMPT_BASE + (helpDefLevel - 1) * helpCfg.ATTEMPT_PER_LEVEL) * spacingHelpMult(spacingDev));
+        (helpCfg.ATTEMPT_BASE + (helpDefLevel - 1) * helpCfg.ATTEMPT_PER_LEVEL) * spacingHelpMult(spacingDev)
+        * (postBattle ? postHelpMult(postBattle, state.simSettings?.playTypeEra) : 1));
     // [2026-10-27] 킥아웃 슛(이미 헬프를 끌어낸 뒤의 패스)에는 헬프 판정 생략 — 2차 로테이션 없음
     const helpAttempted = Math.random() < helpAttemptChance && !isKickout;
 
@@ -1207,13 +1230,19 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // ① 차징 — PostUp만 고율, 나머지(Iso 포함)는 기본값. defConsist(정지 자세 유지력)로 유도 보너스
     // — helpDefIq(위치 예측 IQ)는 헬프디펜스 개념이라 차징의 "제자리에서 안 움직이기"와는
     // 어색하다고 판단해 defConsist로 교체.
-    let chargeChance = selectedPlayType === 'PostUp'
+    // [2026-11-11] 포스트업 매치업(postMatchup.ts ④) — 포스트업 고율은 포스트업한 본인에게만(킥아웃으로 받은 선수는 기본값),
+    // 본인 포스트업은 힘이 셀수록·기술이 낮을수록 높게(총량은 시대별 중심값으로 그대로). 꺼져 있으면 이전과 동일 (server 미러 참조)
+    const ownPostUp = selectedPlayType === 'PostUp' && (!POST_MATCHUP.ENABLED || !isKickout);
+    let chargeChance = ownPostUp
         ? offFoulConfig.POST_OFFENSIVE_FOUL_RATE
         : offFoulConfig.OFFENSIVE_FOUL_BASE;
     if (defender) {
         chargeChance += (defender.attr.defConsist - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_CONSIST;
     }
     chargeChance = Math.max(0.005, Math.min(0.04, chargeChance));
+    if (POST_MATCHUP.ENABLED && ownPostUp) {
+        chargeChance = Math.min(POST_MATCHUP.FOUL_RATE_CAP, chargeChance * postOffensiveFoulMult(actor, state.simSettings?.playTypeEra));
+    }
 
     if (Math.random() < chargeChance) {
         return {
@@ -1640,7 +1669,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         shotType,
         subZone,
         // [2026-10-30] 먼저 뛴 오픈 트레일러의 속공 3점은 풀업 수준 견제(이전 CatchShoot 1.0 — 트레일러가 풀업보다 낮았음)
-        (transitionRole === 'trailer' && !helpKicked && preferredZone === '3PT') ? SIM_CONFIG.TRANSITION_SHOT.TRAILER_CONTEST : undefined,
+        // [2026-11-11] 몰린 페이더웨이는 자리를 잡은 수비수 정면 — FORCED_FADE_CONTEST (헬프 킥아웃으로 슈터가 바뀌면 해당 없음)
+        (transitionRole === 'trailer' && !helpKicked && preferredZone === '3PT') ? SIM_CONFIG.TRANSITION_SHOT.TRAILER_CONTEST
+            : (forcedFade && !helpKicked) ? POST_MATCHUP.FORCED_FADE_CONTEST : undefined,
         // [2026-11-06] PnR 핸들러 본인 슛의 스크린 결과 — 드롭 풀업 보너스·헤지 감점 연동 (server 미러)
         (selectedPlayType === 'PnR_Handler' && !isKickout) ? handlerScreen : undefined
     );

@@ -21,7 +21,8 @@
  */
 import type { PlayType } from '../../../types.ts';
 import type { LivePlayer, TeamState } from '../../../engine/pbp/pbpTypes.ts';
-import { resolvePlayAction } from '../../../engine/pbp/playTypes.ts';
+import { resolvePlayAction, finishPostUp } from '../../../engine/pbp/playTypes.ts';
+import { POST_MATCHUP, computePostBattle, postZoneMult, forcedFadeawayProb } from '../../../engine/pbp/postMatchup.ts';
 import { calculateHitRate } from '../../../engine/pbp/flowEngine.ts';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets.ts';
 
@@ -102,11 +103,21 @@ export function estimatePlayTypeEV(off: TeamState, def: TeamState, opts: { sampl
                 const ctx = resolvePlayAction(off, pt, sliders);
                 const defender = matchupDefender(ctx.actor, def);
                 if (!defender) continue;
+                // [2026-11-11] 포스트업 매치업 — 본인 마무리 포스트업은 위치가 미정으로 온다. 엔진 맨투맨 경로와 같이 이 수비수와의
+                // 포스트 대결로 위치를 확정(시대 정보가 없어 기본 2020s 기준표). 몰린 페이더웨이도 엔진과 같이 수비 방해 계수를 덮어씀
+                let { preferredZone, shotType } = ctx;
+                let forcedFade = false;
+                if (ctx.postPending) {
+                    const battle = computePostBattle(ctx.actor, defender, undefined);
+                    const fin = finishPostUp(ctx.actor, sliders, postZoneMult(battle), forcedFadeawayProb(battle));
+                    preferredZone = fin.zone; shotType = fin.shotType; forcedFade = !!fin.forced;
+                }
                 const { rate } = calculateHitRate(
-                    ctx.actor, defender, def, pt, ctx.preferredZone, sliders, ctx.bonusHitRate,
-                    off.acePlayerId, false, false, undefined, false, 0, undefined, 'none', undefined, ctx.shotType,
+                    ctx.actor, defender, def, pt, preferredZone, sliders, ctx.bonusHitRate,
+                    off.acePlayerId, false, false, undefined, false, 0, undefined, 'none', undefined, shotType,
+                    undefined, forcedFade ? POST_MATCHUP.FORCED_FADE_CONTEST : undefined,
                 );
-                const pts = ctx.preferredZone === '3PT' ? 3 : 2;
+                const pts = preferredZone === '3PT' ? 3 : 2;
                 const ev = rate * pts;
                 evSum += ev; rateSum += rate; n++;
                 if (pts === 3) threes++;
