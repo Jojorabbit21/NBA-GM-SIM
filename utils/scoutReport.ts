@@ -29,6 +29,97 @@ const SCREEN_GRID: (keyof typeof SCREEN_LINES)[][] = [
     ['weakBody', 'poor',    'poor'],
 ];
 
+// ─────────────────────────────────────────────────────────────
+// [2026-11-10] 존 성향 문장 — meta_players.tendencies.zones(ra/itp/mid/cnr/p45/atb).
+// 엔진(buildZonePref/buildThreeSubPref)은 여섯 값을 합으로 나눈 "비율"만 쓰므로 원값의 스케일은
+// 선수마다 달라도 된다(실제로 855명은 최다 존 = 100이지만 87명은 최다 존이 40~99). 따라서 원값에
+// 바로 구간을 그으면 스케일이 다른 선수를 잘못 읽는다(사용자 지적 11-10) → 먼저 선수의 최다 존을
+// 100으로 정규화한 뒤 "최다 존 대비 비율"에 구간을 긋는다. 모든 값에 같은 상수를 곱해도 결과 불변.
+//   76~100 주 공격 구역 / 51~75 꾸준히 시도 / 26~50 가끔(문장 생략) / 0~25 거의 시도하지 않음
+// (최다 존 대비이므로 리그 비교도, 전체 슛 중 비중(%)도 아니다 — 문장에 수치를 넣지 않는 이유)
+// 이전 구현은 페인트(2존 합)·미드(1존)·3점(3존 합)의 합을 비교해 한 줄만 냈는데, 존 수가 달라 합
+// 비교가 기울었고 정보도 한 줄뿐이었다. 지금은 최대 3줄(주 무대 / 보조 구역 / 기피 구역).
+// 수치는 공개하지 않고, 조사 문제를 피하려 구역 이름 뒤엔 항상 '에서(도/는)'만 붙인다.
+// ─────────────────────────────────────────────────────────────
+const ZONE_HIGH_MIN = 76;   // 주 공격 구역
+const ZONE_MID_MIN = 51;    // 보조 구역
+const ZONE_RARE_MAX = 25;   // 거의 시도하지 않는 구역
+type ZoneKey = 'ra' | 'itp' | 'mid' | 'cnr' | 'p45' | 'atb';
+const ZONE_ORDER: ZoneKey[] = ['ra', 'itp', 'mid', 'cnr', 'p45', 'atb'];
+const ZONE_LABEL: Record<ZoneKey, string> = {
+    ra: '골밑', itp: '페인트존 중거리', mid: '미드레인지', cnr: '코너 3점', p45: '윙 3점', atb: '탑 3점',
+};
+const THREE_KEYS: ZoneKey[] = ['cnr', 'p45', 'atb'];
+const INSIDE_KEYS: ZoneKey[] = ['ra', 'itp'];
+
+/** 같은 묶음(3점 셋 / 페인트 둘)이 전부 포함되면 묶음 이름으로 접어 나열 */
+function joinZoneLabels(keys: ZoneKey[]): string {
+    const set = new Set(keys);
+    const parts: string[] = [];
+    const allThree = THREE_KEYS.every(k => set.has(k));
+    const allInside = INSIDE_KEYS.every(k => set.has(k));
+    for (const k of ZONE_ORDER) {
+        if (!set.has(k)) continue;
+        if (allInside && INSIDE_KEYS.includes(k)) { if (k === 'ra') parts.push('페인트존 안'); continue; }
+        if (allThree && THREE_KEYS.includes(k)) { if (k === 'cnr') parts.push('3점 라인 바깥'); continue; }
+        parts.push(ZONE_LABEL[k]);
+    }
+    return parts.join('·');
+}
+
+export function describeZoneTendencies(z: Record<ZoneKey, number>): string[] {
+    const rawMax = Math.max(0, ...ZONE_ORDER.map(k => z[k] ?? 0));
+    if (rawMax <= 0) return [];
+    // 최다 존 = 100으로 정규화 (스케일 불변)
+    const v = (k: ZoneKey) => ((z[k] ?? 0) / rawMax) * 100;
+    const high = ZONE_ORDER.filter(k => v(k) >= ZONE_HIGH_MIN);
+    const mid = ZONE_ORDER.filter(k => v(k) >= ZONE_MID_MIN && v(k) < ZONE_HIGH_MIN);
+    const rare = ZONE_ORDER.filter(k => v(k) <= ZONE_RARE_MAX);
+    const threeHigh = THREE_KEYS.filter(k => v(k) >= ZONE_HIGH_MIN);
+    const othersAtMost = (keys: ZoneKey[], max: number) => ZONE_ORDER.filter(k => !keys.includes(k)).every(k => v(k) <= max);
+
+    const lines: string[] = [];
+    let rareCovered = false; // 주 무대 문장이 이미 "그 외 거의 안 던짐"을 함의하면 기피 문장 생략
+
+    // ── 1. 주 공격 구역 (정규화로 최다 존이 항상 100이라 high는 비지 않음) ──
+    if (high.length >= 4) {
+        lines.push('코트 전역에서 고르게 공격 기회를 가져감');
+    } else if (high.length === 1 && high[0] === 'ra' && othersAtMost(['ra'], 50)) {
+        lines.push('거의 모든 공격을 골밑 마무리로 해결함');
+        rareCovered = true;
+    } else if (threeHigh.length === 3 && othersAtMost(THREE_KEYS, 50)) {
+        lines.push('3점 라인 바깥에서 대부분의 슛을 던지는 전문 슈터 성향');
+        rareCovered = true;
+    } else if (high.includes('cnr') && v('p45') <= 50 && v('atb') <= 50) {
+        const inside = high.filter(k => k !== 'cnr');
+        lines.push(inside.length > 0
+            ? `${joinZoneLabels(inside)}에서 공격하고, 바깥에서는 코너에 자리 잡고 캐치앤슛 3점을 노림`
+            : '코너에 자리 잡고 캐치앤슛 3점을 노리는 성향');
+    } else if (high.includes('mid') && THREE_KEYS.every(k => v(k) <= 50)) {
+        const rest = high.filter(k => k !== 'mid');
+        lines.push(rest.length > 0
+            ? `주로 ${joinZoneLabels(rest)}·미드레인지에서 공격하며 3점보다 미드레인지 점퍼를 선호함`
+            : '3점보다 미드레인지 점퍼를 선호함');
+    } else {
+        lines.push(`주로 ${joinZoneLabels(high)}에서 공격을 전개함`);
+    }
+
+    // ── 2. 보조 구역 (주 무대로 이미 말한 존은 제외) ──
+    const secondary = mid.filter(k => !high.includes(k));
+    if (secondary.length > 0 && high.length < 4) lines.push(`${joinZoneLabels(secondary)}에서도 꾸준히 슛을 시도함`);
+
+    // ── 3. 기피 구역 — 4곳 이상이면 나열 대신 한 줄로(26~50 구역이 섞여 있을 수 있어 "드묾"으로 완곡하게) ──
+    if (!rareCovered && rare.length > 0) {
+        if (rare.length >= 4) {
+            // 기피 존이 전부 10 이하(예: 올타임 빅맨 0/0/0/0)면 단정적으로, 아니면 완곡하게
+            lines.push(rare.every(k => v(k) <= 10) ? '주 공격 구역 외에는 거의 슛을 던지지 않음' : '주 공격 구역 외에는 슛 시도가 드묾');
+        }
+        else lines.push(`${joinZoneLabels(rare)}에서는 거의 슛을 던지지 않음`);
+    }
+
+    return lines;
+}
+
 export type ScoutReportSentiment = 'positive' | 'negative' | 'neutral';
 
 export interface ScoutReportSentence {
@@ -135,16 +226,7 @@ export function generateScoutReport(player: Player, tendencySeed?: string): Scou
     if (hidden.lateralBias >= 0.3) habitParts.push('오른쪽으로의 드라이브를 선호함');
     else if (hidden.lateralBias <= -0.3) habitParts.push('왼쪽으로의 드라이브를 선호함');
 
-    if (player.tendencies?.zones) {
-        const z = player.tendencies.zones;
-        const paint = z.ra + z.itp;
-        const mid = z.mid;
-        const three = z.cnr + z.p45 + z.atb;
-        const max = Math.max(paint, mid, three);
-        if (max === three) habitParts.push('3점 라인 바깥에서 주로 활동함');
-        else if (max === mid) habitParts.push('미드레인지 공간을 최대한 활용함');
-        else habitParts.push('주로 페인트존 안에서 공격하는것을 선호함');
-    }
+    if (player.tendencies?.zones) habitParts.push(...describeZoneTendencies(player.tendencies.zones));
 
     // 문구를 하나로 이어붙이려 하지 않고(접미사 활용형 불일치로 문법이 깨짐), 각각 별도
     // 항목으로 나열 — 문구 자체가 이미 "함"체로 끝나는 완결된 서술이라 접미사가 필요 없음.
