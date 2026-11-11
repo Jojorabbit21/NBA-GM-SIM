@@ -12,13 +12,15 @@ import { APP_NAME, APP_YEAR, getLeagueLogoUrl } from '../../utils/constants';
 // 라커룸 배경 이미지 — 파일이 없어도 아래 그라데이션 폴백 레이어가 항상 깔려있어 화면이 깨지지 않는다.
 const BACKGROUND_IMAGE = '/images/background/background.webp';
 const APP_VERSION = 'v1.0.7';
-// 클릭해도 아직 아무 동작 없음(리다이렉트 미구현) — 추후 실제 페이지 연결 예정
-// [2026-11-09] About/Terms/Privacy 는 pages/LegalPage.tsx 라우트로 연결. Discord 는 아직 초대 링크가 없어 경로 없음(표시만).
-const FOOTER_LINKS: { label: string; path: string | null }[] = [
+// [2026-11-09] About/Terms/Privacy 는 pages/LegalPage.tsx 라우트로 연결.
+// [2026-11-11] Discord 는 외부 초대 링크(새 탭). 링크가 비어 있으면 클릭해도 동작 없음(표시만).
+// 초대 링크는 "만료 없음 · 사용 횟수 무제한"으로 만든 영구 링크여야 한다(기본 링크는 7일 뒤 만료).
+const DISCORD_INVITE_URL = 'https://discord.gg/fjAFxEtZKH';
+const FOOTER_LINKS: { label: string; path?: string; href?: string }[] = [
     { label: 'About',        path: '/about' },
     { label: 'Terms of Use', path: '/terms' },
     { label: 'Privacy',      path: '/privacy' },
-    { label: 'Discord',      path: null },
+    { label: 'Discord',      href: DISCORD_INVITE_URL },
 ];
 
 interface StartScreenProps {
@@ -133,14 +135,26 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                     {/* 좌측 50% — 링크 그룹 + 그 아래 카피라이트/버전 */}
                     <div className="text-center sm:text-left space-y-1">
                         <div className="flex items-center justify-center sm:justify-start gap-4">
-                            {FOOTER_LINKS.map(({ label, path }) => (
-                                <button
-                                    key={label}
-                                    onClick={() => { if (path) navigate(path); }}
-                                    className="text-xs text-white hover:text-white/70 transition-colors"
-                                >
-                                    {label}
-                                </button>
+                            {FOOTER_LINKS.map(({ label, path, href }) => (
+                                href ? (
+                                    <a
+                                        key={label}
+                                        href={href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-white hover:text-white/70 transition-colors"
+                                    >
+                                        {label}
+                                    </a>
+                                ) : (
+                                    <button
+                                        key={label}
+                                        onClick={() => { if (path) navigate(path); }}
+                                        className="text-xs text-white hover:text-white/70 transition-colors"
+                                    >
+                                        {label}
+                                    </button>
+                                )
                             ))}
                         </div>
                         <p className="text-xs text-white ko-normal">© {APP_YEAR} {APP_NAME}. All rights reserved.</p>
