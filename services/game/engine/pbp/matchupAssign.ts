@@ -20,7 +20,7 @@ import { calculateMatchupGap, MATCHUP_GAP_SCALE, MATCHUP_GAP_HIT_WEIGHT, shotDef
  * 상세·측정: docs/history/dev-log.md 2026-11-11 (매치업 배정).
  */
 export const MATCHUP_ASSIGN = {
-    ENABLED: false,
+    ENABLED: true,
     /** 배정 후보 = 위협 선수 슬롯 ± 이 값 (PG1 SG2 SF3 PF4 C5) */
     ADJACENT_RANGE: 1,
 } as const;
