@@ -34,6 +34,7 @@
  * 서버 전용 — 클라이언트 미러 없음(DB 조회+시뮬 오케스트레이션이라 클라 대응물이 없음).
  */
 import { supabase } from './supabaseAdmin';
+import { saveWithRetry } from './saveWithRetry.ts';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
@@ -328,7 +329,10 @@ export async function computeAndRunAllStarGame(
     const awayScore = result.awayScore ?? 0;
     console.log(`[allstarGame] ${gameId}: ${homeTeamName} ${homeScore} - ${awayScore} ${awayTeamName}`);
 
-    await supabase.from('game_pbp').upsert({
+    // [2026-11-12] 저장 결과 확인 + 재시도 2회(saveWithRetry.ts) — 예전엔 실패해도 그대로 played=true 까지 진행해
+    // 기록 없는 경기가 조용히 생길 수 있었다. 끝내 실패하면 맨 위에서 락으로 넣은 games 행(played=false)을 지워
+    // 클레임을 풀고 빠진다 → 다음 tick(30초)의 runAllStarGames 가 다시 클레임해 처음부터 시뮬한다.
+    const pbpRow = {
         room_id: roomId, game_id: gameId,
         events: result.pbpLogs ?? [], shot_events: result.pbpShotEvents ?? [],
         home_box: stampBoxOvr(result.homeBox, homeTeam.roster, awayTeam.roster), away_box: stampBoxOvr(result.awayBox, homeTeam.roster, awayTeam.roster),
@@ -340,11 +344,27 @@ export async function computeAndRunAllStarGame(
         quarter_scores: computeQuarterScoresFromEvents(result.pbpLogs ?? []),
         ot_periods: countOvertimePeriods(result.pbpLogs ?? []),   // [2026-10-26] 공개 시각(game_reveal_at)
         team_misc: result.teamMisc ?? null,   // [2026-11-05] 팀 미스크 득점 4종
-    }, { onConflict: 'room_id,game_id' });
+    };
+    const pbpSaveError = await saveWithRetry(
+        () => supabase.from('game_pbp').upsert(pbpRow, { onConflict: 'room_id,game_id' }),
+        `game_pbp room=${roomId} game=${gameId}`,
+    );
+    if (pbpSaveError) {
+        const { error: releaseErr } = await supabase.from('games').delete()
+            .eq('room_id', roomId).eq('game_id', gameId).eq('played', false);
+        console.error(`[allstarGame] ${gameId} game_pbp 저장 최종 실패: ${pbpSaveError} — `
+            + (releaseErr ? `클레임 해제도 실패(${releaseErr.message}), 수동 확인 필요` : '클레임 해제, 다음 tick 에서 재시뮬'));
+        return;
+    }
 
-    await supabase.from('games')
-        .update({ played: true, home_score: homeScore, away_score: awayScore, ot_periods: countOvertimePeriods(result.pbpLogs ?? []) })
-        .eq('room_id', roomId).eq('game_id', gameId);
+    // 기록은 저장됐으므로 "끝난 경기" 표시가 실패해도 아래 MVP·서신은 그대로 진행한다(예전 동작 유지) — 실패는 로그로만 남긴다.
+    const playedError = await saveWithRetry(
+        () => supabase.from('games')
+            .update({ played: true, home_score: homeScore, away_score: awayScore, ot_periods: countOvertimePeriods(result.pbpLogs ?? []) })
+            .eq('room_id', roomId).eq('game_id', gameId),
+        `games.played room=${roomId} game=${gameId}`,
+    );
+    if (playedError) console.error(`[allstarGame] ${gameId} games.played 표시 최종 실패: ${playedError} — 기록(game_pbp)은 저장됨, 수동 확인 필요`);
 
     // ── MVP 선정 + 결과 서신 발송 ────────────────────────────────────────────────────────
     // 양팀 박스스코어를 하나로 합쳐 pickTeamMvp()에 넘기면 "팀 구분 없는 경기 전체 MVP 1명"이

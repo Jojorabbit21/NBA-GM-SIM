@@ -13,6 +13,7 @@ import { planAiTeam } from './shared/game/tactics/aiCoach/aiCoachPlan.ts';
 import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { stampBoxOvr } from './boxOvr.ts';
+import { saveWithRetry } from './saveWithRetry.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
 import { recoverPlayersThrough } from './fatigueRecovery.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
@@ -339,7 +340,11 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             // ── 5. game_pbp 저장 ───────────────────────────────────────────────
             // [2026-10-26] 연장 수 — 결과 공개 시각(game_reveal_at)·중계 종료 판정이 경기별로 늦어진다. games에도 같은 값.
             const otPeriods = countOvertimePeriods(result.pbpLogs ?? []);
-            await supabase.from('game_pbp').upsert({
+            // [2026-11-12] 저장 결과를 확인한다 — 예전엔 실패해도 그대로 아래 games.played=true 까지 진행해
+            // "점수는 있는데 중계·박스스코어·기록이 없는 경기"가 조용히 생길 수 있었다. 순간 끊김은 재시도 2회로 넘기고
+            // (saveWithRetry.ts), 끝내 실패하면 played 를 찍지 않고 빠진다 → 다음 tick(30초)이 이 경기를 다시 집어
+            // 처음부터 시뮬한다(아래 "games update 실패"와 같은 바깥 재시도 경로 — 클레임은 finally 에서 해제).
+            const pbpRow = {
                 room_id:         roomId,
                 game_id:         gameId,
                 events:          result.pbpLogs ?? [],
@@ -359,7 +364,15 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 quarter_scores:  computeQuarterScoresFromEvents(result.pbpLogs ?? []),
                 ot_periods:      otPeriods,
                 team_misc:       result.teamMisc ?? null,   // [2026-11-05] POTV/FBPS/PITP/SPTS — 엔진 집계(migrations/game_pbp_team_misc.sql)
-            }, { onConflict: 'room_id,game_id' });
+            };
+            const pbpSaveError = await saveWithRetry(
+                () => supabase.from('game_pbp').upsert(pbpRow, { onConflict: 'room_id,game_id' }),
+                `game_pbp room=${roomId} game=${gameId}`,
+            );
+            if (pbpSaveError) {
+                console.error(`[simRunner] game_pbp 저장 최종 실패 room=${roomId} game=${gameId}: ${pbpSaveError} — played 미표시, 다음 tick 에서 재시뮬`);
+                return { ok: false, error: `game_pbp save failed: ${pbpSaveError}` };
+            }
 
             // ── 5-1. 팀별 플레이타입 실적(멀티 전술 화면 PPP) [2026-10-18] ─────────────
             // 엔진 statsMappers.recordPlayTypeStat 집계 → team_playtype_stats(migrations/add_team_playtype_stats.sql).
