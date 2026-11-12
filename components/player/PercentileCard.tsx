@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { InlineNotice } from '../common/InlineNotice';
+import { Spinner } from '../common/Spinner';
 import { Table, TableBody, TableRow, TableCell } from '../common/Table';
 import { useIsPhone } from '../../hooks/useViewportClass';
 import type { PercentileCardData, PercentileEntry, PercentileSection } from '../../utils/percentileCard';
@@ -33,21 +34,25 @@ const NQ_COLOR = 'rgb(71, 85, 105)'; // slate-600
 /** 섹션의 첫 행에만 넘기는 헤더 열 정보 — 이름을 섹션 행 수만큼 세로로 묶어(rowSpan) 보여준다. */
 interface SectionGroup { label: string; rowSpan: number }
 
-const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup; phone?: boolean }> = ({ entry, group, phone = false }) => {
+/** [2026-11-12] 섹션(그룹) 사이 가로선 — 행 사이 기본 선(slate-800)보다 밝게 해서 묶음 경계가 보이게. 표의 마지막 섹션은 표 아래 외곽선과 겹쳐 제외. */
+const GROUP_DIVIDER = '!border-slate-600';
+
+const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup; phone?: boolean; groupEnd?: boolean; groupDivider?: boolean }> = ({ entry, group, phone = false, groupEnd = false, groupDivider = false }) => {
+    const endLine = groupEnd ? GROUP_DIVIDER : '';
     const { metric, value, percentile } = entry;
     // 자격 미달(NQ)은 백분위 위치는 그대로 두고 막대·핸들만 slate 로, 핸들 글자는 NQ
     const color = percentile !== null ? (entry.qualified ? scaleColor(percentile) : NQ_COLOR) : undefined;
     return (
         <TableRow>
             {group && (
-                <TableCell rowSpan={group.rowSpan} align="left" className="min-w-[72px] bg-slate-900 align-middle">
-                    <span className="text-xs font-bold text-slate-300 sm:text-sm">{group.label}</span>
+                <TableCell rowSpan={group.rowSpan} align="center" className={`min-w-[72px] bg-slate-800 align-middle ${groupDivider ? GROUP_DIVIDER : ''}`}>
+                    <span className="text-xs font-bold text-slate-200 sm:text-sm">{group.label}</span>
                 </TableCell>
             )}
-            <TableCell align="left" className={phone ? 'w-[104px] max-w-[104px]' : undefined} title={metric.inverse ? `${metric.label}은(는) 낮을수록 좋은 지표입니다` : undefined}>
+            <TableCell align="left" className={`${phone ? 'w-[104px] max-w-[104px]' : ''} ${endLine}`} title={metric.inverse ? `${metric.label}은(는) 낮을수록 좋은 지표입니다` : undefined}>
                 <span className={`text-sm font-medium text-slate-400 ${phone ? 'block truncate' : ''}`}>{metric.label}</span>
             </TableCell>
-            <TableCell align="left" className={`w-full ${phone ? 'min-w-[96px]' : 'min-w-[128px]'}`}>
+            <TableCell align="left" className={`w-full ${phone ? 'min-w-[96px]' : 'min-w-[128px]'} ${endLine}`}>
                 <div style={{ paddingLeft: HANDLE / 2, paddingRight: HANDLE / 2 }}>
                     <div className="relative h-4 rounded-full bg-slate-800">
                         <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600/60" />
@@ -68,7 +73,7 @@ const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup; phone?
                     </div>
                 </div>
             </TableCell>
-            <TableCell align="right">
+            <TableCell align="right" className={endLine}>
                 {value !== null && Number.isFinite(value)
                     ? <span className="text-sm font-semibold tabular-nums text-slate-200">{metric.format(value)}</span>
                     : <span className="text-sm font-medium text-slate-600">-</span>}
@@ -80,7 +85,7 @@ const MetricRow: React.FC<{ entry: PercentileEntry; group?: SectionGroup; phone?
 const SectionsTable: React.FC<{ sections: PercentileSection[]; phone?: boolean }> = ({ sections, phone = false }) => (
     <Table variant="flush" dividers={false} fullHeight={false}>
         <TableBody>
-            {sections.map(section => (
+            {sections.map((section, si) => (
                 <React.Fragment key={section.id}>
                     {/* [2026-10-28] 폰(§9-2, 목업 P9·P10): 왼쪽 섹션 열(rowSpan 72)이 폰 폭에 안 들어가 섹션 이름을 그룹 행으로 */}
                     {phone && (
@@ -96,6 +101,8 @@ const SectionsTable: React.FC<{ sections: PercentileSection[]; phone?: boolean }
                             entry={entry}
                             phone={phone}
                             group={!phone && i === 0 ? { label: section.label, rowSpan: section.entries.length } : undefined}
+                            groupDivider={!phone && si < sections.length - 1}
+                            groupEnd={!phone && si < sections.length - 1 && i === section.entries.length - 1}
                         />
                     ))}
                 </React.Fragment>
@@ -127,9 +134,11 @@ interface PercentileCardProps {
     controls?: React.ReactNode;
     /** 있으면 표 대신 이 안내만 보여준다(지난 시즌처럼 데이터를 못 불러오는 경우). */
     notice?: string;
+    /** true 면 제목·컨트롤은 그대로 두고 표 자리만 로더로 바꾼다(시즌 구분을 바꾼 직후 데이터가 아직 안 온 경우). */
+    loading?: boolean;
 }
 
-export const PercentileCard: React.FC<PercentileCardProps> = ({ data, title, controls, notice }) => {
+export const PercentileCard: React.FC<PercentileCardProps> = ({ data, title, controls, notice, loading = false }) => {
     const [left, right] = useMemo(() => splitSections(data.sections), [data.sections]);
     const allEntries = data.sections.flatMap(s => s.entries);
     const hasInverse = allEntries.some(e => e.metric.inverse);
@@ -143,20 +152,21 @@ export const PercentileCard: React.FC<PercentileCardProps> = ({ data, title, con
                     <span className="text-base font-bold text-white whitespace-nowrap">{title}</span>
                     {controls}
                 </div>
-                <span className="text-xs text-slate-500">
+                <span className={`text-xs text-slate-500 ${loading ? 'invisible' : ''}`}>
                     리그 {data.qualifiedCount}명 기준 · 총 출전 {Math.round(data.minMinutes)}분 이상 · 숫자는 리그 백분위(높을수록 상위)
                 </span>
             </div>
 
             {notice && <InlineNotice tone="info">{notice}</InlineNotice>}
-            {!notice && !data.hasSubject && (
+            {!notice && loading && <Spinner variant="section" />}
+            {!notice && !loading && !data.hasSubject && (
                 <InlineNotice tone="info">출전 기록이 없어 퍼센타일을 계산할 수 없습니다.</InlineNotice>
             )}
-            {!notice && data.hasSubject && !data.subjectQualified && (
+            {!notice && !loading && data.hasSubject && !data.subjectQualified && (
                 <InlineNotice tone="info">출전 시간이 기준에 못 미쳐 참고용입니다. 순위는 기준을 충족한 선수들과 비교한 값입니다.</InlineNotice>
             )}
 
-            {!notice && data.hasSubject && (
+            {!notice && !loading && data.hasSubject && (
                 <>
                     {/* lg(1024px) 이상은 섹션을 두 표로 나눠 좌우 2단, 그보다 좁으면 한 표 — CSS 분기라 화면 폭 훅이 필요 없다 */}
                     <div className="hidden grid-cols-2 lg:grid">

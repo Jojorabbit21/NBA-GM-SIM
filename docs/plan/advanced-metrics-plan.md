@@ -1,5 +1,9 @@
 # 고급 선수 지표 도입 계획 (PER / WS / BPM / VORP / Four Factors + 자체 임팩트 지표)
 
+> **2026-11-12 갱신 2**: **TIM·XIM 은 만들지 않는다.** TIM 은 측정 결과 BIM 과 사실상 같은 값(상관 0.98~0.999)이고 서버 계산이 필요. XIM 자리는 수비 전용 지표 **GOBERT**(`utils/gobert.ts`, 수비 기록 + 구역별 수비 야투, 임팩트 탭)로 대체. BIM 은 OBIM · DBIM · BIM 세 열. 리더보드에 "임팩트" 탭 신설. 상세는 dev-log 2026-11-12 항목들.
+>
+> **2026-11-12 갱신**: **BIM 을 되살려 구현했다**(사용자 결정) — `utils/bim.ts`, 리더보드 Advanced 열. 계수는 포제션 득점을 코트 위 선수 박스 지표 합에 직접 회귀해 적합(§9 의 RAPM 2단계와 다름, RAPM 은 검증용), 팀 보정 포함. 재적합은 `scripts/bim/extract.py` → `fit.py`. 상세는 dev-log 2026-11-12. LEBRON형·DARKO형은 폐기 유지, TIM·XIM 은 미착수(아래 10-28 문구 중 BIM 폐기 부분만 무효).
+>
 > **2026-10-28 최종 범위 결정**: 이 계획에서 **구현된 것은 PER·Win Shares(OWS/DWS/WS/WS48)·퍼센타일 카드뿐**이다. **BIM·TIM·XIM(및 BPM/VORP, Phase B 전체)은 구현하지 않고 설계 문서로만 남긴다** — 과잉 설계로 판단(사용자 결정). Four Factors·SCRN%·선수 비교 화면의 PER/WS 노출은 미착수 후속 후보.
 
 작성: 2026-10-28 · 상태: 계획 (착수 전)

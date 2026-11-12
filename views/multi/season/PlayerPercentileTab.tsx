@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Spinner } from '../../../components/common/Spinner';
 import { Dropdown, DropdownButton } from '../../../components/common/Dropdown';
 import { useIsPhone } from '../../../hooks/useViewportClass';
 import { PercentileCard } from '../../../components/player/PercentileCard';
@@ -19,7 +18,9 @@ import type { Team, Game, PlayerStats } from '../../../types';
 // 선수 분모(USG%·STL% 등)가 팀 어드밴스드 RPC 에 의존하므로 그 로딩이 끝나기 전엔 카드를 그리지 않는다
 // (끝난 뒤 값이 바뀌면 막대가 튀어 보임).
 // 시즌 구분(정규시즌/플레이오프)은 리더보드와 같은 `?season=` 쿼리 파라미터 — 새로고침·링크 공유에서 유지된다.
-// 플레이오프는 선택했을 때만 해당 RPC 를 호출한다(리더보드와 같은 지연 조회).
+// [2026-11-12] 플레이오프 데이터(선수 기록·팀 기록 RPC)는 탭을 열 때 미리 받아 둔다 — 선택한 뒤에 받으면 처음 바꿀 때 화면이 로더로 바뀌었다.
+// 플레이오프 조회는 경기 수가 적어 DB 100~180ms(정규시즌 약 2.2초의 5~8%), 플레이오프 전에는 빈 결과. 방 단위 5분 캐시라 리더보드와 공유된다.
+// 데이터가 아직 안 왔으면 제목·드롭다운은 두고 표 자리만 로더(PercentileCard loading).
 // 시즌 드롭다운은 같은 세션(group_id+tier)에서 진행된 시즌 목록(useSessionSeasons) — `?seasonNo=` 파라미터. 지난 시즌의 방·로스터
 // 불러오기는 멀티 시즌 전환(현재 DB 에 시즌 2 이상 없음)이 구현된 뒤 붙이기로 해서, 지난 시즌을 고르면 안내문만 보인다.
 
@@ -80,7 +81,7 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
     }, [setSearchParams]);
 
     const rosterIds = useMemo(() => teams.flatMap(t => t.roster.map(p => p.id)), [teams]);
-    const { data: playoffStats, isPending: playoffPending } = usePlayerSeasonStatsLeague(roomId, rosterIds, true, isPlayoff);
+    const { data: playoffStats, isPending: playoffPending } = usePlayerSeasonStatsLeague(roomId, rosterIds, true, allowPlayoff);
     // buildLeagueTeams 가 채워준 teams 에는 정규시즌 스탯만 있다 — 플레이오프를 고르면 선수별 playoffStats 를 덧씌운다.
     const cardTeams = useMemo(() => {
         if (!isPlayoff || !playoffStats) return teams;
@@ -90,7 +91,9 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
         }));
     }, [teams, isPlayoff, playoffStats]);
 
-    const { data: teamAdvanced, isPending: advPending } = useTeamSeasonAdvancedStats(roomId, isPlayoff);
+    const regularAdv = useTeamSeasonAdvancedStats(roomId, false);
+    const playoffAdv = useTeamSeasonAdvancedStats(roomId, true, allowPlayoff);
+    const { data: teamAdvanced, isPending: advPending } = isPlayoff ? playoffAdv : regularAdv;
     const { sortedData } = useLeaderboardData(
         cardTeams, schedule, NO_FILTERS, SORT, 'Players', NO_STRINGS, NO_STRINGS, '', 'Traditional', seasonType, false, teamAdvanced,
     );
@@ -98,13 +101,14 @@ export const PlayerPercentileTab: React.FC<PlayerPercentileTabProps> = ({ teams,
     // [2026-10-28] 폰: 시즌 · 시즌 구분 드롭다운 폭 128 → 104(제목과 한 줄에 들어가게, §9-2)
     const isPhone = useIsPhone();
 
-    if (advPending || (isPlayoff && playoffPending)) return <Spinner variant="section" />;
+    const loading = advPending || (isPlayoff && playoffPending);
 
     const currentLabel = SEASON_TYPE_OPTIONS.find(o => o.id === seasonType)?.label ?? '';
     return (
         <PercentileCard
             data={card}
             title="퍼센타일 랭킹"
+            loading={loading}
             notice={viewingPastSeason ? `${selectedSeason.label} 시즌 데이터는 아직 불러올 수 없습니다. 지난 시즌 퍼센타일은 멀티 시즌 전환이 구현된 뒤 지원됩니다.` : undefined}
             controls={(
                 <>

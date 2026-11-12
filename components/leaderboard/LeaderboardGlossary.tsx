@@ -56,6 +56,11 @@ const STAT_TERMS: Record<string, string> = {
     DWS: '수비 윈셰어 — 수비로 만든 승리 기여',
     WS: '윈셰어 — 공격·수비 승리 기여 합계',
     'WS/48': '48분당 윈셰어',
+    // 자체 지표 — 약어 풀이를 설명 앞에 적는다(다른 곳에 없는 이름이라 뜻을 알 수 없음)
+    OBIM: 'Offensive Box Impact Margin — 박스스코어 기록으로 추정한 공격 기여. 코트에 있을 때 팀 득점을 100포제션당 몇 점 올리는지(리그 평균 0)',
+    DBIM: 'Defensive Box Impact Margin — 박스스코어 기록으로 추정한 수비 기여. 코트에 있을 때 팀 실점을 100포제션당 몇 점 줄이는지(리그 평균 0)',
+    BIM: 'Box Impact Margin — OBIM + DBIM. 코트에 있을 때 팀 득실차를 100포제션당 몇 점 움직이는지(리그 평균 0)',
+    GOBERT: 'Guarded-shot Outcomes & Box Estimate, Regressed and Team-adjusted — 수비 전용 지표. 수비한 슛의 결과와 턴오버 유도·블록·수비 리바운드·파울로 추정한, 팀 실점을 100포제션당 몇 점 줄이는지(리그 평균 0)',
     'TS%': '트루 슈팅 — 자유투·3점을 반영한 득점 효율',
     'eFG%': '유효 야투율 — 3점슛을 1.5개로 계산한 야투율',
     'TOV%': '공격 기회(야투·자유투·턴오버) 대비 턴오버 비율',
@@ -158,13 +163,18 @@ export const LeaderboardGlossary: React.FC<{
 
     if (terms.length === 0) return null;
 
+    // [2026-11-12] 라벨 칸 폭을 "이 탭에서 가장 긴 약어"에 맞춘다 — 고정 96px 이던 때는 짧은 약어(W·L·G)와 설명 사이가
+    // 다음 항목까지의 간격만큼 벌어져 어느 설명이 어느 약어 것인지 묶음이 안 보였다. 라벨↔설명은 붙이고(8px),
+    // 항목 사이(가로 48px)는 그보다 훨씬 넓게 둬서 묶음이 드러나게 한다. 0.72em ≈ 굵은 대문자 12px 한 글자 폭.
+    const termWidth = `${Math.max(...terms.map(t => t.term.length)) * 0.72 + 0.25}em`;
+
     return (
         <div className="px-6 py-5 bg-slate-950 border-t border-slate-800">
             <h3 className="text-sm font-bold text-slate-300 mb-3">용어</h3>
-            <dl className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-8 gap-y-2">
+            <dl className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-x-12 gap-y-2">
                 {terms.map(({ term, desc }) => (
-                    <div key={term} className="flex items-baseline gap-3 min-w-0">
-                        <dt className="w-24 shrink-0 text-xs font-bold text-slate-300 tabular-nums">{term}</dt>
+                    <div key={term} className="flex items-baseline gap-2 min-w-0">
+                        <dt className="shrink-0 text-xs font-bold text-slate-300 tabular-nums" style={{ width: termWidth }}>{term}</dt>
                         <dd className="min-w-0 text-xs text-slate-400">{desc}</dd>
                     </div>
                 ))}

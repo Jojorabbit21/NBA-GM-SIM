@@ -2,7 +2,7 @@
 import React from 'react';
 import { Calendar, X, ChevronDown, Table as TableIcon, Crosshair, Search, RefreshCw } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, IMPACT_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { SeasonType } from '../../hooks/useLeaderboardData';
 import { TeamMark } from '../common/TeamMark';
@@ -50,6 +50,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     let options = TRADITIONAL_STAT_OPTIONS;
     if (statCategory === 'Shooting') options = SHOOTING_STAT_OPTIONS;
     else if (statCategory === 'Advanced') options = ADVANCED_STAT_OPTIONS;
+    else if (statCategory === 'Impact') options = IMPACT_STAT_OPTIONS;
     else if (statCategory === 'Defense') options = mode === 'Teams' ? TEAM_DEFENSE_STAT_OPTIONS : DEFENSE_STAT_OPTIONS;
     else if (statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
     else if (statCategory === 'Attributes') options = mode === 'Teams' ? TEAM_ATTRIBUTES_STAT_OPTIONS : ATTRIBUTES_STAT_OPTIONS;
@@ -68,7 +69,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
     const MODE_LABELS: Record<ViewMode, string> = { Players: '선수', Teams: '팀' };
-    const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Defense: '수비', Attributes: '능력치', Opponent: '상대팀' };
+    const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Impact: '임팩트', Defense: '수비', Attributes: '능력치', Opponent: '상대팀' };
 
     // Category Items — 라벨을 text-sm으로 감싸서 공용 Dropdown.tsx(text-xs)의 기본 크기를
     // 오버라이드(자식 요소 자체 클래스가 상속값을 이기므로 다른 Dropdown 사용처엔 영향 없음).
@@ -78,6 +79,9 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         { id: 'Advanced', label: <span className="text-sm">어드밴스드</span>, onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
     ];
 
+    if (mode === 'Players') {
+        categoryItems.push({ id: 'Impact', label: <span className="text-sm">임팩트</span>, onClick: () => setStatCategory('Impact'), active: statCategory === 'Impact' });
+    }
     categoryItems.push({ id: 'Defense', label: <span className="text-sm">수비</span>, onClick: () => setStatCategory('Defense'), active: statCategory === 'Defense' });
     categoryItems.push({ id: 'Attributes', label: <span className="text-sm">능력치</span>, onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
     if (mode === 'Teams') {

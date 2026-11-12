@@ -34,7 +34,10 @@ export const PERCENTILE_SECTION_LABELS: Record<PercentileSectionId, string> = {
     screening: '스크린',
 };
 
-const SECTION_ORDER: PercentileSectionId[] = ['value', 'scoring', 'shooting', 'playmaking', 'rebounding', 'defense', 'screening'];
+// [2026-11-12] 2단 표(components/player/PercentileCard.tsx splitSections)의 좌우 행 수가 같아지는 순서 —
+// 왼쪽 가치 8 + 득점 4 + 플레이메이킹 2 = 14, 오른쪽 슈팅 5 + 리바운드 2 + 수비 5 + 스크린 2 = 14.
+// 지표를 더하거나 빼면 이 합을 다시 맞출 것(나누는 지점은 splitSections 가 행 수로 자동 결정).
+const SECTION_ORDER: PercentileSectionId[] = ['value', 'scoring', 'playmaking', 'shooting', 'rebounding', 'defense', 'screening'];
 
 /** 퍼센타일 모집단 자격 — 총 출전시간이 (리그 최다 출전 경기 수 × 이 값)분 이상(경기당 평균 8분 상당). */
 export const QUALIFY_MIN_MPG = 8;
@@ -72,14 +75,19 @@ export function calculateScreenRating(p: Pick<Player, 'strength' | 'height' | 'w
     return physique * cfg.PHYSIQUE_WEIGHT + (p.offBallMovement ?? 70) * cfg.TIMING_WEIGHT;
 }
 
-// Value 의 TIM/XIM/BPM/VORP·SCRN% 는 해당 지표 구현 전까지 목록에 없다 — 섹션이 비면 카드에서 숨긴다
-// (docs/plan/advanced-metrics-plan.md §7~8).
+// 섹션이 비면 카드에서 숨긴다(docs/plan/advanced-metrics-plan.md §7~8). TIM/XIM/BPM/VORP 은 만들지 않기로 결정(2026-11-12).
 export const PERCENTILE_METRICS: PercentileMetric[] = [
-    // 가치 — PER·WS/48·OWS/48·DWS/48 만 구현(나머지 TIM/XIM/BPM/VORP 은 advanced-metrics-plan §2~3). 값은 useLeaderboardData 가 stats.per / stats.ws48 로 채운다.
+    // 가치 — 값은 useLeaderboardData 가 stats.per / stats.ws48 로 채운다.
     { key: 'per', label: 'PER', section: 'value', value: r => r.stats['per'], format: num1 },
     { key: 'ws48', label: 'WS/48', section: 'value', value: r => r.stats['ws48'], format: dec3 },
     { key: 'ows48', label: 'OWS/48', section: 'value', value: r => per48(r, 'ows'), format: dec3 },
     { key: 'dws48', label: 'DWS/48', section: 'value', value: r => per48(r, 'dws'), format: dec3 },
+    // [2026-11-12] BIM 계열(utils/bim.ts) — 100포제션당 값이라 환산 없이 그대로. 값은 useLeaderboardData 가 stats.obim / dbim / bim / gobert 로 채운다.
+    { key: 'obim', label: 'OBIM', section: 'value', value: r => r.stats['obim'], format: num1 },
+    { key: 'dbim', label: 'DBIM', section: 'value', value: r => r.stats['dbim'], format: num1 },
+    { key: 'bim', label: 'BIM', section: 'value', value: r => r.stats['bim'], format: num1 },
+    // GOBERT(utils/gobert.ts) — 수비 전용이지만 종합 지표라 수비 섹션이 아니라 가치 섹션(사용자 결정 2026-11-12, 리더보드 임팩트 탭과 같은 묶음)
+    { key: 'gobert', label: 'GOBERT', section: 'value', value: r => r.stats['gobert'], format: num1 },
     // 득점
     { key: 'ts%', label: 'TS%', section: 'scoring', value: r => r.stats['ts%'], attempts: r => r.stats.fga + 0.44 * r.stats.fta, format: pct1 },
     { key: 'efg%', label: 'eFG%', section: 'scoring', value: r => r.stats['efg%'], attempts: r => r.stats.fga, format: pct1 },

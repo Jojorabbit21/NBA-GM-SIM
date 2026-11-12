@@ -9,7 +9,7 @@ import { ChevronDown, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-rea
 import type { Team } from '../../types';
 import type { SeasonType } from '../../hooks/useLeaderboardData';
 import {
-    TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS,
+    TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, IMPACT_STAT_OPTIONS, DEFENSE_STAT_OPTIONS, OPPONENT_STAT_OPTIONS,
     ATTRIBUTES_STAT_OPTIONS, TEAM_DEFENSE_STAT_OPTIONS, TEAM_ATTRIBUTES_STAT_OPTIONS, type FilterItem, type ViewMode, type StatCategory,
 } from '../../data/leaderboardConfig';
 import { MobilePushHeaderButton } from '../mobile/MobilePushHeader';
@@ -56,7 +56,7 @@ export interface PhoneLeaderboardProps {
 }
 
 const MODE_LABELS: Record<ViewMode, string> = { Players: '선수', Teams: '팀' };
-const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Defense: '수비', Attributes: '능력치', Opponent: '상대팀' };
+const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Impact: '임팩트', Defense: '수비', Attributes: '능력치', Opponent: '상대팀' };
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
 /** 폰 조건 칩 — 데스크톱 FilterChips(indigo 틴트) 대신 슬레이트 pill(2026-10-28 사용자 지시). 표 위 줄(가로 스크롤)과 필터 시트 안(줄바꿈) 공용. */
@@ -85,10 +85,11 @@ export const PhoneLeaderboard: React.FC<PhoneLeaderboardProps> = (p) => {
     // 데스크톱 LeaderboardToolbar와 같은 규칙 — 카테고리 목록(팀 모드만 상대팀), 스탯 조건 옵션
     const categoryIds: StatCategory[] = p.mode === 'Teams'
         ? ['Traditional', 'Shooting', 'Advanced', 'Defense', 'Attributes', 'Opponent']
-        : ['Traditional', 'Shooting', 'Advanced', 'Defense', 'Attributes'];
+        : ['Traditional', 'Shooting', 'Advanced', 'Impact', 'Defense', 'Attributes'];
     let options = TRADITIONAL_STAT_OPTIONS;
     if (p.statCategory === 'Shooting') options = SHOOTING_STAT_OPTIONS;
     else if (p.statCategory === 'Advanced') options = ADVANCED_STAT_OPTIONS;
+    else if (p.statCategory === 'Impact') options = IMPACT_STAT_OPTIONS;
     else if (p.statCategory === 'Defense') options = p.mode === 'Teams' ? TEAM_DEFENSE_STAT_OPTIONS : DEFENSE_STAT_OPTIONS;
     else if (p.statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
     else if (p.statCategory === 'Attributes') options = p.mode === 'Teams' ? TEAM_ATTRIBUTES_STAT_OPTIONS : ATTRIBUTES_STAT_OPTIONS;

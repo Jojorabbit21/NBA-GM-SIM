@@ -8,6 +8,8 @@ import { useServerClockBucket } from '../utils/serverClock';
 import type { TeamAdvancedStatsMap } from './useTeamSeasonAdvancedStats';
 import { computePer } from '../utils/per';
 import { computeWinShares } from '../utils/winShares';
+import { computeBim } from '../utils/bim';
+import { computeGobert, type GobertTotals } from '../utils/gobert';
 import { buildLeagueMetricsContext, type PlayerTotals, type TeamSummary } from '../utils/leagueMetricsContext';
 
 export type SeasonType = 'regular' | 'playoff';
@@ -542,6 +544,21 @@ export const useLeaderboardData = (
             const metricsCtx = buildLeagueMetricsContext(playerTotals, teamSummaries);
             const perValues = computePer(playerTotals, metricsCtx);
             const wsValues = computeWinShares(playerTotals, metricsCtx);
+            const bimValues = computeBim(playerTotals, metricsCtx);
+            // GOBERT 입력 — 수비 기록 시즌 누적(구역 묶음: 골밑 = RA + ITP, 미드 = MID, 3점 = CNR + WING + ATB)
+            const gobertTotals: GobertTotals[] = rows.map((r, i) => {
+                const s = r.stats as any;
+                const n = (k: string) => s[k] || 0;
+                return {
+                    teamId: r.teamId, mp: playerTotals[i].mp,
+                    defReb: playerTotals[i].defReb, tovForced: n('tovForced'), blk: playerTotals[i].blk, pf: playerTotals[i].pf,
+                    dRimA: n('defRAAttempted') + n('defITPAttempted'), dRimM: n('defRAMade') + n('defITPMade'),
+                    dMidA: n('defMIDAttempted'), dMidM: n('defMIDMade'),
+                    d3A: n('defCNRAttempted') + n('defWINGAttempted') + n('defATBAttempted'),
+                    d3M: n('defCNRMade') + n('defWINGMade') + n('defATBMade'),
+                };
+            });
+            const gobertValues = computeGobert(gobertTotals, metricsCtx);
             rows.forEach((r, i) => {
                 const st = r.stats as any;
                 st['per'] = perValues[i];
@@ -549,6 +566,10 @@ export const useLeaderboardData = (
                 st['dws'] = wsValues[i].dws;
                 st['ws'] = wsValues[i].ws;
                 st['ws48'] = wsValues[i].ws48;
+                st['obim'] = bimValues[i].obim;
+                st['dbim'] = bimValues[i].dbim;
+                st['bim'] = bimValues[i].bim;
+                st['gobert'] = gobertValues[i];
             });
         }
         return rows;
@@ -630,6 +651,10 @@ export const useLeaderboardData = (
                 update('dws', s['dws'] || 0);
                 update('ws', s['ws'] || 0);
                 update('ws48', s['ws48'] || 0);
+                update('obim', s['obim'] || 0);
+                update('dbim', s['dbim'] || 0);
+                update('bim', s['bim'] || 0);
+                update('gobert', s['gobert'] || 0);
                 update('efg%', s['efg%']);
                 update('tov%', s['tov%']);
                 update('usg%', s['usg%']);

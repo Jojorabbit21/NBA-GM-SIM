@@ -153,7 +153,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       // Reset filters that don't apply
       if (newMode === 'Teams') {
           setSelectedPositions([]);
-          if (statCategory === 'Attributes') setStatCategory('Traditional');
+          if (statCategory === 'Attributes' || statCategory === 'Impact') setStatCategory('Traditional');
       }
   };
 

@@ -4,7 +4,7 @@ import { ATTR_NAME_MAP, COMPACT_ATTR_GROUPS, getCompactAttrValue, type CompactAt
 // Types
 export type SortKey = string;
 export type ViewMode = 'Players' | 'Teams';
-export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Defense' | 'Opponent' | 'Attributes';
+export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Impact' | 'Defense' | 'Opponent' | 'Attributes';
 export type { Operator } from '../utils/statFilter';
 import type { Operator } from '../utils/statFilter';
 
@@ -93,6 +93,20 @@ export const ADVANCED_STAT_OPTIONS = [
     { value: 'nrtg', label: 'NRTG' },
     { value: 'tf', label: 'TF' },
     { value: 'ff', label: 'FF' },
+];
+
+// Filter Options - Impact (선수 종합 지표)
+export const IMPACT_STAT_OPTIONS = [
+    { value: 'g', label: 'G' },
+    { value: 'per', label: 'PER' },
+    { value: 'ows', label: 'OWS' },
+    { value: 'dws', label: 'DWS' },
+    { value: 'ws', label: 'WS' },
+    { value: 'ws48', label: 'WS/48' },
+    { value: 'obim', label: 'OBIM' },
+    { value: 'dbim', label: 'DBIM' },
+    { value: 'bim', label: 'BIM' },
+    { value: 'gobert', label: 'GOBERT' },
 ];
 
 // Filter Options - Opponent
@@ -185,11 +199,6 @@ const SHOOTING_COLUMNS = generateShootingColumns();
 // Advanced Columns
 const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Advanced', format: 'integer' },
-    { key: 'per', label: 'PER', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
-    { key: 'ows', label: 'OWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
-    { key: 'dws', label: 'DWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
-    { key: 'ws', label: 'WS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number', leagueWide: true },
-    { key: 'ws48', label: 'WS/48', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'decimal3', leagueWide: true },
     { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'efg%', label: 'eFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tov%', label: 'TOV%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
@@ -205,6 +214,20 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'scrn%', label: 'SCRN%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'tf', label: 'TF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
     { key: 'ff', label: 'FF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'integer' },
+];
+
+// Impact Columns — 선수 종합 지표(리그 전체로 정규화). 선수 모드 전용, 팀 모드엔 없다.
+const IMPACT_COLUMNS: ColumnDef[] = [
+    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Impact', format: 'integer' },
+    { key: 'per', label: 'PER', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'ows', label: 'OWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'dws', label: 'DWS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'ws', label: 'WS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'ws48', label: 'WS/48', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Impact', format: 'decimal3', leagueWide: true },
+    { key: 'obim', label: 'OBIM', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'dbim', label: 'DBIM', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'bim', label: 'BIM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
+    { key: 'gobert', label: 'GOBERT', width: 76, sortable: true, isHeatmap: true, category: 'Impact', format: 'number', leagueWide: true },
 ];
 
 // Defense Columns
@@ -305,6 +328,9 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     // Advanced Stats
     ...ADVANCED_COLUMNS,
 
+    // Impact (Players Only)
+    ...IMPACT_COLUMNS,
+
     // Defense Stats
     ...DEFENSE_COLUMNS,
 
@@ -347,7 +373,7 @@ const TEAMS_ATTRIBUTES_COLUMNS: ColumnDef[] = ATTRIBUTES_COLUMNS.map(c => ({ ...
 
 // Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE/ORTG/DRTG/NRTG 추가)
 const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
-    ...ADVANCED_COLUMNS.filter(col => !['per', 'ows', 'dws', 'ws', 'ws48', 'scrn%', 'usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
+    ...ADVANCED_COLUMNS.filter(col => !['scrn%', 'usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
     { key: 'ortg', label: 'ORTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'drtg', label: 'DRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'number' },
     { key: 'nrtg', label: 'NRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
