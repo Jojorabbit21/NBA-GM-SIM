@@ -186,6 +186,8 @@ const MultiPlayerDetailView: React.FC = () => {
         const dateByGameId = new Map((schedule as Game[]).map(g => [g.id, g.date]));
         const otByGameId = new Map((schedule as Game[]).map(g => [g.id, g.otPeriods ?? 0]));   // [2026-10-26] 연장 경기 공개 지연
         const playoffByGameId = new Map((schedule as Game[]).map(g => [g.id, !!g.isPlayoff]));   // 스플릿은 정규시즌만 집계
+        // [2026-11-13] 올스타·라이징 스타 경기도 game_pbp에 저장돼 이 목록에 들어온다 — 표시는 그대로 두고 스플릿(정규시즌)에서만 뺀다.
+        const allstarGameIds = new Set((schedule as Game[]).filter(g => g.isAllstar).map(g => g.id));
         const rows: any[] = [];
         for (const row of raw.pbpRows as any[]) {
             if (!isFinal({ scheduledAt: row.game_start_time, played: true, otPeriods: row.ot_periods ?? otByGameId.get(row.game_id) ?? 0 }, now)) continue;
@@ -204,6 +206,7 @@ const MultiPlayerDetailView: React.FC = () => {
                     teamScore: side.teamScore,
                     opponentScore: side.opponentScore,
                     isPlayoff: playoffByGameId.get(row.game_id) ?? false,
+                    isAllstar: allstarGameIds.has(row.game_id),
                     ...bs,
                 });
             }

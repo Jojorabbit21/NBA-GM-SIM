@@ -1,6 +1,6 @@
 // Split (situational) averages built from a player's per-game log rows — home/away, W/L, month, opponent, last N.
 // Input rows are the same shape PlayerDetailView's game log uses: { date: 'YYYY-MM-DD', opponentId, isHome,
-// teamScore, opponentScore, isPlayoff?, ...box fields }.
+// teamScore, opponentScore, isPlayoff?, isAllstar?, ...box fields }.
 
 // 한 줄 = 한 분류(라벨) + 그 분류에 속한 경기들. 표시용 스탯은 화면(게임 로그와 같은 열 정의)에서 games로 계산한다.
 export interface SplitLine { label: string; games: any[]; gp: number; w: number; l: number; }
@@ -11,11 +11,11 @@ export function summarizeGames(label: string, games: any[]): SplitLine {
     return { label, games, gp: games.length, w, l: games.length - w };
 }
 
-/** 정규시즌 경기만 대상으로 스플릿 그룹을 만든다. 경기가 없는 분류는 줄이 생기지 않는다. */
+/** 정규시즌 경기만 대상으로 스플릿 그룹을 만든다(플레이오프·올스타 경기 제외). 경기가 없는 분류는 줄이 생기지 않는다. */
 export function buildGameLogSplits(gameLog: any[] | undefined, allOpponentIds?: string[]): SplitGroup[] {
     // 최신순 정렬(동률은 입력 순서 유지) — 최근 N경기 계산 기준
     const games = (gameLog ?? [])
-        .filter(g => !g.isPlayoff)
+        .filter(g => !g.isPlayoff && !g.isAllstar)
         .map((g, i) => ({ g, i }))
         .sort((a, b) => String(b.g.date ?? '').localeCompare(String(a.g.date ?? '')) || a.i - b.i)
         .map(x => x.g);

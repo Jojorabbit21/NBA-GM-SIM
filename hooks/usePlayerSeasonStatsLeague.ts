@@ -83,8 +83,9 @@ export const PLAYER_SEASON_STATS_LEAGUE_STALE_MS = 5 * 60 * 1000;
  * game_pbp 전체 스캔(RPC 1회 약 1초, 임시 파일 8MB)을 화면·로스터 변경마다 반복했다. 이제 방 전체 선수를
  * 한 번만 받고(p_player_ids=null) 각 화면은 select로 필요한 선수만 골라 쓴다. 부트스트랩 게이트도 같은 팩토리를 쓴다.
  */
-/** [2026-10-20] isPlayoff: false=정규시즌, true=플레이오프, null=정규+플레이오프 합산(올스타 제외) —
- *  usePlayerSeasonStatsFull/Batch가 이 쿼리를 공유한다(두 RPC는 원래 is_playoff 구분 없는 전 경기 누적이었다). */
+/** [2026-10-20] isPlayoff: false=정규시즌, true=플레이오프, null=정규+플레이오프 합산(올스타 제외).
+ *  usePlayerSeasonStatsFull/Batch가 이 쿼리를 공유한다 — [2026-11-13] 둘 다 정규시즌(false)만 쓴다. 합산(null)은 현재 쓰는 화면이 없다
+ *  ("정규" 표에 플레이오프가 섞여 보이던 원인이라 뺐다). */
 export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, isPlayoff: boolean | null = false) {
     return {
         queryKey: ['playerSeasonStatsLeague', roomId, isPlayoff] as const,

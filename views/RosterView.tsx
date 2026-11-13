@@ -64,6 +64,8 @@ interface RosterViewProps {
   /** teamId → Off Rtg/Def Rtg/Pace(+리그 순위) — 포제션 추정이 필요해 싱글플레이어는 소스가
    * 없으므로 이 prop 자체가 없으면(미지정) 헤더에서 해당 줄을 통째로 숨긴다(멀티플레이어 전용). */
   advancedStatsByTeam?: Record<string, TeamAdvancedStatsWithRank>;
+  /** [2026-11-13] 같은 값의 플레이오프판 — "선수 기록" 탭을 플레이오프로 돌렸을 때 STL%/USG% 팀 분모로만 쓴다(헤더는 정규시즌 고정). */
+  playoffAdvancedStatsByTeam?: Record<string, TeamAdvancedStatsWithRank>;
   /** 선수 이름 hover 시 능력치+스탯 팝업 표시 — 멀티플레이어 전용 기능이라 지정된 경우에만 켜짐. */
   enableHoverCard?: boolean;
   /** 지정된 경우 "내 팀"을 볼 때만 개요 탭에 방출 버튼이 표시됨(멀티플레이어 전용 — 싱글플레이어는 미지정). */
@@ -92,7 +94,7 @@ interface RosterViewProps {
 
 const VALID_ROSTER_TABS: RosterTab[] = ['overview', 'attributes', 'stats', 'records', 'schedule', 'finance', 'coaching', 'draftPicks', 'settings'];
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, renderTeamFront, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots, playerConditions, phoneHeaderActions }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, onScoreClick, userId, coachingData, onCoachClick, onGMClick, leaguePickAssets, leagueGMProfiles, userNickname, teamNicknames, renderTeamFront, hideTabs, onTabChange, currentSimDate, capSettings, baseSeasonYear, enableHoverCard = false, onReleasePlayer, releasingId, enableTeamSettingsTab, renderTeamSettingsPanel, advancedStatsByTeam, playoffAdvancedStatsByTeam, maxRosterSize, twoWaySlots, showTwoWaySlots, playerConditions, phoneHeaderActions }) => {
   // 탭 상태를 URL 쿼리 파라미터(?tab=)로 관리 — 새로고침/북마크/공유 링크에서도 마지막으로
   // 보던 탭이 유지된다. 탭 전환은 히스토리를 계속 쌓지 않고 현재 항목만 갱신(replace) —
   // MultiLeaderboardView의 필터 상태 URL 동기화와 동일한 방침.
@@ -311,6 +313,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   onPlayerClick={onViewPlayer}
                   enableHoverCard={enableHoverCard}
                   teamAdvanced={advancedStatsByTeam}
+                  teamAdvancedPlayoff={playoffAdvancedStatsByTeam}
               />
           )}
           {tab === 'records' && (onViewGameResult || onScoreClick) && (
@@ -466,6 +469,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             schedule={schedule}
             onPlayerClick={onViewPlayer}
             teamAdvanced={advancedStatsByTeam}
+            teamAdvancedPlayoff={playoffAdvancedStatsByTeam}
             playerConditions={playerConditions}
           />
         ) : (

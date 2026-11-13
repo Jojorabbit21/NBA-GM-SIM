@@ -11,6 +11,8 @@ import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
 import { useLeagueRawStats, useRoomGamePbp, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
 import { usePlayerSeasonStatsFull } from '../../../hooks/usePlayerSeasonStatsFull';
+import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
+import { INITIAL_STATS } from '../../../utils/constants';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { RosterView } from '../../RosterView';
 import { useAiGmProfiles } from '../../../hooks/useAiGmProfiles';
@@ -203,18 +205,30 @@ const MultiRosterView: React.FC = () => {
 
     // 선수당 시즌 평균(존 슛차트/수비존 포함) — 서버 집계 RPC(2026-09-07 신설, 예전엔
     // game_pbp 원본을 통째로 받아 buildStatsMap()으로 클라이언트에서 집계했다).
+    // [2026-11-13] 정규시즌 기록만 내려온다(usePlayerSeasonStatsFull 주석) — 전엔 정규+플레이오프 합산이라 "선수 기록" 탭의 "정규" 표에
+    // 플레이오프 경기가 섞였다.
     const { data: statsFull, isPending: statsFullLoading } = usePlayerSeasonStatsFull(room?.id, allRosterIds);
 
+    // [2026-11-13] "선수 기록" 탭의 플레이오프 토글용 — 전엔 playoffStats를 채우는 곳이 없어 토글하면 전원 0이었다.
+    // 플레이오프 경기가 있는 방에서만 조회하고(공개 여부는 서버가 거른다) 로딩 게이트에는 넣지 않는다(첫 화면에 필요 없음).
+    const hasPlayoffGames = useMemo(() => schedule.some(g => g.isPlayoff && g.played), [schedule]);
+    const { data: playoffStatsByPlayer } = usePlayerSeasonStatsLeague(room?.id, allRosterIds, true, hasPlayoffGames);
+    // 플레이오프 표의 STL%·USG% 팀 분모도 플레이오프 경기 합계로(정규시즌 합계를 쓰면 값이 틀어진다).
+    const { data: playoffAdvancedStatsByTeam } = useTeamSeasonAdvancedStats(room?.id, true, hasPlayoffGames);
+
     const allTeams = useMemo(() => {
-        if (!statsFull) return allTeamsBase;
+        if (!statsFull && !playoffStatsByPlayer) return allTeamsBase;
         return allTeamsBase.map(t => ({
             ...t,
             roster: t.roster.map(p => ({
                 ...p,
-                stats: { ...(p.stats ?? {}), ...(statsFull[p.id] ?? {}) } as PlayerStats,
+                stats: statsFull ? { ...(p.stats ?? {}), ...(statsFull[p.id] ?? {}) } as PlayerStats : p.stats,
+                playoffStats: playoffStatsByPlayer
+                    ? { ...INITIAL_STATS(), ...(playoffStatsByPlayer[p.id] ?? {}) } as PlayerStats
+                    : p.playoffStats,
             })),
         }));
-    }, [allTeamsBase, statsFull]);
+    }, [allTeamsBase, statsFull, playoffStatsByPlayer]);
 
     // [2026-10-20] 헤더 우측 AI 팀 프런트 — 사람이 운영하는 팀의 "GM : 닉네임"과 같은 자리·스타일로 표시하고
     // 이름에 프런트 호버 카드를 붙인다. 사람 팀은 null을 돌려줘 RosterView의 기존 닉네임 표시를 그대로 쓴다.
@@ -384,6 +398,7 @@ const MultiRosterView: React.FC = () => {
                     enableTeamSettingsTab={!isSpectator}
                     renderTeamSettingsPanel={() => <TeamSettingsPanel />}
                     advancedStatsByTeam={advancedStatsByTeam}
+                    playoffAdvancedStatsByTeam={playoffAdvancedStatsByTeam}
                     maxRosterSize={(league as any)?.max_roster_size}
                     twoWaySlots={(league as any)?.two_way_slots}
                     // CBA 규정이 꺼졌거나(즉시계약 RPC만 사용) 리그 설정에서 Two-Way 계약을 끈 리그는 슬롯 표시를 숨긴다.

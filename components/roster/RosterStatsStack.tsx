@@ -21,6 +21,8 @@ interface RosterStatsStackProps {
     enableHoverCard?: boolean;
     /** 멀티 전용 — 선수 STL%/USG% 팀 분모를 서버 RPC 기준으로 맞춤(useLeaderboardData teamAdvanced 참고). */
     teamAdvanced?: TeamAdvancedStatsMap;
+    /** [2026-11-13] 플레이오프 토글일 때 쓰는 같은 값의 플레이오프판. 없으면 로스터 합계로 계산한다(싱글과 같은 폴백). */
+    teamAdvancedPlayoff?: TeamAdvancedStatsMap;
 }
 
 // [2026-08-11] 4개를 세로로 붙여놓으니 산만하다는 피드백으로, 테이블 하나 + 드롭다운으로 카테고리
@@ -232,7 +234,7 @@ const CategoryTable: React.FC<{
     );
 };
 
-export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false, teamAdvanced }) => {
+export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedule, onPlayerClick, enableHoverCard = false, teamAdvanced, teamAdvancedPlayoff }) => {
     const [category, setCategory] = useState<StatCategory>('Traditional');
     // [2026-10-27] 정규/플레이오프 토글 + 색상 스케일 토글 — 리더보드 툴바와 같은 모양(StatsToggles), 폰 PhoneRosterStats와 공통.
     const [seasonType, setSeasonType] = useState<SeasonType>('regular');
@@ -271,7 +273,7 @@ export const RosterStatsStack: React.FC<RosterStatsStackProps> = ({ team, schedu
                 defaultSort={current.defaultSort}
                 onPlayerClick={onPlayerClick}
                 enableHoverCard={enableHoverCard}
-                teamAdvanced={teamAdvanced}
+                teamAdvanced={seasonType === 'playoff' ? teamAdvancedPlayoff : teamAdvanced}
                 seasonType={seasonType}
                 showHeatmap={showHeatmap}
             />

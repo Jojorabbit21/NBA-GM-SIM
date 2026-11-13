@@ -24,6 +24,8 @@ interface PhoneRosterStatsProps {
     schedule: Game[];
     onPlayerClick: (player: Player, teamId?: string, teamName?: string) => void;
     teamAdvanced?: TeamAdvancedStatsMap;
+    /** [2026-11-13] 플레이오프 토글일 때 쓰는 같은 값의 플레이오프판(RosterStatsStack과 동일) */
+    teamAdvancedPlayoff?: TeamAdvancedStatsMap;
     playerConditions?: Map<string, number | null>;
 }
 
@@ -123,7 +125,7 @@ const PhoneCategoryTable: React.FC<{
 };
 
 /** 카테고리 줄 + 표. 세로·가로 스크롤 상자는 안에서 하나(바깥 RosterView의 공통 상자를 쓰지 않는 이유: 카테고리 줄을 상자 밖에 고정해야 함). */
-export const PhoneRosterStats: React.FC<PhoneRosterStatsProps> = ({ team, schedule, onPlayerClick, teamAdvanced, playerConditions }) => {
+export const PhoneRosterStats: React.FC<PhoneRosterStatsProps> = ({ team, schedule, onPlayerClick, teamAdvanced, teamAdvancedPlayoff, playerConditions }) => {
     const [category, setCategory] = useState<StatCategory>('Traditional');
     // [2026-10-27] 데스크톱과 같은 상태(정규/플레이오프 + 색상 스케일)를 폰에서는 "필터" 버튼 → 바텀 시트의 토글 행 2개로(사용자 지시, 인라인 토글 폐기).
     const [seasonType, setSeasonType] = useState<SeasonType>('regular');
@@ -158,7 +160,7 @@ export const PhoneRosterStats: React.FC<PhoneRosterStatsProps> = ({ team, schedu
                     category={category}
                     defaultSort={current.defaultSort}
                     onPlayerClick={onPlayerClick}
-                    teamAdvanced={teamAdvanced}
+                    teamAdvanced={seasonType === 'playoff' ? teamAdvancedPlayoff : teamAdvanced}
                     playerConditions={playerConditions}
                 />
                 <div aria-hidden="true" className="h-14 pb-safe" />

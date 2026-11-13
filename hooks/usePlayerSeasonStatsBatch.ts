@@ -13,8 +13,12 @@ import {
 //
 // [2026-10-20] 이 훅은 이제 자체 RPC를 호출하지 않는다. get_player_season_stats_full/league/batch 3종이 같은 game_pbp 전
 // 경기 스캔을 각자 반복해 임시 파일을 약 5GB/100분 쓰고 있었다(docs/history/dev-log.md). usePlayerSeasonStatsLeague의 방 단위
-// 쿼리를 isPlayoff=null(정규+플레이오프 합산, 올스타 제외 — 예전 batch RPC와 같은 의미)로 공유하고, 요청한 선수·예전 Batch가
-// 내려주던 항목만 골라 쓴다. get_player_season_stats_batch RPC는 DB에 그대로 남아 있다(롤백용, 현재 호출 없음).
+// 쿼리를 공유하고, 요청한 선수·예전 Batch가 내려주던 항목만 골라 쓴다. get_player_season_stats_batch RPC는 DB에 그대로 남아 있다
+// (롤백용, 현재 호출 없음).
+//
+// [2026-11-13] 정규시즌 기록만(isPlayoff=false) — 전엔 isPlayoff=null(정규+플레이오프 합산, 예전 batch RPC의 의미)이라 이 훅을 쓰는
+// 선수 카드(뉴스·일정 MVP·프런트·경기 화면)만 플레이오프 경기까지 더한 값을 보여줘 다른 화면의 같은 선수 카드와 숫자가 달랐다.
+// usePlayerSeasonStatsFull과 같은 변경 — 설명은 그 파일 참고.
 
 // [2026-09-02] Map → plain Record로 변경(버그 수정) — index.tsx의 PersistQueryClientProvider가
 // react-query 캐시를 localStorage에 JSON.stringify로 영속화한다. Map은 JSON 직렬화 시
@@ -43,7 +47,7 @@ export function usePlayerSeasonStatsBatch(roomId: string | undefined, playerIds:
     );
 
     return useQuery({
-        ...playerSeasonStatsLeagueQuery(roomId, null),
+        ...playerSeasonStatsLeagueQuery(roomId, false),
         enabled: !!roomId && sortedIds.length > 0,
         select,
     });
