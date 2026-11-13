@@ -607,6 +607,13 @@ function foulTroubleProbMod(pf: number): number {
     return pf >= 5 ? ft.PROB_MOD[5] : pf >= 4 ? ft.PROB_MOD[4] : pf >= 3 ? ft.PROB_MOD[3] : 1.0;
 }
 
+/** [2026-11-13] 수비 실력 파울 배율 — 잘 막는 수비수일수록 파울이 적고 못 막을수록 많다. skill = 장면 기준 수비 실력
+ *  (골밑: intDef×0.65+defConsist×0.35, 외곽: perDef×0.65+defConsist×0.35), 기준점(PIVOT)이 ×1 (client·server 미러) */
+function defenderSkillFoulMult(skill: number, interior: boolean): number {
+    const c = SIM_CONFIG.SHOOTING_FOUL.DEFENDER_SKILL_MULT;
+    return Math.max(c.MIN, Math.min(c.MAX, 1 - c.SLOPE * (skill - (interior ? c.PIVOT_INTERIOR : c.PIVOT_PERIMETER)) / 10));
+}
+
 // [2026-11-11] 자유투 패키지 ④ 공 없는 자리싸움 파울 대상 추첨 (server 미러 참조) — 리바운드 존재감
 // ((offReb 또는 defReb + boxOut + strength)/3 − OFF_BALL_PRESENCE_BASE, 최소 1)^지수 가중. 상수는 SIM_CONFIG.NON_SHOOTING_FOUL.OFF_BALL_*
 function pickByReboundPresence(pool: LivePlayer[], offense: boolean): LivePlayer {
@@ -1172,6 +1179,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-11-11] 자유투 패키지 ③ — 골밑 수비 실력 할인 ×INTERIOR_SKILL_SCALE, 림 접촉 가산, 본인 마무리 골밑 슛은 플레이별 접촉 가산
     //   (SIM_CONFIG.SHOOTING_FOUL 주석 참조, server 미러)
     shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale * (isInteriorZone ? sFoulCfg.INTERIOR_SKILL_SCALE : 1);
+    // [2026-11-13] 수비 실력 배율 — 맡은 수비수 몫(도움 수비·림 프로텍터 몫 제외)에 곱한다. 3점은 전용 공식이 수비수 실력을 따로 반영해 제외.
+    //   위 덧셈 할인만으로는 스타의 파울 유도 가산에 묻혀, 같은 포지션 안에서 수비 실력과 파울이 무관했다 (client·server 미러)
+    const defSkillMult = preferredZone === '3PT' ? 1 : defenderSkillFoulMult(defenderSkill, isInteriorZone);
     if (preferredZone === 'Rim') shootingFoulRate += sFoulCfg.RIM_CONTACT_ADD;
     if (isInteriorZone && !isKickout) shootingFoulRate += sFoulCfg.PLAYTYPE_CONTACT[selectedPlayType] ?? 0;
     // [2026-11-13] 상황별 접촉 배율 — 기본 접촉(존 기본값 + 림 접촉 + 플레이 접촉)에만 곱한다. 파울 유도 능력·수비수 실력·슬라이더 항은
@@ -1245,7 +1255,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             + (defIntensity - 5.5) * t3.DEF_INTENSITY_FACTOR + (defender.tendencies?.foulProneness ?? 0) * t3.FOUL_PRONENESS_FACTOR + (press?.shootingFoulBonus ?? 0);
         shootingFoulRate = Math.max(0, shootingFoulRate);
     }
-    shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
+    shootingFoulRate = ((shootingFoulRate - helpBonusRate) * foulProbMod * defSkillMult + helpBonusRate * helpFoulProbMod) * matchupFoulMult;
     // [2026-10-25] 림 프로텍터 개입 대가 — 수비 정교함(intDef×0.65+defConsist×0.35)이 낮을수록 파울 몫 증가, 본인 파울 트러블 반영
     let protectorFoulRate = 0;
     if (rimProtector) {
@@ -1290,13 +1300,21 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let nonShootingFoulRate = nsFoulCfg.BASE_RATE + (defIntensity - 5.5) * nsFoulCfg.DEF_INTENSITY_FACTOR;
     nonShootingFoulRate += nsFoulCfg.PLAYTYPE_MOD[selectedPlayType] ?? 0;
     nonShootingFoulRate *= foulProbMod * matchupFoulMult;
+    // [2026-11-13] 공 쪽 비슈팅 파울에도 수비 실력 배율 — 장면 기준(림·페인트·포스트업이면 골밑 실력, 그 밖은 외곽 실력).
+    //   자리싸움 몫(OFF_BALL_SHARE)은 배율 없음 → 공 쪽 몫만 바뀌도록 확률과 자리싸움 비중을 함께 조정 (client·server 미러)
+    const nsInterior = isInteriorZone || selectedPlayType === 'PostUp';
+    const nsSkill = nsInterior ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35 : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+    const nsOnBallMult = defenderSkillFoulMult(nsSkill, nsInterior);
+    const nsEff = nsFoulCfg.OFF_BALL_SHARE + (1 - nsFoulCfg.OFF_BALL_SHARE) * nsOnBallMult;
+    nonShootingFoulRate *= nsEff;
+    const nsOffBallShare = nsFoulCfg.OFF_BALL_SHARE / nsEff;
     nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
 
     if (!bFoul && Math.random() < nonShootingFoulRate) {
         // [2026-11-11] 자유투 패키지 ④ — OFF_BALL_SHARE만큼은 공 없는 자리싸움 파울: 당하는 쪽·범하는 쪽을 리바운드 존재감으로 다시 고르고,
         //   플레이 종류 집계에서는 뺀다(statPlayType null). 상수·근거는 SIM_CONFIG.NON_SHOOTING_FOUL 주석 (server 미러)
         let nsActor = actor, nsDefender = defender;
-        if (Math.random() < nsFoulCfg.OFF_BALL_SHARE) {
+        if (Math.random() < nsOffBallShare) {
             const offPool = offTeam.onCourt.filter(p => p.playerId !== actor.playerId);
             if (offPool.length) {
                 nsActor = pickByReboundPresence(offPool, true);

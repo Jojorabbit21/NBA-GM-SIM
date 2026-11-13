@@ -326,6 +326,10 @@ export const SIM_CONFIG = {
             'Cut': 1.55, 'PnR_Roll': 1.9, 'PnR_Pop': 1.39, 'Putback': 1.28, 'OffBallScreen': 1.59,
         } as Partial<Record<string, number>>,
         CONTACT_MULT_DEFAULT: 1.6,
+        // [2026-11-13] 수비 실력 파울 배율 — 배율 = 1 − SLOPE × (수비 실력 − PIVOT) / 10, MIN~MAX. 맡은 수비수의 슈팅 파울(림·페인트·미드)과
+        //   공 쪽 비슈팅 파울에 곱한다(possessionHandler defenderSkillFoulMult). PIVOT = 현역 리그 출전시간 가중 평균 수비 실력 근처(골밑 68·외곽 72).
+        //   총량 복원 없음(사용자 결정 11-13): 현역 자유투 23.2→21.9, 레전드 28.9→28.5. 같은 포지션 안 수비 실력–파울 상관 +0.05→−0.92(현역 빅맨)
+        DEFENDER_SKILL_MULT: { SLOPE: 0.40, PIVOT_INTERIOR: 70, PIVOT_PERIMETER: 72, MIN: 0.2, MAX: 2.6 },
 
         // [2026-11-11] 자유투 패키지 ① 3점 슈팅 파울 전용 공식 (client·server 미러) — 위 존 공통 공식을 3점에서는 이걸로 교체:
         //   DRAW_CURVE(슈터 drFoul, 가파름) + DEF_CURVE(수비수 perDef×0.65+defConsist×0.35, 약할수록 소폭 ↑) + (defIntensity−5.5)×DEF_INTENSITY_FACTOR
