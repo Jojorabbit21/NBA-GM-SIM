@@ -6,6 +6,8 @@ import { PLAY_TYPES_WITH_TRANSITION, getFullPlayTypeDistribution } from './playT
 import type { TeamPlayTypeTotals } from '../../../../hooks/useTeamPlayTypeStats';
 import { Spinner } from '../../../common/Spinner';
 import { InlineNotice } from '../../../common/InlineNotice';
+import { SeasonTypeToggle } from '../../../roster/StatsToggles';
+import type { SeasonType } from '../../../../hooks/useLeaderboardData';
 
 /** [2026-10-18] 실제 경기 기반 PPP(멀티 전술 화면 전용) — 지정되면 예상 비중 차트 아래 "PPP" 섹션을 그린다 */
 export interface PlayTypeActual {
@@ -13,6 +15,9 @@ export interface PlayTypeActual {
     myTeamId: string | null;
     isLoading: boolean;
     isError: boolean;
+    /** [2026-11-13] 정규/플레이오프 전환 — onSeasonTypeChange를 주면 "PPP" 제목 옆에 토글이 나온다(totals는 호출부가 고른 쪽을 넘긴다) */
+    seasonType?: SeasonType;
+    onSeasonTypeChange?: (v: SeasonType) => void;
 }
 
 interface PlayTypePPPProps {
@@ -150,7 +155,12 @@ const PlayTypeActualSection: React.FC<{ actual: PlayTypeActual }> = ({ actual })
         <>
             {/* 슬라이더 그룹 사이 구분선과 같은 규격 */}
             <div className="h-px bg-slate-700 my-4" />
-            <h5 className="text-base font-black text-white">PPP</h5>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h5 className="text-base font-black text-white">PPP</h5>
+                {actual.onSeasonTypeChange && (
+                    <SeasonTypeToggle size="sm" value={actual.seasonType ?? 'regular'} onChange={actual.onSeasonTypeChange} />
+                )}
+            </div>
             <div className="-mt-1.5 text-xs text-slate-500 leading-relaxed">이번 시즌 · 포제션당 득점(자유투·턴오버 포함)</div>
 
             {actual.isError ? (
@@ -159,8 +169,10 @@ const PlayTypeActualSection: React.FC<{ actual: PlayTypeActual }> = ({ actual })
                 <Spinner variant="section" />
             ) : view.empty ? (
                 <div className="mt-1 px-4 py-5 border border-dashed border-slate-700 rounded-lg flex flex-col items-center gap-2 text-center">
-                    <div className="text-sm font-semibold text-slate-300">아직 집계된 경기가 없습니다</div>
-                    <div className="text-xs text-slate-500 leading-relaxed">PPP는 이 기능 도입 이후 치른 경기부터 집계됩니다.</div>
+                    <div className="text-sm font-semibold text-slate-300">{actual.seasonType === 'playoff' ? '플레이오프 경기 기록이 없습니다' : '아직 집계된 경기가 없습니다'}</div>
+                    {actual.seasonType !== 'playoff' && (
+                        <div className="text-xs text-slate-500 leading-relaxed">PPP는 이 기능 도입 이후 치른 경기부터 집계됩니다.</div>
+                    )}
                 </div>
             ) : (
                 <>

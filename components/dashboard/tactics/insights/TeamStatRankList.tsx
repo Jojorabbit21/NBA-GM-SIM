@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { IconButton } from '../../../common/IconButton';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../../common/Table';
+import { TableEmptyRow } from '../../../common/EmptyState';
+import { Spinner } from '../../../common/Spinner';
 import { InsightCard } from './InsightCard';
 
 export interface StatRankRow {
@@ -46,8 +48,9 @@ export interface StatRankPage {
  *  `pages`가 2개 이상이면(예: 공격/수비) 상/하로 나눠 보여주는 대신, 헤더 좌우에 쉐브론 버튼을
  *  둬서 같은 자리에서 데이터만 스왑하는 방식으로 전환한다("< 공격 >" → "< 수비 >"). pages가
  *  1개면 쉐브론 없이 예전처럼 고정 제목만 표시.
- *  [2026-10-13] flex-div 표 → 공용 Table(bare) + InsightCard. */
-export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages }) => {
+ *  [2026-10-13] flex-div 표 → 공용 Table(bare) + InsightCard.
+ *  [2026-11-13] toolbar — 헤더 아래 한 줄(정규/플레이오프 토글 자리, 오른쪽 정렬). loading — 표 대신 스피너. emptyText — 줄이 없을 때 표 안에 보일 문구. */
+export const TeamStatRankList: React.FC<{ pages: StatRankPage[]; toolbar?: React.ReactNode; loading?: boolean; emptyText?: string }> = ({ pages, toolbar, loading, emptyText }) => {
     const [pageIndex, setPageIndex] = useState(0);
     const page = pages[pageIndex];
     const hasMultiplePages = pages.length > 1;
@@ -60,6 +63,8 @@ export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages })
             headerLeft={hasMultiplePages ? <IconButton label="이전" size="sm" onClick={goPrev}><ChevronLeft size={16} /></IconButton> : undefined}
             headerRight={hasMultiplePages ? <IconButton label="다음" size="sm" onClick={goNext}><ChevronRight size={16} /></IconButton> : undefined}
         >
+            {toolbar && <div className="px-3 py-2 border-b border-slate-800 flex justify-end">{toolbar}</div>}
+            {loading ? <Spinner variant="section" /> : (
             <Table variant="bare" dividers={false}>
                 <TableHead>
                     <TableHeaderCell align="left">스탯</TableHeaderCell>
@@ -68,6 +73,7 @@ export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages })
                     <TableHeaderCell align="right">순위</TableHeaderCell>
                 </TableHead>
                 <TableBody>
+                    {page.rows.length === 0 && emptyText && <TableEmptyRow colSpan={4}>{emptyText}</TableEmptyRow>}
                     {page.rows.map((row, i) => {
                         const diff = row.value - row.leagueAvg;
                         const diffColor = diff > 0 ? 'text-emerald-400' : diff < 0 ? 'text-red-400' : 'text-slate-500';
@@ -85,6 +91,7 @@ export const TeamStatRankList: React.FC<{ pages: StatRankPage[] }> = ({ pages })
                     })}
                 </TableBody>
             </Table>
+            )}
         </InsightCard>
     );
 };

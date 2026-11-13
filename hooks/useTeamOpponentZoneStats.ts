@@ -15,12 +15,14 @@ const ZONE_KEYS = [
     'zone_atb3_l_m', 'zone_atb3_l_a', 'zone_atb3_c_m', 'zone_atb3_c_a', 'zone_atb3_r_m', 'zone_atb3_r_a',
 ] as const;
 
-export function useTeamOpponentZoneStats(roomId: string | undefined | null) {
+/** [2026-11-13] isPlayoff: false = 정규시즌만, true = 플레이오프만(RPC p_is_playoff). 전엔 경기 종류 구분 없이 정규+플레이오프+올스타가
+ *  한데 더해졌다(migrations/stats_split_regular_playoff_exclude_allstar.sql). enabled=false로 지금 보지 않는 쪽 조회를 꺼 둘 수 있다. */
+export function useTeamOpponentZoneStats(roomId: string | undefined | null, isPlayoff = false, enabled = true) {
     return useQuery({
-        queryKey: ['teamOpponentZoneStats', roomId],
-        enabled: !!roomId,
+        queryKey: ['teamOpponentZoneStats', roomId, isPlayoff],
+        enabled: !!roomId && enabled,
         queryFn: async (): Promise<TeamOpponentZoneStats> => {
-            const { data, error } = await supabase.rpc('get_team_opponent_zone_stats', { p_room_id: roomId });
+            const { data, error } = await supabase.rpc('get_team_opponent_zone_stats', { p_room_id: roomId, p_is_playoff: isPlayoff });
             if (error) throw error;
 
             const result: TeamOpponentZoneStats = {};

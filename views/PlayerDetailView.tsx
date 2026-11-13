@@ -9,6 +9,8 @@ import { formatMoney } from '../utils/formatMoney';
 import { computeCareerAvg, statsToCareerRow, buildTeamAdvCtx, isMultiTeamLabel, type TeamAdvCtx } from '../utils/careerStats';
 import type { PlayerTeamSplits, PlayerTeamSplit } from '../hooks/usePlayerTeamSplits';
 import { buildGameLogSplits } from '../utils/gameLogSplits';
+import { SeasonTypeToggle } from '../components/roster/StatsToggles';
+import type { SeasonType } from '../hooks/useLeaderboardData';
 import { getContractAav } from '../utils/contract';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
@@ -970,6 +972,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     }, [gameLog, rowSeason, seasonShort]);
     const selectedGameLogSeason = gameLogSeason && gameLogSeasons.includes(gameLogSeason) ? gameLogSeason : seasonShort;
     const seasonGameLog = useMemo(() => (gameLog ?? []).filter(r => rowSeason(r) === selectedGameLogSeason), [gameLog, rowSeason, selectedGameLogSeason]);
+    // [2026-11-13] 게임 로그는 정규 시즌/플레이오프 섹션으로 나눈다(섹션마다 합계·평균) — 전엔 한 목록이라 하단 합계·평균이 둘을 합친 값이었다.
+    // 목록이 최신순이라 플레이오프 섹션이 위(팀 경기 기록의 폰 화면과 같은 규칙). 경기가 없는 섹션은 만들지 않는다.
+    const gameLogSections = useMemo(() => {
+        const playoff = seasonGameLog.filter(r => r.isPlayoff);
+        const regular = seasonGameLog.filter(r => !r.isPlayoff);
+        return [
+            { key: 'playoff', title: '플레이오프', rows: playoff },
+            { key: 'regular', title: '정규 시즌', rows: regular },
+        ].filter(sec => sec.rows.length > 0);
+    }, [seasonGameLog]);
     // 스플릿은 현재 시즌 경기만(과거 시즌이 섞이지 않게)
     const currentSeasonGameLog = useMemo(() => (gameLog ?? []).filter(r => rowSeason(r) === seasonShort), [gameLog, rowSeason, seasonShort]);
     // 스플릿 "상대팀별"에 빈 줄까지 채울 리그 전체 팀(현재 소속팀 제외). allTeams가 없으면 상대한 팀만 나온다.
@@ -986,12 +998,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
     const s = player.stats;
 
-    // 리그 전체 선수 zone 스탯 합산 → 실제 리그 평균 계산
+    // [2026-11-13] 샷 차트의 정규/플레이오프 전환(필터 패널 맨 위 토글) — 슛 이벤트(RPC가 슛마다 isPlayoff를 붙여 준다)·존 배경·리그 평균이
+    // 함께 바뀐다. 전엔 정규·플레이오프·올스타 슛이 한 차트에 섞였다(올스타는 RPC에서 제외).
+    const [shotSeasonType, setShotSeasonType] = useState<SeasonType>('regular');
+    const shotPlayoff = shotSeasonType === 'playoff';
+
+    // 리그 전체 선수 zone 스탯 합산 → 실제 리그 평균 계산(샷 차트가 보고 있는 시즌 구분 기준)
     const leagueZoneAvg = useMemo(() => {
         const totals = { rim_m: 0, rim_a: 0, paint_m: 0, paint_a: 0, mid_m: 0, mid_a: 0, c3_m: 0, c3_a: 0, atb3_m: 0, atb3_a: 0 };
         const allPlayers = (allTeams ?? []).flatMap(t => t.roster ?? []);
         for (const p of allPlayers) {
-            const st = p.stats as any;
+            const st = (shotPlayoff ? p.playoffStats : p.stats) as any;
             if (!st) continue;
             totals.rim_m   += st.zone_rim_m    || 0; totals.rim_a   += st.zone_rim_a    || 0;
             totals.paint_m += st.zone_paint_m  || 0; totals.paint_a += st.zone_paint_a  || 0;
@@ -1010,16 +1027,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             c3:    pct(totals.c3_m,    totals.c3_a,    ZONE_AVG.c3),
             atb3:  pct(totals.atb3_m,  totals.atb3_a,  ZONE_AVG.atb3),
         };
-    }, [allTeams]);
+    }, [allTeams, shotPlayoff]);
 
-    const chartZones = useMemo(() =>
-        CHART_ZONES.map(z => {
+    const chartZones = useMemo(() => {
+        const zs = (shotPlayoff ? player.playoffStats : player.stats) as any;
+        return CHART_ZONES.map(z => {
             const sk = ZONE_STAT_KEYS[z.key];
-            const m = sk ? ((s as any)[sk.keyM] || 0) : 0;
-            const a = sk ? ((s as any)[sk.keyA] || 0) : 0;
+            const m = sk ? (zs?.[sk.keyM] || 0) : 0;
+            const a = sk ? (zs?.[sk.keyA] || 0) : 0;
             return { ...z, m, a, avg: leagueZoneAvg[z.avgKey] };
-        }),
-    [player.stats, leagueZoneAvg]);
+        });
+    }, [player.stats, player.playoffStats, shotPlayoff, leagueZoneAvg]);
 
     // "샷 차트" 탭 좌측 필터 — 결과(성공/실패)/쿼터/슛 타입/상대팀은 shot_events에 이미
     // 있는 필드(isMake/quarter/shotType/teamId + RPC가 추가로 내려주는 homeTeamId·
@@ -1052,31 +1070,39 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         return m;
     }, [allTeams]);
 
+    // 지금 보고 있는 시즌 구분(정규/플레이오프)의 슛만 — isPlayoff가 없는 이벤트는 정규시즌으로 본다.
+    const seasonShotEvents = useMemo(
+        () => externalShotEvents ? (externalShotEvents as any[]).filter(ev => !!ev.isPlayoff === shotPlayoff) : externalShotEvents,
+        [externalShotEvents, shotPlayoff],
+    );
+    // 시즌 구분을 바꾸면 상대팀 선택은 비운다(정규시즌에만 만난 팀이 선택된 채 남으면 플레이오프 차트가 통째로 빈다).
+    const changeShotSeasonType = (v: SeasonType) => { setShotSeasonType(v); setShotTeamFilter(new Set()); };
+
     // 필터 토글 버튼에 표시할 선택지 — 실제 데이터에 존재하는 값만(필터 상태와 무관하게
-    // 원본 externalShotEvents 기준으로 고정) 보여줘서 빈 껍데기 버튼이 안 뜨게 함.
+    // seasonShotEvents 기준으로 고정) 보여줘서 빈 껍데기 버튼이 안 뜨게 함.
     const availableShotTypes = useMemo(() => {
-        if (!externalShotEvents) return [];
-        const present = new Set((externalShotEvents as any[]).map(ev => ev.shotType).filter(Boolean));
+        if (!seasonShotEvents) return [];
+        const present = new Set((seasonShotEvents as any[]).map(ev => ev.shotType).filter(Boolean));
         return SHOT_TYPE_ORDER.filter(t => present.has(t));
-    }, [externalShotEvents]);
+    }, [seasonShotEvents]);
     const availableQuarters = useMemo(() => {
-        if (!externalShotEvents) return [];
-        const present = new Set<number>((externalShotEvents as any[]).map(ev => ev.quarter).filter((q): q is number => q != null));
+        if (!seasonShotEvents) return [];
+        const present = new Set<number>((seasonShotEvents as any[]).map(ev => ev.quarter).filter((q): q is number => q != null));
         return Array.from(present).sort((a, b) => a - b);
-    }, [externalShotEvents]);
+    }, [seasonShotEvents]);
     const availableOpponentTeams = useMemo(() => {
-        if (!externalShotEvents) return [];
+        if (!seasonShotEvents) return [];
         const present = new Set<string>();
-        for (const ev of externalShotEvents as any[]) {
+        for (const ev of seasonShotEvents as any[]) {
             const oppId = getOpponentTeamId(ev);
             if (oppId) present.add(oppId);
         }
         return Array.from(present).sort((a, b) => (teamById.get(a)?.abbr ?? a).localeCompare(teamById.get(b)?.abbr ?? b));
-    }, [externalShotEvents, teamById]);
+    }, [seasonShotEvents, teamById]);
 
     const filteredShotEvents = useMemo(() => {
-        if (!externalShotEvents) return externalShotEvents;
-        return (externalShotEvents as any[]).filter(ev => {
+        if (!seasonShotEvents) return seasonShotEvents;
+        return (seasonShotEvents as any[]).filter(ev => {
             if (shotMakeFilter === 'make' && !ev.isMake) return false;
             if (shotMakeFilter === 'miss' && ev.isMake) return false;
             if (shotQuarterFilter.size > 0 && !shotQuarterFilter.has(ev.quarter)) return false;
@@ -1088,7 +1114,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             if (shotClutchOnly && !isClutchShot(ev)) return false;
             return true;
         });
-    }, [externalShotEvents, shotMakeFilter, shotQuarterFilter, shotTypeFilter, shotTeamFilter, shotClutchOnly]);
+    }, [seasonShotEvents, shotMakeFilter, shotQuarterFilter, shotTypeFilter, shotTeamFilter, shotClutchOnly]);
 
     // shot_events의 subZone(zone_rim/zone_paint/zone_mid_l 등, statsMappers.ts와 동일 키)을
     // leagueZoneAvg/ZONE_CONFIG의 5대 구역(avgKey: rim/paint/mid/c3/atb3)으로 매핑 — 헥스빈
@@ -1393,6 +1419,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
     // 샷 차트 필터 패널 — 데스크톱은 차트 왼쪽에, 폰은 바텀 시트 안에 같은 JSX를 그대로(즉시 반영)
     const shotFilterPanel = (
                 <div className="shrink-0 self-start bg-slate-900 p-4 flex flex-col gap-3">
+                    <div className="self-start">
+                        <SeasonTypeToggle value={shotSeasonType} onChange={changeShotSeasonType} />
+                    </div>
                     <div className="text-sm text-slate-500 pb-3 border-b border-slate-800">
                         {filteredShotEvents?.length ?? 0}개 표시 중
                         {(shotMakeFilter !== 'all' || shotQuarterFilter.size > 0 || shotTypeFilter.size > 0 || shotTeamFilter.size > 0 || shotClutchOnly) && (
@@ -2443,16 +2472,24 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                             </div>
                             )}
                             {seasonGameLog.length > 0 ? (
-                                <div style={{ height: seasonGameLog.length * ROW_HEIGHT + GAME_LOG_HEADER_HEIGHT + GAME_LOG_FOOTER_ROWS * ROW_HEIGHT }} className="relative">
-                                    <VirtualGameLog
-                                        key={selectedGameLogSeason}
-                                        mode={gameLogMode}
-                                        gameLog={seasonGameLog}
-                                        gameLogLoading={gameLogLoading}
-                                        teamId={teamId}
-                                        onGameClick={onGameClick}
-                                    />
-                                </div>
+                                gameLogSections.map(sec => (
+                                    <div key={sec.key}>
+                                        {/* 섹션 머리 — 팀 경기 기록(TeamGameLog)의 섹션 머리와 같은 모양, 좌측 여백은 이 표의 셀(px-2)에 맞춤 */}
+                                        <div className="h-8 px-2 flex items-center bg-slate-800">
+                                            <span className="text-sm font-black text-slate-500">{sec.title}</span>
+                                        </div>
+                                        <div style={{ height: sec.rows.length * ROW_HEIGHT + GAME_LOG_HEADER_HEIGHT + GAME_LOG_FOOTER_ROWS * ROW_HEIGHT }} className="relative">
+                                            <VirtualGameLog
+                                                key={`${selectedGameLogSeason}-${sec.key}`}
+                                                mode={gameLogMode}
+                                                gameLog={sec.rows}
+                                                gameLogLoading={gameLogLoading}
+                                                teamId={teamId}
+                                                onGameClick={onGameClick}
+                                            />
+                                        </div>
+                                    </div>
+                                ))
                             ) : (
                                 <EmptyState title="이 시즌의 경기 기록이 없습니다" />
                             )}

@@ -132,10 +132,14 @@ const MultiPlayerDetailView: React.FC = () => {
     // 경기" 위젯(selectPlayerGameLog, 아래)은 경기 단위 원본이 그대로 필요해 그쪽은
     // includePbp 기본값(true)을 그대로 유지.
     const { data: statsByPlayer, isPending: statsLoading } = usePlayerSeasonStatsLeague(room?.id, allRosterIds);
+    // [2026-11-13] 플레이오프 기록 — 전엔 playoffStats를 채우는 곳이 없어 기록 탭에 이번 시즌 플레이오프 행이 나오지 않았다.
+    // 플레이오프 경기가 있는 방에서만 조회하고(공개 여부는 서버가 거른다) 로딩 게이트에는 넣지 않는다(도착하면 행이 생긴다).
+    const hasPlayoffGames = useMemo(() => (schedule as Game[]).some(g => g.isPlayoff && g.played), [schedule]);
+    const { data: playoffStatsByPlayer } = usePlayerSeasonStatsLeague(room?.id, allRosterIds, true, hasPlayoffGames);
     const unrevealedKey = useUnrevealedGamesKey(schedule as any);
     const selectLeagueTeams = useCallback(
         (raw: LeagueRawStatsData): Team[] => {
-            const builtTeams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer);
+            const builtTeams = buildLeagueTeams(raw, leagueTeams, useCustomOverrides, statsByPlayer, undefined, playoffStatsByPlayer);
             const teamIdByPlayer = new Map<string, string>();
             for (const lt of leagueTeams) for (const id of (lt.roster ?? [])) teamIdByPlayer.set(id, lt.team_slug);
             // [2026-11-07] 공개 전 경기에서 생긴 부상·출장정지는 배지와 "부상 이력" 목록 모두에서 숨김(스포일러 방지) —
@@ -166,7 +170,7 @@ const MultiPlayerDetailView: React.FC = () => {
             }));
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule, statsByPlayer, unrevealedKey],
+        [leagueTeams, useCustomOverrides, currentSimDate, room?.season_number, schedule, statsByPlayer, playoffStatsByPlayer, unrevealedKey],
     );
 
     const { data: teams = [], isPending: fetchLoading } = useLeagueRawStats(room?.id, allRosterIds, selectLeagueTeams, { includePbp: false });
@@ -186,10 +190,12 @@ const MultiPlayerDetailView: React.FC = () => {
         const dateByGameId = new Map((schedule as Game[]).map(g => [g.id, g.date]));
         const otByGameId = new Map((schedule as Game[]).map(g => [g.id, g.otPeriods ?? 0]));   // [2026-10-26] 연장 경기 공개 지연
         const playoffByGameId = new Map((schedule as Game[]).map(g => [g.id, !!g.isPlayoff]));   // 스플릿은 정규시즌만 집계
-        // [2026-11-13] 올스타·라이징 스타 경기도 game_pbp에 저장돼 이 목록에 들어온다 — 표시는 그대로 두고 스플릿(정규시즌)에서만 뺀다.
+        // [2026-11-13] 올스타·라이징 스타 경기도 game_pbp에 저장돼 있다 — 이벤트 경기는 시즌 기록이 아니므로 게임 로그·스플릿·최근 경기에서 뺀다
+        // (게임 로그는 정규 시즌/플레이오프 섹션으로 나뉘는데 어느 쪽에도 속하지 않는다).
         const allstarGameIds = new Set((schedule as Game[]).filter(g => g.isAllstar).map(g => g.id));
         const rows: any[] = [];
         for (const row of raw.pbpRows as any[]) {
+            if (allstarGameIds.has(row.game_id)) continue;
             if (!isFinal({ scheduledAt: row.game_start_time, played: true, otPeriods: row.ot_periods ?? otByGameId.get(row.game_id) ?? 0 }, now)) continue;
             const sides = [
                 { box: row.home_box ?? [], oppTeamId: row.away_team_id, isHome: true, teamScore: row.home_score, opponentScore: row.away_score },
@@ -206,7 +212,6 @@ const MultiPlayerDetailView: React.FC = () => {
                     teamScore: side.teamScore,
                     opponentScore: side.opponentScore,
                     isPlayoff: playoffByGameId.get(row.game_id) ?? false,
-                    isAllstar: allstarGameIds.has(row.game_id),
                     ...bs,
                 });
             }

@@ -23,7 +23,9 @@ import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLe
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { useTeamOpponentZoneStats } from '../../../hooks/useTeamOpponentZoneStats';
 import { useTeamPlayTypeStats } from '../../../hooks/useTeamPlayTypeStats';
-import { useLeaderboardData } from '../../../hooks/useLeaderboardData';
+import { useLeaderboardData, type SeasonType } from '../../../hooks/useLeaderboardData';
+import { SeasonTypeToggle } from '../../../components/roster/StatsToggles';
+import { INITIAL_STATS } from '../../../utils/constants';
 import { useTeamSeasonAdvancedStats } from '../../../hooks/useTeamSeasonAdvancedStats';
 import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { usePlayerShortCodes } from '../../../hooks/usePlayerShortCodes';
@@ -68,6 +70,7 @@ import { useQueryClient } from '@tanstack/react-query';
 type PresetNotice = { tone: 'info' | 'danger'; text: string };
 const PRESET_KINDS: TacticPresetKind[] = ['depth', 'team'];
 import type { Team, Game, Player, GameTactics, DepthChart } from '../../../types';
+import type { PlayerStats } from '../../../types/player';
 
 type MultiTacticsTab = 'depth' | 'team' | 'training' | 'trainingLog' | 'insights';
 // [2026-10-17] 'player' removed: per-player tactics disabled (deep link ?tab=player now falls back to 'depth').
@@ -173,6 +176,81 @@ function computeStatRankRows(allTeamStats: any[], myTeamId: string | null, stats
         };
     });
 }
+
+/** CONTEST 행(존별 DFGM 경기당 · DFG%) — teams 안에서 우리 팀의 값/평균/순위. zoneByTeam = 팀별 "상대에게 허용한 존별 슛" 합계
+ *  (useTeamOpponentZoneStats), 경기 수는 teamStats(useLeaderboardData의 팀 sortedData)에서 읽는다.
+ *  [2026-11-13] 컴포넌트 안 useMemo에서 꺼냈다 — 정규시즌·플레이오프 목록이 같은 계산을 쓴다. 우리 팀이 teams에 없으면(플레이오프 미진출) 빈 배열. */
+function computeContestRows(
+    teams: { id: string }[], teamStats: any[], zoneByTeam: Record<string, Record<string, number>> | undefined, myTeamId: string | null,
+): StatRankRow[] {
+    if (!myTeamId || teams.length === 0 || teamStats.length === 0) return [];
+    if (!teams.some(t => t.id === myTeamId)) return [];
+
+    const gamesMap = new Map<string, number>();
+    for (const t of teamStats) gamesMap.set(t.id, t.stats?.g || 1);
+
+    const zoneAggByTeam = new Map<string, Record<string, { m: number; a: number }>>();
+    for (const t of teams) {
+        const opp = zoneByTeam?.[t.id] ?? {};
+        const agg: Record<string, { m: number; a: number }> = {};
+        for (const { key, zoneKeys } of CONTEST_ZONES) {
+            let m = 0, a = 0;
+            for (const zk of zoneKeys) {
+                m += opp[`${zk}_m`] ?? 0;
+                a += opp[`${zk}_a`] ?? 0;
+            }
+            agg[key] = { m, a };
+        }
+        zoneAggByTeam.set(t.id, agg);
+    }
+
+    const rows: StatRankRow[] = [];
+    for (const { key, label } of CONTEST_ZONES) {
+        // DFGM(경기당 허용 성공 개수) — 적을수록 좋은 수비(isInverse)
+        const dfgmSorted = [...teams].sort((a, b) => {
+            const av = (zoneAggByTeam.get(a.id)?.[key]?.m ?? 0) / (gamesMap.get(a.id) || 1);
+            const bv = (zoneAggByTeam.get(b.id)?.[key]?.m ?? 0) / (gamesMap.get(b.id) || 1);
+            return av - bv;
+        });
+        const dfgmRank = dfgmSorted.findIndex(t => t.id === myTeamId) + 1;
+        const myGames = gamesMap.get(myTeamId) || 1;
+        const myAgg = zoneAggByTeam.get(myTeamId)?.[key] ?? { m: 0, a: 0 };
+        const dfgmLeagueAvg = teams.reduce((sum, t) => {
+            const agg = zoneAggByTeam.get(t.id)?.[key] ?? { m: 0, a: 0 };
+            return sum + agg.m / (gamesMap.get(t.id) || 1);
+        }, 0) / teams.length;
+        rows.push({
+            key: `${key}_dfgm`, label,
+            value: myAgg.m / myGames,
+            leagueAvg: dfgmLeagueAvg,
+            rank: dfgmRank > 0 ? dfgmRank : dfgmSorted.length,
+            totalTeams: dfgmSorted.length,
+        });
+
+        // DFG%(허용 야투율) — 낮을수록 좋은 수비(isInverse)
+        const pctOf = (agg: { m: number; a: number }) => (agg.a > 0 ? agg.m / agg.a : 0);
+        const pctSorted = [...teams].sort((a, b) => {
+            const av = pctOf(zoneAggByTeam.get(a.id)?.[key] ?? { m: 0, a: 0 });
+            const bv = pctOf(zoneAggByTeam.get(b.id)?.[key] ?? { m: 0, a: 0 });
+            return av - bv;
+        });
+        const pctRank = pctSorted.findIndex(t => t.id === myTeamId) + 1;
+        const pctLeagueAvg = teams.reduce((sum, t) => {
+            return sum + pctOf(zoneAggByTeam.get(t.id)?.[key] ?? { m: 0, a: 0 });
+        }, 0) / teams.length;
+        rows.push({
+            key: `${key}_dfg%`, label: `${label}%`, format: 'percent',
+            value: pctOf(myAgg),
+            leagueAvg: pctLeagueAvg,
+            rank: pctRank > 0 ? pctRank : pctSorted.length,
+            totalTeams: pctSorted.length,
+        });
+    }
+    return rows;
+}
+
+/** 플레이오프 순위 목록을 보지 않을 때 useLeaderboardData에 넘기는 빈 팀 목록(매 렌더 새 배열을 만들지 않게 모듈 상수) */
+const NO_TEAMS: Team[] = [];
 
 const MultiTacticsView: React.FC = () => {
     const { league, leagueTeams, members, room, isLoading: leagueLoading , timeline } = useLeagueContext();
@@ -415,12 +493,15 @@ const MultiTacticsView: React.FC = () => {
     const leagueTeamsLoading = leagueTeamsFetchPending || leagueStatsPending || oppZonePending;
 
     // [2026-10-18] 팀 전술 탭 "PPP" — 서버가 경기마다 저장한 팀×플레이타입 요약을 시즌 합산(공개된 경기만)
-    const { data: playTypeData, isPending: playTypePending, isError: playTypeError } = useTeamPlayTypeStats(room?.id);
+    // [2026-11-13] 정규시즌/플레이오프를 따로 본다(제목 옆 토글) — 전엔 둘을 합친 값이었다.
+    const [pppSeasonType, setPppSeasonType] = useState<SeasonType>('regular');
+    const { data: playTypeData, isPending: playTypePending, isError: playTypeError } = useTeamPlayTypeStats(room?.id, pppSeasonType === 'playoff');
     const playTypeActual = useMemo(
         () => ({
             totals: playTypeData?.totals, myTeamId, isLoading: playTypePending, isError: playTypeError,
+            seasonType: pppSeasonType, onSeasonTypeChange: setPppSeasonType,
         }),
-        [playTypeData, myTeamId, playTypePending, playTypeError],
+        [playTypeData, myTeamId, playTypePending, playTypeError, pppSeasonType],
     );
 
     // 인사이트 탭 "선수 스탯" 테이블(PlayerStatsTable)용 — 30팀 중 우리 팀만 추출(로스터+시즌 누적 스탯 포함).
@@ -499,73 +580,54 @@ const MultiTacticsView: React.FC = () => {
     const shootingRows = useMemo(() => computeStatRankRows(allTeamStats, myTeamId, SHOOTING_STATS), [allTeamStats, myTeamId]);
     const defenseRows  = useMemo(() => computeStatRankRows(allTeamStats, myTeamId, DEFENSE_STATS),  [allTeamStats, myTeamId]);
 
-    // CONTEST — leagueTeamsWithStats(buildLeagueTeams 결과, oppZoneStats 보유)와 allTeamStats
-    // (games played 조회용)를 함께 사용해 존별 DFGM(경기당)·DFG%를 30팀 기준으로 순위 계산.
-    const contestRows: StatRankRow[] = useMemo(() => {
-        if (!myTeamId || leagueTeamsWithStats.length === 0 || allTeamStats.length === 0) return [];
+    // CONTEST — 존별 DFGM(경기당)·DFG%를 30팀 기준으로 순위 계산(computeContestRows). 경기 수는 allTeamStats에서 읽는다.
+    const contestRows: StatRankRow[] = useMemo(
+        () => computeContestRows(leagueTeamsWithStats, allTeamStats, oppZoneByTeam, myTeamId),
+        [leagueTeamsWithStats, allTeamStats, oppZoneByTeam, myTeamId],
+    );
 
-        const gamesMap = new Map<string, number>();
-        for (const t of allTeamStats as any[]) gamesMap.set(t.id, t.stats?.g || 1);
-
-        const zoneAggByTeam = new Map<string, Record<string, { m: number; a: number }>>();
-        for (const t of leagueTeamsWithStats as any[]) {
-            const opp = t.oppZoneStats ?? {};
-            const agg: Record<string, { m: number; a: number }> = {};
-            for (const { key, zoneKeys } of CONTEST_ZONES) {
-                let m = 0, a = 0;
-                for (const zk of zoneKeys) {
-                    m += opp[`${zk}_m`] ?? 0;
-                    a += opp[`${zk}_a`] ?? 0;
-                }
-                agg[key] = { m, a };
-            }
-            zoneAggByTeam.set(t.id, agg);
+    // [2026-11-13] 팀 지표 순위 목록(공격/수비 + CONTEST)의 정규시즌/플레이오프 전환 — 전엔 CONTEST만 정규+플레이오프 합산이었다.
+    // 플레이오프 쪽은 토글을 켰을 때만 조회하고, 플레이오프를 치른 팀끼리만 순위를 매긴다(나머지 팀은 값이 전부 0이라 순위를 흐린다).
+    const [rankSeasonType, setRankSeasonType] = useState<SeasonType>('regular');
+    const rankPlayoff = rankSeasonType === 'playoff';
+    const { data: playoffStatsByPlayer, isPending: playoffStatsPending } = usePlayerSeasonStatsLeague(room?.id, allRosterIds, true, rankPlayoff);
+    const { data: teamAdvancedPlayoff, isPending: teamAdvancedPlayoffPending } = useTeamSeasonAdvancedStats(room?.id, true, rankPlayoff);
+    const { data: oppZonePlayoffByTeam, isPending: oppZonePlayoffPending } = useTeamOpponentZoneStats(room?.id, true, rankPlayoff);
+    const playoffRankLoading = rankPlayoff && (playoffStatsPending || teamAdvancedPlayoffPending || oppZonePlayoffPending);
+    const playoffRankTeams = useMemo((): Team[] => {
+        if (!rankPlayoff || !playoffStatsByPlayer || !teamAdvancedPlayoff) return NO_TEAMS;
+        return leagueTeamsWithStats
+            .filter(t => teamAdvancedPlayoff[t.id])
+            .map(t => ({
+                ...t,
+                roster: t.roster.map(p => ({ ...p, playoffStats: { ...INITIAL_STATS(), ...(playoffStatsByPlayer[p.id] ?? {}) } as PlayerStats })),
+            }));
+    }, [rankPlayoff, playoffStatsByPlayer, teamAdvancedPlayoff, leagueTeamsWithStats]);
+    const { sortedData: playoffTeamStats } = useLeaderboardData(
+        playoffRankTeams, normalizedSchedule, [], teamSortConfig, 'Teams', [], [], '', 'Traditional', 'playoff',
+        false, teamAdvancedPlayoff,
+    );
+    const rankPages = useMemo(() => {
+        if (!rankPlayoff) {
+            return [
+                { title: '공격', rows: [...offenseRows, ...shootingRows] },
+                { title: '수비', rows: [...defenseRows, ...contestRows] },
+            ];
         }
-
-        const rows: StatRankRow[] = [];
-        for (const { key, label } of CONTEST_ZONES) {
-            // DFGM(경기당 허용 성공 개수) — 적을수록 좋은 수비(isInverse)
-            const dfgmSorted = [...leagueTeamsWithStats].sort((a: any, b: any) => {
-                const av = (zoneAggByTeam.get(a.id)?.[key]?.m ?? 0) / (gamesMap.get(a.id) || 1);
-                const bv = (zoneAggByTeam.get(b.id)?.[key]?.m ?? 0) / (gamesMap.get(b.id) || 1);
-                return av - bv;
-            });
-            const dfgmRank = dfgmSorted.findIndex((t: any) => t.id === myTeamId) + 1;
-            const myGames = gamesMap.get(myTeamId) || 1;
-            const myAgg = zoneAggByTeam.get(myTeamId)?.[key] ?? { m: 0, a: 0 };
-            const dfgmLeagueAvg = leagueTeamsWithStats.reduce((sum: number, t: any) => {
-                const agg = zoneAggByTeam.get(t.id)?.[key] ?? { m: 0, a: 0 };
-                return sum + agg.m / (gamesMap.get(t.id) || 1);
-            }, 0) / leagueTeamsWithStats.length;
-            rows.push({
-                key: `${key}_dfgm`, label,
-                value: myAgg.m / myGames,
-                leagueAvg: dfgmLeagueAvg,
-                rank: dfgmRank > 0 ? dfgmRank : dfgmSorted.length,
-                totalTeams: dfgmSorted.length,
-            });
-
-            // DFG%(허용 야투율) — 낮을수록 좋은 수비(isInverse)
-            const pctOf = (agg: { m: number; a: number }) => (agg.a > 0 ? agg.m / agg.a : 0);
-            const pctSorted = [...leagueTeamsWithStats].sort((a: any, b: any) => {
-                const av = pctOf(zoneAggByTeam.get(a.id)?.[key] ?? { m: 0, a: 0 });
-                const bv = pctOf(zoneAggByTeam.get(b.id)?.[key] ?? { m: 0, a: 0 });
-                return av - bv;
-            });
-            const pctRank = pctSorted.findIndex((t: any) => t.id === myTeamId) + 1;
-            const pctLeagueAvg = leagueTeamsWithStats.reduce((sum: number, t: any) => {
-                return sum + pctOf(zoneAggByTeam.get(t.id)?.[key] ?? { m: 0, a: 0 });
-            }, 0) / leagueTeamsWithStats.length;
-            rows.push({
-                key: `${key}_dfg%`, label: `${label}%`, format: 'percent',
-                value: pctOf(myAgg),
-                leagueAvg: pctLeagueAvg,
-                rank: pctRank > 0 ? pctRank : pctSorted.length,
-                totalTeams: pctSorted.length,
-            });
-        }
-        return rows;
-    }, [leagueTeamsWithStats, allTeamStats, myTeamId]);
+        return [
+            { title: '공격', rows: [...computeStatRankRows(playoffTeamStats, myTeamId, OFFENSE_STATS), ...computeStatRankRows(playoffTeamStats, myTeamId, SHOOTING_STATS)] },
+            { title: '수비', rows: [...computeStatRankRows(playoffTeamStats, myTeamId, DEFENSE_STATS), ...computeContestRows(playoffRankTeams, playoffTeamStats, oppZonePlayoffByTeam, myTeamId)] },
+        ];
+    }, [rankPlayoff, offenseRows, shootingRows, defenseRows, contestRows, playoffTeamStats, playoffRankTeams, oppZonePlayoffByTeam, myTeamId]);
+    // 데스크톱·폰 인사이트 패널이 같은 위젯을 쓴다.
+    const teamStatRankList = (
+        <TeamStatRankList
+            pages={rankPages}
+            toolbar={<SeasonTypeToggle size="sm" value={rankSeasonType} onChange={setRankSeasonType} />}
+            loading={playoffRankLoading}
+            emptyText={rankPlayoff ? '플레이오프 경기 기록이 없습니다' : undefined}
+        />
+    );
 
     const team = useMemo((): Team => ({
         id:            myTeamId ?? '',
@@ -1043,12 +1105,7 @@ const MultiTacticsView: React.FC = () => {
                                     )}
                                 </div>
                                 <div className="flex-[3]">
-                                    <TeamStatRankList
-                                        pages={[
-                                            { title: '공격', rows: [...offenseRows, ...shootingRows] },
-                                            { title: '수비', rows: [...defenseRows, ...contestRows] },
-                                        ]}
-                                    />
+                                    {teamStatRankList}
                                 </div>
                             </div>
                         )}
@@ -1140,12 +1197,7 @@ const MultiTacticsView: React.FC = () => {
                                         onPlayerClick={handleViewPlayer}
                                         singleColumn
                                     />
-                                    <TeamStatRankList
-                                        pages={[
-                                            { title: '공격', rows: [...offenseRows, ...shootingRows] },
-                                            { title: '수비', rows: [...defenseRows, ...contestRows] },
-                                        ]}
-                                    />
+                                    {teamStatRankList}
                                     <PlayerStatsTable team={myTeamWithFullStats} schedule={normalizedSchedule} onPlayerClick={handleViewPlayer} />
                                     <TeamZoneStatsTable roster={myTeamWithFullStats.roster} teamAbbr={myTeamWithFullStats.abbr ?? undefined} onPlayerClick={handleViewPlayer} />
                                 </>
