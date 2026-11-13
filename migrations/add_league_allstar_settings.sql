@@ -225,6 +225,8 @@ BEGIN
 END; $function$;
 
 REVOKE ALL ON FUNCTION public.update_league_allstar_settings(uuid, boolean, boolean, boolean, boolean, jsonb) FROM public;
+-- Supabase grants EXECUTE to anon directly (not via PUBLIC), so revoke it explicitly (same as apply_league_playoff_format).
+REVOKE EXECUTE ON FUNCTION public.update_league_allstar_settings(uuid, boolean, boolean, boolean, boolean, jsonb) FROM anon;
 GRANT EXECUTE ON FUNCTION public.update_league_allstar_settings(uuid, boolean, boolean, boolean, boolean, jsonb) TO authenticated;
 
 -- Settings change audit log: add the three new switches after 'rising_stars_enabled'.
