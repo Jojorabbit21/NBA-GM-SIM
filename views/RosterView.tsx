@@ -212,12 +212,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   // 정보 라인(컨퍼런스 순위/전적/승률/GB) — schedule 기준 실제 경기 결과 집계.
   // 멀티/싱글 공용 컴포넌트라 멀티 전용 isFinal(정시+10분 공개 딜레이) 없이 played만 기준으로 삼는다.
+  // [2026-11-13] 정규시즌 경기만 — 플레이오프·올스타 경기는 전적/순위/GB에 넣지 않는다.
   const conferenceStandings = useMemo(() => {
     const confTeams = allTeams.filter(t => t.conference === selectedTeam?.conference);
     const records = confTeams.map(t => {
       let wins = 0, losses = 0;
       for (const g of schedule) {
-        if (!g.played || g.homeScore == null || g.awayScore == null) continue;
+        if (!g.played || g.isPlayoff || g.isAllstar || g.homeScore == null || g.awayScore == null) continue;
         if (g.homeTeamId !== t.id && g.awayTeamId !== t.id) continue;
         const isHome = g.homeTeamId === t.id;
         const myScore = isHome ? g.homeScore : g.awayScore;
@@ -242,11 +243,12 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   // Pts/g・Opp Pts/g + 리그(전체 30팀) 순위 — GB 계산과 동일하게 스케줄 최종 스코어만으로 산출.
   // Off Rtg/Def Rtg/Pace(advancedStatsByTeam)와 달리 포제션 추정이 필요 없어 싱글/멀티 공용.
+  // [2026-11-13] 정규시즌 경기만(Off/Def Rtg·Pace도 정규시즌 기준) — 플레이오프·올스타 제외.
   const leagueScoringStats = useMemo(() => {
     const totals: Record<string, { pts: number; opp: number; g: number }> = {};
     for (const t of allTeams) totals[t.id] = { pts: 0, opp: 0, g: 0 };
     for (const g of schedule) {
-      if (!g.played || g.homeScore == null || g.awayScore == null) continue;
+      if (!g.played || g.isPlayoff || g.isAllstar || g.homeScore == null || g.awayScore == null) continue;
       const h = totals[g.homeTeamId];
       const a = totals[g.awayTeamId];
       if (h) { h.pts += g.homeScore; h.opp += g.awayScore; h.g++; }

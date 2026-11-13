@@ -36,8 +36,13 @@ export const PLAY_TYPE_ERA_BASES: Record<PlayTypeEra, Record<string, number>> = 
     //   2000s 1.64/1.84/2.00/0.59/0.37/1.03/0.95/0.82/1.20/0.36 · 1990s 1.97/2.50/1.52/0.50/0.31/0.83/1.06/0.66/1.19/0.27 (Iso/PostUp/PnR_H/Roll/Pop/C&S/OffScreen/DK/Cut/Handoff)
     '2020s': { Iso: 1.093, PostUp: 0.611, PnR_Handler: 2.955, PnR_Roll: 0.524, PnR_Pop: 0.325, CatchShoot: 1.772, OffBallScreen: 0.579, DriveKick: 1.42, Cut: 0.811, Handoff: 0.71 },
     '2010s': { Iso: 1.148, PostUp: 1.053, PnR_Handler: 2.926, PnR_Roll: 0.597, PnR_Pop: 0.371, CatchShoot: 1.358, OffBallScreen: 0.781, DriveKick: 1.08, Cut: 0.85, Handoff: 0.635 },
-    '2000s': { Iso: 1.744, PostUp: 1.794, PnR_Handler: 2.148, PnR_Roll: 0.501, PnR_Pop: 0.315, CatchShoot: 1.158, OffBallScreen: 0.936, DriveKick: 0.922, Cut: 0.904, Handoff: 0.378 },
-    '1990s': { Iso: 2.104, PostUp: 2.448, PnR_Handler: 1.64, PnR_Roll: 0.427, PnR_Pop: 0.265, CatchShoot: 0.937, OffBallScreen: 1.049, DriveKick: 0.745, Cut: 0.9, Handoff: 0.285 },
+    // [2026-11-13] 2000s·1990s 포스트업 완화 — 레전드 리그에서 1990s가 포스트업 22.7%로 센터 득점을 키우고 가드 볼륨을 깎던 문제
+    //   (실제 NBA 1990년대 센터 득점 지수는 오히려 2020년대보다 낮음). 포스트업 기본 비중 2000s 16.6→11.5%·1990s 22.7→13.6%,
+    //   줄인 몫은 아이솔 65%·오프스크린 35% (시대 정체성 유지 — 비례·아이솔+PnR 배분과 포지션 득점 차이 없음, 하네스 측정).
+    //   2000s·1990s 값은 역사 재현이 아니라 레전드 리그 밸런스 값. 이전: 2000s Iso 1.744/PostUp 1.794/OffBallScreen 0.936 ·
+    //   1990s Iso 2.104/PostUp 2.448/OffBallScreen 1.049 (나머지 불변)
+    '2000s': { Iso: 2.1028, PostUp: 1.242, PnR_Handler: 2.148, PnR_Roll: 0.501, PnR_Pop: 0.315, CatchShoot: 1.158, OffBallScreen: 1.1292, DriveKick: 0.922, Cut: 0.904, Handoff: 0.378 },
+    '1990s': { Iso: 2.7405, PostUp: 1.4688, PnR_Handler: 1.64, PnR_Roll: 0.427, PnR_Pop: 0.265, CatchShoot: 0.937, OffBallScreen: 1.3917, DriveKick: 0.745, Cut: 0.9, Handoff: 0.285 },
 };
 
 export const PLAY_TYPE_ERAS: readonly PlayTypeEra[] = ['2020s', '2010s', '2000s', '1990s'];
