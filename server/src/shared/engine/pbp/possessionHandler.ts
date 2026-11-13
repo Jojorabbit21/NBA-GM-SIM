@@ -513,6 +513,8 @@ function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: Te
     const foulMult = (p: LivePlayer) => (1 + fatigueShort(p) * C.FATIGUE_FOUL_PENALTY)
         * Math.max(C.FOUL_CONSIST_MIN, Math.min(C.FOUL_CONSIST_MAX, 1 - (p.attr.defConsist - C.FOUL_CONSIST_NEUTRAL) * C.FOUL_CONSIST_SLOPE))
         * Math.max(C.FOUL_DEF_MIN, Math.min(C.FOUL_DEF_MAX, 1 - (rawDefScore(p) - C.FOUL_DEF_NEUTRAL) * C.FOUL_DEF_SLOPE));
+    // [2026-11-13] 프레스 파울에도 파울 트러블 조심(FOUL_TROUBLE.PROB_MOD) — 하프코트 파울·림 프로텍터와 같은 규칙 (client 미러 참조)
+    const pressFoulMult = (p: LivePlayer) => foulMult(p) * foulTroubleProbMod(p.pf);
     const handlerScore = (p: LivePlayer) => weightedScore(p, C.HANDLER_WEIGHTS);
     const carrier = offTeam.onCourt.reduce((best, p) => handlerScore(p) > handlerScore(best) ? p : best);
     let pressDef: LivePlayer | undefined;
@@ -547,13 +549,18 @@ function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: Te
         const pTov = Math.max(C.TRAP_TOV_MIN, Math.min(C.TRAP_TOV_MAX, C.TRAP_TOV_BASE - (offTrap - defTrap) * C.TRAP_TOV_SLOPE * tier));
         const pFoul = foulTier * (C.TRAP_FOUL_BASE + C.TRAP_FOUL_EXTRA * f * f)
             * (1 + ((pressDef.tendencies?.foulProneness ?? 0) + (trapper.tendencies?.foulProneness ?? 0)) * 0.25)
-            * (foulMult(pressDef) + foulMult(trapper)) / 2;
+            * (pressFoulMult(pressDef) + pressFoulMult(trapper)) / 2;
         const r = Math.random();
         if (r < pTov) {
             const stealer = Math.random() < pressDef.attr.stl / Math.max(1, pressDef.attr.stl + trapper.attr.stl) ? pressDef : trapper;
             return end('turnover', stealer, true, 'trapSteal');
         }
-        if (r < pTov + pFoul) return end('foul', Math.random() < 0.5 ? pressDef : trapper, false, 'trapFoul');
+        if (r < pTov + pFoul) {
+            // [2026-11-13] 트랩 파울은 각자 자기 파울 배율 비율로 배정 (이전 50:50) (client 미러 참조)
+            const mPd = pressFoulMult(pressDef), mTr = pressFoulMult(trapper);
+            const pdShare = mPd / Math.max(1e-6, mPd + mTr);
+            return end('foul', Math.random() < pdShare ? pressDef : trapper, false, 'trapFoul');
+        }
         return { beaten: true, hitBonus: C.ESCAPE_HIT_BONUS * tier, shootingFoulBonus: C.ESCAPE_SHOOTING_FOUL_BONUS, extraTime: 0 };
     }
 
@@ -565,7 +572,7 @@ function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: Te
     const pTov1 = f * Math.max(0, Math.min(C.PRESSURE_TOV_MAX, C.PRESSURE_TOV_BASE - gap * C.PRESSURE_TOV_SLOPE * tier));
     if (Math.random() < pTov1) return end('turnover', pressDef, Math.random() < C.PRESSURE_TOV_STEAL_SHARE, 'pressTurnover');
     const clean = Math.max(C.REACH_IN_CLEAN_MIN, 1 - (pressDef.attr.stl - 70) / 75);
-    if (Math.random() < foulTier * C.REACH_IN_MAX * f * f * clean * foulMult(pressDef)) return end('foul', pressDef, false, 'pressFoul');
+    if (Math.random() < foulTier * C.REACH_IN_MAX * f * f * clean * pressFoulMult(pressDef)) return end('foul', pressDef, false, 'pressFoul');
     return { ...none, extraTime: Math.round(f * C.HOLD_EXTRA_TIME_MAX) };
 }
 
