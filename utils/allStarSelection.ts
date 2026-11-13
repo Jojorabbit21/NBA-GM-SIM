@@ -28,7 +28,7 @@ import {
     buildCandidates, MIN_GAMES, positionGroup, voterNoise, scoreAllNBA,
     type AwardCandidate, type AwardStatLine,
 } from './awardVoting';
-import { resolveSeasonCalendar } from './seasonCalendar';
+import { resolveSeasonCalendar, DEFAULT_ALL_STAR_OFFSETS } from './seasonCalendar';
 
 // ══════════════════════════════════════════════════════════════════════════
 // 키데이트
@@ -63,6 +63,9 @@ export interface AllStarKeyDates {
      *  다음날, 실제 NBA "일요일" 포지션). 현재는 본경기 시뮬레이션 자체가 미구현이라 서신
      *  본문 안내 문구용으로만 쓰임. */
     allStarMainGameDate: string;
+    /** [2026-11-13] false = 올스타를 끈 채 일정을 만든 시즌(season_calendar.allStarBreak=false) — 브레이크 날짜에도
+     *  정규시즌 경기가 있다. 날짜 값들은 그대로 계산되지만 화면·타임라인은 브레이크가 없는 것으로 다룬다. */
+    hasBreak: boolean;
 }
 
 function addDaysStr(dateStr: string, days: number): string {
@@ -71,27 +74,29 @@ function addDaysStr(dateStr: string, days: number): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 팬 투표 기간(4주) — 실제 NBA도 크리스마스 무렵~2월 초까지 약 한 달간 투표를 받는다. */
-const VOTE_WINDOW_DAYS = 28;
-
 /** virtualSeasonYear(시즌 개막 연도) 기준 올스타 키데이트 전체. seasonCalendar = 리그의
  *  leagues.season_calendar(없으면 기존 고정 2월 13~18일). 브레이크 날짜 자체는 seasonCalendar.ts가
  *  단일 소스이고, 여기서는 투표·선발·서브 이벤트 날짜만 파생한다. */
 export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: unknown): AllStarKeyDates {
     // [2026-10-23] 브레이크 날짜는 리그별 저장 달력(leagues.season_calendar)에서 — 없으면 기존 고정값(2/13~18).
-    // 아래 서브 이벤트 오프셋(+1/+2/+3)은 신·구 달력 모두 같다(seasonCalendar.ts 참고).
-    const { allStarStart, allStarEnd } = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
-    const allStarSelectionDate = addDaysStr(allStarStart, -7);
-    const allStarVoteEnd = allStarSelectionDate;
-    const allStarVoteStart = addDaysStr(allStarVoteEnd, -VOTE_WINDOW_DAYS);
-    const allStarVoteInterimDates = [1, 2, 3].map(q => addDaysStr(allStarVoteStart, Math.round(VOTE_WINDOW_DAYS * q / 4)));
-    const allStarThreePointContestDate = addDaysStr(allStarStart, 2);
-    const allStarDunkContestDate = addDaysStr(allStarStart, 2);
-    const allStarRisingStarsDate = addDaysStr(allStarStart, 1);
-    const allStarMainGameDate = addDaysStr(allStarStart, 3);
+    // [2026-11-13] 투표·행사 날짜는 브레이크 첫날 기준 오프셋(season_calendar.allStarOffsets, 세션 설정 "올스타" 탭) —
+    // 저장값이 없으면 DEFAULT_ALL_STAR_OFFSETS(투표 마감 −7, 투표 28일, 라이징스타 +1 · 컨테스트 +2 · 본경기 +3).
+    const cal = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
+    const { allStarStart, allStarEnd } = cal;
+    const o = cal.allStarOffsets ?? DEFAULT_ALL_STAR_OFFSETS;
+    const allStarVoteEnd = addDaysStr(allStarStart, o.voteEnd);
+    const allStarSelectionDate = allStarVoteEnd;
+    const allStarVoteStart = addDaysStr(allStarStart, o.voteStart);
+    const voteWindowDays = o.voteEnd - o.voteStart;
+    const allStarVoteInterimDates = [1, 2, 3].map(q => addDaysStr(allStarVoteStart, Math.round(voteWindowDays * q / 4)));
+    const allStarThreePointContestDate = addDaysStr(allStarStart, o.contests);
+    const allStarDunkContestDate = addDaysStr(allStarStart, o.contests);
+    const allStarRisingStarsDate = addDaysStr(allStarStart, o.rising);
+    const allStarMainGameDate = addDaysStr(allStarStart, o.main);
     return {
         allStarVoteStart, allStarVoteInterimDates, allStarVoteEnd, allStarSelectionDate, allStarStart, allStarEnd,
         allStarThreePointContestDate, allStarDunkContestDate, allStarRisingStarsDate, allStarMainGameDate,
+        hasBreak: cal.allStarBreak !== false,
     };
 }
 
@@ -101,8 +106,9 @@ export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: u
  *  등으로 구한 "가상 캘린더 오늘"(YYYY-MM-DD) — 아직 못 구했으면(null) false. */
 export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number, seasonCalendar?: unknown): boolean {
     if (!virtualDate) return false;
-    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
-    return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
+    const { allStarVoteStart, allStarEnd, hasBreak } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
+    // [2026-11-13] 브레이크 없이 만든 시즌(올스타를 끈 채 시작)은 올스타 기간 자체가 없다.
+    return hasBreak && virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -21,6 +21,7 @@ import { getLeagueLogoUrl } from '../../../utils/constants';
 import type { LeagueTeamRow } from '../../../services/multi/roomQueries';
 import type { AllstarVoteConference, AllstarVoteEntry, AllstarConferenceRoster, RisingStarsRosterResult } from '../../../services/multi/leagueEventPayload';
 import { getAllStarKeyDates, type AllStarKeyDates } from '../../../utils/allStarSelection';
+import { resolveAllStarFlags } from '../../../utils/allStarSettings';
 
 // 서버(server/src/postAllStarVoteNews.ts)가 가상 캘린더 날짜 기준 하루 1회 계산해
 // league_allstar_votes에 저장한 최신 스냅샷을 그대로 읽어 보여준다 — 클라이언트 재계산이
@@ -320,8 +321,13 @@ const MultiAllStarView: React.FC = () => {
     // MultiLeaderboardView.tsx 등 다른 시즌 화면들과 동일한 패턴.
     const [searchParams, setSearchParams] = useSearchParams();
     const rawView = searchParams.get('view');
+    // [2026-11-13] 세션 설정 "올스타" 탭에서 끈 행사는 탭을 숨기고 그 ?view=도 올스타 탭으로 돌린다.
+    const allStarFlags = resolveAllStarFlags(league);
+    const tabEnabled: Record<'main' | 'risingstars' | 'threept' | 'dunk', boolean> = {
+        main: true, risingstars: allStarFlags.risingStars, threept: allStarFlags.threePoint, dunk: allStarFlags.dunk,
+    };
     const view: 'main' | 'risingstars' | 'threept' | 'dunk' =
-        rawView === 'risingstars' || rawView === 'threept' || rawView === 'dunk' ? rawView : 'main';
+        (rawView === 'risingstars' || rawView === 'threept' || rawView === 'dunk') && tabEnabled[rawView] ? rawView : 'main';
 
     const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
     const { data: snapshot, isLoading } = useAllStarVotes(room?.id, room?.season_number);
@@ -404,12 +410,16 @@ const MultiAllStarView: React.FC = () => {
     // 다시 볼 수 있어야 하므로). 그래서 "아직 시작 전"(투표 시작일 이전)만 막고, 브레이크가
     // 끝난 뒤는 막지 않는다 — 메뉴에서만 사라질 뿐 화면 자체는 계속 살아있다.
     const beforeAllStarVoteStart = !!currentVirtualDate && currentVirtualDate < keyDates.allStarVoteStart;
-    if (league?.type === 'tournament' || beforeAllStarVoteStart) {
+    // [2026-11-13] 세션 설정에서 올스타를 끈 메인리그 — 투표·행사가 하나도 없다.
+    const allStarOff = league?.type === 'main_league' && !allStarFlags.allStar;
+    if (league?.type === 'tournament' || allStarOff || beforeAllStarVoteStart) {
         return (
             <EmptyState
                 icon={Star}
                 title="올스타"
-                subtitle={league?.type === 'tournament' ? '토너먼트 세션에서는 지원하지 않는 기능입니다.' : '올스타 투표가 아직 시작되지 않았습니다.'}
+                subtitle={league?.type === 'tournament' ? '토너먼트 세션에서는 지원하지 않는 기능입니다.'
+                    : allStarOff ? '이 세션은 올스타를 열지 않습니다.'
+                    : '올스타 투표가 아직 시작되지 않았습니다.'}
                 className="min-h-[60vh]"
             />
         );
@@ -440,7 +450,7 @@ const MultiAllStarView: React.FC = () => {
                         className="w-fit"
                         value={view}
                         onChange={(id) => setSearchParams(id === 'main' ? {} : { view: id })}
-                        options={ALLSTAR_TABS.map(t => ({ value: t.id, label: t.label }))}
+                        options={ALLSTAR_TABS.filter(t => tabEnabled[t.id]).map(t => ({ value: t.id, label: t.label }))}
                     />
                 </div>
 

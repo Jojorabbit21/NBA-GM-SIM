@@ -77,6 +77,8 @@ export interface AllStarKeyDatesLike {
     allStarRisingStarsDate: string;
     allStarThreePointContestDate: string;
     allStarMainGameDate: string;
+    /** [2026-11-13] false = 브레이크 없이 만든 시즌 — 그 날짜도 'regular'. 생략 = 브레이크 있음. */
+    hasBreak?: boolean;
 }
 
 export interface PlayoffCalendarSpec {
@@ -232,7 +234,7 @@ export function buildVirtualCalendar(input: BuildVirtualCalendarInput): VirtualC
     for (let i = 0; i < regularDays; i++) {
         const date = addDaysToDateStr(regularStart, i);
         let kind: VirtualDayKind = 'regular';
-        if (date >= kd.allStarStart && date <= kd.allStarEnd) {
+        if (kd.hasBreak !== false && date >= kd.allStarStart && date <= kd.allStarEnd) {
             if (date === kd.allStarStart)                    kind = 'allstar_announce';
             else if (date === kd.allStarRisingStarsDate)     kind = 'allstar_rising';
             else if (date === kd.allStarThreePointContestDate) kind = 'allstar_contests';

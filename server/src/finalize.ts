@@ -26,7 +26,7 @@ import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
 import { generateDraftContracts } from './shared/draftContracts';
 import { SIM_CONFIG } from './shared/game/config/constants';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
-import { buildSeasonCalendar } from './shared/seasonCalendar';
+import { buildSeasonCalendar, parseAllStarOffsets } from './shared/seasonCalendar';
 import type { TacticalSliders } from './shared/types/tactics';
 
 // URL에 노출되는 게임 ID(T_R1_M0_G1 등)를 대체하는 짧은 코드 — services/multi/leagueService.ts의
@@ -291,6 +291,10 @@ interface MainLeagueScheduleLeague {
     finals_match_format: string | null;
     /** [2026-09-18 2단계] 리플레이 길이(분) — 경기 시작 클램프(시작 + 리플레이 ≤ 가상 하루 종료)에 사용. */
     replay_minutes: number | null;
+    /** [2026-11-13] 생성 시 저장된 달력 — 드래프트 전에 세션 설정에서 고친 올스타 키데이트(allStarOffsets)를 이어받는다. */
+    season_calendar?: unknown;
+    /** [2026-11-13] false면 브레이크 없이 일정 생성(season_calendar.allStarBreak=false). */
+    allstar_enabled?: boolean | null;
 }
 
 interface MainLeagueScheduleResult {
@@ -309,15 +313,24 @@ function buildMainLeagueSchedule(
     const virtualSeasonYear = league.virtual_season_year ?? nowDate.getFullYear();
     // [2026-10-23] 일정 생성기 v2 — 시즌 달력(정규시즌·올스타)을 요일 규칙으로 정하고 일정·타임라인과 함께
     // leagues.season_calendar에 저장한다. 이후 올스타 키데이트·포스트시즌 앵커는 전부 이 저장값을 읽는다.
-    const seasonCalendar = buildSeasonCalendar(virtualSeasonYear);
+    // [2026-11-13] 세션 설정 "올스타" 탭 — 드래프트 전에 고친 키데이트 오프셋은 그대로 이어받고(브레이크 첫날 기준이라
+    // 같은 해 달력이면 의미가 같다), 올스타를 끈 채 시작하면 브레이크 없는 시즌으로 기록한다(allStarBreak=false).
+    const prevOffsets = parseAllStarOffsets((league.season_calendar as any)?.allStarOffsets);
+    const seasonCalendar = {
+        ...buildSeasonCalendar(virtualSeasonYear),
+        ...(prevOffsets ? { allStarOffsets: prevOffsets } : {}),
+        ...(league.allstar_enabled === false ? { allStarBreak: false } : {}),
+    };
     const keyDates = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
+    // 브레이크 없는 시즌은 휴식 구간을 정규시즌 밖(최종일 다음 날)으로 넘겨 optimizer가 쉬는 날을 하나도 만들지 않게 한다.
+    const noBreakDay = addDaysToDateStr(seasonCalendar.regularEnd, 1);
     const rawSchedule = generateSeasonSchedule(
         {
             seasonYear:       virtualSeasonYear,
             seasonStart:      seasonCalendar.regularStart,
             regularSeasonEnd: seasonCalendar.regularEnd,
-            allStarStart: keyDates.allStarStart,
-            allStarEnd:   keyDates.allStarEnd,
+            allStarStart: keyDates.hasBreak ? keyDates.allStarStart : noBreakDay,
+            allStarEnd:   keyDates.hasBreak ? keyDates.allStarEnd : noBreakDay,
         },
         filteredTeamData as any,
     );
@@ -400,7 +413,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled')
         .eq('id', room.league_id)
         .single();
 
@@ -540,7 +553,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, contract_mode, draft_salary_scale, salary_cap_amount')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled, contract_mode, draft_salary_scale, salary_cap_amount')
         .eq('id', room.league_id)
         .single();
 

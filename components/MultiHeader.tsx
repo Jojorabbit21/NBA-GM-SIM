@@ -16,6 +16,7 @@ import { seasonShortFromDate } from '../utils/seasonShortFromDate';
 import { findCurrentVirtualDate } from '../views/multi/season/multiScheduleUtils';
 import { useServerClock } from '../utils/serverClock';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { resolveAllStarFlags } from '../utils/allStarSettings';
 import { usePlayoffRaceOpen } from '../hooks/usePlayoffRaceOpen';
 import { MultiHeaderNavMenu } from './dashboard/MultiHeaderNavMenu';
 import { useLeagueDraft } from '../hooks/useLeagueDraft';
@@ -118,7 +119,8 @@ export const MultiHeader: React.FC = () => {
 
     // [2026-09-15 Fix] "올스타" 메뉴 노출 — 투표 시작일에 나타나고 브레이크 종료일에 사라진다.
     // currentVirtualDate를 이미 위에서 계산해두므로 추가 조회 없이 날짜 비교만 하면 된다.
-    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
+    // [2026-11-13] 세션 설정에서 올스타를 끈 리그는 메뉴를 숨긴다.
+    const showAllStar = resolveAllStarFlags(league).allStar && isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
     const showPlayoffRace = usePlayoffRaceOpen(schedule, currentVirtualDate, league?.type);
 
     const opponentId  = nextGame

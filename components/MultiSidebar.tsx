@@ -12,6 +12,7 @@ import { usePersonalDraftStatus } from '../hooks/usePersonalDraftStatus';
 import { useSeasonContext } from '../views/multi/season/seasonContext';
 import { useCurrentVirtualDate } from '../hooks/useCurrentVirtualDate';
 import { isAllStarWindowActive } from '../utils/allStarSelection';
+import { resolveAllStarFlags } from '../utils/allStarSettings';
 import { usePlayoffRaceOpen } from '../hooks/usePlayoffRaceOpen';
 import { CountBadge } from './common/CountBadge';
 import { Dropdown } from './common/Dropdown';
@@ -69,7 +70,8 @@ export const MultiSidebar: React.FC = () => {
     // 플레이오프 시작 사이 공백 기간에 여전히 노출되는 오차가 있었음).
     const { schedule } = useSeasonContext();
     const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
-    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
+    // [2026-11-13] 세션 설정에서 올스타를 끈 리그는 메뉴를 숨긴다.
+    const showAllStar = resolveAllStarFlags(league).allStar && isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
     // [2026-10-15] 정규시즌 종료 30일 전부터 시즌 끝까지(브라켓 생성 후에도) "순위 경쟁" 메뉴 노출.
     const showPlayoffRace = usePlayoffRaceOpen(schedule, currentVirtualDate, league?.type);
 

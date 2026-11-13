@@ -38,6 +38,7 @@ import { daysBetweenKeys, addDaysToKey } from '../season/multiScheduleUtils';
 import type { Game } from '../../../types';
 import { ScheduleSettingsTab } from './settings/ScheduleSettingsTab';
 import { PlayoffSettingsTab } from './settings/PlayoffSettingsTab';
+import { AllStarSettingsTab } from './settings/AllStarSettingsTab';
 import { PersonalDraftSettingsTab } from './settings/PersonalDraftSettingsTab';
 import { ActionLogTab } from './settings/ActionLogTab';
 import { TeamTacticsTab } from './settings/TeamTacticsTab';
@@ -110,7 +111,7 @@ function toIso(local: string): string | null {
 
 // ── 설정 탭 카테고리 ──────────────────────────────────────────────────────────
 
-type SettingsTabId = 'league' | 'schedule' | 'playoff' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics' | 'chat';
+type SettingsTabId = 'league' | 'schedule' | 'playoff' | 'allstar' | 'draft' | 'trade' | 'cap' | 'roster' | 'finance' | 'engine' | 'log' | 'tactics' | 'chat';
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     { id: 'league',   label: '리그' },
@@ -120,6 +121,8 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
     // [2026-10-24] 플레이오프 형식(진출 팀 수·플레이인·시리즈 길이·경기 간격) — 예전 "리그" 탭 섹션을 옮기고 시리즈 길이 추가.
     // 형식이 바뀌면 타임라인에 날짜를 덧붙이거나 줄인다(PlayoffSettingsTab.tsx). 자체 저장 버튼 — TAB_SAVE_MAP 미등록.
     { id: 'playoff',  label: '플레이오프' },
+    // [2026-11-13] 올스타·라이징스타·3점·덩크 on/off + 키데이트(AllStarSettingsTab.tsx). 자체 저장 버튼 — TAB_SAVE_MAP 미등록.
+    { id: 'allstar',  label: '올스타' },
     { id: 'draft',   label: '드래프트' },
     { id: 'trade',   label: '트레이드' },
     { id: 'cap',     label: '샐러리캡' },
@@ -1196,6 +1199,9 @@ const LeagueSettingsView: React.FC = () => {
             {activeTab === 'playoff' && (
                 <PlayoffSettingsTab league={league} onLeagueSaved={reload} />
             )}
+            {activeTab === 'allstar' && (
+                <AllStarSettingsTab league={league} onLeagueSaved={reload} />
+            )}
             {activeTab === 'schedule' && (
                 <ScheduleSettingsTab league={league} room={room} leagueTeams={leagueTeams} onLeagueSaved={reload} />
             )}
@@ -1253,7 +1259,10 @@ const LeagueSettingsView: React.FC = () => {
                                     label="플레이인 진출팀 수"
                                     value={league.type === 'main_league' && (league.play_in_enabled ?? true) ? '4팀 (7~10위)' : '해당없음'}
                                 />
-                                <InfoRow label="올스타 경기" value="미구현" muted />
+                                <InfoRow
+                                    label="올스타"
+                                    value={league.type === 'main_league' ? (league.allstar_enabled !== false ? '켜짐' : '꺼짐') : '해당없음'}
+                                />
                                 <InfoRow label="정규시즌 수상" value="상시 활성 (토글 미지원)" muted />
                                 <InfoRow label="부상" value={injuriesEnabled ? '켜짐' : '꺼짐'} />
                                 <InfoRow label="출전정지" value={suspensionsEnabled ? '켜짐' : '꺼짐'} />

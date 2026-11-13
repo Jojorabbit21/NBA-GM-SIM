@@ -393,6 +393,19 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
     }
 }
 
+// [2026-11-13] 세션 설정 "올스타" 탭 스위치(leagues.*_enabled, 기본 true) — 올스타를 끄면 하위 행사도 전부 꺼진다.
+// 그 시즌 팬 투표가 시작되면 DB 트리거(trg_leagues_allstar_lock)가 변경을 막으므로 투표~브레이크 동안 값이 고정이다.
+const ALLSTAR_FLAG_COLUMNS = 'allstar_enabled, rising_stars_enabled, three_point_contest_enabled, dunk_contest_enabled';
+function allStarFlags(league: any): { allStar: boolean; risingStars: boolean; threePoint: boolean; dunk: boolean } {
+    const allStar = league?.allstar_enabled !== false;
+    return {
+        allStar,
+        risingStars: allStar && league?.rising_stars_enabled !== false,
+        threePoint:  allStar && league?.three_point_contest_enabled !== false,
+        dunk:        allStar && league?.dunk_contest_enabled !== false,
+    };
+}
+
 // ── F-2. 올스타 팬 투표 — 가상 캘린더 날짜 기준 하루 1회 집계 ────────────────────────────────
 // in_progress 상태 main_league 전체를 매 tick(30초)마다 훑되, 실제 계산은 하루에 한 번만
 // 일어난다 — league_allstar_votes의 UNIQUE(room_id, season_number, sim_date) upsert가
@@ -405,11 +418,13 @@ async function runScheduledSeasonAwards(now: string): Promise<void> {
 async function runAllStarVoteUpdates(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, season_calendar')
+        .select(`id, virtual_season_year, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        const flags = allStarFlags(league);
+        if (!flags.allStar) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
@@ -420,7 +435,7 @@ async function runAllStarVoteUpdates(): Promise<void> {
         const keyDates = getAllStarKeyDates(virtualSeasonYear, (league as any).season_calendar);
         if (virtualDate < keyDates.allStarVoteStart || virtualDate > keyDates.allStarVoteEnd) continue;
 
-        await computeAndStoreAllStarVotes(room.id, league.id, virtualSeasonYear, virtualDate, (league as any).season_calendar).catch(err =>
+        await computeAndStoreAllStarVotes(room.id, league.id, virtualSeasonYear, virtualDate, (league as any).season_calendar, flags.risingStars).catch(err =>
             console.error(`[scheduler:allstar] computeAndStoreAllStarVotes failed(${league.id}):`, err),
         );
     }
@@ -462,11 +477,12 @@ interface AllStarScheduleRow {
 async function runThreePointContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule, season_calendar')
+        .select(`id, virtual_season_year, allstar_schedule, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        if (!allStarFlags(league).threePoint) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
@@ -486,11 +502,12 @@ async function runThreePointContestNews(): Promise<void> {
 async function runDunkContestNews(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule, season_calendar')
+        .select(`id, virtual_season_year, allstar_schedule, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        if (!allStarFlags(league).dunk) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
@@ -512,11 +529,13 @@ async function runDunkContestNews(): Promise<void> {
 async function runAllStarGames(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule, season_calendar')
+        .select(`id, virtual_season_year, allstar_schedule, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        const flags = allStarFlags(league);
+        if (!flags.allStar) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
@@ -529,7 +548,8 @@ async function runAllStarGames(): Promise<void> {
                 console.error(`[scheduler:allstar] computeAndRunAllStarGame(main) failed(${league.id}):`, err),
             );
         }
-        if (await isAllStarSubEventDue(room.id, schedule?.risingStarsAt, keyDates.allStarRisingStarsDate)) {
+        // [2026-11-13] Rising Stars switched off for the session — no roster was selected, so never claim the game row.
+        if (flags.risingStars && await isAllStarSubEventDue(room.id, schedule?.risingStarsAt, keyDates.allStarRisingStarsDate)) {
             await computeAndRunAllStarGame(room.id, league.id, keyDates.allStarRisingStarsDate, 'rising_stars').catch(err =>
                 console.error(`[scheduler:allstar] computeAndRunAllStarGame(rising_stars) failed(${league.id}):`, err),
             );
@@ -544,11 +564,12 @@ async function runAllStarGames(): Promise<void> {
 async function runThreePointContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule, season_calendar')
+        .select(`id, virtual_season_year, allstar_schedule, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        if (!allStarFlags(league).threePoint) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 
@@ -570,11 +591,12 @@ async function runThreePointContestResult(): Promise<void> {
 async function runDunkContestResult(): Promise<void> {
     const { data: leagues } = await supabase
         .from('leagues')
-        .select('id, virtual_season_year, allstar_schedule, season_calendar')
+        .select(`id, virtual_season_year, allstar_schedule, season_calendar, ${ALLSTAR_FLAG_COLUMNS}`)
         .eq('type', 'main_league').eq('status', 'in_progress');
     if (!leagues?.length) return;
 
     for (const league of leagues) {
+        if (!allStarFlags(league).dunk) continue;
         const { data: room } = await supabase.from('rooms').select('id').eq('league_id', league.id).maybeSingle();
         if (!room) continue;
 

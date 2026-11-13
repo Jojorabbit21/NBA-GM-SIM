@@ -15,6 +15,7 @@ import { MultiTeamHoverProvider } from './MultiTeamHoverCard';
 import type { Game } from '../../../types';
 import { useAllStarTeamDisplay } from '../../../hooks/useAllStarTeamDisplay';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
+import { resolveAllStarFlags } from '../../../utils/allStarSettings';
 import { useViewportClass } from '../../../hooks/useViewportClass';
 import { MobileTopBar } from '../../../components/mobile/MobileTopBar';
 import { MobileTabBar, SEASON_SCROLL_ID, MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
@@ -100,14 +101,18 @@ export function MultiSeasonLayout() {
     const isMainLeague = league?.type === 'main_league';
     // [2026-10-23] 시즌 진행 전(모집·드래프트)엔 정규시즌 경기가 없어 스트립에 올스타 날짜만 남으므로 진행 중/종료 리그에서만.
     const isSeasonStarted = league?.status === 'in_progress' || league?.status === 'finished';
+    // [2026-11-13] 세션 설정 "올스타" 탭 스위치 — 꺼진 행사는 스트립에 넣지 않는다.
+    const { allStar: allStarOn, risingStars: risingStarsOn } = resolveAllStarFlags(league);
     const stripEventDates = useMemo(() => {
-        if (!isMainLeague || !isSeasonStarted) return [];
+        if (!isMainLeague || !isSeasonStarted || !allStarOn) return [];
         const kd = getAllStarKeyDates(virtualSeasonYear ?? new Date().getFullYear(), seasonCalendar);
         return [
-            { dateKey: kd.allStarRisingStarsDate, label: '라이징스타 챌린지', time: '19:00', awayId: 'RISINGSTARS-B', homeId: 'RISINGSTARS-A' },
+            ...(risingStarsOn
+                ? [{ dateKey: kd.allStarRisingStarsDate, label: '라이징스타 챌린지', time: '19:00', awayId: 'RISINGSTARS-B', homeId: 'RISINGSTARS-A' }]
+                : []),
             { dateKey: kd.allStarMainGameDate, label: '올스타 본경기', time: '20:30', awayId: 'WEST-ALLSTAR', homeId: 'EAST-ALLSTAR' },
         ];
-    }, [isMainLeague, isSeasonStarted, virtualSeasonYear, seasonCalendar]);
+    }, [isMainLeague, isSeasonStarted, virtualSeasonYear, seasonCalendar, allStarOn, risingStarsOn]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
 

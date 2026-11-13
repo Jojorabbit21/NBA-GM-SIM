@@ -10,6 +10,7 @@ import { usePersonalDraftStatus } from '../../hooks/usePersonalDraftStatus';
 import { useSeasonContext } from '../../views/multi/season/seasonContext';
 import { useCurrentVirtualDate } from '../../hooks/useCurrentVirtualDate';
 import { isAllStarWindowActive } from '../../utils/allStarSelection';
+import { resolveAllStarFlags } from '../../utils/allStarSettings';
 import { usePlayoffRaceOpen } from '../../hooks/usePlayoffRaceOpen';
 import type { SidenavIconName } from './navIcons';
 
@@ -49,7 +50,8 @@ export function useSeasonNavModel(): SeasonNavModel {
     const hasPlayoffs = !!league?.bracket_data && league?.type !== 'tournament';
     const isDraftComplete = league?.status === 'in_progress' || league?.status === 'finished';
     const currentVirtualDate = useCurrentVirtualDate(schedule, league?.type, league?.sim_real_start_at, league?.games_per_real_day, timeline);
-    const showAllStar = isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
+    // [2026-11-13] 세션 설정에서 올스타를 끈 리그는 메뉴를 숨긴다.
+    const showAllStar = resolveAllStarFlags(league).allStar && isAllStarWindowActive(currentVirtualDate, league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar);
     const showPlayoffRace = usePlayoffRaceOpen(schedule, currentVirtualDate, league?.type);
 
     const base = `/multi/leagues/${leagueId}/season`;

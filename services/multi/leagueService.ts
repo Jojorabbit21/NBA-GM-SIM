@@ -591,6 +591,7 @@ export const updateLeagueSettings = async (
     if (msg.includes('cannot_remove_claimed_team')) return { error: '참가 중인 팀은 줄일 수 없습니다. 새로고침 후 다시 시도하세요.' };
     if (msg.includes('team_count_mismatch'))       return { error: '참가 팀 수가 다른 작업과 겹쳐 맞지 않습니다. 새로고침 후 다시 시도하세요.' };
     if (msg.includes('league_not_found') || msg.includes('room_not_found')) return { error: '리그를 찾을 수 없습니다. 새로고침 후 다시 시도하세요.' };
+    if (msg.includes('allstar_settings_locked'))   return { error: '올스타 투표가 시작되어 올스타 설정을 바꿀 수 없습니다.' };
     return { error: actionFailure(error, '리그 설정 저장') };
 };
 
@@ -1229,6 +1230,41 @@ export const applyLeaguePlayoffFormat = async (
     }
     const r = (data ?? {}) as { appended?: number; trimmed?: number };
     return { appended: Number(r.appended ?? 0), trimmed: Number(r.trimmed ?? 0), error: null };
+};
+
+/** [2026-11-13] 세션 설정 "올스타" 탭 저장 — 스위치 4종 + 키데이트 오프셋(브레이크 첫날 기준). RPC가 검증하고,
+ *  타임라인이 있으면 브레이크 날짜 라벨·올스타 실제 발동 시각까지 같은 트랜잭션에서 고친다. */
+export interface AllStarSettingsInput {
+    allStarEnabled: boolean;
+    risingStarsEnabled: boolean;
+    threePointContestEnabled: boolean;
+    dunkContestEnabled: boolean;
+    offsets: { voteStart: number; voteEnd: number; rising: number; contests: number; main: number };
+}
+
+export const updateLeagueAllStarSettings = async (
+    leagueId: string, s: AllStarSettingsInput,
+): Promise<{ error: string | null }> => {
+    const { error } = await supabase.rpc('update_league_allstar_settings', {
+        p_league_id: leagueId,
+        p_allstar_enabled: s.allStarEnabled,
+        p_rising_stars_enabled: s.risingStarsEnabled,
+        p_three_point_contest_enabled: s.threePointContestEnabled,
+        p_dunk_contest_enabled: s.dunkContestEnabled,
+        p_offsets: s.offsets,
+    });
+    if (!error) return { error: null };
+    const head = '올스타 설정 저장에 실패했습니다.';
+    const msg = error.message ?? '';
+    if (msg.includes('allstar_settings_locked'))  return { error: `${head} 올스타 투표가 이미 시작됐습니다.` };
+    if (msg.includes('allstar_vote_start_past'))  return { error: `${head} 투표 시작일은 오늘(가상 날짜) 이후여야 합니다.` };
+    if (msg.includes('allstar_no_break'))         return { error: `${head} 올스타 브레이크 없이 일정이 만들어진 시즌이라 켤 수 없습니다.` };
+    if (msg.includes('event_same_day'))           return { error: `${head} 라이징스타·컨테스트·본경기는 서로 다른 날이어야 합니다.` };
+    if (msg.includes('event_outside_break'))      return { error: `${head} 행사 날짜는 브레이크 안이어야 합니다.` };
+    if (msg.includes('vote_window'))              return { error: `${head} 투표 기간은 4일 이상이어야 합니다.` };
+    if (msg.includes('vote_before_season'))       return { error: `${head} 투표 시작일이 정규시즌 개막보다 앞섭니다.` };
+    if (msg.includes('vote_order'))               return { error: `${head} 투표 마감일은 시작일보다 뒤, 브레이크보다 앞이어야 합니다.` };
+    return { error: actionFailure(error, '올스타 설정 저장') };
 };
 
 export const applyLeagueReschedule = async (

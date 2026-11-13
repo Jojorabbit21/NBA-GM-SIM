@@ -228,6 +228,8 @@ async function buildTeamsForRoom(
  */
 export async function computeAndStoreAllStarVotes(
     roomId: string, leagueId: string, virtualSeasonYear: number, virtualDate: string, seasonCalendar?: unknown,
+    /** [2026-11-13] leagues.rising_stars_enabled — false면 마감일에 라이징스타 명단·서신을 만들지 않는다. */
+    risingStarsEnabled = true,
 ): Promise<void> {
     const built = await buildTeamsForRoom(roomId, leagueId);
     if (!built) return;
@@ -268,7 +270,9 @@ export async function computeAndStoreAllStarVotes(
         // 라이징스타 — 투표 없이 본올스타 선발과 "같이 발표"해달라는 요청(2026-09-08)이라
         // 같은 rosterPayload(=league_events.payload이자 league_allstar_votes.roster)에 합친다.
         // 컨퍼런스 구분이 없으므로 east/west와 별개 최상위 필드로 둔다.
-        const risingStars = runRisingStarsSelection(teams, virtualSeasonYear, seed);
+        // [2026-11-13] 세션 설정에서 꺼진 리그는 선발 자체를 건너뛴다 — roster.risingStars가 없으면
+        // 클라이언트(옵셔널 파싱)·포인트 정산(빈 목록)·경기 실행(스케줄러가 스킵)이 모두 "라이징스타 없음"으로 처리.
+        const risingStars = risingStarsEnabled ? runRisingStarsSelection(teams, virtualSeasonYear, seed) : null;
         // voteProgress===1인 날이라 result(위에서 이미 계산됨)가 곧 최종 팬 득표 리더보드 —
         // 스타터/리저브 전원의 득표수·득표율을 여기서 playerId로 찾아 쓴다(재계산 아님, 조회만).
         const voteInfoByPlayerId = new Map<string, { votes: number; pct: number }>(
@@ -284,11 +288,12 @@ export async function computeAndStoreAllStarVotes(
                 starters: selection.west.starters.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
                 reserves: selection.west.reserves.map(p => rosterPlayerPayload(p, voteInfoByPlayerId.get(p.playerId), snap)),
             },
-            risingStars: {
+            // undefined면 JSON 직렬화에서 키 자체가 빠진다(roster/payload에 risingStars 없음).
+            risingStars: risingStars ? {
                 teamA: risingStars.teamA.map(p => risingStarPlayerPayload(p, snap)),
                 teamB: risingStars.teamB.map(p => risingStarPlayerPayload(p, snap)),
                 teamAName: risingStars.teamAName, teamBName: risingStars.teamBName,
-            },
+            } : undefined,
         };
     })() : null;
 
@@ -334,7 +339,9 @@ export async function computeAndStoreAllStarVotes(
         // [2026-09-08] 처음엔 allstar_vote_result 서신 안 섹션으로만 끼워 넣었는데, 사용자
         // 요청으로 뉴스 피드에 별도 아이템으로도 발송한다 — 같은 날 같은 rosterPayload.risingStars를
         // 재사용(재계산 아님).
-        await maybePostRisingStarsNews(roomId, leagueId, virtualDate, rosterPayload.risingStars, season, keyDates);
+        if (rosterPayload.risingStars) {
+            await maybePostRisingStarsNews(roomId, leagueId, virtualDate, rosterPayload.risingStars, season, keyDates);
+        }
     }
 }
 
@@ -405,7 +412,7 @@ type RisingStarsPayload = {
 // 넣기 위해 추가(라이징스타 서신 maybePostRisingStarsNews()와 동일 패턴).
 async function maybePostVoteResultNews(
     roomId: string, leagueId: string, virtualDate: string,
-    rosterPayload: { east: RosterConferencePayload; west: RosterConferencePayload; risingStars: RisingStarsPayload },
+    rosterPayload: { east: RosterConferencePayload; west: RosterConferencePayload; risingStars?: RisingStarsPayload },
     seasonLabel: string,
     keyDates: { allStarStart: string; allStarEnd: string; allStarMainGameDate: string },
 ): Promise<void> {

@@ -31,6 +31,7 @@ import { ClickableText } from './newsFeedLetter';
 import { Button } from '../../../components/common/Button';
 import { IconButton } from '../../../components/common/IconButton';
 import { getAllStarKeyDates } from '../../../utils/allStarSelection';
+import { resolveAllStarFlags } from '../../../utils/allStarSettings';
 import { periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 import { useViewportClass } from '../../../hooks/useViewportClass';
 import { PhoneScheduleList, type PhoneAllStarItem } from './PhoneScheduleList';
@@ -622,20 +623,22 @@ const MultiScheduleView: React.FC = () => {
         () => getAllStarKeyDates(league?.virtual_season_year ?? new Date().getFullYear(), league?.season_calendar),
         [league?.virtual_season_year, league?.season_calendar],
     );
+    // [2026-11-13] 세션 설정 "올스타" 탭 스위치 — 꺼진 행사는 일정에 넣지 않는다(올스타를 끄면 전부).
+    const allStarFlags = resolveAllStarFlags(league);
     const allStarEntriesByDate = useMemo(() => {
         const map = new Map<string, AllStarScheduleEntry[]>();
-        if (!preferVirtual) return map;
+        if (!preferVirtual || !allStarFlags.allStar) return map;
         const push = (dateKey: string, entry: AllStarScheduleEntry) => {
             const arr = map.get(dateKey) ?? [];
             arr.push(entry);
             map.set(dateKey, arr);
         };
-        push(allStarKeyDates.allStarRisingStarsDate, { kind: 'rising_stars', label: '라이징스타 챌린지' });
-        push(allStarKeyDates.allStarThreePointContestDate, { kind: 'three_point', label: '3점 챌린지' });
-        push(allStarKeyDates.allStarDunkContestDate, { kind: 'dunk', label: '덩크 컨테스트' });
+        if (allStarFlags.risingStars) push(allStarKeyDates.allStarRisingStarsDate, { kind: 'rising_stars', label: '라이징스타 챌린지' });
+        if (allStarFlags.threePoint) push(allStarKeyDates.allStarThreePointContestDate, { kind: 'three_point', label: '3점 챌린지' });
+        if (allStarFlags.dunk) push(allStarKeyDates.allStarDunkContestDate, { kind: 'dunk', label: '덩크 컨테스트' });
         push(allStarKeyDates.allStarMainGameDate, { kind: 'main', label: '올스타 본경기' });
         return map;
-    }, [preferVirtual, allStarKeyDates]);
+    }, [preferVirtual, allStarKeyDates, allStarFlags.allStar, allStarFlags.risingStars, allStarFlags.threePoint, allStarFlags.dunk]);
 
     // 데이트피커에서 경기가 있는 날짜 + 올스타 서브 이벤트 날짜만 선택 가능(GameDateStrip과
     // 동일 제약 원칙, 올스타는 여기 추가로 열어준다).

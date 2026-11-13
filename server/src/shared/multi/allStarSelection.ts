@@ -24,7 +24,7 @@ import {
     buildCandidates, MIN_GAMES, positionGroup, voterNoise, scoreAllNBA,
     type AwardCandidate, type AwardStatLine,
 } from './awardVoting.ts';
-import { resolveSeasonCalendar } from '../seasonCalendar.ts';
+import { resolveSeasonCalendar, DEFAULT_ALL_STAR_OFFSETS } from '../seasonCalendar.ts';
 
 // ══════════════════════════════════════════════════════════════════════════
 // 키데이트
@@ -51,6 +51,9 @@ export interface AllStarKeyDates {
     /** [2026-09-08] 올스타 본경기 실제 실행일 — allStarStart+3일. 현재는 시뮬레이션 미구현,
      *  서신 안내용. */
     allStarMainGameDate: string;
+    /** [2026-11-13] false = 올스타를 끈 채 일정을 만든 시즌(season_calendar.allStarBreak=false) — 브레이크 날짜에도
+     *  정규시즌 경기가 있다. 날짜 값들은 그대로 계산되지만 화면·타임라인은 브레이크가 없는 것으로 다룬다. */
+    hasBreak: boolean;
 }
 
 function addDaysStr(dateStr: string, days: number): string {
@@ -59,23 +62,26 @@ function addDaysStr(dateStr: string, days: number): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const VOTE_WINDOW_DAYS = 28;
-
 export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: unknown): AllStarKeyDates {
     // [2026-10-23] 브레이크 날짜는 리그별 저장 달력(leagues.season_calendar)에서 — 없으면 기존 고정값(2/13~18).
-    // 아래 서브 이벤트 오프셋(+1/+2/+3)은 신·구 달력 모두 같다(seasonCalendar.ts 참고).
-    const { allStarStart, allStarEnd } = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
-    const allStarSelectionDate = addDaysStr(allStarStart, -7);
-    const allStarVoteEnd = allStarSelectionDate;
-    const allStarVoteStart = addDaysStr(allStarVoteEnd, -VOTE_WINDOW_DAYS);
-    const allStarVoteInterimDates = [1, 2, 3].map(q => addDaysStr(allStarVoteStart, Math.round(VOTE_WINDOW_DAYS * q / 4)));
-    const allStarThreePointContestDate = addDaysStr(allStarStart, 2);
-    const allStarDunkContestDate = addDaysStr(allStarStart, 2);
-    const allStarRisingStarsDate = addDaysStr(allStarStart, 1);
-    const allStarMainGameDate = addDaysStr(allStarStart, 3);
+    // [2026-11-13] 투표·행사 날짜는 브레이크 첫날 기준 오프셋(season_calendar.allStarOffsets, 세션 설정 "올스타" 탭) —
+    // 저장값이 없으면 DEFAULT_ALL_STAR_OFFSETS(투표 마감 −7, 투표 28일, 라이징스타 +1 · 컨테스트 +2 · 본경기 +3).
+    const cal = resolveSeasonCalendar(virtualSeasonYear, seasonCalendar);
+    const { allStarStart, allStarEnd } = cal;
+    const o = cal.allStarOffsets ?? DEFAULT_ALL_STAR_OFFSETS;
+    const allStarVoteEnd = addDaysStr(allStarStart, o.voteEnd);
+    const allStarSelectionDate = allStarVoteEnd;
+    const allStarVoteStart = addDaysStr(allStarStart, o.voteStart);
+    const voteWindowDays = o.voteEnd - o.voteStart;
+    const allStarVoteInterimDates = [1, 2, 3].map(q => addDaysStr(allStarVoteStart, Math.round(voteWindowDays * q / 4)));
+    const allStarThreePointContestDate = addDaysStr(allStarStart, o.contests);
+    const allStarDunkContestDate = addDaysStr(allStarStart, o.contests);
+    const allStarRisingStarsDate = addDaysStr(allStarStart, o.rising);
+    const allStarMainGameDate = addDaysStr(allStarStart, o.main);
     return {
         allStarVoteStart, allStarVoteInterimDates, allStarVoteEnd, allStarSelectionDate, allStarStart, allStarEnd,
         allStarThreePointContestDate, allStarDunkContestDate, allStarRisingStarsDate, allStarMainGameDate,
+        hasBreak: cal.allStarBreak !== false,
     };
 }
 
@@ -85,8 +91,9 @@ export function getAllStarKeyDates(virtualSeasonYear: number, seasonCalendar?: u
  *  비교를 씀) 미러 쌍 로직 동기화 원칙에 따라 함께 추가. */
 export function isAllStarWindowActive(virtualDate: string | null, virtualSeasonYear: number, seasonCalendar?: unknown): boolean {
     if (!virtualDate) return false;
-    const { allStarVoteStart, allStarEnd } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
-    return virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
+    const { allStarVoteStart, allStarEnd, hasBreak } = getAllStarKeyDates(virtualSeasonYear, seasonCalendar);
+    // [2026-11-13] 브레이크 없이 만든 시즌(올스타를 끈 채 시작)은 올스타 기간 자체가 없다.
+    return hasBreak && virtualDate >= allStarVoteStart && virtualDate < allStarEnd;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

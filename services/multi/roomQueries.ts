@@ -147,6 +147,14 @@ export interface LeagueRow {
     trade_deadline_enabled: boolean;
     /** [2026-10-26] 연장전(5분×최대 2회+결승 공격, 점프볼) — 세션 설정 "엔진" 탭. 칼럼 기본 true(이전 리그는 false). */
     overtime_enabled: boolean;
+    /** [2026-11-13] 올스타 스위치 4종(메인리그, 세션 설정 "올스타" 탭, 기본 true) — update_league_allstar_settings RPC로만
+     *  저장하고, 그 시즌 팬 투표가 시작되면 DB 트리거(trg_leagues_allstar_lock)가 변경을 막는다. allstar_enabled가 false면
+     *  하위 행사도 전부 꺼진 것으로 다룬다(utils/allStarSettings.ts resolveAllStarFlags). 드래프트 전에 끄면 브레이크 없이
+     *  일정이 만들어진다(season_calendar.allStarBreak=false). 키데이트는 season_calendar.allStarOffsets. */
+    allstar_enabled: boolean;
+    rising_stars_enabled: boolean;
+    three_point_contest_enabled: boolean;
+    dunk_contest_enabled: boolean;
     /** [2026-10-19] 참가하지 않은 로그인 유저의 읽기 전용 관전 허용 여부. in_progress/finished 상태에서만 유효
      *  (recruiting/drafting은 항상 불가). 실제 접근 통제는 DB의 spectatable_room_ids() RLS가 담당. 기본 false. */
     spectate_enabled: boolean;

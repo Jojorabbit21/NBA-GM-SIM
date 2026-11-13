@@ -32,6 +32,41 @@ export interface SeasonCalendar {
      *  사이에 각각 넣는 경기 없는 날. 0 = 기존 규칙(최종일 다음 날 바로 포스트시즌, 디사이더 다음 경기 간격에 1라운드).
      *  저장값에 없으면(v3 이전 달력) 0 — 그 리그 타임라인은 옛 규칙 일수로 이미 깔려 있다. leagueTimeline.postseasonDayOffsets 참고. */
     postseasonRestDays: number;
+    /** [2026-11-13] 올스타 키데이트 오프셋(세션 설정 "올스타" 탭). resolveSeasonCalendar는 저장값이 있을 때만 채운다 —
+     *  없으면 getAllStarKeyDates가 DEFAULT_ALL_STAR_OFFSETS(기존 고정 규칙)를 쓴다. */
+    allStarOffsets?: AllStarOffsets;
+    /** [2026-11-13] false = 올스타를 끈 채 일정을 만든 시즌 — 브레이크 날짜에도 정규시즌 경기가 있다(finalize가 기록).
+     *  없으면 브레이크 있음. */
+    allStarBreak?: boolean;
+}
+
+/** [2026-11-13] 올스타 키데이트 — 브레이크 첫날(allStarStart, 참가자 발표일) 기준 가상 일수 오프셋.
+ *  투표 2개는 정규시즌 안(음수), 행사 3개는 브레이크 안(1 이상, allStarEnd 전날까지)의 서로 다른 날.
+ *  update_league_allstar_settings RPC가 검증 후 leagues.season_calendar.allStarOffsets에 저장한다. */
+export interface AllStarOffsets {
+    /** 팬 투표 시작일 */
+    voteStart: number;
+    /** 팬 투표 마감일 = 올스타 명단 발표일 */
+    voteEnd: number;
+    /** 라이징스타 챌린지 */
+    rising: number;
+    /** 3점·덩크 컨테스트(같은 날) */
+    contests: number;
+    /** 올스타 본경기 */
+    main: number;
+}
+
+/** 기존 고정 규칙 — 투표 마감 = 브레이크 7일 전, 투표 기간 28일, 라이징스타 +1 · 컨테스트 +2 · 본경기 +3. */
+export const DEFAULT_ALL_STAR_OFFSETS: AllStarOffsets = { voteStart: -35, voteEnd: -7, rising: 1, contests: 2, main: 3 };
+
+const ALL_STAR_OFFSET_KEYS = ['voteStart', 'voteEnd', 'rising', 'contests', 'main'] as const;
+
+/** 저장값(검증 전) → 다섯 값이 모두 정수면 그 값, 아니면 undefined. */
+export function parseAllStarOffsets(v: unknown): AllStarOffsets | undefined {
+    if (!v || typeof v !== 'object') return undefined;
+    const o = v as Record<string, unknown>;
+    if (!ALL_STAR_OFFSET_KEYS.every(k => Number.isInteger(o[k]))) return undefined;
+    return { voteStart: o.voteStart as number, voteEnd: o.voteEnd as number, rising: o.rising as number, contests: o.contests as number, main: o.main as number };
 }
 
 /** v3(2026-10-26): postseasonRestDays 추가. */
@@ -87,13 +122,21 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** leagues.season_calendar(jsonb, 검증 전 unknown) → 유효하면 그 값, 아니면 legacy. */
 export function resolveSeasonCalendar(virtualSeasonYear: number, stored?: unknown): SeasonCalendar {
     const s = stored as Partial<SeasonCalendar> | null | undefined;
+    // [2026-11-13] 올스타 설정은 날짜 유효성과 무관하게 넘긴다 — season_calendar가 없던 리그(legacy 달력)도
+    // RPC가 {allStarOffsets}만 담아 저장하므로.
+    const offsets = parseAllStarOffsets(s?.allStarOffsets);
+    const allStarExtras: Pick<SeasonCalendar, 'allStarOffsets' | 'allStarBreak'> = {
+        ...(offsets ? { allStarOffsets: offsets } : {}),
+        ...(s?.allStarBreak === false ? { allStarBreak: false } : {}),
+    };
     if (s && typeof s === 'object'
         && [s.regularStart, s.regularEnd, s.allStarStart, s.allStarEnd].every(v => typeof v === 'string' && DATE_RE.test(v))) {
         return {
             version: typeof s.version === 'number' ? s.version : SEASON_CALENDAR_VERSION,
             regularStart: s.regularStart!, regularEnd: s.regularEnd!, allStarStart: s.allStarStart!, allStarEnd: s.allStarEnd!,
             postseasonRestDays: typeof s.postseasonRestDays === 'number' && s.postseasonRestDays >= 0 ? Math.round(s.postseasonRestDays) : 0,
+            ...allStarExtras,
         };
     }
-    return legacySeasonCalendar(virtualSeasonYear);
+    return { ...legacySeasonCalendar(virtualSeasonYear), ...allStarExtras };
 }
