@@ -1,7 +1,7 @@
 
 import { PlayType, TacticalSliders } from '../../../../types';
 import { LivePlayer, TeamState } from './pbpTypes';
-import { getContextualMultiplier, getTeamOptionRanks, getTopOptionGap } from './usageSystem';
+import { getContextualMultiplier, getTeamOptionRanks, getTopOptionGap, calculateScoringGravity } from './usageSystem';
 import { SIM_CONFIG } from '../../config/constants';
 import { calculateScreenerPhysique } from './archetypeSystem';
 import { POST_MATCHUP } from './postMatchup';
@@ -103,6 +103,25 @@ function transitionRunnerPassChance(handler: LivePlayer, runner: LivePlayer): nu
 }
 
 
+// [2026-11-13] 슈터 선정 재설계 공용 점수 (docs/plan/shooter-selection-plan.md, client·server 미러)
+/** 체력 배율 — 경기 시작 시점 고정. 아키타입(handler)이 initializer에서 1회 계산되므로 그 값 ÷ 원식으로 역산한다. */
+export function staticFatigue(p: LivePlayer): number {
+    const raw = p.attr.handling * 0.30 + p.attr.passIq * 0.25 + p.attr.passVision * 0.25 + p.attr.passAcc * 0.20;
+    return raw > 0 ? p.archetypes.handler / raw : 1;
+}
+/** 아이솔 점수 — 핸들링 ISO_HANDLING_W + 득점력(안·밖 중 높은 쪽 0.7 + 낮은 쪽 0.3). 아이솔 슈터 선정과 라인업 아이솔 빈도에 같이 쓴다. */
+export function isoCreationScore(p: LivePlayer): number {
+    const w = SIM_CONFIG.SHOOTER_SELECTION.ISO_HANDLING_W;
+    const ins = (p.attr.closeShot + p.attr.layup + p.attr.dunk) / 3, out = p.attr.mid * 0.4 + p.attr.threeVal * 0.6;
+    const scoring = Math.max(ins, out) * 0.7 + Math.min(ins, out) * 0.3;
+    return staticFatigue(p) * (p.attr.handling * w + scoring * (1 - w));
+}
+/** PnR 핸들러 점수 — √(볼 핸들링 × isoScorer). 볼 핸들링 = 핸들링 .60·드리블 속도 .25·패스 IQ/시야 .075씩. 선정과 라인업 PnR 빈도에 같이 쓴다. */
+export function pnrCreationScore(p: LivePlayer): number {
+    const bh = staticFatigue(p) * (p.attr.handling * 0.60 + p.attr.spdBall * 0.25 + p.attr.passIq * 0.075 + p.attr.passVision * 0.075);
+    return Math.sqrt(Math.max(1, bh) * Math.max(1, p.archetypes.isoScorer));
+}
+
 export function selectZone(
     zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
     actor: LivePlayer,
@@ -114,7 +133,8 @@ export function selectZone(
 ): 'Rim' | 'Paint' | 'Mid' | '3PT' {
     // 선수 DNA: tendencies.zones → 4존 선호도 (RA/ITP/Mid/3PT, 초기화 시 정규화 완료)
     const prefMap: Record<string, number> = {
-        '3PT':   actor.zonePref.three,
+        // [2026-11-13] 3점이 후보일 때(풀업)는 접은 몫만큼 3점에서 뺀다 — 3점 후보가 없는 포스트업은 이전과 동일 (client·server 미러)
+        '3PT':   actor.zonePref.three * (zones.includes('3PT') && threeFoldToMid > 0 ? 1 - threeFoldToMid : 1),
         'Mid':   actor.zonePref.mid + actor.zonePref.three * threeFoldToMid,
         'Paint': actor.zonePref.itp,
         'Rim':   actor.zonePref.ra,
@@ -340,7 +360,9 @@ export function resolvePlayAction(
     const pickWeightedActor = (
         criteria: (p: LivePlayer) => number,
         excludeId?: string,
-        role: 'shooter' | 'passer' = 'shooter',
+        // [2026-11-13] 슈터 선정 재설계 — receiver = 받는 플레이(팀 옵션 배율 없음, 볼 점유 성향 반대),
+        //   spot = 스팟업 계열(받는 플레이 + 플레이 안 순위표 없음), abs = 실력 절대값 가중 창출 슈터(순위표 없음, 팀 옵션 배율 유지)
+        role: 'shooter' | 'passer' | 'receiver' | 'spot' | 'abs' = 'shooter',
         eligibleFilter?: (p: LivePlayer) => boolean
     ) => {
         let pool = players;
@@ -355,7 +377,7 @@ export function resolvePlayAction(
         // "팀 최고 볼핸들러"가 팀에 postScorer 게비티 높은 빅맨이 있다는 이유만으로 2~3옵션
         // 배율로 밀리는 문제를 막는다. passer role은 원래도 usageMultiplier가 무조건 1.0이라
         // 랭킹 자체가 영향이 없었으므로(아래 B) 그대로 둠.
-        const localRank: Map<string, number> | null = role === 'shooter'
+        const localRank: Map<string, number> | null = role !== 'passer'
             ? new Map([...pool].sort((a, b) => criteria(b) - criteria(a)).map((p, i) => [p.playerId, i + 1]))
             : null;
 
@@ -368,7 +390,7 @@ export function resolvePlayAction(
             // 배율인데, role 구분 없이 passer 선정에도 적용되고 있었음 — 득점 옵션 순위와 무관하게
             // 진짜 패스 능력으로 어시스트맨을 정하도록 passer일 땐 적용하지 않는다.
             const rank = localRank?.get(p.playerId) ?? 3;
-            const usageMultiplier = role === 'shooter' ? getContextualMultiplier(rank, playType) : 1.0;
+            const usageMultiplier = (role === 'spot' || role === 'abs') ? 1.0 : role !== 'passer' ? getContextualMultiplier(rank, playType) : 1.0;
 
             // C. Final Weight = Skill * OptionMultiplier * Tendencies
             // Linear (pow=1.0): USAGE_WEIGHTS가 계층 구조를 담당, 능력치는 선형 반영
@@ -379,7 +401,7 @@ export function resolvePlayAction(
             // 후보 풀에 없는 플레이타입엔 자연히 영향 없음). passer role은 usageMultiplier와 같은
             // 이유로 제외(순수 스킬로만 패서 선정).
             const teamRank = teamRankMap.get(p.playerId) ?? 3;
-            const starMultiplier = role === 'shooter'
+            const starMultiplier = (role === 'shooter' || role === 'abs')
                 ? STAR_USAGE_WEIGHTS[Math.min(5, Math.max(1, teamRank)) - 1]
                 : 1.0;
             weight *= starMultiplier;
@@ -392,16 +414,16 @@ export function resolvePlayAction(
             let ballDom = p.tendencies?.ballDominance ?? 1.0;
             // [2026-10-28] 에이스(코트 위 1옵션, 2옵션과 그래비티 격차 MIN_GAP 이상)는 ballDominance 하한 적용 — shooter 선정에만
             const aceCfg = SIM_CONFIG.ACE_BALL_DOMINANCE;
-            if (aceCfg.ENABLED && role === 'shooter' && topOption && topOption.playerId === p.playerId && topOption.gap >= aceCfg.MIN_GAP) {
+            if (aceCfg.ENABLED && (role === 'shooter' || role === 'abs') && topOption && topOption.playerId === p.playerId && topOption.gap >= aceCfg.MIN_GAP) {
                 ballDom = Math.max(ballDom, aceCfg.FLOOR);
             }
-            weight *= role === 'shooter' ? ballDom : (2.0 - ballDom);
+            weight *= (role === 'shooter' || role === 'abs') ? ballDom : (2.0 - ballDom);   // [2026-11-13] 받는 플레이는 패서처럼 반대(공을 오래 쥐는 선수는 덜 받는다)
 
             // [SaveTendency] playStyle: role 기반 통합 배율 (슈터 vs 패서)
             // pass-first(-1)면 패서 픽 가중치↑·슈터 픽 가중치↓, shoot-first(+1)는 반대
             const ps = p.tendencies?.playStyle ?? 0;
             const psCfg = SIM_CONFIG.PLAY_SELECTION;
-            weight *= role === 'shooter' ? (1 + ps * psCfg.PLAYSTYLE_SHOOTER_K) : (1 - ps * psCfg.PLAYSTYLE_PASSER_K);
+            weight *= role !== 'passer' ? (1 + ps * psCfg.PLAYSTYLE_SHOOTER_K) : (1 - ps * psCfg.PLAYSTYLE_PASSER_K);
 
             return { p, weight: Math.max(0.01, weight) };
         });
@@ -432,6 +454,27 @@ export function resolvePlayAction(
     // Passer Concentration: 어시스터(패서) 선택 시 패싱 능력치를 곱셈으로 적용
     // passVision × passIq → 2500(50×50) 기준 정규화 후 ^1.5 지수로 격차 증폭
     // 엘리트 5.35x, 평균 1.0x, 약체 0.22x → 최고 플레이메이커에게 어시스트 집중
+    // [2026-11-13] 슈터 선정 재설계 — 역할 점수와 수비 오픈도 (docs/plan/shooter-selection-plan.md, client·server 미러)
+    const SS = SIM_CONFIG.SHOOTER_SELECTION;
+    // 볼 핸들러 점수(받는 플레이의 패서를 먼저 고를 때)
+    const bhScore = (p: LivePlayer) => staticFatigue(p) * (p.attr.handling * 0.45 + p.attr.spdBall * 0.15 + p.attr.passIq * 0.20 + p.attr.passVision * 0.20);
+    const postScore = (p: LivePlayer) => Math.pow(Math.max(1, p.archetypes.postScorer), SS.POST_SKILL_W) * Math.pow(Math.max(1, calculateScreenerPhysique(p.attr)), 1 - SS.POST_SKILL_W);
+    const cutScore = (p: LivePlayer) => staticFatigue(p) * (p.attr.offBallMovement * 0.25 + ((p.attr.layup + p.attr.dunk + p.attr.closeShot) / 3) * 0.35
+        + p.attr.vertical * 0.10 + calculateScreenerPhysique(p.attr) * 0.30);
+    const offScreenScore = (p: LivePlayer) => p.archetypes.spacer * 0.6 + staticFatigue(p) * (p.attr.offBallMovement * 0.3 + p.attr.speed * 0.1);
+    // 실력 절대값 가중 (점수 − 기준)^지수 — 코트 위 순위가 아니라 실력 차이만큼 몫이 갈린다
+    const absWeight = (score: (p: LivePlayer) => number, base: number, pow: number) => (p: LivePlayer) => Math.pow(Math.max(0.5, score(p) - base), pow);
+    // 스팟업 수신자 오픈도: 득점 위협이 낮을수록 수비가 비워 준다 — (코트 최저 위협 / 본인 위협)^지수
+    const threat = (p: LivePlayer) => Math.max(1, calculateScoringGravity(p, sliders.insideOut));
+    const openW = (c: (p: LivePlayer) => number) => {
+        const mn = Math.min(...players.map(threat));
+        return (p: LivePlayer) => c(p) * Math.pow(mn / threat(p), SS.SPOT_OPEN_POW);
+    };
+    // 컷 오픈도: 슈팅 위협이 낮을수록 수비가 헬프로 떠나 컷이 열린다 — (코트 최저 spacer / 본인 spacer)^지수
+    const shootOpen = (c: (p: LivePlayer) => number) => {
+        const mn = Math.min(...players.map(q => Math.max(1, q.archetypes.spacer)));
+        return (p: LivePlayer) => c(p) * Math.pow(mn / Math.max(1, p.archetypes.spacer), SS.CUT_SHOOT_OPEN_POW);
+    };
     const pickPasser = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
         return pickWeightedActor(
             p => criteria(p) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
@@ -469,7 +512,7 @@ export function resolvePlayAction(
                 shotType: sZone === '3PT' ? 'CatchShoot' : 'Jumper',
                 bonusHitRate: SIM_CONFIG.PNR_COVERAGE.BLITZ_POP_BONUS + passIqBonus, isKickout: true, blitzTarget: 'screener' };
         }
-        const target = pickWeightedActor(p => p.archetypes.spacer, handler.playerId, 'shooter', p => p.playerId !== screenerP.playerId);
+        const target = pickWeightedActor(openW(p => p.archetypes.spacer), handler.playerId, 'spot', p => p.playerId !== screenerP.playerId);
         const tZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], target, sliders);
         if (tZone === 'Rim' || tZone === 'Paint') {
             const { zone, shotType } = resolveFinish(target, 'post', sliders, tZone, 'created');
@@ -484,7 +527,8 @@ export function resolvePlayAction(
     switch (playType) {
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
-            const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+            // [2026-11-13] 아이솔 슈터 = 아이솔 점수(핸들링 25%·득점력 75%, 체력 경기 시작 고정)의 절대값 가중 — 이전: isoScorer + handler×0.5 순위 가중
+            const actor = pickWeightedActor(absWeight(isoCreationScore, SS.ISO_ABS_BASE, SS.ISO_ABS_POW), undefined, 'abs');
 
             // [2026-10-28] Iso 선택 시점 킥아웃 폐지(사용자 결정) — Iso는 1대1 플레이로 남기고, 더블팀(헬프 성공)이 왔을 때만
             // possessionHandler 2.55 헬프 킥아웃이 패스 여부를 판정한다(패스 능력 × playStyle 마인드).
@@ -493,7 +537,7 @@ export function resolvePlayAction(
             const passer = pickPasser(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
             // 4존 선택: 3PT · Mid · Paint · Rim. Rim/Paint이면 resolveFinish로 마무리 결정.
-            const isoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            const isoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders, undefined, SS.PULLUP_THREE_FOLD);   // [2026-11-13] 풀업: 3점 성향 일부를 미드로
             if (isoZone === 'Rim' || isoZone === 'Paint') {
                 const { zone, shotType } = resolveFinish(actor, 'drive', sliders, isoZone, 'created');
                 return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00 };
@@ -516,7 +560,8 @@ export function resolvePlayAction(
             // 하고 handler를 보조 가중치로 섞음 — handler 아키타입 자체는 다른 곳(패서 역할)에서 계속
             // 그대로 쓰이므로 여기서만 조합을 바꿈.
             if (blitz) return resolveBlitzPassOut(blitz.handler, blitz.screener);
-            const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+            // [2026-11-13] PnR 핸들러 = √(볼 핸들링 × isoScorer)의 절대값 가중 — 이전: isoScorer + handler×0.5 순위 가중
+            const actor = pickWeightedActor(absWeight(pnrCreationScore, SS.PNR_ABS_BASE, SS.PNR_ABS_POW), undefined, 'abs');
 
             // [2026-10-24] 커버리지 무관 "더블팀 유도 후 킥아웃" 폐지 — 더블팀은 블리츠 커버리지에서만 일어난다(사용자 결정).
             // 블리츠 트랩 판정·패스아웃은 possessionHandler(resolveBlitzTrap) → resolveBlitzPassOut.
@@ -524,7 +569,7 @@ export function resolvePlayAction(
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer', screenEligible(actor.playerId));
 
             // 4존 선택: 핸들러 풀업 or 스크린 후 드라이브.
-            const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders, undefined, SS.PULLUP_THREE_FOLD);   // [2026-11-13] 풀업: 3점 성향 일부를 미드로
             if (zone === 'Rim' || zone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone, 'created');
                 // [2026-11-06] 플레이 보너스 0.01 제거 — 원래 의도("스크린 풀업 소폭")를 2026-10-24 스크린 판정(resolveScreen)이
@@ -566,7 +611,7 @@ export function resolvePlayAction(
             rollKickChance *= kickoutMindset(rollPs) * SIM_CONFIG.HELP_KICKOUT.PRE_ROLL_SCALE;
 
             if (Math.random() < rollKickChance) {
-                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, screener.playerId);
+                const kickTarget = pickWeightedActor(openW(p => p.archetypes.spacer), screener.playerId, 'spot');
                 const passIqBonus = Math.max(0,
                     (screener.attr.passIq - prkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * prkCfg.PASSIQ_BONUS_SCALE);
 
@@ -666,7 +711,9 @@ export function resolvePlayAction(
             // [2026-10-24] 체격 혼합(SIM_CONFIG.POST_SELECTION.PHYSIQUE_WEIGHT) — postScorer엔 체격이 없어 엘리트 윙·가드가 빅맨과
             // 같은 점수(드렉슬러 89·조던 95 vs 올라주원 93)를 받아 PostUp의 절반을 외곽 선수가 가져갔음. 포지션 제한이 아니라 체격 비중.
             const postPhysW = SIM_CONFIG.POST_SELECTION.PHYSIQUE_WEIGHT;
-            const actor = pickWeightedActor(p => p.archetypes.postScorer * (1 - postPhysW) + calculateScreenerPhysique(p.attr) * postPhysW);
+            // [2026-11-13] 포스트업 슈터 = 포스트 기술^0.7 × 체격^0.3의 절대값 가중 — 이전: postScorer·체격 선형 혼합 순위 가중
+            void postPhysW;
+            const actor = pickWeightedActor(absWeight(postScore, SS.POST_ABS_BASE, SS.POST_ABS_POW), undefined, 'abs');
 
             // [2026-07-31] 더블팀 유도 후 킥아웃 — postScorer vs postPassing 비율 방식은 같은
             // 0~99 스케일이라 순수 스코어러(샤킬 등)도 킥아웃률이 40%에 육박하는 문제가 있었음
@@ -683,7 +730,7 @@ export function resolvePlayAction(
 
             if (Math.random() < kickChance) {
                 // 킥아웃 확정 — 오픈 슈터에게 패스, actor를 교체하고 포스트 선수는 어시스트 후보로
-                const kickTarget = pickWeightedActor(p => p.archetypes.spacer, actor.playerId);
+                const kickTarget = pickWeightedActor(openW(p => p.archetypes.spacer), actor.playerId, 'spot');
                 // passIq 기반 성공률 보너스 (DriveKick의 driveBonus와 동일 패턴)
                 const passIqBonus = Math.max(0,
                     (actor.attr.passIq - pkCfg.PASSIQ_BONUS_NEUTRAL) / 30 * pkCfg.PASSIQ_BONUS_SCALE);
@@ -724,9 +771,11 @@ export function resolvePlayAction(
             // [2026-07-31] spacer도 PnR_Pop의 popper와 동일한 문제 — zonePref.three 페널티 적용
             // [2026-10-18] 이진(임계값 미만 ×0.2) → PnR_Pop과 같은 비례식(최저 ×0.05) — 0.15에서 5배 뛰던 계단 제거,
             // 3점 텐던시 0인 선수의 캐치앤슛 3점 정리.
-            const actor = pickWeightedActor(p => p.archetypes.spacer * Math.max(0.05, Math.min(1.0,
-                p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD)));
-            const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
+            // [2026-11-13] 패서(볼 핸들러 점수)를 먼저 고르고, 슈터는 나머지 4명 중 스팟업 계열(순위표 없음 + 득점 위협 기준 오픈도)
+            const csPasser = pickPasser(bhScore);
+            const actor = pickWeightedActor(openW(p => p.archetypes.spacer * Math.max(0.05, Math.min(1.0,
+                p.zonePref.three / SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD))), csPasser.playerId, 'spot');
+            const passer = csPasser;
 
             // [2026-07] 캐치앤슛은 3점 전용으로 고정 — 미드/페인트/림까지 포함하면 실제 현대
             // 농구의 "catch-and-shoot"(캐치 후 즉시 점퍼) 개념과 어긋나고, 드라이브&풀업 계열
@@ -750,8 +799,10 @@ export function resolvePlayAction(
         }
         case 'Cut': {
             // Best Driver/Cutter
-            const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);
-            const passer = pickPasser(p => p.archetypes.connector, actor.playerId);
+            // [2026-11-13] 패서(볼 핸들러 점수) 먼저, 컷 슈터 = 컷 점수(오프볼·림 마무리·수직·체격) × 슈팅 위협 기준 오픈도
+            const cutPasser = pickPasser(bhScore);
+            const actor = pickWeightedActor(shootOpen(cutScore), cutPasser.playerId, 'spot');
+            const passer = cutPasser;
             // [2026-10-30] 컷 = 림으로 최단거리 돌격 — 개인 존 성향 대신 고정 비율(림 CUT.RIM_SHARE, 나머지 페인트), 미드 풀업 없음
             const cutZone: 'Rim' | 'Paint' = Math.random() < SIM_CONFIG.CUT.RIM_SHARE ? 'Rim' : 'Paint';
             const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone, 'open');
@@ -823,7 +874,7 @@ export function resolvePlayAction(
                     (tsCfg.TRAILER_BASE + tsCfg.TRAILER_PASS_SCALE * trPassNorm) * kickoutMindset(actor.tendencies?.playStyle ?? 0));
                 if (Math.random() < trailerChance) {
                     // [2026-10-30] 진짜 슈터 우선 — spacer 하한 초과분의 거듭제곱 가중(이전 spacer 선형: 트레일러 3점의 22%가 센터)
-                    const trailer = pickWeightedActor(p => Math.pow(Math.max(0, p.archetypes.spacer - tsCfg.TRAILER_SPACER_FLOOR), tsCfg.TRAILER_SPACER_POW), actor.playerId);
+                    const trailer = pickWeightedActor(p => Math.pow(Math.max(0, p.archetypes.spacer - tsCfg.TRAILER_SPACER_FLOOR), tsCfg.TRAILER_SPACER_POW), actor.playerId, 'receiver');
                     if (trailer.playerId !== actor.playerId) {
                         return { playType, actor: trailer, secondaryActor: actor, preferredZone: '3PT', shotType: 'CatchShoot', bonusHitRate: 0.04, transitionRole: 'trailer' };
                     }
@@ -843,7 +894,7 @@ export function resolvePlayAction(
             const runner = pickWeightedActor(
                 p => ((p.attr.speed * 0.4 + p.attr.vertical * 0.3 + p.archetypes.driver * 0.3) * (1 - physW) + calculateScreenerPhysique(p.attr) * physW)
                     * Math.max(0.1, 1 - rebPenalty * rebScore(p) / rebMax),
-                actor.playerId, 'shooter',
+                actor.playerId, 'receiver',
                 (entryPlayer && !grabAndGo) ? (p => p.playerId !== entryPlayer.playerId) : undefined,
             );
             if (SIM_CONFIG.TRANSITION_FLOW.ENABLED && runner.playerId !== actor.playerId
@@ -880,18 +931,16 @@ export function resolvePlayAction(
         case 'OffBallScreen': {
             // 오프볼 스크린 후 슈터 캐치앤슛
             // 1. 슈터: 스크린을 활용하는 캐치앤슛 전문가
-            const actor = pickWeightedActor(
-                p => p.archetypes.spacer + p.attr.offBallMovement * 0.3 + p.attr.speed * 0.1
-            );
+            // [2026-11-13] 패서(볼 핸들러 점수) 먼저, 슈터 = 받는 플레이(오프스크린 점수)
+            const obsPasser = pickPasser(bhScore);
+            const actor = pickWeightedActor(offScreenScore, obsPasser.playerId, 'receiver');
             // 2. 스크리너: 오프볼 스크린 퀄리티 (피지컬 기반)
             // [2026-07-29] role 파라미터 누락 버그 수정 — 기본값('shooter')이 적용돼서 옵션랭크
             // 배율/볼도미넌스(반전 없음)/playStyle(슛선호 유리)가 전부 스크리너 역할에 안 맞게
             // 적용되고 있었음. Handoff의 big, PnR_Handler의 screener와 동일하게 'passer'로 통일.
             const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
             // 3. 패서: 스크린 후 오픈된 슈터를 찾아 패스 (어시스트 담당)
-            const passer = pickPasser(
-                p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId
-            );
+            const passer = obsPasser;
 
             // 스크린 퀄리티 → bonusHitRate 보정
             // screener 아키타입 50 기준, 0~100 범위 → 0.00~0.02 보너스
@@ -913,10 +962,9 @@ export function resolvePlayAction(
         }
         case 'DriveKick': {
             // 드라이브 킥아웃: 드라이버가 침투 후 외곽 슈터에게 패스
-            const actor = pickWeightedActor(p => p.archetypes.spacer + p.attr.out * 0.3);
-            const driver = pickPasser(
-                p => p.archetypes.driver + p.archetypes.handler * 0.3, actor.playerId
-            );
+            // [2026-11-13] 드라이버 먼저, 킥아웃 수신자 = 스팟업 계열(순위표 없음 + 득점 위협 기준 오픈도)
+            const driver = pickPasser(p => p.archetypes.driver + p.archetypes.handler * 0.3);
+            const actor = pickWeightedActor(openW(p => p.archetypes.spacer + p.attr.out * 0.3), driver.playerId, 'spot');
 
             // 드라이버 퀄리티 → bonusHitRate 보정
             // 침투력 (speed, agility, handling) + 킥아웃 패스 (passVision, passAcc)

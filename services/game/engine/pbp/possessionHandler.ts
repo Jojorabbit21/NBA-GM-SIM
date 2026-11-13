@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
-import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult, finishPostUp } from './playTypes';
+import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult, finishPostUp, isoCreationScore, pnrCreationScore } from './playTypes';
 import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
@@ -786,8 +786,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // gravity 90 → min(0.30, 0.405) = 0.30 → Hero 30% 증가
         // gravity 78 → 0.225 → Hero 22.5% 증가
         // gravity 63 이하 → 0 (벤치 유닛은 시스템 플레이 유지)
-        weights['Iso'] *= (1 + gravityBoost);
-        weights['PnR_Handler'] *= (1 + gravityBoost);
+        // [2026-11-13] 라인업 기반 아이솔 빈도 — 코트 위 최고 아이솔 점수(아이솔 슈터 선정과 같은 점수)로 배율을 정한다.
+        //   이전 gravityBoost는 그라비티 83에서 상한(+30%)에 닿아 벤치 라인업도 스타 라인업과 같은 빈도였다.
+        //   AVG_MULT·REF = 리그 평균 배율이 이전 상한(1.30)과 같아지도록 맞춘 값 (docs/plan/shooter-selection-plan.md 5-11, client·server 미러)
+        const lfCfg = SIM_CONFIG.LINEUP_PLAY_FREQ;
+        const lineupMult = (top: number, c: { REF: number; POW: number }) =>
+            Math.max(lfCfg.MIN, Math.min(lfCfg.MAX, lfCfg.AVG_MULT * Math.pow(Math.max(0.5, top - lfCfg.BASE) / (c.REF - lfCfg.BASE), c.POW)));
+        weights['Iso'] *= lineupMult(Math.max(...offTeam.onCourt.map(isoCreationScore)), lfCfg.ISO);
+        // [2026-11-13] 라인업 기반 PnR 핸들러 빈도 — 코트 위 최고 PnR 핸들러 점수(선정과 같은 점수) (5-12)
+        weights['PnR_Handler'] *= lineupMult(Math.max(...offTeam.onCourt.map(pnrCreationScore)), lfCfg.PNR);
 
         // [2026-09-10] 핸들러 그라비티가 높을수록 PnR_Roll/Pop(자동으로 롤러/팝퍼에게 넘어가는 비중)을
         // 부분적으로 줄임 — "에이스가 스스로 마무리하는 비중이 느는 만큼, 자동으로 롤러에게 넘어가는
@@ -1135,6 +1142,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
+    // [2026-11-13] 슈팅 파울 보류 — 파울이 나면 바로 자유투로 끝내지 않고, 아래 슛 판정에서 성공(성공률 × AND1_MAKE_FACTOR)이면 앤드원,
+    //   실패면 이 자유투 결과를 돌려준다. 보류 중에는 원래 파울 포세션에서 일어나지 않던 사건(비슈팅 파울·차징·스크린 파울·
+    //   테크니컬·플래그런트·싸움·샷클락·턴오버·랍 실패·블록)을 건너뛴다 (docs/plan/shooter-selection-plan.md 5-15, client·server 미러)
+    let bFoul: PossessionResult | null = null;
     const defIntensity = defTeam.tactics.sliders.defIntensity;
     const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
     const sFoulCfg = SIM_CONFIG.SHOOTING_FOUL;
@@ -1163,6 +1174,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     shootingFoulRate += interpolateCurve(defenderSkill, defenderSkillCurve) * zoneScale * (isInteriorZone ? sFoulCfg.INTERIOR_SKILL_SCALE : 1);
     if (preferredZone === 'Rim') shootingFoulRate += sFoulCfg.RIM_CONTACT_ADD;
     if (isInteriorZone && !isKickout) shootingFoulRate += sFoulCfg.PLAYTYPE_CONTACT[selectedPlayType] ?? 0;
+    // [2026-11-13] 상황별 접촉 배율 — 기본 접촉(존 기본값 + 림 접촉 + 플레이 접촉)에만 곱한다. 파울 유도 능력·수비수 실력·슬라이더 항은
+    //   원래 크기 그대로 더한다(5-17). 3점은 아래 전용 공식이 덮어써 영향 없음.
+    {
+        const contactMult = sFoulCfg.CONTACT_MULT[selectedPlayType] ?? sFoulCfg.CONTACT_MULT_DEFAULT;
+        const zoneBase = preferredZone === 'Rim' ? sFoulCfg.BASE_RATE_RIM : preferredZone === 'Paint' ? sFoulCfg.BASE_RATE_PAINT
+            : preferredZone === 'Mid' ? sFoulCfg.BASE_RATE_MID : sFoulCfg.BASE_RATE_3PT;
+        const baseContact = zoneBase + (preferredZone === 'Rim' ? sFoulCfg.RIM_CONTACT_ADD : 0)
+            + ((isInteriorZone && !isKickout) ? (sFoulCfg.PLAYTYPE_CONTACT[selectedPlayType] ?? 0) : 0);
+        shootingFoulRate += (contactMult - 1) * baseContact;
+    }
 
     // defIntensity 보정: 5.5 기준 대칭(1단계 -3.0%p ~ 10단계 +3.0%p)
     shootingFoulRate += (defIntensity - 5.5) * sFoulCfg.DEF_INTENSITY_FACTOR;
@@ -1251,7 +1272,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const fouler = (rimProtector && Math.random() < protectorFoulShare) ? rimProtector
             : (helpDefender && Math.random() < helpFoulShare) ? helpDefender : defender;
         const isHelpFoul = fouler !== defender;
-        return {
+        bFoul = {
             type: 'freethrow',
             offTeam, defTeam, actor, defender: fouler, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             zone: preferredZone,
@@ -1271,7 +1292,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     nonShootingFoulRate *= foulProbMod * matchupFoulMult;
     nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
 
-    if (Math.random() < nonShootingFoulRate) {
+    if (!bFoul && Math.random() < nonShootingFoulRate) {
         // [2026-11-11] 자유투 패키지 ④ — OFF_BALL_SHARE만큼은 공 없는 자리싸움 파울: 당하는 쪽·범하는 쪽을 리바운드 존재감으로 다시 고르고,
         //   플레이 종류 집계에서는 뺀다(statPlayType null). 상수·근거는 SIM_CONFIG.NON_SHOOTING_FOUL 주석 (server 미러)
         let nsActor = actor, nsDefender = defender;
@@ -1311,7 +1332,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         chargeChance = Math.min(POST_MATCHUP.FOUL_RATE_CAP, chargeChance * postOffensiveFoulMult(actor, state.simSettings?.playTypeEra));
     }
 
-    if (Math.random() < chargeChance) {
+    if (!bFoul && Math.random() < chargeChance) {
         return {
             type: 'offensiveFoul' as const,
             offTeam, defTeam, actor, defender,
@@ -1336,7 +1357,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actualScreener = screener;
         screenChance = offFoulConfig.OFFBALL_SCREEN_FOUL_RATE;
     }
-    if (actualScreener && Math.random() < screenChance) {
+    if (!bFoul && actualScreener && Math.random() < screenChance) {
         return {
             type: 'offensiveFoul' as const,
             offTeam, defTeam, actor: actualScreener, defender,
@@ -1351,7 +1372,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 언행 문제라 공격수도 받을 수 있음). temperament 가중은 그대로(단독으로 충분 — 경기 외적
     // 파울이라 다른 스탯 블렌드 불필요, 사용자 확정). 큰 점수차로 지고 있는 팀은 감정적으로
     // 격해져 가중치가 상승(최대 1.5배, ~33점차에서 상한).
-    if (Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
+    if (!bFoul && Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
         const techPower = offFoulConfig.TECH_TEMPERAMENT_POWER;
         const allOnCourt = [...offTeam.onCourt, ...defTeam.onCourt];
 
@@ -1386,7 +1407,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 3.6.1 Flagrant Foul Check (독립 이벤트)
     // foulProneness(70%) + temperament(30%) 복합 가중, 커브 적용
     // 수비팀 전원 중 가중 랜덤 선택 → 선택된 선수의 합산값으로 최종 확률 결정
-    {
+    if (!bFoul) {
         const ffCfg = offFoulConfig;
         const ffPower = ffCfg.FLAGRANT_CURVE_POWER;
         const ffWeights = defTeam.onCourt.map(p => {
@@ -1432,7 +1453,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // temperament >= THRESHOLD인 수비 선수만 대상, 리그 전체 시즌 ~5-10건
     // suspensionsEnabled 필드가 없는(신규 배포 전 저장된) 리그는 true로 폴백 —
     // 항상 켜져 있던 기존 동작을 그대로 유지하기 위함(끄려면 admin이 명시적으로 꺼야 함).
-    if (state.simSettings.suspensionsEnabled ?? true) {
+    if (!bFoul && (state.simSettings.suspensionsEnabled ?? true)) {
         const fightCfg = offFoulConfig;
         const hotDefenders = defTeam.onCourt.filter(
             p => (p.tendencies?.temperament ?? 0) >= fightCfg.FIGHT_TEMPERAMENT_THRESHOLD
@@ -1493,7 +1514,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // [2026-10-18] 게임클락이 샷클락보다 적게 남으면 샷클락이 꺼지므로 바이올레이션 불가
     // [2026-11-05] 서두르기·2-for-1 공격(timeEngine clockMode)은 일찍 슛하므로 샷클락 바이올레이션 없음 (server 미러 참조) — 이전: '시간이 없습니다' 직후 24초 바이올레이션
-    if (state.gameClock > state.shotClock && state.clockMode !== 'hurry' && state.clockMode !== 'twoForOne' && Math.random() < shotClockChance) {
+    if (!bFoul && state.gameClock > state.shotClock && state.clockMode !== 'hurry' && state.clockMode !== 'twoForOne' && Math.random() < shotClockChance) {
         return {
             type: 'shotClockViolation' as const,
             offTeam, defTeam, actor,
@@ -1519,7 +1540,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         isHandlerSelf ? handlerScreen : undefined,
         onBallExposed);
 
-    if (tovResult.isTurnover) {
+    if (!bFoul && tovResult.isTurnover) {
         // [2026-11-07] 패스 차단 턴오버는 패스한 선수의 턴오버(기록 규칙) — 이전엔 받으려던 선수(actor)에게 기록됐음.
         //   받으려던 선수는 passTarget으로 해설에만 쓴다. 패서가 없으면(드라이브 직접 마무리 등) 그대로 actor (server 미러)
         const laneToPasser = !!tovResult.isLaneSteal && !!shotPasser;
@@ -1588,8 +1609,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const egoMod = (actor.tendencies?.ego ?? 0) * ((3 - actorOptionRank) / 2) * 0.015;
 
     // [A-1] 어시스트 퀄리티: 패서의 passVision이 높으면 슈터가 더 좋은 위치에서 캐치
-    const assistQualityMod = shotPasser
-        ? (shotPasser.attr.passVision - 70) * 0.001
+    // [2026-11-13] 본인 창출 슛(아이솔·포스트업, 킥아웃 제외)은 패서 성공률 보너스 없음 — 패서는 공을 건넸을 뿐 (5-1 D4)
+    const bonusPasser = (!isKickout && (selectedPlayType === 'Iso' || selectedPlayType === 'PostUp')) ? undefined : shotPasser;
+    const assistQualityMod = bonusPasser
+        ? (bonusPasser.attr.passVision - 70) * 0.001
         : 0;
 
     // [A-3] CatchShoot/Handoff 오픈 탐지: 패서 시야가 넓으면 더 좋은 오픈 찬스
@@ -1600,14 +1623,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // [B-2] 어시스트 전달 퀄리티: 패서의 passAcc가 높으면 슈터가 리듬 유지
-    const deliveryQualityMod = shotPasser
-        ? (shotPasser.attr.passAcc - 70) * 0.0008
+    const deliveryQualityMod = bonusPasser
+        ? (bonusPasser.attr.passAcc - 70) * 0.0008
         : 0;
 
     // [B-4] PnR 랍패스 메카닉: PnR_Roll + Rim + Dunk/Layup → 랍 시도/성공 판정
     let lobBonus = 0;
     // [2026-10-28] 속공 러너(패스 받은 마무리)도 앨리웁 대상 — 커버리지 항은 PnR에만 해당(속공은 'none')
-    if ((selectedPlayType === 'PnR_Roll' || (selectedPlayType === 'Transition' && transitionRole === 'runner' && !helpKicked)) && preferredZone === 'Rim'
+    if (!bFoul && (selectedPlayType === 'PnR_Roll' || (selectedPlayType === 'Transition' && transitionRole === 'runner' && !helpKicked)) && preferredZone === 'Rim'
         && (shotType === 'Dunk' || shotType === 'Layup') && secondaryActor) {
         const handler = secondaryActor;
         const roller = actor;
@@ -1649,8 +1672,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // --- PLAYMAKING ARCHETYPE BONUSES (패서 히든 아키타입) ---
     let playmakingBonus = 0;
     const pmCfg = SIM_CONFIG.PLAYMAKING;
-    if (pmCfg.ENABLED && shotPasser) {
-        const pa = shotPasser.attr;
+    if (pmCfg.ENABLED && bonusPasser) {
+        const pa = bonusPasser.attr;
 
         // G-1. Clairvoyant: 어시스트 시 슈터 hitRate +2%
         if (pa.passIq >= pmCfg.CLAIRVOYANT_PASSIQ_THRESHOLD &&
@@ -1744,11 +1767,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     );
 
     // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---
+    // [2026-11-13] 존별 성공률 보정 — 파울당하고 놓친 슛이 야투 시도에서 빠지는 기록 방식(B)에 맞춘 재보정 (5-16)
+    {
+        const zoneHitOffset = SIM_CONFIG.ZONE_HIT_OFFSET[preferredZone] ?? 0;
+        if (zoneHitOffset) shotContext.rate = Math.max(0.01, Math.min(0.99, shotContext.rate + zoneHitOffset));
+    }
     let isBlock = false;
     let finalDefender = defender;
     let isHelpBlock = false;
 
-    if (defender && preferredZone) {
+    if (!bFoul && defender && preferredZone) {
         const blkCfg = SIM_CONFIG.BLOCK;
 
         // A. Determine Base Probability by Zone
@@ -1815,20 +1843,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // --- BLOCK CALCULATION END ---
 
     // Hit/Miss 판정 (블락 성공 시 강제 미스)
-    const isScore = isBlock ? false : Math.random() < shotContext.rate;
+    const isScore = isBlock ? false : Math.random() < shotContext.rate * (bFoul ? SIM_CONFIG.SHOOTING_FOUL.AND1_MAKE_FACTOR : 1);
+    if (bFoul && !isScore) return bFoul;   // 파울당하고 놓친 슛 = 자유투(야투 시도 아님)
+    if (bFoul) finalDefender = bFoul.defender ?? finalDefender;
 
     // And-1: 득점 성공 + 슈팅 파울 동시 발생 (전 존, shotType별 배율)
-    let isAndOne = false;
-    if (isScore) {
-        // [Fix 2026-07-26] defIntensity 연동 제거 — defIntensity는 FG%/파울/체력에만 관여
-        // [2026-11-11] 자유투 패키지 ② — 기본 확률 상수화·상향(이전 골밑 0.03·그 외 0.012), AND1_CURVE_SCALE 0.15→0.35 (server 미러)
-        const andOneBase = (preferredZone === 'Rim' || preferredZone === 'Paint') ? sFoulCfg.AND1_BASE_INTERIOR : sFoulCfg.AND1_BASE_OTHER;
-        const drawFoulAndOneMod = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE) * sFoulCfg.AND1_CURVE_SCALE;
-        const and1Mult = SIM_CONFIG.SHOT_DEFENSE.AND1_MULT[shotType ?? 'Layup'] ?? 1.0;
-        if (Math.random() < Math.max(0, (andOneBase + drawFoulAndOneMod) * and1Mult)) {
-            isAndOne = true;
-        }
-    }
+    // [2026-11-13] 앤드원 = 보류된 슈팅 파울 + 슛 성공. 성공 후 따로 굴리던 확률(AND1_BASE_*·AND1_CURVE_SCALE)은 폐지 —
+    //   앤드원 비중이 성공률에서 자연히 나온다(실제 파울의 19~26%, 5-15)
+    const isAndOne = isScore && !!bFoul;
 
     // Miss path (블락 or 일반 미스)
     if (!isScore) {

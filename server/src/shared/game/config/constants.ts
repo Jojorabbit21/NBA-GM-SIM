@@ -285,6 +285,18 @@ export const SIM_CONFIG = {
         AND1_CURVE_SCALE: 0.35,
         AND1_BASE_INTERIOR: 0.10,   // Rim/Paint
         AND1_BASE_OTHER: 0.03,      // Mid/3PT
+        // [2026-11-13] 위 AND1_BASE_*·AND1_CURVE_SCALE은 더 이상 쓰지 않는다(롤백용 보존) — 앤드원은 "보류된 슈팅 파울 + 슛 성공"으로만 생긴다.
+        //   AND1_MAKE_FACTOR: 파울당한 슛의 성공 확률 = 성공률 × 이 값. 앤드원 비중이 성공률에서 자연히 나온다
+        //   (실제 슈팅 파울 중 앤드원 19~26%, 엔진 컷 27·아이솔 19·풋백 23%). docs/plan/shooter-selection-plan.md 5-15 (client·server 미러)
+        AND1_MAKE_FACTOR: 0.35,
+        // [2026-11-13] 상황별 접촉 배율 — 기본 접촉(존 기본값 + RIM_CONTACT_ADD + PLAYTYPE_CONTACT)에만 곱한다(능력치·수비수·슬라이더 항 제외).
+        //   Synergy 2025-26 플레이별 슛 시도당 슈팅 파울(아이솔 14.6·PnR 11.4·포스트 16.9·속공 13.8·컷 16.0·롤 11.6·풋백 13.1·핸드오프 9.8·
+        //   오프스크린 7.7%)에 맞춘 값(5-17). 표에 없는 플레이는 CONTACT_MULT_DEFAULT. 3점은 THREE_PT 전용 공식이 덮어써 무관.
+        CONTACT_MULT: {
+            'Iso': 1.75, 'PnR_Handler': 1.73, 'Transition': 1.71, 'PostUp': 1.43, 'DriveKick': 1.3, 'Handoff': 1.95,
+            'Cut': 1.55, 'PnR_Roll': 1.9, 'PnR_Pop': 1.39, 'Putback': 1.28, 'OffBallScreen': 1.59,
+        } as Partial<Record<string, number>>,
+        CONTACT_MULT_DEFAULT: 1.6,
 
         // [2026-11-11] 자유투 패키지 ① 3점 슈팅 파울 전용 공식 (client·server 미러) — 위 존 공통 공식을 3점에서는 이걸로 교체:
         //   DRAW_CURVE(슈터 drFoul, 가파름) + DEF_CURVE(수비수 perDef×0.65+defConsist×0.35, 약할수록 소폭 ↑) + (defIntensity−5.5)×DEF_INTENSITY_FACTOR
@@ -309,6 +321,28 @@ export const SIM_CONFIG = {
         MAX_RATE: 0.40,
     },
     // Non-Shooting Foul (팀 파울 / 루스볼 파울 — 보너스 상황에서만 FT)
+    // [2026-11-13] 슈터 선정 재설계 (docs/plan/shooter-selection-plan.md, client·server 미러)
+    //   아이솔·PnR 핸들러·포스트업 슈터 = 역할 점수의 실력 절대값 가중 (점수 − BASE)^POW, 받는 플레이는 팀 옵션 배율 없음,
+    //   스팟업 계열은 플레이 안 순위표 없이 득점 위협이 낮을수록 오픈(SPOT_OPEN_POW), 컷은 슈팅 위협이 낮을수록 오픈(CUT_SHOOT_OPEN_POW).
+    SHOOTER_SELECTION: {
+        ISO_HANDLING_W: 0.25,          // 아이솔 점수 = 핸들링 × W + 득점력 × (1 − W)
+        ISO_ABS_BASE: 70, ISO_ABS_POW: 4,
+        PNR_ABS_BASE: 70, PNR_ABS_POW: 2,
+        POST_ABS_BASE: 70, POST_ABS_POW: 2,
+        POST_SKILL_W: 0.7,             // 포스트 점수 = 포스트 기술^W × 체격^(1 − W)
+        SPOT_OPEN_POW: 1,
+        CUT_SHOOT_OPEN_POW: 2,
+        PULLUP_THREE_FOLD: 0.25,       // 아이솔·PnR 핸들러 풀업: 3점 성향의 이 몫을 미드로 (캐치앤슛 3점 이중 반영 해소, 5-13)
+    },
+    // [2026-11-13] 라인업 기반 아이솔·PnR 핸들러 빈도 — 배율 = AVG_MULT × ((코트 최고 점수 − BASE) / (REF − BASE))^POW, MIN~MAX.
+    //   REF는 리그 평균 배율이 이전 gravityBoost 상한(1.30)과 같아지도록 맞춘 값(5-11·5-12).
+    LINEUP_PLAY_FREQ: {
+        BASE: 70, AVG_MULT: 1.30, MIN: 0.3, MAX: 2.5,
+        ISO: { REF: 86.2, POW: 2 },
+        PNR: { REF: 86.0, POW: 2 },
+    },
+    // [2026-11-13] 존별 성공률 보정 — 파울당하고 놓친 슛이 야투 시도에서 빠지는 기록 방식(앤드원 결합)에 맞춘 재보정(5-16)
+    ZONE_HIT_OFFSET: { 'Rim': 0.020, 'Paint': -0.028, 'Mid': -0.006, '3PT': -0.008 } as Partial<Record<string, number>>,
     NON_SHOOTING_FOUL: {
         // [2026-10-25] 0.025 → 0.05, MAX 0.06 → 0.12 (사용자 결정 C1) — 하네스: 파울 14.3→16.7, FTA 18.5→19.8, FTr .222→.241(NBA .244),
         // 파울아웃 0.032→0.055/팀경기, 포세션 95.3→94.4(보너스 전 파울이 시간 소모)

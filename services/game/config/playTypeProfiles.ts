@@ -55,10 +55,14 @@ export const PLAY_TYPE_SLIDER_COEFS: Record<string, PlayTypeSliderCoefs> = {
  * 상세 근거·하네스 결과: docs/history/dev-log.md 2026-11-08 항목.
  */
 export const PLAY_TYPE_ERA_BASES: Record<PlayTypeEra, Record<string, number>> = {
-    '2020s': { Iso: 1.05, PostUp: 0.64, PnR_Handler: 2.81, PnR_Roll: 0.63, PnR_Pop: 0.39, CatchShoot: 1.61, OffBallScreen: 0.60, DriveKick: 1.29, Cut: 1.10, Handoff: 0.69 },
-    '2010s': { Iso: 1.09, PostUp: 1.09, PnR_Handler: 2.75, PnR_Roll: 0.71, PnR_Pop: 0.44, CatchShoot: 1.22, OffBallScreen: 0.80, DriveKick: 0.97, Cut: 1.14, Handoff: 0.61 },
-    '2000s': { Iso: 1.64, PostUp: 1.84, PnR_Handler: 2.00, PnR_Roll: 0.59, PnR_Pop: 0.37, CatchShoot: 1.03, OffBallScreen: 0.95, DriveKick: 0.82, Cut: 1.20, Handoff: 0.36 },
-    '1990s': { Iso: 1.97, PostUp: 2.50, PnR_Handler: 1.52, PnR_Roll: 0.50, PnR_Pop: 0.31, CatchShoot: 0.83, OffBallScreen: 1.06, DriveKick: 0.66, Cut: 1.19, Handoff: 0.27 },
+    // [2026-11-13] 마무리 동작 기준 분류(빅맨 덤프오프 = 컷, 블리츠 롤 = 롤맨)로 재보정 — 2020s는 Synergy 2023-24~2025-26 하프코트 FGA 구성에 맞춤,
+    //   다른 시대는 같은 분류 보정 배율(새 2020s ÷ 이전 2020s)을 곱해 합계 10.8로 정규화 (docs/plan/shooter-selection-plan.md 5-12·5-13).
+    //   이전: 2020s 1.05/0.64/2.81/0.63/0.39/1.61/0.60/1.29/1.10/0.69 · 2010s 1.09/1.09/2.75/0.71/0.44/1.22/0.80/0.97/1.14/0.61 ·
+    //   2000s 1.64/1.84/2.00/0.59/0.37/1.03/0.95/0.82/1.20/0.36 · 1990s 1.97/2.50/1.52/0.50/0.31/0.83/1.06/0.66/1.19/0.27 (Iso/PostUp/PnR_H/Roll/Pop/C&S/OffScreen/DK/Cut/Handoff)
+    '2020s': { Iso: 1.093, PostUp: 0.611, PnR_Handler: 2.955, PnR_Roll: 0.524, PnR_Pop: 0.325, CatchShoot: 1.772, OffBallScreen: 0.579, DriveKick: 1.42, Cut: 0.811, Handoff: 0.71 },
+    '2010s': { Iso: 1.148, PostUp: 1.053, PnR_Handler: 2.926, PnR_Roll: 0.597, PnR_Pop: 0.371, CatchShoot: 1.358, OffBallScreen: 0.781, DriveKick: 1.08, Cut: 0.85, Handoff: 0.635 },
+    '2000s': { Iso: 1.744, PostUp: 1.794, PnR_Handler: 2.148, PnR_Roll: 0.501, PnR_Pop: 0.315, CatchShoot: 1.158, OffBallScreen: 0.936, DriveKick: 0.922, Cut: 0.904, Handoff: 0.378 },
+    '1990s': { Iso: 2.104, PostUp: 2.448, PnR_Handler: 1.64, PnR_Roll: 0.427, PnR_Pop: 0.265, CatchShoot: 0.937, OffBallScreen: 1.049, DriveKick: 0.745, Cut: 0.9, Handoff: 0.285 },
 };
 
 export const PLAY_TYPE_ERAS: readonly PlayTypeEra[] = ['2020s', '2010s', '2000s', '1990s'];
