@@ -369,6 +369,26 @@ function getMomentumBonus(state: GameState, offTeamId: string): number {
 type ScreenResult = 'clean' | 'partial' | 'fail';
 
 /**
+ * [2026-11-15] FIT% — 스크린을 맞은 수비수 쪽 집계(스크리너 쪽 SCRN%의 거울). 판정된 스크린마다 fitFaced +1, 수비수가 스크린에 걸리지 않고
+ * 완전히 빠져나간 경우(스크린 판정 'fail')만 fitThru +1. 부분 성공은 빠져나간 것으로 세지 않는다. 판정·확률에는 영향 없음(집계 전용).
+ */
+function recordFightThrough(screened: LivePlayer | undefined, result: ScreenResult | undefined): void {
+    if (!screened || !result) return;
+    screened.fitFaced = (screened.fitFaced || 0) + 1;
+    if (result === 'fail') screened.fitThru = (screened.fitThru || 0) + 1;
+}
+
+/**
+ * [2026-11-15] DRFD(DrivesFaced) — 림·페인트로 드리블 돌파해 오는 선수를 막은 수비수 쪽 집계. 맨투맨(drfd)과 지역방어(drfdZone)는 따로 쌓는다:
+ * 지역방어는 림·페인트 공격의 수비수를 골밑 앵커로 정하므로 둘을 합치면 포지션(PF·C)이 순위를 지배한다. 집계 전용.
+ */
+function recordDriveFaced(defender: LivePlayer | undefined, isZone: boolean): void {
+    if (!defender) return;
+    if (isZone) defender.drfdZone = (defender.drfdZone || 0) + 1;
+    else defender.drfd = (defender.drfd || 0) + 1;
+}
+
+/**
  * [2026-10-24] 스크린 판정 — PnR_Handler / PnR_Roll / PnR_Pop / Handoff.
  * 스크리너 능력(체격 = screener 아키타입 + 타이밍 = offBallMovement) vs 스크린을 받는 수비수(볼을 가진
  * 선수의 수비수)의 회피력(agility·perDef·strength)을 비교해 클린/부분/실패를 뽑고, 결과는 그 플레이의
@@ -387,7 +407,7 @@ function resolveScreen(
     isSwitch: boolean,
     isBotchedSwitch: boolean,
     isZone: boolean,
-): { result?: ScreenResult; bonus: number; screener?: LivePlayer } {
+): { result?: ScreenResult; bonus: number; screener?: LivePlayer; screened?: LivePlayer } {
     const cfg = SIM_CONFIG.SCREEN;
     if (!cfg.ENABLED || isKickout || isSwitch || isBotchedSwitch) return { bonus: 0 };
 
@@ -422,7 +442,7 @@ function resolveScreen(
     const r = Math.random();
     const result: ScreenResult = r < pClean ? 'clean' : r < 1 - pFail ? 'partial' : 'fail';
     const base = result === 'clean' ? cfg.CLEAN_BONUS : result === 'partial' ? cfg.PARTIAL_BONUS : 0;
-    return { result, bonus: base * (isZone ? cfg.ZONE_MULT : 1), screener };
+    return { result, bonus: base * (isZone ? cfg.ZONE_MULT : 1), screener, screened };
 }
 
 /**
@@ -893,6 +913,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-10-24] let — 블리츠 패스아웃 시 수신자 컨텍스트로 교체
     let { actor, secondaryActor, preferredZone, bonusHitRate, shotType, isKickout } = playCtx;
     const { screener, transitionRole } = playCtx;
+    let drivers: LivePlayer[] | undefined = playCtx.drivers;   // [2026-11-15] DRFD 집계용(블리츠 패스아웃이면 아래에서 비운다)
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
@@ -950,6 +971,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     if (selectedPlayType === 'PnR_Handler' && !isKickout && defender) {
         const hs = resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, matchupTable, false, isSwitch, isBotchedSwitch, isZone);
         handlerScreen = hs.result;
+        recordFightThrough(hs.screened, hs.result);   // [2026-11-15] FIT% — 핸들러 스크린도 여기서 한 번만 집계
         // [2026-10-28] SCRN% 집계 — 핸들러 스크린은 여기서 한 번만(턴오버·트랩으로 끝난 포세션 포함)
         if (hs.result && hs.screener) {
             const sc = hs.screener;
@@ -987,6 +1009,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         defender = pickRotationDefender(defTeam, matchupTable, actor, trapIds);
         calcCoverage = 'none';
         handlerScreen = undefined;   // 패스아웃 — 이후 슛은 수신자
+        drivers = undefined;         // 패스아웃 — 핸들러는 돌파하지 못했다
     }
     if (!defender) {
         return {
@@ -994,6 +1017,12 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             points: 0, isAndOne: false, playType: selectedPlayType,
             isSwitch: false, isZone: false,
         };
+    }
+
+    // [2026-11-15] DRFD — 돌파한 선수마다 그 선수를 막는 수비수에게 +1. 트랩(블리츠·헤지 실패)에 걸린 포세션은 위에서 끝났고 패스아웃은 drivers 를 비웠다.
+    //   돌파한 선수가 actor면 위에서 확정된 defender(스위치 반영), 아니면(드라이브킥에서 킥아웃한 드라이버) 매치업 표의 그 선수 수비수. 집계 전용.
+    if (drivers) {
+        for (const d of drivers) recordDriveFaced(d.playerId === actor.playerId ? defender : matchupTable.get(d.playerId), isZone);
     }
 
     // 2.4 [2026-10-23] 이번 포세션 소요 시간을 슛 판정 전에 미리 뽑는다(liveEngine이 그대로 사용).
@@ -1087,6 +1116,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                     preferredZone = fin.zone;
                     shotType = fin.shotType;
                     bonusHitRate = hkCfg.DRIVE_BONUS;
+                    recordDriveFaced(helpDefender, isZone);   // [2026-11-15] DRFD — 클로즈아웃 나온 헬퍼를 상대로 한 돌파
                 } else {
                     preferredZone = koZone;
                     shotType = koZone === '3PT' ? 'CatchShoot' : 'Jumper';
@@ -1689,11 +1719,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-10-24] 스크린 판정 (PnR 3종 + Handoff) — 슛 성공률 보너스로만 반영
     // [2026-11-06] PnR_Handler는 위(2.34)에서 이미 판정·집계 — 핸들러 본인 슛이면 HANDLER 보너스(실패는 감점), 패스아웃·킥아웃 슛은 0 (client 미러 참조)
     const sCfg = SIM_CONFIG.SCREEN;
-    const screen: { result?: ScreenResult; bonus: number; screener?: LivePlayer } = selectedPlayType === 'PnR_Handler'
+    const screen: { result?: ScreenResult; bonus: number; screener?: LivePlayer; screened?: LivePlayer } = selectedPlayType === 'PnR_Handler'
         ? { bonus: (!isKickout && handlerScreen)
             ? (handlerScreen === 'clean' ? sCfg.HANDLER_CLEAN_BONUS : handlerScreen === 'partial' ? sCfg.HANDLER_PARTIAL_BONUS : -sCfg.HANDLER_FAIL_PENALTY) * (isZone ? sCfg.ZONE_MULT : 1)
             : 0 }
         : resolveScreen(selectedPlayType, actor, secondaryActor, defender, defTeam, matchupTable, !!isKickout, isSwitch, isBotchedSwitch, isZone);
+    // [2026-11-15] FIT% — 같은 판정을 스크린을 맞은 수비수 쪽에도 집계(판정 생략 장면은 result 가 없어 집계되지 않는다)
+    recordFightThrough(screen.screened, screen.result);
     // [2026-10-28] SCRN% 집계 — 판정된 스크린 결과(clean/partial/fail)를 스크리너 박스스코어에 누적한다.
     // 판정 생략(킥아웃·스위치·미스 스위치·스크린 아닌 플레이)은 result 가 없어 집계되지 않는다. 판정 로직은 건드리지 않는다.
     if (screen.result && screen.screener) {

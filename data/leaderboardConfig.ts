@@ -239,6 +239,9 @@ export const DEFENSE_COLUMNS: ColumnDef[] = [
     { key: 'blk',  label: 'BLK',  width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
     { key: 'tovForced', label: 'TOVF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Defense', format: 'number' },
     { key: 'dreb', label: 'DREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true,  category: 'Defense', format: 'number' },
+    // [2026-11-15] 스크린 돌파율(맞은 스크린 중 걸리지 않고 빠져나간 비율)·경기당 막은 돌파 수(맨투맨) — 선수 모드 전용. DRFD 는 좋고 나쁨이 없는 노출량이라 히트맵 없음
+    { key: 'fit%', label: 'FIT%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Defense', format: 'percent' },
+    { key: 'drfd', label: 'DRFD', width: WIDTHS.STAT, sortable: true, isHeatmap: false, category: 'Defense', format: 'number' },
     ...DEF_ZONES.flatMap(z => ([
         { key: `dfg${z}_m`, label: 'DFGM', width: DEF_ZONE_W, sortable: true, isHeatmap: true,  attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
         { key: `dfg${z}_a`, label: 'DFGA', width: DEF_ZONE_W, sortable: true, isHeatmap: true, attrGroup: z, category: 'Defense' as const, format: 'integer' as const },
@@ -253,6 +256,8 @@ export const DEFENSE_STAT_OPTIONS = [
     { value: 'blk',   label: 'BLK' },
     { value: 'tovForced', label: 'TOVF' },
     { value: 'dreb',  label: 'DREB' },
+    { value: 'fit%',  label: 'FIT%' },
+    { value: 'drfd',  label: 'DRFD' },
     ...DEF_ZONES.flatMap(z => [
         { value: `dfg${z}_m`, label: `${z} DFGM` },
         { value: `dfg${z}_a`, label: `${z} DFGA` },

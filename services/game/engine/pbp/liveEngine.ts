@@ -1177,6 +1177,11 @@ export function extractSimResult(state: GameState): SimulationResult {
                 ...(p.scrClean ? { scrClean: p.scrClean } : {}),
                 ...(p.scrPartial ? { scrPartial: p.scrPartial } : {}),
                 ...(p.scrFail ? { scrFail: p.scrFail } : {}),
+                // [2026-11-15] FIT%·DRFD — 0이어도 항상 기록(키가 없으면 이 집계가 생기기 전 경기라는 뜻 → 게임 로그가 '-' 로 구분)
+                fitFaced: p.fitFaced || 0,
+                fitThru: p.fitThru || 0,
+                drfd: p.drfd || 0,
+                drfdZone: p.drfdZone || 0,
                 contestedAttempted: p.contestedAttempted || 0,
                 contestedMade: p.contestedMade || 0,
                 defRimAttempted: p.defRimAttempted || 0,

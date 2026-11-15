@@ -493,6 +493,10 @@ export const useLeaderboardData = (
                 const scrJudged = (s.scrClean || 0) + (s.scrPartial || 0) + (s.scrFail || 0);
                 s['scrj']  = scrJudged;
                 s['scrn%'] = scrJudged > 0 ? (s.scrClean || 0) / scrJudged : 0;
+                // FIT% — 맞은(판정된) 스크린 중 수비수가 걸리지 않고 완전히 빠져나간 비율(맞은 횟수 fitj 는 퍼센타일 카드의 표본 기준용).
+                // DRFD 는 s.drfd(맨투맨에서 막은 돌파 수 합계) 그대로 두고 표·정렬·필터에서 경기당으로 나눈다(TOVF 와 같은 방식)
+                s['fitj']  = s.fitFaced || 0;
+                s['fit%']  = (s.fitFaced || 0) > 0 ? (s.fitThru || 0) / (s.fitFaced || 0) : 0;
                 const zones6 = ['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'] as const;
                 for (const z of zones6) {
                     const a = (s as any)[`def${z}Attempted`] || 0;
@@ -600,6 +604,7 @@ export const useLeaderboardData = (
                 update('blk', s.blk / g);
                 update('tov', s.tov / g);
                 update('tovForced', (s.tovForced || 0) / g);
+                update('drfd', (s.drfd || 0) / g);
                 update('pf', (s.pf || 0) / g);
                 update('fgm', s.fgm / g);
                 update('fga', s.fga / g);
@@ -647,6 +652,7 @@ export const useLeaderboardData = (
                 // Advanced Stats
                 update('per', s['per'] || 0);
                 update('scrn%', s['scrn%'] || 0);
+                update('fit%', s['fit%'] || 0);
                 update('ows', s['ows'] || 0);
                 update('dws', s['dws'] || 0);
                 update('ws', s['ws'] || 0);
@@ -759,7 +765,7 @@ export const useLeaderboardData = (
                                     // Per Game for traditional counts
                                     // Advanced stats are already ratios, so no /g
                                     // Traditional counts need /g
-                                    if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'oreb', 'dreb', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(filter.category!)) {
+                                    if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'drfd', 'oreb', 'dreb', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(filter.category!)) {
                                         itemVal = itemVal / g;
                                     }
                                 }
@@ -843,7 +849,7 @@ export const useLeaderboardData = (
                     if (s[statKey] !== undefined) {
                         const val = s[statKey];
                         // Count stats: per-game. pm is already pre-calculated as per-game.
-                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
+                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'tovForced', 'drfd', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
                             return val / g;
                         }
                         return val;

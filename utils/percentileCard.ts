@@ -37,6 +37,7 @@ export const PERCENTILE_SECTION_LABELS: Record<PercentileSectionId, string> = {
 // [2026-11-12] 2단 표(components/player/PercentileCard.tsx splitSections)의 좌우 행 수가 같아지는 순서 —
 // 왼쪽 가치 8 + 득점 4 + 플레이메이킹 2 = 14, 오른쪽 슈팅 5 + 리바운드 2 + 수비 5 + 스크린 2 = 14.
 // 지표를 더하거나 빼면 이 합을 다시 맞출 것(나누는 지점은 splitSections 가 행 수로 자동 결정).
+// [2026-11-15] 수비에 FIT% 추가로 오른쪽 15행(왼쪽 14행) — 한 줄 차이.
 const SECTION_ORDER: PercentileSectionId[] = ['value', 'scoring', 'playmaking', 'shooting', 'rebounding', 'defense', 'screening'];
 
 /** 퍼센타일 모집단 자격 — 총 출전시간이 (리그 최다 출전 경기 수 × 이 값)분 이상(경기당 평균 8분 상당). */
@@ -111,6 +112,9 @@ export const PERCENTILE_METRICS: PercentileMetric[] = [
     { key: 'dfg%', label: 'DFG%', section: 'defense', value: r => ((r.stats.contestedAttempted || 0) > 0 ? r.stats['dfg%'] : null), attempts: r => r.stats.contestedAttempted || 0, inverse: true, format: pct1 },
     { key: 'cont', label: 'CONT', section: 'defense', value: r => r.stats['cont'], format: num1 },
     { key: 'tovf', label: 'TOVF', section: 'defense', value: r => perGame(r, r.stats.tovForced || 0), format: num1 },
+    // [2026-11-15] FIT% = 맞은 스크린 중 수비수가 완전히 빠져나간 비율(스크린 쪽 SCRN% 의 거울). 맞은 횟수가 없으면 "-", 적으면(자격자 중앙값의 20% 미만) NQ.
+    // DRFD(막은 돌파 수)는 좋고 나쁨이 없는 노출량이라 퍼센타일 카드에는 넣지 않는다(리더보드 수비 탭에만).
+    { key: 'fit%', label: 'FIT%', section: 'defense', value: r => ((r.stats['fitj'] || 0) > 0 ? r.stats['fit%'] : null), attempts: r => r.stats['fitj'] || 0, format: pct1 },
     // 스크린 — SCRN% 는 판정된 스크린 중 clean 비율(엔진이 2026-10-28 이후 경기부터 scrClean/scrPartial/scrFail 을 기록, advanced-metrics-plan §8).
     // 판정이 없으면 "-", 판정 횟수가 적으면(자격자 중앙값의 20% 미만) NQ. SCRN 은 능력치 합성값(엔진 resolveScreen 의 입력).
     { key: 'scrn%', label: 'SCRN%', section: 'screening', value: r => ((r.stats['scrj'] || 0) > 0 ? r.stats['scrn%'] : null), attempts: r => r.stats['scrj'] || 0, format: pct1 },

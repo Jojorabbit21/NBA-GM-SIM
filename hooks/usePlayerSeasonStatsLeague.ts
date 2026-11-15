@@ -44,6 +44,8 @@ interface StatsLeagueRow {
     zone_atb3_r_m: string | number; zone_atb3_r_a: string | number;
     /** SCRN% 집계 — 마이그레이션 add_scrn_to_player_season_stats_league_rpc.sql 적용 전에는 내려오지 않는다(undefined → 0). */
     scr_clean?: string | number | null; scr_partial?: string | number | null; scr_fail?: string | number | null;
+    /** FIT%·DRFD 집계 — 마이그레이션 add_fit_drfd_to_game_player_box.sql 적용 전에는 내려오지 않는다(undefined → 0). */
+    fit_faced?: string | number | null; fit_thru?: string | number | null; drfd?: string | number | null; drfd_zone?: string | number | null;
 }
 
 export type PlayerSeasonStatsLeague = Record<string, Partial<PlayerStats>>;
@@ -135,6 +137,7 @@ export function playerSeasonStatsLeagueQuery(roomId: string | undefined | null, 
                     zone_atb3_c_m: Number(row.zone_atb3_c_m), zone_atb3_c_a: Number(row.zone_atb3_c_a),
                     zone_atb3_r_m: Number(row.zone_atb3_r_m), zone_atb3_r_a: Number(row.zone_atb3_r_a),
                     scrClean: Number(row.scr_clean ?? 0), scrPartial: Number(row.scr_partial ?? 0), scrFail: Number(row.scr_fail ?? 0),
+                    fitFaced: Number(row.fit_faced ?? 0), fitThru: Number(row.fit_thru ?? 0), drfd: Number(row.drfd ?? 0), drfdZone: Number(row.drfd_zone ?? 0),
                 } as Partial<PlayerStats>;
             }
             return m;

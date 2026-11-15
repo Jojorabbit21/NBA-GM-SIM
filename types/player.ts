@@ -53,6 +53,12 @@ export interface PlayerStats {
     scrClean?: number;
     scrPartial?: number;
     scrFail?: number;
+    /** [2026-11-15] FIT% — 스크린을 맞은 수비수 기준. fitFaced = 판정된 스크린 수, fitThru = 스크린에 걸리지 않고 완전히 빠져나간 수(판정 'fail'). FIT% = fitThru ÷ fitFaced. 이전 경기 기록엔 없음 */
+    fitFaced?: number;
+    fitThru?: number;
+    /** [2026-11-15] DRFD(DrivesFaced) — 림·페인트로 드리블 돌파해 온 선수를 막은 횟수. drfd = 맨투맨, drfdZone = 지역방어(앵커 귀속이라 따로 집계). 이전 경기 기록엔 없음 */
+    drfd?: number;
+    drfdZone?: number;
     [key: string]: number; // for zones
 }
 

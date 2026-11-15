@@ -141,6 +141,10 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.scrClean = (target.scrClean || 0) + (statLine.scrClean || 0);
             target.scrPartial = (target.scrPartial || 0) + (statLine.scrPartial || 0);
             target.scrFail = (target.scrFail || 0) + (statLine.scrFail || 0);
+            target.fitFaced = (target.fitFaced || 0) + (statLine.fitFaced || 0);
+            target.fitThru = (target.fitThru || 0) + (statLine.fitThru || 0);
+            target.drfd = (target.drfd || 0) + (statLine.drfd || 0);
+            target.drfdZone = (target.drfdZone || 0) + (statLine.drfdZone || 0);
             target.contestedAttempted = (target.contestedAttempted || 0) + (statLine.contestedAttempted || 0);
             target.contestedMade      = (target.contestedMade      || 0) + (statLine.contestedMade      || 0);
             target.defRimAttempted    = (target.defRimAttempted    || 0) + (statLine.defRimAttempted    || 0);

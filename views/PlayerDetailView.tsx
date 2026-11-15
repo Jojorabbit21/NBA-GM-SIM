@@ -209,6 +209,7 @@ const GAME_LOG_MODE_COLS: Record<GameLogMode, { key: string; label: string }[]> 
         { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'ftov', label: 'TOVF' },
         { key: 'dreb', label: 'DREB' }, { key: 'pf', label: 'PF' },
         { key: 'cont', label: 'CONT' }, { key: 'dfgm', label: 'DFGM' }, { key: 'dfg%', label: 'DFG%' },
+        { key: 'fit', label: 'FIT' }, { key: 'drfd', label: 'DRFD' },
         { key: 'ra', label: 'RA' }, { key: 'itp', label: 'ITP' }, { key: 'mid6', label: 'MID' },
         { key: 'cnr', label: 'CNR' }, { key: 'wing', label: 'WING' }, { key: 'atb', label: 'ATB' },
     ],
@@ -522,6 +523,9 @@ function buildGameLogCells(g: any, mode: GameLogMode, avg = false): { val: strin
             { val: f('defReb') }, { val: f('pf') },
             { val: cnt('contestedAttempted') }, { val: cnt('contestedMade') },
             { val: has('contestedAttempted') ? pctS(n('contestedMade'), n('contestedAttempted')) : '-' },
+            // [2026-11-15] FIT = 스크린에서 빠져나간 수/맞은 스크린 수, DRFD = 맨투맨으로 막은 림·페인트 돌파 수 (집계 전 경기는 '-')
+            { val: has('fitFaced') ? `${f('fitThru')}/${f('fitFaced')}` : '-' },
+            { val: cnt('drfd') },
             { val: zone('RA') }, { val: zone('ITP') }, { val: zone('MID') },
             { val: zone('CNR') }, { val: zone('WING') }, { val: zone('ATB') },
         ];
@@ -542,7 +546,7 @@ function buildGameLogCells(g: any, mode: GameLogMode, avg = false): { val: strin
 }
 
 const GAME_LOG_SUMMARY_KEYS = ['mp', 'gs', 'pts', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta', 'offReb', 'defReb', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf',
-    'techFouls', 'flagrantFouls', 'tovForced', 'contestedAttempted', 'contestedMade',
+    'techFouls', 'flagrantFouls', 'tovForced', 'contestedAttempted', 'contestedMade', 'fitFaced', 'fitThru', 'drfd',
     ...['RA', 'ITP', 'MID', 'CNR', 'WING', 'ATB'].flatMap(z => [`def${z}Attempted`, `def${z}Made`])];
 
 /** 게임 로그 하단 합계/평균 행. 개수형은 합(평균은 경기 수로 나눔), 슈팅%는 합계로 다시 계산(경기 평균의 평균이 아님). */

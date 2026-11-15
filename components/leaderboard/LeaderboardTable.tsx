@@ -270,6 +270,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         else if (col.key === 'blk') rawVal = s.blk/g;
                                         else if (col.key === 'tov') rawVal = s.tov/g;
                                         else if (col.key === 'tovForced') rawVal = (s.tovForced||0)/g;
+                                        else if (col.key === 'drfd') rawVal = (s.drfd||0)/g;
                                         else if (col.key === 'pf') rawVal = (s.pf||0)/g;
                                         else if (col.key === 'fgm') rawVal = s.fgm/g;
                                         else if (col.key === 'fga') rawVal = s.fga/g;

@@ -36,6 +36,9 @@ export interface PlayContext {
     transitionRole?: 'grabGo' | 'handler' | 'runner' | 'trailer';
     // [2026-10-24] 블리츠 패스아웃 수신자 구분 (resolveBlitzPassOut)
     blitzTarget?: 'screener' | 'weakside';
+    // [2026-11-15] DRFD(DrivesFaced) — 이 포세션에서 림·페인트로 드리블 돌파한 선수들. 돌파를 막은 수비수에게 possessionHandler가 집계한다
+    // (집계 전용 — 슛 선택·성공률에는 쓰이지 않는다). 돌파한 선수가 actor가 아니면 매치업 표의 그 선수 수비수가 기록 대상.
+    drivers?: LivePlayer[];
 }
 
 // ==========================================================================================
@@ -540,7 +543,7 @@ export function resolvePlayAction(
             const isoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders, undefined, SS.PULLUP_THREE_FOLD);   // [2026-11-13] 풀업: 3점 성향 일부를 미드로
             if (isoZone === 'Rim' || isoZone === 'Paint') {
                 const { zone, shotType } = resolveFinish(actor, 'drive', sliders, isoZone, 'created');
-                return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00 };
+                return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00, drivers: [actor] };
             }
             return {
                 playType,
@@ -574,7 +577,7 @@ export function resolvePlayAction(
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone, 'created');
                 // [2026-11-06] 플레이 보너스 0.01 제거 — 원래 의도("스크린 풀업 소폭")를 2026-10-24 스크린 판정(resolveScreen)이
                 // 직접 계산하므로 이중 가산이었음 (server 미러). 이전: bonusHitRate: 0.01
-                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0 /* 0.01 */ };
+                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0 /* 0.01 */, drivers: [actor] };
             }
             return {
                 playType,
@@ -830,7 +833,7 @@ export function resolvePlayAction(
             const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (hoZone === 'Rim' || hoZone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, hoZone, 'created');
-                return { playType, actor, secondaryActor: big, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
+                return { playType, actor, secondaryActor: big, preferredZone: finishZone, shotType, bonusHitRate: 0.02, drivers: [actor] };
             }
             return {
                 playType,
@@ -950,7 +953,7 @@ export function resolvePlayAction(
             const obsZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (obsZone === 'Rim' || obsZone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, obsZone, 'created');
-                return { playType, actor, secondaryActor: passer, screener, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + screenBonus };
+                return { playType, actor, secondaryActor: passer, screener, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + screenBonus, drivers: [actor] };
             }
             return {
                 playType, actor, secondaryActor: passer,
@@ -981,20 +984,21 @@ export function resolvePlayAction(
                 // 드라이버가 직접 마무리 → actor를 driver로 교체, 어시스트 없음 (드라이버 본인 존 선호도 사용)
                 const driveZone = selectZone(['Rim', 'Paint'], driver, sliders) as 'Rim' | 'Paint';
                 const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, driveZone, 'created');
-                return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+                return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus, drivers: [driver] };
             }
 
             // 킥아웃 확정 → 스팟업 슈터(actor)의 존 선호도로 어디서 쏠지 결정
             const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
             if (dkZone === 'Rim' || dkZone === 'Paint') {
                 const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, dkZone, 'created');
-                return { playType, actor, secondaryActor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+                return { playType, actor, secondaryActor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus, drivers: [driver, actor] };
             }
             return {
                 playType, actor, secondaryActor: driver,
                 preferredZone: dkZone,
                 shotType: dkZone === '3PT' ? 'CatchShoot' : 'Jumper',
-                bonusHitRate: 0.02 + driveBonus
+                bonusHitRate: 0.02 + driveBonus,
+                drivers: [driver]
             };
         }
         default: {
