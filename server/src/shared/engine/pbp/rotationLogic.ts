@@ -808,8 +808,9 @@ export function executeGarbageSubstitution(
 //    → 12:00 ≈ 34점, 9:00 ≈ 29점, 6:00 ≈ 23점, 4:00 ≈ 19점, 2:30 이후 15점
 //    (빌 제임스 safe lead 공식의 변형 — 지수를 0.5→0.6으로 올려 이른 시점을 엄격하게. 멀티 905경기 실측에서
 //     이 기준 이상 리드의 역전패 0건, docs/history/dev-log.md 2026-10-26)
-//  발동: 이 경기 선발 + 지금 코트 위 선수를 쉬게 하고, 나머지 중 OVR 낮은 5명을 남은 시간 내내 표에 배치(표 전체 덮어쓰기 —
-//    이전엔 코트 위 5명만 교체해서 벤치에 있던 주전이 원래 표대로 다시 들어왔다)
+//  발동: 이 경기 선발 + 지금 코트 위 선수를 쉬게 하고, 나머지 중 5명을 남은 시간 내내 표에 배치(표 전체 덮어쓰기 —
+//    이전엔 코트 위 5명만 교체해서 벤치에 있던 주전이 원래 표대로 다시 들어왔다). 5명 = 슬롯별 뎁스 차트 맨 아래 순번(2026-11-15~,
+//    이전엔 슬롯별 같은 고유 포지션 OVR 최하위)
 //  해제: 점수 차 < 필요 점수 차 − 5 → 발동 직전 표로 복원(5점 히스테리시스로 경계 깜빡임 방지). 다시 벌어지면 재발동.
 //  연장: 기존 규칙(잔여 2:30 이내 + 15점) 유지
 // 이전: Q4 잔여 2:30 이내 + 15점차 이상이면 코트 위 5명 1회 교체(substitutionSystem), 해제 없음
@@ -855,9 +856,26 @@ function applyGarbageTime(state: GameState, team: TeamState, lead: number): void
     const rest = new Set<string>([...roster.filter(p => p.gs === 1), ...team.onCourt].map(p => p.playerId));
     const pool = roster.filter(p => playable(p) && !rest.has(p.playerId)).sort(byLowOvr);
 
-    // 가비지 라인업: 지금 코트 슬롯 포지션별로 OVR 낮은 같은 포지션 선수 우선(이전 executeGarbageSubstitution 규칙), 없으면 OVR 낮은 순
+    // 가비지 라인업 [2026-11-15] 뎁스 차트 우선 — 지금 코트 슬롯마다 그 포지션 뎁스 차트에서 가장 아래 순번인 선수
+    //   (사용자가 짠 마지막 줄이 곧 가비지 유닛). 뎁스 차트 어디에도 없는 선수는 고유 포지션 차트의 맨 아래로 본다.
+    //   차트로 못 채운 슬롯은 이전 규칙(같은 고유 포지션 OVR 낮은 순), 그래도 모자라면 OVR 낮은 순. 차트가 없으면 이전과 같다.
+    //   이전: 슬롯마다 고유 포지션이 같은 OVR 최하위 1명 — 같은 포지션 비주전이 3명 이상이면 최하위가 아닌 선수는
+    //   가비지 타임에도 0분(NBA-L S2 OKC: PG3 하퍼 대신 SG3로 둔 고유 PG 코스텔로가 PG 자리, SG 자리는 SG2 셔먼)
     const unit: LivePlayer[] = [];
+    const listed = new Set(Object.values(team.depthChart ?? {}).flat().filter((id): id is string => !!id));
+    const depthRank = (p: LivePlayer, slot: string): number => {
+        const idx = team.depthChart?.[slot as keyof DepthChart]?.indexOf(p.playerId) ?? -1;
+        if (idx > -1) return idx;
+        return !listed.has(p.playerId) && (p.nativePosition ?? p.position) === slot ? Infinity : -1;
+    };
+    const unfilled: string[] = [];
     for (const slot of team.onCourt.map(p => p.position)) {
+        let best = -1, bestRank = -1;
+        pool.forEach((p, i) => { const r = depthRank(p, slot); if (r > bestRank) { bestRank = r; best = i; } });   // 동순위는 OVR 낮은 쪽(pool 정렬)
+        if (best > -1) unit.push(...pool.splice(best, 1));
+        else unfilled.push(slot);
+    }
+    for (const slot of unfilled) {
         const idx = pool.findIndex(p => (p.nativePosition ?? p.position) === slot);
         if (idx > -1) unit.push(...pool.splice(idx, 1));
     }
