@@ -122,18 +122,29 @@ async function sweepFrontOffice(): Promise<void> {
             .gte('picked_at', ACHIEVEMENT_SINCE),
     ]);
 
+    // 같은 (과제, 유저)는 이번 스윕에서 한 번만 시도한다. 성공하면 has 에 들어가고, 실패(예: auth.users 에 없는 유저의
+    // FK 위반처럼 영구 실패)는 tried 에만 남아 이번 회차 안에서 같은 유저의 지명·거래 행마다 재호출되지 않는다.
+    // 다음 스윕(5분 뒤)에서는 tried 가 비어 있으므로 일시 장애는 그대로 다시 시도된다.
+    const tried = new Set<string>();
+    const tryUnlock = async (uid: string, achievementId: string, ref: Record<string, unknown>): Promise<void> => {
+        const key = `${achievementId}:${uid}`;
+        if (has.has(key) || tried.has(key)) return;
+        tried.add(key);
+        if (await unlockAchievement(uid, achievementId, ref)) has.add(key);
+    };
+
     for (const t of trades ?? []) {
         if (t.resolved_as_admin) continue;
         for (const uid of [t.created_by, t.resolved_by] as (string | null)[]) {
-            if (uid && !has.has(`dealmaker:${uid}`)) { if (await unlockAchievement(uid, 'dealmaker', { offer_id: t.id })) has.add(`dealmaker:${uid}`); }
+            if (uid) await tryUnlock(uid, 'dealmaker', { offer_id: t.id });
         }
     }
     for (const s of signs ?? []) {
         if (s.resolved_as_admin || !s.acted_by) continue;
-        if (!has.has(`open_market:${s.acted_by}`)) { if (await unlockAchievement(s.acted_by as string, 'open_market', { transaction_id: s.id })) has.add(`open_market:${s.acted_by}`); }
+        await tryUnlock(s.acted_by as string, 'open_market', { transaction_id: s.id });
     }
     for (const p of picks ?? []) {
         if (p.is_ai || !p.user_id) continue;
-        if (!has.has(`first_pick:${p.user_id}`)) { if (await unlockAchievement(p.user_id as string, 'first_pick', { pick_id: p.id })) has.add(`first_pick:${p.user_id}`); }
+        await tryUnlock(p.user_id as string, 'first_pick', { pick_id: p.id });
     }
 }
