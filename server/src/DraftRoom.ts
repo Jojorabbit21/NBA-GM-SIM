@@ -35,6 +35,10 @@ const MAX_QUEUE_SIZE = 100;
 const MAX_PICK_RETRY = 3;
 const PICK_RETRY_DELAY_MS = 3000;
 
+// persistPickEx() 결과 — stale=true 는 "이미 다른 경로(수동 지명 등)가 이 차례를 처리했거나 드래프트가 활성 상태가 아님".
+// stale 실패는 재시도해도 같은 결과이거나(다음 차례를 대신 지명할 위험까지 있어) 재시도하지 않는다.
+type PersistResult = { pick: DraftPickEntry | null; stale: boolean };
+
 // WS 소켓에 붙이는 메타데이터
 export interface WsData {
     userId: string;
@@ -87,6 +91,9 @@ export class DraftRoom {
     readonly sockets = new Set<ServerWebSocket<WsData>>();
     private pickTimer: ReturnType<typeof setTimeout> | null = null;
     private aiTimer: ReturnType<typeof setTimeout> | null = null;
+    // 오토픽/타임아웃 지명을 저장하는 중 — 타이머 참조를 발화 즉시 비우므로, 이 구간에 재접속이 와도
+    // hasTimer 가 거짓이 되어 같은 차례 타이머가 중복 예약되지 않도록 함께 본다.
+    private pickInFlight = false;
 
     private constructor(roomId: string) {
         this.roomId = roomId;
@@ -303,11 +310,15 @@ export class DraftRoom {
         this.autoPickUserIds.delete(userId);
         this.autoPickManualUserIds.delete(userId);
 
+        // [2026-11-15] 수동 지명은 자동 지명과 달리 playerId 가 로그에 남지 않아 분쟁("A 눌렀는데 B")을 판정할 수 없었다 — 한 줄 남김
+        const pickIdx = this.currentPickIndex;
         const result = await this.persistPick(userId, playerId);
         if (!result) {
+            console.warn(`[DraftRoom:${this.roomId}] manual pick #${pickIdx} user=${userId} player=${playerId} → rejected`);
             ws.send(encode({ type: 'error', code: 'internal' }));
             return;
         }
+        console.log(`[DraftRoom:${this.roomId}] manual pick #${pickIdx} user=${userId} player=${playerId}`);
 
         ws.send(encode({ type: 'ack', playerId }));
         this.applyPickToMemory(result);
@@ -322,48 +333,126 @@ export class DraftRoom {
         playerId: string,
         isAi: boolean = false
     ): Promise<DraftPickEntry | null> {
-        const { data: newCursor, error } = await supabase.rpc('submit_draft_pick_v2', {
-            p_room_id:   this.roomId,
-            p_player_id: playerId,
-            p_user_id:   userId,
-            p_is_ai:     isAi,
-        });
+        return (await this.persistPickEx(userId, playerId, isAi)).pick;
+    }
 
+    /**
+     * persistPick 의 상세 결과판. 실패가 "stale"(이미 다른 경로가 이 차례를 처리함)인지 구분해 돌려준다.
+     * [2026-11-15] RPC 가 not_your_turn 을 내면 DB 커서가 실제 지명 수보다 뒤처졌는지 확인하고(healCursorIfBehind),
+     * 바로잡았으면 같은 지명을 한 번 더 시도한다 — 커서 통째 쓰기가 지명 RPC 와 겹쳐 커서를 되돌린 사고(11-13 NBA-L S2 #145)의 자가 복구.
+     */
+    private async persistPickEx(
+        userId: string,
+        playerId: string,
+        isAi: boolean = false
+    ): Promise<PersistResult> {
+        let healed = false;
+        for (;;) {
+            const { data: newCursor, error } = await supabase.rpc('submit_draft_pick_v2', {
+                p_room_id:   this.roomId,
+                p_player_id: playerId,
+                p_user_id:   userId,
+                p_is_ai:     isAi,
+            });
+
+            if (error) {
+                const msg = error.message ?? '';
+                console.error(`[DraftRoom:${this.roomId}] RPC error:`, msg);
+                if (msg.includes('not_your_turn') && !healed) {
+                    healed = true;
+                    if (await this.healCursorIfBehind()) continue;   // 커서를 바로잡았으니 같은 지명을 한 번 더
+                }
+                return { pick: null, stale: msg.includes('not_your_turn') || msg.includes('draft_not_active') };
+            }
+
+            // 방금 insert된 픽 행 조회
+            const idx = this.currentPickIndex;
+            const { data: row } = await supabase
+                .from('draft_picks')
+                .select('*')
+                .eq('room_id', this.roomId)
+                .eq('pick_index', idx)
+                .single();
+
+            if (!row) return { pick: null, stale: false };
+
+            // DB cursor와 메모리 동기화 검증
+            const dbCursor = newCursor as Partial<DraftCursor> | null;
+            if (dbCursor && dbCursor.currentPickIndex !== undefined &&
+                dbCursor.currentPickIndex !== idx + 1) {
+                console.warn(`[DraftRoom:${this.roomId}] cursor mismatch: mem=${idx + 1} db=${dbCursor.currentPickIndex}`);
+            }
+
+            return {
+                pick: {
+                    pickIndex:   row.pick_index,
+                    round:       row.round,
+                    slot:        row.slot,
+                    userId:      row.user_id,
+                    teamId:      row.team_id,
+                    playerId:    String(row.player_id),
+                    playerName:  row.player_name,
+                    position:    row.position,
+                    ovr:         row.ovr,
+                    pickedAt:    row.picked_at,
+                },
+                stale: false,
+            };
+        }
+    }
+
+    /**
+     * DB 커서가 실제 지명 수(draft_picks 행 수)보다 뒤처져 있으면 메모리 커서로 바로잡는다.
+     * 메모리 커서가 지명 수와 일치할 때(= 메모리가 옳다고 확인될 때)만 동작하고, 쓰기는 "DB 커서 번호가 방금 읽은 값 그대로일 때만"
+     * 조건부로 한다. 다른 경로가 이미 이 차례를 처리해서 not_your_turn 이 난 경우(DB 커서 ≥ 지명 수)는 건드리지 않는다.
+     */
+    private async healCursorIfBehind(): Promise<boolean> {
+        try {
+            const [picksRes, roomRes] = await Promise.all([
+                supabase.from('draft_picks').select('id', { count: 'exact', head: true }).eq('room_id', this.roomId),
+                supabase.from('rooms').select('draft_cursor').eq('id', this.roomId).single(),
+            ]);
+            const count = picksRes.count;
+            const dbIdx = (roomRes.data?.draft_cursor as Partial<DraftCursor> | null)?.currentPickIndex;
+            if (picksRes.error || roomRes.error || count == null || typeof dbIdx !== 'number') return false;
+            if (dbIdx >= count) return false;                 // 커서가 뒤처진 게 아님
+            if (this.currentPickIndex !== count) return false; // 메모리도 지명 수와 다르면 어느 쪽이 맞는지 확신할 수 없음
+
+            const { data: fixed, error } = await supabase.from('rooms')
+                .update({ draft_cursor: this.getCursor() })
+                .eq('id', this.roomId)
+                .eq('draft_cursor->>currentPickIndex', String(dbIdx))
+                .select('id');
+            if (error || !fixed?.length) return false;
+            console.warn(`[DraftRoom:${this.roomId}] cursor self-heal: db=${dbIdx} → ${count} (picks=${count})`);
+            return true;
+        } catch (e) {
+            console.error(`[DraftRoom:${this.roomId}] cursor self-heal failed:`, (e as Error)?.message);
+            return false;
+        }
+    }
+
+    /**
+     * 메모리 커서를 DB 에 쓴다 — 단, DB 커서 번호가 메모리와 같을 때만(자동 경로용).
+     * 지명 RPC 가 먼저 커밋해 번호가 올라갔다면 0행이라 건너뛴다(통째 쓰기가 커서를 되돌리는 lost update 방지).
+     * 오토픽 목록은 지명 RPC 가 매번 DB 커서에서 지우고 있어 건너뛰어도 손실이 없다(메모리·브로드캐스트가 원본).
+     * 일시정지·재개·타이머 리셋·롤백·시작 같은 어드민/시작 경로는 복구 수단이라 의도적으로 무조건 쓴다.
+     */
+    private async writeCursorGuarded(label: string): Promise<boolean> {
+        const { data, error } = await supabase.from('rooms')
+            .update({ draft_cursor: this.getCursor() })
+            .eq('id', this.roomId)
+            .eq('draft_cursor->>currentPickIndex', String(this.currentPickIndex))
+            .select('id');
         if (error) {
-            console.error(`[DraftRoom:${this.roomId}] RPC error:`, error.message);
-            return null;
+            console.error(`[DraftRoom:${this.roomId}] ${label} cursor write failed: ${error.message}`);
+            return false;
         }
-
-        // 방금 insert된 픽 행 조회
-        const idx = this.currentPickIndex;
-        const { data: row } = await supabase
-            .from('draft_picks')
-            .select('*')
-            .eq('room_id', this.roomId)
-            .eq('pick_index', idx)
-            .single();
-
-        if (!row) return null;
-
-        // DB cursor와 메모리 동기화 검증
-        const dbCursor = newCursor as Partial<DraftCursor> | null;
-        if (dbCursor && dbCursor.currentPickIndex !== undefined &&
-            dbCursor.currentPickIndex !== idx + 1) {
-            console.warn(`[DraftRoom:${this.roomId}] cursor mismatch: mem=${idx + 1} db=${dbCursor.currentPickIndex}`);
+        if (!data?.length) {
+            console.warn(`[DraftRoom:${this.roomId}] ${label} cursor write skipped (db cursor moved on)`);
+            return false;
         }
-
-        return {
-            pickIndex:   row.pick_index,
-            round:       row.round,
-            slot:        row.slot,
-            userId:      row.user_id,
-            teamId:      row.team_id,
-            playerId:    String(row.player_id),
-            playerName:  row.player_name,
-            position:    row.position,
-            ovr:         row.ovr,
-            pickedAt:    row.picked_at,
-        };
+        return true;
     }
 
     // ── 메모리 상태 갱신 ──────────────────────────────────────────────────────
@@ -402,11 +491,12 @@ export class DraftRoom {
             // AI 슬롯과 오토픽 모드 유저 모두 동일한 짧은 지연 후 BPA 자동 진행 경로를 탄다.
             const delay = AI_MIN_DELAY_MS + Math.random() * (AI_MAX_DELAY_MS - AI_MIN_DELAY_MS);
             console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} scheduled in ${Math.round(delay)}ms`);
-            this.aiTimer = setTimeout(() => this.onAiPick(), delay);
+            // 발화하면 참조를 비운다 — 안 비우면 hasTimer 가 항상 true 라 "재접속 시 타이머 재예약"(index.ts ws auth)이 작동하지 않는다
+            this.aiTimer = setTimeout(() => { this.aiTimer = null; void this.onAiPick(); }, delay);
         } else {
             console.log(`[DraftRoom:${this.roomId}] human pick #${this.currentPickIndex} userId=${entry.userId} timeout=${this.config.pickDurationSec}s`);
             this.pickTimer = setTimeout(
-                () => this.onPickTimeout(),
+                () => { this.pickTimer = null; void this.onPickTimeout(); },
                 this.config.pickDurationSec * 1000
             );
         }
@@ -447,8 +537,11 @@ export class DraftRoom {
     // retryCount>0이면 직전 persistPick() 실패(주로 순간적인 DB/네트워크 장애)에 대한 재시도
     // 호출 — scheduleNext()를 다시 거치지 않고 같은 픽 시도를 곧바로 재예약한다(정책은 파일
     // 상단 MAX_PICK_RETRY/PICK_RETRY_DELAY_MS 참조).
-    private async onAiPick(retryCount = 0): Promise<void> {
+    // [2026-11-15] expectedIdx: 이 시도가 대상으로 삼은 픽 번호. 재시도 사이에 다른 경로(수동 지명 등)가 이 차례를 처리해
+    // 번호가 넘어갔다면 재시도하지 않는다 — 그대로 두면 재시도가 "다음 팀의 차례"를 대신 지명할 수 있다.
+    private async onAiPick(retryCount = 0, expectedIdx = this.currentPickIndex): Promise<void> {
         if (this.status !== 'active') return;
+        if (this.currentPickIndex !== expectedIdx) return;
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry || (!entry.isAi && !this.autoPickUserIds.has(entry.userId))) return;
 
@@ -462,37 +555,41 @@ export class DraftRoom {
         console.log(`[DraftRoom:${this.roomId}] auto pick #${this.currentPickIndex} → player=${bestId} (${resolved.source})`);
         // entry.isAi 그대로 전달 — 오토픽 모드로 대납되는 실제 사람 유저는 is_ai=false로
         // 정확히 기록되어야 draft_picks 감사 기록/향후 기능에서 AI 슬롯과 혼동되지 않는다.
-        const result = await this.persistPick(entry.userId, bestId, entry.isAi ?? false);
-        if (!result) {
-            if (retryCount < MAX_PICK_RETRY) {
+        this.pickInFlight = true;
+        let result: PersistResult;
+        try {
+            result = await this.persistPickEx(entry.userId, bestId, entry.isAi ?? false);
+        } finally {
+            this.pickInFlight = false;
+        }
+        if (!result.pick) {
+            if (result.stale) {
+                console.warn(`[DraftRoom:${this.roomId}] onAiPick #${expectedIdx} superseded by another path — no retry`);
+            } else if (retryCount < MAX_PICK_RETRY) {
                 console.warn(`[DraftRoom:${this.roomId}] onAiPick persist 실패 — ${PICK_RETRY_DELAY_MS}ms 후 재시도 (${retryCount + 1}/${MAX_PICK_RETRY})`);
-                this.aiTimer = setTimeout(() => this.onAiPick(retryCount + 1), PICK_RETRY_DELAY_MS);
+                this.aiTimer = setTimeout(() => { this.aiTimer = null; void this.onAiPick(retryCount + 1, expectedIdx); }, PICK_RETRY_DELAY_MS);
             } else {
-                console.error(`[DraftRoom:${this.roomId}] onAiPick 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 전까지 멈춤`);
+                console.error(`[DraftRoom:${this.roomId}] onAiPick 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 시 타이머 재예약`);
             }
             return;
         }
 
-        this.applyPickToMemory(result);
-        this.broadcastDelta(result);
+        this.applyPickToMemory(result.pick);
+        this.broadcastDelta(result.pick);
         this.scheduleNext();
     }
 
-    private async onPickTimeout(retryCount = 0): Promise<void> {
+    // [2026-11-15] 연속 미스 집계·오토픽 전환은 "타임아웃 지명 저장에 성공한 뒤"에만 한다. 예전엔 저장 전에 했는데,
+    // 60초가 끝나는 순간 유저의 수동 지명과 겹쳐 타임아웃 쪽이 거부돼도(11-13 올랜도 #283) 미스·오토픽 전환이 남아
+    // 자리에 있는 유저가 오토픽에 갇힐 수 있었다. 재시도는 같은 픽 번호(expectedIdx)일 때만 실행한다.
+    private async onPickTimeout(retryCount = 0, expectedIdx = this.currentPickIndex): Promise<void> {
         if (this.status !== 'active') return;
+        if (this.currentPickIndex !== expectedIdx) return;
         const entry = this.config.pickOrder[this.currentPickIndex];
         if (!entry || entry.isAi) return;
 
-        // 연속 미스 카운트/오토픽 전환 판정은 최초 타임아웃(retryCount===0)에만 한다 —
-        // persistPick 재시도 때마다 다시 돌리면 같은 타임아웃 1건이 여러 번 집계된다.
         if (retryCount === 0) {
             console.log(`[DraftRoom:${this.roomId}] pick timeout for user=${entry.userId}`);
-            const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
-            this.pickMissCounts.set(entry.userId, misses);
-            if (misses >= this.config.autoPickAfterMisses) {
-                this.autoPickUserIds.add(entry.userId);
-                console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} hit ${misses} consecutive timeout(s) → auto-pick mode`);
-            }
         }
 
         const resolved = this.resolveAutoPickId(entry);
@@ -500,19 +597,35 @@ export class DraftRoom {
         const bestId = resolved.id;
         console.log(`[DraftRoom:${this.roomId}] timeout pick #${this.currentPickIndex} → player=${bestId} (${resolved.source})`);
 
-        const result = await this.persistPick(entry.userId, bestId);
-        if (!result) {
-            if (retryCount < MAX_PICK_RETRY) {
+        this.pickInFlight = true;
+        let result: PersistResult;
+        try {
+            result = await this.persistPickEx(entry.userId, bestId);
+        } finally {
+            this.pickInFlight = false;
+        }
+        if (!result.pick) {
+            if (result.stale) {
+                console.warn(`[DraftRoom:${this.roomId}] onPickTimeout #${expectedIdx} superseded by another path — no retry, miss not counted`);
+            } else if (retryCount < MAX_PICK_RETRY) {
                 console.warn(`[DraftRoom:${this.roomId}] onPickTimeout persist 실패 — ${PICK_RETRY_DELAY_MS}ms 후 재시도 (${retryCount + 1}/${MAX_PICK_RETRY})`);
-                this.pickTimer = setTimeout(() => this.onPickTimeout(retryCount + 1), PICK_RETRY_DELAY_MS);
+                this.pickTimer = setTimeout(() => { this.pickTimer = null; void this.onPickTimeout(retryCount + 1, expectedIdx); }, PICK_RETRY_DELAY_MS);
             } else {
-                console.error(`[DraftRoom:${this.roomId}] onPickTimeout 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 전까지 멈춤`);
+                console.error(`[DraftRoom:${this.roomId}] onPickTimeout 포기 (${MAX_PICK_RETRY}회 재시도 실패) — 재접속 시 타이머 재예약`);
             }
             return;
         }
 
-        this.applyPickToMemory(result);
-        this.broadcastDelta(result);
+        // 저장 성공 → 이제 미스로 집계하고 필요하면 오토픽 모드로 전환 (다음 차례 scheduleNext 판정보다 먼저)
+        const misses = (this.pickMissCounts.get(entry.userId) ?? 0) + 1;
+        this.pickMissCounts.set(entry.userId, misses);
+        if (misses >= this.config.autoPickAfterMisses) {
+            this.autoPickUserIds.add(entry.userId);
+            console.log(`[DraftRoom:${this.roomId}] user ${entry.userId} hit ${misses} consecutive timeout(s) → auto-pick mode`);
+        }
+
+        this.applyPickToMemory(result.pick);
+        this.broadcastDelta(result.pick);
         this.scheduleNext();
     }
 
@@ -896,7 +1009,9 @@ export class DraftRoom {
             this.currentPickStartedAt = new Date().toISOString();
         }
 
-        await supabase.from('rooms').update({ draft_cursor: this.getCursor() }).eq('id', this.roomId);
+        // [2026-11-15] 통째 쓰기를 조건부로 — 이 쓰기가 다른 유저의 지명 RPC 와 겹쳐 DB 커서를 한 칸 되돌리던 lost update
+        // (11-13 NBA-L S2 #145 약 2분 정지) 방지. DB 커서가 이미 다음 번호로 넘어갔다면 건너뛴다(메모리·브로드캐스트는 정상).
+        await this.writeCursorGuarded('setAutoPick');
         this.broadcastCursor();
 
         if (this.status === 'active' && entry?.userId === targetUserId) {
@@ -930,7 +1045,7 @@ export class DraftRoom {
     get poolSize(): number { return this.pool.length; }
 
     /** 타이머 동작 여부 (WS auth에서 복구 판단용) */
-    get hasTimer(): boolean { return this.pickTimer !== null || this.aiTimer !== null; }
+    get hasTimer(): boolean { return this.pickTimer !== null || this.aiTimer !== null || this.pickInFlight; }
 
     /** 어드민 여부 확인 (leagues.admin_user_id) */
     async isAdmin(userId: string): Promise<boolean> {
