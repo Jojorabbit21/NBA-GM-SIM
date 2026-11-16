@@ -26,6 +26,8 @@ import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, Tabl
 import type { AllNbaTeamEntry, AllDefTeamEntry, AllstarVoteEntry, AllstarRosterPlayer, RisingStarsRosterPlayer, ThreePointContestParticipantEntry, DunkContestParticipantEntry, ThreePointContestRoundEntry, DunkContestRoundEntry, DraftLotteryPick, TradeOutPlayer } from '../../../services/multi/leagueEventPayload';
 import { foldPeriodScores, periodShortLabel, overtimeTag } from '../../../utils/periodLabel';
 import { useIsPhone } from '../../../hooks/useViewportClass';
+import { POWER_CATEGORIES } from '../../../services/multi/powerRankingCategories';
+import { rankTone } from '../../../utils/rankTone';
 
 // PlayerCardEntry/PlayerCardMap은 PlayerHoverCard.tsx에 정의(다른 화면들도 공유) — 여기서는
 // 재수출만 해서 이 모듈을 이미 import하고 있는 곳(MultiNewsFeedView.tsx 등)의 기존 import
@@ -951,23 +953,39 @@ export const SuspensionCard: React.FC<{
 // 조합 기반(services/multi/powerRanking.ts) 랭킹 전체(1~30위, 스코어 포함) + 전월 대비
 // 최대 상승/하락팀. 다른 카드(TradeCard/WinStreakCard)와 동일한 "레터" 구조(헤더+날짜+
 // 구분선 → 본문 테이블)를 그대로 따름 — TradePlayerTable과 같은 표 형태로 통일.
+// [2026-11-16] 표 개편 — "재능" 열 삭제(리그 내 백분위라 꼴찌 팀이 항상 0.0으로 찍혀 반감),
+// 공격·수비를 4개 부문씩으로 나눠 부문별 리그 순위("N위")를 보여준다(POWER_CATEGORIES).
+// 파워스코어 = 8개 부문 순위의 백분위 평균. 부문 순위가 없는 이전 게시물은 공격/수비 점수 두 열로 폴백.
+const POWER_OFFENSE_CATEGORIES = POWER_CATEGORIES.filter(c => c.side === 'offense');
+const POWER_DEFENSE_CATEGORIES = POWER_CATEGORIES.filter(c => c.side === 'defense');
+// 폰 sticky 팀 열 폭 — 박스스코어 표의 sticky 선수 열과 같은 값(mobile-design-system.md §9-1-10)
+const POWER_PHONE_TEAM_WIDTH = 136;
+
 export const PowerRankingCard: React.FC<{
     event: LeagueEvent; teamBySlug: Map<string, LeagueTeamRow>; onOpenTeam?: (teamSlug: string) => void;
 }> = ({ event, teamBySlug, onOpenTeam }) => {
+    const phone = useIsPhone();
     if (event.detail.kind !== 'power_ranking') return null;
-    const { month, full, riser, faller } = event.detail;
+    const { month, full, riser, faller, resend } = event.detail;
     const [y, m] = month.split('-');
     const blurb = buildNewsBlurb(event, teamBySlug);
+    const hasCategories = full.every(entry => !!entry.categoryRanks);
 
     const teamSpan = (slug: string, name: string) => (
         <ClickableText onClick={onOpenTeam ? () => onOpenTeam(slug) : undefined} teamHoverId={slug}>
             {teamBySlug.get(slug)?.team_name ?? name}
         </ClickableText>
     );
+    const teamMark = (entry: { teamSlug: string; teamName: string }) => (
+        <div className="flex items-center gap-2">
+            <TeamMark variant="logo" teamId={entry.teamSlug} teamName={entry.teamName} size="xs" />
+            <span className="min-w-0 text-sm font-semibold text-slate-100 truncate">{teamSpan(entry.teamSlug, entry.teamName)}</span>
+        </div>
+    );
 
     return (
         <LetterShell
-            title={<>{Number(y)}년 {Number(m)}월 파워랭킹</>}
+            title={<>{resend ? '[재발송] ' : ''}{Number(y)}년 {Number(m)}월 파워랭킹</>}
             date={event.simDate ?? formatRelativeTime(event.createdAt)}
             blurb={blurb}
         >
@@ -990,33 +1008,77 @@ export const PowerRankingCard: React.FC<{
                 </div>
             )}
 
-            <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
-                <TableHead>
-                    <TableHeaderCell width="8%">순위</TableHeaderCell>
-                    <TableHeaderCell align="left" width="44%">팀</TableHeaderCell>
-                    <TableHeaderCell width="12%">재능</TableHeaderCell>
-                    <TableHeaderCell width="12%">공격</TableHeaderCell>
-                    <TableHeaderCell width="12%">수비</TableHeaderCell>
-                    <TableHeaderCell width="12%">파워스코어</TableHeaderCell>
-                </TableHead>
-                <TableBody>
-                    {full.map(entry => (
-                        <TableRow key={entry.teamSlug}>
-                            <LetterRankCell rank={entry.rank} />
-                            <TableCell align="left">
-                                <div className="flex items-center gap-2">
-                                    <TeamMark variant="logo" teamId={entry.teamSlug} teamName={entry.teamName} size="xs" />
-                                    <span className="text-sm font-semibold text-slate-100 truncate">{teamSpan(entry.teamSlug, entry.teamName)}</span>
-                                </div>
-                            </TableCell>
-                            <TableCell className="tabular-nums">{entry.talentScore?.toFixed(1) ?? '-'}</TableCell>
-                            <TableCell className="tabular-nums">{entry.offenseScore?.toFixed(1) ?? '-'}</TableCell>
-                            <TableCell className="tabular-nums">{entry.defenseScore?.toFixed(1) ?? '-'}</TableCell>
-                            <TableCell className="font-bold text-white tabular-nums">{entry.powerScore.toFixed(1)}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
+            {hasCategories ? (
+                // 열 폭은 내용 기준(자동 레이아웃) — 부문 열은 라벨/"30위" 폭만큼(합 약 530px), 팀 열이 남는 폭을 전부 가져가고
+                // 긴 팀명은 말줄임. 레터 폭이 minWidth보다 좁으면(뷰포트 약 1190px 미만) bare Table 래퍼가 가로 스크롤하고,
+                // 그때 팀 열이 왼쪽에 붙어 남는다(sticky — 스크롤이 없으면 아무 효과 없음). sticky 셀은 불투명 배경이 필요해
+                // 행 hover 틴트(white/5 on slate-900 = #1b2335)를 group-hover로 똑같이 맞춘다.
+                // 폰은 박스스코어 표와 같은 방식(좌우 -16 풀블리드 + 팀 열 폭 고정).
+                <div className={phone ? '-mx-4' : ''}>
+                    <Table variant="bare" density="compact" tableStyle={{ minWidth: 680 }} className="text-sm text-slate-200">
+                        <TableHead noRow>
+                            <tr className="h-8 text-sm font-bold text-slate-400">
+                                <TableHeaderCell />
+                                <TableHeaderCell stickyLeft={0} width={phone ? POWER_PHONE_TEAM_WIDTH : undefined} />
+                                <TableHeaderCell colSpan={POWER_OFFENSE_CATEGORIES.length}>공격</TableHeaderCell>
+                                <TableHeaderCell colSpan={POWER_DEFENSE_CATEGORIES.length}>수비</TableHeaderCell>
+                                <TableHeaderCell />
+                            </tr>
+                            <tr className="h-8 text-sm font-bold text-slate-400">
+                                <TableHeaderCell>순위</TableHeaderCell>
+                                <TableHeaderCell align="left" stickyLeft={0} width={phone ? POWER_PHONE_TEAM_WIDTH : undefined}>팀</TableHeaderCell>
+                                {POWER_CATEGORIES.map(c => <TableHeaderCell key={c.key}>{c.label}</TableHeaderCell>)}
+                                <TableHeaderCell>파워스코어</TableHeaderCell>
+                            </tr>
+                        </TableHead>
+                        <TableBody>
+                            {full.map(entry => (
+                                <TableRow key={entry.teamSlug}>
+                                    <LetterRankCell rank={entry.rank} />
+                                    <TableCell
+                                        align="left"
+                                        stickyLeft={0}
+                                        width={phone ? POWER_PHONE_TEAM_WIDTH : undefined}
+                                        className={`bg-slate-900 group-hover:bg-[#1b2335] ${phone ? '' : 'w-full max-w-0'}`}
+                                    >
+                                        {teamMark(entry)}
+                                    </TableCell>
+                                    {POWER_CATEGORIES.map(c => {
+                                        const categoryRank = entry.categoryRanks![c.key];
+                                        return (
+                                            <TableCell key={c.key} className={`whitespace-nowrap tabular-nums ${rankTone(categoryRank, full.length)}`}>
+                                                {categoryRank}위
+                                            </TableCell>
+                                        );
+                                    })}
+                                    <TableCell className="font-bold text-white tabular-nums">{entry.powerScore.toFixed(1)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            ) : (
+                <Table variant="bare" density="compact" tableStyle={{ tableLayout: 'fixed' }} className="text-sm text-slate-200">
+                    <TableHead>
+                        <TableHeaderCell width="8%">순위</TableHeaderCell>
+                        <TableHeaderCell align="left" width="56%">팀</TableHeaderCell>
+                        <TableHeaderCell width="12%">공격</TableHeaderCell>
+                        <TableHeaderCell width="12%">수비</TableHeaderCell>
+                        <TableHeaderCell width="12%">파워스코어</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
+                        {full.map(entry => (
+                            <TableRow key={entry.teamSlug}>
+                                <LetterRankCell rank={entry.rank} />
+                                <TableCell align="left">{teamMark(entry)}</TableCell>
+                                <TableCell className="tabular-nums">{entry.offenseScore?.toFixed(1) ?? '-'}</TableCell>
+                                <TableCell className="tabular-nums">{entry.defenseScore?.toFixed(1) ?? '-'}</TableCell>
+                                <TableCell className="font-bold text-white tabular-nums">{entry.powerScore.toFixed(1)}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            )}
         </LetterShell>
     );
 };

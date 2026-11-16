@@ -339,7 +339,8 @@ function buildTradeBlurb(d: Extract<LeagueEvent['detail'], { kind: 'trade' }>, s
 
 // ── power_ranking ────────────────────────────────────────────────────────
 // [2026-09-02] "본문이 한 줄뿐이라 너무 짧다, 실제 뉴스기사처럼 3~4줄로" 요청 — 오프닝(1위
-// 팀+점수) → 1위 팀의 공수 성향(offenseScore/defenseScore 격차로 판정) → 전월 대비
+// 팀+점수) → 1위 팀의 공수 성향(offenseScore/defenseScore 격차로 판정 — [2026-11-16]부터 둘 다
+// "4개 부문 백분위 평균"이라 스케일은 0~100 그대로) → 전월 대비
 // 상승/하락 팀(없으면 "첫 발표" 플레이버로 대체), 총 3문단 고정 구조.
 // [후속] 클로저 문단("실제 성적이 쌓이기 시작하면...")은 불필요하다는 요청으로 삭제.
 
@@ -367,6 +368,12 @@ const POWER_RANKING_NO_HISTORY_FLAVOR: (() => string)[] = [
     () => `첫 순위표인 만큼 다음 달 발표에서 어느 팀이 순위를 끌어올릴지에 관심이 쏠린다.`,
 ];
 
+// [2026-11-16] 집계 방식이 바뀐 첫 달 — 서버가 전월 대비 변동을 내지 않고 methodChanged만 올린다
+// ("첫 발표"가 아니므로 위 NO_HISTORY 문장을 쓰면 안 된다).
+const POWER_RANKING_METHOD_CHANGED_FLAVOR: (() => string)[] = [
+    () => `이번 달부터 공격과 수비를 부문별로 나눠 평가하는 방식으로 집계가 바뀌어, 전월 대비 순위 변동은 다음 달 발표부터 다시 집계된다.`,
+];
+
 function buildPowerRankingBlurb(d: Extract<LeagueEvent['detail'], { kind: 'power_ranking' }>, seed: string, teamBySlug: Map<string, LeagueTeamRow>): string[] {
     const top = d.full[0];
     if (!top) return [];
@@ -391,6 +398,8 @@ function buildPowerRankingBlurb(d: Extract<LeagueEvent['detail'], { kind: 'power
     } else if (d.faller) {
         const fallerTeam = teamName(d.faller.teamSlug, teamBySlug);
         lines.push(`${fallerTeam}은(는) 지난달 ${d.faller.fromRank}위에서 이번 달 ${d.faller.rank}위로, 이번 달 가장 크게 순위가 내려앉은 팀이 됐다.`);
+    } else if (d.methodChanged) {
+        lines.push(pick(seed, 'method-changed', POWER_RANKING_METHOD_CHANGED_FLAVOR)());
     } else {
         lines.push(pick(seed, 'no-history', POWER_RANKING_NO_HISTORY_FLAVOR)());
     }

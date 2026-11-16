@@ -16,6 +16,7 @@
 
 import type { LeagueEventType } from '../../hooks/useLeagueHeadlines';
 import type { PlayerStats } from '../../types/player';
+import { POWER_CATEGORIES, type PowerCategoryKey } from './powerRankingCategories';
 
 /** 서신 발송 시점 시즌 스탯 스냅샷(2026-10-28~, 서버 postAllStarVoteNews.ts가 저장). 이전 서신엔 없어 화면이 현재 값으로 폴백한다. */
 export type LetterStatSnapshot = Partial<PlayerStats>;
@@ -128,11 +129,13 @@ export interface PowerRankingEntry {
     teamName: string;
     rank: number;
     powerScore: number;
-    /** [2026-09] "재능"/"공격"/"수비" 컬럼 — 이 필드 추가 이전(구 이벤트)에는 없을 수 있어
-     * optional(카드가 '-'로 폴백). */
-    talentScore?: number;
+    /** 공격/수비 점수 — 기사 본문의 공수 성향 판정에 쓰고, 부문 순위가 없는 구 이벤트는 표에도 그대로 보여준다.
+     * [2026-09] 필드 추가 이전 이벤트에는 없을 수 있어 optional(카드가 '-'로 폴백). */
     offenseScore?: number;
     defenseScore?: number;
+    /** [2026-11-16] 부문별 리그 내 순위(1 = 최고) — 공격 4 + 수비 4(POWER_CATEGORIES). 이전 이벤트에는 없다
+     * → 카드가 구 형식(공격/수비 점수 두 열)으로 폴백. 구 이벤트의 talentScore("재능")는 더 이상 읽지 않는다. */
+    categoryRanks?: Record<PowerCategoryKey, number>;
 }
 
 /** [2026-09] "매월 초 파워랭킹" 뉴스 — 서버 미러: server/src/postPowerRankingNews.ts의
@@ -141,6 +144,10 @@ export interface PowerRankingEntry {
 export interface PowerRankingDetail {
     kind: 'power_ranking';
     month: string; // 'YYYY-MM'
+    /** [2026-11-16] 직전 게시물과 집계 방식이 달라 전월 대비 변동(riser/faller)을 내지 않은 달 */
+    methodChanged?: boolean;
+    /** [2026-11-16] 같은 달을 다시 보낸 게시물 — 레터 제목 앞에 "[재발송]" */
+    resend?: boolean;
     full: PowerRankingEntry[]; // 전체 팀, rank 오름차순
     riser?: PowerRankingEntry & { fromRank: number };
     faller?: PowerRankingEntry & { fromRank: number };
@@ -771,11 +778,16 @@ function parseTradeOutPlayer(p: any): TradeOutPlayer {
 function parsePowerRankingEntry(raw: any): PowerRankingEntry | undefined {
     if (!raw || !isNonEmptyString(raw.teamSlug) || !isNonEmptyString(raw.teamName)) return undefined;
     if (typeof raw.rank !== 'number' || typeof raw.powerScore !== 'number') return undefined;
+    // 부문 순위는 8개가 전부 숫자일 때만 채택 — 하나라도 빠지면 구 형식 표로 폴백한다.
+    const cr = raw.categoryRanks;
+    const categoryRanks = cr && typeof cr === 'object' && POWER_CATEGORIES.every(c => typeof cr[c.key] === 'number')
+        ? Object.fromEntries(POWER_CATEGORIES.map(c => [c.key, cr[c.key]])) as Record<PowerCategoryKey, number>
+        : undefined;
     return {
         teamSlug: raw.teamSlug, teamName: raw.teamName, rank: raw.rank, powerScore: raw.powerScore,
-        talentScore: typeof raw.talentScore === 'number' ? raw.talentScore : undefined,
         offenseScore: typeof raw.offenseScore === 'number' ? raw.offenseScore : undefined,
         defenseScore: typeof raw.defenseScore === 'number' ? raw.defenseScore : undefined,
+        categoryRanks,
     };
 }
 
@@ -1087,6 +1099,8 @@ export function parseLeagueEventPayload(type: LeagueEventType, payload: any): Le
                 return {
                     kind: 'power_ranking',
                     month: payload.month,
+                    methodChanged: payload.methodChanged === true,
+                    resend: payload.resend === true,
                     full,
                     riser: parsePowerRankingMover(payload.riser),
                     faller: parsePowerRankingMover(payload.faller),
