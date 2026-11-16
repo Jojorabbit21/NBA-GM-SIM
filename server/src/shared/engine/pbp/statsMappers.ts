@@ -119,6 +119,19 @@ function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: num
     if (!byTeam) { byTeam = {}; state.playTypeStats[offTeam.id] = byTeam; }
     let line = byTeam[playType];
     if (!line) { line = { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 }; byTeam[playType] = line; }
+    addPlayTypeLine(line, type, pts, fta);
+    // [2026-11-16] 선수별 — 같은 플레이를 플레이의 주인(actor: 슈터·턴오버한 선수·자유투를 얻은 선수, 패스 차단은 패서)에게도 누적 (server/client 미러).
+    //   샷클락 바이얼레이션은 팀 턴오버라(개인 턴오버로 기록하지 않음) 선수에게 넣지 않는다 → 선수 합 = 팀 값 − 바이얼레이션.
+    const playerId = result.actor?.playerId;
+    if (playerId && type !== 'shotClockViolation') {
+        if (!state.playerPlayTypeStats) state.playerPlayTypeStats = {};
+        const byPlayer = (state.playerPlayTypeStats[offTeam.id] ??= {});
+        const byPt = (byPlayer[playerId] ??= {});
+        const pLine = (byPt[playType] ??= { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 });
+        addPlayTypeLine(pLine, type, pts, fta);
+    }
+}
+function addPlayTypeLine(line: { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number }, type: PossessionResult['type'], pts: number, fta: number): void {
     line.poss += 1;
     line.pts += pts;
     line.fta += fta;

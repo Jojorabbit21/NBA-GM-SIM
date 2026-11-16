@@ -181,6 +181,8 @@ export interface SimulationResult {
     boxTimeline?: BoxTick[];
     /** [2026-10-18] 팀별 플레이타입 실적 — 멀티 PPP 집계용(TeamPlayTypeStats) */
     playTypeStats?: TeamPlayTypeStats;
+    /** [2026-11-16] 선수별 플레이타입 실적 — 선수 프로필 샷 차트 탭 PPP용(PlayerPlayTypeStats) */
+    playerPlayTypeStats?: PlayerPlayTypeStats;
     /** [2026-11-05] 팀 미스크 득점 4종(홈/원정) — 엔진 집계, 저장·표시는 아직 안 함(TeamMiscByGame) */
     teamMisc?: TeamMiscByGame;
 }
@@ -191,6 +193,10 @@ export interface SimulationResult {
 export interface PlayTypeStatLine { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number; }
 /** teamId → playType → 집계 */
 export type TeamPlayTypeStats = Record<string, Record<string, PlayTypeStatLine>>;
+/** [2026-11-16] 선수별 플레이타입 실적(한 경기) — teamId → playerId → playType → 집계. 플레이의 주인 = result.actor
+ *  (슈터·턴오버한 선수·자유투를 얻은 선수, 패스 차단 턴오버는 패서). 팀 집계와 같은 규칙, 단 샷클락 바이얼레이션(팀 턴오버)은 빠진다.
+ *  client(types/engine.ts) ↔ server(server/src/shared/types/engine.ts) 미러 */
+export type PlayerPlayTypeStats = Record<string, Record<string, Record<string, PlayTypeStatLine>>>;
 
 /** [2026-11-05] 팀 미스크 득점 4종(서비스 약칭: POTV / FBPS / PITP / SPTS — NBA 약칭은 PTS OFF TO / FBPS / PITP / 2nd PTS) — 팀 단위, 한 경기, 엔진이 경기 중 누적(pbp/teamMisc.ts).
  *  potv = 상대 턴오버 직후 첫 공격 득점(공격 리바운드 이후 득점 제외, 자유투 포함), fbps = 속공(Transition) 야투 득점(자유투 제외),

@@ -20,6 +20,7 @@ import { useGameShortCodes } from '../../../hooks/useGameShortCodes';
 import { PlayerDetailView } from '../../PlayerDetailView';
 import { PlayerNewsTab } from './PlayerNewsTab';
 import { PlayerPercentileTab } from './PlayerPercentileTab';
+import { PlayerPlayTypeTable } from './PlayerPlayTypeTable';
 import { useMultiPlayerConditions } from './useMultiPlayerConditions';
 import { buildLeagueTeams } from '../../../services/multi/buildLeagueTeams';
 import { applyActiveInjury, buildActiveInjurySeverityMap, buildUnrevealedGameKeys, isInjuryEntryFromUnrevealedGame, type PlayerInjuryStateRow } from '../../../services/multi/activeInjuryStatus';
@@ -409,6 +410,7 @@ const MultiPlayerDetailView: React.FC = () => {
             externalTransactionHistory={transactionHistory}
             onGameClick={handleGameClick}
             percentileSlot={<PlayerPercentileTab teams={teamsWithAwards} schedule={normalizedSchedule} playerId={player.id} roomId={room?.id} seasonLabel={room?.season ?? '2025-26'} league={league} allowPlayoff={league?.type !== 'tournament'} />}
+            shotChartFooter={(isPlayoff) => <PlayerPlayTypeTable roomId={room?.id} playerId={player.id} isPlayoff={isPlayoff} isPhone={isPhone} />}
             newsSlot={<PlayerNewsTab roomId={room?.id} playerId={player.id} myTeamSlug={myTeamId ?? null} leagueTeams={leagueTeams} playerName={player.name} />}
             condition={playerCondition}
             headerPer={headerPer}

@@ -100,6 +100,9 @@ interface PlayerDetailViewProps {
     /** [2026-10-28] "퍼센타일" 탭 본문 — 지정 시(현재 멀티플레이어만)에만 탭이 노출되는 opt-in 슬롯(newsSlot과 같은 패턴).
      * 리그 전체 선수 스탯이 필요해 계산은 호출부가 한다(views/multi/season/PlayerPercentileTab.tsx). */
     percentileSlot?: React.ReactNode;
+    /** [2026-11-16] 샷 차트 탭 맨 아래 영역 — 지정 시(현재 멀티플레이어만)에만 그린다. 샷 차트의 정규/플레이오프 토글 값을 넘겨 받는다
+     *  (멀티: 선수별 플레이타입 기록 views/multi/season/PlayerPlayTypeTable.tsx). */
+    shotChartFooter?: (isPlayoff: boolean) => React.ReactNode;
     /** [2026-10-17] 멀티 전용 — 선수 정보 "포지션 평점" 아래 "체력" 행. number = 표시, null = 공개 전 경기라 "경기 중",
      * undefined = 행 자체를 그리지 않음(싱글·데이터 로딩 전). */
     condition?: number | null;
@@ -838,7 +841,7 @@ function expandTeamSplitRows(
     return [summary, ...subs];
 }
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, percentileSlot, condition, headerPer }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: playerProp, teamName: teamNameProp, teamId: teamIdProp, allTeams, schedule, tendencySeed, seasonShort = '2025-26', myTeamId, onBack, onNegotiate, onExtension, onRelease, onSelectPlayer, hideSections, externalGameLog, externalGameLogLoading, externalShotEvents, externalTeamSplits, externalTransactionHistory, onGameClick, newsSlot, percentileSlot, shotChartFooter, condition, headerPer }) => {
     // ── 내비게이션 로컬 state (브레드크럼 드롭다운) ──
     // [2026-09-04 버그 수정] 의존성이 playerProp.id뿐이었을 때, 같은 선수의 career_history
     // 등이 나중에(targeted-fetch로) 비동기 도착해 부모가 새 player 객체를 내려줘도 id가
@@ -2642,6 +2645,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         ) : (
                             <EmptyState title="슛 기록이 없습니다" />
                         )}
+                        {shotChartFooter?.(shotPlayoff)}
                     </div>
                 )}
 

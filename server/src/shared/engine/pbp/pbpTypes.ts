@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats, TeamMiscByGame } from '../../types.ts';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats, PlayerPlayTypeStats, TeamMiscByGame } from '../../types.ts';
 import { SimSettings } from '../../types/simSettings.ts';
 import type { ArchetypeRatings } from './archetypeSystem.ts';
 import type { PlayContext } from './playTypes.ts';
@@ -260,6 +260,8 @@ export interface GameState {
 
     // [2026-10-18] 팀별 플레이타입 실적(statsMappers.recordPlayTypeStat이 누적) — 멀티 PPP 집계용
     playTypeStats: TeamPlayTypeStats;
+    // [2026-11-16] 선수별 플레이타입 실적(statsMappers.recordPlayTypeStat이 팀 집계와 같이 누적) — 선수 프로필 PPP용 (client/server 미러)
+    playerPlayTypeStats: PlayerPlayTypeStats;
 
     // [2026-11-05] 팀 미스크 득점 4종 누적(teamMisc.trackTeamMisc, client 미러 참조) + 현재 공격권 추적(턴오버 직후/공격 리바운드 여부). 미설정 = 첫 호출 때 생성
     teamMisc?: TeamMiscByGame;

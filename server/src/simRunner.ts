@@ -395,6 +395,28 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                 }
             }
 
+            // ── 5-2. 선수별 플레이타입 실적(선수 프로필 샷 차트 탭 PPP) [2026-11-16] ─────────
+            // 같은 엔진 집계(recordPlayTypeStat)의 선수 단위 → player_playtype_stats(migrations/add_player_playtype_stats.sql).
+            // 5-1과 같이 이 경기 행을 지우고 다시 넣는다. 실패해도 경기 진행은 막지 않는다(부가 통계).
+            {
+                const pptRows = Object.entries(result.playerPlayTypeStats ?? {}).flatMap(([teamId, byPlayer]) =>
+                    Object.entries(byPlayer).flatMap(([playerId, byPt]) =>
+                        Object.entries(byPt).map(([playType, line]) => ({
+                            room_id: roomId, game_id: gameId, team_id: teamId, player_id: playerId, play_type: playType,
+                            season_number: (room as any).season_number ?? null,
+                            is_playoff: !!game.series_id,
+                            poss: line.poss, pts: line.pts, fga: line.fga, fgm: line.fgm, fta: line.fta, tov: line.tov,
+                        })),
+                    ),
+                );
+                const { error: pptDelErr } = await supabase.from('player_playtype_stats').delete().eq('room_id', roomId).eq('game_id', gameId);
+                if (pptDelErr) console.error(`[simRunner] player_playtype_stats 정리 실패 room=${roomId} game=${gameId}: ${pptDelErr.message}`);
+                if (pptRows.length > 0) {
+                    const { error: pptErr } = await supabase.from('player_playtype_stats').insert(pptRows);
+                    if (pptErr) console.error(`[simRunner] player_playtype_stats 저장 실패 room=${roomId} game=${gameId}: ${pptErr.message}`);
+                }
+            }
+
             // ── 6. games 테이블 업데이트 ───────────────────────────────────────
             // forceStartNow면 scheduled_at도 game_start_time과 맞춰줘야 일정/브라켓 화면이
             // 같은 시각 기준으로 LIVE 상태를 판정한다 (game_pbp.game_start_time만 바뀌고
