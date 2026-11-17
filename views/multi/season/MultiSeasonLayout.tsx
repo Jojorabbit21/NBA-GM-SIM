@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
 
@@ -22,6 +22,8 @@ import { MobileTabBar, SEASON_SCROLL_ID, MOBILE_TAB_BAR_HEIGHT } from '../../../
 import { TabletNavRail } from '../../../components/mobile/TabletNavRail';
 import { MultiFooter } from '../../../components/MultiFooter';
 import { FooterSlotHost } from '../../../components/common/footerSlot';
+import { LegalDocsModal } from '../../../components/LegalDocsModal';
+import type { LegalKind } from '../../home/LegalContent';
 
 // 스트립 전용 고정 약어 — 라이징스타 약어(주장 성)는 로스터 로딩 후 바뀌므로 쓰지 않는다.
 const STRIP_ALLSTAR_ABBR: Record<string, string> = {
@@ -117,8 +119,11 @@ export function MultiSeasonLayout() {
     }, [isMainLeague, isSeasonStarted, virtualSeasonYear, seasonCalendar, allStarOn, risingStarsOn]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
+    // [2026-11-17] 푸터의 About · Terms of Use · Privacy → 세션 안 팝업. 상태를 푸터가 아니라 여기서 드는 이유: 푸터는 화면·탭이 바뀌면
+    // 다른 스크롤 상자에서 다시 마운트되므로(경기 종료 전환 등) 푸터 안에 두면 읽는 도중 팝업이 닫힐 수 있다.
+    const [legalKind, setLegalKind] = useState<LegalKind | null>(null);
     // [2026-11-17] 글로벌 푸터 요소 — 한 번만 만들어 FooterSlotHost에 넘긴다(매 렌더 새 요소면 슬롯을 읽는 표·화면이 전부 다시 그려진다).
-    const footerEl = useMemo(() => <MultiFooter />, []);
+    const footerEl = useMemo(() => <MultiFooter onOpenLegal={setLegalKind} />, []);
 
     if (gameData.isLoading) {
         return (
@@ -206,6 +211,7 @@ export function MultiSeasonLayout() {
                 </div>
             </div>
             <TournamentChampionModal />
+            <LegalDocsModal kind={legalKind} onClose={() => setLegalKind(null)} />
         </div>
         </MultiTeamHoverProvider>
     );

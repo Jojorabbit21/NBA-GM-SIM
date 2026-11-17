@@ -3,15 +3,28 @@ import { Link } from 'react-router-dom';
 import { APP_NAME, APP_YEAR, getLeagueLogoUrl } from '../utils/constants';
 import { APP_VERSION, FOOTER_LINKS, getServiceDisclaimer } from '../utils/serviceInfo';
 import { useSeasonNavModel, type SeasonNavItem } from './nav/useSeasonNavModel';
+import { LEGAL_PATHS, type LegalKind } from '../views/home/LegalContent';
 
-/** 서비스 정보 링크(About · Terms of Use · Privacy · Discord) — 세션을 벗어나는 페이지라 새 탭으로 연다(보고 있던 화면을 잃지 않게). */
-const ServiceLinks: React.FC<{ className: string; linkClassName: string }> = ({ className, linkClassName }) => (
+/**
+ * 서비스 정보 링크(About · Terms of Use · Privacy · Discord).
+ * [2026-11-17] About · Terms of Use · Privacy는 세션 안 팝업(LegalDocsModal)으로 연다 — onOpenLegal을 넘긴 쪽이 팝업 상태를 들고 있다
+ * (푸터는 화면·탭이 바뀔 때 다시 마운트되므로 여기서 상태를 들면 읽는 도중 팝업이 닫힐 수 있다). onOpenLegal이 없으면 예전처럼 새 탭.
+ * Discord는 외부 링크라 항상 새 탭.
+ */
+const ServiceLinks: React.FC<{ className: string; linkClassName: string; onOpenLegal?: (kind: LegalKind) => void }> = ({ className, linkClassName, onOpenLegal }) => (
     <div className={className}>
-        {FOOTER_LINKS.map(({ label, path, href }) => (
-            <a key={label} href={href ?? path} target="_blank" rel="noopener noreferrer" className={linkClassName}>
-                {label}
-            </a>
-        ))}
+        {FOOTER_LINKS.map(({ label, path, href }) => {
+            const legalKind = path ? LEGAL_PATHS[path] : undefined;
+            return legalKind && onOpenLegal ? (
+                <button key={label} type="button" onClick={() => onOpenLegal(legalKind)} className={linkClassName}>
+                    {label}
+                </button>
+            ) : (
+                <a key={label} href={href ?? path} target="_blank" rel="noopener noreferrer" className={linkClassName}>
+                    {label}
+                </a>
+            );
+        })}
     </div>
 );
 
@@ -25,7 +38,7 @@ const ServiceLinks: React.FC<{ className: string; linkClassName: string }> = ({ 
  * - 디스클레이머 줄의 우측 여백 96px = 리그 채팅 버튼(LeagueChatDock, fixed bottom-6 right-6 · 48px) 자리.
  * 폰·태블릿은 아래 MultiFooterPhone을 "더보기" 화면 맨 아래에 둔다.
  */
-export const MultiFooter: React.FC = () => {
+export const MultiFooter: React.FC<{ onOpenLegal?: (kind: LegalKind) => void }> = ({ onOpenLegal }) => {
     const { items } = useSeasonNavModel();
     const columns: SeasonNavItem[][] = [];
     for (const it of items) {
@@ -41,6 +54,7 @@ export const MultiFooter: React.FC = () => {
                     <ServiceLinks
                         className="flex flex-wrap items-center gap-x-4 gap-y-1"
                         linkClassName="text-sm text-slate-400 hover:text-white transition-colors"
+                        onOpenLegal={onOpenLegal}
                     />
                     <div className="space-y-1">
                         <p className="text-xs text-slate-500 ko-normal">© {APP_YEAR} {APP_NAME}. All rights reserved.</p>
@@ -76,12 +90,13 @@ export const MultiFooter: React.FC = () => {
  * docs/ui/mobile-design-system.md 규칙: 좌우 거터 16 · 간격 4px 그리드(4/12/16/24) · 글자 12/14만(콘텐츠에 10px 금지) ·
  * 폰 캡션 색은 slate-400(slate-500 금지) · 탭 대상 높이 44(링크 h-11, 늘어난 만큼 -my-3으로 보이는 간격은 16 유지).
  */
-export const MultiFooterPhone: React.FC = () => (
+export const MultiFooterPhone: React.FC<{ onOpenLegal?: (kind: LegalKind) => void }> = ({ onOpenLegal }) => (
     <footer className="px-4 pt-6 flex flex-col gap-4">
         <img src={getLeagueLogoUrl('Main')} alt={APP_NAME} className="h-8 w-auto self-start select-none" draggable={false} />
         <ServiceLinks
             className="-my-3 flex flex-wrap items-center gap-x-4"
             linkClassName="h-11 inline-flex items-center text-sm font-medium text-slate-400 active:text-white"
+            onOpenLegal={onOpenLegal}
         />
         <div className="space-y-1">
             <p className="text-xs text-slate-400 ko-normal">© {APP_YEAR} {APP_NAME}. All rights reserved.</p>

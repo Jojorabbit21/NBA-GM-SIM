@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
+import { IconButton } from '../../components/common/IconButton';
 import {
     ABOUT_CONTENT, ABOUT_CONTENT_EN, ABOUT_TITLE, ABOUT_TITLE_EN,
     LEGAL_LAST_UPDATED, LEGAL_OPERATOR_NAME, LEGAL_OPERATOR_NAME_EN,
@@ -108,10 +109,17 @@ const LineView: React.FC<{ line: Line }> = ({ line }) => {
 
 export const LegalContent: React.FC<{
     kind: LegalKind;
-    onBack: () => void;
+    /** 홈 화면 패널: 좌상단 "‹ 홈" 버튼 */
+    onBack?: () => void;
     /** 상단 탭 클릭 — 호출부(StartScreen)가 해당 path 로 navigate 해서 URL·문서를 함께 바꾼다 */
     onSelect: (kind: LegalKind) => void;
-}> = ({ kind, onBack, onSelect }) => {
+    /**
+     * [2026-11-17] 넘기면 "모달 안" 모양(세션 푸터 팝업 — components/LegalDocsModal.tsx): "‹ 홈" 줄이 없고 탭 줄 오른쪽 끝(KOR/EN 옆)에 닫기 버튼,
+     * 패널 배경·테두리·둥근 모서리 없음(모달이 상자를 그린다), 탭이 좁은 화면에서 넘치면 탭만 가로 스크롤.
+     */
+    onClose?: () => void;
+}> = ({ kind, onBack, onSelect, onClose }) => {
+    const inModal = !!onClose;
     const [lang, setLang] = useState<Lang>('ko');
     const doc = DOCS[lang][kind];
     const ui = UI[lang];
@@ -123,16 +131,20 @@ export const LegalContent: React.FC<{
     const { effective, sections } = parse(doc.content);
 
     return (
-        <div className="w-full h-full bg-slate-800/60 border border-slate-700/50 rounded-2xl p-5 sm:p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-300 pretendard">
+        <div className={`w-full h-full p-5 sm:p-6 flex flex-col gap-4 pretendard ${inModal ? '' : 'bg-slate-800/60 border border-slate-700/50 rounded-2xl animate-in fade-in zoom-in-95 duration-300'}`}>
+            {!inModal && (
             <div className="shrink-0 flex items-center">
                 <button onClick={onBack} className="flex items-center gap-1 text-sm text-slate-400 hover:text-white transition-colors">
                     <ChevronLeft size={16} />
                     <span className="ko-normal">{ui.home}</span>
                 </button>
             </div>
+            )}
 
             {/* 문서 탭 + 우측 끝 언어 토글 — InlineLeagueList 탭과 같은 형식(하단 2px 주황 인디케이터). 스크롤바 없음 */}
-            <div className="shrink-0 flex items-center gap-1 border-b border-slate-700/50 -mt-1">
+            <div className={`shrink-0 flex items-center gap-1 border-b border-slate-700/50 ${inModal ? '' : '-mt-1'}`}>
+                {/* 패널: contents(예전과 같은 배치). 모달: 탭 묶음만 가로 스크롤 — 언어 토글·닫기 버튼은 오른쪽에 고정 */}
+                <div className={inModal ? 'flex-1 min-w-0 flex items-center gap-1 overflow-x-auto custom-scrollbar-hide' : 'contents'}>
                 {LEGAL_TABS.map(tab => (
                     <button
                         key={tab.kind}
@@ -146,7 +158,8 @@ export const LegalContent: React.FC<{
                         <span className="ko-normal">{tab.label[lang]}</span>
                     </button>
                 ))}
-                <div className="ml-auto flex items-center gap-1 pb-1.5 text-xs font-bold tabular-nums">
+                </div>
+                <div className={`${inModal ? 'shrink-0 pl-2' : 'ml-auto'} flex items-center gap-1 pb-1.5 text-xs font-bold tabular-nums`}>
                     {(['ko', 'en'] as Lang[]).map((l, i) => (
                         <React.Fragment key={l}>
                             {i > 0 && <span className="text-slate-600">/</span>}
@@ -161,10 +174,15 @@ export const LegalContent: React.FC<{
                         </React.Fragment>
                     ))}
                 </div>
+                {inModal && (
+                    <IconButton label="닫기" size="sm" onClick={onClose} className="shrink-0 mb-1.5 ml-1">
+                        <X size={16} />
+                    </IconButton>
+                )}
             </div>
 
             {/* 문서 본문 — 패널 높이 안에서만 스크롤. 가운데 폭 제한으로 문서 한 장처럼 */}
-            <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div ref={bodyRef} className={`flex-1 min-h-0 overflow-y-auto pr-1 ${inModal ? 'custom-scrollbar' : ''}`}>
                 <article className="max-w-[720px] mx-auto px-1 sm:px-4 pb-6 text-[13.5px] leading-7 text-slate-300 ko-normal">
 
                     {/* 제목 블록 — 가운데 정렬, 이중 괘선 */}

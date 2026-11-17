@@ -14,6 +14,8 @@ import { CountBadge } from '../../../components/common/CountBadge';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { PatchNotesModal } from '../../../components/common/PatchNotesModal';
 import { MultiFooterPhone } from '../../../components/MultiFooter';
+import { LegalDocsModal } from '../../../components/LegalDocsModal';
+import type { LegalKind } from '../../home/LegalContent';
 import { useViewportClass } from '../../../hooks/useViewportClass';
 import { useWallet } from '../../../hooks/usePoints';
 import { POINTS_ICON_URL, formatPoints } from '../../../services/points/pointsService';
@@ -52,6 +54,7 @@ export default function MobileMoreView() {
     const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 — 데스크톱 사이드바와 같은 모달, 날짜별 아코디언
     const { data: wallet } = useWallet(session?.user?.id);              // [2026-11-08] BP 잔액 — 데스크톱 프로필 메뉴 상단과 같은 자리
     const viewport = useViewportClass();
+    const [legalKind, setLegalKind] = useState<LegalKind | null>(null);   // [2026-11-17] 푸터 About · Terms · Privacy → 세션 안 팝업
 
     const iconFor = (it: SeasonNavItem) => it.icon === 'team'
         ? <RosterIcon active={it.active} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} size={24} />
@@ -101,10 +104,11 @@ export default function MobileMoreView() {
             {viewport !== 'desktop' && (
                 <>
                     <Divider />
-                    <MultiFooterPhone />
+                    <MultiFooterPhone onOpenLegal={setLegalKind} />
                 </>
             )}
             <PatchNotesModal isOpen={isPatchNotesOpen} onClose={() => setIsPatchNotesOpen(false)} layout="accordion" />
+            <LegalDocsModal kind={legalKind} onClose={() => setLegalKind(null)} />
         </div>
     );
 }
