@@ -478,7 +478,7 @@ const MultiFreeAgentView: React.FC<{ embedded?: boolean }> = ({ embedded = false
             {signError && <InlineNotice tone="danger" className="shrink-0">{signError}</InlineNotice>}
 
             <div className="flex-1 min-h-0">
-                <Table className="!rounded-none !border-x-0 !border-t-0" fullHeight tableStyle={{ tableLayout: 'auto', width: '100%' }}>
+                <Table className="!rounded-none !border-x-0 !border-t-0" fullHeight pageFooter tableStyle={{ tableLayout: 'auto', width: '100%' }}>
                     <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                         <tr className="h-10 text-slate-400 text-sm font-bold">
                             <TableHeaderCell align="left" className="pl-4 bg-slate-950">선수</TableHeaderCell>

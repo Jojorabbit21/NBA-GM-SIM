@@ -8,20 +8,11 @@ import { InlineLeagueList } from './InlineLeagueList';
 import { LoginModal } from '../../components/auth/LoginModal';
 import { supabase } from '../../services/supabaseClient';
 import { APP_NAME, APP_YEAR, getLeagueLogoUrl } from '../../utils/constants';
+import { APP_VERSION, FOOTER_LINKS, getServiceDisclaimer } from '../../utils/serviceInfo';
 
 // 라커룸 배경 이미지 — 파일이 없어도 아래 그라데이션 폴백 레이어가 항상 깔려있어 화면이 깨지지 않는다.
 const BACKGROUND_IMAGE = '/images/background/background.webp';
-const APP_VERSION = 'v1.0.7';
-// [2026-11-09] About/Terms/Privacy 는 pages/LegalPage.tsx 라우트로 연결.
-// [2026-11-11] Discord 는 외부 초대 링크(새 탭). 링크가 비어 있으면 클릭해도 동작 없음(표시만).
-// 초대 링크는 "만료 없음 · 사용 횟수 무제한"으로 만든 영구 링크여야 한다(기본 링크는 7일 뒤 만료).
-const DISCORD_INVITE_URL = 'https://discord.gg/fjAFxEtZKH';
-const FOOTER_LINKS: { label: string; path?: string; href?: string }[] = [
-    { label: 'About',        path: '/about' },
-    { label: 'Terms of Use', path: '/terms' },
-    { label: 'Privacy',      path: '/privacy' },
-    { label: 'Discord',      href: DISCORD_INVITE_URL },
-];
+// [2026-11-17] APP_VERSION · FOOTER_LINKS(About/Terms/Privacy/Discord) · 디스클레이머 문구는 utils/serviceInfo.ts로 이동 — 멀티세션 푸터(MultiFooter)와 공용.
 
 interface StartScreenProps {
     session:    Session | null;
@@ -163,12 +154,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
                     {/* 우측 50% — 디스클레이머 */}
                     <div className="text-center sm:text-right">
-                        <p className="text-[10px] text-white">
-                            Disclaimer: {APP_NAME} is not sponsored by or endorsed by the National Basketball
-                            Association, the National Basketball Players Association, any individual NBA players,
-                            or any of their affiliates. All league trademarks are property of their respective
-                            owners and are used under the doctrine of trademark nominative fair use.
-                        </p>
+                        <p className="text-[10px] text-white">{getServiceDisclaimer()}</p>
                     </div>
                 </div>
             </footer>

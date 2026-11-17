@@ -234,7 +234,7 @@ export const TeamPayrollTable: React.FC<TeamPayrollTableProps> = ({ team, capSet
                 대비 행(diffRows)에서 계속 보여준다. */}
 
             <div className="flex-1 min-h-0">
-            <Table variant="flush" fullHeight>
+            <Table variant="flush" fullHeight pageFooter>
                 <colgroup>
                     <PlayerInfoColGroup />
                     <col style={{ width: CAPPCT_WIDTH }} />

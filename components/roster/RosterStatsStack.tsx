@@ -163,7 +163,7 @@ const CategoryTable: React.FC<{
 
     return (
         <div className="flex-1 min-h-0">
-            <Table variant="flush" fullHeight>
+            <Table variant="flush" fullHeight pageFooter>
                 <colgroup>
                     <PlayerInfoColGroup />
                     {cols.map(c => <col key={c.key} style={{ width: c.width }} />)}

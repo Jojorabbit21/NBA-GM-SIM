@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
+import { FooterFlow, FooterTabBody } from '../../../components/common/footerSlot';
 import { InlineNotice } from '../../../components/common/InlineNotice';
 import { Save, Check, RotateCcw, PenLine } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -1031,6 +1032,8 @@ const MultiTacticsView: React.FC = () => {
                             </span>
                         </div>
                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
+                            {/* [2026-11-17] 슬라이더 아래에 글로벌 푸터(멀티세션 데스크톱만 — 폰은 FooterFlow가 아무것도 하지 않는다) */}
+                            <FooterFlow>
                             <TacticSetTimeline
                                 tactics={userTactics!}
                                 onUpdateTactics={setUserTactics}
@@ -1046,6 +1049,7 @@ const MultiTacticsView: React.FC = () => {
                                     playTypeEra={room?.sim_settings?.playTypeEra}
                                 />
                             </div>
+                            </FooterFlow>
                         </div>
                     </div>
     );
@@ -1268,6 +1272,9 @@ const MultiTacticsView: React.FC = () => {
                 }
             />
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                {/* [2026-11-17] 본문 끝에 글로벌 푸터 — 트레이닝 세션·인사이트는 이 상자에서 흐르는 탭(flow),
+                    뎁스 차트(DepthRotationBoard) · 팀 전술(teamPanel) · 트레이닝 기록(TeamGameLog 표)은 각자 안쪽 스크롤 상자에 푸터 자리를 둔다(own). */}
+                <FooterTabBody mode={activeTab === 'training' || activeTab === 'insights' ? 'flow' : 'own'}>
                 {activeTab === 'depth' && (
                     <DepthRotationBoard
                         team={team}
@@ -1284,6 +1291,7 @@ const MultiTacticsView: React.FC = () => {
                 {activeTab === 'training' && trainingPanel}
                 {activeTab === 'trainingLog' && trainingLogPanel}
                 {activeTab === 'insights' && insightsPanel}
+                </FooterTabBody>
             </div>
         </div>
     );

@@ -53,6 +53,7 @@ import { toGameSeconds, shotGameSeconds } from '../../../utils/gameClock';
 import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodKoreanLabel } from '../../../utils/periodLabel';
 import { periodStartSec, periodLengthSec } from '../../../services/game/engine/pbp/periodRules';
 import { useIsPhone } from '../../../hooks/useViewportClass';
+import { FooterSlot, useHasFooterSlot } from '../../../components/common/footerSlot';
 import { MobilePushHeader } from '../../../components/mobile/MobilePushHeader';
 import { MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
 import { pbpLogCategory, PBP_TEXT_COLOR, PBP_SUB_COLOR, PBP_SCORE_HIGHLIGHT, pbpScored, pbpDisplayText } from '../../../utils/pbpLogStyle';
@@ -959,6 +960,29 @@ const RESULT_TABS = [
     { id: 'onoff', label: '온오프' },
 ];
 
+/**
+ * [2026-11-17] 경기 화면의 본문 스크롤 영역(스코어 헤더·탭 아래).
+ * 푸터 자리가 있는 셸(멀티세션 데스크톱, components/common/footerSlot.tsx): 본문 내용 맨 끝에 글로벌 푸터를 이어 붙인다
+ *   — 본문을 다 내리면 바로 아래에 푸터가 나온다(사용자 지시). 스크롤 상자는 여백 없는 flex-col, 내용은 여백(className)을 가진
+ *   안쪽 상자(grow shrink-0 = 자기 높이 유지 + 남는 높이 채움), 푸터는 mt-auto라 내용이 짧으면 바닥에 붙는다.
+ *   이 화면이 푸터를 직접 그리는 동안 셸(MultiSeasonLayout)은 자기 푸터를 숨긴다.
+ * 그 밖(폰·태블릿): 예전과 같은 한 겹 구조(className이 스크롤 상자에 그대로 붙는다) — 동작 변화 없음.
+ */
+const BodyScroll = React.forwardRef<HTMLDivElement, { className?: string; children: React.ReactNode }>(
+    ({ className = '', children }, ref) => {
+        const hasFooter = useHasFooterSlot();
+        return hasFooter ? (
+            <div ref={ref} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                <div className={`grow shrink-0 ${className}`}>{children}</div>
+                <FooterSlot />
+            </div>
+        ) : (
+            <div ref={ref} className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide ${className}`}>{children}</div>
+        );
+    },
+);
+BodyScroll.displayName = 'BodyScroll';
+
 /** 종료 결과 페이지의 섹션(박스스코어/인사이트/…) — 스크롤스파이 ref + 제목 바. 6개 섹션이 같은 래퍼 3줄을 복붙하던 것. */
 const ResultSection: React.FC<{
     sectionKey: string;
@@ -1642,6 +1666,8 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
     const navigate = useNavigate();
     // [2026-10-28] 폰(<768) — 종료 화면 폰판(docs/ui/mobile-design-system.md §9-7). 태블릿·데스크톱은 기존 UX 그대로.
     const isPhone = useIsPhone();
+    // [2026-11-17] 푸터 자리가 있는 셸(멀티세션 데스크톱)에서는 본문 스크롤 끝에 글로벌 푸터가 붙는다(BodyScroll).
+    const hasFooterSlot = useHasFooterSlot();
     // 종료 헤더 팀 이름 클릭 → 로스터 화면(일정/순위 화면의 팀 이름 링크와 동일 경로).
     // 박스스코어 선수 이름 → 선수 프로필 라우트(로스터 화면과 동일 경로)
     const { getPlayerUrlId } = usePlayerShortCodes();
@@ -2610,12 +2636,20 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
         return (
             <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden" style={phoneRootStyle}>
                 {phoneHeader}
-                <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">
-                    <InlineNotice tone={error.kind === 'preparing' ? 'info' : 'danger'} className="w-full max-w-md">{error.text}</InlineNotice>
-                    {error.kind === 'preparing' && <span className="text-xs text-slate-500">5초 후 자동으로 다시 불러옵니다</span>}
-                    {error.kind === 'failed' && <Button variant="secondary" onClick={() => setRetryTick(t => t + 1)}>다시 시도</Button>}
-                    {error.kind === 'forbidden' && <Button variant="secondary" onClick={() => navigate(-1)}>뒤로가기</Button>}
-                </div>
+                {(() => {
+                    const errorBody = (
+                        <>
+                            <InlineNotice tone={error.kind === 'preparing' ? 'info' : 'danger'} className="w-full max-w-md">{error.text}</InlineNotice>
+                            {error.kind === 'preparing' && <span className="text-xs text-slate-500">5초 후 자동으로 다시 불러옵니다</span>}
+                            {error.kind === 'failed' && <Button variant="secondary" onClick={() => setRetryTick(t => t + 1)}>다시 시도</Button>}
+                            {error.kind === 'forbidden' && <Button variant="secondary" onClick={() => navigate(-1)}>뒤로가기</Button>}
+                        </>
+                    );
+                    // [2026-11-17] 데스크톱은 오류 화면에서도 아래에 글로벌 푸터가 붙는다. 폰·태블릿은 예전 구조 그대로.
+                    return hasFooterSlot
+                        ? <BodyScroll className="flex flex-col items-center justify-center gap-4 px-6">{errorBody}</BodyScroll>
+                        : <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6">{errorBody}</div>;
+                })()}
             </div>
         );
     }
@@ -3226,7 +3260,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
             // flex는 min-h-full로 최소 화면 높이를 채우되 컨텐츠가 길면 그만큼 늘어난다.
             // [2026-10-23] 3열을 카드화 — 바디 p-4 여백 + 열 사이 gap-4, 각 열은 공용 Table card 변형과 같은
             // 토큰(bg-slate-900 · border-slate-800 · rounded-xl · shadow-lg). items-start라 각 카드는 자기 내용 높이만큼만.
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+            <BodyScroll className="p-4">
             <div className="flex gap-4 items-start min-h-full">
 
                 {/* LEFT: 원정팀 박스스코어(간소 컬럼). [2026-10-23] 여기 있던 인사이트 그래프는 플레이-바이-플레이 탭으로 이동 예정 */}
@@ -3276,13 +3310,13 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                     {renderBoxPanel('home')}
                 </div>
             </div>
-            </div>
+            </BodyScroll>
             )}
 
             {/* [2026-10-23] 라이브 박스스코어 탭 — 종료 화면과 같은 GameBoxScoreTab(전체 컬럼·OVR·Traditional/Advanced/Defense)을
                 리플레이 시점 박스(liveHomeBox/liveAwayBox)로 그린다. 예정 상태는 0스탯 로스터(scheduledHomeBox/AwayBox). 미출전 행은 "출전 대기". */}
             {(isLive || isScheduled) && liveTab === 'box' && (
-                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide ${isPhone ? 'pb-4' : 'p-4'}`}>
+                <BodyScroll className={isPhone ? 'pb-4' : 'p-4'}>
                     <div className={isPhone ? '' : LIVE_CARD}>
                         <GameBoxScoreTab
                             homeTeam={homeTeamAdapter}
@@ -3301,13 +3335,13 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             hideOvr
                         />
                     </div>
-                </div>
+                </BodyScroll>
             )}
 
             {/* [2026-10-23] 라이브 샷 차트 탭 — 종료 화면과 같은 GameShotChartTab(풀코트·선수 필터 표·존별 성공률·히트맵)을 공개된 슛(visibleShotEvents)과
                 리플레이 시점 박스(POS/MP 열용)로 그린다. 예정 상태는 슛이 없어 빈 코트 + 0스탯 로스터. */}
             {(isLive || isScheduled) && liveTab === 'shot' && (
-                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide ${isPhone ? 'pb-4' : 'p-4'}`}>
+                <BodyScroll className={isPhone ? 'pb-4' : 'p-4'}>
                     <div className={isPhone ? '' : LIVE_CARD}>
                         <GameShotChartTab
                             homeTeam={homeTeamAdapter}
@@ -3319,13 +3353,13 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             awayBox={hasBoxTimeline ? liveAwayBox : scheduledAwayBox}
                         />
                     </div>
-                </div>
+                </BodyScroll>
             )}
 
             {/* [2026-10-23] 라이브 플레이-바이-플레이 탭 — 세로 한 열 가운데 정렬(팀 스탯 탭과 동일 폭). 위: 인사이트 그래프(게임 센터 좌측 하단에서 이동,
                 고정 300px), 아래: PBP 피드(게임 센터 가운데 카드와 같은 pbpFeedBody, 여기선 더 길게 max-h-[75vh]). */}
             {(isLive || isScheduled) && liveTab === 'pbp' && (
-                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col ${isPhone ? '' : 'p-4 gap-4'}`}>
+                <BodyScroll className={`flex flex-col ${isPhone ? '' : 'p-4 gap-4'}`}>
                     {/* 인사이트 카드는 화면 좌우 꽉 채움(w-full), 아래 PBP 피드만 가운데 열(max-w-3xl). 폰은 둘 다 카드 없이 전폭(2026-10-28).
                         shrink-0 필수 — 래퍼가 flex-col이라 overflow-hidden(LIVE_CARD)인 이 카드는 세로 공간이 모자라면 min-height 0으로
                         취급돼 높이 0까지 찌그러진다(2026-10-23 실제 발생: 카드가 가는 선 하나로 보임). 축소 대신 래퍼 스크롤로 넘긴다. */}
@@ -3355,13 +3389,13 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             {pbpFeedBody}
                         </div>
                     </div>
-                </div>
+                </BodyScroll>
             )}
 
             {/* [2026-10-23] 라이브 팀 스탯 탭 — 좌: 쿼터별 득점(fullWidth 표), 우: 팀 스탯 비교(TeamStatsCompare card 변형). 둘 다 공개 로그(visibleEvents)·
                 리플레이 시점 박스 기준이라 스포일러 없음. 게임 센터 우측 카드에서 뺀 두 표가 여기로 왔다. */}
             {(isLive || isScheduled) && liveTab === 'team' && (
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide p-4">
+                <BodyScroll className="p-4">
                     {/* 세로 배치 + 가운데 정렬 — 두 카드 폭을 같게(max-w-3xl) 묶어 한 열로 */}
                     <div className="flex flex-col items-stretch gap-4 w-full max-w-3xl mx-auto">
                         <div className={LIVE_CARD}>
@@ -3397,7 +3431,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             />
                         </div>
                     </div>
-                </div>
+                </BodyScroll>
             )}
 
             {/* ── Body: 종료된 경기 — 6개 섹션(박스스코어/인사이트/경기기록/샷차트/로테이션/온오프)을
@@ -3406,7 +3440,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                 활성 라벨은 스크롤스파이(위 IntersectionObserver, activeSection)로 갱신된다. ── */}
             {showBox && (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
-                <div ref={resultScrollRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide">
+                <BodyScroll ref={resultScrollRef}>
                     {/* [2026-10-28] 폰(§9-7, 목업 G6·G10): 종료 헤더는 본문과 함께 스크롤되어 사라지고 섹션 탭 바만 상단 sticky —
                         헤더(약 200)까지 고정하면 본문이 400px 남짓만 남는다. 탭은 섹션별 독립 화면(한 번에 하나만 렌더, 사용자 지시). */}
                     {isPhone && (
@@ -3579,7 +3613,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             awayBadge={{ color: awayColor, abbr: awayAbbr }}
                         />
                     </ResultSection>
-                </div>
+                </BodyScroll>
             </div>
             )}
         </div>

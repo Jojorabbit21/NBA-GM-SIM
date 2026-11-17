@@ -303,7 +303,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
     }
 
     return (
-        <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
+        <Table className="!rounded-none !border-0 !shadow-none" fullHeight pageFooter tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
                 {GAME_INFO_COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
                 {STAT_COLS.map(c => <col key={c.key} style={{ width: statColWidth(c.key) }} />)}

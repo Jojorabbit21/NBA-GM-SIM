@@ -308,6 +308,7 @@ Tailwind 크기가 rem 기반이라 브라우저 글자 크기 설정이 그대�
 - 순서: 홈 · 뉴스피드 · 드래프트 풀(드래프트 전·중에만) · 로스터 · 전술 — 구분선 — 플레이오프(포스트시즌에만) · 올스타(올스타 기간에만) · 순위표 · 순위 경쟁 · 리더보드 · 일정 — 구분선 — 트레이드(오퍼 CountBadge) · 자유 계약 — 구분선 — 선수 비교 — 구분선 — **프로필 블록**(아바타 28 + 닉네임 + 이메일·팀) 아래에 사이드바 프로필 드롭다운 항목을 같은 순서로 펼침: 세션 설정(어드민만) · 팀 설정 — 구분선 — 홈으로(시작 화면) — 구분선 — 로그아웃(red-400, 셰브론 없음, 확인 다이얼로그).
 - 행 48, 좌 아이콘 24 = `public/images/sidenav/{name}.svg` 원본(비활성 2톤) 그대로(home·news·pool·team·tactics·playoffs·allstar·standings·race·leaderboard·schedule·transactions·free-agents·compare), 프로필 메뉴 4개는 사이드바와 같은 lucide 선 아이콘(Settings2·Palette·ChevronLeft·LogOut). 라벨 14/600, 조건부 항목은 노출 조건을 12px slate-500 보조 글자로. 구분선 = 사이드바 `<Divider />` 자리에 `slate-800` 1px(좌우 16 여백).
 - 탭에서 이미 도달 가능한 항목(홈·로스터·순위표 등)도 **사이드바와 동일하게 전부 노출**한다(구조 동일성 우선, 2026-10-26 사용자 지시).
+- **글로벌 푸터(2026-11-17 사용자 결정·구현)**: 폰·태블릿은 화면마다 푸터를 두지 않고(하단 탭 바 고정) **더보기 맨 아래 한 곳**에만 둔다. 로그아웃 아래 구분선 다음에 `MultiFooterPhone`(`components/MultiFooter.tsx`) — 워드마크 로고 32 → 링크 한 줄(About · Terms of Use · Privacy · Discord, 14/500 slate-400, 탭 높이 44, 새 탭) → 카피라이트 · 버전(12 slate-400) → 디스클레이머(12 slate-400). 좌우 16 · 위 24 · 블록 간 16, 배경은 캔버스 그대로(띠 없음). 사이트맵은 넣지 않는다(이 목록이 곧 사이트맵). 데스크톱은 셸 본문 끝의 `MultiFooter`(서비스 정보 + 사이트맵 + 디스클레이머)이고, 데스크톱에서 더보기를 열면 이 블록은 숨긴다(중복 방지).
 
 ### 8-3. 상단 바 (phone·tablet-p)
 - 높이 **56** + `pt-safe`. 배경 `slate-950`, 하단 1px `slate-800`. `sticky top-0`, z `z-header`.

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Spinner } from '../../../components/common/Spinner';
+import { FooterTabBody } from '../../../components/common/footerSlot';
 import { EmptyState, TableEmptyRow } from '../../../components/common/EmptyState';
 import { StatusDot } from '../../../components/common/StatusDot';
 import { InlineNotice } from '../../../components/common/InlineNotice';
@@ -2369,6 +2370,10 @@ const MultiFrontOfficeView: React.FC = () => {
             )}
 
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
+                {/* [2026-11-17] 본문 끝에 글로벌 푸터(멀티세션 데스크톱) — 트레이드 블록·히스토리는 이 상자에서 흐르는 표(flow),
+                    트레이드 제안(3칸) · 메세지함(2칸)은 칸마다 따로 스크롤하므로 칸 영역은 그대로 두고 그 아래로 푸터(fill),
+                    자유 계약은 MultiFreeAgentView의 표가 자기 스크롤 상자에 푸터 자리를 둔다(own). */}
+                <FooterTabBody mode={initialLoading || activeTab === 'fa' ? 'own' : (activeTab === 'new' || activeTab === 'inbox') ? 'fill' : 'flow'}>
                 {initialLoading ? (
                     <Spinner variant="section" />
                 ) : activeTab === 'leagueBlocks' ? (
@@ -2940,6 +2945,7 @@ const MultiFrontOfficeView: React.FC = () => {
                         </TableBody>
                     </Table>
                 )}
+                </FooterTabBody>
             </div>
 
             <MyTradeBlockModal

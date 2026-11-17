@@ -115,7 +115,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             {/* Table 1: Main Stats / Attributes / Salary */}
             {(tab === 'roster' || tab === 'stats') && (
             <div className={tab === 'stats' ? '' : 'flex-1 min-h-0'}>
-            <Table variant="flush" fullHeight={tab === 'roster'}>
+            <Table variant="flush" fullHeight={tab === 'roster'} pageFooter={tab === 'roster'}>
                 <colgroup>
                     <PlayerInfoColGroup />
                     {tab === 'roster' && COMPACT_ATTR_GROUPS.flatMap(g => g.items).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}

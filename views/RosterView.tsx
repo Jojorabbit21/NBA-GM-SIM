@@ -11,6 +11,7 @@ import { RosterOverviewGrid } from '../components/roster/RosterOverviewGrid';
 import { RosterStatsStack } from '../components/roster/RosterStatsStack';
 import { RosterTabs, RosterTab } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
+import { FooterFillScroll, FooterFlow } from '../components/common/footerSlot';
 import { TeamScheduleCalendar } from '../components/roster/TeamScheduleCalendar';
 import { TeamPayrollTable, type RosterCapSettings } from '../components/roster/TeamPayrollTable';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -328,6 +329,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               />
           )}
           {tab === 'schedule' && (
+              // [2026-11-17] 좌(경기 목록) · 우(달력)가 따로 스크롤하는 2칸 탭 — 칸 영역은 그대로 두고 그 아래로 글로벌 푸터가 이어진다(멀티세션 데스크톱만)
+              <FooterFillScroll>
               <TeamScheduleCalendar
                   team={selectedTeam}
                   schedule={schedule}
@@ -340,6 +343,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                   onTeamClick={(teamId) => handleTeamChange(teamId, { tab: 'overview' })}
                   enableHoverCard={enableHoverCard}
               />
+              </FooterFillScroll>
           )}
           {tab === 'finance' && capSettings && (
               <TeamPayrollTable
@@ -372,7 +376,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
           )}
           {tab === 'settings' && isMyTeam && renderTeamSettingsPanel && (
               <div className="h-full overflow-y-auto custom-scrollbar">
-                  {renderTeamSettingsPanel()}
+                  {/* [2026-11-17] 설정 내용 아래에 글로벌 푸터(멀티세션 데스크톱만) */}
+                  <FooterFlow>{renderTeamSettingsPanel()}</FooterFlow>
               </div>
           )}
       </>

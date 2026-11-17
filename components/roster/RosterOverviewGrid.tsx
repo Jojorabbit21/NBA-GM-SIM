@@ -92,7 +92,7 @@ export const RosterOverviewGrid: React.FC<RosterOverviewGridProps> = ({ team, al
     return (
         <div className="h-full flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0">
-                <Table variant="flush" fullHeight>
+                <Table variant="flush" fullHeight pageFooter>
                     <colgroup>
                         <PlayerInfoColGroup withCondition={withCondition} />
                         <col style={{ width: WIDTHS.RATING }} />

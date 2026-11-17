@@ -13,6 +13,8 @@ import { NavIcon, RosterIcon } from '../../../components/nav/navIcons';
 import { CountBadge } from '../../../components/common/CountBadge';
 import { TeamLogo } from '../../../components/common/TeamLogo';
 import { PatchNotesModal } from '../../../components/common/PatchNotesModal';
+import { MultiFooterPhone } from '../../../components/MultiFooter';
+import { useViewportClass } from '../../../hooks/useViewportClass';
 import { useWallet } from '../../../hooks/usePoints';
 import { POINTS_ICON_URL, formatPoints } from '../../../services/points/pointsService';
 
@@ -49,6 +51,7 @@ export default function MobileMoreView() {
     const { base, items, isAdmin, isSpectator, myTeam } = useSeasonNavModel();
     const [isPatchNotesOpen, setIsPatchNotesOpen] = useState(false);   // [2026-11-05] 패치노트 — 데스크톱 사이드바와 같은 모달, 날짜별 아코디언
     const { data: wallet } = useWallet(session?.user?.id);              // [2026-11-08] BP 잔액 — 데스크톱 프로필 메뉴 상단과 같은 자리
+    const viewport = useViewportClass();
 
     const iconFor = (it: SeasonNavItem) => it.icon === 'team'
         ? <RosterIcon active={it.active} primary={myTeam?.color_primary} secondary={myTeam?.color_secondary} text={myTeam?.color_text} size={24} />
@@ -94,6 +97,13 @@ export default function MobileMoreView() {
             <Row icon={<ChevronLeft size={18} className="text-slate-400" />} label="홈으로" note="시작 화면" onClick={() => navigate('/')} />
             <Divider />
             <Row icon={<LogOut size={18} className="text-red-400" />} label="로그아웃" danger chevron={false} onClick={() => { void handleLogout(); }} />
+            {/* [2026-11-17] 글로벌 푸터(폰·태블릿) — 서비스 정보 + 디스클레이머. 데스크톱은 셸이 자체 푸터를 그리므로 겹치지 않게 뺀다. */}
+            {viewport !== 'desktop' && (
+                <>
+                    <Divider />
+                    <MultiFooterPhone />
+                </>
+            )}
             <PatchNotesModal isOpen={isPatchNotesOpen} onClose={() => setIsPatchNotesOpen(false)} layout="accordion" />
         </div>
     );

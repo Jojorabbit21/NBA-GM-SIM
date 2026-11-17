@@ -3,6 +3,7 @@ import { ArrowUp, ArrowDown } from 'lucide-react';
 import { OvrBadge } from './OvrBadge';
 // [2026-10-19] colorScale 능력치 셀도 공용 15단계 스케일 사용(예전 자체 4단계: 90 fuchsia / 80 emerald / 70 amber / 그 외 slate-500)
 import { getAttrColor } from '../../utils/attrRatingColor';
+import { FooterSlotWide, useHasFooterSlot } from './footerSlot';
 
 // --- Types ---
 export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'rank' | 'badge';
@@ -38,6 +39,13 @@ interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
      * sticky bottom(팀 평균 행)이 그 상자 끝을 기준으로 걸려 떠 보인다.
      */
     scroll?: 'self' | 'parent';
+    /**
+     * [2026-11-17] 화면 본문을 이 표가 통째로 차지할 때(로스터 탭 표 등) 켠다 — 표 스크롤 상자 안, 표 바로 아래에 글로벌 푸터를 둔다
+     * (components/common/footerSlot.tsx). 표를 끝까지 내리면 푸터가 이어 나오고, 표가 짧으면 푸터가 상자 바닥에 붙는다. 가로로 스크롤해도
+     * 푸터는 왼쪽에 붙어 있다. 푸터 자리가 없는 곳(싱글 플레이, 폰·태블릿)과 scroll="parent" · bare에서는 아무 일도 하지 않는다.
+     * 한 화면에 이 표가 하나일 때만 쓸 것(둘이면 푸터도 둘).
+     */
+    pageFooter?: boolean;
 }
 
 /**
@@ -157,9 +165,10 @@ interface TableGroupHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCell
 export const Table = ({
     children, className = '', fullHeight, style, tableStyle,
     dividers = true, verticalLine = TABLE_LINE_DEFAULTS.vertical, horizontalLine = TABLE_LINE_DEFAULTS.horizontal,
-    variant = 'card', density = 'default', scroll = 'self',
+    variant = 'card', density = 'default', scroll = 'self', pageFooter = false,
     ...props
 }: TableProps) => {
+    const hasFooterSlot = useHasFooterSlot();
     const bare = variant === 'bare';
     const compact = density === 'compact';
     const phone = density === 'phone';
@@ -175,13 +184,16 @@ export const Table = ({
         : variant === 'flush'
             ? `w-full overflow-auto custom-scrollbar relative bg-slate-950 ${lineClass('border-b', horizontalLine)} shadow-lg ${fillHeight ? 'h-full' : ''} ${className}`
             : `w-full overflow-auto custom-scrollbar relative bg-slate-900 ${lineClass('border', horizontalLine)} rounded-xl shadow-lg ${fillHeight ? 'h-full' : ''} ${className}`;
+    // 푸터를 품을 때만 스크롤 상자를 flex-col로(푸터 mt-auto = 표가 짧으면 바닥) — 표는 줄어들지 않게 shrink-0.
+    const withFooter = pageFooter && hasFooterSlot && scroll === 'self' && !bare;
     return (
-        <div className={wrapClass} style={style}>
-            <table className={`${scroll === 'parent' ? 'w-max min-w-full' : 'w-full'} text-left border-separate border-spacing-0`} style={tableStyle} {...props}>
+        <div className={`${wrapClass} ${withFooter ? 'flex flex-col' : ''}`} style={style}>
+            <table className={`${scroll === 'parent' ? 'w-max min-w-full' : 'w-full'} text-left border-separate border-spacing-0 ${withFooter ? 'shrink-0' : ''}`} style={tableStyle} {...props}>
                 <TableLineContext.Provider value={lines}>
                     {children}
                 </TableLineContext.Provider>
             </table>
+            {withFooter && <FooterSlotWide />}
         </div>
     );
 };

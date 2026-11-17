@@ -13,6 +13,7 @@ import { Dropdown } from '../common/Dropdown';
 import { AlertCircle, CheckCircle2, RotateCcw, ChevronDown, GripVertical } from 'lucide-react';
 import { GanttBar, computeStints, type Stint, type DragState } from './RotationGanttChart';
 import { useIsPhone } from '../../hooks/useViewportClass';
+import { FooterSlotWide, useHasFooterSlot } from '../common/footerSlot';
 import { PhoneDepthRotation } from './PhoneDepthRotation';
 import {
     ROTATION_ALLOCATION_OPTIONS, EMPTY_48, computeRotationMap, computeRotationValidation, getMinutesColor,
@@ -406,6 +407,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
     // 상태·핸들러(슬롯 변경/스왑·자동 배정·초기화·드래그 커밋)는 위 그대로 공유, 렌더만 PhoneDepthRotation.
     const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
     const isPhone = useIsPhone();
+    const hasFooterSlot = useHasFooterSlot();   // [2026-11-17] 멀티세션 데스크톱이면 표 스크롤 상자 끝에 글로벌 푸터
     if (isPhone && depthChart) {
         return (
             <PhoneDepthRotation
@@ -472,8 +474,9 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
             </div>
 
             {/* ── 통합 표 ── */}
-            <div className="flex-1 min-h-0 overflow-auto">
-                <table className="border-separate border-spacing-0 w-full" style={{ minWidth: withCondition ? `${960 + CONDITION_COL_WIDTH}px` : '960px', tableLayout: 'fixed' }}>
+            {/* [2026-11-17] 푸터 자리가 있으면(멀티세션 데스크톱) 표·검증 띠 아래에 글로벌 푸터 — 상자를 flex-col로, 표는 줄어들지 않게 */}
+            <div className={`flex-1 min-h-0 overflow-auto ${hasFooterSlot ? 'flex flex-col' : ''}`}>
+                <table className={`border-separate border-spacing-0 w-full ${hasFooterSlot ? 'shrink-0' : ''}`} style={{ minWidth: withCondition ? `${960 + CONDITION_COL_WIDTH}px` : '960px', tableLayout: 'fixed' }}>
                     <colgroup>
                         <col style={{ width: 56 }} />
                         <col style={{ width: 40 }} />
@@ -660,6 +663,7 @@ const DepthRotationBoardInner: React.FC<DepthRotationBoardProps> = ({
                         <span className="text-sm font-bold text-emerald-400">뎁스 차트·로테이션 정상 — 위반 사항 없음</span>
                     </div>
                 )}
+                <FooterSlotWide />
             </div>
         </div>
     );

@@ -20,6 +20,8 @@ import { useViewportClass } from '../../../hooks/useViewportClass';
 import { MobileTopBar } from '../../../components/mobile/MobileTopBar';
 import { MobileTabBar, SEASON_SCROLL_ID, MOBILE_TAB_BAR_HEIGHT } from '../../../components/mobile/MobileTabBar';
 import { TabletNavRail } from '../../../components/mobile/TabletNavRail';
+import { MultiFooter } from '../../../components/MultiFooter';
+import { FooterSlotHost } from '../../../components/common/footerSlot';
 
 // 스트립 전용 고정 약어 — 라이징스타 약어(주장 성)는 로스터 로딩 후 바뀌므로 쓰지 않는다.
 const STRIP_ALLSTAR_ABBR: Record<string, string> = {
@@ -115,6 +117,8 @@ export function MultiSeasonLayout() {
     }, [isMainLeague, isSeasonStarted, virtualSeasonYear, seasonCalendar, allStarOn, risingStarsOn]);
 
     const currentGameId = watchingGameUrlId ? resolveGameId(watchingGameUrlId) : undefined;
+    // [2026-11-17] 글로벌 푸터 요소 — 한 번만 만들어 FooterSlotHost에 넘긴다(매 렌더 새 요소면 슬롯을 읽는 표·화면이 전부 다시 그려진다).
+    const footerEl = useMemo(() => <MultiFooter />, []);
 
     if (gameData.isLoading) {
         return (
@@ -190,8 +194,15 @@ export function MultiSeasonLayout() {
             <div className="flex-1 flex flex-col overflow-hidden">
                 <MultiHeader />
                 <GameDateStrip {...stripProps} />
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {body}
+                {/* [2026-11-17] 글로벌 푸터(데스크톱만) — 고정하지 않고 스크롤 영역 맨 끝에 둔다(사용자 지시).
+                    flex-col + 푸터 mt-auto: 본문이 화면보다 짧으면 푸터가 바닥에 붙는다.
+                    [&>*]:flex-none: 자식이 예전(블록 배치)과 똑같이 자기 높이로 놓이게 한다 — 이게 없으면
+                    h-full 화면이 푸터 높이만큼 줄어들어 푸터가 항상 보이고(고정처럼 됨), 루트에 flex-1을 단 화면은 높이 기준이 바뀐다.
+                    FooterSlotHost: 머리를 고정하고 본문만 안쪽에서 스크롤하는 화면(경기 · 로스터 · 전술 · 선수 이동)은 자기 본문 스크롤
+                    맨 끝에 푸터를 직접 둔다(components/common/footerSlot.tsx의 FooterSlot). 그런 화면이 떠 있는 동안에는 여기서 그리지
+                    않는다 — 둘 다 그리면 본문 스크롤 뒤에 화면 전체가 한 번 더 밀려 올라간다. 슬롯을 안 쓰는 화면·상태는 예전처럼 여기서 그린다. */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col [&>*]:flex-none">
+                    <FooterSlotHost footer={footerEl}>{body}</FooterSlotHost>
                 </div>
             </div>
             <TournamentChampionModal />
