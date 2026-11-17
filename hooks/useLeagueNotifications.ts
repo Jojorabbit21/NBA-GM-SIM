@@ -209,6 +209,12 @@ export function useLeagueNotifications(params: {
                 (payload: any) => {
                     const o = payload?.new as TradeOfferRow | undefined;
                     if (!o || o.room_id !== roomId) return;
+                    // [2026-11-17] Only a real status transition is a "result". Other column updates on an already
+                    // resolved offer (e.g. the receiver's mark_trade_offer_read setting to_team_read_at) used to fire
+                    // a fake "trade executed" toast. REPLICA IDENTITY FULL makes payload.old carry the previous status.
+                    // If old is missing (should not happen) fall through to the previous behavior.
+                    const prevStatus = (payload?.old as Partial<TradeOfferRow> | undefined)?.status;
+                    if (prevStatus && prevStatus === o.status) return;
                     const spec = OFFER_RESULT_TEXT[o.status];
                     if (!spec) return;   // pending/cancelled(내가 취소) 등은 알림 없음
                     notify.league(spec.text, {
