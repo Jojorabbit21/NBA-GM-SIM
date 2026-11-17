@@ -21,8 +21,9 @@ import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMappe
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 import { postDraftResult } from './postDraftResultNews';
-import { getOrComputeDraftPoolMuLeague } from './shared/engine/pbp/leagueNormalization';
+import { getOrComputeDraftPoolContext } from './shared/engine/pbp/leagueNormalization';
 import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides';
 import { generateDraftContracts } from './shared/draftContracts';
 import { SIM_CONFIG } from './shared/game/config/constants';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
@@ -132,6 +133,8 @@ async function initializeTeamTactics(
     roomId: string,
     leagueTeams: { team_slug: string; team_name: string; roster: string[]; user_id: string | null }[],
     rosterState: Record<string, any>,
+    // [2026-11-15] 리그의 use_custom_overrides — 경기 로스터(playerLoader)와 같은 능력치 기준으로 초기 뎁스·전술을 만든다(이전엔 항상 base)
+    useCustomOverrides: boolean,
 ): Promise<void> {
     const allPlayerIds = leagueTeams.flatMap(t => t.roster ?? []);
     if (allPlayerIds.length === 0) return;
@@ -182,7 +185,7 @@ async function initializeTeamTactics(
         for (const { instance_id, source_player_id } of instances as any[]) {
             const raw = rawById.get(String(source_player_id));
             if (!raw) continue;
-            playerMap.set(String(instance_id), { ...mapRawPlayerToRuntimePlayer(raw), id: String(instance_id) });
+            playerMap.set(String(instance_id), { ...mapRawPlayerToRuntimePlayer(raw, useCustomOverrides), id: String(instance_id) });
         }
     } else {
         const { data: rawPlayers } = await supabase
@@ -190,7 +193,7 @@ async function initializeTeamTactics(
             .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
             .in('id', allPlayerIds);
         for (const raw of rawPlayers ?? []) {
-            playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw));
+            playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
         }
     }
 
@@ -222,13 +225,18 @@ async function initializeTeamTactics(
  * 아니라 "드래프트 풀 자체"(뽑힐 수 있었던 후보군) 기준으로 계산한다 — 같은 풀 설정
  * (draftPool/ovrMin/ovrMax/팀수)을 쓰는 리그는 항상 같은 값을 쓰게 되어, 방마다 실제
  * 드래프트 결과(어느 팀이 더 세게 뽑혔는지)에 따라 압축 강도가 들쭉날쭉해지는 것을 막는다.
- * getOrComputeDraftPoolMuLeague()가 프로세스 메모리에 캐싱하므로 같은 풀 설정을 쓰는
+ * getOrComputeDraftPoolContext()가 프로세스 메모리에 캐싱하므로 같은 풀 설정을 쓰는
  * 리그가 여러 개 생겨도 최초 1회만 실제 계산(meta_players 조회)이 일어난다.
  * simRunner.ts는 매 경기 이 캐시된 값만 읽으므로 게임 시뮬레이션 시점엔 계산이 없다.
+ *
+ * [2026-11-15] OVR 기준은 리그의 use_custom_overrides 설정을 따른다(켜면 ovr_custom, 끄면 ovr_base —
+ * startDraft.ts buildDraftSetup()·경기 로스터와 같은 기준). 이전엔 항상 custom 고정이라, base로 경기하는
+ * 리그의 muLeague가 custom 기준으로 잡혔다(NBA-A S1: 81.2, base 기준이면 82.8). 호출부의 leagues select에
+ * use_custom_overrides가 빠지면 조용히 base로 떨어지므로 select에서 빼지 말 것.
  */
 async function applyLeagueNormalization(
     roomId: string,
-    league: { draft_ovr_min?: number | null; draft_ovr_max?: number | null; draft_year_min?: number | null; draft_year_max?: number | null; draft_retired_filter?: string | null; draft_alltime_only?: boolean | null },
+    league: { draft_ovr_min?: number | null; draft_ovr_max?: number | null; draft_year_min?: number | null; draft_year_max?: number | null; draft_retired_filter?: string | null; draft_alltime_only?: boolean | null; use_custom_overrides?: boolean | null },
     teamCount: number,
 ): Promise<void> {
     const ovrMin = league.draft_ovr_min ?? 0;
@@ -237,29 +245,32 @@ async function applyLeagueNormalization(
     const draftYearMax = league.draft_year_max ?? 2025;
     const retiredFilter = (league.draft_retired_filter ?? 'all') as 'all' | 'active' | 'retired';
     const alltimeOnly = league.draft_alltime_only ?? false;
-    const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${retiredFilter}|${alltimeOnly ? 'alltime' : 'any'}|${teamCount}`;
+    const useCustomOverrides = shouldUseCustomOverrides(league);
+    const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${retiredFilter}|${alltimeOnly ? 'alltime' : 'any'}|${useCustomOverrides ? 'custom' : 'base'}|${teamCount}`;
 
-    const muLeague = await getOrComputeDraftPoolMuLeague(cacheKey, teamCount, async () => {
+    // [2026-11-15] 같은 풀 상위 선수들로 파울 유도 오프셋 표(drFoulOffsets)도 함께 계산한다 — leagueNormalization.ts "파울 유도 정규화"
+    const { muLeague, drFoulOffsets } = await getOrComputeDraftPoolContext(cacheKey, teamCount, async () => {
         // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
         // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
         // (applyMetaPlayerPoolFilter를 startDraft.ts와 공유해서 어긋남을 구조적으로 방지한다.)
         let q = supabase.from('meta_players').select('id, base_attributes, ovr_base, ovr_custom');
         q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
         const { data: poolData } = await q;
-        const ovrs: number[] = [];
+        const pool: { id: string; ovr: number; drFoul: number }[] = [];
         for (const p of poolData ?? []) {
-            const mapped = mapRawPlayerToRuntimePlayer(p, true);
+            const mapped = mapRawPlayerToRuntimePlayer(p, useCustomOverrides);
             if (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax) {
-                ovrs.push(mapped.ovr);
+                pool.push({ id: String(p.id), ovr: mapped.ovr, drFoul: Number(mapped.drawFoul) });
             }
         }
-        return ovrs;
+        return pool;
     });
 
     const leagueContext = {
         muRef: SIM_CONFIG.NORMALIZATION.MU_REF,
         muLeague,
         k: SIM_CONFIG.NORMALIZATION.DEFAULT_K,
+        ...(drFoulOffsets ? { drFoulOffsets } : {}),
     };
 
     const { data: roomRow } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).single();
@@ -267,7 +278,7 @@ async function applyLeagueNormalization(
         sim_settings: { ...(roomRow?.sim_settings as any ?? {}), leagueContext },
     }).eq('id', roomId);
 
-    console.log(`[finalize] room ${roomId} — league normalization cached (muLeague=${muLeague.toFixed(1)})`);
+    console.log(`[finalize] room ${roomId} — league normalization cached (muLeague=${muLeague.toFixed(1)}, drFoulOffset@k=${leagueContext.k}: ${drFoulOffsets ? drFoulOffsets[Math.round(leagueContext.k * 20)] : 'n/a'})`);
 }
 
 // ── 메인리그 정규시즌 일정 + 고정 길이 가상 하루 타임라인 생성 ────────────────────────────
@@ -413,7 +424,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled, use_custom_overrides')
         .eq('id', room.league_id)
         .single();
 
@@ -435,7 +446,7 @@ export async function forceInitSchedule(roomId: string): Promise<{ ok: boolean; 
 
     // 리그 생성(강제 스케줄 초기화) 시점의 최신 아키타입 가중치/태그를 강제로 다시 받아온다.
     await refetchGameConfig().catch(err => console.error('[finalize:force] refetchGameConfig failed:', err));
-    await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+    await initializeTeamTactics(roomId, leagueTeams as any, rosterState, shouldUseCustomOverrides(league));
     await applyLeagueNormalization(roomId, league, leagueTeams.length)
         .catch(err => console.error('[finalize:force] applyLeagueNormalization failed:', err));
 
@@ -553,7 +564,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // ── 리그 정보 조회 ─────────────────────────────────────────────────────────
     const { data: league } = await supabase
         .from('leagues')
-        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled, contract_mode, draft_salary_scale, salary_cap_amount')
+        .select('id, type, season_start_date, season_end_date, tournament_start_at, tournament_format, match_format, finals_match_format, games_per_real_day, draft_ovr_min, draft_ovr_max, draft_year_min, draft_year_max, draft_retired_filter, draft_alltime_only, duration_weeks, daily_window_start_min, daily_window_end_min, virtual_season_year, day_length_min, real_start_date, real_end_date, playoff_game_interval_days, play_in_enabled, playoff_team_count, replay_minutes, season_calendar, allstar_enabled, contract_mode, draft_salary_scale, salary_cap_amount, use_custom_overrides')
         .eq('id', room.league_id)
         .single();
 
@@ -585,7 +596,7 @@ export async function finalizeDraft(roomId: string): Promise<void> {
     // 리그 생성(드래프트 완료) 시점의 최신 아키타입 가중치/태그를 강제로 다시 받아온다
     // (서버 부팅 이후 관리자가 튜닝했을 수 있으므로) — 실패해도 하드코딩 폴백으로 진행.
     await refetchGameConfig().catch(err => console.error('[finalize] refetchGameConfig failed:', err));
-    await initializeTeamTactics(roomId, leagueTeams as any, rosterState);
+    await initializeTeamTactics(roomId, leagueTeams as any, rosterState, shouldUseCustomOverrides(league));
 
     // ── [2026-09-22] 드래프트 계약 생성 ──────────────────────────────────────────
     // draft_picks(round/slot) → room_player_state.contract. contract_mode 'alternative'면 전원 라운드

@@ -6,11 +6,10 @@
 import { supabase } from './supabaseAdmin.ts';
 import { loadLeagueTimeline, fillPostseasonRealTimes } from './shared/timelineStore';
 import { postseasonIntervalDays, postseasonRestDays, loadRegularSeasonTiebreak, betterRegularSeasonTeam } from './shared/playoffSeeder';
-import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
+import { engineFor } from './engineProfile.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { repairAiTactics } from './shared/game/tactics/tacticRepair.ts';
 import { planAiTeam } from './shared/game/tactics/aiCoach/aiCoachPlan.ts';
-import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { stampBoxOvr } from './boxOvr.ts';
 import { saveWithRetry } from './saveWithRetry.ts';
@@ -241,8 +240,11 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const simSettings  = (room.sim_settings   ?? null) as any;
             const tendencySeed = room.tendency_seed   ?? '';
 
+            // [2026-11-17] 방 단위 엔진 프로필 — 이 방이 쓸 엔진(기본 = 배포 엔진 보관본, 'next' = 개발 중인 엔진). engineProfile.ts
+            const engine = engineFor(simSettings);
+
             // ── 3.5 League-relative normalization context ──────────────────────
-            resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculatePlayerOvr);
+            engine.resolveNormalizationContext(simSettings, [homeTeam, awayTeam], engine.calculatePlayerOvr);
 
             // ── 3.6 백투백 판정 + 체력 설정 (docs/plan/multiplayer-fatigue.md 3-5, D6) ─────
             // 팀 일정 기준: 이 팀이 치른 가장 최근 경기(올스타 제외)가 전날이면 백투백.
@@ -310,7 +312,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             // 저장된 전술(tactics)이 있으면 그 팀 것을 쓰고, 없으면 (null/undefined) 자동으로
             // generateAutoTactics() 폴백이 걸리는 두 경우 모두 올바르게 처리된다. 기존에는
             // userTeamId를 null로 하드코딩해 모든 팀이 무조건 자동 생성 전술로 덮어써졌었다.
-            const result = runFullGameSimulation(
+            const result = engine.runFullGameSimulation(
                 homeTeam,
                 awayTeam,
                 homeTeamId,
@@ -335,7 +337,7 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
             const homeScore = result.homeScore ?? 0;
             const awayScore = result.awayScore ?? 0;
 
-            console.log(`[simRunner] ${homeTeamId} ${homeScore} - ${awayScore} ${awayTeamId} (${simDurationMs}ms)`);
+            console.log(`[simRunner] ${homeTeamId} ${homeScore} - ${awayScore} ${awayTeamId} (${simDurationMs}ms, engine=${engine.profile})`);
 
             // ── 5. game_pbp 저장 ───────────────────────────────────────────────
             // [2026-10-26] 연장 수 — 결과 공개 시각(game_reveal_at)·중계 종료 판정이 경기별로 늦어진다. games에도 같은 값.

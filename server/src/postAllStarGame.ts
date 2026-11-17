@@ -35,10 +35,9 @@
  */
 import { supabase } from './supabaseAdmin';
 import { saveWithRetry } from './saveWithRetry.ts';
-import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
+import { engineFor } from './engineProfile.ts';
 import { buildTeamForSim, mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
-import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { stampBoxOvr } from './boxOvr.ts';
 import { computeQuarterScoresFromEvents } from './liveGameView.ts';
@@ -294,7 +293,8 @@ export async function computeAndRunAllStarGame(
     // Room seed only — same fixed personalities as regular-season games.
     const tendencySeed = (room as any).tendency_seed ?? '';
 
-    resolveNormalizationContext(allStarSimSettings, [homeTeam, awayTeam], calculatePlayerOvr);
+    const engine = engineFor(allStarSimSettings);   // [2026-11-17] 방 단위 엔진 프로필 (engineProfile.ts)
+    engine.resolveNormalizationContext(allStarSimSettings, [homeTeam, awayTeam], engine.calculatePlayerOvr);
 
     // 뎁스차트(포지션 배정)는 generateAutoTactics()의 기존 알고리즘을 그대로 재사용하되,
     // rotationMap(분당 출전 여부)만 buildAllStarRotationMap()으로 교체한다 — 정규시즌 AI팀이
@@ -318,7 +318,7 @@ export async function computeAndRunAllStarGame(
         tactics.sliders.zoneFreq = 8;
     }
 
-    const result = runFullGameSimulation(
+    const result = engine.runFullGameSimulation(
         homeTeam, awayTeam, homeTeamId,
         homeTactics, false, false, undefined, undefined,
         tendencySeed, allStarSimSettings, coachingData, awayTactics,

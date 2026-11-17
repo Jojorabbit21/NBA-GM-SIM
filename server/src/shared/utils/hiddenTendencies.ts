@@ -81,7 +81,10 @@ export function generateSaveTendencies(tendencySeed: string, playerId: string): 
     const baseSeed = stringToHash(tendencySeed + playerId);
 
     return {
-        clutchGene:            seededNormal(baseSeed, 0,  0,   0.4,   -1.0, 1.0),
+        // [2026-11-16] 폭 −1~+1 → −0.3~+0.3(사용자 결정, 같은 날 −0.5~+0.5를 거쳐 확정) — 표준편차·상하한을 같이 0.3배로(이전: 0.4, -1.0, 1.0).
+        //   같은 시드의 선수는 값이 정확히 0.3배가 된다(부호·순위 유지). 클러치 시간 성공률 효과 최대 ±3%p → ±0.9%p.
+        //   스카우팅 리포트 기준(utils/scoutReport.ts)도 0.4 → 0.12로 같이 조정 (client 미러 동일)
+        clutchGene:            seededNormal(baseSeed, 0,  0,   0.12,  -0.3, 0.3),
         consistency:           seededNormal(baseSeed, 1,  0.6, 0.15,   0.0, 1.0),
         confidenceSensitivity: seededNormal(baseSeed, 2,  1.0, 0.25,   0.3, 1.7),
         composure:             seededNormal(baseSeed, 3,  0,   0.35,  -1.0, 1.0),

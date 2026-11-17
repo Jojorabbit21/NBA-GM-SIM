@@ -19,7 +19,7 @@ import { DraftSalaryScaleSettings } from '../../../components/multi/DraftSalaryS
 import {
     type ContractMode, type DraftSalaryScale, normalizeDraftSalaryScale, validateDraftSalaryScale,
 } from '../../../services/contracts/draftSalaryScale';
-import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, MULTI_FATIGUE_DEFAULTS, MULTI_FATIGUE_RANGES, resolveMultiFatigueSettings, type PlayTypeEra } from '../../../types/simSettings';
+import { DEFAULT_SIM_SETTINGS, NORMALIZATION_LEVELS, DEFAULT_NORMALIZATION_LEVEL, MULTI_FATIGUE_DEFAULTS, MULTI_FATIGUE_RANGES, resolveMultiFatigueSettings, ENGINE_PROFILES, ENGINE_PROFILE_LABELS, DEFAULT_ENGINE_PROFILE, resolveEngineProfile, type PlayTypeEra, type EngineProfile } from '../../../types/simSettings';
 import { PLAY_TYPE_ERAS, PLAY_TYPE_ERA_LABELS, DEFAULT_PLAY_TYPE_ERA, resolvePlayTypeEra } from '../../../services/game/config/playTypeProfiles';
 
 // 체력 회복 설정은 "남는 부족분 비율(keep)"로 저장하지만 화면에는 "회복률(%) = (1 − keep) × 100"으로 보여준다.
@@ -211,6 +211,8 @@ const LeagueSettingsView: React.FC = () => {
     const [normalizationLevel, setNormalizationLevel] = useState(DEFAULT_NORMALIZATION_LEVEL);
     // [2026-11-08] 시대별 플레이타입 기본 비율(sim_settings.playTypeEra, 미지정 = 2020s)
     const [playTypeEra, setPlayTypeEra] = useState<PlayTypeEra>(DEFAULT_PLAY_TYPE_ERA);
+    // [2026-11-17] 방 단위 엔진 프로필(sim_settings.engineProfile, 미지정 = stable = 배포 엔진 보관본) — 전역 어드민만 변경
+    const [engineProfile, setEngineProfile] = useState<EngineProfile>(DEFAULT_ENGINE_PROFILE);
     // 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) — 회복률은 % 정수로 편집
     const [overnightRecoveryPct, setOvernightRecoveryPct] = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueOvernightKeep));
     const [restDayRecoveryPct,   setRestDayRecoveryPct]   = useState(keepToRecoveryPct(MULTI_FATIGUE_DEFAULTS.fatigueRestDayKeep));
@@ -379,6 +381,7 @@ const LeagueSettingsView: React.FC = () => {
         setGarbageTimeEnabled(room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled);
         setNormalizationLevel(normalizationOverrideToLevel(room?.sim_settings?.normalization));
         setPlayTypeEra(resolvePlayTypeEra(room?.sim_settings?.playTypeEra));
+        setEngineProfile(resolveEngineProfile(room?.sim_settings?.engineProfile));
         const fatigueSettings = resolveMultiFatigueSettings(room?.sim_settings);
         setOvernightRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueOvernightKeep));
         setRestDayRecoveryPct(keepToRecoveryPct(fatigueSettings.fatigueRestDayKeep));
@@ -544,6 +547,8 @@ const LeagueSettingsView: React.FC = () => {
                 suspensionFrequency,
                 garbageTimeEnabled,
                 playTypeEra,
+                // 전역 어드민이 아니면 방에 저장된 값을 그대로 둔다(위 스프레드)
+                ...(isGlobalAdmin ? { engineProfile } : {}),
                 normalization: {
                     ...(room?.sim_settings?.normalization ?? {}),
                     enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
@@ -964,6 +969,7 @@ const LeagueSettingsView: React.FC = () => {
         overtimeEnabled !== ((league as any)?.overtime_enabled ?? false) ||
         normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
         playTypeEra !== resolvePlayTypeEra(room?.sim_settings?.playTypeEra) ||
+        (!!isGlobalAdmin && engineProfile !== resolveEngineProfile(room?.sim_settings?.engineProfile)) ||
         overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
         restDayRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueRestDayKeep) ||
         b2bMultiplier !== resolveMultiFatigueSettings(room?.sim_settings).fatigueB2BMultiplier ||
@@ -1585,6 +1591,22 @@ const LeagueSettingsView: React.FC = () => {
                             ))}
                         </select>
                     </div>
+
+                    {/* [2026-11-17] 방 단위 엔진 프로필 — 전역 어드민만, 다음 경기부터 적용 */}
+                    {isGlobalAdmin && (
+                    <div className="flex items-center justify-between px-1">
+                        <span className="text-xs font-bold text-slate-300">엔진 프로필</span>
+                        <select
+                            value={engineProfile}
+                            onChange={e => setEngineProfile(resolveEngineProfile(e.target.value))}
+                            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                        >
+                            {ENGINE_PROFILES.map(p => (
+                                <option key={p} value={p}>{ENGINE_PROFILE_LABELS[p]}</option>
+                            ))}
+                        </select>
+                    </div>
+                    )}
 
                     <div>
                         <div className="flex items-center justify-between px-1">

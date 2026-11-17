@@ -2031,6 +2031,15 @@ export function getInboundExpireCommentary(teamName: string): string {
     ]);
 }
 
+/** [2026-11-16] 막판에 몰려 슛을 못 던지고 피리어드 종료 (client 미러 참조) — 샷클락이 꺼진 상황의 possessionHandler NO_SHOT 판정 */
+export function getNoShotExpireCommentary(playerName: string): string {
+    return pick([
+        `${playerName}, 슛 타이밍을 잡지 못한 채 버저가 울립니다.`,
+        `${playerName}, 공을 끌다가 슛을 던지지 못하고 시간이 끝납니다.`,
+        `${playerName}, 수비에 막혀 슛을 올리지 못합니다. 그대로 시간 종료.`,
+    ]);
+}
+
 /**
  * [2026-11-05] 경기 중 부상 문구 — 진단명은 숨기고 부위 + 등급별 중증도 암시만(진단은 경기 후 발표).
  * G1 스스로 걸어 나감 / G2 통증 호소하며 벤치 / G3 라커룸(하체 절뚝임, 상체 감싼 채) / G4 부축 / G5 부축 + 장내 숙연.

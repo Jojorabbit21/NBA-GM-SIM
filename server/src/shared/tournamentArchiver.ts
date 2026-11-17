@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { PlayoffSeries } from './tournamentBracket.ts';
 import { archiveLeagueSeason } from './leagueSeasonArchiver.ts';
+import { isTestSession } from './types/simSettings.ts';
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -101,6 +102,13 @@ export async function archiveTournament(
 
     const completedAt = new Date().toISOString();
 
+    // [2026-11-17] 테스트 세션(엔진 프로필 '테스트')은 통산 기록에 남기지 않는다(사용자 결정). 브라켓·경기 기록 아카이브 자체는 그대로 만든다
+    //   (리그 안 기록 조회용) — 통산 화면이 세지 않도록 league_type 만 'test' 로 찍고, 유저 통산 이력(league_user_history)은 쓰지 않는다.
+    //   통산 화면·어드민 전적은 league_type = 'tournament' 인 아카이브만 센다. league_user_history 가 없으니 시즌 종료형 도전 과제도 평가되지 않는다.
+    const { data: roomRow, error: roomErr } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).maybeSingle();
+    if (roomErr) return { error: roomErr.message };
+    const testSession = isTestSession((roomRow as any)?.sim_settings);
+
     const bracketData = league.bracket_data as { series: PlayoffSeries[] };
     const series      = bracketData.series ?? [];
 
@@ -168,7 +176,7 @@ export async function archiveTournament(
             runner_up_slug:    runnerUp?.team_slug  ?? null,
             runner_up_name:    runnerUp?.team_name  ?? null,
             bracket_snapshot:  league.bracket_data,
-            league_type:       league.type ?? 'tournament',
+            league_type:       testSession ? 'test' : (league.type ?? 'tournament'),
         })
         .select('id')
         .single();
@@ -314,7 +322,7 @@ export async function archiveTournament(
 
     // 11. main_league 시즌이면 유저 통산 이력(league_user_history)도 함께 기록.
     // 실패해도 위 아카이빙 자체는 이미 성공했으므로 리그 종료를 막지 않고 로그만 남긴다.
-    if (league.type === 'main_league' && league.group_id && league.tier) {
+    if (!testSession && league.type === 'main_league' && league.group_id && league.tier) {
         try {
             const { error: histErr } = await archiveLeagueSeason(supabase, {
                 leagueId, roomId,

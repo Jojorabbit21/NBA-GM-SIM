@@ -365,9 +365,14 @@ export function resolvePlayAction(
         excludeId?: string,
         // [2026-11-13] 슈터 선정 재설계 — receiver = 받는 플레이(팀 옵션 배율 없음, 볼 점유 성향 반대),
         //   spot = 스팟업 계열(받는 플레이 + 플레이 안 순위표 없음), abs = 실력 절대값 가중 창출 슈터(순위표 없음, 팀 옵션 배율 유지)
-        role: 'shooter' | 'passer' | 'receiver' | 'spot' | 'abs' = 'shooter',
+        // [2026-11-16] 역할 분담(사용자 결정) — 'passer'를 둘로 나눔: handler = 공을 쥔 패서(볼 핸들러·핸드오프 허브), screener = 스크리너.
+        //   볼 소유 성향 = 공을 쥐는 비중: 공을 쥐는 역할(shooter·abs·handler)에 그대로, 받는 역할·스크리너에 반대로 곱한다.
+        //   슛·패스 선호 = 쥐었을 때 슛이냐 패스냐: 슛하는 역할에 (1 + ps×K), 공을 쥔 패서에 (1 − ps×K), 스크리너 선정에는 쓰지 않는다.
+        role: 'shooter' | 'handler' | 'screener' | 'receiver' | 'spot' | 'abs' = 'shooter',
         eligibleFilter?: (p: LivePlayer) => boolean
     ) => {
+        const isPasser = role === 'handler' || role === 'screener';
+        const roleSplit = SIM_CONFIG.PLAY_SELECTION.ROLE_SPLIT;   // false = 이전 동작(패서·스크리너 구분 없음)
         let pool = players;
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
         // [2026-07-29] 아래 weight 계산은 Math.max(1, rawScore)로 하한선이 있어 criteria가 0을
@@ -380,7 +385,7 @@ export function resolvePlayAction(
         // "팀 최고 볼핸들러"가 팀에 postScorer 게비티 높은 빅맨이 있다는 이유만으로 2~3옵션
         // 배율로 밀리는 문제를 막는다. passer role은 원래도 usageMultiplier가 무조건 1.0이라
         // 랭킹 자체가 영향이 없었으므로(아래 B) 그대로 둠.
-        const localRank: Map<string, number> | null = role !== 'passer'
+        const localRank: Map<string, number> | null = !isPasser
             ? new Map([...pool].sort((a, b) => criteria(b) - criteria(a)).map((p, i) => [p.playerId, i + 1]))
             : null;
 
@@ -393,7 +398,7 @@ export function resolvePlayAction(
             // 배율인데, role 구분 없이 passer 선정에도 적용되고 있었음 — 득점 옵션 순위와 무관하게
             // 진짜 패스 능력으로 어시스트맨을 정하도록 passer일 땐 적용하지 않는다.
             const rank = localRank?.get(p.playerId) ?? 3;
-            const usageMultiplier = (role === 'spot' || role === 'abs') ? 1.0 : role !== 'passer' ? getContextualMultiplier(rank, playType) : 1.0;
+            const usageMultiplier = (role === 'spot' || role === 'abs') ? 1.0 : !isPasser ? getContextualMultiplier(rank, playType) : 1.0;
 
             // C. Final Weight = Skill * OptionMultiplier * Tendencies
             // Linear (pow=1.0): USAGE_WEIGHTS가 계층 구조를 담당, 능력치는 선형 반영
@@ -420,13 +425,14 @@ export function resolvePlayAction(
             if (aceCfg.ENABLED && (role === 'shooter' || role === 'abs') && topOption && topOption.playerId === p.playerId && topOption.gap >= aceCfg.MIN_GAP) {
                 ballDom = Math.max(ballDom, aceCfg.FLOOR);
             }
-            weight *= (role === 'shooter' || role === 'abs') ? ballDom : (2.0 - ballDom);   // [2026-11-13] 받는 플레이는 패서처럼 반대(공을 오래 쥐는 선수는 덜 받는다)
+            // [2026-11-16] 공을 쥔 패서(handler)도 볼 소유 성향을 그대로 곱한다 — 이전: 패서는 전부 반대(2 − 성향)
+            weight *= (role === 'shooter' || role === 'abs' || (roleSplit && role === 'handler')) ? ballDom : (2.0 - ballDom);   // [2026-11-13] 받는 플레이는 패서처럼 반대(공을 오래 쥐는 선수는 덜 받는다)
 
             // [SaveTendency] playStyle: role 기반 통합 배율 (슈터 vs 패서)
             // pass-first(-1)면 패서 픽 가중치↑·슈터 픽 가중치↓, shoot-first(+1)는 반대
             const ps = p.tendencies?.playStyle ?? 0;
             const psCfg = SIM_CONFIG.PLAY_SELECTION;
-            weight *= role !== 'passer' ? (1 + ps * psCfg.PLAYSTYLE_SHOOTER_K) : (1 - ps * psCfg.PLAYSTYLE_PASSER_K);
+            weight *= !isPasser ? (1 + ps * psCfg.PLAYSTYLE_SHOOTER_K) : (roleSplit && role === 'screener') ? 1 : (1 - ps * psCfg.PLAYSTYLE_PASSER_K);
 
             return { p, weight: Math.max(0.01, weight) };
         });
@@ -482,7 +488,7 @@ export function resolvePlayAction(
         return pickWeightedActor(
             p => criteria(p) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
             excludeId,
-            'passer'
+            'handler'
         );
     };
 
@@ -569,7 +575,7 @@ export function resolvePlayAction(
             // [2026-10-24] 커버리지 무관 "더블팀 유도 후 킥아웃" 폐지 — 더블팀은 블리츠 커버리지에서만 일어난다(사용자 결정).
             // 블리츠 트랩 판정·패스아웃은 possessionHandler(resolveBlitzTrap) → resolveBlitzPassOut.
 
-            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'passer', screenEligible(actor.playerId));
+            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId, 'screener', screenEligible(actor.playerId));
 
             // 4존 선택: 핸들러 풀업 or 스크린 후 드라이브.
             const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders, undefined, SS.PULLUP_THREE_FOLD);   // [2026-11-13] 풀업: 3점 성향 일부를 미드로
@@ -825,7 +831,7 @@ export function resolvePlayAction(
                 // 좁아 패스 능력이 사실상 무시됐음(패스 45/38/32 벤 월리스가 허브 상위 10위). 핸드오프는 스크린 파생 액션만이
                 // 아니라 패서 주도 액션이기도 해서 큰 볼핸들러(시몬스·매직) 허브 증가를 수용(사용자 결정).
                 p => (p.attr.passIq * 0.5 + p.attr.hands * 0.5) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
-                actor.playerId, 'passer',
+                actor.playerId, 'handler',
                 screenEligible(actor.playerId)
             );
 
@@ -940,8 +946,8 @@ export function resolvePlayAction(
             // 2. 스크리너: 오프볼 스크린 퀄리티 (피지컬 기반)
             // [2026-07-29] role 파라미터 누락 버그 수정 — 기본값('shooter')이 적용돼서 옵션랭크
             // 배율/볼도미넌스(반전 없음)/playStyle(슛선호 유리)가 전부 스크리너 역할에 안 맞게
-            // 적용되고 있었음. Handoff의 big, PnR_Handler의 screener와 동일하게 'passer'로 통일.
-            const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'passer');
+            // 적용되고 있었음. Handoff의 big, PnR_Handler의 screener와 동일하게 패서 계열로 통일. [2026-11-16] 스크리너는 'screener' 역할(볼 소유 성향 반대, 슛·패스 선호 미적용)
+            const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId, 'screener');
             // 3. 패서: 스크린 후 오픈된 슈터를 찾아 패스 (어시스트 담당)
             const passer = obsPasser;
 

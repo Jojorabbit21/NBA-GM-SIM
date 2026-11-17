@@ -95,7 +95,9 @@ export const MATCHUP_GAP_HIT_WEIGHT = 0.12;
  */
 export function shotDefenseRating(defender: LivePlayer, zone: 'Rim' | 'Paint' | 'Mid' | '3PT'): number {
     const base = zone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
-    return base + (defender.tendencies?.defensiveMotor ?? 0) * 10 + ((defender.attr?.defConsist ?? 50) - 70) * 0.3;
+    // [2026-11-16] 수비 의지 재설계 — 켜져 있으면 의지 가산(× 10) 없음: 의지는 '붙는 빈도'로 옮겨 갔다(SIM_CONFIG.DEFENSIVE_MOTOR)
+    const motorAdd = SIM_CONFIG.DEFENSIVE_MOTOR.ENABLED ? 0 : (defender.tendencies?.defensiveMotor ?? 0) * 10;
+    return base + motorAdd + ((defender.attr?.defConsist ?? 50) - 70) * 0.3;
 }
 
 export function calculateHitRate(
@@ -121,7 +123,12 @@ export function calculateHitRate(
     contestOverride?: number,
     // [2026-11-06] PnR 핸들러 본인 슛의 스크린 판정 결과 — 드롭 풀업 보너스는 클린·부분만, 헤지 감점은 부분만
     // (클린 = 헤지 무력화, 실패 = 트랩으로 넘어가 핸들러 슛 없음). undefined = 이전 동작 (server 미러)
-    handlerScreen?: 'clean' | 'partial' | 'fail'
+    handlerScreen?: 'clean' | 'partial' | 'fail',
+    // [2026-11-16] 예상 성공률 모드 — 선수가 슛 직전에 읽는 값(슛 판단용). 숨은 주사위(수비 집중력 저하·슛 IQ/공격 일관성 기복)를 굴리지 않는다 (server 미러 동일)
+    estimate: boolean = false,
+    // [2026-11-16] 수비 의지 재설계 — 이번 공격에서 맡은 수비수가 놓아줬는지(possessionHandler가 판정해 넘긴다).
+    //   true = 놓아줌(수비 등급 × LAPSE_CONTEST_MULT), false = 제대로 붙음(평균 견제 유지용 보정 배율), 미지정 = 평균(배율 1 — 엔진 밖 추정용)
+    defenderLapse?: boolean
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -178,9 +185,12 @@ export function calculateHitRate(
     // 피로도 → FG% 보정
     // 공격자: condition 0 → -7%, condition 30 → 0, condition 100 → +7%
     hitRate += (fatigueOff - 0.30) * 0.10;
-    // [SaveTendency] focusDrift: extra FG% loss when heavily fatigued (condition < 30%)
-    if (fatigueOff < 0.30) {
-        hitRate -= (actor.tendencies?.focusDrift ?? 0) * (0.30 - fatigueOff) * 0.05;
+    // [SaveTendency] focusDrift(집중력): 지칠수록 슛이 추가로 흔들린다 — 컨디션 75% 미만부터, 값 × (0.75 − 컨디션) × 10%p
+    // [2026-11-16] 조건 30% → 75% 미만, 세기 0.05 → 0.10(사용자 결정). 이전 조건(30% 미만)에 걸리는 슛은 전체의 0.3~0.6%뿐이라 효과가 사실상 0이었다.
+    //   지금: 걸리는 슛 15%(주전은 슛의 22~28%), 집중력 나쁜(≥0.7) 주전의 시즌 성공률 −0.25~0.33%p·혹사당하는 선수는 −1%p 이상, 리그 성공률 −0.10%p.
+    //   값 1.0 기준 감점: 컨디션 70% −0.5%p / 60% −1.5%p / 50% −2.5%p / 30% −4.5%p (server 미러 동일)
+    if (fatigueOff < 0.75) {
+        hitRate -= (actor.tendencies?.focusDrift ?? 0) * (0.75 - fatigueOff) * 0.10;
     }
     // 수비자: condition 0 → +1.5%, condition 30 → 0, condition 100 → -3.5%
     hitRate -= (fatigueDef - 0.30) * 0.05;
@@ -197,11 +207,19 @@ export function calculateHitRate(
     // [defConsist] 수비 일관성 반영
     // 1. Flat modifier: defConsist 70 기준 ±0.3/pt — shotDefenseRating() 안에 포함
     let defRating = shotDefenseRating(defender, preferredZone);
-    const defConsist = (defender.attr?.defConsist ?? 50);
-    // 2. Defensive lapse: defConsist 낮을수록 간헐적 집중력 저하
-    const lapseChance = Math.max(0, (70 - defConsist) * 0.003);
-    if (lapseChance > 0 && Math.random() < lapseChance) {
-        defRating *= 0.7;
+    const motorCfg = SIM_CONFIG.DEFENSIVE_MOTOR;
+    if (motorCfg.ENABLED) {
+        // [2026-11-16] 놓아주기는 수비 의지가 정한다(주사위는 possessionHandler에서 공격당 한 번). 제대로 붙은 장면은
+        //   (1 − BASE × MULT) ÷ (1 − BASE)배 → 평균 수비수의 평균 견제가 재설계 전과 같다. 수비 일관성의 무작위 집중력 저하는 없앰
+        if (defenderLapse === true) defRating *= motorCfg.LAPSE_CONTEST_MULT;
+        else if (defenderLapse === false) defRating *= (1 - motorCfg.LAPSE_BASE * motorCfg.LAPSE_CONTEST_MULT) / (1 - motorCfg.LAPSE_BASE);
+    } else {
+        const defConsist = (defender.attr?.defConsist ?? 50);
+        // 2. Defensive lapse: defConsist 낮을수록 간헐적 집중력 저하
+        const lapseChance = Math.max(0, (70 - defConsist) * 0.003);
+        if (!estimate && lapseChance > 0 && Math.random() < lapseChance) {
+            defRating *= 0.7;
+        }
     }
     
     // Apply Sliders
@@ -266,12 +284,17 @@ export function calculateHitRate(
     // [2026-07-31 Fix] shotIq: 대칭 노이즈 (평균 0, 진폭만 |shotIq-70|에 비례)
     // 기존엔 shotIq>70일 때 0~+range로만, <70일 때 -range~0으로만 뽑혀서
     // "노이즈"가 아니라 매 슛 확정 편향 보너스/페널티로 작동 → 상위권 TS% 과대 인플레 원인.
-    const shotIqRange = Math.abs(actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
-    const shotIqNoise = shotIqRange !== 0 ? (Math.random() * 2 - 1) * shotIqRange : 0;
-    // offConsist: 대칭 노이즈 (70 미만일 때만 양방향 기복)
-    const consistRange = Math.max(0, (S.CONSIST_BASELINE - actor.attr.offConsist)) * S.CONSIST_NOISE_COEFF;
-    const consistNoise = consistRange > 0 ? (Math.random() * 2 - 1) * consistRange : 0;
-    hitRate += shotIqNoise + consistNoise;
+    // [2026-11-17] 경기 단위 슛 감각(SIM_CONFIG.SHOT_FORM, 공격 일관성의 역할) — 경기 시작 때 뽑아 둔 값을 림 슛을 뺀 모든 슛에 더한다.
+    //   예상 성공률(estimate) 계산에도 같은 값이 들어간다(선수는 그날 자기 감을 안다). 꺼져 있으면 이전의 슛별 대칭 노이즈.
+    if (SIM_CONFIG.SHOT_FORM.ENABLED) {
+        if (preferredZone !== 'Rim') hitRate += actor.shotForm ?? 0;
+    } else {
+        const shotIqRange = Math.abs(actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
+        const shotIqNoise = (!estimate && shotIqRange !== 0) ? (Math.random() * 2 - 1) * shotIqRange : 0;
+        const consistRange = Math.max(0, (S.CONSIST_BASELINE - actor.attr.offConsist)) * S.CONSIST_NOISE_COEFF;
+        const consistNoise = (!estimate && consistRange > 0) ? (Math.random() * 2 - 1) * consistRange : 0;
+        hitRate += shotIqNoise + consistNoise;
+    }
 
     hitRate -= intensityMod;
 
@@ -396,14 +419,17 @@ export function calculateHitRate(
     }
 
     // 7. Clutch Modifier (Q4 접전 상황)
-    // intangibles(50%) + offConsist(30%) + shotIq(20%) → 70 기준 ±보정
+    // 클러치 능력(인탱저블) → 70 기준 ±보정
     if (clutchContext?.isClutch) {
         const cCfg = SIM_CONFIG.CLUTCH_ARCHETYPE;
         const a = actor.attr;
 
-        const clutchRating = (a.intangibles * 0.50 + a.offConsist * 0.30 + a.shotIq * 0.20) / 100;
+        // [2026-11-16] 클러치 능력 = 인탱저블만(사용자 결정). 이전: (intangibles×0.50 + offConsist×0.30 + shotIq×0.20) / 100 —
+        //   공격 일관성·슛 IQ는 서로 상관 0.75 이상인 같은 종류의 값이고 각자 다른 역할을 맡길 능력치라 뺐다(슛 IQ는 성공률에 직접 영향 금지 원칙).
+        //   possessionHandler.getLateShotClockPenalty의 클러치 능력도 같은 정의 (server 미러 동일)
+        const clutchRating = a.intangibles / 100;
         let clutchModifier = (clutchRating - 0.70) * 0.10;
-        // [SaveTendency] clutchGene: ±3% hit rate in clutch
+        // [SaveTendency] clutchGene(−0.3~+0.3, [2026-11-16] 폭 0.3배): 클러치 성공률 최대 ±0.9%p
         clutchModifier += (actor.tendencies?.clutchGene ?? 0) * 0.03;
 
         if (cCfg.ENABLED) {
@@ -416,13 +442,9 @@ export function calculateHitRate(
 
         hitRate += clutchContext.isSuperClutch ? clutchModifier * 1.5 : clutchModifier;
 
-        // A-2. Ice in Veins: 프레셔 페널티 면제
-        const isIce = cCfg.ENABLED &&
-                      a.intangibles >= cCfg.ICE_INTANGIBLES_THRESHOLD &&
-                      a.offConsist >= cCfg.ICE_OFFCONSIST_THRESHOLD;
-        if (!isIce) {
-            hitRate -= 0.015; // 프레셔 페널티 (Ice in Veins만 면제)
-        }
+        // [2026-11-16] 일괄 프레셔 페널티(−1.5%p) 제거(사용자 결정) — 클러치 시간에는 주전 수비·플레이 선택 변화·막판 급한 슛만으로 이미
+        //   성공률이 0.8~1.8%p 떨어져 이중 부과였다. 이전: 전원 hitRate −= 0.015('Ice in Veins' 아키타입만 면제 — 아키타입은 꺼져 있어 사실상 전원).
+        //   면제 대상이 없어졌으므로 Ice in Veins 판정도 같이 삭제(CLUTCH_ARCHETYPE.ICE_* 상수는 미사용) (server 미러 동일)
 
         // A-3. High Roller: 클러치 + 인사이드 = 추가 보너스
         if (cCfg.ENABLED &&

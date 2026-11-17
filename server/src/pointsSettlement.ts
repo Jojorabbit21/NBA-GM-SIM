@@ -30,6 +30,7 @@ import {
     CUMULATIVE_STATS, RATIO_LADDERS, crossedCumulativeRungs, ratioRungs, playerStatKey, type RatioStat,
 } from './shared/points/playerStatMilestones.ts';
 import { unlockAchievement } from './pointsAchievements.ts';
+import { isTestSession } from './shared/types/simSettings.ts';
 
 /** tick 한 번에 방당 최대 처리 경기 수 — 하루 15경기 × 며칠치 밀려도 몇 tick 안에 따라잡는다. */
 const BATCH_LIMIT = 200;
@@ -124,7 +125,7 @@ function parseBracket(raw: unknown): Bracket | null {
 async function settleLeague(leagueId: string, bracket: Bracket | null, regularSeasonEndedAt: string | null): Promise<void> {
     const { data: room } = await supabase
         .from('rooms')
-        .select('id, season_number, points_settled_through, points_ratio_settled_at')
+        .select('id, season_number, points_settled_through, points_ratio_settled_at, sim_settings')
         .eq('league_id', leagueId)
         .maybeSingle();
     if (!room) return;
@@ -149,7 +150,9 @@ async function settleLeague(leagueId: string, bracket: Bracket | null, regularSe
     const seedInfo = bracket ? await loadSeeds(roomId, season) : { seeds: new Map<string, number>(), tenSeeds: new Set<string>() };
     const ctx: LeagueCtx = {
         leagueId, roomId, season,
-        owners: await loadOwners(roomId),
+        // [2026-11-17] 테스트 세션(엔진 프로필 '테스트')은 지급 대상이 없는 방으로 처리한다 → 아래 루프가 지급·도전 과제 없이
+        //   워터마크만 전진시킨다(AI만 있는 방과 같은 경로). 나중에 프로필을 되돌려도 테스트 중 치른 경기는 소급 지급되지 않는다.
+        owners: isTestSession((room as any).sim_settings) ? new Map() : await loadOwners(roomId),
         bracket,
         replayMs: await getRoomReplayMs(roomId),
         now: Date.now(),

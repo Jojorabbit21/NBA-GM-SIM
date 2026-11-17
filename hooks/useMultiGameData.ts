@@ -21,6 +21,7 @@ import { jsonEqual } from '../utils/jsonEqual';
 import { loadRoomMember } from '../services/multi/roomQueries';
 import { loadSchedule, rowToGame } from '../services/multi/gameQueries';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
+import { registerScoutReportProfile } from '../utils/scoutReport';
 import { buildSeasonConfig } from '../utils/seasonConfig';
 import type { SeasonConfig } from '../utils/seasonConfig';
 
@@ -244,6 +245,8 @@ export function useMultiGameData(
                 setOffseasonPhase((room.offseason_phase as OffseasonPhase) ?? null);
                 setSeasonNumber(room.season_number);
                 setCurrentSeason(room.season);
+                // [2026-11-17] 스카우팅 리포트 성향 문장이 이 방의 엔진 프로필을 따르게 등록(utils/scoutReport.ts)
+                registerScoutReportProfile(room.tendency_seed, (room.sim_settings as SimSettings | null)?.engineProfile);
                 setTendencySeed(room.tendency_seed ?? null);
 
                 if (room.sim_settings)          setSimSettings(room.sim_settings as SimSettings);

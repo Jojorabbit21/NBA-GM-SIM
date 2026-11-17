@@ -24,6 +24,18 @@ cleanup() { git -C "$ROOT" worktree remove --force "$DIR" >/dev/null 2>&1 || rm 
 trap cleanup EXIT
 
 git -C "$ROOT" worktree add -q --detach "$DIR" HEAD
+
+# Frozen engine snapshots (server/src/engineSnapshots/*) must still match the commits they were taken from —
+# rooms pinned to a snapshot (engine profile) rely on that. Refuse to deploy if any file drifted.
+for manifest in "$DIR"/server/src/engineSnapshots/*/MANIFEST.json; do
+    [ -f "$manifest" ] || continue
+    if [ ! -f "$DIR/scripts/engineSnapshot.mjs" ]; then
+        echo "error: engine snapshots exist but scripts/engineSnapshot.mjs is not committed (scripts/ is gitignored: git add -f)." >&2
+        exit 1
+    fi
+    (cd "$DIR" && node scripts/engineSnapshot.mjs verify "$(basename "$(dirname "$manifest")")")
+done
+
 echo "Deploying $APP from clean HEAD $SHA ($(git -C "$ROOT" log -1 --format=%s HEAD))"
 (cd "$DIR/server" && flyctl deploy -a "$APP" --remote-only --image-label "git-$SHA" "$@")
 echo "Deployed $APP at git $SHA"

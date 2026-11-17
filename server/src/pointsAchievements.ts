@@ -113,12 +113,18 @@ async function sweepFrontOffice(): Promise<void> {
         .in('achievement_id', ['dealmaker', 'open_market', 'first_pick']);
     const has = new Set((done ?? []).map(d => `${d.achievement_id}:${d.user_id}`));
 
+    // [2026-11-17] 테스트 세션(엔진 프로필 '테스트') 방에서 일어난 트레이드·영입·지명은 세지 않는다. 방 목록을 못 읽으면 이번 회차는 건너뛴다(다음 스윕에서 재시도).
+    const { data: testRooms, error: testErr } = await supabase.from('rooms').select('id').eq('sim_settings->>engineProfile', 'next');
+    if (testErr) { console.error('[points:ach] 테스트 세션 방 조회 실패:', testErr.message); return; }
+    const testRoomIds = new Set((testRooms ?? []).map(r => r.id as string));
+    const inTestRoom = (row: { room_id?: unknown }) => testRoomIds.has(row.room_id as string);
+
     const [{ data: trades }, { data: signs }, { data: picks }] = await Promise.all([
-        supabase.from('league_trade_offers').select('id, created_by, resolved_by, resolved_as_admin, resolved_at')
+        supabase.from('league_trade_offers').select('id, room_id, created_by, resolved_by, resolved_as_admin, resolved_at')
             .eq('status', 'accepted').gte('resolved_at', ACHIEVEMENT_SINCE),
-        supabase.from('league_transactions').select('id, acted_by, resolved_as_admin, created_at')
+        supabase.from('league_transactions').select('id, room_id, acted_by, resolved_as_admin, created_at')
             .eq('type', 'fa_sign').gte('created_at', ACHIEVEMENT_SINCE),
-        supabase.from('draft_picks').select('id, user_id, is_ai, picked_at')
+        supabase.from('draft_picks').select('id, room_id, user_id, is_ai, picked_at')
             .gte('picked_at', ACHIEVEMENT_SINCE),
     ]);
 
@@ -134,17 +140,17 @@ async function sweepFrontOffice(): Promise<void> {
     };
 
     for (const t of trades ?? []) {
-        if (t.resolved_as_admin) continue;
+        if (t.resolved_as_admin || inTestRoom(t)) continue;
         for (const uid of [t.created_by, t.resolved_by] as (string | null)[]) {
             if (uid) await tryUnlock(uid, 'dealmaker', { offer_id: t.id });
         }
     }
     for (const s of signs ?? []) {
-        if (s.resolved_as_admin || !s.acted_by) continue;
+        if (s.resolved_as_admin || !s.acted_by || inTestRoom(s)) continue;
         await tryUnlock(s.acted_by as string, 'open_market', { transaction_id: s.id });
     }
     for (const p of picks ?? []) {
-        if (p.is_ai || !p.user_id) continue;
+        if (p.is_ai || !p.user_id || inTestRoom(p)) continue;
         await tryUnlock(p.user_id as string, 'first_pick', { pick_id: p.id });
     }
 }

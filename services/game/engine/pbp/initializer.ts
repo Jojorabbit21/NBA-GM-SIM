@@ -11,6 +11,19 @@ import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
 import { LeagueContext, normalizeAttrs } from './leagueNormalization';
 import { assignCourtSlots } from './slotAssignment';
 import { planSuccession } from './rotationSuccession';
+import { SIM_CONFIG } from '../../config/constants';
+
+/**
+ * [2026-11-17] 경기 단위 슛 감각 추첨 — 공격 일관성의 역할(SIM_CONFIG.SHOT_FORM 참조).
+ * 경기 시작 때 선수마다 한 번: BIG_NIGHT_CHANCE 확률로 '터지는 날'(+크기), 아니면 나머지 날(−크기 × 빈도 ÷ (1 − 빈도)) → 기대값 0.
+ * 크기 = min(SIZE_MAX, (100 − 공격 일관성) × SIZE_PER_POINT). 지난 경기·누적 기록은 보지 않는다.
+ */
+function drawShotForm(offConsist: number): number {
+    const c = SIM_CONFIG.SHOT_FORM;
+    if (!c.ENABLED) return 0;
+    const size = Math.min(c.SIZE_MAX, Math.max(0, 100 - offConsist) * c.SIZE_PER_POINT);
+    return Math.random() < c.BIG_NIGHT_CHANCE ? size : -size * c.BIG_NIGHT_CHANCE / (1 - c.BIG_NIGHT_CHANCE);
+}
 
 /**
  * Player.tendencies.zones(선수 DNA) → 4존 선호도(ra/itp/mid/three) 정규화.
@@ -168,6 +181,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             lastSubInTime: 0,
             conditionAtSubIn: currentCondition,
             attr,
+            shotForm: drawShotForm(attr.offConsist),   // [2026-11-17] 이 경기가 '터지는 날'인지 한 번 판정
             archetypes: calculatePlayerArchetypes(attr, currentCondition, archetypesEnabled),
             tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
             zonePref: buildZonePref(p),

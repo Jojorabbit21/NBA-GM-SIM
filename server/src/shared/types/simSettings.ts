@@ -45,10 +45,30 @@ export interface SimSettings {
     // [2026-11-08] 시대별 플레이타입 기본 비율 — 세션(리그) 규칙, rooms.sim_settings에 저장. 미지정 = 엔진 폴백 '2020s'.
     // 값 표는 game/config/playTypeProfiles.ts (client 미러 types/simSettings.ts 참조)
     playTypeEra?: PlayTypeEra;
+
+    // [2026-11-17] 방 단위 엔진 프로필 — 이 방의 경기를 어느 엔진으로 돌릴지(세션 설정 엔진 탭, 전역 어드민만 변경).
+    // 미지정 = 'stable'(배포 엔진 보관본, server/src/engineSnapshots) → 기존 방은 값이 없어도 지금 엔진 그대로.
+    // 'next' = 개발 중인 엔진(server/src/shared/engine). 서버가 경기 직전에 읽는다(server/src/engineProfile.ts).
+    engineProfile?: EngineProfile;
 }
 
 /** 시대별 플레이타입 프리셋 키 — '1990s' = 클래식(1990년대 이전 포함). */
 export type PlayTypeEra = '2020s' | '2010s' | '2000s' | '1990s';
+
+/** 엔진 프로필 키 — 'stable' = 배포 엔진 보관본(기본), 'next' = 개발 중인 엔진(테스트 세션용). */
+export type EngineProfile = 'stable' | 'next';
+export const ENGINE_PROFILES: EngineProfile[] = ['stable', 'next'];
+export const DEFAULT_ENGINE_PROFILE: EngineProfile = 'stable';
+export const ENGINE_PROFILE_LABELS: Record<EngineProfile, string> = { stable: '기본', next: '테스트' };
+/** sim_settings.engineProfile 해석 — 값이 없거나 모르는 값이면 기본(stable). */
+export function resolveEngineProfile(v: unknown): EngineProfile {
+    return v === 'next' ? 'next' : DEFAULT_ENGINE_PROFILE;
+}
+/** 테스트 세션 여부 — 엔진 프로필을 '테스트'(next)로 명시한 방. 포인트(BP)·도전 과제·통산 기록을 전부 남기지 않는다(사용자 결정 2026-11-17).
+ *  해석값이 아니라 저장된 값을 본다 — 나중에 기본 프로필이 next 로 바뀌어도, 값을 명시하지 않은 일반 방은 테스트 세션이 아니다. */
+export function isTestSession(simSettings: { engineProfile?: unknown } | null | undefined): boolean {
+    return simSettings?.engineProfile === 'next';
+}
 
 // ── Multiplayer fatigue defaults/ranges (mirror of types/simSettings.ts) ──
 export const MULTI_FATIGUE_DEFAULTS = {

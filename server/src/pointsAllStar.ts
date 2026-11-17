@@ -20,6 +20,7 @@ import { grantPoints } from './points.ts';
 import { ALLSTAR_BONUS, allStarKey, type AllStarEventKind } from './shared/points/allStarRewards.ts';
 import { FINALS_MVP_BONUS, SEASON_AWARD_TYPES, seasonAwardBonus, seasonAwardKey } from './shared/points/seasonAwardRewards.ts';
 import { unlockAchievement } from './pointsAchievements.ts';
+import { isTestSession } from './shared/types/simSettings.ts';
 
 // [2026-11-08] 시즌 어워드도 같은 표식(points_settled_at)·같은 루프로 처리 — mvp_award/dpoy_award 는 같은 배치에서 생기므로
 // 둘 중 어느 쪽이 먼저 와도 그 시즌 league_player_awards 전체를 읽어 지급한다(키로 중복 차단). finals_mvp 는 파이널 경기 공개 이후.
@@ -77,7 +78,11 @@ async function settleLeague(leagueId: string): Promise<void> {
 
     const roomId = (events[0] as EventRow).room_id;
     const season = (events[0] as EventRow).season_number ?? 1;
-    const ctx: Ctx = { leagueId, roomId, season, owners: await loadOwners(roomId), roster: await loadRoster(roomId, season) };
+    // [2026-11-17] 테스트 세션(엔진 프로필 '테스트')은 지급 대상이 없는 방으로 처리 — 이벤트는 지급·도전 과제 없이 처리 완료로만 표시된다
+    const { data: roomRow, error: roomErr } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).maybeSingle();
+    if (roomErr) { console.error(`[points:allstar] room=${roomId} 조회 실패:`, roomErr.message); return; }
+    const owners = isTestSession((roomRow as any)?.sim_settings) ? new Map<string, OwnerInfo>() : await loadOwners(roomId);
+    const ctx: Ctx = { leagueId, roomId, season, owners, roster: await loadRoster(roomId, season) };
 
     for (const ev of events as EventRow[]) {
         const done = await settleEvent(ctx, ev);

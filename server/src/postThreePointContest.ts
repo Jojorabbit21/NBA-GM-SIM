@@ -31,7 +31,7 @@
  * 호출부: scheduler.ts의 runThreePointContestResult() — allStarThreePointContestDate에만 호출.
  */
 import { supabase } from './supabaseAdmin';
-import { calculateHitRate } from './shared/engine/pbp/flowEngine.ts';
+import { engineFor, type EngineApi } from './engineProfile.ts';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
 
 // 실제 3점 챌린지 랙 배치(왼쪽 코너 → 왼쪽 45도 윙 → 탑 → 오른쪽 45도 윙 → 오른쪽 코너).
@@ -70,7 +70,10 @@ function buildContestShooter(p: any): any {
     };
 }
 
-function contestShotRate(shooter: any, threeSubZone: string): number {
+// [2026-11-17] calculateHitRate 는 방의 엔진 프로필에서 받는다(engineProfile.ts) — 호출 체인으로 넘겨 방끼리 섞이지 않게 한다
+type HitRateFn = EngineApi['calculateHitRate'];
+
+function contestShotRate(shooter: any, threeSubZone: string, calculateHitRate: HitRateFn): number {
     const defender = buildNoDefender(shooter);
     const result = calculateHitRate(
         shooter, defender, NEUTRAL_DEF_TEAM,
@@ -83,12 +86,12 @@ function contestShotRate(shooter: any, threeSubZone: string): number {
 
 // [2026-09-09] 샷차트 그래픽(선수 선택 시 랙별 5구 각각의 성공/실패를 농구공 아이콘으로
 // 표시) 요청으로 랙 합계뿐 아니라 5구 각각의 성공 여부(shots)도 함께 기록한다.
-function simulateRack(shooter: any, zone: string): { score: number; shots: boolean[] } {
+function simulateRack(shooter: any, zone: string, hitRate: HitRateFn): { score: number; shots: boolean[] } {
     const shots: boolean[] = [];
     let score = 0;
     for (let i = 0; i < BALLS_PER_RACK; i++) {
         const isMoneyball = i === BALLS_PER_RACK - 1;
-        const made = Math.random() < contestShotRate(shooter, zone);
+        const made = Math.random() < contestShotRate(shooter, zone, hitRate);
         shots.push(made);
         if (made) score += isMoneyball ? 2 : 1;
     }
@@ -100,8 +103,8 @@ interface RoundEntry {
     rackScores: number[]; rackShots: boolean[][]; total: number;
 }
 
-function simulateRound(shooter: any, meta: { playerId: string; playerName: string; teamSlug: string; position: string }): RoundEntry {
-    const racks = RACK_ZONES.map(zone => simulateRack(shooter, zone));
+function simulateRound(shooter: any, meta: { playerId: string; playerName: string; teamSlug: string; position: string }, hitRate: HitRateFn): RoundEntry {
+    const racks = RACK_ZONES.map(zone => simulateRack(shooter, zone, hitRate));
     return {
         ...meta,
         rackScores: racks.map(r => r.score),
@@ -124,7 +127,7 @@ export async function computeAndRunThreePointContest(
     roomId: string, leagueId: string, virtualDate: string,
 ): Promise<void> {
     const { data: room } = await supabase
-        .from('rooms').select('season, season_number').eq('id', roomId).maybeSingle();
+        .from('rooms').select('season, season_number, sim_settings').eq('id', roomId).maybeSingle();
     if (!room) {
         console.error(`[3ptContest] room=${roomId} 조회 실패`);
         return;
@@ -178,9 +181,10 @@ export async function computeAndRunThreePointContest(
         return;
     }
 
-    const round1 = rankEntries(shooters.map(({ meta, shooter }) => simulateRound(shooter, meta)));
+    const hitRate = engineFor((room as any).sim_settings ?? null).calculateHitRate;
+    const round1 = rankEntries(shooters.map(({ meta, shooter }) => simulateRound(shooter, meta, hitRate)));
     const finalists = shooters.filter(s => round1.slice(0, FINALIST_COUNT).some(e => e.playerId === s.meta.playerId));
-    const round2 = rankEntries(finalists.map(({ meta, shooter }) => simulateRound(shooter, meta)));
+    const round2 = rankEntries(finalists.map(({ meta, shooter }) => simulateRound(shooter, meta, hitRate)));
     const winnerId = round2[0]?.playerId;
 
     console.log(`[3ptContest] room=${roomId} 우승: ${round2[0]?.playerName} (${round2[0]?.total}점)`);

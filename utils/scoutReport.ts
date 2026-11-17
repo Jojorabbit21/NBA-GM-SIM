@@ -2,6 +2,16 @@
 import { Player } from '../types';
 import { generateHiddenTendencies, generateSaveTendencies, stringToHash } from './hiddenTendencies';
 import { calculateScreenerPhysique } from '../services/game/engine/pbp/archetypeSystem';
+import { resolveEngineProfile, type EngineProfile } from '../types/simSettings';
+import { pushStableV253TendencySentences } from './scoutReportStableV253';
+
+// [2026-11-17] 방 단위 엔진 프로필 — 성향 문장은 그 방이 쓰는 엔진을 따른다. 방을 불러오는 곳(useMultiGameData·MultiDraftView)이
+//   방 시드와 프로필을 등록하고, generateScoutReport 는 시드로 찾아 쓴다(시드는 방마다 고유). 등록이 없는 시드(싱글 플레이 등)는
+//   지금 엔진의 문장. 'stable' 방은 배포 당시 문장(scoutReportStableV253.ts).
+const profileBySeed = new Map<string, EngineProfile>();
+export function registerScoutReportProfile(tendencySeed: string | null | undefined, engineProfile: unknown): void {
+    if (tendencySeed) profileBySeed.set(tendencySeed, resolveEngineProfile(engineProfile));
+}
 
 /**
  * [2026-11-10] PF/C 스크린 문구 — 엔진 resolveScreen의 두 입력을 따로 본다:
@@ -139,27 +149,28 @@ export function generateScoutReport(player: Player, tendencySeed?: string): Scou
     const push = (text: string, sentiment: ScoutReportSentiment) => sentences.push({ text, sentiment });
 
     // ── Save Tendencies (시드 필요) ──
-    if (tendencySeed) {
+    if (tendencySeed && profileBySeed.get(tendencySeed) === 'stable') {
+        pushStableV253TendencySentences(generateSaveTendencies(tendencySeed, player.id), push);
+    } else if (tendencySeed) {
         const st = generateSaveTendencies(tendencySeed, player.id);
 
         // 1. 성격 (temperament + ego) — 캐릭터 묘사, 우열 판단 불가 → 중립
+        // [2026-11-15] 자존심(ego)은 계약 협상용 성향이라 경기 중 행동(공 소유·팀 우선)으로 쓰지 않는다 — 자존심이 강할 때만
+        //   "자존심이 강함"으로 표기하고, 겸손한 쪽은 문구 없음(기질 문구만 남는다).
         const hot = st.temperament >= 0.4;
         const cold = st.temperament <= -0.4;
         const proud = st.ego >= 0.4;
-        const humble = st.ego <= -0.4;
 
-        if (hot && proud) push('다혈질이고 공 소유욕이 강함', 'neutral');
-        else if (hot && humble) push('다혈질이나 팀을 우선으로 생각함', 'neutral');
-        else if (cold && proud) push('침착하지만 공에 대한 소유욕이 강함', 'neutral');
-        else if (cold && humble) push('쉽게 시비가 붙지 않으며 팀을 먼저 생각함', 'neutral');
+        if (hot && proud) push('다혈질이고 자존심이 강함', 'neutral');
+        else if (cold && proud) push('침착하지만 자존심이 강함', 'neutral');
         else if (cold) push('침착한 플레이로 파울을 하지 않으려 노력함', 'neutral');
         else if (hot) push('다혈질 기질이 있어 감정적일 때가 있으며 시비에 쉽게 휘말림', 'neutral');
-        else if (proud) push('경기 내에서 자신이 최대한 해결하려고 노력함', 'neutral');
-        else if (humble) push('경기 내에서 최대한 팀원들의 기회를 살려주려고 노력함', 'neutral');
+        else if (proud) push('자존심이 강함', 'neutral');
 
-        // 2. 멘탈 (clutchGene + composure + confidenceSensitivity) — 경기력 직결 → 장/단점
-        const clutchHigh = st.clutchGene >= 0.4;
-        const clutchLow = st.clutchGene <= -0.4;
+        // 2. 멘탈 (clutchGene + composure) — 경기력 직결 → 장/단점
+        // [2026-11-16] 클러치 성향 폭이 0.3배(−0.3~+0.3)가 돼 기준도 0.4 → 0.12 — 같은 선수에게 같은 문장이 유지된다
+        const clutchHigh = st.clutchGene >= 0.12;
+        const clutchLow = st.clutchGene <= -0.12;
         const compHigh = st.composure >= 0.4;
         const compLow = st.composure <= -0.4;
 
@@ -167,43 +178,40 @@ export function generateScoutReport(player: Player, tendencySeed?: string): Scou
         else if (clutchHigh) push('클러치 상황에서 평소보다 더 좋은 퍼포먼스를 보임', 'positive');
         else if (clutchLow && compLow) push('승부처에서 위축되는 경향이 있으며 실수가 잦음', 'negative');
         else if (clutchLow) push('경기 막판 압박 속에서 평소 실력을 발휘하지 못함', 'negative');
-        else if (compLow) push('압박감을 느끼면 실수가 잦아지는 경향이 있음', 'negative');
-        else if (compHigh) push('압박 속에서도 침착하게 플레이하는 경향이 있음', 'positive');
+        // [2026-11-16] 침착함 문장에서 "압박" 표현 제거(사용자 결정) — 엔진은 압박 여부와 무관하게 본인 실수 턴오버 확률을 항상 값 × 1%p 움직인다.
+        //   이전 문장: '압박감을 느끼면 실수가 잦아지는 경향이 있음' / '압박 속에서도 침착하게 플레이하는 경향이 있음'
+        else if (compLow) push('실수가 잦은 편', 'negative');
+        else if (compHigh) push('실수가 적은 편', 'positive');
 
-        if (st.confidenceSensitivity >= 1.4) push('컨디션에 따라 경기력 변동 폭이 큰 편', 'negative');
-        else if (st.confidenceSensitivity <= 0.6) push('컨디션이나 자신감에 크게 흔들리지 않음', 'positive');
+        // [2026-11-16] 자신감(confidenceSensitivity)·꾸준함(consistency) 문장 삭제(사용자 결정) — 두 성향 모두 경기 엔진에서 하는 일이 없다
+        //   (자신감: 08-01 핫/콜드 성공률 반영 제거와 함께 사용처 0, 꾸준함: 싱글 성장 속도에만 쓰임).
+        //   삭제한 문장: '컨디션에 따라 경기력 변동 폭이 큰 편'(≥1.4)·'컨디션이나 자신감에 크게 흔들리지 않음'(≤0.6) /
+        //   '경기력의 기복이 적고 꾸준한 퍼포먼스를 보임'(≥0.8)·'경기력 편차가 심한 경향이 있음'(≤0.3) /
+        //   꾸준함과 묶여 있던 '피로한 상황에서도 집중력을 유지함'(꾸준함 ≥0.8 && focusDrift ≤0.3).
 
-        // 3. 경기력 (consistency + focusDrift + motorIntensity)
-        const consHigh = st.consistency >= 0.8;
-        const consLow = st.consistency <= 0.3;
-        const focusLow = st.focusDrift <= 0.3;
-        const focusHigh = st.focusDrift >= 0.7;
-
-        if (consHigh && focusLow) push('피로한 상황에서도 집중력을 유지함', 'positive');
-        else if (consHigh) push('경기력의 기복이 적고 꾸준한 퍼포먼스를 보임', 'positive');
-        else if (consLow) push('경기력 편차가 심한 경향이 있음', 'negative');
-
-        if (!consHigh && !consLow && focusHigh) push('경기 후반 피로가 쌓이면 집중력이 흐려짐', 'negative');
+        // 3. 경기력 (focusDrift + motorIntensity)
+        //   집중력 문장은 이제 꾸준함 조건 없이 focusDrift만 본다(이전: 꾸준함이 보통일 때만 표시)
+        if (st.focusDrift >= 0.7) push('경기 후반 피로가 쌓이면 집중력이 흐려짐', 'negative');
 
         if (st.motorIntensity >= 1.3) push('리바운드에 적극적임', 'positive');
         else if (st.motorIntensity <= 0.7) push('리바운드 상황에서 소극적인 모습을 보임', 'negative');
 
-        // 4. 플레이스타일 (playStyle + shotDiscipline + ballDominance + defensiveMotor + foulProneness)
+        // 4. 플레이스타일 (playStyle + ballDominance + defensiveMotor)
+        // [2026-11-16] 샷 디서플린(shotDiscipline) 문장 삭제(사용자 결정) — 엔진의 성공률 보정을 제거해 하는 일이 없어졌다.
+        //   삭제한 문장: '무리한 슛을 잘 던지지 않으려 노력함'(≥0.5)·'다소 무리하더라도 많은 슛을 던지는 경향이 있음'(≤−0.5)
         // playStyle/ballDominance는 취향 문제라 중립, 나머지는 장/단점으로 분류.
         if (st.playStyle >= 0.5) push('패스보다는 직접 슛하는 것을 선호함', 'neutral');
         else if (st.playStyle <= -0.5) push('슛보다는 동료에게 패스하는 것을 선호함', 'neutral');
 
-        if (st.shotDiscipline >= 0.5) push('무리한 슛을 잘 던지지 않으려 노력함', 'positive');
-        else if (st.shotDiscipline <= -0.5) push('다소 무리하더라도 많은 슛을 던지는 경향이 있음', 'negative');
-
         if (st.ballDominance >= 1.3) push('볼을 자주 잡으려는 성향이 강함', 'neutral');
         else if (st.ballDominance <= 0.7) push('볼 터치를 적극적으로 요구하지 않음', 'neutral');
 
+        // [2026-11-16] 수비 의지 = 맡은 공격수에게 제대로 붙는 빈도(엔진 SIM_CONFIG.DEFENSIVE_MOTOR). 문장은 그대로.
         if (st.defensiveMotor >= 0.5) push('적극적으로 수비에 가담함', 'positive');
         else if (st.defensiveMotor <= -0.5) push('수비에 많은 에너지를 쏟아붓지 않음', 'negative');
 
-        if (st.foulProneness >= 0.5) push('파울하는 것에 대해 개의치 않는 경향이 있음', 'negative');
-        else if (st.foulProneness <= -0.5) push('최대한 파울을 적게 하려고 노력함', 'positive');
+        // [2026-11-16] 파울 성향(foulProneness) 문장 삭제(사용자 결정) — 엔진에서 성향을 폐지했다(파울의 깨끗함은 수비 일관성 능력치가 담당).
+        //   삭제한 문장: '파울하는 것에 대해 개의치 않는 경향이 있음'(≥0.5)·'최대한 파울을 적게 하려고 노력함'(≤−0.5)
     }
 
     // ── 스크린 (PF/C만) — 능력치 기반이라 시드 없이도 가능 ──

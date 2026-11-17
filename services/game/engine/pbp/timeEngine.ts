@@ -15,7 +15,9 @@ import { SIM_CONFIG } from '../../config/constants';
 export function calculatePossessionTime(
     state: GameState,
     sliders: TacticalSliders,
-    playType?: PlayType
+    playType?: PlayType,
+    // [2026-11-16] 슛을 포기하고 같은 공격 안에서 다시 시작하는 공격(possessionHandler SHOT_DECLINE) — 공격 리바운드 뒤와 같은 리셋 공격 시간을 쓴다 (server 미러 동일)
+    reAttack: boolean = false
 ): number {
     const { gameClock, shotClock } = state;
     const C = SIM_CONFIG.CLOCK_MGMT;
@@ -42,17 +44,24 @@ export function calculatePossessionTime(
         timeTaken -= 1;
     }
 
+    // [2026-11-16] 이어서 하는 공격(사용자 결정) — 보너스 전 비슈팅 파울로 끊긴 뒤 프런트코트 인바운드로 재개한 공격은 새 공격이 아니라 하던 공격의 연속:
+    //   원래 계획한 시간의 나머지(state.resumePlanLeft)만 쓴다. 페이스·플레이타입 가감, 8초 하한, 무작위 변동은 다시 적용하지 않는다(원래 계획에 이미 반영).
+    //   이전: 새 공격처럼 약 14초를 다시 계산 → 샷클락 14~17초에서 절반 넘게 막판에 몰렸다(바이얼레이션의 77%, 페이스 민감도의 전부).
+    //   마지막 2분 타임아웃 전진(advanced)은 새 세트 플레이라 제외. 아래 상황 규칙(서두르기·마지막 슛 등)은 그대로 적용 (server 미러 참조)
+    const resumed = C.RESUME_CONTINUE && !reAttack && state.resumePlanLeft !== undefined && state.inbound?.spot === 'frontcourt' && !state.inbound?.advanced;
+    if (resumed) timeTaken = state.resumePlanLeft!;
+
     // ⑥ 공격 리바운드 후 리셋 공격 — 수비가 아직 정돈되기 전이라 짧게(NBA: 공격 리바운드 후 다음 슛까지 평균 3.4초, 풋백 포함).
     //    타임아웃 등 세트 인바운드로 재개되면(state.inbound) 일반 하프코트 공격.
-    const isOrebReset = state.lastEntryWasOffReb === true && !state.inbound;
+    const isOrebReset = (state.lastEntryWasOffReb === true && !state.inbound) || reAttack;
     if (isOrebReset) timeTaken *= C.OREB_RESET_SCALE;
     // 마지막 2분 타임아웃 후 프런트코트 전진 — 공을 넘기는 시간 생략(SIM_CONFIG.TIMEOUT_ADVANCE)
-    if (state.inbound?.advanced) timeTaken -= SIM_CONFIG.TIMEOUT_ADVANCE.TIME_SAVED;
+    if (state.inbound?.advanced && !reAttack) timeTaken -= SIM_CONFIG.TIMEOUT_ADVANCE.TIME_SAVED;
 
-    const floor = playType === 'Transition' ? 4 : isOrebReset ? C.OREB_RESET_FLOOR : 8;
+    const floor = resumed ? 1 : playType === 'Transition' ? 4 : isOrebReset ? C.OREB_RESET_FLOOR : 8;
     if (timeTaken < floor) timeTaken = floor;
 
-    timeTaken += (Math.random() * 3) - 1.5;
+    if (!resumed) timeTaken += (Math.random() * 3) - 1.5;
 
     // 2. 상황 규칙
     const sd = state.home.score - state.away.score;

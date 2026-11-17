@@ -1,0 +1,254 @@
+
+import { Player, HiddenTendencies, PlayerTendencies, TacticalSliders } from '../types.ts';
+import { generateHiddenTendencies } from '../utils/hiddenTendencies.ts';
+import { ArchetypeRatings } from './pbp/archetypeSystem.ts';
+import { calculatePlayerArchetypes } from './pbp/archetypeSystem.ts';
+
+export interface ZoneAttempts {
+    zone_rim_a: number; zone_paint_a: number;
+    zone_mid_l_a: number; zone_mid_c_a: number; zone_mid_r_a: number;
+    zone_c3_l_a: number; zone_c3_r_a: number;
+    zone_atb3_l_a: number; zone_atb3_c_a: number; zone_atb3_r_a: number;
+}
+
+/**
+ * Calculates weights for zones based on Tendencies (Real DB Data) OR Fallback (Archetypes + Hash).
+ */
+export function calculateZoneWeights(player: Player, tendencyFallback: HiddenTendencies) {
+
+    // --- Priority 1: Use REAL Tendencies from DB if available ---
+    if (player.tendencies?.zones) {
+        return calculateWeightsFromRealData(player.tendencies);
+    }
+
+    // --- Priority 2: Fallback to Archetype + Hash Logic ---
+    return calculateWeightsFromArchetype(player, tendencyFallback);
+}
+
+/**
+ * [NEW] Calculates weights using explicit DB tendencies.
+ * Automatically normalizes values even if sum != 100.
+ */
+function calculateWeightsFromRealData(t: PlayerTendencies) {
+    const z = t.zones;
+
+    // 1. Normalize Zones (Handle any sum)
+    const totalWeight = (z.ra + z.itp + z.mid + z.cnr + z.p45 + z.atb) || 1; // Avoid divide by zero
+
+    // Raw Probabilities (0.0 - 1.0)
+    const pRim = z.ra / totalWeight;
+    const pPaint = z.itp / totalWeight;
+    const pMid = z.mid / totalWeight;
+    const pCnr = z.cnr / totalWeight;
+    const pWing = z.p45 / totalWeight;
+    const pTop = z.atb / totalWeight;
+
+    const bias = t.lateral_bias;
+    let leftMult = 1.0;
+    let rightMult = 1.0;
+
+    if (bias === 0) { leftMult = 1.6; rightMult = 0.4; }
+    else if (bias === 1) { leftMult = 1.2; rightMult = 0.8; }
+    else if (bias === 2) { leftMult = 0.8; rightMult = 1.2; }
+    else if (bias === 3) { leftMult = 0.4; rightMult = 1.6; }
+
+    const midWeights = {
+        l: pMid * 0.3 * leftMult,
+        c: pMid * 0.4,
+        r: pMid * 0.3 * rightMult
+    };
+    const midTotal = midWeights.l + midWeights.c + midWeights.r || 1;
+    midWeights.l = (midWeights.l / midTotal);
+    midWeights.c = (midWeights.c / midTotal);
+    midWeights.r = (midWeights.r / midTotal);
+
+    const threeTotalProb = pCnr + pWing + pTop || 1;
+
+    const relCnr = pCnr / threeTotalProb;
+    const relWing = pWing / threeTotalProb;
+    const relTop = pTop / threeTotalProb;
+
+    const threeWeights = {
+        l_corn: (relCnr * 0.5) * leftMult,
+        r_corn: (relCnr * 0.5) * rightMult,
+        l_wing: (relWing * 0.5) * leftMult,
+        r_wing: (relWing * 0.5) * rightMult,
+        c_top: relTop
+    };
+
+    const threeSum = threeWeights.l_corn + threeWeights.r_corn + threeWeights.l_wing + threeWeights.r_wing + threeWeights.c_top || 1;
+    threeWeights.l_corn /= threeSum;
+    threeWeights.r_corn /= threeSum;
+    threeWeights.l_wing /= threeSum;
+    threeWeights.r_wing /= threeSum;
+    threeWeights.c_top /= threeSum;
+
+    const totalInside = pRim + pPaint || 1;
+    const rimRatio = pRim / totalInside;
+
+    return { midWeights, threeWeights, rimRatio, isRealData: true };
+}
+
+/**
+ * [FALLBACK] Calculates weights based on Archetypes and Hash.
+ */
+function calculateWeightsFromArchetype(player: Player, tendency: HiddenTendencies) {
+    const { lateralBias } = tendency;
+
+    let archs: ArchetypeRatings;
+    if ((player as any).archetypes) {
+        archs = (player as any).archetypes;
+    } else {
+        const mockAttr = {
+            ins: player.ins, out: player.out, mid: player.midRange, ft: player.ft,
+            threeVal: (player.threeCorner+player.three45+player.threeTop)/3,
+            speed: player.speed, agility: player.agility, strength: player.strength, vertical: player.vertical,
+            stamina: player.stamina, durability: player.durability, hustle: player.hustle,
+            height: player.height, weight: player.weight,
+            handling: player.handling, hands: player.hands, pas: player.passAcc, passAcc: player.passAcc,
+            passVision: player.passVision, passIq: player.passIq, shotIq: player.shotIq, offConsist: player.offConsist,
+            drFoul: player.drawFoul, def: player.def, intDef: player.intDef, perDef: player.perDef,
+            blk: player.blk, stl: player.steal, helpDefIq: player.helpDefIq, defConsist: player.defConsist,
+            passPerc: player.passPerc, reb: player.reb, postPlay: player.postPlay,
+            // Required fields for LivePlayer['attr']
+            threeCorner: player.threeCorner, three45: player.three45, threeTop: player.threeTop,
+            layup: player.layup ?? player.ins, dunk: player.dunk ?? player.ins, closeShot: player.closeShot ?? player.ins,
+            spdBall: player.spdBall ?? player.speed,
+            offBallMovement: player.offBallMovement ?? 70,
+            offReb: player.offReb ?? player.reb, defReb: player.defReb ?? player.reb,
+            boxOut: player.boxOut ?? 70, intangibles: player.intangibles ?? 70,
+        };
+        archs = calculatePlayerArchetypes(mockAttr as any, player.condition || 100);
+    }
+
+    // Base Weights
+    const midWeights = { l: 0.33, c: 0.34, r: 0.33 };
+    const threeWeights = { l_corn: 0.15, l_wing: 0.2, c_top: 0.3, r_wing: 0.2, r_corn: 0.15 };
+
+    if (archs.spacer > 80 && archs.handler < 70) {
+        threeWeights.l_corn += 0.25; threeWeights.r_corn += 0.25; threeWeights.c_top -= 0.3;
+    } else if (archs.handler > 80 && archs.spacer > 75) {
+        threeWeights.c_top += 0.3; threeWeights.l_corn -= 0.1; threeWeights.r_corn -= 0.1;
+    }
+
+    const biasFactor = 0.6;
+    const applyBias = (val: number, isRight: boolean, isLeft: boolean) => {
+        if (isRight) return val * (1 + (lateralBias > 0 ? lateralBias * biasFactor : 0));
+        if (isLeft) return val * (1 + (lateralBias < 0 ? Math.abs(lateralBias) * biasFactor : 0));
+        return val;
+    };
+
+    midWeights.l = applyBias(midWeights.l, false, true);
+    midWeights.r = applyBias(midWeights.r, true, false);
+    threeWeights.l_corn = applyBias(threeWeights.l_corn, false, true);
+    threeWeights.l_wing = applyBias(threeWeights.l_wing, false, true);
+    threeWeights.r_corn = applyBias(threeWeights.r_corn, true, false);
+    threeWeights.r_wing = applyBias(threeWeights.r_wing, true, false);
+
+    // Normalize
+    const normMid = midWeights.l + midWeights.c + midWeights.r;
+    midWeights.l /= normMid; midWeights.c /= normMid; midWeights.r /= normMid;
+
+    const norm3 = threeWeights.l_corn + threeWeights.l_wing + threeWeights.c_top + threeWeights.r_wing + threeWeights.r_corn;
+    threeWeights.l_corn /= norm3; threeWeights.l_wing /= norm3; threeWeights.c_top /= norm3;
+    threeWeights.r_wing /= norm3; threeWeights.r_corn /= norm3;
+
+    let rimRatio = 0.75;
+    if (archs.postScorer > archs.driver + 10) rimRatio = 0.50;
+    else if (archs.driver > archs.postScorer + 10) rimRatio = 0.85;
+
+    return { midWeights, threeWeights, rimRatio, isRealData: false, archs };
+}
+
+/**
+ * Distributes total attempts into zones based on player tendencies.
+ */
+export function distributeAttemptsToZones(
+    player: Player,
+    totalRimA: number,
+    totalMidA: number,
+    total3PA: number
+): ZoneAttempts {
+    const tendency = player.tendencies ? ({} as HiddenTendencies) : (player.hiddenTendencies || generateHiddenTendencies(player));
+
+    const { midWeights, threeWeights, rimRatio } = calculateZoneWeights(player, tendency);
+
+    const result: ZoneAttempts = {
+        zone_rim_a: 0, zone_paint_a: 0,
+        zone_mid_l_a: 0, zone_mid_c_a: 0, zone_mid_r_a: 0,
+        zone_c3_l_a: 0, zone_c3_r_a: 0,
+        zone_atb3_l_a: 0, zone_atb3_c_a: 0, zone_atb3_r_a: 0
+    };
+
+    // Rim Distribution (Rim vs Paint)
+    result.zone_rim_a = Math.round(totalRimA * rimRatio);
+    result.zone_paint_a = totalRimA - result.zone_rim_a;
+
+    // Mid Distribution
+    result.zone_mid_l_a = Math.round(totalMidA * midWeights.l);
+    result.zone_mid_c_a = Math.round(totalMidA * midWeights.c);
+    result.zone_mid_r_a = totalMidA - result.zone_mid_l_a - result.zone_mid_c_a;
+
+    // 3PT Distribution
+    result.zone_c3_l_a = Math.round(total3PA * threeWeights.l_corn);
+    result.zone_atb3_l_a = Math.round(total3PA * threeWeights.l_wing);
+    result.zone_atb3_c_a = Math.round(total3PA * threeWeights.c_top);
+    result.zone_atb3_r_a = Math.round(total3PA * threeWeights.r_wing);
+    result.zone_c3_r_a = total3PA - result.zone_c3_l_a - result.zone_atb3_l_a - result.zone_atb3_c_a - result.zone_atb3_r_a;
+
+    return result;
+}
+
+// 좌우 슈팅 편향(lateralBias) → L/R 배율. C(중앙/탑)는 고정, L/R만 늘리거나 줄인 뒤 재정규화.
+const LATERAL_BIAS_MULT: Record<number, { left: number; right: number }> = {
+    0: { left: 1.6, right: 0.4 },
+    1: { left: 1.2, right: 0.8 },
+    2: { left: 0.8, right: 1.2 },  // 기본값 (평균적 오른손잡이)
+    3: { left: 0.4, right: 1.6 },
+};
+
+export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
+    const { left: leftMult, right: rightMult } = LATERAL_BIAS_MULT[player.lateralBias] ?? LATERAL_BIAS_MULT[2];
+    const rand = Math.random();
+
+    if (broadZone === 'Mid') {
+        const l = 0.33 * leftMult, c = 0.34, r = 0.33 * rightMult;
+        const total = l + c + r;
+        const pL = l / total, pC = c / total;
+        if (rand < pL) return 'zone_mid_l';
+        if (rand < pL + pC) return 'zone_mid_c';
+        return 'zone_mid_r';
+    }
+    if (broadZone === '3PT') {
+        // 서브존(코너/45도/탑) 선택은 선수 개인 DNA(threeSubPref: cnr/p45/atb)를 1차 기준으로 쓰고,
+        // 좌우 편향(lateralBias)은 좌우 대칭인 코너/45도 항목에만 곱연산으로 적용한다 — 탑(atb)은
+        // 좌우 구분이 없으므로 그대로 둔다. threeSubPref 없는 호출(방어적 폴백)이거나, 있어도 합이
+        // 0인 경우(3점 텐던시가 전부 0인 선수 — 원래는 3점을 거의 안 쓰지만 CatchShoot처럼 존이
+        // 강제되는 플레이에서 어쩌다 3점을 던지게 된 경우)엔 기존 고정 비율로 폴백한다. 합이 0일
+        // 때 이 폴백 없이 그대로 계산하면 아래 total이 `0 || 1`로 1이 되면서 pCl~pWr이 전부 0이
+        // 되고, rand(항상 0 이상)가 모든 if를 통과해 매번 마지막 zone_c3_r로만 쏠리는 버그가 있었다.
+        const spRaw = player.threeSubPref;
+        const spTotal = spRaw ? spRaw.cnr + spRaw.p45 + spRaw.atb : 0;
+        const sp = spTotal > 0 ? spRaw : { cnr: 0.30, p45: 0.40, atb: 0.30 };
+        const cl = (sp.cnr / 2) * leftMult, cr = (sp.cnr / 2) * rightMult;
+        const wl = (sp.p45 / 2) * leftMult, wr = (sp.p45 / 2) * rightMult;
+        const top = sp.atb;
+        const total = cl + wl + top + wr + cr || 1;
+        const pCl = cl / total, pWl = wl / total, pTop = top / total, pWr = wr / total;
+        if (rand < pCl) return 'zone_c3_l';
+        if (rand < pCl + pWl) return 'zone_atb3_l';
+        if (rand < pCl + pWl + pTop) return 'zone_atb3_c';
+        if (rand < pCl + pWl + pTop + pWr) return 'zone_atb3_r';
+        return 'zone_c3_r';
+    }
+    return broadZone === 'Rim' ? 'zone_rim' : 'zone_paint';
+}
+
+// For UI projection
+export function getProjectedZoneDensity(player: Player) {
+    return {
+        rim: 0.4, paint: 0.1,
+        midL: 0.1, midC: 0.1, midR: 0.1,
+        c3L: 0.05, atb3L: 0.05, atb3C: 0.05, atb3R: 0.05, c3R: 0.05
+    };
+}

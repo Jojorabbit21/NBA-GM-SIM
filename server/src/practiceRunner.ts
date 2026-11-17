@@ -17,11 +17,10 @@ import { isGlobalAdmin } from './auth.ts';
 import { loadRoomPlayers } from './playerLoader.ts';
 import { recoverPlayersThrough } from './fatigueRecovery.ts';
 import { addDays } from './shared/multi/fatigueRecovery.ts';
-import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
+import { engineFor } from './engineProfile.ts';
 import { buildTeamForSim } from './shared/dataMapper.ts';
 import { planAiTeam } from './shared/game/tactics/aiCoach/aiCoachPlan.ts';
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator.ts';
-import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { DEFAULT_SLIDERS } from './shared/game/config/tacticPresets.ts';
 import { DEFAULT_SIM_SETTINGS, resolveMultiFatigueSettings } from './shared/types/simSettings.ts';
@@ -213,7 +212,8 @@ export async function runPractice(userId: string, req: PracticeRequest): Promise
 
     // ── 6. 시뮬 ────────────────────────────────────────────────────────
     const simSettings = (room.sim_settings ?? null) as any;
-    resolveNormalizationContext(simSettings, [homeTeam, awayTeam], calculatePlayerOvr);
+    const engine = engineFor(simSettings);   // [2026-11-17] 방 단위 엔진 프로필 (engineProfile.ts)
+    engine.resolveNormalizationContext(simSettings, [homeTeam, awayTeam], engine.calculatePlayerOvr);
     const fatigue = resolveMultiFatigueSettings(simSettings);
     const engineSimSettings = {
         ...(simSettings ?? DEFAULT_SIM_SETTINGS),
@@ -224,7 +224,7 @@ export async function runPractice(userId: string, req: PracticeRequest): Promise
         injuriesEnabled: false,
         suspensionsEnabled: false,
     };
-    const result: any = runFullGameSimulation(
+    const result: any = engine.runFullGameSimulation(
         homeTeam, awayTeam, teamId, myTactics, false, false, myDepth, oppDepth,
         room.tendency_seed ?? '', engineSimSettings, (room.coaching_staff ?? null) as any, oppTactics, false,
     );

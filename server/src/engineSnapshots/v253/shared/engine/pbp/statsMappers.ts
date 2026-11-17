@@ -1,0 +1,496 @@
+
+import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes.ts';
+import type { PbpLog } from '../../types/engine.ts';
+import { formatTime } from './timeEngine.ts';
+import { resolveRebound, rollCloseOffRebound } from './reboundLogic.ts';
+import { SIM_CONFIG } from '../../game/config/constants.ts';
+import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary, getDribbleOutCommentary, getIntentionalFoulCommentary, getHeaveCommentary, getInboundExpireCommentary } from '../commentary/textGenerator.ts';
+import { updateZoneStats, updatePlusMinus } from './handlers/statUtils.ts';
+import { recordShotEvent } from './handlers/visUtils.ts';
+import { teamFoulLimit } from './periodRules.ts';
+import { iGa } from '../commentary/josa.ts';
+
+function bumpDefendedShot(defender: LivePlayer, broadZone: string, subZone: string | undefined, isMake: boolean): void {
+    defender.contestedAttempted = (defender.contestedAttempted ?? 0) + 1;
+    if (isMake) defender.contestedMade = (defender.contestedMade ?? 0) + 1;
+
+    const zone6 =
+        subZone === 'zone_rim'    ? 'RA' :
+        subZone === 'zone_paint'  ? 'ITP' :
+        subZone === 'zone_mid_l' || subZone === 'zone_mid_c' || subZone === 'zone_mid_r' ? 'MID' :
+        subZone === 'zone_c3_l'  || subZone === 'zone_c3_r'  ? 'CNR' :
+        subZone === 'zone_atb3_l'|| subZone === 'zone_atb3_r' ? 'WING' :
+        subZone === 'zone_atb3_c' ? 'ATB' :
+        broadZone === 'Rim' ? 'RA' :
+        broadZone === 'Paint' ? 'ITP' :
+        broadZone === 'Mid' ? 'MID' :
+        broadZone === '3PT' ? 'ATB' : null;
+
+    if (zone6) {
+        const keyA = `def${zone6}Attempted` as keyof LivePlayer;
+        const keyM = `def${zone6}Made` as keyof LivePlayer;
+        (defender[keyA] as number) = ((defender[keyA] as number) ?? 0) + 1;
+        if (isMake) (defender[keyM] as number) = ((defender[keyM] as number) ?? 0) + 1;
+    }
+}
+
+function updateHotCold(player: LivePlayer, isMake: boolean): void {
+    player.recentShots.push(isMake);
+    if (player.recentShots.length > 5) player.recentShots.shift();
+    const total = player.recentShots.length;
+    if (total < 2) { player.hotColdRating = 0; return; }
+    const makes = player.recentShots.filter(Boolean).length;
+    const recentPct = makes / total;
+    let streakBonus = 0;
+    if (total >= 3) {
+        const last3 = player.recentShots.slice(-3);
+        if (last3.every(Boolean)) streakBonus = 0.15;
+        else if (last3.every(s => !s)) streakBonus = -0.15;
+    }
+    player.hotColdRating = Math.max(-1, Math.min(1, (recentPct - 0.5) * 1.5 + streakBonus));
+}
+
+export function dampenHotCold(team: { onCourt: LivePlayer[]; bench: LivePlayer[] }): void {
+    [...team.onCourt, ...team.bench].forEach(p => {
+        p.hotColdRating *= 0.5;
+        if (p.recentShots.length > 2) p.recentShots = p.recentShots.slice(-3);
+    });
+}
+
+export function resetHotCold(team: { onCourt: LivePlayer[]; bench: LivePlayer[] }): void {
+    [...team.onCourt, ...team.bench].forEach(p => { p.hotColdRating = 0; p.recentShots = []; });
+}
+
+
+// [2026-11-06] PBP 팀 호칭 — 연고지 대신 팀 이름(닉네임). 연고지는 "LA"처럼 두 팀이 같을 수 있어 바꿈 (이전: regionOf = 연고지) (client 미러 참조).
+// 싱글은 TeamState.city("LA")가 따로 있고 name이 닉네임("미라지")이라 name 그대로. 멀티는 city가 비어 있고
+// name이 "LA 세이커스"(연고지 + 닉네임, leagueService가 `${city} ${name}`으로 생성, 유저 개명 가능)라 첫 어절을 뗀 나머지.
+// 어절이 하나뿐이면 이름 전체를 사용.
+export function teamNameOf(team: { name: string; city?: string }): string {
+    const name = team.name.trim();
+    if (team.city?.trim()) return name || team.name;
+    const words = name.split(/\s+/);
+    return words.length > 1 ? words.slice(1).join(' ') : (name || team.name);
+}
+
+/** [2026-11-05] 방금 남긴 줄에 플레이 표시(PbpLog.event) — 안내 종류로 기록되는 리바운드·싸움 줄을 화면 색 규칙에서 플레이로 분류 (client 미러 참조) */
+function markLastLog(state: GameState, event: NonNullable<PbpLog['event']>): void {
+    const last = state.logs[state.logs.length - 1];
+    if (last) last.event = event;
+}
+
+function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number, foulTeamId?: string, possessionOutcome?: PbpLog['possessionOutcome'], possessionTeamId?: string) {
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId,
+        text,
+        type,
+        points: points as 1 | 2 | 3 | undefined,
+        foulTeamId,
+        isPossessionEnd: possessionOutcome ? true : undefined,
+        possessionOutcome,
+        possessionTeamId: possessionOutcome ? (possessionTeamId ?? teamId) : undefined,
+        // [2026-10-27] 줄을 만드는 순간의 스코어 — 예전엔 liveEngine이 포세션 처리 후 같은 포세션의 모든 줄에 최종 스코어를
+        // 찍어서 "레이업(+2)" 줄에 앤드원 자유투까지, 파울 줄에 자유투 점수까지 미리 반영됐다(client 미러 참조).
+        homeScore: state.home.score,
+        awayScore: state.away.score,
+    });
+}
+
+// ── [2026-10-18] 플레이타입별 실적 집계(멀티 PPP) ─────────────────────────────────
+// 플레이 1회 = 그 playType으로 끝난 슛(성공/실패)·턴오버·오펜시브 파울·샷클락 위반·슈팅 파울 자유투·보너스 자유투.
+// 비보너스 파울(자유투 없음 → 공격 계속)·테크니컬·플래그런트(플레이와 무관한 자유투)·싸움은 제외.
+// 공격 리바운드로 이어진 공격은 다음 applyPossessionResult 호출에서 별도 플레이로 잡힌다.
+// pts/fta는 applyPossessionResult 진입~종료 사이 공격팀 점수·슈터 자유투 시도 증가분(앤드원·자유투 포함).
+// client(services/game/engine/pbp/statsMappers.ts) ↔ server(server/src/shared/engine/pbp/statsMappers.ts) 미러.
+const PLAY_TYPE_COUNTED_RESULTS = new Set<PossessionResult['type']>([
+    'score', 'miss', 'turnover', 'offensiveFoul', 'shotClockViolation', 'freethrow', 'foul',
+]);
+function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: number, fta: number): void {
+    const { type, offTeam } = result;
+    // [2026-11-07] 패스 차단 턴오버는 패서의 플레이로 집계(statPlayType), null이면 집계 제외 (client 미러 참조)
+    const playType = result.statPlayType !== undefined ? result.statPlayType : result.playType;
+    if (!playType || !PLAY_TYPE_COUNTED_RESULTS.has(type)) return;
+    if (type === 'foul' && fta <= 0) return; // 비보너스 파울 — 공격이 이어지므로 플레이 미종료
+    if (result.pressEvent) return; // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션 — 하프코트 플레이가 실행되지 않음
+    if (!state.playTypeStats) state.playTypeStats = {};
+    let byTeam = state.playTypeStats[offTeam.id];
+    if (!byTeam) { byTeam = {}; state.playTypeStats[offTeam.id] = byTeam; }
+    let line = byTeam[playType];
+    if (!line) { line = { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 }; byTeam[playType] = line; }
+    addPlayTypeLine(line, type, pts, fta);
+    // [2026-11-16] 선수별 — 같은 플레이를 플레이의 주인(actor: 슈터·턴오버한 선수·자유투를 얻은 선수, 패스 차단은 패서)에게도 누적 (server/client 미러).
+    //   샷클락 바이얼레이션은 팀 턴오버라(개인 턴오버로 기록하지 않음) 선수에게 넣지 않는다 → 선수 합 = 팀 값 − 바이얼레이션.
+    const playerId = result.actor?.playerId;
+    if (playerId && type !== 'shotClockViolation') {
+        if (!state.playerPlayTypeStats) state.playerPlayTypeStats = {};
+        const byPlayer = (state.playerPlayTypeStats[offTeam.id] ??= {});
+        const byPt = (byPlayer[playerId] ??= {});
+        const pLine = (byPt[playType] ??= { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 });
+        addPlayTypeLine(pLine, type, pts, fta);
+    }
+}
+function addPlayTypeLine(line: { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number }, type: PossessionResult['type'], pts: number, fta: number): void {
+    line.poss += 1;
+    line.pts += pts;
+    line.fta += fta;
+    if (type === 'score') { line.fga += 1; line.fgm += 1; }
+    else if (type === 'miss') { line.fga += 1; }
+    else if (type === 'turnover' || type === 'offensiveFoul' || type === 'shotClockViolation') { line.tov += 1; }
+}
+
+/**
+ * 반환값: 마지막 자유투가 빗나가 생긴 리바운드 — 'off'(슈팅 팀) / 'def'(상대 팀), 자유투 리바운드가 없으면 null (client 미러 참조).
+ * [2026-10-27] 'def'도 반환 — liveEngine이 라이브볼(리바운드) 여부로 교체 보류를 판단한다.
+ * [2026-10-27] 자유투 리바운드는 여기서 판정되므로 호출부(liveEngine)가 이 값으로 공격권 유지 여부를 정한다 —
+ * 이전엔 liveEngine이 result.type === 'miss'만 봐서 자유투 공격 리바운드 후에도 공격권이 상대에게 넘어갔다.
+ */
+// [2026-11-05] onDisqualified: 실격(6반칙·퇴장) 선수를 파울 줄 직후·자유투 전에 바로 교체하는 liveEngine 콜백(NBA Rule 3 I.1·V.9 —
+//   실격 교체는 자유투 교체 시점 제한의 예외). 교체 선수가 자유투 리바운드 후보가 되고, 로그도 "파울 → 교체 → 자유투" 순서 (client 미러 참조)
+export function applyPossessionResult(state: GameState, result: PossessionResult, onDisqualified?: (team: TeamState, player: LivePlayer) => void): 'off' | 'def' | null {
+    const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal,
+            offTeam, defTeam, isAndOne, playType, isSwitch, isMismatch, isBotchedSwitch, pnrCoverage } = result;
+    // [2026-10-18] 플레이타입 실적 — 이 플레이로 난 득점/자유투를 진입·종료 차이로 계산(recordPlayTypeStat)
+    const ptScoreBefore = offTeam.score;
+    state.pendingOffReb = undefined;   // [2026-11-04] 이번 결과에서 공격 리바운드가 나면 아래에서 채움 (client 미러 참조)
+    const ptFtaBefore = actor.fta;
+
+    if (result.isAceTarget && typeof result.matchupEffect === 'number') {
+        actor.matchupEffectSum += result.matchupEffect;
+        actor.matchupEffectCount += 1;
+    }
+
+    // [2026-10-07] 6반칙 전용 로그 삭제 — 호출부가 파울 커멘터리 끝에 " 6반칙으로 파울 아웃됩니다."를 붙임 (client 미러 참조)
+    const commitFoul = (defP: LivePlayer): boolean => {
+        defP.pf += 1;
+        defTeam.fouls += 1;
+        if (defP.pf === 6) defP.ejectionReason = 'foul_out';
+        return defP.pf === 6;
+    };
+
+    // 반환값(rebType)으로 호출부가 "오펜시브 리바운드라 포제션이 계속되는지"를 판단해
+    // isPossessionEnd 스탬프 여부를 결정한다(client 미러 참조).
+    // [Fix 2026-08-05] 로그를 직접 안 찍고 결과(type/text)만 반환 — 호출부가 자유투 로그 뒤에
+    // 리바운드 텍스트를 이어붙여 "자유투 실패 → 리바운드" 순서를 보장한다(client 미러 참조).
+    // [2026-10-07] 리바운드를 자유투 로그와 별도 줄로 분리 + 리바운드 teamId=리바운더 팀 (client 미러 참조)
+    type FtRebound = { type: 'off' | 'def'; text: string; player: LivePlayer };
+    const teamIdOf = (pl: LivePlayer): string =>
+        state.home.onCourt.some(x => x.playerId === pl.playerId) ? state.home.id : state.away.id;
+    let ftRebType: 'off' | 'def' | null = null;
+    const handleFreeThrowRebound = (shooter: LivePlayer): FtRebound => {
+        // [2026-07-31] TEAM_REB_RATE_FT 제거 (client 미러 참고)
+        const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
+        ftRebType = rebType;
+        rebPlayer.reb += 1;
+        if (rebType === 'off') rebPlayer.offReb += 1;
+        else rebPlayer.defReb += 1;
+        // [2026-11-04] 공격 리바운드면 근거리/장거리 판정 — 다음 포세션 풋백 판정·슈터(리바운더) 지정에 사용 (client 미러 참조)
+        const ftClose = rebType === 'off' ? rollCloseOffRebound(rebPlayer, 'FT', rebPlayer.playerId === shooter.playerId) : undefined;
+        if (rebType === 'off') state.pendingOffReb = { playerId: rebPlayer.playerId, close: !!ftClose };
+        return { type: rebType, text: getFreeThrowReboundCommentary(rebPlayer, rebType, shooter, ftClose), player: rebPlayer };
+    };
+
+    recordShotEvent(state, result);
+
+    // [2026-08-03] score/miss 커멘터리(textGenerator.ts)가 이미 isMismatch 전용 문구를 갖고 있어
+    // 중복 안내 방지 — turnover/foul은 아직 isMismatch 분기가 없어(client 미러 참조) 이 안내로 대체.
+    if (isMismatch && type !== 'score' && type !== 'miss') {
+        addLog(state, offTeam.id, `⚡ 미스매치! ${iGa(actor.playerName)} 이점을 활용합니다.`, 'info');
+    }
+
+    if (type === 'score') {
+        actor.pts += points;
+        actor.fgm += 1;
+        actor.fga += 1;
+        if (points === 3) { actor.p3m += 1; actor.p3a += 1; }
+        if (zone) updateZoneStats(actor, zone, true, result.subZone);
+        if (defender && zone) bumpDefendedShot(defender, zone, result.subZone, true);
+        if (!result.isHeave) updateHotCold(actor, true);   // [2026-11-05] 버저 히브는 연속 슛 감각과 무관
+
+        if (assister) {
+            const assistOdds: Record<string, number> = {
+                'CatchShoot': 0.97, 'DriveKick': 0.97, 'Cut': 0.95, 'OffBallScreen': 0.95,
+                'PnR_Pop': 0.95, 'PnR_Roll': 0.90, 'Handoff': 0.78, 'Transition': 0.78,
+                'PostUp': 0.55, 'PnR_Handler': 0.50, 'Iso': 0.38, 'Putback': 0.10,
+            };
+            // [2026-07-31] PostUp/PnR_Roll 킥아웃 오버라이드 (client 미러 참고)
+            // [2026-10-24] PnR_Handler 비킥아웃 = 핸들러 본인 득점 — assister는 스크리너(중계 문구용)라 어시스트 아님
+            // [2026-10-28] 속공 역할: 그랩 앤 고(리바운더·스틸러) 본인 마무리 = 어시스트 없음, 러너 0.95, 트레일러 캐치앤슛 0.97
+            const prob = result.isKickout ? 0.9
+                : playType === 'PnR_Handler' ? 0
+                : result.transitionRole === 'grabGo' ? 0
+                : result.transitionRole === 'runner' ? 0.95
+                : result.transitionRole === 'trailer' ? 0.97
+                : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
+            if (Math.random() < prob) assister.ast += 1;
+        }
+
+        offTeam.score += points;
+        updatePlusMinus(offTeam, defTeam, points);
+
+        let logText = generateCommentary('score', actor, defender, assister, playType, zone, {
+            isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
+            isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined,
+            isKickout: !!result.isKickout, isEndRush: !!result.isEndRush,
+        }, result.shotType);
+        if (result.isHeave) logText = getHeaveCommentary(actor, (result.heaveFt ?? 60) >= 47 ? 'far' : 'half', true, result.heaveFt ?? 60);   // [2026-11-05] (client 미러 참조)
+
+        // [2026-10-07] 앤드원 = 득점 → 파울 → 자유투 3개 로그 (client 미러 참조). 득점 로그 points는 야투만,
+        // 포제션 종료 마커는 자유투 로그, 파울 로그에 foulTeamId(팀파울 집계).
+        addLog(state, offTeam.id, logText, 'score', points, undefined, (isAndOne && defender) ? undefined : 'scoring');
+        if (isAndOne && defender) {
+            const fouledOut = commitFoul(defender);
+            let foulLog = getShootingFoulCommentary(defender, actor, result.isEndRush ? undefined : playType, false, true);
+            if (fouledOut) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+            foulLog += ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)`;
+            addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+            if (defender) onDisqualified?.(defTeam, defender);   // [2026-11-05] 실격이면 자유투 전 교체
+            let ftMade = 0; let ftEndsPossession = true; let ftReb: FtRebound | null = null;
+            let ftLogText = `${actor.playerName}, 앤드원 자유투 `;
+            actor.fta += 1;
+            if (Math.random() < (actor.attr.ft / 100)) {
+                actor.pts += 1; actor.ftm += 1; offTeam.score += 1; ftMade = 1;
+                updatePlusMinus(offTeam, defTeam, 1);
+                ftLogText += '1/1 성공';
+            } else {
+                ftLogText += '0/1 성공';
+                ftReb = handleFreeThrowRebound(actor);
+                ftEndsPossession = ftReb.type !== 'off';
+            }
+            addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? 'scoring' : undefined);
+            if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
+        }
+
+    } else if (type === 'miss') {
+        actor.fga += 1;
+        if (zone === '3PT') actor.p3a += 1;
+        if (zone) updateZoneStats(actor, zone, false, result.subZone);
+        if (defender && zone) bumpDefendedShot(defender, zone, result.subZone, false);
+        if (!result.isHeave) updateHotCold(actor, false);   // [2026-11-05] 버저 히브는 연속 슛 감각과 무관
+
+        let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
+            isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
+            isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
+            isHelpPlay: !!result.isHelpPlay, isKickout: !!result.isKickout, isEndRush: !!result.isEndRush,
+        }, result.shotType);
+        if (result.isHeave) logText = getHeaveCommentary(actor, (result.heaveFt ?? 60) >= 47 ? 'far' : 'half', false, result.heaveFt ?? 60);   // [2026-11-05] (client 미러 참조)
+
+        // 오펜시브 리바운드면 포제션이 계속되므로(stepPossession의 retainPossession(isOffReb)과
+        // 동일 기준) 이 미스 로그는 포제션 종료로 스탬프하지 않는다.
+        const missOutcome = (rebounder && result.reboundType === 'off') ? undefined : 'nonScoring';
+
+        if (isBlock && defender) { defender.blk += 1; addLog(state, defTeam.id, logText, 'block', undefined, undefined, missOutcome, offTeam.id); }
+        else { addLog(state, offTeam.id, logText, 'miss', undefined, undefined, missOutcome); }
+
+        if (rebounder) {
+            rebounder.reb += 1;
+            const rebType = result.reboundType || 'def';
+            if (rebType === 'off') rebounder.offReb += 1;
+            else rebounder.defReb += 1;
+            // [2026-11-04] 공격 리바운드 근거리/장거리 — 미드·3점 슈터 본인 리바운드는 바깥에서 잡으므로 장거리 (client 미러 참조)
+            const offClose = rebType === 'off'
+                ? rollCloseOffRebound(rebounder, zone, rebounder.playerId === actor.playerId && (zone === 'Mid' || zone === '3PT'))
+                : undefined;
+            if (rebType === 'off') state.pendingOffReb = { playerId: rebounder.playerId, close: !!offClose };
+            addLog(state, teamIdOf(rebounder), getReboundCommentary(rebounder, rebType, actor, zone, offClose), 'info');
+            markLastLog(state, 'rebound');
+        }
+
+    } else if (type === 'turnover') {
+        actor.tov += 1;
+        const logText = result.pressEvent
+            ? getPressCommentary(result.pressEvent, actor, defender, !!isSteal)
+            : generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
+                isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
+                isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined,
+                isHelpPlay: !!result.isHelpPlay,
+                isTrap: !!result.isBlitzTrap,   // [2026-11-06] 트랩 턴오버(블리츠·헤지 실패) 구분 — 헤지 트랩 전용 해설 (client 미러 참조)
+                isLaneSteal: !!result.isLaneSteal, passTargetName: result.passTarget?.playerName,   // [2026-11-07] 패스 차단 — 패서 주어 해설 (client 미러 참조)
+            });
+        if (isSteal && defender) { defender.stl += 1; defender.tovForced += 1; }
+        addLog(state, offTeam.id, logText, 'turnover', undefined, undefined, 'turnover');
+
+    } else if (type === 'foul') {
+        const fouledOut = defender ? commitFoul(defender) : false;
+        let logText = generateCommentary('foul', actor, defender, undefined, playType, undefined, {
+            isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
+            isBlock: false, isSteal: false, points: 0,
+            isHelpPlay: !!result.isHelpPlay,
+        });
+        // [2026-10-23] 풀코트 프레스 리치인/트랩 파울은 전용 문구 (client/server 미러)
+        if (result.pressEvent) logText = getPressCommentary(result.pressEvent, actor, defender, false);
+        if (result.isIntentional && defender) logText = getIntentionalFoulCommentary(defender, actor, result.intentionalKind ?? 'trailing');   // [2026-11-05] 파울 작전 (client 미러 참조)
+        if (fouledOut) logText += ' 6반칙으로 파울 아웃됩니다.';  // [2026-10-07] client 미러
+        logText += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
+        // 이 파울 로그는 포제션 종료로 스탬프하지 않는다 — 보너스면 아래 자유투 로그가 종료 지점이고,
+        // [2026-10-23] 보너스 전이면 공격권이 유지되어 포제션이 이어진다(liveEngine isNonBonusFoul, client 미러 참조).
+        addLog(state, defTeam.id, logText, 'foul', undefined, defTeam.id);
+        if (defender) onDisqualified?.(defTeam, defender);   // [2026-11-05] 실격이면 자유투 전 교체
+
+        if (defTeam.fouls > teamFoulLimit(state.quarter)) {   // [2026-10-26] 정규 5번째·연장 4번째부터 자유투
+            let ftMade = 0;
+            const ftPct = actor.attr.ft / 100;
+            actor.fta += 2;
+            if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+            let lastMade = false;
+            if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; lastMade = true; }
+            updatePlusMinus(offTeam, defTeam, ftMade);
+            // 마지막 자유투가 빗나가면 리바운드 결과부터 확인 — 오펜시브 리바운드면 포제션이
+            // 계속되므로 이 자유투 로그를 포제션 종료로 스탬프하지 않는다(client 미러 참조).
+            let ftEndsPossession = true;
+            let ftReb: FtRebound | null = null;
+            const ftLogText = `${actor.playerName}, 팀 파울로 얻은 자유투 ${ftMade}/2 성공`;
+            if (!lastMade) {
+                ftReb = handleFreeThrowRebound(actor);
+                ftEndsPossession = ftReb.type !== 'off';
+            }
+            addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
+            if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
+        }
+
+    } else if (type === 'freethrow') {
+        // [2026-10-07] 파울 로그를 자유투 로그와 분리, foulTeamId는 파울 로그로 이동 (client 미러 참조)
+        if (defender) {
+            const fouledOut = commitFoul(defender);
+            let foulLog = getShootingFoulCommentary(defender, actor, result.isEndRush ? undefined : playType, !!result.isHelpPlay, false, zone, result.shotType);
+            if (fouledOut) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+            foulLog += ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)`;
+            addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+            if (defender) onDisqualified?.(defTeam, defender);   // [2026-11-05] 실격이면 자유투 전 교체
+        }
+        const numShots = zone === '3PT' ? 3 : 2;
+        let ftMade = 0;
+        actor.fta += numShots;
+        const ftPct = actor.attr.ft / 100;
+        let lastMade = false;
+        for (let i = 0; i < numShots; i++) {
+            const made = Math.random() < ftPct;
+            if (made) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+            if (i === numShots - 1) lastMade = made;
+        }
+        updatePlusMinus(offTeam, defTeam, ftMade);
+        // 마지막 자유투가 빗나가면 리바운드 결과부터 확인 — 오펜시브 리바운드면 포제션이
+        // 계속되므로 이 자유투 로그를 포제션 종료로 스탬프하지 않는다(client 미러 참조).
+        let ftEndsPossession = true;
+        let ftReb: FtRebound | null = null;
+        const ftLogText = `${actor.playerName}, 자유투 ${ftMade}/${numShots} 성공`;
+        if (!lastMade) {
+            ftReb = handleFreeThrowRebound(actor);
+            ftEndsPossession = ftReb.type !== 'off';
+        }
+        addLog(state, offTeam.id, ftLogText, 'freethrow', ftMade, undefined, ftEndsPossession ? (ftMade > 0 ? 'scoring' : 'nonScoring') : undefined);
+        if (ftReb) { addLog(state, teamIdOf(ftReb.player), ftReb.text, 'info'); markLastLog(state, 'rebound'); }
+
+    } else if (type === 'offensiveFoul') {
+        actor.pf += 1;
+        actor.tov += 1;
+        const isCharge = result.foulSubtype === 'charge';
+        const foulDesc = isCharge ? '차징' : '일리걸 스크린';  // [2026-10-07] client 미러
+        const ejectionText = actor.pf >= 6 ? ' 6반칙으로 파울 아웃됩니다.' : '';
+        if (actor.pf >= 6) actor.ejectionReason = 'foul_out';
+        if (isCharge && defender) { defender.tovForced += 1; }
+        // [2026-10-20] 오펜시브 파울은 팀파울 미합산 → 팀 반칙 수 표기 제거 (client 미러)
+        addLog(state, offTeam.id, `${actor.playerName}, ${foulDesc} 오펜시브 파울.${ejectionText} (${actor.pf}반칙)`, 'foul', undefined, undefined, 'turnover');
+
+    } else if (type === 'technicalFoul') {
+        if (defender) { defender.techFouls = (defender.techFouls || 0) + 1; }
+        // [2026-07-29] 테크니컬 파울범이 공격팀일 수도 있음 — FT는 "파울을 범하지 않은 쪽"에게(client 미러 참조)
+        const foulerIsOffense = !!defender && offTeam.onCourt.some(p => p.playerId === defender.playerId);
+        const ftTeam = foulerIsOffense ? defTeam : offTeam;
+        const foulerTeam = foulerIsOffense ? offTeam : defTeam;
+        const isEjected = defender && (defender.techFouls || 0) >= 2;
+        if (isEjected && defender) { defender.ejectionReason = 'technical'; }
+        const commentaryBase = defender ? getTechnicalFoulCommentary(defender, foulerIsOffense) : `테크니컬 파울이 선언됩니다!`;
+        const ejectionSuffix = isEjected ? ' 2번째 테크니컬 파울로 퇴장당합니다.' : '';
+        // [2026-10-07] 파울 로그 → 자유투 로그(freethrow 타입, 팀 PTS 집계 포함) 분리 (client 미러 참조)
+        addLog(state, foulerTeam.id, `${commentaryBase}${ejectionSuffix}`, 'foul');
+        if (defender && isEjected) onDisqualified?.(foulerTeam, defender);   // [2026-11-05] 테크니컬 2회 퇴장 즉시 교체
+        // [2026-10-27] 자유투는 파울 로그 뒤에 — 파울 줄 스코어에 자유투 점수가 미리 들어가지 않도록(client 미러 참조)
+        const ftShooter = [...ftTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+        const ftPct = ftShooter.attr.ft / 100;
+        ftShooter.fta += 1;
+        let ftMade = 0;
+        if (Math.random() < ftPct) { ftShooter.ftm++; ftShooter.pts++; ftTeam.score++; ftMade = 1; updatePlusMinus(ftTeam, foulerTeam, 1); }
+        // [2026-11-04] 테크니컬 후엔 항상 offTeam이 공격을 재개(liveEngine retainPossession) — 공격 팀 선수가 받은 경우
+        //   "offTeam에게 공격권이 넘어갑니다"가 찍혀 이미 공을 가진 팀에게 넘어가는 것처럼 보였다(~41%). 한 문구로 통일 (client 미러 참조)
+        const possessionNote = `${teamNameOf(offTeam)}의 공격으로 재개됩니다.`;
+        addLog(state, ftTeam.id, `${ftShooter.playerName}, 테크니컬 자유투 ${ftMade}/1 성공. ${possessionNote}`, 'freethrow', ftMade);
+
+    } else if (type === 'flagrantFoul') {
+        const fouledOut = defender ? commitFoul(defender) : false;
+        const isFlagrant2 = result.isFlagrant2;
+        if (defender) defender.flagrantFouls = (defender.flagrantFouls || 0) + 1;
+        const commentary = defender
+            ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor, playType, zone, result.shotType) : getFlagrant1Commentary(defender, actor, playType, zone, result.shotType))
+            : `플래그런트 ${isFlagrant2 ? '2' : '1'}!`;
+        // [2026-10-07] 파울 로그 → 자유투 로그 분리, 구조 "내용. [6반칙으로 파울 아웃됩니다.] (N반칙, 팀 N반칙)" (client 미러 참조)
+        let foulLog = commentary;
+        if (fouledOut && defender && !isFlagrant2) foulLog += ' 6반칙으로 파울 아웃됩니다.';
+        // [2026-10-19] NBA 규정: 한 경기에서 플래그런트 1을 두 번째로 받으면 자동 퇴장(PF는 그대로 +1만)
+        if (defender && !isFlagrant2 && (defender.flagrantFouls || 0) >= 2 && !defender.ejectionReason) {
+            defender.ejectionReason = 'flagrant';
+            foulLog += ' 플래그런트 1을 두 번째로 받아 퇴장당합니다.';
+        }
+        foulLog += defender ? ` (${defender.pf}반칙, 팀 ${defTeam.fouls}반칙)` : ` (팀 ${defTeam.fouls}반칙)`;
+        addLog(state, defTeam.id, foulLog, 'foul', undefined, defTeam.id);
+        if (isFlagrant2 && defender) defender.ejectionReason = 'flagrant';   // [2026-11-05] 플래그런트 2 퇴장을 자유투 전에 확정(즉시 교체)
+        if (defender) onDisqualified?.(defTeam, defender);   // [2026-11-05] 실격이면 자유투 전 교체
+        // [2026-10-27] 자유투는 파울 로그 뒤에 (client 미러 참조)
+        const ftPct = actor.attr.ft / 100;
+        actor.fta += 2;
+        let ftMade = 0;
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        updatePlusMinus(offTeam, defTeam, ftMade);
+        addLog(state, offTeam.id, `${actor.playerName}, 플래그런트 자유투 ${ftMade}/2 성공. ${teamNameOf(offTeam)}의 공격권이 유지됩니다.`, 'freethrow', ftMade);  // [2026-10-08] client 미러
+        if (isFlagrant2 && defender) {
+            defender.ejectionReason = 'flagrant';
+        }
+
+    } else if (type === 'shotClockViolation') {
+        actor.tov += 1;
+        const teamName = offTeam.id === state.home.id ? state.home.name : state.away.name;
+        // [2026-10-19] 공격 리바운드 후엔 샷클락이 14초로 리셋됨 — 시작 시점 샷클락(state.shotClock)에 맞춰 문구 분기
+        const clockStart = Math.round(state.shotClock);
+        const vioLabel = clockStart >= 24 ? '24초 샷클락 바이올레이션'
+            : state.lastEntryWasOffReb ? `공격 리바운드 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+            : state.lastEntryWasFlagrant ? `플래그런트 파울 후 리셋된 ${clockStart}초 샷클락 바이올레이션`
+            : `남은 ${clockStart}초 샷클락 바이올레이션`;
+        addLog(state, offTeam.id, `⏱ ${vioLabel} — ${teamName} 턴오버`, 'turnover', undefined, undefined, 'turnover');
+
+    } else if (type === 'clockExpire') {
+        // [2026-11-05] 드리블 아웃 (client 미러 참조) — 슛·기록 없이 남은 시간 소멸(줄 시각은 0:00, 문구에 흘려보낸 시간). 공격 종료는 득점 없음.
+        addLog(state, offTeam.id, result.expireKind === 'inbound'   // [2026-11-05] 백코트 1초 인바운드 중 시간 만료
+            ? getInboundExpireCommentary(teamNameOf(offTeam))
+            : getDribbleOutCommentary(teamNameOf(offTeam), actor.playerName, result.expireSeconds ?? 0), 'info', undefined, undefined, 'nonScoring');
+
+    } else if (type === 'fight') {
+        const fighter  = result.fighter;
+        const opponent = result.fightOpponent;
+        const fighterSusp = result.fighterSuspension ?? 1;
+        const oppSusp     = result.opponentSuspension ?? 1;
+        // [2026-11-05] 싸움 참가자마다 테크니컬 1개(NBA Rule 12A VI.1) — 이전 가해자 2개 (client 미러 참조)
+        if (fighter)  { fighter.ejectionReason = 'fight';  fighter.techFouls  = (fighter.techFouls  || 0) + 1; }
+        if (opponent) { opponent.ejectionReason = 'fight'; opponent.techFouls = (opponent.techFouls || 0) + 1; }
+        const timeStr = formatTime(state.gameClock);
+        if (fighter && opponent) {
+            // [2026-10-07] 출장정지 줄 제거(경기 후 뉴스피드가 전달) — 클라이언트 statsMappers.ts 미러
+            // [2026-11-05] 공을 가진 팀이 공격권 유지(NBA Rule 12A VI.3, liveEngine retainPossession) — 재개 안내 (client 미러 참조)
+            addLog(state, defTeam.id, `${iGa(fighter.playerName)} ${opponent.playerName}에게 주먹을 휘두릅니다! 양 선수 경기장에서 퇴장당합니다. ${teamNameOf(offTeam)}의 공격으로 재개됩니다.`, 'info');
+            markLastLog(state, 'fight');
+            state.suspensions.push({
+                playerId: fighter.playerId, playerName: fighter.playerName, teamId: defTeam.id,
+                opponentPlayerId: opponent.playerId, opponentPlayerName: opponent.playerName, opponentTeamId: offTeam.id,
+                suspensionGames: fighterSusp,
+                opponentSuspensionGames: oppSusp,
+                quarter: state.quarter, timeRemaining: timeStr,
+            });
+            fighter.health = 'Injured';  fighter.injuryType = '출장정지 (싸움)'; fighter.returnDate = `${fighterSusp}경기`; fighter.injuredThisGame = true;
+            opponent.health = 'Injured'; opponent.injuryType = '출장정지 (싸움)'; opponent.returnDate = `${oppSusp}경기`;  opponent.injuredThisGame = true;
+        }
+    }
+
+    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
+    return ftRebType;
+}

@@ -47,6 +47,8 @@ export interface LivePlayer extends PlayerBoxScore {
     // [New] Hot/Cold Streak (슈팅 분산)
     hotColdRating: number;    // -1.0(아이스) ~ +1.0(온 파이어), 초기값 0
     recentShots: boolean[];   // 최근 5개 슛 결과 순환 버퍼
+    /** [2026-11-17] 경기 단위 슛 감각 — 이 경기 내내 림 슛을 뺀 슛 성공 확률에 더해지는 값(터지는 날 +, 나머지 날 −). SIM_CONFIG.SHOT_FORM, 경기 시작 때 한 번 추첨 */
+    shotForm?: number;
 
     // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
     archetypes: ArchetypeRatings;
@@ -327,6 +329,9 @@ export interface GameState {
     //   frontcourt면 프레스도 없음, advanced = 4Q·연장 마지막 2분 타임아웃 후 프런트코트 전진(NBA Rule 5 VI.7) (server 미러 참조).
     //   liveEngine이 포세션 종료 때 설정/해제, applyTimeout이 덮어씀. 미설정 = 라이브볼·일반 데드볼(득점 후 등) 진입.
     inbound?: { spot: 'backcourt' | 'frontcourt'; advanced?: boolean };
+    // [2026-11-16] 이어서 하는 공격 — 보너스 전 비슈팅 파울로 끊긴 공격의 남은 계획 시간(초). liveEngine이 공격권 유지 때 설정, 공격권이 넘어가면 해제.
+    //   timeEngine이 프런트코트 재개 공격의 소요 시간으로 그대로 쓴다(CLOCK_MGMT.RESUME_CONTINUE) (server 미러 참조)
+    resumePlanLeft?: number;
     // [2026-11-04] 직전 포세션이 라이브볼(야투 실패·스틸·마지막 자유투 실패 리바운드)로 끝났는지 — 이때 타임아웃은
     //   공을 가진 팀만 가능, 의무 타임아웃은 다음 데드볼로 보류(NBA Rule 5 VI) (timeoutPolicy.canCallTimeout)
     lastPossessionLiveBall?: boolean;
@@ -390,7 +395,7 @@ export interface PossessionResult {
     isHeave?: boolean;                       // [2026-11-05] 피리어드 막판 장거리 슛 (server 미러 참조)
     isEndRush?: boolean;                     // [2026-11-05] 피리어드 막판 백코트 5~6초 밀고 올라가기(데드볼 인바운드 시작) — 속공 문구 대신 막판 문구 (server 미러 참조)
     heaveFt?: number;
-    expireKind?: 'dribbleOut' | 'inbound';  // clockExpire 사유 — 드리블 아웃 / 인바운드 중 시간 만료
+    expireKind?: 'dribbleOut' | 'inbound' | 'noShot';  // clockExpire 사유 — 드리블 아웃 / 인바운드 중 시간 만료 / [2026-11-16] 막판에 몰려 슛을 못 던짐(샷클락 꺼진 상황, possessionHandler NO_SHOT)
     reboundType?: 'off' | 'def'; // resolveRebound에서 결정된 리바운드 타입
 
     // Details

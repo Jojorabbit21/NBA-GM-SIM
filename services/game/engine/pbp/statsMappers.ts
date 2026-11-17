@@ -6,7 +6,7 @@ import { resolveRebound, rollCloseOffRebound } from './reboundLogic';
 import { SIM_CONFIG } from '../../config/constants';
 
 // Modularized Imports
-import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary, getDribbleOutCommentary, getIntentionalFoulCommentary, getHeaveCommentary, getInboundExpireCommentary } from '../commentary/textGenerator';
+import { generateCommentary, getReboundCommentary, getFreeThrowReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary, getShootingFoulCommentary, getPressCommentary, getDribbleOutCommentary, getIntentionalFoulCommentary, getHeaveCommentary, getInboundExpireCommentary, getNoShotExpireCommentary } from '../commentary/textGenerator';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 import { teamFoulLimit } from './periodRules';
@@ -621,8 +621,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
 
     } else if (type === 'shotClockViolation') {
-        // 샷클락 바이올레이션: TOV + 수비팀 공 넘김
-        actor.tov += 1;
+        // 샷클락 바이올레이션: 수비팀 공 넘김
+        // [2026-11-16] 개인 턴오버로 기록하지 않는다(사용자 결정) — 실제 NBA도 샷클락 바이얼레이션은 선수가 아니라 팀 턴오버.
+        //   이전: actor.tov += 1. 팀 차원 집계(플레이타입 실적의 tov·턴오버 후 득점·포제션 종료 표시)는 그대로 턴오버로 취급.
+        //   팀 턴오버 합계는 선수 기록의 합이라 이만큼 줄어든다(팀 턴오버 항목 없음) (server 미러 참조)
 
         const teamName = offTeam.id === state.home.id
             ? state.home.name
@@ -639,6 +641,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // [2026-11-05] 드리블 아웃 (server 미러 참조) — 슛·기록 없이 남은 시간 소멸(줄 시각은 0:00, 문구에 흘려보낸 시간). 공격 종료는 득점 없음.
         addLog(state, offTeam.id, result.expireKind === 'inbound'   // [2026-11-05] 백코트 1초 인바운드 중 시간 만료
             ? getInboundExpireCommentary(teamNameOf(offTeam))
+            : result.expireKind === 'noShot'   // [2026-11-16] 막판에 몰려 슛을 못 던지고 시간 종료 (server 미러 참조)
+            ? getNoShotExpireCommentary(actor.playerName)
             : getDribbleOutCommentary(teamNameOf(offTeam), actor.playerName, result.expireSeconds ?? 0), 'info', undefined, undefined, 'nonScoring');
 
     } else if (type === 'fight') {

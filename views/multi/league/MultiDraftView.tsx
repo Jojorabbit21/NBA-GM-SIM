@@ -12,6 +12,7 @@ import type { DraftPoolPlayer, RoomTeamMetaMap } from '../../../types/multiDraft
 import type { Player } from '../../../types';
 import { mapRawPlayerToRuntimePlayer } from '../../../services/dataMapper';
 import { shouldUseCustomOverrides } from '../../../utils/leagueOverrides';
+import { registerScoutReportProfile } from '../../../utils/scoutReport';
 import { normalizeDraftSalaryScale, resolveDraftSalaryPct, draftSalaryAmount } from '../../../services/contracts/draftSalaryScale';
 import { formatMoney } from '../../../utils/formatMoney';
 
@@ -379,6 +380,8 @@ const MultiDraftView: React.FC = () => {
     const draftPicksForHover = draftState?.picks;
     // [2026-11-10] 스카우팅 리포트 시드 = 방 시드(선수 상세 화면·엔진과 동일)
     const tendencySeed = room?.tendency_seed ?? undefined;
+    // [2026-11-17] 성향 문장이 이 방의 엔진 프로필을 따르게 등록(utils/scoutReport.ts) — 같은 값 재등록은 무해
+    registerScoutReportProfile(tendencySeed, room?.sim_settings?.engineProfile);
     const hoverLookup = useMemo((): DraftPlayerHoverLookup => {
         const pickById = new Map((draftPicksForHover ?? []).map(p => [p.playerId, p]));
         return {

@@ -1,0 +1,324 @@
+
+import { Team, GameTactics, DepthChart, Player } from '../../types.ts';
+import { LeagueCoachingData } from '../../types/coaching.ts';
+import { TeamState, LivePlayer } from './pbpTypes.ts';
+import { calculatePlayerArchetypes } from './archetypeSystem.ts';
+import { INITIAL_STATS } from '../../utils/constants.ts';
+import { calculatePlayerOvr } from '../../utils/ovrUtils.ts';
+import { generateAutoTactics } from '../../game/tactics/tacticGenerator.ts';
+import { getCoachPreferences } from '../../coachingStaff/coachGenerator.ts';
+import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../utils/hiddenTendencies.ts';
+import { DEFAULT_SLIDERS } from '../../game/config/tacticPresets.ts';
+import { LeagueContext, normalizeAttrs } from './leagueNormalization.ts';
+import { assignCourtSlots } from './slotAssignment.ts';
+import { planSuccession } from './rotationSuccession.ts';
+
+/**
+ * Player.tendencies.zones(선수 DNA) → 4존 선호도(ra/itp/mid/three) 정규화.
+ * RA(Restricted Area)와 ITP(In The Paint)를 별도 존으로 분리.
+ * - RA: Dunk, Layup (피지컬 피니시)
+ * - ITP: Floater, Hook, Short Jumper (closeShot 기반 스킬 피니시)
+ * 텐던시 데이터가 없으면 능력치 기반 fallback.
+ */
+function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three: number } {
+    let rawRa: number, rawItp: number, rawMid: number, rawThree: number;
+
+    if (p.tendencies?.zones) {
+        const z = p.tendencies.zones;
+        rawRa    = z.ra || 0;
+        rawItp   = z.itp || 0;
+        rawMid   = z.mid || 0;
+        rawThree = (z.cnr || 0) + (z.p45 || 0) + (z.atb || 0);
+    } else {
+        // fallback: 능력치 기반
+        rawRa    = p.ins || 70;
+        rawItp   = 35;
+        rawMid   = p.midRange || 70;
+        rawThree = ((p.threeCorner || 70) + (p.three45 || 70) + (p.threeTop || 70)) / 3;
+    }
+
+    const total = rawRa + rawItp + rawMid + rawThree || 1;
+    return {
+        ra:    rawRa / total,
+        itp:   rawItp / total,
+        mid:   rawMid / total,
+        three: rawThree / total,
+    };
+}
+
+// 텐던시 데이터 없는 선수용 폴백 — resolveDynamicZone()이 기존에 쓰던 고정 비율(15/20/30/20/15%)과
+// 동일한 값이라, 텐던시 없는 선수의 서브존 분포는 이 변경 전후로 그대로 유지된다(회귀 없음).
+const DEFAULT_THREE_SUB_PREF = { cnr: 0.30, p45: 0.40, atb: 0.30 };
+
+/**
+ * Player.tendencies.zones.cnr/p45/atb(코너/45도/탑 3점 DNA) → 서브존 선호도 정규화.
+ * buildZonePref()가 이 셋을 합쳐 "3점 전체 비중"만 계산하는 것과 별개로, 일단 3점을 쏘기로
+ * 정해진 뒤 "어느 서브존에서"를 결정하는 resolveDynamicZone()에 이 개인차를 전달하기 위함
+ * — 안 그러면 코너 스페셜리스트든 탑 스페셜리스트든 서브존 선택이 전부 동일한 고정 비율을 탄다.
+ */
+function buildThreeSubPref(p: Player): { cnr: number; p45: number; atb: number } {
+    if (p.tendencies?.zones) {
+        const z = p.tendencies.zones;
+        const cnr = z.cnr || 0, p45 = z.p45 || 0, atb = z.atb || 0;
+        const total = cnr + p45 + atb || 1;
+        return { cnr: cnr / total, p45: p45 / total, atb: atb / total };
+    }
+    return DEFAULT_THREE_SUB_PREF;
+}
+
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext, preserveDraftOrder = false): TeamState {
+    // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
+    // preserveDraftOrder: 멀티플레이어는 드래프트로 로스터를 구성하므로, 저장된 전술이 없어
+    // 이 폴백이 걸려도 먼저 뽑은 선수가 OVR과 무관하게 선발을 유지해야 한다(싱글 CPU는 기존대로 OVR 정렬).
+    let safeTactics: GameTactics;
+    if (!tactics || (!tactics.depthChart && !depthChart)) {
+        const coachPrefs = getCoachPreferences(coachingData, team.id);
+        safeTactics = generateAutoTactics(team, coachPrefs, preserveDraftOrder);
+    } else {
+        // [Safety Fix for User Tactics]
+        // Ensure all slider keys exist even if user tactics are missing them
+        safeTactics = {
+            ...tactics,
+            // [2026-10-17] Per-player tactics disabled (garbagePolicy='bench' flicker bug) — ignore any stale data.
+            playerTactics: {},
+            sliders: {
+                ...DEFAULT_SLIDERS,
+                ...tactics.sliders
+            },
+            // [2026-10-23] 시간별 전술 세트 — 2번/클러치도 누락 키를 기본값으로 채움(없으면 그대로 undefined)
+            altSliders: tactics.altSliders ? { ...DEFAULT_SLIDERS, ...tactics.altSliders } : undefined,
+            // clutchEnabled === false = 체크 해제(값은 보존, 경기엔 미사용)
+            clutchSliders: tactics.clutchSliders && tactics.clutchEnabled !== false ? { ...DEFAULT_SLIDERS, ...tactics.clutchSliders } : undefined,
+            rotationMap: tactics.rotationMap
+                ? Object.fromEntries(
+                    Object.entries(tactics.rotationMap).map(([pid, arr]) => [pid, [...arr]])
+                  )
+                : {}
+        };
+    }
+
+    const effectiveDepthChart = depthChart || safeTactics.depthChart;
+
+    // 뎁스차트에서 선수의 슬롯 포지션 조회 (PG슬롯에 배치된 SG → "PG" 반환)
+    const getSlotPosition = (playerId: string): string | null => {
+        if (!effectiveDepthChart) return null;
+        for (const pos of ['PG', 'SG', 'SF', 'PF', 'C'] as const) {
+            if (effectiveDepthChart[pos]?.includes(playerId)) return pos;
+        }
+        return null;
+    };
+
+    // 2. 로스터 정렬 및 라이브 플레이어 객체 생성
+    const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    
+    const liveRoster: LivePlayer[] = sortedRoster.map(p => {
+        const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+        const rawAttr = {
+            ins: p.ins, out: p.out, mid: p.midRange, ft: p.ft, threeVal: threeAvg,
+            threeCorner: p.threeCorner, three45: p.three45, threeTop: p.threeTop,
+            layup: p.layup ?? p.ins, dunk: p.dunk ?? p.ins, closeShot: p.closeShot ?? p.ins,
+            speed: p.speed, spdBall: p.spdBall, agility: p.agility, strength: p.strength, vertical: p.vertical,
+            stamina: p.stamina, durability: p.durability, hustle: p.hustle,
+            height: p.height, weight: p.weight,
+            handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc,
+            passVision: p.passVision, passIq: p.passIq, offBallMovement: p.offBallMovement ?? 70,
+            shotIq: p.shotIq, offConsist: p.offConsist,
+            postPlay: p.postPlay,
+            def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
+            helpDefIq: p.helpDefIq, defConsist: p.defConsist, passPerc: p.passPerc, drFoul: p.drawFoul,
+            reb: p.reb,
+            offReb: p.offReb ?? p.reb,
+            defReb: p.defReb ?? p.reb,
+            boxOut: p.boxOut ?? 70,
+            intangibles: p.intangibles ?? 70
+        };
+        // League-relative normalization: shift TARGET attrs toward calibration band
+        const attr = leagueContext ? normalizeAttrs(rawAttr, leagueContext) : rawAttr;
+
+        const currentCondition = p.condition !== undefined ? p.condition : 100;
+
+        return {
+            playerId: p.id,
+            playerName: p.name,
+            pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tovForced: 0,
+            fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
+            rimM: 0, rimA: 0, midM: 0, midA: 0,
+            pf: 0, techFouls: 0, flagrantFouls: 0, plusMinus: 0, mp: 0, g: 1, gs: 0,
+            contestedAttempted: 0, contestedMade: 0,
+            defRimAttempted: 0, defRimMade: 0,
+            defMidAttempted: 0, defMidMade: 0,
+            defThreeAttempted: 0, defThreeMade: 0,
+            defRAAttempted: 0, defRAMade: 0,
+            defITPAttempted: 0, defITPMade: 0,
+            defMIDAttempted: 0, defMIDMade: 0,
+            defCNRAttempted: 0, defCNRMade: 0,
+            defWINGAttempted: 0, defWINGMade: 0,
+            defATBAttempted: 0, defATBMade: 0,
+            zoneData: { ...INITIAL_STATS() },
+            // [Fix] Add condition to satisfy PlayerBoxScore interface
+            condition: currentCondition,
+            currentCondition,
+            startCondition: currentCondition,
+            position: getSlotPosition(p.id) || p.position,
+            nativePosition: p.position,
+            ovr: calculatePlayerOvr(p),
+            isStarter: false,
+            health: p.health || 'Healthy',
+            injuryType: p.injuryType,
+            returnDate: p.returnDate,
+            lastSubInTime: 0,
+            conditionAtSubIn: currentCondition,
+            attr,
+            archetypes: calculatePlayerArchetypes(attr, currentCondition, archetypesEnabled),
+            tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
+            zonePref: buildZonePref(p),
+            threeSubPref: buildThreeSubPref(p),
+            lateralBias: p.tendencies?.lateral_bias ?? 2,
+            zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
+            zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
+            zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
+            zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0,
+            // [New] Morale (기분/사기) — bonusHitRate 보정용
+            morale: p.morale?.score ?? 50,
+            // [New] Hot/Cold Streak
+            hotColdRating: 0,
+            recentShots: [],
+            // [New] Temporary Bench Tracking
+            benchReason: null,
+            benchedAtMinute: undefined,
+            benchedAtQuarter: undefined,
+            scheduledReturnMinute: undefined,
+            // [New] Ace Stopper Tracking
+            matchupEffectSum: 0,
+            matchupEffectCount: 0
+        };
+    });
+
+    // 3. 선발 라인업 결정 로직 (Prioritize Rotation Map Minute 0)
+    // 단장님 지시사항: 로테이션 차트가 절대 법이다.
+    
+    const onCourt: LivePlayer[] = [];
+    const bench: LivePlayer[] = [];
+    
+    let startingIds: string[] = [];
+
+    // [2026-10-22] 부상 선수의 로테이션 시간 승계를 선발 확정보다 먼저 한다 — 선발은 이 결과 표의 0분 출전자로 정한다.
+    // 이전에는 선발을 먼저 별도 규칙(OVR 순)으로 채운 뒤 승계를 따로 해서 표와 어긋났고(CLE 허드슨/스트릭랜드), 승계도 후임에게
+    // 시간을 덧붙이기만 해 후임이 48분 풀타임이거나 겹치는 분에 4명만 예정되는 문제가 있었다(GS 리브스 24→48분, 표 총합 231분).
+    // 규칙 상세: rotationSuccession.ts.
+    {
+        const injuredNow = sortedRoster.filter(p => p.health === 'Injured').map(p => p.id).sort();
+        if (safeTactics.rotationMap && injuredNow.length > 0) {
+            planSuccession({
+                outIds: injuredNow,
+                fromMinute: 0,
+                rotationMap: safeTactics.rotationMap,
+                depthChart: effectiveDepthChart ?? undefined,
+                players: liveRoster.map(lp => ({
+                    id: lp.playerId, ovr: lp.ovr, nativePosition: lp.nativePosition ?? lp.position,
+                    tier: lp.health === 'Injured' ? 2 : 0, returnDate: lp.returnDate,
+                })),
+            });
+        }
+    }
+
+    // [Step 1] 로테이션 맵의 0분대 설정 확인
+    if (safeTactics.rotationMap) {
+        Object.entries(safeTactics.rotationMap).forEach(([playerId, schedule]) => {
+            // 0분(경기 시작)에 true로 설정된 선수 추출
+            if (schedule[0] === true) {
+                startingIds.push(playerId);
+            }
+        });
+    }
+
+    // [Fix] 로스터에 실제 존재하는 선수만 남김 (트레이드/방출 후 맵에 유령 ID 잔존 방지)
+    const rosterIdSet = new Set(sortedRoster.map(p => p.id));
+    startingIds = startingIds.filter(id => rosterIdSet.has(id));
+
+    // [Fix] 부상 선수는 선발에서 제외
+    const injuredIds = new Set(sortedRoster.filter(p => p.health === 'Injured').map(p => p.id));
+    startingIds = startingIds.filter(id => !injuredIds.has(id));
+
+    // [Step 2] 유효성 검사 및 보정 (정확히 5명이 아니면 뎁스차트/OVR순으로 채움)
+    // 로테이션 차트가 비어있거나, 5명이 안되는 경우를 대비한 안전 장치
+    if (startingIds.length !== 5) {
+        const depthChartStarters = Object.values(safeTactics.starters ?? {}).filter(id => id !== '');
+        
+        // 부족하면 뎁스 차트 주전에서 충원 (부상 선수 제외)
+        if (startingIds.length < 5) {
+            for (const id of depthChartStarters) {
+                if (startingIds.length >= 5) break;
+                if (!startingIds.includes(id) && !injuredIds.has(id)) {
+                    startingIds.push(id);
+                }
+            }
+        }
+
+        // 그래도 부족하면(AI팀 등) OVR 높은 순으로 충원 (부상 선수 제외)
+        if (startingIds.length < 5) {
+            for (const p of sortedRoster) {
+                if (startingIds.length >= 5) break;
+                if (!startingIds.includes(p.id) && !injuredIds.has(p.id)) {
+                    startingIds.push(p.id);
+                }
+            }
+        }
+
+        // [EMERGENCY] 건강한 선수 5명 미만 시 부상 선수라도 기용 (기권패 방지)
+        if (startingIds.length < 5) {
+            for (const p of sortedRoster) {
+                if (startingIds.length >= 5) break;
+                if (!startingIds.includes(p.id)) {
+                    startingIds.push(p.id);
+                }
+            }
+        }
+
+        // 5명 초과면(실수로 6명 체크 등) 앞에서부터 5명만 자름
+        if (startingIds.length > 5) {
+            startingIds = startingIds.slice(0, 5);
+        }
+    }
+    
+    // 4. 결정된 ID를 기반으로 코트/벤치 배정
+    liveRoster.forEach(p => {
+        if (startingIds.includes(p.playerId)) {
+            p.isStarter = true;
+            p.gs = 1;
+            p.lastSubInTime = 720; // 12 mins remaining
+            onCourt.push(p);
+        } else {
+            bench.push(p);
+        }
+    });
+
+    // [New] Determine Ace Player (Highest OVR Starter)
+    // Reduce used to safely find max OVR player without sorting array in place
+    const acePlayer = onCourt.length > 0 
+        ? onCourt.reduce((prev, curr) => (prev.ovr > curr.ovr) ? prev : curr, onCourt[0])
+        : null;
+
+    const teamState: TeamState = {
+        id: team.id,
+        name: team.name,
+        city: team.city || undefined,
+        score: 0,
+        tactics: safeTactics,
+        depthChart: effectiveDepthChart || undefined,
+        onCourt,
+        bench,
+        timeouts: 7, // [2026-10-22] 4 → 7 (NBA 규정: 경기당 팀당 7회)
+        fouls: 0,
+        bonus: false,
+        acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID
+    };
+    // [2026-10-23] 2번/클러치 전술이 있는 팀만 세트 보관 — 포세션마다 applyTacticSchedule이 tactics.sliders를 교체
+    if (safeTactics.altSliders || safeTactics.clutchSliders) {
+        teamState.tacticSets = { main: safeTactics.sliders, alt: safeTactics.altSliders, clutch: safeTactics.clutchSliders };
+        teamState.activeTacticSet = 'main';
+    }
+    // [2026-10-22] 선발 5명에게 서로 다른 슬롯 배정 — 부상 주전 대체·같은 뎁스 슬롯 2명 선발 시 PG 2명 등 방지
+    assignCourtSlots(teamState);
+    return teamState;
+}

@@ -108,23 +108,23 @@ export interface PlayerMorale {
 // [New] Save-seeded hidden tendencies (세이브별 랜덤 배정, 매 플레이스루 고유)
 export interface SaveTendencies {
     // 멘탈 (6)
-    clutchGene: number;              // -1.0~+1.0 클러치 히트레이트 ±3%
+    clutchGene: number;              // -0.3~+0.3 클러치 히트레이트 ±0.9% ([2026-11-16] 폭 0.3배 — 이전 -1.0~+1.0·±3%)
     consistency: number;             // 0.0~1.0   콜드스트릭 회복률 0.7x~1.3x
     confidenceSensitivity: number;   // 0.3~1.7   핫/콜드 진폭 배율
-    composure: number;               // -1.0~+1.0 턴오버 확률 ±1%
+    composure: number;               // -1.0~+1.0 본인 실수(비강제) 턴오버 확률 −값×1%p — 압박 여부와 무관하게 항상 적용
     motorIntensity: number;          // 0.5~1.5   리바운드 확률 ±15%
-    focusDrift: number;              // 0.0~1.0   피로 시 히트레이트 추가 감소
+    focusDrift: number;              // 0.0~1.0   컨디션 75% 미만에서 히트레이트 추가 감소: 값 × (0.75 − 컨디션) × 10%p ([2026-11-16] 이전 30% 미만·× 5%p)
 
     // 플레이스타일 (5)
-    shotDiscipline: number;          // -1.0~+1.0 히트레이트 ±1.5%
-    defensiveMotor: number;          // -1.0~+1.0 수비 레이팅 ±10pt (2026-09-10, 기존 ±3pt)
-    ballDominance: number;           // 0.5~1.5   액터 선택 가중치 배율
-    foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
-    playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
+    shotDiscipline: number;          // -1.0~+1.0 [2026-11-16] 사용처 없음 — 성공률 보정(±1.5%)과 스카우팅 문장 제거, 값만 생성됨
+    defensiveMotor: number;          // -1.0~+1.0 [2026-11-16] 맡은 공격수를 놓아주는 빈도 = 15% × (1 − 값). 놓으면 견제 × 0.7·그 수비수 파울 없음 (이전: 수비 레이팅 ±10pt)
+    ballDominance: number;           // 0.5~1.5   공을 쥐는 비중 — 쥐고 만드는 슛·공을 쥔 패서 선정에 그대로, 받는 플레이·스크리너 선정에 반대(2 − 값)로 곱함 [2026-11-16 역할 분담]
+    foulProneness: number;           // -1.0~+1.0 [2026-11-16] 폐지 — 엔진·스카우팅 리포트에서 쓰지 않음, 값만 생성됨 (이전: 파울 확률 ±2%)
+    playStyle: number;               // -1.0(패스)~+1.0(슛) 공을 쥐었을 때 슛이냐 패스냐 — 슛하는 역할 ×(1+0.25×값), 공을 쥔 패서 ×(1−0.25×값), 킥아웃·속공 패스 ×(1−0.6×값)
 
     // 성격 (5)
     temperament: number;             // -1.0(냉정)~+1.0(다혈질) 테크니컬 확률
-    ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
+    ego: number;                     // -1.0(겸손)~+1.0(자존심) 계약 협상 전용(자기 가치 인식·모욕선·기대 역할) — 경기 엔진 미사용(2026-11-15)
     financialAmbition: number;       // 0.0(겸손)~1.0(탐욕) FA 요구 연봉 및 오퍼 수락 기준
     loyalty: number;                 // 0.0(이적 욕구)~1.0(팀 충성도) FA 재계약 수락 기준 완화
     winDesire: number;               // 0.0(돈/역할 우선)~1.0(우승 욕구) 컨텐더 오퍼 수락 우대

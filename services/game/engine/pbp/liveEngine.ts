@@ -691,6 +691,7 @@ export function stepPossession(state: GameState): StepResult {
         state.lastOffRebounderId = undefined;
         state.lastOffRebClose = undefined;
         state.inbound = isOvertimePeriod(state.quarter) ? undefined : { spot: 'backcourt' };   // 연장은 점프볼(라이브볼) 시작
+        state.resumePlanLeft = undefined;   // [2026-11-16] 새 피리어드 = 새 공격
         state.lastPossessionLiveBall = false;
         state.clockModeLogged = undefined;
         const periodStartTeam = state.possession === 'home' ? state.home : state.away;
@@ -791,6 +792,7 @@ export function stepPossession(state: GameState): StepResult {
         // [2026-10-23] simulatePossession이 미리 뽑은 값이 있으면 그대로(프레스 시간·샷클락 막판 페널티와 일치), 없으면 기존 계산
         : state.preSampledPossessionTime !== undefined ? Math.min(state.gameClock, state.preSampledPossessionTime)
         : calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+    const plannedTime = timeTaken;   // [2026-11-16] 파울로 끊기기 전 계획한 공격 시간 — 재개 공격이 남은 만큼만 쓴다(아래 resumePlanLeft)
     if (isNonBonusFoul && !result.isIntentional) timeTaken = Math.max(1, Math.round(timeTaken * (0.25 + Math.random() * 0.5)));
 
     // [2026-11-05] 상황별 클락 운영(2-for-1·마지막 공격·샷클락 끝까지·서두르기·시간 끌기) — 별도 안내 줄 대신 이번 공격의 플레이 줄 앞에
@@ -948,10 +950,14 @@ export function stepPossession(state: GameState): StepResult {
         state.lastOffRebounderId = isOffReb ? state.pendingOffReb?.playerId : undefined;
         state.lastOffRebClose = isOffReb ? !!state.pendingOffReb?.close : undefined;
         state.lastEntryWasFlagrant = result.type === 'flagrantFoul';
+        // [2026-11-16] 이어서 하는 공격(사용자 결정) — 보너스 전 비슈팅 파울로 끊긴 하프코트 공격은 재개 뒤 원래 계획한 시간의 나머지만 쓴다
+        //   (timeEngine). 프레스·고의 파울(백코트 재개)과 그 외 유지 사유(공격 리바운드·테크니컬·플래그런트·싸움)는 해당 없음 (server 미러 참조)
+        state.resumePlanLeft = (isNonBonusFoul && !result.pressEvent && !result.isIntentional) ? Math.max(0, plannedTime - timeTaken) : undefined;
     } else {
         state.lastEntryWasOffReb = false;
         state.lastOffRebounderId = undefined;
         state.inbound = undefined;   // [2026-11-04] 공격권 전환 = 라이브볼(리바운드·스틸) 또는 일반 데드볼(득점·자유투·턴오버) 진입
+        state.resumePlanLeft = undefined;
         state.clockModeLogged = undefined;
         state.lastOffRebClose = undefined;
         state.lastEntryWasFlagrant = false;

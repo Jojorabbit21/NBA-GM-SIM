@@ -1,0 +1,358 @@
+
+import type { PlayerArchetypeState } from './archetype.ts';
+
+export interface PlayerStats {
+    g: number;
+    gs: number;
+    mp: number;
+    pts: number;
+    reb: number;
+    offReb: number;
+    defReb: number;
+    ast: number;
+    stl: number;
+    blk: number;
+    tov: number;
+    tovForced: number;
+    pf: number;
+    techFouls: number;
+    flagrantFouls: number;
+    fgm: number;
+    fga: number;
+    p3m: number;
+    p3a: number;
+    ftm: number;
+    fta: number;
+    rimM: number;
+    rimA: number;
+    midM: number;
+    midA: number;
+    plusMinus: number;
+    /** 판정된 스크린 결과 카운트(스크리너 기준, 2026-10-28~) — SCRN% = scrClean ÷ (scrClean+scrPartial+scrFail) */
+    scrClean?: number;
+    scrPartial?: number;
+    scrFail?: number;
+    /** [2026-11-15] FIT% — 스크린을 맞은 수비수 기준. fitFaced = 판정된 스크린 수, fitThru = 스크린에 걸리지 않고 완전히 빠져나간 수(판정 'fail'). FIT% = fitThru ÷ fitFaced. 이전 경기 기록엔 없음 */
+    fitFaced?: number;
+    fitThru?: number;
+    /** [2026-11-15] DRFD(DrivesFaced) — 림·페인트로 드리블 돌파해 온 선수를 막은 횟수. drfd = 맨투맨, drfdZone = 지역방어(앵커 귀속이라 따로 집계). 이전 경기 기록엔 없음 */
+    drfd?: number;
+    drfdZone?: number;
+    [key: string]: number; // for zones
+}
+
+export interface ShotZones {
+    ra: number;  // Restricted Area
+    itp: number; // In The Paint (Non-RA)
+    mid: number; // Mid-Range
+    cnr: number; // Corner 3
+    p45: number; // 45 Degree 3 (Wing)
+    atb: number; // Above The Break (Top)
+}
+
+export interface PlayerTendencies {
+    lateral_bias: number; // 0: Strong Left, 1: Left, 2: Right, 3: Strong Right
+    zones: ShotZones;
+}
+
+export interface HiddenTendencies {
+    hand: 'Right' | 'Left';
+    lateralBias: number;
+}
+
+// 선수 인기도 (재정 시스템 연결)
+export interface PlayerPopularity {
+    local: number;    // 0~100, 연고지 인기 (관중/MD 직결)
+    national: number; // 0~100, 전국 인기 (스폰서십/MD)
+}
+
+// 선수 기분/사기 (퍼포먼스·트레이드 요청에 영향)
+export type MoraleEventType =
+    | 'TEAM_WIN' | 'TEAM_LOSS'
+    | 'MINUTES_HIGH' | 'MINUTES_LOW'
+    | 'GREAT_GAME' | 'BAD_GAME'
+    | 'STAR_IGNORED';
+
+export interface MoraleEvent {
+    type: MoraleEventType;
+    delta: number;
+    date: string;   // 경기 날짜 'YYYY-MM-DD'
+}
+
+export interface PlayerMorale {
+    score: number;              // 0~100, 50 = 중립
+    recentEvents: MoraleEvent[]; // 최근 10개 (UI 툴팁 표시용)
+}
+
+// [New] Save-seeded hidden tendencies (세이브별 랜덤 배정, 매 플레이스루 고유)
+export interface SaveTendencies {
+    // 멘탈 (6)
+    clutchGene: number;              // -1.0~+1.0 클러치 히트레이트 ±3%
+    consistency: number;             // 0.0~1.0   콜드스트릭 회복률 0.7x~1.3x
+    confidenceSensitivity: number;   // 0.3~1.7   핫/콜드 진폭 배율
+    composure: number;               // -1.0~+1.0 턴오버 확률 ±1%
+    motorIntensity: number;          // 0.5~1.5   리바운드 확률 ±15%
+    focusDrift: number;              // 0.0~1.0   피로 시 히트레이트 추가 감소
+
+    // 플레이스타일 (5)
+    shotDiscipline: number;          // -1.0~+1.0 히트레이트 ±1.5%
+    defensiveMotor: number;          // -1.0~+1.0 수비 레이팅 ±10pt (2026-09-10, 기존 ±3pt)
+    ballDominance: number;           // 0.5~1.5   액터 선택 가중치 배율
+    foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
+    playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
+
+    // 성격 (5)
+    temperament: number;             // -1.0(냉정)~+1.0(다혈질) 테크니컬 확률
+    ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
+    financialAmbition: number;       // 0.0(겸손)~1.0(탐욕) FA 요구 연봉 및 오퍼 수락 기준
+    loyalty: number;                 // 0.0(이적 욕구)~1.0(팀 충성도) FA 재계약 수락 기준 완화
+    winDesire: number;               // 0.0(돈/역할 우선)~1.0(우승 욕구) 컨텐더 오퍼 수락 우대
+}
+
+// [New] 부상 이력 기록 (부상 발생 시마다 push)
+export interface InjuryHistoryEntry {
+    injuryType: string;
+    severity: 'Grade1' | 'Grade2' | 'Grade3' | 'Grade4' | 'Grade5' | 'Suspension';
+    duration: string;
+    date: string;
+    returnDate: string;
+    isTraining: boolean;
+}
+
+// [New] 능력치 변화 이벤트 (성장/퇴화 시 |fractional| >= 1.0 도달마다 기록)
+export interface AttributeChangeEvent {
+    date: string;           // 경기 날짜 (예: '2025-12-15')
+    attribute: string;      // SkillAttribute key
+    delta: number;          // +1 or -1
+    oldValue: number;
+    newValue: number;
+}
+
+// [New] 수상 내역 (멀티시즌 대비 배열 구조)
+export type PlayerAwardType =
+    | 'MVP' | 'DPOY' | 'FINALS_MVP' | 'CHAMPION' | 'REG_SEASON_CHAMPION'
+    | 'ALL_NBA_1' | 'ALL_NBA_2' | 'ALL_NBA_3'
+    | 'ALL_DEF_1' | 'ALL_DEF_2'
+    | 'ALL_STAR';
+
+export interface PlayerAwardEntry {
+    type: PlayerAwardType;
+    season: string;   // e.g. '2025-26'
+    teamId: string;
+    rank?: number;    // MVP 1~10위, DPOY 1~5위 (없으면 수상/선정)
+}
+
+// ── 선수 계약 구조 ──
+// [2026-09-17] 클라이언트 types/player.ts와 동일하게 11종 → 4종 재설계(CLAUDE.md 미러 규칙).
+// DB는 백필 마이그레이션으로 전부 새 값으로 변환됨 — migrations/backfill_contract_type_values.sql.
+export type ContractType =
+    | 'extension'
+    | 'free_agent'
+    | 'rookie_scale'
+    | 'two_way';
+// contractDetail(연장 세부종류/QO 여부)과 signingType(SigningType 재사용, 버드권한/MLE/BAE
+// 등)은 서버에 대응하는 types/fa.ts가 없어 미러하지 않음 — FA 시장/연장 협상 로직 자체가
+// 현재 클라이언트 전용(services/fa/*)이라 서버 PlayerContract는 이 필드들을 쓰지 않는다.
+// 클라이언트 fa.ts가 서버로 이관되면 그때 추가.
+
+export interface ContractOption {
+    type: 'player' | 'team';
+    year: number;               // 적용 연차 (0-based) — options 배열에서 연차마다 하나씩 가질 수 있음
+}
+
+export interface PlayerContract {
+    years: number[];            // 연차별 연봉 (달러) [30_000_000, 32_000_000, ...]
+    yearSeasons?: number[];     // years와 1:1 대응하는 실제 시즌 연도 [2026, 2027, ...] — 계산식이
+                                 // 아니라 연차마다 직접 입력하는 사실 데이터(과거 계약 재구성용).
+    currentYear: number;        // 0-based
+    type: ContractType;
+    noTrade?: boolean;
+    options?: ContractOption[]; // 연차별 팀/플레이어 옵션 — 같은 year를 가진 항목은 최대 1개
+                                 // (연차당 옵션은 하나뿐). 특정 연차의 옵션 조회는
+                                 // options?.find(o => o.year === targetYear).
+    tradeKicker?: number;       // e.g. 0.10 = 10% 보너스 (트레이드 시 지급)
+    /** [2026-10-01] 이미 체결됐지만 아직 시작하지 않은 다음 계약(연장/조기 재계약) — 클라 types/player.ts 미러.
+     *  현재 계약 만료 시 contractLifecycle.advanceContractSeason()이 승격. 서버는 player_current_salary 등이
+     *  현재 계약만 보므로 이 필드를 읽지 않지만, 모양을 맞춰둔다. */
+    nextContract?: PlayerContract;
+}
+
+// [New] Interface for saving player state (Condition + Health + Growth)
+export interface SavedPlayerState {
+    condition: number;
+    health?: 'Healthy' | 'Injured' | 'Day-to-Day';
+    injuryType?: string;
+    returnDate?: string;
+    // 성장/퇴화 상태 (per-game 미세 누적)
+    fractionalGrowth?: Record<string, number>;  // 소수점 누적값 (sparse)
+    attrDeltas?: Record<string, number>;         // 시즌 내 정수 변화 합계 (sparse)
+    changeLog?: AttributeChangeEvent[];          // 정수 변화 이벤트 로그
+    seasonStartAttributes?: Record<string, number>; // 시즌 시작 기준 속성값
+    injuryHistory?: InjuryHistoryEntry[];
+    awards?: PlayerAwardEntry[];
+    contract?: PlayerContract;
+    age?: number;         // 오프시즌 age+1 후 덮어쓰기용 (base_attributes.age는 불변이므로)
+    teamTenure?: number;  // 현재 팀에서 뛴 시즌 수 (Bird Rights 판별용)
+    archetypeState?: PlayerArchetypeState;  // 선수 플레이스타일 아키타입 (오프시즌 갱신)
+    popularity?: PlayerPopularity;          // 선수 인기도 (재정 시스템 연결)
+    morale?: PlayerMorale;                  // 선수 기분/사기 (퍼포먼스 연결)
+}
+
+export interface Player {
+    id: string;
+    name: string;
+    position: string;
+    age: number;
+    height: number;
+    weight: number;
+    salary: number;
+    contractYears: number;
+    ovr: number;
+    /** [2026-10-22] meta_players.ovr_base/ovr_custom 고정 OVR(멀티 전용). 있으면 calculatePlayerOvr()가 능력치 재계산 대신 이 값을 반환한다.
+     *  매퍼가 useFixedOvr일 때만 채움 — 싱글플레이/카드는 undefined(기존 계산 유지). */
+    fixedOvr?: number;
+    /** 주 아키타입 표시 라벨(예: "Rim Protector") — OVR 계산 시 같이 산출됨 */
+    archetype?: string;
+    /** 부 아키타입 표시 라벨 — primary와 동일하면 null */
+    secondaryArchetype?: string | null;
+    manualOvr?: number;
+    potential: number;
+    revealedPotential: number;
+    health: 'Healthy' | 'Injured' | 'Day-to-Day';
+    injuryType?: string;
+    returnDate?: string;
+    condition?: number;
+    conditionDelta?: number;
+    ins: number;
+    out: number;
+    plm: number;
+    def: number;
+    reb: number;
+    ath: number;
+    closeShot: number;
+    midRange: number;
+    threeCorner: number;
+    three45: number;
+    threeTop: number;
+    ft: number;
+    shotIq: number;
+    offConsist: number;
+    layup: number;
+    dunk: number;
+    postPlay: number;
+    drawFoul: number;
+    hands: number;
+    passAcc: number;
+    handling: number;
+    spdBall: number;
+    passIq: number;
+    passVision: number;
+    offBallMovement: number;
+    intDef: number;
+    perDef: number;
+    steal: number;
+    blk: number;
+    helpDefIq: number;
+    passPerc: number;
+    defConsist: number;
+    offReb: number;
+    defReb: number;
+    boxOut: number;
+    speed: number;
+    agility: number;
+    strength: number;
+    vertical: number;
+    stamina: number;
+    hustle: number;
+    durability: number;
+    intangibles: number;
+    customOverrides?: Partial<Pick<Player,
+        'closeShot' | 'midRange' | 'threeCorner' | 'three45' | 'threeTop' |
+        'ft' | 'shotIq' | 'offConsist' | 'layup' | 'dunk' | 'postPlay' |
+        'drawFoul' | 'hands' | 'passAcc' | 'handling' | 'spdBall' |
+        'passIq' | 'passVision' | 'offBallMovement' | 'intDef' | 'perDef' | 'steal' | 'blk' |
+        'helpDefIq' | 'passPerc' | 'defConsist' | 'offReb' | 'defReb' | 'boxOut' |
+        'speed' | 'agility' | 'strength' | 'vertical' | 'stamina' |
+        'hustle' | 'durability' | 'intangibles' |
+        'ovr' | 'age' | 'height' | 'weight' | 'potential' | 'position'
+    >> & { team?: string };
+    includeAlltime?: boolean;
+    stats: PlayerStats;
+    playoffStats?: PlayerStats;
+    tendencies?: PlayerTendencies;
+    hiddenTendencies?: HiddenTendencies;
+    fractionalGrowth?: Record<string, number>;
+    attrDeltas?: Record<string, number>;
+    changeLog?: AttributeChangeEvent[];
+    seasonStartAttributes?: Record<string, number>;
+    injuryHistory?: InjuryHistoryEntry[];
+    awards?: PlayerAwardEntry[];
+    career_history?: CareerSeasonStat[];
+    contract?: PlayerContract;
+    contractHistory?: PlayerContract[];
+    draftYear?: number;
+    draftRound?: 1 | 2 | null;
+    draftPick?: number | null;
+    teamTenure?: number;
+    prevSeasonStats?: PrevSeasonStats;
+    prevSalary?: number;
+    prevTeamTenure?: number;
+    prevContract?: PlayerContract;
+    archetypeState?: PlayerArchetypeState;
+    popularity?: PlayerPopularity;
+    morale?: PlayerMorale;
+    rawOvr?: number;
+    futureOvr?: number;
+}
+
+export interface CareerSeasonStat {
+    season:   string;
+    team:     string;
+    age:      number;
+    gp:  number;  gs:  number;
+    min: number | null;  pts: number;
+    oreb: number | null;  dreb: number | null;  reb: number | null;
+    ast: number;
+    stl: number | null;
+    blk: number | null;
+    tov: number | null;
+    pf:  number;
+    fgm: number;  fga: number;
+    fg3m: number | null;  fg3a: number | null;
+    ftm: number;  fta: number;
+    fg_pct:  number;  fg3_pct: number | null;  ft_pct: number;
+    ts_pct:    number;
+    efg_pct:   number;
+    tov_pct:   number | null;
+    fg3a_rate: number | null;
+    fta_rate:  number;
+    usg_pct?: number;
+    ast_pct?: number;
+    orb_pct?: number;
+    drb_pct?: number;
+    trb_pct?: number;
+    stl_pct?: number;
+    blk_pct?: number;
+    playoff?: boolean;
+    awards?: PlayerAwardEntry[];
+}
+
+export interface PrevSeasonStats {
+    gp: number;
+    mpg: number;
+    ppg: number;
+    rpg: number;
+    apg: number;
+    spg: number;
+    bpg: number;
+    fgPct: number;
+    fg3Pct: number;
+    ftPct: number;
+}
+
+export interface RosterUpdate {
+    condition?: number;
+    health?: string;
+    injuryType?: string;
+    returnDate?: string;
+}

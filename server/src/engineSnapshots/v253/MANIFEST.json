@@ -1,0 +1,242 @@
+{
+  "name": "v253",
+  "ref": "fd3e395266904ad304818dc5dba8dc2804b4fd52",
+  "entry": "index.ts",
+  "shims": [
+    "shared/services/admin/gameConfigService.ts"
+  ],
+  "files": [
+    {
+      "path": "shared/coachingStaff/coachGenerator.ts",
+      "sha256": "b03a21af6d2766ed34f3bc50952eb583371b8ad6144e037154cd0396bc6335d4"
+    },
+    {
+      "path": "shared/engine/aceStopperSystem.ts",
+      "sha256": "303d4db98d048ec200de6342c8195aa8410ab196884cb8f9ac089fe1ed3f4a53"
+    },
+    {
+      "path": "shared/engine/commentary/josa.ts",
+      "sha256": "7c9cee9ef2f59667a87aca723d57cb7cdcbb4b875396514f3c2b8521f54b4959"
+    },
+    {
+      "path": "shared/engine/commentary/textGenerator.ts",
+      "sha256": "3a00331929ddedd2898db4458adaaef2a1a9701a66c7d4eab2ba2e7d4bc8f084"
+    },
+    {
+      "path": "shared/engine/fatigueSystem.ts",
+      "sha256": "702b1aed644acabc3f94c52bce2befe7bb459e7929c11e3a770e4e69d98d554f"
+    },
+    {
+      "path": "shared/engine/injuryGrades.ts",
+      "sha256": "5b58a93bf621a99093e4cd67ebdd1726c6a89e40e103aa0b1fab8dc743470263"
+    },
+    {
+      "path": "shared/engine/pbp/archetypeSystem.ts",
+      "sha256": "5dad2e8b923eacd285248df004f0f05fb4fb468d9b8d6948ca433f9c546c47d1"
+    },
+    {
+      "path": "shared/engine/pbp/endOfPeriodShot.ts",
+      "sha256": "b464d7287994edfeadf2dcd253204a885581e1092e66807c73a39dd810419d5a"
+    },
+    {
+      "path": "shared/engine/pbp/flowEngine.ts",
+      "sha256": "758418854cd7d9e518167ebf02918ac5a5a5e1525fcbed9cd1c95671875adcce"
+    },
+    {
+      "path": "shared/engine/pbp/foulStrategy.ts",
+      "sha256": "dcf64172c7c4b56b6035e91188605dae2985d2ca3e670c91f2691248e052a660"
+    },
+    {
+      "path": "shared/engine/pbp/handlers/courtPositions.ts",
+      "sha256": "7fc726f8705691bef8214e9b85c09317da935304d346956ee5b87ca1d29ed854"
+    },
+    {
+      "path": "shared/engine/pbp/handlers/statUtils.ts",
+      "sha256": "ab5adb65438c7f41052feb96ba27684d8173e76fa2d0ea67a51fa5f69ebd01a6"
+    },
+    {
+      "path": "shared/engine/pbp/handlers/visUtils.ts",
+      "sha256": "ca0e5d74839fc5abf17f70470a3263c4569f1f472ce662cbcb892bbee36556ab"
+    },
+    {
+      "path": "shared/engine/pbp/initializer.ts",
+      "sha256": "35d4ce15c3337dc4cf53e7db5451daf8bd807d7f62de0876849b4548cd7d6997"
+    },
+    {
+      "path": "shared/engine/pbp/leagueNormalization.ts",
+      "sha256": "1ceb3aa0c0442d929e36de0514688b3d03658f1cc7303a037255d22d7e0f76e1"
+    },
+    {
+      "path": "shared/engine/pbp/liveEngine.ts",
+      "sha256": "81a1fff30f24977195e0421344c8334a02a41ac3923732ca499c0021208dbde5"
+    },
+    {
+      "path": "shared/engine/pbp/main.ts",
+      "sha256": "42876022267d1e449dd7f52d487e451d9156cf5df783ee0a3e5270285ac63c66"
+    },
+    {
+      "path": "shared/engine/pbp/matchupAssign.ts",
+      "sha256": "4a6c3699732862d6f73d4762f09031f5eb6f2eca928b1bb7ae40f732a4a57563"
+    },
+    {
+      "path": "shared/engine/pbp/pbpTypes.ts",
+      "sha256": "92da278091560241979607b4b8865b4b66333db86573b88955c3443d3899e6a2"
+    },
+    {
+      "path": "shared/engine/pbp/periodRules.ts",
+      "sha256": "d0e9e79a1752401b9d53cfcf35ca68e95e11c70bb8b7988e53a6cdd01849207e"
+    },
+    {
+      "path": "shared/engine/pbp/playTypes.ts",
+      "sha256": "a9053bc85c36ff2fd423d50e139b6ff82be4811ea660af9754b9a4a94a08cefb"
+    },
+    {
+      "path": "shared/engine/pbp/possessionHandler.ts",
+      "sha256": "4f310f830baa9be246d1a3fe0910dc06c9328d390505fedd3851b1d874c270af"
+    },
+    {
+      "path": "shared/engine/pbp/postMatchup.ts",
+      "sha256": "92f6a33a2d29b0e024520c8175e2b85c1f8b38573dc3b531e269c8898bac4af3"
+    },
+    {
+      "path": "shared/engine/pbp/reboundLogic.ts",
+      "sha256": "5ef942514a95c5a21550c8d4e810f3877408c483c469a5dace8f95759ea2b796"
+    },
+    {
+      "path": "shared/engine/pbp/rotationLogic.ts",
+      "sha256": "f567dc1217b6e1ef3ddcfe3aa2900608a1b3114656eaafbd67e7c9f649ca73df"
+    },
+    {
+      "path": "shared/engine/pbp/rotationSuccession.ts",
+      "sha256": "bbaf555745972648300922c21641f8382337155a22e4c8124655454f92a6187a"
+    },
+    {
+      "path": "shared/engine/pbp/slotAssignment.ts",
+      "sha256": "8cd1b7f89c3980726deafc320d636e0d5ed7e85e4773c952c4abdc0d0f9c33cf"
+    },
+    {
+      "path": "shared/engine/pbp/spacingResponse.ts",
+      "sha256": "b4f9da5c87303a62bc69667a5d47c2393163b0d7765802ab47d5c5555485735e"
+    },
+    {
+      "path": "shared/engine/pbp/stateUpdater.ts",
+      "sha256": "2fad567a1d05199cee6acbfa413085d2181196f8ca12f77d32be72d1def53d51"
+    },
+    {
+      "path": "shared/engine/pbp/statsMappers.ts",
+      "sha256": "f602632b2e89d68f11a974f1fdcfab080a0c2b8fafc4948edc70f2a4ce58c423"
+    },
+    {
+      "path": "shared/engine/pbp/substitutionSystem.ts",
+      "sha256": "bba0031ccde65f9a49ef7281537135cd7b01858b2ef1becd3338d63f56623183"
+    },
+    {
+      "path": "shared/engine/pbp/tacticSchedule.ts",
+      "sha256": "140416ab76fa6ecbb749615abe46993a1ae76b7d8bb30ccb355d1f8c7233ebc4"
+    },
+    {
+      "path": "shared/engine/pbp/teamMisc.ts",
+      "sha256": "ab49ce93b9ea7caf8d661b3f726dbc72a00497ac39871cf7e331519e4ee57796"
+    },
+    {
+      "path": "shared/engine/pbp/timeEngine.ts",
+      "sha256": "3e8b8cbaa0e6f304a9fe2b95d04370c4547182be41e49cb2f1ffedb3704513c5"
+    },
+    {
+      "path": "shared/engine/pbp/timeoutPolicy.ts",
+      "sha256": "22df8a9881b627776ca90abf491820bcfb4159fc86d5db0aa75648e18651ca8f"
+    },
+    {
+      "path": "shared/engine/pbp/usageSystem.ts",
+      "sha256": "277d9e5a513560b65f2243dd687cc9e1d002ca61a9d5ec34339d1aea8cc126ca"
+    },
+    {
+      "path": "shared/engine/shotDistribution.ts",
+      "sha256": "b0654137a7c75282024dbee18cf10ba5ee87847e05f91f9d84bfcd4cb4afc138"
+    },
+    {
+      "path": "shared/game/config/constants.ts",
+      "sha256": "31ca05bca097d3c26835464e85b853fae041c438806e7f8a17a6791a55f56439"
+    },
+    {
+      "path": "shared/game/config/playTypeProfiles.ts",
+      "sha256": "02acdf14143730fcc3eab17881cc5ab4db51fb6d2266d094715f26f33b15ff79"
+    },
+    {
+      "path": "shared/game/config/sliderSteps.ts",
+      "sha256": "185470add99defd3d14f483adf39d3120c887530bb8e52796162bb8e118937b8"
+    },
+    {
+      "path": "shared/game/config/tacticPresets.ts",
+      "sha256": "a68f8275879189cb8d3b12c6409acd94159f35cb933f96698da1637f16aff09b"
+    },
+    {
+      "path": "shared/game/config/usageWeights.ts",
+      "sha256": "ba70296928b000c0509882f8a0079462f4f39eb796ed46ef53d2380945f13618"
+    },
+    {
+      "path": "shared/game/tactics/tacticGenerator.ts",
+      "sha256": "c74fc7dd2825c2fd49f1e9f8516b2113bb6d96c67ac66c639d18a8e8b2154228"
+    },
+    {
+      "path": "shared/types.ts",
+      "sha256": "26d3a81c934fca775ec92ed20fab23124332cb12826fb55c9f9451a6531b7bd3"
+    },
+    {
+      "path": "shared/types/app.ts",
+      "sha256": "bf397c9f3c84f70979462f464e1227c5cab904eadb77f70bc76671c988c8247e"
+    },
+    {
+      "path": "shared/types/archetype.ts",
+      "sha256": "74a694e2e0cb4a15a47460ec6c7aff940771f9d1780dc5cf5dd9a7c0fe1f1afa"
+    },
+    {
+      "path": "shared/types/coaching.ts",
+      "sha256": "45259728a740e4cdd2988f840260570114fdb2fec76d557889459eebf8bbf0e8"
+    },
+    {
+      "path": "shared/types/engine.ts",
+      "sha256": "02b8935355de73121d5285f16402c3a7fe83db56e3d035f786f07db62867e2c8"
+    },
+    {
+      "path": "shared/types/game.ts",
+      "sha256": "2481723dad58ba11802315d53bb9f151f22e664ebf5811f1b0d8d7d139f0d3c0"
+    },
+    {
+      "path": "shared/types/player.ts",
+      "sha256": "f19b97073a7ade633ee84d7ae63d17fab978b7ffe5311d23e566e5a0a3c00548"
+    },
+    {
+      "path": "shared/types/simSettings.ts",
+      "sha256": "9862b8f5ec2cccbc2c1732764893ccdbed031e8d09b9bb33adfacd3b38ee9f44"
+    },
+    {
+      "path": "shared/types/tactics.ts",
+      "sha256": "28b6208c9905b819a278450e5c9a38a1bcbb5777439de27b560ff2fc2f9af975"
+    },
+    {
+      "path": "shared/types/team.ts",
+      "sha256": "51477575c8b3e0a309cc9441647c6205fda15cde13470512c17e99f26cc64ab8"
+    },
+    {
+      "path": "shared/utils/constants.ts",
+      "sha256": "d5b028b028ba548a825af41d06bfcdbb47bd3dadd9c87a32ab07c8f2f30c1e86"
+    },
+    {
+      "path": "shared/utils/courtCoordinates.ts",
+      "sha256": "87de09594cd7fba9a5e2b94cf0a54c681ec9c1bd58bb28b0d7381205f8adff11"
+    },
+    {
+      "path": "shared/utils/hiddenTendencies.ts",
+      "sha256": "a732065c7233ce43dff3e375dd5531f547386540f4e1b672e97961b365b1e0e9"
+    },
+    {
+      "path": "shared/utils/ovrEngine.ts",
+      "sha256": "362c8dc3d545cd71015c231921bdcfa2065651014cb10a21c8a39cec0ef50b16"
+    },
+    {
+      "path": "shared/utils/ovrUtils.ts",
+      "sha256": "ac605b568f94cb3c94ee5dc1e3ff48320bdfdb1eb8c8e5e1652b71c64b8615eb"
+    }
+  ]
+}

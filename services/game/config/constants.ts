@@ -124,7 +124,7 @@ export const SIM_CONFIG = {
             [85, -0.077], [90, -0.057], [95, -0.037], [99, -0.027],
         ] as [number, number][],
 
-        // shotIq + offConsist 일관성 시스템 (모든 존)
+        // shotIq + offConsist 슛별 대칭 노이즈 (모든 존) — [2026-11-17] SIM_CONFIG.SHOT_FORM.ENABLED면 쓰지 않는다(경기 단위 슛 감각으로 대체)
         SHOTIQ_NOISE_COEFF: 0.0008,
         CONSIST_NOISE_COEFF: 0.0010,
         CONSIST_BASELINE: 70,
@@ -177,6 +177,7 @@ export const SIM_CONFIG = {
         TECH_DEFICIT_MAX_BOOST: 0.5,     // 상한 — ×1.5배까지(약 33점차 이상에서 도달)
 
         // 플래그런트 파울 (독립 이벤트, foulProneness 주 영향 + temperament 보조)
+        // [2026-11-16] DEFENSIVE_MOTOR.ENABLED면 foulProneness는 0으로 읽힌다 → 기질(temperament × FLAGRANT_TEMPER_WEIGHT)만 작용, 팀당 시즌 약 5.2개(이전 5.7)
         // 목표: 팀당 시즌 ~4-5개 (8200포제션 기준)
         FLAGRANT_BASE: 0.0004,           // 포제션당 0.04% (중립 팀 ~5개/시즌)
         FLAGRANT_FOULPRONE_WEIGHT: 0.7,  // foulProneness 기여 비중
@@ -512,6 +513,9 @@ export const SIM_CONFIG = {
         LAST_SHOT_LOG_MIN: 8,                               // ① 이 시간(초) 이상 남았을 때만 '마지막 슛' 안내 줄(그보다 짧으면 사실상 바로 던짐)
         FULL_CLOCK_WINDOW: 36,                              // ② 샷클락 < 남은 시간 < 36초 → 샷클락 끝까지
         FULL_CLOCK_LEFT: [1, 3] as [number, number],
+        // [2026-11-16] 이어서 하는 공격 — true: 보너스 전 비슈팅 파울 뒤 프런트코트에서 재개한 공격은 끊기기 전 계획 시간의 나머지만 쓴다
+        //   (timeEngine·liveEngine resumePlanLeft). false = 예전 방식(새 공격처럼 전체 시간을 다시 계산). POSSESSION_TIME.BASE 19.3과 한 쌍 — 끄면 BASE도 19로 (server 미러 동일)
+        RESUME_CONTINUE: true,
         TWO_FOR_ONE: { MAX_CLOCK: 47, TARGET_LEFT: [30, 33] as [number, number] }, // ③ 36~47초 시작 → 30~33초에 슛
         HURRY: {                                            // ④ 4Q·연장 지는 팀
             TIERS: [{ clock: 120, margin: 4 }, { clock: 60, margin: 3 }],
@@ -767,12 +771,77 @@ export const SIM_CONFIG = {
     },
     // [2026-10-23] 샷클락 막판 슛 페널티 — 슛 시점 잔여 샷클락(= 샷클락 - 이번 포세션 소요시간)이 4초 미만일 때.
     // 근거: 82games 2003-04 리그 집계 21초 이상 소요 포세션 100포세션당 91.8 (16~20초 100.6, 약 -9%).
-    // 클러치 능력((intangibles×.5+offConsist×.3+shotIq×.2)/100 + clutchGene×.05)이 높으면 최대 MITIGATION_MAX만큼 감쇄.
+    // 클러치 능력(intangibles/100 + clutchGene×.05 — [2026-11-16] 인탱저블만, 이전 (intangibles×.5+offConsist×.3+shotIq×.2)/100)이 높으면 최대 MITIGATION_MAX만큼 감쇄.
+    // [2026-11-16] 감점 강화 + 적용 범위 확대(사용자 결정, server 미러 동일):
+    //   · 곡선: 3초 −2.5→−3%p / 2초 −4.5→−5.5%p / 1초 −6→−8%p / 0초 −6→−10%p. 이전: [[1, 0.06], [2, 0.045], [3, 0.025], [4, 0]]
+    //   · USE_SHORTER_CLOCK: 남은 시간 = min(샷클락, 게임클락) − 소요 시간 → 샷클락이 꺼진 상황(남은 경기 시간 < 샷클락)에도 감점,
+    //     피리어드 막판 급한 슛(endShotRush)도 같은 곡선(이전: 남은 시간 무관 최대 고정). 풋백은 제외. false = 예전 범위.
+    //   · NO_SHOT: 막판(남은 시간 4초 미만)에 몰리면 슛을 못 던질 수 있다 — 샷클락 켜짐 = 샷클락 바이얼레이션, 꺼짐 = 슛 없이 시간 종료(clockExpire 'noShot').
+    //     확률 = FAIL_CURVE(남은 시간) × 슛 IQ 배율 0.5^((shotIq − IQ_PIVOT) / IQ_HALF) × (의도한 시간 운영이면 DELIBERATE_MULT), 상한 MAX.
+    //     슛 IQ 배율은 비율식(사용자 결정 11-16) — 슛 IQ가 IQ_HALF(8)만큼 오를 때마다 못 던질 확률이 절반: 59 ×4 / 67 ×2 / 75 ×1 / 83 ×0.5 / 91 ×0.25 / 99 ×0.125.
+    //     이전(같은 날 첫 구현): clamp(1 + (75 − shotIq) × 0.04, 0.3, 2.5) — 기울기를 키우면 86 이상이 전부 하한에 붙어 상위권 구분이 사라져서 교체.
+    //     의도한 시간 운영 = 샷클락이 꺼진 상황의 모든 공격(남은 시간에 맞춰 던지는 슛) + clockMode fullClock·milk·milkMax(샷클락을 일부러 다 쓰는 공격).
+    //     크기 기준 = 실제 NBA 팀당 경기당 약 0.55개(사용자 결정; 82games 2006-07 집계 1,159개/1,013경기 = 0.57). 정규화가 꺼진 현역 시험대 3시즌에서
+    //     샷클락 바이얼레이션 0.554(예전 주사위 0.536), 레전드 S2 시험대 0.591(예전 0.479), 슛 없이 종료 약 0.21/팀경기.
+    //     [같은 날 후속] 비율식 배율 + '이어서 하는 공격'(CLOCK_MGMT.RESUME_CONTINUE) 적용 뒤 3시즌: 현역 0.204 / 레전드 0.252, 슛 없이 종료 0.23~0.26 —
+    //     그 전 바이얼레이션의 77%가 파울 뒤 재개 공격(새 공격처럼 14초를 다시 써서 막판에 몰림)에서 나왔기 때문. 이 총량(0.2대)은 그대로 받아들이기로 함(사용자 결정 11-16, 0.55 기준 폐기). ENABLED면 예전 일정 확률 주사위
+    //     (FOUL_EVENTS.SHOT_CLOCK_BASE·LOW_PACE·HIGH_BM·PRESS)는 굴리지 않는다 — 페이스·프레스는 포제션 시간을 통해서만 반영.
     LATE_SHOT_CLOCK: {
-        PENALTY_CURVE: [[1, 0.06], [2, 0.045], [3, 0.025], [4, 0]] as [number, number][],
+        PENALTY_CURVE: [[0, 0.10], [1, 0.08], [2, 0.055], [3, 0.03], [4, 0]] as [number, number][],
+        USE_SHORTER_CLOCK: true,
         CLUTCH_NEUTRAL: 0.65,
         CLUTCH_RANGE: 0.30,
         MITIGATION_MAX: 0.4,
+        NO_SHOT: {
+            ENABLED: true,
+            FAIL_CURVE: [[0, 0.50], [1, 0.25], [2, 0.115], [3, 0.05], [4, 0]] as [number, number][],
+            IQ_PIVOT: 75, IQ_HALF: 8,
+            DELIBERATE_MULT: 0.5,
+            MAX: 0.9,
+        },
+    },
+    // [2026-11-16] 슛 판단 — 나쁜 슛 포기(슛 IQ의 역할, 사용자 결정). possessionHandler가 슛 성공률 계산 직전에 판정한다.
+    //   조건(모두 충족): ① 기대득점(예상 성공률 × 2점/3점) < EV_THRESHOLD ② 이번 슛의 예상 성공률이 그 선수의 '평소'보다 DEFICIT_START 넘게 낮음
+    //   ③ 샷클락이 MIN_CLOCK_LEFT초 이상 남음 ④ 이 공격에서 아직 포기한 적 없음(한 공격에 한 번).
+    //   '평소' = 같은 슛을 상대 코트 위 자기 포지션 ±1 수비수들에게 상황 가감 없이 쏠 때의 평균 — 경기 기록이 아니라 그 자리에서 계산한다.
+    //   포기 확률 = MAX_CHANCE × clamp((shotIq − IQ_START) / IQ_SPAN) × clamp((차이 − DEFICIT_START) / DEFICIT_SPAN). 슛 IQ는 엔진 내부 값.
+    //   포기하면 남은 샷클락으로 하프코트 플레이를 다시 고른다(속공·프레스·풋백 없음). 재공격 시간은 timeEngine의 리셋 공격 식(공격 리바운드 뒤와 같은
+    //   식, 페이스 반영) — 따로 둔 시간 상수 없음. 결승 공격·피리어드 막판 급한 슛·서두르기·2-for-1·샷클락 꺼진 상황은 포기하지 않는다.
+    //   계측(하네스 2시즌씩, MAX_CHANCE 0.70): 포기 현역 1.9·레전드 1.1/팀경기, 포기한 슛 0.73점 → 그 뒤 공격 실현 0.83점, 재공격 슛의 61%가 샷클락 4초 미만,
+    //   리그 TS +0.2·슛 IQ 높은 구간 +0.6·득점 상위 20명 +0.8, 바이얼레이션 0.20 → 0.38, 포제션 −1.0 (server 미러 동일)
+    SHOT_DECLINE: {
+        ENABLED: true,
+        MAX_CHANCE: 0.70,
+        IQ_START: 70, IQ_SPAN: 25,
+        DEFICIT_START: 0.02, DEFICIT_SPAN: 0.08,
+        EV_THRESHOLD: 1.00,
+        MIN_CLOCK_LEFT: 6,
+    },
+    // [2026-11-17] 경기 단위 슛 감각 — 공격 일관성(offConsist)의 역할(사용자 결정).
+    //   경기 시작 때 선수마다 '터지는 날'인지 한 번 판정한다(확률 BIG_NIGHT_CHANCE, 그 경기 내내 고정, 경기마다 새로 — initializer.drawShotForm).
+    //   터지는 날: 슛 성공 확률 + 크기 / 나머지 날: − 크기 × 빈도 ÷ (1 − 빈도). 더한 것과 뺀 것이 길게 보면 상쇄돼 시즌 성공률은 이 장치가 없을 때와 같다
+    //   (나머지 날 값은 따로 둔 상수가 아니라 계산값). 크기 = min(SIZE_MAX, (100 − 공격 일관성) × SIZE_PER_POINT) — 일관성 99면 사실상 0, 낮을수록 벌어진다.
+    //   림 슛(덩크·레이업)에는 적용하지 않는다 — 성공 확률 상한(95%)에 가산만 잘려 평균이 새기 때문(측정: 포함 시 일관성 70 미만 슛당 −0.4~0.6%p, 제외 시 0).
+    //   누적 기록·득점 상한은 어디에도 없다(경기마다 독립 판정). 켜면 슛마다 뽑던 대칭 노이즈 두 개(SHOOTING.SHOTIQ_NOISE_COEFF·CONSIST_NOISE_COEFF —
+    //   평균 0·슛마다 독립이라 효과가 없었음)는 쓰지 않는다. ENABLED false = 이전 동작 그대로.
+    SHOT_FORM: {
+        ENABLED: true,
+        BIG_NIGHT_CHANCE: 0.20,
+        SIZE_PER_POINT: 0.0065,
+        SIZE_MAX: 0.26,
+    },
+    // [2026-11-16] 수비 의지 재설계(사용자 결정) — 숨은 성향 defensiveMotor = '맡은 공격수에게 제대로 붙는 빈도'.
+    //   공격마다 맡은 수비수가 놓아주는지 한 번 판정한다: 확률 = LAPSE_BASE × (1 − 의지) → 의지 +1.0이면 0%, 0이면 LAPSE_BASE, −1.0이면 2배.
+    //   놓아준 장면: 슛 수비 등급 × LAPSE_CONTEST_MULT, 그 수비수의 슈팅 파울·공 쪽 비슈팅 파울 없음(도움 수비·림 프로텍터·자리싸움 몫은 그대로).
+    //   제대로 붙은 장면: 파울 확률 ÷ (1 − LAPSE_BASE), 슛 수비 등급 × (1 − LAPSE_BASE × LAPSE_CONTEST_MULT) ÷ (1 − LAPSE_BASE)
+    //   → 평균 수비수 기준 파울 총량·평균 견제가 재설계 전과 같게 유지된다(두 보정값은 아래 두 상수에서 계산, 따로 둔 상수 없음).
+    //   함께 바뀌는 것(전부 이 스위치로 켜고 끔): 수비 등급의 의지 가산(의지 × 10) 제거, 수비 일관성 70 미만의 무작위 집중력 저하(견제 × 0.7) 제거(놓아주기의 주인은 의지),
+    //   파울 성향(foulProneness) 폐지 — 슈팅 파울·3점 파울·림 프로텍터 파울·트랩 파울·플래그런트에서 빠짐(플래그런트는 기질만). 파울의 깨끗함은 수비 일관성이 담당.
+    //   ENABLED false = 재설계 전 동작 그대로. 계측·근거는 docs/history/dev-log.md 2026-11-16 (server 미러 동일)
+    DEFENSIVE_MOTOR: {
+        ENABLED: true,
+        LAPSE_BASE: 0.15,
+        LAPSE_CONTEST_MULT: 0.7,
     },
     // Help Defense System (2026-07 재설계 — 전 구역 적용, 명시적 헬퍼 지정)
     HELP_DEFENSE: {
@@ -832,7 +901,9 @@ export const SIM_CONFIG = {
         // [2026-10-25] 19 → 18 (사용자 결정) — 중립 pace 5에서도 포세션 95.1(NBA 같은 공식 101.4)로 6개 부족했음. 18: 실제 전술 100.9 / pace5 102.2
         // [2026-10-27] 18 → 19 (사용자 결정) — 실경기 재현 하네스로 18은 NBA Active 107.6 / PBL 103.8(실측 108.1)로 과다.
         //   19: NBA Active 100.1 / PBL 96.9. 득점 부족(ORtg ~108 vs NBA 112.6)은 효율 쪽에서 별도로 보완할 과제.
-        BASE: 19,
+        // [2026-11-16] 19 → 19.3 (사용자 결정) — '이어서 하는 공격'(CLOCK_MGMT.RESUME_CONTINUE)으로 파울 뒤 재개 공격이 평균 13.7 → 6.4초로 짧아져
+        //   포제션 +2.0·득점 +2.8(현역 시험대)이 됐고, 그 시간을 일반 공격에 나눠 상쇄. 19.3: 현역 104.5·118.9 / 레전드 S2 104.3·116.2(수정 전 104.6·118.7 / 104.6·115.9)
+        BASE: 19.3,
         PACE_NEUTRAL: 5,
         PACE_COMPRESSION: 0.2,
     },
@@ -890,7 +961,7 @@ export const SIM_CONFIG = {
         // A-2. Ice in Veins (냉혈한) — Dame, Kyrie, Dirk
         ICE_INTANGIBLES_THRESHOLD: 85,
         ICE_OFFCONSIST_THRESHOLD: 88,
-        // 효과: 프레셔 페널티(-1.5%) 면제
+        // 효과: 프레셔 페널티(-1.5%) 면제 — [2026-11-16] 프레셔 페널티 자체를 제거해 이 유형은 효과가 없다(두 임계값 미사용)
 
         // A-3. High Roller (하이 롤러) — LeBron, Giannis
         BIGSTAGE_INTANGIBLES_THRESHOLD: 85,
@@ -1130,10 +1201,14 @@ export const SIM_CONFIG = {
         TRAILER_PASS_SCALE: 0.45,
         TRAILER_MAX: 0.9,
     },
-    // Play Selection: pickWeightedActor의 역할(슈터/패서) 기반 playStyle 배율
+    // Play Selection: pickWeightedActor의 역할 기반 성향 배율
+    // [2026-11-16] 역할 분담(사용자 결정) — 볼 소유 성향 = 공을 쥐는 비중(쥐고 만드는 슛·패서 선정 ↑, 받는 플레이·스크린 ↓),
+    //   슛·패스 선호 = 쥐었을 때 슛이냐 패스냐. ROLE_SPLIT: 공을 쥔 패서(볼 핸들러·핸드오프 허브) 선정에 볼 소유 성향을 그대로 곱하고(이전: 2 − 성향),
+    //   스크리너 선정에는 슛·패스 선호를 쓰지 않는다(이전: 패서와 같은 배율). false = 이전 동작 그대로.
     PLAY_SELECTION: {
-        PLAYSTYLE_SHOOTER_K: 0.25,  // 슈터 픽: weight *= (1 + ps*K) — 슛선호(+)일수록 액터로 더 자주
-        PLAYSTYLE_PASSER_K: 0.25,   // 패서 픽: weight *= (1 - ps*K) — 패스선호(-)일수록 패서로 더 자주
+        ROLE_SPLIT: true,
+        PLAYSTYLE_SHOOTER_K: 0.25,  // 슛하는 역할(쥐고 만드는 슛·받는 슛): weight *= (1 + ps*K) — 슛 선호(+)일수록 슈터로 더 자주
+        PLAYSTYLE_PASSER_K: 0.25,   // 공을 쥔 패서: weight *= (1 - ps*K) — 패스 선호(-)일수록 패서로 더 자주
     },
     // Position Weight: PostUp/PnR_Roll 액터 선정에 포지션별 배율을 곱해 빅맨 편중을 보정
     // (아키타입 점수만으로는 C/PF/SF 간 실력 차이가 거의 없어 순수 스킬 경쟁으론 센터가 밀림 — 32 TEST 실측 확인)
@@ -1269,6 +1344,11 @@ export const SIM_CONFIG = {
             'drFoul',
         ] as string[],
         ATTR_K_BOOST: { drFoul: 2.5 } as Record<string, number>,
+        // [2026-11-15] 파울 유도 정규화 방식 (client·server 미러) — true: 파울 유도 능력치는 깎지 않고, 유도 가산에서 리그 공통 값을 뺀다
+        //   (leagueContext.drFoulOffsets — leagueNormalization.ts "파울 유도 정규화" 설명). 리그 자유투 총량은 예전 수준, 선수 간 격차만 살아난다.
+        //   표가 없는 컨텍스트(이 방식 전에 확정된 방)는 예전 방식(drFoul − shift × ATTR_K_BOOST) 그대로. false면 표가 있어도 예전 방식.
+        //   ATTR_K_BOOST.drFoul은 표를 만들 때 "예전 방식이 깎던 양"의 기준으로 계속 쓰인다 — 지우지 말 것.
+        DR_FOUL_OFFSET_ENABLED: true,
     },
 };
 
