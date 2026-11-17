@@ -56,13 +56,15 @@ export const FooterSlot: React.FC = () => {
 /**
  * 높이가 정해진 세로 스크롤 상자 "바로 안"에서 내용 + 푸터를 쌓는다 — 내용이 짧으면 푸터가 상자 바닥에, 길면 내용 끝에.
  * className은 내용 상자에 붙는다(여백 등). 슬롯이 없으면 className을 가진 div 하나(className도 없으면 children 그대로).
+ * stretch: 내용(자식 하나)이 짧아도 푸터 위까지 세로로 늘어나게 한다 — 열 배경이 화면 끝까지 깔려야 하는 화면용(선수 프로필 탭).
+ *   내용 상자를 한 칸짜리 grid로 만들어 자식을 늘린다. 자식이 mx-auto로 가운데 정렬하는 블록이면 폭이 줄어드니 쓰지 말 것.
  */
-export const FooterFlow: React.FC<{ className?: string; children: React.ReactNode }> = ({ className, children }) => {
+export const FooterFlow: React.FC<{ className?: string; stretch?: boolean; children: React.ReactNode }> = ({ className, stretch = false, children }) => {
     const has = useHasFooterSlot();
     if (!has) return className ? <div className={className}>{children}</div> : <>{children}</>;
     return (
         <div className="min-h-full flex flex-col">
-            <div className={`grow shrink-0 ${className ?? ''}`}>{children}</div>
+            <div className={`grow shrink-0 ${stretch ? 'grid' : ''} ${className ?? ''}`}>{children}</div>
             <FooterSlot />
         </div>
     );
@@ -75,10 +77,10 @@ export const FooterFlow: React.FC<{ className?: string; children: React.ReactNod
  *          (칸을 내용 높이로 풀면 칸 하단 고정 요소·칸별 스크롤이 전부 깨진다)
  * - own  : 본문이 자기 안쪽 스크롤 상자에 푸터 자리를 직접 둔다(또는 로딩처럼 둘 곳이 없다) → 손대지 않는다
  */
-export const FooterTabBody: React.FC<{ mode: 'flow' | 'fill' | 'own'; children: React.ReactNode }> = ({ mode, children }) => {
+export const FooterTabBody: React.FC<{ mode: 'flow' | 'fill' | 'own'; stretch?: boolean; children: React.ReactNode }> = ({ mode, stretch = false, children }) => {
     const has = useHasFooterSlot();
     if (!has || mode === 'own') return <>{children}</>;
-    if (mode === 'flow') return <FooterFlow>{children}</FooterFlow>;
+    if (mode === 'flow') return <FooterFlow stretch={stretch}>{children}</FooterFlow>;
     return (
         <>
             <div className="h-full">{children}</div>

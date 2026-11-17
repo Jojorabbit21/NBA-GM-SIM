@@ -23,6 +23,7 @@ import { TeamLogo } from '../components/common/TeamLogo';
 import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableFoot, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { TabBar } from '../components/common/TabBar';
+import { FooterTabBody } from '../components/common/footerSlot';
 import { Dropdown } from '../components/common/Dropdown';
 import { KeyValueRow } from '../components/common/KeyValueRow';
 import { ConditionBar } from '../components/common/ConditionBar';
@@ -633,7 +634,9 @@ const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: s
     if (groups.length === 0) return <EmptyState title="스플릿을 계산할 정규시즌 경기가 없습니다" />;
     let zebra = -1; // 그룹과 상관없이 데이터 행 전체에 지그재그(커리어 표와 동일 방식)
     return (
-        <div className="flex flex-col h-full min-h-0">
+        // [2026-11-17] 데스크톱·태블릿은 표가 따로 스크롤하지 않고 내용 높이만큼 흐른다(사용자 지시) — 탭 본문 스크롤 하나로 내려가고 그 아래 푸터.
+        // 폰은 예전 그대로 표 영역이 남은 높이를 채우고 스스로 스크롤한다(머리 행 고정).
+        <div className={`flex flex-col ${isPhone ? 'h-full min-h-0' : ''}`}>
             {isPhone ? (
                 <>
                     <PhoneFilterHeader title="스플릿" active={mode !== 'trad'} onOpen={() => setSheetOpen(true)} />
@@ -657,8 +660,8 @@ const GameLogSplitsTable: React.FC<{ gameLog: any[] | undefined; opponentIds?: s
                 />
             </SectionHeader>
             )}
-            {/* 표 영역이 스스로 스크롤(남은 높이를 채움) → 헤더 행이 위에 고정된다 */}
-            <Table variant="bare" density="compact" className="text-sm flex-1 min-h-0 !overflow-auto custom-scrollbar">
+            {/* 폰: 표 영역이 스스로 스크롤(남은 높이를 채움) → 헤더 행이 위에 고정된다. 그 밖: 가로 스크롤만(bare 기본 overflow-x-auto) */}
+            <Table variant="bare" density="compact" className={`text-sm custom-scrollbar ${isPhone ? 'flex-1 min-h-0 !overflow-auto' : ''}`}>
                 <TableHead className="sticky top-0 z-40">
                     {headers.map((label, i) => (
                         <TableHeaderCell key={label} align="left" stickyLeft={i === 0 ? 0 : undefined}>{label}</TableHeaderCell>
@@ -1822,6 +1825,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
+                {/* [2026-11-17] 본문 끝에 글로벌 푸터(멀티세션 데스크톱 — components/common/footerSlot.tsx). 이 상자는 overscroll-none이라
+                    스크롤이 바깥(셸)으로 넘어가지 않는다 → 셸이 화면 아래에 그리는 푸터에는 휠로 닿을 수 없었다(사용자 지적). 그래서 푸터를 이 상자 안에 둔다.
+                    프로필 · 커리어 · 게임 로그 · 스플릿 · 샷 차트 · 퍼센타일 = 내용이 흐르는 탭(flow, 프로필은 열 배경이 푸터 위까지 깔리게 stretch),
+                    뉴스 = 좌 목록 · 우 본문이 따로 스크롤하는 2칸 탭(fill — 칸 영역은 상자 높이 그대로, 그 아래로 푸터). 슬롯이 없는 곳(싱글, 폰·태블릿)은 children 그대로. */}
+                <FooterTabBody
+                    mode={activeTab === 'news' ? 'fill' : 'flow'}
+                    stretch={activeTab === 'profile'}
+                >
                 {activeTab === 'profile' && (
                 <div className={`grid min-h-full ${isPhone ? 'grid-cols-1' : 'border border-slate-800'}`} style={isPhone ? undefined : { gridTemplateColumns: '2fr 2fr 6fr' }}>
 
@@ -2310,10 +2321,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 )}
 
                 {activeTab === 'career' && (
-                    <div className="flex flex-col gap-4 h-full min-h-0">
+                    // [2026-11-17] 데스크톱·태블릿은 표가 따로 스크롤하지 않는다(사용자 지시) — 폰만 예전처럼 남은 높이를 채우고 표가 스스로 스크롤
+                    <div className={`flex flex-col gap-4 ${isPhone ? 'h-full min-h-0' : ''}`}>
                         {/* ── 커리어 기록(시즌 기록) — 프로필 탭에서 이동 ── */}
                         {(careerRegular.length > 0 || careerPlayoff.length > 0) && (
-                            <div className="flex flex-col flex-1 min-h-0">
+                            <div className={`flex flex-col ${isPhone ? 'flex-1 min-h-0' : ''}`}>
                                 {isPhone ? (
                                     <>
                                         <PhoneFilterHeader title="기록" active={careerMode !== 'regular' || careerTab !== 'trad'} onOpen={() => setCareerSheetOpen(true)} />
@@ -2357,7 +2369,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                                     let groupIdx = -1;
                                     return (
                                         // 첫 열(시즌)만 가로 스크롤 고정. 2TM 시즌의 팀별 서브행은 흐리게 + 왼쪽 들여쓰기 선.
-                                        <Table variant="bare" density="compact" className="text-sm flex-1 min-h-0 !overflow-auto custom-scrollbar">
+                                        <Table variant="bare" density="compact" className={`text-sm custom-scrollbar ${isPhone ? 'flex-1 min-h-0 !overflow-auto' : ''}`}>
                                             <TableHead className="sticky top-0 z-40">
                                                 {cols.map((col, i) => (
                                                     <TableHeaderCell key={col.key} align="left" stickyLeft={i === 0 ? 0 : undefined}>
@@ -2426,7 +2438,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                 )}
 
                 {activeTab === 'splits' && (
-                    <div className="flex flex-col gap-4 h-full min-h-0">
+                    <div className={`flex flex-col gap-4 ${isPhone ? 'h-full min-h-0' : ''}`}>
                         {gameLogLoading ? <Spinner /> : <GameLogSplitsTable gameLog={currentSeasonGameLog} opponentIds={splitOpponentIds} />}
                     </div>
                 )}
@@ -2648,6 +2660,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
                         {shotChartFooter?.(shotPlayoff)}
                     </div>
                 )}
+                </FooterTabBody>
 
             </div>
         </div>
