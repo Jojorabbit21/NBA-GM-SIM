@@ -61,12 +61,19 @@ export interface CourtFloorData {
     three?: string;
     paint?: string;
     wear?: boolean;
+    /** 나무 배열(WOOD_LAYOUT_ORDER). 없으면 스트립 */
+    layout?: string;
 }
 /** 페인트(court_paint) 상품 data — 색 하나. 쌓이는 소모품 */
 export interface CourtPaintData { color: string; }
 
 export const FLOOR_MATERIAL_LABEL: Record<FloorMaterial, string> = { wood: '나무', urethane: '우레탄', concrete: '콘크리트' };
 export const FLOOR_MATERIAL_ORDER: FloorMaterial[] = ['wood', 'urethane', 'concrete'];
+/** [2026-11-18] 나무 플로어의 배열(상품 data.layout) — 상점에서 나무를 이 순서로 한 번 더 묶는다 */
+export const WOOD_LAYOUT_ORDER = ['strip', 'herringbone', 'parquet', 'chevron', 'wide', 'aged'] as const;
+export const WOOD_LAYOUT_LABEL: Record<(typeof WOOD_LAYOUT_ORDER)[number], string> = {
+    strip: '스트립', herringbone: '헤링본', parquet: '파케이', chevron: '쉐브론', wide: '와이드 플랭크', aged: '빈티지 플랭크',
+};
 
 /** 지갑이 아직 없는 유저(한 번도 지급받지 않음)는 0 으로 본다. */
 export async function fetchWallet(userId: string): Promise<WalletRow> {

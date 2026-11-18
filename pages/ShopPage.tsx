@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { useGame } from '../hooks/useGameContext';
 import { OWNED_ITEMS_KEY, POINTS_LEDGER_KEY, POINTS_WALLET_KEY, useOwnedItems, useShopItems, useWallet } from '../hooks/usePoints';
 import {
-    FLOOR_MATERIAL_LABEL, FLOOR_MATERIAL_ORDER, ITEM_TYPE_LABEL, POINTS_ICON_URL, formatPoints, purchaseItem, type CourtFloorData,
+    FLOOR_MATERIAL_LABEL, FLOOR_MATERIAL_ORDER, WOOD_LAYOUT_LABEL, WOOD_LAYOUT_ORDER, ITEM_TYPE_LABEL, POINTS_ICON_URL, formatPoints, purchaseItem, type CourtFloorData,
 } from '../services/points/pointsService';
 import { paintColor, previewCourtStyle } from '../services/points/courtLoadout';
 import { CourtPreview } from '../components/multi/CourtPreview';
@@ -55,7 +55,15 @@ const ShopPage: React.FC = () => {
         ? (paints.length > 0 ? [{ key: 'paint', label: paintLabel, list: paints }] : [])
         : FLOOR_MATERIAL_ORDER
             .filter(m => filter === 'all' || filter === m)
-            .map(m => ({ key: m, label: FLOOR_MATERIAL_LABEL[m], list: floors.filter(it => materialOf(it) === m) }))
+            .flatMap(m => {
+                const list = floors.filter(it => materialOf(it) === m);
+                if (m !== 'wood') return [{ key: m as string, label: FLOOR_MATERIAL_LABEL[m], list }];
+                // 나무는 배열(스트립·헤링본…)별로 한 번 더 나눈다. 배열 정보가 없는 옛 데이터는 스트립으로 본다
+                return WOOD_LAYOUT_ORDER.map(l => ({
+                    key: `wood:${l}`, label: `${FLOOR_MATERIAL_LABEL.wood} · ${WOOD_LAYOUT_LABEL[l]}`,
+                    list: list.filter(it => ((it.data as unknown as CourtFloorData)?.layout ?? 'strip') === l),
+                }));
+            })
             .filter(g => g.list.length > 0);
     const floorLabel = ITEM_TYPE_LABEL.court_floor;
     const title = filter === 'paint' ? paintLabel : filter === 'all' ? floorLabel : `${floorLabel} · ${FLOOR_MATERIAL_LABEL[filter]}`;
@@ -103,7 +111,7 @@ const ShopPage: React.FC = () => {
         const isBuying = buyingId === item.id;
         const slot = 'h-11 md:h-10 rounded-lg text-sm font-bold flex items-center justify-center';
         return (
-            <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+            <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 260px' }}>
                 {item.item_type === 'court_paint' ? (
                     <div role="img" aria-label={item.name} className="w-full h-24 border-b border-slate-800" style={{ background: paintColor(item) ?? '#334155' }} />
                 ) : (
