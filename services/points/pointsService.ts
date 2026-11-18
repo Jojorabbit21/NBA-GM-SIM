@@ -7,7 +7,7 @@
  */
 import { supabase } from '../supabaseClient';
 import { actionFailure } from '../notifications/actionErrorCatalog';
-import type { CourtTexture, LedgerRow, PurchaseResult, Rarity, ShopItemRow, UserItemRow, WalletRow } from '../../types/points';
+import type { CourtTexture, FloorMaterial, LedgerRow, PurchaseResult, Rarity, ShopItemRow, UserItemRow, WalletRow } from '../../types/points';
 
 export const LEDGER_PAGE_SIZE = 50;
 
@@ -41,6 +41,7 @@ export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'unique', 'epic'];
 
 /** 상점 상품 종류 표기 — 1차는 코트 디자인만 */
 export const ITEM_TYPE_LABEL: Record<string, string> = {
+    court_floor:   '플로어',
     court_palette: '코트 팔레트',
     court_texture: '바닥 질감',
     court_rim:     '림 · 백보드',
@@ -50,6 +51,18 @@ export const ITEM_TYPE_LABEL: Record<string, string> = {
 export interface CourtPaletteData { background: string; three: string; paint: string; line: string }
 export interface CourtRimData { rim: string; backboard: string }
 export interface CourtTextureData { texture: CourtTexture }
+/** [2026-11-18] 플로어. image 가 있으면 바닥 이미지(나무·콘크리트), 없으면 단색(우레탄). wear = 낡은 자국 겹 */
+export interface CourtFloorData {
+    material: FloorMaterial;
+    image?: string;
+    background: string;
+    line: string;
+    three?: string;
+    paint?: string;
+    wear?: boolean;
+}
+export const FLOOR_MATERIAL_LABEL: Record<FloorMaterial, string> = { wood: '나무', urethane: '우레탄', concrete: '콘크리트' };
+export const FLOOR_MATERIAL_ORDER: FloorMaterial[] = ['wood', 'urethane', 'concrete'];
 
 /** 지갑이 아직 없는 유저(한 번도 지급받지 않음)는 0 으로 본다. */
 export async function fetchWallet(userId: string): Promise<WalletRow> {

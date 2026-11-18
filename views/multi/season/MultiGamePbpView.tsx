@@ -3235,10 +3235,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                         awayColor={awayColor}
                         awayAbbr={awayAbbr}
                         shotEvents={visibleShotEvents}
-                        courtBackground={homeTeam?.court_background}
-                        courtPaint={homeTeam?.court_paint}
-                        courtLine={homeTeam?.court_line}
-                        courtThree={homeTeam?.court_three}
+                        courtOwnerId={homeTeam?.user_id ?? null}
                         courtShowLogo={homeTeam?.court_show_logo}
                         courtLogoScale={homeTeam?.court_logo_scale}
                         headerVariant="none"
@@ -3287,10 +3284,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             awayColor={awayColor}
                             awayAbbr={awayAbbr}
                             shotEvents={visibleShotEvents}
-                            courtBackground={homeTeam?.court_background}
-                            courtPaint={homeTeam?.court_paint}
-                            courtLine={homeTeam?.court_line}
-                            courtThree={homeTeam?.court_three}
+                            courtOwnerId={homeTeam?.user_id ?? null}
                             courtShowLogo={homeTeam?.court_show_logo}
                             courtLogoScale={homeTeam?.court_logo_scale}
                             headerVariant="split"

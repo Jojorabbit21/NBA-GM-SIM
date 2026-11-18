@@ -9,7 +9,8 @@ import type { CourtTexture } from '../../types/points';
 
 interface CourtPreviewProps {
     background: string;
-    paint:      string;
+    /** 없으면 페인트존을 칠하지 않는다(바닥이 그대로 보임) — 2026-11-18 기본 우드 코트 */
+    paint?:     string;
     line:       string;
     /** [2026-10-02] 코트 중앙(센터 서클)에 그릴 홈팀 로고 URL — 없으면 로고 미표시. */
     /** [2026-10-02] 3점 라인 안쪽 채움색 — 없으면 background와 동일(구분 없음). */
@@ -22,6 +23,10 @@ interface CourtPreviewProps {
     backboard?: string;
     /** [2026-11-09] 바닥 질감 — 상점 "바닥 질감" 상품. 배경 위·3점/페인트 아래 오버레이. 없으면 민무늬 */
     texture?: CourtTexture | null;
+    /** [2026-11-18] 바닥 이미지(940×500 전체에 깔림, 예: 하드 메이플 우드). background 위·질감 아래 */
+    floorImage?: string | null;
+    /** [2026-11-18] 낡은 바닥 자국 겹(투명 이미지, 940×500 전체). 라인 위·림과 백보드 아래 */
+    wearImage?: string | null;
 }
 
 // ── 바닥 질감 오버레이 ────────────────────────────────────────────────────────
@@ -128,15 +133,24 @@ const BasketLines: React.FC<{ stroke: string; rim?: string; backboard?: string }
     </g>
 );
 
+// 자국 겹 위로 다시 그리는 림·백보드(BasketLines 의 마지막 두 요소와 같은 모양)
+const RimOnly: React.FC<{ rim?: string; backboard?: string }> = ({ rim = DEFAULT_RIM, backboard = DEFAULT_BACKBOARD }) => (
+    <g fill="none" strokeWidth="2" strokeMiterlimit="10">
+        <line x1="40" y1="222" x2="40" y2="278" stroke={backboard} />
+        <circle cx="48" cy="250" r="7.5" stroke={rim} />
+    </g>
+);
+
 // 로고 기본(100%) 크기 — 940x500 코트 기준. 센터 서클(지름 120)보다 크게 잡아 코트 중앙을 채운다.
 const LOGO_BASE_SIZE = 220;
 
 // [주의] 자체 <svg> 태그를 만들지 않고 SVG 자식 노드만 반환한다 — 호출부가 viewBox="0 0 940 500"인
 // 자신의 <svg> 안에 이 컴포넌트를 그대로 끼워 넣어 쓴다(샷 마커 등 다른 레이어와 좌표계 공유 목적).
-export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, logoUrl, logoScale = 100, rim, backboard, texture }) => (
+export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, logoUrl, logoScale = 100, rim, backboard, texture, floorImage, wearImage }) => (
     <>
         {/* Background */}
         <rect width="940" height="500" fill={background} />
+        {floorImage && <image href={floorImage} width="940" height="500" preserveAspectRatio="none" pointerEvents="none" />}
         {/* 바닥 질감 — 배경 위, 3점/페인트 채움 아래(채움 색이 질감을 덮는다: 페인트존은 민무늬처럼 보임) */}
         {texture && <TextureOverlay texture={texture} />}
 
@@ -149,8 +163,12 @@ export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, l
         )}
 
         {/* Paint backgrounds */}
-        <rect y="170" width="190" height="160" fill={paint} />
-        <rect x="750" y="170" width="190" height="160" fill={paint} />
+        {paint && (
+            <>
+                <rect y="170" width="190" height="160" fill={paint} />
+                <rect x="750" y="170" width="190" height="160" fill={paint} />
+            </>
+        )}
 
         {/* Center logo (team setting, optional) — 코트 라인보다 아래 레이어(라인이 로고 위로 지나감). 센터 서클(r=60) 안에 맞춘다. 샷 마커 등 상호작용 방해 금지 */}
         {logoUrl && (
@@ -178,5 +196,14 @@ export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, l
             <circle cx="470" cy="250" r="60" />
             <circle cx="470" cy="250" r="20" />
         </g>
+
+        {/* 낡은 바닥 자국 — 라인까지 덮어서 라인도 같이 닳은 것처럼. 림·백보드는 자국 위로 다시 그린다 */}
+        {wearImage && (
+            <>
+                <image href={wearImage} width="940" height="500" preserveAspectRatio="none" pointerEvents="none" />
+                <RimOnly rim={rim} backboard={backboard} />
+                <g transform="translate(940,0) scale(-1,1)"><RimOnly rim={rim} backboard={backboard} /></g>
+            </>
+        )}
     </>
 );

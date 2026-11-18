@@ -6,7 +6,7 @@ import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../../../components/game/ShotTooltip';
 import { getTeamLogoUrl } from '../../../utils/constants';
 import { CourtPreview } from '../../../components/multi/CourtPreview';
-import { useCourtDefaults } from '../../../services/multi/courtDefaults';
+import { useCourtLoadout } from '../../../hooks/usePoints';
 
 interface MultiFullCourtChartProps {
     homeTeamId: string;
@@ -16,13 +16,9 @@ interface MultiFullCourtChartProps {
     awayColor:  string;
     awayAbbr:   string;
     shotEvents: ShotEvent[];
-    /** [2026-08-05] "팀 설정"에서 홈팀이 지정한 코트 색상 — 없으면(구버전 데이터 등) 기존 기본
-     * 나무색 코트로 폴백. CourtPreview.tsx와 색상값을 공유해 TeamSettingsPanel의 미리보기와
-     * 실제 라이브 코트가 항상 일치하도록 한다(중복 하드코딩 금지). */
-    courtBackground?: string | null;
-    courtPaint?:      string | null;
-    courtLine?:       string | null;
-    courtThree?:      string | null;
+    /** [2026-11-18] 홈팀 주인의 계정 id — 코트 모습은 이 계정의 인벤토리 장착 정보로 정한다(services/points/courtLoadout.ts).
+     * 없으면(AI 팀) 기본 코트(하드 메이플). 예전 팀 행 코트 색(court_*)은 더 이상 쓰지 않는다. */
+    courtOwnerId?: string | null;
     /** [2026-10-02] 홈팀의 "코트 중앙 로고" 설정 */
     courtShowLogo?:   boolean;
     courtLogoScale?:  number;
@@ -94,11 +90,10 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
     homeTeamId, homeColor, homeAbbr,
     awayTeamId, awayColor, awayAbbr,
     shotEvents,
-    courtBackground, courtPaint, courtLine, courtThree, courtShowLogo, courtLogoScale,
+    courtOwnerId, courtShowLogo, courtLogoScale,
     headerVariant = 'legend', awayTextColor, homeTextColor,
 }) => {
-    // null/empty = team follows the admin-configured global default court colors
-    const courtDefaults = useCourtDefaults(homeTeamId);
+    const { style: court } = useCourtLoadout(courtOwnerId);
     // [Fix 2026-08-04] 컨테이너 크기를 별도 ResizeObserver state로 추적하던 방식 제거 — 그 state가
     // 최신 렌더 크기를 못 따라잡은 순간(마운트 직후 등)엔 툴팁 위치 계산이 크게 어긋났다. 이제
     // useShotChartTooltip이 호버 시점의 getBoundingClientRect()에서 컨테이너 크기도 함께 캡처해
@@ -240,7 +235,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
                 onClick={handleClick}
             >
                 <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
-                    <CourtPreview background={courtBackground || courtDefaults.background} paint={courtPaint || courtDefaults.paint} line={courtLine || courtDefaults.line} three={courtThree || (courtBackground ? courtBackground : courtDefaults.three)} logoUrl={courtShowLogo ? getTeamLogoUrl(homeTeamId) : null} logoScale={courtLogoScale ?? 100} />
+                    <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(homeTeamId) : null} logoScale={courtLogoScale ?? 100} />
 
                     {/* Shots — raw coords (no normalization), ×10 to SVG units */}
                     {filteredShotEvents.map((shot, i) => {

@@ -6,7 +6,7 @@ import { MyLeagues } from './MyLeagues';
 import { MultiplayerHistory } from './MultiplayerHistory';
 import { PointsWallet } from './PointsWallet';
 import { AuthForm } from '../auth/AuthForm';
-import { ChevronRight, LogOut, Settings, ShoppingBag } from 'lucide-react';
+import { Backpack, ChevronRight, LogOut, Settings, ShoppingBag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ProfileAvatar } from '../../components/common/ProfileAvatar';
 import { useMyProfile } from '../../hooks/useMyProfile';
@@ -85,15 +85,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     {/* [2026-11-08] 포인트(재화) 잔액 — 계정 행 아래 한 줄, 누르면 누적·최근 내역 */}
                     <PointsWallet userId={session.user.id} />
                     {/* [2026-11-09] 상점 — 코스메틱은 계정 귀속이라 리그 밖(홈)에서 진입. 처음엔 계정 행 우측
-                        아이콘 버튼이었으나 사용자 요청으로 BP 행과 같은 형식의 목록 행으로 이동 */}
-                    <button
-                        onClick={() => navigate('/shop')}
-                        className="w-full flex items-center gap-2 text-left pt-3 group"
-                    >
-                        <ShoppingBag size={16} className="shrink-0 text-slate-400 group-hover:text-white transition-colors" />
-                        <span className="text-xs text-slate-400 group-hover:text-white ko-normal flex-1 transition-colors">상점</span>
-                        <ChevronRight size={14} className="text-slate-500" />
-                    </button>
+                        아이콘 버튼이었으나 사용자 요청으로 BP 행과 같은 형식의 목록 행으로 이동.
+                        [2026-11-18] 인벤토리를 상점 옆에(같은 형식, 한 줄을 반씩) */}
+                    <div className="grid grid-cols-2 gap-4 pt-3">
+                        {([
+                            { path: '/shop', label: '상점', Icon: ShoppingBag },
+                            { path: '/inventory', label: '인벤토리', Icon: Backpack },
+                        ] as const).map(({ path, label, Icon }) => (
+                            <button key={path} onClick={() => navigate(path)} className="w-full flex items-center gap-2 text-left group">
+                                <Icon size={16} className="shrink-0 text-slate-400 group-hover:text-white transition-colors" />
+                                <span className="text-xs text-slate-400 group-hover:text-white ko-normal flex-1 transition-colors">{label}</span>
+                                <ChevronRight size={14} className="text-slate-500" />
+                            </button>
+                        ))}
+                    </div>
                 </div>
             ) : (
                 <div className="shrink-0">

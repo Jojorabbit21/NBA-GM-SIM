@@ -7,7 +7,7 @@ import { EmptyState } from '../common/EmptyState';
 import { useLeagueContext } from '../../views/multi/league/LeagueLayout';
 import { useGame } from '../../hooks/useGameContext';
 import { updateTeamProfile } from '../../services/multi/leagueService';
-import { useCourtDefaults } from '../../services/multi/courtDefaults';
+import { useCourtLoadout } from '../../hooks/usePoints';
 import { TEAM_DATA } from '../../data/teamData';
 import { VIRTUAL_TEAMS } from '../../data/virtualTeams';
 import { HEX_COLOR_RE, contrastRatio } from '../../utils/colorContrast';
@@ -18,8 +18,9 @@ import { ColorField } from './ColorField';
 const HEX_RE = HEX_COLOR_RE;
 const HEX_FORMAT_MSG = '#RRGGBB 형식이어야 합니다';
 
-// 입력별 검증 키 — 닉네임 + 팀 컬러 4 + 코트 컬러 4. 각 입력 아래 sm으로 표시(에러 표시 정책 2차, 2026-10-13).
-type FieldKey = 'nickname' | 'primary' | 'secondary' | 'tertiary' | 'text' | 'background' | 'three' | 'paint' | 'line';
+// 입력별 검증 키 — 닉네임 + 팀 컬러 4. 각 입력 아래 sm으로 표시(에러 표시 정책 2차, 2026-10-13).
+// [2026-11-18] 코트 컬러 4칸은 인벤토리 도입으로 제거 — 코트 모습은 계정 장착 정보(services/points/courtLoadout.ts)로만 정한다.
+type FieldKey = 'nickname' | 'primary' | 'secondary' | 'tertiary' | 'text';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 type ColorFieldDef = { key: Exclude<FieldKey, 'nickname'>; label: string; value: string; setter: (v: string) => void };
 
@@ -52,23 +53,10 @@ export const TeamSettingsPanel: React.FC = () => {
     const [colorSecondary, setColorSecondary] = useState('#fbbf24');
     const [colorTertiary,  setColorTertiary]  = useState('#0f172a');
     const [colorText,      setColorText]      = useState('#ffffff');
-    // null = team follows the admin-configured global default; shown value falls back to it.
-    const courtDefaults = useCourtDefaults(myTeam?.team_slug);
-    const [courtBgOverride,    setCourtBgOverride]    = useState<string | null>(null);
-    const [courtPaintOverride, setCourtPaintOverride] = useState<string | null>(null);
-    const [courtLineOverride,  setCourtLineOverride]  = useState<string | null>(null);
-    const [courtThreeOverride, setCourtThreeOverride] = useState<string | null>(null);
-    const courtBackground = courtBgOverride    ?? courtDefaults.background;
-    const courtPaint      = courtPaintOverride ?? courtDefaults.paint;
-    const courtLine       = courtLineOverride  ?? courtDefaults.line;
+    // [2026-11-18] 코트 모습 = 내 계정의 인벤토리 장착 정보(모든 팀 공통). 여기서는 미리보기만 하고 로고 설정만 바꾼다.
+    const { style: court } = useCourtLoadout(userId);
     const [courtShowLogo, setCourtShowLogo] = useState(true);
     const [courtLogoScale, setCourtLogoScale] = useState(100);
-    // 3점 안쪽: 개별 지정이 없으면 (팀이 코트 배경을 직접 바꿨다면 그 배경색, 아니면 기본값의 3점색)
-    const defaultThree = courtBgOverride ?? courtDefaults.three;
-    const courtThree = courtThreeOverride ?? defaultThree;
-    const setCourtBackground = setCourtBgOverride;
-    const setCourtPaint      = setCourtPaintOverride;
-    const setCourtLine       = setCourtLineOverride;
     const [saving,  setSaving]  = useState(false);
     // saveErr = 서버 저장 실패(하단 md) / fieldErrors = 입력별 검증(각 입력 아래 sm). [2026-10-13] 에러 표시 정책 2차.
     const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -86,10 +74,6 @@ export const TeamSettingsPanel: React.FC = () => {
         setColorSecondary(myTeam.color_secondary ?? '#fbbf24');
         setColorTertiary(myTeam.color_tertiary ?? '#0f172a');
         setColorText(myTeam.color_text ?? '#ffffff');
-        setCourtBgOverride(myTeam.court_background || null);
-        setCourtPaintOverride(myTeam.court_paint || null);
-        setCourtLineOverride(myTeam.court_line || null);
-        setCourtThreeOverride(myTeam.court_three || null);
         setCourtShowLogo(myTeam.court_show_logo ?? true);
         setCourtLogoScale(myTeam.court_logo_scale ?? 100);
         setSaveErr(null);
@@ -104,10 +88,6 @@ export const TeamSettingsPanel: React.FC = () => {
     const safeP = HEX_RE.test(colorPrimary)   ? colorPrimary   : '#e11d48';
     const safeS = HEX_RE.test(colorSecondary) ? colorSecondary : '#fbbf24';
     const safeT = HEX_RE.test(colorText)      ? colorText      : '#ffffff';
-    const safeCourtBg    = HEX_RE.test(courtBackground) ? courtBackground : courtDefaults.background;
-    const safeCourtThree = HEX_RE.test(courtThree) ? courtThree : safeCourtBg;
-    const safeCourtPaint = HEX_RE.test(courtPaint)      ? courtPaint      : courtDefaults.paint;
-    const safeCourtLine  = HEX_RE.test(courtLine)       ? courtLine       : courtDefaults.line;
 
     const teamColorFields: ColorFieldDef[] = [
         { key: 'primary',   label: 'Primary (배경)',       value: colorPrimary,   setter: setColorPrimary },
@@ -115,20 +95,11 @@ export const TeamSettingsPanel: React.FC = () => {
         { key: 'tertiary',  label: 'Tertiary (포인트)',     value: colorTertiary,  setter: setColorTertiary },
         { key: 'text',      label: 'Text (배지 글자색)',    value: colorText,      setter: setColorText },
     ];
-    const courtColorFields: ColorFieldDef[] = [
-        { key: 'background', label: '코트 배경',   value: courtBackground, setter: setCourtBackground },
-        { key: 'three',      label: '3점 라인 안쪽', value: courtThree,     setter: setCourtThreeOverride },
-        { key: 'paint',      label: '페인트존',    value: courtPaint,      setter: setCourtPaint },
-        { key: 'line',       label: '라인',        value: courtLine,       setter: setCourtLine },
-    ];
-
-    const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
     // 모든 입력을 한 번에 훑어 맵 반환 — 첫 실패에서 끊지 않으므로 틀린 입력 전부 동시에 표시된다.
     const validate = (trimNick: string): FieldErrors => {
         const e: FieldErrors = {};
         if (trimNick.length < 1 || trimNick.length > 20) e.nickname = '닉네임은 1~20자여야 합니다';
-        for (const f of [...teamColorFields, ...courtColorFields]) {
+        for (const f of teamColorFields) {
             if (!HEX_RE.test(f.value)) e[f.key] = HEX_FORMAT_MSG;
         }
         return e;
@@ -148,13 +119,11 @@ export const TeamSettingsPanel: React.FC = () => {
         const { error } = await updateTeamProfile(
             myTeam.id, userId, fullName, myTeam.team_abbr,
             colorPrimary, colorSecondary, colorTertiary, colorText,
-            // Same as the global default -> store NULL so the team keeps following future default changes.
-            sameHex(courtBackground, courtDefaults.background) ? null : courtBackground,
-            sameHex(courtPaint,      courtDefaults.paint)      ? null : courtPaint,
-            sameHex(courtLine,       courtDefaults.line)       ? null : courtLine,
+            // [2026-11-18] 코트 색은 인벤토리 장착으로 정하므로 팀 행에는 항상 비워서 저장
+            null, null, null,
             courtShowLogo,
             courtLogoScale,
-            sameHex(courtThree, defaultThree) ? null : courtThree,
+            null,
         );
         setSaving(false);
         if (error) { setSaveErr(error); return; }
@@ -230,25 +199,19 @@ export const TeamSettingsPanel: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ── 우: 코트 색상 + 실시간 미리보기 ── */}
+                {/* ── 우: 코트 미리보기(인벤토리 장착 기준) + 로고 설정 ── */}
                 <div className="space-y-5">
                     <div>
                         <h3 className="text-xs font-bold text-slate-500 mb-2">코트 미리보기</h3>
                         <div className="rounded-xl overflow-hidden border border-slate-800">
                             <svg viewBox="0 0 940 500" className="w-full">
-                                <CourtPreview background={safeCourtBg} paint={safeCourtPaint} line={safeCourtLine} three={safeCourtThree} logoUrl={courtShowLogo ? getTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
+                                <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
                             </svg>
                         </div>
-                        <p className="text-[11px] text-slate-500 ko-normal mt-1.5 leading-relaxed">
-                            멀티플레이어 라이브 경기 화면에서, 이 팀이 홈팀일 때만 적용됩니다. 경기 종료 후 결과 화면은 기존 색상을 유지합니다.
-                        </p>
                     </div>
 
                     <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-slate-500">코트 컬러</h3>
-                        {courtColorFields.map(({ key, label, value, setter }) => (
-                            <ColorField key={key} label={label} value={value} onChange={setField(key, setter)} disabled={!canEditIdentity} error={fieldErrors[key]} />
-                        ))}
+                        <h3 className="text-xs font-bold text-slate-500">코트 로고</h3>
                         <label className="flex items-center justify-between gap-3 pt-1 cursor-pointer">
                             <span className="text-sm text-slate-300 ko-normal">코트 중앙에 팀 로고 표시</span>
                             <input

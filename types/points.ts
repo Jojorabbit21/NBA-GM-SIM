@@ -55,6 +55,35 @@ export interface UserItemRow {
 /** 코트 바닥 질감(상점 court_texture 상품 data.texture) — 렌더링은 components/multi/CourtPreview.tsx */
 export type CourtTexture = 'plank' | 'herringbone' | 'parquet' | 'gloss';
 
+/** [2026-11-18] 인벤토리 장착 칸 = shop_items.item_type. DDL: migrations/add_court_loadout.sql */
+export type CourtSlot = 'court_floor' | 'court_palette' | 'court_texture' | 'court_rim';
+
+export interface CourtLoadoutRow {
+    user_id: string;
+    slot: CourtSlot;
+    item_id: string;
+    updated_at: string;
+}
+
+/** 장착 결과로 정해진 코트 모습 — CourtPreview 에 그대로 넘긴다. 계산은 services/points/courtLoadout.ts */
+export interface CourtStyle {
+    background: string;
+    /** 바닥 이미지(코트 전체 940×500 에 깔림). 없으면 background 단색 */
+    floorImage?: string | null;
+    three?: string;
+    /** 없으면 페인트존을 칠하지 않는다(바닥이 그대로 보임) */
+    paint?: string;
+    line: string;
+    rim?: string;
+    backboard?: string;
+    texture?: CourtTexture | null;
+    /** 낡은 바닥 자국 겹(투명 이미지, 940×500 전체). 라인 위·림 아래 */
+    wearImage?: string | null;
+}
+
+/** [2026-11-18] 플로어 재질 — 상점 플로어 카테고리의 하위 분류 */
+export type FloorMaterial = 'wood' | 'urethane' | 'concrete';
+
 export interface PurchaseResult {
     item_id: string;
     balance: number;
