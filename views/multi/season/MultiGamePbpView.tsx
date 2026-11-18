@@ -106,13 +106,11 @@ function FoulBonusBadge({ fouls, align, size = 'md' }: { fouls: number; align: '
 // 이름→점수, 홈: 점수→이름→약어)일 뿐 구조가 완전히 같아서 공용 컴포넌트로 추출. side가 어느
 // 쪽이 바깥(고정 폭)/안쪽(중앙 쪽 고정)인지를 결정 — 3구획 grid 자체는 동일.
 function TeamHeaderColumn({
-    side, teamSlug, abbr, name, wl, score, textColor, infoLoading,
+    side, teamSlug, abbr, score, textColor, infoLoading,
 }: {
     side: 'away' | 'home';
     teamSlug: string;
     abbr: string;
-    name: string;
-    wl: { wins: number; losses: number } | undefined;
     score: number;
     textColor: string;
     infoLoading: boolean;
@@ -132,14 +130,13 @@ function TeamHeaderColumn({
             {score}
         </span>
     );
+    // [2026-11-18] 긴 팀 이름이 점수와 겹치는 문제(사용자 요청) — 이름·전적 대신 팀 약어를
+    // 점수와 같은 크기로 표시.
     const nameEl = (
-        <div className={`flex flex-col gap-1 min-w-0 ${side === 'away' ? 'items-start' : 'items-end'}`}>
+        <div className={`flex min-w-0 ${side === 'away' ? 'justify-start' : 'justify-end'}`}>
             {infoLoading
-                ? <Skeleton className="h-6 w-32" />
-                : <span className="text-2xl font-black tracking-wide whitespace-nowrap truncate">{name}</span>}
-            {wl && (
-                <span className="text-base font-bold tabular-nums" style={{ color: textColor }}>{wl.wins}W {wl.losses}L</span>
-            )}
+                ? <Skeleton className="h-14 w-28" />
+                : <span className="text-6xl font-black leading-none tracking-tighter whitespace-nowrap">{abbr}</span>}
         </div>
     );
 
@@ -3027,7 +3024,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             flex+justify-start였을 때는 세 요소가 한 덩어리로 붙어 있어서 이름이 짧으면 점수가
                             같이 왼쪽(바깥쪽)으로 딸려왔었음 — 이제 이름 칸이 남는 공간을 전부 흡수하므로
                             점수는 이름 길이와 무관하게 항상 컬럼 안쪽 경계에 붙는다. */}
-                        <TeamHeaderColumn side="away" teamSlug={awayTeamId ?? ''} abbr={awayAbbr} name={awayName} wl={isAllstar ? undefined : awayWL} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
+                        <TeamHeaderColumn side="away" teamSlug={awayTeamId ?? ''} abbr={awayAbbr} score={currentScore.away} textColor={awayText} infoLoading={awayInfoLoading} />
 
                         {/* Center: Final(또는 쿼터/시계)과 쿼터별 득점 테이블을 한 블록으로 묶어 고정 3fr
                             컬럼 안에서 항상 정중앙에 위치한다. */}
@@ -3139,7 +3136,7 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                         {/* [Fix 2026-08-05] 원정 컬럼과 동일한 이유로 3구획 grid로 재구성. DOM 순서(점수→이름→약어)는
                             그대로 유지 — grid는 순서대로 좌→우 배치되므로 점수(1열)가 컬럼 안쪽(좌측=중앙 쪽),
                             약어(3열)가 바깥쪽(우측)에 자동으로 고정된다. 이름/성적(2열)만 남는 공간을 흡수. */}
-                        <TeamHeaderColumn side="home" teamSlug={homeTeamId ?? ''} abbr={homeAbbr} name={homeName} wl={isAllstar ? undefined : homeWL} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
+                        <TeamHeaderColumn side="home" teamSlug={homeTeamId ?? ''} abbr={homeAbbr} score={currentScore.home} textColor={homeText} infoLoading={homeInfoLoading} />
                     </div>
                 </div>
             )}
