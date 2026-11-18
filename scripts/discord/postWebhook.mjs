@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LIMIT = 1900; // Discord hard limit is 2000 chars per message; keep headroom.
-const BOT_NAME = 'Basketball Manager 2027';
+const BOT_NAME = 'Basketball Manager 27';
 
 // ---------- .env (tiny loader, no dependency) ----------
 function loadEnv() {
