@@ -36,6 +36,11 @@ export function calculateScreenerPhysique(attr: Pick<LivePlayer['attr'], 'streng
         + (Math.max(0, (attr.weight - 80) * 1.6) * 0.30);
 }
 
+/** 체력 배율 — 능력 × (0.5 + 컨디션 ÷ 200), 하한 0.5. 아키타입 점수에 쓰던 식을 밖으로 뺐다([2026-11-17] 수비 일관성의 체력 반영도 이 식을 쓴다). */
+export function conditionSkillFactor(condition: number): number {
+    return Math.max(0.5, 0.5 + (condition * 0.005));
+}
+
 /**
  * Calculates all archetype scores for a given player based on attributes AND fatigue.
  * 
@@ -51,7 +56,7 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     // 100-90 condition = 1.0 (No penalty)
     // 50 condition = 0.8 (20% penalty to ratings)
     // 0 condition = 0.5 (50% penalty)
-    const fatigueFactor = Math.max(0.5, 0.5 + (condition * 0.005));
+    const fatigueFactor = conditionSkillFactor(condition);
 
     // Helper to apply fatigue
     const getVal = (val: number) => val * fatigueFactor;

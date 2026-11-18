@@ -301,7 +301,11 @@ export const SIM_CONFIG = {
         // [2026-11-13] 수비 실력 파울 배율 — 배율 = 1 − SLOPE × (수비 실력 − PIVOT) / 10, MIN~MAX. 맡은 수비수의 슈팅 파울(림·페인트·미드)과
         //   공 쪽 비슈팅 파울에 곱한다(possessionHandler defenderSkillFoulMult). PIVOT = 현역 리그 출전시간 가중 평균 수비 실력 근처(골밑 68·외곽 72).
         //   총량 복원 없음(사용자 결정 11-13): 현역 자유투 23.2→21.9, 레전드 28.9→28.5. 같은 포지션 안 수비 실력–파울 상관 +0.05→−0.92(현역 빅맨)
-        DEFENDER_SKILL_MULT: { SLOPE: 0.40, PIVOT_INTERIOR: 70, PIVOT_PERIMETER: 72, MIN: 0.2, MAX: 2.6 },
+        // [2026-11-17] 파울 실력 = 수비 능력치만(사용자 결정) — 슈팅 파울(가산 곡선·배율·3점 공식)·공 쪽 비슈팅 파울·림 프로텍터 파울·프레스 파울 배율이 모두
+        //   골밑 수비(골밑 장면) 또는 외곽 수비만 본다. 이전: 능력 65% + 수비 일관성 35%(프레스 파울 배율은 수비 일관성). false = 이전 식.
+        //   기준점 70/72 → 69/71: 현역 시험대의 파울·자유투 총량이 유지되는 값(파울 20.09 → 20.02·자유투 25.03 → 25.15). false로 되돌릴 때는 기준점도 70/72로.
+        FOUL_SKILL_ABILITY_ONLY: true,
+        DEFENDER_SKILL_MULT: { SLOPE: 0.40, PIVOT_INTERIOR: 69, PIVOT_PERIMETER: 71, MIN: 0.2, MAX: 2.6 },
 
         // [2026-11-11] 자유투 패키지 ① 3점 슈팅 파울 전용 공식 (client·server 미러) — 위 존 공통 공식을 3점에서는 이걸로 교체:
         //   DRAW_CURVE(슈터 drFoul, 가파름) + DEF_CURVE(수비수 perDef×0.65+defConsist×0.35, 약할수록 소폭 ↑) + (defIntensity−5.5)×DEF_INTENSITY_FACTOR
@@ -345,6 +349,12 @@ export const SIM_CONFIG = {
         BASE: 70, AVG_MULT: 1.30, MIN: 0.3, MAX: 2.5,
         ISO: { REF: 86.2, POW: 2 },
         PNR: { REF: 86.0, POW: 2 },
+        // [2026-11-17] 포스트업도 같은 식(사용자 결정) — 코트 위 최고 포스트 득점 점수(postCreationScore = 포스트 기술^0.7 × 체격^0.3) 기준.
+        //   REF 78.1 = 현역 시험대(정규화 없음)에서 평균 배율이 이전 선형식의 평균(1.198)과 같아지는 값 → 현역 리그의 포스트업 총량은 그대로이고
+        //   팀 사이 배분만 달라진다(엘리트 포스트 득점원이 있는 라인업 ↑, 없는 라인업 ↓). ENABLED false = 이전 선형식(0.5 + (최고 postScorer − 40) / 60, 0.5~1.5).
+        //   계측(2시즌씩): 현역 득점 117.6 → 117.9·포스트업 슛 비중 5.7 → 6.0%. 레전드(정규화 없음, 유저 전술) 센터 OVR 상위 10명 17.2 → 19.8점·
+        //   11~20위 14.5 → 15.7·21위 이하 9.7 → 9.5, 주전 SG 18.2 → 17.0. docs/history/dev-log.md 2026-11-17 (client·server 미러)
+        POST: { ENABLED: true, REF: 78.1, POW: 2 },
     },
     // [2026-11-13] 존별 성공률 보정 — 파울당하고 놓친 슛이 야투 시도에서 빠지는 기록 방식(앤드원 결합)에 맞춘 재보정(5-16)
     ZONE_HIT_OFFSET: { 'Rim': 0.020, 'Paint': -0.028, 'Mid': -0.006, '3PT': -0.008 } as Partial<Record<string, number>>,
@@ -789,7 +799,15 @@ export const SIM_CONFIG = {
     DEFENSIVE_MOTOR: {
         ENABLED: true,
         LAPSE_BASE: 0.15,
-        LAPSE_CONTEST_MULT: 0.7,
+        // [2026-11-17] 0.7 → 0.3 (사용자 결정) — 놓아준 장면에는 견제의 30%만 남는다. 수비 일관성이 놓아주는 빈도를 맡게 되면서, 그 능력치의 무게가
+        //   이전 등급 가산((일관성 − 70) × 0.3)과 같은 수준이 되는 값(식으로 계산: 0.7이면 약 40%, 0.5면 약 70%, 0.3이면 약 100%). 리그 평균은 위 보정 배율이 유지한다.
+        LAPSE_CONTEST_MULT: 0.3,
+        // [2026-11-17] 수비 일관성 재설계(사용자 결정) — 놓아주는 빈도의 주인을 수비 일관성(유저에게 보이는 능력치)으로 옮긴다.
+        //   놓아줄 확률 = (100 − 수비 일관성 × 체력 배율) × PER_POINT × (1 − 수비 의지). 체력 배율 = conditionSkillFactor(0.5 + 컨디션 ÷ 200, 아키타입 점수와 같은 식).
+        //   PER_POINT 0.005 = 현역 시험대의 평균 놓아줄 확률이 이전(LAPSE_BASE 15%)과 같아지는 값 → 위 LAPSE_BASE 기준 보정(파울 ÷ (1 − BASE) 등)이 그대로 맞는다.
+        //   수비 의지(숨은 성향)는 폭을 절반(±0.5)으로 줄여 남긴다(utils/hiddenTendencies.ts) — 확률을 ±50% 흔드는 개성. 켜면 슛 수비 등급의 일관성 가산은 없다(flowEngine).
+        //   ENABLED false = 이전 동작(확률 = LAPSE_BASE × (1 − 의지), 등급 가산 유지). 계측은 docs/history/dev-log.md 2026-11-17 (client·server 미러)
+        CONSISTENCY_LAPSE: { ENABLED: true, PER_POINT: 0.005 },
     },
     // Help Defense System (2026-07 재설계 — 전 구역 적용, 명시적 헬퍼 지정)
     HELP_DEFENSE: {
@@ -1228,38 +1246,8 @@ export const SIM_CONFIG = {
             5: 0.40
         }
     },
-    // League-Relative Skill Normalization
-    // 리그 평균이 기준보다 높으면 능력치를 기준 대역으로 끌어내려 득점 인플레 방지
-    NORMALIZATION: {
-        ENABLED: true,                  // master switch (false → 완전 no-op)
-        MU_REF: 75,                     // calibration anchor — 표준 리그 로테이션 평균 OVR
-        DEFAULT_K: 0.7,                 // 기본 압축 계수 (0=끔, 1=완전 평준화)
-        K_MIN: 0,
-        K_MAX: 1,
-        ROTATION_SIZE: 9,               // 팀당 로테이션 선수 수 (μ_league 산정 대상)
-        TARGET_ATTRS: [
-            // 슈팅 효율 (calculateHitRate)
-            'layup', 'dunk', 'closeShot', 'mid', 'postPlay',
-            'intDef', 'perDef', 'def', 'helpDefIq', 'defConsist',
-            'shotIq', 'offConsist',
-            // 림 어택 보너스 + 드리블 갭 비율 유지
-            'spdBall', 'speed',
-            // 체력/회복 (높은 pace 대가)
-            'stamina', 'durability',
-            // 턴오버 저항 (높은 pace 대가)
-            'handling', 'passAcc', 'passIq', 'passVision', 'hands',
-            // ORB/블록 과다 억제
-            'offReb', 'blk',
-            // 파울 드로잉
-            'drFoul',
-        ] as string[],
-        ATTR_K_BOOST: { drFoul: 2.5 } as Record<string, number>,
-        // [2026-11-15] 파울 유도 정규화 방식 (client·server 미러) — true: 파울 유도 능력치는 깎지 않고, 유도 가산에서 리그 공통 값을 뺀다
-        //   (leagueContext.drFoulOffsets — leagueNormalization.ts "파울 유도 정규화" 설명). 리그 자유투 총량은 예전 수준, 선수 간 격차만 살아난다.
-        //   표가 없는 컨텍스트(이 방식 전에 확정된 방)는 예전 방식(drFoul − shift × ATTR_K_BOOST) 그대로. false면 표가 있어도 예전 방식.
-        //   ATTR_K_BOOST.drFoul은 표를 만들 때 "예전 방식이 깎던 양"의 기준으로 계속 쓰인다 — 지우지 말 것.
-        DR_FOUL_OFFSET_ENABLED: true,
-    },
+    // [2026-11-17] 리그 상대 정규화(NORMALIZATION 블록: MU_REF 75·DEFAULT_K 0.7·TARGET_ATTRS 24개·ATTR_K_BOOST·DR_FOUL_OFFSET_ENABLED) 폐지 — 사용자 결정.
+    //   능력치는 척도 그대로 쓰고, 리그를 어떤 기준에 맞추는 장치는 두지 않는다. 배포 엔진 보관본(server/src/engineSnapshots/v253)에는 그대로 남아 있다.
 };
 
 export const POSITION_PENALTY_MAP: Record<string, number> = {

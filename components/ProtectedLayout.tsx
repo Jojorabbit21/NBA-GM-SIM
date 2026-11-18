@@ -11,8 +11,6 @@ import Loader from './Loader';
 import type { Player } from '../types';
 import type { SimSettings } from '../types/simSettings';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
-import { computeLeagueContext } from '../services/game/engine/pbp/leagueNormalization';
-import { calculatePlayerOvr } from '../utils/constants';
 
 // ─── ProtectedLayout ─────────────────────────────────────────────────────────
 
@@ -120,12 +118,9 @@ const ProtectedLayout: React.FC = () => {
     const liveHomeDepth    = liveTarget?.homeTeam?.id === gameData.myTeamId ? gameData.depthChart : null;
     const liveAwayDepth    = liveTarget?.awayTeam?.id === gameData.myTeamId ? gameData.depthChart : null;
 
-    // League-relative normalization: inject leagueContext into simSettings for live games
+    // [2026-11-17] 리그 상대 정규화 폐지 — 예전엔 여기서 leagueContext(computeLeagueContext)를 넣었다
     const liveSimSettings: SimSettings | undefined = liveTarget
-        ? (() => {
-            const lc = computeLeagueContext(gameData.teams, calculatePlayerOvr, gameData.simSettings?.normalizationStrength);
-            return { ...DEFAULT_SIM_SETTINGS, ...gameData.simSettings, leagueContext: lc };
-        })()
+        ? { ...DEFAULT_SIM_SETTINGS, ...gameData.simSettings }
         : gameData.simSettings;
 
     // ─── 렌더 ────────────────────────────────────────────────────────────

@@ -207,8 +207,9 @@ export function generateScoutReport(player: Player, tendencySeed?: string): Scou
         else if (st.ballDominance <= 0.7) push('볼 터치를 적극적으로 요구하지 않음', 'neutral');
 
         // [2026-11-16] 수비 의지 = 맡은 공격수에게 제대로 붙는 빈도(엔진 SIM_CONFIG.DEFENSIVE_MOTOR). 문장은 그대로.
-        if (st.defensiveMotor >= 0.5) push('적극적으로 수비에 가담함', 'positive');
-        else if (st.defensiveMotor <= -0.5) push('수비에 많은 에너지를 쏟아붓지 않음', 'negative');
+        // [2026-11-17] 수비 의지 폭이 절반이 돼 기준도 0.5 → 0.25 — 같은 선수에게 같은 문장이 유지된다
+        if (st.defensiveMotor >= 0.25) push('적극적으로 수비에 가담함', 'positive');
+        else if (st.defensiveMotor <= -0.25) push('수비에 많은 에너지를 쏟아붓지 않음', 'negative');
 
         // [2026-11-16] 파울 성향(foulProneness) 문장 삭제(사용자 결정) — 엔진에서 성향을 폐지했다(파울의 깨끗함은 수비 일관성 능력치가 담당).
         //   삭제한 문장: '파울하는 것에 대해 개의치 않는 경향이 있음'(≥0.5)·'최대한 파울을 적게 하려고 노력함'(≤−0.5)

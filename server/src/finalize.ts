@@ -21,11 +21,12 @@ import { mapRawPlayerToRuntimePlayer, buildTeamForSim } from './shared/dataMappe
 import { generateAutoTactics } from './shared/game/tactics/tacticGenerator';
 import { refetchGameConfig } from './shared/services/admin/gameConfigService';
 import { postDraftResult } from './postDraftResultNews';
-import { getOrComputeDraftPoolContext } from './shared/engine/pbp/leagueNormalization';
 import { applyMetaPlayerPoolFilter } from './shared/draftPoolQuery';
 import { shouldUseCustomOverrides } from './shared/leagueOverrides';
 import { generateDraftContracts } from './shared/draftContracts';
-import { SIM_CONFIG } from './shared/game/config/constants';
+// [2026-11-17] 리그 상대 정규화는 배포 엔진 보관본(엔진 프로필 stable)에만 남아 있다 — 그 엔진의 상수를 읽는다
+import { SIM_CONFIG as STABLE_SIM_CONFIG } from './engineSnapshots/v253/shared/game/config/constants.ts';
+import { resolveEngineProfile } from './shared/types/simSettings.ts';
 import { getAllStarKeyDates } from './shared/multi/allStarSelection';
 import { buildSeasonCalendar, parseAllStarOffsets } from './shared/seasonCalendar';
 import type { TacticalSliders } from './shared/types/tactics';
@@ -219,13 +220,16 @@ async function initializeTeamTactics(
     ));
 }
 
+/** 같은 풀 설정의 muLeague 캐시(프로세스 메모리) — 예전 정규화 모듈에 있던 풀 평균 캐시를 여기로 옮김 */
+const stablePoolMuLeagueCache = new Map<string, number>();
+
 /**
  * 리그 상대 정규화(league-normalization.md) 컨텍스트를 드래프트 완료 시점에 계산해
  * rooms.sim_settings.leagueContext에 캐싱한다. muLeague는 "이번에 실제로 뽑힌 로스터"가
  * 아니라 "드래프트 풀 자체"(뽑힐 수 있었던 후보군) 기준으로 계산한다 — 같은 풀 설정
  * (draftPool/ovrMin/ovrMax/팀수)을 쓰는 리그는 항상 같은 값을 쓰게 되어, 방마다 실제
  * 드래프트 결과(어느 팀이 더 세게 뽑혔는지)에 따라 압축 강도가 들쭉날쭉해지는 것을 막는다.
- * getOrComputeDraftPoolContext()가 프로세스 메모리에 캐싱하므로 같은 풀 설정을 쓰는
+ * stablePoolMuLeagueCache가 프로세스 메모리에 캐싱하므로 같은 풀 설정을 쓰는
  * 리그가 여러 개 생겨도 최초 1회만 실제 계산(meta_players 조회)이 일어난다.
  * simRunner.ts는 매 경기 이 캐시된 값만 읽으므로 게임 시뮬레이션 시점엔 계산이 없다.
  *
@@ -233,6 +237,9 @@ async function initializeTeamTactics(
  * startDraft.ts buildDraftSetup()·경기 로스터와 같은 기준). 이전엔 항상 custom 고정이라, base로 경기하는
  * 리그의 muLeague가 custom 기준으로 잡혔다(NBA-A S1: 81.2, base 기준이면 82.8). 호출부의 leagues select에
  * use_custom_overrides가 빠지면 조용히 base로 떨어지므로 select에서 빼지 말 것.
+ *
+ * [2026-11-17] 정규화 폐지 — 지금 엔진(엔진 프로필 next)을 쓰는 방은 아무것도 저장하지 않는다. 배포 엔진 보관본(stable)을 쓰는 방만
+ * 예전처럼 { muRef, muLeague, k }를 저장한다(파울 유도 오프셋 표는 그 엔진이 읽지 않으므로 더는 만들지 않는다). 보관본을 지울 때 이 함수도 지운다.
  */
 async function applyLeagueNormalization(
     roomId: string,
@@ -245,40 +252,40 @@ async function applyLeagueNormalization(
     const draftYearMax = league.draft_year_max ?? 2025;
     const retiredFilter = (league.draft_retired_filter ?? 'all') as 'all' | 'active' | 'retired';
     const alltimeOnly = league.draft_alltime_only ?? false;
+    // [2026-11-17] 지금 엔진(엔진 프로필 next)에는 정규화가 없다 — 보관본 엔진을 쓰는 방만 컨텍스트를 저장한다
+    const { data: roomRow } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).single();
+    if (resolveEngineProfile((roomRow?.sim_settings as any)?.engineProfile) !== 'stable') return;
+
+    const cfg = STABLE_SIM_CONFIG.NORMALIZATION;
     const useCustomOverrides = shouldUseCustomOverrides(league);
     const cacheKey = `${ovrMin}|${ovrMax}|${draftYearMin}|${draftYearMax}|${retiredFilter}|${alltimeOnly ? 'alltime' : 'any'}|${useCustomOverrides ? 'custom' : 'base'}|${teamCount}`;
 
-    // [2026-11-15] 같은 풀 상위 선수들로 파울 유도 오프셋 표(drFoulOffsets)도 함께 계산한다 — leagueNormalization.ts "파울 유도 정규화"
-    const { muLeague, drFoulOffsets } = await getOrComputeDraftPoolContext(cacheKey, teamCount, async () => {
+    let muLeague = stablePoolMuLeagueCache.get(cacheKey);
+    if (muLeague === undefined) {
         // buildDraftSetup()(startDraft.ts)의 풀 필터 로직과 동일하게 유지할 것 — 여기서 계산하는
         // muLeague가 "실제 드래프트 가능한 후보군"을 정확히 대표하려면 필터가 어긋나면 안 된다.
         // (applyMetaPlayerPoolFilter를 startDraft.ts와 공유해서 어긋남을 구조적으로 방지한다.)
         let q = supabase.from('meta_players').select('id, base_attributes, ovr_base, ovr_custom');
         q = applyMetaPlayerPoolFilter(q as any, draftYearMin, draftYearMax, retiredFilter, alltimeOnly);
         const { data: poolData } = await q;
-        const pool: { id: string; ovr: number; drFoul: number }[] = [];
+        const pool: { id: string; ovr: number }[] = [];
         for (const p of poolData ?? []) {
             const mapped = mapRawPlayerToRuntimePlayer(p, useCustomOverrides);
-            if (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax) {
-                pool.push({ id: String(p.id), ovr: mapped.ovr, drFoul: Number(mapped.drawFoul) });
-            }
+            if (mapped.ovr >= ovrMin && mapped.ovr <= ovrMax) pool.push({ id: String(p.id), ovr: mapped.ovr });
         }
-        return pool;
-    });
+        // 풀 상위 (팀 수 × 로테이션 인원)명의 평균 OVR. 동점은 id 오름차순(결정론적)
+        pool.sort((x, y) => y.ovr - x.ovr || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+        const count = Math.min(teamCount * cfg.ROTATION_SIZE, pool.length);
+        muLeague = count > 0 ? pool.slice(0, count).reduce((sum, v) => sum + v.ovr, 0) / count : cfg.MU_REF;
+        stablePoolMuLeagueCache.set(cacheKey, muLeague);
+    }
 
-    const leagueContext = {
-        muRef: SIM_CONFIG.NORMALIZATION.MU_REF,
-        muLeague,
-        k: SIM_CONFIG.NORMALIZATION.DEFAULT_K,
-        ...(drFoulOffsets ? { drFoulOffsets } : {}),
-    };
-
-    const { data: roomRow } = await supabase.from('rooms').select('sim_settings').eq('id', roomId).single();
+    const leagueContext = { muRef: cfg.MU_REF, muLeague, k: cfg.DEFAULT_K };
     await supabase.from('rooms').update({
         sim_settings: { ...(roomRow?.sim_settings as any ?? {}), leagueContext },
     }).eq('id', roomId);
 
-    console.log(`[finalize] room ${roomId} — league normalization cached (muLeague=${muLeague.toFixed(1)}, drFoulOffset@k=${leagueContext.k}: ${drFoulOffsets ? drFoulOffsets[Math.round(leagueContext.k * 20)] : 'n/a'})`);
+    console.log(`[finalize] room ${roomId} — league normalization cached for the frozen engine (muLeague=${muLeague.toFixed(1)})`);
 }
 
 // ── 메인리그 정규시즌 일정 + 고정 길이 가상 하루 타임라인 생성 ────────────────────────────

@@ -1,5 +1,6 @@
 
-import type { LeagueContext } from '../services/game/engine/pbp/leagueNormalization';
+/** [보관본 엔진 전용] 리그 상대 정규화 컨텍스트 — 드래프트 확정 때 방에 저장된 값. 지금 엔진에는 정규화가 없다(2026-11-17 폐지). */
+export interface LeagueContext { muRef: number; muLeague: number; k: number; drFoulOffsets?: number[] }
 
 export interface SimSettings {
     // 게임 환경
@@ -29,7 +30,7 @@ export interface SimSettings {
     // 엔진 피처
     archetypesEnabled: boolean;  // 기본 false
 
-    // League-relative normalization
+    // League-relative normalization — [2026-11-17] 폐지. 아래 세 필드는 배포 엔진 보관본(엔진 프로필 stable)을 쓰는 방만 읽는다.
     normalizationStrength?: number;   // 0~1, UI slider override for k
     // 세션 설정 화면(리그 상대 정규화 강도 0~5 슬라이더)이 저장하는 실제 필드 —
     // normalizationStrength와 별개로, resolveNormalizationContext()(leagueNormalization.ts)가
@@ -264,13 +265,5 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         label: '아키타입 시스템',
         description: '12종 선수 아키타입 활성화 (실험적)',
         category: '엔진 피처',
-    },
-    {
-        key: 'normalizationStrength',
-        type: 'number',
-        label: '리그 평준화 강도',
-        description: '리그 평균 대비 능력치 압축 강도 (0=끔, 1=완전 평준화)',
-        category: '엔진 피처',
-        min: 0, max: 1, step: 0.05,
     },
 ];

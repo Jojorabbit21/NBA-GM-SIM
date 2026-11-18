@@ -1,5 +1,6 @@
 
-import type { LeagueContext } from '../engine/pbp/leagueNormalization.ts';
+/** [보관본 엔진 전용] 리그 상대 정규화 컨텍스트 — 드래프트 확정 때 방에 저장된 값. 지금 엔진에는 정규화가 없다(2026-11-17 폐지). */
+export interface LeagueContext { muRef: number; muLeague: number; k: number; drFoulOffsets?: number[] }
 
 export interface SimSettings {
     homeAdvantage: number;
@@ -22,7 +23,7 @@ export interface SimSettings {
 
     archetypesEnabled: boolean;
 
-    // League-relative normalization
+    // League-relative normalization — [2026-11-17] 폐지. 아래 필드는 배포 엔진 보관본(엔진 프로필 stable)을 쓰는 방만 읽는다.
     normalizationStrength?: number;   // 0~1, UI slider override for k
     leagueContext?: LeagueContext;    // computed at sim start, injected here
 

@@ -1,6 +1,6 @@
 // [2026-11-17] 엔진 프로필 'stable'(배포 엔진 보관본 v253, 커밋 fd3e3952) 방의 스카우팅 리포트 성향 문장.
 // 그 엔진에서는 파울 성향·샷 디서플린 등이 아직 경기에 작용하므로, 그 방 유저에게는 배포 당시 문장을 그대로 보여 준다.
-// 아래 본문은 fd3e3952 의 utils/scoutReport.ts 성향 블록 그대로다 — 다른 점은 클러치 기준 하나뿐(0.4 → 0.12):
+// 아래 본문은 fd3e3952 의 utils/scoutReport.ts 성향 블록 그대로다 — 다른 점은 기준 두 가지뿐: 클러치 0.4 → 0.12, 수비 의지 0.5 → 0.25([2026-11-17] 폭 절반):
 // 성향 생성기(utils/hiddenTendencies.ts)의 클러치 폭이 0.3배가 됐고 같은 시드의 값도 정확히 0.3배라, 같은 선수에게 같은 문장이 나온다.
 // 보관본을 쓰는 방이 없어지면 이 파일과 scoutReport.ts 의 분기를 지운다. 문장을 고치지 말 것.
 import type { SaveTendencies } from '../types';
@@ -65,8 +65,8 @@ export function pushStableV253TendencySentences(st: SaveTendencies, push: (text:
     if (st.ballDominance >= 1.3) push('볼을 자주 잡으려는 성향이 강함', 'neutral');
     else if (st.ballDominance <= 0.7) push('볼 터치를 적극적으로 요구하지 않음', 'neutral');
 
-    if (st.defensiveMotor >= 0.5) push('적극적으로 수비에 가담함', 'positive');
-    else if (st.defensiveMotor <= -0.5) push('수비에 많은 에너지를 쏟아붓지 않음', 'negative');
+    if (st.defensiveMotor >= 0.25) push('적극적으로 수비에 가담함', 'positive');
+    else if (st.defensiveMotor <= -0.25) push('수비에 많은 에너지를 쏟아붓지 않음', 'negative');
 
     if (st.foulProneness >= 0.5) push('파울하는 것에 대해 개의치 않는 경향이 있음', 'negative');
     else if (st.foulProneness <= -0.5) push('최대한 파울을 적게 하려고 노력함', 'positive');

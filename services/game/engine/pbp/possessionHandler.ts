@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
-import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult, finishPostUp, isoCreationScore, pnrCreationScore } from './playTypes';
+import { resolvePlayAction, selectZone, resolveFinish, kickoutMindset, transitionEntryFreqMult, finishPostUp, isoCreationScore, pnrCreationScore, postCreationScore } from './playTypes';
 import { calculateHitRate, interpolateCurve, calculateMatchupGap, MATCHUP_GAP_SCALE } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity } from './usageSystem';
@@ -11,10 +11,10 @@ import { SPACING_RESPONSE, computeSpacingIndex, computeSpacingDev, spacingHelpMu
 import { POST_MATCHUP, computePostBattle, postZoneMult, postHelpMult, forcedFadeawayProb, postOffensiveFoulMult } from './postMatchup';
 import type { PostBattle } from './postMatchup';
 import { buildMatchupTable, findAssignedAttacker } from './matchupAssign';
-import { getDrawFoulOffset } from './leagueNormalization';
 import type { MatchupTable } from './matchupAssign';
 import { resolveDynamicZone } from '../shotDistribution';
 import { calculatePossessionTime } from './timeEngine';
+import { conditionSkillFactor } from './archetypeSystem';
 
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
 
@@ -553,7 +553,7 @@ function resolveFullCourtPress(state: GameState, offTeam: TeamState, defTeam: Te
     const rawDefScore = (p: LivePlayer) => weightedScore(p, C.DEFENDER_WEIGHTS);
     const defScore = (p: LivePlayer) => rawDefScore(p) * Math.max(C.FATIGUE_DEF_MULT_MIN, 1 - fatigueShort(p) * C.FATIGUE_DEF_PENALTY);
     const foulMult = (p: LivePlayer) => (1 + fatigueShort(p) * C.FATIGUE_FOUL_PENALTY)
-        * Math.max(C.FOUL_CONSIST_MIN, Math.min(C.FOUL_CONSIST_MAX, 1 - (p.attr.defConsist - C.FOUL_CONSIST_NEUTRAL) * C.FOUL_CONSIST_SLOPE))
+        * Math.max(C.FOUL_CONSIST_MIN, Math.min(C.FOUL_CONSIST_MAX, 1 - ((SIM_CONFIG.SHOOTING_FOUL.FOUL_SKILL_ABILITY_ONLY ? p.attr.perDef : p.attr.defConsist) - C.FOUL_CONSIST_NEUTRAL) * C.FOUL_CONSIST_SLOPE))
         * Math.max(C.FOUL_DEF_MIN, Math.min(C.FOUL_DEF_MAX, 1 - (rawDefScore(p) - C.FOUL_DEF_NEUTRAL) * C.FOUL_DEF_SLOPE));
     // [2026-11-13] 프레스 파울에도 파울 트러블 조심(FOUL_TROUBLE.PROB_MOD) — 하프코트 파울·림 프로텍터와 같은 규칙.
     //   이전엔 프레스만 빠져 있어 5파울 가드도 평소대로 손을 뻗다 퇴장당했다 (server 미러 동일)
@@ -657,6 +657,12 @@ function foulTroubleProbMod(pf: number): number {
 
 /** [2026-11-13] 수비 실력 파울 배율 — 잘 막는 수비수일수록 파울이 적고 못 막을수록 많다. skill = 장면 기준 수비 실력
  *  (골밑: intDef×0.65+defConsist×0.35, 외곽: perDef×0.65+defConsist×0.35), 기준점(PIVOT)이 ×1 (client·server 미러) */
+/** [2026-11-17] 파울 실력 — 수비 능력치만(골밑 수비 / 외곽 수비). SHOOTING_FOUL.FOUL_SKILL_ABILITY_ONLY false = 이전(능력 65% + 수비 일관성 35%) (client·server 미러) */
+function foulSkillOf(p: LivePlayer, interior: boolean): number {
+    const ability = interior ? p.attr.intDef : p.attr.perDef;
+    return SIM_CONFIG.SHOOTING_FOUL.FOUL_SKILL_ABILITY_ONLY ? ability : ability * 0.65 + p.attr.defConsist * 0.35;
+}
+
 function defenderSkillFoulMult(skill: number, interior: boolean): number {
     const c = SIM_CONFIG.SHOOTING_FOUL.DEFENDER_SKILL_MULT;
     return Math.max(c.MIN, Math.min(c.MAX, 1 - c.SLOPE * (skill - (interior ? c.PIVOT_INTERIOR : c.PIVOT_PERIMETER)) / 10));
@@ -865,9 +871,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // [2026-09-10] PostUp 빈도를 gravityBoost(포지션 무관 팀 최고 그라비티 — 순수 3점 슈터라도
         // 그라비티만 높으면 발동)가 아니라, 로스터 내 실제 postScorer 최댓값(포지션 무관)으로 보정.
         // "포스트업 스킬과 무관한 신호로 포스트업 빈도가 움직인다"는 문제 해결(docs/history/dev-log.md 참고).
-        const topPostThreat = Math.max(...offTeam.onCourt.map(p => p.archetypes.postScorer));
-        const postThreatMod = Math.max(0.5, Math.min(1.5, 0.5 + (topPostThreat - 40) / 60));
-        // postScorer 40 이하(포스트업 위협 전무) → ×0.5, 70(평균) → ×1.0, 100(엘리트) → ×1.5
+        // [2026-11-17] 라인업 기반 포스트업 빈도(사용자 결정) — 아이솔·PnR과 같은 식(lineupMult)을 포스트업에도 쓴다:
+        //   코트 위 최고 포스트 득점 점수(포스트업 슈터 선정과 같은 점수, postCreationScore)로 배율을 정한다 → 0.3~2.5배.
+        //   이전(아래 선형식)은 최고 포스트 위협이 누구든 0.5~1.5배라, 엘리트 포스트 득점원이 있어도 공격이 아이솔·PnR 창출자 쪽으로 쏠렸다
+        //   (샤킬 오닐 15.9점·빈스 카터 24점 같은 팀). LINEUP_PLAY_FREQ.POST.ENABLED false = 이전 동작 그대로 (client·server 미러)
+        const postThreatMod = lfCfg.POST.ENABLED
+            ? lineupMult(Math.max(...offTeam.onCourt.map(postCreationScore)), lfCfg.POST)
+            : Math.max(0.5, Math.min(1.5, 0.5 + (Math.max(...offTeam.onCourt.map(p => p.archetypes.postScorer)) - 40) / 60));
+        // (이전 선형식의 눈금: postScorer 40 이하 → ×0.5, 70 → ×1.0, 100 → ×1.5)
         weights['PostUp'] *= postThreatMod;
 
         // [2026-07-30] Playmaking Gravity: 스코어링 그래비티와 별개로, 팀 최고 플레이메이커
@@ -1233,7 +1244,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     //   도움 수비·림 프로텍터·자리싸움 몫은 이 판정과 무관 (SIM_CONFIG.DEFENSIVE_MOTOR 주석, client·server 미러)
     const motorCfg = SIM_CONFIG.DEFENSIVE_MOTOR;
     const defenderLapse = motorCfg.ENABLED
-        && Math.random() < Math.max(0, motorCfg.LAPSE_BASE - motorCfg.LAPSE_BASE * (defender.tendencies?.defensiveMotor ?? 0));
+        && Math.random() < (motorCfg.CONSISTENCY_LAPSE.ENABLED
+            // [2026-11-17] 수비 일관성 재설계(사용자 결정) — 놓아줄 확률 = (100 − 수비 일관성 × 체력 배율) × PER_POINT × (1 − 수비 의지).
+            //   체력 배율은 아키타입 점수와 같은 식(conditionSkillFactor) — 지치면 일관성이 높은 선수도 더 놓아준다. 수비 의지(숨은 성향, 폭 ±0.5)는 그 확률을 ±50% 흔든다.
+            ? Math.min(1, Math.max(0, Math.min(1, (100 - defender.attr.defConsist * conditionSkillFactor(defender.currentCondition)) * motorCfg.CONSISTENCY_LAPSE.PER_POINT)) * (1 - (defender.tendencies?.defensiveMotor ?? 0)))
+            : Math.max(0, motorCfg.LAPSE_BASE - motorCfg.LAPSE_BASE * (defender.tendencies?.defensiveMotor ?? 0)));
     const motorFoulMult = !motorCfg.ENABLED ? 1 : defenderLapse ? 0 : 1 / (1 - motorCfg.LAPSE_BASE);
     const defIntensity = defTeam.tactics.sliders.defIntensity;
     const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
@@ -1246,9 +1261,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         : sFoulCfg.BASE_RATE_3PT;
 
     // drawFoul 커브 보정 (존별 스케일링)
-    // [2026-11-15] 리그 정규화의 파울 유도 오프셋 — 능력치는 깎지 않은 값 그대로 곡선에 넣고, 리그 공통 값을 가산에서 뺀다.
-    //   오프셋 표가 없는 방은 0(그 경우 drFoul이 예전 방식대로 이미 깎여 들어온다). leagueNormalization.ts 참조 (server 미러 동일)
-    const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE) - getDrawFoulOffset(state.simSettings?.leagueContext);
+    // [2026-11-17] 리그 상대 정규화 폐지 — 파울 유도 오프셋(11-15)도 함께 없앴다. 능력치 그대로 곡선에 넣는다 (client·server 미러)
+    const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
     const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
     shootingFoulRate += drawFoulBonus * zoneScale;
 
@@ -1257,8 +1271,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 처리됨) — Rim/Paint는 intDef, Mid/3PT는 perDef 주력 + defConsist(포지션 무관 절제력) 보조.
     const isInteriorZone = preferredZone === 'Rim' || preferredZone === 'Paint';
     const defenderSkill = isInteriorZone
-        ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35
-        : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+        ? foulSkillOf(defender, true)
+        : foulSkillOf(defender, false);
     const defenderSkillCurve = isInteriorZone ? sFoulCfg.INTERIOR_SKILL_CURVE : sFoulCfg.PERIMETER_SKILL_CURVE;
     // [2026-11-11] 자유투 패키지 ③ — 골밑 수비 실력 할인 ×INTERIOR_SKILL_SCALE, 림 접촉 가산, 본인 마무리 골밑 슛은 플레이별 접촉 가산
     //   (SIM_CONFIG.SHOOTING_FOUL 주석 참조, server 미러)
@@ -1345,7 +1359,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     let protectorFoulRate = 0;
     if (rimProtector) {
         const rpCfg = SIM_CONFIG.RIM_PROTECTION;
-        const protSkill = rimProtector.attr.intDef * 0.65 + rimProtector.attr.defConsist * 0.35;
+        const protSkill = foulSkillOf(rimProtector, true);
         protectorFoulRate = interpolateCurve(protSkill, rpCfg.FOUL_CURVE) * (preferredZone === 'Paint' ? rpCfg.FOUL_PAINT_MULT : 1)
             + foulProneOf(rimProtector) * rpCfg.FOUL_PRONENESS_FACTOR;
         protectorFoulRate = Math.max(0, protectorFoulRate) * foulTroubleProbMod(rimProtector.pf);
@@ -1390,7 +1404,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // [2026-11-13] 공 쪽 비슈팅 파울에도 수비 실력 배율 — 장면 기준(림·페인트·포스트업이면 골밑 실력, 그 밖은 외곽 실력).
     //   자리싸움 몫(OFF_BALL_SHARE)은 배율 없음 → 공 쪽 몫만 바뀌도록 확률과 자리싸움 비중을 함께 조정 (client·server 미러)
     const nsInterior = isInteriorZone || selectedPlayType === 'PostUp';
-    const nsSkill = nsInterior ? defender.attr.intDef * 0.65 + defender.attr.defConsist * 0.35 : defender.attr.perDef * 0.65 + defender.attr.defConsist * 0.35;
+    const nsSkill = foulSkillOf(defender, nsInterior);
     const nsOnBallMult = defenderSkillFoulMult(nsSkill, nsInterior);
     // [2026-11-16] 공 쪽 몫에도 motorFoulMult — 놓아준 장면은 자리싸움 몫만 남는다
     const nsEff = nsFoulCfg.OFF_BALL_SHARE + (1 - nsFoulCfg.OFF_BALL_SHARE) * nsOnBallMult * motorFoulMult;

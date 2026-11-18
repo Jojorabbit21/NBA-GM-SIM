@@ -549,11 +549,12 @@ const LeagueSettingsView: React.FC = () => {
                 playTypeEra,
                 // 전역 어드민이 아니면 방에 저장된 값을 그대로 둔다(위 스프레드)
                 ...(isGlobalAdmin ? { engineProfile } : {}),
-                normalization: {
+                // [2026-11-17] 정규화는 배포 엔진 보관본(기본 프로필)에만 있다 — 테스트 프로필 방은 저장된 값을 건드리지 않는다
+                normalization: engineProfile === 'stable' ? {
                     ...(room?.sim_settings?.normalization ?? {}),
                     enabled: NORMALIZATION_LEVELS[normalizationLevel].enabled,
                     k: NORMALIZATION_LEVELS[normalizationLevel].k,
-                },
+                } : room?.sim_settings?.normalization,
                 // resolveMultiFatigueSettings가 범위 밖 값을 경계값으로 맞춰준다(입력 중 blur 전 저장 대비)
                 ...resolveMultiFatigueSettings({
                     fatigueOvernightKeep: recoveryPctToKeep(overnightRecoveryPct),
@@ -967,7 +968,7 @@ const LeagueSettingsView: React.FC = () => {
         suspensionFrequency !== (room?.sim_settings?.suspensionFrequency ?? DEFAULT_SIM_SETTINGS.suspensionFrequency) ||
         garbageTimeEnabled !== (room?.sim_settings?.garbageTimeEnabled ?? DEFAULT_SIM_SETTINGS.garbageTimeEnabled) ||
         overtimeEnabled !== ((league as any)?.overtime_enabled ?? false) ||
-        normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization) ||
+        (engineProfile === 'stable' && normalizationLevel !== normalizationOverrideToLevel(room?.sim_settings?.normalization)) ||
         playTypeEra !== resolvePlayTypeEra(room?.sim_settings?.playTypeEra) ||
         (!!isGlobalAdmin && engineProfile !== resolveEngineProfile(room?.sim_settings?.engineProfile)) ||
         overnightRecoveryPct !== keepToRecoveryPct(resolveMultiFatigueSettings(room?.sim_settings).fatigueOvernightKeep) ||
@@ -1608,6 +1609,8 @@ const LeagueSettingsView: React.FC = () => {
                     </div>
                     )}
 
+                    {/* [2026-11-17] 정규화는 기본 프로필(배포 엔진 보관본) 방에만 있다 — 테스트 프로필이면 숨김 */}
+                    {engineProfile === 'stable' && (
                     <div>
                         <div className="flex items-center justify-between px-1">
                             <span className="text-xs font-bold text-slate-300">리그 상대 정규화 강도</span>
@@ -1625,6 +1628,7 @@ const LeagueSettingsView: React.FC = () => {
                             0이면 정규화가 완전히 꺼집니다. 올타임 등 고OVR 드래프트 풀에서 득점이 비현실적으로 치솟는 걸 억제하는 기능이며, 1~5로 갈수록 표준 NBA 수준으로 강하게 압축됩니다.
                         </p>
                     </div>
+                    )}
 
                     {/* 체력 회복/백투백 (docs/plan/multiplayer-fatigue.md 3-6) */}
                     <div className="pl-1 space-y-2">

@@ -81,7 +81,11 @@ export function shotDefenseRating(defender: LivePlayer, zone: 'Rim' | 'Paint' | 
     const base = zone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
     // [2026-11-16] 수비 의지 재설계 — 켜져 있으면 의지 가산(× 10) 없음: 의지는 '붙는 빈도'로 옮겨 갔다(SIM_CONFIG.DEFENSIVE_MOTOR)
     const motorAdd = SIM_CONFIG.DEFENSIVE_MOTOR.ENABLED ? 0 : (defender.tendencies?.defensiveMotor ?? 0) * 10;
-    return base + motorAdd + ((defender.attr?.defConsist ?? 50) - 70) * 0.3;
+    // [2026-11-17] 수비 일관성 재설계 — 일관성이 '놓아주는 빈도'를 정하면(DEFENSIVE_MOTOR.CONSISTENCY_LAPSE) 등급 가산은 없다(평균을 두 번 움직이지 않게).
+    //   이전: 항상 (수비 일관성 − 70) × 0.3 가산
+    const dm = SIM_CONFIG.DEFENSIVE_MOTOR;
+    const consistAdd = (dm.ENABLED && dm.CONSISTENCY_LAPSE.ENABLED) ? 0 : ((defender.attr?.defConsist ?? 50) - 70) * 0.3;
+    return base + motorAdd + consistAdd;
 }
 
 export function calculateHitRate(

@@ -16,7 +16,6 @@
  */
 import * as stableV253 from './engineSnapshots/v253/index.ts';
 import { runFullGameSimulation } from './shared/engine/pbp/main.ts';
-import { resolveNormalizationContext } from './shared/engine/pbp/leagueNormalization.ts';
 import { calculateHitRate } from './shared/engine/pbp/flowEngine.ts';
 import { calculatePlayerOvr } from './shared/utils/ovrUtils.ts';
 import { resolveEngineProfile, type EngineProfile } from './shared/types/simSettings.ts';
@@ -24,7 +23,8 @@ import { resolveEngineProfile, type EngineProfile } from './shared/types/simSett
 export interface EngineApi {
     profile: EngineProfile;
     runFullGameSimulation: typeof runFullGameSimulation;
-    resolveNormalizationContext: typeof resolveNormalizationContext;
+    /** 보관본 엔진만 하는 일(리그 상대 정규화 컨텍스트 준비). 지금 엔진은 정규화가 없어 아무것도 하지 않는다(2026-11-17 폐지). */
+    resolveNormalizationContext: (simSettings: any, matchTeams: any[], calcOvr: (p: any) => number) => void;
     calculateHitRate: typeof calculateHitRate;
     calculatePlayerOvr: typeof calculatePlayerOvr;
 }
@@ -32,7 +32,7 @@ export interface EngineApi {
 const ENGINES: Record<EngineProfile, EngineApi> = {
     // 보관본의 타입은 그 커밋 시점의 것 — 호출 형태는 같고(추가 인자는 전부 선택) 반환값은 기존 저장 코드가 그대로 받는다
     stable: { profile: 'stable', ...(stableV253 as unknown as Omit<EngineApi, 'profile'>) },
-    next: { profile: 'next', runFullGameSimulation, resolveNormalizationContext, calculateHitRate, calculatePlayerOvr },
+    next: { profile: 'next', runFullGameSimulation, resolveNormalizationContext: () => {}, calculateHitRate, calculatePlayerOvr },
 };
 
 /** 방의 sim_settings(또는 null)로 그 방이 쓸 엔진을 고른다. 값이 없으면 'stable'. */

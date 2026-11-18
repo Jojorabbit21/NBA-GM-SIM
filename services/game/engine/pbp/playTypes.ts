@@ -124,6 +124,11 @@ export function pnrCreationScore(p: LivePlayer): number {
     const bh = staticFatigue(p) * (p.attr.handling * 0.60 + p.attr.spdBall * 0.25 + p.attr.passIq * 0.075 + p.attr.passVision * 0.075);
     return Math.sqrt(Math.max(1, bh) * Math.max(1, p.archetypes.isoScorer));
 }
+/** 포스트 득점 점수 — 포스트 기술^W × 체격^(1 − W)(W = SHOOTER_SELECTION.POST_SKILL_W). 포스트업 슈터 선정과 라인업 포스트업 빈도에 같이 쓴다([2026-11-17] 선정 쪽 지역 함수를 밖으로 뺌). */
+export function postCreationScore(p: LivePlayer): number {
+    const w = SIM_CONFIG.SHOOTER_SELECTION.POST_SKILL_W;
+    return Math.pow(Math.max(1, p.archetypes.postScorer), w) * Math.pow(Math.max(1, calculateScreenerPhysique(p.attr)), 1 - w);
+}
 
 export function selectZone(
     zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
@@ -467,7 +472,7 @@ export function resolvePlayAction(
     const SS = SIM_CONFIG.SHOOTER_SELECTION;
     // 볼 핸들러 점수(받는 플레이의 패서를 먼저 고를 때)
     const bhScore = (p: LivePlayer) => staticFatigue(p) * (p.attr.handling * 0.45 + p.attr.spdBall * 0.15 + p.attr.passIq * 0.20 + p.attr.passVision * 0.20);
-    const postScore = (p: LivePlayer) => Math.pow(Math.max(1, p.archetypes.postScorer), SS.POST_SKILL_W) * Math.pow(Math.max(1, calculateScreenerPhysique(p.attr)), 1 - SS.POST_SKILL_W);
+    const postScore = postCreationScore;   // [2026-11-17] 라인업 포스트업 빈도와 같은 점수(값·식은 이전과 동일)
     const cutScore = (p: LivePlayer) => staticFatigue(p) * (p.attr.offBallMovement * 0.25 + ((p.attr.layup + p.attr.dunk + p.attr.closeShot) / 3) * 0.35
         + p.attr.vertical * 0.10 + calculateScreenerPhysique(p.attr) * 0.30);
     const offScreenScore = (p: LivePlayer) => p.archetypes.spacer * 0.6 + staticFatigue(p) * (p.attr.offBallMovement * 0.3 + p.attr.speed * 0.1);

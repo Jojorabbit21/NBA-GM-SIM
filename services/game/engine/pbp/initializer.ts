@@ -8,7 +8,6 @@ import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { getCoachPreferences } from '../../../coachingStaff/coachGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
-import { LeagueContext, normalizeAttrs } from './leagueNormalization';
 import { assignCourtSlots } from './slotAssignment';
 import { planSuccession } from './rotationSuccession';
 import { SIM_CONFIG } from '../../config/constants';
@@ -78,7 +77,7 @@ function buildThreeSubPref(p: Player): { cnr: number; p45: number; atb: number }
     return DEFAULT_THREE_SUB_PREF;
 }
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, leagueContext?: LeagueContext, preserveDraftOrder = false): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null, preserveDraftOrder = false): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     // preserveDraftOrder: 멀티플레이어는 드래프트로 로스터를 구성하므로, 저장된 전술이 없어
     // 이 폴백이 걸려도 먼저 뽑은 선수가 OVR과 무관하게 선발을 유지해야 한다(싱글 CPU는 기존대로 OVR 정렬).
@@ -145,7 +144,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             intangibles: p.intangibles ?? 70
         };
         // League-relative normalization: shift TARGET attrs toward calibration band
-        const attr = leagueContext ? normalizeAttrs(rawAttr, leagueContext) : rawAttr;
+        // [2026-11-17] 리그 상대 정규화 폐지(사용자 결정) — 능력치는 깎지 않고 그대로 쓴다. 이전: leagueContext가 있으면 normalizeAttrs(rawAttr, leagueContext)
+        const attr = rawAttr;
 
         const currentCondition = p.condition !== undefined ? p.condition : 100;
 

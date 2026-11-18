@@ -7,7 +7,6 @@ import { supabase } from '../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../services/dataMapper';
 import { generateAutoTactics } from '../services/gameEngine';
 import { LiveGameView } from '../views/LiveGameView';
-import { computeLeagueContext } from '../services/game/engine/pbp/leagueNormalization';
 import { DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 import { TEAM_DATA, getAllTeamsList } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -329,9 +328,8 @@ const QuickPlayPage: React.FC = () => {
 
     // 라이브 PBP 뷰
     if (showLive && liveParams) {
-        const qpTeams = [liveParams.homeTeam, liveParams.awayTeam];
-        const qpLeagueCtx = computeLeagueContext(qpTeams, calculatePlayerOvr);
-        const qpSimSettings = { ...DEFAULT_SIM_SETTINGS, leagueContext: qpLeagueCtx };
+        // [2026-11-17] 리그 상대 정규화 폐지 — 예전엔 두 팀으로 leagueContext를 만들어 넣었다
+        const qpSimSettings = { ...DEFAULT_SIM_SETTINGS };
 
         return (
             <LiveGameView

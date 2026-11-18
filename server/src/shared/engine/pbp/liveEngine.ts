@@ -274,8 +274,8 @@ export function createGameState(
     const aTactics = awayUserTactics ?? ((userTeamId === awayTeam.id && userTactics) ? userTactics : undefined);
 
     const state: GameState = {
-        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData, simSettings?.leagueContext, preserveDraftOrder),
-        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData, simSettings?.leagueContext, preserveDraftOrder),
+        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData, preserveDraftOrder),
+        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData, preserveDraftOrder),
         quarter: 1,
         gameClock: 720,
         shotClock: 24,

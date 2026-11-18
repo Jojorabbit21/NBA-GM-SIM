@@ -92,7 +92,9 @@ export function generateSaveTendencies(tendencySeed: string, playerId: string): 
         focusDrift:            seededUniform(baseSeed, 5, 0.0, 1.0),
 
         shotDiscipline:        seededNormal(baseSeed, 6,  0.1, 0.35,  -1.0, 1.0),
-        defensiveMotor:        seededNormal(baseSeed, 7,  0,   0.4,   -1.0, 1.0),
+        // [2026-11-17] 폭 −1~+1 → −0.5~+0.5(사용자 결정) — 표준편차·상하한을 같이 절반으로(이전: 0.4, -1.0, 1.0). 같은 시드의 선수는 값이 정확히 절반.
+        //   놓아주는 빈도의 주인이 수비 일관성이 되면서, 숨은 성향이 보이는 능력치를 뒤집지 않게 줄였다. 스카우팅 리포트 기준도 0.5 → 0.25 (client·server 미러)
+        defensiveMotor:        seededNormal(baseSeed, 7,  0,   0.2,   -0.5, 0.5),
         ballDominance:         seededNormal(baseSeed, 8,  1.0, 0.2,    0.5, 1.5),
         foulProneness:         seededNormal(baseSeed, 9,  0,   0.3,   -1.0, 1.0),
         playStyle:             seededNormal(baseSeed, 10, 0,   0.35,  -1.0, 1.0),

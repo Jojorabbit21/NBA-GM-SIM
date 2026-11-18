@@ -3,8 +3,6 @@ import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } 
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../../types/simSettings';
 import { simulateGame } from '../gameEngine';
-import { computeLeagueContext } from '../game/engine/pbp/leagueNormalization';
-import { calculatePlayerOvr } from '../../utils/constants';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore, extractQuarterScores } from '../../utils/simulationUtils';
 import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
@@ -85,9 +83,8 @@ export const runUserSimulation = (
     const homeDepth = isHome ? depthChart : undefined;
     const awayDepth = !isHome ? depthChart : undefined;
 
-    // League-relative normalization: compute from all teams
-    const leagueContext = computeLeagueContext(teams, calculatePlayerOvr, simSettings?.normalizationStrength);
-    const effectiveSettings: SimSettings = { ...DEFAULT_SIM_SETTINGS, ...simSettings, leagueContext };
+    // [2026-11-17] 리그 상대 정규화 폐지 — 예전엔 여기서 leagueContext(computeLeagueContext)를 넣었다
+    const effectiveSettings: SimSettings = { ...DEFAULT_SIM_SETTINGS, ...simSettings };
 
     return simulateGame(
         homeTeam,

@@ -6,8 +6,6 @@ import { supabase } from '../../services/supabaseClient';
 import { mapRawPlayerToRuntimePlayer } from '../../services/dataMapper';
 import { generateAutoTactics } from '../../services/gameEngine';
 import { buildVirtualTeam, buildDefaultDepthChart, autoPickTopPlayers } from '../../utils/quickPlay';
-import { computeLeagueContext } from '../../services/game/engine/pbp/leagueNormalization';
-import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA, getAllTeamsList } from '../../data/teamData';
 import { DEFAULT_SIM_SETTINGS } from '../../types/simSettings';
 import { createGameState, stepPossession, extractSimResult } from '../../services/game/engine/pbp/liveEngine';
@@ -260,8 +258,7 @@ export const PbpGameModePanel: React.FC = () => {
         const aTactics = generateAutoTactics(awayTeam);
         const hDepth = buildDefaultDepthChart(homeRoster, hTactics);
         const aDepth = buildDefaultDepthChart(awayRoster, aTactics);
-        const leagueContext = computeLeagueContext([homeTeam, awayTeam], calculatePlayerOvr);
-        const simSettings = { ...DEFAULT_SIM_SETTINGS, leagueContext };
+        const simSettings = { ...DEFAULT_SIM_SETTINGS };   // [2026-11-17] 리그 상대 정규화 폐지(이전: leagueContext 포함)
 
         seedRef.current = `physics-lab-${homeTeamId}-${awayTeamId}-${Date.now()}`;
         gameHomeTeamIdRef.current = homeTeamId;
