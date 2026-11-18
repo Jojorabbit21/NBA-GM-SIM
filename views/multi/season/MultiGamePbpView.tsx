@@ -3234,7 +3234,6 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                         shotEvents={visibleShotEvents}
                         courtOwnerId={homeTeam?.user_id ?? null}
                         courtShowLogo={homeTeam?.court_show_logo}
-                        courtLogoScale={homeTeam?.court_logo_scale}
                         headerVariant="none"
                     />
                 </div>
@@ -3283,7 +3282,6 @@ const MultiGamePbpView: React.FC<{ practice?: boolean }> = ({ practice = false }
                             shotEvents={visibleShotEvents}
                             courtOwnerId={homeTeam?.user_id ?? null}
                             courtShowLogo={homeTeam?.court_show_logo}
-                            courtLogoScale={homeTeam?.court_logo_scale}
                             headerVariant="split"
                             awayTextColor={awayText}
                             homeTextColor={homeText}

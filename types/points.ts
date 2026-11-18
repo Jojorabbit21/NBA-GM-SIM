@@ -89,7 +89,7 @@ export interface CourtStyle {
 export type FloorMaterial = 'wood' | 'urethane' | 'concrete';
 
 /** [2026-11-18] 페인트로 칠하는 구역 — DB: user_court_paint.zone, 필요 개수는 RPC paint_court_zone 과 같은 값 */
-export type PaintZone = 'outside' | 'inside' | 'paint';
+export type PaintZone = 'outside' | 'inside' | 'paint' | 'line';
 
 export interface CourtPaintRow {
     user_id: string;

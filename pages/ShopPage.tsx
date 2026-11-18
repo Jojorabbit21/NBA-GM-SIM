@@ -10,7 +10,7 @@ import {
 import { paintColor, previewCourtStyle } from '../services/points/courtLoadout';
 import { CourtPreview } from '../components/multi/CourtPreview';
 import { InlineNotice } from '../components/common/InlineNotice';
-import { BackChevron, HOVER_ACCENT_BTN, PaintRollerIcon } from '../components/home/homeIcons';
+import { BackChevron, HOVER_ACCENT_BTN } from '../components/home/homeIcons';
 import type { FloorMaterial, ShopItemRow } from '../types/points';
 
 // 상점 — /shop. 코스메틱은 계정 귀속이라 리그 밖(홈 오른쪽 위 SHOP 버튼, 프로필의 SHOP 버튼)에서 들어온다.
@@ -39,6 +39,7 @@ const ShopPage: React.FC = () => {
     const [filter, setFilter] = useState<Filter>('all');
     const [pendingId, setPendingId] = useState<string | null>(null);   // 확인 단계인 상품
     const [qtyById, setQtyById] = useState<Record<string, number>>({});  // 쌓이는 상품(페인트)의 구매 수량
+    const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({}); // 수량 칸에 입력 중인 글자(포커스를 떼면 지운다)
     const [buyingId, setBuyingId] = useState<string | null>(null);
     const [err, setErr] = useState<string | null>(null);
     const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -92,7 +93,11 @@ const ShopPage: React.FC = () => {
         const total = item.price * qty;
         const isOwned = !item.stackable && ownedIds.has(item.id);
         const short = !isOwned && total > balance;
-        const setQty = (n: number) => { setQtyById(prev => ({ ...prev, [item.id]: Math.max(1, Math.min(MAX_BUY_QTY, n)) })); setPendingId(null); };
+        const setQty = (n: number) => {
+            setQtyById(prev => ({ ...prev, [item.id]: Math.max(1, Math.min(MAX_BUY_QTY, n)) }));
+            setQtyDraft(prev => { const { [item.id]: _drop, ...rest } = prev; return rest; });
+            setPendingId(null);
+        };
         const stepBtn = 'w-10 h-10 md:w-9 md:h-9 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-base font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 transition-colors';
         const isPending = pendingId === item.id;
         const isBuying = buyingId === item.id;
@@ -100,9 +105,7 @@ const ShopPage: React.FC = () => {
         return (
             <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
                 {item.item_type === 'court_paint' ? (
-                    <div role="img" aria-label={item.name} className="w-full aspect-[940/500] flex items-center justify-center bg-slate-950">
-                        <PaintRollerIcon color={paintColor(item) ?? '#334155'} size={112} />
-                    </div>
+                    <div role="img" aria-label={item.name} className="w-full h-24 border-b border-slate-800" style={{ background: paintColor(item) ?? '#334155' }} />
                 ) : (
                     <svg viewBox="0 0 940 500" className="w-full h-auto block" role="img" aria-label={item.name}>
                         <CourtPreview {...previewCourtStyle(item)} />
@@ -119,7 +122,20 @@ const ShopPage: React.FC = () => {
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-1.5">
                                 <button type="button" aria-label="수량 줄이기" disabled={qty <= 1} onClick={() => setQty(qty - 1)} className={stepBtn}>−</button>
-                                <span className="w-9 text-center text-sm font-bold tabular-nums" aria-label="구매 수량">{qty}</span>
+                                <input
+                                    aria-label="구매 수량" inputMode="numeric" maxLength={2}
+                                    value={qtyDraft[item.id] ?? String(qty)}
+                                    onFocus={e => e.currentTarget.select()}
+                                    onChange={e => {
+                                        // 지우는 중에는 빈 칸을 그대로 두고(수량은 1로 계산), 포커스를 떼면 숫자로 채운다
+                                        const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                        setQtyDraft(prev => ({ ...prev, [item.id]: digits }));
+                                        setQtyById(prev => ({ ...prev, [item.id]: Math.max(1, Math.min(MAX_BUY_QTY, parseInt(digits, 10) || 1)) }));
+                                        setPendingId(null);
+                                    }}
+                                    onBlur={() => setQtyDraft(prev => { const { [item.id]: _drop, ...rest } = prev; return rest; })}
+                                    className="w-12 h-10 md:h-9 bg-slate-950 border border-slate-700 rounded-lg text-center text-sm font-bold text-white tabular-nums focus:outline-none focus:border-indigo-500"
+                                />
                                 <button type="button" aria-label="수량 늘리기" disabled={qty >= MAX_BUY_QTY} onClick={() => setQty(qty + 1)} className={stepBtn}>+</button>
                             </div>
                             <span className="text-[13px] text-slate-400 tabular-nums">보유 {ownedQty.get(item.id) ?? 0}</span>

@@ -110,6 +110,7 @@ export const PAINT_ZONES: { key: PaintZone; label: string; cost: number }[] = [
     { key: 'outside', label: '3점 라인 바깥', cost: 10 },
     { key: 'inside',  label: '3점 라인 안쪽', cost: 6 },
     { key: 'paint',   label: '페인트존',      cost: 3 },
+    { key: 'line',    label: '라인',          cost: 2 },
 ];
 
 /** 지금 장착한 플로어의 id(없으면 기본 코트) — 칠을 찾는 열쇠 */
@@ -131,7 +132,8 @@ export function applyCourtPaint(style: CourtStyle, paints: CourtPaintRow[] | und
         if (!color) continue;
         if (p.zone === 'outside') next.outside = color;
         else if (p.zone === 'inside') next.three = color;
-        else next.paint = color;
+        else if (p.zone === 'paint') next.paint = color;
+        else if (p.zone === 'line') next.line = color;
     }
     const insidePainted = mine.some(p => p.zone === 'inside' && paintColor(p.item));
     if (insidePainted && !next.paint) next.threeCutout = true;

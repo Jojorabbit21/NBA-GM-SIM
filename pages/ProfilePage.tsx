@@ -446,7 +446,7 @@ const ProfilePage: React.FC = () => {
                                             ))}
                                         </div>
                                     )}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                                         {PAINT_ZONES.map(z => {
                                             const cur = paintedZones.get(z.key) ?? null;
                                             const curColor = paintColor(cur?.item);

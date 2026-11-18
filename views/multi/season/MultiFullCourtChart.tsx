@@ -21,7 +21,6 @@ interface MultiFullCourtChartProps {
     courtOwnerId?: string | null;
     /** [2026-10-02] 홈팀의 "코트 중앙 로고" 설정 */
     courtShowLogo?:   boolean;
-    courtLogoScale?:  number;
     /** [2026-10-23] 헤더 변형 — legend(기본): 범례 점 + 선수 필터 버튼. split: 좌(원정)/우(홈) 반반을 팀 테마 컬러로 칠한
      *  헤더, 선수 필터는 숨김(게임 센터 카드용). none[2026-10-28]: 헤더 없이 코트만(폰 게임 센터 — 팀 구분은 바로 위 스코어버그 밴드, §9-7). */
     headerVariant?: 'legend' | 'split' | 'none';
@@ -90,7 +89,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
     homeTeamId, homeColor, homeAbbr,
     awayTeamId, awayColor, awayAbbr,
     shotEvents,
-    courtOwnerId, courtShowLogo, courtLogoScale,
+    courtOwnerId, courtShowLogo,
     headerVariant = 'legend', awayTextColor, homeTextColor,
 }) => {
     const { style: court } = useCourtLoadout(courtOwnerId);
@@ -235,7 +234,7 @@ export const MultiFullCourtChart: React.FC<MultiFullCourtChartProps> = ({
                 onClick={handleClick}
             >
                 <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
-                    <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(homeTeamId) : null} logoScale={courtLogoScale ?? 100} />
+                    <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(homeTeamId) : null} />
 
                     {/* Shots — raw coords (no normalization), ×10 to SVG units */}
                     {filteredShotEvents.map((shot, i) => {

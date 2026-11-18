@@ -56,7 +56,6 @@ export const TeamSettingsPanel: React.FC = () => {
     // [2026-11-18] 코트 모습 = 내 계정의 인벤토리 장착 정보(모든 팀 공통). 여기서는 미리보기만 하고 로고 설정만 바꾼다.
     const { style: court } = useCourtLoadout(userId);
     const [courtShowLogo, setCourtShowLogo] = useState(true);
-    const [courtLogoScale, setCourtLogoScale] = useState(100);
     const [saving,  setSaving]  = useState(false);
     // saveErr = 서버 저장 실패(하단 md) / fieldErrors = 입력별 검증(각 입력 아래 sm). [2026-10-13] 에러 표시 정책 2차.
     const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -75,7 +74,6 @@ export const TeamSettingsPanel: React.FC = () => {
         setColorTertiary(myTeam.color_tertiary ?? '#0f172a');
         setColorText(myTeam.color_text ?? '#ffffff');
         setCourtShowLogo(myTeam.court_show_logo ?? true);
-        setCourtLogoScale(myTeam.court_logo_scale ?? 100);
         setSaveErr(null);
         setFieldErrors({});
         setSaved(false);
@@ -122,7 +120,7 @@ export const TeamSettingsPanel: React.FC = () => {
             // [2026-11-18] 코트 색은 인벤토리 장착으로 정하므로 팀 행에는 항상 비워서 저장
             null, null, null,
             courtShowLogo,
-            courtLogoScale,
+            null, // 로고 크기는 더 이상 조절하지 않는다(null = 기존 값 유지, 화면은 읽지 않음)
             null,
         );
         setSaving(false);
@@ -205,7 +203,7 @@ export const TeamSettingsPanel: React.FC = () => {
                         <h3 className="text-xs font-bold text-slate-500 mb-2">코트 미리보기</h3>
                         <div className="rounded-xl overflow-hidden border border-slate-800">
                             <svg viewBox="0 0 940 500" className="w-full">
-                                <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(myTeam.team_slug) : null} logoScale={courtLogoScale} />
+                                <CourtPreview {...court} logoUrl={courtShowLogo ? getTeamLogoUrl(myTeam.team_slug) : null} />
                             </svg>
                         </div>
                     </div>
@@ -222,17 +220,6 @@ export const TeamSettingsPanel: React.FC = () => {
                                 className="w-4 h-4 accent-indigo-500"
                             />
                         </label>
-                        <div className={`flex items-center gap-3 ${courtShowLogo ? '' : 'opacity-50'}`}>
-                            <span className="text-sm text-slate-300 ko-normal shrink-0">로고 크기</span>
-                            <input
-                                type="range" min={50} max={200} step={5}
-                                value={courtLogoScale}
-                                onChange={e => setCourtLogoScale(Number(e.target.value))}
-                                disabled={!canEditIdentity || !courtShowLogo}
-                                className="flex-1 accent-indigo-500"
-                            />
-                            <span className="text-xs text-slate-400 w-10 text-right">{courtLogoScale}%</span>
-                        </div>
                     </div>
                 </div>
             </div>

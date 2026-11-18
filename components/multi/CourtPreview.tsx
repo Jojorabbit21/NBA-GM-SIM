@@ -20,8 +20,6 @@ interface CourtPreviewProps {
     /** [2026-11-18] 3점 안쪽 칠에서 페인트존을 비운다(3점 안쪽만 칠한 경우) */
     threeCutout?: boolean;
     logoUrl?:   string | null;
-    /** 로고 크기(%) — 100 = LOGO_BASE_SIZE(220px). 팀 설정값(50~200). */
-    logoScale?: number;
     /** [2026-11-09] 림·백보드 색 — 상점 "림 세트" 상품. 없으면 기존 고정값(주황 림·짙은 회색 백보드) */
     rim?: string;
     backboard?: string;
@@ -146,6 +144,7 @@ const RimOnly: React.FC<{ rim?: string; backboard?: string }> = ({ rim = DEFAULT
 );
 
 // 로고 기본(100%) 크기 — 940x500 코트 기준. 센터 서클(지름 120)보다 크게 잡아 코트 중앙을 채운다.
+// [2026-11-18] 로고 크기는 모든 팀이 이 값 하나(예전 팀별 50~200% 조절은 없앰, league_teams.court_logo_scale 은 더 이상 읽지 않는다). 불투명도도 없음(100%)
 const LOGO_BASE_SIZE = 220;
 
 // 3점 라인 안쪽 영역(3점 곡선 + 베이스라인) — 왼쪽과, 그것을 좌우로 뒤집은 오른쪽
@@ -154,7 +153,49 @@ const ARC_R = 'M940,30h-140s-150,55-150,220,150,220,150,220H940Z';
 
 // [주의] 자체 <svg> 태그를 만들지 않고 SVG 자식 노드만 반환한다 — 호출부가 viewBox="0 0 940 500"인
 // 자신의 <svg> 안에 이 컴포넌트를 그대로 끼워 넣어 쓴다(샷 마커 등 다른 레이어와 좌표계 공유 목적).
-export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, outside, threeCutout, logoUrl, logoScale = 100, rim, backboard, texture, floorImage, wearImage }) => (
+// ── 칠한 구역 위로 비치는 바닥 결 (2026-11-18) ───────────────────────────────
+// 색은 100% 불투명하게 칠하고(사용자 지시: 색에 불투명도 금지), 그 위에 같은 바닥 이미지를 흑백으로 바꿔 soft-light 로 겹친다.
+// soft-light 는 중간 회색이면 아무 변화가 없으므로, 이미지의 평균 밝기(= background, 바닥 평균색)를 중간 회색으로 옮기고
+// PAINT_GRAIN 배만큼 대비를 키운다 → 색상은 그대로, 결의 밝고 어두운 줄만 남는다. 세기는 이 값 하나(0 = 끔).
+const PAINT_GRAIN = 1.8;
+const grayOf = (hex: string): number => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return 0.5;
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+const PaintGrain: React.FC<{ floorImage: string; background: string; outside?: string; three?: string; threeCutout?: boolean; paint?: string }> = ({ floorImage, background, outside, three, threeCutout, paint }) => {
+    const id = `grain-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    const intercept = 0.5 - grayOf(background) * PAINT_GRAIN;
+    return (
+        <>
+            <defs>
+                <clipPath id={`${id}-c`}>
+                    {outside && <path d={`M0,0H940V500H0Z ${ARC_L} ${ARC_R}`} clipRule="evenodd" />}
+                    {three && (threeCutout
+                        ? <path d={`${ARC_L} ${ARC_R} M0,170H190V330H0Z M750,170H940V330H750Z`} clipRule="evenodd" />
+                        : <path d={`${ARC_L} ${ARC_R}`} />)}
+                    {paint && <path d="M0,170H190V330H0Z M750,170H940V330H750Z" />}
+                </clipPath>
+                <filter id={`${id}-f`} colorInterpolationFilters="sRGB" x="0" y="0" width="100%" height="100%">
+                    <feColorMatrix type="saturate" values="0" />
+                    <feComponentTransfer>
+                        <feFuncR type="linear" slope={PAINT_GRAIN} intercept={intercept} />
+                        <feFuncG type="linear" slope={PAINT_GRAIN} intercept={intercept} />
+                        <feFuncB type="linear" slope={PAINT_GRAIN} intercept={intercept} />
+                    </feComponentTransfer>
+                </filter>
+            </defs>
+            <image
+                href={floorImage} width="940" height="500" preserveAspectRatio="none" pointerEvents="none"
+                filter={`url(#${id}-f)`} clipPath={`url(#${id}-c)`} style={{ mixBlendMode: 'soft-light' }}
+            />
+        </>
+    );
+};
+
+export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, outside, threeCutout, logoUrl, rim, backboard, texture, floorImage, wearImage }) => (
     <>
         {/* Background */}
         <rect width="940" height="500" fill={background} />
@@ -180,14 +221,18 @@ export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, l
             </>
         )}
 
+        {/* 칠한 구역 위로 바닥 결 — 칠 위·로고와 라인 아래 */}
+        {PAINT_GRAIN > 0 && floorImage && (outside || (three && three !== background) || paint) && (
+            <PaintGrain floorImage={floorImage} background={background} outside={outside} three={three && three !== background ? three : undefined} threeCutout={threeCutout} paint={paint} />
+        )}
+
         {/* Center logo (team setting, optional) — 코트 라인보다 아래 레이어(라인이 로고 위로 지나감). 센터 서클(r=60) 안에 맞춘다. 샷 마커 등 상호작용 방해 금지 */}
         {logoUrl && (
             <image
                 href={logoUrl}
-                x={470 - LOGO_BASE_SIZE / 2 * logoScale / 100} y={250 - LOGO_BASE_SIZE / 2 * logoScale / 100}
-                width={LOGO_BASE_SIZE * logoScale / 100} height={LOGO_BASE_SIZE * logoScale / 100}
+                x={470 - LOGO_BASE_SIZE / 2} y={250 - LOGO_BASE_SIZE / 2}
+                width={LOGO_BASE_SIZE} height={LOGO_BASE_SIZE}
                 preserveAspectRatio="xMidYMid meet"
-                opacity="0.9"
                 pointerEvents="none"
             />
         )}
