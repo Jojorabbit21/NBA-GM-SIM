@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 
-export interface MyProfile { nickname: string | null; avatar_color: string | null; }
+export interface MyProfile { nickname: string | null; avatar_color: string | null; avatar_text: string | null; avatar_logo: string | null; }
 
 export const MY_PROFILE_KEY = (userId: string | null | undefined) => ['myProfile', userId ?? null] as const;
 
@@ -13,7 +13,7 @@ export function useMyProfile(userId: string | null | undefined) {
         enabled: !!userId,
         staleTime: 5 * 60_000,
         queryFn: async (): Promise<MyProfile | null> => {
-            const { data, error } = await supabase.from('profiles').select('nickname, avatar_color').eq('id', userId!).maybeSingle();
+            const { data, error } = await supabase.from('profiles').select('nickname, avatar_color, avatar_text, avatar_logo').eq('id', userId!).maybeSingle();
             if (error) throw error;
             return (data as MyProfile | null) ?? null;
         },

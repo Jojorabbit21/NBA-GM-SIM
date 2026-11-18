@@ -25,7 +25,24 @@ export function avatarBgClass(key: string | null | undefined): string {
     return (AVATAR_COLORS.find(c => c.key === key) ?? AVATAR_COLORS[0]).bg;
 }
 
-/** 닉네임 첫 글자(없으면 이메일 첫 글자, 둘 다 없으면 빈 문자열) — 영문은 대문자 */
-export function avatarInitial(nickname: string | null | undefined, email?: string | null): string {
+/** 아바타 글자 최대 길이(profiles.avatar_text, DB 제약과 같음) */
+export const MAX_AVATAR_TEXT = 2;
+
+/** 직접 입력한 글자(profiles.avatar_text)가 있으면 그대로, 없으면 닉네임 첫 글자(없으면 이메일 첫 글자) — 영문은 대문자 */
+export function avatarInitial(nickname: string | null | undefined, email?: string | null, text?: string | null): string {
+    const custom = text?.trim();
+    if (custom) return custom;
     return (nickname?.trim() || email?.trim() || '').charAt(0).toUpperCase();
+}
+
+// ── 아바타 로고 (2026-11-18) ──
+// profiles.avatar_logo 에 키를 저장한다. 파일은 public/logos/avatars/{키}.svg — 게임이 직접 만든 가상 로고만 둔다
+// (경기 화면의 팀 로고 public/logos/teams/ 와는 다른 세트). 모르는 키는 로고 없음으로 본다.
+export const AVATAR_LOGOS: string[] = [
+    'ATL', 'BKN', 'BOS', 'CHA', 'CHI', 'CLE', 'DAL', 'DEN', 'DET', 'GS', 'HOU', 'IND', 'LAM', 'LAW', 'LV', 'MEM',
+    'MIA', 'MIL', 'MIN', 'NO', 'NYK', 'OKC', 'ORL', 'PHI', 'PHX', 'POR', 'SA', 'SAC', 'SEA', 'TOR', 'UTA', 'WAS',
+];
+
+export function avatarLogoUrl(key: string | null | undefined): string | null {
+    return key && AVATAR_LOGOS.includes(key) ? `/logos/avatars/${key}.svg` : null;
 }

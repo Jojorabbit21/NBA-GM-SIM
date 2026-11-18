@@ -207,6 +207,10 @@ export interface LeagueListEntry {
     isJoined:    boolean;
     /** rooms.season — 시즌 표시명(예: "2025-2026"). 방이 없으면 null. */
     season:      string | null;
+    /** [2026-11-18] 방을 읽을 수 없는 리그(비로그인·미참가)의 가상 날짜 — 공개 요약 RPC league_list_stats 에서. 방을 읽을 수 있으면 null(화면이 방 id 로 직접 조회) */
+    virtualDate: string | null;
+    /** 참가 인원·정원을 알 수 있는지(방을 읽었거나 공개 요약에 있음) */
+    hasStats:    boolean;
 }
 
 export const listLeaguesWithStats = async (
@@ -258,15 +262,27 @@ export const listLeaguesWithStats = async (
         });
     }
 
+    // 4. 방을 읽지 못한 리그(RLS: 비로그인·미참가)는 공개 요약으로 인원·정원·가상 날짜만 채운다(migrations/add_league_list_stats.sql)
+    const statsByLeague: Record<string, { max_players: number; member_count: number; virtual_date: string | null }> = {};
+    if (leagues.some(l => !roomByLeague[l.id])) {
+        const { data: stats } = await supabase.rpc('league_list_stats');
+        for (const st of (stats ?? []) as { league_id: string; max_players: number; member_count: number; virtual_date: string | null }[]) {
+            statsByLeague[st.league_id] = st;
+        }
+    }
+
     return leagues.map(league => {
         const room = roomByLeague[league.id];
+        const pub = room ? undefined : statsByLeague[league.id];
         return {
             league,
             roomId:      room?.id      ?? null,
-            memberCount: room ? (memberCounts[room.id] ?? 0) : 0,
-            maxPlayers:  room?.max_players ?? league.max_teams,
+            memberCount: room ? (memberCounts[room.id] ?? 0) : (pub?.member_count ?? 0),
+            maxPlayers:  room?.max_players ?? pub?.max_players ?? league.max_teams,
             isJoined:    room ? joinedRoomIds.has(room.id) : false,
             season:      room?.season ?? null,
+            virtualDate: pub?.virtual_date ?? null,
+            hasStats:    !!room || !!pub,
         };
     });
 };

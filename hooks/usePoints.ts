@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchLedger, fetchOwnedItems, fetchShopItems, fetchWallet } from '../services/points/pointsService';
-import { fetchCourtLoadout, loadoutStyle } from '../services/points/courtLoadout';
+import { fetchCourtLoadout, fetchCourtPaint, loadoutStyle } from '../services/points/courtLoadout';
 import type { CourtStyle } from '../types/points';
 
 export const POINTS_WALLET_KEY = (userId: string | null | undefined) => ['pointsWallet', userId ?? null] as const;
@@ -46,6 +46,7 @@ export function useRecentLedger(userId: string | null | undefined, limit: number
     });
 }
 
+export const COURT_PAINT_KEY = (userId: string | null | undefined) => ['courtPaint', userId ?? null] as const;
 export const COURT_LOADOUT_KEY = (userId: string | null | undefined) => ['courtLoadout', userId ?? null] as const;
 
 /** [2026-11-18] 한 계정의 장착 정보 + 그걸로 정한 코트 모습. userId 가 없으면(AI 팀) 기본 코트. 장착 후 COURT_LOADOUT_KEY 무효화 */
@@ -56,7 +57,15 @@ export function useCourtLoadout(userId: string | null | undefined) {
         staleTime: 5 * 60_000,
         queryFn: () => fetchCourtLoadout(userId!),
     });
+    // [2026-11-18] 칠(플로어마다 따로) — 칠하기·지우기 후 COURT_PAINT_KEY 무효화
+    const pq = useQuery({
+        queryKey: COURT_PAINT_KEY(userId),
+        enabled: !!userId,
+        staleTime: 5 * 60_000,
+        queryFn: () => fetchCourtPaint(userId!),
+    });
     const entries = userId ? q.data : null;
-    const style: CourtStyle = useMemo(() => loadoutStyle(entries), [entries]);
-    return { ...q, style };
+    const paints = userId ? pq.data : null;
+    const style: CourtStyle = useMemo(() => loadoutStyle(entries, paints), [entries, paints]);
+    return { ...q, style, paints };
 }

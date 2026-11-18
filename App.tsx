@@ -55,7 +55,7 @@ import AdminSimView from './views/multi/league/AdminSimView';
 // Pages — 비보호 라우트
 import AuthPage from './pages/AuthPage';
 import ShopPage from './pages/ShopPage';
-import InventoryPage from './pages/InventoryPage';
+import ProfilePage from './pages/ProfilePage';
 import LeagueInvitePage from './pages/LeagueInvitePage';
 import QuickPlayPage from './pages/QuickPlayPage';
 import ModeSelectPage from './pages/ModeSelectPage';
@@ -404,7 +404,9 @@ const App: React.FC = () => {
                     <Route path="/" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/auth" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/shop" element={<ShopPage />} />
-                    <Route path="/inventory" element={<InventoryPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    {/* [2026-11-18] 인벤토리는 프로필 화면의 "코트 · 인벤토리" 탭으로 합침 */}
+                    <Route path="/inventory" element={<Navigate to="/profile" replace />} />
                     {/* [2026-11-09] About/Terms/Privacy — 홈 화면(로고·푸터)은 그대로 두고 가운데 컨텐츠만 스왑(StartScreen 이 pathname 으로 분기) */}
                     <Route path="/about" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/terms" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />

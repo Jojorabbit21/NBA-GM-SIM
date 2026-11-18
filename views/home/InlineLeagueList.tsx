@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { Eye, Loader2, LogIn, Plus } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { BackChevron, CloseX, HOVER_ACCENT_BTN } from '../../components/home/homeIcons';
 import { supabase } from '../../services/supabaseClient';
 import { listLeaguesWithStats } from '../../services/multi/roomQueries';
 import type { LeagueListEntry } from '../../services/multi/roomQueries';
@@ -18,12 +19,16 @@ interface InlineLeagueListProps {
     session: Session | null;
     /** 비로그인 상태에서 참가/입장을 시도했을 때 호출 — after는 로그인 성공 후 이어서 실행할 동작 */
     onRequireLogin: (opts?: { reason?: string; after?: () => void }) => void;
+    /** [2026-11-18] panel = 데스크톱 홈의 오른쪽 패널(표), sheet = 폰 전체 화면 시트(행 목록) */
+    variant?: 'panel' | 'sheet';
+    /** 패널·시트 닫기 */
+    onClose?: () => void;
 }
 
 // 홈 화면 우측 패널에 바로 내장하는 리그 목록 — 기존 /multi(LeagueListView) 전체 페이지로 이동하지
 // 않고 여기서 바로 조회·참가할 수 있게 한다. 비로그인 조회 허용 여부는 LeagueListView와 동일하게
 // listLeaguesWithStats(userId)의 RLS 정책을 그대로 따른다.
-export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onRequireLogin }) => {
+export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onRequireLogin, variant = 'panel', onClose }) => {
     const navigate = useNavigate();
     const { isAdmin } = useGame();
     const userId = session?.user?.id ?? null;
@@ -91,152 +96,173 @@ export const InlineLeagueList: React.FC<InlineLeagueListProps> = ({ session, onR
         setJoinTarget(entry);
     };
 
+    const isSheet = variant === 'sheet';
+    const statusClass = (status: string) =>
+        status === 'recruiting' ? 'text-amber-400' : status === 'finished' ? 'text-slate-400' : status === 'drafting' ? 'text-amber-400' : 'text-slate-300';
+
+    // 한 세션의 동작 버튼 — 입장 / 둘러보기 / 참가. 입장은 주황 CTA, 나머지는 보조 버튼이고 올리면 인디고(구매 버튼과 같은 규칙)
+    const renderAction = (entry: LeagueListEntry) => {
+        const { league, isJoined } = entry;
+        const canSpectate = !isJoined && isLeagueSpectatable(league);
+        const shape = `inline-flex items-center justify-center rounded-lg font-bold whitespace-nowrap disabled:opacity-40 disabled:pointer-events-none ${isSheet ? 'h-11 min-w-[64px] px-3.5 text-sm' : 'h-9 px-4 text-[13px]'}`;
+        const cls = `${HOVER_ACCENT_BTN} ${shape}`;
+        // 입장(참여 중인 세션)만 예전 홈의 주황 CTA — 가장 자주 누르는 주 동작
+        if (isJoined) return <button onClick={() => enterLeague(league.id, league.short_code)} className={`${shape} bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white transition-all active:scale-[0.98]`}>입장</button>;
+        if (canSpectate) {
+            return (
+                <button
+                    onClick={() => {
+                        if (!userId) { onRequireLogin({ reason: '리그 둘러보기에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
+                        enterLeague(league.id, league.short_code);
+                    }}
+                    className={cls}
+                >
+                    둘러보기
+                </button>
+            );
+        }
+        return <button onClick={() => openJoinModal(entry)} disabled={league.status !== 'recruiting'} className={cls}>참가</button>;
+    };
+    // 이름 — 들어갈 수 있는 세션(참여 중·둘러보기 가능·어드민)은 이름을 눌러도 입장한다(어드민은 참가하지 않은 리그도 이 경로로 들어간다)
+    const renderName = (entry: LeagueListEntry) => {
+        const { league, isJoined } = entry;
+        const canEnter = isJoined || isLeagueSpectatable(league) || !!isAdmin;
+        if (!canEnter) return <span className="font-bold truncate block">{league.name}</span>;
+        return (
+            <button
+                onClick={() => {
+                    if (!userId) { onRequireLogin({ reason: '리그 입장에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
+                    enterLeague(league.id, league.short_code);
+                }}
+                className="font-bold truncate block max-w-full text-left hover:text-[#00D492] transition-colors"
+            >
+                {league.name}
+            </button>
+        );
+    };
+    const statusText = (entry: LeagueListEntry) => entry.isJoined && entry.league.status !== 'finished' ? '참여 중' : (STATUS_LABEL[entry.league.status] ?? entry.league.status);
+    const statusCls = (entry: LeagueListEntry) => entry.isJoined && entry.league.status !== 'finished' ? 'text-[#00D492]' : statusClass(entry.league.status);
+    // 방을 읽지 못한 리그(비로그인·미참가)는 공개 요약 값(entry.virtualDate·memberCount)을 쓴다
+    const memberText = (entry: LeagueListEntry) => entry.hasStats ? `${entry.memberCount} / ${entry.maxPlayers}` : '—';
+    const dateText = (entry: LeagueListEntry) => (entry.roomId ? (virtualDates[entry.roomId] ?? null) : entry.virtualDate) ?? '—';
+    const groups = ([
+        { key: 'ongoing', label: '진행 중', rows: ongoing },
+        { key: 'ended',   label: '종료',    rows: ended },
+    ]).filter(g => g.rows.length > 0);
+
+    const newLeagueBtn = session && isAdmin && (
+        <button onClick={() => setIsCreateOpen(true)} className={`${HOVER_ACCENT_BTN} rounded-lg font-bold ${isSheet ? 'h-11 px-3.5 text-sm' : 'h-10 px-4 text-[13px]'}`}>새 리그</button>
+    );
+    const tabs = (
+        <div className={`shrink-0 flex border-b border-slate-800 ${isSheet ? 'px-4 gap-5' : 'mt-3 px-6 gap-7'}`}>
+            {([
+                { key: 'main_league' as Tab, label: '온라인 리그' },
+                { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
+            ]).map(({ key, label }) => (
+                <button
+                    key={key}
+                    onClick={() => { setActiveTab(key); setActionErr(null); }}
+                    className={`h-11 font-bold border-b-2 transition-colors ko-normal ${isSheet ? 'text-sm' : 'text-[15px]'} ${
+                        activeTab === key ? 'border-[#00D492] text-[#00D492]' : 'border-transparent text-slate-400 hover:text-white'
+                    }`}
+                >
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+    const empty = isLoading ? (
+        <div className="py-10 flex justify-center"><Loader2 size={18} className="animate-spin text-slate-600" /></div>
+    ) : filtered.length === 0 ? (
+        <p className="py-10 text-center text-sm text-slate-400 ko-normal">
+            {activeTab === 'tournament' ? '참가 가능한 온라인 토너먼트가 없습니다.' : '참가 가능한 온라인 리그가 없습니다.'}
+        </p>
+    ) : null;
+
     return (
-        <div className="w-full h-full bg-slate-800/60 border border-slate-700/50 rounded-2xl p-5 flex flex-col animate-in fade-in zoom-in-95 duration-300 pretendard">
+        <div className={`w-full h-full flex flex-col pretendard text-white ${isSheet ? 'bg-slate-950' : 'bg-slate-900/95 border border-slate-800 rounded-2xl overflow-hidden'}`}>
 
             {/* 헤더 */}
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-black text-white ko-tight">활성화된 세션</h2>
-                {session && isAdmin && (
-                    <button
-                        onClick={() => setIsCreateOpen(true)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-transparent border border-white/15 hover:bg-white/5 hover:border-white/30 rounded-lg text-xs font-bold text-white transition-colors"
-                    >
-                        <Plus size={12} />
-                        <span className="ko-normal">새 리그</span>
+            {isSheet ? (
+                <div className="shrink-0 h-14 pl-1 pr-4 flex items-center justify-between bg-slate-900 border-b border-slate-800">
+                    <button onClick={onClose} aria-label="홈으로 돌아가기" className="h-11 px-3 flex items-center gap-3 text-white">
+                        <BackChevron />
+                        <span className="text-xl font-bold leading-none">ONLINE LEAGUES</span>
                     </button>
-                )}
-            </div>
-
-            {/* 탭 */}
-            <div className="flex gap-1 border-b border-slate-700/50 mb-3">
-                {([
-                    { key: 'main_league' as Tab, label: '온라인 리그' },
-                    { key: 'tournament' as Tab,  label: '온라인 토너먼트' },
-                ]).map(({ key, label }) => (
-                    <button
-                        key={key}
-                        onClick={() => { setActiveTab(key); setActionErr(null); }}
-                        className={`flex items-center gap-1.5 px-3 py-2 text-base font-bold transition-colors border-b-2 -mb-px ${
-                            activeTab === key
-                                ? 'border-orange-500 text-white'
-                                : 'border-transparent text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
-                        <span className="ko-normal">{label}</span>
-                    </button>
-                ))}
-            </div>
-
-            {actionErr && (
-                <p className="text-xs text-red-400 ko-normal bg-red-900/20 border border-red-700/30 rounded-lg px-3 py-2 mb-3">
-                    {actionErr}
-                </p>
+                    {newLeagueBtn}
+                </div>
+            ) : (
+                <div className="shrink-0 pt-5 px-6 flex items-center justify-between gap-4">
+                    <h2 className="font-display text-[32px] leading-none tracking-[0.03em]">Online Leagues</h2>
+                    <div className="flex items-center gap-2">
+                        {newLeagueBtn}
+                        {onClose && (
+                            <button onClick={onClose} aria-label="닫기" className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors"><CloseX /></button>
+                        )}
+                    </div>
+                </div>
             )}
 
-            {/* 목록 — 테이블 형식. 부모(패널)가 푸터까지 늘어난 고정 높이를 주므로 내부는 그 안에서만 스크롤 */}
-            <div className="flex-1 min-h-0 overflow-auto">
-                {isLoading ? (
-                    <div className="py-10 flex justify-center">
-                        <Loader2 size={18} className="animate-spin text-slate-600" />
-                    </div>
-                ) : filtered.length === 0 ? (
-                    <p className="py-10 text-center text-xs text-slate-500 ko-normal">
-                        {activeTab === 'tournament' ? '참가 가능한 온라인 토너먼트가 없습니다.' : '참가 가능한 온라인 리그가 없습니다.'}
-                    </p>
-                ) : (
-                    <table className="w-full text-sm">
-                        <tbody className="divide-y divide-slate-800">
-                            {([
-                                { key: 'ongoing', label: '진행 중', rows: ongoing },
-                                { key: 'ended',   label: '종료',    rows: ended },
-                            ]).filter(g => g.rows.length > 0).map((group) => (
-                            <React.Fragment key={group.key}>
-                            {/* 종료 세션이 하나라도 있을 때만 그룹 라벨 행을 끼워 둘을 구분 — 진행 중만 있으면 기존 모양 그대로 */}
-                            {ended.length > 0 && (
-                                <tr className="bg-slate-900/50">
-                                    <td colSpan={5} className="pl-4 pr-3 pt-2.5 pb-1.5 text-sm font-bold text-slate-400 ko-normal whitespace-nowrap">
-                                        {group.label} <span className="tabular-nums text-slate-600">{group.rows.length}</span>
-                                    </td>
-                                </tr>
-                            )}
-                            {group.rows.map((entry) => {
-                                const { league, roomId, memberCount, maxPlayers, isJoined } = entry;
-                                const memberDisplay = (!userId && roomId === null) ? '—' : `${memberCount}/${maxPlayers}`;
-                                const virtualDate = roomId ? (virtualDates[roomId] ?? null) : null;
-                                // [2026-10-19] 비참가자는 어드민이 관전을 켠 진행/종료 리그만 "둘러보기"로 입장 가능(읽기 전용).
-                                const canSpectate = !isJoined && isLeagueSpectatable(league);
-                                const canEnter = isJoined || canSpectate || !!isAdmin;
+            {tabs}
 
-                                return (
-                                    <tr key={league.id} className="bg-slate-900/30 hover:bg-slate-900/60 transition-colors">
-                                        <td className="pl-4 pr-2 py-2.5 max-w-[140px]">
-                                            <button
-                                                disabled={!canEnter}
-                                                onClick={() => {
-                                                    if (!canEnter) return;
-                                                    if (!userId) { onRequireLogin({ reason: '리그 입장에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
-                                                    enterLeague(league.id, league.short_code);
-                                                }}
-                                                className="font-bold text-white hover:text-orange-300 disabled:hover:text-white disabled:cursor-default transition-colors text-left truncate block w-full"
-                                            >
-                                                {league.name}
-                                            </button>
-                                        </td>
-                                        <td className="px-3 py-2.5 whitespace-nowrap">
-                                            <span className={`text-xs font-bold ${
-                                                league.status === 'recruiting'
-                                                    ? 'text-emerald-400'
-                                                    : league.status === 'drafting'
-                                                    ? 'text-amber-400'
-                                                    : league.status === 'finished'
-                                                    ? 'text-slate-500'
-                                                    : 'text-slate-400'
-                                            }`}>
-                                                {STATUS_LABEL[league.status] ?? league.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-2.5 text-xs text-slate-300 whitespace-nowrap tabular-nums">{virtualDate ?? '—'}</td>
-                                        <td className="px-3 py-2.5 text-xs text-slate-300 whitespace-nowrap tabular-nums">{memberDisplay}</td>
-                                        <td className="pl-2 pr-4 py-2.5 text-right">
-                                            {isJoined ? (
-                                                <button
-                                                    onClick={() => enterLeague(league.id, league.short_code)}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 rounded-lg text-xs font-bold text-white transition-all active:scale-[0.98]"
-                                                >
-                                                    <LogIn size={11} />
-                                                    들어가기
-                                                </button>
-                                            ) : canSpectate ? (
-                                                <button
-                                                    onClick={() => {
-                                                        if (!userId) { onRequireLogin({ reason: '리그 둘러보기에는 로그인이 필요합니다.', after: () => enterLeague(league.id, league.short_code) }); return; }
-                                                        enterLeague(league.id, league.short_code);
-                                                    }}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-transparent border border-white/20 hover:bg-white/5 hover:border-white/40 rounded-lg text-xs font-bold text-white transition-colors"
-                                                >
-                                                    <Eye size={11} />
-                                                    둘러보기
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => openJoinModal(entry)}
-                                                    disabled={league.status !== 'recruiting'}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 disabled:from-slate-700 disabled:to-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-all active:scale-[0.98]"
-                                                >
-                                                    <Plus size={11} />
-                                                    참가
-                                                </button>
-                                            )}
+            {actionErr && (
+                <p className="mx-4 mt-3 text-xs text-red-400 ko-normal bg-red-900/20 border border-red-700/30 rounded-lg px-3 py-2">{actionErr}</p>
+            )}
+
+            {/* 목록 — 패널은 표, 폰 시트는 행(개체 목록은 폰에서 행으로: mobile-design-system §1-2) */}
+            <div className="flex-1 min-h-0 overflow-auto">
+                {empty ?? (isSheet ? (
+                    groups.map(group => (
+                        <React.Fragment key={group.key}>
+                            <div className="h-9 px-4 flex items-center text-sm font-bold text-slate-400 bg-slate-900/70 ko-normal">
+                                {group.label}&nbsp;<span className="tabular-nums">{group.rows.length}</span>
+                            </div>
+                            {group.rows.map(entry => (
+                                <div key={entry.league.id} className="min-h-[64px] px-4 py-2 flex items-center justify-between gap-3 border-b border-slate-800">
+                                    <span className="flex flex-col gap-0.5 min-w-0">
+                                        <span className="text-sm">{renderName(entry)}</span>
+                                        <span className="text-xs text-slate-400 tabular-nums truncate">
+                                            <span className={`font-bold ${statusCls(entry)}`}>{statusText(entry)}</span> · {dateText(entry)} · {memberText(entry)}
+                                        </span>
+                                    </span>
+                                    <span className="shrink-0">{renderAction(entry)}</span>
+                                </div>
+                            ))}
+                        </React.Fragment>
+                    ))
+                ) : (
+                    <table className="w-full text-sm min-w-[600px]">
+                        <thead>
+                            <tr className="text-left text-xs text-slate-400">
+                                <th className="pl-6 pr-4 pt-3 pb-2.5 font-bold">세션</th>
+                                <th className="px-4 pt-3 pb-2.5 font-bold">상태</th>
+                                <th className="px-4 pt-3 pb-2.5 font-bold">가상 날짜</th>
+                                <th className="px-4 pt-3 pb-2.5 font-bold">참가</th>
+                                <th className="pl-4 pr-6 pt-3 pb-2.5"><span className="sr-only">동작</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {groups.map(group => (
+                                <React.Fragment key={group.key}>
+                                    <tr className="bg-slate-950/60">
+                                        <td colSpan={5} className="pl-6 pr-4 pt-2.5 pb-2 text-[13px] font-bold text-slate-400 ko-normal whitespace-nowrap">
+                                            {group.label} <span className="tabular-nums text-slate-500">{group.rows.length}</span>
                                         </td>
                                     </tr>
-                                );
-                            })}
-                            </React.Fragment>
+                                    {group.rows.map(entry => (
+                                        <tr key={entry.league.id} className="border-t border-slate-800">
+                                            <td className="pl-6 pr-4 py-3.5 max-w-[220px]">{renderName(entry)}</td>
+                                            <td className={`px-4 py-3.5 font-bold whitespace-nowrap ${statusCls(entry)}`}>{statusText(entry)}</td>
+                                            <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap tabular-nums">{dateText(entry)}</td>
+                                            <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap tabular-nums">{memberText(entry)}</td>
+                                            <td className="pl-4 pr-6 py-2 text-right">{renderAction(entry)}</td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>
-                )}
+                ))}
             </div>
 
             {isCreateOpen && userId && isAdmin && (

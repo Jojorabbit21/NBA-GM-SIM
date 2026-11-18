@@ -45,6 +45,7 @@ export const ITEM_TYPE_LABEL: Record<string, string> = {
     court_palette: '코트 팔레트',
     court_texture: '바닥 질감',
     court_rim:     '림 · 백보드',
+    court_paint:   '페인트',
 };
 
 /** 상품 data 스키마 (shop_items.data) */
@@ -61,6 +62,9 @@ export interface CourtFloorData {
     paint?: string;
     wear?: boolean;
 }
+/** 페인트(court_paint) 상품 data — 색 하나. 쌓이는 소모품 */
+export interface CourtPaintData { color: string; }
+
 export const FLOOR_MATERIAL_LABEL: Record<FloorMaterial, string> = { wood: '나무', urethane: '우레탄', concrete: '콘크리트' };
 export const FLOOR_MATERIAL_ORDER: FloorMaterial[] = ['wood', 'urethane', 'concrete'];
 
@@ -115,14 +119,16 @@ function purchaseErrorMessage(error: { message?: string }): string {
     if (msg.includes('insufficient_points')) return '포인트가 부족합니다.';
     if (msg.includes('already_owned'))       return '이미 보유한 아이템입니다.';
     if (msg.includes('item_not_found'))      return '판매하지 않는 아이템입니다.';
+    if (msg.includes('invalid_quantity'))    return '구매 수량을 다시 확인하세요.';
     return actionFailure(error, '구매');
 }
 
 export async function purchaseItem(
     userId: string,
     itemId: string,
+    quantity = 1,
 ): Promise<{ data: PurchaseResult | null; error: string | null }> {
-    const { data, error } = await supabase.rpc('purchase_item', { p_user_id: userId, p_item_id: itemId });
+    const { data, error } = await supabase.rpc('purchase_item', { p_user_id: userId, p_item_id: itemId, p_quantity: quantity });
     if (error) return { data: null, error: purchaseErrorMessage(error) };
     return { data: data as PurchaseResult, error: null };
 }

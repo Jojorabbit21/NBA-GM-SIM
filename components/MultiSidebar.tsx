@@ -276,6 +276,8 @@ export const MultiSidebar: React.FC = () => {
                             nickname={myProfile?.nickname ?? myTeam?.nickname}
                             email={session?.user?.email}
                             colorKey={myProfile?.avatar_color}
+                            text={myProfile?.avatar_text}
+                            logo={myProfile?.avatar_logo}
                             size={24}
                             className={isMenuOpen ? 'ring-2 ring-white/70' : ''}
                         />

@@ -70,7 +70,11 @@ export interface CourtStyle {
     background: string;
     /** 바닥 이미지(코트 전체 940×500 에 깔림). 없으면 background 단색 */
     floorImage?: string | null;
+    /** 3점 라인 바깥 칠(페인트 아이템). 없으면 바닥 그대로 */
+    outside?: string;
     three?: string;
+    /** true 면 3점 안쪽 칠에서 페인트존을 비운다 — 3점 안쪽만 칠하고 페인트존은 안 칠한 경우 */
+    threeCutout?: boolean;
     /** 없으면 페인트존을 칠하지 않는다(바닥이 그대로 보임) */
     paint?: string;
     line: string;
@@ -83,6 +87,18 @@ export interface CourtStyle {
 
 /** [2026-11-18] 플로어 재질 — 상점 플로어 카테고리의 하위 분류 */
 export type FloorMaterial = 'wood' | 'urethane' | 'concrete';
+
+/** [2026-11-18] 페인트로 칠하는 구역 — DB: user_court_paint.zone, 필요 개수는 RPC paint_court_zone 과 같은 값 */
+export type PaintZone = 'outside' | 'inside' | 'paint';
+
+export interface CourtPaintRow {
+    user_id: string;
+    /** 플로어 상품 id, 기본 코트는 'default' */
+    floor_id: string;
+    zone: PaintZone;
+    item_id: string;
+    item: Pick<ShopItemRow, 'id' | 'name' | 'data'> | null;
+}
 
 export interface PurchaseResult {
     item_id: string;

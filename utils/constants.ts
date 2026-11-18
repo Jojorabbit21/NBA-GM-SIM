@@ -55,9 +55,10 @@ export function estimatePlayerYOS(
 export const TWO_WAY_YOS_MAX = 4;
 export const TWO_WAY_MAX_OVR = 75;
 
-export const APP_NAME = 'Basketball GM Simulator';
+export const APP_NAME = 'Basketball Manager 27';
 export const APP_YEAR = String(DEFAULT_SEASON_CONFIG.endYear);
-export const APP_FULL_NAME = `${APP_NAME} ${APP_YEAR}`;
+// [2026-11-18] 서비스 이름이 "Basketball Manager 27"이 되면서 이름 뒤에 연도를 붙이지 않는다(예전 "… Simulator 2026"). 쓰는 곳이 많아 상수는 남긴다
+export const APP_FULL_NAME = APP_NAME;
 
 /** @deprecated buildSeasonConfig(n) 사용 권장 */
 export const SEASON_START_DATE = DEFAULT_SEASON_CONFIG.startDate;

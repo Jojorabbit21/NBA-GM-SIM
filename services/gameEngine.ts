@@ -8,7 +8,7 @@ import { generateAutoTactics } from './game/tactics/tacticGenerator';
 import { runFullGameSimulation } from './game/engine/pbp/main';
 
 // ==========================================================================================
-//  🏀 Basketball GM Simulator - GAME ENGINE (CORE)
+//  🏀 Basketball Manager 27 - GAME ENGINE (CORE)
 //  Focus: Game Physics Loop & Stats Generation
 // ==========================================================================================
 

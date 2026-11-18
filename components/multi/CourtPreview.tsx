@@ -15,6 +15,10 @@ interface CourtPreviewProps {
     /** [2026-10-02] 코트 중앙(센터 서클)에 그릴 홈팀 로고 URL — 없으면 로고 미표시. */
     /** [2026-10-02] 3점 라인 안쪽 채움색 — 없으면 background와 동일(구분 없음). */
     three?:     string;
+    /** [2026-11-18] 3점 라인 바깥 칠(페인트 아이템) — 3점 안쪽은 비워 둔다 */
+    outside?:   string;
+    /** [2026-11-18] 3점 안쪽 칠에서 페인트존을 비운다(3점 안쪽만 칠한 경우) */
+    threeCutout?: boolean;
     logoUrl?:   string | null;
     /** 로고 크기(%) — 100 = LOGO_BASE_SIZE(220px). 팀 설정값(50~200). */
     logoScale?: number;
@@ -144,9 +148,13 @@ const RimOnly: React.FC<{ rim?: string; backboard?: string }> = ({ rim = DEFAULT
 // 로고 기본(100%) 크기 — 940x500 코트 기준. 센터 서클(지름 120)보다 크게 잡아 코트 중앙을 채운다.
 const LOGO_BASE_SIZE = 220;
 
+// 3점 라인 안쪽 영역(3점 곡선 + 베이스라인) — 왼쪽과, 그것을 좌우로 뒤집은 오른쪽
+const ARC_L = 'M0,30h140s150,55,150,220-150,220-150,220H0Z';
+const ARC_R = 'M940,30h-140s-150,55-150,220,150,220,150,220H940Z';
+
 // [주의] 자체 <svg> 태그를 만들지 않고 SVG 자식 노드만 반환한다 — 호출부가 viewBox="0 0 940 500"인
 // 자신의 <svg> 안에 이 컴포넌트를 그대로 끼워 넣어 쓴다(샷 마커 등 다른 레이어와 좌표계 공유 목적).
-export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, logoUrl, logoScale = 100, rim, backboard, texture, floorImage, wearImage }) => (
+export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, line, three, outside, threeCutout, logoUrl, logoScale = 100, rim, backboard, texture, floorImage, wearImage }) => (
     <>
         {/* Background */}
         <rect width="940" height="500" fill={background} />
@@ -155,11 +163,13 @@ export const CourtPreview: React.FC<CourtPreviewProps> = ({ background, paint, l
         {texture && <TextureOverlay texture={texture} />}
 
         {/* 3점 라인 안쪽 (BasketLines의 3점 곡선 + 베이스라인으로 닫은 영역) — 페인트존보다 아래 레이어 */}
+        {/* 3점 라인 바깥 칠 — 코트 전체에서 양쪽 3점 안쪽을 뺀 모양 */}
+        {outside && <path d={`M0,0H940V500H0Z ${ARC_L} ${ARC_R}`} fillRule="evenodd" fill={outside} />}
+
         {three && three !== background && (
-            <>
-                <path d="M0,30h140s150,55,150,220-150,220,-150,220H0Z" fill={three} />
-                <path d="M0,30h140s150,55,150,220-150,220,-150,220H0Z" fill={three} transform="translate(940,0) scale(-1,1)" />
-            </>
+            threeCutout
+                ? <path d={`${ARC_L} ${ARC_R} M0,170H190V330H0Z M750,170H940V330H750Z`} fillRule="evenodd" fill={three} />
+                : <path d={`${ARC_L} ${ARC_R}`} fill={three} />
         )}
 
         {/* Paint backgrounds */}

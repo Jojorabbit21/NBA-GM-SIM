@@ -8,8 +8,8 @@
  */
 import { supabase } from '../supabaseClient';
 import { actionFailure } from '../notifications/actionErrorCatalog';
-import type { CourtLoadoutRow, CourtSlot, CourtStyle, ShopItemRow } from '../../types/points';
-import type { CourtFloorData, CourtPaletteData, CourtRimData, CourtTextureData } from './pointsService';
+import type { CourtLoadoutRow, CourtPaintRow, CourtSlot, CourtStyle, PaintZone, ShopItemRow } from '../../types/points';
+import type { CourtFloorData, CourtPaintData, CourtPaletteData, CourtRimData, CourtTextureData } from './pointsService';
 
 /** 하드 메이플 스트립 바닥(1880×1000 WebP). 파일을 바꾸면 이름의 버전을 올린다(vercel.json 에서 1년 캐시). */
 export const MAPLE_FLOOR_IMAGE = '/images/court/maple-strip-v1.webp';
@@ -31,8 +31,8 @@ export const SLOT_DEFAULT_LABEL: Record<CourtSlot, string> = {
 };
 
 /** 낡은 우레탄 자국 겹 — 코트가 아주 어두우면 어두운 자국이 안 보여서 밝은(콘크리트색) 자국을 쓴다 */
-const WEAR_DARK = '/images/court/urethane-wear-dark-v1.webp';
-const WEAR_LIGHT = '/images/court/urethane-wear-light-v1.webp';
+const WEAR_DARK = '/images/court/urethane-wear-dark-v2.webp';
+const WEAR_LIGHT = '/images/court/urethane-wear-light-v2.webp';
 const luminance = (hex: string): number => {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex);
     if (!m) return 1;
@@ -102,8 +102,74 @@ export async function fetchCourtLoadout(userId: string): Promise<LoadoutEntry[]>
     return (data ?? []) as unknown as LoadoutEntry[];
 }
 
-export const loadoutStyle = (entries: LoadoutEntry[] | undefined | null): CourtStyle =>
-    resolveCourtStyle((entries ?? []).flatMap(e => (e.item ? [e.item] : [])));
+// ── 페인트 (2026-11-18) ──
+// 색별 소모품(court_paint)을 구역마다 정해진 개수만큼 써서 칠한다. 칠은 플로어마다 따로 남는다(user_court_paint).
+// 필요 개수는 서버 RPC paint_court_zone 과 같은 값 — 바꾸면 migrations/add_court_paint.sql 의 함수도 같이.
+export const DEFAULT_FLOOR_ID = 'default';
+export const PAINT_ZONES: { key: PaintZone; label: string; cost: number }[] = [
+    { key: 'outside', label: '3점 라인 바깥', cost: 10 },
+    { key: 'inside',  label: '3점 라인 안쪽', cost: 6 },
+    { key: 'paint',   label: '페인트존',      cost: 3 },
+];
+
+/** 지금 장착한 플로어의 id(없으면 기본 코트) — 칠을 찾는 열쇠 */
+export const equippedFloorId = (entries: LoadoutEntry[] | undefined | null): string =>
+    (entries ?? []).find(e => e.slot === 'court_floor')?.item_id ?? DEFAULT_FLOOR_ID;
+
+export const paintColor = (item: { data: Record<string, unknown> } | null | undefined): string | null => {
+    const c = (item?.data as unknown as CourtPaintData | undefined)?.color;
+    return typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : null;
+};
+
+/** 플로어가 정한 모습 위에 그 플로어의 칠을 얹는다. 3점 안쪽만 칠하고 페인트존 색이 없으면 페인트존은 비운다(바닥이 보임) */
+export function applyCourtPaint(style: CourtStyle, paints: CourtPaintRow[] | undefined | null, floorId: string): CourtStyle {
+    const mine = (paints ?? []).filter(p => p.floor_id === floorId);
+    if (mine.length === 0) return style;
+    const next: CourtStyle = { ...style };
+    for (const p of mine) {
+        const color = paintColor(p.item);
+        if (!color) continue;
+        if (p.zone === 'outside') next.outside = color;
+        else if (p.zone === 'inside') next.three = color;
+        else next.paint = color;
+    }
+    const insidePainted = mine.some(p => p.zone === 'inside' && paintColor(p.item));
+    if (insidePainted && !next.paint) next.threeCutout = true;
+    return next;
+}
+
+export async function fetchCourtPaint(userId: string): Promise<CourtPaintRow[]> {
+    const { data, error } = await supabase
+        .from('user_court_paint')
+        .select('user_id, floor_id, zone, item_id, item:shop_items(id, name, data)')
+        .eq('user_id', userId);
+    if (error) throw error;
+    return (data ?? []) as unknown as CourtPaintRow[];
+}
+
+function paintErrorMessage(error: { message?: string }, what: string): string {
+    const msg = error.message ?? '';
+    if (msg.includes('insufficient_paint')) return '페인트가 모자랍니다.';
+    if (msg.includes('floor_not_owned'))    return '보유하지 않은 플로어입니다.';
+    if (msg.includes('not_paint'))          return '페인트가 아닌 아이템입니다.';
+    return actionFailure(error, what);
+}
+
+/** 구역을 칠한다 — 그 색 페인트를 구역의 필요 개수만큼 소모 */
+export async function paintCourtZone(userId: string, floorId: string, zone: PaintZone, itemId: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.rpc('paint_court_zone', { p_user_id: userId, p_floor_id: floorId, p_zone: zone, p_item_id: itemId });
+    return { error: error ? paintErrorMessage(error, '칠하기') : null };
+}
+
+/** 구역의 칠을 지운다 — 페인트는 돌아오지 않는다 */
+export async function clearCourtZone(userId: string, floorId: string, zone: PaintZone): Promise<{ error: string | null }> {
+    const { error } = await supabase.rpc('clear_court_zone', { p_user_id: userId, p_floor_id: floorId, p_zone: zone });
+    return { error: error ? paintErrorMessage(error, '칠 지우기') : null };
+}
+
+/** 장착 정보(+ 그 플로어의 칠) → 코트 모습 */
+export const loadoutStyle = (entries: LoadoutEntry[] | undefined | null, paints?: CourtPaintRow[] | null): CourtStyle =>
+    applyCourtPaint(resolveCourtStyle((entries ?? []).flatMap(e => (e.item ? [e.item] : []))), paints, equippedFloorId(entries));
 
 function equipErrorMessage(error: { message?: string }): string {
     const msg = error.message ?? '';

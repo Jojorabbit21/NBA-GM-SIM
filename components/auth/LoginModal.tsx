@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { AuthForm } from '../../views/auth/AuthForm';
-import { APP_NAME, APP_YEAR } from '../../utils/constants';
+import { APP_NAME } from '../../utils/constants';
 
 interface LoginModalProps {
     onClose: () => void;
@@ -37,7 +37,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onClose, onSuccess, reas
 
                 <div className="text-center mb-6">
                     <h1 className="text-xl font-black text-text-primary leading-tight tracking-tighter uppercase">
-                        {APP_NAME}<br />{APP_YEAR}
+                        {APP_NAME}
                     </h1>
                     {reason && (
                         <p className="text-xs text-text-muted mt-3 ko-normal">{reason}</p>

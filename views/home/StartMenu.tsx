@@ -62,7 +62,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {session ? (
                 <div className="shrink-0 pb-5 border-b border-slate-700/50">
                     <div className="flex items-center gap-4">
-                        <ProfileAvatar nickname={nickname} email={email} colorKey={myProfile?.avatar_color} size={44} />
+                        <ProfileAvatar nickname={nickname} email={email} colorKey={myProfile?.avatar_color} text={myProfile?.avatar_text} logo={myProfile?.avatar_logo} size={44} />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-white truncate">{nickname || 'GM'}</p>
                             <p className="text-xs text-slate-500 truncate">{email}</p>
