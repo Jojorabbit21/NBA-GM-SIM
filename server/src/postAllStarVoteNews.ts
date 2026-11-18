@@ -35,6 +35,7 @@
  */
 import { supabase } from './supabaseAdmin';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import {
     getAllStarKeyDates, runAllStarVote, runAllStarSelection, runRisingStarsSelection, runThreePointContestSelection,
     runDunkContestSelection,
@@ -139,7 +140,9 @@ async function buildTeamsForRoom(
         return null;
     }
 
-    const { data: league } = await supabase.from('leagues').select('name').eq('id', leagueId).maybeSingle();
+    // [2026-11-15] use_custom_overrides — 아래 선수 매핑이 리그의 능력치 기준(경기 로스터·올스타전과 동일)을 따르도록 함께 읽는다. 이전엔 항상 base.
+    const { data: league } = await supabase.from('leagues').select('name, use_custom_overrides').eq('id', leagueId).maybeSingle();
+    const useCustomOverrides = shouldUseCustomOverrides(league);
 
     const allPlayerIds = Array.from(new Set(leagueTeams.flatMap((t: any) => t.roster ?? [])));
     if (allPlayerIds.length === 0) return null;
@@ -163,7 +166,7 @@ async function buildTeamsForRoom(
     }
 
     const playerMap = new Map<string, Player>(
-        (playersRes.data ?? []).map((r: any) => [String(r.id), mapRawPlayerToRuntimePlayer(r, false)]),
+        (playersRes.data ?? []).map((r: any) => [String(r.id), mapRawPlayerToRuntimePlayer(r, useCustomOverrides)]),
     );
     const statsByPlayer = new Map<string, any>(
         (statsRes.data ?? []).map((r: any) => [String(r.player_id), r]),

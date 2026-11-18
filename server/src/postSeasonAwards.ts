@@ -17,6 +17,7 @@
  */
 import { supabase } from './supabaseAdmin';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 import { runAwardVoting, type AwardRankEntry, type AllTeamEntry } from './shared/multi/awardVoting.ts';
 import type { Team, Player, PlayerStats, PlayerAwardType } from './shared/types.ts';
 
@@ -77,6 +78,10 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
     const allPlayerIds = Array.from(new Set(leagueTeams.flatMap((t: any) => t.roster ?? [])));
     if (allPlayerIds.length === 0) return;
 
+    // [2026-11-15] 리그의 use_custom_overrides를 따른다(경기 로스터와 같은 능력치 기준). 이전엔 항상 base.
+    const { data: leagueRow } = await supabase.from('leagues').select('use_custom_overrides').eq('id', leagueId).maybeSingle();
+    const useCustomOverrides = shouldUseCustomOverrides(leagueRow);
+
     const [playersRes, gamesRes, statsRes] = await Promise.all([
         supabase.from('meta_players').select('id, name, position, base_attributes, ovr_base, ovr_custom').in('id', allPlayerIds),
         supabase.from('games')
@@ -93,7 +98,7 @@ export async function computeAndPostSeasonAwards(roomId: string, leagueId: strin
     }
 
     const playerMap = new Map<string, Player>(
-        (playersRes.data ?? []).map((r: any) => [String(r.id), mapRawPlayerToRuntimePlayer(r, false)]),
+        (playersRes.data ?? []).map((r: any) => [String(r.id), mapRawPlayerToRuntimePlayer(r, useCustomOverrides)]),
     );
     const statsByPlayer = new Map<string, any>(
         (statsRes.data ?? []).map((r: any) => [String(r.player_id), r]),

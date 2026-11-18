@@ -26,6 +26,7 @@
  */
 import { supabase } from './supabaseAdmin';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 
 const DUNKS_PER_ROUND = 2;
 const FINALIST_COUNT = 2;
@@ -115,9 +116,12 @@ export async function computeAndRunDunkContest(
         .from('meta_players')
         .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
         .in('id', participants.map(p => p.playerId));
+    // [2026-11-15] 리그의 use_custom_overrides를 따른다(경기 로스터·올스타전과 같은 능력치 기준). 이전엔 항상 base.
+    const { data: leagueRow } = await supabase.from('leagues').select('use_custom_overrides').eq('id', leagueId).maybeSingle();
+    const useCustomOverrides = shouldUseCustomOverrides(leagueRow);
     const playerMap = new Map<string, any>();
     for (const raw of rawPlayers ?? []) {
-        playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, false));
+        playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
     }
 
     const dunkers = participants

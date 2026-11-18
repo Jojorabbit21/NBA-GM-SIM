@@ -33,6 +33,7 @@
 import { supabase } from './supabaseAdmin';
 import { engineFor, type EngineApi } from './engineProfile.ts';
 import { mapRawPlayerToRuntimePlayer } from './shared/dataMapper.ts';
+import { shouldUseCustomOverrides } from './shared/leagueOverrides.ts';
 
 // 실제 3점 챌린지 랙 배치(왼쪽 코너 → 왼쪽 45도 윙 → 탑 → 오른쪽 45도 윙 → 오른쪽 코너).
 // calculateHitRate()의 threeSubZone 판별 규칙(zone_c3*=코너, zone_atb3_c=탑, 나머지
@@ -164,9 +165,12 @@ export async function computeAndRunThreePointContest(
         .from('meta_players')
         .select('id, name, position, base_attributes, tendencies, ovr_base, ovr_custom')
         .in('id', participants.map(p => p.playerId));
+    // [2026-11-15] 리그의 use_custom_overrides를 따른다(경기 로스터·올스타전과 같은 능력치 기준). 이전엔 항상 base.
+    const { data: leagueRow } = await supabase.from('leagues').select('use_custom_overrides').eq('id', leagueId).maybeSingle();
+    const useCustomOverrides = shouldUseCustomOverrides(leagueRow);
     const playerMap = new Map<string, any>();
     for (const raw of rawPlayers ?? []) {
-        playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, false));
+        playerMap.set(String(raw.id), mapRawPlayerToRuntimePlayer(raw, useCustomOverrides));
     }
 
     const shooters = participants
