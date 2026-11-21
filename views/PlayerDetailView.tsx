@@ -1,5 +1,5 @@
 
-import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Player, PlayerStats, Team, Game } from '../types';
@@ -1341,6 +1341,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
         }, { replace: true });
     }, [setSearchParams]);
 
+    // [2026-11-21] 탭 내용은 아래 "단일 스크롤 영역" 하나를 같이 써서, 탭을 바꿔도 이전 탭의 스크롤 위치가 남았다 — 탭이 바뀌면 맨 위로.
+    //   useLayoutEffect = 새 탭이 이전 위치로 한 번 그려졌다가 튀는 것 방지.
+    const bodyScrollRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        if (bodyScrollRef.current) bodyScrollRef.current.scrollTop = 0;
+    }, [activeTab]);
+
     // 현재 시뮬 시즌 팀 약어 (teamId uppercase, 없으면 '—')
     const simTeamAbbr = (teamId ?? '').toUpperCase() || '—';
 
@@ -1824,7 +1831,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player: play
             />
 
             {/* ═══ 단일 스크롤 영역 ═══ */}
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
+            <div ref={bodyScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-none custom-scrollbar bg-slate-950">
                 {/* [2026-11-17] 본문 끝에 글로벌 푸터(멀티세션 데스크톱 — components/common/footerSlot.tsx). 이 상자는 overscroll-none이라
                     스크롤이 바깥(셸)으로 넘어가지 않는다 → 셸이 화면 아래에 그리는 푸터에는 휠로 닿을 수 없었다(사용자 지적). 그래서 푸터를 이 상자 안에 둔다.
                     프로필 · 커리어 · 게임 로그 · 스플릿 · 샷 차트 · 퍼센타일 = 내용이 흐르는 탭(flow, 프로필은 열 배경이 푸터 위까지 깔리게 stretch),

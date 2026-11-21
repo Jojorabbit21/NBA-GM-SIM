@@ -13,8 +13,10 @@ export interface PlayerTransactionEntry {
     /** 드래프트는 이전 소속 팀이 없어 null. */
     fromTeamAbbr: string | null;
     toTeamAbbr: string;
-    /** 드래프트 전용 — round(라운드)/slot(그 라운드 내 몇 번째 픽). 화면에서 "1R 3rd LAL"
-     * 형태로 조합(순서 접미사 계산은 UI 쪽 — 수상 내역 위젯의 toOrdinal과 동일한 규칙). */
+    /** 드래프트 전용 — round(라운드)/그 라운드 안에서 실제로 몇 번째로 뽑혔는지. 화면에서 "1R 3rd LAL"
+     * 형태로 조합(순서 접미사 계산은 UI 쪽 — 수상 내역 위젯의 toOrdinal과 동일한 규칙).
+     * draft_picks.slot(팀의 고정 드래프트 순번)이 아니라 pick_index로 계산 — 스네이크 짝수
+     * 라운드는 역순이라 slot 1 팀이 그 라운드 마지막에 뽑는다. */
     draftRound?: number;
     draftPick?: number;
 }
@@ -43,7 +45,7 @@ export const listPlayerTransactionHistory = async (
 
     const [draftRes, tradeRes, faRes] = await Promise.all([
         supabase.from('draft_picks')
-            .select('round, slot, team_id, picked_at')
+            .select('round, slot, pick_index, team_id, picked_at')
             .eq('room_id', roomId)
             .eq('player_id', playerId)
             .maybeSingle(),
@@ -61,13 +63,27 @@ export const listPlayerTransactionHistory = async (
 
     const draft = draftRes.data;
     if (draft) {
+        // 라운드 안 순번 = 이 픽의 pick_index − 그 라운드 첫 픽의 pick_index + 1.
+        // 라운드마다 pick_index가 연속 구간이라 성립(스네이크·선형·라운드별 팀 수가 달라도 동일).
+        // 조회 실패 시에만 옛 slot으로 폴백.
+        let pickInRound: number = draft.slot;
+        if (draft.pick_index != null) {
+            const { data: firstOfRound } = await supabase.from('draft_picks')
+                .select('pick_index')
+                .eq('room_id', roomId)
+                .eq('round', draft.round)
+                .order('pick_index', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (firstOfRound?.pick_index != null) pickInRound = draft.pick_index - firstOfRound.pick_index + 1;
+        }
         entries.push({
             date: draft.picked_at ? String(draft.picked_at).slice(0, 10) : null,
             type: 'draft',
             fromTeamAbbr: null,
             toTeamAbbr: teamBySlug.get(draft.team_id)?.team_abbr ?? draft.team_id,
             draftRound: draft.round,
-            draftPick: draft.slot,
+            draftPick: pickInRound,
         });
     }
 
