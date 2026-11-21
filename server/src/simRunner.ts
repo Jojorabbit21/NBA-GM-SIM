@@ -408,6 +408,8 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                             season_number: (room as any).season_number ?? null,
                             is_playoff: !!game.series_id,
                             poss: line.poss, pts: line.pts, fga: line.fga, fgm: line.fgm, fta: line.fta, tov: line.tov,
+                            // [2026-11-21] 패스 집계(migrations/add_player_playtype_pass_stats.sql) — 보관본 엔진(stable 방)은 이 값을 만들지 않아 0
+                            po: line.po ?? 0, ast: line.ast ?? 0, past: line.past ?? 0,
                         })),
                     ),
                 );
@@ -417,6 +419,36 @@ export async function runSimulation(roomId: string, gameId: string, forceStartNo
                     const { error: pptErr } = await supabase.from('player_playtype_stats').insert(pptRows);
                     if (pptErr) console.error(`[simRunner] player_playtype_stats 저장 실패 room=${roomId} game=${gameId}: ${pptErr.message}`);
                 }
+            }
+
+            // ── 5-3. 어시스트 네트워크(팀 전술 › 인사이트) [2026-11-21] ─────────
+            // 엔진 집계(statsMappers.recordAssistPair) → team_assist_pairs(migrations/add_team_assist_pairs.sql). 5-1·5-2와 같이 이 경기 행을 지우고 다시 넣는다.
+            // 보관본 엔진(stable 방)은 assistPairs가 없어 행이 생기지 않는다. 실패해도 경기 진행은 막지 않는다(부가 통계).
+            {
+                const apRows = Object.entries((result as any).assistPairs ?? {}).flatMap(([teamId, byPasser]: [string, any]) =>
+                    Object.entries(byPasser).flatMap(([passerId, byShooter]: [string, any]) =>
+                        Object.entries(byShooter).map(([receiverId, line]: [string, any]) => ({
+                            room_id: roomId, game_id: gameId, team_id: teamId, passer_id: passerId, receiver_id: receiverId,
+                            season_number: (room as any).season_number ?? null,
+                            is_playoff: !!game.series_id,
+                            ast: line.ast, pts: line.pts, passes: line.passes ?? 0, fgm: line.fgm ?? 0,
+                        })),
+                    ),
+                );
+                const { error: apDelErr } = await supabase.from('team_assist_pairs').delete().eq('room_id', roomId).eq('game_id', gameId);
+                if (apDelErr) console.error(`[simRunner] team_assist_pairs 정리 실패 room=${roomId} game=${gameId}: ${apDelErr.message}`);
+                if (apRows.length > 0) {
+                    const { error: apErr } = await supabase.from('team_assist_pairs').insert(apRows);
+                    if (apErr) console.error(`[simRunner] team_assist_pairs 저장 실패 room=${roomId} game=${gameId}: ${apErr.message}`);
+                }
+            }
+
+            // ── 5-4. 라인업·온오프(팀 전술 › 인사이트) [2026-11-21] ─────────
+            // 방금 저장한 game_pbp(rotation_data·events·box)로 DB 함수가 5인 조합별 시간·득실·포제션을 계산해 team_lineup_stats에 다시 넣는다
+            // (migrations/add_team_lineup_stats.sql — 엔진 무관이라 보관본 엔진 방에도 적용, 백필도 같은 함수). 실패해도 경기 진행은 막지 않는다.
+            {
+                const { error: lsErr } = await supabase.rpc('refresh_game_lineup_stats', { p_room_id: roomId, p_game_id: gameId });
+                if (lsErr) console.error(`[simRunner] team_lineup_stats 계산 실패 room=${roomId} game=${gameId}: ${lsErr.message}`);
             }
 
             // ── 6. games 테이블 업데이트 ───────────────────────────────────────

@@ -1390,6 +1390,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             shotType,   // [2026-11-04] 슈팅 파울 문구를 슛 종류로 고르기 위해 (server 미러 참조)
             helpDefenderId,
             isHelpPlay: isHelpFoul,
+            // [2026-11-21] 선수별 플레이타입 패스 집계(statsMappers.passCreation)용 — 킥아웃·롤 피드 슛에서 파울을 얻은 경우도 패스한 선수를 알 수 있게 (server 미러)
+            statPasser: secondaryActor, isKickout,
         };
     }
 
@@ -2085,7 +2087,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             subZone, isZone,
             helpDefenderId,
             isHelpPlay: isHelpBlock,
-            isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
+            statPasser: secondaryActor, isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
             screenResult: screen.result,
         };
     }
@@ -2096,7 +2098,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
         subZone, isZone,
         helpDefenderId,
-        isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
+        statPasser: secondaryActor, isKickout, isHelpKickout: helpKicked, transitionRole: helpKicked ? undefined : transitionRole,
         screenResult: screen.result,
     };
 }

@@ -289,6 +289,7 @@ export function createGameState(
         shotEvents: [],
         playTypeStats: {},  // [2026-10-18] 멀티 PPP — statsMappers.recordPlayTypeStat
         playerPlayTypeStats: {},  // [2026-11-16] 선수별 PPP — 같은 함수가 같이 누적
+        assistPairs: {},  // [2026-11-21] 어시스트 네트워크 — statsMappers.recordAssistPair
         injuries: [],
         suspensions: [],
         momentum: {
@@ -1265,6 +1266,7 @@ export function extractSimResult(state: GameState): SimulationResult {
         pbpShotEvents: state.shotEvents,
         playTypeStats: state.playTypeStats,
         playerPlayTypeStats: state.playerPlayTypeStats,
+        assistPairs: state.assistPairs,
         teamMisc: state.teamMisc ?? emptyTeamMisc(),   // [2026-11-05] 팀 미스크 득점 4종 (teamMisc.ts)
         injuries: state.injuries,
         suspensions: state.suspensions,

@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats, PlayerPlayTypeStats, TeamMiscByGame } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies, BoxTick, BoxDelta, TeamPlayTypeStats, PlayerPlayTypeStats, AssistPairs, TeamMiscByGame } from '../../../../types';
 import { SimSettings } from '../../../../types/simSettings';
 import type { ArchetypeRatings } from './archetypeSystem';
 import type { PlayContext } from './playTypes';
@@ -269,6 +269,8 @@ export interface GameState {
     playTypeStats: TeamPlayTypeStats;
     // [2026-11-16] 선수별 플레이타입 실적(statsMappers.recordPlayTypeStat이 팀 집계와 같이 누적) — 선수 프로필 PPP용 (client/server 미러)
     playerPlayTypeStats: PlayerPlayTypeStats;
+    // [2026-11-21] 어시스트 네트워크(statsMappers.recordAssistPair가 누적) — 없으면 첫 어시스트 때 만든다 (server 미러)
+    assistPairs?: AssistPairs;
 
     // [2026-11-05] 팀 미스크 득점 4종 누적(teamMisc.trackTeamMisc, server 미러 참조) + 현재 공격권 추적(턴오버 직후/공격 리바운드 여부). 미설정 = 첫 호출 때 생성
     teamMisc?: TeamMiscByGame;
@@ -464,6 +466,9 @@ export interface PossessionResult {
     passTarget?: LivePlayer;
     // [2026-11-07] 플레이타입 집계(recordPlayTypeStat)용 플레이 — undefined면 playType, null이면 집계 제외(패스 차단 중 패서의 플레이가 없는 경우) (server 미러)
     statPlayType?: PlayType | null;
+    // [2026-11-21] 이 슛(성공·실패·슈팅 파울)으로 이어진 패스를 한 선수(= secondaryActor) — 선수별 플레이타입 패스 집계 전용
+    //   (statsMappers.passCreation). assister와 달리 실패·슈팅 파울에도 실린다. 해설·샷 이벤트·코트 위치에는 쓰지 않는다 (server 미러)
+    statPasser?: LivePlayer;
     // [2026-10-23] 풀코트 프레스 단계에서 끝난 포세션(트랩 스틸/트랩 파울/1대1 압박 턴오버/1대1 리치인) — 커멘터리 분기 + 플레이타입 PPP 집계 제외용
     pressEvent?: 'trapSteal' | 'trapFoul' | 'pressTurnover' | 'pressFoul';
 }

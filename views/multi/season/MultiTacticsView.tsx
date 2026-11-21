@@ -20,10 +20,17 @@ import { PlayerStatsTable } from '../../../components/dashboard/tactics/insights
 import { TeamLeadersCards } from '../../../components/dashboard/tactics/insights/TeamLeadersCards';
 import { TeamZoneStatsTable } from '../../../components/dashboard/tactics/insights/TeamZoneStatsTable';
 import { TeamZoneChartInsight } from '../../../components/dashboard/tactics/insights/TeamZoneChartInsight';
+import { TeamAssistNetwork } from '../../../components/dashboard/tactics/insights/TeamAssistNetwork';
+import { TeamLineupTable, TeamOnOffTable } from '../../../components/dashboard/tactics/insights/TeamLineupInsights';
 import { useLeagueRawStats, type LeagueRawStatsData } from '../../../hooks/useLeagueRawStats';
 import { usePlayerSeasonStatsLeague } from '../../../hooks/usePlayerSeasonStatsLeague';
 import { useTeamOpponentZoneStats } from '../../../hooks/useTeamOpponentZoneStats';
 import { useTeamPlayTypeStats } from '../../../hooks/useTeamPlayTypeStats';
+import { useTeamAssistPairs } from '../../../hooks/useTeamAssistPairs';
+import { useTeamLineupStats, useTeamOnOff } from '../../../hooks/useTeamLineupStats';
+import { useMultiSearchData } from '../../../hooks/useMultiSearchData';
+import { usePlayerSeasonStatsBatch } from '../../../hooks/usePlayerSeasonStatsBatch';
+import { buildPlayerCardMap, mergeStatsIntoPlayerCardMap, type PlayerCardMap } from '../../../components/common/PlayerHoverCard';
 import { useLeaderboardData, type SeasonType } from '../../../hooks/useLeaderboardData';
 import { SeasonTypeToggle } from '../../../components/roster/StatsToggles';
 import { INITIAL_STATS } from '../../../utils/constants';
@@ -496,6 +503,32 @@ const MultiTacticsView: React.FC = () => {
     // [2026-10-18] 팀 전술 탭 "PPP" — 서버가 경기마다 저장한 팀×플레이타입 요약을 시즌 합산(공개된 경기만)
     // [2026-11-13] 정규시즌/플레이오프를 따로 본다(제목 옆 토글) — 전엔 둘을 합친 값이었다.
     const [pppSeasonType, setPppSeasonType] = useState<SeasonType>('regular');
+    // [2026-11-21] 인사이트 최하단 "어시스트 네트워크" — 정규/플레이오프 토글은 위젯 헤더(SeasonTypeToggle)
+    const [astNetSeasonType, setAstNetSeasonType] = useState<SeasonType>('regular');
+    const { data: assistPairs, isPending: assistPairsPending, isError: assistPairsError } = useTeamAssistPairs(room?.id, myTeamId, astNetSeasonType === 'playoff');
+    // [2026-11-21] 인사이트 "라인업"·"온/오프"(team_lineup_stats) — 위젯마다 정규/플레이오프 토글
+    const [lineupSeasonType, setLineupSeasonType] = useState<SeasonType>('regular');
+    const [onOffSeasonType, setOnOffSeasonType] = useState<SeasonType>('regular');
+    const { data: lineupData, isPending: lineupPending, isError: lineupError } = useTeamLineupStats(room?.id, myTeamId, lineupSeasonType === 'playoff');
+    const { data: onOffData, isPending: onOffPending, isError: onOffError } = useTeamOnOff(room?.id, myTeamId, onOffSeasonType === 'playoff');
+    // [2026-11-21] 라인업·온오프 표의 모든 선수(떠난 선수 포함) 호버 카드·프로필 이동 — 일정·뉴스 화면과 같은 방식:
+    //   리그 선수 풀(buildPlayerCardMap) → 현재 리그 로스터 선수는 시즌 기록이 붙은 Player로 덮고 →
+    //   어느 팀에도 없는 선수(방출 등)만 usePlayerSeasonStatsBatch로 시즌 기록을 덧씌운다.
+    const { poolPlayers, rosterMap } = useMultiSearchData(league, leagueTeams);
+    const lineupPlayerIds = useMemo(() => [...new Set([
+        ...(lineupData ?? []).flatMap(l => l.playerIds),
+        ...(onOffData ?? []).map(r => r.playerId),
+    ])], [lineupData, onOffData]);
+    const missingLineupIds = useMemo(() => lineupPlayerIds.filter(id => !rosterMap.has(id)), [lineupPlayerIds, rosterMap]);
+    const { data: missingLineupStats } = usePlayerSeasonStatsBatch(room?.id, missingLineupIds);
+    const insightPlayerLookup = useMemo<PlayerCardMap>(() => {
+        const abbrBySlug = new Map(leagueTeams.map(t => [t.team_slug, t.team_abbr]));
+        const base = buildPlayerCardMap(poolPlayers, rosterMap, slug => abbrBySlug.get(slug));
+        const withStats = missingLineupStats ? mergeStatsIntoPlayerCardMap(base, missingLineupStats) : base;
+        const m: PlayerCardMap = new Map(withStats);
+        for (const t of leagueTeamsWithStats) for (const p of t.roster) m.set(p.id, { player: p, teamAbbr: t.abbr ?? abbrBySlug.get(t.id) ?? '' });
+        return m;
+    }, [poolPlayers, rosterMap, leagueTeams, leagueTeamsWithStats, missingLineupStats]);
     const { data: playTypeData, isPending: playTypePending, isError: playTypeError } = useTeamPlayTypeStats(room?.id, pppSeasonType === 'playoff');
     const playTypeActual = useMemo(
         () => ({
@@ -1127,6 +1160,33 @@ const MultiTacticsView: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* [2026-11-21] 최하단 — 어시스트 네트워크(하프코트 포지션 자리 + 패서→슈터 화살표 4단계, 우측 선수 목록) */}
+                        {!leagueTeamsLoading && myTeamWithFullStats && (
+                            <TeamAssistNetwork
+                                roster={myTeamWithFullStats.roster}
+                                pairs={assistPairs}
+                                isPending={assistPairsPending}
+                                isError={assistPairsError}
+                                seasonType={astNetSeasonType}
+                                onSeasonTypeChange={setAstNetSeasonType}
+                                teamAbbr={myTeamWithFullStats.abbr ?? undefined}
+                                onPlayerClick={handleViewPlayer}
+                                teamTheme={phoneTheme}
+                            />
+                        )}
+
+                        {/* [2026-11-21] 라인업 순위 · 선수 온/오프 */}
+                        {!leagueTeamsLoading && myTeamWithFullStats && (
+                            <>
+                                <TeamLineupTable playerLookup={insightPlayerLookup} roomId={room?.id} teamId={myTeamId} lineups={lineupData} isPending={lineupPending} isError={lineupError}
+                                    seasonType={lineupSeasonType} onSeasonTypeChange={setLineupSeasonType}
+                                    onPlayerClick={handleViewPlayer} />
+                                <TeamOnOffTable playerLookup={insightPlayerLookup} rows={onOffData} isPending={onOffPending} isError={onOffError}
+                                    seasonType={onOffSeasonType} onSeasonTypeChange={setOnOffSeasonType}
+                                    onPlayerClick={handleViewPlayer} />
+                            </>
+                        )}
                     </div>
     );
 
@@ -1204,6 +1264,12 @@ const MultiTacticsView: React.FC = () => {
                                     {teamStatRankList}
                                     <PlayerStatsTable team={myTeamWithFullStats} schedule={normalizedSchedule} onPlayerClick={handleViewPlayer} />
                                     <TeamZoneStatsTable roster={myTeamWithFullStats.roster} teamAbbr={myTeamWithFullStats.abbr ?? undefined} onPlayerClick={handleViewPlayer} />
+                                    <TeamLineupTable playerLookup={insightPlayerLookup} roomId={room?.id} teamId={myTeamId} lineups={lineupData} isPending={lineupPending} isError={lineupError}
+                                        seasonType={lineupSeasonType} onSeasonTypeChange={setLineupSeasonType}
+                                        onPlayerClick={handleViewPlayer} />
+                                    <TeamOnOffTable playerLookup={insightPlayerLookup} rows={onOffData} isPending={onOffPending} isError={onOffError}
+                                        seasonType={onOffSeasonType} onSeasonTypeChange={setOnOffSeasonType}
+                                        onPlayerClick={handleViewPlayer} />
                                 </>
                             )}
                             <div aria-hidden="true" className="h-14 pb-safe" />

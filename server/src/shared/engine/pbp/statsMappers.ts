@@ -1,6 +1,6 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes.ts';
-import type { PbpLog } from '../../types/engine.ts';
+import type { PbpLog, PlayerPlayTypeStatLine } from '../../types/engine.ts';
 import { formatTime } from './timeEngine.ts';
 import { resolveRebound, rollCloseOffRebound } from './reboundLogic.ts';
 import { SIM_CONFIG } from '../../game/config/constants.ts';
@@ -107,7 +107,7 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
 const PLAY_TYPE_COUNTED_RESULTS = new Set<PossessionResult['type']>([
     'score', 'miss', 'turnover', 'offensiveFoul', 'shotClockViolation', 'freethrow', 'foul',
 ]);
-function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: number, fta: number): void {
+function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: number, fta: number, astPts = 0): void {
     const { type, offTeam } = result;
     // [2026-11-07] 패스 차단 턴오버는 패서의 플레이로 집계(statPlayType), null이면 집계 제외 (client 미러 참조)
     const playType = result.statPlayType !== undefined ? result.statPlayType : result.playType;
@@ -120,16 +120,61 @@ function recordPlayTypeStat(state: GameState, result: PossessionResult, pts: num
     let line = byTeam[playType];
     if (!line) { line = { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 }; byTeam[playType] = line; }
     addPlayTypeLine(line, type, pts, fta);
-    // [2026-11-16] 선수별 — 같은 플레이를 플레이의 주인(actor: 슈터·턴오버한 선수·자유투를 얻은 선수, 패스 차단은 패서)에게도 누적 (server/client 미러).
+    // [2026-11-16] 선수별 — 같은 플레이를 플레이의 주인(actor: 슈터·턴오버한 선수·자유투를 얻은 선수, 패스 차단은 패서)에게도 누적 (client 미러).
     //   샷클락 바이얼레이션은 팀 턴오버라(개인 턴오버로 기록하지 않음) 선수에게 넣지 않는다 → 선수 합 = 팀 값 − 바이얼레이션.
+    // [2026-11-21] 남이 만든 플레이에서 빼준 공을 받아 끝낸 플레이는 받은 선수의 'Kickout' 줄로(팀 집계는 원래 플레이 그대로),
+    //   공을 빼준 선수에게는 자기 플레이 줄에 패스아웃(po)·어시스트(ast)·어시스트 득점(past)을 누적 — passCreation 참조.
     const playerId = result.actor?.playerId;
     if (playerId && type !== 'shotClockViolation') {
         if (!state.playerPlayTypeStats) state.playerPlayTypeStats = {};
         const byPlayer = (state.playerPlayTypeStats[offTeam.id] ??= {});
-        const byPt = (byPlayer[playerId] ??= {});
-        const pLine = (byPt[playType] ??= { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0 });
-        addPlayTypeLine(pLine, type, pts, fta);
+        const creation = result.statPlayType === undefined ? passCreation(result) : null;
+        addPlayTypeLine(playerPlayTypeLine(byPlayer, playerId, creation?.receiverPt ?? playType), type, pts, fta);
+        if (creation) {
+            const cLine = playerPlayTypeLine(byPlayer, creation.passer.playerId, creation.passerPt);
+            cLine.po += 1;
+            if (astPts > 0) { cLine.ast += 1; cLine.past += astPts; }
+        }
     }
+}
+// [2026-11-21] 어시스트 네트워크 — 패서→슈터 쌍 집계(AssistPairLine). 어시스트 인정은 score 분기, 패스·성공은 recordPassPairs (client 미러)
+function assistPairLine(state: GameState, teamId: string, passerId: string, shooterId: string) {
+    const byPasser = ((state.assistPairs ??= {})[teamId] ??= {});
+    return ((byPasser[passerId] ??= {})[shooterId] ??= { ast: 0, pts: 0, passes: 0, fgm: 0 });
+}
+function recordAssistPair(state: GameState, teamId: string, passerId: string, shooterId: string, pts: number): void {
+    const line = assistPairLine(state, teamId, passerId, shooterId);
+    line.ast += 1;
+    line.pts += pts;
+}
+/** 야투(성공·실패)로 이어진 패스 1건. 핸들러가 직접 끝낸 픽앤롤(킥아웃 아님)은 statPasser가 스크리너(해설용)라 패스가 아님 → 제외. */
+function recordPassPairs(state: GameState, result: PossessionResult): void {
+    if (result.type !== 'score' && result.type !== 'miss') return;
+    const passer = result.statPasser, shooter = result.actor;
+    if (!passer || !shooter || passer.playerId === shooter.playerId) return;
+    if (result.playType === 'PnR_Handler' && !result.isKickout) return;
+    const line = assistPairLine(state, result.offTeam.id, passer.playerId, shooter.playerId);
+    line.passes += 1;
+    if (result.type === 'score') line.fgm += 1;
+}
+function playerPlayTypeLine(byPlayer: Record<string, Record<string, PlayerPlayTypeStatLine>>, playerId: string, playType: string): PlayerPlayTypeStatLine {
+    const byPt = (byPlayer[playerId] ??= {});
+    return (byPt[playType] ??= { poss: 0, pts: 0, fga: 0, fgm: 0, fta: 0, tov: 0, po: 0, ast: 0, past: 0 });
+}
+/**
+ * [2026-11-21] 선수별 플레이타입 패스 집계 — 이 플레이가 "한 선수가 만든 플레이를 패스로 끝낸 것"이면 패서·패서의 플레이·받은 선수의 줄을 반환.
+ * 대상(statPasser가 실리는 슛·슈팅 파울만): 킥아웃 전부(포스트업·롤맨·블리츠 패스아웃·헬프 킥아웃 — 패서 줄 = 원래 플레이, 받은 선수 = Kickout),
+ * 드라이브킥 킥(패서 = 드라이버의 DriveKick, 받은 선수 = Kickout), 롤·팝 피드(패서 = 핸들러의 PnR_Handler, 받은 선수 = 롤·팝 그대로).
+ * 엔트리 패스·캐치앤슛/컷/오프스크린/핸드오프/속공 패스는 패서가 플레이를 만든 게 아니라 제외. (client 미러)
+ */
+function passCreation(result: PossessionResult): { passer: LivePlayer; passerPt: string; receiverPt: string } | null {
+    const passer = result.statPasser;
+    const pt = result.playType;
+    if (!passer || !pt || passer.playerId === result.actor?.playerId) return null;
+    if (result.isKickout) return { passer, passerPt: pt, receiverPt: 'Kickout' };
+    if (pt === 'DriveKick') return { passer, passerPt: 'DriveKick', receiverPt: 'Kickout' };
+    if (pt === 'PnR_Roll' || pt === 'PnR_Pop') return { passer, passerPt: 'PnR_Handler', receiverPt: pt };
+    return null;
 }
 function addPlayTypeLine(line: { poss: number; pts: number; fga: number; fgm: number; fta: number; tov: number }, type: PossessionResult['type'], pts: number, fta: number): void {
     line.poss += 1;
@@ -155,6 +200,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     const ptScoreBefore = offTeam.score;
     state.pendingOffReb = undefined;   // [2026-11-04] 이번 결과에서 공격 리바운드가 나면 아래에서 채움 (client 미러 참조)
     const ptFtaBefore = actor.fta;
+    let ptAssistPts = 0;   // [2026-11-21] 이 플레이에서 어시스트가 인정된 야투 득점(score 분기에서 채움) → recordPlayTypeStat의 past
 
     if (result.isAceTarget && typeof result.matchupEffect === 'number') {
         actor.matchupEffectSum += result.matchupEffect;
@@ -223,7 +269,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 : result.transitionRole === 'runner' ? 0.95
                 : result.transitionRole === 'trailer' ? 0.97
                 : (playType ? (assistOdds[playType] ?? 0.60) : 0.60);
-            if (Math.random() < prob) assister.ast += 1;
+            if (Math.random() < prob) { assister.ast += 1; ptAssistPts = points; recordAssistPair(state, offTeam.id, assister.playerId, actor.playerId, points); }   // [2026-11-21] ptAssistPts — 선수별 플레이타입 어시스트 득점(past) (client 미러)
         }
 
         offTeam.score += points;
@@ -269,7 +315,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (defender && zone) bumpDefendedShot(defender, zone, result.subZone, false);
         if (!result.isHeave) updateHotCold(actor, false);   // [2026-11-05] 버저 히브는 연속 슛 감각과 무관
 
-        let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
+        // [2026-11-21] 실패 결과엔 assister가 없어(성공만 실림) 킥아웃 실패 문구(textGenerator 'miss'의 isKickout && assister 분기)가 한 번도 안 나왔다 —
+        //   패스한 선수(statPasser)를 넘긴다. 'miss' 문구 중 assister를 쓰는 건 그 분기뿐이라 다른 실패 문구는 그대로 (client 미러)
+        let logText = generateCommentary('miss', actor, defender, assister ?? result.statPasser, playType, zone, {
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
             isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined,
             isHelpPlay: !!result.isHelpPlay, isKickout: !!result.isKickout, isEndRush: !!result.isEndRush,
@@ -495,6 +543,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
     }
 
-    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore);
+    recordPlayTypeStat(state, result, offTeam.score - ptScoreBefore, actor.fta - ptFtaBefore, ptAssistPts);
+    recordPassPairs(state, result);   // [2026-11-21] 어시스트 네트워크 패스·성공
     return ftRebType;
 }
