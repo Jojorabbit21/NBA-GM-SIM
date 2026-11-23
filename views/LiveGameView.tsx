@@ -5,19 +5,24 @@ import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
 import { LiveTacticsTab } from '../components/game/tabs/LiveTacticsTab';
-import { RotationGanttChart } from '../components/dashboard/RotationGanttChart';
+import { GameRotationTab } from '../components/game/tabs/GameRotationTab';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
 import { Clock, Users } from 'lucide-react';
-import { calculateWinProbability } from '../utils/simulationMath';
-import { calculatePlayerOvr } from '../utils/constants';
+import { getTeamLogoUrl } from '../utils/constants';
 import { useShotChartTooltip } from '../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../components/game/ShotTooltip';
 import { PlayerMarkers } from '../components/game/PlayerMarkers';
-import { CourtBackground } from '../components/game/CourtBackground';
-import { TeamStatsCompare } from '../components/game/TeamStatsCompare';
+import { CourtPreview } from '../components/multi/CourtPreview';
+import { DEFAULT_COURT_STYLE } from '../services/points/courtLoadout';
+import { LiveScoreHeader } from '../components/game/LiveScoreHeader';
+import { LivePbpFeed } from '../components/game/LivePbpFeed';
+import { PlayerBoxPanel, GameInsightsPanel, computeTeamStats, TeamStatsCompare, type StatFlash } from './multi/season/MultiGamePbpView';
+import { GameShotChartTab } from '../components/game/tabs/GameShotChartTab';
+import { TabBar } from '../components/common/TabBar';
+import { SegmentedControl } from '../components/common/SegmentedControl';
+import { Button } from '../components/common/Button';
+import { PauseFillIcon, PlayFillIcon, SkipToEndFillIcon } from '../components/game/liveControlIcons';
 import { countOvertimePeriods, normalizePeriod, periodShortLabel, periodList } from '../utils/periodLabel';
-import { scheduleMinute } from '../services/game/engine/pbp/periodRules';
-import { pbpLogCategory, PBP_TEXT_COLOR, PBP_SUB_COLOR, PBP_SCORE_HIGHLIGHT, pbpScored, pbpDisplayText } from '../utils/pbpLogStyle';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -38,9 +43,11 @@ interface LiveGameViewProps {
     awayUserTactics?: GameTactics | null;
     onGameEnd: (result: SimulationResult) => void;
     hideTimeout?: boolean;
+    /** [2026-11-23] 스크롤되는 탭(중계·경기 기록·로테이션) 본문 끝에 붙일 푸터(Quick Game). 없으면 푸터 없음 */
+    footer?: React.ReactNode;
 }
 
-type ActiveTab = 'court' | 'rotation' | 'tactics';
+type ActiveTab = 'court' | 'pbp' | 'shot' | 'rotation' | 'tactics';
 
 // ─────────────────────────────────────────────────────────────
 // Util
@@ -52,505 +59,7 @@ function formatClock(seconds: number): string {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function formatDuration(sec: number): string {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-}
 
-
-const POSITION_ORDER: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
-
-function sortByPosition(players: LivePlayer[]): LivePlayer[] {
-    return [...players].sort((a, b) =>
-        (POSITION_ORDER[a.position] ?? 5) - (POSITION_ORDER[b.position] ?? 5)
-    );
-}
-
-// 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG|3P
-// FG/3P는 두 자리수 합산(10-18 등)이므로 다른 컬럼보다 넓게
-const PLAYER_GRID = 'minmax(0,80px) repeat(10, 0.75fr) repeat(2, 1.15fr)';
-
-// stat key → column index (0-based from first stat column)
-type StatKey = 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'fgm' | 'fga' | 'p3m' | 'p3a';
-const TRACKED_STATS: StatKey[] = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a'];
-
-function getStatSnapshot(p: LivePlayer): Record<StatKey, number> {
-    return { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov, pf: p.pf ?? 0, fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a };
-}
-
-// 셀 하이라이트 키: "playerId:statKey"
-type HighlightKey = string;
-
-// ─────────────────────────────────────────────────────────────
-// PlayerRow (on-court + bench 공통)
-// ─────────────────────────────────────────────────────────────
-
-interface PlayerRowProps {
-    player: LivePlayer;
-    dimmed?: boolean;
-    draggable?: boolean;
-    isDropTarget?: boolean;
-    highlightedStats?: Map<HighlightKey, 'positive' | 'negative'>;
-    onDragStart?: () => void;
-    onDragEnd?: () => void;
-    onDragOver?: (e: React.DragEvent) => void;
-    onDragLeave?: () => void;
-    onDrop?: (e: React.DragEvent) => void;
-}
-
-const hlPositive = 'bg-emerald-400/25';
-const hlNegative = 'bg-red-400/25';
-
-const PlayerRow: React.FC<PlayerRowProps> = ({
-    player, dimmed = false, draggable = false, isDropTarget = false,
-    highlightedStats,
-    onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
-}) => {
-    const stamina = Math.round(player.currentCondition ?? 100);
-    const staminaColor = stamina > 60 ? 'text-emerald-400' : stamina > 30 ? 'text-amber-400' : 'text-red-400';
-    const mp = Math.round(player.mp ?? 0);
-    const hl = (stat: StatKey) => {
-        const type = highlightedStats?.get(`${player.playerId}:${stat}`);
-        if (!type) return '';
-        return type === 'positive' ? hlPositive : hlNegative;
-    };
-
-    return (
-        <div
-            draggable={draggable}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            className={`grid items-center gap-x-0.5 px-2 py-1 transition-colors select-none
-                ${dimmed ? 'opacity-60' : ''}
-                ${draggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-800/50' : 'hover:bg-slate-800/30'}
-                ${isDropTarget ? 'bg-indigo-800/40 ring-1 ring-inset ring-indigo-500/60' : ''}`}
-            style={{ gridTemplateColumns: PLAYER_GRID }}
-        >
-            <span className="text-xs font-semibold text-slate-200 truncate">{(() => {
-                const s = player.recentShots;
-                const len = s?.length ?? 0;
-                if (len >= 3 && s.slice(-3).every(Boolean)) return '🔥 ';
-                if (len >= 4 && s.slice(-4).every(v => !v)) return '❄️ ';
-                return '';
-            })()}{player.playerName}</span>
-            <span className="text-xs text-slate-500 text-center font-mono">{player.position}</span>
-            <span className={`text-xs font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{mp}</span>
-            <span className={`text-xs font-mono text-white text-right transition-colors duration-300 ${hl('pts')}`}>{player.pts ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-300 text-right transition-colors duration-300 ${hl('reb')}`}>{player.reb ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-300 text-right transition-colors duration-300 ${hl('ast')}`}>{player.ast ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('stl')}`}>{player.stl ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('blk')}`}>{player.blk ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('tov')}`}>{player.tov ?? 0}</span>
-            <span className={`text-xs font-mono text-right transition-colors duration-300 ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'} ${hl('pf')}`}>{player.pf ?? 0}</span>
-            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('fgm') || hl('fga')}`}>{player.fgm}-{player.fga}</span>
-            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('p3m') || hl('p3a')}`}>{player.p3m}-{player.p3a}</span>
-        </div>
-    );
-};
-
-const PlayerRowHeader: React.FC<{ label?: string; teamColor?: string; teamTextColor?: string }> = ({ label = '선수', teamColor, teamTextColor }) => (
-    <div
-        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold uppercase tracking-wider border-b border-slate-700 shrink-0"
-        style={{ gridTemplateColumns: PLAYER_GRID, backgroundColor: teamColor || 'rgba(30,41,59,0.6)', color: teamTextColor || '#94a3b8' }}
-    >
-        <span>{label}</span>
-        <span className="text-center">P</span>
-        <span className="text-right">STM</span>
-        <span className="text-right">MP</span>
-        <span className="text-right">PTS</span>
-        <span className="text-right">REB</span>
-        <span className="text-right">AST</span>
-        <span className="text-right">STL</span>
-        <span className="text-right">BLK</span>
-        <span className="text-right">TOV</span>
-        <span className="text-right">PF</span>
-        <span className="text-right">FG</span>
-        <span className="text-right">3P</span>
-    </div>
-);
-
-// ─────────────────────────────────────────────────────────────
-// OnCourt Panel (출전 중 + 벤치, 한 쪽 팀)
-// ─────────────────────────────────────────────────────────────
-
-interface OnCourtPanelProps {
-    onCourt: LivePlayer[];
-    bench: LivePlayer[];
-    isUser: boolean;
-    onSubstitute: (outId: string, inId: string) => void;
-    teamColor?: string;
-    teamTextColor?: string;
-}
-
-const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
-    onCourt, bench, isUser, onSubstitute, teamColor, teamTextColor,
-}) => {
-    const [draggedId, setDraggedId] = useState<string | null>(null);
-    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-    const [highlightedStats, setHighlightedStats] = useState<Map<HighlightKey, 'positive' | 'negative'>>(new Map());
-    const prevStatsRef = useRef<Record<string, Record<StatKey, number>>>({});
-    const hlTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-    const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
-    const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
-
-    // 스탯 변화 감지 → 하이라이트 (각 키별 독립 타이머)
-    // positive: PTS, REB, AST, STL, BLK, FGM, P3M (긍정적 스탯)
-    // negative: TOV, PF, FGA(미스), P3A(미스)
-    useEffect(() => {
-        const allPlayers = [...onCourt, ...bench];
-        const prev = prevStatsRef.current;
-        const newHighlights: { key: HighlightKey; type: 'positive' | 'negative' }[] = [];
-
-        for (const p of allPlayers) {
-            const snap = getStatSnapshot(p);
-            const old = prev[p.playerId];
-            if (old) {
-                for (const k of TRACKED_STATS) {
-                    if (snap[k] !== old[k]) {
-                        const isPositive = k === 'pts' || k === 'reb' || k === 'ast' || k === 'stl' || k === 'blk' || k === 'fgm' || k === 'p3m';
-                        newHighlights.push({ key: `${p.playerId}:${k}`, type: isPositive ? 'positive' : 'negative' });
-                    }
-                }
-            }
-            prev[p.playerId] = snap;
-        }
-
-        if (newHighlights.length > 0) {
-            setHighlightedStats(s => {
-                const next = new Map(s);
-                for (const h of newHighlights) next.set(h.key, h.type);
-                return next;
-            });
-
-            for (const h of newHighlights) {
-                if (hlTimersRef.current[h.key]) clearTimeout(hlTimersRef.current[h.key]);
-                hlTimersRef.current[h.key] = setTimeout(() => {
-                    setHighlightedStats(s => {
-                        const next = new Map(s);
-                        next.delete(h.key);
-                        return next;
-                    });
-                    delete hlTimersRef.current[h.key];
-                }, 500);
-            }
-        }
-    }, [onCourt, bench]);
-
-    // 언마운트 시 모든 타이머 정리
-    useEffect(() => {
-        return () => {
-            Object.values(hlTimersRef.current).forEach(clearTimeout);
-        };
-    }, []);
-
-    // 팀 합계 계산 (FG/3P는 합산)
-    const teamTotal = useMemo(() => {
-        const all = [...onCourt, ...bench];
-        if (all.length === 0) return null;
-        const sum = (fn: (p: LivePlayer) => number) => all.reduce((acc, p) => acc + fn(p), 0);
-        return {
-            mp: Math.round(sum(p => p.mp ?? 0)),
-            pts: sum(p => p.pts),
-            reb: sum(p => p.reb),
-            ast: sum(p => p.ast),
-            stl: sum(p => p.stl),
-            blk: sum(p => p.blk),
-            tov: sum(p => p.tov),
-            pf: sum(p => p.pf ?? 0),
-            fgm: sum(p => p.fgm),
-            fga: sum(p => p.fga),
-            p3m: sum(p => p.p3m),
-            p3a: sum(p => p.p3a),
-        };
-    }, [onCourt, bench]);
-
-    return (
-        <div className="flex flex-col min-h-0 overflow-hidden shrink">
-            <PlayerRowHeader label="현재 뛰는 중" teamColor={teamColor} teamTextColor={teamTextColor} />
-            {/* 스크롤 영역 */}
-            <div
-                className="flex-1 min-h-0 overflow-y-auto"
-                style={{ scrollbarWidth: 'none' } as React.CSSProperties}
-            >
-                {/* 코트 선수 */}
-                {sortedOnCourt.map(p => (
-                    <PlayerRow
-                        key={p.playerId}
-                        player={p}
-                        highlightedStats={highlightedStats}
-                        isDropTarget={isUser && draggedId !== null && dropTargetId === p.playerId}
-                        onDragOver={isUser ? (e) => { e.preventDefault(); setDropTargetId(p.playerId); } : undefined}
-                        onDragLeave={isUser ? () => setDropTargetId(null) : undefined}
-                        onDrop={isUser ? (e) => {
-                            e.preventDefault();
-                            if (draggedId) onSubstitute(p.playerId, draggedId);
-                            setDraggedId(null);
-                            setDropTargetId(null);
-                        } : undefined}
-                    />
-                ))}
-                {/* 휴식 중 헤더 */}
-                <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700" style={{ backgroundColor: teamColor || 'rgba(30,41,59,0.6)' }}>
-                    <span className="text-xs font-bold tracking-wider" style={{ color: teamTextColor || '#94a3b8' }}>휴식 중</span>
-                    {isUser && (
-                        <span className="text-xs font-normal opacity-70" style={{ color: teamTextColor || '#94a3b8' }}>(드래그로 교체)</span>
-                    )}
-                </div>
-                {/* 벤치 선수 */}
-                {sortedBench.map(p => (
-                    <PlayerRow
-                        key={p.playerId}
-                        player={p}
-                        highlightedStats={highlightedStats}
-                        draggable={isUser}
-                        onDragStart={isUser ? () => setDraggedId(p.playerId) : undefined}
-                        onDragEnd={isUser ? () => { setDraggedId(null); setDropTargetId(null); } : undefined}
-                    />
-                ))}
-                {/* 팀 합계 행 */}
-                {teamTotal && (
-                    <>
-                        <div className="border-t border-slate-700/60" />
-                        <div
-                            className="grid items-center gap-x-0.5 px-2 py-1.5"
-                            style={{ gridTemplateColumns: PLAYER_GRID, backgroundColor: teamColor || 'rgba(30,41,59,0.4)' }}
-                        >
-                            <span className="text-xs font-black truncate" style={{ color: teamTextColor || '#94a3b8' }}>TEAM</span>
-                            <span className="text-xs text-center" />
-                            <span className="text-xs text-right" />
-                            <span className="text-xs text-right" />
-                            <span className="text-xs font-mono text-white text-right">{teamTotal.pts}</span>
-                            <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.reb}</span>
-                            <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.ast}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.stl}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.blk}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.tov}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.pf}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fga > 0 ? (teamTotal.fgm / teamTotal.fga).toFixed(3).replace(/^0/, '') : '.000'}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3a > 0 ? (teamTotal.p3m / teamTotal.p3a).toFixed(3).replace(/^0/, '') : '.000'}</span>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-};
-
-// TeamStatsCompare는 components/game/TeamStatsCompare.tsx로 추출됨 (GamePbpTab.tsx와 공용).
-
-// ─────────────────────────────────────────────────────────────
-// Quarter Scores Table
-// ─────────────────────────────────────────────────────────────
-
-const QuarterScores: React.FC<{
-    allLogs: PbpLog[];
-    homeTeamId: string;
-    currentQuarter: number;
-    homeTeamCode: string;
-    awayTeamCode: string;
-}> = ({ allLogs, homeTeamId, currentQuarter, homeTeamCode, awayTeamCode }) => {
-    // [2026-10-26] 연장 열은 연장에 들어간 뒤("N차 연장 시작" 로그가 생긴 뒤)에만 생긴다
-    const periods = useMemo(() => 4 + countOvertimePeriods(allLogs), [allLogs]);
-    const scores = useMemo(() => {
-        const home = new Array<number>(periods).fill(0);
-        const away = new Array<number>(periods).fill(0);
-
-        for (const log of allLogs) {
-            if (log.type === 'score' || log.type === 'freethrow') {
-                const pts = log.points ?? 0;
-                const qi = Math.min(periods - 1, log.quarter - 1); // 0-indexed (옛 방식 5쿼터 버저비터는 4쿼터)
-                if (log.teamId === homeTeamId) home[qi] += pts;
-                else away[qi] += pts;
-            }
-        }
-        return { home, away };
-    }, [allLogs, homeTeamId, periods]);
-
-    const hTotal = scores.home.reduce((a, b) => a + b, 0);
-    const aTotal = scores.away.reduce((a, b) => a + b, 0);
-
-    const cellClass = (qi: number) => {
-        if (qi + 1 > currentQuarter) return 'text-slate-600';
-        if (qi + 1 === currentQuarter) return 'text-white font-bold';
-        return 'text-slate-400';
-    };
-
-    return (
-        <div className="shrink-0 border-b border-slate-700/60">
-            <table className="w-full text-xs font-mono">
-                <thead>
-                    <tr className="text-xs text-slate-600 uppercase bg-slate-900/60">
-                        <th className="text-left px-1.5 py-1 font-semibold w-12 border-r border-slate-700/60 text-slate-500 tracking-wider">쿼터별 득점</th>
-                        {periodList(periods - 4).map(q => (
-                            <th key={q} className="text-center px-1.5 py-1 font-semibold w-8 border-r border-slate-700/60">{q <= 4 ? q : `OT${q - 4}`}</th>
-                        ))}
-                        <th className="text-center px-1.5 py-1 font-semibold w-8">T</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr className="border-t border-slate-700/60">
-                        <td className="text-left px-1.5 py-1 text-slate-500 font-bold border-r border-slate-700/60">{awayTeamCode}</td>
-                        {scores.away.map((v, i) => (
-                            <td key={i} className={`text-center px-1.5 py-1 border-r border-slate-700/60 ${cellClass(i)}`}>
-                                {i + 1 > currentQuarter ? '—' : v}
-                            </td>
-                        ))}
-                        <td className="text-center px-1.5 py-1 text-white font-bold">{aTotal}</td>
-                    </tr>
-                    <tr className="border-t border-slate-700/60">
-                        <td className="text-left px-1.5 py-1 text-slate-500 font-bold border-r border-slate-700/60">{homeTeamCode}</td>
-                        {scores.home.map((v, i) => (
-                            <td key={i} className={`text-center px-1.5 py-1 border-r border-slate-700/60 ${cellClass(i)}`}>
-                                {i + 1 > currentQuarter ? '—' : v}
-                            </td>
-                        ))}
-                        <td className="text-center px-1.5 py-1 text-white font-bold">{hTotal}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
-// Compact Win Probability Graph (sidebar)
-// ─────────────────────────────────────────────────────────────
-
-const getSmoothPath = (points: { x: number; y: number }[]) => {
-    if (points.length === 0) return '';
-    if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
-    let d = `M ${points[0].x},${points[0].y}`;
-    const smoothing = 0.2;
-    const line = (p0: { x: number; y: number }, p1: { x: number; y: number }) => ({
-        length: Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2),
-        angle: Math.atan2(p1.y - p0.y, p1.x - p0.x),
-    });
-    const cp = (cur: { x: number; y: number }, prev: { x: number; y: number } | undefined, next: { x: number; y: number } | undefined, rev: boolean) => {
-        const p = prev || cur, n = next || cur;
-        const o = line(p, n);
-        const a = o.angle + (rev ? Math.PI : 0);
-        const l = o.length * smoothing;
-        return { x: cur.x + Math.cos(a) * l, y: cur.y + Math.sin(a) * l };
-    };
-    for (let i = 0; i < points.length - 1; i++) {
-        const c1 = cp(points[i], points[i - 1], points[i + 1], false);
-        const c2 = cp(points[i + 1], points[i], points[i + 2], true);
-        d += ` C ${c1.x},${c1.y} ${c2.x},${c2.y} ${points[i + 1].x},${points[i + 1].y}`;
-    }
-    return d;
-};
-
-const CompactWPGraph: React.FC<{
-    allLogs: PbpLog[];
-    homeTeamId: string;
-    currentMinute: number;
-    homeColor: string;
-    awayColor: string;
-    homeLogo: string;
-    awayLogo: string;
-}> = ({ allLogs, homeTeamId, currentMinute, homeColor, awayColor, homeLogo, awayLogo }) => {
-    const W = 100, H = 50, MID = 25, TOTAL = 48;
-
-    // 스냅샷을 ref에 누적 — currentMinute 변경 시에만 새 점 추가
-    const snapsRef = useRef<{ wp: number }[]>([{ wp: 50 }]);
-
-    useEffect(() => {
-        const targetMinute = currentMinute + 1; // currentMinute 0 → 분 1 스냅샷
-        if (targetMinute <= 0 || targetMinute > 48) return;
-
-        // 빠른 속도에서 currentMinute가 여러 분을 건너뛸 수 있으므로
-        // 누락된 모든 중간 분의 스냅샷을 한번에 채움
-        while (snapsRef.current.length <= targetMinute) {
-            const m = snapsRef.current.length; // 추가할 분 번호
-            let hScore = 0, aScore = 0;
-            const mSec = m * 60;
-            for (const log of allLogs) {
-                const [mm, ss] = log.timeRemaining.split(':').map(Number);
-                const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
-                if (elapsed > mSec) break;
-                if (log.type === 'score' || log.type === 'freethrow') {
-                    const pts = log.points ?? 0;
-                    if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
-                }
-            }
-            snapsRef.current.push({ wp: calculateWinProbability(hScore, aScore, m) });
-        }
-    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const { points, fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
-        const snaps = snapsRef.current;
-        const pts = snaps.map((d, i) => ({ x: (i / TOTAL) * W, y: (d.wp / 100) * H }));
-        const pd = getSmoothPath(pts);
-        const sX = pts[0].x, sY = pts[0].y;
-        const eX = pts[pts.length - 1].x, eY = pts[pts.length - 1].y;
-        let cc = '';
-        const ci = pd.indexOf('C');
-        if (ci !== -1) cc = pd.substring(ci);
-        const fp = `M 0,${MID} L ${sX},${sY} ${cc} L ${eX},${MID} Z`;
-        return { points: pts, fillPath: fp, pathData: pd, currentWP: snaps[snaps.length - 1].wp, endX: eX, endY: eY };
-    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const homeProb = Math.round(currentWP);
-    const awayProb = 100 - homeProb;
-
-    return (
-        <div className="flex-1 min-h-0 flex flex-col px-3 py-3">
-            {/* Header */}
-            <div className="shrink-0 flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                    <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
-                    <span className="text-xs font-black text-white">{awayProb}%</span>
-                </div>
-                <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">실시간 승리확률</p>
-                <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-black text-white">{homeProb}%</span>
-                    <img src={homeLogo} className="w-4 h-4 object-contain" alt="" />
-                </div>
-            </div>
-            {/* Graph */}
-            <div className="flex-1 min-h-0 w-full relative overflow-hidden">
-                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
-                    <defs>
-                        <linearGradient id="lwpGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={H}>
-                            <stop offset="0" stopColor={awayColor} stopOpacity="0.4" />
-                            <stop offset="0.5" stopColor={awayColor} stopOpacity="0" />
-                            <stop offset="0.5" stopColor={homeColor} stopOpacity="0" />
-                            <stop offset="1" stopColor={homeColor} stopOpacity="0.4" />
-                        </linearGradient>
-                    </defs>
-                    <rect width="100%" height="100%" fill="#0f172a" opacity="0.6" />
-                    <line x1="25" y1="0" x2="25" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
-                    <line x1="50" y1="0" x2="50" y2={H} stroke="#334155" strokeWidth="0.4" strokeDasharray="0.8 0.8" />
-                    <line x1="75" y1="0" x2="75" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
-                    <line x1="0" y1={MID} x2={W} y2={MID} stroke="#475569" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
-                    <path d={fillPath} fill="url(#lwpGrad)" stroke="none" />
-                    <path d={pathData} fill="none" stroke="#e2e8f0" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                </svg>
-                {points.length > 1 && (
-                    <div
-                        className="absolute w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_6px_white] -translate-x-1/2 -translate-y-1/2 transition-all duration-100"
-                        style={{ left: `${endX}%`, top: `${(endY / H) * 100}%` }}
-                    >
-                        <div className="absolute inset-0 bg-white/50 rounded-full animate-ping" />
-                    </div>
-                )}
-            </div>
-            {/* X-Axis */}
-            <div className="shrink-0 flex mt-1 text-xs font-bold text-slate-600 uppercase tracking-wider relative h-3">
-                <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
-                <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
-                <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>
-                <span className="absolute left-[87.5%] -translate-x-1/2">4Q</span>
-            </div>
-        </div>
-    );
-};
 
 // ─────────────────────────────────────────────────────────────
 // Full Court Shot Chart
@@ -605,7 +114,8 @@ const LiveShotChart: React.FC<{
         <div ref={containerRef} className="w-full relative" style={{ aspectRatio: '940/500' }}
             onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
             <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
-                <CourtBackground />
+                {/* 코트 — 상점 기본 코트(하드 메이플 우드, DEFAULT_COURT_STYLE)와 같은 CourtPreview, 중앙에 홈팀 로고 */}
+                <CourtPreview {...DEFAULT_COURT_STYLE} line="#FFFFFF" logoUrl={getTeamLogoUrl(homeTeam.id)} />
 
                 {/* Player Position Markers (아래 레이어 — 샷 도트가 위에 표시됨) */}
                 {showMarkers && (
@@ -670,7 +180,7 @@ const LiveShotChart: React.FC<{
 export const LiveGameView: React.FC<LiveGameViewProps> = ({
     homeTeam, awayTeam, userTeamId, userTactics,
     isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings,
-    coachPrefs, awayUserTactics, onGameEnd, hideTimeout = false,
+    coachPrefs, awayUserTactics, onGameEnd, hideTimeout = false, footer,
 }) => {
     const {
         displayState, callTimeout, applyTactics, applyRotationMap,
@@ -686,7 +196,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const {
         homeScore, awayScore, quarter, gameClock,
         allLogs, pauseReason, isGameEnd,
-        timeoutsLeft, timeoutCallable, homeOnCourt, awayOnCourt,
+        timeoutsLeft, homeOnCourt, awayOnCourt,
         homeBench, awayBench,
         activeRun, speed,
         shotEvents, homeBox, awayBox,
@@ -708,41 +218,66 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const awayData = TEAM_DATA[awayTeam.id];
     const homeColor = homeData?.colors.primary || '#6366f1';
     const awayColor = awayData?.colors.primary || '#f59e0b';
-    const userTeam = isUserHome ? homeTeam : awayTeam;
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
-    const userTimeoutCallable = isUserHome ? timeoutCallable.home : timeoutCallable.away;
-    const currentMinute = scheduleMinute({ quarter, gameClock });   // [2026-10-26] 연장 k분째 = 4쿼터 마지막 5분(43+k)
     // [2026-10-26] 연장 수 = "N차 연장 시작" 로그 수(옛 경기의 5쿼터 종료·버저비터 로그는 연장 아님 — utils/periodLabel)
     const otCount = useMemo(() => countOvertimePeriods(allLogs), [allLogs]);
     const maxSelectableQ = isGameEnd ? 4 + otCount : normalizePeriod(quarter, otCount);
 
-    // playerNames map for LiveTacticsTab (both teams)
-    const playerNames = useMemo(() => {
-        const map: Record<string, string> = {};
-        homeTeam.roster.forEach(p => { map[p.id] = p.name; });
-        awayTeam.roster.forEach(p => { map[p.id] = p.name; });
-        return map;
-    }, [homeTeam.roster, awayTeam.roster]);
+    // 사용자 일시정지('manual') 중에는 선수 교체·전술 변경이 잠긴다(훅도 같은 값으로 막음). 로테이션은 읽기 전용 차트라 편집 없음.
+    const manualPaused = pauseReason === 'manual';
 
-    // Rotation chart derived data
-    const userDepthChart = isUserHome ? homeDepthChart : awayDepthChart;
-    const userHealthySorted = useMemo(() =>
-        userTeam.roster
-            .filter(p => p.health !== 'Injured')
-            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
-        [userTeam.roster]
+    // ── 경기 기록 탭(인사이트) 데이터 — 멀티 라이브 "플레이-바이-플레이" 탭과 같은 GameInsightsPanel ──
+    const insightHomeStats = useMemo(() => computeTeamStats(allLogs, shotEvents, homeTeam.id), [allLogs, shotEvents, homeTeam.id]);
+    const insightAwayStats = useMemo(() => computeTeamStats(allLogs, shotEvents, awayTeam.id), [allLogs, shotEvents, awayTeam.id]);
+    const insightHomeOreb = useMemo(() => homeBox.reduce((a, p) => a + (p.offReb || 0), 0), [homeBox]);
+    const insightAwayOreb = useMemo(() => awayBox.reduce((a, p) => a + (p.offReb || 0), 0), [awayBox]);
+
+    // ── 박스스코어 패널(멀티 라이브 화면과 같은 PlayerBoxPanel) 데이터 ──
+    const awayBoxPlayers = useMemo(() => [...awayOnCourt, ...awayBench], [awayOnCourt, awayBench]);
+    const homeBoxPlayers = useMemo(() => [...homeOnCourt, ...homeBench], [homeOnCourt, homeBench]);
+    const onCourtIds = useMemo(() => new Set([...homeOnCourt, ...awayOnCourt].map(p => p.playerId)), [homeOnCourt, awayOnCourt]);
+    const boxConditions = useMemo(
+        () => new Map<string, number | null>([...homeBoxPlayers, ...awayBoxPlayers].map(p => [p.playerId, Math.round(p.currentCondition)])),
+        [homeBoxPlayers, awayBoxPlayers],
     );
-    const canEditRotation = pauseReason === 'quarterEnd' || pauseReason === 'halftime' || pauseReason === 'timeout';
-    const handleRotationUpdate = useCallback((t: GameTactics) => {
-        applyRotationMap(t.rotationMap);
-    }, [applyRotationMap]);
-    const handleViewPlayerNoop = useCallback(() => {}, []);
+    const playerById = useMemo(
+        () => Object.fromEntries([...homeTeam.roster, ...awayTeam.roster].map(p => [p.id, p])),
+        [homeTeam.roster, awayTeam.roster],
+    );
+    // 스탯 셀 틴트 — 라이브 엔진엔 박스 타임라인 재생이 없으므로 화면 갱신마다 선수별 스탯 변화분을 직접 계산한다.
+    // 틴트는 그 선수의 다음 변동까지 유지, 방금 변한 선수만 fresh(도착 애니메이션) — 멀티 liveStatFlashesAt과 같은 규칙.
+    const FLASH_KEYS = ['pts', 'reb', 'ast', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'] as const;
+    const prevStatRef = useRef<Map<string, number[]>>(new Map());
+    const flashSeqRef = useRef(0);
+    const [statFlashes, setStatFlashes] = useState<Map<string, StatFlash>>(new Map());
+    useEffect(() => {
+        const prev = prevStatRef.current;
+        const changed: [string, StatFlash['d']][] = [];
+        for (const p of [...homeBoxPlayers, ...awayBoxPlayers]) {
+            const cur = FLASH_KEYS.map(k => Number((p as any)[k] ?? 0));
+            const old = prev.get(p.playerId);
+            if (old && cur.some((v, i) => v !== old[i])) {
+                const d: StatFlash['d'] = {};
+                FLASH_KEYS.forEach((k, i) => { if (cur[i] !== old[i]) (d as any)[k] = cur[i] - old[i]; });
+                changed.push([p.playerId, d]);
+            }
+            prev.set(p.playerId, cur);
+        }
+        if (changed.length === 0) return;
+        const t = ++flashSeqRef.current;
+        setStatFlashes(m => {
+            const next = new Map<string, StatFlash>();
+            m.forEach((f, pid) => next.set(pid, { ...f, fresh: false }));
+            for (const [pid, d] of changed) next.set(pid, { t, d, fresh: true });
+            return next;
+        });
+    }, [homeBoxPlayers, awayBoxPlayers]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 카운트다운 (위임 중: 5초, 일반: 30초)
     const PAUSE_COUNTDOWN_SEC = isDelegated ? 5 : 30;
     useEffect(() => {
         if (countdownRef.current) clearInterval(countdownRef.current);
-        if (pauseReason === null || isGameEnd) {
+        if (pauseReason === null || pauseReason === 'manual' || isGameEnd) {   // 사용자 일시정지는 자동 재개 없음
             setPauseCountdown(PAUSE_COUNTDOWN_SEC);
             return;
         }
@@ -775,21 +310,34 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     }, [isGameEnd, getResult, onGameEnd]);
 
     const quarterLabel = isGameEnd ? 'Final' : periodShortLabel(quarter, otCount);   // [2026-10-26] 연장 OT1·OT2
-    const pauseLabel = pauseReason === 'halftime'   ? '하프타임'
+    // 타임아웃을 부른 팀 약어 — 가장 최근 timeout 로그(엔진 applyTimeout이 teamId에 부른 팀을 넣는다)
+    const timeoutTeamAbbr = useMemo(() => {
+        if (pauseReason !== 'timeout') return null;
+        for (let i = allLogs.length - 1; i >= 0; i--) {
+            const l = allLogs[i];
+            if (l.type === 'timeout') return l.teamId === homeTeam.id || l.teamId === awayTeam.id ? l.teamId.toUpperCase() : null;
+        }
+        return null;
+    }, [pauseReason, allLogs, homeTeam.id, awayTeam.id]);
+    const pauseLabel = pauseReason === 'manual'     ? '일시정지'
+                     : pauseReason === 'halftime'   ? '하프타임'
                      : pauseReason === 'timeout'    ? '타임아웃'
                      : pauseReason === 'quarterEnd' ? `${periodShortLabel(quarter, otCount)} 종료`
                      : '';
 
     // PBP 필터링
     const filteredLogs = useMemo(() => {
-        if (pbpQuarterFilter === 0) return allLogs.slice().reverse();
-        return allLogs.filter(l => normalizePeriod(l.quarter, otCount) === pbpQuarterFilter).slice().reverse();
+        const items = allLogs.map((log, idx) => ({ log, idx }));
+        const picked = pbpQuarterFilter === 0 ? items : items.filter(({ log }) => normalizePeriod(log.quarter, otCount) === pbpQuarterFilter);
+        return picked.reverse();
     }, [allLogs, pbpQuarterFilter, otCount]);
 
     const TABS: { key: ActiveTab; label: string }[] = isSpectateMode
-        ? [{ key: 'court', label: '중계' }]
+        ? [{ key: 'court', label: '중계' }, { key: 'pbp', label: '경기 기록' }, { key: 'shot', label: '샷 차트' }]
         : [
             { key: 'court',    label: '중계' },
+            { key: 'pbp',      label: '경기 기록' },
+            { key: 'shot',     label: '샷 차트' },
             { key: 'rotation', label: '로테이션' },
             { key: 'tactics',  label: '전술 설정' },
           ];
@@ -797,308 +345,129 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     return (
         <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
 
-            {/* ── 스코어버그 헤더 ── */}
-            <div className="relative bg-slate-900 border-b border-slate-800 py-5 px-[20%] shrink-0 overflow-hidden">
-                {/* 팀 컬러 그라데이션 */}
-                <div className="absolute inset-0 pointer-events-none" style={{
-                    background: `linear-gradient(to right, ${awayColor}, transparent 30%, transparent 70%, ${homeColor})`
-                }} />
+            {/* ── 스코어버그 헤더 — 멀티 라이브 화면과 같은 점보트론 스타일(components/game/LiveScoreHeader.tsx) ── */}
+            <LiveScoreHeader
+                awayTeamId={awayTeam.id}
+                homeTeamId={homeTeam.id}
+                awayAbbr={awayTeam.id.toUpperCase()}
+                homeAbbr={homeTeam.id.toUpperCase()}
+                awayColor={awayColor}
+                homeColor={homeColor}
+                awayScore={awayScore}
+                homeScore={homeScore}
+                awayFouls={awayFouls}
+                homeFouls={homeFouls}
+                timeoutsLeft={timeoutsLeft}
+                quarterLabel={quarterLabel}
+                clockLabel={formatClock(gameClock)}
+                pause={pauseReason && pauseReason !== 'gameEnd'
+                    ? pauseReason === 'timeout'
+                        // 타임아웃 — "ATL 타임아웃 (29)": 부른 팀 약어(마지막 timeout 로그의 teamId) + 남은 초 2자리
+                        ? { label: `${timeoutTeamAbbr ? `${timeoutTeamAbbr} ` : ''}타임아웃 (${String(pauseCountdown).padStart(2, '0')})`, countdown: null, resumeLabel: '종료', onResume: resume }
+                        : { label: pauseLabel, countdown: manualPaused ? null : pauseCountdown, resumeLabel: manualPaused ? '재개' : '종료', onResume: resume }
+                    : null}
+                run={activeRun ? {
+                    abbr: (activeRun.teamId === homeTeam.id ? homeTeam.id : awayTeam.id).toUpperCase(),
+                    teamPts: activeRun.teamPts,
+                    oppPts: activeRun.oppPts,
+                } : null}
+                logs={allLogs}
+                currentQuarter={normalizePeriod(quarter, otCount)}
+            />
 
-                {/* 원정 로고 — 왼쪽 극단, 크롭 */}
-                <img
-                    src={awayTeam.logo}
-                    className="absolute left-[8%] top-1/2 -translate-y-1/2 w-28 h-28 object-contain opacity-20 pointer-events-none select-none"
-                    alt=""
-                />
-                {/* 홈 로고 — 오른쪽 극단, 크롭 */}
-                <img
-                    src={homeTeam.logo}
-                    className="absolute right-[8%] top-1/2 -translate-y-1/2 w-28 h-28 object-contain opacity-20 pointer-events-none select-none"
-                    alt=""
-                />
-
-                {/* 3-column grid: Away(1fr) | Center(auto, 고정폭) | Home(1fr) */}
-                <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center">
-
-                    {/* Away: 팀명+로고 + 파울/TO | 점수 — 오른쪽 정렬 */}
-                    <div className="flex items-center justify-end gap-3">
-                        <div className="flex flex-col items-end gap-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <img src={awayTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
-                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
-                                    {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-end gap-2 text-[10px] text-slate-400">
-                                {awayFouls >= 5 ? (
-                                    <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
-                                ) : (
-                                    <span>파울 <span className="text-white font-bold tabular-nums">{awayFouls}</span></span>
-                                )}
-                                <span className="flex gap-0.5 text-[8px] leading-none">
-                                    {Array.from({ length: 7 }).map((_, i) => (
-                                        <span key={i} className={i < timeoutsLeft.away ? 'text-amber-400' : 'text-slate-700'}>●</span>
-                                    ))}
-                                </span>
-                            </div>
-                        </div>
-                        <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-right shrink-0">{awayScore}</span>
-                    </div>
-
-                    {/* Center: 시계 + 런(조건부) — 고정 폭 */}
-                    <div className="w-[280px] flex flex-col items-center justify-center mx-4">
-                        {/* 시계 / 일시정지 */}
-                        <div className="flex items-center justify-center gap-2">
-                            {pauseReason && pauseReason !== 'gameEnd' ? (
-                                <>
-                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-none">{pauseLabel}</span>
-                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-none w-[2ch] text-center">{pauseCountdown}</span>
-                                    <button
-                                        onClick={resume}
-                                        className="px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
-                                    >
-                                        종료
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
-                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
-                                </>
-                            )}
-                        </div>
-                        {/* 런 인디케이터 — 없으면 완전히 숨김 */}
-                        {activeRun && !pauseReason && (() => {
-                            const diff = activeRun.teamPts - activeRun.oppPts;
-                            const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
-                            return (
-                                <div className="mt-1 text-center">
-                                    <span className="text-xs font-bold text-white whitespace-nowrap">
-                                        🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}{' '}
-                                        {activeRun.teamPts}-{activeRun.oppPts}
-                                        {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
-                                    </span>
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Home: 점수 | 로고+팀명 + 파울/TO — 왼쪽 정렬 */}
-                    <div className="flex items-center justify-start gap-3">
-                        <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-left shrink-0">{homeScore}</span>
-                        <div className="flex flex-col items-start gap-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <img src={homeTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
-                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
-                                    {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-start gap-2 text-[10px] text-slate-400">
-                                {homeFouls >= 5 ? (
-                                    <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
-                                ) : (
-                                    <span>파울 <span className="text-white font-bold tabular-nums">{homeFouls}</span></span>
-                                )}
-                                <span className="flex gap-0.5 text-[8px] leading-none">
-                                    {Array.from({ length: 7 }).map((_, i) => (
-                                        <span key={i} className={i < timeoutsLeft.home ? 'text-amber-400' : 'text-slate-700'}>●</span>
-                                    ))}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── 탭 바 (3등분: 유저측 컨트롤 | 탭 | 빈칸 또는 반대) ── */}
-            <div className="relative grid grid-cols-3 items-center px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
-                <div className="absolute inset-0 pointer-events-none" style={{
-                    background: `linear-gradient(to right, ${awayColor}, transparent 30%, transparent 70%, ${homeColor})`
-                }} />
-                {/* 왼쪽 */}
-                <div className="relative z-10 flex items-center gap-2 justify-start">
-                    {(isSpectateMode || !isUserHome) && (
-                        <>
-                            <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                                {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
-                                    <button
-                                        key={s}
-                                        onClick={() => setSpeed(s)}
-                                        className={`px-2.5 py-0.5 text-xs font-bold transition-colors
-                                            ${idx > 0 ? 'border-l border-slate-700' : ''}
-                                            ${speed === s
-                                                ? 'bg-indigo-600 text-white'
-                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                            }`}
-                                    >
-                                        {s}x
-                                    </button>
-                                ))}
-                            </div>
-                            {!isSpectateMode && (
-                                <>
-                                    {!hideTimeout && (
-                                        <button
-                                            onClick={callTimeout}
-                                            disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated || !userTimeoutCallable}
-                                            className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                                       disabled:opacity-40 disabled:cursor-not-allowed
-                                                       text-white text-xs font-bold transition-colors"
-                                        >
-                                            타임아웃 ({userTimeoutsLeft})
-                                        </button>
-                                    )}
-                                    {canDelegate && (
-                                        <button
-                                            onClick={isDelegated ? takeBackControl : delegateToCoach}
-                                            className={`px-3 py-0.5 rounded-lg text-white text-xs font-bold transition-colors ${
-                                                isDelegated
-                                                    ? 'bg-emerald-700 hover:bg-emerald-600'
-                                                    : 'bg-slate-700 hover:bg-slate-600'
-                                            }`}
-                                        >
-                                            {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                            <button
-                                onClick={skipToEnd}
-                                disabled={isGameEnd}
-                                className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-xs font-bold transition-colors"
+            {/* ── 컨트롤 영역 — 멀티 라이브 화면과 같은 공용 TabBar 탭 그룹(가운데 정렬) + 오른쪽 컨트롤 ── */}
+            <TabBar
+                tabs={TABS.map(t => ({ id: t.key, label: t.label }))}
+                activeTab={activeTab}
+                onTabChange={id => setActiveTab(id as ActiveTab)}
+                align="center"
+                bgClassName="bg-slate-900"
+                rightSlot={
+                    <>
+                        {/* 재생 컨트롤 — [⏸ 일시정지][▶ 재생][⏭ 경기 종료까지] | 구분선 | [0.5x … 6x 배속].
+                            ⏸ = 'manual' 정지(교체·로테이션·전술 잠김), ▶ = 재개(타임아웃·쿼터 휴식 중엔 휴식 종료와 같은 동작), 배속은 정지 여부와 무관하게 속도만 바꾼다 */}
+                        <SegmentedControl
+                            size="sm"
+                            value={manualPaused ? 'pause' : pauseReason === null ? 'play' : ''}
+                            onChange={v => {
+                                if (v === 'pause') pause();
+                                else if (v === 'play') resume();
+                                else if (v === 'end') skipToEnd();
+                            }}
+                            options={[
+                                { value: 'pause', label: <span title="일시정지" aria-label="일시정지" className="inline-flex"><PauseFillIcon /></span>, disabled: isGameEnd || (pauseReason !== null && !manualPaused) },
+                                { value: 'play', label: <span title="재생" aria-label="재생" className="inline-flex"><PlayFillIcon /></span>, disabled: isGameEnd },
+                                { value: 'end', label: <span title="경기 종료까지" aria-label="경기 종료까지" className="inline-flex"><SkipToEndFillIcon /></span>, disabled: isGameEnd },
+                            ]}
+                            className="!bg-transparent"
+                            aria-label="재생 컨트롤"
+                        />
+                        <span aria-hidden="true" className="w-px h-6 bg-slate-700 shrink-0" />
+                        <SegmentedControl
+                            size="sm"
+                            value={String(speed)}
+                            onChange={v => setSpeed(Number(v) as GameSpeed)}
+                            options={([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map(sp => ({ value: String(sp), label: `${sp}x` }))}
+                            className="!bg-transparent"
+                            aria-label="재생 속도"
+                        />
+                        {!isSpectateMode && !hideTimeout && (
+                            <span aria-hidden="true" className="w-px h-6 bg-slate-700 shrink-0" />
+                        )}
+                        {!isSpectateMode && !hideTimeout && (
+                            // [2026-11-23] 지금 부를 수 없으면(라이브볼 상대 공·정지 중) 눌렀을 때 예약 → 다음 데드볼·우리 공에 자동 발동. 예약 중 다시 누르면 취소.
+                            //   비활성은 경기 종료·잔여 0·코치 위임만. 예약 중 = 초록 그라디언트 + "타임아웃 예약됨"
+                            <Button
+                                variant={displayState.timeoutReserved ? 'success' : 'warning'}
+                                size="md"
+                                onClick={callTimeout}
+                                disabled={isGameEnd || userTimeoutsLeft <= 0 || isDelegated}
+                                aria-pressed={displayState.timeoutReserved}
+                                className={displayState.timeoutReserved ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500' : ''}
                             >
-                                경기 종료까지 ▶▶
-                            </button>
-                        </>
-                    )}
-                </div>
-                {/* 중앙: 탭 */}
-                <div className="relative z-10 flex items-center justify-center gap-1">
-                    {TABS.map(({ key, label }) => (
-                        <button
-                            key={key}
-                            onClick={() => setActiveTab(key)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                                activeTab === key
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                            }`}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
-                {/* 오른쪽 */}
-                <div className="relative z-10 flex items-center gap-2 justify-end">
-                    {!isSpectateMode && isUserHome && (
-                        <>
-                            <button
-                                onClick={skipToEnd}
-                                disabled={isGameEnd}
-                                className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-xs font-bold transition-colors"
-                            >
-                                경기 종료까지 ▶▶
-                            </button>
-                            {canDelegate && (
-                                <button
-                                    onClick={isDelegated ? takeBackControl : delegateToCoach}
-                                    className={`px-3 py-0.5 rounded-lg text-white text-xs font-bold transition-colors ${
-                                        isDelegated
-                                            ? 'bg-emerald-700 hover:bg-emerald-600'
-                                            : 'bg-slate-700 hover:bg-slate-600'
-                                    }`}
-                                >
-                                    {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
-                                </button>
-                            )}
-                            {!hideTimeout && (
-                                <button
-                                    onClick={callTimeout}
-                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0 || isDelegated || !userTimeoutCallable}
-                                    className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                               disabled:opacity-40 disabled:cursor-not-allowed
-                                               text-white text-xs font-bold transition-colors"
-                                >
-                                    타임아웃 ({userTimeoutsLeft})
-                                </button>
-                            )}
-                            <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                                {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
-                                    <button
-                                        key={s}
-                                        onClick={() => setSpeed(s)}
-                                        className={`px-2.5 py-0.5 text-xs font-bold transition-colors
-                                            ${idx > 0 ? 'border-l border-slate-700' : ''}
-                                            ${speed === s
-                                                ? 'bg-indigo-600 text-white'
-                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                            }`}
-                                    >
-                                        {s}x
-                                    </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
+                                {displayState.timeoutReserved ? '타임아웃 예약됨' : `타임아웃 (${userTimeoutsLeft})`}
+                            </Button>
+                        )}
+                        {!isSpectateMode && canDelegate && (
+                            <Button variant={isDelegated ? 'success' : 'secondary'} size="md" onClick={isDelegated ? takeBackControl : delegateToCoach}>
+                                {isDelegated ? '↩ 직접 지휘' : '코치 위임'}
+                            </Button>
+                        )}
+                    </>
+                }
+            />
 
             {/* ── Body ── */}
             <div className="flex flex-1 overflow-hidden">
 
                 {/* ── 중계 탭 ── */}
                 {activeTab === 'court' && (
-                    <>
+                    // [2026-11-23] 중계 탭 본문은 세로 스크롤 — 화면 높이에 고정하지 않고 내용만큼 늘어난다(멀티 라이브 화면과 같은 방식).
+                    // 박스스코어는 전체 행 높이 그대로, PBP는 기록이 늘수록 커지다가 최대 70vh에서 안쪽 스크롤.
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                    <div className="flex items-start min-h-full shrink-0">
                         {/* LEFT: 원정팀 */}
-                        <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                            <OnCourtPanel
-                                onCourt={awayOnCourt}
-                                bench={awayBench}
-                                isUser={!isSpectateMode && !isUserHome && !isDelegated}
-                                onSubstitute={makeSubstitution}
-                                teamColor={awayColor}
-                                teamTextColor={awayData?.colors.text}
-                            />
-                            {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
-                                {!isUserHome ? (
-                                    <>
-                                        <QuarterScores
-                                            allLogs={allLogs}
-                                            homeTeamId={homeTeam.id}
-                                            currentQuarter={quarter}
-                                            homeTeamCode={homeTeam.id.toUpperCase()}
-                                            awayTeamCode={awayTeam.id.toUpperCase()}
-                                        />
-                                        <TeamStatsCompare
-                                            homeBox={homeBox}
-                                            awayBox={awayBox}
-                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        />
-                                    </>
-                                ) : (
-                                    <CompactWPGraph
-                                        allLogs={allLogs}
-                                        homeTeamId={homeTeam.id}
-                                        currentMinute={currentMinute}
-                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        homeLogo={homeTeam.logo}
-                                        awayLogo={awayTeam.logo}
-                                    />
-                                )}
+                        <div className="w-[30%] self-stretch border-r border-slate-800 bg-slate-950 flex flex-col">
+                            {/* 박스스코어 — 멀티 라이브 화면과 같은 PlayerBoxPanel. 사용자 팀은 코트↔벤치 행을 끌어다 놓아 교체(일시정지·코치 위임 중엔 잠금) */}
+                            <div>
+                                <PlayerBoxPanel
+                                    players={awayBoxPlayers}
+                                    label={awayTeam.id.toUpperCase()}
+                                    onCourtIds={onCourtIds}
+                                    conditions={boxConditions}
+                                    playerById={playerById}
+                                    statFlashes={statFlashes}
+                                    splitBench
+                                    onSubstitute={(!isSpectateMode && !isUserHome && !isDelegated && !manualPaused) ? makeSubstitution : undefined}
+                                />
                             </div>
                         </div>
 
                         {/* CENTER: 샷차트(상단) + PBP 로그(하단) */}
-                        <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
-                            {/* 샷차트 */}
-                            <div className="shrink-0 border-b border-slate-800">
+                        {/* 가운데 열 — 멀티 게임 센터와 같은 카드 모듈(여백 p-4 · 카드 사이 gap-4 · rounded-xl 카드): 샷차트 카드 + PBP 카드 */}
+                        <div className="flex-1 min-w-0 flex flex-col gap-4 p-4 bg-slate-950">
+                            {/* 샷차트 카드 */}
+                            <div className="shrink-0 bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
                                 <LiveShotChart
                                     shotEvents={shotEvents}
                                     homeTeam={homeTeam}
@@ -1107,234 +476,168 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 />
                             </div>
 
-                            {/* PBP 로그 */}
-                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                                {/* 헤더 + 필터 */}
-                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-800 border-b border-slate-700">
-                                    <div className="flex items-center gap-3">
-                                        <p className="text-xs text-slate-300 font-semibold uppercase tracking-wider">
-                                            플레이-바이-플레이
-                                        </p>
-                                        <div className="flex gap-1">
-                                            {[0, ...periodList(otCount)].map(q => (
-                                                <button
-                                                    key={q}
-                                                    onClick={() => setPbpQuarterFilter(q)}
-                                                    disabled={q > maxSelectableQ}
-                                                    className={`px-2 py-0.5 rounded text-xs font-bold transition-colors
-                                                        disabled:opacity-30 disabled:cursor-not-allowed
-                                                        ${pbpQuarterFilter === q
-                                                            ? 'bg-indigo-600 text-white'
-                                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                                        }`}
-                                                >
-                                                    {q === 0 ? '전체' : periodShortLabel(q, otCount, '1Q')}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* 스크롤 로그 */}
-                                <div
-                                    className="flex-1 min-h-0 overflow-y-auto font-mono text-xs bg-slate-900"
-                                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-                                >
-                                    {/* 컬럼 헤더 — 박스스코어/플레이타입 테이블과 동일 톤: bg-slate-950 sticky + text-slate-500 font-black uppercase */}
-                                    <div className="flex items-center gap-3 px-3 h-8 bg-slate-950 sticky top-0 z-10 border-b border-slate-800 shadow-sm">
-                                        <div className="flex-shrink-0 w-5 text-center text-xs font-black uppercase text-slate-500">Q</div>
-                                        <div className="flex-shrink-0 w-10 text-center text-xs font-black uppercase text-slate-500">시간</div>
-                                        <div className="flex-shrink-0 w-5 flex justify-center text-xs font-black uppercase text-slate-500">원</div>
-                                        <div className="flex-shrink-0 w-12 text-center text-xs font-black uppercase text-slate-500">점수</div>
-                                        <div className="flex-shrink-0 w-5 flex justify-center text-xs font-black uppercase text-slate-500">홈</div>
-                                        <div className="flex-1 text-xs font-black uppercase text-slate-500">기록</div>
-                                    </div>
-                                    <div className="divide-y divide-slate-800/50">
-                                        {filteredLogs.map((log, i) => {
-                                            const isHome = log.teamId === homeTeam.id;
-                                            const isScore = log.type === 'score';
-                                            const isFT = log.type === 'freethrow';
-                                            const isFoul = log.type === 'foul';
-                                            const isTurnover = log.type === 'turnover';
-                                            const isBlock = log.type === 'block';
-                                            const isInfo = log.type === 'info' || log.type === 'timeout';
-                                            const isInjury = log.type === 'injury';
-                                            // [Fix] teamId === 'SYSTEM'이 실제 엔진 마커 — 텍스트 매칭은 "2쿼터 시작"처럼
-                                            // '경기 시작'/'종료'/'하프 타임'을 포함하지 않는 로그를 놓쳤음 (GamePbpTab.tsx 동일 수정 참고)
-                                            const isFlowEvent = log.teamId === 'SYSTEM';
-
-                                            // [2026-11-05] 공통 줄(SYSTEM) = 안내 — 가운데 배치, 배너 배경·아이콘·굵게 없음 (utils/pbpLogStyle)
-                                            if (isFlowEvent) {
-                                                return (
-                                                    <div key={i} className={`flex items-center justify-center py-2 px-3 text-xs text-center leading-relaxed ${PBP_TEXT_COLOR.system}`}>
-                                                        {log.text}
-                                                    </div>
-                                                );
-                                            }
-
-                                            // 교체 로그
-                                            if (log.text.startsWith('교체:')) {
-                                                const inMatch = log.text.match(/IN \[(.*?)\]/);
-                                                const outMatch = log.text.match(/OUT \[(.*?)\]/);
-                                                if (inMatch && outMatch) {
-                                                    const inPlayers = inMatch[1].split(',').map(s => s.trim());
-                                                    const outPlayers = outMatch[1].split(',').map(s => s.trim());
-                                                    return (
-                                                        <div key={i} className="flex items-start py-2 px-3 gap-3 hover:bg-white/5 transition-colors">
-                                                            <div className="flex-shrink-0 w-7 text-slate-600 font-bold text-xs text-center pt-0.5">
-                                                                {periodShortLabel(log.quarter, otCount, '1Q')}
-                                                            </div>
-                                                            <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center pt-0.5">
-                                                                {log.timeRemaining || '-'}
-                                                            </div>
-                                                            <div className="flex-1 flex flex-col gap-0.5 text-xs">
-                                                                <div className={PBP_SUB_COLOR.header}>
-                                                                    {(isHome ? homeTeam.id : awayTeam.id).toUpperCase().slice(0, 3)} 선수교체
-                                                                </div>
-                                                                <div className={`flex items-center gap-1.5 ${PBP_SUB_COLOR.in}`}>
-                                                                    <span>IN:</span>
-                                                                    <div className="flex flex-wrap gap-1.5">
-                                                                        {inPlayers.map((p, j) => <span key={j}>{p}</span>)}
-                                                                    </div>
-                                                                </div>
-                                                                <div className={`flex items-center gap-1.5 ${PBP_SUB_COLOR.out}`}>
-                                                                    <span>OUT:</span>
-                                                                    <div className="flex flex-wrap gap-1.5">
-                                                                        {outPlayers.map((p, j) => <span key={j}>{p}</span>)}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
-                                            }
-
-                                            // [2026-11-05] 세 화면 공통 규칙(utils/pbpLogStyle) — 플레이 slate-200 / 부상 red-400, 배경 없음, 득점 팀 점수만 흰색
-                                            const textColor = pbpLogCategory(log) === 'injury' ? PBP_TEXT_COLOR.injury : PBP_TEXT_COLOR.play;
-                                            const scored = pbpScored(log);
-                                            const bgClass = 'hover:bg-white/5 transition-colors';
-
-                                            return (
-                                                <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
-                                                    {/* 쿼터 */}
-                                                    <div className="flex-shrink-0 w-7 text-slate-600 font-bold text-xs text-center">
-                                                        {periodShortLabel(log.quarter, otCount, '1Q')}
-                                                    </div>
-                                                    {/* 시간 */}
-                                                    <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center">
-                                                        {log.timeRemaining || '-'}
-                                                    </div>
-                                                    {/* 원정 로고 */}
-                                                    <div className="flex-shrink-0 w-5 flex justify-center">
-                                                        <img src={awayTeam.logo} className={`w-4 h-4 object-contain ${!isHome ? 'opacity-100' : 'opacity-30 grayscale'}`} alt="" />
-                                                    </div>
-                                                    {/* 스코어 */}
-                                                    <div className="flex-shrink-0 w-12 text-center">
-                                                        {log.awayScore !== undefined && (
-                                                            <div className="font-black text-slate-500 text-xs tracking-tight">
-                                                                <span className={!isHome && scored ? PBP_SCORE_HIGHLIGHT : ''}>{log.awayScore}</span>
-                                                                <span className="mx-0.5 text-slate-700">:</span>
-                                                                <span className={isHome && scored ? PBP_SCORE_HIGHLIGHT : ''}>{log.homeScore}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {/* 홈 로고 */}
-                                                    <div className="flex-shrink-0 w-5 flex justify-center">
-                                                        <img src={homeTeam.logo} className={`w-4 h-4 object-contain ${isHome ? 'opacity-100' : 'opacity-30 grayscale'}`} alt="" />
-                                                    </div>
-                                                    {/* 메시지 */}
-                                                    <div className={`flex-1 break-words leading-relaxed text-xs ${textColor}`}>
-                                                        {pbpDisplayText(log.text)}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {filteredLogs.length === 0 && (
-                                            <div className="py-10 text-center text-slate-600 text-xs">
-                                                해당 쿼터의 기록이 없습니다.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            {/* PBP 로그 — 멀티 라이브 화면과 같은 디자인(components/game/LivePbpFeed.tsx) */}
+                            <div className="shrink-0 min-h-[240px] max-h-[70vh] flex flex-col bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+                                <LivePbpFeed
+                                    items={filteredLogs}
+                                    homeTeamId={homeTeam.id}
+                                    homeAbbr={homeTeam.id.toUpperCase()}
+                                    awayAbbr={awayTeam.id.toUpperCase()}
+                                    homeName={homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
+                                    awayName={awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
+                                    quarterFilter={pbpQuarterFilter}
+                                    onQuarterFilterChange={setPbpQuarterFilter}
+                                    periods={periodList(otCount)}
+                                    maxSelectableQ={maxSelectableQ}
+                                    otCount={otCount}
+                                />
                             </div>
                         </div>
 
                         {/* RIGHT: 홈팀 */}
-                        <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                            <OnCourtPanel
-                                onCourt={homeOnCourt}
-                                bench={homeBench}
-                                isUser={!isSpectateMode && isUserHome && !isDelegated}
-                                onSubstitute={makeSubstitution}
-                                teamColor={homeColor}
-                                teamTextColor={homeData?.colors.text}
-                            />
-                            {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
-                                {isUserHome ? (
-                                    <>
-                                        <QuarterScores
-                                            allLogs={allLogs}
-                                            homeTeamId={homeTeam.id}
-                                            currentQuarter={quarter}
-                                            homeTeamCode={homeTeam.id.toUpperCase()}
-                                            awayTeamCode={awayTeam.id.toUpperCase()}
-                                        />
-                                        <TeamStatsCompare
-                                            homeBox={homeBox}
-                                            awayBox={awayBox}
-                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        />
-                                    </>
-                                ) : (
-                                    <CompactWPGraph
-                                        allLogs={allLogs}
-                                        homeTeamId={homeTeam.id}
-                                        currentMinute={currentMinute}
-                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        homeLogo={homeTeam.logo}
-                                        awayLogo={awayTeam.logo}
-                                    />
-                                )}
+                        <div className="w-[30%] self-stretch border-l border-slate-800 bg-slate-950 flex flex-col">
+                            {/* 박스스코어 — 멀티 라이브 화면과 같은 PlayerBoxPanel. 사용자 팀은 코트↔벤치 행을 끌어다 놓아 교체(일시정지·코치 위임 중엔 잠금) */}
+                            <div>
+                                <PlayerBoxPanel
+                                    players={homeBoxPlayers}
+                                    label={homeTeam.id.toUpperCase()}
+                                    onCourtIds={onCourtIds}
+                                    conditions={boxConditions}
+                                    playerById={playerById}
+                                    statFlashes={statFlashes}
+                                    splitBench
+                                    onSubstitute={(!isSpectateMode && isUserHome && !isDelegated && !manualPaused) ? makeSubstitution : undefined}
+                                />
                             </div>
                         </div>
-                    </>
+                    </div>
+                    {footer}
+                    </div>
+                )}
+
+                {/* ── 경기 기록 탭 — 멀티 라이브 화면 "플레이-바이-플레이" 탭과 같은 구성: 인사이트 카드(전폭) + PBP 카드(가운데 max-w-3xl) ── */}
+                {activeTab === 'pbp' && (
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                    <div className="grow shrink-0 p-4 flex flex-col gap-4">
+                        <div className="w-full shrink-0 bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+                            <div className="h-10 px-4 flex items-center bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">인사이트</div>
+                            <div className="h-[300px] overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+                                <GameInsightsPanel
+                                    allLogs={allLogs}
+                                    homeTeamId={homeTeam.id}
+                                    homeStats={insightHomeStats}
+                                    awayStats={insightAwayStats}
+                                    homeOreb={insightHomeOreb}
+                                    awayOreb={insightAwayOreb}
+                                    maxQuarter={Math.max(maxSelectableQ, 4)}
+                                    homeColor={homeColor}
+                                    awayColor={awayColor}
+                                    homeAbbr={homeTeam.id.toUpperCase()}
+                                    awayAbbr={awayTeam.id.toUpperCase()}
+                                    homeBox={homeBox}
+                                    awayBox={awayBox}
+                                />
+                            </div>
+                        </div>
+                        {/* 아래: PBP 카드(좌) + 팀 스탯 비교 카드(우) — 팀 스탯은 예전 전술 설정 탭 하단에서 옮겨 옴(멀티 라이브 팀 스탯 탭과 같은 TeamStatsCompare) */}
+                        <div className="w-full shrink-0 grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 items-start">
+                            <div className="min-h-[160px] max-h-[75vh] flex flex-col bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+                                <LivePbpFeed
+                                    items={filteredLogs}
+                                    homeTeamId={homeTeam.id}
+                                    homeAbbr={homeTeam.id.toUpperCase()}
+                                    awayAbbr={awayTeam.id.toUpperCase()}
+                                    homeName={homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
+                                    awayName={awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
+                                    quarterFilter={pbpQuarterFilter}
+                                    onQuarterFilterChange={setPbpQuarterFilter}
+                                    periods={periodList(otCount)}
+                                    maxSelectableQ={maxSelectableQ}
+                                    otCount={otCount}
+                                />
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+                                <div className="h-10 px-4 flex items-center justify-between bg-slate-950 border-b border-slate-800 text-sm font-bold text-slate-400">
+                                    <span>팀 스탯 비교</span>
+                                    <span className="flex items-center gap-3 text-xs">
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: awayColor }} />{awayTeam.id.toUpperCase()}</span>
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: homeColor }} />{homeTeam.id.toUpperCase()}</span>
+                                    </span>
+                                </div>
+                                <TeamStatsCompare
+                                    home={insightHomeStats}
+                                    away={insightAwayStats}
+                                    homeBox={homeBox}
+                                    awayBox={awayBox}
+                                    homeColor={homeColor}
+                                    awayColor={awayColor}
+                                    variant="card"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    {footer}
+                    </div>
+                )}
+
+                {/* ── 샷 차트 탭 — 멀티 라이브 "샷 차트" 탭과 같은 GameShotChartTab 카드(예전 전술 설정 탭 하단 하프코트 샷 차트를 대체) ── */}
+                {activeTab === 'shot' && (
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                        <div className="grow shrink-0 p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+                                <GameShotChartTab
+                                    homeTeam={homeTeam}
+                                    awayTeam={awayTeam}
+                                    shotEvents={shotEvents}
+                                    homeBadge={{ color: homeColor, abbr: homeTeam.id.toUpperCase() }}
+                                    awayBadge={{ color: awayColor, abbr: awayTeam.id.toUpperCase() }}
+                                    homeBox={homeBox}
+                                    awayBox={awayBox}
+                                />
+                            </div>
+                        </div>
+                        {footer}
+                    </div>
                 )}
 
                 {/* ── 로테이션 탭 ── */}
+                {/* 로테이션 탭 — 멀티 경기 결과 화면과 같은 GameRotationTab(읽기 전용, 양 팀 좌우 분할). 교체는 중계 탭 박스스코어 드래그로만 한다 */}
                 {activeTab === 'rotation' && (
-                    <div className="flex-1 overflow-hidden">
-                        <RotationGanttChart
-                            team={userTeam}
-                            tactics={liveTactics}
-                            depthChart={userDepthChart || null}
-                            healthySorted={userHealthySorted}
-                            onUpdateTactics={handleRotationUpdate}
-                            onViewPlayer={handleViewPlayerNoop}
-                            liveMode
-                            currentMinute={currentMinute}
-                            lockedBefore={currentMinute}
-                            readOnly={!canEditRotation || isDelegated}
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                        <div className="grow shrink-0 p-4">
+                        <GameRotationTab
+                            homeTeam={homeTeam}
+                            awayTeam={awayTeam}
+                            homeBox={homeBox}
+                            awayBox={awayBox}
+                            rotationData={displayState.rotationData}
+                            homeBadge={{ color: homeColor, abbr: homeTeam.id.toUpperCase() }}
+                            awayBadge={{ color: awayColor, abbr: awayTeam.id.toUpperCase() }}
+                            pbpLogs={allLogs}
+                            splitLayout
+                            shotEvents={shotEvents}
+                            showAllPlayers
+                            cardModules
                         />
+                        </div>
+                        {footer}
                     </div>
                 )}
 
                 {/* ── 전술 탭 ── */}
+                {/* 전술 설정 탭 — 멀티 전술 화면과 같은 슬라이더(? 툴팁). 내용 높이만큼 흐르고 바깥에서 세로 스크롤, 끝에 푸터 */}
                 {activeTab === 'tactics' && (
-                    <LiveTacticsTab
-                        userTactics={liveTactics}
-                        userTeamId={userTeamId}
-                        opponentTeamId={isUserHome ? awayTeam.id : homeTeam.id}
-                        shotEvents={shotEvents}
-                        onApplyTactics={applyTactics}
-                        playerNames={playerNames}
-                        avgPossessionTime={avgPossessionTime}
-                        homeBox={homeBox}
-                        awayBox={awayBox}
-                        isUserHome={isUserHome}
-                        disabled={isDelegated}
-                    />
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar-hide flex flex-col">
+                        <div className="grow shrink-0">
+                            <LiveTacticsTab
+                                userTactics={liveTactics}
+                                onApplyTactics={applyTactics}
+                                disabled={isDelegated || manualPaused}
+                                disabledMessage={manualPaused ? '일시정지 중 — 전술 변경이 잠겨 있습니다' : undefined}
+                            />
+                        </div>
+                        {footer}
+                    </div>
                 )}
             </div>
         </div>

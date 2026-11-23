@@ -66,7 +66,7 @@ const VALID_PBP_SECTIONS = ['box', 'insights', 'pbp', 'team', 'shotchart', 'rota
 
 // [Simplify 2026-08-05] 점보트론 원정/홈 슬롯에서 각각 그대로 복붙돼 있던 타임아웃 도트 렌더링을
 // 공용 컴포넌트로 추출 (좌우 차이는 몇 개가 켜져 있는지뿐).
-function TimeoutDots({ left, size = 'md' }: { left: number; size?: 'md' | 'sm' }) {
+export function TimeoutDots({ left, size = 'md' }: { left: number; size?: 'md' | 'sm' }) {
     return (
         <span className={`shrink-0 flex gap-0.5 leading-none ${size === 'sm' ? 'text-[8px]' : 'text-base'}`}>
             {Array.from({ length: TEAM_TIMEOUTS_TOTAL }).map((_, i) => (
@@ -78,7 +78,7 @@ function TimeoutDots({ left, size = 'md' }: { left: number; size?: 'md' | 'sm' }
 
 // [Simplify 2026-08-05] 파울/보너스 뱃지도 원정/홈 슬롯에서 정렬(text-right)만 다르고 나머지는
 // 동일하게 복붙돼 있던 걸 공용 컴포넌트로 추출.
-function FoulBonusBadge({ fouls, align, size = 'md' }: { fouls: number; align: 'left' | 'right'; size?: 'md' | 'sm' }) {
+export function FoulBonusBadge({ fouls, align, size = 'md' }: { fouls: number; align: 'left' | 'right'; size?: 'md' | 'sm' }) {
     // size sm = [2026-10-28] 폰 스코어버그 2행(§9-7) — 같은 배지·문구, 글자만 12/11px
     if (size === 'sm') {
         return (
@@ -105,7 +105,7 @@ function FoulBonusBadge({ fouls, align, size = 'md' }: { fouls: number; align: '
 // [Simplify 2026-08-05] 헤더 원정/홈 팀 컬럼(약어/이름·성적/점수)도 DOM 순서만 반대(원정: 약어→
 // 이름→점수, 홈: 점수→이름→약어)일 뿐 구조가 완전히 같아서 공용 컴포넌트로 추출. side가 어느
 // 쪽이 바깥(고정 폭)/안쪽(중앙 쪽 고정)인지를 결정 — 3구획 grid 자체는 동일.
-function TeamHeaderColumn({
+export function TeamHeaderColumn({
     side, teamSlug, abbr, score, textColor, infoLoading,
 }: {
     side: 'away' | 'home';
@@ -170,7 +170,7 @@ function computePlayoffStageLabel(series: any, bracketData: unknown): string {
 }
 
 // 종료 화면 헤더 양끝 로고 — 다른 화면들과 동일한 폴백(TeamLogo 공용, 리그 로고 1회 폴백).
-function FinalHeaderLogo({ teamSlug, abbr }: { teamSlug: string; abbr: string }) {
+export function FinalHeaderLogo({ teamSlug, abbr }: { teamSlug: string; abbr: string }) {
     return (
         <TeamLogo teamId={teamSlug} teamName={abbr} size="custom" className="h-24 w-24 shrink-0" shadow={false} />
     );
@@ -308,7 +308,7 @@ interface GamePbpRow {
     team_misc?:      { home: { potv: number; fbps: number; pitp: number; spts: number }; away: { potv: number; fbps: number; pitp: number; spts: number } } | null;
 }
 
-interface TeamStats {
+export interface TeamStats {
     pts: number; fgm: number; fga: number; p3m: number; p3a: number;
     ftm: number; fta: number; tov: number; blk: number; pf: number;
 }
@@ -346,7 +346,7 @@ function buildTeamAdapter(
     } as unknown as Team;
 }
 
-function computeTeamStats(logs: PbpLog[], shotEvents: ShotEvent[], teamId: string): TeamStats {
+export function computeTeamStats(logs: PbpLog[], shotEvents: ShotEvent[], teamId: string): TeamStats {
     const pts = logs
         .filter(l => (l.type === 'score' || l.type === 'freethrow') && l.teamId === teamId)
         .reduce((s, l) => s + (l.points ?? 0), 0);
@@ -499,7 +499,7 @@ function getOnCourtIds(timeline: BoxTick[], elapsed: number): Set<string> {
 
 // ─── QuarterScores ────────────────────────────────────────────────────────────
 
-const QuarterScores: React.FC<{
+export const QuarterScores: React.FC<{
     allLogs:        PbpLog[];
     homeTeamId:     string;
     currentQuarter: number;
@@ -678,7 +678,7 @@ const LIVE_CARD = 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg ove
 // (table-fixed + colgroup 퍼센트 폭이 필요해 공용 <Table> 컴포넌트 대신 raw <table>을 유지하되 토큰만 동일하게 맞춘다.)
 // 선수 이름은 프로필 링크 + 호버카드(능력치만, 시즌 스탯 숨김 — 경기 중 스탯이 계속 바뀌어 조회 부하가 생기므로).
 
-const PlayerBoxPanel: React.FC<{
+export const PlayerBoxPanel: React.FC<{
     players: PlayerBoxScore[];
     label:   string;
     onCourtIds?: Set<string>;
@@ -690,13 +690,38 @@ const PlayerBoxPanel: React.FC<{
     getPlayerHref?: (playerId: string) => string | undefined;
     /** [2026-10-23] 방금 반영된 포제션의 선수별 변화분(liveStatFlashesAt) — 해당 스탯 셀 배경을 켰다가 페이드 */
     statFlashes?: Map<string, StatFlash>;
-}> = ({ players, label, onCourtIds, conditions, playerById, getPlayerHref, statFlashes }) => {
+    /** [2026-11-23] 라이브 경기(LiveGameView·Quick Game) 전용 드래그 교체 — 코트 선수 행과 벤치 선수 행을 서로 끌어다 놓으면
+     *  onSubstitute(코트 선수 id, 벤치 선수 id). onCourtIds가 있어야 동작. 멀티 화면은 넘기지 않으므로 동작 변화 없음 */
+    onSubstitute?: (outId: string, inId: string) => void;
+    /** [2026-11-23] true면 표를 "코트"(포지션순 PG→C) / "벤치"(출전시간순) 두 구역으로 나눈다(onCourtIds 필요). 라이브 경기 전용 */
+    splitBench?: boolean;
+}> = ({ players, label, onCourtIds, conditions, playerById, getPlayerHref, statFlashes, onSubstitute, splitBench = false }) => {
+    const [dragId, setDragId] = useState<string | null>(null);
+    const [dropId, setDropId] = useState<string | null>(null);
+    const canDrag = !!onSubstitute && !!onCourtIds;
+    // 코트 ↔ 벤치 사이에서만 교체(같은 쪽끼리는 놓을 수 없음)
+    const isOpposite = (a: string | null, b: string) => !!a && a !== b && !!onCourtIds && onCourtIds.has(a) !== onCourtIds.has(b);
+    const dropOn = (targetId: string) => {
+        if (!onSubstitute || !onCourtIds || !isOpposite(dragId, targetId)) return;
+        const [outId, inId] = onCourtIds.has(targetId) ? [targetId, dragId!] : [dragId!, targetId];
+        onSubstitute(outId, inId);
+    };
     // [2026-10-28] 폰(§9-7, 목업 G3): 이름 열 160 sticky(불투명 배경 — 코트 위 = white/8 합성색 #1f2737) + 스탯 열 px 고정 폭, 패널 가로 스크롤
     const isPhone = useIsPhone();
     const sorted = useMemo(
         () => [...players].sort((a, b) => (b.mp ?? 0) - (a.mp ?? 0)),
         [players],
     );
+
+    const groups = useMemo(() => {
+        if (!splitBench || !onCourtIds) return [{ key: 'all', label: '', rows: sorted }];
+        const POS: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
+        const court = sorted.filter(p => onCourtIds.has(p.playerId)).sort((a, b) => (POS[a.position ?? ''] ?? 5) - (POS[b.position ?? ''] ?? 5));
+        return [
+            { key: 'court', label: '', rows: court },
+            { key: 'bench', label: '벤치', rows: sorted.filter(p => !onCourtIds.has(p.playerId)) },
+        ];
+    }, [sorted, splitBench, onCourtIds]);
 
     const total = useMemo(() => {
         const s = (fn: (p: PlayerBoxScore) => number) => sorted.reduce((acc, p) => acc + fn(p), 0);
@@ -789,48 +814,75 @@ const PlayerBoxPanel: React.FC<{
                     </tr>
                 </thead>
                 <tbody className="bg-slate-900">
-                    {sorted.map(p => (
-                        <tr
-                            key={p.playerId}
-                            className="transition-colors hover:bg-white/5"
-                        >
-                            {/* [2026-10-23] 온코트 표시는 행 전체 초록 틴트 대신 이름 셀만 밝게 — 스탯 셀 플래시 색과 섞이지 않게 */}
-                            <td className={`py-2 border-b border-slate-800 font-sans text-slate-200 ${isPhone
-                                ? `pl-4 pr-2 sticky left-0 z-10 border-r ${onCourtIds?.has(p.playerId) ? 'bg-[#1f2737]' : 'bg-slate-900'}`
-                                : `px-2 ${onCourtIds?.has(p.playerId) ? 'bg-white/[0.08]' : ''}`}`}>
-                                <span className="flex items-center gap-1 min-w-0">
-                                    {(() => {
-                                        if (!p.playerName) return <Skeleton className="h-3.5 w-24" />;
-                                        const href = getPlayerHref?.(p.playerId);
-                                        const info = playerById?.[p.playerId];
-                                        // 스텁({id,name,position}만)엔 age가 없다 — PlayerIdentityCells와 같은 판별
-                                        const card = info && (info as { age?: number }).age !== undefined ? info : null;
-                                        const nameEl = href
-                                            ? <Link to={href} className="truncate font-semibold hover:text-indigo-400 hover:underline">{p.playerName}</Link>
-                                            : <span className="truncate font-semibold">{p.playerName}</span>;
-                                        return <PlayerHoverCard player={card} teamAbbr={label} hideStats>{nameEl}</PlayerHoverCard>;
-                                    })()}
-                                    {conditions?.get(p.playerId) != null && (
-                                        <ConditionBar value={conditions.get(p.playerId)!} showValue={false} size="xs" />
-                                    )}
-                                    {(() => {
-                                        const s = p.recentShots;
-                                        if (s && s.length >= 3 && s.slice(-3).every(Boolean)) return <span className="shrink-0">🔥</span>;
-                                        if (s && s.length >= 4 && s.slice(-4).every(v => !v)) return <span className="shrink-0">❄️</span>;
-                                        return null;
-                                    })()}
-                                </span>
-                            </td>
-                            <td className="text-center py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold">{p.position ?? '-'}</td>
-                            <td className="text-right py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold tabular-nums">{Math.round(p.mp ?? 0)}</td>
-                            {statTd(p.playerId, 'pts', p.pts)}
-                            {statTd(p.playerId, 'reb', p.reb)}
-                            {statTd(p.playerId, 'ast', p.ast)}
-                            {statTd(p.playerId, 'pf', p.pf)}
-                            {statTd(p.playerId, 'fg', `${p.fgm}-${p.fga}`)}
-                            {statTd(p.playerId, 'p3', `${p.p3m}-${p.p3a}`)}
-                            {statTd(p.playerId, 'ft', `${p.ftm}-${p.fta}`)}
-                        </tr>
+                    {groups.map(g => (
+                        <React.Fragment key={g.key}>
+                            {g.label && (
+                                // 벤치 구역 머리줄 — 표 머리줄(thead)과 같은 높이·글자·열 라벨, 첫 칸만 팀 약어 대신 "벤치"
+                                <tr className="h-10 text-slate-400 text-sm font-bold bg-slate-950 border-y border-slate-800">
+                                    <th className={`text-left font-sans ${isPhone ? 'pl-4 pr-2 sticky left-0 z-20 bg-slate-950 border-r border-slate-800' : 'px-2'}`}>{g.label}</th>
+                                    <th className="text-center px-1">P</th>
+                                    <th className="text-right px-1">MP</th>
+                                    <th className="text-right px-1.5">PTS</th>
+                                    <th className="text-right px-1.5">REB</th>
+                                    <th className="text-right px-1.5">AST</th>
+                                    <th className="text-right px-1.5">PF</th>
+                                    <th className="text-right px-1.5">FG</th>
+                                    <th className="text-right px-1.5">3P</th>
+                                    <th className="text-right px-1.5">FT</th>
+                                </tr>
+                            )}
+                            {g.rows.map(p => (
+                            <tr
+                                key={p.playerId}
+                                className={`transition-colors ${
+                                    canDrag && dropId === p.playerId ? 'bg-indigo-500/20' : 'hover:bg-white/5'
+                                }${canDrag ? ' cursor-grab active:cursor-grabbing' : ''}${canDrag && dragId === p.playerId ? ' opacity-50' : ''}`}
+                                draggable={canDrag || undefined}
+                                onDragStart={canDrag ? () => setDragId(p.playerId) : undefined}
+                                onDragEnd={canDrag ? () => { setDragId(null); setDropId(null); } : undefined}
+                                onDragOver={canDrag ? (e) => { if (isOpposite(dragId, p.playerId)) { e.preventDefault(); setDropId(p.playerId); } } : undefined}
+                                onDragLeave={canDrag ? () => setDropId(prev => (prev === p.playerId ? null : prev)) : undefined}
+                                onDrop={canDrag ? (e) => { e.preventDefault(); dropOn(p.playerId); setDragId(null); setDropId(null); } : undefined}
+                            >
+                                {/* [2026-10-23] 온코트 표시는 행 전체 초록 틴트 대신 이름 셀만 밝게 — 스탯 셀 플래시 색과 섞이지 않게 */}
+                                <td className={`py-2 border-b border-slate-800 font-sans text-slate-200 ${isPhone
+                                    ? `pl-4 pr-2 sticky left-0 z-10 border-r ${onCourtIds?.has(p.playerId) ? 'bg-[#1f2737]' : 'bg-slate-900'}`
+                                    : `px-2 ${onCourtIds?.has(p.playerId) ? 'bg-white/[0.08]' : ''}`}`}>
+                                    <span className="flex items-center gap-1 min-w-0">
+                                        {(() => {
+                                            if (!p.playerName) return <Skeleton className="h-3.5 w-24" />;
+                                            const href = getPlayerHref?.(p.playerId);
+                                            const info = playerById?.[p.playerId];
+                                            // 스텁({id,name,position}만)엔 age가 없다 — PlayerIdentityCells와 같은 판별
+                                            const card = info && (info as { age?: number }).age !== undefined ? info : null;
+                                            const nameEl = href
+                                                ? <Link to={href} className="truncate font-semibold hover:text-indigo-400 hover:underline">{p.playerName}</Link>
+                                                : <span className="truncate font-semibold">{p.playerName}</span>;
+                                            return <PlayerHoverCard player={card} teamAbbr={label} hideStats>{nameEl}</PlayerHoverCard>;
+                                        })()}
+                                        {conditions?.get(p.playerId) != null && (
+                                            <ConditionBar value={conditions.get(p.playerId)!} showValue={false} size="xs" />
+                                        )}
+                                        {(() => {
+                                            const s = p.recentShots;
+                                            if (s && s.length >= 3 && s.slice(-3).every(Boolean)) return <span className="shrink-0">🔥</span>;
+                                            if (s && s.length >= 4 && s.slice(-4).every(v => !v)) return <span className="shrink-0">❄️</span>;
+                                            return null;
+                                        })()}
+                                    </span>
+                                </td>
+                                <td className="text-center py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold">{p.position ?? '-'}</td>
+                                <td className="text-right py-2 px-1 border-b border-slate-800 text-slate-200 font-semibold tabular-nums">{Math.round(p.mp ?? 0)}</td>
+                                {statTd(p.playerId, 'pts', p.pts)}
+                                {statTd(p.playerId, 'reb', p.reb)}
+                                {statTd(p.playerId, 'ast', p.ast)}
+                                {statTd(p.playerId, 'pf', p.pf)}
+                                {statTd(p.playerId, 'fg', `${p.fgm}-${p.fga}`)}
+                                {statTd(p.playerId, 'p3', `${p.p3m}-${p.p3a}`)}
+                                {statTd(p.playerId, 'ft', `${p.ftm}-${p.fta}`)}
+                            </tr>
+                            ))}
+                        </React.Fragment>
                     ))}
                 </tbody>
                 <tfoot>
@@ -869,7 +921,7 @@ const BoxScorePlaceholder: React.FC<{ label: string }> = ({ label }) => (
 // 같은 마크업을 좌우 대칭으로 두 번 쓰던 곳 — side만 바꿔 정렬·순서가 뒤집힌다.
 
 /** 종료 헤더의 팀 블록: 이름·전적 / 점수 / 승리 마커(◂▸). 원정은 우측 정렬(마커가 중앙 쪽), 홈은 좌측 정렬. */
-const FinalTeamBlock: React.FC<{
+export const FinalTeamBlock: React.FC<{
     side: 'away' | 'home';
     name: string;
     wl?: { wins: number; losses: number };
@@ -903,7 +955,7 @@ const FinalTeamBlock: React.FC<{
 
 /** PBP 교체 행 — "약어 선수교체" 머리 + IN/OUT 두 줄. 원정은 이름→라벨(우측 정렬), 홈은 라벨→이름.
  *  [2026-11-05] 색·굵기는 utils/pbpLogStyle(IN 초록·OUT 빨강·보통 굵기), 글자 크기는 부모 줄을 따른다 */
-const SubChangeBlock: React.FC<{ side: 'away' | 'home'; abbr?: string; inPlayers: string[]; outPlayers: string[] }> = ({ side, abbr, inPlayers, outPlayers }) => {
+export const SubChangeBlock: React.FC<{ side: 'away' | 'home'; abbr?: string; inPlayers: string[]; outPlayers: string[] }> = ({ side, abbr, inPlayers, outPlayers }) => {
     const isAway = side === 'away';
     const line = (players: string[], label: 'IN' | 'OUT') => {
         const names = <span>{players.join(', ')}</span>;
@@ -947,7 +999,7 @@ const PhoneFinalTeamColumn: React.FC<{
 );
 
 /** 종료 결과 페이지 섹션 탭(데스크톱 헤더 아래 · 폰 sticky 공용) */
-const RESULT_TABS = [
+export const RESULT_TABS = [
     { id: 'box', label: '박스스코어' },
     { id: 'insights', label: '인사이트' },
     { id: 'pbp', label: '경기 기록' },
@@ -981,7 +1033,7 @@ const BodyScroll = React.forwardRef<HTMLDivElement, { className?: string; childr
 BodyScroll.displayName = 'BodyScroll';
 
 /** 종료 결과 페이지의 섹션(박스스코어/인사이트/…) — 스크롤스파이 ref + 제목 바. 6개 섹션이 같은 래퍼 3줄을 복붙하던 것. */
-const ResultSection: React.FC<{
+export const ResultSection: React.FC<{
     sectionKey: string;
     title: string;
     sectionRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
@@ -1035,7 +1087,7 @@ const TEAM_MISC_ROWS = [
 ] as const;
 
 /** 박스 틱 m(공격팀 기준 [potv, fbps, pitp, spts])을 elapsed(리플레이 ms)까지 팀별로 누적 — buildLiveBox와 같은 공개 기준. m이 하나도 없는 구버전 경기는 null. */
-function buildLiveMisc(timeline: BoxTick[], elapsed: number): { home: number[]; away: number[] } | null {
+export function buildLiveMisc(timeline: BoxTick[], elapsed: number): { home: number[]; away: number[] } | null {
     if (!timeline.some(t => t.m)) return null;
     const out = { home: [0, 0, 0, 0], away: [0, 0, 0, 0] };
     for (const tick of timeline) {
@@ -1048,7 +1100,7 @@ function buildLiveMisc(timeline: BoxTick[], elapsed: number): { home: number[]; 
     return out;
 }
 
-const TeamStatsCompare: React.FC<{
+export const TeamStatsCompare: React.FC<{
     home:      TeamStats;
     away:      TeamStats;
     homeBox:   PlayerBoxScore[];
@@ -1284,7 +1336,7 @@ const TeamPossessionRow: React.FC<{
     );
 };
 
-const GameInsightsPanel: React.FC<{
+export const GameInsightsPanel: React.FC<{
     allLogs:     PbpLog[];
     homeTeamId:  string;
     homeStats:   TeamStats;

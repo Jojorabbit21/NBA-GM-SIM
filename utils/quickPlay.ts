@@ -66,3 +66,35 @@ export function autoPickTopPlayers(
     const combined  = [...sortedTeam, ...sortedOthers];
     return combined.slice(0, count);
 }
+
+// ─── Quick Game (2026-11-23) ────────────────────────────────────────────────
+
+/** Quick Game roster size limits per team (max = 15 depth-chart slots). */
+export const QUICK_ROSTER_MIN = 8;
+export const QUICK_ROSTER_MAX = 15;
+
+/**
+ * Quick Game step 1 depth chart → tactics for step 2. Starters come from the depth chart's first row and the rotation is
+ * the depth board's default allocation ('Overwork', same as "포지션 자동 배정"). Sliders / tactic sets / names of the
+ * previous tactics are kept; without previous tactics the sliders are auto-generated from these starters.
+ */
+export function buildTacticsFromDepth(
+    roster: Player[],
+    depthChart: DepthChart,
+    prev: GameTactics | null,
+    deps: {
+        computeRotationMap: (chart: DepthChart, mode: 'Overwork', roster: Player[]) => Record<string, boolean[]>;
+        slidersForStarters: (starters: Player[]) => GameTactics['sliders'];
+    },
+): GameTactics {
+    const starters = {
+        PG: depthChart.PG[0] || '', SG: depthChart.SG[0] || '', SF: depthChart.SF[0] || '',
+        PF: depthChart.PF[0] || '', C: depthChart.C[0] || '',
+    };
+    const rotationMap = deps.computeRotationMap(depthChart, 'Overwork', roster);
+    if (prev) {
+        return { ...prev, starters, rotationMap, depthChart, minutesLimits: {}, stopperId: undefined, playerTactics: undefined };
+    }
+    const starterPlayers = Object.values(starters).map(id => roster.find(p => p.id === id)).filter((p): p is Player => !!p);
+    return { sliders: deps.slidersForStarters(starterPlayers), starters, rotationMap, minutesLimits: {}, depthChart };
+}

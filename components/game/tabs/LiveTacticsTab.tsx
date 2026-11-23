@@ -1,538 +1,71 @@
-
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { GameTactics, TacticalSliders, ShotEvent, PlayerBoxScore } from '../../../types';
-import { TEAM_DATA } from '../../../data/teamData';
-import { COURT_WIDTH } from '../../../utils/courtCoordinates';
+import React, { useCallback } from 'react';
+import { GameTactics, TacticalSliders } from '../../../types';
 import { SliderControl } from '../../common/SliderControl';
-import { SliderGroupNotes } from '../../common/SliderGroupNotes';
-import { SLIDER_STEPS } from '../../../services/game/config/sliderSteps';
-import { Check } from 'lucide-react';
+import { SliderNoteContent } from '../../dashboard/tactics/SliderNoteContent';
+import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
+import { OFFENSE_SLIDER_GROUPS, DEFENSE_SLIDER_GROUPS, type SliderGroupConfig, type SliderItemConfig } from '../../dashboard/tactics/tacticsSliderConfig';
 
-// pnrDefense는 엔진이 0-2를 직접 사용하므로 별도 steps 정의
-const PNR_STEPS = [
-    { value: 0, label: '드랍' },
-    { value: 1, label: '헷지' },
-    { value: 2, label: '블리츠' },
-];
-
-// ─────────────────────────────────────────────────────────────
-// Types & Constants
-// ─────────────────────────────────────────────────────────────
+// [2026-11-23] 라이브 경기 "전술 설정" 탭 — 멀티 전술 화면(TacticsSlidersPanel split 레이아웃)과 같은 슬라이더 구성·문구를 쓴다:
+// 공격(공격 철학·슈팅 전략) | 수비(온볼·오프볼) 2열, 슬라이더 설명은 라벨 옆 ? 툴팁(SliderNoteContent). 하단 설명 표 없음.
+// 예전에 이 탭 하단에 있던 팀 스탯 비교는 "경기 기록" 탭, 하프코트 샷 차트는 "샷 차트" 탭으로 옮겼고 플레이타입 PPP 표는 삭제했다.
 
 interface LiveTacticsTabProps {
     userTactics: GameTactics;
-    userTeamId: string;
-    opponentTeamId: string;
-    shotEvents: ShotEvent[];
     onApplyTactics: (sliders: GameTactics['sliders']) => void;
-    /** 선수 이름 조회용: playerId → playerName */
-    playerNames: Record<string, string>;
-    /** 팀별 평균 포세션 소모 시간 (초) — home/away 기준 */
-    avgPossessionTime: { home: number; away: number };
-    /** 박스스코어 데이터 (팀 스탯 비교용) */
-    homeBox: PlayerBoxScore[];
-    awayBox: PlayerBoxScore[];
-    isUserHome: boolean;
-    /** 코치 위임 중 — 슬라이더 인터랙션 차단 */
+    /** 코치 위임·일시정지 중 — 슬라이더 인터랙션 차단 */
     disabled?: boolean;
+    /** disabled일 때 상단 안내 문구 — 기본은 코치 위임 중 */
+    disabledMessage?: string;
 }
 
-/** 엔진 PlayType → 표시 그룹 매핑 */
-const PLAY_TYPE_GROUPS = [
-    { key: 'pnr',        label: '픽앤롤',        engineTypes: ['PnR_Handler', 'PnR_Roll', 'PnR_Pop'], color: '#3b82f6' },
-    { key: 'iso',        label: '아이솔레이션',  engineTypes: ['Iso'],                                 color: '#f97316' },
-    { key: 'post',       label: '포스트업',      engineTypes: ['PostUp'],                              color: '#ef4444' },
-    { key: 'cns',        label: '캐치 앤 슛',    engineTypes: ['CatchShoot'],                          color: '#10b981' },
-    { key: 'drive',      label: '컷인 & 돌파',   engineTypes: ['Cut'],                                 color: '#d946ef' },
-    { key: 'handoff',    label: '핸드오프',      engineTypes: ['Handoff'],                             color: '#06b6d4' },
-    { key: 'transition', label: '속공',          engineTypes: ['Transition'],                          color: '#fbbf24' },
-    { key: 'putback',    label: '세컨드찬스',    engineTypes: ['Putback'],                             color: '#8b5cf6' },
-] as const;
-
-interface PlayTypeStats {
-    key: string;
-    label: string;
-    color: string;
-    attempts: number;
-    points: number;
-    ppp: number;
-    pct: number;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
-function calculatePlayTypePPP(shots: ShotEvent[]): PlayTypeStats[] {
-    const totalShots = shots.length;
-    if (totalShots === 0) return [];
-
-    const result: PlayTypeStats[] = [];
-    for (const group of PLAY_TYPE_GROUPS) {
-        const groupShots = shots.filter(s => group.engineTypes.includes(s.playType || ''));
-        if (groupShots.length === 0) continue;
-        const points = groupShots.reduce((sum, s) => {
-            if (!s.isMake) return sum;
-            return sum + (s.zone === '3PT' ? 3 : 2);
-        }, 0);
-        result.push({
-            key: group.key,
-            label: group.label,
-            color: group.color,
-            attempts: groupShots.length,
-            points,
-            ppp: points / groupShots.length,
-            pct: (groupShots.length / totalShots) * 100,
-        });
-    }
-    return result.sort((a, b) => b.attempts - a.attempts);
-}
-
-// ─────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────
-
-/** 팀 스탯 비교 (TeamStatsCompare와 동일 디자인) */
-const COMPARE_STATS: { key: string; label: string; fmt: (v: number) => string }[] = [
-    { key: 'pts',   label: 'PTS',  fmt: v => String(v) },
-    { key: 'fgm',   label: 'FGM',  fmt: v => String(v) },
-    { key: 'fga',   label: 'FGA',  fmt: v => String(v) },
-    { key: 'fgPct', label: 'FG%',  fmt: v => v.toFixed(1) },
-    { key: 'p3m',   label: '3PM',  fmt: v => String(v) },
-    { key: 'p3a',   label: '3PA',  fmt: v => String(v) },
-    { key: 'p3Pct', label: '3P%',  fmt: v => v.toFixed(1) },
-    { key: 'ftm',   label: 'FTM',  fmt: v => String(v) },
-    { key: 'fta',   label: 'FTA',  fmt: v => String(v) },
-    { key: 'ftPct', label: 'FT%',  fmt: v => v.toFixed(1) },
-    { key: 'tsPct', label: 'TS%',  fmt: v => v.toFixed(1) },
-    { key: 'oreb',  label: 'OREB', fmt: v => String(v) },
-    { key: 'dreb',  label: 'DREB', fmt: v => String(v) },
-    { key: 'reb',   label: 'REB',  fmt: v => String(v) },
-    { key: 'ast',   label: 'AST',  fmt: v => String(v) },
-    { key: 'stl',   label: 'STL',  fmt: v => String(v) },
-    { key: 'blk',   label: 'BLK',  fmt: v => String(v) },
-    { key: 'tov',   label: 'TOV',  fmt: v => String(v) },
-    { key: 'pf',    label: 'PF',   fmt: v => String(v) },
-    { key: 'pace',  label: 'PACE', fmt: v => v > 0 ? v.toFixed(1) + 's' : '-' },
-];
-
-function computeTeamStats(box: PlayerBoxScore[]) {
-    const sum = (key: keyof PlayerBoxScore) => box.reduce((s, p) => s + ((p[key] as number) ?? 0), 0);
-    const fgm = sum('fgm'), fga = sum('fga');
-    const p3m = sum('p3m'), p3a = sum('p3a');
-    const ftm = sum('ftm'), fta = sum('fta');
-    const pts = sum('pts');
-    const tsa = fga + 0.44 * fta;
-    return {
-        pts, fgm, fga, fgPct: fga > 0 ? (fgm / fga) * 100 : 0,
-        p3m, p3a, p3Pct: p3a > 0 ? (p3m / p3a) * 100 : 0,
-        ftm, fta, ftPct: fta > 0 ? (ftm / fta) * 100 : 0,
-        tsPct: tsa > 0 ? (pts / (2 * tsa)) * 100 : 0,
-        oreb: sum('offReb'), dreb: sum('defReb'), reb: sum('reb'),
-        ast: sum('ast'), stl: sum('stl'), blk: sum('blk'), tov: sum('tov'), pf: sum('pf'),
-        pace: 0, // 외부에서 주입
-    };
-}
-
-/** 플레이타입 PPP 테이블 */
-const PlayTypePPPTable: React.FC<{ title: string; data: PlayTypeStats[] }> = ({ title, data }) => (
-    <div className="flex flex-col gap-1.5">
-        <h5 className="text-[11px] font-black text-slate-500">{title}</h5>
-        {data.length === 0 ? (
-            <span className="text-[11px] text-slate-600">-</span>
-        ) : (
-            <div className="flex flex-col gap-0.5">
-                {/* 컬럼 헤더 */}
-                <div className="flex items-center gap-2 pb-0.5">
-                    <div className="w-1.5 shrink-0" />
-                    <span className="text-[9px] font-bold text-slate-600 w-20 truncate">플레이타입</span>
-                    <div className="flex-1" />
-                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right">비율</span>
-                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right">PPP</span>
-                </div>
-                {data.map(item => (
-                    <div key={item.key} className="flex items-center gap-2 py-0.5">
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="text-[11px] font-bold text-slate-300 w-20 truncate">{item.label}</span>
-                        <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{ width: `${Math.min(item.pct, 100)}%`, backgroundColor: item.color }}
-                            />
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-400 tabular-nums w-8 text-right">{item.pct.toFixed(0)}%</span>
-                        <span className="text-[10px] font-black text-white tabular-nums w-8 text-right">{item.ppp.toFixed(2)}</span>
-                    </div>
+const SliderColumn: React.FC<{
+    groups: SliderGroupConfig[];
+    sliders: TacticalSliders;
+    onChange: (item: SliderItemConfig, value: number) => void;
+    bordered?: boolean;
+}> = ({ groups, sliders, onChange, bordered = false }) => (
+    <div className={`flex flex-col gap-2 ${bordered ? 'lg:pr-8 lg:border-r lg:border-slate-800' : ''}`}>
+        {groups.map((g, gi) => (
+            <React.Fragment key={g.title}>
+                {gi > 0 && <div className="h-px bg-slate-700 my-4" />}
+                <h4 className="text-base font-black text-white">{g.title}</h4>
+                {g.items.map(item => (
+                    <SliderControl
+                        key={item.key}
+                        label={item.label}
+                        value={sliders[item.key]}
+                        onChange={v => onChange(item, v)}
+                        steps={item.steps}
+                        tooltip={<SliderNoteContent lines={item.note} />}
+                    />
                 ))}
-            </div>
-        )}
+            </React.Fragment>
+        ))}
     </div>
 );
 
-/** XIcon for missed shots */
-const XIcon: React.FC<{ size?: number; className?: string; strokeWidth?: number }> = ({ size = 12, className = '', strokeWidth = 2 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-    </svg>
-);
-
-// ─────────────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────────────
-
 export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
-    userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames,
-    avgPossessionTime, homeBox, awayBox, isUserHome, disabled = false,
+    userTactics, onApplyTactics, disabled = false, disabledMessage = '코치 지휘 중 — 전술 변경이 잠겨 있습니다',
 }) => {
-    const { sliders } = userTactics;
-    const teamColor = TEAM_DATA[userTeamId]?.colors.primary || '#6366f1';
-    const homeColor = TEAM_DATA[isUserHome ? userTeamId : opponentTeamId]?.colors.primary || '#6366f1';
-    const awayColor = TEAM_DATA[isUserHome ? opponentTeamId : userTeamId]?.colors.primary || '#6366f1';
+    const sliders = { ...DEFAULT_SLIDERS, ...userTactics.sliders };
 
-    // ── 팀 스탯 비교 데이터 ──
-    const compareStats = useMemo(() => {
-        const h = computeTeamStats(homeBox);
-        const a = computeTeamStats(awayBox);
-        h.pace = avgPossessionTime.home;
-        a.pace = avgPossessionTime.away;
-        return { h, a };
-    }, [homeBox, awayBox, avgPossessionTime]);
-
-    // ── 선수 필터 상태 ──
-    const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
-    // 유저가 명시적으로 해제한 선수 (자동 추가 방지)
-    const [excludedPlayerIds, setExcludedPlayerIds] = useState<Set<string>>(new Set());
-
-    // 슈팅 기록이 있는 유저 팀 선수 목록
-    const shootingPlayers = useMemo(() => {
-        const playerMap = new Map<string, { made: number; total: number }>();
-        shotEvents.forEach(s => {
-            if (s.teamId !== userTeamId) return;
-            if (!playerMap.has(s.playerId)) playerMap.set(s.playerId, { made: 0, total: 0 });
-            const p = playerMap.get(s.playerId)!;
-            p.total++;
-            if (s.isMake) p.made++;
-        });
-        return Array.from(playerMap.entries())
-            .map(([id, stats]) => ({ id, name: playerNames[id] || id, ...stats }))
-            .sort((a, b) => b.total - a.total);
-    }, [shotEvents, userTeamId, playerNames]);
-
-    // 새 선수가 슈팅하면 자동으로 필터에 추가 (유저가 해제한 선수는 제외)
-    useEffect(() => {
-        setSelectedPlayerIds(prev => {
-            const next = new Set(prev);
-            let changed = false;
-            shootingPlayers.forEach(p => {
-                if (!next.has(p.id) && !excludedPlayerIds.has(p.id)) {
-                    next.add(p.id); changed = true;
-                }
-            });
-            return changed ? next : prev;
-        });
-    }, [shootingPlayers, excludedPlayerIds]);
-
-    const togglePlayer = (id: string) => {
-        setSelectedPlayerIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-                // 유저가 명시적으로 해제 → 자동 추가 방지
-                setExcludedPlayerIds(ex => new Set(ex).add(id));
-            } else {
-                next.add(id);
-                // 다시 선택 → 자동 추가 방지 해제
-                setExcludedPlayerIds(ex => { const n = new Set(ex); n.delete(id); return n; });
-            }
-            return next;
-        });
-    };
-
-    const toggleAll = () => {
-        if (selectedPlayerIds.size === shootingPlayers.length) {
-            setSelectedPlayerIds(new Set());
-            setExcludedPlayerIds(new Set(shootingPlayers.map(p => p.id)));
-        } else {
-            setSelectedPlayerIds(new Set(shootingPlayers.map(p => p.id)));
-            setExcludedPlayerIds(new Set());
-        }
-    };
-
-    // ── 유저 팀 샷 (필터 적용) ──
-    const userShots = useMemo(() =>
-        shotEvents.filter(s => s.teamId === userTeamId && selectedPlayerIds.has(s.playerId)),
-    [shotEvents, userTeamId, selectedPlayerIds]);
-
-    // ── 하프코트 좌표 변환 ──
-    const displayShots = useMemo(() =>
-        userShots.map(shot => {
-            let x = shot.x;
-            let y = shot.y;
-            if (x > COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = 50 - y; }
-            // [2026-11-05] 하프라인 너머 히브는 반코트 차트에 그릴 수 없어 하프라인 근처에 표시(좌표를 뒤집으면 골대 가까운 슛처럼 보임)
-            if (shot.isHeave) x = COURT_WIDTH / 2 - 1;
-            return { ...shot, x, y };
-        }),
-    [userShots]);
-
-    // ── 플레이타입 PPP ──
-    const allUserShots = useMemo(() =>
-        shotEvents.filter(s => s.teamId === userTeamId),
-    [shotEvents, userTeamId]);
-    const userPPP = useMemo(() => calculatePlayTypePPP(allUserShots), [allUserShots]);
-
-    const oppShots = useMemo(() =>
-        shotEvents.filter(s => s.teamId === opponentTeamId),
-    [shotEvents, opponentTeamId]);
-    const oppPPP = useMemo(() => calculatePlayTypePPP(oppShots), [oppShots]);
-
-    // ── 슬라이더 업데이트 ──
-    const updateSlider = useCallback((key: keyof TacticalSliders, val: number) => {
-        const newSliders = { ...sliders, [key]: val };
-        // zoneFreq ↔ zoneUsage 동기화
-        if (key === 'zoneFreq') newSliders.zoneUsage = val;
-        onApplyTactics(newSliders);
+    // mirrorKeys(지역 방어 → zoneUsage)는 한 번에 같이 갱신 — TacticsSlidersPanel과 같은 규칙
+    const updateSlider = useCallback((item: SliderItemConfig, val: number) => {
+        const next: TacticalSliders = { ...sliders, [item.key]: val };
+        for (const k of item.mirrorKeys ?? []) next[k] = val;
+        onApplyTactics(next);
     }, [sliders, onApplyTactics]);
 
-    // ─────────────────────────────────────────────────────────
-    // Render
-    // ─────────────────────────────────────────────────────────
-
     return (
-        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
-
-            {/* 코치 위임 중 안내 배너 */}
+        <div className="p-8 flex flex-col gap-6">
             {disabled && (
                 <div className="px-3 py-1.5 bg-amber-600/15 border-l-2 border-amber-500 text-amber-300 text-xs">
-                    코치 지휘 중 — 전술 변경이 잠겨 있습니다
+                    {disabledMessage}
                 </div>
             )}
-
-            {/* ══════════════════════════════════════════════════════ */}
-            {/* TOP: 슬라이더 5그룹 수평 배치                          */}
-            {/* ══════════════════════════════════════════════════════ */}
-            <div className={`grid grid-cols-4 gap-4${disabled ? ' pointer-events-none opacity-60' : ''}`}>
-
-                {/* 1. 공격 철학 (게임 운영 + 코칭 철학 통합) */}
-                <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white mb-1">공격 철학</h4>
-                    <SliderControl label="페이스" value={sliders.pace} onChange={v => updateSlider('pace', v)}
-                        steps={SLIDER_STEPS.pace} />
-                    <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
-                        steps={SLIDER_STEPS.ballMovement} />
-                    <SliderControl label="공격 리바운드" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
-                        steps={SLIDER_STEPS.offReb} />
-                    <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
-                        steps={SLIDER_STEPS.insideOut} />
-                    <SliderControl label="픽앤롤 빈도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
-                        steps={SLIDER_STEPS.pnrFreq} />
-                </div>
-
-                {/* 2. 슈팅 전략 (구 코칭 철학 자리) */}
-                <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white mb-1">슈팅 전략</h4>
-                    <SliderControl label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
-                        steps={SLIDER_STEPS.shot_3pt} />
-                    <SliderControl label="골밑 공격" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
-                        steps={SLIDER_STEPS.shot_rim} />
-                    <SliderControl label="미드레인지 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
-                        steps={SLIDER_STEPS.shot_mid} />
-                </div>
-
-                {/* 3. 온볼 수비 */}
-                <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white mb-1">온볼 수비</h4>
-                    <SliderControl label="수비 압박" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
-                        steps={SLIDER_STEPS.defIntensity} />
-                    <SliderControl label="스위치 수비" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
-                        steps={SLIDER_STEPS.switchFreq} />
-                    <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
-                        steps={PNR_STEPS} />
-                    <SliderControl label="풀코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
-                        steps={SLIDER_STEPS.fullCourtPress} />
-                </div>
-
-                {/* 4. 오프볼 수비 */}
-                <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white mb-1">오프볼 수비</h4>
-                    <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
-                        steps={SLIDER_STEPS.helpDef} />
-                    <SliderControl label="지역 방어" value={sliders.zoneFreq}
-                        onChange={v => { updateSlider('zoneFreq', v); }}
-                        steps={SLIDER_STEPS.zoneFreq} />
-                    <SliderControl label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
-                        steps={SLIDER_STEPS.defReb} />
-                </div>
-            </div>
-
-            {/* 슬라이더 설명 (전체 통합) */}
-            <SliderGroupNotes notes={[
-                { label: '페이스', text: '낮을수록 더 많은 샷클락을 소모합니다. 높을수록 트랜지션 공격의 빈도가 늘어나지만 더 많은 체력을 소모하며 턴오버 확률이 증가합니다. 발이 빠른 드라이버나 좋은 패서가 있다면 트랜지션이 유효할 수 있습니다.' },
-                { label: '볼 회전', text: '낮을수록 코트 위에서 가장 뛰어난 선수에게 공격 기회를 몰아주어 더 많은 아이솔레이션과 포스트업을 시도하게 되며 팀의 전체적인 어시스트가 줄어들 수 있습니다. 반대로 높을수록 핸드오프 액션, 캐치앤슛, 컷인 등 패스 플레이를 더 많이 시도합니다.' },
-                { label: '공격 리바운드', text: '낮을수록 공격 리바운드 경합에 적은 선수가 참여하고 빠르게 백코트를 시도합니다. 높을수록 더 많은 선수들이 공격 리바운드를 잡기 위해 달려들게 되지만 만약 공격 리바운드를 잡는데 실패한다면 상대방의 속공에 당할 확률이 높아집니다.' },
-                { label: '공격 포인트', text: '코트의 어느 부분을 공략할지를 결정합니다. 낮을수록 골밑과 가까운 쪽의 공격을 더 많이 시도하며 반대로 높을수록 외곽 공격의 비중이 높아집니다. 강력한 빅맨이 있다면 슬라이더를 낮게, 뛰어난 가드가 있다면 슬라이더를 높게 유지하는 것이 도움이 될 수 있습니다.' },
-                { label: '픽앤롤 빈도', text: '픽앤롤을 얼마나 자주 실행할지를 결정합니다. 픽앤롤은 롤/팝/핸들러로 나뉘며 이것의 비중은 다른 공격 슬라이더들에 의해 결정됩니다. 예를 들어 픽앤롤 빈도를 높게 설정하고 공격 포인트를 높게 설정하면 스크리너는 림으로 쇄도하지 않고 픽앤팝을 더 많이 시도합니다.' },
-                { label: '3점 슛 빈도', text: '팀의 3점 시도 빈도를 결정합니다.' },
-                { label: '골밑 공격', text: '가장 효율적인 슛 구역. 드라이브/컷 능력과 연계됩니다.' },
-                { label: '미드레인지 빈도', text: '중거리 슛은 효율이 낮습니다. 엘리트 미드레인지 슈터가 없다면 소극적으로 유지하세요.' },
-                { label: '수비 압박', text: '아크 내에서의 수비 강도를 결정합니다. 낮을수록 파울 확률은 감소하지만 상대방의 득점 확률이 소폭 상승합니다. 반대로 높게 설정하면 파울 확률과 체력 소모가 증가하지만 상대방의 득점 확률을 감소시킬 수 있습니다. 팀의 전체적인 수비 능력에 따라 설정하세요.' },
-                { label: '스위치 수비', text: '픽앤롤, 핸드오프 등의 스크린 액션에서 어떻게 스위치하여 수비할지를 결정합니다. 낮을수록 스위치 하지 않고, 파이트쓰루하여 원래의 매치업을 따라갑니다. 상대의 스크린이 좋다면 효율이 떨어집니다. 반대로 높을수록 스위치를 더 자주 하게 되고 미스매치가 발생할 확률이 높아집니다. 체격, 속도 등에 따라 미스매치의 효율은 변동됩니다. 코트 위의 선수들이 사이즈가 좋고 수비 능력이 우수하다면 스위치 수비를 하는 것이 이득일 수 있습니다.' },
-                { label: '픽앤롤 수비', text: '픽앤롤 수비는 수비 상황에서 빅맨의 움직임을 결정하는 슬라이더로 드랍, 헤지, 블리츠 세 가지로 나뉩니다. 드랍은 수비자 빅맨이 스크리너를 내버려두고 골밑으로 움직이며 상대방 스크리너의 골밑 공격 성공률이 감소할 수 있지만 핸들러의 성공률은 오히려 증가합니다. 헤지는 잠시동안 핸들러에게 더블팀을 간 후 롤맨을 따라 골밑으로 이동하는 움직임으로 균형 잡힌 수비 방법입니다. 블리츠는 핸들러에게 더블팀(트랩)을 거는 방식입니다. 핸들링과 패스가 약한 핸들러는 턴오버와 스틸을 자주 내주고 스틸은 속공으로 이어지지만, 트랩을 빠져나간 핸들러가 공을 빼면 스크리너나 다른 팀원에게 노마크 찬스가 생기고 롤맨의 공격 성공률도 증가합니다. 트랩에 가담하는 빅맨의 발이 느리면 빠져나가기 쉬워집니다.' },
-                { label: '풀코트 프레스', text: '풀코트 프레스는 수비 압박 강도와 다르게 상대방 베이스라인부터의 압박 강도를 조절합니다. 높을수록 상대 핸들러의 턴오버를 유발하고 하프코트를 넘어오는 데 시간을 더 쓰게 만들며, 5단계 이상에서는 가끔 트랩(더블팀)으로 스틸을 노리며 단계가 높을수록 자주 겁니다. 대신 프레스가 뚫리거나 트랩을 빠져나가면 상대에게 쉬운 득점 기회를 주고, 리치인·트랩 파울과 앞선 수비수의 체력 부담이 늘어나며, 지친 수비수는 뚫리기 쉽고 파울도 늘어납니다. 9~10단계는 고위험·고수익 단계라 앞선 수비와 체력이 받쳐 주지 않으면 오히려 손해입니다. 핸들링·드리블 속도가 좋은 핸들러일수록 프레스를 잘 뚫으며, 상대가 공격 리바운드를 잡은 직후에는 적용되지 않습니다.' },
-                { label: '헬프 수비', text: '헬프 수비는 상대방 공격자가 슛을 던질 때의 도움 수비 전략을 조절합니다. 낮을수록 모든 선수들은 헬프 수비를 가지 않고 자신의 자리를 지킵니다. 반대로 높을수록 가장 지근거리에 있는 수비수의 도움 수비 확률이 올라갑니다. 도움 수비자에게는 스틸, 블락 보너스가 주어지고 상대방의 야투 성공 확률이 감소할 수 있습니다. 하지만 도움 수비자가 파울을 기록할 확률이 증가하고, 체력 소모가 가중됩니다.' },
-                { label: '지역 방어', text: '팀의 수비 기조를 맨투맨 커버리지로 설정할지, 존 디펜스로 설정할지를 정할 수 있습니다. 낮을수록 지역에 국한되지 않고 선수들은 본인의 매치업 상대를 따라다니며 수비합니다. 더 많은 체력 소모를 요구하지만, 턴오버나 스틸 확률을 증가시킵니다. 또한 상대방의 드라이브 앤 킥, 컷, 캐치앤슛 등의 액션의 성공률이 감소합니다. 반대로 높을수록 선수들은 자신의 수비 지역을 고수하며 골밑을 틀어막는 방식으로 상대의 포스트업같은 정적인 액션의 성공률을 감소시킬 수 있으나 반대로 컷, 드라이브 앤 킥같은 동적인 액션에 취약해집니다.' },
-                { label: '수비 리바운드', text: '수비 리바운드에 얼마나 많은 인원을 참여시킬지를 결정합니다. 슬라이더가 낮게 설정될수록 리바운드 상황에서 최소한의 인원만 남기고 상대방의 진영으로 넘어갑니다. 팀에 드리블이 뛰어나거나 아웃렛 패스에 능한 선수가 있다면 트랜지션 액션의 성공률이 증가합니다. 반대로 슬라이더가 높을수록 강력한 박스아웃을 시도하며, 더 많은 선수가 리바운드 경합에 참여합니다.' },
-            ]} />
-
-            {/* ══════════════════════════════════════════════════════ */}
-            {/* BOTTOM: 팀 스탯 비교 | 샷차트 | PPP 비교               */}
-            {/* ══════════════════════════════════════════════════════ */}
-            <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
-
-                {/* ── 1. 팀 스탯 비교 (3/12) ── */}
-                <div className="col-span-3 bg-slate-900/40 border border-slate-800 rounded-2xl px-2 py-2 flex flex-col overflow-y-auto">
-                    <p className="text-[9px] text-slate-500 font-semibold mb-1.5 px-1">팀 스탯</p>
-                    <div className="flex flex-col gap-1">
-                        {COMPARE_STATS.map(({ key, label, fmt }) => {
-                            const h = compareStats.h[key as keyof typeof compareStats.h] as number;
-                            const a = compareStats.a[key as keyof typeof compareStats.a] as number;
-                            const total = h + a;
-                            const hPct = total > 0 ? (h / total) * 100 : 50;
-                            const aPct = total > 0 ? (a / total) * 100 : 50;
-                            const hWins = h > a;
-                            const aWins = a > h;
-                            const bothZero = h === 0 && a === 0;
-
-                            return (
-                                <div key={key} className="grid grid-cols-[1fr_32px_36px_32px_1fr] items-center gap-1">
-                                    <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-800/50">
-                                        {!bothZero && (
-                                            <div className="h-full rounded-sm transition-all duration-300"
-                                                style={{ width: `${aPct}%`, backgroundColor: awayColor }} />
-                                        )}
-                                    </div>
-                                    <span className={`text-[10px] text-right text-white ${aWins ? 'font-bold' : ''}`}>
-                                        {fmt(a)}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400 text-center">{label}</span>
-                                    <span className={`text-[10px] text-left text-white ${hWins ? 'font-bold' : ''}`}>
-                                        {fmt(h)}
-                                    </span>
-                                    <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
-                                        {!bothZero && (
-                                            <div className="h-full rounded-sm transition-all duration-300"
-                                                style={{ width: `${hPct}%`, backgroundColor: homeColor }} />
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* ── 2. 샷차트 (6/12) ── */}
-                <div className="col-span-6 bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
-                    <div className="grid grid-cols-12 gap-0 flex-1 min-h-0">
-                        {/* Shot Chart */}
-                        <div className="col-span-9 flex items-center justify-center p-2 overflow-hidden">
-                            <div className="relative h-full" style={{ aspectRatio: '470/500' }}>
-                                <svg viewBox="0 0 470 500" className="w-full h-full">
-                                    <rect width="470" height="500" fill="#020617" />
-                                    <rect y="170" width="190" height="160" fill="#0f172a" />
-                                    <g fill="none" stroke="#334155" strokeWidth="2" strokeMiterlimit="10">
-                                        <path d="M0,30h140s150,55,150,220-150,220,-150,220H0" />
-                                        <polyline points="0,170 190,170 190,330 0,330" />
-                                        <line x1="190" y1="310" y2="310" />
-                                        <line y1="190" x2="190" y2="190" />
-                                        <path d="M190,190c33.14,0,60,26.86,60,60s-26.86,60-60,60" />
-                                        <path d="M190,310c-1.6,0-3.18-.06-4.75-.19" />
-                                        <path d="M177.77,308.75c-27.27-5.65-47.77-29.81-47.77-58.75s22.39-55.27,51.49-59.4" strokeDasharray="9.58 7.56" />
-                                        <path d="M185.25,190.19c1.57-.12,3.15-.19,4.75-.19" />
-                                        <line x1="280" y1="480" x2="280" y2="500" />
-                                        <line x1="280" x2="280" y2="20" />
-                                        <path d="M40,290h12.5c22.09,0,40-17.91,40-40s-17.91-40-40-40h-12.5" />
-                                        <line x1="145" y1="310" x2="145" y2="318" />
-                                        <line x1="115" y1="310" x2="115" y2="318" />
-                                        <line x1="85" y1="310" x2="85" y2="318" />
-                                        <line x1="70" y1="310" x2="70" y2="318" />
-                                        <line x1="145" y1="182" x2="145" y2="190" />
-                                        <line x1="115" y1="182" x2="115" y2="190" />
-                                        <line x1="85" y1="182" x2="85" y2="190" />
-                                        <line x1="70" y1="182" x2="70" y2="190" />
-                                        <line x1="40" y1="222" x2="40" y2="278" stroke="white" />
-                                        <circle cx="48" cy="250" r="7.5" stroke="white" />
-                                        <line x1="470" y1="0" x2="470" y2="500" />
-                                        <circle cx="470" cy="250" r="60" />
-                                        <circle cx="470" cy="250" r="20" />
-                                    </g>
-                                    {displayShots.map(shot => (
-                                        <g key={shot.id}>
-                                            {shot.isMake ? (
-                                                <circle cx={shot.x * 10} cy={shot.y * 10}
-                                                    r={6} fill={teamColor} stroke="white" strokeWidth="1" opacity="1" />
-                                            ) : (
-                                                <g transform={`translate(${shot.x * 10}, ${shot.y * 10})`} opacity="0.7">
-                                                    <line x1="-4.5" y1="-4.5" x2="4.5" y2="4.5" stroke="#cbd5e1" strokeWidth="2" />
-                                                    <line x1="-4.5" y1="4.5" x2="4.5" y2="-4.5" stroke="#cbd5e1" strokeWidth="2" />
-                                                </g>
-                                            )}
-                                        </g>
-                                    ))}
-                                </svg>
-                                {/* Legend */}
-                                <div className="absolute bottom-2 right-2 flex gap-3 text-[9px] font-bold bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-800 backdrop-blur-sm">
-                                    <div className="flex items-center gap-1">
-                                        <div className="w-2 h-2 rounded-full border border-white" style={{ backgroundColor: teamColor }} />
-                                        <span className="text-white">MADE</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <XIcon size={8} className="text-slate-300" strokeWidth={3} />
-                                        <span className="text-slate-400">MISS</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Player Filter */}
-                        <div className="col-span-3 flex flex-col border-l border-slate-800 bg-slate-900/20" style={{ minHeight: 0 }}>
-                            <div className="px-2 py-1.5 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center shrink-0">
-                                <span className="text-[9px] font-black text-slate-500">필터</span>
-                                <button onClick={toggleAll}
-                                    className="text-[8px] font-bold text-indigo-400 hover:text-white transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-1 py-0.5 rounded">
-                                    {selectedPlayerIds.size === shootingPlayers.length ? '해제' : '전체'}
-                                </button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-0.5 space-y-0">
-                                {shootingPlayers.map(player => {
-                                    const isSelected = selectedPlayerIds.has(player.id);
-                                    return (
-                                        <button key={player.id} onClick={() => togglePlayer(player.id)}
-                                            className="w-full flex items-center justify-between px-1.5 py-1 text-left">
-                                            <div className="flex items-center gap-1">
-                                                <div className={`w-2.5 h-2.5 rounded-sm flex items-center justify-center border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-500' : 'bg-transparent border-slate-600'}`}>
-                                                    {isSelected && <Check size={7} className="text-white" />}
-                                                </div>
-                                                <span className={`text-[10px] font-bold truncate max-w-[60px] ${isSelected ? 'text-white' : 'text-slate-500'}`}>{player.name}</span>
-                                            </div>
-                                            <span className="text-[9px] text-slate-400">{player.made}/{player.total}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* ── 3. PPP 비교 (3/12) ── */}
-                <div className="col-span-3 flex flex-col gap-3 overflow-y-auto">
-                    <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3">
-                        <PlayTypePPPTable title="우리 팀 PPP" data={userPPP} />
-                    </div>
-                    <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-3">
-                        <PlayTypePPPTable title="상대 팀 PPP" data={oppPPP} />
-                    </div>
-                </div>
+            <div className={`grid grid-cols-1 lg:grid-cols-2 gap-8${disabled ? ' pointer-events-none opacity-60' : ''}`}>
+                <SliderColumn groups={OFFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} bordered />
+                <SliderColumn groups={DEFENSE_SLIDER_GROUPS} sliders={sliders} onChange={updateSlider} />
             </div>
         </div>
     );

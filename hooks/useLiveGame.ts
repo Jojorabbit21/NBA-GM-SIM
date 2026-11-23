@@ -1,6 +1,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
+import type { RotationData } from '../types/engine';
 import { SimSettings } from '../types/simSettings';
 import { HeadCoachPreferences } from '../types/coaching';
 import { GameState, LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
@@ -20,7 +21,9 @@ import { countOvertimePeriods, normalizePeriod } from '../utils/periodLabel';
 // Public Types
 // ─────────────────────────────────────────────────────────────
 
-export type PauseReason = 'timeout' | 'quarterEnd' | 'halftime' | 'gameEnd';
+// 'manual' = 사용자가 일시정지 버튼으로 멈춘 상태(2026-11-23). 타임아웃·쿼터 휴식과 달리 선수 교체·로테이션·전술 변경이 전부 잠긴다
+// (아래 applyTactics/applyRotationMap/makeSubstitution이 막고, 화면도 같은 값으로 편집 UI를 잠근다). 자동 재개 카운트다운 없음 — 재개 버튼으로만 풀림.
+export type PauseReason = 'timeout' | 'quarterEnd' | 'halftime' | 'gameEnd' | 'manual';
 
 export type GameSpeed = 0.5 | 1 | 1.5 | 3 | 6; // 포세션 간격 배수
 
@@ -36,9 +39,13 @@ export interface LiveDisplayState {
     allLogs: PbpLog[];          // 전체 누적
     pauseReason: PauseReason | null;
     isGameEnd: boolean;
+    /** [2026-11-23] 지금까지의 출전 구간(선수별 in/out 초) — 코트에 있는 선수의 마지막 구간은 현재 경기 시각으로 닫아서 넘긴다(로테이션 차트 표시용) */
+    rotationData: RotationData;
     timeoutsLeft: { home: number; away: number };
     // [2026-11-04] 지금 타임아웃을 부를 수 있는지 — 라이브볼(리바운드·스틸 직후)엔 공을 가진 팀만 (NBA Rule 5 VI.4)
     timeoutCallable: { home: boolean; away: boolean };
+    /** [2026-11-23] 사용자 타임아웃 예약 중 — 지금 부를 수 없을 때(라이브볼 상대 공·정지 중) 버튼을 누르면 다음에 부를 수 있는 첫 순간(데드볼 또는 우리 공)에 자동 발동 */
+    timeoutReserved: boolean;
     homeOnCourt: LivePlayer[];
     awayOnCourt: LivePlayer[];
     homeBench: LivePlayer[];
@@ -64,12 +71,12 @@ export interface LiveDisplayState {
 export interface UseLiveGameReturn {
     displayState: LiveDisplayState;
     // 유저 액션
-    callTimeout: () => void;
+    callTimeout: () => void;     // [2026-11-23] 지금 부를 수 있으면 즉시, 아니면 예약 — 예약 중 다시 부르면 취소
     applyTactics: (newSliders: GameTactics['sliders']) => void;
     applyRotationMap: (newMap: Record<string, boolean[]>) => void;
     makeSubstitution: (outId: string, inId: string) => void;
     resume: () => void;
-    pause: () => void;           // 개발/디버그용 일시정지
+    pause: () => void;           // 사용자 일시정지(pauseReason 'manual') — 편집 잠금
     // 경기 종료 후
     getResult: () => SimulationResult | null;
     // OnCourt / Bench (교체 UI용 — 유저 팀만)
@@ -113,6 +120,9 @@ export function useLiveGame(
     );
 
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // [2026-11-23] 사용자 타임아웃 예약 — 매 포제션 종료 후 canCallTimeout이면 발동(아래 startInterval). 쿼터 종료·하프타임·다른 타임아웃으로
+    //   경기가 먼저 멈추면 횟수를 쓰지 않고 해제(이미 멈춰 같은 효과), 위임·경기 종료까지 진행에서도 해제.
+    const timeoutReservedRef = useRef(false);
     const pauseReasonRef = useRef<PauseReason | null>(null);
     const isGameEndRef  = useRef(false);
     const speedRef = useRef<GameSpeed>(1);
@@ -123,7 +133,7 @@ export function useLiveGame(
     const applyCoachTacticsRef = useRef<() => void>(() => {});
 
     const [displayState, setDisplayState] = useState<LiveDisplayState>(() =>
-        _buildDisplay(gameStateRef.current, null, false, 1, userTeamId)
+        _buildDisplay(gameStateRef.current, null, false, 1, userTeamId, false)
     );
 
     // ── 디스플레이 동기화 헬퍼 ──
@@ -133,7 +143,8 @@ export function useLiveGame(
             pauseReasonRef.current,
             isGameEndRef.current,
             speedRef.current,
-            userTeamId
+            userTeamId,
+            timeoutReservedRef.current,
         ));
     }, [userTeamId]);
 
@@ -162,6 +173,7 @@ export function useLiveGame(
                 const reason: PauseReason =
                     state.quarter === 2 ? 'halftime' : 'quarterEnd';
                 pauseReasonRef.current = reason;
+                timeoutReservedRef.current = false;   // 쿼터 휴식으로 이미 멈춤 — 예약 해제(횟수 미사용)
                 // 위임 중이면 쿼터/하프타임 전환 시 코치 전술 재평가
                 if (state.isUserDelegated) {
                     applyCoachTacticsRef.current();
@@ -175,8 +187,25 @@ export function useLiveGame(
                 clearInterval(intervalRef.current!);
                 intervalRef.current = null;
                 pauseReasonRef.current = 'timeout';
+                timeoutReservedRef.current = false;   // 상대·의무 타임아웃으로 이미 멈춤 — 예약 해제(횟수 미사용)
                 syncDisplay();
                 return;
+            }
+
+            // [2026-11-23] 사용자 타임아웃 예약 발동 — 이번 포제션이 데드볼로 끝났거나 우리 팀이 공을 잡았으면(canCallTimeout) 지금 부른다
+            if (timeoutReservedRef.current && userTeamId && !state.isUserDelegated) {
+                const userTeam = state.home.id === userTeamId ? state.home : state.away;
+                if (userTeam.timeouts <= 0) {
+                    timeoutReservedRef.current = false;
+                } else if (canCallTimeout(state, userTeam.id)) {
+                    clearInterval(intervalRef.current!);
+                    intervalRef.current = null;
+                    timeoutReservedRef.current = false;
+                    applyTimeout(state, userTeam.id, true);
+                    pauseReasonRef.current = 'timeout';
+                    syncDisplay();
+                    return;
+                }
             }
 
             syncDisplay();
@@ -242,6 +271,7 @@ export function useLiveGame(
         // 현재 슬라이더를 기준값으로 스냅샷 저장
         delegationBaseSlidersRef.current = { ...userTeam.tactics.sliders };
         state.isUserDelegated = true;
+        timeoutReservedRef.current = false;   // 위임하면 타임아웃은 AI 코치가 판단 — 사용자 예약 해제
         setIsDelegated(true);
         applyCoachTacticsRef.current();
         syncDisplay();
@@ -269,10 +299,21 @@ export function useLiveGame(
         if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
         if (state.isUserDelegated) return; // 위임 중
+        if (isGameEndRef.current) return;
+        // [2026-11-23] 예약 중에 다시 누르면 취소
+        if (timeoutReservedRef.current) {
+            timeoutReservedRef.current = false;
+            syncDisplay();
+            return;
+        }
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         if (userTeam.timeouts <= 0) return;
-        if (!canCallTimeout(state, userTeam.id)) return; // [2026-11-04] 라이브볼 중 상대 공 — 요청 불가(NBA Rule 5 VI.4)
-        if (pauseReasonRef.current !== null) return; // 이미 pause 중
+        // 지금 부를 수 없으면(라이브볼 중 상대 공 — NBA Rule 5 VI.4, 또는 이미 정지 중) 예약 → 다음 데드볼·우리 공에 발동
+        if (!canCallTimeout(state, userTeam.id) || pauseReasonRef.current !== null) {
+            timeoutReservedRef.current = true;
+            syncDisplay();
+            return;
+        }
 
         clearInterval(intervalRef.current!);
         intervalRef.current = null;
@@ -286,6 +327,7 @@ export function useLiveGame(
 
     const applyTactics = useCallback((newSliders: GameTactics['sliders']) => {
         if (!userTeamId) return; // spectate mode
+        if (pauseReasonRef.current === 'manual') return; // 사용자 일시정지 중 — 전술 변경 불가
         const state = gameStateRef.current;
         if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
@@ -296,6 +338,7 @@ export function useLiveGame(
 
     const applyRotationMap = useCallback((newMap: Record<string, boolean[]>) => {
         if (!userTeamId) return; // spectate mode
+        if (pauseReasonRef.current === 'manual') return; // 사용자 일시정지 중 — 로테이션 변경 불가
         const state = gameStateRef.current;
         if (state.isUserDelegated) return; // 위임 중
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
@@ -315,6 +358,7 @@ export function useLiveGame(
 
     const makeSubstitution = useCallback((outId: string, inId: string) => {
         if (!userTeamId) return; // spectate mode
+        if (pauseReasonRef.current === 'manual') return; // 사용자 일시정지 중 — 선수 교체 불가
         if (gameStateRef.current.isUserDelegated) return; // 위임 중
         applyManualSubstitution(gameStateRef.current, userTeamId, outId, inId);
         syncDisplay();
@@ -324,16 +368,17 @@ export function useLiveGame(
         if (isGameEndRef.current) return;
         pauseReasonRef.current = null;
         startInterval();
-    }, [startInterval]);
+        syncDisplay();   // 재개 상태를 다음 틱까지 기다리지 않고 즉시 화면에 반영(일시정지 버튼 반응성)
+    }, [startInterval, syncDisplay]);
 
     const pause = useCallback(() => {
         if (isGameEndRef.current) return;
-        if (pauseReasonRef.current !== null) return; // 이미 정지 중
+        if (pauseReasonRef.current !== null) return; // 이미 정지 중(타임아웃·쿼터 휴식 포함)
         if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
         }
-        pauseReasonRef.current = 'timeout';
+        pauseReasonRef.current = 'manual';
         syncDisplay();
     }, [syncDisplay]);
 
@@ -368,6 +413,7 @@ export function useLiveGame(
         }
         pauseReasonRef.current = 'gameEnd';
         isGameEndRef.current = true;
+        timeoutReservedRef.current = false;
         syncDisplay();
     }, [syncDisplay]);
 
@@ -407,7 +453,8 @@ function _buildDisplay(
     pauseReason: PauseReason | null,
     isGameEnd: boolean,
     speed: GameSpeed,
-    userTeamId: string | null
+    userTeamId: string | null,
+    timeoutReserved: boolean,
 ): LiveDisplayState {
     const m = state.momentum;
     const currentTotalSec = elapsedGameSec(state);
@@ -423,6 +470,14 @@ function _buildDisplay(
 
     const userTeam = state.home.id === userTeamId ? state.home : state.away;
 
+    // 출전 구간 스냅숏 — 엔진 rotationHistory는 코트 위 선수의 마지막 구간 out이 아직 0/-1(진행 중)이라 현재 시각으로 닫는다
+    const onCourtIds = new Set([...state.home.onCourt, ...state.away.onCourt].map(p => p.playerId));
+    const rotationData: RotationData = {};
+    for (const [pid, segs] of Object.entries(state.rotationHistory)) {
+        rotationData[pid] = segs.map((seg, i) =>
+            i === segs.length - 1 && onCourtIds.has(pid) && !isGameEnd ? { ...seg, out: currentTotalSec } : seg);
+    }
+
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
@@ -433,6 +488,8 @@ function _buildDisplay(
         allLogs: [...state.logs],
         pauseReason,
         isGameEnd,
+        rotationData,
+        timeoutReserved,
         timeoutsLeft: { home: state.home.timeouts, away: state.away.timeouts },
         timeoutCallable: { home: canCallTimeout(state, state.home.id), away: canCallTimeout(state, state.away.id) },
         homeOnCourt: [...state.home.onCourt],

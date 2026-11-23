@@ -100,7 +100,7 @@ function cloneDepthChart(chart: DepthChart): DepthChart {
 // 슬롯 선수 선택 커스텀 드롭다운 — 브라우저 기본 <select>는 옵션 안에 OVR 배지/부상 배지를
 // 넣을 수 없어서 공용 Dropdown(포털 렌더링으로 테이블의 overflow-auto/sticky에 안 잘림)
 // 위에 직접 만든 옵션 리스트를 얹는다. 옵션 한 줄 레이아웃: [OVR] 이름 [부상배지] --- [포지션].
-const PlayerSlotDropdown: React.FC<{
+export const PlayerSlotDropdown: React.FC<{
     players: Player[];
     selectedPlayer: Player | null;
     onChange: (playerId: string) => void;

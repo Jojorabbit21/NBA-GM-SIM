@@ -57,7 +57,7 @@ import AuthPage from './pages/AuthPage';
 import ShopPage from './pages/ShopPage';
 import ProfilePage from './pages/ProfilePage';
 import LeagueInvitePage from './pages/LeagueInvitePage';
-import QuickPlayPage from './pages/QuickPlayPage';
+import QuickGamePage from './pages/QuickGamePage';
 import ModeSelectPage from './pages/ModeSelectPage';
 import DraftPoolSelectPage from './pages/DraftPoolSelectPage';
 import TeamSelectPage from './pages/TeamSelectPage';
@@ -411,7 +411,7 @@ const App: React.FC = () => {
                     <Route path="/about" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/terms" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
                     <Route path="/privacy" element={<AuthPage quickplayOnly={shouldRestrictToQuickPlay} />} />
-                    <Route path="/quick" element={<QuickPlayPage />} />
+                    <Route path="/quick" element={<QuickGamePage />} />
                     <Route path="/multi/invite/:token" element={<LeagueInvitePage />} />
                     <Route path="/mode-select" element={<ModeSelectPage />} />
                     <Route path="/draft-pool-select" element={<DraftPoolSelectPage />} />

@@ -142,6 +142,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({ session, nickname, onL
             >
                 Online Leagues
             </button>
+            {/* [2026-11-23] Quick Game — 두 팀을 골라 브라우저 안에서 바로 한 경기(저장 없음, pages/QuickGamePage.tsx) */}
+            <button
+                type="button" onClick={() => navigate('/quick')}
+                className={`${MENU_FONT} ${menuSize} flex items-center text-white transition-colors hover:text-[#00D492]`}
+            >
+                Quick Game
+            </button>
         </nav>
     );
 

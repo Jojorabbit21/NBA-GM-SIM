@@ -18,10 +18,14 @@ interface GameRotationTabProps {
     splitLayout?: boolean;
     /** 제공되면 로테이션 막대 위에 핫/콜드 스트릭(🔥/❄️) 마커를 표시 */
     shotEvents?: ShotEvent[];
+    /** [2026-11-23] 안 뛴 선수도 빈 행으로 표시(라이브 경기 로테이션 탭) */
+    showAllPlayers?: boolean;
+    /** [2026-11-23] 팀 카드를 카드 모듈로(라이브 경기 로테이션 탭) */
+    cardModules?: boolean;
 }
 
 export const GameRotationTab: React.FC<GameRotationTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, rotationData, homeBadge, awayBadge, pbpLogs, splitLayout, shotEvents
+    homeTeam, awayTeam, homeBox, awayBox, rotationData, homeBadge, awayBadge, pbpLogs, splitLayout, shotEvents, showAllPlayers = false, cardModules = false,
 }) => {
     return (
         <div className="animate-in fade-in slide-in-from-right-4 duration-300">
@@ -37,6 +41,8 @@ export const GameRotationTab: React.FC<GameRotationTabProps> = ({
                     pbpLogs={pbpLogs}
                     splitLayout={splitLayout}
                     shotEvents={shotEvents}
+                    showAllPlayers={showAllPlayers}
+                    cardModules={cardModules}
                 />
             ) : (
                 <div className="text-center text-slate-500 py-20 font-bold bg-slate-900/30 rounded-3xl border border-slate-800">

@@ -24,6 +24,10 @@ interface RotationChartProps {
     /** 제공되면 선수별 슛 시퀀스를 재구성해 핫/콜드 스트릭 발생 시점에 막대 위 🔥/❄️ 마커를 표시.
      *  없으면 마커 없이 기존과 동일하게 표시(하위호환). */
     shotEvents?: ShotEvent[];
+    /** [2026-11-23] true면 안 뛴 선수도 빈 행으로 전부 표시(라이브 경기). 기본 false = 출전 선수만(결과 화면) */
+    showAllPlayers?: boolean;
+    /** [2026-11-23] 팀 카드를 rounded-xl 카드 모듈로 + 카드 사이 gap-4(라이브 경기). 기본 false = 결과 화면 그대로 */
+    cardModules?: boolean;
 }
 
 const GAME_DURATION_SECONDS = 48 * 60; // 2880
@@ -101,11 +105,14 @@ const PlayerRow: React.FC<{
     scoreAt?: (t: number) => { home: number; away: number },
     isHome: boolean,
     streaks?: StreakMarker[],
-}> = ({ player, segments, teamColor, scoreAt, isHome, streaks }) => {
+    /** [2026-11-23] true면 출전 구간이 없어도(아직 안 뛴 선수) 빈 타임라인 행을 그린다 — 라이브 경기 로테이션 탭 */
+    showEmpty?: boolean,
+}> = ({ player, segments: rawSegments, teamColor, scoreAt, isHome, streaks, showEmpty = false }) => {
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
-    // Only render if player played at least 1 second
-    if (!segments || segments.length === 0) return null;
+    // Only render if player played at least 1 second (showEmpty면 빈 행으로)
+    if ((!rawSegments || rawSegments.length === 0) && !showEmpty) return null;
+    const segments = rawSegments ?? [];
 
     return (
         <div className="grid h-8 border-b border-slate-800/50 transition-colors hover:bg-white/5" style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}>
@@ -200,20 +207,24 @@ const TeamRotationCard: React.FC<{
     team: Team,
     badge?: { color: string; abbr: string },
     standalone?: boolean,
+    /** [2026-11-23] 카드 모듈(rounded-xl 테두리 카드) — 라이브 경기 로테이션 탭 */
+    card?: boolean,
     children: React.ReactNode,
-}> = ({ team, standalone, children }) => (
-    <div className={`${NAME_COL_VARS} ${standalone
+}> = ({ team, standalone, card = false, children }) => (
+    <div className={`${NAME_COL_VARS} ${card
+        ? "w-full relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden"
+        : standalone
         ? "w-full relative"
         : "w-full bg-slate-900 border-y border-slate-800 relative"
     }`}>
-        <div className={`${standalone ? 'px-4 py-3 md:px-6 md:py-4' : 'px-6 py-4'} bg-slate-950/80 flex items-center justify-between ${standalone ? 'border-slate-800 md:border-l md:border-r' : 'border-b border-slate-800'}`}>
+        <div className={`${card ? 'px-6 py-4 border-b border-slate-800' : standalone ? 'px-4 py-3 md:px-6 md:py-4 border-slate-800 md:border-l md:border-r' : 'px-6 py-4 border-b border-slate-800'} bg-slate-950/80 flex items-center justify-between`}>
             <div className="flex items-center gap-3">
                 <TeamMark teamId={team.id} teamName={team.name} size="custom" className="w-8 h-8" />
                 <span className="text-sm font-black text-white">{team.name}</span>
             </div>
         </div>
 
-        <div className={standalone ? "bg-slate-900 border-y md:border border-slate-800 shadow-lg" : "bg-slate-900"}>
+        <div className={standalone && !card ? "bg-slate-900 border-y md:border border-slate-800 shadow-lg" : "bg-slate-900"}>
             <div className="grid h-10 bg-slate-950 border-b border-slate-800" style={{ gridTemplateColumns: `${NAME_COL} 1fr` }}>
                 <div className="flex items-center px-4 text-xs font-black text-slate-500 border-r border-slate-800">선수</div>
                 <div className="grid grid-cols-4 divide-x divide-slate-800 text-xs font-black text-slate-500 text-center items-center">
@@ -227,7 +238,7 @@ const TeamRotationCard: React.FC<{
 );
 
 export const RotationChart: React.FC<RotationChartProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, rotationData, homeBadge, awayBadge, pbpLogs, splitLayout, shotEvents
+    homeTeam, awayTeam, homeBox, awayBox, rotationData, homeBadge, awayBadge, pbpLogs, splitLayout, shotEvents, showAllPlayers = false, cardModules = false,
 }) => {
     if (!rotationData) return null;
 
@@ -276,7 +287,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
     }, [shotEvents]);
 
     const awayCard = (
-        <TeamRotationCard team={awayTeam} badge={awayBadge} standalone={splitLayout}>
+        <TeamRotationCard team={awayTeam} badge={awayBadge} standalone={splitLayout} card={cardModules}>
             {sortedAway.map(p => (
                 <PlayerRow
                     key={p.playerId}
@@ -286,13 +297,14 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                     scoreAt={scoreAt}
                     isHome={false}
                     streaks={streaksByPlayer[p.playerId]}
+                    showEmpty={showAllPlayers}
                 />
             ))}
         </TeamRotationCard>
     );
 
     const homeCard = (
-        <TeamRotationCard team={homeTeam} badge={homeBadge} standalone={splitLayout}>
+        <TeamRotationCard team={homeTeam} badge={homeBadge} standalone={splitLayout} card={cardModules}>
             {sortedHome.map(p => (
                 <PlayerRow
                     key={p.playerId}
@@ -302,6 +314,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                     scoreAt={scoreAt}
                     isHome={true}
                     streaks={streaksByPlayer[p.playerId]}
+                    showEmpty={showAllPlayers}
                 />
             ))}
         </TeamRotationCard>
@@ -313,7 +326,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                 // [Fix 2026-08-04] min-w-0 없이는 그리드 자식(각 카드)의 자동 최소 폭이 콘텐츠 크기를
                 // 따라가서(그리드 트랙 1fr을 무시하고) 원정/홈 카드가 서로의 영역을 침범 + 페이지 전체에
                 // 불필요한 가로 스크롤바가 생겼음 — 각 컬럼에 min-w-0을 줘서 50% 트랙 폭을 강제로 지키게 함.
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+                <div className={`grid grid-cols-1 lg:grid-cols-2 ${cardModules ? 'gap-4' : 'gap-0'}`}>
                     <div className="min-w-0 overflow-x-auto">{awayCard}</div>
                     <div className="min-w-0 overflow-x-auto">{homeCard}</div>
                 </div>

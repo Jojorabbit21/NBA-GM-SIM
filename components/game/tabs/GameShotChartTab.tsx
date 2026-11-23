@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Team, ShotEvent, PlayerBoxScore } from '../../../types';
+import { Team, ShotEvent, PlayerBoxScore, Player } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { Check } from 'lucide-react';
 import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
@@ -291,20 +291,30 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     const [selectedHomeIds, setSelectedHomeIds] = useState<Set<string>>(new Set());
     const [selectedAwayIds, setSelectedAwayIds] = useState<Set<string>>(new Set());
 
-    // 로스터가 바뀌면(경기 전환 등) 전체 선택 상태로 초기화
-    useEffect(() => setSelectedHomeIds(new Set(homeTeam.roster.map(p => p.id))), [homeTeam]);
-    useEffect(() => setSelectedAwayIds(new Set(awayTeam.roster.map(p => p.id))), [awayTeam]);
+    // 로스터가 바뀌면(경기 전환 등) 전체 선택 상태로 초기화.
+    // [2026-11-23] 팀 객체 identity가 아니라 "팀 id + 선수 id 목록" 문자열로 판단 — 멀티 라이브는 5초 폴링마다 home_box가 새 배열로 바뀌어
+    // 팀 어댑터 객체가 새로 만들어지는데, 예전 [homeTeam] 의존이면 그때마다 사용자가 해제한 체크박스가 전체 선택으로 되돌아갔다.
+    const homeRosterKey = `${homeTeam.id}|${homeTeam.roster.map(p => p.id).join(',')}`;
+    const awayRosterKey = `${awayTeam.id}|${awayTeam.roster.map(p => p.id).join(',')}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => setSelectedHomeIds(new Set(homeTeam.roster.map(p => p.id))), [homeRosterKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => setSelectedAwayIds(new Set(awayTeam.roster.map(p => p.id))), [awayRosterKey]);
 
-    const toggleHome = (id: string) => setSelectedHomeIds(prev => {
+    // [2026-11-23] 개별 토글 — 목록에는 슛을 쏜 선수만 보이므로, 아직 안 보이는 선수의 선택 상태를 함께 정리한다.
+    // 보이는 선수를 하나씩 해제해 전부 꺼지면 안 보이는 선수도 해제(= 팀 전체 해제와 같음), 하나씩 다시 켜서 전부 켜지면 안 보이는 선수도 선택.
+    // 예전엔 안 보이는 선수가 처음 상태(선택)로 남아, 나중에 슛을 쏘며 목록에 새로 나타날 때 체크된 채로 보여 "초기화"처럼 보였다.
+    const toggleIn = (prev: Set<string>, id: string, roster: Player[], shots: ShotEvent[]) => {
         const next = new Set(prev);
         next.has(id) ? next.delete(id) : next.add(id);
+        const visible = new Set(shots.map(s => s.playerId));
+        const visibleIds = roster.map(p => p.id).filter(pid => visible.has(pid));
+        if (visibleIds.length > 0 && visibleIds.every(pid => !next.has(pid))) return new Set<string>();
+        if (visibleIds.length > 0 && visibleIds.every(pid => next.has(pid))) return new Set(roster.map(p => p.id));
         return next;
-    });
-    const toggleAway = (id: string) => setSelectedAwayIds(prev => {
-        const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
-        return next;
-    });
+    };
+    const toggleHome = (id: string) => setSelectedHomeIds(prev => toggleIn(prev, id, homeTeam.roster, homeShots));
+    const toggleAway = (id: string) => setSelectedAwayIds(prev => toggleIn(prev, id, awayTeam.roster, awayShots));
     const toggleAllHome = () => setSelectedHomeIds(prev =>
         prev.size === homeTeam.roster.length ? new Set() : new Set(homeTeam.roster.map(p => p.id)));
     const toggleAllAway = () => setSelectedAwayIds(prev =>
